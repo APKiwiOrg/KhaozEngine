@@ -202,11 +202,21 @@ bookkeeping and no driver is involved, which is the guest-leg design doing the j
 
 `ShadowMapMath.BuildLightViewProj` has always snapped the fit's FOCUS to texel increments in light-view space, so
 a camera sliding by less than a texel does not move the frustum and the depth pass reuses its persistent atlas.
-The light DIRECTION had no equivalent treatment. Any sun rotation, of any size, rebuilt the view basis, moved
-every matrix entry, and re-recorded every caster into the whole atlas. A stationary scene under a moving sun
-therefore repainted 1,500 casters and 400 spans every frame for a shadow displacement no viewer could resolve.
-This is the rotation half of that quantization, option B in
+The light DIRECTION had no equivalent treatment in the code this replaces. Any sun rotation, of any size, rebuilt
+the view basis, moved every matrix entry, and re-recorded every caster into the whole atlas. A stationary scene
+under a moving sun therefore repainted 1,500 casters and 400 spans every frame for a shadow displacement no viewer
+could resolve. This is the rotation half of that quantization, option B in
 `docs/design/SHADOW-RERECORD-STALL-DESIGN-2026-08-12.md`.
+
+**There was an earlier attempt, and this is deliberately not a repeat of it.** 13.1.0 shipped
+`ShadowSettings.ShadowLightQuantizeDegrees` plus `ShadowMapMath.QuantizeDirection`, which snapped the key light
+onto an angular lattice before the fit for this same dirty-skip, and 14.0.0 removed both as breaking after no
+consumer fleet-wide ever enabled the knob and its `ShadowStepBlendSeconds` companion ghosted a caster that moved
+mid-fade. Three things differ here. This defaults ON rather than off. It HOLDS the last adopted direction instead
+of snapping to a lattice, so a static sun fits from a direction bit-identical to its live one and the rendered
+bytes do not move, where a lattice pulls a stationary sun onto the nearest cell and changes the image on adoption.
+And there is no step-blend companion at all, so the ghosting source that killed the earlier family is absent by
+construction.
 
 `Scene3D.ComputeShadowCascades` now takes its light direction from `HeldLightDirection`
 (`Scene3D.ShadowLightHold.cs`), which keeps the direction the fit last ADOPTED until the sun has turned past this
@@ -217,12 +227,16 @@ restores the previous fit byte for byte.
 
 **The threshold is elevation-corrected, per frame.** How far a rotation drags a shadow depends on the sun's
 elevation as much as on the rotation: a caster `h` tall at elevation `e` throws its foot `h*cot(e)` from its base,
-so an azimuth step sweeps it by `h*cot(e)*dPhi` and an elevation step slides it by `h*dE/sin^2(e)`. Since
-`1/sin^2(e)` exceeds `cot(e)` at every elevation, one condition covers both directions, and it is evaluated
-against the tightest active cascade's own quantum: `budget * (2r/res) * sin^2(e) / h`. A constant angle would have
-been 43x wrong between a 35 degree afternoon and a 5 degree dusk. Below roughly a 6 degree sun the threshold falls
-under the angular resolution a `Vector3` of floats carries at all, and the hold stands down rather than deciding
-on rounding error.
+so an azimuth step sweeps it by `h*cot(e)*dPhi` and an elevation step slides it by `h*dE/sin^2(e)`. Compared on
+the same axis, which is great-circle angle, those are `h/sin(e)` and `h/sin^2(e)` per radian, and the two
+displacements are perpendicular on the ground, so the elevation term is an exact bound on any rotation direction
+and one condition covers both. It is evaluated against the tightest active cascade's own quantum:
+`budget * (2r/res) * sin^2(e) / h`. A constant angle would have
+been 43x wrong between a 35 degree afternoon and a 5 degree dusk. Near the horizon the threshold falls under the
+angular resolution a `Vector3` of floats carries at all, and the hold stands down rather than deciding on rounding
+error. Where that standdown sits is derived rather than constant: `budget * (2r/res) * sin^2(e) / h = 1e-5` solves
+for an elevation scaling as `1/sqrt(r)` with cascade 0's camera-derived radius, about 2.6 degrees on the bench's
+wide framing (`r` around 60 m) and about 5.8 degrees at the 12 m radius the headless tests fit.
 
 **What is frozen is the direction INPUT, never the fitted matrix**, and that is the whole reason this is built as
 "do not re-fit" rather than the simpler "fit, then decline to record". The cascades are still re-derived from the

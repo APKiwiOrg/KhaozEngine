@@ -128,8 +128,10 @@ tolerance anywhere in the path.
 
 **The fit already quantizes translation and not rotation.** `ShadowMapMath.BuildLightViewProj` snaps the focus to
 texel increments in light-view space, precisely so that a camera sliding by less than a texel does not move the
-frustum. The light DIRECTION gets no equivalent treatment, so a sun rotation of any size rebuilds the view basis
-and moves every matrix entry. **Option B below is that missing half, not a new idea.**
+frustum. The light DIRECTION gets no equivalent treatment in the code as it stands, so a sun rotation of any size
+rebuilds the view basis and moves every matrix entry. That is true of the current code and false as history:
+13.1.0 shipped a direction quantizer for this exact dirty-skip and 14.0.0 removed it, which 3.3's prior-art
+paragraph covers. **Option B below is that missing half, not a new idea.**
 
 **The atlas is one texture and the pass clears all of it.** `ShadowMapRenderer` allocates
 `resolution * cascadeCount` wide by `resolution` high, R32Float (64 MiB at 2048 x 4), places each cascade in a
@@ -223,6 +225,19 @@ until the sun has rotated enough to move the recorded shadow by more than a texe
 direction through. The camera half of the fit keeps running every frame, which is load-bearing and is the last
 paragraph of this section.
 
+**Prior art in this repo: 13.1.0's quantizer, removed in 14.0.0.** `ShadowSettings.ShadowLightQuantizeDegrees`
+plus the pure `ShadowMapMath.QuantizeDirection` snapped the key light onto an angular lattice (azimuth and
+elevation) before the fit, for the same reason this option exists: hold the fitted matrices bit-identical between
+steps so the atlas dirty-skip engages under a rotating sun. 14.0.0 removed both as breaking, because no consumer
+fleet-wide ever enabled the knob (it defaulted to `0`) and its `ShadowStepBlendSeconds` companion ghosted a caster
+that moved mid-fade. Three material differences make this option a different bet rather than a repeat of that one.
+It defaults ON, so adoption is not something a consumer has to opt into and then remember. It HOLDS the last
+adopted direction rather than snapping to a lattice, so a scene with a static sun fits from a direction
+bit-identical to its live one and its rendered bytes do not move, which a lattice snap cannot promise: a lattice
+pulls a stationary sun onto the nearest cell and changes the image on adoption. And it ships no step-blend
+companion at all, so the ghosting source that killed the earlier family is absent by construction, with
+`CasterDataChanged` still firing under a held sun.
+
 **What it saves.** The whole re-record on a scene that is stationary under a moving sun: 0.198 ms encode plus the
 roughly 0.41 ms around it, down to the 0.042 ms floor, for as long as the accumulated rotation stays under the
 threshold. The bench's fourth and fifth rows are the evidence that the saving is available: at 0.001 deg/frame the
@@ -231,15 +246,19 @@ pass re-records 200 frames out of 200, and no viewer could tell those 200 frames
 **Sizing the threshold, per cascade.** The quantity a viewer sees is how far a shadow moves on the ground, and
 that depends on the sun's ELEVATION as much as on the rotation. A caster h tall at sun elevation `e` throws its
 foot `h * cot(e)` from its base. An azimuth step `dPhi` sweeps that foot by `h * cot(e) * dPhi`. An elevation step
-`dE` slides it by `h * dE / sin^2(e)`. The naive `h * dTheta` is neither, and it is always the optimistic one:
-`cot(e) >= 1` for any sun below 45 degrees, and `1/sin^2(e)` exceeds `cot(e)` at every elevation (their ratio is
-`2/sin(2e) >= 2`). At this bench's 35 degree sun the two factors are 1.43x and 3.04x `h * dTheta`. At 5 degrees,
-which Ruinborne's 30 minute day passes through twice a cycle, they are 11x and 131x. A threshold derived from
-`h * dTheta` alone would be 131x too loose at dawn and dusk, which is precisely when a slow low sun makes the
-freeze most attractive.
+`dE` slides it by `h * dE / sin^2(e)`. Those two are not comparable as written, because `dPhi` is AZIMUTH while
+`dE` is great-circle: an azimuth step of `dPhi` is only `cos(e) * dPhi` of great-circle travel. Per great-circle
+radian the pair is `h / sin(e)` for azimuth and `h / sin^2(e)` for elevation, so both exceed the naive
+`h * dTheta` at every elevation and the elevation term is the larger by `1 / sin(e) >= 1`. At this bench's
+35 degree sun the two factors are 1.74x and 3.04x `h * dTheta`. At 5 degrees, which Ruinborne's 30 minute day
+passes through twice a cycle, they are 11x and 131x. A threshold derived from `h * dTheta` alone would be 131x too
+loose at dawn and dusk, which is precisely when a slow low sun makes the freeze most attractive.
 
-Since the elevation term dominates at every elevation, one conservative condition covers any rotation direction.
-Against a cascade's own quantum `TexelWorldSize(r, res) = 2r/res`:
+Since the elevation term is the larger at every elevation, one condition covers any rotation direction, and it is
+an EXACT bound rather than merely a conservative one: the two displacements are perpendicular on the ground
+(elevation slides the foot along the azimuth, azimuth sweeps it across), so a rotation splitting `dTheta` between
+them drifts `h * sqrt((dE/sin^2 e)^2 + (dPhiGc/sin e)^2)`, which is at most `h * dTheta / sin^2(e)` and reaches it
+on a pure elevation change. Against a cascade's own quantum `TexelWorldSize(r, res) = 2r/res`:
 
 ```
 h_max * dTheta / sin^2(e) < 2r/res
@@ -300,15 +319,22 @@ available, and it is wrong: a merged HLOD cluster's sphere is the radius of a wh
 geometry rather than the height of anything standing on it, so deriving `h_max` from it collapses the threshold to
 nothing in exactly the streamed outdoor scene this feature exists for. So `ShadowLightHoldTexels` (default `1`,
 `0` disables) is the drift budget and `ShadowLightHoldCasterHeight` (default `12`, the tall tree this section
-sizes against) is `h_max`.
+sizes against) is `h_max`. Both ride the FLAT-GROUND reading of `h * cot(e)`, so the one-texel bound is sub-texel
+by construction only there: a receiver grazed more shallowly than the sun's elevation (a cliff face, a wall) takes
+`(ray length) * dTheta / sin(grazing angle)` of drift instead, which can pass a texel on the same rotation. It
+stays bounded and small, and `ShadowLightHoldCasterHeight` is where a game full of steep receivers buys the margin
+back.
 
 **The threshold has a resolvability floor the section did not anticipate.** `Post.LightDirection` is a `Vector3`
 of floats, so a unit direction only carries about `1e-7` radians of angular resolution. Below `1e-5` radians the
-comparison is two rounding errors, so `ShouldAdopt` re-fits unconditionally there. With the shipped defaults that
-engages below about a 6 degree sun. It costs nothing real, because this section's own arithmetic had already made
-the hold worthless there: at 5 degrees the threshold is under `5e-4` degrees and Ruinborne's `0.00333` degrees per
-frame crosses it every single frame anyway. What it buys is that dusk degrades deterministically rather than
-holding or releasing on noise.
+comparison is two rounding errors, so `ShouldAdopt` re-fits unconditionally there. Where that engages is not a
+fixed sun angle: solving `budget * (2r/res) * sin^2(e) / h = 1e-5` for the elevation gives a standdown scaling as
+`1/sqrt(r)` with cascade 0's CAMERA-derived fitted radius, so it is about 2.6 degrees on this bench's wide framing
+(`r` around 60 m) and about 5.8 degrees at the 12 m radius `ShadowLightHoldTests` fits. It costs nothing real
+wherever it lands, because this section's own arithmetic had already made the hold worthless there: at the
+standdown the threshold IS the floor, `1e-5` radians or about `5.7e-4` degrees, and Ruinborne's `0.00333` degrees
+per frame is some six times that, so it crosses every single frame anyway. What it buys is that dusk degrades
+deterministically rather than holding or releasing on noise.
 
 **The elevation read is the LOWER of the held and live directions, not the current one.** This section says
 "evaluated against the CURRENT elevation". The drift per radian is worst at the smallest elevation the interval
@@ -317,9 +343,14 @@ minimum is one `MathF.Min` and is strictly conservative.
 
 **The compare is the total angle between held and live, not an accumulated arc length.** A sun that wanders and
 returns has not moved its shadow, and arc length would claim it had. The angle is computed from the chord
-(`2*asin(|a-b|/2)`), because `acos(dot)` collapses at these angles: at 0.001 degrees the dot product is
-`1 - 1.5e-10`, which a float cannot represent as distinct from 1, so every step would read as exactly zero and the
-hold would never release.
+(`2*asin(|a-b|/2)`) because `acos(dot)` loses most of its significant digits at these angles, which is a PRECISION
+argument and not a liveness one. At a single 0.001 degree step the dot product is `1 - 1.5e-10`, which a float
+cannot represent as distinct from 1, so that step does read as exactly zero. It would not hang the hold: the
+compare is against the ACCUMULATED angle between held and live, never a per-frame step, and `1 - cos(theta)`
+clears a float's last place near 1 at about `3.4e-4` radians (0.020 degrees), well under the 0.095 degree
+threshold measured below. `acos` would therefore still release, with a few percent of jitter on WHERE, from the
+quantization plus the dot's own rounding. The chord has no such loss (subtracting two nearby floats is exact) and
+carries the angle down to the resolvability floor, which is why it is the one that ships.
 
 **The threshold is per PASS, sized on the tightest active cascade.** This section says "the threshold is per
 cascade or it is wrong", and that is right about the threshold and not yet actionable about the dirty test, which

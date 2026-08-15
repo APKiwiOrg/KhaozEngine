@@ -257,7 +257,7 @@ edge on a neighbour tile (including across a region boundary) is recomputed. Rul
 **A spill into a region the DOCUMENT does not have is DROPPED, and that region stays `Blocked`.** Storage is
 allocated by `TileCollisionMap.EnsureRegion` alone, and both entry points call it on the document's own regions
 before any object is applied (`Bake` on every region the document has, `Rebake` on the ones the cleared rect
-touches), so `Set`/`Or` outside storage is a no-op. Letting a footprint or a
+touches), so `Or` outside storage is a no-op, and `EnsureRegion` is the only allocator. Letting a footprint or a
 mirrored wall edge allocate its own region instead would turn the whole 64x64 of a region nobody authored
 walkable, since every tile the spill did not touch would then read as clear rather than as the edge of the
 world. Reads outside storage answer `Blocked` for the same reason: an unloaded region is a wall, not a void.

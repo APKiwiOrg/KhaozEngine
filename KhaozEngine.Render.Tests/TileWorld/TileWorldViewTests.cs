@@ -187,6 +187,47 @@ public class TileWorldViewTests
     }
 
     [Fact]
+    public void MaxRebuildsPerFlush_drains_the_queue_oldest_first()
+    {
+        var scene = new RecordingTileWorldScene();
+        TileWorldDocument doc = TwoRegionGrass();
+        var west = new RegionCoord(0, 0);
+        var east = new RegionCoord(1, 0);
+        using TileWorldView view = View(scene, doc, options: new TileWorldViewOptions { MaxRebuildsPerFlush = 1 });
+        view.LoadRegion(west);
+        view.LoadRegion(east);
+
+        view.Draw(Vector3.Zero);
+        int west0 = HandleOf(scene, doc, west), east0 = HandleOf(scene, doc, east);
+        scene.ClearFrame();
+
+        view.MarkDirty(west, 0);
+        view.MarkDirty(east, 0);
+        view.MarkDirty(west, 1);
+        Assert.Equal(3, view.PendingRebuilds);
+
+        // One a frame, oldest first: the east mark is queued behind the west one and its mesh is untouched.
+        view.Draw(Vector3.Zero);
+        Assert.Equal(2, view.PendingRebuilds);
+        int west1 = HandleOf(scene, doc, west);
+        Assert.NotEqual(west0, west1);
+        Assert.Equal(east0, HandleOf(scene, doc, east));
+        scene.ClearFrame();
+
+        view.Draw(Vector3.Zero);
+        Assert.Equal(1, view.PendingRebuilds);
+        Assert.NotEqual(east0, HandleOf(scene, doc, east));
+        Assert.Equal(west1, HandleOf(scene, doc, west));
+        scene.ClearFrame();
+
+        // The last mark is the west region's plane 1, which has no drawable tile, so it drains the queue without
+        // changing a drawn handle.
+        view.Draw(Vector3.Zero);
+        Assert.Equal(0, view.PendingRebuilds);
+        Assert.Equal(west1, HandleOf(scene, doc, west));
+    }
+
+    [Fact]
     public void Flush_rebuilds_the_dirty_planes_props_not_just_its_mesh()
     {
         var scene = new RecordingTileWorldScene();

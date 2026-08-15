@@ -63,6 +63,43 @@ public static class TileRenderTestData
     {
         ArgumentNullException.ThrowIfNull(tmp);
         var doc = new TileWorldDocument { Id = "tile-render-grid", DisplayName = "Tile render grid" };
+        FillGrass(doc, regionsX, regionsZ);
+        string dir = tmp.Sub("world");
+        TileWorldFile.Save(doc, dir);
+        return dir;
+    }
+
+    /// <summary>Height in centimetres of the ridge <see cref="SaveRidgeGrid"/> raises.</summary>
+    public const short RidgeHeightCm = 300;
+
+    /// <summary>World tile x of the corner column the ridge stands on, which is the border between region (0, 0)
+    /// and region (1, 0) and is OWNED by region (1, 0) (local x 0).</summary>
+    public const int RidgeCornerX = TileRegion.Size;
+
+    /// <summary>The same grid as <see cref="SaveGrid"/> with the corner column at <see cref="RidgeCornerX"/>
+    /// raised to <see cref="RidgeHeightCm"/> on plane 0. That column is region (1, 0)'s to own and region
+    /// (0, 0)'s to read across the border, so region (0, 0)'s east edge sits at 3 m with its neighbour resident
+    /// and drops to 0 without it. A flat single-material world cannot show that difference at all, which is why
+    /// the streaming tests need this one.</summary>
+    public static string SaveRidgeGrid(TempDir tmp, int regionsX, int regionsZ)
+    {
+        ArgumentNullException.ThrowIfNull(tmp);
+        if (regionsX < 2) throw new ArgumentOutOfRangeException(nameof(regionsX), "the ridge needs a region either side of it.");
+        var doc = new TileWorldDocument { Id = "tile-render-ridge", DisplayName = "Tile render ridge" };
+        FillGrass(doc, regionsX, regionsZ);
+        for (int z = 0; z < regionsZ * TileRegion.Size; z++)
+            doc.SetCornerHeightCm(RidgeCornerX, z, 0, RidgeHeightCm);
+        string dir = tmp.Sub("ridge");
+        TileWorldFile.Save(doc, dir);
+        return dir;
+    }
+
+    /// <summary>The centre tile of a region on plane 0, the observer position the streaming tests move about.</summary>
+    public static TileCoord CentreOf(RegionCoord region) =>
+        new(region.OriginX + TileRegion.Size / 2, region.OriginZ + TileRegion.Size / 2, 0);
+
+    static void FillGrass(TileWorldDocument doc, int regionsX, int regionsZ)
+    {
         for (int rz = 0; rz < regionsZ; rz++)
             for (int rx = 0; rx < regionsX; rx++)
             {
@@ -72,14 +109,7 @@ public static class TileRenderTestData
                     for (int x = 0; x < TileRegion.Size; x++)
                         doc.SetUnderlay(region.OriginX + x, region.OriginZ + z, 0, Grass);
             }
-        string dir = tmp.Sub("world");
-        TileWorldFile.Save(doc, dir);
-        return dir;
     }
-
-    /// <summary>The centre tile of a region on plane 0, the observer position the streaming tests move about.</summary>
-    public static TileCoord CentreOf(RegionCoord region) =>
-        new(region.OriginX + TileRegion.Size / 2, region.OriginZ + TileRegion.Size / 2, 0);
 
     /// <summary>Grass with a nine-corner block raised to 200 cm: the mesher's slope and lattice-normal case.</summary>
     public static TileWorldDocument HillWorld()
@@ -228,6 +258,10 @@ public sealed class RecordingTileWorldScene : ITileWorldScene
     /// <summary>Every prop part-list handed out, in upload order, one entry per archetype uploaded.</summary>
     public List<IReadOnlyList<MeshHandle>> PropMeshLoads { get; } = new();
 
+    /// <summary>The ground mesh behind each handle index, so a test can read the vertices a rebuild produced
+    /// rather than only see that the handle changed.</summary>
+    public Dictionary<int, GltfMesh> GroundMeshes { get; } = new();
+
     /// <summary>The mesh draws of the frames since the last <see cref="ClearFrame"/>, in submission order.</summary>
     public List<(MeshHandle Handle, Matrix4x4 World)> Drawn { get; } = new();
 
@@ -249,6 +283,7 @@ public sealed class RecordingTileWorldScene : ITileWorldScene
     {
         MeshHandle handle = Next();
         MeshLoads.Add(handle);
+        GroundMeshes[handle.Index] = mesh;
         return handle;
     }
 

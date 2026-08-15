@@ -14,6 +14,21 @@ public sealed class TileWorldViewOptions
     /// <summary>The settings every region-plane ground mesh is built with.</summary>
     public TileGroundMesherOptions Mesher { get; set; } = new();
 
+    /// <summary>How many queued region-planes one <see cref="TileWorldView.Flush"/> may remesh, oldest first.
+    /// The rest stay queued for the next flush, so a burst spreads over frames instead of landing on one.
+    /// <para>The burst is real rather than theoretical: streaming one region in marks its eight neighbours dirty
+    /// on every plane, because the mesher reads heights, normals and corner colours ACROSS region borders, so a
+    /// neighbour meshed while this region was absent is stale the moment it arrives. Two loads an update against
+    /// a four-plane world is 64 marks, of which the loaded ones are real remeshes. 16 keeps that inside a frame
+    /// at a cost of a few frames of latency on a border that is already only a corner blend out of date.</para>
+    /// <para><see cref="int.MaxValue"/> restores the drain-everything behaviour, for a loading screen or a test.
+    /// A value below 1 is treated as 1, because a budget of 0 would silently freeze every queued rebuild and
+    /// leave stale meshes on screen forever.</para></summary>
+    public int MaxRebuildsPerFlush { get; set; } = DefaultMaxRebuildsPerFlush;
+
+    /// <summary>The default <see cref="MaxRebuildsPerFlush"/>.</summary>
+    public const int DefaultMaxRebuildsPerFlush = 16;
+
     /// <summary>Where the view reports an archetype with no mesh, once per archetype. Null discards the line.</summary>
     public Action<string>? Log { get; set; }
 }
@@ -54,7 +69,11 @@ public sealed class TileWorldView : IDisposable
     readonly TileWorldViewOptions _options;
     readonly Dictionary<string, IReadOnlyList<MeshHandle>> _propMeshes = new(StringComparer.Ordinal);
     readonly Dictionary<RegionCoord, RegionHandles> _loaded = new();
+    // The rebuild queue is a pair on purpose: the set is the dedup (a stroke marks the same region-plane a
+    // hundred times) and the list is the ORDER, which matters once a flush is budgeted, because the oldest mark
+    // is the one whose mesh has been wrong the longest. The two are always mutated together.
     readonly HashSet<(RegionCoord Region, int Plane)> _dirty = new();
+    readonly List<(RegionCoord Region, int Plane)> _dirtyOrder = new();
     readonly int _planes;
     TileCoord _observer;
     bool _disposed;
@@ -110,6 +129,10 @@ public sealed class TileWorldView : IDisposable
     /// <summary>How many regions are loaded right now.</summary>
     public int LoadedRegionCount => _loaded.Count;
 
+    /// <summary>How many region-planes are queued for a rebuild, including marks on regions that are not loaded
+    /// and will simply be dropped. Non-zero after a flush means the budget deferred work to the next one.</summary>
+    public int PendingRebuilds => _dirtyOrder.Count;
+
     /// <summary>A snapshot of the loaded regions, in no particular order. A copy rather than a live view, so a
     /// caller may load or unload regions while walking it, which is exactly what a residency ring does.</summary>
     public IReadOnlyCollection<RegionCoord> LoadedRegions
@@ -144,7 +167,8 @@ public sealed class TileWorldView : IDisposable
     public void UnloadRegion(RegionCoord region)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        for (int plane = 0; plane < _planes; plane++) _dirty.Remove((region, plane));
+        for (int plane = 0; plane < _planes; plane++)
+            if (_dirty.Remove((region, plane))) _dirtyOrder.Remove((region, plane));
         if (!_loaded.Remove(region, out RegionHandles? handles)) return;
         FreeMeshes(handles);
     }
@@ -155,7 +179,7 @@ public sealed class TileWorldView : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (plane < 0 || plane >= _planes) return;
-        _dirty.Add((region, plane));
+        Queue(region, plane);
     }
 
     /// <summary>Queues every region a world-space tile rect can affect on one plane: every region the rect
@@ -176,31 +200,50 @@ public sealed class TileWorldView : IDisposable
         RegionCoord max = RegionCoord.Of(reach.X1 - 1, reach.Z1 - 1);
         for (int rz = min.Rz; rz <= max.Rz; rz++)
             for (int rx = min.Rx; rx <= max.Rx; rx++)
-                _dirty.Add((new RegionCoord(rx, rz), plane));
+                Queue(new RegionCoord(rx, rz), plane);
     }
 
-    /// <summary>Rebuilds every queued region-plane that is currently loaded and clears the queue, and refreshes
-    /// the roof rule's indoor flag. Called at the start of <see cref="Draw"/>, so an explicit call is only needed
-    /// to pay the cost off the draw path.</summary>
+    /// <summary>Rebuilds queued region-planes oldest first, up to
+    /// <see cref="TileWorldViewOptions.MaxRebuildsPerFlush"/> of them, and refreshes the roof rule's indoor flag.
+    /// Called at the start of <see cref="Draw"/>, so an explicit call is only needed to pay the cost off the draw
+    /// path. Whatever the budget did not reach stays queued and is counted by
+    /// <see cref="PendingRebuilds"/>.</summary>
     public void Flush()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         // One settings lookup a frame, which is what it costs to stay right when the tile UNDER a stationary
         // observer is edited: the setter alone only sees the observer moving.
         ObserverIndoors = IndoorsAt(_observer);
-        if (_dirty.Count == 0) return;
+        if (_dirtyOrder.Count == 0) return;
 
-        foreach ((RegionCoord region, int plane) in _dirty)
+        int budget = Math.Max(1, _options.MaxRebuildsPerFlush);
+        int taken = 0;
+        int scanned = 0;
+        try
         {
-            if (!_loaded.TryGetValue(region, out RegionHandles? handles)) continue;
-            // Build BEFORE freeing. A mesher that throws must leave the old handle live and drawable rather than
-            // a freed one in the slot, which would be a use-after-free on the next frame.
-            MeshHandle? rebuilt = BuildMesh(region, plane);
-            if (handles.Meshes[plane] is { } old) _scene.UnloadMesh(old);
-            handles.Meshes[plane] = rebuilt;
-            handles.Props[plane] = TileObjectProps.Build(_doc, _catalogs, region, plane);
+            while (scanned < _dirtyOrder.Count && taken < budget)
+            {
+                (RegionCoord region, int plane) = _dirtyOrder[scanned];
+                scanned++;
+                _dirty.Remove((region, plane));
+                // A mark on a region that is not loaded costs nothing to drop, so it must not spend the budget:
+                // the residency marks eight neighbours per streamed region and most of them are never loaded.
+                if (!_loaded.TryGetValue(region, out RegionHandles? handles)) continue;
+                // Build BEFORE freeing. A mesher that throws must leave the old handle live and drawable rather
+                // than a freed one in the slot, which would be a use-after-free on the next frame.
+                MeshHandle? rebuilt = BuildMesh(region, plane);
+                if (handles.Meshes[plane] is { } old) _scene.UnloadMesh(old);
+                handles.Meshes[plane] = rebuilt;
+                handles.Props[plane] = TileObjectProps.Build(_doc, _catalogs, region, plane);
+                taken++;
+            }
         }
-        _dirty.Clear();
+        finally
+        {
+            // In a finally so a throwing mesher cannot leave the set and the list disagreeing, which would let a
+            // later MarkDirty push a duplicate of an entry the list still holds.
+            _dirtyOrder.RemoveRange(0, scanned);
+        }
     }
 
     /// <summary>Flushes pending rebuilds, then queues every loaded region: each plane's ground mesh at the
@@ -242,6 +285,7 @@ public sealed class TileWorldView : IDisposable
         foreach (RegionHandles handles in _loaded.Values) FreeMeshes(handles);
         _loaded.Clear();
         _dirty.Clear();
+        _dirtyOrder.Clear();
 
         foreach (IReadOnlyList<MeshHandle> parts in _propMeshes.Values) _scene.UnloadPropMeshes(parts);
         _propMeshes.Clear();
@@ -252,6 +296,12 @@ public sealed class TileWorldView : IDisposable
     bool RoofsHiddenOn(int plane) => ObserverIndoors && plane > _observer.Plane;
 
     bool IndoorsAt(TileCoord tile) => (_doc.GetSettings(tile.X, tile.Z, tile.Plane) & TileSettings.Indoors) != 0;
+
+    // The one place the dedup set and the order list are appended to, so they cannot drift apart.
+    void Queue(RegionCoord region, int plane)
+    {
+        if (_dirty.Add((region, plane))) _dirtyOrder.Add((region, plane));
+    }
 
     MeshHandle? BuildMesh(RegionCoord region, int plane)
     {

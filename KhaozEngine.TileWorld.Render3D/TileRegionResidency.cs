@@ -65,6 +65,19 @@ public readonly record struct TileResidencyConfig(
 /// <para><b>Order matters on both sides.</b> A load is source first then view, because the view meshes what the
 /// document holds and an empty region meshes to nothing. An unload is view first then source, because the view's
 /// mesh handles have to be freed before the data they were built from goes.</para>
+/// <para><b>Streaming a region dirties its neighbours.</b> A region mesh is not self-contained: the ground
+/// mesher reads the far-edge corner heights, the central-difference normals and the four-tile corner colour
+/// blend ACROSS the region border, and an absent neighbour edge-extends instead. So a region meshed while its
+/// neighbour was absent carries a border built from the wrong data, and would keep it forever, which on a ridge
+/// along the shared border is a full-height crack rather than a subtle seam. Every load and every unload
+/// therefore marks the eight surrounding regions dirty on every plane. Marking wide is free, because the view's
+/// flush drops a mark on a region that is not loaded, and the view's own per-flush budget is what keeps the
+/// resulting burst off one frame.</para>
+/// <para><b>A torn region file throws out of <see cref="Update"/>.</b>
+/// <see cref="TileWorldSource.EnsureLoaded(RegionCoord)"/>
+/// hash-checks the bytes and raises <see cref="TileWorldException"/> when they disagree with the manifest, and
+/// this passes it straight through: a world whose files no longer match what wrote them is not something a
+/// streaming loop should paper over by drawing a hole.</para>
 /// <para><b>A dirty region is never dropped.</b> <see cref="TileWorldSource.Unload"/> throws on a region with
 /// unsaved edits, so an editor that walks away from its own unsaved work would take an exception on a frame that
 /// has nothing to do with editing. This keeps that region resident instead and says so once through
@@ -79,8 +92,10 @@ public sealed class TileRegionResidency
     readonly TileWorldView _view;
     readonly TileResidencyConfig _config;
 
-    // Regions already reported as dirty-and-kept, so a stationary observer logs one line rather than one a
-    // frame. Cleared per region the moment it is genuinely unloaded, so a later edit reports again.
+    // Regions already reported as dirty-and-kept, so an observer standing still logs one line rather than one an
+    // update. A region drops out of here when it leaves for real, and also when it comes back INSIDE the unload
+    // radius, so the promise is one line per spell outside the ring rather than one line ever: a region that is
+    // saved, re-entered and dirtied again reports again, which is the behaviour an editor wants.
     readonly HashSet<RegionCoord> _dirtyReported = new();
 
     // Reused across updates: the loaded set as this update found it, this update's load candidates, and the
@@ -150,7 +165,10 @@ public sealed class TileRegionResidency
     {
         _departing.Clear();
         foreach (RegionCoord c in _loaded)
+        {
             if (Chebyshev(c, centre) > _config.UnloadRadius) _departing.Add(c);
+            else _dirtyReported.Remove(c);
+        }
 
         for (int i = 0; i < _departing.Count; i++)
         {
@@ -162,6 +180,7 @@ public sealed class TileRegionResidency
                 continue;
             }
             _view.UnloadRegion(c);
+            MarkNeighboursDirty(c);
             _source.Unload(c);
             _loaded.Remove(c);
             _dirtyReported.Remove(c);
@@ -194,9 +213,24 @@ public sealed class TileRegionResidency
             // process does. Skipped rather than asserted, and it does not spend the budget.
             if (_source.EnsureLoaded(c) is null) continue;
             _view.LoadRegion(c);
+            MarkNeighboursDirty(c);
             _loaded.Add(c);
             taken++;
         }
+    }
+
+    // Every region touching this one at a corner or an edge, on every plane. The region itself is left alone: a
+    // load has just meshed it from complete data, and an unload has just dropped its handles.
+    void MarkNeighboursDirty(RegionCoord c)
+    {
+        int planes = _source.Document.PlaneCount;
+        for (int dz = -1; dz <= 1; dz++)
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                if (dx == 0 && dz == 0) continue;
+                var neighbour = new RegionCoord(c.Rx + dx, c.Rz + dz);
+                for (int plane = 0; plane < planes; plane++) _view.MarkDirty(neighbour, plane);
+            }
     }
 
     // Nearest first, with an ascending (rz, then rx) tie-break so the whole ring has ONE order. Without it the

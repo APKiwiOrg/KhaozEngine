@@ -77,13 +77,19 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="logger">The sink, or null for this type's own category logger. Present so a test can
         /// assert what was logged and at which level, which is the half of this type worth asserting.</param>
         /// <remarks>
-        /// THE FALLBACK LOGGER IS RESOLVED HERE, PER PUMP, AND NOT ONCE INTO A STATIC FIELD (#565). A static
-        /// <c>Log.For&lt;VulkanValidationPump&gt;()</c> is captured at type initialization, so which logger it
-        /// holds forever depends on whether the type was touched before or after the process called
-        /// <c>Log.Configure</c>, and the loser of that race is <see cref="NullLogger"/>. Every message this pump
-        /// exists to surface would then be dropped by a process that HAD configured a sink, which is the exact
-        /// failure #565 is about, and it would be invisible: a dropped log line and a clean run look identical.
-        /// One <c>Log.For</c> call per pump costs nothing next to creating a Vulkan instance.
+        /// THE FALLBACK LOGGER IS RESOLVED HERE, PER PUMP, AND NOT ONCE INTO A STATIC FIELD (#565). At the time
+        /// that mattered: a static <c>Log.For&lt;VulkanValidationPump&gt;()</c> is captured at type
+        /// initialization, so which logger it held forever depended on whether the type was touched before or
+        /// after the process called <c>Log.Configure</c>, and the loser of that race was a no-op logger. Every
+        /// message this pump exists to surface was then dropped by a process that HAD configured a sink,
+        /// invisibly, because a dropped log line and a clean run look identical.
+        /// <para>
+        /// 17.36.2 FIXED THAT AT THE FACADE (#616), so a static field would now be correct too: <c>Log.For</c>
+        /// hands back a logger bound to the category and not to a manager, and it finds the configured manager
+        /// on every call. This stays per-pump anyway. It costs one <c>Log.For</c> call next to creating a Vulkan
+        /// instance, and the ctor parameter above (the reason the fallback is resolved at all) is per-pump by
+        /// nature.
+        /// </para>
         /// </remarks>
         internal VulkanValidationPump(VulkanValidationMode mode, VulkanValidationRateLimit? limit = null,
             ILogger? logger = null)

@@ -561,6 +561,13 @@ jobs:
       # its test step. Keeping the predicate identical to the variable's is worth more than shaving that case:
       # the install and the thing it exists to serve cannot drift apart if they are the same expression.
       VULKAN_VALIDATION_ARMED: ${{ (matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && matrix.vulkanValidation || '' }}
+      # WHETHER THIS RUN ARMS METAL'S TIER ONE, as one expression with two readers (the test step's
+      # MTL_DEBUG_LAYER and the mutual-exclusion guard step below). It was written inline on the test step until
+      # the guard needed to read the same answer, and a guard that computes its OWN copy of a predicate can agree
+      # with itself while disagreeing with the run it is guarding. The predicate itself is unchanged: tier one is
+      # the native Metal leg's on every trigger, because it is an environment variable with no install and no
+      # measurable cost at this scale. The whole reasoning is on MTL_DEBUG_LAYER at the test step.
+      METAL_DEBUG_LAYER_TIER: ${{ (matrix.backend == 'metal-native') && '1' || '' }}
       # WHETHER THIS RUN ARMS METAL'S DEEP TIER, as ONE expression with three readers, for the reason the Vulkan
       # variable above is one expression with three: the shader-validation variable, the capture variable and the
       # artifact NAME all have to agree, and a copy per site is how they stop agreeing.
@@ -667,6 +674,79 @@ jobs:
       # `matrix.backend == 'metal'` is the incumbent leg and nothing else: the native leg reads METAL_DEEP_TIER.
       METAL_INCUMBENT_SHADER_RUNG: ${{ (matrix.backend == 'metal' && github.event_name == 'workflow_dispatch' && inputs.incumbentShaderValidation) && '1' || '' }}
     steps:
+      # THE TIER-EDIT GUARD (https://github.com/APKiwiOrg/KhaozEngine/issues/614), and the only step in this job
+      # that asserts something about THIS FILE rather than about the engine. It runs before the checkout because
+      # it needs nothing from the repository, and the whole point is to red the job on the first push that gets
+      # the plumbing wrong rather than eight minutes later.
+      #
+      # WHAT IT ENCODES IS A MEASUREMENT. On Apple hardware MTL_CAPTURE_ENABLED and MTL_DEBUG_LAYER are mutually
+      # exclusive in practice: arming the capture makes the device come back as CaptureMTLDevice, which displaces
+      # the MTLDebugDevice that performs the API validation, so a process with both armed is running with an
+      # INERT debug layer while its log, its artifact name and its job summary all say it is validating. The two
+      # readings are quoted in full on the `tier` input at the top of this file and in docs/CROSS-PLATFORM.md.
+      #
+      # WHY A GUARD AND NOT JUST THE COMMENT. The re-tier that followed #614 took the capture off every
+      # unattended trigger, and every word of the reasoning lives in comments an editor is free to not read. A
+      # future edit of the three `tier` predicates that re-armed both would be invisible: nothing fails, the
+      # suite stays green, and the leg's tier-one instrument goes quiet again for however long it takes somebody
+      # to notice, which the first time around was a fortnight of artifacts in which the layer never objected to
+      # anything.
+      #
+      # AND IT ASSERTS THE INVERSE TOO, because "not both" is satisfied by arming NEITHER. The leg design
+      # promises that an unattended trigger carries the debug layer, so an edit that dropped tier one entirely
+      # would pass the exclusion check while removing the gate, which is the same outcome by a different route.
+      #
+      # IT IS SCOPED TO THE UNATTENDED TRIGGERS, AND THAT IS NOT A LOOPHOLE. The `capture` dispatch tier arms
+      # BOTH variables on purpose (see the three shapes on the `tier` input): the debug layer rides every run of
+      # this leg, and the capture tier adds the capture on top, knowing the layer goes inert, because starting a
+      # real GPU-trace capture is the whole point of that tier and the device-class line plus the
+      # MetalDeviceLossLatch stream are worth keeping in its artifact. A universal assertion would red the one
+      # tier that arms the pair deliberately. What must never happen is the pair arriving where nobody chose it,
+      # which is exactly push, pull_request and schedule.
+      #
+      # macOS legs only. Every Metal variable is empty by construction on the Windows and Linux legs, so running
+      # there would assert that two empty strings are empty.
+      - name: Assert the Metal instruments are not both armed
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          # Read from the job variables the test step reads, deliberately, so this cannot drift from what the run
+          # actually arms. A copy of the expressions here would be a second source of truth for the one fact the
+          # step exists to check.
+          MTL_DEBUG_LAYER: ${{ env.METAL_DEBUG_LAYER_TIER }}
+          MTL_CAPTURE_ENABLED: ${{ env.METAL_CAPTURE_TIER }}
+          LEG: ${{ matrix.backend }}
+          TRIGGER: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          why="MTL_CAPTURE_ENABLED displaces the debug device: with the capture armed the Metal device comes back as CaptureMTLDevice rather than the MTLDebugDevice that does the validating, so the two instruments are mutually exclusive in practice. Measured on real Metal. See https://github.com/APKiwiOrg/KhaozEngine/issues/614 and the Metal native leg in docs/CROSS-PLATFORM.md."
+
+          fail() {
+            echo "::error title=Metal instrument tiers::$1 $why"
+            exit 1
+          }
+
+          # The triggers nobody is watching. A workflow_dispatch is aimed by a human who picked a tier and can
+          # read the log, and the `capture` tier arms both variables by design, so a dispatch asserts nothing.
+          case "$TRIGGER" in
+            push | pull_request | schedule) unattended=1 ;;
+            *) unattended='' ;;
+          esac
+
+          if [ -n "$unattended" ]; then
+            if [ -n "${MTL_DEBUG_LAYER:-}" ] && [ -n "${MTL_CAPTURE_ENABLED:-}" ]; then
+              fail "The $LEG leg would run this unattended $TRIGGER with BOTH MTL_DEBUG_LAYER and MTL_CAPTURE_ENABLED armed, which arms the capture and leaves the debug layer inert."
+            fi
+
+            if [ "$LEG" = metal-native ]; then
+              [ -n "${MTL_DEBUG_LAYER:-}" ] || fail "The metal-native leg has no MTL_DEBUG_LAYER on the unattended $TRIGGER trigger, so the leg's tier-one validation gate would not run at all."
+              [ -z "${MTL_CAPTURE_ENABLED:-}" ] || fail "The metal-native leg has MTL_CAPTURE_ENABLED armed on the unattended $TRIGGER trigger, where the debug layer alone belongs and the capture is a dispatch tier of its own."
+            fi
+          fi
+
+          echo "metal instruments on $LEG / $TRIGGER (unattended='${unattended}'): MTL_DEBUG_LAYER='${MTL_DEBUG_LAYER:-}' MTL_CAPTURE_ENABLED='${MTL_CAPTURE_ENABLED:-}'"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
@@ -894,7 +974,10 @@ jobs:
           # Metal runtime reads it before the first device exists, which is why it is set as a job variable
           # rather than through the engine's own KE_METAL_VALIDATION knob: that knob REPORTS which tier is really
           # armed and warns when a process asked for one it cannot have, and this is what actually arms it.
-          MTL_DEBUG_LAYER: ${{ (matrix.backend == 'metal-native') && '1' || '' }}
+          #
+          # THE PREDICATE ITSELF MOVED UP to the METAL_DEBUG_LAYER_TIER job variable, unchanged, so the guard
+          # step at the top of this job asserts the same answer this line arms rather than a copy of it.
+          MTL_DEBUG_LAYER: ${{ env.METAL_DEBUG_LAYER_TIER }}
           # TIER TWO (decision M-T7): in-shader bounds checking, on the deep tier only. It instruments every
           # shader, so it is the expensive half, and it is a DISPATCH rather than the weekly slot the Vulkan
           # strict tier holds, because #617 measured it rendering nothing at all on this runner. The predicate
@@ -978,7 +1061,7 @@ jobs:
           # AND NOW THE METAL LEG TOO, WHICH IS THE OTHER HALF OF #617
           # (https://github.com/APKiwiOrg/KhaozEngine/issues/617). That issue's artifact held no Metal diagnostic
           # at all, and BOTH halves were missing. 56c8ceec fixed the first: the test host configures a sink for
-          # the Metal categories when a Metal rung is armed, where before every line went to a NullLogger. This
+          # the Metal categories when a Metal rung is armed, where before every line went nowhere at all. This
           # is the second. The sink writes to the host's stdout, and vstest forwards a test host's stdout only at
           # detailed console verbosity, so without this the lines land in a stream the runner discards and the
           # artifact is empty for a second, entirely separate reason. That is exactly the pair #565 had to fix on

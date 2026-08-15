@@ -7,15 +7,60 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.36.2
 
-Two reporting defects, both of which made a correct run read as a broken one. The native Vulkan backend's
-`CreateTexture` refusal told a caller their sample count lost to a conservative ceiling of 1 that a landed row
-replaced two releases ago, and sent them to a closed issue for the real number, so the message now states the
-ceiling the driver actually reported and how it was derived. And the native Metal backend stopped warning that a
-`MTL_SHADER_VALIDATION`-only run was probably not validated, which it emitted 99 times on one CI run while
-naming a variable nobody had set: the device-class disambiguation now reads both variables and every validation
-wrapper Metal has been measured handing back. Fixing that turned up a fact neither issue had: shader validation
-alone answers with `MTLGPUDebugDevice` on real Apple silicon and `MTLLegacySVDevice` on a hosted runner, so the
-check asks whether anything is validating rather than whether one named class came back.
+A logger taken from the ambient `Log` facade now follows the facade instead of the manager that happened to be
+configured when it was resolved, so a consumer that calls `Log.Configure` after any engine type has been touched
+is no longer silently unlogged in that type for the rest of the process. Alongside it, two reporting defects that
+each made a correct run read as a broken one. The native Vulkan backend's `CreateTexture` refusal told a caller
+their sample count lost to a conservative ceiling of 1 that a landed row replaced two releases ago, and sent them
+to a closed issue for the real number, so the message now states the ceiling the driver actually reported and how
+it was derived. And the native Metal backend stopped warning that a `MTL_SHADER_VALIDATION`-only run was probably
+not validated, which it emitted 99 times on one CI run while naming a variable nobody had set: the device-class
+disambiguation now reads both variables and every validation wrapper Metal has been measured handing back. Fixing
+that turned up a fact neither issue had: shader validation alone answers with `MTLGPUDebugDevice` on real Apple
+silicon and `MTLLegacySVDevice` on a hosted runner, so the check asks whether anything is validating rather than
+whether one named class came back.
+
+### A logger from the ambient facade follows the facade (#616)
+
+**The bug, and why it left nothing to notice ([#616](https://github.com/APKiwiOrg/KhaozEngine/issues/616)).**
+`Log.For<T>()` and `Log.Get(category)` returned a `CategoryLogger` pinned to the manager configured at that
+instant, and `Log.Configure` SHUTS DOWN the manager it replaces, which disposes and clears that manager's sinks.
+Twenty-three types across `Gpu`, `Gpu.Vulkan`, `Gpu.D3D11` and `Gpu.Metal` cache their logger in a
+`static readonly ILogger` field resolved at type initialization, which is the natural way to write a logging call
+site. Which logger such a field held for the life of the process therefore depended on whether its type was
+touched before or after the process configured logging, and the loser of that race wrote into a manager with no
+sinks: still reporting itself enabled, still submitting, and dropping every entry. Nothing threw and nothing
+warned, and a dropped log line and a clean run look identical, so a game that probed a GPU capability or
+registered a backend before configuring its log simply never heard from those types again.
+
+**Fixed at the facade, not at the twenty-three call sites.** `Log.For<T>()` and `Log.Get(category)` now hand back
+an ambient logger that holds a CATEGORY and no manager, and reads the configured manager on every call. A logger
+resolved before `Log.Configure` starts writing the moment configuration lands, and one resolved before a
+reconfigure follows the new manager rather than the shut-down one. Per-instance resolution in each type (the
+`VulkanValidationPump` treatment in 17.36.0) was the alternative, and it was rejected: it fixes the instances,
+leaves every genuinely static call site broken, and leaves the twenty-fourth site free to make the same mistake
+again. The existing static fields are correct as they stand and were left alone.
+
+**What it costs.** One volatile read per message, in place of the field read the pinned logger did, and no
+allocation the old path did not already make. A new test in the `LoggingSerial` collection measures a
+level-filtered call through a cached logger at zero bytes allocated. `Log.For<T>()` also caches its logger per `T`
+in a generic static, so it now allocates nothing after the first call for a type, where before it built a
+`CategoryLogger` on every call. The manager is read ONCE per message into a local, so a `Log.Configure` racing a
+log call sends the whole entry to one manager or the whole entry to the other, never half to each, and a submit
+into a manager shut down inside that window is dropped rather than thrown (which `LogManager.Submit` already
+guaranteed for every other racing writer).
+
+**`LogManager.GetLogger` is unchanged and still pins to its manager.** That is the injected path, and a logger a
+caller took from a manager it owns has to keep writing to that manager, or every DI wiring and every test that
+asserts against its own sink stops meaning what it says. The internal `NullLogger` is gone, subsumed by an ambient
+logger with nothing configured.
+
+**Consequence for the #565 test host, noted and deliberately not acted on.** `KhaozEngine.Render.Tests` carries a
+hard rule that no test may reconfigure the facade, because a reconfigure used to orphan every producer that had
+already resolved a logger. That half of the hazard is now gone. The rule stands anyway on its own separate
+reason, which this release did not change: a second `Configure` still disposes the first host's console sink, so
+an armed validation run would still end up with an artifact holding whatever the last configure admitted. The
+comments on `GpuValidationConsoleLogging` and `VulkanValidationConsoleLogging` now say which half is which.
 
 ### The Metal device-class disambiguation reads both variables and four device classes (#628)
 

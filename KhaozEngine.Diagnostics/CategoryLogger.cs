@@ -2,7 +2,18 @@ using System;
 
 namespace KhaozEngine.Diagnostics;
 
-/// <summary>An <see cref="ILogger"/> bound to one category, delegating to its owning <see cref="LogManager"/>.</summary>
+/// <summary>
+/// An <see cref="ILogger"/> bound to one category, delegating to its owning <see cref="LogManager"/>. Handed out
+/// by <see cref="LogManager.GetLogger(string)"/>, which is the INJECTED path: this logger belongs to that
+/// manager for its whole life, which is what lets a caller (a test, a DI container) hold a manager and assert
+/// what reached its sinks.
+/// <para>
+/// It is deliberately NOT what the ambient <see cref="Log"/> facade hands out. A pinned logger cached in a
+/// <c>static readonly</c> field goes permanently silent once its manager is replaced, because
+/// <see cref="Log.Configure(LoggerOptions)"/> shuts the replaced one down and shutdown disposes its sinks. See
+/// <see cref="AmbientCategoryLogger"/>, which is what <see cref="Log.For{T}"/> returns, and #616 for the failure.
+/// </para>
+/// </summary>
 internal sealed class CategoryLogger : ILogger
 {
     private readonly LogManager owner;

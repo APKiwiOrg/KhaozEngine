@@ -32,6 +32,18 @@ Log.For<Game>().Info("started");
 Log.Shutdown();
 ```
 
+**When `Configure` takes effect: everywhere, immediately, including code that resolved its logger first.** A
+logger from `Log.For<T>()` / `Log.Get(...)` is bound to its CATEGORY and to the facade, not to whichever manager
+was configured when you asked for it, so it reads the current one on every call. That means the usual shape is
+safe: cache the logger in a `static readonly ILogger` field, touch the type whenever you like, and configure
+logging whenever the process gets round to it. It also means a `Log.Configure` late in startup, or a second one
+that swaps the sink set, does not strand anything that already holds a logger. `Log.Configure` shuts down the
+manager it replaces (flushing, then disposing its sinks), so the manager is what changes, never your logger.
+
+A logger from `LogManager.GetLogger(...)` is the deliberate opposite: it belongs to THAT manager for its whole
+life, which is what makes the injected path (DI, and a test asserting against a manager it owns) mean what it
+says.
+
 ## One-call session bootstrap (`SessionLog`)
 
 The block above (file sink + console sink + `Log.Configure` + `CrashHandler.Install`) is the same at every game's
@@ -117,8 +129,8 @@ Do **not** prefix the message with the category: `Log.Info("[CloudSave] saved")`
 
 ## Pieces
 
-- `Log` - static ambient facade (`Log.For<T>()`, `Log.Info(...)`, `Log.Configure`, `Log.Flush`, `Log.Shutdown`). No-op before `Configure`.
-- `LogManager` + `LoggerOptions` - injectable instance core (DI/tests). Runtime-settable `MinimumLevel`. Async by default; set `Synchronous = true` for deterministic tests.
+- `Log` - static ambient facade (`Log.For<T>()`, `Log.Info(...)`, `Log.Configure`, `Log.Flush`, `Log.Shutdown`). No-op before `Configure`, and its loggers follow the facade across a later `Configure` (see above), so caching one in a field is safe.
+- `LogManager` + `LoggerOptions` - injectable instance core (DI/tests). Runtime-settable `MinimumLevel`. Async by default, and set `Synchronous = true` for deterministic tests. A logger from `LogManager.GetLogger` stays bound to that manager.
 - `ILogger` - category logger (`Trace`/`Debug`/`Info`/`Warn`/`Error`/`Fatal`, each with an optional exception).
 - `ILogSink` + `FileSink` (rotate-on-launch + size rotation + retention), `ConsoleSink`, `DebugSink`, `InMemorySink`. Implement `ILogSink` for custom targets (in-game console, crash uploader).
 - `CrashHandler` - wires `AppDomain.UnhandledException` + `TaskScheduler.UnobservedTaskException` into the log.

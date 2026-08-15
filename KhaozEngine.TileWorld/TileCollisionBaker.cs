@@ -16,11 +16,7 @@ public static class TileCollisionBaker
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentNullException.ThrowIfNull(catalogs);
         var map = new TileCollisionMap(doc.PlaneCount);
-        foreach (TileRegion region in doc.Regions.Values)
-        {
-            map.EnsureRegion(region.Coord);
-            for (int p = 0; p < doc.PlaneCount; p++) BakeGround(map, doc, region.Coord.Rect, p);
-        }
+        foreach (TileRegion region in doc.Regions.Values) AddRegionWithGround(map, doc, region.Coord);
         foreach (TileRegion region in doc.Regions.Values)
             foreach (TileObject o in region.Objects) ApplyObject(map, catalogs, o);
         return map;
@@ -38,8 +34,11 @@ public static class TileCollisionBaker
         if (dirty.IsEmpty) return;
         TileRect clear = dirty.Expand(1);
         // A region created since the bake has no storage yet, and the map drops writes to a region it does not
-        // hold, so give the document's regions their storage before anything writes into them.
-        foreach (TileRegion region in doc.RegionsTouching(clear)) map.EnsureRegion(region.Coord);
+        // hold, so the document's regions get their storage before anything writes into them. This rect and this
+        // plane are the part being RE-derived, not the part being made real, which is why a region that gains
+        // storage here is ground-baked in full rather than only where the rebake happens to look.
+        foreach (TileRegion region in doc.RegionsTouching(clear))
+            if (!map.HasRegion(region.Coord)) AddRegionWithGround(map, doc, region.Coord);
         map.Clear(clear, plane);
         for (int z = clear.Z; z < clear.Z1; z++)
             for (int x = clear.X; x < clear.X1; x++)
@@ -83,6 +82,15 @@ public static class TileCollisionBaker
         TileDirection.N => TileDirection.S, TileDirection.S => TileDirection.N,
         _ => throw new ArgumentOutOfRangeException(nameof(d)),
     };
+
+    // Storage implies derived ground, and this is the one place that holds that invariant: allocating a
+    // region without its ground would leave every tile the caller did not ask about reading walkable, which
+    // is the wrong direction to be wrong in. Both entry points add regions through here.
+    static void AddRegionWithGround(TileCollisionMap map, TileWorldDocument doc, RegionCoord coord)
+    {
+        map.EnsureRegion(coord);
+        for (int p = 0; p < doc.PlaneCount; p++) BakeGround(map, doc, coord.Rect, p);
+    }
 
     static void BakeGround(TileCollisionMap map, TileWorldDocument doc, TileRect rect, int plane)
     {

@@ -174,9 +174,13 @@ public class TileCollisionBakerTests
         for (int z = rect.Z; z < rect.Z1; z++)
             for (int x = rect.X; x < rect.X1; x++) doc.SetUnderlay(x, z, 0, 1);
         Assert.Equal(TileCollisionFlags.Blocked, map.Get(70, 5, 0));
-        TileCollisionBaker.Rebake(map, doc, Cat, rect, 0);
+        // A dirty rect covering a corner of the new region, so the assertions below are about the region
+        // getting its ground derived in full, not about the rect being re-derived.
+        TileCollisionBaker.Rebake(map, doc, Cat, new TileRect(64, 0, 4, 4), 0);
         Assert.Equal(TileCollisionFlags.None, map.Get(70, 5, 0));
         Assert.Equal(TileCollisionFlags.None, map.Get(64, 0, 0));
+        Assert.Equal(TileCollisionFlags.Blocked, map.Get(70, 5, 1));
+        Assert.Equal(TileCollisionFlags.None, map.Get(100, 60, 0));
     }
 
     [Fact]

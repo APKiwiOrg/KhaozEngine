@@ -52,7 +52,10 @@
   open, submit and drain a command list of their own, so they are NOT mid-frame calls: taken while the frame's
   list is recording they throw `GpuNestedRecordingException` naming the fix rather than corrupting the frame
   (the seam's one-open-recording-per-device rule, see `KhaozEngine.Gpu`). Capture from the frame's pre-record
-  phase or outside the loop.
+  phase or outside the loop. `Render2DSnapshot.Capture`'s callback creates and forgets: every texture and font
+  it makes through its `Render2DContext` is owned by the capture, which frees them once the submit has drained.
+  The callback still must not dispose them itself, because the recorded command list names them until that
+  submit.
 
 The GPU backend stays behind `KhaozEngine.Gpu`; this package has no direct graphics-backend reference (deps:
 `KhaozEngine.Gpu` + `KhaozEngine.Windowing` + StbTrueTypeSharp/StbImageSharp). Windowing/input come from

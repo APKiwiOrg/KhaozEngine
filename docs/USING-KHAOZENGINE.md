@@ -1806,7 +1806,9 @@ SpriteFont byKey = Surface2D.LoadFont(fonts, "title", 48f);
 `LoadFont(string path, ...)` still exists for an explicit absolute path, but games should prefer the byte /
 default / `FontManager` overloads so nothing breaks across platforms. `oversample > 1` (2-3) keeps text crisp
 when a design-viewport upscales; layout/metrics are reported at the logical size regardless. The same overloads
-exist on `Render2DContext` (the `Render2DSnapshot` headless callback).
+exist on `Render2DContext` (the `Render2DSnapshot` headless callback), where the capture owns every font and
+texture the callback bakes through the context and frees them once its submit has drained. Do not dispose them
+inside the callback: the command list it is recording into still names them until that submit.
 
 - `Begin` overloads: `Begin(Camera2D, SamplerMode)` (world space), `Begin(IDesignViewport, SamplerMode)`
   (design space), `Begin(SamplerMode)` (raw screen). `SamplerMode` is `Linear` (default) or `Point`. Each `Begin`

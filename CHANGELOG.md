@@ -8,7 +8,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 ## 17.36.1
 
 The native Vulkan backend's staged buffer upload now barriers on the way IN as well as on the way out, closing
-the write-after-read hazard the `sync` validation tier reported 138 times across the golden family.
+the write-after-read hazard the `sync` validation tier reported 138 times across the golden family, and
+`Render2DSnapshot.Capture` frees the textures and fonts its callback created instead of leaving them to the
+per-capture device teardown, which that same tier reported as twelve leaked Vulkan objects.
 
 ### A staged upload brackets its copy in two barriers (#618)
 
@@ -44,6 +46,36 @@ with one barrier from 17.34.0. The `gpu-vulkan-sync` job read green on the 2026-
 `VulkanValidationPump` logged through an unconfigured ambient facade in the test process, so no validation line
 reached the log its gate scans (#565, fixed in 17.36.0 by `VulkanValidationConsoleLogging`). The first two runs
 after that fix are the two that went red.
+
+### The headless 2D capture frees what its callback created (#618)
+
+`Render2DSnapshot.Capture` handed the callback a `Render2DContext` and let every GPU resource the callback made
+through it outlive the capture. `Render2DContext` now owns what it hands out (`CreateTexture`, `LoadTexture`, the
+four `LoadFont` overloads and both `LoadDpiFont` overloads), and `Capture` frees the lot after the submit has
+drained and before the per-capture device goes. No public API changes: the tracking and the teardown call are
+both internal, and the callback's own rule is unchanged, since it still must not dispose what it created (the
+recorded command list names that resource until the submit that happens after the callback returns).
+
+**What it was leaking.** The old contract said there was no valid later dispose point, so callback-created
+resources were "simply left to that teardown". That is true of a Veldrid backend, which reclaims a survivor
+silently, and it is a spec violation on the native Vulkan backend: every survivor is still a live `VkImage` and
+`VkImageView` when `vkDestroyDevice` runs, which the validation layer reports as
+`VUID-vkDestroyDevice-device-05137`. The `gpu-vulkan-sync` job saw six of them, one image and its view each, over
+four capture devices: `Golden2D_FixedScene` (a white pixel and a font atlas), `Golden2D_Primitives`
+(`PrimitiveRenderer`'s owned white pixel), `Golden2D_Modern` (a white pixel and `IconAtlas.Bake`'s atlas) and
+`Golden2D_HoverGlow` (a white pixel).
+
+**Why the fix is not in the tests.** Around thirty callers share the pattern, and none of them can fix it
+locally: disposing inside the callback is a use-after-free, and after `Capture` returns the device is already
+gone. Every offscreen builder a callback can reach goes through the context anyway (`PrimitiveRenderer`,
+`IconAtlas.Bake` and `VfxRenderer` are all `CreateTexture` calls underneath), so owning the resources at that one
+seam covers the callers that sit outside the sync job's filter too. `Render2DContextOwnershipTests` pins it
+device-free over `FakeGpuDevice`, whose textures now record their own disposal: one row walks every public
+resource-returning method on the context by reflection and fails with the names of any that register nothing, so
+a loader added later is covered on the day it lands.
+
+**This one is older than its instrument too.** The leak predates the 2026-08-09 cron for the same reason the
+barrier bug did, and the run that first reported it reported both.
 
 ## 17.36.0
 

@@ -1379,11 +1379,14 @@ reports that bit for it. The pass wants this pair anyway, since `ShadowMapRender
 `R32Float` with `RenderTarget | Sampled` and hangs a separate depth-stencil off it, and it is also the parity
 answer, since `VeldridMap.SupportsShadowMaps` asks `GetPixelFormatSupport` for the same two.
 
-**`MaxMsaaSampleCount` is pinned to one sample until [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525)
-reproduces the incumbent's own `GetSampleCountLimit`.** That is a ruling rather than an omission: two drafts of
-the design each invented a formula, the two differ, and both then asserted equality with the incumbent as a test,
-so at most one of them could have been measuring anything. Pinning under-promises, and `AntiAliasing.ResolveFor`
-clamps a request rather than throwing on one.
+**`MaxMsaaSampleCount` is a real driver reading**, since row 15
+([#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525)) reproduced the incumbent's own
+`GetSampleCountLimit`: the minimum over the engine's three MRT targets of the highest sample count each supports,
+read through `vkGetPhysicalDeviceImageFormatProperties` with the citation pinned in a constant. It was pinned to
+one sample before that row, and the pin was a ruling rather than an omission: two drafts of the design each
+invented a formula, the two differ, and both then asserted equality with the incumbent as a test, so at most one
+of them could have been measuring anything. Pinning under-promised until there was a reading to promise, and
+`AntiAliasing.ResolveFor` clamps a request rather than throwing on one either way.
 
 **The counter fill is nine READINGS.** The drain pair comes off the timeline, the backpressure pair off the one
 accumulator both the command lists and the uniform ring stall into, the off-timeline pair off the ring's pending

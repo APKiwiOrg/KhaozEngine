@@ -461,7 +461,7 @@ namespace KhaozEngine.Tests.Gpu
         /// inherited). The engine clamps upstream in <c>AntiAliasing.ResolveFor</c>, so a count arriving here came
         /// from a caller that skipped it, and a silent downgrade presents as a golden mismatch that reads like a
         /// rendering bug. The message names the ceiling THIS device reported and the driver query it came off,
-        /// because row 18 (https://github.com/APKiwiOrg/KhaozEngine/issues/528) made that ceiling a real read
+        /// because row 15 (https://github.com/APKiwiOrg/KhaozEngine/issues/525) made that ceiling a real read
         /// rather than the conservative 1 row 4 pinned. It must NOT send a caller to that closed row any more,
         /// which is the assertion #627 added.
         /// </summary>

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.TileWorld</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>The KhaozEngine tile world: an OSRS-style discrete tile grid with stacked planes, a global tile-corner height lattice, per-tile ground underlay and shaped overlay, authored settings flags, tile-anchored objects and named markers, in 64x64 regions saved as a hash-checked directory (world.json + regions/r_x_z.json). Ships the catalogs (ground materials, object archetypes) it references by id, the validator, the DERIVED per-edge collision map and its baker, CanStep, a deterministic BFS pathfinder with OSRS's nearest-reachable rule, a lattice raycast and prefabs. GPU-free, shared by client, server, the tile editor and the ke-tileedit MCP tool. A sibling of KhaozEngine.MapDoc, not an extension of it.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
+    <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
+    <ProjectReference Include="../KhaozEngine.Content/KhaozEngine.Content.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.TileWorld.Tests" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <EmbeddedResource Include="tileworld.catalog.schema.json" />
+  </ItemGroup>
+</Project>

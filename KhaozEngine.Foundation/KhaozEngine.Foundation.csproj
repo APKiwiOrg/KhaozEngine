@@ -3,7 +3,7 @@
     <PackageId>KhaozEngine.Foundation</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Description>Umbrella metapackage for the MonoGame-free, GPU-free foundation: Primitives, App, Content, Determinism, Diagnostics, Dungeon, Ecs, Http, Identity, Locomotion, MapDoc, Navigation, Objectives, Persistence, Physics, Progression, Serialization, ServerStatus, Social, Collision, Platform, Terrain, Updates, Stats. One reference for a gameplay-logic library or any non-rendering project that wants the engine's shared building blocks without pulling Windowing/Render/Gui/Audio or any GPU. (Networking lives in KhaozEngine.Netcode*; the game-runtime bundles are KhaozEngine.Game2D/Game3D; a headless server is KhaozEngine.Server.) Contains no code; just dependencies.</Description>
+    <Description>Umbrella metapackage for the MonoGame-free, GPU-free foundation: Primitives, App, Content, Determinism, Diagnostics, Dungeon, Ecs, Http, Identity, Locomotion, MapDoc, Navigation, Objectives, Persistence, Physics, Progression, Serialization, ServerStatus, Social, Collision, Platform, Terrain, TileWorld, Updates, Stats. One reference for a gameplay-logic library or any non-rendering project that wants the engine's shared building blocks without pulling Windowing/Render/Gui/Audio or any GPU. (Networking lives in KhaozEngine.Netcode*; the game-runtime bundles are KhaozEngine.Game2D/Game3D; a headless server is KhaozEngine.Server.) Contains no code; just dependencies.</Description>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>
@@ -27,6 +27,7 @@
     <ProjectReference Include="../KhaozEngine.Identity/KhaozEngine.Identity.csproj" />
     <ProjectReference Include="../KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj" />
     <ProjectReference Include="../KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
+    <ProjectReference Include="../KhaozEngine.TileWorld/KhaozEngine.TileWorld.csproj" />
     <ProjectReference Include="../KhaozEngine.Navigation/KhaozEngine.Navigation.csproj" />
     <ProjectReference Include="../KhaozEngine.Objectives/KhaozEngine.Objectives.csproj" />
     <ProjectReference Include="../KhaozEngine.Persistence/KhaozEngine.Persistence.csproj" />

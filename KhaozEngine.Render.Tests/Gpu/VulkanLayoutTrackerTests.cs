@@ -536,7 +536,14 @@ namespace KhaozEngine.Tests.Gpu
         /// would move PART of the tracked range, so its entry would claim a layout the rest of it no longer has,
         /// and the restore at <c>End</c> would then name an OLD layout the image is not in, which is a barrier the
         /// driver may honour by discarding. Refusing names the mistake where it is made. A range that CONTAINS the
-        /// tracked ones is a different case and is answered, which is the test above.
+        /// tracked ones is a different case and is answered, which is the test above, and so is a range CONTAINED
+        /// IN a tracked one, which is the test below.
+        /// <para>
+        /// THE PAIR HERE REALLY DOES OVERLAP PARTIALLY, and saying so is the point: mips 0 to 1 and mips 1 to 2
+        /// share mip 1 and neither holds the other. This case used to be asserted with a pair where the tracked
+        /// range CONTAINED the request, which the refusal caught for the wrong reason and which
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/623 then hit on the shipped ocean path.
+        /// </para>
         /// </summary>
         [Fact]
         public void OverlappingRangesOfOneImage_AreRefusedRatherThanMistracked()
@@ -545,16 +552,84 @@ namespace KhaozEngine.Tests.Gpu
 
             tracker.TransitionTo(Buffer,
                 Tracked(ColourImage, VulkanRestingLayout.ShaderReadOnlyOptimal,
-                    range: VulkanImageSubrange.Whole(mipLevels: 4, arrayLayers: 1)),
+                    range: new VulkanImageSubrange(BaseMipLevel: 0, LevelCount: 2, BaseArrayLayer: 0,
+                        LayerCount: 1)),
                 ImageLayout.TransferDstOptimal);
 
             InvalidOperationException error = Assert.Throws<InvalidOperationException>(
                 () => tracker.TransitionTo(Buffer,
                     Tracked(ColourImage, VulkanRestingLayout.ShaderReadOnlyOptimal,
-                        range: VulkanImageSubrange.Attachment),
+                        range: new VulkanImageSubrange(BaseMipLevel: 1, LevelCount: 2, BaseArrayLayer: 0,
+                            LayerCount: 1)),
                     ImageLayout.TransferSrcOptimal));
 
             Assert.Contains("OVERLAPPING", error.Message, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// A RANGE CONTAINED IN A WIDER TRACKED ENTRY IS ANSWERED OVER THAT ENTRY, and this is the shape the
+        /// ocean's mip chain produces on every recording after its first
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/623). <c>OceanFftProducer.BuildMipChain</c> seeds one
+        /// layer at a time and then calls <c>GenerateMipmaps</c>, which names mip 0 over EVERY layer and collapses
+        /// the per-layer entries into one. The next round of copies then asks for a single layer of a mip 0 the
+        /// tracker holds whole, which is contained rather than partial, and refusing it took nine tests down on
+        /// the vulkan-native leg.
+        /// <para>
+        /// THE BARRIER COVERS THE ENTRY, NOT THE REQUEST. An entry is uniform, so one barrier over all six layers
+        /// from the entry's own layout is valid, and it keeps the tracker at ONE entry to restore at <c>End</c>
+        /// instead of the four pieces that naming the entry MINUS the request would produce.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void ARangeInsideAWiderTrackedOne_MovesTheWholeEntry()
+        {
+            var recorder = new FakeVulkanBarrierRecorder();
+            var tracker = new VulkanLayoutTracker(recorder);
+
+            // WHAT GENERATE-MIPMAPS LEAVES: mip 0 over every layer, in one entry, in the blit's source layout.
+            tracker.TransitionTo(Buffer, MipZeroOfEveryLayer(), ImageLayout.TransferSrcOptimal);
+
+            // AND WHAT THE NEXT FRAME'S FIRST COPY ASKS FOR: one layer of it.
+            tracker.TransitionTo(Buffer, Layer(0), ImageLayout.TransferDstOptimal);
+
+            ImageMemoryBarrier2 moved = Assert.Single(recorder.Batches[^1].Barriers);
+            Assert.Equal(ImageLayout.TransferSrcOptimal, moved.OldLayout);
+            Assert.Equal(ImageLayout.TransferDstOptimal, moved.NewLayout);
+            Assert.Equal(0u, moved.SubresourceRange.BaseArrayLayer);
+            Assert.Equal(Layers, moved.SubresourceRange.LayerCount);
+            Assert.Equal(1u, moved.SubresourceRange.LevelCount);
+            Assert.Equal(1, tracker.TouchedCount);
+
+            // EVERY LATER LAYER OF THAT COPY LOOP IS THEN FREE, because the entry it sits in is already there.
+            int batches = recorder.Batches.Count;
+            tracker.TransitionTo(Buffer, Layer(3), ImageLayout.TransferDstOptimal);
+            Assert.Equal(batches, recorder.Batches.Count);
+            Assert.False(tracker.WouldTransition(Layer(3), ImageLayout.TransferDstOptimal));
+
+            // AND THE WIDE RANGE STILL MATCHES ITSELF EXACTLY, which is the next GenerateMipmaps coming round
+            // again: one barrier for the whole entry, still one entry.
+            tracker.TransitionTo(Buffer, MipZeroOfEveryLayer(), ImageLayout.TransferSrcOptimal);
+
+            ImageMemoryBarrier2 back = Assert.Single(recorder.Batches[^1].Barriers);
+            Assert.Equal(ImageLayout.TransferDstOptimal, back.OldLayout);
+            Assert.Equal(Layers, back.SubresourceRange.LayerCount);
+            Assert.Equal(1, tracker.TouchedCount);
+        }
+
+        /// <summary>
+        /// AND THE LAYOUT OF A CONTAINED RANGE IS THE ENTRY'S LAYOUT, rather than the refusal a range that
+        /// CONTAINS narrower tracked ones gets. The two shapes are opposites: pieces of a wider request may
+        /// disagree and have no single answer, and a part of one uniform entry is in that entry's layout by
+        /// construction.
+        /// </summary>
+        [Fact]
+        public void TheLayoutOfARangeInsideATrackedOne_IsTheEntrysLayout()
+        {
+            var tracker = new VulkanLayoutTracker(new FakeVulkanBarrierRecorder());
+
+            tracker.TransitionTo(Buffer, MipZeroOfEveryLayer(), ImageLayout.TransferSrcOptimal);
+
+            Assert.Equal(ImageLayout.TransferSrcOptimal, tracker.LayoutOf(Layer(2)));
         }
 
         /// <summary>
@@ -665,6 +740,22 @@ namespace KhaozEngine.Tests.Gpu
         static VulkanTrackedImage Chain(uint levels,
             VulkanRestingLayout resting = VulkanRestingLayout.ShaderReadOnlyOptimal)
             => Tracked(ColourImage, resting, range: VulkanImageSubrange.Whole(levels, arrayLayers: 1));
+
+        // THE OCEAN'S CASCADE MAP: three cascades, two layers each, which is what the failing rows carried.
+        const uint Layers = 6;
+
+        // MIP 0 OVER EVERY LAYER, which is what GenerateMipmaps names at its first level and what the tracker
+        // collapses the seeding copies' per-layer entries into.
+        static VulkanTrackedImage MipZeroOfEveryLayer()
+            => Tracked(ColourImage, VulkanRestingLayout.ShaderReadOnlyOptimal,
+                range: new VulkanImageSubrange(BaseMipLevel: 0, LevelCount: 1, BaseArrayLayer: 0,
+                    LayerCount: Layers));
+
+        // ONE LAYER OF MIP 0, which is what each seeding copy names, and what sits INSIDE the range above.
+        static VulkanTrackedImage Layer(uint layer)
+            => Tracked(ColourImage, VulkanRestingLayout.ShaderReadOnlyOptimal,
+                range: new VulkanImageSubrange(BaseMipLevel: 0, LevelCount: 1, BaseArrayLayer: layer,
+                    LayerCount: 1));
 
         // A colour target that is ALSO sampled, which is the post chain: it rests in SHADER_READ_ONLY_OPTIMAL and
         // therefore pays a transition at every pass that renders into it. The depth target rests in its own

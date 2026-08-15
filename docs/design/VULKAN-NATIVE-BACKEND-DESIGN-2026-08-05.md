@@ -1396,6 +1396,23 @@ any submit order, which is what the seam promises and what record-time global la
 object cannot deliver (2.5). It costs a handful of extra barriers per list at pass boundaries, bounded by
 touched textures and independent of draw count, and V-T7 gates exactly that.
 
+**CORRECTED AFTER SHIPPING (#623): "per subresource range" needs FOUR shapes, and the implementation enumerated
+three.** V-F6 says tracking is per subresource range and leaves the shapes to the implementation, which named the
+same range, a range CONTAINING tracked narrower ones, and a partial overlap it refused. The fourth is a range
+CONTAINED IN one tracked wider entry, and it is not exotic: it is what the third shape's own collapse produces on
+the next request. `OceanFftProducer.BuildMipChain` seeds each layer of the cascade map with a per-layer copy and
+then generates mips over every layer, which collapses those per-layer entries into one, so the next recording of
+the same composition asks for one layer of a mip the tracker now holds whole. It got the partial-overlap refusal,
+whose message asserts neither range contains the other while one plainly does, and that took nine water tests
+down on the `vulkan-native` leg. The shape is answered by transitioning the ENTRY rather than the request, which
+keeps the entry uniform and keeps it one entry. Splitting it down to the request is the rectangle subtraction
+this tracker declines to do, and it would trade one entry for up to four to restore at `End`.
+
+**And it is the guest-leg design paying for itself, which is worth recording where the leg was argued for.** The
+refusal is this backend's own bookkeeping, so no driver was involved and no validation layer would have reported
+it. The incumbent Veldrid Vulkan leg passes those same nine rows on the same lavapipe, and that contrast is what
+located the defect: a shape the engine's own backend refuses and every other backend accepts.
+
 | Point | Transition |
 |---|---|
 | Begin rendering | each attachment to `COLOR_ATTACHMENT_OPTIMAL` or `DEPTH_STENCIL_ATTACHMENT_OPTIMAL` |

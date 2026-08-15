@@ -3666,8 +3666,8 @@ empty artifact under a true name is the failure mode #423 is about, arriving fro
 **So the layer runs at its default and the rows that provoke it on purpose stand down IN-PROCESS**, which is
 #591's own second option, chosen for its own reason: a filter in the workflow goes stale where a dormancy check
 beside the row it guards does not. `MetalValidationDormancy` is the one reader of that fact, and the bar for
-using it is narrow: the row must do something legitimate in a test and illegitimate in a shipped frame. Three
-qualify, and the third is the interesting one.
+using it is narrow: the row must do something legitimate in a test and illegitimate in a shipped frame. Four
+qualify, and the last two are the interesting ones.
 
 - The row-1 interop spike records the offset setters on a render encoder with no pipeline bound, because it is
   measuring the `objc_msgSend` ABI rather than drawing.
@@ -3679,11 +3679,23 @@ qualify, and the third is the interesting one.
   validation layer confirms MM6 from outside this document's reasoning about it**, on the first run anyone armed
   it, which is a stronger form of the same evidence than the pixel readback and was not available when 2.3a was
   written. The native measurement in that row is untouched and still runs under validation.
+- **The GPU-skinning spike's variant 3 is the SAME shape in a different file, and it is the row the lesson below
+  predicted.** `GpuSkinningReproGpuTests.FoldMatrixIntoBoneBuffer_VertexReadsOneResource_ReadsEveryBone` is the
+  offscreen record of the original skinned-model failure that #604 keeps: its vertex stage reads the combined
+  bone block at set 0 and nothing else, its fragment reads a frame UBO at set 1 and nothing else, which is 2.3a's
+  third shape exactly. It went unattributed for as long as it did because the mis-bind costs its assertion
+  NOTHING: the fragment's only use of that buffer is `Tint * 1e-30`, present to put a second uniform buffer in
+  the pipeline rather than to be read, and the bone columns the row measures come from the vertex stage, which
+  binds correctly. So a pixel probe designed to catch the mis-bind is silent here and the layer is not. Attributed
+  by filter bisection at [#621](https://github.com/APKiwiOrg/KhaozEngine/issues/621), and stood down on the
+  INCUMBENT backend alone, so the native leg keeps asserting the row armed.
 
-The general lesson is worth keeping separately from the three rows, because the list will grow: **a validation
+The general lesson is worth keeping separately from the four rows, because the list will grow: **a validation
 tier whose error mode aborts the host is a gate on the SUITE rather than on a row**, so every row that
 deliberately provokes it has to be found before the leg is trusted, and the only way to find the next one is to
-run the suite again after standing the last one down.
+run the suite again after standing the last one down. #621 is that lesson arriving: the fourth row was found by
+arming the layer on the INCUMBENT, where the first three had already been stood down, and it cost a bisection
+rather than a reading because nothing in the abort names a test.
 
 **Tier two costs a second thing M-T7 does not mention, and it is not validation errors: it moves TIMING and it
 forbids a capture.** Two rows fell out of the first armed deep-tier run and neither is a defect.

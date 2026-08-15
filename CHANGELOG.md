@@ -10,7 +10,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 The native Vulkan backend's staged buffer upload now barriers on the way IN as well as on the way out, closing
 the write-after-read hazard the `sync` validation tier reported 138 times across the golden family, and
 `Render2DSnapshot.Capture` frees the textures and fonts its callback created instead of leaving them to the
-per-capture device teardown, which that same tier reported as twelve leaked Vulkan objects.
+per-capture device teardown, which that same tier reported as twelve leaked Vulkan objects. On the Metal side,
+the unattributed draw that aborted the incumbent test host under the API validation layer is attributed to one
+row and stood down, so that suite finishes armed.
 
 ### A staged upload brackets its copy in two barriers (#618)
 
@@ -81,6 +83,50 @@ barrier bug did, and the run that first reported it reported both.
 gate step, and its artifact carries 340 engine log lines with zero `SYNC-HAZARD` and zero `VUID-` lines, against
 119 and 12 on the two red runs that opened #618. The line count matters as much as the zeroes: an artifact with
 no engine logging in it is what a vacuous green looked like.
+
+### The draw that aborted the incumbent Metal host under the debug layer has a name (#621)
+
+`GpuSkinningReproGpuTests.FoldMatrixIntoBoneBuffer_VertexReadsOneResource_ReadsEveryBone` now stands down when
+Metal's API validation layer is armed AND the resolved backend is the incumbent `GpuBackendKind.Metal`, the way
+MM6's own control already did. Test-only, no engine code touched, no public API change. With it, the previously
+aborting run completes: `KhaozEngine.Render.Tests` at `Category!=LiveSocket` under `MTL_DEBUG_LAYER=1` and
+`KE_GPU_TESTS=1` on an M2 Max reads 6217 passed, 0 failed, 0 skipped, where it used to die after about a
+thousand rows in under two seconds on
+
+```
+-[MTLDebugRenderCommandEncoder validateCommonDrawErrors:]:6001: failed assertion `Draw Errors Validation
+Fragment Function(main0): missing Buffer binding at index 0 for _14[0].'
+```
+
+**The draw, attributed.** The row's variant-3 pipeline is 2.3a's split-stage shape: `TwoUboVert` reads
+`VBlock` at set 0 and nothing else, `TwoUboFrag` reads `U` at set 1 and nothing else. The incumbent counts one
+slot per kind across the WHOLE declared layout, so it writes `U` at buffer index 1, while SPIRV-Cross numbers
+each stage densely from 0 over only what that stage declares, so the emitted fragment function reads buffer
+index 0. `_14` in the assertion is that argument, named after its SPIR-V result id. Nothing is bound at index 0
+and the layer objects. The mechanism is the incumbent's numbering rather than anything about Metal, it is
+already measured and recorded (#604), and it retires with the Veldrid Metal leg, so nothing is fixed here beyond
+letting the suite finish.
+
+**Why it hid.** The mis-bind costs the row's assertion nothing. `U`'s only use is `Tint * 1e-30`, present to put
+a second uniform buffer in the pipeline rather than to be read, and the bone columns the row measures come from
+the vertex stage, which binds correctly. A pixel probe built to catch exactly this mis-bind is silent on it, and
+the layer is not.
+
+**The stand-down is guarded on the BACKEND as well as the arming**, which MM6's control did not have to be. The
+engine's own native Metal backend binds at the index read out of each stage's emission, so the same draw is
+correct there and the layer says nothing, and the `metal-native` leg goes on asserting this row armed.
+
+**Blast radius: test-only, checked rather than assumed.** No shipped program has the shape.
+`MetalShaderIndexTableTests.EveryShippedProgram_ResolvesEveryEmittedArgumentThroughItsDecorations` reads zero
+disagreements between the emitted index and the incumbent's arithmetic across the whole corpus (42 programs, 76
+stages, 159 table entries), and `MslBindingOrder.CheckPrefix` rejects the shape device-free on every pair
+`ShaderSourceValidationTests` runs. The spike's shaders reach a device without either guard because
+`CreateShadersFromSpirv` does not validate, which is how a test can construct what a renderer cannot ship.
+
+**Arming `MTL_DEBUG_LAYER` on the incumbent leg is now unblocked, and is deliberately not done here.** The
+comment in `.github/workflows/cross-platform-gpu.yml` says so and names the row instead of saying nobody knows.
+A blocking golden leg is the wrong place to discover the next provoking row, hosted `macos-26` is not the
+machine this was measured on, and the dispatch that would settle it is #617's control experiment.
 
 ## 17.36.0
 

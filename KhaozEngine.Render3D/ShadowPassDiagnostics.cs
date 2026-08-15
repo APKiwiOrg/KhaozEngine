@@ -67,7 +67,12 @@ namespace KhaozEngine.Render3D
         /// <summary>Whether the shadow atlas resolution changed since its last rendered pass.</summary>
         public bool ResolutionChanged { get; }
 
-        /// <summary>Whether a fitted cascade matrix changed since the last rendered pass.</summary>
+        /// <summary>Whether a fitted cascade matrix changed since the last rendered pass. A moved camera and a moved
+        /// sun both land here, but a sun movement below
+        /// <see cref="ShadowSettings.ShadowLightHoldTexels"/> texels of shadow drift does NOT: the fit holds the
+        /// light direction it last adopted, so it re-derives the same matrices and this bit reads false until the
+        /// hold releases. Counting the frames between <c>true</c> readings on a stationary AFK window is how a field
+        /// capture measures the re-fit cadence against the threshold (issue #410).</summary>
         public bool LightMatrixChanged { get; }
 
         /// <summary>Whether the rigid caster signature changed since the last rendered pass.</summary>

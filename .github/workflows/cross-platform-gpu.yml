@@ -564,24 +564,26 @@ jobs:
       # the frame capture it could never take while this was armed. #617 stays open with the diagnosis, and the
       # experiment that would close it is a deep dispatch with MTL_SHADER_VALIDATION armed on the INCUMBENT
       # metal leg, which is the control this matrix has never had.
-      # THAT VARIABLE ALONE. MTL_DEBUG_LAYER MUST STAY OFF THE INCUMBENT, and this is the one place the two legs
-      # cannot be armed the same way. Reproduced locally on this commit: the same assembly and filter with
-      # KE_GRAPHICS_BACKEND unset and MTL_DEBUG_LAYER=1 ABORTS the test host after about 1000 rows, in under two
-      # seconds, on
+      # THAT VARIABLE ALONE, AND THE DEBUG LAYER STAYS OFF THE INCUMBENT HERE, but the reason has changed and it
+      # is no longer that nobody knows what aborts. The abort was
       #     -[MTLDebugRenderCommandEncoder validateCommonDrawErrors:]:6001: failed assertion
       #     `Draw Errors Validation / Fragment Function(main0): missing Buffer binding at index 0 for _14[0].'
-      # which is the layer at its default assert error mode killing the process, exactly as row 19 measured on
-      # the native side. MM6's constructed control is NOT the source, so this is not the known case being
-      # re-observed: its provoking half stands down whenever the layer is armed
-      # (MetalValidationDormancy.StandDown), and running MetalTwoUniformBufferGpuTests alone under the layer on
-      # the incumbent is green. Some other draw in that suite leaves a declared fragment buffer unbound, and
-      # which one is unattributed: that is #621
-      # (https://github.com/APKiwiOrg/KhaozEngine/issues/621), which carries the repro and what is already ruled
-      # out. MTL_SHADER_VALIDATION on its own does NOT abort it: the incumbent runs the
-      # whole assembly green under that variable, which is what makes the control experiment above possible at
-      # all. The native leg can carry the layer only because the three rows that provoke it on purpose stand
-      # down in-process, and standing an incumbent leg down row by row against a fault that is not the test's
-      # would be the opposite of a control.
+      # the layer at its default assert error mode killing the process, exactly as row 19 measured on the native
+      # side. #621 (https://github.com/APKiwiOrg/KhaozEngine/issues/621) ATTRIBUTED it by filter bisection to ONE
+      # row, GpuSkinningReproGpuTests.FoldMatrixIntoBoneBuffer_VertexReadsOneResource_ReadsEveryBone. MM6's own
+      # control was not the source and never was: that half already stands down under the layer. This row is the
+      # SAME split-stage shape from a different file, the offscreen record of the original skinned-model failure
+      # that #604 keeps, and it provokes the layer for the same reason MM6's control does. It stands down under
+      # the layer on the INCUMBENT alone now, so the native leg keeps asserting it. Measured on this branch on an
+      # M2 Max: KhaozEngine.Render.Tests at Category!=LiveSocket with KE_GRAPHICS_BACKEND unset, KE_GPU_TESTS=1
+      # and MTL_DEBUG_LAYER=1 runs to completion, 6217 passed, 0 failed, 0 skipped, where it used to abort after
+      # about a thousand rows in under two seconds.
+      # So arming this leg is UNBLOCKED rather than done. It is not flipped on here because a blocking golden leg
+      # is the wrong place to find the next provoking row: the layer's error mode gates the SUITE rather than a
+      # row, hosted macos-26 is not the machine that measurement was taken on, and the way the native leg earned
+      # the layer was a dispatch first. That dispatch is #617's control experiment to make.
+      # MTL_SHADER_VALIDATION on its own does NOT abort the incumbent either: it runs the whole assembly green
+      # under that variable, which is what makes the control experiment above possible at all.
       METAL_DEEP_TIER: ${{ (matrix.backend == 'metal-native' && github.event_name == 'workflow_dispatch' && inputs.tier != 'push') && '1' || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

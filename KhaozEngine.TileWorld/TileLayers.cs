@@ -28,14 +28,15 @@ public enum TileOverlayShape : byte
     CornerThreeQuarter = 3,
 }
 
-/// <summary>The four dense layers of one plane of one region. Each layer is null until first written and
+/// <summary>The six dense layers of one plane of one region. Each layer is null until first written and
 /// nulled again by <see cref="Trim(int)"/> when it is entirely default, so a region file carries only what was
 /// authored. <see cref="Heights"/> above plane 0 is the one exception, see <see cref="Trim(int)"/>. Index with
 /// <see cref="Index"/> (row-major, z then x).</summary>
 public sealed class TilePlaneData
 {
     /// <summary>Height of each tile's SW corner in centimetres. Null on plane 0 means 0 everywhere, null on a
-    /// higher plane means "derive from plane 0 plus the document's plane height".</summary>
+    /// higher plane means "derive from plane 0 plus the document's plane height" (see
+    /// TileWorldDocument.CornerHeightCm, which resolves this).</summary>
     public short[]? Heights { get; set; }
     /// <summary>Ground material id, 0 = void (no ground drawn, tile blocked).</summary>
     public ushort[]? Underlay { get; set; }

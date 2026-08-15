@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using KhaozEngine.TileWorld;
 using Xunit;
@@ -140,6 +141,71 @@ public class TileWorldDocumentTests
         Assert.Same(m, doc.FindMarker("spawn"));
         Assert.True(doc.RemoveMarker("spawn"));
         Assert.Empty(doc.AllMarkers());
+    }
+
+    [Fact]
+    public void Plane_out_of_range_throws_on_both_a_read_and_a_write()
+    {
+        var doc = new TileWorldDocument { Id = "w", DisplayName = "W", PlaneCount = 2 };
+        doc.GetOrCreateRegion(new RegionCoord(0, 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => doc.GetUnderlay(1, 1, 2));
+        Assert.Throws<ArgumentOutOfRangeException>(() => doc.SetUnderlay(1, 1, 2, 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => doc.GetSettings(1, 1, -1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => doc.SetSettings(1, 1, -1, TileSettings.Blocked));
+    }
+
+    [Fact]
+    public void Overlay_round_trips_without_touching_the_underlay_layer()
+    {
+        var doc = new TileWorldDocument { Id = "w", DisplayName = "W" };
+        doc.GetOrCreateRegion(new RegionCoord(0, 0));
+        Assert.Equal(0, doc.GetOverlay(8, 9, 0));
+        doc.SetOverlay(8, 9, 0, 42);
+        Assert.Equal(42, doc.GetOverlay(8, 9, 0));
+        Assert.Equal(0, doc.GetOverlay(9, 9, 0));
+        Assert.Equal(0, doc.GetUnderlay(8, 9, 0));
+        Assert.Null(doc.GetRegion(new RegionCoord(0, 0))!.Plane(0).Underlay);
+    }
+
+    [Fact]
+    public void RebuildObjectIndex_repairs_the_index_after_ids_change_underneath_it()
+    {
+        var doc = new TileWorldDocument { Id = "w", DisplayName = "W" };
+        doc.GetOrCreateRegion(new RegionCoord(0, 0));
+        doc.GetOrCreateRegion(new RegionCoord(1, 0));
+        TileObject a = doc.AddObject("tree", 3, 4, 0, 0);
+        TileObject b = doc.AddObject("rock", 70, 6, 0, 0);
+        (a.Id, b.Id) = (b.Id, a.Id);
+        // The stale index still sends each id to the other object's region.
+        Assert.Null(doc.FindObject(a.Id));
+        doc.RebuildObjectIndex();
+        Assert.Same(a, doc.FindObject(a.Id));
+        Assert.Same(b, doc.FindObject(b.Id));
+    }
+
+    [Fact]
+    public void TileRegion_Trim_hands_each_plane_its_own_index()
+    {
+        var doc = new TileWorldDocument { Id = "w", DisplayName = "W" };
+        TileRegion r = doc.GetOrCreateRegion(new RegionCoord(0, 0));
+        r.Plane(0).HeightsOrAlloc();
+        r.Plane(1).HeightsOrAlloc();
+        r.Trim();
+        Assert.Null(r.Plane(0).Heights);
+        Assert.NotNull(r.Plane(1).Heights);
+    }
+
+    [Fact]
+    public void An_unloaded_region_cannot_be_blanked_by_GetOrCreateRegion()
+    {
+        var doc = new TileWorldDocument { Id = "w", DisplayName = "W" };
+        doc.UnloadedRegionHashes[new RegionCoord(2, 3)] = "abc123";
+        var ex = Assert.Throws<TileWorldException>(() => doc.GetOrCreateRegion(new RegionCoord(2, 3)));
+        Assert.Contains("(2, 3)", ex.Message);
+        Assert.Contains("not loaded", ex.Message);
+        Assert.Empty(doc.Regions);
+        var write = Assert.Throws<TileWorldException>(() => doc.SetUnderlay(2 * 64, 3 * 64, 0, 1));
+        Assert.Contains("not loaded", write.Message);
     }
 
     [Fact]

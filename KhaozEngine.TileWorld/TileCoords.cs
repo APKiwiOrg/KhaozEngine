@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace KhaozEngine.TileWorld;
 
@@ -6,6 +7,7 @@ namespace KhaozEngine.TileWorld;
 /// negative regions with positive local coordinates.</summary>
 public readonly record struct RegionCoord(int Rx, int Rz)
 {
+    /// <summary>The region holding world tile (worldX, worldZ).</summary>
     public static RegionCoord Of(int worldX, int worldZ) =>
         new(FloorDiv(worldX, TileRegion.Size), FloorDiv(worldZ, TileRegion.Size));
 
@@ -14,6 +16,7 @@ public readonly record struct RegionCoord(int Rx, int Rz)
     /// <summary>World z of this region's south edge (local z 0).</summary>
     public int OriginZ => Rz * TileRegion.Size;
 
+    /// <summary>The region dx regions east and dz regions north of this one.</summary>
     public RegionCoord Offset(int dx, int dz) => new(Rx + dx, Rz + dz);
 
     /// <summary>The 64x64 world rect this region covers.</summary>
@@ -32,16 +35,22 @@ public readonly record struct RegionCoord(int Rx, int Rz)
         return m < 0 ? m + b : m;
     }
 
+    /// <summary>Renders as (rx, rz), the form the error messages quote.</summary>
     public override string ToString() => $"({Rx}, {Rz})";
 }
 
 /// <summary>A world tile address: x east, z north, plane up.</summary>
 public readonly record struct TileCoord(int X, int Z, int Plane)
 {
+    /// <summary>The region this tile falls in.</summary>
     public RegionCoord Region => RegionCoord.Of(X, Z);
+    /// <summary>This tile's x within its region, always 0..63.</summary>
     public int LocalX => RegionCoord.FloorMod(X, TileRegion.Size);
+    /// <summary>This tile's z within its region, always 0..63.</summary>
     public int LocalZ => RegionCoord.FloorMod(Z, TileRegion.Size);
+    /// <summary>The tile dx east and dz north of this one, on the same plane.</summary>
     public TileCoord Offset(int dx, int dz) => new(X + dx, Z + dz, Plane);
+    /// <summary>Renders as (x, z, pN).</summary>
     public override string ToString() => $"({X}, {Z}, p{Plane})";
 }
 
@@ -49,9 +58,13 @@ public readonly record struct TileCoord(int X, int Z, int Plane)
 /// column). Empty when either dimension is not positive.</summary>
 public readonly record struct TileRect(int X, int Z, int Width, int Height)
 {
+    /// <summary>One past the last column, so the rect covers x in [X, X1).</summary>
     public int X1 => X + Width;
+    /// <summary>One past the last row, so the rect covers z in [Z, Z1).</summary>
     public int Z1 => Z + Height;
+    /// <summary>True when the rect covers no tiles at all.</summary>
     public bool IsEmpty => Width <= 0 || Height <= 0;
+    /// <summary>True when world tile (x, z) falls inside the rect.</summary>
     public bool Contains(int x, int z) => x >= X && x < X1 && z >= Z && z < Z1;
 
     /// <summary>The rect spanning two INCLUSIVE corners, given in any order.</summary>
@@ -62,8 +75,10 @@ public readonly record struct TileRect(int X, int Z, int Width, int Height)
         return new TileRect(minX, minZ, maxX - minX + 1, maxZ - minZ + 1);
     }
 
+    /// <summary>The rect grown by n tiles on every side (shrunk when n is negative).</summary>
     public TileRect Expand(int n) => new(X - n, Z - n, Width + 2 * n, Height + 2 * n);
 
+    /// <summary>The overlap of the two rects, empty when they do not overlap.</summary>
     public TileRect Intersect(TileRect o)
     {
         int x0 = Math.Max(X, o.X), z0 = Math.Max(Z, o.Z);
@@ -71,6 +86,7 @@ public readonly record struct TileRect(int X, int Z, int Width, int Height)
         return new TileRect(x0, z0, x1 - x0, z1 - z0);
     }
 
+    /// <summary>The smallest rect covering both, ignoring an empty operand.</summary>
     public TileRect Union(TileRect o)
     {
         if (IsEmpty) return o;
@@ -80,20 +96,27 @@ public readonly record struct TileRect(int X, int Z, int Width, int Height)
         return new TileRect(x0, z0, x1 - x0, z1 - z0);
     }
 
+    /// <summary>True when the two rects share at least one tile.</summary>
     public bool Intersects(TileRect o) => !Intersect(o).IsEmpty;
 }
 
 /// <summary>The eight step directions in the OSRS neighbour-expansion order the pathfinder relies on.</summary>
 public enum TileDirection : byte { W = 0, E = 1, S = 2, N = 3, SW = 4, SE = 5, NW = 6, NE = 7 }
 
+/// <summary>Helpers over <see cref="TileDirection"/>.</summary>
 public static class TileDirections
 {
-    public static readonly TileDirection[] All =
+    static readonly TileDirection[] AllDirections =
     {
         TileDirection.W, TileDirection.E, TileDirection.S, TileDirection.N,
         TileDirection.SW, TileDirection.SE, TileDirection.NW, TileDirection.NE,
     };
 
+    /// <summary>The eight directions in the fixed OSRS expansion order. Read only, because the pathfinder's
+    /// tie-breaking depends on this exact order.</summary>
+    public static IReadOnlyList<TileDirection> All => AllDirections;
+
+    /// <summary>The (dx, dz) step for one direction.</summary>
     public static (int Dx, int Dz) Delta(TileDirection d) => d switch
     {
         TileDirection.W => (-1, 0),
@@ -107,5 +130,6 @@ public static class TileDirections
         _ => throw new ArgumentOutOfRangeException(nameof(d)),
     };
 
+    /// <summary>True for the four corner directions, which need both their cardinal neighbours clear.</summary>
     public static bool IsDiagonal(TileDirection d) => d >= TileDirection.SW;
 }

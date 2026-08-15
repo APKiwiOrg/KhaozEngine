@@ -5,6 +5,46 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.36.1
+
+The native Vulkan backend's staged buffer upload now barriers on the way IN as well as on the way out, closing
+the write-after-read hazard the `sync` validation tier reported 138 times across the golden family.
+
+### A staged upload brackets its copy in two barriers (#618)
+
+`VulkanBufferUpload.Record` (the record-time `IGpuCommandList.UpdateBuffer` path) and
+`VulkanSetupCommands.UploadBuffer` (the device-level one) each emitted exactly one `VkBufferMemoryBarrier2`,
+after the `vkCmdCopyBuffer`, carrying the read-after-write direction: transfer write, then whatever the
+destination's usage says reads it. Nothing carried the other direction. Both now emit a second barrier BEFORE the
+copy. No public API changes, and no seam member moved: `VulkanUploadBarrier` is internal, and its existing `For`
+factory is renamed `After` beside the new `Before`.
+
+**What the missing barrier let through.** A consumer that re-uploads a vertex buffer every frame records that
+copy at the head of the next frame's command buffer, while the previous submission's `vkCmdDrawIndexed` is still
+fetching the same bytes as vertex attributes. Two submissions on one queue are ordered in submission order and
+nothing else, so the second may start its transfer stage before the first finishes its vertex fetch, and the
+command pool ring's fence does not close it either because that waits on the submission FRAMES-IN-FLIGHT back
+rather than on the immediately preceding one. The `gpu-vulkan-sync` job reported it as
+`SYNC-HAZARD-WRITE-AFTER-READ` at `vkQueueSubmit`, `submitted_usage: SYNC_COPY_TRANSFER_WRITE` against
+`prior_usage: SYNC_VERTEX_ATTRIBUTE_INPUT_VERTEX_ATTRIBUTE_READ` with `read_barriers` empty, 138 instances over
+34 devices, plus one `SYNC-HAZARD-WRITE-AFTER-WRITE` between two uploads to the same range whose only barrier
+named a vertex-attribute read.
+
+**The new barrier's masks.** Source stages are `VulkanUploadBarrier.PriorStage`, which is the reading stages the
+destination's usage implies unioned with `TRANSFER`. Source access is the transfer write ALONE, deliberately: a
+read needs no availability operation, so the write-after-read half rides entirely on the source stage mask as an
+execution dependency, and the one access that does have to be made available is an earlier upload's own
+`TRANSFER_WRITE` to the same range, which is the write-after-write half. Destination is `TRANSFER` /
+`TRANSFER_WRITE`. It is over the written range like its partner rather than being a global memory barrier, and
+its first synchronisation scope reaches into earlier submissions on the queue, which is what makes it work
+across a frame boundary with no semaphore and no fence.
+
+**The bug is older than the run that found it, and the instrument is what changed.** The upload path shipped
+with one barrier from 17.34.0. The `gpu-vulkan-sync` job read green on the 2026-08-09 cron because
+`VulkanValidationPump` logged through an unconfigured ambient facade in the test process, so no validation line
+reached the log its gate scans (#565, fixed in 17.36.0 by `VulkanValidationConsoleLogging`). The first two runs
+after that fix are the two that went red.
+
 ## 17.36.0
 
 A crash that nothing logged now writes its own file, the Metal shader emission is cached across

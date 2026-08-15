@@ -1245,6 +1245,15 @@ than the incumbent's uniform-or-vertex-attribute guess, and with the render-pass
 cause. They are bulk and rare relative to the uniform sites and they are exactly the traffic the ring is not
 for. Device-level `UpdateTexture` uses a device-owned staging pool, which is what off-timeline means.
 
+**CORRECTED IN PLACE (17.36.1): "a barrier" is TWO barriers, and the singular was the defect.** The row as
+written meant the one after the copy, which carries read-after-write. Nothing carried write-after-read, and a
+buffer updated once per frame is read by the previous submission's draws while the next submission's copy
+overwrites it. The pool ring's fence does not cover that (it waits on the submission frames-in-flight back) and
+neither does submission order, which is not an execution dependency. The shipped shape brackets the copy: the
+pre-copy barrier's source stages are the reading stages the usage implies plus transfer, its source access is
+the transfer write alone. Found by the `sync` validation tier and not by any golden, which is the case that tier
+was installed for ([#618](https://github.com/APKiwiOrg/KhaozEngine/issues/618)).
+
 Staging buffers are pooled BY SIZE with a real retention cap. The incumbent destroys any returned staging buffer
 over 512 bytes, so every real-sized upload creates and destroys a buffer AND a device memory block per call.
 Raising that to a real cap is not an optimisation, it is removing an allocation storm from every load.

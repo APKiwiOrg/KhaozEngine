@@ -1078,9 +1078,17 @@ in before anything has happened to it rather than one anything can be moved into
 the image unusable to every later command in the recording. So that refusal sits in the one barrier constructor
 both entry points pass through, and it has no legitimate site at all rather than two.
 
-**Buffer uploads are not part of this.** A staged `UpdateBuffer` emits a BUFFER memory barrier over the written
-range with its masks narrowed to the destination's real usage, which involves no image and no layout at all, so
-the layout tracker neither subsumes nor duplicates it.
+**Buffer uploads are not part of this.** A staged `UpdateBuffer` emits a PAIR of buffer memory barriers over the
+written range with their masks narrowed to the destination's real usage, which involves no image and no layout
+at all, so the layout tracker neither subsumes nor duplicates them. The pair is
+[#618](https://github.com/APKiwiOrg/KhaozEngine/issues/618): the barrier after the copy makes the transfer write
+visible to the reads that follow, and the barrier before it orders that write against the reads and writes that
+came earlier, INCLUDING the ones in earlier submissions. Without the second one a consumer re-uploading a vertex
+buffer per frame records the copy at the head of the next command buffer while the previous submission's
+`vkCmdDrawIndexed` is still fetching those bytes, and nothing in the backend orders the two: submission order
+alone is not an execution dependency, and the pool ring's fence waits on the submission FRAMES-IN-FLIGHT back
+rather than on the immediately preceding one. Both the record-time path and the device-level setup path bracket
+the copy the same way.
 
 ## Drawing: one order for five members, and the compute barriers that fall out of it
 
@@ -1160,6 +1168,15 @@ about to read. The incumbent emits one barrier, after the copy, naming `VERTEX_I
 `VERTEX_ATTRIBUTE_READ` and nothing else, which orders exactly one consumer and nothing on the source side at
 all. Two calls on a path that runs once per readback is the right price for closing a hazard class a golden on a
 software rasterizer cannot show.
+
+**The staged upload path is bracketed too, and it took the sync validation tier to notice it was not.** It
+carries the narrow per-range pair described under the barriers section rather than this global one, and it
+originally shipped with the after half alone, on the reasoning that a barrier before the copy would order
+nothing. That reasoning holds only if nothing read the destination first, which is false for every buffer a
+consumer updates once per frame ([#618](https://github.com/APKiwiOrg/KhaozEngine/issues/618)). The tier reported
+it as `SYNC-HAZARD-WRITE-AFTER-READ` at `vkQueueSubmit`, 138 instances across the golden family, which is
+precisely the shape a golden on lavapipe passes anyway because a software rasterizer orders the same command
+stream correctly regardless.
 
 ## `KE_VULKAN_DEVICE`, `KE_VULKAN_VALIDATION`, `KE_VULKAN_FRAMES_IN_FLIGHT` and `KE_VULKAN_PIPELINE_CACHE`
 

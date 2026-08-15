@@ -5279,7 +5279,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.36.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.36.2" />
 ```
 
 ```csharp
@@ -8159,6 +8159,13 @@ CrashReport.Install(new CrashReportOptions { ProcessLabel = "MyGame.Server" });
 Rules for consumers:
 
 - Configure `Log` once per process; call `Log.Shutdown()` on exit.
+- **Where you configure it in startup does not matter, and neither does what has already logged.** A logger from
+  `Log.For<T>()` / `Log.Get(...)` is bound to its category and to the facade, not to whichever manager was
+  configured when you asked for it, so it reads the current one on every call. Cache it in a
+  `static readonly ILogger` field if you like: touching the type before `Log.Configure` runs, or reconfiguring
+  afterwards to swap the sink set, leaves that field writing to the live manager either way (17.36.2, #616). The one
+  logger this does NOT apply to is `LogManager.GetLogger(...)`, which is bound to the manager you took it from,
+  on purpose, so an injected manager and its sink keep meaning what they say.
 - Pick a **category**, then log under it (pass an exception as the optional second argument):
   - A single class's logging → `Log.For<T>()` (category = the type name).
   - A feature/subsystem spanning several classes, or a game-side module with no single owning type → 
@@ -8729,7 +8736,7 @@ run inside the engine's process-wide device-creation gate, so a provider needs n
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.36.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.36.2" />
 ```
 
 ```csharp
@@ -8763,7 +8770,7 @@ that up front is what routes it through the reported fallback instead of a crash
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.36.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.36.2" />
 ```
 
 ```csharp
@@ -9001,7 +9008,7 @@ is no recovery path: a lost device stays lost, which is what the liveness token 
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.36.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.36.2" />
 ```
 
 ```csharp

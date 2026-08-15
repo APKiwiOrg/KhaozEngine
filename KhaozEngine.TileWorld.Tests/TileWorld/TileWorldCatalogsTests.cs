@@ -37,6 +37,27 @@ public class TileWorldCatalogsTests
         var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.Load(new[] { tmp.Sub("g.json"), tmp.Sub("g2.json") }));
         Assert.Contains("material 1", ex.Message);
         Assert.Contains("g2.json", ex.Message);
+        Assert.Contains("g.json", ex.Message);
+    }
+
+    [Fact]
+    public void Malformed_json_names_the_source()
+    {
+        var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.LoadJson("{ oops", "bad.json"));
+        Assert.Contains("bad.json", ex.Message);
+    }
+
+    // Pins the embedded schema itself. Every case here is one the JsonStringEnumConverter and the
+    // deserializer would happily accept, so gutting the schema to {} fails this test and only this test.
+    [Theory]
+    [InlineData("""{ "materials": [ { "id": 0, "name": "x", "color": "#000000" } ] }""")]
+    [InlineData("""{ "archetypes": [ { "id": "a", "name": "A", "meshRef": "m", "sizeX": 0 } ] }""")]
+    [InlineData("""{ "bogus": 1 }""")]
+    public void Schema_rejects_what_the_converter_would_accept(string json)
+    {
+        var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.LoadJson(json, "pin.json"));
+        Assert.Contains("does not match the schema", ex.Message);
+        Assert.Contains("pin.json", ex.Message);
     }
 
     [Fact]

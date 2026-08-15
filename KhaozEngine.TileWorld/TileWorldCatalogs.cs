@@ -129,7 +129,11 @@ public sealed class TileWorldCatalogs
     public static TileWorldCatalogs LoadJson(string json, string sourceName)
     {
         ArgumentNullException.ThrowIfNull(json);
-        ValidationReport report = JsonSchemaValidator.Validate(json, TileWorldSchema.GetCatalogJson());
+        // Validate parses the instance itself, so malformed JSON throws from HERE, not from the
+        // deserialize below. Both paths have to name the source or the caller gets a bare offset.
+        ValidationReport report;
+        try { report = JsonSchemaValidator.Validate(json, TileWorldSchema.GetCatalogJson()); }
+        catch (JsonException ex) { throw new TileWorldException($"{sourceName}: {ex.Message}", ex); }
         if (!report.IsValid)
             throw new TileWorldException($"{sourceName}: catalog does not match the schema: {string.Join("; ", report.Errors)}");
         CatalogFile file;

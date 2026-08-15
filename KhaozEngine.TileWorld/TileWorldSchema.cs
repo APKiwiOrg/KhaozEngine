@@ -1,13 +1,19 @@
+using System;
 using System.IO;
-using System.Reflection;
 
 namespace KhaozEngine.TileWorld;
 
 /// <summary>Accessors for the JSON schemas embedded in this package.</summary>
 public static class TileWorldSchema
 {
-    /// <summary>The catalog schema (materials and archetypes) as JSON text.</summary>
-    public static string GetCatalogJson() => Read("KhaozEngine.TileWorld.tileworld.catalog.schema.json");
+    // Lazy rather than a plain static field initializer: a missing resource then surfaces as the
+    // TileWorldException itself on every call, not as a TypeInitializationException wrapping it once.
+    static readonly Lazy<string> CatalogJson =
+        new(() => Read("KhaozEngine.TileWorld.tileworld.catalog.schema.json"));
+
+    /// <summary>The catalog schema (materials and archetypes) as JSON text, read from the embedded
+    /// resource once and cached.</summary>
+    public static string GetCatalogJson() => CatalogJson.Value;
 
     static string Read(string name)
     {

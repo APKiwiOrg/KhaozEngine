@@ -43,17 +43,19 @@
 #     the scheduled run" (docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md, decision table row M-T7 and
 #     its section 16 restatement). That doc records what was decided before the rung had ever run, and it is
 #     kept as history rather than edited, so the tier that actually runs is this file's. And it sets
-#     MTL_CAPTURE_ENABLED=1 on every trigger EXCEPT the deep tier, which is the only thing that runs the
+#     MTL_CAPTURE_ENABLED=1 on the `capture` dispatch tier ALONE, which is the only thing that runs the
 #     frame-capture interop end to end: without it Metal refuses the GPU-trace destination and the row asserts
 #     that nothing started, with it the capture really starts from the native queue pointer and writes a
-#     .gputrace bundle. The inverse trigger is measured, not preferred: a capture cannot share a process with
-#     MTL_SHADER_VALIDATION (the manager still reports the destination as supported and startCapture returns
-#     false), and the cost that was supposed to keep it off the push path is seconds (22.4s without it against
-#     25.0s with it, on this leg's own backend on an M2 Max, the measurement beside the variable itself
-#     below). Because those two are inverses, the deep tier is a DISPATCH
-#     INPUT rather than "any dispatch": every arm this leg has must be reachable on demand, and a dispatch that
-#     was always deep could never start a capture. `tier` defaults to deep, so an unattended dispatch is
-#     unchanged, and the cron now takes the capture path it could never take while the shader rung was armed.
+#     .gputrace bundle. That variable used to ride every trigger except the deep dispatch, and
+#     https://github.com/APKiwiOrg/KhaozEngine/issues/614 is what moved it: the capture is exclusive with the
+#     SHADER RUNG (the manager still reports the destination as supported and startCapture returns false) and,
+#     measured on real Metal for that issue, exclusive with the DEBUG DEVICE as well, because a process launched
+#     with it gets a CaptureMTLDevice where MTL_DEBUG_LAYER=1 alone gets the MTLDebugDevice that does the
+#     validating. So the arrangement it replaces left this leg's tier-one instrument INERT on every push, pull
+#     request and cron it ever ran, which is a fortnight of #614 artifacts in which the layer never objected to
+#     anything. Every arm this leg has must still be reachable on demand, so `tier` is a three-way dispatch
+#     input (push / deep / capture) rather than a switch between two, defaulting to deep so an unattended
+#     dispatch is unchanged, and every UNATTENDED trigger now takes the debug-device shape.
 #     NEITHER METAL TIER IS A SYNCHRONISATION VALIDATOR, and Metal has none at all: MTL_DEBUG_LAYER is API
 #     validation and MTL_SHADER_VALIDATION is in-shader bounds checking, and neither tracks read-after-write
 #     hazards across encoders. That is the one place this matrix is weaker on the Metal side than on the Vulkan
@@ -279,24 +281,84 @@ on:
         type: choice
         default: all
         options: [all, metal, metal-native, direct3d11, direct3d11-native, vulkan, vulkan-native]
-      # WHICH SHAPE A DISPATCH TAKES ON THE metal-native LEG, and it exists because two of that leg's
-      # variables are mutually exclusive by measurement: MTL_SHADER_VALIDATION arms on the deep tier and
-      # MTL_CAPTURE_ENABLED is its inverse, since a GPU-trace capture cannot start in a process with the shader
-      # rung armed. A dispatch used to be unconditionally deep, so the dispatch a human reached for to debug the
-      # capture path was the one trigger that disarmed it, which is an instrument nobody can aim.
-      # Default is 'deep', so an unattended dispatch still reaches the deeper rung without being asked.
+      # WHICH SHAPE A DISPATCH TAKES ON THE metal-native LEG, and it exists because that leg has THREE Metal
+      # process-launch variables and no two of the interesting ones can share a process. It was a two-way choice
+      # while the pair being separated was MTL_SHADER_VALIDATION against MTL_CAPTURE_ENABLED (a GPU-trace capture
+      # cannot start with the shader rung armed). It is a three-way choice now, because
+      # https://github.com/APKiwiOrg/KhaozEngine/issues/614 measured a SECOND exclusion that had been riding every
+      # unattended trigger unnoticed:
       #
-      # THE CRON IS NOT DEEP ANY MORE (https://github.com/APKiwiOrg/KhaozEngine/issues/617): shader validation
+      #   MTL_CAPTURE_ENABLED DISPLACES THE DEBUG DEVICE. A process launched with MTL_DEBUG_LAYER=1 alone gets a
+      #   device whose Objective-C class is MTLDebugDevice, which is the class that performs the API validation.
+      #   Add MTL_CAPTURE_ENABLED=1 and the device comes back as CaptureMTLDevice instead, and the engine's own
+      #   disambiguation warns that the run is probably not validated whatever the environment says. Measured on
+      #   this branch, on real Metal (Mac14,6 / Apple M2 Max, macOS 26.6.1 build 25G76), one row driven under
+      #   KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native at detailed verbosity:
+      #     * MTL_DEBUG_LAYER=1
+      #         [INFO] [MetalGpuDevice] ... The device class is MTLDebugDevice.
+      #       and no disambiguation warning at all.
+      #     * MTL_DEBUG_LAYER=1 MTL_CAPTURE_ENABLED=1
+      #         [INFO] [MetalGpuDevice] ... The device class is CaptureMTLDevice.
+      #         [WARN] [MetalGpuDevice] MTL_DEBUG_LAYER is armed in this process's launch environment and the
+      #         Metal device came back as CaptureMTLDevice ... this run is probably NOT validated.
+      #   So the two Metal instruments this leg carries are mutually exclusive in the same way the other pair is,
+      #   and the arrangement that shipped before this change armed BOTH on every push, every pull request and
+      #   every cron. Every debug-layer artifact this leg has ever uploaded on an unattended trigger is therefore
+      #   testimony from a disarmed instrument, which is why #614 has watched the leg fail one varying GPU test
+      #   per boot for a fortnight without the layer ever objecting to anything.
+      #
+      # THE THREE SHAPES, and what each one is for:
+      #   * push    - MTL_DEBUG_LAYER=1 alone. THE DEBUG DEVICE ACTUALLY HOLDS. This is the shape every
+      #               unattended trigger takes now (push, pull_request and the cron), so a dispatch of it
+      #               reproduces the push path exactly, which is what makes it the shape #614 dispatches at.
+      #   * deep    - the debug layer plus MTL_SHADER_VALIDATION=1. Dispatch only, see METAL_DEEP_TIER below.
+      #   * capture - the debug layer plus MTL_CAPTURE_ENABLED=1, which is the only shape that can really start
+      #               a GPU-trace capture and write a .gputrace bundle. It is a DISPATCH rather than a rider on
+      #               the push path now, for the exclusion measured above.
+      # 'capture' is its own option rather than something folded in beside shader validation, which is where the
+      # obvious move would have put it once it had to leave the push path: the two cannot share a process, and a
+      # capture armed beside the shader rung asserts against a platform fact rather than against the engine.
+      #
+      # WHAT MOVING THE CAPTURE OFF THE PUSH PATH COSTS, stated rather than glossed: MetalFrameCaptureTests'
+      # POSITIVE arm, the one that starts a capture from the native queue pointer and asserts the bundle, is
+      # attended-only coverage now, and its negative arm (an unarmed process refuses the destination) is the one
+      # every unattended trigger runs. That is the exact inverse of the split #617 left behind, and it is the
+      # right way round: a leg whose validation instrument is disarmed on every unattended run cannot testify
+      # about anything, while a capture interop that is exercised on demand is still exercised.
+      #
+      # THE CRON IS NOT DEEP (https://github.com/APKiwiOrg/KhaozEngine/issues/617): shader validation
       # renders nothing at all on the hosted paravirtual device while being fully green on real Apple silicon, so
       # a weekly arm reds the matrix on a rung that cannot testify about the code. The full reasoning and its
-      # three measurements are on METAL_DEEP_TIER below. This input is now the ONLY way to arm that rung, which
+      # three measurements are on METAL_DEEP_TIER below. This input is still the ONLY way to arm that rung, which
       # is what makes 'deep' still worth defaulting to: the trigger a human reaches for to investigate #617 is
       # the trigger that arms the thing being investigated. Read by the metal-native leg alone.
       tier:
-        description: 'metal-native only: "deep" arms shader validation (dispatch only, see #617), "push" arms the frame capture instead.'
+        description: 'metal-native only: "push" is the debug-device shape every unattended trigger takes, "deep" adds shader validation (see #617), "capture" arms the frame capture instead.'
         type: choice
         default: deep
-        options: [deep, push]
+        options: [deep, push, capture]
+      # THE #617 CONTROL EXPERIMENT, as an input because it is one question asked once rather than a tier anything
+      # should ride. That issue's diagnosis needs the INCUMBENT Metal leg run under MTL_SHADER_VALIDATION=1, which
+      # this matrix has never done: METAL_DEEP_TIER gates on matrix.backend == 'metal-native', so the incumbent
+      # leg's green on the run that failed 186 native rows is not the control it looks like. Green here says the
+      # rung is fine on the paravirtual runner and #617's failures are native-leg-specific. Red with the same
+      # blank-render shape says the runner drops work under the rung for any backend, and the rung belongs on real
+      # hardware only.
+      #
+      # SHADER VALIDATION ALONE, AND NEVER THE DEBUG LAYER, which is the whole reason this is its own input rather
+      # than a value of `tier`. MTL_DEBUG_LAYER at its default assert error mode used to abort the incumbent host
+      # outright, attributed by #621 to one row that stands down under the layer on the incumbent now, so the
+      # abort is fixed rather than theoretical. It is still not armed here: the layer's error mode gates the SUITE
+      # rather than a row, hosted macos-26 is not the machine that measurement was taken on, and a blocking golden
+      # leg is the wrong place to discover the next provoking row. MTL_SHADER_VALIDATION on its own does not abort
+      # the incumbent, measured on an M2 Max, which is what makes this control runnable at all.
+      #
+      # Default false, so every other trigger and every other dispatch leaves the incumbent leg exactly as it was:
+      # neither Metal variable, the escape hatch decision M-RO2 keeps selectable.
+      incumbentShaderValidation:
+        description: 'Incumbent metal leg only: arm MTL_SHADER_VALIDATION=1 there (the #617 control, never the debug layer)'
+        type: boolean
+        default: false
       # THE DISCRIMINATING KNOB FOR #614, and the reason it is an INPUT rather than a branch edit is that the
       # thing it has to split is per-boot. The metal-native leg fails roughly one varying GPU test per boot on
       # the hosted paravirtual adapter, deterministically wrong when it is wrong, and one hypothesis is the
@@ -515,10 +577,13 @@ jobs:
       # same departure the Vulkan sync job already documents and takes. A bake dispatch never reaches the test
       # step on this leg anyway (guest), so it needs no arm of its own here.
       #
-      # AND THE SAME PRINCIPLE POINTED AT THE OTHER VARIABLE, which is what the `tier` input is for. The capture
-      # is this tier's INVERSE, so "every dispatch is deep" made the one trigger a human can start the one
-      # trigger that cannot start a capture, and the capture path was reachable on demand nowhere. A dispatch
-      # picks now, defaulting to deep so an unattended one is unchanged.
+      # AND THE SAME PRINCIPLE POINTED AT THE OTHER TWO VARIABLES, which is what the `tier` input is for. It was
+      # a two-way choice while the capture was this tier's INVERSE ("every dispatch is deep" made the one trigger
+      # a human can start the one trigger that cannot start a capture). #614 then measured that the capture also
+      # displaces the DEBUG DEVICE, so it cannot ride the push path either, and the input became the three-way
+      # choice documented on it above. This predicate is now `tier == 'deep'` exactly rather than "anything but
+      # push", because 'capture' is a third shape and arming the shader rung on it would be the one combination
+      # both measurements forbid.
       #
       # THE CRON NO LONGER ARMS IT, AND THAT IS #617 (https://github.com/APKiwiOrg/KhaozEngine/issues/617). This
       # tier's first ever armed run failed 186 of 6201 rows on this leg (run 31581572414), and the failure is not
@@ -556,14 +621,15 @@ jobs:
       # the pass colour without drawing, which is every symptom above. That is the same silent-loss mechanism
       # #614 (https://github.com/APKiwiOrg/KhaozEngine/issues/614) carries as a live candidate for its own
       # varying failures on this leg, so one armed artifact is likely to answer both questions or neither.
-      # There is no control leg to appeal to either: the incumbent metal leg arms NEITHER Metal variable, so run
-      # 31581572414's green metal leg is not the control it looks like.
+      # There was no control leg to appeal to either: the incumbent metal leg armed NEITHER Metal variable, so run
+      # 31581572414's green metal leg is not the control it looks like. The `incumbentShaderValidation` input
+      # above is that control, and METAL_INCUMBENT_SHADER_RUNG below is what arms it.
       # The cron is always deep, so leaving this as it was turns the whole matrix red every Sunday on a rung
       # that cannot testify about the code. It is now DISPATCH ONLY: a human aims it, on purpose, at a
-      # question worth asking, and the cron keeps MTL_DEBUG_LAYER (armed on every run of this leg, below) plus
-      # the frame capture it could never take while this was armed. #617 stays open with the diagnosis, and the
-      # experiment that would close it is a deep dispatch with MTL_SHADER_VALIDATION armed on the INCUMBENT
-      # metal leg, which is the control this matrix has never had.
+      # question worth asking, and the cron keeps MTL_DEBUG_LAYER (armed on every run of this leg, below). It no
+      # longer keeps the frame capture beside it: #614 measured that the capture displaces the debug device, so
+      # the cron used to carry two instruments of which the armed one was the one it was not investigating.
+      # #617 stays open with the diagnosis.
       # THAT VARIABLE ALONE, AND THE DEBUG LAYER STAYS OFF THE INCUMBENT HERE, but the reason has changed and it
       # is no longer that nobody knows what aborts. The abort was
       #     -[MTLDebugRenderCommandEncoder validateCommonDrawErrors:]:6001: failed assertion
@@ -584,7 +650,22 @@ jobs:
       # the layer was a dispatch first. That dispatch is #617's control experiment to make.
       # MTL_SHADER_VALIDATION on its own does NOT abort the incumbent either: it runs the whole assembly green
       # under that variable, which is what makes the control experiment above possible at all.
-      METAL_DEEP_TIER: ${{ (matrix.backend == 'metal-native' && github.event_name == 'workflow_dispatch' && inputs.tier != 'push') && '1' || '' }}
+      METAL_DEEP_TIER: ${{ (matrix.backend == 'metal-native' && github.event_name == 'workflow_dispatch' && inputs.tier == 'deep') && '1' || '' }}
+      # WHETHER THIS RUN ARMS THE FRAME CAPTURE, as one expression with two readers (the variable and the
+      # artifact name), for the reason the two predicates above are one expression each.
+      #
+      # A DISPATCH AND NOTHING ELSE, which is the #614 change. This used to be METAL_DEEP_TIER's inverse, so it
+      # was armed on every push, every pull request and every cron, and that is precisely the arrangement that
+      # left the debug layer inert on every unattended run of this leg: the capture makes the device a
+      # CaptureMTLDevice instead of an MTLDebugDevice, measured on real Metal and quoted in full on the `tier`
+      # input above. The instrument the unattended triggers exist to carry is the debug layer, so the capture is
+      # the one that moves to an attended trigger.
+      METAL_CAPTURE_TIER: ${{ (matrix.backend == 'metal-native' && github.event_name == 'workflow_dispatch' && inputs.tier == 'capture') && '1' || '' }}
+      # WHETHER THIS RUN ARMS THE #617 CONTROL ON THE INCUMBENT METAL LEG, as one expression with three readers
+      # (the shader-validation variable, the detailed logger and the artifact name). The reasoning, including why
+      # it is shader validation alone and never the debug layer, is on the `incumbentShaderValidation` input.
+      # `matrix.backend == 'metal'` is the incumbent leg and nothing else: the native leg reads METAL_DEEP_TIER.
+      METAL_INCUMBENT_SHADER_RUNG: ${{ (matrix.backend == 'metal' && github.event_name == 'workflow_dispatch' && inputs.incumbentShaderValidation) && '1' || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -818,7 +899,14 @@ jobs:
           # shader, so it is the expensive half, and it is a DISPATCH rather than the weekly slot the Vulkan
           # strict tier holds, because #617 measured it rendering nothing at all on this runner. The predicate
           # lives once, in the METAL_DEEP_TIER job env above, with the whole reasoning beside it.
-          MTL_SHADER_VALIDATION: ${{ env.METAL_DEEP_TIER }}
+          #
+          # TWO LEGS CAN ARM THIS NOW, and they are different questions rather than one tier widened. On the
+          # native leg it is tier two of that leg's validation gate. On the INCUMBENT leg it is #617's control
+          # experiment, off by default and armed only by the `incumbentShaderValidation` dispatch input, asking
+          # whether the paravirtual runner drops work under the rung for any backend or only for ours. The two
+          # predicates stay separate expressions because they answer to different inputs and different legs, and
+          # they meet only here, where the variable is one name either way.
+          MTL_SHADER_VALIDATION: ${{ (env.METAL_DEEP_TIER != '' || env.METAL_INCUMBENT_SHADER_RUNG != '') && '1' || '' }}
           # NOT A VALIDATION TIER, and its trigger is the INVERSE of tier two's, which is a measurement rather
           # than a preference. Metal refuses a GPU-trace capture destination in a process that did not have this
           # set at launch, so without it MetalFrameCaptureTests asserts only that an unarmed process refuses, and
@@ -839,13 +927,23 @@ jobs:
           # end to a weekly sweep. So it rides EVERY trigger, which is strictly more coverage than the design
           # asked for, and stands aside on the one trigger that arms the rung it cannot live with.
           #
-          # AND THE NEGATIVE ROW MOVED WITH THE DEEP TIER. MetalFrameCaptureTests' unarmed assertion, that a
-          # process launched without this variable refuses the GPU-trace destination, used to ride the cron
-          # because the cron was always deep. Since #617 re-tiered that rung to a dispatch, a `tier=deep`
-          # dispatch is the only trigger that runs the negative path at all, so that half of the interop is
-          # ATTENDED-ONLY coverage now. Recorded rather than fixed: unattended coverage of the path that really
-          # starts a capture is worth more than unattended coverage of the path that asserts a refusal.
-          MTL_CAPTURE_ENABLED: ${{ (matrix.backend == 'metal-native' && env.METAL_DEEP_TIER == '') && '1' || '' }}
+          # AND A THIRD MEASUREMENT MOVED IT OFF EVERY UNATTENDED TRIGGER
+          # (https://github.com/APKiwiOrg/KhaozEngine/issues/614). This variable is not exclusive with the shader
+          # rung alone. It is exclusive with the DEBUG DEVICE as well: with it set, the device comes back as
+          # CaptureMTLDevice rather than MTLDebugDevice, and MTLDebugDevice is the class that performs the API
+          # validation. Both readings are quoted in full on the `tier` input at the top of this file. So the
+          # arrangement this replaces, capture on every trigger except the deep dispatch, meant the leg's tier-one
+          # instrument was disarmed on every push, every pull request and every cron it has ever run, which is why
+          # #614 has a fortnight of debug-layer artifacts in which the layer never objected to anything.
+          #
+          # THE TRADE IS NOW THE OTHER WAY ROUND, and the two and a half seconds above stopped being the argument
+          # the moment the cost turned out to be the instrument rather than the clock. The capture is a dispatch
+          # tier of its own (`tier=capture`), so MetalFrameCaptureTests' POSITIVE arm, the one that starts a
+          # capture from the native queue pointer and asserts the bundle it writes, is attended-only coverage, and
+          # its negative arm rides every unattended trigger. Recorded rather than regretted: a validation
+          # instrument that is disarmed whenever nobody is watching is worth less than a capture interop that is
+          # exercised when somebody is.
+          MTL_CAPTURE_ENABLED: ${{ env.METAL_CAPTURE_TIER }}
           # TIER ONE OF THE VALIDATION GATE (decision V-T4): core validation, error severity fails the leg at a
           # controlled point rather than inside the driver callback. On the FULL suite only, which is the same
           # schedule-and-dispatch condition KE_TEST_FILTER selects on below: the push path is the fast signal and
@@ -909,7 +1007,12 @@ jobs:
           # `Passed <TestName>` line per test crowds out some of what a terse tail would have carried. Every red
           # run #614 has actually read came off the cron or a dispatch, which were detailed already, so this
           # makes the push tail match the tail that instrument was designed against instead of diverging from it.
-          KE_TEST_LOGGER_ARGS: ${{ (env.VULKAN_VALIDATION_ARMED != '' || matrix.backend == 'metal-native') && '--logger console;verbosity=detailed' || '' }}
+          #
+          # AND THE INCUMBENT METAL LEG WHENEVER THE #617 CONTROL IS ARMED, for the same follow-the-instrument
+          # reason. That run configures the Metal sink, because the sink reads the process LAUNCH environment
+          # rather than the leg name, so without detailed verbosity its lines would land in the stream vstest
+          # discards and the control would produce exactly the unreadable artifact #617 already paid for once.
+          KE_TEST_LOGGER_ARGS: ${{ (env.VULKAN_VALIDATION_ARMED != '' || matrix.backend == 'metal-native' || env.METAL_INCUMBENT_SHADER_RUNG != '') && '--logger console;verbosity=detailed' || '' }}
           # THE THREE SHADER DISK CACHES, ALL FROM ONE VALUE (#614). Blank on every ordinary trigger, which is
           # the shipped default location, and `off` on a dispatch that asked for it. Each variable belongs to one
           # backend and is inert on the other two legs, so setting all three on every leg costs nothing and is
@@ -1008,6 +1111,89 @@ jobs:
             --filter "FullyQualifiedName~MetalBackendPackageTests.TheFourReads_AnswerOnARealDevice|FullyQualifiedName~GpuCapabilitiesDiagTests.LiveDeviceReportsNameAndSamplerFeatures|FullyQualifiedName~GpuDeviceDiagnosticsGpuTests.AdapterDescription_IsTheDeviceNameTheBackendReports" \
             --logger "console;verbosity=detailed" > device-evidence/engine-device-facts.txt 2>&1 || true
           tail -n 200 TestResults/suite-output.log > device-evidence/suite-output.tail.txt 2>&1 || true
+          # THE NAMED-LINE DETECTOR (https://github.com/APKiwiOrg/KhaozEngine/issues/614), and it is READ-ONLY
+          # DIAGNOSIS RATHER THAN A GATE. It never fails the step and the step is continue-on-error anyway: the
+          # leg's own test failure is already the gate, and a diagnostic that can red a leg is the second flake
+          # this issue does not need. What it does is answer, from the artifact alone and without downloading a
+          # 1.5MB log, the two questions every #614 boot has had to be re-read by hand to answer.
+          #
+          # FIRST, WAS THE INSTRUMENT ARMED. The sink announcement proves the test host configured a Metal sink at
+          # all, and the device-class readings prove which Objective-C class actually held the device. Those are
+          # not the same question as "which variables were set", which is the whole lesson of this change: an
+          # MTL_DEBUG_LAYER=1 run whose device is a CaptureMTLDevice is not validated. ZERO METAL LINES IS
+          # AMBIGUOUS without the announcement (a clean run and a lost producer look identical), which is why the
+          # absence is reported as an absence rather than as a clean bill.
+          #
+          # SECOND, DID THE DEVICE GO. MetalDeviceLossLatch logs a failed command buffer with its
+          # MTLCommandBufferError code, the driver's own description and the site that first saw it, and then
+          # fails nothing: it flips liveness, every later release is a no-op, drains return immediately, and every
+          # draw after it renders nothing. That is the faster-and-blank shape #617 diagnosed and #614's live
+          # candidate mechanism, and until now it could be firing on every frame with the artifact looking
+          # identical. A latch line appears NOWHERE in a clean run, which is what makes the category worth
+          # grepping at all.
+          #
+          # THE EXCLUSIONS ARE NAMED RATHER THAN FILTERED OUT, because a detector that silently drops lines is how
+          # a reader learns to distrust it. Measured locally at detailed verbosity on a green 6210-row run: two
+          # MetalTimeline dead-device lines at timeline values 1 and 9999 (rows that assert draining a dead device
+          # on purpose) and one MetalCompletionHandler error from a deliberately throwing test sink. Anything
+          # beyond those is new.
+          {
+            echo "==== #614 named-line detector: ${{ matrix.backend }}, run ${{ github.run_id }} attempt ${{ github.run_attempt }} ===="
+            log=TestResults/suite-output.log
+            if [ ! -f "$log" ]; then
+              echo "DEVICE-LOSS: UNREADABLE. $log does not exist, so this run never reached the suite step's tee"
+              echo "and the detector scanned nothing at all. Do not read this as a clean run."
+            else
+              sink=$(grep -c 'MetalValidationLogHost' "$log" 2>/dev/null || true)
+              if [ "${sink:-0}" -gt 0 ]; then
+                echo "SINK: configured, the Metal categories reach this log."
+                grep -m1 'MetalValidationLogHost' "$log" || true
+              else
+                echo "SINK: NOT CONFIGURED on this run, so no engine-side Metal line could have reached the log"
+                echo "whatever happened on the device. Every reading below is inconclusive by construction."
+              fi
+              echo "--- device class held by this boot ---"
+              grep -o 'The device class is [A-Za-z0-9_]*' "$log" 2>/dev/null | sort | uniq -c || true
+              armedwarn=$(grep -c 'rather than MTLDebugDevice' "$log" 2>/dev/null || true)
+              echo "debug-device disambiguation warnings: ${armedwarn:-0} (non-zero means the layer is NOT holding the device)"
+              grep -m1 'rather than MTLDebugDevice' "$log" || true
+              echo "--- MetalDeviceLossLatch ---"
+              # MATCHED ON THE CATEGORY TAG rather than on the bare type name, and the announcement line is
+              # excluded explicitly, because the first draft of this detector reported DEVICE-LOSS-OBSERVED on a
+              # green local run: MetalValidationConsoleLogging's announcement NAMES both the type and the message
+              # in its own prose ("every failed command buffer from MetalDeviceLossLatch ('A native Metal command
+              # buffer FAILED')"), so a word-level grep matches the line that says the sink is working. A detector
+              # that fires on every armed run is worth less than no detector, so it is pinned to the shape the
+              # latch actually logs: the category in brackets, and the message with the comma that continues it
+              # into "first noticed at <site>".
+              hits=$(mktemp)
+              grep -n -E '\[MetalDeviceLossLatch\]|A native Metal command buffer FAILED,' "$log" 2>/dev/null \
+                | grep -v 'MetalValidationLogHost' > "$hits" 2>/dev/null || true
+              latch=$(wc -l < "$hits" 2>/dev/null | tr -d ' ')
+              if [ "${latch:-0}" -gt 0 ]; then
+                echo "########## DEVICE-LOSS-OBSERVED: ${latch} line(s) ##########"
+                echo "A command buffer FAILED on this boot. Everything after it renders nothing and fails no row."
+                head -n 40 "$hits" || true
+              else
+                echo "DEVICE-LOSS: none. No MetalDeviceLossLatch line in this run's log."
+              fi
+              rm -f "$hits" || true
+              echo "--- MetalCompletionHandler errors (one is expected: the deliberately throwing test sink) ---"
+              ch=$(grep -c -E '\[ERROR\] \[MetalCompletionHandler\]' "$log" 2>/dev/null || true)
+              echo "count: ${ch:-0}"
+              grep -n -E '\[ERROR\] \[MetalCompletionHandler\]' "$log" | head -n 20 || true
+              echo "--- MetalTimeline dead-device drains (two are expected, at timeline values 1 and 9999) ---"
+              tl=$(grep -c 'because the device is dead' "$log" 2>/dev/null || true)
+              echo "count: ${tl:-0}"
+              grep -n 'because the device is dead' "$log" | head -n 20 || true
+              echo "--- what the Metal runtime itself said (debug layer, aborts, GPU faults) ---"
+              rt=$(grep -c -E '\-\[MTLDebug|failed assertion|was aborted due to an error|IOAF code|GPU Hang' "$log" 2>/dev/null || true)
+              echo "count: ${rt:-0}"
+              grep -n -E '\-\[MTLDebug|failed assertion|was aborted due to an error|IOAF code|GPU Hang' "$log" | head -n 40 || true
+            fi
+          } > device-evidence/device-loss.txt 2>&1 || true
+          # Echoed into the job log too, so the reading is visible without downloading an artifact. Kilobytes.
+          cat device-evidence/device-loss.txt || true
           ls -la device-evidence || true
         shell: bash
 
@@ -1075,11 +1261,23 @@ jobs:
       # Everything else in the log is Info: roughly 650 MetalGpuDevice lines, one set per device created, plus
       # the single MetalValidationLogHost announcement. A MetalDeviceLossLatch line appears NOWHERE in a clean
       # run, which is exactly what makes that category the thing a scan step should be looking for.
+      #
+      # THE NAME HAS FOUR CASES NOW rather than two, and every one of them is read off the expression that arms
+      # the thing it names, because #614 is the bill for a name that was false. `debug-layer` was this artifact's
+      # name on every unattended run while MTL_CAPTURE_ENABLED was displacing the debug device, so a reader who
+      # went looking for the layer's evidence found a file named for an instrument that was not holding the
+      # device. The cases:
+      #   * shader-validation - the deep dispatch on the native leg, and the #617 control on the incumbent.
+      #   * capture           - `tier=capture`, where the device is a CaptureMTLDevice and the layer is NOT the
+      #                         live instrument. Named for what it is rather than for what is merely set.
+      #   * debug-layer       - every unattended trigger on the native leg, and true again as of #614.
+      # The incumbent leg reaches this step only when the control armed it, so an ordinary run of that leg still
+      # uploads nothing at all.
       - name: Upload Metal validation log
-        if: always() && matrix.backend == 'metal-native'
+        if: always() && (matrix.backend == 'metal-native' || env.METAL_INCUMBENT_SHADER_RUNG != '')
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: metal-validation-${{ env.METAL_DEEP_TIER != '' && 'shader-validation' || 'debug-layer' }}-${{ matrix.backend }}
+          name: metal-validation-${{ (env.METAL_DEEP_TIER != '' || env.METAL_INCUMBENT_SHADER_RUNG != '') && 'shader-validation' || (env.METAL_CAPTURE_TIER != '' && 'capture' || 'debug-layer') }}-${{ matrix.backend }}
           path: TestResults/suite-output.log
           if-no-files-found: ignore
 

@@ -25,9 +25,11 @@ public static class TilePrefabFile
         public int Width { get; set; }
         public int Height { get; set; }
         public int PlaneCount { get; set; }
-        public List<PlaneDto?> Planes { get; set; } = new();
-        public List<TilePrefabObject> Objects { get; set; } = new();
-        public List<TilePrefabMarker> Markers { get; set; } = new();
+        // Nullable on purpose: a hand-written prefab may omit an array or spell it "null", and that must land as
+        // an empty list rather than a null field on a non-nullable property that blows up two calls later.
+        public List<PlaneDto?>? Planes { get; set; }
+        public List<TilePrefabObject>? Objects { get; set; }
+        public List<TilePrefabMarker>? Markers { get; set; }
     }
 
     /// <summary>Writes the prefab to <paramref name="path"/>, creating the directory and replacing atomically.</summary>
@@ -62,13 +64,20 @@ public static class TilePrefabFile
         try { dto = JsonSerializer.Deserialize<PrefabDto>(File.ReadAllBytes(path), TileWorldJson.Manifest) ?? throw new TileWorldException($"{path}: empty prefab"); }
         catch (JsonException ex) { throw new TileWorldException($"{path}: {ex.Message}", ex); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { throw new TileWorldException($"{path}: cannot read prefab. {ex.Message}", ex); }
-        if (dto.Width < 1 || dto.Height < 1 || dto.PlaneCount < 1 || dto.Planes.Count != dto.PlaneCount)
+        List<PlaneDto?> planes = dto.Planes ?? new();
+        if (dto.Width < 1 || dto.Height < 1 || dto.PlaneCount < 1 || planes.Count != dto.PlaneCount)
             throw new TileWorldException($"{path}: prefab dimensions are inconsistent");
         int tiles = dto.Width * dto.Height, corners = (dto.Width + 1) * (dto.Height + 1);
-        var prefab = new TilePrefab { Name = dto.Name, Width = dto.Width, Height = dto.Height, PlaneCount = dto.PlaneCount, Objects = dto.Objects, Markers = dto.Markers };
-        for (int i = 0; i < dto.Planes.Count; i++)
+        var prefab = new TilePrefab { Name = dto.Name, Width = dto.Width, Height = dto.Height, PlaneCount = dto.PlaneCount, Objects = dto.Objects ?? new(), Markers = dto.Markers ?? new() };
+        foreach (TilePrefabObject o in prefab.Objects)
+            if (!InFootprint(prefab, o.X, o.Z))
+                throw new TileWorldException($"{path}: object '{o.ArchetypeId}' at ({o.X}, {o.Z}) is outside the {prefab.Width}x{prefab.Height} prefab");
+        foreach (TilePrefabMarker m in prefab.Markers)
+            if (!InFootprint(prefab, m.X, m.Z))
+                throw new TileWorldException($"{path}: marker '{m.Name}' at ({m.X}, {m.Z}) is outside the {prefab.Width}x{prefab.Height} prefab");
+        for (int i = 0; i < planes.Count; i++)
         {
-            PlaneDto? p = dto.Planes[i];
+            PlaneDto? p = planes[i];
             string where = $"{path} plane {i}";
             prefab.Planes.Add(p is null ? null : new TilePrefabPlane
             {
@@ -82,4 +91,6 @@ public static class TilePrefabFile
         }
         return prefab;
     }
+
+    static bool InFootprint(TilePrefab p, int x, int z) => x >= 0 && x < p.Width && z >= 0 && z < p.Height;
 }

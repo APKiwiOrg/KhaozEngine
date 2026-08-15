@@ -1,3 +1,4 @@
+using System.IO;
 using System.Linq;
 using KhaozEngine.TileWorld;
 using Xunit;
@@ -55,6 +56,26 @@ public class TilePrefabTests
         // The rotated SW corner came from the old (3, 0) corner at relative -100, so re-basing lifts every corner by 100.
         Assert.Equal(300 - 100 + 100, r.Planes[0]!.HeightsRelative![0 * 3 + 2]);
         Assert.Equal(0, r.Planes[0]!.HeightsRelative![0]);
+        TilePrefabMarker door = r.Markers.Single();
+        Assert.Equal((0, 0), (door.X, door.Z));
+    }
+
+    [Fact]
+    public void Rotating_bumps_overlay_rotation_even_when_the_layer_was_trimmed()
+    {
+        TileWorldDocument doc = TileWorldTestData.FlatWorld(2, new RegionCoord(0, 0));
+        for (int x = 4; x < 6; x++)
+            for (int z = 4; z < 6; z++)
+            {
+                doc.SetOverlay(x, z, 0, 6);
+                doc.SetOverlayShape(x, z, 0, TileOverlayShape.DiagonalHalf);
+            }
+        TilePrefab p = TilePrefabs.Extract(doc, Cat, new TileRect(4, 4, 2, 2), 0, 1);
+        Assert.Null(p.Planes[0]!.OverlayRotation);
+        TilePrefab r = TilePrefabs.Rotate(p, 1);
+        Assert.NotNull(r.Planes[0]!.OverlayRotation);
+        for (int i = 0; i < r.Planes[0]!.Overlay!.Length; i++)
+            Assert.Equal(r.Planes[0]!.Overlay![i] != 0 ? 1 : 0, r.Planes[0]!.OverlayRotation![i]);
     }
 
     [Fact]
@@ -64,6 +85,7 @@ public class TilePrefabTests
         TilePrefab r = TilePrefabs.Rotate(TilePrefabs.Rotate(TilePrefabs.Rotate(TilePrefabs.Rotate(p, 1), 1), 1), 1);
         Assert.Equal(p.Planes[0]!.Overlay, r.Planes[0]!.Overlay);
         Assert.Equal(p.Planes[0]!.HeightsRelative, r.Planes[0]!.HeightsRelative);
+        Assert.Equal(p.Planes[1]!.HeightsRelative, r.Planes[1]!.HeightsRelative);
         Assert.Equal(p.Objects.Select(o => (o.X, o.Z, o.Rotation)), r.Objects.Select(o => (o.X, o.Z, o.Rotation)));
     }
 
@@ -88,8 +110,10 @@ public class TilePrefabTests
         Assert.Equal(expected.Planes[1]!.Underlay, back.Planes[1]!.Underlay);
         Assert.Equal(expected.Objects.Select(o => (o.ArchetypeId, o.X, o.Z, o.Plane, o.Rotation)).OrderBy(t => t),
                      back.Objects.Select(o => (o.ArchetypeId, o.X, o.Z, o.Plane, o.Rotation)).OrderBy(t => t));
-        // The datum invariant: the prefab's SW corner lands on the target's existing ground under every rotation.
+        // The datum invariant: the prefab's SW corner lands on the target's existing ground under every rotation,
+        // and the re-base moves every plane by the same shift, so plane 1 keeps its lift above plane 0.
         Assert.Equal(50, doc.CornerHeightCm(40, 40, 0));
+        Assert.Equal(50 + doc.PlaneHeightCm, doc.CornerHeightCm(40, 40, 1));
         Assert.True(touched.Contains(39, 39));
         Assert.True(touched.Contains(40 + expected.Width, 40 + expected.Height));
         Assert.All(doc.AllObjects().Where(o => o.X >= 40), o => Assert.True(o.Id > 2));
@@ -115,6 +139,40 @@ public class TilePrefabTests
         Assert.Equal("house", back.Name);
         Assert.Equal(p.Planes[0]!.HeightsRelative, back.Planes[0]!.HeightsRelative);
         Assert.Equal(p.Objects.Count, back.Objects.Count);
+        TilePrefabObject rock = back.Objects.First(o => o.ArchetypeId == "rock_large");
+        Assert.Equal((2, 2), (rock.SizeX, rock.SizeZ));
         Assert.Null(back.Planes[1]!.Overlay);
+    }
+
+    [Fact]
+    public void Place_rejects_a_prefab_whose_layers_do_not_match_its_size()
+    {
+        TileWorldDocument doc = HouseWorld();
+        TilePrefab p = TilePrefabs.Extract(doc, Cat, new TileRect(10, 10, 3, 2), 0, 1);
+        p.Planes[0]!.Underlay = new ushort[5];
+        Assert.Throws<TileWorldException>(() => TilePrefabs.Place(doc, p, 40, 40, 0, 1));
+        Assert.Equal(0, doc.GetOverlay(40, 40, 0));
+    }
+
+    [Fact]
+    public void Loading_a_prefab_with_an_object_outside_its_footprint_throws()
+    {
+        using var tmp = new TempDir();
+        TilePrefab p = TilePrefabs.Extract(HouseWorld(), Cat, new TileRect(10, 10, 3, 2), 0, 1);
+        p.Objects[0].X = 7;
+        TilePrefabFile.Save(p, tmp.Sub("bad.json"));
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => TilePrefabFile.Load(tmp.Sub("bad.json")));
+        Assert.Contains("bad.json", ex.Message);
+    }
+
+    [Fact]
+    public void Loading_a_prefab_with_null_object_and_marker_arrays_gives_empty_lists()
+    {
+        using var tmp = new TempDir();
+        string path = tmp.Sub("sparse.json");
+        File.WriteAllText(path, "{\"name\":\"s\",\"width\":1,\"height\":1,\"planeCount\":1,\"planes\":[null],\"objects\":null,\"markers\":null}");
+        TilePrefab p = TilePrefabFile.Load(path);
+        Assert.Empty(p.Objects);
+        Assert.Empty(p.Markers);
     }
 }

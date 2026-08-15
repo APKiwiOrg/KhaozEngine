@@ -169,6 +169,11 @@ public static class TilePrefabs
         TilePrefab result = Clone(prefab);
         for (int i = 0; i < (rotation & 3); i++) result = RotateOnce(result);
         Rebase(result);
+        // Re-canonicalise, so a rotated prefab is shaped exactly like an Extract of the same content: the
+        // re-base and the overlay-rotation bump can both drive a layer to all-default, and a stale array there
+        // would carry a "written" layer that Extract would have dropped.
+        foreach (TilePrefabPlane? plane in result.Planes)
+            if (plane is not null) TrimPlane(plane);
         return result;
     }
 
@@ -181,6 +186,9 @@ public static class TilePrefabs
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentNullException.ThrowIfNull(prefab);
+        // Shape first, before the turn: rotating a mis-sized layer would fail with a raw index error instead of
+        // a message naming the prefab. Then the regions, so the whole pre-flight is done before the first write.
+        RequireShape(prefab);
         TilePrefab p = Rotate(prefab, rotation);
         int w = p.Width, h = p.Height;
         for (int tz = z; tz < z + h; tz++)
@@ -212,6 +220,34 @@ public static class TilePrefabs
         foreach (TilePrefabMarker m in p.Markers)
             if (plane + m.Plane < doc.PlaneCount) doc.SetMarker(m.Name, x + m.X, z + m.Z, plane + m.Plane, m.Tags);
         return TileRect.FromCorners(x - 1, z - 1, x + w, z + h);
+    }
+
+    // A prefab can arrive hand-built or straight off disk, so its arrays are checked against its declared size
+    // before anything is written rather than tearing half way through a stamp.
+    static void RequireShape(TilePrefab p)
+    {
+        if (p.Width < 1 || p.Height < 1)
+            throw new TileWorldException($"prefab '{p.Name}': size {p.Width}x{p.Height} is not positive");
+        if (p.Planes.Count != p.PlaneCount)
+            throw new TileWorldException($"prefab '{p.Name}': declares {p.PlaneCount} planes but carries {p.Planes.Count}");
+        int tiles = p.Width * p.Height, corners = (p.Width + 1) * (p.Height + 1);
+        for (int i = 0; i < p.Planes.Count; i++)
+        {
+            TilePrefabPlane? plane = p.Planes[i];
+            if (plane is null) continue;
+            RequireLength(p, i, "heights", plane.HeightsRelative?.Length, corners);
+            RequireLength(p, i, "underlay", plane.Underlay?.Length, tiles);
+            RequireLength(p, i, "overlay", plane.Overlay?.Length, tiles);
+            RequireLength(p, i, "overlayShape", plane.OverlayShape?.Length, tiles);
+            RequireLength(p, i, "overlayRotation", plane.OverlayRotation?.Length, tiles);
+            RequireLength(p, i, "settings", plane.Settings?.Length, tiles);
+        }
+    }
+
+    static void RequireLength(TilePrefab p, int plane, string layer, int? actual, int expected)
+    {
+        if (actual is not null && actual.Value != expected)
+            throw new TileWorldException($"prefab '{p.Name}': plane {plane} {layer} has {actual.Value} entries, expected {expected} for {p.Width}x{p.Height}");
     }
 
     // A turn moves the SW corner to a different physical corner, so the heights come out relative to a corner
@@ -248,9 +284,16 @@ public static class TilePrefabs
                 OverlayRotation = plane.OverlayRotation is null ? null : RotateTiles(plane.OverlayRotation, w, h),
                 Settings = plane.Settings is null ? null : RotateTiles(plane.Settings, w, h),
             };
-            if (np.OverlayRotation is not null && np.Overlay is not null)
+            // Turning the tiles turns the overlays with them. TrimPlane nulls an all-zero rotation layer
+            // independently of Overlay, so a prefab whose overlays are all authored at rotation 0 arrives here
+            // with no layer at all: materialise it rather than skipping the bump, or a DiagonalHalf path comes
+            // out of a quarter turn still pointing the old way.
+            if (np.Overlay is not null)
+            {
+                np.OverlayRotation ??= new byte[w * h];
                 for (int i = 0; i < np.OverlayRotation.Length; i++)
                     if (np.Overlay[i] != 0) np.OverlayRotation[i] = (byte)((np.OverlayRotation[i] + 1) & 3);
+            }
             r.Planes.Add(np);
         }
         foreach (TilePrefabObject o in p.Objects)

@@ -38,7 +38,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
         bool ShaderValidationSetInProcessOnly)
     {
         /// <summary>Whether the tier asked for is higher than the tier that is armed, which is the case worth a
-        /// WARN: the tester believes they are validating and they are not.</summary>
+        /// WARN: the tester believes they are validating and they are not.
+        /// <para>
+        /// IT COMPARES RUNGS, AND THE RUNGS ARE NOT NESTED, so it misses one combination: a process asking for
+        /// <see cref="MetalValidationMode.On"/> with only <c>MTL_SHADER_VALIDATION</c> armed reads as
+        /// <see cref="MetalValidationMode.Shaders"/>, which is the HIGHER rung, so nothing warns even though the
+        /// API validation tier it asked for is absent. Recorded as
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/634 rather than fixed here, because the fix compares
+        /// per-variable instead and that changes what this WARN means.
+        /// </para>
+        /// </summary>
         internal bool RequestedMoreThanArmed => Requested > Armed;
     }
 
@@ -100,9 +109,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
             (bool shaderArmed, bool shaderInProcessOnly) =
                 ReadProcessVariable(MetalValidation.ShaderValidationVar);
 
-            // Shader validation is the higher rung and implies the API layer, so a process that armed only the
-            // shader variable still reports the higher tier. Reporting Off there would be the reverse of the
-            // failure this whole type exists to prevent.
+            // Shader validation is the higher RUNG on this ordering, so a process that armed only the shader
+            // variable still reports the higher tier. Reporting Off there would be the reverse of the failure
+            // this whole type exists to prevent.
+            //
+            // The rung does NOT imply the API layer, and reading it that way is what #628 was. MTL_SHADER_
+            // VALIDATION alone gets in-shader bounds checking WITHOUT the API validation tier, which is what
+            // MetalValidation.ActiveDescription says on that branch and what the device class confirms:
+            // MTLGPUDebugDevice or MTLLegacySVDevice comes back rather than MTLDebugDevice, and the two are
+            // different wrappers rather than one nested in the other.
             MetalValidationMode armed = shaderArmed
                 ? MetalValidationMode.Shaders
                 : debugArmed ? MetalValidationMode.On : MetalValidationMode.Off;

@@ -338,7 +338,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 : "That combination has not been observed, so it is worth reporting with the macOS version "
                     + "attached.";
 
-            return $"{armed} armed in this process's launch environment, which gets {expectedName}, and the "
+            // "is" or "are" by the count ArmedVariables just named, because this line reads back a variable list
+            // that is one name or two and a missing verb reads as a truncated message.
+            string armedVerb = debugLayerArmed && shaderValidationArmed ? "are" : "is";
+
+            return $"{armed} {armedVerb} armed in this process's launch environment, which gets {expectedName}, "
+                + "and the "
                 + $"Metal device came back as {deviceClassName} instead, which is "
                 + Describe(ClassifyDevice(deviceClassName))
                 + ". Believe the device: this run is probably NOT validated, whatever the environment says. "

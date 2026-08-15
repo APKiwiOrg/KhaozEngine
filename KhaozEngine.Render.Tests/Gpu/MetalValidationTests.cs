@@ -194,8 +194,9 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains("SHADER VALIDATION", line, StringComparison.Ordinal);
             Assert.Contains("MTLDebugDevice", line, StringComparison.Ordinal);
             // Section 16 is explicit that neither tier is a synchronisation validator, and the API tier's line is
-            // where a reader would otherwise assume it was.
-            Assert.Contains("synchronisation validator",
+            // where a reader would otherwise assume it was. Asserted as the whole clause: "synchronisation
+            // validator" on its own passes on a line claiming the opposite just as happily.
+            Assert.Contains("Neither tier is a synchronisation validator",
                 MetalValidation.ActiveDescription(true, false, "MTLDebugDevice"),
                 StringComparison.Ordinal);
         }

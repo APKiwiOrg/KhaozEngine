@@ -16,9 +16,10 @@ public sealed class TileGroundMesherOptions
     public bool SmoothNormals { get; set; } = true;
 }
 
-/// <summary>Builds the vertex-coloured ground mesh of one region-plane for the existing lit model path: two
-/// triangles per drawable tile, corner colours blended from the tiles that share the corner, and normals read
-/// from the global lattice so neighbouring regions agree exactly at their shared border.</summary>
+/// <summary>Builds the vertex-coloured ground mesh of one region-plane for the existing lit model path: each
+/// drawable tile cut into triangles by the shared <see cref="TileTriangulation"/> (two for a plain tile or a
+/// diagonal half, four for a corner cut), corner colours blended from the tiles that share the corner, and
+/// normals read from the global lattice so neighbouring regions agree exactly at their shared border.</summary>
 public static partial class TileGroundMesher
 {
     /// <summary>What a tile whose material id is missing from the catalogs renders as, so a dangling id is
@@ -134,31 +135,13 @@ public static partial class TileGroundMesher
             flat = new Vector4(overlayColor.X, overlayColor.Y, overlayColor.Z, 1f);
         }
 
-        // A shape only cuts the tile when there is an overlay material to paint into the cut. A shape with no
-        // overlay, and a shape id this build does not know, both fall through to the plain full tile below.
-        if (flat is not null && TryAddShapedTile(mesh, c, lx, lz, shape, rotation, flat.Value, swne)) return;
-
-        ModelVertex sw = CornerVertex(c, lx, lz, 0, 0, flat);
-        ModelVertex se = CornerVertex(c, lx, lz, 1, 0, flat);
-        ModelVertex nw = CornerVertex(c, lx, lz, 0, 1, flat);
-        ModelVertex ne = CornerVertex(c, lx, lz, 1, 1, flat);
-
-        if (swne)
-        {
-            AddTriangle(mesh, c, sw, se, ne);
-            AddTriangle(mesh, c, sw, ne, nw);
-        }
-        else
-        {
-            AddTriangle(mesh, c, sw, se, nw);
-            AddTriangle(mesh, c, se, ne, nw);
-        }
+        // A shape only cuts the tile when there is an overlay material to paint into the cut, so a shape with no
+        // overlay meshes as the plain pair. The raycast reads the same two facts the same way, which is what keeps
+        // a click on the triangle that was drawn. The split still comes from the authored shape above, because a
+        // diagonal half forces the diagonal whether or not its material survived.
+        TileOverlayShape cut = flat is null ? TileOverlayShape.Full : shape;
+        AddCutTile(mesh, c, lx, lz, cut, rotation, flat, swne);
     }
-
-    /// <summary>One corner of the tile at region-local (lx, lz), offset by a 0 or 1 corner step on each axis.
-    /// A non-null <paramref name="flat"/> is the overlay colour, which replaces the blended underlay.</summary>
-    static ModelVertex CornerVertex(in TileMeshContext c, int lx, int lz, int dx, int dz, Vector4? flat) =>
-        Corner(c, lx, lz, dx, dz, flat).ToVertex(null);
 
     /// <summary>Adds a triangle, replacing the three corner normals with the triangle's own when the options ask
     /// for flat shading.</summary>

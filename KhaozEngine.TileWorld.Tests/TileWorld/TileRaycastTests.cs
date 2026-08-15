@@ -66,6 +66,30 @@ public class TileRaycastTests
     }
 
     [Fact]
+    public void A_corner_cut_is_picked_on_the_fan_the_mesher_draws()
+    {
+        TileWorldDocument doc = TileWorldTestData.FlatWorld();
+        doc.SetOverlay(10, 10, 0, 2);
+        doc.SetOverlayShape(10, 10, 0, TileOverlayShape.CornerQuarter);
+        doc.SetOverlayRotation(10, 10, 0, 0);
+        doc.SetCornerHeightCm(11, 11, 0, 100);
+
+        // The cut fans the tile from its south mid-edge point, which puts the centre on the triangle
+        // (MidS, NE, NW), a quarter of the way up the raised corner. The plain pair would report 0 there, which
+        // is the whole reason the raycast goes through the same triangulation the mesher draws.
+        TileHit? hit = TileRaycast.Pick(doc, 0, new Vector3(10.5f, 50f, 10.5f), new Vector3(0, -1, 0));
+        Assert.NotNull(hit);
+        Assert.Equal((10, 10), (hit!.Value.X, hit.Value.Z));
+        Assert.Equal(0.25f, hit.Value.Point.Y, 3);
+
+        // Take the material away and the shape has nothing to cut with, so the tile picks as the plain pair.
+        doc.SetOverlay(10, 10, 0, 0);
+        TileHit? plain = TileRaycast.Pick(doc, 0, new Vector3(10.5f, 50f, 10.5f), new Vector3(0, -1, 0));
+        Assert.NotNull(plain);
+        Assert.Equal(0f, plain!.Value.Point.Y, 3);
+    }
+
+    [Fact]
     public void Void_tiles_and_missing_regions_are_not_hit()
     {
         TileWorldDocument doc = TileWorldTestData.FlatWorld();

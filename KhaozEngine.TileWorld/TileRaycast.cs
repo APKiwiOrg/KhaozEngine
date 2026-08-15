@@ -53,25 +53,47 @@ public static class TileRaycast
         var se = new Vector3((tx + 1) * ts, h10 * 0.01f, tz * ts);
         var nw = new Vector3(tx * ts, h01 * 0.01f, (tz + 1) * ts);
         var ne = new Vector3((tx + 1) * ts, h11 * 0.01f, (tz + 1) * ts);
-        bool swne = TileTriangulation.SplitSwNe(h00, h10, h01, h11, doc.GetOverlayShape(tx, tz, plane), doc.GetOverlayRotation(tx, tz, plane));
+        TileOverlayShape authored = doc.GetOverlayShape(tx, tz, plane);
+        int rotation = doc.GetOverlayRotation(tx, tz, plane);
+        bool swne = TileTriangulation.SplitSwNe(h00, h10, h01, h11, authored, rotation);
 
-        // This vertex order winds a DOWNWARD normal, harmless here because Intersect is two-sided. A mesher
-        // that back-face culls must wind the other way round.
+        // The shape only cuts the tile when there is an overlay material to paint into the cut, which is exactly
+        // what the mesher draws. Going through the shared triangulation is what keeps a click on the triangle
+        // that is drawn: a corner cut is a four triangle fan, and testing the plain pair instead would report the
+        // wrong height in the middle of a tile whose corners are not coplanar.
+        TileOverlayShape shape = doc.GetOverlay(tx, tz, plane) != 0 ? authored : TileOverlayShape.Full;
+        Span<TileTriangle> triangles = stackalloc TileTriangle[TileTriangulation.MaxTriangles];
+        int count = TileTriangulation.Triangulate(shape, rotation, swne, triangles);
+
+        // These triangles wind a DOWNWARD normal, harmless here because Intersect is two-sided.
         float best = float.PositiveInfinity;
-        if (swne)
+        for (int i = 0; i < count; i++)
         {
-            if (Intersect(origin, dir, sw, se, ne, out float t0) && t0 < best) best = t0;
-            if (Intersect(origin, dir, sw, ne, nw, out float t1) && t1 < best) best = t1;
-        }
-        else
-        {
-            if (Intersect(origin, dir, sw, se, nw, out float t0) && t0 < best) best = t0;
-            if (Intersect(origin, dir, se, ne, nw, out float t1) && t1 < best) best = t1;
+            Vector3 a = PointAt(triangles[i].A, sw, se, nw, ne);
+            Vector3 b = PointAt(triangles[i].B, sw, se, nw, ne);
+            Vector3 c = PointAt(triangles[i].C, sw, se, nw, ne);
+            if (Intersect(origin, dir, a, b, c, out float t) && t < best) best = t;
         }
         if (float.IsPositiveInfinity(best) || best > maxDistance) return false;
         hit = new TileHit(tx, tz, plane, origin + dir * best, best);
         return true;
     }
+
+    // Where a lattice point sits on this tile: a corner as it stands, a mid-edge point midway between the two
+    // corners it lies between, which is the same averaging the mesher's vertices use.
+    static Vector3 PointAt(TilePoint point, in Vector3 sw, in Vector3 se, in Vector3 nw, in Vector3 ne)
+    {
+        TileTriangulation.Ends(point, out TilePoint first, out TilePoint second);
+        return (CornerAt(first, sw, se, nw, ne) + CornerAt(second, sw, se, nw, ne)) * 0.5f;
+    }
+
+    static Vector3 CornerAt(TilePoint corner, in Vector3 sw, in Vector3 se, in Vector3 nw, in Vector3 ne) => corner switch
+    {
+        TilePoint.Se => se,
+        TilePoint.Nw => nw,
+        TilePoint.Ne => ne,
+        _ => sw,
+    };
 
     /// <summary>Möller-Trumbore, both faces, t >= 0.</summary>
     static bool Intersect(Vector3 o, Vector3 d, Vector3 a, Vector3 b, Vector3 c, out float t)

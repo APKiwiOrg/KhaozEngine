@@ -19,7 +19,9 @@ public interface ITileMeshResolver
 /// the archetype's footprint and shaped by its collision kind, so a world renders recognisably before any mesh
 /// is authored. Boxes are centred on the footprint in x and z with their base at y 0, matching the anchor the
 /// object-to-prop pass produces, and a wall hugs the WEST edge of its footprint so instance rotation 0 reads as
-/// a west wall. Used by the tests and as the engine's default placeholder.</summary>
+/// a west wall. Only the footprint extent scales with the tile size: every thickness and height here (wall,
+/// roof, tree, post, the default box) is an absolute measurement in metres, so a bigger tile makes a wider
+/// wall, never a taller one. Used by the tests and as the engine's default placeholder.</summary>
 public sealed class GreyboxMeshResolver : ITileMeshResolver
 {
     /// <summary>Thickness in metres of a wall slab, across the edge it sits on.</summary>
@@ -46,14 +48,15 @@ public sealed class GreyboxMeshResolver : ITileMeshResolver
     public GreyboxMeshResolver(float tileSize = TileWorldDocument.DefaultTileSize) => _tileSize = tileSize;
 
     /// <summary>The single-part box for this archetype, built once and handed back on every later call. Never
-    /// null, because the greybox resolver has a shape for everything.</summary>
+    /// null, because the greybox resolver has a shape for everything. The list is read-only, so a caller cannot
+    /// write through it into the shared cache.</summary>
     public IReadOnlyList<GltfMeshPart>? Resolve(TileObjectArchetype archetype)
     {
         ArgumentNullException.ThrowIfNull(archetype);
         if (_cache.TryGetValue(archetype.Id, out IReadOnlyList<GltfMeshPart>? cached)) return cached;
 
         // A default GltfMaterialMaps is the untextured form: the model path then lights the vertex colour alone.
-        var parts = new[] { new GltfMeshPart(BuildMesh(archetype), default) };
+        IReadOnlyList<GltfMeshPart> parts = Array.AsReadOnly(new[] { new GltfMeshPart(BuildMesh(archetype), default) });
         _cache[archetype.Id] = parts;
         return parts;
     }
@@ -102,6 +105,12 @@ public sealed class GreyboxMeshResolver : ITileMeshResolver
         return new GltfMesh(vertices, indices);
     }
 
+    // Exact ids, not a prefix match. A prefix silently captures anything a game's catalogs happen to name
+    // alike (a "rockery_wall" is not a rock), and the greybox catalogs are a closed set, so matching the ids
+    // outright says exactly which archetypes get the shape and stops guessing about the rest.
+    static readonly HashSet<string> TreeIds = new(StringComparer.Ordinal) { "tree" };
+    static readonly HashSet<string> RockIds = new(StringComparer.Ordinal) { "rock", "rock_large" };
+
     // Greys, browns and greens: enough separation to tell archetypes apart, dull enough to read as greybox.
     static readonly Vector3[] Palette =
     {
@@ -135,12 +144,12 @@ public sealed class GreyboxMeshResolver : ITileMeshResolver
                 return Box(new Vector3(-post, 0f, -post), new Vector3(post, WallHeight, post), color);
         }
 
-        if (string.Equals(a.Id, "tree", StringComparison.Ordinal))
+        if (TreeIds.Contains(a.Id))
         {
             float trunk = TreeWidth * 0.5f;
             return Box(new Vector3(-trunk, 0f, -trunk), new Vector3(trunk, TreeHeight, trunk), color);
         }
-        if (a.Id.StartsWith("rock", StringComparison.Ordinal))
+        if (RockIds.Contains(a.Id))
             return Box(new Vector3(-halfX, 0f, -halfZ), new Vector3(halfX, RockHeight, halfZ), color);
 
         return Box(new Vector3(-halfX, 0f, -halfZ), new Vector3(halfX, DefaultHeight, halfZ), color);

@@ -64,7 +64,12 @@ public class TileObjectPropsTests
             p.X == (TileRenderTestData.HouseDoorX + 0.5f) * doc.TileSize &&
             p.Z == (TileRenderTestData.HouseMaxZ + 0.5f) * doc.TileSize);
 
-        Assert.Equal(TileObjectProps.YawRadians(Archetype("wall"), 1), wall.Yaw, Tolerance);
+        // Assert the north yaw directly rather than against YawRadians, so this test still fails if the whole
+        // convention flips sign underneath both of them.
+        Vector3 turned = Vector3.Transform(new Vector3(-0.5f, 0f, 0f), Matrix4x4.CreateRotationY(wall.Yaw));
+        Assert.Equal(0f, turned.X, Tolerance);
+        Assert.Equal(0.5f, turned.Z, Tolerance);
+
         Assert.Equal(0f, wall.Y, Tolerance);
         Assert.Equal(1f, wall.Scale, Tolerance);
         Assert.Equal(0, wall.Variant);
@@ -121,6 +126,26 @@ public class TileObjectPropsTests
 
         Assert.Equal(doc.HeightAt(tree.X, tree.Z, 0), tree.Y, Tolerance);
         Assert.True(tree.Y > 0f, "the tree stands on the raised block, so its anchor is above zero");
+    }
+
+    [Fact]
+    public void The_anchor_height_is_sampled_in_world_units()
+    {
+        TileWorldDocument doc = TileRenderTestData.HillWorld();
+        doc.TileSize = 2f;
+        doc.AddObject("tree", TileRenderTestData.HillMin, TileRenderTestData.HillMin, 0, 0);
+
+        TileRegionProps props = TileObjectProps.Build(doc, TileRenderTestData.Catalogs, TileRenderTestData.Region, 0);
+        PropPlacement tree = props.Ground.Single(p => p.Id == "tree");
+
+        // HeightAt takes WORLD units and divides by the tile size itself, so the anchor has to hand it the
+        // scaled centre. Anchoring inside the raised block separates the two readings: the world-unit centre
+        // 41 comes back as tile 20.5 and finds the hill, while the unscaled tile centre 20.5 would be divided
+        // again down to tile 10.25 and find flat ground.
+        Assert.Equal(41f, tree.X, Tolerance);
+        Assert.Equal(41f, tree.Z, Tolerance);
+        Assert.Equal(TileRenderTestData.HillHeightCm / 100f, tree.Y, Tolerance);
+        Assert.Equal(0f, doc.HeightAt(20.5f, 20.5f, 0), Tolerance);
     }
 
     [Fact]

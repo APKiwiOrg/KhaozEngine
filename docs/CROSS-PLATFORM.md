@@ -144,14 +144,31 @@ The suite each leg runs is split by trigger, from measured hosted-runner cost
   on push, on software rasterizers, and this one runs everything on a real GPU every time. Three things are its
   own rather than the incumbent Metal leg's. It sets `KE_METAL_REQUIRED=1`, for the reason the Vulkan native leg
   sets its own equivalent below. It arms `MTL_DEBUG_LAYER=1` on every run and `MTL_SHADER_VALIDATION=1` on the
-  deep tier, which are Metal's two validation tiers. And it sets `MTL_CAPTURE_ENABLED=1` on every
-  trigger EXCEPT the deep tier, which is what lets the frame-capture suite really start a capture and write a
-  `.gputrace` bundle rather than only assert that an unarmed process refuses to. That inverse trigger is
-  measured rather than preferred: a capture cannot share a process with `MTL_SHADER_VALIDATION` (the manager
-  reports the GPU-trace destination as supported and `startCapture` returns false anyway), and the cost that was
-  supposed to keep the variable off the push path is 2.5 seconds (`KhaozEngine.Render.Tests` at
-  `Category!=LiveSocket` under `KE_GRAPHICS_BACKEND=metal-native` with `MTL_DEBUG_LAYER=1`, on an M2 Max:
-  22.4s without it against 25.0s with it).
+  deep tier, which are Metal's two validation tiers. And it arms `MTL_CAPTURE_ENABLED=1` on the `capture`
+  dispatch tier alone, which is what lets the frame-capture suite really start a capture and write a
+  `.gputrace` bundle rather than only assert that an unarmed process refuses to.
+  **A dispatch therefore picks one of three shapes** (`tier`: `push`, `deep` or `capture`), because no two of
+  this leg's three Metal variables can usefully share a process:
+  a capture cannot share one with `MTL_SHADER_VALIDATION` (the manager
+  reports the GPU-trace destination as supported and `startCapture` returns false anyway), and, measured for
+  [#614](https://github.com/APKiwiOrg/KhaozEngine/issues/614), **a capture displaces the debug device too**. On
+  real Metal (Mac14,6 / Apple M2 Max, macOS 26.6.1 build 25G76), one row under `KE_GPU_TESTS=1`
+  `KE_GRAPHICS_BACKEND=metal-native` at detailed verbosity:
+
+  | launch environment | what `MetalGpuDevice` reported |
+  | --- | --- |
+  | `MTL_DEBUG_LAYER=1` | `The device class is MTLDebugDevice`, no disambiguation warning |
+  | `MTL_DEBUG_LAYER=1 MTL_CAPTURE_ENABLED=1` | `The device class is CaptureMTLDevice`, plus the WARN that the run `is probably NOT validated` |
+
+  `MTLDebugDevice` is the class that performs the API validation, so the arrangement this replaces (capture on
+  every trigger except the deep dispatch) left tier one INERT on every push, pull request and cron this leg has
+  ever run. Every unattended trigger takes the debug-device shape now, and the capture's 2.5-second cost
+  (`KhaozEngine.Render.Tests` at `Category!=LiveSocket` under `KE_GRAPHICS_BACKEND=metal-native` with
+  `MTL_DEBUG_LAYER=1`, on an M2 Max: 22.4s without it against 25.0s with it) stopped being the deciding
+  argument the moment the real cost turned out to be the instrument rather than the clock. What that trade
+  costs, stated rather than glossed: `MetalFrameCaptureTests`' positive arm, the one that starts a capture from
+  the native queue pointer and asserts the bundle, is attended-only coverage now, and its negative arm is what
+  every unattended trigger runs.
   **The deep tier is a DISPATCH and nothing else, and the cron does not arm it**
   ([#617](https://github.com/APKiwiOrg/KhaozEngine/issues/617)). Its first ever armed run failed 186 of 6201
   rows on this leg (run `31581572414`), with every golden reading back as exactly the pass clear colour: the
@@ -171,9 +188,17 @@ The suite each leg runs is split by trigger, from measured hosted-runner cost
   against a dead device return immediately, which is a run that is faster and clears to the pass colour without
   drawing. That is the same silent-loss mechanism
   [#614](https://github.com/APKiwiOrg/KhaozEngine/issues/614) carries as a live candidate for its own varying
-  failures on this leg, so one armed artifact is likely to answer both or neither. There is no control leg to
-  appeal to either, because the incumbent Metal leg arms NEITHER variable. So a human aims that rung now, and
-  the cron keeps the debug layer plus the frame capture it could never take beside it.
+  failures on this leg, so one armed artifact is likely to answer both or neither. So a human aims that rung
+  now, and the cron keeps the debug layer alone.
+  **The control that issue asks for is a dispatch input**, `incumbentShaderValidation`, default false: it arms
+  `MTL_SHADER_VALIDATION=1` on the INCUMBENT Metal leg and nothing else, which this matrix had never done, so
+  the green incumbent leg on run `31581572414` is not the control it looks like. Green under the rung means the
+  rung is fine on the paravirtual runner and #617's 186 failures are native-leg-specific. Red with the same
+  blank-render shape means the runner drops work under the rung for any backend. It arms shader validation
+  ALONE and never the debug layer: the layer at its default assert error mode used to abort the incumbent host,
+  attributed by [#621](https://github.com/APKiwiOrg/KhaozEngine/issues/621) to one row that stands down under
+  the layer on the incumbent now, and arming it on a blocking golden leg is still the wrong place to discover
+  the next provoking row.
   **Neither Metal tier sets an error MODE, and the default is assert.** A validation error there aborts the test
   host rather than failing a row, so the rows that provoke the layer on purpose stand down in-process instead
   ([#591](https://github.com/APKiwiOrg/KhaozEngine/issues/591)). `MTL_DEBUG_LAYER_ERROR_MODE=nslog` stops the
@@ -327,9 +352,9 @@ INTERMEDIATE target, ask what in the final image would have to move before assum
 
 | trigger                          | behaviour                                                                     |
 | -------------------------------- | ----------------------------------------------------------------------------- |
-| `push` / `pull_request` on main  | **verify**: both Metal legs run the full suite. Both D3D11 legs and both Vulkan legs run the golden tests only. The only validation tier that runs is Metal's debug layer, which the native Metal leg arms on every trigger, alongside `MTL_CAPTURE_ENABLED=1` |
-| `schedule` (weekly, Sun 18:00 UTC) | **full sweep**: both Metal legs + both D3D11 legs + both Vulkan legs all run the full suite (both Vulkan legs serialized, the native one under `strict` validation), plus the `sync` validation job. The native Metal leg keeps its debug layer and its `MTL_CAPTURE_ENABLED=1` here, and does NOT arm `MTL_SHADER_VALIDATION` ([#617](https://github.com/APKiwiOrg/KhaozEngine/issues/617)) |
-| `workflow_dispatch` `bake=false` | same as `schedule` (all six legs full suite, both Vulkan legs serialized, plus the `sync` job), plus the one thing the cron cannot do: `tier=deep` (the default) arms `MTL_SHADER_VALIDATION=1` on the native Metal leg and DROPS `MTL_CAPTURE_ENABLED`, which the shader rung cannot share a process with. `tier=push` takes the capture instead |
+| `push` / `pull_request` on main  | **verify**: both Metal legs run the full suite. Both D3D11 legs and both Vulkan legs run the golden tests only. The only validation tier that runs is Metal's debug layer, which the native Metal leg arms on every trigger, and it arms it ALONE: `MTL_CAPTURE_ENABLED` would displace the `MTLDebugDevice` that does the validating ([#614](https://github.com/APKiwiOrg/KhaozEngine/issues/614)) |
+| `schedule` (weekly, Sun 18:00 UTC) | **full sweep**: both Metal legs + both D3D11 legs + both Vulkan legs all run the full suite (both Vulkan legs serialized, the native one under `strict` validation), plus the `sync` validation job. The native Metal leg keeps its debug layer here, alone for the same #614 reason, and does NOT arm `MTL_SHADER_VALIDATION` ([#617](https://github.com/APKiwiOrg/KhaozEngine/issues/617)) |
+| `workflow_dispatch` `bake=false` | same as `schedule` (all six legs full suite, both Vulkan legs serialized, plus the `sync` job), plus the two things no other trigger can do. `tier` picks the native Metal leg's shape: `deep` (the default) adds `MTL_SHADER_VALIDATION=1`, `capture` adds `MTL_CAPTURE_ENABLED=1` instead, and `push` is the unattended debug-device shape. And `incumbentShaderValidation=true` arms `MTL_SHADER_VALIDATION=1` on the INCUMBENT Metal leg, which is #617's control |
 | `workflow_dispatch` `bake=true`  | **re-bake** (`KE_UPDATE_GOLDENS=1`) on Metal, D3D11 and Vulkan, uploaded as per-backend goldens. All three guest legs skip their test step and the `sync` job does not run at all: a guest owns no family to bake, and verifying against references being replaced mid-run would only red it |
 
 Software rasterizers on the runners (no real GPU):
@@ -439,10 +464,15 @@ PASSED:
   and allocator rest on spec minimums until the observed lavapipe values are recorded
   ([#541](https://github.com/APKiwiOrg/KhaozEngine/issues/541)). The artifact exists because those numbers have
   to be quotable verbatim into a design doc, and a job log is thousands of lines long and expires sooner.
-- **`metal-validation-<tier>-metal-native`** is the native Metal leg's suite output, teed the same way and
+- **`metal-validation-<tier>-<leg>`** is the Metal leg's suite output, teed the same way and
   uploaded for the same reason: the debug layer reports on stderr beside the test names, and the interleaving is
-  the diagnostic. `debug-layer` is every run of that leg and `shader-validation` is a deep dispatch, where
-  `MTL_SHADER_VALIDATION=1` adds in-shader bounds checking on top. **Neither tier is a synchronisation
+  the diagnostic. The tier in the name is read off the expression that arms it, so it cannot lie: `debug-layer`
+  is every unattended run of the native leg, `shader-validation` is a deep dispatch (where
+  `MTL_SHADER_VALIDATION=1` adds in-shader bounds checking on top) or the incumbent leg under #617's control
+  input, and `capture` is a `tier=capture` dispatch, where the device is a `CaptureMTLDevice` and the layer is
+  therefore NOT the live instrument. That last case is why the name has four cases rather than two: while the
+  capture rode every unattended trigger, this artifact was called `debug-layer` on runs where the layer held
+  nothing. The incumbent leg uploads this only when the control armed it. **Neither tier is a synchronisation
   validator**, and Metal has none at all, which is the one place this matrix is weaker than the Vulkan side:
   a missing read-after-write hazard across encoders has no detector anywhere in this net.
   On EVERY run of that leg this artifact also carries the engine's OWN Metal lines, which no earlier run of it
@@ -457,8 +487,18 @@ PASSED:
   headless runner, and the hardware one plus `sysctl hw.model` is what says which machine in the pool the boot
   landed on), the runner image version and OS, the engine's own device facts (the
   Metal probe's four reads, the reported capability set and the adapter description, from a filtered `--no-build`
-  run of three device-reading rows at detailed verbosity, which is what forwards a PASSING row's output), and the
-  last 200 lines of the suite log. It is the [#614](https://github.com/APKiwiOrg/KhaozEngine/issues/614)
+  run of three device-reading rows at detailed verbosity, which is what forwards a PASSING row's output), the
+  last 200 lines of the suite log, and `device-loss.txt`.
+  **That last file is the named-line detector**, echoed into the job log as well so the reading needs no
+  download. It answers the two questions every #614 boot had to be re-read by hand to answer. Was the
+  instrument armed: the `MetalValidationLogHost` announcement proves the test host configured a Metal sink at
+  all, and the device-class tally proves which Objective-C class actually held the device, which is a different
+  question from which variables were set. And did the device go: `DEVICE-LOSS-OBSERVED` with the matching lines
+  when `MetalDeviceLossLatch` fired, `DEVICE-LOSS: none` when it did not, plus buckets for
+  `MetalCompletionHandler` errors, `MetalTimeline` dead-device drains and whatever the Metal runtime itself
+  said. It is **read-only diagnosis and never a gate** (the leg's own test failure is already the gate), it
+  names its known-benign exclusions rather than filtering them out, and it reports a missing suite log as
+  UNREADABLE rather than as a clean run. It is the [#614](https://github.com/APKiwiOrg/KhaozEngine/issues/614)
   instrument: that leg's red runs name a test and say nothing about the machine, so the reading wanted is what
   DIFFERS between a red boot and a green one. **That is the whole reason it is not `failure()`-gated**, and the
   incumbent leg carries it for the same reason: a failure-only capture produces a red boot's facts with no

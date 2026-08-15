@@ -77,6 +77,11 @@ a loader added later is covered on the day it lands.
 **This one is older than its instrument too.** The leak predates the 2026-08-09 cron for the same reason the
 barrier bug did, and the run that first reported it reported both.
 
+**Both halves are proved by one run.** `cross-platform-gpu` run 31856638797 passed the sync-validation job's
+gate step, and its artifact carries 340 engine log lines with zero `SYNC-HAZARD` and zero `VUID-` lines, against
+119 and 12 on the two red runs that opened #618. The line count matters as much as the zeroes: an artifact with
+no engine logging in it is what a vacuous green looked like.
+
 ## 17.36.0
 
 A crash that nothing logged now writes its own file, the Metal shader emission is cached across

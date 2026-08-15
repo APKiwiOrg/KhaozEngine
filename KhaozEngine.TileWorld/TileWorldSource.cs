@@ -3,8 +3,9 @@ using System.Collections.Generic;
 
 namespace KhaozEngine.TileWorld;
 
-/// <summary>An opened world directory: the manifest is read up front, the regions are materialised on demand
-/// and hash-checked as they land.</summary>
+/// <summary>A world opened from disk with regions materialised on demand: the manifest is read once, and each
+/// region file is read, hash-checked and attached to <see cref="Document"/> the first time something asks for
+/// it. The streaming client's entry point. <see cref="TileWorldFile.Load"/> is this plus load-everything.</summary>
 public sealed class TileWorldSource
 {
     readonly Dictionary<RegionCoord, string> _known;
@@ -58,5 +59,41 @@ public sealed class TileWorldSource
         TileRegion region = TileRegionFile.Parse(bytes, c, Document.PlaneCount, path);
         Document.AttachRegion(region);
         return region;
+    }
+
+    /// <summary>True when the manifest lists this region, loaded or not.</summary>
+    public bool IsKnown(RegionCoord c) => _known.ContainsKey(c);
+
+    /// <summary>True when this region is materialised in memory right now.</summary>
+    public bool IsLoaded(RegionCoord c) => Document.GetRegion(c) is not null;
+
+    /// <summary>Loads every known region touching the rect.</summary>
+    public IReadOnlyList<TileRegion> EnsureLoaded(TileRect rect)
+    {
+        var result = new List<TileRegion>();
+        if (rect.IsEmpty) return result;
+        RegionCoord lo = RegionCoord.Of(rect.X, rect.Z), hi = RegionCoord.Of(rect.X1 - 1, rect.Z1 - 1);
+        for (int rz = lo.Rz; rz <= hi.Rz; rz++)
+            for (int rx = lo.Rx; rx <= hi.Rx; rx++)
+                if (EnsureLoaded(new RegionCoord(rx, rz)) is TileRegion r) result.Add(r);
+        return result;
+    }
+
+    /// <summary>Drops a clean region from memory, keeping its hash so a later save carries it through untouched.
+    /// Refuses a dirty region: save first, or the edit is lost.</summary>
+    public bool Unload(RegionCoord c)
+    {
+        TileRegion? r = Document.GetRegion(c);
+        if (r is null) return false;
+        if (r.Dirty) throw new TileWorldException($"region {c} has unsaved changes and cannot be unloaded");
+        // Hashed from the region, not read out of _known, which is the manifest as it stood at Open. A region
+        // that was loaded, edited and saved has new bytes on disk and a new hash in the manifest, while _known
+        // still holds the old one. Recording that stale hash here would put it back into the next save's
+        // manifest over bytes it does not describe, and every later load would then refuse the world. The
+        // region is clean by the check above, so its canonical bytes are the ones already on disk.
+        string hash = TileWorldHash.OfRegion(r);
+        Document.RemoveRegion(c);
+        Document.UnloadedRegionHashes[c] = hash;
+        return true;
     }
 }

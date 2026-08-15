@@ -7,10 +7,11 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// The <c>KhaozEngine.Gpu.Vulkan</c> package as work-breakdown row 4 of
+    /// The <c>KhaozEngine.Gpu.Vulkan</c> package as the work breakdown of
     /// <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c> leaves it: a real registration, a real
-    /// functional probe, real HEADLESS device creation, and a windowed path that refuses by naming the row that
-    /// builds the swapchain.
+    /// functional probe, real HEADLESS device creation, and a windowed path whose only refusals are about the
+    /// MACHINE or about a window kind this backend does not serve, since row 17
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/527) built the swapchain.
     /// <para>
     /// Every test here runs on macOS, Linux and Windows alike, and unlike the Direct3D 11 package that needs no
     /// arranging at all (decision V-P1: no OS-suffixed TFM, no platform guard, no <c>NoInlining</c> bodies). The
@@ -241,20 +242,32 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// The members later rows own throw a message naming their row rather than returning something that fails
-        /// later somewhere less informative, which is the discipline <c>D3D11ResourceFactory</c> established
-        /// between its own row and the ones that filled it in. Asserted through the seam type so the list cannot
-        /// drift from what <see cref="IGpuDevice"/> actually declares.
-        /// <para>
-        /// THIS IS A LEDGER AND IT SHRINKS ONE ROW AT A TIME. Row 9
+        /// THE LEDGER OF UNBUILT MEMBERS IS EMPTY, and this row is what asserts that it stays empty. It began as
+        /// the list of members a later row owned, each throwing a message naming its own row rather than returning
+        /// something that failed later somewhere less informative, which is the discipline
+        /// <c>D3D11ResourceFactory</c> established between its own row and the ones that filled it in. Row 9
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/519) took the factory and the shared sampler pair off
-        /// it, so both are asserted LIVE here now: a member that still refused after its row landed would be a
-        /// device that never wired itself in, which is the same failure this test caught for row 4's own refusal.
-        /// The swapchain pair is what is left.
+        /// the list, and row 17 (https://github.com/APKiwiOrg/KhaozEngine/issues/527) took the swapchain pair,
+        /// which was the last of them. Asserted through the seam type so the set cannot drift from what
+        /// <see cref="IGpuDevice"/> actually declares.
+        /// <para>
+        /// THE ASSERTION FLIPPED WITH THE LAST ROW RATHER THAN BEING DELETED WITH IT. What it caught while the
+        /// ledger still had entries was a member that went on refusing after its row had landed, a device that
+        /// never wired itself in, and the same mistake in the other direction is a member that goes BACK to
+        /// refusing. So every member the ledger ever carried is EXERCISED here rather than merely read: a row that
+        /// only read properties would go quiet exactly where the swapchain pair went wrong.
+        /// </para>
+        /// <para>
+        /// IT RUNS ONLY WHERE A REAL DEVICE EXISTS, which in this net is the two Linux legs of
+        /// <c>cross-platform-gpu.yml</c> and nothing else: a developer Mac has no loader and the Windows runners
+        /// have no ICD, so both take the early return below. That is why the stale swapchain assertion this row
+        /// used to make was invisible to every local run and red on BOTH Linux legs of every full-tier dispatch
+        /// from the 2026-08-09 cron onward (https://github.com/APKiwiOrg/KhaozEngine/issues/622). A row whose only
+        /// machine is one leg pair has to say what it asserts THERE, because nothing else will ever tell it.
         /// </para>
         /// </summary>
         [Fact]
-        public void TheUnbuiltMembers_NameTheirOwnRow()
+        public void TheUnbuiltMemberLedger_IsEmpty()
         {
             // No device to ask on this machine, whichever of the two refusing states it is in, and the row above
             // is the one that asserts the refusal itself.
@@ -272,16 +285,30 @@ namespace KhaozEngine.Tests.Gpu
                 // A null list is an argument error rather than a "not built yet", now that the member is built.
                 Assert.Throws<ArgumentNullException>(() => device.Submit(null!));
 
-                Assert.Contains("527", Assert.Throws<NotSupportedException>(() => device.Present()).Message,
-                    StringComparison.Ordinal);
-                Assert.Contains("527",
-                    Assert.Throws<NotSupportedException>(() => device.ResizeSwapchain(1, 1)).Message,
-                    StringComparison.Ordinal);
+                // THE SWAPCHAIN PAIR, CALLED FOR REAL rather than asserted about. A headless device has no
+                // swapchain, so the resize is the silent no-op the seam asks for and the present is the uniform
+                // ring's rotation and the retire drain with nothing to present. The frame boundary is crossed
+                // TWICE because once only proves the first segment: the second crossing is the one that reopens a
+                // segment the ring has already closed.
+                device.ResizeSwapchain(1, 1);
+                device.Present();
+                device.Present();
+
+                // And it presented nothing on the way through. The framebuffer is null because the headless path
+                // enables no surface extension at all (V-N6), and FramesBegun is the SWAPCHAIN's own frame count,
+                // so a headless present reporting one would mean a swapchain got built where none was asked for.
+                Assert.Null(device.SwapchainFramebuffer);
+                Assert.Equal(0L, device.Counters.FramesBegun);
             }
             finally
             {
                 created.Device.Dispose();
             }
+
+            // The one refusal the pair still makes is about a DEAD device, which is a lifecycle guard rather than
+            // an unbuilt member and carries its own exception type. Worth pinning here because it is the assertion
+            // that would have gone missing along with the NotSupportedException pair.
+            Assert.Throws<ObjectDisposedException>(() => created.Device.Present());
         }
 
         /// <summary>

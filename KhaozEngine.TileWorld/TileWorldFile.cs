@@ -57,6 +57,7 @@ public static class TileWorldFile
 
         Dictionary<RegionCoord, string> previous = ReadPreviousHashes(directory);
         var hashes = new Dictionary<RegionCoord, string>(doc.UnloadedRegionHashes);
+        var written = new List<TileRegion>();
         foreach (TileRegion region in doc.Regions.Values)
         {
             string path = RegionPath(directory, region.Coord);
@@ -68,7 +69,7 @@ public static class TileWorldFile
             byte[] bytes = TileRegionFile.WriteCanonical(region);
             WriteAtomic(path, bytes);
             hashes[region.Coord] = TileWorldHash.OfRegionBytes(bytes);
-            region.Dirty = false;
+            written.Add(region);
         }
 
         // Materialised before the deletes: mutating a directory while its own enumeration is still open is
@@ -92,6 +93,12 @@ public static class TileWorldFile
                 .Select(k => new TileWorldManifestRegion { Rx = k.Key.Rx, Rz = k.Key.Rz, Hash = k.Value }).ToList(),
         };
         WriteAtomic(ManifestPath(directory), JsonSerializer.SerializeToUtf8Bytes(manifest, TileWorldJson.Manifest));
+        // Dirty clears only now, once the manifest naming these exact bytes is on disk. Clearing it as each
+        // region landed would mean a throw anywhere before this line (a failed write, an undeletable stale
+        // file) left clean regions sitting under the OLD manifest, and the next save would then see
+        // not-dirty plus a file plus a prior hash, and carry that stale hash forward over the new bytes.
+        // The manifest would be permanently wrong, and every later load would refuse the world.
+        foreach (TileRegion region in written) region.Dirty = false;
     }
 
     /// <summary>Loads the manifest and every region, hash-checked.</summary>
@@ -124,7 +131,7 @@ public static class TileWorldFile
         {
             if (!options.Migrations.TryGetValue(v, out Func<JsonObject, JsonObject>? step))
                 throw new TileWorldException($"{path}: formatVersion {version} needs a migration from {v} to {v + 1}, and none is registered");
-            root = step(root);
+            root = step(root) ?? throw new TileWorldException($"{path}: migration from formatVersion {v} returned null");
             root["formatVersion"] = v + 1;
         }
 
@@ -179,9 +186,14 @@ public static class TileWorldFile
         if (!name.StartsWith("r_", StringComparison.Ordinal) || !name.EndsWith(".json", StringComparison.Ordinal)) return false;
         string[] parts = name[2..^5].Split('_');
         if (parts.Length != 2
-            || !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int rx)
-            || !int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int rz)) return false;
-        c = new RegionCoord(rx, rz);
+            || !int.TryParse(parts[0], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int rx)
+            || !int.TryParse(parts[1], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int rz)) return false;
+        // The name must be exactly the one this engine writes for that coordinate. "r_+1_2.json" and
+        // "r_01_2.json" both parse to (1, 2), and treating either as region (1, 2) would let the stale sweep
+        // delete a file the manifest never named.
+        var parsed = new RegionCoord(rx, rz);
+        if (!string.Equals(RegionFileName(parsed), name, StringComparison.Ordinal)) return false;
+        c = parsed;
         return true;
     }
 }

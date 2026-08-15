@@ -1,3 +1,4 @@
+using System;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -163,6 +164,40 @@ public class TileWorldFileTests
         Assert.Equal("r_-1_-2.json", name);
         Assert.True(parsed);
         Assert.Equal(new RegionCoord(-1, -2), parsedCoord);
+    }
+
+    [Theory]
+    [InlineData("r_+1_2.json")]
+    [InlineData("r_ 1_2.json")]
+    [InlineData("r_01_2.json")]
+    public void Region_file_names_that_are_not_the_canonical_form_do_not_parse(string name)
+    {
+        Assert.False(TileWorldFile.TryParseRegionFileName(name, out _));
+    }
+
+    [Fact]
+    public void Dirty_survives_a_save_whose_manifest_never_lands()
+    {
+        using var tmp = new TempDir();
+        string dir = tmp.Sub("world");
+        TileWorldDocument doc = Authored();
+        TileWorldFile.Save(doc, dir);
+
+        // A directory sitting where the manifest's tmp file wants to be. The region files land, then the
+        // manifest write throws, so the OLD world.json and its now-stale hashes stay on disk. That is the
+        // shape that used to poison the NEXT save: clean regions, new bytes, old hashes.
+        string obstacle = Path.Combine(dir, "world.json.tmp");
+        Directory.CreateDirectory(obstacle);
+        doc.SetUnderlay(2, 2, 0, 9);
+        TileRegion region = doc.Regions[new RegionCoord(0, 0)];
+        Assert.True(region.Dirty);
+        Assert.ThrowsAny<Exception>(() => TileWorldFile.Save(doc, dir));
+        Assert.True(region.Dirty);
+
+        Directory.Delete(obstacle);
+        TileWorldFile.Save(doc, dir);
+        TileWorldDocument back = TileWorldFile.Load(dir);
+        Assert.Equal(9, back.GetUnderlay(2, 2, 0));
     }
 
     [Fact]

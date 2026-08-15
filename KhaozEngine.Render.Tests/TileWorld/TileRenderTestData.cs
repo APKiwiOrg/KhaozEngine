@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Numerics;
 using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
@@ -53,6 +54,32 @@ public static class TileRenderTestData
     /// <summary>A fresh copy of the engine's greybox catalogs, which every world here is authored against.
     /// Fresh per call because the catalogs are mutable and test classes run in parallel.</summary>
     public static TileWorldCatalogs Catalogs => TileWorldCatalogs.Greybox();
+
+    /// <summary>Saves a regionsX by regionsZ block of regions starting at (0, 0), every tile of plane 0 grass,
+    /// and returns the world directory to open a <see cref="TileWorldSource"/> on. The streaming tests need a
+    /// world on DISK rather than a document, because that is the only way a region is genuinely absent until
+    /// something loads it.</summary>
+    public static string SaveGrid(TempDir tmp, int regionsX, int regionsZ)
+    {
+        ArgumentNullException.ThrowIfNull(tmp);
+        var doc = new TileWorldDocument { Id = "tile-render-grid", DisplayName = "Tile render grid" };
+        for (int rz = 0; rz < regionsZ; rz++)
+            for (int rx = 0; rx < regionsX; rx++)
+            {
+                var region = new RegionCoord(rx, rz);
+                doc.GetOrCreateRegion(region);
+                for (int z = 0; z < TileRegion.Size; z++)
+                    for (int x = 0; x < TileRegion.Size; x++)
+                        doc.SetUnderlay(region.OriginX + x, region.OriginZ + z, 0, Grass);
+            }
+        string dir = tmp.Sub("world");
+        TileWorldFile.Save(doc, dir);
+        return dir;
+    }
+
+    /// <summary>The centre tile of a region on plane 0, the observer position the streaming tests move about.</summary>
+    public static TileCoord CentreOf(RegionCoord region) =>
+        new(region.OriginX + TileRegion.Size / 2, region.OriginZ + TileRegion.Size / 2, 0);
 
     /// <summary>Grass with a nine-corner block raised to 200 cm: the mesher's slope and lattice-normal case.</summary>
     public static TileWorldDocument HillWorld()
@@ -145,6 +172,33 @@ public static class TileRenderTestData
             doc.AddObject("wall", HouseMinX, z, 0, 0);
             doc.AddObject("wall", HouseMaxX, z, 0, 2);
         }
+    }
+}
+
+/// <summary>A throwaway directory under the OS temp root, deleted on dispose. A copy of the one in
+/// <c>KhaozEngine.TileWorld.Tests</c> rather than a shared helper, because a test project references only the
+/// engine projects its tests use and never another test project.</summary>
+public sealed class TempDir : IDisposable
+{
+    /// <summary>The directory itself, created and empty.</summary>
+    public string Path { get; }
+
+    /// <summary>Creates the directory under a per-run GUID, so parallel test classes never collide.</summary>
+    public TempDir()
+    {
+        Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ke-tilerender-tests", Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(Path);
+    }
+
+    /// <summary>A path inside this directory, which need not exist yet.</summary>
+    public string Sub(string name) => System.IO.Path.Combine(Path, name);
+
+    /// <summary>Deletes the directory and everything under it, swallowing the races a temp cleanup can lose.</summary>
+    public void Dispose()
+    {
+        try { System.IO.Directory.Delete(Path, recursive: true); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 }
 

@@ -198,7 +198,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (_layouts is null) return;
 
-            for (uint slot = 0; slot < (uint)binds.BindableSlotLimit(); slot++)
+            // READ ONCE, like the flush's own, because nothing this walk does can move it: a transition binds no
+            // pipeline.
+            uint limit = (uint)binds.BindableSlotLimit();
+
+            for (uint slot = 0; slot < limit; slot++)
             {
                 VulkanBoundSet bound = binds.BoundAt(slot);
                 if (!bound.IsBound) continue;
@@ -223,7 +227,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (_layouts is null) return false;
 
-            for (uint slot = 0; slot < (uint)binds.BindableSlotLimit(); slot++)
+            uint limit = (uint)binds.BindableSlotLimit();
+
+            for (uint slot = 0; slot < limit; slot++)
             {
                 VulkanBoundSet bound = binds.BoundAt(slot);
                 if (!bound.IsBound) continue;

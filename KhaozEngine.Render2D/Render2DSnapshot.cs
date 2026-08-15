@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
@@ -6,32 +7,72 @@ using KhaozEngine.Render2D.Internal;
 
 namespace KhaozEngine.Render2D
 {
-    /// <summary>Draw surface handed to a <see cref="Render2DSnapshot"/> callback (backend-free).</summary>
+    /// <summary>
+    /// Draw surface handed to a <see cref="Render2DSnapshot"/> callback (backend-free).
+    ///
+    /// <para><b>EVERY GPU RESOURCE THIS CONTEXT HANDS OUT IS OWNED BY THE CAPTURE, WHICH FREES IT.</b> The
+    /// callback creates and forgets. It still must not dispose what it made, because the recorded command list
+    /// names that resource until the submit that happens after the callback returns, and it no longer leaves the
+    /// resource to the per-capture device teardown either. That older contract read as harmless because a
+    /// Veldrid backend reclaims a survivor silently, and it is a spec violation on the native Vulkan backend,
+    /// which reports each survivor as a <c>VUID-vkDestroyDevice-device-05137</c> object leak
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/618).</para>
+    ///
+    /// <para>Going through this context is what makes a resource covered, and every offscreen builder the
+    /// callback can reach does exactly that: <see cref="PrimitiveRenderer"/>'s owned white pixel,
+    /// <c>IconAtlas.Bake</c>'s atlas and <c>VfxRenderer</c>'s three baked textures are all
+    /// <see cref="CreateTexture"/> calls underneath. Something built straight off the device behind
+    /// <see cref="Batch"/> stays the caller's own, as it always was.</para>
+    /// </summary>
     public sealed class Render2DContext
     {
         readonly Render2DCore _core;
+
+        // Freed newest first, so a resource is never released before something built on top of it. Nothing here
+        // outlives the capture in any case: the per-capture device goes with it.
+        readonly List<IDisposable> _owned = new();
+
         public int Width { get; }
         public int Height { get; }
         internal Render2DContext(Render2DCore core, int w, int h) { _core = core; Width = w; Height = h; }
 
         public SpriteBatch Batch => _core.Batch;
-        public Texture2D LoadTexture(string pngPath) => _core.LoadTexture(pngPath);
-        public Texture2D CreateTexture(byte[] rgba, int width, int height) => _core.CreateTexture(rgba, width, height);
-        public SpriteFont LoadFont(string ttfPath, float pixelHeight, int oversample = 1) => _core.LoadFont(ttfPath, pixelHeight, oversample);
+        public Texture2D LoadTexture(string pngPath) => Own(_core.LoadTexture(pngPath));
+        public Texture2D CreateTexture(byte[] rgba, int width, int height) => Own(_core.CreateTexture(rgba, width, height));
+        public SpriteFont LoadFont(string ttfPath, float pixelHeight, int oversample = 1) => Own(_core.LoadFont(ttfPath, pixelHeight, oversample));
         /// <summary>Bake a <see cref="SpriteFont"/> from raw TTF bytes (no filesystem path) - the cross-platform core path.</summary>
-        public SpriteFont LoadFont(byte[] ttf, float pixelHeight, int oversample = 1) => _core.LoadFont(ttf, pixelHeight, oversample);
+        public SpriteFont LoadFont(byte[] ttf, float pixelHeight, int oversample = 1) => Own(_core.LoadFont(ttf, pixelHeight, oversample));
         /// <summary>Bake a <see cref="SpriteFont"/> from a <see cref="FontManager"/> key (resolved to bytes, then baked).</summary>
-        public SpriteFont LoadFont(FontManager fonts, string key, float pixelHeight, int oversample = 1) => _core.LoadFont(fonts.GetFontBytes(key), pixelHeight, oversample);
+        public SpriteFont LoadFont(FontManager fonts, string key, float pixelHeight, int oversample = 1) => Own(_core.LoadFont(fonts.GetFontBytes(key), pixelHeight, oversample));
         /// <summary>Bake a <see cref="SpriteFont"/> from the engine's embedded default face (<see cref="DefaultFont"/>); no system font, no path.</summary>
-        public SpriteFont LoadDefaultFont(float pixelHeight, int oversample = 1) => _core.LoadDefaultFont(pixelHeight, oversample);
+        public SpriteFont LoadDefaultFont(float pixelHeight, int oversample = 1) => Own(_core.LoadDefaultFont(pixelHeight, oversample));
 
         /// <summary>A <see cref="DpiFont"/> baking at the live DPI scale (call <c>For(dpiScale)</c>); the offscreen
         /// analogue used to verify point-space UI crispness headlessly. <paramref name="cacheSlots"/> &gt; 1 keeps
         /// several scales baked at once (a face drawn at several scales in one pass).</summary>
-        public DpiFont LoadDpiFont(byte[] ttf, float pixelHeight, int cacheSlots = 1) => _core.CreateDpiFont(ttf, pixelHeight, cacheSlots);
+        public DpiFont LoadDpiFont(byte[] ttf, float pixelHeight, int cacheSlots = 1) => Own(_core.CreateDpiFont(ttf, pixelHeight, cacheSlots));
 
         /// <summary>A <see cref="DpiFont"/> from the engine's embedded default face. See <see cref="LoadDpiFont(byte[], float, int)"/>.</summary>
-        public DpiFont LoadDefaultDpiFont(float pixelHeight, int cacheSlots = 1) => _core.CreateDefaultDpiFont(pixelHeight, cacheSlots);
+        public DpiFont LoadDefaultDpiFont(float pixelHeight, int cacheSlots = 1) => Own(_core.CreateDefaultDpiFont(pixelHeight, cacheSlots));
+
+        /// <summary>How many resources this context handed out and still owes a dispose. Internal, for the test
+        /// that pins the tracking as a counted fact rather than a claim.</summary>
+        internal int OwnedCount => _owned.Count;
+
+        /// <summary>Free everything the callback created through this context. Called by
+        /// <see cref="Render2DSnapshot.Capture"/> once the submit has drained and before the per-capture device
+        /// goes. Idempotent: a second call has nothing left to free.</summary>
+        internal void DisposeOwned()
+        {
+            for (int i = _owned.Count - 1; i >= 0; i--) _owned[i].Dispose();
+            _owned.Clear();
+        }
+
+        T Own<T>(T resource) where T : IDisposable
+        {
+            _owned.Add(resource);
+            return resource;
+        }
     }
 
     /// <summary>Headless offscreen 2D render to a CPU RGBA buffer (no window). For tooling/tests; needs a Metal GPU.</summary>
@@ -43,8 +84,11 @@ namespace KhaozEngine.Render2D
         /// a font, a <c>VfxRenderer</c>) must NOT be disposed inside the callback - the recorded command list still
         /// references it until the submit that happens after the callback returns. Veldrid's Vulkan backend rejects
         /// a submit referencing a disposed resource (other backends tolerate it, so the bug hides off Vulkan).
-        /// There is no valid later dispose point either: the per-capture device is torn down before this returns,
-        /// reclaiming everything created on it, so callback-created resources are simply left to that teardown.
+        /// THE LATER DISPOSE POINT IS HERE: every resource the callback created through its
+        /// <see cref="Render2DContext"/> is freed below, after the submit has drained and before the per-capture
+        /// device goes. Leaving them to the device teardown instead was the old contract, and the native Vulkan
+        /// backend reports each survivor as a <c>VUID-vkDestroyDevice-device-05137</c> object leak
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/618).
         /// </summary>
         public static byte[] Capture(int width, int height, Color clear, Action<Render2DContext> draw)
         {
@@ -61,6 +105,7 @@ namespace KhaozEngine.Render2D
             // undisposed so the device is torn down exactly once, here, via core.Dispose()).
             var core = new Render2DCore(gd, fb.Outputs, ownsDevice: true);
             IGpuCommandList cl = f.CreateCommandList();
+            var context = new Render2DContext(core, width, height);
             try
             {
                 using (GpuRecording.Open(gd, cl, "Render2DSnapshot.Capture"))
@@ -68,13 +113,16 @@ namespace KhaozEngine.Render2D
                     cl.SetFramebuffer(fb);
                     cl.ClearColorTarget(0, clear);
                     core.Batch.NewFrame(cl, width, height);
-                    draw(new Render2DContext(core, width, height));
+                    draw(context);
                 }
                 gd.Submit(cl);
                 gd.WaitForIdle();
                 return GpuReadback.ToRgba(gd, target, width, height);
             }
-            finally { cl.Dispose(); fb.Dispose(); target.Dispose(); core.Dispose(); }
+            // The callback's resources go with the capture's own, and before the device that owns them all. On
+            // the throwing path the submit may never have happened, which is why each Texture2D drains the device
+            // for itself rather than trusting the WaitForIdle above.
+            finally { cl.Dispose(); fb.Dispose(); target.Dispose(); context.DisposeOwned(); core.Dispose(); }
         }
 
         /// <summary>

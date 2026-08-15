@@ -16,7 +16,10 @@ no longer binds a set that layout has no entry for, which was nine of the `vulka
 layout tracker answers a subresource range CONTAINED IN one it already tracks instead of refusing it as a partial
 overlap, which was another nine and the whole of that leg's water failures. On the Metal side, the unattributed
 draw that aborted the incumbent test host under the API validation layer is attributed to one row and stood down,
-so that suite finishes armed.
+so that suite finishes armed. Away from the backends, the shadow cascade fit gains the rotation half of the texel
+quantization it has always applied to translation: it holds the sun's direction until that sun has moved a shadow
+by a texel, which takes a stationary scene under Ruinborne's daylight rate from re-recording the whole atlas on
+every frame to re-recording on one frame in 28.6.
 
 ### A staged upload brackets its copy in two barriers (#618)
 
@@ -194,6 +197,59 @@ composition through the real `VulkanCommandList`.
 `WaterSurfProbe.Clipmap_boundary_step_height_maps` all failed with this single exception on `vulkan-native`. The
 incumbent Veldrid Vulkan leg passes them on the same lavapipe, because the refusal is this backend's own
 bookkeeping and no driver is involved, which is the guest-leg design doing the job it was added for.
+
+### The shadow cascade fit holds the sun's direction until it has moved a texel of shadow (#410)
+
+`ShadowMapMath.BuildLightViewProj` has always snapped the fit's FOCUS to texel increments in light-view space, so
+a camera sliding by less than a texel does not move the frustum and the depth pass reuses its persistent atlas.
+The light DIRECTION had no equivalent treatment. Any sun rotation, of any size, rebuilt the view basis, moved
+every matrix entry, and re-recorded every caster into the whole atlas. A stationary scene under a moving sun
+therefore repainted 1,500 casters and 400 spans every frame for a shadow displacement no viewer could resolve.
+This is the rotation half of that quantization, option B in
+`docs/design/SHADOW-RERECORD-STALL-DESIGN-2026-08-12.md`.
+
+`Scene3D.ComputeShadowCascades` now takes its light direction from `HeldLightDirection`
+(`Scene3D.ShadowLightHold.cs`), which keeps the direction the fit last ADOPTED until the sun has turned past this
+frame's threshold, then adopts the new one. Two new `ShadowSettings` knobs size it. `ShadowLightHoldTexels`
+(default `1`) is how far the shadow of a worst-case caster may drift, in shadow texels, and
+`ShadowLightHoldCasterHeight` (default `12`) is that caster's height. Setting either to `0` disables the hold and
+restores the previous fit byte for byte.
+
+**The threshold is elevation-corrected, per frame.** How far a rotation drags a shadow depends on the sun's
+elevation as much as on the rotation: a caster `h` tall at elevation `e` throws its foot `h*cot(e)` from its base,
+so an azimuth step sweeps it by `h*cot(e)*dPhi` and an elevation step slides it by `h*dE/sin^2(e)`. Since
+`1/sin^2(e)` exceeds `cot(e)` at every elevation, one condition covers both directions, and it is evaluated
+against the tightest active cascade's own quantum: `budget * (2r/res) * sin^2(e) / h`. A constant angle would have
+been 43x wrong between a 35 degree afternoon and a 5 degree dusk. Below roughly a 6 degree sun the threshold falls
+under the angular resolution a `Vector3` of floats carries at all, and the hold stands down rather than deciding
+on rounding error.
+
+**What is frozen is the direction INPUT, never the fitted matrix**, and that is the whole reason this is built as
+"do not re-fit" rather than the simpler "fit, then decline to record". The cascades are still re-derived from the
+current camera's frustum corners on every frame, so a camera that moves past the existing texel snap still trips
+`LightMatrixChanged` and re-records, which is correct. Freezing the fitted matrix instead would strand the cascade
+sphere where the camera used to be. And `SetShadowReceiverTail` rebuilds the receiver matrices, the atlas column
+transforms and the per-cascade normal offsets from the current fit on EVERY frame including skipped ones, so a
+merely loosened dirty compare would leave the receiver sampling an old-matrix atlas through a new matrix, shifting
+every shadow by the un-recorded delta. Holding the input keeps the fit, the atlas, the receiver tail and the
+per-cascade cull in agreement by construction, and the existing exact matrix compare then does the rest untouched.
+
+**Nothing else in the dirty test moved.** A caster that moves still trips `CasterDataChanged` and re-records under
+a held sun, so the moving-caster ghosting #410 forbids cannot appear. What this trades is shadow-update LATENCY
+for the sun alone, bounded at one texel by the default, which is the same discontinuity the translation snap has
+shipped since the fit was written.
+
+**Measured on the issue's own bench** (`ShadowRerecordBenchGpuTests`, local Metal, Release, isolated). Both
+sun-moving rows fall to the skip floor: `rigid only, daylight sun` reads 0.035 ms mean and 1.113 ms frame median
+against 0.198 and 1.949 before, and `rigid only, 0.001 deg sun` the same, both at 0 spans and 0 draw calls where
+they previously recorded 405 and 404 on all 200 frames. A continuous 400 frame sweep puts the cadence at one
+re-fit every 28.6 frames at Ruinborne's real daylight rate and every 100 frames at a third of it, the same 0.095
+to 0.1 degree threshold read two ways, so 96.5 and 99 percent of frames skip the pass entirely. That cadence
+scales with cascade 0's fitted radius and is therefore scene-specific: #410 stays open until a Windows field
+capture confirms it on the reporting machine.
+
+`ShadowPassDiagnostics.LightMatrixChanged` is the bit this turns off, and counting the frames between its `true`
+readings is how that capture measures the cadence.
 
 ## 17.36.0
 

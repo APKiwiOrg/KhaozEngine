@@ -283,6 +283,62 @@ substituted for `lightDir` before `FitCascade` and the previous matrices are alr
 function stays pure and headless-testable. Plus one `ShadowSettings` knob, headless tests on the threshold, and a
 bench row. Small to medium, and no golden moves as long as the threshold defaults conservatively.
 
+#### Shipped in 17.36.1, with corrections in flight
+
+Built as proposed, at `Scene3D.cs:1719` substituting `HeldLightDirection` for the direct
+`Vector3.Normalize(Post.LightDirection)`. The hold's state and its two hazard write-ups live in the new
+`Scene3D.ShadowLightHold.cs` partial, and the arithmetic in `Internal/ShadowLightHold.cs`, which is pure and
+pinned by `ShadowLightHoldTests`. The end-to-end behaviour is `ShadowLightHoldGpuTests` and the bench.
+No golden moved, which is the prediction this section made: a scene with a fixed light adopts on its first frame
+and thereafter holds a direction bit-identical to its live one, so the fit is byte-for-byte what it was.
+
+Five things came out differently from the proposal above, all of them worth carrying forward into option C.
+
+**Two knobs, not one.** The rule needs `h_max`, and there is nowhere honest to get it from. The engine does have
+every rigid caster's world bounding sphere in hand (`_shadowCasterSpheres`), so an auto-derived bound looked
+available, and it is wrong: a merged HLOD cluster's sphere is the radius of a whole chunk of terrain-scale
+geometry rather than the height of anything standing on it, so deriving `h_max` from it collapses the threshold to
+nothing in exactly the streamed outdoor scene this feature exists for. So `ShadowLightHoldTexels` (default `1`,
+`0` disables) is the drift budget and `ShadowLightHoldCasterHeight` (default `12`, the tall tree this section
+sizes against) is `h_max`.
+
+**The threshold has a resolvability floor the section did not anticipate.** `Post.LightDirection` is a `Vector3`
+of floats, so a unit direction only carries about `1e-7` radians of angular resolution. Below `1e-5` radians the
+comparison is two rounding errors, so `ShouldAdopt` re-fits unconditionally there. With the shipped defaults that
+engages below about a 6 degree sun. It costs nothing real, because this section's own arithmetic had already made
+the hold worthless there: at 5 degrees the threshold is under `5e-4` degrees and Ruinborne's `0.00333` degrees per
+frame crosses it every single frame anyway. What it buys is that dusk degrades deterministically rather than
+holding or releasing on noise.
+
+**The elevation read is the LOWER of the held and live directions, not the current one.** This section says
+"evaluated against the CURRENT elevation". The drift per radian is worst at the smallest elevation the interval
+passes through, so a sun RISING out of a dusk would be sized by the generous end of its own interval. Taking the
+minimum is one `MathF.Min` and is strictly conservative.
+
+**The compare is the total angle between held and live, not an accumulated arc length.** A sun that wanders and
+returns has not moved its shadow, and arc length would claim it had. The angle is computed from the chord
+(`2*asin(|a-b|/2)`), because `acos(dot)` collapses at these angles: at 0.001 degrees the dot product is
+`1 - 1.5e-10`, which a float cannot represent as distinct from 1, so every step would read as exactly zero and the
+hold would never release.
+
+**The threshold is per PASS, sized on the tightest active cascade.** This section says "the threshold is per
+cascade or it is wrong", and that is right about the threshold and not yet actionable about the dirty test, which
+is still one bool for the whole atlas. Taking the minimum radius over the active cascades satisfies every cascade
+at once and is the conservative reading of the same rule. The saving option C adds is exactly the far cascades'
+order of magnitude of extra hold, and the per-cascade radius walk this fix already does (`MinCascadeRadius`) is
+half of its machinery.
+
+**Measured.** The bench's two sun-moving rows fall from 200 rendered frames out of 200 to 0, landing on the skip
+row's numbers exactly (0.035 ms mean, 1.11 ms frame median against 0.198 and 1.949 before). The cadence cannot be
+read off those rows, because each interleaved block's measured window opens four frames after a warmup that always
+re-adopts, so a threshold wider than the window reads as a flat 200 skips whatever its real width is. The new
+`The_hold_releases_on_a_cadence_the_threshold_predicts` sweeps 400 continuous frames per rate instead: one re-fit
+every 28.6 frames at the daylight rate and every 100 at a third of it, which is the same 0.095 to 0.1 degree
+threshold read two ways, so 96.5 and 99 percent of frames skip. **Ruinborne's real daylight rate lands well below
+the threshold**, which section 3.3 left open. Note that this cadence scales with cascade 0's fitted radius, which
+on this bench's wide 60 x 20 x 60 framing is around 60 m: a tighter game camera fits a smaller cascade 0 and holds
+proportionally less, so section 5's field capture remains the confirmation and #410 stays open until it lands.
+
 ### 3.4 Option C: dirty per cascade instead of per pass
 
 Today `dirty` is one bool for the whole atlas. The natural extension of B: track it per cascade, re-record only
@@ -400,6 +456,16 @@ ghosting"), and it is the one that decides whether C is safe to build on top.
 
 ## 6. Status
 
-Design only. The bench is committed and passing on local Metal, and every number in section 1.2 comes from one
-serialized full run of `KhaozEngine.Render.Tests` with `KE_GPU_TESTS=1`. Nothing in section 3 is implemented, no
-version was bumped, and no rendering behaviour changed on this branch.
+**Option B shipped in 17.36.1** (section 3.3's "shipped, corrections in flight" note has what changed on the way
+in). A-lite, C, A-full and D are unbuilt, in that order of preference, and section 4's reasoning for the order is
+unchanged by B landing: if anything B strengthens the case for C, since the per-cascade radius walk C needs now
+exists.
+
+Section 1.2's table was the pre-B state, and it is kept as written because it is the BEFORE half of B's evidence.
+Its two sun-moving rows now read 0.035 ms mean and 0 draw calls on 200 skipped frames. Every number in it came
+from one serialized full run of `KhaozEngine.Render.Tests` with `KE_GPU_TESTS=1`, and the after numbers from an
+isolated Release run of the same bench, so the absolute milliseconds shift a little between the two while the
+comparisons within each run hold.
+
+#410 stays OPEN. Section 5 is the acceptance, and it needs a Windows F3 capture on the reporting machine that no
+local bench can stand in for.

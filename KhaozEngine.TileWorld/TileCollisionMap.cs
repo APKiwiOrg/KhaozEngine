@@ -5,7 +5,10 @@ namespace KhaozEngine.TileWorld;
 
 /// <summary>Per-region-plane collision storage with world-coordinate access. Not persisted: derived at load
 /// and after each edit by <see cref="TileCollisionBaker"/>. Reads outside storage answer
-/// <see cref="TileCollisionFlags.Blocked"/>, so an unloaded region is a wall rather than a void.</summary>
+/// <see cref="TileCollisionFlags.Blocked"/>, so an unloaded region is a wall rather than a void, and writes
+/// outside storage are DROPPED, so a mirrored wall edge or a footprint spilling past the edge of the tracked
+/// world cannot allocate a region and turn the whole of it walkable. <see cref="EnsureRegion"/> is the only
+/// thing that adds storage.</summary>
 public sealed class TileCollisionMap
 {
     readonly Dictionary<RegionCoord, ushort[][]> _regions = new();
@@ -46,22 +49,20 @@ public sealed class TileCollisionMap
         return (TileCollisionFlags)planes[plane][Index(x, z)];
     }
 
-    /// <summary>Replaces the flags at this world tile, allocating the region's storage on first write.</summary>
+    /// <summary>Replaces the flags at this world tile, or does nothing when the region has no storage.</summary>
     public void Set(int x, int z, int plane, TileCollisionFlags flags)
     {
         RequirePlane(plane);
-        RegionCoord c = RegionCoord.Of(x, z);
-        EnsureRegion(c);
-        _regions[c][plane][Index(x, z)] = (ushort)flags;
+        if (!_regions.TryGetValue(RegionCoord.Of(x, z), out ushort[][]? planes)) return;
+        planes[plane][Index(x, z)] = (ushort)flags;
     }
 
-    /// <summary>Adds flags at this world tile, allocating the region's storage on first write.</summary>
+    /// <summary>Adds flags at this world tile, or does nothing when the region has no storage.</summary>
     public void Or(int x, int z, int plane, TileCollisionFlags flags)
     {
         RequirePlane(plane);
-        RegionCoord c = RegionCoord.Of(x, z);
-        EnsureRegion(c);
-        _regions[c][plane][Index(x, z)] |= (ushort)flags;
+        if (!_regions.TryGetValue(RegionCoord.Of(x, z), out ushort[][]? planes)) return;
+        planes[plane][Index(x, z)] |= (ushort)flags;
     }
 
     /// <summary>Zeroes every tile of the rect on the plane, in regions that have storage.</summary>

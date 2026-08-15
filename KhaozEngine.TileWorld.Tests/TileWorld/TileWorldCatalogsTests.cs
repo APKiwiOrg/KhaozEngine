@@ -75,6 +75,9 @@ public class TileWorldCatalogsTests
         Assert.True(g.Materials.Count >= 6);
         Assert.Equal(TileCollisionKind.Solid, g.Archetype("rock_large")!.CollisionKind);
         Assert.Equal((2, 2), TileFootprint.Rotated(g.Archetype("rock_large")!, 1));
+        Assert.Equal(TileCollisionKind.Solid, g.Archetype("bench")!.CollisionKind);
+        Assert.Equal((1, 2), TileFootprint.Rotated(g.Archetype("bench")!, 0));
+        Assert.Equal((2, 1), TileFootprint.Rotated(g.Archetype("bench")!, 1));
         Assert.True(g.Archetype("roof_flat")!.IsRoof);
     }
 

@@ -1,10 +1,13 @@
 using System;
+using System.Linq;
 
 namespace KhaozEngine.TileWorld;
 
 /// <summary>Derives <see cref="TileCollisionMap"/> from settings and objects. Full bake at load, rect rebake
 /// after an edit. Never authored, never persisted, and it never throws on a dangling archetype (the validator
-/// reports that, an edit must not fault the map).</summary>
+/// reports that, an edit must not fault the map). Both entry points give storage to the document's own regions
+/// first and only then apply objects, so a footprint or a mirrored edge spilling past the edge of the authored
+/// world is dropped by the map rather than opening a region nobody authored.</summary>
 public static class TileCollisionBaker
 {
     /// <summary>Bakes every loaded region and every plane from scratch.</summary>
@@ -23,7 +26,10 @@ public static class TileCollisionBaker
         return map;
     }
 
-    /// <summary>Recomputes the dirty rect (expanded by one tile for mirrored edges) on one plane.</summary>
+    /// <summary>Recomputes the dirty rect (expanded by one tile for mirrored edges) on one plane. The caller's
+    /// rect must cover the FULL footprint of anything it removed, taken with <c>TileFootprint.Of</c> BEFORE the
+    /// removal, because a rebake can only re-derive the tiles it clears and a deleted object is no longer there
+    /// to be measured.</summary>
     public static void Rebake(TileCollisionMap map, TileWorldDocument doc, TileWorldCatalogs catalogs, TileRect dirty, int plane)
     {
         ArgumentNullException.ThrowIfNull(map);
@@ -31,6 +37,9 @@ public static class TileCollisionBaker
         ArgumentNullException.ThrowIfNull(catalogs);
         if (dirty.IsEmpty) return;
         TileRect clear = dirty.Expand(1);
+        // A region created since the bake has no storage yet, and the map drops writes to a region it does not
+        // hold, so give the document's regions their storage before anything writes into them.
+        foreach (TileRegion region in doc.RegionsTouching(clear)) map.EnsureRegion(region.Coord);
         map.Clear(clear, plane);
         for (int z = clear.Z; z < clear.Z1; z++)
             for (int x = clear.X; x < clear.X1; x++)
@@ -38,7 +47,11 @@ public static class TileCollisionBaker
                 if (doc.RegionAt(x, z) is null) continue;
                 if (IsGroundBlocked(doc, x, z, plane)) map.Or(x, z, plane, TileCollisionFlags.Blocked);
             }
-        foreach (TileRegion region in doc.RegionsTouching(clear.Expand(2)))
+        // Objects are gathered by their ANCHOR's region, so the gather rect has to reach out by the largest
+        // footprint the catalogs can produce. Reaching out by a fixed two tiles would miss a 4x4 anchored just
+        // over a region border, whose far tiles land inside the cleared rect.
+        int margin = Math.Max(2, catalogs.Archetypes.Values.Select(a => Math.Max(a.SizeX, a.SizeZ)).DefaultIfEmpty(1).Max());
+        foreach (TileRegion region in doc.RegionsTouching(clear.Expand(margin)))
             foreach (TileObject o in region.Objects)
             {
                 if (o.Plane != plane) continue;

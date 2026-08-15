@@ -203,8 +203,8 @@ public sealed class TileWorldCatalogs
         _archetypeSources[a.Id] = source;
     }
 
-    /// <summary>The engine's minimal test/greybox catalogs: six materials and eleven archetypes covering every
-    /// <see cref="TileCollisionKind"/>. Games ship their own.</summary>
+    /// <summary>The engine's minimal test/greybox catalogs: six materials and twelve archetypes covering every
+    /// <see cref="TileCollisionKind"/>, square and non-square footprints included. Games ship their own.</summary>
     public static TileWorldCatalogs Greybox()
     {
         var c = new TileWorldCatalogs();
@@ -230,6 +230,7 @@ public sealed class TileWorldCatalogs
         Arch("fence", TileCollisionKind.Wall);
         Arch("tree", TileCollisionKind.Solid);
         Arch("rock_large", TileCollisionKind.Solid, 2, 2);
+        Arch("bench", TileCollisionKind.Solid, 1, 2);
         Arch("bush", TileCollisionKind.None);
         Arch("roof_flat", TileCollisionKind.None, roof: true);
         Arch("stairs", TileCollisionKind.Solid, interactive: true);

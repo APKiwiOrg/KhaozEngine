@@ -128,7 +128,13 @@ namespace KhaozEngine.Tests.Gpu
         public uint MipLevels { get; }
         public uint SampleCount { get; }
         public GpuPixelFormat Format { get; }
-        public void Dispose() { }
+
+        /// <summary>Whether the owner freed this handle. The one thing the fake records about a texture, because
+        /// an unfreed one is a real defect off this harness: the native Vulkan backend reports it at device
+        /// teardown as a VUID-vkDestroyDevice-device-05137 object leak (#618).</summary>
+        internal bool Disposed { get; private set; }
+
+        public void Dispose() => Disposed = true;
     }
 
     internal sealed class FakeFramebuffer : IGpuFramebuffer

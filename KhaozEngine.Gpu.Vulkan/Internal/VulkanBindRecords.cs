@@ -259,8 +259,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// IT ANSWERS FOR EVERY RECORDED SLOT AND NOT ONLY THE DIRTY ONES, deliberately. A set bound before a
         /// dispatch that then moved one of its images to <c>GENERAL</c> is still bound at the next draw, and a
         /// dirty-only walk would miss exactly the case rule 1 exists for. Which slots a caller ASKS about is its
-        /// own question: the image walk stops at <see cref="BindableSlotLimit"/> and the hazard walk does not, for
-        /// reasons each states.
+        /// own question and the two callers answer it differently: the image walk stops at
+        /// <see cref="BindableSlotLimit"/> and <see cref="VulkanComputeHazards"/>'s does not
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/632).
         /// </para>
         /// </summary>
         internal VulkanBoundSet BoundAt(uint slot) => slot < (uint)_recorded ? _slots[slot].Bound : default;

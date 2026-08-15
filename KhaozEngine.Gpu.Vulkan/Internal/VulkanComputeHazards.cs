@@ -35,6 +35,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// backend tolerates the chain breaks on Metal. What this is, is EVIDENCE for the automatic-hazard seam
     /// capability (https://github.com/APKiwiOrg/KhaozEngine/issues/461).</para>
     ///
+    /// <para><b>BOTH WALKS BELOW COVER EVERY RECORDED SLOT, INCLUDING ONES THE BOUND PIPELINE LAYOUT DOES NOT
+    /// DECLARE</b>, which is the one place in this backend where that is still true
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/632). The bind flush stops at the declared set count
+    /// because a bind past it is invalid (https://github.com/APKiwiOrg/KhaozEngine/issues/625) and
+    /// <see cref="VulkanDrawRecorder"/>'s image walk stops there because a transition past it is wasted
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/626). Here the error runs the safe way: a slot a compute
+    /// pipeline switch left recorded but undeclared can only ADD a resource to the written set or ANSWER yes to a
+    /// dependency, so the cost is a global memory barrier that was not owed and never a missing one. Bounding it
+    /// is a change to a BARRIER decision rather than to wasted work, so it wants its own argument against the
+    /// storage-binding clause above, and it has not been made.</para>
+    ///
     /// <para><b>LIST-LOCAL AND UNSYNCHRONISED</b>, on the same grounds as everything else a recording holds: one
     /// list records on one thread at a time, and a set shared between two lists would be exactly the shared
     /// record-time state V-F7 eliminates on the layout side.</para>

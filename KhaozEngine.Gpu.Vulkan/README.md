@@ -710,6 +710,14 @@ of an array that starts at one index. A null slot is SKIPPED rather than unbound
 past so the skip happens once. `SpriteBatch` puts its uniform buffer at SET 1, so "set 0 first" is false in
 shipped code and a run's own `firstSet` is load-bearing rather than decorative.
 
+**And the walk stops at the set count the bound pipeline layout declares**
+([#625](https://github.com/APKiwiOrg/KhaozEngine/issues/625)). That is the third way a slot leaves a run and the
+only one that is not a skip: `vkCmdBindDescriptorSets` requires `firstSet` plus the set count to stay inside the
+layout's `setLayoutCount`, so naming a set number the layout has no entry for is an invalid call rather than a
+wasted one. It matters because a switch to a pipeline with FEWER sets leaves exactly that state (see the prefix
+below), and those slots KEEP their dirty marks rather than going clean, so the next layout that declares them
+rebinds a set the caller never re-recorded.
+
 **`pDynamicOffsets` is POSITIONAL and covers sets the caller never named.** One entry for every dynamic
 descriptor in every set of the run, in SET ORDER then BINDING ORDER, including ring bases for uniform buffers
 nobody passed an offset for. Each entry is `ringBase(buffer, currentFrame) + rangeOffset + (declaredDynamic ?
@@ -750,6 +758,13 @@ declined, so the computation is the longest common prefix of the two layouts' se
 rebind of the layout already current does nothing. Without dedup this would answer zero every time, which is
 exactly what the incumbent pays and what a blunt clear-everything version reproduces by construction rather than
 by choice.
+
+**A prefix is bounded by the SHORTER of the two sequences, which is what makes a switch to a narrower pipeline a
+case of its own** ([#625](https://github.com/APKiwiOrg/KhaozEngine/issues/625)). Going from the two-set
+GPU-skinned model pipeline to a one-set `PixelPostProcess` pipeline answers 1 and marks set 1 dirty while it
+still records the material set, which is the right mark on a set the driver really did disturb and an index the
+incoming layout has no entry for. The mark is what the flush's declared-count limit above is there to hold, and
+between them a post-process pass binds one set rather than emitting a call its own layout cannot carry.
 
 **That prefix is GUARDED rather than trusted, and the asymmetry is why.** A prefix shorter than the truth costs a
 redundant bind. A prefix LONGER than the truth leaves a set the driver has already invalidated marked clean, so

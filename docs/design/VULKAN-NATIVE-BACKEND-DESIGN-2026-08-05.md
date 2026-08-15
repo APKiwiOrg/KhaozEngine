@@ -374,6 +374,12 @@ conservative. Under `KE_VULKAN_VALIDATION` the draw path additionally asserts th
 the current pipeline layout's set layout at that index. Neither draft has either check: one deferred the
 mechanism to avoid the cliff, the other took the mechanism and left the cliff unguarded.
 
+And the guard earned its keep on the one case neither draft nor this decision states: a switch to a pipeline
+declaring FEWER sets. The correction is in 6.2 beside the clause it belongs to (#625). Worth reading here too,
+because it is the shape of the miss rather than the miss itself that generalises: both halves of V-R7 check
+whether a set SATISFIES the layout it is bound under, and neither draft asked whether the layout has that set
+number at all.
+
 ### 2.5 One open recording, and why the layout model decides it
 
 **The continuity draft is STRICTER than the D3D11 native backend and gives a concrete reason.** Vulkan image
@@ -900,6 +906,22 @@ the retire list exists for resources anyway.
 6. Repeated dirty marks between two draws collapse to one flush, which falls out of an array of slots rather
    than a list of binds. Phase 2's rule 8 is the same requirement for the same reason: the shadow pass does
    thousands of offsets-only rebinds of one set per frame, and an O(rebinds) record is an O(n squared) frame.
+
+**Corrected after the fact (#625, caught by V-R7's own draw-time assertion on the vulkan-native leg): clause 4
+says what a switch INVALIDATES and clause 3 needed to say how far a flush REACHES.** The prefix is the longest
+common prefix of the two handle sequences, so it is bounded by the SHORTER of the two, and a switch to a pipeline
+declaring FEWER sets therefore answers the shorter length and marks every set past it dirty. Those marks are
+right, because those sets really are disturbed. What was missing is that they are also unbindable: a set number
+the current pipeline layout has no entry for cannot be named at all, since `vkCmdBindDescriptorSets` requires
+`firstSet` plus the set count to stay inside the layout's `setLayoutCount`. The flush walked every recorded slot,
+so the shipped transition from the two-set GPU-skinned model pipeline to a one-set `PixelPostProcess` pipeline
+put the stale material set into set 0's run and emitted a call the layout could not carry. Nine tests on the
+vulkan-native leg ended at the assertion, which read the state correctly and named the wrong cause: its message
+offers "the prefix was too long and left a set marked CLEAN", and the set was dirty. The rule now reads "the
+flush emits one call per contiguous run of dirty slots, up to the set count the bound pipeline layout declares",
+and the slots past that count KEEP their marks rather than going clean, so the next layout that declares them
+rebinds a set the caller never re-recorded. Clearing them instead would leave a draw after the post pass reading
+a descriptor slot the post pass disturbed, which is the same defect with nothing to catch it.
 
 **The dynamic offset array is where a subtle mistake lives.** `pDynamicOffsets` covers every dynamic descriptor
 in every set being bound by that call, in set order then binding order, and it is POSITIONAL. Bind a run of

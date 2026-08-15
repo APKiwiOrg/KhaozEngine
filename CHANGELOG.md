@@ -10,9 +10,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 The native Vulkan backend's staged buffer upload now barriers on the way IN as well as on the way out, closing
 the write-after-read hazard the `sync` validation tier reported 138 times across the golden family, and
 `Render2DSnapshot.Capture` frees the textures and fonts its callback created instead of leaving them to the
-per-capture device teardown, which that same tier reported as twelve leaked Vulkan objects. On the Metal side,
-the unattributed draw that aborted the incumbent test host under the API validation layer is attributed to one
-row and stood down, so that suite finishes armed.
+per-capture device teardown, which that same tier reported as twelve leaked Vulkan objects. That backend's bind
+flush also stops at the set count the bound pipeline layout declares, so a switch to a pipeline with fewer sets
+no longer binds a set that layout has no entry for, which was nine of the `vulkan-native` leg's failures. On the
+Metal side, the unattributed draw that aborted the incumbent test host under the API validation layer is
+attributed to one row and stood down, so that suite finishes armed.
 
 ### A staged upload brackets its copy in two barriers (#618)
 
@@ -127,6 +129,32 @@ stages, 159 table entries), and `MslBindingOrder.CheckPrefix` rejects the shape 
 comment in `.github/workflows/cross-platform-gpu.yml` says so and names the row instead of saying nobody knows.
 A blocking golden leg is the wrong place to discover the next provoking row, hosted `macos-26` is not the
 machine this was measured on, and the dispatch that would settle it is #617's control experiment.
+
+### The native Vulkan bind flush stops where the bound pipeline layout stops (#625)
+
+`VulkanBindRecords.Flush` walked every recorded descriptor slot, whatever the bound pipeline layout declared, so
+a switch to a pipeline with FEWER sets bound a set at an index that layout has no entry for. No public API
+changes: the whole schedule is internal to `KhaozEngine.Gpu.Vulkan`.
+
+**The transition is the shipped one every post-process pass makes.** The GPU-skinned model pipeline declares two
+sets (`Model.skinnedVertex`, `Model.skinnedFrag`) and every `PixelPostProcess` pipeline declares one. A pipeline
+switch invalidates from the first incompatible set onward (V-R6), and that boundary is the longest common prefix
+of the two layouts' set-layout handle sequences, which is bounded by the shorter sequence. So the switch marked
+set 1 dirty while it still recorded the material set, the flush put it into set 0's contiguous run, and the
+emitted `vkCmdBindDescriptorSets` carried a `firstSet` plus set count past the layout's `setLayoutCount`.
+
+**What was caught, and by what.** V-R7's draw-time assertion, which runs under `KE_VULKAN_VALIDATION` only, so
+this was visible on the `vulkan-native` matrix leg alone and on nothing a plain `dotnet test` runs. Nine tests
+ended there, every one of them a GPU-skinned draw followed by the post chain, eight of them since the 2026-08-09
+cron. The assertion read the state correctly and offered the wrong cause: its message reaches for a prefix
+computed too long that left a set marked CLEAN, and the set was dirty. It is unchanged and stays exactly as
+strict, because the fix makes the state true rather than the check quieter.
+
+**The slots past the declared count keep their marks rather than going clean.** They owe a bind to the next
+layout that declares them, so the trip back to a wider pipeline rebinds a set the caller never re-recorded.
+Clearing them would have left the next skinned draw reading a descriptor slot the post pass disturbed, which is
+the same defect with nothing to catch it. Two device-free tests in `VulkanLayoutCompatibilityTests` drive the
+shipped transition both ways with the assertion armed.
 
 ## 17.36.0
 

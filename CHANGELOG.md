@@ -101,6 +101,17 @@ verbosity, three launch environments:
 The debug layer wins the class when both are armed, which is what makes the shader-only case a genuinely
 different expectation rather than the same one.
 
+**The same defect had a second home in the test host, and one predicate replaces two.** `KhaozEngine.Render.Tests`
+writes a header at the top of every armed Metal artifact, and it named `MTL_DEBUG_LAYER` and
+`MTL_SHADER_VALIDATION` on every armed run because it was handed the merged tier, which cannot tell a shader-only
+launch from a both-armed one. It now takes the arming reading rather than the tier and names only what was
+actually set. That line matters more than the backend's did: it is the FIRST line of the artifact, so it fixed
+the reader's belief about the launch environment before any engine line could correct it.
+`MetalCaptureDisplacementTripwire` also carried its own copy of "is this class validating", written as a private
+substring test precisely because the engine's helper of the day would have redded the deep tier for arming the
+deep tier. That helper is gone, so the tripwire asks `MetalValidation.ClassifyDevice` instead and the two cannot
+answer differently about the same device. Its 41 rows pass unchanged on the shared predicate.
+
 ### The native Vulkan ledger stops describing landed rows as open (#627)
 
 The work-breakdown rows that built `KhaozEngine.Gpu.Vulkan` all landed, and prose in that package still said

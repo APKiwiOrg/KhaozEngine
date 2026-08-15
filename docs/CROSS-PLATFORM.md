@@ -189,11 +189,13 @@ The suite each leg runs is split by trigger, from measured hosted-runner cost
   "not both" is also satisfied by arming neither. It is scoped to the unattended triggers on purpose: the
   `capture` tier arms both by design, and a universal assertion would red the one tier that chose the pair.
   The second guard reads the DEVICE rather than the workflow. `MetalCaptureDisplacementTripwire` in
-  `KhaozEngine.Render.Tests` promotes the engine's existing "armed but not a debug device" warning to a test
+  `KhaozEngine.Render.Tests` promotes the engine's "armed and nothing is validating" warning to a test
   failure on an unattended CI run, so a leg cannot report six thousand green rows under an instrument that was
-  displaced. It passes `MTLDebugDevice` and `MTLLegacySVDevice` (both validate) and fails `CaptureMTLDevice` and
-  the driver's own class, naming the capture as the displacement when the capture is armed. Off CI, and on an
-  attended dispatch, it stands down and the warning is the whole answer. The two layers catch different things:
+  displaced. It asks the engine's own `MetalValidation.ClassifyDevice`, so there is one predicate rather than
+  two: it passes `MTLDebugDevice`, `MTLLegacySVDevice` and `MTLGPUDebugDevice` (all three validate, the last two
+  being the same shader-validation wrapper under the two spellings measured across machines) and fails
+  `CaptureMTLDevice` and the driver's own class, naming the capture as the displacement when the capture is
+  armed. Off CI, and on an attended dispatch, it stands down and the warning is the whole answer. The two layers catch different things:
   the workflow step catches a bad tier edit at authoring time on the first push, and the tripwire catches a
   displacement this repository did not cause, such as a runner image that starts injecting the variable.
   **The deep tier is a DISPATCH and nothing else, and the cron does not arm it**

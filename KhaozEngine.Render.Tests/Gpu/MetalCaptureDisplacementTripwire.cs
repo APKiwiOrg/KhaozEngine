@@ -99,25 +99,26 @@ namespace KhaozEngine.Tests.Gpu
         /// <list type="bullet">
         ///   <item><description><c>MTLDebugDevice</c>: the API validation class, which is
         ///   <c>MTL_DEBUG_LAYER=1</c> alone.</description></item>
-        ///   <item><description><c>MTLLegacySVDevice</c>: the class a process gets when
-        ///   <c>MTL_SHADER_VALIDATION=1</c> armed the tier. It validates, so it is a PASS here.</description></item>
+        ///   <item><description><c>MTLLegacySVDevice</c> and <c>MTLGPUDebugDevice</c>: the two measured classes a
+        ///   process gets when <c>MTL_SHADER_VALIDATION=1</c> armed the tier, one spelling per machine. Both
+        ///   validate, so both are a PASS here.</description></item>
         ///   <item><description><c>CaptureMTLDevice</c>: the capture wrapper. Validates nothing.</description></item>
         ///   <item><description>anything else is the driver's own class (<c>AGXG14CDevice</c> on Apple silicon),
         ///   which is what an unvalidated process gets.</description></item>
         /// </list>
         /// <para>
-        /// IT DOES NOT CALL <c>MetalValidation.LooksLikeADebugDevice</c>, AND THAT IS ON PURPOSE. That helper is
-        /// a "Debug" substring test, so it reads <c>MTLLegacySVDevice</c> as a displacement, which
-        /// https://github.com/APKiwiOrg/KhaozEngine/issues/628 records as a reporting defect in the engine's own
-        /// disambiguation line. Delegating to it today would red the deep tier for arming the deep tier. The
-        /// engine-side fix is that issue's, and once it lands this predicate is a candidate for deletion in
-        /// favour of the shared one.
+        /// IT DELEGATES TO THE ENGINE'S OWN CLASSIFIER, AND THAT IS THE POINT. This began as a private substring
+        /// test because the engine's helper of the day, <c>LooksLikeADebugDevice</c>, was a bare "Debug" match
+        /// that read <c>MTLLegacySVDevice</c> as a displacement, so delegating would have redded the deep tier
+        /// for arming the deep tier. https://github.com/APKiwiOrg/KhaozEngine/issues/628 replaced that helper
+        /// with <c>MetalValidation.ClassifyDevice</c> over four classes, which is where the second shader-
+        /// validation spelling came from as well. Delegating now leaves ONE predicate for what "validating"
+        /// means, so the tripwire and the backend's own warning cannot answer differently about the same device.
         /// </para>
         /// </summary>
         internal static bool IsAValidatingDeviceClass(string? deviceClassName)
             => deviceClassName is { Length: > 0 } name
-                && (name.Contains("Debug", StringComparison.Ordinal)
-                    || name.Contains("SVDevice", StringComparison.Ordinal));
+                && MetalValidation.IsValidationDevice(MetalValidation.ClassifyDevice(name));
 
         /// <summary>
         /// THE DECISION, pure: the environment values and the device's class in, the failure message out, or

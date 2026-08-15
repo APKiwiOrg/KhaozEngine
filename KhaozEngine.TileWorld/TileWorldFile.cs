@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -11,7 +12,9 @@ namespace KhaozEngine.TileWorld;
 /// <summary>Save/load of the one on-disk form: a directory with <c>world.json</c> and
 /// <c>regions/r_&lt;rx&gt;_&lt;rz&gt;.json</c>. Every file lands via tmp + rename, the manifest last, and every
 /// region's bytes are hashed against the manifest on load, so a torn write is refused by name rather than
-/// loaded as a subtly different world.</summary>
+/// loaded as a subtly different world. That is DETECTION, not rollback: region bytes are overwritten in
+/// place, so a save interrupted part way through leaves the regions it already replaced replaced, and the
+/// next load names the first file whose bytes disagree with the manifest.</summary>
 public static class TileWorldFile
 {
     /// <summary>Format version this engine writes, and the version every load is migrated up to.</summary>
@@ -23,8 +26,10 @@ public static class TileWorldFile
     /// <summary>Name of the subdirectory holding the region files.</summary>
     public const string RegionsDirectoryName = "regions";
 
-    /// <summary>File name of one region, <c>r_&lt;rx&gt;_&lt;rz&gt;.json</c>.</summary>
-    public static string RegionFileName(RegionCoord c) => $"r_{c.Rx}_{c.Rz}.json";
+    /// <summary>File name of one region, <c>r_&lt;rx&gt;_&lt;rz&gt;.json</c>. Invariant culture, because a
+    /// negative coordinate under a culture with its own minus sign would write a name this engine could not
+    /// read back.</summary>
+    public static string RegionFileName(RegionCoord c) => string.Create(CultureInfo.InvariantCulture, $"r_{c.Rx}_{c.Rz}.json");
     /// <summary>Path of the manifest inside a world directory.</summary>
     public static string ManifestPath(string directory) => Path.Combine(directory, ManifestFileName);
     /// <summary>Path of one region file inside a world directory.</summary>
@@ -39,6 +44,14 @@ public static class TileWorldFile
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+        // Every region is checked against the document's plane count BEFORE the first byte is written. A
+        // document whose PlaneCount was changed after its regions were built would otherwise save a world
+        // that every load refuses, and half of it would already be on disk by the time that showed up.
+        foreach (TileRegion region in doc.Regions.Values)
+        {
+            if (region.Planes.Length != doc.PlaneCount)
+                throw new TileWorldException($"region {region.Coord}: has {region.Planes.Length} planes, the document has {doc.PlaneCount}, refusing to save an inconsistent world");
+        }
         string regionsDir = Path.Combine(directory, RegionsDirectoryName);
         Directory.CreateDirectory(regionsDir);
 
@@ -58,10 +71,16 @@ public static class TileWorldFile
             region.Dirty = false;
         }
 
-        foreach (string stale in Directory.EnumerateFiles(regionsDir, "r_*.json"))
+        // Materialised before the deletes: mutating a directory while its own enumeration is still open is
+        // unspecified, and this loop deletes out of the directory it is walking.
+        foreach (string stale in Directory.EnumerateFiles(regionsDir, "r_*.json").ToList())
         {
-            if (TryParseRegionFileName(Path.GetFileName(stale), out RegionCoord c) && !hashes.ContainsKey(c))
-                File.Delete(stale);
+            if (!TryParseRegionFileName(Path.GetFileName(stale), out RegionCoord c) || hashes.ContainsKey(c)) continue;
+            try { File.Delete(stale); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                throw new TileWorldException($"{stale}: cannot delete the file of a region the world no longer has. {ex.Message}", ex);
+            }
         }
 
         var manifest = new TileWorldManifest
@@ -96,7 +115,9 @@ public static class TileWorldFile
         try { root = Jsonc.ParseNode(json) as JsonObject ?? throw new TileWorldException($"{path}: manifest is not a JSON object"); }
         catch (JsonException ex) { throw new TileWorldException($"{path}: {ex.Message}", ex); }
 
-        int version = root["formatVersion"]?.GetValue<int>() ?? throw new TileWorldException($"{path}: manifest has no formatVersion");
+        JsonNode? versionNode = root["formatVersion"] ?? throw new TileWorldException($"{path}: manifest has no formatVersion");
+        if (versionNode is not JsonValue versionValue || !versionValue.TryGetValue(out int version))
+            throw new TileWorldException($"{path}: formatVersion must be an integer");
         if (version > CurrentFormatVersion)
             throw new TileWorldException($"{path}: formatVersion {version} is newer than this engine's {CurrentFormatVersion}");
         for (int v = version; v < CurrentFormatVersion; v++)
@@ -137,8 +158,11 @@ public static class TileWorldFile
             if (m is null) return result;
             foreach (TileWorldManifestRegion r in m.Regions) result[new RegionCoord(r.Rx, r.Rz)] = r.Hash;
         }
+        // An unreadable or corrupt previous manifest carries no hashes forward, so every loaded region is
+        // rewritten. That is the safe direction: nothing is carried over from bytes we could not read.
         catch (JsonException) { }
         catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
         return result;
     }
 
@@ -154,7 +178,9 @@ public static class TileWorldFile
         c = default;
         if (!name.StartsWith("r_", StringComparison.Ordinal) || !name.EndsWith(".json", StringComparison.Ordinal)) return false;
         string[] parts = name[2..^5].Split('_');
-        if (parts.Length != 2 || !int.TryParse(parts[0], out int rx) || !int.TryParse(parts[1], out int rz)) return false;
+        if (parts.Length != 2
+            || !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int rx)
+            || !int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int rz)) return false;
         c = new RegionCoord(rx, rz);
         return true;
     }

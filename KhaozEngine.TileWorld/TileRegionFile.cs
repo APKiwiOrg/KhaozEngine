@@ -25,7 +25,7 @@ internal static class TileRegionFile
         }
         dto.Objects = region.Objects
             .OrderBy(o => o.Plane).ThenBy(o => o.Z).ThenBy(o => o.X).ThenBy(o => o.Id)
-            .Select(o => new TileObjectDto { Id = o.Id, ArchetypeId = o.ArchetypeId, X = o.X, Z = o.Z, Plane = o.Plane, Rotation = o.Rotation, Tags = o.Tags is { Count: > 0 } ? o.Tags : null })
+            .Select(o => new TileObjectDto { Id = o.Id, ArchetypeId = o.ArchetypeId, X = o.X, Z = o.Z, Plane = o.Plane, Rotation = o.Rotation & 3, Tags = o.Tags is { Count: > 0 } ? o.Tags : null })
             .ToList();
         dto.Markers = region.Markers
             .OrderBy(m => m.Plane).ThenBy(m => m.Z).ThenBy(m => m.X).ThenBy(m => m.Name, StringComparer.Ordinal)
@@ -69,6 +69,7 @@ internal static class TileRegionFile
         foreach (TileMarkerDto m in dto.Markers)
         {
             if (!rect.Contains(m.X, m.Z)) throw new TileWorldException($"{sourceName}: marker '{m.Name}' at ({m.X}, {m.Z}) is outside region {expected}");
+            if ((uint)m.Plane >= (uint)planeCount) throw new TileWorldException($"{sourceName}: marker '{m.Name}' is on plane {m.Plane}, the world has {planeCount}");
             region.Markers.Add(new TileMarker { Name = m.Name, X = m.X, Z = m.Z, Plane = m.Plane, Tags = m.Tags });
         }
         return region;

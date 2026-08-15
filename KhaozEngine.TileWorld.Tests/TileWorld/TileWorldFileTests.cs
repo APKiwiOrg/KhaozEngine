@@ -1,6 +1,9 @@
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json.Nodes;
+using System.Threading;
 using KhaozEngine.TileWorld;
 using Xunit;
 
@@ -119,6 +122,92 @@ public class TileWorldFileTests
         TileWorldDocument back = TileWorldFile.Load(dir, opts);
         Assert.Equal(2.5f, back.PlaneHeight);
         Assert.Throws<TileWorldException>(() => TileWorldFile.Load(dir));
+    }
+
+    [Fact]
+    public void Region_files_of_negative_regions_round_trip_through_their_names()
+    {
+        using var tmp = new TempDir();
+        string dir = tmp.Sub("world");
+        TileWorldDocument doc = TileWorldTestData.FlatWorld(4, new RegionCoord(-1, -1), new RegionCoord(0, 0));
+        doc.SetUnderlay(-3, -3, 0, 7);
+        TileWorldFile.Save(doc, dir);
+        Assert.True(File.Exists(Path.Combine(dir, "regions", "r_-1_-1.json")));
+
+        Assert.True(TileWorldFile.TryParseRegionFileName("r_-1_-1.json", out RegionCoord c));
+        Assert.Equal(new RegionCoord(-1, -1), c);
+
+        TileWorldDocument back = TileWorldFile.Load(dir);
+        Assert.Equal(7, back.GetUnderlay(-3, -3, 0));
+        Assert.True(back.Regions.ContainsKey(new RegionCoord(-1, -1)));
+    }
+
+    [Fact]
+    public void Region_file_names_ignore_the_ambient_culture()
+    {
+        // A culture whose minus sign is not ASCII is what breaks an interpolated name. The check runs on its
+        // own thread so the hostile culture cannot leak into another test through a pooled one.
+        var hostile = (CultureInfo)CultureInfo.InvariantCulture.Clone();
+        hostile.NumberFormat.NegativeSign = "\u2212";
+        string? name = null;
+        bool parsed = false;
+        RegionCoord parsedCoord = default;
+        var t = new Thread(() =>
+        {
+            CultureInfo.CurrentCulture = hostile;
+            name = TileWorldFile.RegionFileName(new RegionCoord(-1, -2));
+            parsed = TileWorldFile.TryParseRegionFileName("r_-1_-2.json", out parsedCoord);
+        });
+        t.Start();
+        t.Join();
+        Assert.Equal("r_-1_-2.json", name);
+        Assert.True(parsed);
+        Assert.Equal(new RegionCoord(-1, -2), parsedCoord);
+    }
+
+    [Fact]
+    public void Parse_refuses_a_marker_on_a_plane_the_world_does_not_have()
+    {
+        string json = "{\"rx\":0,\"rz\":0,\"planes\":[null,null,null,null],\"objects\":[]," +
+                      "\"markers\":[{\"name\":\"spawn\",\"x\":5,\"z\":5,\"plane\":9}]}";
+        byte[] bytes = Encoding.UTF8.GetBytes(json);
+        var ex = Assert.Throws<TileWorldException>(() => TileRegionFile.Parse(bytes, new RegionCoord(0, 0), 4, "crafted.json"));
+        Assert.Contains("spawn", ex.Message);
+        Assert.Contains("plane 9", ex.Message);
+    }
+
+    [Fact]
+    public void Load_refuses_a_formatVersion_that_is_not_an_integer()
+    {
+        using var tmp = new TempDir();
+        string dir = tmp.Sub("world");
+        TileWorldFile.Save(Authored(), dir);
+        string manifestPath = Path.Combine(dir, "world.json");
+        JsonObject m = (JsonObject)JsonNode.Parse(File.ReadAllText(manifestPath))!;
+        m["formatVersion"] = "1";
+        File.WriteAllText(manifestPath, m.ToJsonString());
+        var ex = Assert.Throws<TileWorldException>(() => TileWorldFile.Load(dir));
+        Assert.Contains("world.json", ex.Message);
+        Assert.Contains("formatVersion", ex.Message);
+    }
+
+    [Fact]
+    public void Save_refuses_a_document_whose_PlaneCount_no_longer_matches_its_regions()
+    {
+        using var tmp = new TempDir();
+        string dir = tmp.Sub("world");
+        TileWorldFile.Save(Authored(), dir);
+        TileWorldDocument back = TileWorldFile.Load(dir);
+        string manifestBefore = File.ReadAllText(Path.Combine(dir, "world.json"));
+        string regionBefore = File.ReadAllText(Path.Combine(dir, "regions", "r_0_0.json"));
+
+        back.PlaneCount = 5;
+        back.Regions[new RegionCoord(0, 0)].Dirty = true;
+        var ex = Assert.Throws<TileWorldException>(() => TileWorldFile.Save(back, dir));
+        Assert.Contains("4 planes", ex.Message);
+        Assert.Contains("the document has 5", ex.Message);
+        Assert.Equal(manifestBefore, File.ReadAllText(Path.Combine(dir, "world.json")));
+        Assert.Equal(regionBefore, File.ReadAllText(Path.Combine(dir, "regions", "r_0_0.json")));
     }
 
     [Fact]

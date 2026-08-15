@@ -103,8 +103,11 @@ public sealed class TileWorldCatalogs
 
     /// <summary>The material with this id, or null when the catalogs do not define it.</summary>
     public GroundMaterial? Material(ushort id) => _materials.TryGetValue(id, out GroundMaterial? m) ? m : null;
-    /// <summary>The archetype with this id, or null when the catalogs do not define it.</summary>
-    public TileObjectArchetype? Archetype(string id) => _archetypes.TryGetValue(id, out TileObjectArchetype? a) ? a : null;
+    /// <summary>The archetype with this id, or null when the catalogs do not define it. A null or empty id is
+    /// undefined rather than an error, because content can carry one and the validator has to be able to ask
+    /// about it without a dictionary lookup throwing the whole validation pass down.</summary>
+    public TileObjectArchetype? Archetype(string? id) =>
+        !string.IsNullOrEmpty(id) && _archetypes.TryGetValue(id, out TileObjectArchetype? a) ? a : null;
 
     /// <summary>Catalogs with nothing in them.</summary>
     public static TileWorldCatalogs Empty() => new();

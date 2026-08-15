@@ -84,18 +84,38 @@ public class TileWorldValidatorTests
     }
 
     [Fact]
-    public void An_object_stored_in_the_wrong_region_and_an_unknown_overlay_shape_are_reported()
+    public void A_wrong_region_a_bad_overlay_shape_and_a_bad_marker_plane_are_reported()
     {
         TileWorldDocument doc = TileWorldTestData.FlatWorld();
         TileRegion r = doc.GetRegion(new RegionCoord(0, 0))!;
         r.Objects.Add(new TileObject { Id = 500, ArchetypeId = "tree", X = -5, Z = -5 });
+        r.Markers.Add(new TileMarker { Name = "high", X = 1, Z = 1, Plane = 9 });
         r.Plane(0).OverlayShapeOrAlloc()[TilePlaneData.Index(3, 3)] = 9;
 
         var issues = TileWorldValidator.Validate(doc, TileWorldCatalogs.Greybox());
         var codes = issues.Select(i => i.Code).ToList();
         Assert.Contains("object.region", codes);
-        Assert.Contains("overlay.shape", codes);
+        Assert.Contains("marker.plane", codes);
         Assert.Equal(1, codes.Count(c => c == "overlay.shape"));
+
+        // The offending tile is in hand at detection time, so the issue has to carry it: a bare region plus
+        // a flat array index is not something an editor can select or jump to.
+        TileWorldIssue shape = issues.Single(i => i.Code == "overlay.shape");
+        Assert.Equal(new TileCoord(3, 3, 0), shape.Tile);
+        Assert.Contains("(3, 3)", shape.Message);
+    }
+
+    [Fact]
+    public void An_object_with_no_archetype_id_is_reported_rather_than_throwing()
+    {
+        TileWorldDocument doc = TileWorldTestData.FlatWorld();
+        TileRegion r = doc.GetRegion(new RegionCoord(0, 0))!;
+        r.Objects.Add(new TileObject { Id = 7, ArchetypeId = null!, X = 2, Z = 2 });
+
+        TileWorldIssue issue = Assert.Single(TileWorldValidator.Validate(doc, TileWorldCatalogs.Greybox()));
+        Assert.Equal("archetype.missing", issue.Code);
+        Assert.Contains("object 7", issue.Message);
+        Assert.Equal(new TileCoord(2, 2, 0), issue.Tile);
     }
 
     [Fact]

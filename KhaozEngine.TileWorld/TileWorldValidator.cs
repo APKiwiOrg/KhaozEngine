@@ -50,7 +50,8 @@ public static class TileWorldValidator
         return issues;
     }
 
-    /// <summary>Validates and throws on the first failure, quoting up to five issues and the total count.</summary>
+    /// <summary>Validates the whole document and, when anything is wrong, throws once quoting the first five
+    /// issues and the total count.</summary>
     public static void ValidateOrThrow(TileWorldDocument doc, TileWorldCatalogs catalogs)
     {
         IReadOnlyList<TileWorldIssue> issues = Validate(doc, catalogs);
@@ -68,9 +69,8 @@ public static class TileWorldValidator
             void Check(ushort id, string layer, int index)
             {
                 if (id == 0 || catalogs.Material(id) is not null || !reported.Add(id)) return;
-                int lx = index % TileRegion.Size, lz = index / TileRegion.Size;
-                issues.Add(new("material.missing", $"{layer} material {id} is not in the catalog (first at local ({lx}, {lz}) plane {p})", region.Coord,
-                    new TileCoord(region.Coord.OriginX + lx, region.Coord.OriginZ + lz, p)));
+                TileCoord t = TileAt(region.Coord, index, p);
+                issues.Add(new("material.missing", $"{layer} material {id} is not in the catalog (first at local ({t.LocalX}, {t.LocalZ}) plane {p})", region.Coord, t));
             }
             if (d.Underlay is not null) for (int i = 0; i < d.Underlay.Length; i++) Check(d.Underlay[i], "underlay", i);
             if (d.Overlay is not null) for (int i = 0; i < d.Overlay.Length; i++) Check(d.Overlay[i], "overlay", i);
@@ -80,13 +80,19 @@ public static class TileWorldValidator
                 {
                     if (d.OverlayShape[i] > (byte)TileOverlayShape.CornerThreeQuarter)
                     {
-                        issues.Add(new("overlay.shape", $"overlay shape {d.OverlayShape[i]} at local index {i} plane {p} is not a known shape", region.Coord, null));
+                        TileCoord t = TileAt(region.Coord, i, p);
+                        issues.Add(new("overlay.shape", $"overlay shape {d.OverlayShape[i]} at local ({t.LocalX}, {t.LocalZ}) plane {p} is not a known shape", region.Coord, t));
                         break;
                     }
                 }
             }
         }
     }
+
+    /// <summary>The world tile a flat layer index addresses, so an issue can point an editor at the offending
+    /// tile rather than at a region and a number the caller would have to decode.</summary>
+    static TileCoord TileAt(RegionCoord c, int index, int plane) =>
+        new(c.OriginX + (index % TileRegion.Size), c.OriginZ + (index / TileRegion.Size), plane);
 
     static void ValidateObject(TileWorldDocument doc, TileWorldCatalogs catalogs, TileRegion region, TileObject o, HashSet<long> seenIds, List<TileWorldIssue> issues)
     {
@@ -96,6 +102,13 @@ public static class TileWorldValidator
             issues.Add(new("object.plane", $"object {o.Id} ('{o.ArchetypeId}') is on plane {o.Plane}, the world has {doc.PlaneCount}", region.Coord, o.Coord));
         if (!region.Coord.Rect.Contains(o.X, o.Z))
             issues.Add(new("object.region", $"object {o.Id} at ({o.X}, {o.Z}) is stored in region {region.Coord} but lies in {RegionCoord.Of(o.X, o.Z)}", region.Coord, o.Coord));
+        // Content reaches here straight off disk, so a region file carrying "archetypeId": null lands as a
+        // null string on a non-nullable property. Validate reports bad content, it never throws on it.
+        if (string.IsNullOrWhiteSpace(o.ArchetypeId))
+        {
+            issues.Add(new("archetype.missing", $"object {o.Id} has no archetype id", region.Coord, o.Coord));
+            return;
+        }
         TileObjectArchetype? a = catalogs.Archetype(o.ArchetypeId);
         if (a is null)
         {

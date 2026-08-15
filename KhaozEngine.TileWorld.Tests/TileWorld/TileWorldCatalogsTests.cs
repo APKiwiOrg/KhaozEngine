@@ -79,6 +79,17 @@ public class TileWorldCatalogsTests
     }
 
     [Fact]
+    public void A_null_or_blank_archetype_id_is_simply_undefined()
+    {
+        // Content can carry "archetypeId": null, and the validator has to be able to ASK about it without
+        // a Dictionary.TryGetValue(null) throw taking the whole validation pass down.
+        TileWorldCatalogs g = TileWorldCatalogs.Greybox();
+        Assert.Null(g.Archetype(null));
+        Assert.Null(g.Archetype(""));
+        Assert.Null(g.Archetype("   "));
+    }
+
+    [Fact]
     public void Footprint_rotation_swaps_axes_and_anchors_at_the_SW_tile()
     {
         var a = new TileObjectArchetype { Id = "a", SizeX = 2, SizeZ = 3 };

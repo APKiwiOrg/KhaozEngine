@@ -8159,13 +8159,17 @@ CrashReport.Install(new CrashReportOptions { ProcessLabel = "MyGame.Server" });
 Rules for consumers:
 
 - Configure `Log` once per process; call `Log.Shutdown()` on exit.
-- **Where you configure it in startup does not matter, and neither does what has already logged.** A logger from
+- **For a logger from the facade, where you configure it in startup does not matter, and neither does what has
+  already logged.** A logger from
   `Log.For<T>()` / `Log.Get(...)` is bound to its category and to the facade, not to whichever manager was
   configured when you asked for it, so it reads the current one on every call. Cache it in a
   `static readonly ILogger` field if you like: touching the type before `Log.Configure` runs, or reconfiguring
   afterwards to swap the sink set, leaves that field writing to the live manager either way (17.36.2, #616). The one
   logger this does NOT apply to is `LogManager.GetLogger(...)`, which is bound to the manager you took it from,
-  on purpose, so an injected manager and its sink keep meaning what they say.
+  on purpose, so an injected manager and its sink keep meaning what they say. `CrashHandler.Install()` is the
+  other thing that still cares about order: it pins `Log.Manager` at install time and reports the fatal line
+  through that pinned manager, so install it AFTER `Log.Configure` and re-install it if you reconfigure, or the
+  crash line lands in a manager whose sinks were disposed (tracked to make it resolve per report: #633).
 - Pick a **category**, then log under it (pass an exception as the optional second argument):
   - A single class's logging → `Log.For<T>()` (category = the type name).
   - A feature/subsystem spanning several classes, or a game-side module with no single owning type → 

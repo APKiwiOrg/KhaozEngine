@@ -978,7 +978,7 @@ jobs:
           # AND NOW THE METAL LEG TOO, WHICH IS THE OTHER HALF OF #617
           # (https://github.com/APKiwiOrg/KhaozEngine/issues/617). That issue's artifact held no Metal diagnostic
           # at all, and BOTH halves were missing. 56c8ceec fixed the first: the test host configures a sink for
-          # the Metal categories when a Metal rung is armed, where before every line went to a NullLogger. This
+          # the Metal categories when a Metal rung is armed, where before every line went nowhere at all. This
           # is the second. The sink writes to the host's stdout, and vstest forwards a test host's stdout only at
           # detailed console verbosity, so without this the lines land in a stream the runner discards and the
           # artifact is empty for a second, entirely separate reason. That is exactly the pair #565 had to fix on

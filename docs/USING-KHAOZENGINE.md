@@ -5279,7 +5279,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.36.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.36.2" />
 ```
 
 ```csharp
@@ -8729,7 +8729,7 @@ run inside the engine's process-wide device-creation gate, so a provider needs n
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.36.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.36.2" />
 ```
 
 ```csharp
@@ -8763,7 +8763,7 @@ that up front is what routes it through the reported fallback instead of a crash
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.36.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.36.2" />
 ```
 
 ```csharp
@@ -9001,7 +9001,7 @@ is no recovery path: a lost device stays lost, which is what the liveness token 
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.36.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.36.2" />
 ```
 
 ```csharp
@@ -9194,9 +9194,19 @@ MTL_DEBUG_LAYER=1 dotnet run --project <your game>
 MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 dotnet run --project <your game>
 ```
 
-The engine's knob then logs which tier is really armed, checks that against the device's own Objective-C class
-(a validated device is an `MTLDebugDevice` rather than the driver's own), and WARNS with the exact prefix above
-when a tier was asked for and this process cannot have it. Neither tier is a synchronisation validator.
+The engine's knob then logs which tier is really armed, checks that against the device's own Objective-C class,
+and WARNS with the exact prefix above when a tier was asked for and this process cannot have it. Neither tier is
+a synchronisation validator.
+
+**The log line reads the class rather than printing it bare.** `MTL_DEBUG_LAYER=1` gets an `MTLDebugDevice`
+whether or not the shader variable is beside it. `MTL_SHADER_VALIDATION=1` ALONE gets a shader-validation
+device, which is validated and not unvalidated, and which has two measured spellings: `MTLGPUDebugDevice` on
+real Apple silicon and `MTLLegacySVDevice` on a hosted `macos-26` runner. A GPU-trace capture in the same
+process gets a `CaptureMTLDevice` and displaces the layer, so that one really is unvalidated. Anything else is
+the driver's own class (`AGXG14CDevice` on Apple silicon). The disambiguation WARN fires only when a variable
+IS armed and nothing is validating after all, and it names the variable you actually set, which is what
+[#628](https://github.com/APKiwiOrg/KhaozEngine/issues/628) fixed after a shader-only run emitted 99 warnings
+naming a variable nobody had set.
 
 **Three things about arming it that cost a debugging session to learn, all measured on macOS 26.**
 

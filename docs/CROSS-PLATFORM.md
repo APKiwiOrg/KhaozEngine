@@ -158,7 +158,19 @@ The suite each leg runs is split by trigger, from measured hosted-runner cost
   | launch environment | what `MetalGpuDevice` reported |
   | --- | --- |
   | `MTL_DEBUG_LAYER=1` | `The device class is MTLDebugDevice`, no disambiguation warning |
+  | `MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1` | `The device class is MTLDebugDevice`, no warning. The debug layer wins the class when both are armed |
+  | `MTL_SHADER_VALIDATION=1` alone | `The device class is MTLGPUDebugDevice`, no warning. Hosted `macos-26` answers `MTLLegacySVDevice` for the same environment, see below |
   | `MTL_DEBUG_LAYER=1 MTL_CAPTURE_ENABLED=1` | `The device class is CaptureMTLDevice`, plus the WARN that the run `is probably NOT validated` |
+
+  **Shader validation alone has TWO class spellings, and that is what
+  [#628](https://github.com/APKiwiOrg/KhaozEngine/issues/628) turned out to be about.** That issue was filed on
+  run `31874140088`, where hosted `macos-26` under `MTL_SHADER_VALIDATION=1` alone reported `MTLLegacySVDevice`
+  and the engine emitted 99 copies of a warning calling a validated run unvalidated. The same launch environment
+  on the M2 Max above reports `MTLGPUDebugDevice`. Both are shader-validation wrappers, so the disambiguation
+  asks whether ANY validation wrapper is holding the device rather than whether one named class came back:
+  pinning it to either spelling would put the false warning back on the other machine. Only `CaptureMTLDevice`
+  and the driver's own class read as unvalidated now, and the WARN names whichever of the two variables was
+  actually armed.
 
   `MTLDebugDevice` is the class that performs the API validation, so the arrangement this replaces (capture on
   every trigger except the deep dispatch) left tier one INERT on every push, pull request and cron this leg has

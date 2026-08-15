@@ -5,6 +5,76 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.36.2
+
+Two reporting defects, both of which made a correct run read as a broken one. The native Vulkan backend's
+`CreateTexture` refusal told a caller their sample count lost to a conservative ceiling of 1 that a landed row
+replaced two releases ago, and sent them to a closed issue for the real number, so the message now states the
+ceiling the driver actually reported and how it was derived. And the native Metal backend stopped warning that a
+`MTL_SHADER_VALIDATION`-only run was probably not validated, which it emitted 99 times on one CI run while
+naming a variable nobody had set: the device-class disambiguation now reads both variables and every validation
+wrapper Metal has been measured handing back. Fixing that turned up a fact neither issue had: shader validation
+alone answers with `MTLGPUDebugDevice` on real Apple silicon and `MTLLegacySVDevice` on a hosted runner, so the
+check asks whether anything is validating rather than whether one named class came back.
+
+### The Metal device-class disambiguation reads both variables and four device classes (#628)
+
+`MetalGpuDevice` logs which validation tier is really armed and checks that against the device's own Objective-C
+class, because a validated device is a different class from the driver's own. That check was one substring test,
+`deviceClassName.Contains("Debug")`, and a process launched with `MTL_SHADER_VALIDATION=1` and no
+`MTL_DEBUG_LAYER` failed it. On CI run `31874140088` the backend emitted 99 copies of a WARN telling the reader
+to disbelieve a run that was validating perfectly well, and the WARN named `MTL_DEBUG_LAYER`, which that run had
+never set. No public API changed: `MetalValidation` and everything around it are internal.
+
+**Two things are fixed and one was discovered.** The arming record now carries `MTL_DEBUG_LAYER` and
+`MTL_SHADER_VALIDATION` separately instead of only the merged tier, because the merge loses the one distinction
+the class check needs (the shader variable alone and both variables together both report tier `Shaders` and get
+different device classes). Every line that names a variable now names the one that was actually armed, the INFO
+line included, where a shader-only run used to be described as coming from `MTL_DEBUG_LAYER` as well. And the
+class check became `MetalValidation.ClassifyDevice`, over four kinds: `MTLDebugDevice` is the API validation
+layer holding the device, a shader-validation wrapper is the shader layer holding it, `CaptureMTLDevice` is a
+GPU-trace capture that has DISPLACED the layer (#614), and anything else is the driver's own class. The WARN
+fires only when a variable is armed and none of the validation wrappers came back.
+
+**The discovery, measured while fixing it, is that shader validation has TWO class names.** The issue was filed
+on a hosted `macos-26` runner reporting `MTLLegacySVDevice`. The same launch environment on real Apple silicon
+(Mac14,6 / Apple M2 Max, macOS 26.6.1 build 25G76) reports `MTLGPUDebugDevice`. So the check deliberately does
+NOT compare against one expected class name: it asks whether ANY validation wrapper is holding the device,
+because pinning it to either spelling puts the false warning straight back on the other machine. That is the
+same defect one machine further along, and it is why `MTLGPUDebugDevice` is classified ahead of `MTLDebugDevice`
+in the classifier, the first containing the second.
+
+Measured on that M2 Max, one `[GpuFact]` under `KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native` at detailed
+verbosity, three launch environments:
+
+| launch environment | device class | INFO line | disambiguation WARNs |
+| --- | --- | --- | --- |
+| `MTL_SHADER_VALIDATION=1` | `MTLGPUDebugDevice` | `Metal SHADER VALIDATION is ACTIVE ... (from MTL_SHADER_VALIDATION ...)`, read as the shader validation layer holding the device | 0 |
+| `MTL_DEBUG_LAYER=1` | `MTLDebugDevice` | `Metal API validation is ACTIVE ... (from MTL_DEBUG_LAYER ...)` | 0 |
+| both | `MTLDebugDevice` | `Metal API validation is ACTIVE with SHADER VALIDATION ... (from MTL_DEBUG_LAYER and MTL_SHADER_VALIDATION ...)` | 0 |
+
+The debug layer wins the class when both are armed, which is what makes the shader-only case a genuinely
+different expectation rather than the same one.
+
+### The native Vulkan ledger stops describing landed rows as open (#627)
+
+The work-breakdown rows that built `KhaozEngine.Gpu.Vulkan` all landed, and prose in that package still said
+otherwise in three places, one of them a runtime message. `CreateTexture`'s `ArgumentException` ended with "this
+device's ceiling is still the conservative 1 that row 4 pinned" and pointed at the closed capability row for the
+real computation. That row landed in `17.34.0`, so the ceiling is a real driver reading and the message now says
+what it is and where it came from: `vkGetPhysicalDeviceImageFormatProperties` per MRT target with that target's
+own usage, reduced to the highest supported sample bit, minimised over the three targets. Its `<exception>` doc
+says the same. `VulkanGpuDevice` also claimed recording rows were still open on `VulkanCommandList` (row 15
+closed the last of them) and that the uniform ring's frame boundary and `DrainRetiredResources` had no caller
+(`Present` calls both, since row 17). No behaviour changed.
+
+The rest of the package was swept for the same class of claim, and the widest one was the package Description
+itself, which is what a NuGet reader sees: it still read `IN PROGRESS` and listed recording content, descriptor
+sets, framebuffers, shaders, pipelines and the windowed swapchain as not built yet. The package README's "what
+is not built yet" section, the capability read's MSAA constant docs and future-tense row references in nine more
+files went with it. The refusal test asserted the old message contained the closed row's number, and now asserts
+the reported ceiling, the driver query, and that the closed row is NOT named.
+
 ## 17.36.1
 
 The native Vulkan backend's staged buffer upload now barriers on the way IN as well as on the way out, closing

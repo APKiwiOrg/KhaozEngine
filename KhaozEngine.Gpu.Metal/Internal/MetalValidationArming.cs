@@ -14,6 +14,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// or null.</param>
     /// <param name="Armed">The tier the Metal runtime really has, read from the LAUNCH environment. This is the
     /// one that is true.</param>
+    /// <param name="DebugLayerArmed">Whether <c>MTL_DEBUG_LAYER</c> itself was in the launch environment. Kept
+    /// beside <paramref name="Armed"/> rather than derived from it, because the tier is a MERGE and the merge
+    /// loses the one distinction the device-class check needs: the shader variable alone reports the same
+    /// <see cref="MetalValidationMode.Shaders"/> tier as both variables together and gets a different device
+    /// class. Deriving the variable back out of the tier is what made #628's warning name a variable nobody had
+    /// set.</param>
+    /// <param name="ShaderValidationArmed">Whether <c>MTL_SHADER_VALIDATION</c> itself was in the launch
+    /// environment.</param>
     /// <param name="DebugLayerSetInProcessOnly">Whether <c>MTL_DEBUG_LAYER</c> is set in the managed environment
     /// and was NOT in the launch environment, which is the "set after the runtime read it" case M-G3's log line
     /// asks for. Detected rather than guessed: on Unix the CLR keeps its own copy of the environment and
@@ -24,6 +32,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         MetalValidationMode Requested,
         string? UnrecognizedValue,
         MetalValidationMode Armed,
+        bool DebugLayerArmed,
+        bool ShaderValidationArmed,
         bool DebugLayerSetInProcessOnly,
         bool ShaderValidationSetInProcessOnly)
     {
@@ -97,8 +107,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 ? MetalValidationMode.Shaders
                 : debugArmed ? MetalValidationMode.On : MetalValidationMode.Off;
 
-            return new MetalValidationArming(requested, unrecognized, armed, debugInProcessOnly,
-                shaderInProcessOnly);
+            return new MetalValidationArming(requested, unrecognized, armed, debugArmed, shaderArmed,
+                debugInProcessOnly, shaderInProcessOnly);
         }
 
         // Whether a process-level variable is armed, and whether it is armed ONLY in the managed environment,

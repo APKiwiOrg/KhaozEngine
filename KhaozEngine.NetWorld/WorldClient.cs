@@ -703,11 +703,15 @@ public sealed partial class WorldClient : IDisposable
                 view.SnapInterpolationToNewest(id);
                 remoteTeleports.Add(id);   // surface the hard cut so a cosmetic layer (RemoteTeleports) can match it
             }
-            // Held as a high-water mark, not a last-seen value. The epoch reads 0 whenever MovementState is
-            // momentarily absent - on the line above when the component has not replicated yet, and on the server
-            // where it rebuilds the state (ShardedWorldServer.SetPlayerState) - so a real stream can dip and recover.
-            // Storing the dip would make the recovery back to the true epoch read as a fresh advance and cut the
-            // remote a second time, which is the every-snapshot flip-flop this holds off.
+            // Held as a high-water mark, not a last-seen value, for the dip an ALREADY-KNOWN entity takes: the epoch
+            // reads 0 whenever this read finds no MovementState on a snapshot that carried one before, and on the
+            // server where it rebuilds the state (ShardedWorldServer.SetPlayerState), so a real stream can dip and
+            // recover. Storing the dip would make the recovery back to the true epoch read as a fresh advance and cut
+            // the remote a second time, which is the every-snapshot flip-flop this holds off.
+            // First SIGHT is a different case and is not what the watermark covers: an entity seen before its
+            // MovementState replicates records 0, and the true epoch arriving after it reads as a genuine advance and
+            // snaps. That is harmless (the buffer it snaps to is all the samples there are) and the `known` guard
+            // above is what keeps the first observation itself silent.
             lastTeleportEpochByEntity[id] = known && prev > epoch ? prev : epoch;
         }
 

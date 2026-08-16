@@ -80,8 +80,9 @@ public static class TileEditTestWorld
     ///
     /// <para>Region (0, 0) is grass on plane 0. Then: tile (0, 0) is dirt, tile (1, 0) carries overlay 2 as a
     /// rotated diagonal half, tile (2, 2) is flagged blocked, a west-facing wall stands at (1, 1), a tree at
-    /// (3, 3), and a marker named <c>spawn</c> at (0, 0). Corners (0..1, 0..1) are lifted to 0, 100, 200 and 300
-    /// centimetres.</para></summary>
+    /// (3, 3), and a marker named <c>spawn</c> at (0, 0). The corners at (0..1, 0..1) are lifted, given NORTH
+    /// FIRST like every height row in this tool, so corner (0, 1) is 200 and corner (1, 1) is 300 while the
+    /// southern pair is 0 and 100.</para></summary>
     public static (long WallId, long TreeId) Build(MutationService mutate)
     {
         ArgumentNullException.ThrowIfNull(mutate);
@@ -89,7 +90,8 @@ public static class TileEditTestWorld
         mutate.TilesFill(new TileRect(0, 0, 1, 1), 0, underlay: 2);
         mutate.TilesFill(new TileRect(1, 0, 1, 1), 0, overlay: 2, shape: TileOverlayShape.DiagonalHalf, rotation: 1);
         mutate.TilesFill(new TileRect(2, 2, 1, 1), 0, settings: TileSettings.Blocked);
-        mutate.HeightsSet(new TileRect(0, 0, 2, 2), 0, new short[] { 0, 100, 200, 300 });
+        mutate.HeightsSet(new TileRect(0, 0, 2, 2), 0,
+            new[] { new short[] { 200, 300 }, new short[] { 0, 100 } });
         long wall = mutate.ObjectPlace("wall", 1, 1, 0, rotation: 0).ObjectId;
         long tree = mutate.ObjectPlace("tree", 3, 3, 0).ObjectId;
         mutate.MarkerSet("spawn", 0, 0, 0, new[] { "start" });

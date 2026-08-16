@@ -246,4 +246,43 @@ public class QueryServiceTests
         Assert.True(hut.SizeBytes > 0);
         Assert.Throws<TileWorldException>(() => f.Query.PrefabList("nowhere"));
     }
+
+    /// <summary>A relative path has nothing to be relative TO without an open world, and falling back to the
+    /// process working directory would let a closed session enumerate whatever the client launched the server
+    /// in.</summary>
+    [Fact]
+    public void PathTakingVerbsOnAClosedSession_TouchNoFilesystem()
+    {
+        var closed = new TileEditSession();
+
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => new QueryService(closed).PrefabList("."));
+        Assert.Contains("world_open", ex.Message, StringComparison.Ordinal);
+
+        var mutate = new MutationService(closed);
+        Assert.Throws<TileWorldException>(() => mutate.PrefabPlace("hut.json", 0, 0, 0));
+        Assert.Throws<TileWorldException>(() => mutate.PrefabExtract(new TileRect(0, 0, 2, 2), 0, 1, "out.json"));
+        Assert.Throws<TileWorldException>(() =>
+            mutate.HeightsImport("hills.pgm", new TileRect(0, 0, 2, 2), 0, 0, 100));
+        Assert.Throws<TileWorldException>(() => closed.ResolvePath("/tmp/anywhere"));
+    }
+
+    /// <summary>The collision map answers Blocked for a plane it does not have, so a query handed a bad plane
+    /// would come back as a plausible map of solid rock. Every collision-reading query checks first.</summary>
+    [Fact]
+    public void CollisionQueries_RefuseAPlaneTheWorldDoesNotHave()
+    {
+        using var f = new Fixture();
+
+        ArgumentOutOfRangeException ex = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            f.Query.IsWalkable(0, 0, 9));
+        Assert.Contains("0..3", ex.Message, StringComparison.Ordinal);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => f.Query.CollisionAt(0, 0, 9));
+        Assert.Throws<ArgumentOutOfRangeException>(() => f.Query.Path(0, 0, 1, 1, 9));
+        Assert.Throws<ArgumentOutOfRangeException>(() => f.Query.WalkableRect(Corner, 9));
+        Assert.Throws<ArgumentOutOfRangeException>(() => f.Query.TilesGetRect(Corner, 9, "collision"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => f.Query.IsWalkable(0, 0, -1));
+        // The other layers read through the document, which was already loud about it.
+        Assert.Throws<ArgumentOutOfRangeException>(() => f.Query.TilesGetRect(Corner, 9, "underlay"));
+    }
 }

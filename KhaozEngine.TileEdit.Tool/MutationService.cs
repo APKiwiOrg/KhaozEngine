@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Editing;
 
@@ -25,10 +26,34 @@ public sealed partial class MutationService(TileEditSession session)
     public MutationResult TilesClear(TileRect rect, int plane) =>
         session.Execute(_ => new SetTilesCommand(rect, plane, 0, 0, TileOverlayShape.Full, 0, TileSettings.None));
 
-    /// <summary>Writes one height per corner of a rect of the corner lattice, row major with z rising.</summary>
-    public HeightResult HeightsSet(TileRect cornerRect, int plane, short[] cm)
+    /// <summary>Writes the corner-height lattice from rows given NORTH FIRST: row 0 is the highest z of the
+    /// rect, each row west to east and <c>cornerRect.Width</c> long, with <c>cornerRect.Height</c> rows. That is
+    /// exactly the shape <c>QueryService.HeightGetRect</c> hands back, so reading a patch and writing it
+    /// straight back is a no-op.
+    ///
+    /// <para>The command underneath takes ONE FLAT array in the opposite order (row major with z RISING, so
+    /// south first), which is the document's own convention. The reorder happens here, once, rather than being
+    /// left as a trap between a read verb and a write verb that look like a matching pair.</para></summary>
+    /// <exception cref="ArgumentException">The rows do not match the corner rect.</exception>
+    public HeightResult HeightsSet(TileRect cornerRect, int plane, IReadOnlyList<short[]> rows)
     {
-        ArgumentNullException.ThrowIfNull(cm);
+        ArgumentNullException.ThrowIfNull(rows);
+        int height = cornerRect.IsEmpty ? 0 : cornerRect.Height;
+        int width = cornerRect.IsEmpty ? 0 : cornerRect.Width;
+        if (rows.Count != height)
+            throw new ArgumentException(
+                $"the corner rect is {height} rows deep, {rows.Count} rows were given.", nameof(rows));
+        var cm = new short[width * height];
+        for (int row = 0; row < height; row++)
+        {
+            short[] values = rows[row] ?? throw new ArgumentException($"row {row} is null.", nameof(rows));
+            if (values.Length != width)
+                throw new ArgumentException(
+                    $"the corner rect is {width} wide, row {row} carries {values.Length} heights.", nameof(rows));
+            // Row 0 is the NORTHERNMOST, and the flat array starts at the SOUTHERNMOST, so the rows are laid
+            // down back to front.
+            values.CopyTo(cm, (height - 1 - row) * width);
+        }
         return Heights(e => TileEditOps.SetHeights(e.Document, cornerRect, plane, cm));
     }
 
@@ -48,7 +73,10 @@ public sealed partial class MutationService(TileEditSession session)
 
     /// <summary>Resamples a binary PGM heightmap onto the corner rect, mapping its greyscale linearly onto
     /// <paramref name="minCm"/>..<paramref name="maxCm"/>. A relative path resolves against the world's own
-    /// directory.</summary>
+    /// directory.
+    ///
+    /// <para>No row flip here, unlike <see cref="HeightsSet"/>: a PGM's row 0 is its north edge and
+    /// <c>TileEditOps.ImportHeights</c> already lands it on the rect's highest z.</para></summary>
     public HeightResult HeightsImport(string pgmPath, TileRect cornerRect, int plane, short minCm, short maxCm)
     {
         string resolved = session.ResolvePath(pgmPath);

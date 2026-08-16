@@ -67,7 +67,7 @@ public class MutationServiceTests
         using var f = new Fixture();
         var rect = new TileRect(0, 0, 3, 3);
 
-        HeightResult set = f.Mutate.HeightsSet(rect, 0, Enumerable.Repeat((short)100, 9).ToArray());
+        HeightResult set = f.Mutate.HeightsSet(rect, 0, Flat(3, 3, 100));
         Assert.Equal(9, set.CornerCount);
         Assert.Equal(9, set.WrittenCount);
         Assert.Equal(100, NorthWest(f));
@@ -88,6 +88,46 @@ public class MutationServiceTests
         // Four commands back to a flat zero lattice.
         f.Mutate.Undo(4);
         Assert.Equal(0, NorthWest(f));
+    }
+
+    /// <summary>The read verb and the write verb must agree on which end of the array is north, or an author
+    /// who reads a patch, nudges one corner and writes it back silently mirrors their own terrain.</summary>
+    [Fact]
+    public void HeightsSet_TakesTheSameRowOrderHeightGetRectHandsBack()
+    {
+        using var f = new Fixture();
+        var rect = new TileRect(0, 0, 4, 3);
+        // Asymmetric on BOTH axes, so a flip in either direction shows up.
+        f.Mutate.HeightsSet(rect, 0, new[]
+        {
+            new short[] { 10, 20, 30, 40 },
+            new short[] { 50, 60, 70, 80 },
+            new short[] { 90, 100, 110, 120 },
+        });
+
+        HeightMapResult read = f.Query.HeightGetRect(rect, 0);
+        Assert.Equal(new short[] { 10, 20, 30, 40 }, read.Rows[0]);
+        Assert.Equal(new short[] { 90, 100, 110, 120 }, read.Rows[2]);
+        // Row 0 is the NORTH row, so its values sit on the rect's highest corner z.
+        Assert.Equal(10, f.Session.Read(e => e.Document.CornerHeightCm(0, 2, 0)));
+        Assert.Equal(90, f.Session.Read(e => e.Document.CornerHeightCm(0, 0, 0)));
+
+        // Reading and writing straight back moves nothing at all, hash included.
+        string before = f.Session.Summary().WorldHash;
+        f.Mutate.HeightsSet(rect, 0, read.Rows);
+        Assert.Equal(before, f.Session.Summary().WorldHash);
+        Assert.Equal(read.Rows[0], f.Query.HeightGetRect(rect, 0).Rows[0]);
+    }
+
+    [Fact]
+    public void HeightsSet_RefusesRowsThatDoNotMatchTheCornerRect()
+    {
+        using var f = new Fixture();
+        var rect = new TileRect(0, 0, 3, 2);
+
+        Assert.Throws<ArgumentException>(() => f.Mutate.HeightsSet(rect, 0, Flat(3, 3, 10)));
+        Assert.Throws<ArgumentException>(() => f.Mutate.HeightsSet(rect, 0, Flat(2, 2, 10)));
+        Assert.Throws<ArgumentNullException>(() => f.Mutate.HeightsSet(rect, 0, null!));
     }
 
     [Fact]
@@ -254,26 +294,33 @@ public class MutationServiceTests
         Assert.Empty(f.Query.ObjectsInRect(new TileRect(40, 40, 2, 2), 0));
     }
 
+    /// <summary>Every verb is its own undo step, including two moves of the same object, which the command
+    /// layer would otherwise coalesce into one. Over MCP each call is a discrete instruction a client issued on
+    /// purpose, so a client stepping back through its own edits must land on each of them.</summary>
     [Fact]
-    public void Moves_CoalesceIntoOneStepAfterAGestureSeal()
+    public void EachVerbIsOneUndoStep_EvenTwoMovesOfTheSameObject()
     {
         using var f = new Fixture();
         long id = f.Mutate.ObjectPlace("tree", 4, 4, 0).ObjectId;
-        // The seal ends the placement's gesture, so the drag that follows starts its own undo step instead of
-        // being absorbed into the placement.
-        f.Mutate.SealGesture();
 
         f.Mutate.ObjectMove(id, 5, 5, 0);
         MutationResult second = f.Mutate.ObjectMove(id, 6, 6, 0);
 
-        // The fixture's fill, the placement, and the two moves as ONE step.
-        Assert.Equal(3, second.UndoDepth);
+        // The fixture's fill, the placement, and the two moves as two separate steps.
+        Assert.Equal(4, second.UndoDepth);
         Assert.Equal(6, f.Query.ObjectGet(id).X);
 
+        // One undo goes back one MOVE, to where the first one left it, not all the way home.
+        f.Mutate.Undo();
+        Assert.Equal(5, f.Query.ObjectGet(id).X);
         f.Mutate.Undo();
         Assert.Equal(4, f.Query.ObjectGet(id).X);
     }
 
     // The north-west corner of the 3 by 3 test lattice, which is row 0 (highest z) column 0 (lowest x).
     static short NorthWest(Fixture f) => f.Query.HeightGetRect(new TileRect(0, 0, 3, 3), 0).Rows[0][0];
+
+    // A rows-shaped lattice of one repeated height, in the north-first shape HeightsSet takes.
+    static short[][] Flat(int width, int height, short cm) =>
+        Enumerable.Range(0, height).Select(_ => Enumerable.Repeat(cm, width).ToArray()).ToArray();
 }

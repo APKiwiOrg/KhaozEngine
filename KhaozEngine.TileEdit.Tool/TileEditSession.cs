@@ -16,7 +16,13 @@ namespace KhaozEngine.TileEdit;
 ///
 /// <para>Catalog paths in the manifest resolve RELATIVE TO THE WORLD DIRECTORY, never to the process working
 /// directory: an MCP server is started by a client whose working directory is its own business, so a world that
-/// only loads from one directory would be a world that only loads for one client.</para></summary>
+/// only loads from one directory would be a world that only loads for one client. Every other path a verb takes
+/// follows the same rule through <see cref="ResolvePath"/>, which needs an open world for it.</para>
+///
+/// <para>ONE VERB IS ONE UNDO STEP. <see cref="Execute"/> seals the gesture after each command, so the drag
+/// coalescing the command layer offers never fires over MCP, where every call is a discrete instruction rather
+/// than one sample of a held mouse button. The GUI editor of a later round drives
+/// <see cref="TileEditingDocument"/> directly and keeps that coalescing for its drag tools.</para></summary>
 public sealed class TileEditSession
 {
     readonly object _lock = new();
@@ -149,7 +155,16 @@ public sealed class TileEditSession
     /// command that expresses the edit, and that command is executed under the same lock acquisition, so nothing
     /// can move between the read and the apply. A builder or an apply that throws propagates untouched, leaving
     /// the document exactly as it was (the command layer's own guarantee), and the returned result carries the
-    /// rects the edit touched before they are acknowledged.</summary>
+    /// rects the edit touched before they are acknowledged.
+    ///
+    /// <para>The gesture is SEALED after every command, so each call lands as its own undo step. This is the
+    /// one place the tool deliberately parts company with the GUI: coalescing exists so a drag of a hundred
+    /// mouse-move events undoes in one go, but over MCP each call is a discrete instruction a client issued on
+    /// purpose, and two <c>object_move</c> calls that quietly became one undo step would leave a client unable
+    /// to step back through its own edits. A GUI drag tool (R5) drives <see cref="TileEditingDocument"/>
+    /// directly and keeps the coalescing.</para></summary>
+    /// <exception cref="ArgumentOutOfRangeException">The command reports a dirty rect on a plane the world does
+    /// not have.</exception>
     public MutationResult Execute(Func<TileEditingDocument, ITileCommand> build)
     {
         ArgumentNullException.ThrowIfNull(build);
@@ -158,6 +173,9 @@ public sealed class TileEditSession
             TileEditingDocument e = RequireOpenLocked();
             ITileCommand command = build(e);
             e.Execute(command);
+            // After the execute, not before: the barrier stops the NEXT command merging into this one, and
+            // raising it first would only stop this one merging into whatever came before.
+            e.SealGesture();
             DirtyRectInfo[] rects = TakeRebuildsLocked(e);
             return new MutationResult(command.Label, e.IsDirty, e.History.UndoDepth,
                 TileWorldHash.OfWorld(e.Document), rects);
@@ -192,8 +210,8 @@ public sealed class TileEditSession
         }
     }
 
-    /// <summary>Ends the current gesture, so the next edit starts its own undo step instead of coalescing into
-    /// the last one.</summary>
+    /// <summary>Ends the current gesture. <see cref="Execute"/> already seals after every command, so over MCP
+    /// this is a no-op kept for the callers that want to say so explicitly.</summary>
     public void SealGesture()
     {
         lock (_lock) RequireOpenLocked().SealGesture();
@@ -207,16 +225,22 @@ public sealed class TileEditSession
         lock (_lock) RequireOpenLocked();
     }
 
-    /// <summary>Turns a caller-supplied path into an absolute one: an absolute path stands, and a relative one
-    /// resolves against the open world's directory (against the process working directory when nothing is open),
-    /// which is the same rule the manifest's catalog entries follow.</summary>
+    /// <summary>Turns a caller-supplied path into a normalised absolute one: a relative path resolves against
+    /// the open world's directory, the same rule the manifest's catalog entries follow, and a rooted one is
+    /// normalised as it stands so an echoed path never carries a <c>..</c> segment back to the client.
+    ///
+    /// <para>Requires an open world, which is the point rather than a side effect: every verb that touches the
+    /// filesystem comes through here, and without a world there is no directory to be relative TO. Falling back
+    /// to the process working directory would let a closed session read and enumerate whatever the MCP client
+    /// happened to launch the server in.</para></summary>
+    /// <exception cref="TileWorldException">No world is open.</exception>
     public string ResolvePath(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         lock (_lock)
         {
-            if (Path.IsPathRooted(path)) return path;
-            return _path is null ? Path.GetFullPath(path) : Path.GetFullPath(Path.Combine(_path, path));
+            RequireOpenLocked();
+            return Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(_path!, path));
         }
     }
 

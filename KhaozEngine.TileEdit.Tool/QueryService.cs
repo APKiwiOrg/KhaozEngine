@@ -48,6 +48,7 @@ public sealed partial class QueryService(TileEditSession session)
     /// first, with the legend that decodes it.</summary>
     /// <exception cref="ArgumentException">The rect covers no tiles, or the layer is not one of
     /// <see cref="LayerNames"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The plane is outside the world's range.</exception>
     public TileMapResult TilesGetRect(TileRect rect, int plane, string layer)
     {
         RequireRect(rect);
@@ -76,6 +77,10 @@ public sealed partial class QueryService(TileEditSession session)
             case "collision":
                 pick = Collision;
                 legend = "'#' blocked, '|' a west or east wall, '-' a north or south wall, '+' both, '.' open, 'v' no region.";
+                // The other layers read through the document, which throws for itself on a plane it does not
+                // have. This one reads the collision map, which answers Blocked for an unknown plane, so a
+                // typo'd plane would come back as a map of solid rock rather than as an error.
+                RequirePlane(plane);
                 break;
             default:
                 throw new ArgumentException($"'{layer}' is not a tile layer. The layers are {LayerNames}.", nameof(layer));
@@ -84,7 +89,9 @@ public sealed partial class QueryService(TileEditSession session)
     }
 
     /// <summary>The corner-height lattice over a rect of CORNERS (not tiles) on one plane, in centimetres,
-    /// north first.</summary>
+    /// NORTH FIRST: row 0 is the highest z of the rect, each row west to east. That is the same shape
+    /// <c>MutationService.HeightsSet</c> takes, so a read, an edit and a write back round trip without
+    /// flipping the terrain.</summary>
     /// <exception cref="ArgumentException">The rect covers no corners.</exception>
     public HeightMapResult HeightGetRect(TileRect cornerRect, int plane)
     {
@@ -105,23 +112,31 @@ public sealed partial class QueryService(TileEditSession session)
 
     /// <summary>The derived collision at one tile, with the four cardinal steps a one-tile agent standing there
     /// could take.</summary>
-    public CollisionInfo CollisionAt(int x, int z, int plane) => session.Read(e =>
+    /// <exception cref="ArgumentOutOfRangeException">The plane is outside the world's range.</exception>
+    public CollisionInfo CollisionAt(int x, int z, int plane)
     {
-        TileCollisionMap map = e.Collision;
-        return new CollisionInfo(x, z, plane, CollisionNames(map.Get(x, z, plane)),
-            TileCollision.IsBlocked(map, x, z, plane),
-            TileCollision.CanStep(map, x, z, plane, TileDirection.N),
-            TileCollision.CanStep(map, x, z, plane, TileDirection.E),
-            TileCollision.CanStep(map, x, z, plane, TileDirection.S),
-            TileCollision.CanStep(map, x, z, plane, TileDirection.W));
-    });
+        RequirePlane(plane);
+        return session.Read(e =>
+        {
+            TileCollisionMap map = e.Collision;
+            return new CollisionInfo(x, z, plane, CollisionNames(map.Get(x, z, plane)),
+                TileCollision.IsBlocked(map, x, z, plane),
+                TileCollision.CanStep(map, x, z, plane, TileDirection.N),
+                TileCollision.CanStep(map, x, z, plane, TileDirection.E),
+                TileCollision.CanStep(map, x, z, plane, TileDirection.S),
+                TileCollision.CanStep(map, x, z, plane, TileDirection.W));
+        });
+    }
 
     /// <summary>Whether an agent <paramref name="agentSize"/> tiles square anchored at this tile stands clear:
     /// every tile of that footprint must be unblocked, which is the same footprint rule the pathfinder walks
     /// with.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">The plane is outside the world's range, or the agent is
+    /// smaller than one tile.</exception>
     public WalkableInfo IsWalkable(int x, int z, int plane, int agentSize = 1)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(agentSize, 1);
+        RequirePlane(plane);
         return session.Read(e =>
         {
             bool walkable = true;
@@ -133,21 +148,30 @@ public sealed partial class QueryService(TileEditSession session)
     }
 
     /// <summary>The walk from one tile to another on one plane. An unreachable goal still returns the steps to
-    /// the nearest reachable tile, with <see cref="PathResult.Reached"/> false.</summary>
+    /// the nearest reachable tile, with <see cref="PathResult.Reached"/> false, which includes a goal that is
+    /// simply outside <paramref name="maxRadius"/> of the start.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">The plane is outside the world's range, or the search
+    /// radius is outside the pathfinder's own limits.</exception>
     public PathResult Path(int fromX, int fromZ, int toX, int toZ, int plane, int agentSize = 1,
-        int maxRadius = TilePathfinder.DefaultMaxRadius) => session.Read(e =>
+        int maxRadius = TilePathfinder.DefaultMaxRadius)
     {
-        TilePath path = TilePathfinder.FindPath(e.Collision, plane,
-            new TileCoord(fromX, fromZ, plane), new TileCoord(toX, toZ, plane), agentSize, maxRadius);
-        TileStep[] steps = path.Tiles.Select(t => new TileStep(t.X, t.Z)).ToArray();
-        return new PathResult(path.Reached, steps, steps.Length);
-    });
+        RequirePlane(plane);
+        return session.Read(e =>
+        {
+            TilePath path = TilePathfinder.FindPath(e.Collision, plane,
+                new TileCoord(fromX, fromZ, plane), new TileCoord(toX, toZ, plane), agentSize, maxRadius);
+            TileStep[] steps = path.Tiles.Select(t => new TileStep(t.X, t.Z)).ToArray();
+            return new PathResult(path.Reached, steps, steps.Length);
+        });
+    }
 
     /// <summary>An ASCII map of what a one-tile agent could stand on over the rect, north first.</summary>
     /// <exception cref="ArgumentException">The rect covers no tiles.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The plane is outside the world's range.</exception>
     public TileMapResult WalkableRect(TileRect rect, int plane)
     {
         RequireRect(rect);
+        RequirePlane(plane);
         return session.Read(e => new TileMapResult(RectInfo.Of(rect), plane, "walkable",
             Rows(e, rect, plane, (d, x, z, p) => TileCollision.IsBlocked(d.Collision, x, z, p) ? '#' : '.'),
             "'#' blocked, '.' open."));
@@ -232,5 +256,19 @@ public sealed partial class QueryService(TileEditSession session)
         if (rect.IsEmpty)
             throw new ArgumentException(
                 $"the rect ({rect.X}, {rect.Z}, {rect.Width}, {rect.Height}) covers nothing.", nameof(rect));
+    }
+
+    // Every query that reads the COLLISION MAP checks the plane through here first. The map answers Blocked for
+    // a plane it does not have, by design (an unloaded region has to read as a wall rather than as a void), so a
+    // query handed a plane the world does not have would come back as a plausible map of solid rock instead of
+    // an error. Every other layer reads through the document, which throws for itself. A closed session throws
+    // TileWorldException from Read before the range is ever considered, which is the right precedence: no world
+    // open is the more fundamental complaint.
+    void RequirePlane(int plane)
+    {
+        int planes = session.Read(e => e.Document.PlaneCount);
+        if ((uint)plane >= (uint)planes)
+            throw new ArgumentOutOfRangeException(nameof(plane), plane,
+                $"the world has {planes} planes, so the plane must be 0..{planes - 1}.");
     }
 }

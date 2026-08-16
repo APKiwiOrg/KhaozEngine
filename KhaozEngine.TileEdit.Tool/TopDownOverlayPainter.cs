@@ -169,8 +169,8 @@ public static class TopDownOverlayPainter
         for (int z = rect.Z; z <= rect.Z1; z++)
         {
             if (!OnRegionBorder(z)) continue;
-            // The border at tile z is the NORTH edge of that tile's band, which is one whole band above the row
-            // the tile itself starts on.
+            // The border at tile z is the SOUTH edge of that tile's band: rows grow southward, so it sits one
+            // whole band BELOW the row the tile itself starts on.
             int top = Math.Clamp((rect.Z1 - z) * pxPerTile, 0, height - RegionLineWidth);
             Fill(rgba, width, height, 0, top, width, RegionLineWidth, RegionColor, 1f);
         }

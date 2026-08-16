@@ -1,14 +1,35 @@
 using System;
 using System.Collections.Generic;
-using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 
-namespace KhaozEngine.Render3D.Internal
+namespace KhaozEngine.Gpu
 {
+    /// <summary>What a <see cref="GpuRetireQueue"/> does when it has no fence to poll: the two answers to "how do
+    /// we know the GPU is done with this", for the two situations a renderer can be in. Internal because the
+    /// public factories pick it, and a caller picking it directly would be choosing a safety argument without the
+    /// context that justifies it.</summary>
+    internal enum GpuRetireFallback
+    {
+        /// <summary>Drain the device once before freeing a ripe batch. For a caller that may retire a resource in
+        /// the very frame that referenced it, where the frame count alone is a bet rather than an argument.</summary>
+        DrainDevice,
+
+        /// <summary>Free on the frame count alone, with no drain at all on the per-frame path (teardown still
+        /// drains once). For a caller that cannot mint a fence and must not stall.</summary>
+        FrameCountOnly,
+    }
+
     /// <summary>Deferred disposal for GPU resources freed mid-life (a streamed mesh unloaded while the scene keeps
-    /// running). Retirements are grouped into a per-frame BATCH at the next frame boundary, each batch is stamped
-    /// with a GPU fence submitted at that boundary, and a batch is destroyed on the first later frame boundary
-    /// whose fence polls signaled. Nothing blocks: a burst of unloads costs one empty fenced submission, not a
-    /// pipeline stall.
+    /// running, a sprite atlas whose descriptor set fell out of the working set). Retirements are grouped into a
+    /// per-frame BATCH at the next frame boundary, each batch is stamped with a GPU fence submitted at that
+    /// boundary, and a batch is destroyed on the first later frame boundary whose fence polls signaled. Nothing
+    /// blocks: a burst of unloads costs one empty fenced submission, not a pipeline stall.
+    /// <para><b>The seam owns this so a renderer does not have to.</b> The idiom was hand-rolled per renderer
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/80">#80</see>), which is how two Render3D
+    /// renderers ended up disposing grown buffers inline instead, and how
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/84">#84</see> left a full
+    /// <see cref="IGpuDevice.WaitForIdle"/> on <c>SpriteBatch</c>'s per-frame path. A renderer that feeds this
+    /// gets the safe behaviour by construction rather than by remembering to copy another renderer.</para>
     /// <para>The rule this preserves: a GPU resource is never destroyed while queued work may still reference it
     /// (Mesa lavapipe runs submissions on its own thread and segfaults on the use-after-free, which is why the
     /// disposal sites drained at all, see 8c2a6c6b). Nothing here weakens that, and the fence path is strictly
@@ -20,35 +41,32 @@ namespace KhaozEngine.Render3D.Internal
     /// <see cref="BeginFrame"/> calls (that is the contract, see the host note below).</item>
     /// <item>The batch's fence is submitted at that same boundary, so it sits AFTER all of that work in the
     /// submission stream. Polling it signaled therefore carries the same guarantee the <c>WaitForIdle</c> it
-    /// replaced carried, taken at seal time rather than at free time. See <see cref="GpuRetireBarrier"/> for the
+    /// replaced carried, taken at seal time rather than at free time. See <c>GpuRetireBarrier</c> for the
     /// spec citation.</item>
     /// <item>Batches are freed strictly oldest-first and the sweep STOPS at the first unsignaled fence, so a batch
     /// is only ever destroyed after every older batch already was.</item>
     /// </list>
-    /// <para><b>The fallback.</b> On a device with no GPU-completion fence
+    /// <para><b>The fallback, in two flavours.</b> On a device with no GPU-completion fence
     /// (<see cref="GpuCapabilities.SupportsCompletionFences"/> false: Direct3D11 and OpenGL, where Veldrid's fence
     /// is a CPU-side submit receipt) the barrier is absent, and a batch instead waits out
-    /// <see cref="FrameDelay"/> frame boundaries and is destroyed behind one <c>WaitForIdle</c>. That is exactly
-    /// the pre-fence behaviour, unchanged, so an unfenced backend loses the speed-up and keeps every safety
-    /// property it had.</para>
-    /// <para>The renderers that grow-and-retire a buffer (<c>ModelRenderer</c>, <c>ParticleRenderer</c>,
-    /// <c>GroundDecalRenderer</c>, <c>OverlayMeshRenderer</c>, <c>ShadowMapRenderer</c>) keep their retired list until
-    /// teardown, which is correct for a handful of geometric grows and wrong for a streaming path that retires
-    /// megabytes a minute. This type is the streaming form of the same rule.</para>
-    /// <para><b>Not thread-safe.</b> It is the scene's frame loop and nothing else: every member touches the same
+    /// <see cref="FrameDelay"/> frame boundaries. <see cref="Create"/> then destroys it behind one
+    /// <c>WaitForIdle</c>, which is exactly the pre-fence behaviour, so an unfenced backend loses the speed-up and
+    /// keeps every safety property it had. <see cref="CreateFrameCounted"/> destroys it on the frame count alone,
+    /// which is the weaker argument and is why that factory carries its own contract.</para>
+    /// <para><b>Not thread-safe.</b> It is the frame loop and nothing else: every member touches the same
     /// unsynchronized lists and frame counter, so retiring from a background build thread while the frame thread is
     /// in <see cref="BeginFrame"/> corrupts it. A worker that wants a resource freed hands it to the frame thread
     /// first, the way the streamer's apply step does.</para>
-    /// <para><b>It only frees on <see cref="BeginFrame"/>.</b> Nothing here is time-driven, so a scene that retires
-    /// but never calls Begin holds every retired resource until <see cref="FlushAll"/> or teardown, which for a
-    /// streaming world is the whole unloaded ring. A host that drives the scene without a frame boundary (a tool, a
-    /// test, an offscreen render) must call one of the two itself.</para>
+    /// <para><b>It only frees on <see cref="BeginFrame"/>.</b> Nothing here is time-driven, so a renderer that
+    /// retires but never reaches a frame boundary holds every retired resource until <see cref="FlushAll"/> or
+    /// teardown, which for a streaming world is the whole unloaded ring. A host that drives the renderer without a
+    /// frame boundary (a tool, a test, an offscreen render) must call one of the two itself.</para>
     /// <para><b>Host contract.</b> A frame's command list must be submitted before the NEXT
     /// <see cref="BeginFrame"/>. Every host does this (<c>AppWindow.Run</c> submits and presents at the end of the
     /// frame, <c>Render3DPreview.Capture</c> and <c>Render3DSnapshot.Capture</c> submit inside the call that
     /// rendered), and point 1 above rests on it. A host that recorded draws across two Begin calls and submitted
     /// once at the end would break it, and would have been equally broken by the frame-count scheme.</para></summary>
-    internal sealed class RetiredResourcePool : IDisposable
+    public sealed class GpuRetireQueue : IDisposable
     {
         /// <summary>Frame boundaries a retired resource waits before it is destroyed ON THE FALLBACK PATH (no
         /// GPU-completion fence). Three covers the deepest CPU-ahead-of-GPU window a vsynced frame loop reaches, so
@@ -58,6 +76,7 @@ namespace KhaozEngine.Render3D.Internal
 
         readonly Action _drainDevice;
         readonly IRetireBarrier? _barrier;
+        readonly GpuRetireFallback _fallback;
         // Retired resources, appended in retirement order and freed from the front. The retirement FRAME is not
         // stored per entry: batching at the frame boundary means one batch is exactly one frame's retirements, so
         // the batch carries the single stamp the fallback ripeness test needs.
@@ -72,15 +91,63 @@ namespace KhaozEngine.Render3D.Internal
         // subtraction below stays correct across the wrap because it is unchecked two's complement.
         int _frame;
 
-        /// <summary>Build a pool over the device drain it runs before destroying anything on the fallback path
+        /// <summary>
+        /// The default queue for a renderer whose frame boundary sits OUTSIDE the frame's own command-list
+        /// recording: fence-polled ripeness wherever the device can signal on GPU completion, and the pre-fence
+        /// frame count plus one <see cref="IGpuDevice.WaitForIdle"/> everywhere else. A device with no completion
+        /// fence is the supported fallback, not an error.
+        /// <para>Minting a fence means opening a command list of its own, so this must be built for, and its
+        /// <see cref="BeginFrame"/> called from, a point where nothing is recording on the device. From inside an
+        /// open recording the seam refuses that by name
+        /// (<see cref="GpuNestedRecordingException"/>, <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/424">#424</see>).
+        /// A renderer whose only per-frame hook is inside the record phase wants
+        /// <see cref="CreateFrameCounted"/> instead.</para>
+        /// </summary>
+        /// <param name="device">The device whose resources this queue frees.</param>
+        /// <param name="frameDelay">Frame boundaries a batch waits on the fallback path (clamped to at least 1).</param>
+        public static GpuRetireQueue Create(IGpuDevice device, int frameDelay = DefaultFrameDelay)
+        {
+            ArgumentNullException.ThrowIfNull(device);
+            return new GpuRetireQueue(device.WaitForIdle, GpuRetireBarrier.TryCreate(device),
+                GpuRetireFallback.DrainDevice, frameDelay);
+        }
+
+        /// <summary>
+        /// A queue that NEVER mints a fence and NEVER drains on the per-frame path: a batch is destroyed once
+        /// <paramref name="frameDelay"/> frame boundaries have passed, and the only <see cref="IGpuDevice.WaitForIdle"/>
+        /// left is the single one at teardown, where a stall costs nothing. For a renderer whose frame boundary is
+        /// INSIDE the frame's command-list recording, which is where <c>SpriteBatch</c> lives: its <c>NewFrame</c>
+        /// runs in the record phase, so a fence submitted there would be the second recording the seam refuses
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/424">#424</see>), and a drain there is the
+        /// per-frame stall this whole type exists to remove
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/84">#84</see>).
+        /// <para><b>The contract the caller takes on.</b> <paramref name="frameDelay"/> boundaries must be more
+        /// than the deepest the CPU ever runs ahead of the GPU, because that count is the whole argument here.
+        /// Pass the swapchain depth plus one. That is the same bet the 2D vertex-buffer ring already makes every
+        /// frame when it rewrites a slot it last handed the GPU <c>RingDepth</c> frames ago, so a queue at that
+        /// depth is not a weaker guarantee than the renderer around it already runs on. It IS weaker than
+        /// <see cref="Create"/>, which is why picking it is a decision rather than a default.</para>
+        /// </summary>
+        /// <param name="device">The device whose resources this queue frees. Drained once, at teardown.</param>
+        /// <param name="frameDelay">Frame boundaries a batch waits before it is destroyed (clamped to at least 1).</param>
+        public static GpuRetireQueue CreateFrameCounted(IGpuDevice device, int frameDelay)
+        {
+            ArgumentNullException.ThrowIfNull(device);
+            return new GpuRetireQueue(device.WaitForIdle, null, GpuRetireFallback.FrameCountOnly, frameDelay);
+        }
+
+        /// <summary>Build a queue over the device drain it runs before destroying anything on the fallback path
         /// (normally <c>IGpuDevice.WaitForIdle</c>) and, when the device can signal a fence on GPU completion, the
         /// <paramref name="barrier"/> that replaces that drain with a poll. A null barrier is the supported
         /// fallback, not an error. <paramref name="frameDelay"/> below 1 is clamped to 1, so a resource is never
-        /// destroyed inside the call that retired it.</summary>
-        public RetiredResourcePool(Action drainDevice, IRetireBarrier? barrier = null, int frameDelay = DefaultFrameDelay)
+        /// destroyed inside the call that retired it. Internal so a test can drive the ripeness policy by hand;
+        /// production builds one through <see cref="Create"/> or <see cref="CreateFrameCounted"/>.</summary>
+        internal GpuRetireQueue(Action drainDevice, IRetireBarrier? barrier = null,
+            GpuRetireFallback fallback = GpuRetireFallback.DrainDevice, int frameDelay = DefaultFrameDelay)
         {
             _drainDevice = drainDevice ?? throw new ArgumentNullException(nameof(drainDevice));
             _barrier = barrier;
+            _fallback = fallback;
             FrameDelay = frameDelay < 1 ? 1 : frameDelay;
         }
 
@@ -95,7 +162,7 @@ namespace KhaozEngine.Render3D.Internal
         /// fenced submissions a churn pattern actually costs.</summary>
         internal int SealedBatchCount => _batches.Count;
 
-        /// <summary>Hand a resource over to the pool. Costs nothing at the call site: no drain, no destroy, no
+        /// <summary>Hand a resource over to the queue. Costs nothing at the call site: no drain, no destroy, no
         /// submission. A null resource is ignored, so an optional resource (a per-mesh material set) needs no
         /// caller-side check.</summary>
         public void Retire(IDisposable? resource)
@@ -145,7 +212,9 @@ namespace KhaozEngine.Render3D.Internal
                 else
                 {
                     if (_frame - b.MaxRetiredAt < FrameDelay) break;   // fallback: the pre-fence frame count
-                    if (!drained) { _drainDevice(); drained = true; }  // one drain covers every batch freed here
+                    // One drain covers every batch freed here, and FrameCountOnly skips it entirely: that policy's
+                    // whole point is that no WaitForIdle reaches the per-frame path (#84).
+                    if (!drained && _fallback == GpuRetireFallback.DrainDevice) { _drainDevice(); drained = true; }
                 }
 
                 for (int i = 0; i < b.Count; i++) _pending[i].Dispose();
@@ -170,8 +239,8 @@ namespace KhaozEngine.Render3D.Internal
 
         /// <summary>Destroy everything pending right now, draining once first. For teardown, where waiting out a
         /// fence (or the frame delay) would leak the tail. This path keeps the drain on purpose even where fences
-        /// are available: shutdown is the one place correctness is worth more than the stall, and a poll would have
-        /// to spin.</summary>
+        /// are available, and even under <see cref="GpuRetireFallback.FrameCountOnly"/>: shutdown is the one place
+        /// correctness is worth more than the stall, and a poll would have to spin.</summary>
         public void FlushAll()
         {
             // A batch always owns at least one entry, so an empty holding means there are no batches either and
@@ -187,7 +256,7 @@ namespace KhaozEngine.Render3D.Internal
             _batched = 0;
         }
 
-        /// <summary>Flush everything pending, then free the barrier's own GPU objects. Scene teardown.</summary>
+        /// <summary>Flush everything pending, then free the barrier's own GPU objects. Renderer teardown.</summary>
         public void Dispose()
         {
             FlushAll();

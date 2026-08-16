@@ -311,7 +311,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// THE BARRIER'S REFUSAL IS DATA-DEPENDENT, which is the half a host has to be told about, because it is
-        /// what makes this site behave unlike the other six. <c>RetiredResourcePool.BeginFrame</c> only reaches the
+        /// what makes this site behave unlike the other six. <c>GpuRetireQueue.BeginFrame</c> only reaches the
         /// barrier when something was RETIRED since the previous Begin, so a mis-phased host boots perfectly clean,
         /// runs its whole menu and its first minutes of play, and then throws on the first mesh unload. Both halves
         /// are pinned here so neither can drift: no retirement is silent, one retirement refuses.

@@ -19,7 +19,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// timeline semaphore's signal operations must strictly increase, and a queue's signal operations on one
     /// semaphore execute in submission order, so the counter reaching 6 requires the signal at 5 to have happened,
     /// which requires submission 5's commands to have completed. Polling a later fence therefore transitively
-    /// covers every earlier submission, which is exactly what <c>RetiredResourcePool</c> relies on and what the
+    /// covers every earlier submission, which is exactly what <c>GpuRetireQueue</c> relies on and what the
     /// retire list below is built on. Stated precisely, so a gap cannot be read as a hole in it: the counter
     /// reaching V implies every submission that SIGNALS a value at or below V has completed, and a value nobody
     /// ever submitted signals nothing and covers nothing (see <see cref="LastSubmitted"/>).</para>

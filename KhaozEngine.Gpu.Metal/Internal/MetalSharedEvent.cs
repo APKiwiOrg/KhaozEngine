@@ -20,7 +20,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </para>
     /// <para>
     /// THE SELECTORS ARE CACHED AT CONSTRUCTION rather than registered per call, which is not a micro
-    /// optimisation. <c>signaledValue</c> is on the polling path that <c>RetiredResourcePool</c> hits constantly
+    /// optimisation. <c>signaledValue</c> is on the polling path that <c>GpuRetireQueue</c> hits constantly
     /// and that row 8's ring segment gate reads, and <c>sel_registerName</c> takes a C string, so registering
     /// per read would put an ASCII encode and a heap allocation on it. The selector for a given name is stable
     /// for the life of the process, so caching it is also just correct.

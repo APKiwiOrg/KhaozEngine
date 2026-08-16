@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
 using System.Text;
@@ -10,6 +11,7 @@ using KhaozEngine.Netcode.LiteNetLib;
 using KhaozEngine.NetWorld;
 using KhaozEngine.Replication;
 using KhaozEngine.Sharding;
+using KhaozEngine.Tests.NetWorld;
 using KhaozEngine.WorldStore;
 using MmoServerSample;
 using Xunit;
@@ -226,8 +228,11 @@ public class MmoServerEndToEndTests
     public async Task PlayerPersistence_BadHealthBlob_QuarantinedFreshSpawn()
     {
         // A record whose health blob fails ValidatePrivateStats (out of the game's 1..100 range) is quarantined
-        // WHOLE: the player is left at the default spawn rather than the saved position, and the raw record
-        // survives under quarantine:player:{accountId} for offline inspection.
+        // WHOLE: the player is reset to the configured spawn rather than placed at the saved position, and the raw
+        // record survives under quarantine:player:{accountId} for offline inspection. This is a first-ever join on
+        // a fresh process, so there is no resume hint and the reset lands where the join already built it - the
+        // rejoin case, where the reset is the only thing that moves the player, is
+        // WorldPersistenceReconnectTeleportTests.
         var store = new InMemoryWorldStore();
         byte[] badBlob = BitConverter.GetBytes(9999);
         await store.SaveAsync("player:alice",
@@ -250,6 +255,56 @@ public class MmoServerEndToEndTests
         Assert.Equal(config.SpawnY, spawned.Y);
 
         Assert.NotNull(await store.LoadAsync("quarantine:player:alice"));
+    }
+
+    [Fact]
+    public void PlayerRejoin_IsBuiltWhereItLeft_NotOnTheSpawn()
+    {
+        // The sample implements the resume-spawn seam (SetResumePositionProvider + TryGetConfiguredSpawn) rather
+        // than taking the default no-op, so a rejoining account's entity is BUILT where it left. Both are DEFAULT
+        // interface methods, which means a head that omits them compiles and silently keeps the double teleport
+        // (#642) - and this is the file a game copies for its own head, so it demonstrates the contract instead.
+        var store = new InMemoryWorldStore();
+        var hub = new InMemoryHub();
+        var config = new MmoServerConfig { TickSeconds = 0.1f, SpawnX = 50f, SpawnY = 50f };
+        var server = new MmoServer(hub.Server, config, store);
+        byte[] token = Encoding.UTF8.GetBytes("alice");
+
+        // Where each join built its entity, read from PlayerJoined - before any restore could have run.
+        var builtAt = new List<Position>();
+        server.PlayerJoined += (slot, _) =>
+        {
+            if (server.TryGetPlayerNetId(slot, out long id)
+                && server.Host.TryGetOwner(id, out CellSim c, out Entity en)
+                && c.World.TryGet(en, out Position p)) builtAt.Add(p);
+        };
+
+        INetTransport first = hub.CreateClient();
+        var client = new NetClient(first, token);
+        PumpNet(server, client);
+        Assert.Equal(0, client.Slot);
+
+        client.Send(MmoProtocol.EncodeMove(0, new MoveCommand(6f, 4f)), NetChannelReliability.ReliableOrdered);
+        server.Poll();
+        server.Tick(config.TickSeconds);
+        Assert.True(server.TryGetPlayerNetId(0, out long netId));
+        Assert.True(server.Host.TryGetOwner(netId, out CellSim cell, out Entity e));
+        Assert.True(cell.World.TryGet(e, out Position moved));
+        Assert.True(moved.X > config.SpawnX, "the move has to leave the spawn for this row to prove anything");
+
+        hub.DisconnectClient(first);
+        server.Poll();                       // Left -> PlayerLeaving -> save-on-leave, and the hint is recorded
+        server.Tick(config.TickSeconds);
+
+        var rejoined = new NetClient(hub.CreateClient(), token);
+        PumpNet(server, rejoined);
+        Assert.Equal(0, rejoined.Slot);      // the freed slot is recycled, and the ACCOUNT is what carries the hint
+
+        Assert.Equal(2, builtAt.Count);
+        Assert.Equal(config.SpawnX, builtAt[0].X);   // a first-ever join is untouched: the configured spawn
+        Assert.Equal(config.SpawnY, builtAt[0].Y);
+        Assert.Equal(moved.X, builtAt[1].X, 2);      // the rejoin is built where it left, not on the spawn
+        Assert.Equal(moved.Y, builtAt[1].Y, 2);
     }
 
     // Serves one authoritative frame and returns the raw replication snapshot the client received.

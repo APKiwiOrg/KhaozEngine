@@ -38,6 +38,10 @@ public sealed class MmoServerConfig
 /// Player state is account-keyed by the verified session subject (<see cref="ServerSessionEvent.Subject"/>, falling
 /// back to a per-slot guest id) via <see cref="WorldPersistence"/> - captured on leave, validated and applied on
 /// join - and demonstrates a game-state validation quarantine through its <see cref="PrivateStats"/> health blob.
+/// It also implements the resume-spawn seam (<see cref="IWorldPersistenceHost.SetResumePositionProvider"/> and
+/// <see cref="IWorldPersistenceHost.TryGetConfiguredSpawn"/>), so a rejoining account is BUILT where it left rather
+/// than served the spawn first and moved afterwards. Both are default interface methods, so a head that omits them
+/// keeps the two-teleport reconnect: this sample implements them because it is the file a game copies.
 /// </summary>
 public sealed class MmoServer : ICellPersistenceHost, IWorldPersistenceHost
 {
@@ -200,6 +204,31 @@ public sealed class MmoServer : ICellPersistenceHost, IWorldPersistenceHost
         cell.World.Set(e, new Position { X = state.Position.X, Y = state.Position.Z });
     }
 
+    // ---- the resume-spawn seam, the same shape as WorldServer.ResumeSpawn.cs / ShardedWorldServer.ResumeSpawn.cs ----
+    // A custom head is only opted into the #642 reconnect fix if it implements these two: they are DEFAULT interface
+    // methods, so leaving them out compiles and silently keeps the double teleport (spawn first, restore afterwards).
+    // This sample implements them so a game copying it as the starting point for its own head gets the contract.
+
+    private ResumePositionProvider? resumePosition;
+
+    /// <inheritdoc />
+    public void SetResumePositionProvider(ResumePositionProvider? provider) => resumePosition = provider;
+
+    /// <inheritdoc />
+    public bool TryGetConfiguredSpawn(int slot, out PlayerMoveState spawn)
+    {
+        spawn = new PlayerMoveState { Position = new Vector3(config.SpawnX, 0f, config.SpawnY) };
+        return playerNetIdBySlot.ContainsKey(slot);
+    }
+
+    // Where a joining slot's entity is BUILT: the resume hint for this account when one is known, else the configured
+    // spawn. This sample has no terrain, so there is no ground clamp to run over the result - a real head clamps here
+    // (see WorldServer.OnJoin), which is also why TryGetConfiguredSpawn above hands back a full PlayerMoveState.
+    private Vector3 JoinSpawn(string accountId) =>
+        resumePosition is not null && resumePosition(accountId, out Vector3 resumed)
+            ? resumed
+            : new Vector3(config.SpawnX, 0f, config.SpawnY);
+
     /// <summary>Boot: resume the NetId allocator + instantiate saved cells, then apply restores. Call once before ticking.</summary>
     public async Task PreloadAsync()
     {
@@ -221,13 +250,17 @@ public sealed class MmoServer : ICellPersistenceHost, IWorldPersistenceHost
             switch (ev.Kind)
             {
                 case ServerSessionEventKind.Joined:
+                    // The account id is resolved BEFORE the spawn, because the spawn depends on it: a rejoining
+                    // account's entity is built where it left, so the first snapshot of the new session is already
+                    // the truth and the restore landing a frame later has nothing to move (#642).
+                    string accountId = ev.Subject.Length > 0 ? ev.Subject : $"guest-{ev.Slot}";
+                    Vector3 at = JoinSpawn(accountId);
                     // The player carries an OwnerOnly PrivateStats (exact HP) - replicated only back to its own
                     // client, never to another player observing it - alongside its replicated Position.
-                    long playerNetId = SpawnEntity(config.SpawnX, config.SpawnY,
+                    long playerNetId = SpawnEntity(at.X, at.Z,
                         (w, e) => w.Set(e, new PrivateStats { Health = 100 }));
                     playerNetIdBySlot[ev.Slot] = playerNetId;
                     host.BindClient(ev.Slot, playerNetId);
-                    string accountId = ev.Subject.Length > 0 ? ev.Subject : $"guest-{ev.Slot}";
                     accountBySlot[ev.Slot] = accountId;
                     PlayerJoined?.Invoke(ev.Slot, accountId);
                     break;

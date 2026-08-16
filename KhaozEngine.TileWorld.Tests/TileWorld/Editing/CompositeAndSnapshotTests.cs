@@ -29,14 +29,17 @@ public class CompositeAndSnapshotTests
         readonly string _name;
         readonly int _x;
         readonly bool _throwOnApply;
+        readonly bool _throwOnRevert;
         ushort _old;
 
-        public RecordingCommand(List<string> log, string name, int x, bool throwOnApply = false) : base(name)
+        public RecordingCommand(List<string> log, string name, int x, bool throwOnApply = false,
+            bool throwOnRevert = false) : base(name)
         {
             _log = log;
             _name = name;
             _x = x;
             _throwOnApply = throwOnApply;
+            _throwOnRevert = throwOnRevert;
             Dirty.Add(new TileDirtyRect(new TileRect(x, 0, 1, 1), 0));
         }
 
@@ -51,6 +54,7 @@ public class CompositeAndSnapshotTests
         public override void Revert(TileWorldDocument doc)
         {
             _log.Add($"revert {_name}");
+            if (_throwOnRevert) throw new TileWorldException($"{_name} refuses to revert");
             doc.SetUnderlay(_x, 0, 0, _old);
         }
     }
@@ -120,6 +124,30 @@ public class CompositeAndSnapshotTests
         Assert.Equal(1, doc.GetUnderlay(2, 0, 0));
         Assert.Equal(0, ed.History.UndoDepth);
         Assert.False(ed.IsDirty);
+    }
+
+    [Fact]
+    public void A_rollback_that_throws_finishes_the_rest_and_keeps_the_original_failure_first()
+    {
+        TileEditingDocument ed = Editing(out TileWorldDocument doc);
+        var log = new List<string>();
+        var composite = new CompositeCommand("Stuck", new ITileCommand[]
+        {
+            new RecordingCommand(log, "a", 1),
+            new RecordingCommand(log, "b", 2, throwOnRevert: true),
+            new RecordingCommand(log, "c", 3, throwOnApply: true),
+        });
+
+        AggregateException ex = Assert.Throws<AggregateException>(() => ed.Execute(composite));
+
+        // b's failed revert must not stop a's, and must not become the exception the caller sees first: the
+        // apply failure is the one that explains the edit.
+        Assert.Equal(new[] { "apply a", "apply b", "revert b", "revert a" }, log);
+        Assert.Equal(2, ex.InnerExceptions.Count);
+        Assert.Contains("c refuses to apply", ex.InnerExceptions[0].Message);
+        Assert.Contains("b refuses to revert", ex.InnerExceptions[1].Message);
+        Assert.Equal(1, doc.GetUnderlay(1, 0, 0));
+        Assert.Equal(0, ed.History.UndoDepth);
     }
 
     [Fact]
@@ -241,6 +269,42 @@ public class CompositeAndSnapshotTests
         Assert.Null(doc.GetRegion(region)!.Plane(1).Heights);
         Assert.Equal(300, doc.CornerHeightCm(5, 5, 1));
         Assert.Equal(before, TileWorldHash.OfWorld(doc));
+    }
+
+    [Fact]
+    public void A_mutation_that_throws_part_way_is_rolled_back_and_the_exception_carries_on()
+    {
+        TileWorldDocument doc = TileWorldTestData.FlatWorld();
+        doc.SetUnderlay(5, 5, 0, 3);
+        doc.SetCornerHeightCm(5, 5, 0, 150);
+        TileObject standing = doc.AddObject("tree", 6, 6, 0, 1, new[] { "old" });
+        doc.SetMarker("here", 6, 5, 0, null);
+        var ed = new TileEditingDocument(doc, Cat);
+        string before = TileWorldHash.OfWorld(doc);
+
+        var snapshot = new SnapshotRectCommand("Half a stamp", new TileRect(4, 4, 4, 4), new[] { 0 }, d =>
+        {
+            d.SetUnderlay(5, 5, 0, 9);
+            d.SetCornerHeightCm(5, 5, 0, -40);
+            d.RemoveObject(standing.Id);
+            d.AddObject("bush", 4, 4, 0, 0);
+            d.RemoveMarker("here");
+            throw new TileWorldException("the stamp gave up half way");
+        });
+
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => ed.Execute(snapshot));
+
+        // The pre-image is already in hand when the mutation throws, so there is no reason to leave the rect
+        // half stamped and every reason not to: this command is discarded rather than pushed onto the stack.
+        Assert.Contains("gave up half way", ex.Message);
+        Assert.Equal(3, doc.GetUnderlay(5, 5, 0));
+        Assert.Equal(150, doc.CornerHeightCm(5, 5, 0));
+        Assert.Equal(6, doc.FindObject(standing.Id)!.X);
+        Assert.NotNull(doc.FindMarker("here"));
+        Assert.Single(doc.AllObjects());
+        Assert.Equal(before, TileWorldHash.OfWorld(doc));
+        Assert.Equal(0, ed.History.UndoDepth);
+        Assert.False(ed.IsDirty);
     }
 
     [Fact]

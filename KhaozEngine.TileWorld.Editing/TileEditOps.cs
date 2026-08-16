@@ -64,7 +64,14 @@ public static partial class TileEditOps
     /// The planes are <paramref name="plane"/> through <paramref name="plane"/> + the prefab's plane count - 1,
     /// unclipped. A prefab that reaches above the world's planes is refused by
     /// <see cref="TileEditingDocument.Execute"/> rather than clipped the way <see cref="TilePrefabs.Place"/>
-    /// clips it, because a snapshot must not claim a rect it cannot capture or restore.</summary>
+    /// clips it, because a snapshot must not claim a rect it cannot capture or restore.
+    ///
+    /// A REDO re-runs <see cref="TilePrefabs.Place"/> rather than replaying the writes it made, and Place takes
+    /// a fresh id for every object it stamps. Execute then undo therefore leaves the world hashing exactly as
+    /// it did, but execute, undo, redo leaves the same content wearing different object ids, with the
+    /// document's id allocator further along than one execute would have left it. Object ids are part of a
+    /// region's canonical bytes, so the redone world does NOT hash the same as the first execute, even though
+    /// it is the same world to look at and to play.</summary>
     public static SnapshotRectCommand PlacePrefab(TilePrefab prefab, int x, int z, int plane, int rotation)
     {
         ArgumentNullException.ThrowIfNull(prefab);

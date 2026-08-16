@@ -35,7 +35,14 @@ public sealed class CompositeCommand : ITileCommand
     /// <summary>Applies the children in order. A child that throws part way takes the whole composite with it:
     /// the ones that already applied are reverted, back to front, before the exception carries on. A composite
     /// that half landed would sit in the undo stack claiming to describe an edit the document never made, and
-    /// the caller's retry would then double the half that did.</summary>
+    /// the caller's retry would then double the half that did.
+    ///
+    /// A revert that itself throws during that rollback does not stop it and does not replace the original
+    /// exception. The remaining children are still reverted, and what comes out is an
+    /// <see cref="AggregateException"/> whose FIRST inner exception is the failure that started all this,
+    /// followed by every rollback that also failed. The original is the one that explains the edit, and a
+    /// rollback failure that swallowed it would leave the caller debugging the cleanup of a problem it can no
+    /// longer see.</summary>
     public void Apply(TileWorldDocument doc)
     {
         ArgumentNullException.ThrowIfNull(doc);
@@ -45,10 +52,14 @@ public sealed class CompositeCommand : ITileCommand
             {
                 _commands[i].Apply(doc);
             }
-            catch
+            catch (Exception failure)
             {
-                for (int j = i - 1; j >= 0; j--) _commands[j].Revert(doc);
-                throw;
+                List<Exception>? rollbackFailures = RollBack(doc, i - 1);
+                if (rollbackFailures is null) throw;
+                rollbackFailures.Insert(0, failure);
+                throw new AggregateException(
+                    $"'{Label}' failed part way and its rollback did not finish cleanly. The first inner exception is the failure that stopped the apply, the rest are the reverts that then threw.",
+                    rollbackFailures);
             }
         }
     }
@@ -64,4 +75,24 @@ public sealed class CompositeCommand : ITileCommand
     /// <summary>Never merges. A composite is already a whole authored operation, so coalescing two of them
     /// would collapse two deliberate edits into one undo step.</summary>
     public bool TryMerge(ITileCommand next) => false;
+
+    // Reverts children [0, from] back to front, carrying on past a revert that throws so one stuck child
+    // cannot strand every child before it. Returns null when the whole rollback went through, which is the
+    // signal to rethrow the original exception untouched and keep its stack trace.
+    List<Exception>? RollBack(TileWorldDocument doc, int from)
+    {
+        List<Exception>? failures = null;
+        for (int i = from; i >= 0; i--)
+        {
+            try
+            {
+                _commands[i].Revert(doc);
+            }
+            catch (Exception rollback)
+            {
+                (failures ??= new List<Exception>()).Add(rollback);
+            }
+        }
+        return failures;
+    }
 }

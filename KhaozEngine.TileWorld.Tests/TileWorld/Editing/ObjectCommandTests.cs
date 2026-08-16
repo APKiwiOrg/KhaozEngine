@@ -235,6 +235,27 @@ public class ObjectCommandTests
     }
 
     [Fact]
+    public void Rotate_of_an_archetype_that_is_wide_rather_than_deep_covers_both_shapes_too()
+    {
+        // beam is 3 wide by 1 deep, the other way round from hall, so this pins that the two rects follow the
+        // archetype rather than one lucky orientation.
+        TileEditingDocument ed = Editing(out TileWorldDocument doc);
+        long id = Place(ed, "beam", 20, 20);
+
+        var rotate = new RotateObjectCommand(Cat, id, 3);
+        ed.Execute(rotate);
+
+        Assert.Contains(new TileDirtyRect(new TileRect(20, 20, 3, 1), 0), rotate.DirtyRects);
+        Assert.Contains(new TileDirtyRect(new TileRect(20, 20, 1, 3), 0), rotate.DirtyRects);
+        Assert.True(Blocked(ed, 20, 22));
+        Assert.False(Blocked(ed, 22, 20));
+
+        Assert.True(ed.Undo());
+        Assert.False(Blocked(ed, 20, 22));
+        Assert.True(Blocked(ed, 22, 20));
+    }
+
+    [Fact]
     public void Remove_captures_the_whole_object_and_its_dirty_rect_covers_the_2_by_3_footprint()
     {
         TileEditingDocument ed = Editing(out TileWorldDocument doc);

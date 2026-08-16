@@ -274,8 +274,10 @@ static class TileObjectEdit
         doc.FindObject(id) ?? throw new TileWorldException($"object {id} does not exist");
 
     // An archetype the catalogs do not define is a content error the validator reports, never a reason to fault
-    // an edit, so a dangling one falls back to the single tile the object is anchored on. That is exactly what
-    // the collision baker does with the same object, so the rebake and the rect agree.
+    // an edit, so a dangling one falls back to the single tile the object is anchored on. The fallback is not
+    // about matching what the baker writes for such an object, which is nothing at all: it is that a rect has
+    // to cover at least the anchor tile, or the rebake never visits the place the edit happened and whatever
+    // the previous content left in the collision map there survives the edit.
     internal static TileRect Footprint(TileWorldCatalogs catalogs, TileWorldDocument doc, int x, int z, int rotation, long id)
     {
         TileObject? o = doc.FindObject(id);

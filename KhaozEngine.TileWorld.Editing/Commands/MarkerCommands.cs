@@ -12,6 +12,17 @@ static class TileMarkerEdit
 {
     internal static TileMarker Require(TileWorldDocument doc, string name) =>
         doc.FindMarker(name) ?? throw new TileWorldException($"marker '{name}' does not exist");
+
+    // SetMarker validates the plane and then the region before it drops the marker it is replacing, and a
+    // command that captures before that pre-flight records state for a write that may never happen. The
+    // document's own plane check is private, so the same two checks are repeated here, in the same order and
+    // with the same message, to run BEFORE the capture rather than in the middle of it.
+    internal static void RequireDestination(TileWorldDocument doc, int x, int z, int plane)
+    {
+        if ((uint)plane >= (uint)doc.PlaneCount)
+            throw new ArgumentOutOfRangeException("plane", plane, $"plane {plane} is outside 0..{doc.PlaneCount - 1}");
+        doc.RequireRegion(x, z);
+    }
 }
 
 /// <summary>Places or re-homes the uniquely named marker, capturing whatever the name held before: another
@@ -47,10 +58,12 @@ public sealed class SetMarkerCommand : TileCommandBase
     public override void Apply(TileWorldDocument doc)
     {
         ArgumentNullException.ThrowIfNull(doc);
+        // Destination first, before anything is captured: a placement into a missing region or onto a plane the
+        // world does not have must leave BOTH the document and this command exactly as it found them, so a
+        // later retry still records the true pre-state rather than one this failed attempt already took.
+        TileMarkerEdit.RequireDestination(doc, _x, _z, _plane);
         if (!_captured)
         {
-            // Read before the write, and the write itself validates its destination before dropping the old
-            // marker, so a placement into a missing region leaves both the document and this capture untouched.
             if (doc.FindMarker(_name) is TileMarker old)
             {
                 (_oldX, _oldZ, _oldPlane) = (old.X, old.Z, old.Plane);

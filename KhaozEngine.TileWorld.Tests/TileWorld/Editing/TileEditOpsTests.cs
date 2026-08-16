@@ -107,6 +107,26 @@ public class TileEditOpsTests
     }
 
     [Fact]
+    public void Scatter_lands_on_its_golden_positions()
+    {
+        // The golden. Scatter is world CONTENT, not an implementation detail: an author who scatters a forest,
+        // saves the world and comes back expects the same forest, and a consumer that re-runs a seeded scatter
+        // expects the world it already shipped. Self-consistency between two runs in one process cannot see a
+        // change to Mix or Jitter, which is exactly the change that would silently move every tree in every
+        // world ever scattered. Changing either of those is a content-breaking change, and it has to update
+        // these literals deliberately, with the worlds already authored against the old ones accounted for.
+        TileEditingDocument ed = Editing(out TileWorldDocument doc);
+
+        ed.Execute(TileEditOps.Scatter(ed, "tree", new TileRect(10, 10, 12, 12), 0, 4, 1, 20260816));
+
+        // Nine grid points, seven placements: two of them jitter off the north edge of the rect and are
+        // dropped, which is the skip rule doing its job rather than a gap in the golden.
+        Assert.Equal(
+            new[] { (11, 10), (14, 11), (13, 13), (19, 14), (10, 17), (13, 17), (19, 18) },
+            Anchors(doc, "tree"));
+    }
+
+    [Fact]
     public void Scatter_is_deterministic_per_seed_and_a_different_seed_lands_differently()
     {
         (int X, int Z)[] first = ScatterAnchors(1234);
@@ -189,6 +209,42 @@ public class TileEditOpsTests
 
         Assert.Equal("Place prefab", cmd.Label);
         Assert.Equal(new TileDirtyRect(touched, 0), Assert.Single(cmd.DirtyRects));
+    }
+
+    [Fact]
+    public void PlacePrefab_rect_for_a_known_prefab_and_rotation_is_the_hand_computed_one()
+    {
+        // The sample prefab is 2 wide by 3 deep. A quarter turn swaps that to 3 by 2, and Place touches the
+        // tile rect grown one tile west and south and one row and column north and east, for the corner writes
+        // on its far edges: FromCorners(20 - 1, 20 - 1, 20 + 3, 20 + 2), which is (19, 19) 5 wide by 4 deep.
+        // A literal rather than a second call to the same code, so a change to either the rotation swap or the
+        // touched-rect formula has to be a deliberate edit here.
+        SnapshotRectCommand cmd = TileEditOps.PlacePrefab(SamplePrefab(), 20, 20, 0, 1);
+
+        Assert.Equal(new TileRect(19, 19, 5, 4), Assert.Single(cmd.DirtyRects).Rect);
+    }
+
+    [Fact]
+    public void PlacePrefab_across_a_region_border_on_a_higher_plane_still_undoes_byte_for_byte()
+    {
+        // At x 61 a 2 wide stamp keeps its TILES inside region (0, 0), but the snapshot's far corner column
+        // lands at x 64, in region (1, 0). Above plane 0 a write to that corner materialises region (1, 0)'s
+        // whole derived height lattice, which is a different thing on disk from deriving it, so the restore has
+        // to know that region had no height layer even though no tile of the stamp is in it.
+        TileWorldDocument doc = TileWorldTestData.FlatWorld(4, new RegionCoord(0, 0), new RegionCoord(1, 0));
+        var ed = new TileEditingDocument(doc, Cat);
+        string before = TileWorldHash.OfWorld(doc);
+        Assert.Null(doc.GetRegion(new RegionCoord(1, 0))!.Plane(1).Heights);
+
+        ed.Execute(TileEditOps.PlacePrefab(SamplePrefab(), 61, 20, 1, 0));
+
+        Assert.NotEqual(before, TileWorldHash.OfWorld(doc));
+
+        Assert.True(ed.Undo());
+
+        Assert.Null(doc.GetRegion(new RegionCoord(1, 0))!.Plane(1).Heights);
+        Assert.Null(doc.GetRegion(new RegionCoord(0, 0))!.Plane(1).Heights);
+        Assert.Equal(before, TileWorldHash.OfWorld(doc));
     }
 
     [Fact]

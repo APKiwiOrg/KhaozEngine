@@ -29,11 +29,16 @@ namespace KhaozEngine.Tests.Gpu
     /// condition, so a difference between conditions can never come from the sampling moving.
     /// </para>
     /// </summary>
-    public sealed class PerPlaneWaterLookGpuTests
+    public sealed class PerPlaneWaterLookGpuTests : IClassFixture<PerPlaneWaterLookFootprints>
     {
         readonly ITestOutputHelper _out;
+        readonly PerPlaneWaterLookFootprints _shots;
 
-        public PerPlaneWaterLookGpuTests(ITestOutputHelper output) => _out = output;
+        public PerPlaneWaterLookGpuTests(ITestOutputHelper output, PerPlaneWaterLookFootprints shots)
+        {
+            _out = output;
+            _shots = shots;
+        }
 
         internal const int W = 640, H = 400;
 
@@ -277,9 +282,8 @@ namespace KhaozEngine.Tests.Gpu
         [GpuFact]
         public void AnOverriddenPlaneRendersStillBesideTheSceneSeaInTheSameFrame()
         {
-            byte[] dry = Render(W, H, null, water: false);
-            bool[] seaMask = Footprint(Render(W, H, null, only: 0), dry, W, H);
-            bool[] lakeMask = Footprint(Render(W, H, null, only: 1), dry, W, H);
+            bool[] seaMask = _shots.SeaMask;
+            bool[] lakeMask = _shots.LakeMask;
             byte[] mixed = Render(W, H, StillLake());
 
             double t = BrightThreshold(mixed, seaMask, lakeMask, W, H);
@@ -316,9 +320,8 @@ namespace KhaozEngine.Tests.Gpu
         [GpuFact]
         public void WithNoLookOnEitherPlaneTheTwoFootprintsMeasureTheSame()
         {
-            byte[] dry = Render(W, H, null, water: false);
-            bool[] seaMask = Footprint(Render(W, H, null, only: 0), dry, W, H);
-            bool[] lakeMask = Footprint(Render(W, H, null, only: 1), dry, W, H);
+            bool[] seaMask = _shots.SeaMask;
+            bool[] lakeMask = _shots.LakeMask;
             byte[] control = Render(W, H, null);
 
             double t = BrightThreshold(control, seaMask, lakeMask, W, H);

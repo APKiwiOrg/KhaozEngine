@@ -17,5 +17,9 @@
          Push CI selects test projects by the reference graph, so an extra reference here would only
          widen what a diff drags in. -->
     <ProjectReference Include="../KhaozEngine.TileEdit.Tool/KhaozEngine.TileEdit.Tool.csproj" />
+    <!-- The second and last reference: [GpuFact], which gates the render rows on a real headless device and
+         registers the native backends for this assembly. Same precedent as KhaozEngine.MapEditor.Tests, whose
+         RenderService rows need exactly this and nothing else. -->
+    <ProjectReference Include="../KhaozEngine.TestSupport.Gpu/KhaozEngine.TestSupport.Gpu.csproj" />
   </ItemGroup>
 </Project>

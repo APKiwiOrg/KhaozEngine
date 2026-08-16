@@ -239,7 +239,7 @@ namespace KhaozEngine.Gpu
 
         /// <summary>Destroy everything pending right now, draining once first. For teardown, where waiting out a
         /// fence (or the frame delay) would leak the tail. This path keeps the drain on purpose even where fences
-        /// are available, and even under <see cref="GpuRetireFallback.FrameCountOnly"/>: shutdown is the one place
+        /// are available, and even for a <see cref="CreateFrameCounted"/> queue: shutdown is the one place
         /// correctness is worth more than the stall, and a poll would have to spin.</summary>
         public void FlushAll()
         {

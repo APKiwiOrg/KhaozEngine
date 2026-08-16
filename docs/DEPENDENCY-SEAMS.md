@@ -931,7 +931,7 @@ lock at all is held while a backend is inside `Begin`, which matters because Beg
 native Metal and Vulkan backends while their rings wait for the GPU. A process-wide gate around it would have
 turned one device's backpressure into every other device's stall, which is exactly what the first cut did.
 
-## GPU seam member: deferred retirement leaves Render3D (`GpuRetireQueue`, 17.36.2)
+## GPU seam member: deferred retirement leaves Render3D (`GpuRetireQueue`, 17.37.0)
 
 `GpuRetireQueue` is a new PUBLIC type on `KhaozEngine.Gpu` (with `GpuRetireBarrier` internal beside it), moved
 wholesale out of `KhaozEngine.Render3D/Internal` where it was called `RetiredResourcePool`. It adds no reference

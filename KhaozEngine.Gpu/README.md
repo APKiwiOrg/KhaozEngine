@@ -280,7 +280,7 @@ What it owns today:
   fence here is to REPLACE a `WaitForIdle`, not to dress one up. A fence handed to a submission made after some
   earlier work signals only once the queue has drained through that work, which is what makes it a drop-in for the
   drain that guarded deferred GPU-resource destruction (`GpuRetireQueue`, below).
-- **`GpuRetireQueue`** (since 17.36.2) - deferred disposal for anything a renderer frees MID-LIFE (a streamed mesh
+- **`GpuRetireQueue`** (since 17.37.0) - deferred disposal for anything a renderer frees MID-LIFE (a streamed mesh
   unloaded while the scene runs, a sprite atlas whose descriptor set fell out of the working set). `Retire(resource)`
   costs nothing at the call site, `BeginFrame()` seals the frame's retirements into one batch behind a fence and
   destroys every batch the GPU has provably finished with, and `Dispose()` flushes the tail behind one drain at

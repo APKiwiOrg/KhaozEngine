@@ -17,7 +17,7 @@
   exposes always-on per-frame draw counters (quads, draw calls, flushes, texture switches, vertex-upload bytes
   as a `Primitives.RenderFrameStats`), reset each `NewFrame` and read after the frame's draws. The batch caches one
   resource set per `(texture, sampler)` and evicts the ones unused for 600 frames, so a game that streams sprites
-  does not accumulate one set per texture ever drawn. **That sweep never stalls the frame thread** (since 17.36.2):
+  does not accumulate one set per texture ever drawn. **That sweep never stalls the frame thread** (since 17.37.0):
   evicted sets, and the buffers a grow replaces, go to a `Gpu.GpuRetireQueue` and are destroyed a few frame
   boundaries later instead of behind the `WaitForIdle` the eviction path used to take every time anything aged out
   ([#84](https://github.com/APKiwiOrg/KhaozEngine/issues/84)). Eligibility is unchanged, only the disposal moved.

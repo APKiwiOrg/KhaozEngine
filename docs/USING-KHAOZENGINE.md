@@ -11171,7 +11171,7 @@ unload paths (texture, skinned mesh, splat material) still drain per call, none 
 streaming path, and moving them over is
 [#383](https://github.com/APKiwiOrg/KhaozEngine/issues/383).
 
-**2D set eviction does not drain either, since 17.36.2.** `SpriteBatch` keeps one resource set per
+**2D set eviction does not drain either, since 17.37.0.** `SpriteBatch` keeps one resource set per
 `(texture, sampler)` and evicts the ones unused for `600` frames, and that sweep used to take a full
 `WaitForIdle` on the frame thread every time anything aged out: a guaranteed hitch roughly every ten
 seconds for a game that streams sprites ([#84](https://github.com/APKiwiOrg/KhaozEngine/issues/84)). The

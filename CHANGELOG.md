@@ -250,6 +250,30 @@ the draw after it and still owes its compute rule 1 transition without owing a b
 its record and is walked again the moment a layout declares it. Three device-free tests in the new
 `VulkanTransitionWalkTests` drive both cost shapes and the clean declared slot that must keep being walked.
 
+### The ocean focus tests share one scene, and the cost they were blamed for was not the ocean (#332)
+
+Test-only, no package API or engine behaviour changed. `OceanFocusGpuTests` took the cross-platform GPU matrix's
+full-tier `Render.Tests` step from 6m12s to 30m53s on windows/WARP and from 1m41s to 26m8s on ubuntu/lavapipe when
+it landed in 16.5.0. The class captured 23 pictures and stood up its own `Scene3D` for each one. It now renders
+every configuration through a single scene held by a new `OceanFocusScene` class fixture, the first class fixture
+in `KhaozEngine.Render.Tests`, and drops from 62s to 7s on Metal with no assertion weakened or removed.
+
+**The measurement contradicts the issue's root cause, which is the part worth keeping.** #332 attributed the cost
+to re-running the FFT ocean's compute dispatches under software emulation. Timed on Metal, a capture is 2571 ms,
+of which 2570 ms is the `Scene3D` constructor building the frame's pipelines. The device is under a millisecond,
+the two frames and the readback are 99 ms, and the ocean's compute dispatches are 93 ms of that 99. A capture
+through an already-built scene costs 3 ms. A procedural-water scene constructs in the same 2578 ms, so the cost
+belongs to `Scene3D` rather than to the ocean, and the two fixes the issue proposed (a smaller cascade
+resolution, fewer captures per test) would have addressed 4 per cent of it.
+
+**A reused scene is not assumed to be free, it is asserted to be.** The FFT foam accumulator, the ping-ponged row
+intermediates and the frame clock all survive a frame by design, so `TheSameSamplingFrameRendersTheSamePictureTwice`
+now ages the shared scene through four other configurations, captures the island configuration on it, and pins
+that byte-for-byte against the same scene rendered through the untouched `Render3DSnapshot` path on its own
+device. That is strictly stronger than the two independent captures it replaces: it covers both reproducibility
+and the reuse every other capture in the class depends on, and it is where a producer that started carrying state
+across a configuration change would go red first.
+
 ## 17.36.1
 
 The native Vulkan backend's staged buffer upload now barriers on the way IN as well as on the way out, closing

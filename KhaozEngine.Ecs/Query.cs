@@ -65,7 +65,9 @@ public sealed partial class Query
     /// <summary>Yields each matching entity (no component refs).</summary>
     /// <remarks>Structural changes (Spawn/Despawn/Add/Remove) made directly from the loop body throw
     /// <see cref="StructuralChangeDuringIterationException"/>: record them in <see cref="World.Commands"/> (or an
-    /// <see cref="EntityCommandBuffer"/>) and play back afterward, or collect the entities and act after the loop.</remarks>
+    /// <see cref="EntityCommandBuffer"/>) and play back afterward, or materialize this enumerable first
+    /// (<c>Entities().ToList()</c>, or a buffer you own) and act after the loop when the change has to be visible
+    /// in the same frame.</remarks>
     public IEnumerable<Entity> Entities()
     {
         Refresh();
@@ -85,7 +87,8 @@ public sealed partial class Query
 
     /// <remarks>Structural changes (Spawn/Despawn/Add/Remove) made directly inside the action throw
     /// <see cref="StructuralChangeDuringIterationException"/>: record them in <see cref="World.Commands"/> (or an
-    /// <see cref="EntityCommandBuffer"/>) and play back afterward. Reading and writing components (the ref
+    /// <see cref="EntityCommandBuffer"/>) and play back afterward, or collect the entities and act after the loop
+    /// when the change has to be visible in the same frame. Reading and writing components (the ref
     /// parameters, or Has/Get/TryGet/an overwriting Set through the world) stays legal.</remarks>
     public void ForEach<T1>(RefAction<T1> action) where T1 : struct, IComponent
     {

@@ -454,9 +454,41 @@ one to the empty archetype exactly as `Spawn` does, and a row added without coun
 **Reading and writing components mid-iteration is untouched.** The `ref` parameters, and `Has` / `Get` / `TryGet`
 plus a `Set<T>` that OVERWRITES a component the entity already has, move no rows and do not count. That is what the
 engine's own serial callers do (the Sharding owner scans read `Has<Ghost>` per row), so the guard costs them
-nothing. **The one thing to check when adopting** is a call site that despawns from inside an `Entities()` loop:
-that shape silently skipped entities before and now throws, so it surfaces as an exception rather than as the
-missing despawns it was already producing.
+nothing.
+
+**This BREAKS two of the four games on their next adopt, loudly and on frame one.** Nothing breaks today, because
+Hardpoint and SpaceGame both pin 15.0.0 and Ruinborne pins 17.36.1, but the adopt turns a silent skip into a thrown
+`StructuralChangeDuringIterationException`. Hardpoint has five statements behind two live `Entities()`
+enumerations, all in `Hardpoint.Game/BoardRenderer.cs` (`:313` TurretMotion, `:210` FacingMotion reached through
+the `orient` lambda, and `:395`/`:400`/`:407` Transform3D and MeshInstance inside `SyncRender`, which both the
+enemy and projectile call sites go through). Every one is a `Set<T>` for a component the entity has never had, so
+it is an ADD that moves the archetype, and the earliest fires on the first rendered frame after the player places
+their first tower. SpaceGame has eight production loops in `SpaceGame.Sim`, every one of them spawning several
+frames down the call stack rather than in the loop body: `FireProjectileSystem.cs:33`, `RadialFireSystem.cs:34`,
+`BossFireSystem.cs:26` and `TentacleSlamSystem.cs:84` through the volley spawners, `CollisionSystem.cs:180` and
+`PowerupEffectSystem.cs:105` through the kill and loot tail, `DroneSystem.cs:50`, and
+`EnemyShockwaveSystem.cs:49`. The first of those fires seconds into every run, the first time any enemy fires.
+Ruinborne and Nullwake have no `Entities()` or `ForEach` call sites at all. The per-repo evidence is filed at
+https://github.com/APKiwiOrg/Hardpoint/issues/20 and https://github.com/APKiwiOrg/SpaceGame/issues/109.
+
+**Both migrations work, and picking the wrong one is its own bug.** Defer through `World.Commands` (or an
+`EntityCommandBuffer`) when a one-frame delay is unobservable. Materialize the enumerable first
+(`Entities().ToList()`, or a buffer you own and reuse on a per-frame path) and mutate after the loop when the
+result is read later in the SAME frame. `World.Commands` is the WRONG answer for Hardpoint's `Transform3D` lazy
+attach, because `Scene3DBinder.Submit` reads that component a few lines later in the same frame, so a deferred add
+renders every enemy and every projectile as nothing on its first frame. It is equally wrong for all eight
+SpaceGame loops, whose projectiles, beams, pickups and rings are each consumed by a later phase of the tick that
+spawned them. The exception message names both, and so do `docs/USING-KHAOZENGINE.md` and the `Ecs` package README.
+
+**Why this still rides a minor rather than a major.** Both games are ten minor versions behind and adopt
+deliberately, the failure is a named exception on the first frame rather than the silent corruption it replaces,
+and this entry names both games, their sites and the migration each one needs. That is a decision taken with the
+census in hand, not an oversight.
+
+**Also worth knowing when you adopt:** the version counter is world-GLOBAL, so a `Spawn` throws whatever archetype
+it lands in. Spawning a projectile while iterating enemies is refused even though it could not have corrupted the
+enemy walk. That is deliberate (one integer, no per-archetype bookkeeping on the hot path), and it is why the
+SpaceGame sites are hazards at all.
 
 ### A vacated column slot is cleared, so a despawn stops pinning what the row held (#119)
 

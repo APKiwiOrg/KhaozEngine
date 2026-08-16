@@ -26,11 +26,17 @@ world.Commands.Playback(world);   // (World.Update flushes Commands after each s
 **The deferral above is required, not a style preference.** Iteration walks archetype rows by index, so a
 structural change made directly from inside a `ForEach` action or an `Entities()` loop body moves rows underneath
 the walk, and a change that grows the archetype detaches the `ref` parameters already handed to the in-flight
-action. Both corrupted the pass in silence until 17.36.2, which made them throw
+action. Both corrupted the pass in silence until 17.37.0, which made them throw
 `StructuralChangeDuringIterationException` instead. Structural means the four things that add or remove a row:
 `Spawn`, `Despawn`, `Remove<T>`, and a `Set<T>`/`Add<T>` that adds a component the entity did not have. Writing
 through the `ref` parameters, and `Has`/`Get`/`TryGet`/an overwriting `Set<T>` through the world, move no rows and
 stay legal mid-iteration. The parallel path's stricter equivalent is `ParallelAccessViolationException`.
+
+**Two migrations, and the choice is about WHEN the change lands.** Defer through `World.Commands` (or your own
+`EntityCommandBuffer`) when a one-frame delay is fine, which is most of the time and allocates nothing per frame.
+Materialize the entities first (`Entities().ToList()`, or a buffer you own and reuse) and mutate after the loop
+when something reads the result later in the SAME frame. A renderer that lazily adds a missing component to each
+entity it is about to submit is the second case, not the first: deferring that add means submitting without it.
 
 Opt-in data-parallel `World.ParallelForEach`/`Query.ParallelForEach` (fans an archetype's rows across an
 `IJobScheduler`) is allocation-free in steady state. `World`'s buffered overload rents each worker chunk's

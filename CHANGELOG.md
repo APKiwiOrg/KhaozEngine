@@ -88,14 +88,48 @@ needs neither, and it would have changed the serve loop for every server to fix 
 `WorldClient`, a `WorldServer` or `ShardedWorldServer`, a `WorldPersistence` over an `InMemoryWorldStore`) in the
 field's frame order - poll, tick, then `WorldPersistence.Update` - so a restore always lands at least one snapshot
 behind the join, which is what a genuinely remote store does. `WorldClientReconnectTeleportTests` deliberately does
-not cover this: its harness restores synchronously as the next join's spawn. Four rows. The reported case (parked
+not cover this: its harness restores synchronously as the next join's spawn. Seven rows. The reported case (parked
 at 400, 0.9, 300 with the spawn at the origin, transport drop, no input) asserts the rejoin was BUILT at the parked
 position, that the resume snapshot carries it, and that the consumer-visible teleport fires zero times. A
 first-ever join still lands on the configured spawn and still reports its one teleport. A record that changed
-during the disconnect window wins over the hint and reports exactly one. The fourth is the sharded twin of the
-first.
-Against the pre-fix sources the three behavioural rows fail with the entity built at `<0, 0.9, 0>` and two
+during the disconnect window wins over the hint and reports exactly one. Two rows cover the quarantined rejoin
+below, on each head, and one covers the tokenless guest. The last is the sharded twin of the first.
+Against the pre-fix sources the three original behavioural rows fail with the entity built at `<0, 0.9, 0>` and two
 teleports fired where zero and one were expected. `ResumePositionCacheTests` pins the bound and the eviction order.
+
+**A REJECTED record no longer gets to keep the seeded position.** The seed changed what "not applied" means, and
+the quarantine path had not caught up: it returned without placing the player, which used to leave them on the
+configured spawn the join built them at and now leaves them on the resume hint instead. Nothing validates that
+hint (`WorldPersistenceConfig.Bounds` vets the LOADED record), so all three quarantine triggers ended with a
+rejected record's player standing exactly where that record said they were. The out-of-bounds trigger needed a
+divergence between hint and record to get there, the decode-failure and blob-verdict triggers needed nothing at
+all. Quarantine now forgets the account's hint and resets the player to the host's configured spawn as a genuine
+teleport, since policy moved them. The spawn comes from a new **`IWorldPersistenceHost.TryGetConfiguredSpawn`**
+(hint-free, ground-clamped, absolute), implemented by both heads and, like `SetResumePositionProvider`, a default
+interface method returning false: a host that installs no resume provider keeps the old no-placement shape, which
+is correct for it, because with no seed there is nothing to undo. Every pre-existing quarantine test was a FIRST
+join, which has no hint, which is why a green suite said nothing about this.
+
+**A tokenless guest gets no hint at all.** Both heads key a tokenless connection `guest:{slot}`
+(now `ResumePositionCache.GuestAccountPrefix`) and slots are recycled, so that key names a seat rather than a
+person: a hint under it would have built a brand-new guest on the last occupant's position, and silently, because
+a seed carries no teleport of its own. `ResumePositionCache` refuses the prefix on both `Record` and `TryGet`. The
+PERSISTENCE keying underneath is pre-existing, older than the seed, and unchanged: the record saved under
+`player:guest:{slot}` still loads onto whoever recycles the slot, as a teleport. That residual is
+https://github.com/APKiwiOrg/KhaozEngine/issues/647, and the guest row pins it so it stays visible.
+
+**`MmoServerSample` implements the seam rather than silently opting out.** It is the file a game copies for a
+custom head, and both new members are default interface methods, so omitting them compiles and quietly keeps the
+double teleport. The sample now resolves its account id before its spawn, builds a rejoining account where it
+left, and answers `TryGetConfiguredSpawn`, with a row asserting the rejoin is built off the spawn.
+
+**One caveat named rather than fixed.** `QuietRestoreDistance` is measured at DRAIN time, against where the player
+stands when the load actually lands, so on a high-latency store a rejoiner who is moving can travel past it before
+the restore arrives and take the hard cut anyway. Nothing regressed (every restore was a teleport before this
+version), but the benefit degrades as store latency rises, and widening the distance is the knob for a slow store.
+The loopback rig cannot show it: its store answers synchronously. Also filed, from the same review:
+https://github.com/APKiwiOrg/KhaozEngine/issues/646, a recycled slot taking another account's apply, which the
+new live-state compare can now land with `teleport: false` where it was always a visible cut before.
 
 ### The tile world renderer package (#629)
 

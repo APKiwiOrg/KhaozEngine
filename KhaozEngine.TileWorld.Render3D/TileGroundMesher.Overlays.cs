@@ -22,7 +22,7 @@ public static partial class TileGroundMesher
         Vector4? flat,
         bool splitSwNe)
     {
-        Span<TileTriangle> triangles = stackalloc TileTriangle[TileTriangulation.MaxTriangles];
+        Span<TileLatticeTriangle> triangles = stackalloc TileLatticeTriangle[TileTriangulation.MaxTriangles];
         int count = TileTriangulation.Triangulate(shape, rotation, splitSwNe, triangles);
 
         // A full overlay paints every corner, so the blended underlay is never read there and its per-corner
@@ -35,7 +35,7 @@ public static partial class TileGroundMesher
 
         for (int i = 0; i < count; i++)
         {
-            TileTriangle t = triangles[i];
+            TileLatticeTriangle t = triangles[i];
             Vector4? paint = t.Overlay ? flat : null;
             AddTriangle(
                 mesh,
@@ -48,21 +48,21 @@ public static partial class TileGroundMesher
 
     /// <summary>The vertex data at one lattice point of the tile: a corner as it stands, a mid-edge point as the
     /// average of the two corners it lies between.</summary>
-    static LatticePoint At(TilePoint point, in LatticePoint sw, in LatticePoint se, in LatticePoint nw, in LatticePoint ne)
+    static LatticePoint At(TileLatticePoint point, in LatticePoint sw, in LatticePoint se, in LatticePoint nw, in LatticePoint ne)
     {
-        TileTriangulation.Ends(point, out TilePoint first, out TilePoint second);
+        TileTriangulation.Ends(point, out TileLatticePoint first, out TileLatticePoint second);
         LatticePoint a = Pick(first, sw, se, nw, ne);
         // A corner is its own pair, and taking it as it stands rather than averaging it with itself keeps every
         // copy of that corner bit-identical across the tiles and regions that share it.
         return first == second ? a : Midpoint(a, Pick(second, sw, se, nw, ne));
     }
 
-    static LatticePoint Pick(TilePoint corner, in LatticePoint sw, in LatticePoint se, in LatticePoint nw, in LatticePoint ne) =>
+    static LatticePoint Pick(TileLatticePoint corner, in LatticePoint sw, in LatticePoint se, in LatticePoint nw, in LatticePoint ne) =>
         corner switch
         {
-            TilePoint.Se => se,
-            TilePoint.Nw => nw,
-            TilePoint.Ne => ne,
+            TileLatticePoint.Se => se,
+            TileLatticePoint.Nw => nw,
+            TileLatticePoint.Ne => ne,
             _ => sw,
         };
 

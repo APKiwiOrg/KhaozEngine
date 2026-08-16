@@ -376,6 +376,52 @@ public class TileWorldViewTests
         Assert.Equal(HouseGroundProps + HouseRoofProps, view.LastDrawnProps);
     }
 
+    [Fact]
+    public void LoadRegion_frees_the_planes_it_uploaded_when_a_later_plane_throws()
+    {
+        var scene = new RecordingTileWorldScene();
+        using TileWorldView view = View(scene, TwoPlaneHouse());
+        // The archetype sets the constructor uploaded belong to the VIEW, not to this call, so they are the
+        // baseline the rollback has to return to rather than anything it may free.
+        int beforeLoad = scene.AliveMeshCount;
+
+        // Plane 0 uploads and the roof plane refuses, which is the shape a device out of memory takes part way
+        // through a region. The handle from plane 0 is reachable from nowhere once the exception is out, so
+        // freeing it is this call's last chance.
+        scene.ThrowOnMeshLoad = 2;
+        Assert.Throws<InvalidOperationException>(() => view.LoadRegion(TileRenderTestData.Region));
+
+        Assert.Equal(beforeLoad, scene.AliveMeshCount);
+        Assert.Single(scene.MeshLoads);
+        Assert.Single(scene.MeshUnloads);
+        Assert.Equal(scene.MeshLoads[0].Index, scene.MeshUnloads[0].Index);
+        Assert.Equal(0, view.LoadedRegionCount);
+        Assert.Empty(view.LoadedRegions);
+
+        // And the region is genuinely loadable afterwards: the rollback left no stale entry behind, and the fake
+        // throws on a double free, so a rollback that had freed a handle twice would fail here.
+        scene.ThrowOnMeshLoad = 0;
+        view.LoadRegion(TileRenderTestData.Region);
+        Assert.Equal(1, view.LoadedRegionCount);
+        Assert.Equal(3, scene.MeshLoads.Count);
+    }
+
+    [Fact]
+    public void Constructor_frees_the_archetype_sets_it_uploaded_when_a_later_one_throws()
+    {
+        var scene = new RecordingTileWorldScene();
+        // A constructor that throws never produces the object whose Dispose would free these, so the sets the
+        // first two archetypes uploaded come back here or they are stranded for the process's life.
+        scene.ThrowOnPropMeshLoad = 3;
+
+        Assert.Throws<InvalidOperationException>(() => new TileWorldView(
+            scene, TileRenderTestData.HouseWorld(), TileRenderTestData.Catalogs, new GreyboxMeshResolver()));
+
+        Assert.Equal(2, scene.PropMeshLoads.Count);
+        Assert.Equal(0, scene.AliveMeshCount);
+        Assert.Equal(scene.PropMeshLoads.Sum(parts => parts.Count), scene.MeshUnloads.Count);
+    }
+
     // Greybox everywhere except "wall", which resolves to nothing so the view has to fall back.
     sealed class WallLessResolver : ITileMeshResolver
     {

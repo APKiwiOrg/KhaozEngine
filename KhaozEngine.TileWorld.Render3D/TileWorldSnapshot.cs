@@ -53,7 +53,10 @@ public static class TileWorldSnapshot
     /// an exact scale into an approximate one). <paramref name="plane"/> chooses the plane whose corner heights
     /// size the clip band, not what is drawn: every plane of every loaded region is drawn, which is what a map
     /// view wants. The observer stands on the top plane, which no tile flags indoors, so the roof rule shows every
-    /// roof. See <see cref="TopDownAzimuth"/> for which way the compass falls on the image.</summary>
+    /// roof. See <see cref="TopDownAzimuth"/> for which way the compass falls on the image.
+    /// <para>The document's regions must already be MATERIALISED, through <c>TileWorldFile.Load</c> or
+    /// <c>TileWorldSource.EnsureLoaded</c>: a region the document does not hold is skipped rather than loaded, so a
+    /// lazily opened world captures only the regions resident at the time and the rest come out as void.</para></summary>
     /// <param name="doc">The world to draw.</param>
     /// <param name="catalogs">The catalogs its material and archetype ids resolve through.</param>
     /// <param name="resolver">Where the object archetypes get their meshes.</param>
@@ -125,7 +128,10 @@ public static class TileWorldSnapshot
     /// metres, at <see cref="PerspectiveFieldOfViewDegrees"/> vertical field of view. Loads every region within
     /// <see cref="PerspectiveRegionRadius"/> of the target's region, which is what a game camera would have
     /// resident around its subject, and measures the prop draw radius from the target rather than from the
-    /// observer, so a camera pulled back from an indoor observer still draws the props around it.</summary>
+    /// observer, so a camera pulled back from an indoor observer still draws the props around it.
+    /// <para>The document's regions must already be MATERIALISED, through <c>TileWorldFile.Load</c> or
+    /// <c>TileWorldSource.EnsureLoaded</c>: a region the document does not hold is skipped rather than loaded, so a
+    /// lazily opened world captures only the regions resident at the time and the rest come out as void.</para></summary>
     /// <param name="doc">The world to draw.</param>
     /// <param name="catalogs">The catalogs its material and archetype ids resolve through.</param>
     /// <param name="resolver">Where the object archetypes get their meshes.</param>

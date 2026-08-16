@@ -30,7 +30,7 @@ public class TileTriangulationTests
         int expected,
         int painted)
     {
-        Span<TileTriangle> triangles = stackalloc TileTriangle[TileTriangulation.MaxTriangles];
+        Span<TileLatticeTriangle> triangles = stackalloc TileLatticeTriangle[TileTriangulation.MaxTriangles];
         int count = Cut(shape, rotation, triangles);
 
         Assert.Equal(expected, count);
@@ -48,7 +48,7 @@ public class TileTriangulationTests
     {
         // The corner fan is mirrored at an odd rotation. Nothing culls in the ground pass, so a triangle wound the
         // other way round is invisible there, but the shadow pass culls front faces and would drop it.
-        Span<TileTriangle> triangles = stackalloc TileTriangle[TileTriangulation.MaxTriangles];
+        Span<TileLatticeTriangle> triangles = stackalloc TileLatticeTriangle[TileTriangulation.MaxTriangles];
         for (int rotation = 0; rotation < 4; rotation++)
         {
             int count = Cut(shape, rotation, triangles);
@@ -68,7 +68,7 @@ public class TileTriangulationTests
         float totalHalves)
     {
         // Areas are counted in halves of the unit tile, so an eighth of a tile reads as 0.25 here.
-        Span<TileTriangle> triangles = stackalloc TileTriangle[TileTriangulation.MaxTriangles];
+        Span<TileLatticeTriangle> triangles = stackalloc TileLatticeTriangle[TileTriangulation.MaxTriangles];
         for (int rotation = 0; rotation < 4; rotation++)
         {
             int count = Cut(shape, rotation, triangles);
@@ -89,16 +89,16 @@ public class TileTriangulationTests
     [Fact]
     public void A_mid_edge_point_lies_between_the_two_corners_it_averages()
     {
-        AssertEnds(TilePoint.MidS, TilePoint.Sw, TilePoint.Se);
-        AssertEnds(TilePoint.MidE, TilePoint.Se, TilePoint.Ne);
-        AssertEnds(TilePoint.MidN, TilePoint.Nw, TilePoint.Ne);
-        AssertEnds(TilePoint.MidW, TilePoint.Sw, TilePoint.Nw);
+        AssertEnds(TileLatticePoint.MidS, TileLatticePoint.Sw, TileLatticePoint.Se);
+        AssertEnds(TileLatticePoint.MidE, TileLatticePoint.Se, TileLatticePoint.Ne);
+        AssertEnds(TileLatticePoint.MidN, TileLatticePoint.Nw, TileLatticePoint.Ne);
+        AssertEnds(TileLatticePoint.MidW, TileLatticePoint.Sw, TileLatticePoint.Nw);
 
         // A corner is its own pair, so a caller can map every point the same way.
-        TileTriangulation.Ends(TilePoint.Ne, out TilePoint first, out TilePoint second);
-        Assert.Equal(TilePoint.Ne, first);
-        Assert.Equal(TilePoint.Ne, second);
-        Assert.Equal(new Vector2(1f, 1f), TileTriangulation.Local(TilePoint.Ne));
+        TileTriangulation.Ends(TileLatticePoint.Ne, out TileLatticePoint first, out TileLatticePoint second);
+        Assert.Equal(TileLatticePoint.Ne, first);
+        Assert.Equal(TileLatticePoint.Ne, second);
+        Assert.Equal(new Vector2(1f, 1f), TileTriangulation.Local(TileLatticePoint.Ne));
     }
 
     [Fact]
@@ -109,13 +109,13 @@ public class TileTriangulationTests
 
     static void Overflowed()
     {
-        Span<TileTriangle> two = stackalloc TileTriangle[2];
+        Span<TileLatticeTriangle> two = stackalloc TileLatticeTriangle[2];
         TileTriangulation.Triangulate(TileOverlayShape.Full, 0, true, two);
     }
 
-    static void AssertEnds(TilePoint mid, TilePoint expectedFirst, TilePoint expectedSecond)
+    static void AssertEnds(TileLatticePoint mid, TileLatticePoint expectedFirst, TileLatticePoint expectedSecond)
     {
-        TileTriangulation.Ends(mid, out TilePoint first, out TilePoint second);
+        TileTriangulation.Ends(mid, out TileLatticePoint first, out TileLatticePoint second);
         Assert.Equal(expectedFirst, first);
         Assert.Equal(expectedSecond, second);
         Assert.Equal(
@@ -124,11 +124,11 @@ public class TileTriangulationTests
     }
 
     // The tile as the mesher and the raycast cut it: a flat tile, so the split rule only reflects the shape.
-    static int Cut(TileOverlayShape shape, int rotation, Span<TileTriangle> into) =>
+    static int Cut(TileOverlayShape shape, int rotation, Span<TileLatticeTriangle> into) =>
         TileTriangulation.Triangulate(shape, rotation, TileTriangulation.SplitSwNe(0, 0, 0, 0, shape, rotation), into);
 
     // Twice the triangle's area on the unit tile, positive when it winds counter-clockwise on x and z.
-    static float SignedArea(TileTriangle t)
+    static float SignedArea(TileLatticeTriangle t)
     {
         Vector2 a = TileTriangulation.Local(t.A);
         Vector2 b = TileTriangulation.Local(t.B);

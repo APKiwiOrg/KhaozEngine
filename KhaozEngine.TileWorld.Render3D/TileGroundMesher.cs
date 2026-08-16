@@ -172,6 +172,10 @@ public static partial class TileGroundMesher
         Vector3 cross = Vector3.Cross(b - a, c - a);
         if (cross.LengthSquared() <= 0f) return Vector3.UnitY;
         Vector3 normal = Vector3.Normalize(cross);
+        // Unreachable for well-formed ground since world z became minus tile z: TileTriangulation hands back a
+        // uniform tile-space winding, negating z flips it, and the sign of Y here depends only on that winding
+        // projected onto xz, never on the corner heights. Kept as the guard it is, because it is the one thing
+        // standing between a future lattice or triangulation change and a region of ground lit from underneath.
         return normal.Y < 0f ? -normal : normal;
     }
 

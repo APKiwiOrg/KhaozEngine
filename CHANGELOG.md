@@ -53,14 +53,20 @@ default forward, so (east, north, up) = (+x, -z, +y) stays a right-handed triple
 UP and east RIGHT at once instead of trading one for the other. `HeightAt` and `TileRaycast` read their world
 positions through it, a region-local ground mesh runs from 0 to MINUS 64 tiles on z, and an object's yaw is
 NEGATIVE per quarter turn, which is what makes `Matrix4x4.CreateRotationY` turn clockwise seen from above with
-north up.
+north up. This CHANGES the meaning of two members that shipped in 17.36.1:
+`TileWorldDocument.HeightAt(worldX, worldZ, plane)` and `TileRaycast.Pick` (`TileHit.Point.Z` included) now take
+and return world z as MINUS tile z, so a caller written against 17.36.1 that passed +z for north has to negate its
+z. Nothing consumed those two members at the time, which is why it lands as a correction one version later rather
+than as a break with a migration behind it.
 
 **One triangulation, shared, so a click lands on the triangle that was drawn.** `TileTriangulation` gains
 `Triangulate(shape, rotation, splitSwNe, into)` alongside the existing `SplitSwNe`, writing up to `MaxTriangles`
-(4) `TileTriangle(A, B, C, Overlay)` records over the eight `TilePoint` lattice points (four corners plus four
-mid-edge points), with `Local` and `Ends` as the point helpers. Two triangles come back for a plain tile or a
-diagonal half and four for a corner cut, and every one of them is wound the SAME way in tile space, so a pass that
-culls a face direction keeps or drops all of them together rather than half of them. Both the mesher and
+(4) `TileLatticeTriangle(A, B, C, Overlay)` records over the eight `TileLatticePoint` lattice points (four
+corners plus four mid-edge points), with `Local` and `Ends` as the point helpers. Two triangles come back for a
+plain tile or a diagonal half and four for a corner cut, and every one of them is wound the SAME way in tile
+space, so a pass that culls a face direction keeps or drops all of them together rather than half of them. Both
+names carry `Lattice` so neither can be read as a tile coordinate or as a mesh triangle, which is what the
+shorter forms would have suggested sitting next to `TileCoord`. Both the mesher and
 `TileRaycast` now go through it, so `TileRaycast` hits a shaped tile at the surface that is actually drawn, where
 before it tested the plain pair and reported the wrong height in the middle of a corner-cut tile whose corners are
 not coplanar.

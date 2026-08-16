@@ -364,7 +364,7 @@ the shipped behaviour is the authority:
   default ground. An id the catalogs no longer define is a content bug, and the failure mode that costs the most
   is the one nobody sees: an invisible tile reads as authored void.
 - **Overlay shapes are exact geometry through one shared triangulation.** The cut is
-  `TileTriangulation.Triangulate` in `KhaozEngine.TileWorld` (`TilePoint` lattice points, `TileTriangle` records,
+  `TileTriangulation.Triangulate` in `KhaozEngine.TileWorld` (`TileLatticePoint` lattice points, `TileLatticeTriangle` records,
   `MaxTriangles` 4), called with the same inputs by the mesher and by `TileRaycast`, so a click lands on the
   triangle that was drawn rather than on a plain pair that is the wrong height in the middle of a corner-cut tile.
   A shape whose overlay material is missing meshes as `Full`, and the raycast reads that identically. Triangles

@@ -147,13 +147,13 @@ divide. `HeightAt` reads its world position the same way.
 tile at the surface that was actually drawn rather than at the plain pair. `SplitSwNe(h00, h10, h01, h11, shape,
 rotation)` is the shared split choice: a `DiagonalHalf` overlay forces the diagonal, otherwise the one whose
 corners differ least in height wins. `Triangulate(shape, rotation, splitSwNe, into)` is the shared shape
-triangulation, writing up to `MaxTriangles` (4) `TileTriangle(A, B, C, Overlay)` records over the eight
-`TilePoint` lattice points (four corners plus four mid-edge points), two for a plain tile or a diagonal half and
-four for a corner cut. `Local(point)` places a lattice point in tile-local 0..1 and `Ends(point, out first, out
-second)` names the two corners a mid-edge point averages, a corner being its own pair so a caller maps every point
-the same way. Every triangle comes back wound the SAME way (counter-clockwise on x and z), so a pass that culls a
-face direction keeps or drops all of them together rather than half of them. Pass the shape the tile actually
-draws with, so a shape whose overlay material is missing is passed as `Full`.
+triangulation, writing up to `MaxTriangles` (4) `TileLatticeTriangle(A, B, C, Overlay)` records over the eight
+`TileLatticePoint` lattice points (four corners plus four mid-edge points), two for a plain tile or a diagonal
+half and four for a corner cut. `Local(point)` places a lattice point in tile-local 0..1 and `Ends(point, out
+first, out second)` names the two corners a mid-edge point averages, a corner being its own pair so a caller maps
+every point the same way. Every triangle comes back wound the SAME way (counter-clockwise on x and z), so a
+pass that culls a face direction keeps or drops all of them together rather than half of them. Pass the shape
+the tile actually draws with, so a shape whose overlay material is missing is passed as `Full`.
 
 `TilePrefab` is a rect of tiles lifted out of a world (every layer, corner heights relative to the rect's SW
 corner, objects and markers in prefab-relative coordinates) that can be stamped elsewhere with a rotation.

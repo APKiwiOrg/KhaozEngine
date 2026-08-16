@@ -6440,7 +6440,7 @@ objects. Pass `Rebake` a rect covering the FULL footprint of anything you remove
 
 **Picking and prefabs.** `TileRaycast.Pick(doc, plane, origin, direction)` is the GPU-free ray against the
 lattice, cutting each tile with `TileTriangulation.Triangulate`, the same shape triangulation the ground mesher
-uses over the same `TilePoint` lattice and `SplitSwNe` diagonal choice, so a click lands on the triangle that is
+uses over the same `TileLatticePoint` lattice and `SplitSwNe` diagonal choice, so a click lands on the triangle that is
 drawn. Every triangle comes back wound the same way, so a pass that culls a face direction keeps or drops all of
 them together. `TilePrefabs.Extract`/`Rotate`/`Place` lift a rect of tiles (layers,
 relative heights, objects, markers) and stamp it elsewhere at any rotation, with `TilePrefabFile` as the JSON

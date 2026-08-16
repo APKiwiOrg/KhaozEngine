@@ -271,6 +271,14 @@ public sealed class RecordingTileWorldScene : ITileWorldScene
     /// <summary>How many handles are live right now, uploaded and not yet freed.</summary>
     public int AliveMeshCount => _alive.Count;
 
+    /// <summary>Makes the Nth <see cref="LoadMesh"/> of this scene's life throw instead of uploading, 1-based,
+    /// with 0 meaning never. Stands in for a device that runs out of memory or a mesher that trips over one
+    /// plane, which is the only way to reach the half-uploaded paths a real device reaches at 3am.</summary>
+    public int ThrowOnMeshLoad { get; set; }
+
+    /// <summary>The same for <see cref="LoadPropMeshes"/>, counted over archetypes rather than parts.</summary>
+    public int ThrowOnPropMeshLoad { get; set; }
+
     /// <summary>Forgets the recorded draws, so the next frame's records stand alone. Handles are untouched.</summary>
     public void ClearFrame()
     {
@@ -278,9 +286,13 @@ public sealed class RecordingTileWorldScene : ITileWorldScene
         PropDraws.Clear();
     }
 
-    /// <summary>Hands out a fresh live handle for a ground mesh.</summary>
+    /// <summary>Hands out a fresh live handle for a ground mesh, unless this is the upload
+    /// <see cref="ThrowOnMeshLoad"/> names, which throws having uploaded nothing.</summary>
     public MeshHandle LoadMesh(GltfMesh mesh)
     {
+        if (MeshLoads.Count + 1 == ThrowOnMeshLoad)
+            throw new InvalidOperationException($"the fake refused ground-mesh upload {ThrowOnMeshLoad}.");
+
         MeshHandle handle = Next();
         MeshLoads.Add(handle);
         GroundMeshes[handle.Index] = mesh;
@@ -299,10 +311,14 @@ public sealed class RecordingTileWorldScene : ITileWorldScene
     /// <summary>Records one mesh draw at its world transform.</summary>
     public void DrawMesh(MeshHandle handle, Matrix4x4 world) => Drawn.Add((handle, world));
 
-    /// <summary>Hands out one fresh live handle per part.</summary>
+    /// <summary>Hands out one fresh live handle per part, unless this is the archetype
+    /// <see cref="ThrowOnPropMeshLoad"/> names, which throws having uploaded nothing.</summary>
     public IReadOnlyList<MeshHandle> LoadPropMeshes(IReadOnlyList<GltfMeshPart> parts)
     {
         ArgumentNullException.ThrowIfNull(parts);
+        if (PropMeshLoads.Count + 1 == ThrowOnPropMeshLoad)
+            throw new InvalidOperationException($"the fake refused prop-mesh upload {ThrowOnPropMeshLoad}.");
+
         var handles = new MeshHandle[parts.Count];
         for (int i = 0; i < parts.Count; i++) handles[i] = Next();
         PropMeshLoads.Add(handles);

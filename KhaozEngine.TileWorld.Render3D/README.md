@@ -136,6 +136,9 @@ warms up over a frame is read back cold. Needs a headless GPU device.
   plane 0, so a shot aimed inside a house hides that house's roof.
 - `configureScene` runs LAST inside the capture's setup, so a caller's lighting, post or camera changes win over
   everything the helper set.
+- Both need the document's regions MATERIALISED first, through `TileWorldFile.Load` or
+  `TileWorldSource.EnsureLoaded`. A region the document does not hold is skipped rather than loaded, so a lazily
+  opened world captures only the regions resident at the time and the rest come out as void.
 
 ## Tests and goldens
 

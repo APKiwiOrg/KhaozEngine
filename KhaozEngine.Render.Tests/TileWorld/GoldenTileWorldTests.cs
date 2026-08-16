@@ -14,7 +14,7 @@ namespace KhaozEngine.Tests.TileWorld;
 /// while the top-down shot stands its observer above the world, so the same roofs are drawn over the floor. A
 /// regression in the ground mesher, the corner blend, the lattice normals, the prop yaw convention or the roof
 /// rule moves cells well past the golden tolerance. Skipped unless KE_GPU_TESTS=1.</summary>
-public class GoldenTileWorldTests
+public sealed class GoldenTileWorldTests
 {
     const int PerspectiveWidth = 320;
     const int PerspectiveHeight = 240;

@@ -95,15 +95,28 @@ public sealed class TileWorldView : IDisposable
         _options = options ?? new TileWorldViewOptions();
         _planes = Math.Max(0, doc.PlaneCount);
 
-        foreach (KeyValuePair<string, TileObjectArchetype> entry in catalogs.Archetypes)
+        // A throw part way through frees the sets already uploaded, because a constructor that throws never
+        // produces the object whose Dispose would have freed them. The resolver is caller code and the upload is a
+        // device call, so either can fail on the ninth archetype of twelve, and without this the first eight are
+        // stranded on the device with nothing left holding their handles.
+        try
         {
-            IReadOnlyList<GltfMeshPart>? parts = resolver.Resolve(entry.Value);
-            if (parts is null || parts.Count == 0)
+            foreach (KeyValuePair<string, TileObjectArchetype> entry in catalogs.Archetypes)
             {
-                _options.Log?.Invoke($"tile world: archetype '{entry.Key}' has no mesh, drawing a placeholder box.");
-                parts = PlaceholderParts;
+                IReadOnlyList<GltfMeshPart>? parts = resolver.Resolve(entry.Value);
+                if (parts is null || parts.Count == 0)
+                {
+                    _options.Log?.Invoke($"tile world: archetype '{entry.Key}' has no mesh, drawing a placeholder box.");
+                    parts = PlaceholderParts;
+                }
+                _propMeshes[entry.Key] = scene.LoadPropMeshes(parts);
             }
-            _propMeshes[entry.Key] = scene.LoadPropMeshes(parts);
+        }
+        catch
+        {
+            foreach (IReadOnlyList<MeshHandle> uploaded in _propMeshes.Values) _scene.UnloadPropMeshes(uploaded);
+            _propMeshes.Clear();
+            throw;
         }
 
         Observer = default;
@@ -146,7 +159,10 @@ public sealed class TileWorldView : IDisposable
     }
 
     /// <summary>Builds and uploads every plane of one region. Loading a region that is already loaded rebuilds it
-    /// from the document rather than doubling up, so a caller may use this as a whole-region refresh.</summary>
+    /// from the document rather than doubling up, so a caller may use this as a whole-region refresh.
+    /// <para>A throw part way through the region leaves nothing loaded and nothing uploaded: the planes already
+    /// on the device are freed before the exception propagates, so a caller that retries the load or gives up on
+    /// the region either way does not strand handles.</para></summary>
     public void LoadRegion(RegionCoord region)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -154,10 +170,21 @@ public sealed class TileWorldView : IDisposable
 
         var meshes = new MeshHandle?[_planes];
         var props = new TileRegionProps[_planes];
-        for (int plane = 0; plane < _planes; plane++)
+        try
         {
-            meshes[plane] = BuildMesh(region, plane);
-            props[plane] = TileObjectProps.Build(_doc, _catalogs, region, plane);
+            for (int plane = 0; plane < _planes; plane++)
+            {
+                meshes[plane] = BuildMesh(region, plane);
+                props[plane] = TileObjectProps.Build(_doc, _catalogs, region, plane);
+            }
+        }
+        catch
+        {
+            // The array only reaches _loaded once every plane is built, so a mesher or an upload that throws on
+            // plane 3 of 4 would otherwise orphan planes 0 to 2: nothing references them and UnloadRegion has
+            // nothing to find. Free what THIS call uploaded, then let the exception out unchanged.
+            FreeMeshes(meshes);
+            throw;
         }
         _loaded[region] = new RegionHandles(meshes, props);
     }
@@ -324,12 +351,16 @@ public sealed class TileWorldView : IDisposable
         return mesh is null ? null : _scene.LoadMesh(mesh);
     }
 
-    void FreeMeshes(RegionHandles handles)
+    void FreeMeshes(RegionHandles handles) => FreeMeshes(handles.Meshes);
+
+    // Takes the array rather than the record, so the rollback in LoadRegion can free a half-filled plane array
+    // that never became a RegionHandles. Nulling as it goes keeps it safe to call twice.
+    void FreeMeshes(MeshHandle?[] meshes)
     {
-        for (int plane = 0; plane < handles.Meshes.Length; plane++)
+        for (int plane = 0; plane < meshes.Length; plane++)
         {
-            if (handles.Meshes[plane] is { } mesh) _scene.UnloadMesh(mesh);
-            handles.Meshes[plane] = null;
+            if (meshes[plane] is { } mesh) _scene.UnloadMesh(mesh);
+            meshes[plane] = null;
         }
     }
 

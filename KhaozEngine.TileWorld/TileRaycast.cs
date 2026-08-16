@@ -66,10 +66,13 @@ public static class TileRaycast
         // that is drawn: a corner cut is a four triangle fan, and testing the plain pair instead would report the
         // wrong height in the middle of a tile whose corners are not coplanar.
         TileOverlayShape shape = doc.GetOverlay(tx, tz, plane) != 0 ? authored : TileOverlayShape.Full;
-        Span<TileTriangle> triangles = stackalloc TileTriangle[TileTriangulation.MaxTriangles];
+        Span<TileLatticeTriangle> triangles = stackalloc TileLatticeTriangle[TileTriangulation.MaxTriangles];
         int count = TileTriangulation.Triangulate(shape, rotation, swne, triangles);
 
-        // These triangles wind a DOWNWARD normal, harmless here because Intersect is two-sided.
+        // TileTriangulation normalises the winding in TILE space, and the corners above are already in WORLD space
+        // where z is negated, so the pair arrives wound the other way and its geometric normal points UP. Neither
+        // direction reaches this loop: Intersect is two sided, and the mesher does not read the winding either, it
+        // computes its normals from the height lattice.
         float best = float.PositiveInfinity;
         for (int i = 0; i < count; i++)
         {
@@ -85,17 +88,17 @@ public static class TileRaycast
 
     // Where a lattice point sits on this tile: a corner as it stands, a mid-edge point midway between the two
     // corners it lies between, which is the same averaging the mesher's vertices use.
-    static Vector3 PointAt(TilePoint point, in Vector3 sw, in Vector3 se, in Vector3 nw, in Vector3 ne)
+    static Vector3 PointAt(TileLatticePoint point, in Vector3 sw, in Vector3 se, in Vector3 nw, in Vector3 ne)
     {
-        TileTriangulation.Ends(point, out TilePoint first, out TilePoint second);
+        TileTriangulation.Ends(point, out TileLatticePoint first, out TileLatticePoint second);
         return (CornerAt(first, sw, se, nw, ne) + CornerAt(second, sw, se, nw, ne)) * 0.5f;
     }
 
-    static Vector3 CornerAt(TilePoint corner, in Vector3 sw, in Vector3 se, in Vector3 nw, in Vector3 ne) => corner switch
+    static Vector3 CornerAt(TileLatticePoint corner, in Vector3 sw, in Vector3 se, in Vector3 nw, in Vector3 ne) => corner switch
     {
-        TilePoint.Se => se,
-        TilePoint.Nw => nw,
-        TilePoint.Ne => ne,
+        TileLatticePoint.Se => se,
+        TileLatticePoint.Nw => nw,
+        TileLatticePoint.Ne => ne,
         _ => sw,
     };
 

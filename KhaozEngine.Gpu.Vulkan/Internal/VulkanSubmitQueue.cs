@@ -18,7 +18,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     ///
     /// <para><b>EVERY SUBMIT TAKES A VALUE, including one with no fence.</b> The timeline has to advance with the
     /// submission stream for a later fence's value to cover the earlier work at all, which is the transitivity the
-    /// retire list and <c>RetiredResourcePool</c> both rely on.</para>
+    /// retire list and <c>GpuRetireQueue</c> both rely on.</para>
     ///
     /// <para><b>A FAILED SUBMIT CANNOT STRAND <c>WaitForIdle</c>, AND IT IS PREVENTED STRUCTURALLY RATHER THAN
     /// REPAIRED.</b> The hazard is real and specific: the two out-of-memory results do NOT flip liveness, and the

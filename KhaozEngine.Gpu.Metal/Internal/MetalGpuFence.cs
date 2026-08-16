@@ -29,7 +29,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <para>
     /// A POLL NEVER WAITS AND NEVER TAKES A LOCK. <see cref="Signaled"/> is one <c>signaledValue</c> property
     /// read, which touches no queue and no command buffer, so the seam's "it polls and returns" is met exactly
-    /// rather than nearly. That is the property the whole design leans on: <c>RetiredResourcePool</c> polls
+    /// rather than nearly. That is the property the whole design leans on: <c>GpuRetireQueue</c> polls
     /// constantly and must not serialise against submission to do it.
     /// </para>
     /// <para>

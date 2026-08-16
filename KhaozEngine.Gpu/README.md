@@ -279,7 +279,33 @@ What it owns today:
   polls it without blocking (`Reset()` returns it for reuse). There is no blocking wait on the seam: the point of a
   fence here is to REPLACE a `WaitForIdle`, not to dress one up. A fence handed to a submission made after some
   earlier work signals only once the queue has drained through that work, which is what makes it a drop-in for the
-  drain that guarded deferred GPU-resource destruction (Render3D's `RetiredResourcePool`).
+  drain that guarded deferred GPU-resource destruction (`GpuRetireQueue`, below).
+- **`GpuRetireQueue`** (since 17.37.0) - deferred disposal for anything a renderer frees MID-LIFE (a streamed mesh
+  unloaded while the scene runs, a sprite atlas whose descriptor set fell out of the working set). `Retire(resource)`
+  costs nothing at the call site, `BeginFrame()` seals the frame's retirements into one batch behind a fence and
+  destroys every batch the GPU has provably finished with, and `Dispose()` flushes the tail behind one drain at
+  teardown. It replaces the hand-rolled retire list each renderer used to carry
+  ([#80](https://github.com/APKiwiOrg/KhaozEngine/issues/80)), so a new renderer gets the safe behaviour by
+  construction rather than by remembering to copy another one.
+  - **Two factories, and the choice is about WHERE your frame boundary is.** `Create(device)` is the default:
+    fence-polled ripeness where the device can signal on GPU completion, the frame count plus one `WaitForIdle`
+    where it cannot. Minting the fence opens a command list of its own, so it must be advanced from a point with
+    nothing recording on the device (the frame's prepare phase), or the seam refuses it with
+    `GpuNestedRecordingException`. `CreateFrameCounted(device, frameDelay)` never mints a fence and never drains on
+    the frame path, for a renderer whose only per-frame hook is INSIDE the frame's recording. `SpriteBatch` is that
+    renderer, and it passes 4. The delay has to beat the deepest the CPU runs ahead of the GPU, which on the
+    engine's own backends is what `KE_METAL_FRAMES_IN_FLIGHT` / `KE_VULKAN_FRAMES_IN_FLIGHT` /
+    `KE_D3D11_FRAMES_IN_FLIGHT` set (default 3, up to 16) rather than the swapchain's image count, so 4 holds at
+    the default and at a depth of 4 and has to be raised with the knob past that. On this path the count is the
+    whole safety argument, and too small a delay is a use-after-free rather than an artifact.
+  - **`FlushAll()` and `Dispose()` are TEARDOWN, and the seam enforces that.** Both drain the device and then
+    destroy everything pending, so calling either with something pending while anything is recording on that
+    device raises `GpuDrainDuringRecordingException` naming the open recording, and frees nothing. A drain only
+    waits out work that was already SUBMITTED, so it says nothing about the draws in an open list, and the
+    disposals behind it would be a use-after-free with a drain in front of it. Mid-frame, `Retire` plus
+    `BeginFrame` is the pair that frees things, and neither drains. An EMPTY flush stays a no-op even
+    mid-recording: there is no drain and no disposal to protect, and refusing it would break the teardown a
+    capture does after the seam refuses it mid-frame (#424).
   - **Gate on `GpuCapabilities.SupportsCompletionFences`, and expect two backends to say no.** Metal and Vulkan
     report true. Direct3D11 and OpenGL report FALSE even though Veldrid hands out a `Fence` on them, because on
     those backends it is a `ManualResetEvent` set on the CPU as the submit call returns, which is a submit receipt

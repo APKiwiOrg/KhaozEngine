@@ -514,7 +514,7 @@ wires the latch, and a null one (every device-free test) still throws.
 **This backend reports `SupportsCompletionFences = true`, and it is the one capability where it differs from
 `GpuBackendKind.Direct3D11`.** Veldrid's Direct3D 11 fence is a `ManualResetEvent` set the instant
 `ExecuteCommandList` returns, which is a submit receipt rather than a completion signal, so the incumbent
-reports false, `GpuRetireBarrier.TryCreate` hands back null there and the retire pool keeps a frame-count
+reports false, `GpuRetireBarrier.TryCreate` hands back null there and the retire queue keeps a frame-count
 fallback. Here the fence is a value on a device-wide monotonic counter that the GPU advances, so the flag is
 honest and the fenced paths downstream become live.
 

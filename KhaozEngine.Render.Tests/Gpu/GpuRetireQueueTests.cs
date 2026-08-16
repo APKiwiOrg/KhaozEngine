@@ -2,22 +2,25 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.Gpu;
-using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Gpu.Internal;
 using Xunit;
 
-namespace KhaozEngine.Tests.Render3D
+namespace KhaozEngine.Tests.Gpu
 {
-    // The deferred-disposal pool behind Scene3D.UnloadMesh. It replaces the per-unload WaitForIdle that made every
-    // terrain chunk unload and LOD flip drain the whole device on the frame thread. The contract these tests pin:
-    // retiring costs nothing, a resource is only ever destroyed once the GPU is provably done with it (the lavapipe
-    // use-after-free rule the per-unload drain was protecting), and neither path frees a batch out of order.
+    // The seam's deferred-disposal queue, behind Scene3D.UnloadMesh and SpriteBatch's set eviction. It replaces the
+    // per-unload WaitForIdle that made every terrain chunk unload and LOD flip drain the whole device on the frame
+    // thread. The contract these tests pin: retiring costs nothing, a resource is only ever destroyed once the GPU
+    // is provably done with it (the lavapipe use-after-free rule the per-unload drain was protecting), and no path
+    // frees a batch out of order.
     //
-    // Two ripeness policies live here, and both are covered. With a barrier (a device that signals a fence on GPU
-    // COMPLETION: Metal, Vulkan) a batch dies on the first frame boundary its fence polls signaled and nothing ever
-    // drains. Without one (Direct3D11, OpenGL) a batch waits out FrameDelay frame boundaries and dies behind one
-    // WaitForIdle, which is exactly what every backend did before fences. The no-barrier tests below are the
-    // original suite, unchanged on purpose: the fallback is meant to be bit-for-bit the old behaviour.
-    public class RetiredResourcePoolTests
+    // Three ripeness policies live here, and all three are covered. With a barrier (a device that signals a fence on
+    // GPU COMPLETION: Metal, Vulkan) a batch dies on the first frame boundary its fence polls signaled and nothing
+    // ever drains. Without one (Direct3D11, OpenGL) a batch waits out FrameDelay frame boundaries and dies behind
+    // one WaitForIdle, which is exactly what every backend did before fences. The no-barrier tests below are the
+    // original suite, unchanged on purpose: the fallback is meant to be bit-for-bit the old behaviour. Third,
+    // FrameCountOnly waits out the same frame count and skips the drain entirely, for a caller that is inside the
+    // frame's recording and can neither mint a fence nor afford a stall (#84).
+    public class GpuRetireQueueTests
     {
         sealed class FakeResource : IDisposable
         {
@@ -71,7 +74,7 @@ namespace KhaozEngine.Tests.Render3D
         public void Retire_neither_drains_nor_disposes()
         {
             int drains = 0;
-            var pool = new RetiredResourcePool(() => drains++, frameDelay: 2);
+            var pool = new GpuRetireQueue(() => drains++, frameDelay: 2);
             var res = new FakeResource();
 
             pool.Retire(res);
@@ -85,7 +88,7 @@ namespace KhaozEngine.Tests.Render3D
         public void BeginFrame_holds_the_resource_until_the_frame_delay_elapses()
         {
             int drains = 0;
-            var pool = new RetiredResourcePool(() => drains++, frameDelay: 3);
+            var pool = new GpuRetireQueue(() => drains++, frameDelay: 3);
             var res = new FakeResource();
             pool.Retire(res);
 
@@ -105,7 +108,7 @@ namespace KhaozEngine.Tests.Render3D
         public void A_whole_batch_is_freed_behind_one_drain()
         {
             int drains = 0;
-            var pool = new RetiredResourcePool(() => drains++, frameDelay: 1);
+            var pool = new GpuRetireQueue(() => drains++, frameDelay: 1);
             var batch = new FakeResource[16];
             for (int i = 0; i < batch.Length; i++) { batch[i] = new FakeResource(); pool.Retire(batch[i]); }
 
@@ -120,7 +123,7 @@ namespace KhaozEngine.Tests.Render3D
         {
             var rec = new Recorder();
             int disposals = 0;
-            var pool = new RetiredResourcePool(() => { rec.Drains++; rec.DisposalsAtLastDrain = disposals; }, frameDelay: 1);
+            var pool = new GpuRetireQueue(() => { rec.Drains++; rec.DisposalsAtLastDrain = disposals; }, frameDelay: 1);
             var a = new CountingResource(() => disposals++);
             var b = new CountingResource(() => disposals++);
             pool.Retire(a);
@@ -144,7 +147,7 @@ namespace KhaozEngine.Tests.Render3D
         public void An_idle_frame_does_not_drain()
         {
             int drains = 0;
-            var pool = new RetiredResourcePool(() => drains++, frameDelay: 1);
+            var pool = new GpuRetireQueue(() => drains++, frameDelay: 1);
 
             for (int i = 0; i < 100; i++) pool.BeginFrame();
 
@@ -155,7 +158,7 @@ namespace KhaozEngine.Tests.Render3D
         public void Later_retirements_wait_their_own_delay()
         {
             int drains = 0;
-            var pool = new RetiredResourcePool(() => drains++, frameDelay: 2);
+            var pool = new GpuRetireQueue(() => drains++, frameDelay: 2);
             var first = new FakeResource();
             var second = new FakeResource();
 
@@ -178,7 +181,7 @@ namespace KhaozEngine.Tests.Render3D
         public void FlushAll_frees_every_pending_resource_behind_one_drain()
         {
             int drains = 0;
-            var pool = new RetiredResourcePool(() => drains++, frameDelay: 1000);
+            var pool = new GpuRetireQueue(() => drains++, frameDelay: 1000);
             var a = new FakeResource();
             var b = new FakeResource();
             pool.Retire(a);
@@ -196,7 +199,7 @@ namespace KhaozEngine.Tests.Render3D
         public void FlushAll_with_nothing_pending_does_not_drain()
         {
             int drains = 0;
-            var pool = new RetiredResourcePool(() => drains++);
+            var pool = new GpuRetireQueue(() => drains++);
 
             pool.FlushAll();
 
@@ -207,7 +210,7 @@ namespace KhaozEngine.Tests.Render3D
         public void Retiring_null_is_ignored()
         {
             int drains = 0;
-            var pool = new RetiredResourcePool(() => drains++, frameDelay: 1);
+            var pool = new GpuRetireQueue(() => drains++, frameDelay: 1);
 
             pool.Retire(null);
 
@@ -220,7 +223,7 @@ namespace KhaozEngine.Tests.Render3D
         public void A_frame_delay_below_one_still_defers_past_the_retiring_frame()
         {
             int drains = 0;
-            var pool = new RetiredResourcePool(() => drains++, frameDelay: 0);
+            var pool = new GpuRetireQueue(() => drains++, frameDelay: 0);
             var res = new FakeResource();
 
             pool.Retire(res);
@@ -238,7 +241,7 @@ namespace KhaozEngine.Tests.Render3D
         public void A_batch_is_sealed_behind_one_fence_at_the_frame_boundary_after_it_was_retired()
         {
             var barrier = new FakeBarrier();
-            var pool = new RetiredResourcePool(() => Assert.Fail("the fence path must never drain"), barrier);
+            var pool = new GpuRetireQueue(() => Assert.Fail("the fence path must never drain"), barrier);
             for (int i = 0; i < 16; i++) pool.Retire(new FakeResource());
 
             Assert.Equal(0, barrier.Submits);   // retiring submits nothing
@@ -254,7 +257,7 @@ namespace KhaozEngine.Tests.Render3D
         public void A_sealed_batch_is_held_until_its_fence_signals_and_then_freed_without_a_drain()
         {
             var barrier = new FakeBarrier();
-            var pool = new RetiredResourcePool(() => Assert.Fail("the fence path must never drain"), barrier);
+            var pool = new GpuRetireQueue(() => Assert.Fail("the fence path must never drain"), barrier);
             var res = new FakeResource();
             pool.Retire(res);
 
@@ -277,7 +280,7 @@ namespace KhaozEngine.Tests.Render3D
             // The ordering that makes "this batch died" imply "every older batch died first". Freeing the younger
             // batch early would destroy resources whose own submission the GPU may not have reached.
             var barrier = new FakeBarrier();
-            var pool = new RetiredResourcePool(() => Assert.Fail("the fence path must never drain"), barrier);
+            var pool = new GpuRetireQueue(() => Assert.Fail("the fence path must never drain"), barrier);
             var older = new FakeResource();
             var younger = new FakeResource();
 
@@ -303,7 +306,7 @@ namespace KhaozEngine.Tests.Render3D
         public void An_idle_frame_seals_nothing_and_submits_no_fence()
         {
             var barrier = new FakeBarrier();
-            var pool = new RetiredResourcePool(() => Assert.Fail("the fence path must never drain"), barrier);
+            var pool = new GpuRetireQueue(() => Assert.Fail("the fence path must never drain"), barrier);
 
             for (int i = 0; i < 100; i++) pool.BeginFrame();
 
@@ -314,7 +317,7 @@ namespace KhaozEngine.Tests.Render3D
         public void Fences_are_recycled_rather_than_allocated_per_batch()
         {
             var barrier = new FakeBarrier();
-            var pool = new RetiredResourcePool(() => Assert.Fail("the fence path must never drain"), barrier);
+            var pool = new GpuRetireQueue(() => Assert.Fail("the fence path must never drain"), barrier);
 
             for (int i = 0; i < 20; i++)
             {
@@ -334,7 +337,7 @@ namespace KhaozEngine.Tests.Render3D
         {
             var barrier = new FakeBarrier { CannotIssue = true };
             int drains = 0;
-            var pool = new RetiredResourcePool(() => drains++, barrier, frameDelay: 3);
+            var pool = new GpuRetireQueue(() => drains++, barrier, frameDelay: 3);
             var res = new FakeResource();
             pool.Retire(res);
 
@@ -355,7 +358,7 @@ namespace KhaozEngine.Tests.Render3D
             // Teardown keeps the drain: correctness over speed, and a poll would have to spin.
             var barrier = new FakeBarrier();
             int drains = 0;
-            var pool = new RetiredResourcePool(() => drains++, barrier);
+            var pool = new GpuRetireQueue(() => drains++, barrier);
             var a = new FakeResource();
             var b = new FakeResource();
             pool.Retire(a);
@@ -372,12 +375,134 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(1, barrier.Releases);   // the in-flight fence goes back to the barrier, not to the floor
         }
 
+        // ---- the frame-count-only path (no fence, no drain) ----
+
+        [Fact]
+        public void FrameCountOnly_frees_on_the_frame_count_with_no_drain_at_all()
+        {
+            var queue = new GpuRetireQueue(() => Assert.Fail("FrameCountOnly must never drain on the frame path"),
+                barrier: null, fallback: GpuRetireFallback.FrameCountOnly, frameDelay: 4);
+            var res = new FakeResource();
+            queue.Retire(res);
+
+            for (int i = 0; i < 3; i++) queue.BeginFrame();
+            Assert.Equal(0, res.DisposeCount);   // still inside the deferral window
+
+            queue.BeginFrame();
+
+            Assert.Equal(1, res.DisposeCount);   // freed on the count alone, and the drain above never ran
+            Assert.Equal(0, queue.PendingCount);
+        }
+
+        [Fact]
+        public void FrameCountOnly_still_frees_batches_oldest_first()
+        {
+            var queue = new GpuRetireQueue(() => Assert.Fail("FrameCountOnly must never drain on the frame path"),
+                barrier: null, fallback: GpuRetireFallback.FrameCountOnly, frameDelay: 2);
+            var older = new FakeResource();
+            var younger = new FakeResource();
+
+            queue.Retire(older);
+            queue.BeginFrame();
+            queue.Retire(younger);
+            queue.BeginFrame();          // older is ripe here, younger is not
+
+            Assert.Equal(1, older.DisposeCount);
+            Assert.Equal(0, younger.DisposeCount);
+
+            queue.BeginFrame();
+            Assert.Equal(1, younger.DisposeCount);
+        }
+
+        [Fact]
+        public void FrameCountOnly_still_drains_once_at_teardown()
+        {
+            // The one WaitForIdle this policy keeps: a tail that would otherwise be destroyed with no argument at
+            // all, at a moment where the stall costs nothing.
+            int drains = 0;
+            var queue = new GpuRetireQueue(() => drains++, barrier: null,
+                fallback: GpuRetireFallback.FrameCountOnly, frameDelay: 1000);
+            var res = new FakeResource();
+            queue.Retire(res);
+
+            queue.Dispose();
+
+            Assert.Equal(1, drains);
+            Assert.Equal(1, res.DisposeCount);
+        }
+
+        [Fact]
+        public void FlushAll_inside_an_open_recording_is_refused()
+        {
+            // FlushAll opens with a WaitForIdle, and a drain waits out work that was SUBMITTED. An open recording
+            // has not been, so the drain says nothing about the draws in that list and the disposals behind it are
+            // a use-after-free with a drain in front of it. The teardown path therefore refuses mid-recording by
+            // name, the way the seam refuses a nested recording (#424), rather than reading as safe in review.
+            var device = new SpyGpuDevice(new FakeGpuDevice());
+            GpuRetireQueue queue = GpuRetireQueue.CreateFrameCounted(device, 4);
+            var res = new FakeResource();
+            queue.Retire(res);
+            GpuRetireQueue empty = GpuRetireQueue.CreateFrameCounted(device, 4);
+
+            using (GpuRecording.Open(device, device.Factory.CreateCommandList(), "the window's frame list"))
+            {
+                var ex = Assert.Throws<GpuDrainDuringRecordingException>(() => queue.FlushAll());
+                Assert.Equal("the window's frame list", ex.Owner);
+                // But an EMPTY flush stays a no-op there, and that carve-out is load-bearing rather than lenient:
+                // a capture refused mid-frame by the seam's own nested-recording refusal (#424) disposes the
+                // half-built batch it had already constructed from inside the outer recording, freeing nothing.
+                // Refusing that would swap the useful diagnosis for an unrelated one and leak the batch as well.
+                empty.FlushAll();
+                empty.Dispose();
+            }
+
+            Assert.Equal(0, device.WaitForIdleCalls);   // refused BEFORE the drain, not after it
+            Assert.Equal(0, res.DisposeCount);
+            Assert.Equal(1, queue.PendingCount);
+        }
+
+        [Fact]
+        public void FlushAll_outside_a_recording_drains_and_frees()
+        {
+            // The other half of the guard: with nothing recording, teardown is exactly what it always was.
+            var device = new SpyGpuDevice(new FakeGpuDevice());
+            GpuRetireQueue queue = GpuRetireQueue.CreateFrameCounted(device, 4);
+            var res = new FakeResource();
+            queue.Retire(res);
+
+            queue.FlushAll();
+
+            Assert.Equal(1, device.WaitForIdleCalls);
+            Assert.Equal(1, res.DisposeCount);
+            Assert.Equal(0, queue.PendingCount);
+        }
+
+        [Fact]
+        public void Dispose_inherits_the_refusal_and_frees_nothing()
+        {
+            // Dispose is FlushAll plus the barrier, so tearing a renderer down from inside the frame's own
+            // recording is the same use-after-free, and is refused whole rather than done half way.
+            var device = new SpyGpuDevice(new FakeGpuDevice());
+            GpuRetireQueue queue = GpuRetireQueue.CreateFrameCounted(device, 4);
+            var res = new FakeResource();
+            queue.Retire(res);
+
+            using (GpuRecording.Open(device, device.Factory.CreateCommandList(), "an offscreen 2D capture"))
+                Assert.Throws<GpuDrainDuringRecordingException>(queue.Dispose);
+
+            Assert.Equal(0, res.DisposeCount);
+
+            queue.Dispose();   // outside the recording it is the ordinary teardown
+            Assert.Equal(1, device.WaitForIdleCalls);
+            Assert.Equal(1, res.DisposeCount);
+        }
+
         [Fact]
         public void Dispose_flushes_the_tail_and_frees_the_barrier()
         {
             var barrier = new FakeBarrier();
             int drains = 0;
-            var pool = new RetiredResourcePool(() => drains++, barrier);
+            var pool = new GpuRetireQueue(() => drains++, barrier);
             var res = new FakeResource();
             pool.Retire(res);
             pool.BeginFrame();

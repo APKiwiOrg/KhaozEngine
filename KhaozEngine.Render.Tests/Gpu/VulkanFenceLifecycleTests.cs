@@ -116,7 +116,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// AFTER DEVICE DEATH EVERY FENCE READS SIGNALLED, armed or not (V-F10). A destroyed device has no
         /// outstanding work, so "is it done" is yes. Getting this wrong is not cosmetic: an unsignalled fence
-        /// after death strands <c>RetiredResourcePool</c> forever on a batch it can never free, and teardown is
+        /// after death strands <c>GpuRetireQueue</c> forever on a batch it can never free, and teardown is
         /// exactly where a resource wrapper outliving its device is normal rather than a defect.
         /// </summary>
         [Fact]

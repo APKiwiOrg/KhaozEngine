@@ -34,11 +34,20 @@ public readonly record struct PredictionSettings(
 /// <param name="HardSnapApplied">True if the correction cut instantly (rather than glided): the error met
 /// <see cref="PredictionSettings.HardSnapDistance"/>, OR the authoritative <see cref="IPredictedState{T}.TeleportEpoch"/>
 /// advanced (an in-session teleport cuts regardless of distance).</param>
-/// <param name="Teleported">True when a teleport landed this reconciliation: the FIRST reconcile after a (re)seed
-/// (join/reconnect placement) OR an advance of the authoritative <see cref="IPredictedState{T}.TeleportEpoch"/> (an
-/// in-session teleport). The consumer reacts by snapping a follow camera and/or running a screen transition; an
-/// ordinary smoothed correction never sets it. Note a join/reconnect (re)seed sets this but not necessarily
-/// <see cref="HardSnapApplied"/>, since the seed already places the avatar with no glide.</param>
+/// <param name="Teleported">True when the local player's world position changed DISCONTINUOUSLY this reconciliation.
+/// Three things set it, and nothing else does: the first reconcile after a
+/// <see cref="ClientPrediction{TState,TCommand}.Reset"/> (a first-ever join, which has no prior position to be
+/// continuous with), the first reconcile after a <see cref="ClientPrediction{TState,TCommand}.Reseed"/> whose resume
+/// position sits at or beyond <see cref="PredictionSettings.HardSnapDistance"/> from where this client was, and an
+/// advance of the authoritative <see cref="IPredictedState{T}.TeleportEpoch"/> (an in-session server teleport:
+/// respawn, admin move, fast travel). A transport reconnect that resumes the same position is NOT a teleport, even
+/// though it reseeds prediction, and an ordinary smoothed correction never sets it either.
+/// <para>The contract is deliberately expensive to honour and therefore deliberately rare: a consumer answers it by
+/// snapping a follow camera, running a screen transition, and re-centring anything keyed to the player's position
+/// (a terrain streamer's ring, a spatial audio bed, an occlusion cache). Treat it as "the player is somewhere else
+/// now", not as "the session changed".</para>
+/// <para>Note a (re)seed that reports a teleport sets this but not necessarily <see cref="HardSnapApplied"/>, since
+/// the seed already places the avatar with no glide.</para></param>
 public readonly record struct ReconciliationResult(
     int AuthoritativeTick,
     float PositionError,

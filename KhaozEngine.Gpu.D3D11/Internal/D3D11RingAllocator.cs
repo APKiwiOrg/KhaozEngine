@@ -102,7 +102,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </para>
     /// <para>
     /// Not thread-safe for its FRAME counters, the same contract <see cref="D3D11FenceSubsystem"/> and
-    /// <c>RetiredResourcePool</c> already have: they are driven from the frame thread. The patch counters behind
+    /// <c>GpuRetireQueue</c> already have: they are driven from the frame thread. The patch counters behind
     /// <see cref="OffTimelinePatches"/> are the exception, and they are ordered by the submit lock rather than by
     /// that contract, because the recording half of the pair is any-thread by design.
     /// </para>

@@ -66,7 +66,7 @@ namespace KhaozEngine.Tests.Gpu
             _ = fence.Signaled;
 
             // "It polls and returns, it never waits" is met exactly rather than nearly: one signaledValue read
-            // per poll and no wait at all. RetiredResourcePool polls constantly and must not serialise against
+            // per poll and no wait at all. GpuRetireQueue polls constantly and must not serialise against
             // submission to do it.
             Assert.Equal(0, sharedEvent.WaitCount);
             Assert.Equal(2, sharedEvent.ReadCount);
@@ -163,7 +163,7 @@ namespace KhaozEngine.Tests.Gpu
             liveness.MarkDead();
 
             // M-F6, and death wins over the unarmed case too. A fence that read unsignalled after device death
-            // would strand RetiredResourcePool forever on a batch it can never free, which is a teardown-order
+            // would strand GpuRetireQueue forever on a batch it can never free, which is a teardown-order
             // hazard rather than a hypothetical.
             Assert.True(unarmed.Signaled);
             Assert.True(armed.Signaled);

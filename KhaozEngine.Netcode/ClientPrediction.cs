@@ -69,13 +69,24 @@ public sealed class ClientPrediction<TState, TCommand>
     // and never re-counted on a replay. It grows only on real discrete steps (occasional doorsteps/curbs; a continuous
     // climb exports ClimbRate and leaves StepDeltaY 0), so float precision stays ample over any realistic session.
     private float stepCumulativeY;
-    // The last authoritative teleport epoch observed in Reconcile. An advance forces an unconditional hard cut,
-    // independent of HardSnapDistance (see IPredictedState.TeleportEpoch). Captured on (re)seed so the seed's own
-    // epoch is never mistaken for an in-session advance.
+    // The authoritative teleport epoch, tracked as a HIGH-WATER MARK rather than a last-seen value: within a session
+    // it only ever rises. An ADVANCE past it forces an unconditional hard cut, independent of HardSnapDistance (see
+    // IPredictedState.TeleportEpoch). Re-baselined on (re)seed - a reseed lands on a fresh authoritative entity whose
+    // epoch counts from its own zero - so the seed's own epoch is never mistaken for an in-session advance.
+    //
+    // The watermark is what makes the compare monotonic in practice, and a plain "greater than the last value" test is
+    // NOT enough on its own. The epoch reads 0 whenever the authoritative host serves a state with its movement
+    // component momentarily absent, so a real stream can dip 5 -> 0 -> 5: with a last-seen store the dip is silent but
+    // the RECOVERY reads as a fresh advance and cuts, which is the every-snapshot flip-flop. With the watermark held
+    // at 5, neither edge fires.
     private uint lastTeleportEpoch;
-    // Set by Reset/Reseed so the FIRST reconcile after a (re)seed reports a teleport (the uniform join/reconnect
-    // signal the consumer uses to snap the camera), without that seed also counting as an in-session epoch advance.
+    // Set by Reset/Reseed so the FIRST reconcile after a (re)seed does not additionally count the epoch that seed
+    // captured as an in-session advance.
     private bool justSeeded;
+    // Whether the pending (re)seed's own placement is itself a teleport worth reporting. Always true for Reset (a
+    // first-ever join has no prior state, so the placement IS the discontinuity) and true for Reseed only when the
+    // resume position is genuinely discontinuous - see Reseed.
+    private bool seedReportsTeleport;
 
     public ClientPrediction(ITickSimulator<TState, TCommand> simulator, PredictionSettings? settings = null)
     {
@@ -103,8 +114,13 @@ public sealed class ClientPrediction<TState, TCommand>
     /// isolated step EXACTLY ONCE and ease it with a render-time-decaying vertical offset (the continuous stair glide
     /// renders such singles raw, so they would otherwise pop as a mini-teleport). Incremented only on the commanded
     /// <see cref="Predict"/> path and NEVER on a reconciliation replay, so replaying the pending window across a step tick
-    /// does not double-count it. Zero until the first step, and reset to zero by <see cref="Reset"/> / <see cref="Reseed"/>
-    /// (paired with the teleport signal a consumer uses to re-baseline the smoother, so a reset is never read as a step).
+    /// does not double-count it. Zero until the first step, and reset to zero by <see cref="Reset"/> / <see cref="Reseed"/>.
+    /// <para>A join and a teleport-reporting resume PAIR that zeroing with the teleport signal, so the consumer
+    /// re-baselines its smoother in the same frame and the drop is never read as a step. A QUIET resume (a reconnect
+    /// inside <see cref="PredictionSettings.HardSnapDistance"/>) zeroes it with no signal, so the consumer does see one
+    /// spurious delta there. That is harmless rather than merely tolerated: the shipped bridge answers a detected step
+    /// by freezing the mesh at its PREVIOUS DRAWN height rather than by applying the impulse, and a quiet resume renders
+    /// continuously (see <see cref="Reseed"/>), so the freeze it computes is approximately zero.</para>
     /// </summary>
     public float StepCumulativeY => stepCumulativeY;
 
@@ -143,8 +159,11 @@ public sealed class ClientPrediction<TState, TCommand>
         stepCumulativeY = 0f;
         nextSeq = 0;
         // Capture the seed epoch (so it is not re-counted as an in-session advance) and arm the join teleport signal.
+        // A first-ever join always reports one: the client has no prior state, so there is nothing for the placement
+        // to be continuous WITH, and the consumer has a camera to place and a world to stream in around it.
         lastTeleportEpoch = initialState.TeleportEpoch;
         justSeeded = true;
+        seedReportsTeleport = true;
     }
 
     /// <summary>
@@ -156,26 +175,84 @@ public sealed class ClientPrediction<TState, TCommand>
     /// does) would make every post-reconnect command land at or below that watermark, the server would reject them
     /// all as stale, and the player would be pinned at the authoritative position forever. Pending commands are
     /// kept on purpose: the very next <see cref="Reconcile"/> drops the ones the new server has acknowledged and
-    /// replays the rest on top of <paramref name="basis"/>, so the local avatar snaps cleanly to the reconnect
-    /// position with no render glide and no lost input.
+    /// replays the rest on top of <paramref name="basis"/>, so no input is lost across the reconnect.
+    /// <para><b>A reseed is only reported as a teleport when the world position is genuinely discontinuous.</b> The
+    /// resume displacement - the 3D distance from the state this client was carrying to <paramref name="basis"/>,
+    /// measured in absolute space so an island re-anchor across the reconnect counts as zero - is compared against
+    /// <see cref="PredictionSettings.HardSnapDistance"/>. Below it the session simply resumes: prediction is still
+    /// reseeded (the render offsets, the inter-tick phase and the authoritative basis all have to be rebuilt against
+    /// the new session), but <see cref="ReconciliationResult.Teleported"/> stays false, so a consumer that answers a
+    /// teleport with an expensive world-scale reaction does not pay it every time a lossy link drops. At or above it
+    /// the player really did move while disconnected and the teleport is reported as it always was.</para>
+    /// <para><b>The same verdict decides whether the avatar cuts or glides, because the consumer's camera hangs off
+    /// it.</b> A reported teleport CUTS: the render offsets drop, so the avatar is on the resume position the frame
+    /// the seed lands, and the consumer warps its follow camera to meet it. A quiet resume must therefore NOT cut,
+    /// because nothing tells that camera to warp: the sub-threshold displacement is re-anchored into the decaying
+    /// render offset instead and glides away like any ordinary correction, so the avatar and the eased camera stay
+    /// together. Zeroing the offsets on both verdicts put the avatar on the new position instantly while the camera
+    /// eased the whole way behind it, which is the camera-flying artifact the teleport signal exists to prevent, just
+    /// inverted.</para>
+    /// <para>Position is the ONLY sound signal here, because the epoch cannot be compared across a reconnect: the
+    /// server allocates a fresh net id and a fresh entity per join, whose <see cref="IPredictedState{TSelf}.TeleportEpoch"/>
+    /// counts from its own zero, so it bears no relation to the epoch the previous session ended on.</para>
     /// </summary>
     public void Reseed(in TState basis)
     {
+        // Decide the resume verdict BEFORE the basis overwrites the state this client was carrying - that carried
+        // state is the only record of where the player was when the link dropped.
+        seedReportsTeleport = ResumeDisplacement(basis) >= settings.HardSnapDistance;
+        // Sample the ACTUAL on-screen position (inter-tick interpolated + the in-flight offset) before the rebase, in
+        // ABSOLUTE space for the same reason ResumeDisplacement measures there: an island re-anchor across the
+        // reconnect moved nothing, so it must contribute nothing to the glide. renderOffset is a delta and therefore
+        // frame-invariant, which is what lets it be re-anchored across the frame change at all.
+        float frac = InterTickFraction;
+        Vector2 renderedAbsolute = predictedState.FrameAnchor
+            + Vector2.Lerp(previousPredictedPosition, predictedState.Position, frac) + renderOffset;
+        float renderedVertical = Lerp(previousPredictedVertical, predictedState.Vertical, frac) + verticalRenderOffset;
+
         predictedState = basis;
         previousPredictedPosition = basis.Position;
         previousPredictedVertical = basis.Vertical;
         secondsSinceLastPredict = settings.TickSeconds; // start fully on the current state (frac = 1)
-        renderOffset = Vector2.Zero;
+        if (seedReportsTeleport)
+        {
+            // A reported teleport CUTS: drop the offsets so rendered == predicted the frame the seed lands, matched by
+            // the camera warp the consumer runs off the signal.
+            renderOffset = Vector2.Zero;
+            verticalRenderOffset = 0f;
+        }
+        else
+        {
+            // A quiet resume GLIDES: re-anchor the offsets so the rendered position is exactly where it already was,
+            // and let the sub-threshold displacement decay away as an ordinary correction. Nothing fires the
+            // consumer's camera warp on this path, so cutting here would strand the avatar ahead of its camera.
+            renderOffset = renderedAbsolute - (basis.FrameAnchor + basis.Position);
+            verticalRenderOffset = renderedVertical - basis.Vertical;
+        }
+        // Either way the carried smoothing velocity is stale (the offsets just moved discontinuously), so both axes
+        // restart from rest - the same rule Reconcile's C1 branch applies whenever it re-anchors.
         renderOffsetVelocity = Vector2.Zero;
-        verticalRenderOffset = 0f;
         verticalRenderOffsetVelocity = 0f;
         predictedHorizontalSpeed = 0f;
         stepCumulativeY = 0f;
         // nextSeq intentionally preserved (monotonic across the reconnect); pendingCommands intentionally kept
         // (the following Reconcile drops acked / replays unacked against the new server's ack).
-        // Capture the reseed epoch and arm the teleport signal so the reconnect placement fires it exactly once.
+        // Re-baseline the epoch watermark onto the new session's counter (see lastTeleportEpoch), so the reseed's own
+        // epoch is never read as an in-session advance whichever way it moved.
         lastTeleportEpoch = basis.TeleportEpoch;
         justSeeded = true;
+    }
+
+    // The 3D distance from the currently carried predicted state to a resume basis, measured in ABSOLUTE space
+    // (FrameAnchor + Position) so an island re-anchor across the reconnect - a no-op in world space - measures zero
+    // rather than a frame width. Deliberately arithmetic on the anchors rather than a WithFrameAnchor conversion:
+    // the wither's default body throws, and a state that left FrameAnchor at its default must not be able to reach it
+    // through a path that only measures a distance.
+    private float ResumeDisplacement(in TState basis)
+    {
+        Vector2 planar = (basis.FrameAnchor + basis.Position) - (predictedState.FrameAnchor + predictedState.Position);
+        float vertical = basis.Vertical - predictedState.Vertical;
+        return new Vector3(planar.X, vertical, planar.Y).Length();
     }
 
     /// <summary>Predicts one command forward and retains it for reconciliation. Returns its seq.</summary>
@@ -263,15 +340,19 @@ public sealed class ClientPrediction<TState, TCommand>
         float verticalError = oldVertical - predictedState.Vertical;
         float positionError = new Vector3(planarError.X, verticalError, planarError.Y).Length();
 
-        // Authoritative teleport marker: an advance of the monotonic epoch is an intentional discontinuity that CUTS
-        // regardless of distance. justSeeded suppresses counting the (re)seed's own epoch as an advance, but the seed
-        // itself still reports Teleported (the uniform join/reconnect signal) - the (re)seed already placed the avatar
-        // with no glide, so it does not additionally force the hard-snap branch here.
+        // Authoritative teleport marker: an ADVANCE of the epoch past the high-water mark is an intentional
+        // discontinuity that CUTS regardless of distance. Strictly an advance, never any inequality: the epoch reads 0
+        // whenever the host serves a state with its movement component momentarily absent, and treating that dip - or
+        // the recovery back off it - as a teleport fired the cut on ordinary snapshots. justSeeded suppresses counting
+        // the (re)seed's own captured epoch as an advance, and whether the seed ITSELF reports a teleport is
+        // seedReportsTeleport (always for a join, only for a discontinuous resume - see Reset / Reseed). A seed that
+        // does report one still does not force the hard-snap branch: it already placed the avatar with no glide.
         uint epoch = authoritativeBasis.TeleportEpoch;
-        bool epochAdvanced = !justSeeded && epoch != lastTeleportEpoch;
-        bool teleported = justSeeded || epochAdvanced;
+        bool epochAdvanced = !justSeeded && epoch > lastTeleportEpoch;
+        bool teleported = seedReportsTeleport || epochAdvanced;
         justSeeded = false;
-        lastTeleportEpoch = epoch;
+        seedReportsTeleport = false;
+        if (epoch > lastTeleportEpoch) lastTeleportEpoch = epoch;
 
         bool hardSnapApplied = positionError >= settings.HardSnapDistance || epochAdvanced;
 

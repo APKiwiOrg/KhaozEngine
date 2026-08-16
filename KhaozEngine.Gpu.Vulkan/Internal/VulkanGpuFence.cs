@@ -28,7 +28,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// A POLL NEVER WAITS AND NEVER TAKES A LOCK. <see cref="Signaled"/> is one
     /// <c>vkGetSemaphoreCounterValue</c>, which is a free-threaded read on the semaphore object and touches no
     /// queue, so the seam's "it polls and returns" is met exactly rather than nearly. That is the property the
-    /// whole design leans on: <c>RetiredResourcePool</c> polls constantly and must not serialise against
+    /// whole design leans on: <c>GpuRetireQueue</c> polls constantly and must not serialise against
     /// submission to do it.
     /// </para>
     /// <para>

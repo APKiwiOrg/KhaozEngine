@@ -301,7 +301,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// A FENCE READS SIGNALLED ONCE THE DEVICE IS DEAD, armed or not. A destroyed device has no outstanding
-        /// work, so "is it done" is yes. Answering no would strand <c>RetiredResourcePool</c> forever on a batch
+        /// work, so "is it done" is yes. Answering no would strand <c>GpuRetireQueue</c> forever on a batch
         /// it can never free, and teardown order is exactly where a wrapper outliving its device is normal.
         /// </summary>
         [Fact]

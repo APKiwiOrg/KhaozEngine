@@ -25,6 +25,10 @@ public sealed partial class World
         rec.Row = _empty.AddRow(e);
         rec.Version = version;
         rec.Alive = true;
+        // Adds a row to the empty archetype exactly as Spawn does, so it counts as a structural change. Load runs
+        // against a world nobody is iterating today, but the version is the only thing standing between an
+        // iteration and silent corruption, and a row added without counting it is invisible to that guard.
+        MarkStructuralChange(nameof(Spawn));
         return e;
     }
 

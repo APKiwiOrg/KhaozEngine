@@ -32,6 +32,12 @@ internal sealed class Archetype
 
     /// <summary>Removes <paramref name="row"/> by moving the last row into it. Returns true and the
     /// backfilled entity when a move happened (its record's row must be updated to <paramref name="row"/>).</summary>
+    /// <remarks>Either branch VACATES a slot, and both clear it: a live-looking row past <see cref="Count"/> is
+    /// never read again but stays reachable through the column arrays, which for a component carrying a managed
+    /// reference means it keeps that reference alive indefinitely (#119). The tail branch is the one with no
+    /// copy-down to hide behind, and it is the branch a shrinking archetype ends on every time.
+    /// <see cref="Entities"/> is deliberately left alone: <see cref="Entity"/> is two integers with no managed
+    /// reference in it, so clearing its tail would be a store that frees nothing.</remarks>
     public bool SwapRemove(int row, out Entity moved)
     {
         int last = --Count;
@@ -39,9 +45,10 @@ internal sealed class Archetype
         {
             moved = Entities[last];
             Entities[row] = moved;
-            foreach (Column col in Columns.Values) col.SwapRemove(row, last);
+            foreach (Column col in Columns.Values) col.SwapRemove(row, last);   // copies down, then clears `last`
             return true;
         }
+        foreach (Column col in Columns.Values) col.ClearRow(last);              // tail row: nothing to move down
         moved = default;
         return false;
     }

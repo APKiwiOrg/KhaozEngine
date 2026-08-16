@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 17.36.2
+## 17.37.0
 
 A logger taken from the ambient `Log` facade now follows the facade instead of the manager that happened to be
 configured when it was resolved, so a consumer that calls `Log.Configure` after any engine type has been touched
@@ -18,7 +18,23 @@ not validated, which it emitted 99 times on one CI run while naming a variable n
 disambiguation now reads both variables and every validation wrapper Metal has been measured handing back. Fixing
 that turned up a fact neither issue had: shader validation alone answers with `MTLGPUDebugDevice` on real Apple
 silicon and `MTLLegacySVDevice` on a hosted runner, so the check asks whether anything is validating rather than
-whether one named class came back. And the native Vulkan backend's per-draw image transition walk now stops at the set count the bound pipeline layout declares, the same limit its bind flush already stopped at, so a draw no longer barriers, and in the sharp case reopens its render pass for, images belonging to a set the current pipeline dropped. Alongside all of that, round 2 of the tile-world program lands as a new package, `KhaozEngine.TileWorld.Render3D`, which draws a `KhaozEngine.TileWorld` document through the existing lit model and prop paths.
+whether one named class came back. And the native Vulkan backend's per-draw image transition walk now stops
+at the set count the bound pipeline layout declares, the same limit its bind flush already stopped at, so a
+draw no longer barriers, and in the sharp case reopens its render pass for, images belonging to a set the
+current pipeline dropped. Still on the GPU side, the 2D batch's resource-set eviction stops draining the whole
+device on the frame thread every time a texture ages out of its cache, which was a guaranteed hitch roughly every
+ten seconds for a game that streams sprites: the deferred-retirement machinery Render3D had hand-rolled is now a
+public `GpuRetireQueue` on the GPU seam, and the sprite batch feeds it. Away from the GPU, `ObjectPool<T>` gained a
+rental handle that names one RENTAL rather than one slot, so a stale or duplicate return of an item whose slot has
+since been rented out again is refused by name instead of silently freeing the current renter's item out from under
+it and letting the pool hand the same object to two owners. Alongside all of that, round 2 of the tile-world
+program lands as a new package, `KhaozEngine.TileWorld.Render3D`, which draws a `KhaozEngine.TileWorld` document
+through the existing lit model and prop paths. The ECS closes two defects on the same swap-remove: a structural
+change made from inside a serial `ForEach` or `Entities()` loop now throws
+`StructuralChangeDuringIterationException` instead of silently losing a survivor's write to a dead row, and a
+vacated column slot is cleared, so a despawned component carrying a managed reference stops pinning it for the life
+of the archetype. That first one is a behaviour break for two of the four games, loudly and on their next adopt
+rather than quietly, and the #118 section below names their systems.
 
 ### The tile world renderer package (#629)
 
@@ -111,7 +127,7 @@ for this round and has moved to round 3: it has no consumer until `TileEditor` e
 ship forwarding aliases nothing calls and freeze a kernel shape before the editor that has to live in it. Round 3
 is that kernel, the `TileEditor` GUI and the `ke-tileedit` MCP tool together. Ground materials are still colour
 only, with tile-local UVs written so a texture path can land later without touching the mesher's logic, and
-`Kind = Water` still renders as flat colour.
+`Kind = Water` still renders as flat colour. On the netcode side, a transport reconnect no longer reads to the consumer as a teleport when its resume snapshot places the player where they were, and instead glides the small displacement so the avatar stays with the camera nothing warped, while the teleport epoch cuts on an advance rather than on any change, so a client on a lossy link stops paying a world-scale teleport reaction (a terrain streamer's whole ring, a camera cut) on every drop and on an epoch that momentarily reads as absent. The verdict is measured on the resume snapshot, so the server decides whether a rejoin is quiet, and a server that spawns the rejoiner before restoring their stored position still teleports them twice.
 
 ### A logger from the ambient facade follows the facade (#616)
 
@@ -249,6 +265,331 @@ is what owes a bind, declared is what can be bound at all, and a set bound befor
 the draw after it and still owes its compute rule 1 transition without owing a bind. A slot past the limit keeps
 its record and is walked again the moment a layout declares it. Three device-free tests in the new
 `VulkanTransitionWalkTests` drive both cost shapes and the clean declared slot that must keep being walked.
+
+### `ObjectPool` rents a RENTAL, not a slot (#149)
+
+**The hole.** `ObjectPool<T>.Return` matched on `item.PoolIndex`, which the pool stamps once at construction
+and never revises, so it names a SLOT and not a particular rental of that slot. Return an item, let something
+else rent the slot it freed, and a stale or duplicate `Return` of the first item still matched: the pool reset
+and freed the SECOND renter's item out from under it, then handed the same object out again to a third caller
+while the second still believed it held it exclusively. Nothing threw and nothing logged, and the two owners
+scribbling over each other surfaced somewhere unrelated. Latent rather than live, because the two in-repo
+callers each did a strict rent-then-return-once inside a `finally`, but `Primitives` is in every umbrella so the
+unguarded API reached all four games.
+
+**A generation stamped on the item does not fix it, which is worth writing down because it is the obvious
+move.** Successive rentals of a slot ARE the same object. Whatever the pool writes onto the item for rental A
+is overwritten when B rents that slot, so a stale `Return(A)` reads B's value, matches, and frees B exactly as
+before. The information that separates a finished rental from the live one cannot live on the shared object at
+all. It has to sit in the caller's hand.
+
+**So the caller holds it.** Each slot now carries a generation counter bumped once when it is rented and once
+when it is released, which makes the counter odd exactly while the slot is rented and even exactly while it is
+free. `TryRent(out PoolRental<T>)` hands back a handle carrying the slot plus the generation it was stamped
+with, and `Return(in PoolRental<T>)` accepts only while the counter still reads that generation. A rental that
+is over, foreign to the pool, or empty is refused by name with `StalePoolReturnException` rather than acted on.
+`TryReturn(in PoolRental<T>)` is the non-throwing half, for an idempotent dispose that may return twice and for
+a `finally` block, where a throwing refusal would replace the exception already unwinding. Both bumps are
+unchecked and mod-2^32 wrapping preserves the odd/even parity, so the invariant survives overflow: a false
+accept would need a caller still holding a rental 2^31 rent/release cycles of that slot after it ended (a cycle
+advances the counter by 2, so 2^31 of them walk the full 2^32 back to the stale handle's value, about 414 days
+at one cycle per frame at 60Hz), which a test drives at the wraparound boundary.
+
+**Additive, so `IPoolable` and the older pair are untouched.** No new member on the interface, so every existing
+implementer still compiles unchanged, and `PoolRental<T>` is a `readonly struct` passed by `in`, so a
+rent-use-return cycle still allocates nothing (held to that by a test in the `AllocSensitive` collection).
+`Rent()` and `Return(item)` keep their exact current behaviour and are now documented for what they cannot see,
+with a test pinning that limitation rather than leaving it to prose. `EntityCommandBuffer.Playback` and `World`'s
+`ForEach`/`ParallelForEach` query pool both moved to the checked pair, so the engine's own code models the
+pattern new callers copy. This is additive public API (two types, three members), which is why this entry is
+17.37.0 rather than the 17.36.2 patch it was staged as: the pool handle and the new `KhaozEngine.TileWorld.Render3D`
+package both make the staged set minor-shaped, and the version was re-cut once on main before tagging.
+
+### A transport reconnect is not a teleport, and the epoch compare fires on an advance (#409)
+
+`ClientPrediction.Reconcile` reported `ReconciliationResult.Teleported` on any (re)seed and on any change of the
+authoritative teleport epoch. Two defects came out of that, both of them making a correct session read as a
+displacement the consumer had to answer expensively. Public behaviour changes on `KhaozEngine.Netcode`
+(`ReconciliationResult.Teleported`, `ClientPrediction.Reseed`) and `KhaozEngine.NetWorld`
+(`WorldClient.LocalTeleported` / `LocalTeleportEpoch` / `RemoteTeleports`). No API signature changed.
+
+**Every transport reconnect surfaced as a teleport.** `WorldClient.StartAttempt` clears `LocalNetId` on each
+reconnect attempt, so the next ingest reads as the session's first and calls `ClientPrediction.Reseed`, and the
+reseed armed the teleport flag unconditionally. Nothing about that involves the server: a reconnect fired the
+signal with no epoch change at all, and a client on a lossy link fired it on every drop. The contract's reaction
+is expensive by design (warp the camera, run a transition, re-centre everything keyed to the player's position),
+so a consumer honouring it paid a world-scale cost for a session event that moved nobody. Ruinborne rebuilt its
+whole terrain ring while the player stood still
+([Ruinborne#388](https://github.com/APKiwiOrg/Ruinborne/issues/388)). This also corrects the record in
+Ruinborne#341, whose trace concluded only join, respawn, self-rescue and admin teleports advance the epoch: the
+reconnect reseed path was missed.
+
+**The contract is positional now, and Reseed decides it.** `Teleported` means the local player's world position
+changed DISCONTINUOUSLY. `Reset` (a first-ever join) still reports one unconditionally, because there is no prior
+position for the placement to be continuous with. `Reseed` measures the resume displacement instead, in 3D and in
+absolute space so an island re-anchor across the reconnect measures zero, and reports a teleport only when it
+reaches `PredictionSettings.HardSnapDistance`. Below that the session simply resumes: prediction is still reseeded
+(the inter-tick phase and the authoritative basis have to be rebuilt against the new session), and the signal stays
+quiet. Consumers wanting a shorter leash tighten `HardSnapDistance` via `WorldClientConfig.Prediction`.
+
+**The same verdict decides whether the avatar cuts or glides.** It has to, because the consumer's camera warp hangs
+off the signal. A reported teleport cuts: `Reseed` drops the render offsets, so the avatar is on the resume position
+the frame the seed lands and the warp meets it there. A quiet resume must not cut, because nothing tells that camera
+to warp, so the sub-threshold displacement is re-anchored into the decaying render offset instead and glides away
+like an ordinary correction. Dropping the offsets on both verdicts put the avatar on the resume position instantly
+while the camera eased the whole way behind it, which is the camera-flying artifact the teleport signal exists to
+prevent, inverted. The re-anchor is computed in absolute space, so a resume that arrives in a different island frame
+glides nothing.
+
+**What the client measures is the resume SNAPSHOT, so the server decides whether a rejoin is quiet, and the
+persistence path is not there yet.** `WorldServer.OnJoin` builds the rejoiner's entity at
+`WorldServerConfig.SpawnPosition`, the next `Tick` serves that spawn with no gate on the load `WorldPersistence`
+started off `PlayerJoined`, and the stored position is applied afterwards through
+`SetPlayerState(..., teleport: true)`. A player standing further than `HardSnapDistance` from the spawn therefore
+still sees two teleports on rejoin: the reseed onto the spawn, then the restore's epoch advance. That is unchanged
+from before this work (the reseed reported one unconditionally then), and it is why this change alone does not make
+a persistence-backed reconnect quiet. Filed as
+[#642](https://github.com/APKiwiOrg/KhaozEngine/issues/642) with the two fix shapes. A game that restores position
+synchronously at the join spawn gets the quiet reconnect today.
+
+**The epoch could not have decided it, which is why the fix is positional.** A rejoining client is a FRESH
+authoritative entity: both server heads allocate a new `NetId` per join (`WorldServer.OnJoin`,
+`ShardedWorldServer`), and its teleport epoch counts from its own zero. The epoch a reconnect lands on therefore
+bears no relation to the one the previous session ended on, so no comparison across the reconnect can mean
+anything, and only the position can. In-session teleports are untouched: a server-side respawn, an admin move or a
+self-rescue still advances the epoch and still cuts.
+
+**The epoch compare is monotonic.** It fired on any inequality, and the epoch reads a default 0 whenever the host
+serves a state with its movement component momentarily absent (`WorldClient`'s own remote read, and
+`ShardedWorldServer.SetPlayerState` on the server), so a real stream dips 5 to 0 to 5. A last-seen store made the
+dip silent and the RECOVERY read as a fresh advance, which is the every-snapshot fire. Both the local compare in
+`ClientPrediction.Reconcile` and the remote one in `WorldClient.FlushTeleportedRemotes` now hold the epoch as a
+high-water mark and cut only on an advance past it, so neither edge of a dip costs anything and a genuine advance
+still cuts as it always did.
+
+**Tests.** Three rows in a new `WorldClientReconnectTeleportTests` drive the live loopback harness: a transport
+drop and reconnect with the player stationary, a first join, and a server teleport both before and after a
+reconnect. The stationary row moves the player 500 m off the spawn first and runs against a harness server that
+records the departing session's final position (off `PlayerLeaving`, in absolute metres) and hands it back as the
+next join's spawn, which is the synchronous form of a load-on-join. Both halves are load-bearing: parked on the
+spawn, "resumed where they were" and "resumed at the spawn" are the same point, and the row passes whether or not
+anything was restored. Bypassing the restore fails it at `<400, 0.9, 300> -> <0, 0.9, 0>`.
+`A_remote_epoch_that_dips_and_recovers` feeds hand-built snapshots to drive the remote flush across a dip and its
+recovery. In `ClientPredictionTests`, two rows cover the continuous resume and the local epoch dip directly and two
+more pin the cut-vs-glide split at 150 m and 50 m, and a row in `ClientFrameAdoptionTests` reseeds across a frame
+change at one world position (anchor 384,256 to the origin frame), which reports a teleport plus a 480 m glide the
+moment the anchors come out of the resume measurement. Every behavioural row fails against the pre-fix sources.
+
+### The ocean focus tests share one scene, and the cost they were blamed for was not the ocean (#332)
+
+Test-only, no package API or engine behaviour changed. `OceanFocusGpuTests` captured 23 pictures and stood up its
+own `Scene3D` for each one. It now renders every configuration through a single scene held by a new
+`OceanFocusScene` class fixture, the first class fixture in `KhaozEngine.Render.Tests`, and drops from 62s to 7s
+on Metal and from 105s to 10s on the lavapipe leg, with no assertion weakened or removed.
+
+**Both halves of #332 turned out to be wrong, and correcting them is most of the value here.** The issue reported
+that this class took the matrix's `Render.Tests` step from 6m12s to 30m53s on windows/WARP and from 1m41s to
+26m8s on ubuntu/lavapipe, and attributed it to the FFT ocean's compute dispatches under software emulation.
+
+The 25 minutes is a tier artifact. The two runs compared were `30200597601`, a PUSH on `main`, and `30202360738`,
+a `workflow_dispatch` on `feature/water-focus`. A push runs the software legs at `FullyQualifiedName~Golden` and
+a dispatch runs them at `Category!=LiveSocket`, so that pair measures golden-only against the full suite. The
+Metal legs in the same two runs are the tell and the issue quoted them without drawing the conclusion: Metal is
+`fullSuite: always`, runs the same 11 tests on both triggers, and moved 3m56s to 4m28s. Measured properly, on the
+full-tier baseline dispatch `31922664860`, the class costs 105s on lavapipe, not 25 minutes.
+
+The root cause is wrong too, and this one is worth carrying forward. Timed on Metal, a capture is 2571 ms, of
+which 2570 ms is the `Scene3D` constructor building the frame's pipelines. The device is under a millisecond, the
+two frames and the readback are 99 ms, and the ocean's compute dispatches are 93 ms of that 99. A capture through
+an already-built scene costs 3 ms. A procedural-water scene constructs in the same 2578 ms, so the cost belongs to
+`Scene3D` rather than to the ocean, and the two fixes the issue proposed (a smaller cascade resolution, fewer
+captures per test) would have addressed 4 per cent of it. That `Scene3D` cost is filed on its own as
+[#640](https://github.com/APKiwiOrg/KhaozEngine/issues/640), because every capture test in the assembly pays it.
+
+**A reused scene is not assumed to be free, it is asserted to be.** The FFT foam accumulator, the ping-ponged row
+intermediates and the frame clock all survive a frame by design, so `TheSameSamplingFrameRendersTheSamePictureTwice`
+now ages the shared scene through four other configurations, captures the island configuration on it, and pins
+that byte-for-byte against the same scene rendered through the untouched `Render3DSnapshot` path on its own
+device. That is strictly stronger than the two independent captures it replaces: it covers both reproducibility
+and the reuse every other capture in the class depends on, and it is where a producer that started carrying state
+across a configuration change would go red first.
+
+### Deferred GPU retirement moves to the seam, and 2D set eviction stops stalling the frame (#84, #80)
+
+**The hitch.** `SpriteBatch.EvictStaleSets` runs from `NewFrame` on every frame, and the moment any
+`(texture, sampler)` resource set crossed the `SetEvictAfterFrames` cutoff it called a full
+`IGpuDevice.WaitForIdle()` before disposing the stale sets. For a game that streams sprites, that is a guaranteed
+whole-pipeline stall on the frame thread roughly every ten seconds, and in the worst case (textures churning near
+the eviction window) close to every frame. The rest of the file already avoided exactly this: the vertex-buffer
+ring and the view-projection UBO both defer instead of draining.
+
+**The fix is the seam owning the mechanism, rather than a fourth copy of it.** `RetiredResourcePool` and its
+`GpuRetireBarrier` moved out of `KhaozEngine.Render3D/Internal` into `KhaozEngine.Gpu` as the public
+`GpuRetireQueue` (the barrier stays internal). The type only ever named `IGpuDevice`, `IGpuFence`,
+`IGpuCommandList` and `IDisposable`, so lifting it added no reference in either direction and changed no
+behaviour for `Scene3D`, which now builds one through `GpuRetireQueue.Create(gd)`. `SpriteBatch` feeds the same
+queue from three sites: the evicted sets, the view-projection UBO and set a grow replaces (previously held until
+`Dispose`), and the vertex buffer a flush-buffer grow replaces (previously freed behind its own `WaitForIdle`).
+Nothing about eviction ELIGIBILITY changed: a set becomes stale on exactly the frame it always did, only its
+disposal moved behind the queue. Sprite output is unchanged, pixel for pixel.
+
+**Why the 2D queue is frame-counted where the 3D one is fenced, which is the part worth remembering.** Minting a
+retirement fence means opening a command list of its own, and `SpriteBatch.NewFrame` is called from inside the
+frame's own recording by every host it has (`GameApp`'s record phase, and both offscreen 2D captures from inside
+their `GpuRecording.Open` scope). A fenced queue there would hit the seam's nested-recording refusal (#424) on
+every frame that retired anything. So the new `GpuRetireQueue.CreateFrameCounted(device, frameDelay)` never mints
+a fence and never drains on the frame path (teardown still drains once), and `SpriteBatch` passes 4. `Scene3D.Begin`
+is in the prepare phase and keeps the fenced path, unchanged. A test pins the choice by driving the batch across an
+eviction cutoff from inside an open recording, so an "upgrade" to the fenced factory fails rather than shipping.
+
+**What that 4 is measured against, since a frame count is only as good as the number behind it.** The bound is the
+deepest the CPU ever runs ahead of the GPU, which is NOT the swapchain image count: on the engine's own backends it
+is the pipeline depth `KE_METAL_FRAMES_IN_FLIGHT`, `KE_VULKAN_FRAMES_IN_FLIGHT` and `KE_D3D11_FRAMES_IN_FLIGHT` set,
+default 3 and settable up to 16, because that is where the backend stops the CPU and waits. So a delay of 4 holds at
+the default and at a depth of 4, and stops holding above it, and the three knobs' docs now say so where a consumer
+would raise one. `SpriteBatch`'s own value coincides with that bound: `RingDepth + 1`, one more than the vertex ring
+it sits beside. The two bets are not equally forgiving, which is the part worth carrying: a ring slot rewritten a
+frame early tears that frame's geometry and the next frame is correct, where a batch destroyed a frame early frees
+memory the GPU is still reading, which is a use-after-free that segfaults under lavapipe. The ring already running
+at its own margin is therefore not an argument for relaxing the queue's.
+
+**Scope, and what is still open.** This resolves #84 and lands the structural half of #80. The five Render3D
+renderers that keep a hand-rolled `_retired` list for grow-path buffers (`ModelRenderer`, `GroundDecalRenderer`,
+`ParticleRenderer`, `OverlayMeshRenderer`, `ShadowMapRenderer`) are NOT migrated here, and neither is the
+inline-dispose bug in `DistortionRenderer` / `WaterRenderer` (#22): those free at teardown, which is conservative
+rather than wrong, and moving them changes when 3D resources die. #80 stays open with that as its remaining work.
+
+**`FlushAll` is teardown, and that is now enforced rather than described.** It is public, and it drained the device
+unconditionally, including from inside an open `GpuRecording`, which a probe reached: one full `WaitForIdle` taken
+from the record phase. That is worse than the stall it looks like. A drain waits out work that was SUBMITTED, so it
+says nothing about the draws in the open list, and the disposals immediately behind it can still be referenced by
+them, which is a use-after-free wearing a drain. So `FlushAll` (and the `Dispose` that calls it) now refuses while
+anything is recording on its device, with a new `GpuDrainDuringRecordingException` naming the open recording, the
+same shape as the seam's nested-recording refusal (#424).
+
+**An EMPTY flush stays a no-op there, and that carve-out is load-bearing rather than lenient.** The first cut refused
+unconditionally, on the reasoning that a guard firing only on the state the call happened to find is worse than one
+that always fires. It broke the recovery path #424's own refusal creates, which is exactly the thing a mid-frame
+refusal is meant to leave usable: an offscreen 2D capture attempted inside a frame's recording is refused when it
+opens its list, and its `finally` then disposes the `SpriteBatch` it had already constructed, from inside that outer
+recording, with nothing retired. Refusing that swapped the useful diagnosis for an unrelated exception and leaked
+the batch, which `NestedRecordingSiteTests` caught. With nothing pending there is no drain and no disposal, so there
+is nothing for the refusal to protect. Three headless tests pin the shape: refused with nothing freed inside
+`GpuRecording.Open`, the empty flush and dispose still no-ops there, and the ordinary drain-and-free outside.
+
+**Additive surface.** `KhaozEngine.Gpu` gains two public types (`GpuRetireQueue`: `Create`,
+`CreateFrameCounted`, `Retire`, `BeginFrame`, `FlushAll`, `Dispose`, `PendingCount`, `FrameDelay`,
+`DefaultFrameDelay`, and `GpuDrainDuringRecordingException`: `Owner`, `BuildMessage`). Nothing was removed or
+changed, and the rename is of a type that was internal.
+
+### A structural change from inside a serial iteration is refused rather than corrupting it (#118)
+
+`Query.ForEach<T1..T8>` cached the archetype row count once per archetype, before the row loop, so a despawn or an
+add/remove-component from inside the action swap-removed rows underneath a stale count. New public API:
+`StructuralChangeDuringIterationException`.
+
+**The measured shape.** Eight entities numbered 0 to 7 in one archetype, an action that despawns every multiple of
+three and adds 100 to the rest. The survivors came out 101, 102, 104, 105 and **7**. Entity 7 was swap-removed down
+into row 0 when entity 0 despawned, was visited again at its now-dead row 7, and its `+100` landed in that dead slot
+instead of its live row. Nothing threw. A change that GROWS the archetype is worse still: `Column<T>.EnsureCapacity`
+resizes the backing array, and the `ref` parameters already handed to the in-flight action point into the old one,
+so every write the action makes after that point is unrecoverably lost. The same misuse in a `ParallelForEach`
+action has always been a loud `ParallelAccessViolationException`, so this was silent in exactly the code where it
+is hardest to spot.
+
+**The contract was enforced, not relaxed.** The alternative was to make iteration robust (walk backwards, or re-read
+`Count` and re-visit the swapped-in row), and it was rejected on three counts. The doc remark on both `ForEach` and
+`Entities()` has forbidden structural changes since the API landed and pointed at the deferred path. That deferred
+path, `World.Commands` / `EntityCommandBuffer`, already exists, is already correct, and `World.Update` already
+flushes it after every system. And a census of every `ForEach` and `Entities()` caller in the engine, the samples,
+the benchmarks and the test suites found not one that makes a structural change inside a serial callback: they all
+collect first and mutate after the loop, including the two that look closest to the line (`ShardHost.MigrateCrossings`
+and `CellSim.ReleaseMigrating`). Making iteration robust would have bought a semantic nobody uses (is the
+swapped-in row revisited or skipped?) at the cost of documenting it forever.
+
+**How it works.** `World` counts every change that adds or removes an archetype row in a `StructuralVersion`. Each
+`ForEach` overload and `Entities()` snapshots it and rechecks it AFTER each callback, and a mismatch throws
+`StructuralChangeDuringIterationException` naming the world call that made the change. One integer compare per row,
+against a delegate invocation per row. Unlike `ParallelHazardChecks` it has no off switch: that guard reads every
+world call including reads and earns its switch, this one reads a single field, and what it prevents is silent data
+corruption rather than a diagnosable crash.
+
+**After, not before, and in `Entities()` that is the whole fix rather than a detail.** `Entities()` walks to the
+LIVE archetype count, so a despawn from the loop body shrinks the bound. A check placed ahead of the yield lets
+that shrink end the loop before the check runs again: two entities, `foreach (e in q.Entities()) w.Despawn(e)`,
+despawned one, skipped the other, and returned normally, which is the corruption the guard exists to refuse and
+which `ForEach` (checking after every action) already refused. The check follows the yield, and the regression test
+pins both forms stopping at the offending row. `World.CreateAt`, the load surface, also counts its row now: it adds
+one to the empty archetype exactly as `Spawn` does, and a row added without counting is invisible to the guard.
+
+**Reading and writing components mid-iteration is untouched.** The `ref` parameters, and `Has` / `Get` / `TryGet`
+plus a `Set<T>` that OVERWRITES a component the entity already has, move no rows and do not count. That is what the
+engine's own serial callers do (the Sharding owner scans read `Has<Ghost>` per row), so the guard costs them
+nothing.
+
+**This BREAKS two of the four games on their next adopt, loudly and on frame one.** Nothing breaks today, because
+Hardpoint and SpaceGame both pin 15.0.0 and Ruinborne pins 17.36.1, but the adopt turns a silent skip into a thrown
+`StructuralChangeDuringIterationException`. Hardpoint has five statements behind two live `Entities()`
+enumerations, all in `Hardpoint.Game/BoardRenderer.cs` (`:313` TurretMotion, `:210` FacingMotion reached through
+the `orient` lambda, and `:395`/`:400`/`:407` Transform3D and MeshInstance inside `SyncRender`, which both the
+enemy and projectile call sites go through). Every one is a `Set<T>` for a component the entity has never had, so
+it is an ADD that moves the archetype, and the earliest fires on the first rendered frame after the player places
+their first tower. SpaceGame has eight production loops in `SpaceGame.Sim`, every one of them spawning several
+frames down the call stack rather than in the loop body: `FireProjectileSystem.cs:33`, `RadialFireSystem.cs:34`,
+`BossFireSystem.cs:26` and `TentacleSlamSystem.cs:84` through the volley spawners, `CollisionSystem.cs:180` and
+`PowerupEffectSystem.cs:105` through the kill and loot tail, `DroneSystem.cs:50`, and
+`EnemyShockwaveSystem.cs:49`. The first of those fires seconds into every run, the first time any enemy fires.
+Ruinborne and Nullwake have no `Entities()` or `ForEach` call sites at all. The per-repo evidence is filed at
+https://github.com/APKiwiOrg/Hardpoint/issues/20 and https://github.com/APKiwiOrg/SpaceGame/issues/109.
+
+**Both migrations work, and picking the wrong one is its own bug.** Defer through `World.Commands` (or an
+`EntityCommandBuffer`) when a one-frame delay is unobservable. Materialize the enumerable first
+(`Entities().ToList()`, or a buffer you own and reuse on a per-frame path) and mutate after the loop when the
+result is read later in the SAME frame. `World.Commands` is the WRONG answer for Hardpoint's `Transform3D` lazy
+attach, because `Scene3DBinder.Submit` reads that component a few lines later in the same frame, so a deferred add
+renders every enemy and every projectile as nothing on its first frame. It is equally wrong for all eight
+SpaceGame loops, whose projectiles, beams, pickups and rings are each consumed by a later phase of the tick that
+spawned them. The exception message names both, and so do `docs/USING-KHAOZENGINE.md` and the `Ecs` package README.
+
+**Why this still rides a minor rather than a major.** Both games are ten minor versions behind and adopt
+deliberately, the failure is a named exception on the first frame rather than the silent corruption it replaces,
+and this entry names both games, their sites and the migration each one needs. That is a decision taken with the
+census in hand, not an oversight.
+
+**Also worth knowing when you adopt:** the version counter is world-GLOBAL, so a `Spawn` throws whatever archetype
+it lands in. Spawning a projectile while iterating enemies is refused even though it could not have corrupted the
+enemy walk. That is deliberate (one integer, no per-archetype bookkeeping on the hot path), and it is why the
+SpaceGame sites are hazards at all.
+
+### A vacated column slot is cleared, so a despawn stops pinning what the row held (#119)
+
+`Column<T>.SwapRemove` copied the last live row down over the removed one and left the slot it came from holding its
+old value, and the tail-removal branch of `Archetype.SwapRemove` (the `row == last` case, which every shrinking
+archetype ends on and which a one-entity archetype hits every time) cleared nothing at all. Internal to
+`KhaozEngine.Ecs`, no public API change.
+
+**Why a stale slot is not harmless.** `Column<T>` requires only `T : struct`, so a component may carry a managed
+reference: a wrapper around a texture, a `List<T>`, a `string`, an array. Rows past `Archetype.Count` are never read
+again, but they stay REACHABLE through `Column<T>.Data`, which is all it takes to keep what they point at alive. An
+archetype whose population only shrinks after a peak, a wave of projectiles despawning at the end of a level, never
+revisits those slots, so the retention lasts for the life of the process. It scales with despawn churn rather than
+with live entity count, which is why nothing about a steady-state world showed it.
+
+**The fix and its cost.** Both branches now clear the vacated slot through a new `Column.ClearRow`, gated on
+`RuntimeHelpers.IsReferenceOrContainsReferences<T>()`. That is a JIT-time constant, so for an unmanaged column the
+body folds away entirely and the hot despawn path pays nothing, and for a reference-carrying one the store IS the
+fix. `Archetype.Entities` is deliberately left alone: `Entity` is two integers with no managed reference in it, so
+clearing its tail would be a store that frees nothing.
+
+**The array still never shrinks, and that half is by design rather than unfixed.** The backing array is a grow-only
+arena. Archetype population is a sawtooth (a wave spawns, despawns, and the next wave spawns into the same rows), so
+a shrink heuristic would hand memory back only to re-allocate and re-copy it moments later, and it would need a
+hysteresis policy nobody has a measurement to choose. What the retained capacity must not do is keep a managed
+object ALIVE, and it no longer does: a reference-carrying column is cleared past `Count`, so the arena pins
+nothing. An unmanaged column keeps whatever bytes were last written there, because the clear is gated on
+`IsReferenceOrContainsReferences<T>` and compiles away for it, and bytes nothing reads and nothing points at cost
+only address space the arena was going to hold anyway. That reasoning is now a doc comment on `Column<T>` rather
+than only a decision.
 
 ## 17.36.1
 

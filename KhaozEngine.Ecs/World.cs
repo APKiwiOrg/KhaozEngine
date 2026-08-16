@@ -46,6 +46,27 @@ public sealed partial class World
             throw new ParallelAccessViolationException(operation);
     }
 
+    /// <summary>
+    /// Counts structural changes: every change that adds or removes an archetype ROW (Spawn, Despawn, and the
+    /// archetype move behind adding or removing a component). That is exactly the set of changes that can
+    /// swap-remove or resize the row range a serial <see cref="Query.ForEach{T1}(RefAction{T1})"/> or
+    /// <see cref="Query.Entities"/> is walking, so iteration snapshots this and rechecks it after every callback
+    /// (see <see cref="StructuralChangeDuringIterationException"/>). A <see cref="Set{T}"/> that OVERWRITES an
+    /// already-present component moves no row and deliberately does not count: writing components mid-iteration is
+    /// legal and every caller that does it has to keep working.
+    /// </summary>
+    internal int StructuralVersion { get; private set; }
+
+    /// <summary>The world call behind the most recent structural change, so the iteration guard can name the
+    /// operation instead of only reporting that something moved. Always a literal, so the store never allocates.</summary>
+    internal string LastStructuralOp { get; private set; } = string.Empty;
+
+    private void MarkStructuralChange(string operation)
+    {
+        StructuralVersion++;
+        LastStructuralOp = operation;
+    }
+
     public World()
     {
         _empty = new Archetype(Array.Empty<int>(), Reg);
@@ -70,6 +91,7 @@ public sealed partial class World
         rec.Archetype = _empty;
         rec.Row = _empty.AddRow(e);
         rec.Alive = true;
+        MarkStructuralChange(nameof(Spawn));
         return e;
     }
 
@@ -87,6 +109,7 @@ public sealed partial class World
         rec.Alive = false;
         rec.Version++;
         _free.Push(e.Id);
+        MarkStructuralChange(nameof(Despawn));
     }
 
     /// <summary>True if the handle refers to a live entity (version still matches).</summary>

@@ -52,7 +52,7 @@ namespace KhaozEngine.Render3D
         // allocation despite reading instance state (_slots, _meshes) a static delegate cannot see (issue #374).
         // The method group capture happens once for this Scene3D's lifetime, see AlphaCutoffFor near ApplyAlphaCutoffs.
         readonly Func<MeshHandle, float> _alphaCutoffLookup;
-        readonly RetiredResourcePool _retired;   // mesh buffers freed mid-life, destroyed behind one drain per frame
+        readonly GpuRetireQueue _retired;   // mesh buffers freed mid-life, destroyed behind one drain per frame
         // Loaded albedo textures, indexed by TextureHandle.Index. Shared across meshes; disposed in Dispose.
         readonly List<IGpuTexture?> _textures = new();   // a slot is nulled by UnloadTexture (handle stays stable, not recycled)
         // Loaded splat-terrain materials, indexed by SplatMaterialHandle.ListIndex. Each owns its two texture
@@ -400,8 +400,8 @@ namespace KhaozEngine.Render3D
             // lifetime rather than once per frame (see the field doc comment above and AlphaCutoffFor below).
             _alphaCutoffLookup = AlphaCutoffFor;
             // Fence-polled ripeness where the backend can signal on GPU completion (Metal, Vulkan), the frame-count
-            // drain everywhere else. TryCreate returning null IS the fallback, not a failure.
-            _retired = new RetiredResourcePool(gd.WaitForIdle, GpuRetireBarrier.TryCreate(gd));
+            // drain everywhere else. Create may mint a fence because Begin is in the pre-record phase (#424).
+            _retired = GpuRetireQueue.Create(gd);
             _targetOutput = targetOutput;
             // Construction seam (issue #27): the shadow atlas is sized ONCE here (resolution x cascade count), and its
             // handle is bound into every material set, so those knobs can only be honoured if supplied BEFORE this

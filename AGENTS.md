@@ -84,6 +84,20 @@ exception is the trivial-change case below.
   a `[Collection("name")]` with no definition anywhere serializes that name's classes against each other and
   leaves them running in parallel with everything else, which is how #349 sat open under a collection attribute
   that looked like a fix.
+- **A GPU test class that captures more than a couple of pictures shares ONE `Scene3D` through a class fixture.**
+  `new Scene3D(...)` costs about 2.57 seconds, near enough all of it pipeline creation and near enough
+  independent of what the scene contains, while a capture through an already-built one costs 3 ms and the device
+  itself under a millisecond. It is what made `OceanFocusGpuTests` 105s of the lavapipe leg's full suite for 11
+  tests (#332), and what https://github.com/APKiwiOrg/KhaozEngine/issues/640 is about.
+  `KhaozEngine.Render.Tests/Gpu/OceanFocusScene.cs`
+  is the pattern and the assembly's first class fixture: it creates its device LAZILY, so a plain `dotnet test`
+  that skips every `[GpuFact]` never asks for one, and it holds no process-global state, so it needs no
+  `DisableParallelization` collection. **A reused scene is never assumed to render what a fresh one does.** State
+  crosses a frame by design in several producers (the FFT foam accumulator, the ping-ponged row intermediates,
+  the frame clock), so the class carries ONE test that ages the shared scene through several configurations and
+  pins its picture byte-for-byte against the same scene rendered through `Render3DSnapshot.Capture` on its own
+  device. That test is the licence for the rest, and it is what goes red first if a producer starts carrying
+  state across a configuration change.
 - Hit-test via `InputManager`/`Pointer` bounds helpers (`IsTapIn`, etc.), never raw position + button.
 - **The KESIZE file-size ratchet is compile-time, and moving a baseline is the USER's call.** When
   KESIZE001/002 fires, the fix is to put the new code in its own type. Never split a file at an

@@ -5279,7 +5279,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.36.2" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.37.0" />
 ```
 
 ```csharp
@@ -8012,6 +8012,45 @@ sub-RNGs) gives platform-stable RNG for lockstep sims; `WorldSerializer` round-t
 `KhaozEngine.Serialization.JsonDefaults.IncludeFields`). (`DeterministicRng` lives in
 `KhaozEngine.Primitives`, and the ECS uses it for lockstep RNG.)
 
+**Structural changes during iteration are forbidden, and since 17.37.0 they are refused (#118).** Iteration walks
+each archetype's rows by index. A structural change made DIRECTLY from inside a `ForEach` action, or from the body
+of an `Entities()` loop, swap-removes rows underneath that walk, and a change that grows the archetype resizes the
+column arrays the in-flight action's `ref` parameters point into. Both used to corrupt the pass in silence. They
+now throw `StructuralChangeDuringIterationException`, naming the world call that did it. Structural means the four
+things that add or remove an archetype row: `Spawn`, `Despawn`, `Remove<T>`, and a `Set<T>`/`Add<T>` that adds a
+component the entity did not already have.
+
+**There are two migrations, and which one is correct depends on whether the change may land a frame late.**
+
+```csharp
+// Throws StructuralChangeDuringIterationException at the first despawn:
+world.ForEach((Entity e, ref Health h) => { if (h.Value <= 0) world.Despawn(e); });
+
+// (1) Deferred, when a one-frame delay is fine. World.Update flushes Commands after each system:
+world.ForEach((Entity e, ref Health h) => { if (h.Value <= 0) world.Commands.Despawn(e); });
+world.Commands.Playback(world);
+
+// (2) Materialized, when the change MUST be visible later in the SAME frame. The copy is what ends the
+// iteration, so the mutation after it is an ordinary out-of-iteration call:
+foreach (Entity e in world.Query().With<Renderable>().Entities().ToList())
+    if (!world.Has<Transform3D>(e)) world.Set(e, new Transform3D());   // an add, so it moves the archetype
+```
+
+Prefer (1) where it fits: it allocates nothing per frame and it is what most of the engine's own serial callers
+do. Reach for (2) when something downstream reads the result before the next playback point, which is the shape a
+lazy attach has: a renderer that adds a missing `Transform3D` to each entity it is about to submit cannot defer
+that add, because the submit that reads the component happens in the same frame. `ToList()` is the plainest form
+and allocates per call, so a per-frame path should collect into a buffer it owns and reuses (`List<Entity>` kept
+on the system, or a pooled array) rather than allocating one every frame.
+
+What is NOT affected: writing through the `ref` parameters, and reading or writing components through the world
+(`Has` / `Get` / `TryGet`, and a `Set<T>` that overwrites a
+component the entity already has). None of those move a row, so none of them trip the guard. The check is one
+integer compare per row against a delegate call per row, and unlike `ParallelHazardChecks` it has no off switch:
+what it prevents is silent data corruption rather than a diagnosable crash. Its parallel counterpart is
+`ParallelAccessViolationException` (see "Parallel `ForEach` + access declarations" below), which is stricter
+because a parallel action must also stay off other entities entirely.
+
 **Stateless hashing for procedural content (`StableHash`, 14.9.0, `KhaozEngine.Primitives`).** When you need
 reproducible values keyed off ids or coordinates with NO shared RNG stream to thread through - a client deriving
 the same scatter pattern from an effect id, terrain detail keyed off a tile coordinate - use `StableHash`: a pure
@@ -8801,7 +8840,7 @@ run inside the engine's process-wide device-creation gate, so a provider needs n
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.36.2" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.37.0" />
 ```
 
 ```csharp
@@ -8835,7 +8874,7 @@ that up front is what routes it through the reported fallback instead of a crash
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.36.2" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.37.0" />
 ```
 
 ```csharp
@@ -9014,6 +9053,10 @@ slot, and a frame boundary waiting for a uniform ring segment. A count of zero a
 default is deep enough, and a non-zero count is what the lever answers. Raising it costs one command pool per
 list plus one copy of every uniform buffer, per extra frame.
 
+**Past 4 it outruns the 2D batch's deferred retirement.** `SpriteBatch` frees an evicted resource set or a
+replaced buffer 4 frame boundaries after retiring it, on the frame count alone with no fence behind it, so a
+depth above 4 can destroy a resource the GPU has not finished reading.
+
 **`KE_VULKAN_PIPELINE_CACHE` controls the persisted pipeline cache.** Compiled pipelines are cached on disk under
 `<local-app-data>/KhaozEngine/vulkan-pipeline-cache/<engine version>/`, in one blob per device keyed on the
 driver's own `pipelineCacheUUID`, its version and the engine version, so only the first start on a given engine
@@ -9073,7 +9116,7 @@ is no recovery path: a lost device stays lost, which is what the liveness token 
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.36.2" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.37.0" />
 ```
 
 ```csharp
@@ -9327,6 +9370,10 @@ something real. Ship 3. A value that is set and understood as nothing WARNS and 
 session log names the depth this run actually got, because a capture is only evidence about the number it was
 taken at.
 
+**Past 4 it outruns the 2D batch's deferred retirement.** `SpriteBatch` frees an evicted resource set or a
+replaced buffer 4 frame boundaries after retiring it, on the frame count alone with no fence behind it, so a
+depth above 4 can destroy a resource the GPU has not finished reading.
+
 **One thing behaves differently at 1**, and it is worth knowing before reading a capture taken there: a
 device-level `UpdateBuffer` on a uniform buffer BLOCKS at that depth. It never blocks at any other, because it
 copies the current segment and defers the segments still in flight, and at a depth of one there are no others,
@@ -9520,6 +9567,10 @@ There is one field lever, `KE_D3D11_FRAMES_IN_FLIGHT=<n>` (default 3, range 1 to
 of uniform data are kept. It exists so a soak can settle whether three is enough, and the count of times a frame
 had to wait for a segment to come free is recorded for the session telemetry to carry once a device exists to
 report it.
+
+**Past 4 it outruns the 2D batch's deferred retirement.** `SpriteBatch` frees an evicted resource set or a
+replaced buffer 4 frame boundaries after retiring it, on the frame count alone with no fence behind it, so a
+depth above 4 can destroy a resource the GPU has not finished reading.
 
 ### Uniform buffers on the native Vulkan backend (17.32.0)
 
@@ -10177,7 +10228,7 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   uses the GLFW provider `AppWindow` registers at startup (the working Windows/Linux/macOS path), so a windowed
   game gets a working text clipboard for free; a windowless/headless tool registers none and has text only on
   macOS (via `NSPasteboard`).
-- **`KhaozEngine.Primitives`** also carries `ObjectPool<T>` (O(1) rent/return, swap-removal compaction; absorbed from the retired `KhaozEngine.Pooling` in 9.0.0).
+- **`KhaozEngine.Primitives`** also carries `ObjectPool<T>` (O(1) rent/return, swap-removal compaction, absorbed from the retired `KhaozEngine.Pooling` in 9.0.0). Rent through `TryRent` and its `PoolRental<T>` handle, not the older `Rent()`/`Return(item)` pair - see "Pooling: rent through the rental handle" below.
 - **`KhaozEngine.Collision`**: deterministic `CircleCollision` + `SpatialHashGrid` (bit-identical for lockstep).
 - **`KhaozEngine.Determinism`**: `DeterministicFpScope` - forces a canonical CPU floating-point environment
   for fixed-tick / lockstep sims (see "Deterministic floating point" below).
@@ -10209,6 +10260,55 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   the `NetServer` session inbox and the LiteNetLib transport inboxes use so a stalled or flooded host can't grow
   undrained events without bound; tune it with the optional `maxQueuedEvents` ctor arg (default 10,000) and watch
   `DroppedEventCount`, which stays 0 for a host that drains each poll as contracted.
+
+---
+
+## Pooling: rent through the rental handle (`KhaozEngine.Primitives`)
+
+`ObjectPool<T>` has two rent/return pairs. Use the checked one:
+
+```csharp
+var pool = new ObjectPool<Bullet>(() => new Bullet(), prewarmCount: 64);
+
+if (pool.TryRent(out PoolRental<Bullet> rental))
+{
+    Bullet b = rental.Item!;
+    // ... use b for as long as the rental lasts ...
+    pool.Return(in rental);          // throws StalePoolReturnException if this rental is already over
+}
+
+for (int i = 0; i < pool.ActiveCount; i++)
+    pool.GetActive(i).Update(dt);
+```
+
+`TryRent` is `false` (and writes the empty rental) when the pool is exhausted. `PoolRental<T>` is a
+`readonly struct` passed by `in`, so a rent-use-return cycle allocates nothing.
+
+**Why the handle and not the item.** A pool reuses the same object for successive rentals, so after
+`Return(b)` and a fresh rent, your stale `b` variable and the pool's newly rented item are the same
+reference. Nothing readable off the object separates the finished rental from the live one, so the older
+`Rent()` / `Return(item)` pair accepts a stale return and frees the current renter's item out from under it,
+then hands the same object to a second owner. The rental handle carries the slot plus a generation the pool
+bumps on every rent and release, which is the information that is missing from the object itself
+([#149](https://github.com/APKiwiOrg/KhaozEngine/issues/149)).
+
+**Which return to call.** `Return(in rental)` throws `StalePoolReturnException` on a rental that is over,
+foreign, or empty, which is what you want for a genuine caller bug. `TryReturn(in rental)` returns `false`
+instead, for an idempotent dispose that may return twice and, importantly, inside a `finally`, where a throw
+would replace the exception already unwinding:
+
+```csharp
+if (!pool.TryRent(out PoolRental<Bullet> rental))
+    return;                          // exhausted: nothing was rented, so there is nothing to return
+
+try { Fire(rental.Item!); } finally { pool.TryReturn(in rental); }
+```
+
+`Rent()` and `Return(item)` still work and are unchanged. They cannot make the check, so treat them as the
+legacy pair and move new code to the handle.
+
+`Clear()` ends every outstanding rental, so returning one afterwards is refused rather than freeing whatever
+has since taken its slot.
 
 ---
 
@@ -11076,13 +11176,14 @@ no-op (device destruction already freed all child objects), so a wrapper that ou
 teardown can neither drain nor destroy against a dead device. Veldrid's deferred-disposal path was
 evaluated as a non-stalling alternative and rejected:
 under Mesa's threaded queue its disposal flush can lose a wakeup and hang the process, so the engine
-drains instead. The engine's own renderers follow this rule for texture unload (`Scene3D.UnloadTexture`),
-resize-driven render target replacement (`RenderResources`, `Render3DPreview.Resize`), and sprite-batch
-set eviction and buffer growth (`SpriteBatch`). A custom renderer or content-streaming system built
-directly on `KhaozEngine.Gpu` should follow the same rule for anything it frees outside of full teardown.
+drains instead. The engine's own renderers follow this rule for texture unload (`Scene3D.UnloadTexture`)
+and resize-driven render target replacement (`RenderResources`, `Render3DPreview.Resize`). A custom
+renderer or content-streaming system built directly on `KhaozEngine.Gpu` should follow the same rule for
+anything it frees outside of full teardown, or hand the resource to a `GpuRetireQueue` (below) and never
+drain at all.
 
 **Streamed MESH unload does not drain at all.** `Scene3D.UnloadMesh` hands the mesh's vertex buffer,
-index buffer and material set to an internal pool instead. At the next `Scene3D.Begin` the pool seals
+index buffer and material set to a `GpuRetireQueue` instead. At the next `Scene3D.Begin` the queue seals
 everything retired during the frame just ended into one batch and marks the submission stream with a
 fence, and it destroys that batch on the first later `Begin` whose fence polls signaled. Nothing blocks:
 retirement is event-driven, and the frame boundary costs one empty fenced submission on frames that
@@ -11121,7 +11222,60 @@ unload paths (texture, skinned mesh, splat material) still drain per call, none 
 streaming path, and moving them over is
 [#383](https://github.com/APKiwiOrg/KhaozEngine/issues/383).
 
-**Building the same thing yourself.** The fence seam is public. `IGpuResourceFactory.CreateFence()`
+**2D set eviction does not drain either, since 17.37.0.** `SpriteBatch` keeps one resource set per
+`(texture, sampler)` and evicts the ones unused for `600` frames, and that sweep used to take a full
+`WaitForIdle` on the frame thread every time anything aged out: a guaranteed hitch roughly every ten
+seconds for a game that streams sprites ([#84](https://github.com/APKiwiOrg/KhaozEngine/issues/84)). The
+evicted sets, and the buffers a UBO or vertex-buffer grow replaces, go to a `GpuRetireQueue` now. It is a
+frame-counted one rather than a fenced one, because `SpriteBatch.NewFrame` is called from inside the
+frame's own recording and a fence there would be the nested recording the seam refuses. Nothing about
+`SetEvictAfterFrames` changed: a set becomes eligible on exactly the frame it always did, and only the
+disposal moved behind the queue's deferral. Pixels are unaffected.
+
+**`GpuRetireQueue`: the whole mechanism, owned by the seam.** Feed it, advance it once per frame, dispose
+it at teardown. It is what both engine renderers use, and a renderer of your own gets the same behaviour
+without hand-rolling the batching, the fence recycling or the ordering.
+
+```csharp
+readonly GpuRetireQueue _retire = GpuRetireQueue.Create(gd);   // fenced where the device can, drains where it cannot
+
+void OnFrameBoundary()  // before the frame's command list is opened
+{
+    _retire.BeginFrame();      // frees what the GPU has provably finished with
+}
+
+void Unload(MyThing thing)
+{
+    _retire.Retire(thing.VertexBuffer, thing.IndexBuffer, thing.MaterialSet);   // no drain, no destroy
+}
+
+public void Dispose() => _retire.Dispose();   // one drain, then the tail
+```
+
+`Create` mints its fence by opening a command list of its own, so it must be built and advanced where
+NOTHING is recording on the device: the frame's PREPARE phase, not its record phase. Called from inside
+the frame's list it raises `GpuNestedRecordingException` naming both sides, which is the seam refusing a
+nested recording rather than corrupting your frame.
+
+`FlushAll()` and the `Dispose()` that calls it are the TEARDOWN path on either factory, and the seam holds
+them to it: called with something pending while anything is recording on that device they raise
+`GpuDrainDuringRecordingException` naming the open recording, and free nothing. The reason is that their
+drain waits out work that was SUBMITTED, so it says nothing at all about the draws sitting in an open list,
+and freeing behind it is a use-after-free with a drain in front of it. Mid-frame, use `Retire` and let
+`BeginFrame` do the freeing. An empty flush is still a no-op there, so a renderer half-built by a capture the
+seam refused mid-frame can still be torn down on the way out.
+
+`CreateFrameCounted(gd, frameDelay)` is the answer when your frame boundary is inside the recording and
+you cannot move it. It never mints a fence and never drains on the frame path (only at teardown), so a
+batch is destroyed purely on the frame count. Pass MORE than the deepest your backend lets the CPU run
+ahead of the GPU, which on the engine's own backends is what `KE_METAL_FRAMES_IN_FLIGHT`,
+`KE_VULKAN_FRAMES_IN_FLIGHT` and `KE_D3D11_FRAMES_IN_FLIGHT` set (default 3, settable up to 16), not the
+swapchain's image count. The count is then the whole safety argument, and getting it wrong frees memory
+the GPU is still reading rather than producing an artifact. `SpriteBatch` uses this factory because its
+`NewFrame` is called from the record phase by every host it has, and passes 4, which holds at the default
+depth and at a depth of 4.
+
+**Or build it yourself.** The fence seam is public. `IGpuResourceFactory.CreateFence()`
 returns an unsignaled `IGpuFence` (and throws when the capability is false, rather than hand back one
 that lies), `IGpuDevice.Submit(cl, fence)` signals it on GPU completion, `IGpuFence.Signaled` polls
 without blocking, and `Reset()` returns it for reuse. There is deliberately no blocking wait on the
@@ -12270,12 +12424,13 @@ the feature just ignores it.
 
 A teleport is two problems. (1) The **avatar + camera must cut, not glide**, even when the destination is near.
 Client reconciliation decides cut-vs-glide by distance, so a short in-session hop would smooth. The server carries a
-monotonic **teleport epoch** on the authoritative movement state and bumps it only at teleport sites (join/reconnect
+monotonic **teleport epoch** on the authoritative movement state and bumps it only at teleport sites (load-on-join
 placement, admin `Teleport`, self-rescue) via `SetPlayerState(..., teleport: true)`. `ClientPrediction.Reconcile`
-force-cuts on an epoch advance regardless of distance, and `WorldClient` surfaces one uniform signal:
+force-cuts on an epoch ADVANCE regardless of distance, and `WorldClient` surfaces the signal:
 
 ```csharp
-// Push: react the frame a local teleport lands (join, reconnect, or an in-session server teleport).
+// Push: react the frame the local player's position changes discontinuously (join, an in-session server
+// teleport, or a reconnect that resumed the session somewhere else).
 client.LocalTeleported += () =>
 {
     camera.Warp(client.LocalRenderState.Position);   // FollowCamera3D: cut the follow camera, no ease (the whole login-fly fix)
@@ -12284,6 +12439,29 @@ client.LocalTeleported += () =>
 // Poll alternative (robust to multiple teleports between frames, needs no clearing):
 if (client.LocalTeleportEpoch != _lastSeen) { _lastSeen = client.LocalTeleportEpoch; /* warp + transition */ }
 ```
+
+**A transport reconnect whose resume snapshot places the player where they were is not a teleport** (#409). This
+matters because the reaction is expensive by design: a consumer typically answers it by warping the camera, running a
+screen transition, and re-centring everything keyed to the player's position - a terrain streamer's ring above all.
+Reporting a reconnect as a teleport made a client on a lossy link rebuild its world on every drop while the player
+stood still. Prediction is still reseeded across the reconnect (fresh transport, fresh server slot, fresh net id,
+fresh authoritative entity), but the signal is withheld unless the resume snapshot lands at least
+`PredictionSettings.HardSnapDistance` from where this client was. Tighten that via `WorldClientConfig.Prediction` for
+a shorter leash. Below the threshold the resume also GLIDES rather than cutting, so the avatar stays with the camera
+that nothing warped. The epoch cannot decide any of this on its own: a rejoining client is a fresh authoritative
+entity whose epoch counts from its own zero. For the same reason the epoch compare is an ADVANCE past a high-water
+mark, never any inequality: the epoch reads 0 whenever the movement component is momentarily unreadable, so a real
+stream dips and recovers, and both edges used to fire a cut.
+
+**The resume snapshot is what the client measures, so the server decides whether a rejoin is quiet.** A server that
+spawns the rejoiner and restores their stored position afterwards still produces TWO teleports on rejoin, and this
+is the shape `WorldServer` + `WorldPersistence` have today: `OnJoin` builds the entity at
+`WorldServerConfig.SpawnPosition`, the next `Tick` serves that spawn to the client with no gate on the outstanding
+load, and the restore lands later via `SetPlayerState(..., teleport: true)`. So the client reseeds onto the SPAWN
+(a teleport for anyone standing further than `HardSnapDistance` from it) and then takes the restore's epoch advance
+as a second one. Tracked at https://github.com/APKiwiOrg/KhaozEngine/issues/642. A game that restores position
+synchronously at the join spawn (or withholds the first snapshot until the load lands) gets the quiet reconnect
+described above.
 
 `FollowCamera3D.Warp(target)` forces the smoothed target so `EffectiveTarget == target` that frame with zero
 trailing (normal damping resumes next frame); `SnapToTarget()` collapses in-flight damping onto the current `Target`.

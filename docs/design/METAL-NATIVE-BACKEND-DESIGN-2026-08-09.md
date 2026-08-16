@@ -2637,7 +2637,7 @@ which is field-proven, and the design loses AOT-cleanliness on the completion pa
 made after some earlier work signals only once the queue has drained through it. A shared event's signal
 operations from one queue execute in submission order and the values are monotonic, so the value reaching 6
 requires the signal at 5 to have happened, which requires submission 5 to have completed. Polling a later fence
-transitively covers every earlier submission, which is what `RetiredResourcePool` relies on and what M-M3's
+transitively covers every earlier submission, which is what `GpuRetireQueue` relies on and what M-M3's
 segment gate reads. That is V-F2's argument, and it is the same argument because it is the same primitive.
 
 **`SupportsCompletionFences = true` is PARITY.** `VeldridMap` already reports true for Metal, with a doc

@@ -137,7 +137,7 @@ void main() {
         //    tear that only surfaces when the buffer contents change frame-to-frame (a moving/resizing widget; static
         //    content writes identical bytes so the race is invisible). So the per-flush buffers are RING-BUFFERED:
         //    NewFrame advances to the next of RingDepth slots and a slot is not rewritten until RingDepth frames
-        //    later, by which point its prior GPU reads have retired (this also makes the grow-time Dispose safe).
+        //    later, by which point its prior GPU reads have retired (the same margin _retire is built on).
         // Buffers persist across frames (only grow); _flushIndex resets each NewFrame; the ring slot is _frame % RingDepth.
         const int RingDepth = 3;               // triple-buffered: safe while the CPU runs up to RingDepth-1 frames ahead
         readonly List<IGpuBuffer>[] _vbRing;
@@ -151,9 +151,8 @@ void main() {
         // renderers use (OverlayMeshRenderer / GroundDecalRenderer), which is safe regardless of how a backend
         // orders mid-command-list buffer copies (overwriting one shared slot mid-list mis-binds on Metal/Veldrid).
         // cl.UpdateBuffer records the write into the command stream, so cross-frame reuse of the same slots is safe
-        // too (each frame's list runs to completion before the next on the queue) - no ring is needed here (unlike
-        // the vertex buffers, which use gd.UpdateBuffer, an immediate off-timeline write). _beginIndex resets each
-        // NewFrame. _vpUbo grows geometrically with retire-on-grow (a prior/earlier draw may still read the old one).
+        // too (each frame's list runs to completion before the next) - no ring is needed here, unlike the vertex
+        // buffers (gd.UpdateBuffer, an off-timeline write). _beginIndex resets each NewFrame, _vpUbo grows on demand.
         const uint VpPayloadBytes = 64;   // one Matrix4x4
         const int VpSlotBytes = 256;      // Metal/D3D11/Vulkan-safe dynamic-offset alignment (one matrix per slot)
         IGpuBuffer _vpUbo;
@@ -161,7 +160,10 @@ void main() {
         int _vpCapacity;                  // slots in _vpUbo
         int _beginIndex;                  // Begins claimed this frame (reset by NewFrame). The current one's slot is _beginIndex-1
         uint _vpDynamicOffset;            // byte offset of the current Begin's slot, bound with set 1 on every draw
-        readonly List<IDisposable> _vpRetired = new();   // UBO buffers/sets a grow replaced, freed at Dispose (in-flight reads may remain)
+        // Deferred disposal for what this batch frees mid-life (evicted sets, the buffers a grow replaced). FRAME
+        // COUNTED, not fenced: NewFrame runs inside the frame's own recording, so neither a fence nor a drain can be
+        // taken there (#424, #84). RingDepth + 1 holds while KE_*_FRAMES_IN_FLIGHT is 4 or less (default 3).
+        readonly GpuRetireQueue _retire;
 
         IGpuCommandList _cl = null!;
         int _vw, _vh;
@@ -180,6 +182,7 @@ void main() {
         internal SpriteBatch(IGpuDevice gd, GpuOutputDescription output)
         {
             _gd = gd;
+            _retire = GpuRetireQueue.CreateFrameCounted(gd, RingDepth + 1);
             _vbRing = new List<IGpuBuffer>[RingDepth];
             _vbCapRing = new List<uint>[RingDepth];
             for (int i = 0; i < RingDepth; i++) { _vbRing[i] = new List<IGpuBuffer>(); _vbCapRing[i] = new List<uint>(); }
@@ -329,9 +332,8 @@ void main() {
         internal void NewFrame(IGpuCommandList cl, int viewportW, int viewportH)
         {
             _cl = cl; _vw = viewportW; _vh = viewportH; _flushIndex = 0; _beginIndex = 0;
-            _frame++;
-            _stats.Reset();
-            _lastBoundTex = null;
+            _frame++; _stats.Reset(); _lastBoundTex = null;
+            _retire.BeginFrame();   // frees what the GPU has provably finished with, and never stalls doing it
             EvictStaleSets();
         }
 
@@ -345,8 +347,8 @@ void main() {
         /// </summary>
         public RenderFrameStats FrameStats => _stats;
 
-        // Dispose the cached resource set(s) for any texture not drawn within SetEvictAfterFrames, so the cache
-        // tracks the recent working set instead of growing once per distinct texture ever drawn. Disposing a set
+        // Retire the cached resource set(s) for any texture not drawn within SetEvictAfterFrames, so the cache
+        // tracks the recent working set instead of growing once per distinct texture ever drawn. Freeing a set
         // releases only the descriptor binding, never the texture (the game owns that), so it is safe even after the
         // game has disposed the texture. A returning texture rebuilds its set on the next Flush.
         void EvictStaleSets()
@@ -356,12 +358,12 @@ void main() {
             _evictScratch.Clear();
             foreach (var kv in _texLastUsedFrame)
                 if (kv.Value <= cutoff) _evictScratch.Add(kv.Key);
-            // An evicted set may still be referenced by queued draws, so drain the device once before disposing.
-            if (_evictScratch.Count > 0) _gd.WaitForIdle();
             foreach (IGpuTexture tex in _evictScratch)
             {
-                if (_sets.Remove((tex, _linearSampler), out IGpuResourceSet? s1)) s1.Dispose();
-                if (_sets.Remove((tex, _pointSampler), out IGpuResourceSet? s2)) s2.Dispose();
+                // Retired, not disposed: a queued draw may still reference the set, and the drain that guarded that
+                // was a full pipeline stall on the frame thread, every eviction, for the life of the app (#84).
+                if (_sets.Remove((tex, _linearSampler), out IGpuResourceSet? s1)) _retire.Retire(s1);
+                if (_sets.Remove((tex, _pointSampler), out IGpuResourceSet? s2)) _retire.Retire(s2);
                 _additiveKeys.Remove(tex);
                 _texLastUsedFrame.Remove(tex);
             }
@@ -777,8 +779,8 @@ void main() {
             if (vbs[i] == null || caps[i] < bytesNeeded)
             {
                 // The old buffer was last used RingDepth frames ago CPU-side, but on a driver with an async
-                // submission thread (lavapipe) that is no guarantee the GPU is done with it, so drain first.
-                if (vbs[i] is { } old) { _gd.WaitForIdle(); old.Dispose(); }
+                // submission thread (lavapipe) that is no guarantee the GPU is done with it, so retire it.
+                if (vbs[i] is { } old) _retire.Retire(old);
                 uint cap = Math.Max(bytesNeeded, caps[i] == 0 ? 4096u : caps[i] * 2);
                 vbs[i] = _gd.Factory.CreateBuffer(new GpuBufferDescription(cap, GpuBufferUsage.VertexBuffer));
                 caps[i] = cap;
@@ -825,15 +827,13 @@ void main() {
             _cl.UpdateBuffer(_vpUbo, _vpDynamicOffset, in _vp);
         }
 
-        // Grow _vpUbo to hold at least this many 256-byte slots. A grow retires (does not dispose) the old buffer and
-        // set: earlier Begins this frame already recorded draws + slot writes against them, and a prior frame's
-        // command list may still read them, so they are freed only at Dispose. The new buffer's earlier slots are
-        // simply unused (those Begins keep using the retired set). This Begin and later ones write into the new one.
+        // Grow _vpUbo to hold at least this many 256-byte slots. A grow RETIRES the old buffer and set: earlier
+        // Begins this frame already recorded draws and slot writes against them, and a prior frame's list may still
+        // read them. Their slots go unused in the new buffer, and this Begin and later ones write into it.
         void EnsureVpCapacity(int slots)
         {
             if (_vpCapacity >= slots) return;
-            _vpRetired.Add(_vpUbo);
-            _vpRetired.Add(_vpSet);
+            _retire.Retire(_vpUbo, _vpSet, null);
             _vpCapacity = Math.Max(slots, _vpCapacity * 2);
             _vpUbo = _gd.Factory.CreateBuffer(new GpuBufferDescription((uint)(_vpCapacity * VpSlotBytes), GpuBufferUsage.UniformBuffer));
             _vpSet = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_vpLayout, new GpuBufferRange(_vpUbo, 0, VpPayloadBytes)));
@@ -852,12 +852,11 @@ void main() {
 
         public void Dispose()
         {
+            _retire.Dispose();   // one drain, then the retired tail. FIRST, so the drain covers everything below too
             foreach (List<IGpuBuffer> vbs in _vbRing)
                 foreach (var vb in vbs) vb?.Dispose();
             foreach (var s in _sets.Values) s.Dispose();
             _vpSet.Dispose(); _vpUbo.Dispose(); _vpLayout.Dispose();
-            foreach (IDisposable r in _vpRetired) r.Dispose();
-            _vpRetired.Clear();
             _pipeline.Dispose(); _additivePipeline.Dispose(); _layout.Dispose();
             _shaders.Dispose();
         }

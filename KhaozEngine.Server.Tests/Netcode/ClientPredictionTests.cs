@@ -501,7 +501,7 @@ public class ClientPredictionTests
         // #409: a transport reconnect reseeds prediction (fresh session, fresh net id, fresh authoritative entity) but
         // moves the player nowhere. Reporting that as a teleport made every reconnect cost a consumer its full
         // teleport reaction - Ruinborne rebuilt its whole terrain ring while the player stood still, and a lossy link
-        // paid it again on every drop. The seed still happens; only the signal is withheld.
+        // paid it again on every drop. The seed still happens, only the signal is withheld.
         var p = NewEpoch(seedEpoch: 1);
         p.Reconcile(0, new EpochState(Vector2.Zero, 1), lastAcknowledgedSeq: -1);   // join
         p.Predict(new Vector2(60f, 0f));                                           // walk one tick: X = 1

@@ -207,7 +207,7 @@ public sealed partial class WorldClient : IDisposable
     /// DISCONTINUOUSLY this ingest: the first authoritative frame after a connect (the join placement), an in-session
     /// server teleport (an advance of the authoritative <see cref="MovementState.TeleportEpoch"/> - admin,
     /// self-rescue, fast-travel), or a reconnect that resumed the session somewhere else. The local avatar has already
-    /// cut to the new position; the consumer reacts by snapping the follow camera onto <see cref="LocalRenderState"/>
+    /// cut to the new position, and the consumer reacts by snapping the follow camera onto <see cref="LocalRenderState"/>
     /// (<c>FollowCamera3D.Warp</c>) and optionally running a screen transition. Distinct from an ordinary
     /// reconciliation correction, which never fires this.
     /// <para><b>A transport reconnect that resumes the same position does NOT fire this.</b> Prediction is still
@@ -215,7 +215,7 @@ public sealed partial class WorldClient : IDisposable
     /// fresh session), but none of that moves the player, so a consumer answering this event with a world-scale
     /// reaction - re-centring a terrain streamer's ring, rebuilding an occlusion cache - does not pay it every time a
     /// lossy link drops. The resume is treated as a teleport only when the resume SNAPSHOT lands at least
-    /// <see cref="PredictionSettings.HardSnapDistance"/> from where this client was; tighten that setting via
+    /// <see cref="PredictionSettings.HardSnapDistance"/> from where this client was. Tighten that setting via
     /// <see cref="WorldClientConfig.Prediction"/> if a consumer wants a shorter leash.</para>
     /// <para>The snapshot is what decides it, so the server does. A server that spawns the rejoiner and restores the
     /// stored position afterwards (which is what <c>WorldServer</c> plus <c>WorldPersistence</c> do today) still fires

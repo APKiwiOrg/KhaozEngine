@@ -344,7 +344,7 @@ public sealed class ClientPrediction<TState, TCommand>
         // discontinuity that CUTS regardless of distance. Strictly an advance, never any inequality: the epoch reads 0
         // whenever the host serves a state with its movement component momentarily absent, and treating that dip - or
         // the recovery back off it - as a teleport fired the cut on ordinary snapshots. justSeeded suppresses counting
-        // the (re)seed's own captured epoch as an advance; whether the seed ITSELF reports a teleport is
+        // the (re)seed's own captured epoch as an advance, and whether the seed ITSELF reports a teleport is
         // seedReportsTeleport (always for a join, only for a discontinuous resume - see Reset / Reseed). A seed that
         // does report one still does not force the hard-snap branch: it already placed the avatar with no glide.
         uint epoch = authoritativeBasis.TeleportEpoch;

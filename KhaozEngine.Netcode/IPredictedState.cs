@@ -27,7 +27,7 @@ public interface IPredictedState<TSelf>
     /// an ordinary predicted state keeps its distance-only cut-vs-glide behaviour with no change required.
     /// <para><b>Advance means strictly greater than the highest value observed so far</b>, not merely different, and
     /// the client holds that highest value as a watermark. A host that momentarily cannot read the component this
-    /// epoch lives on serves a default 0, so a real stream dips and recovers; only a genuine advance past the
+    /// epoch lives on serves a default 0, so a real stream dips and recovers, and only a genuine advance past the
     /// watermark is a teleport, and the dip and the recovery are both ignored.</para>
     /// <para>The epoch is per-session and NOT comparable across a reconnect: a rejoining client is a fresh
     /// authoritative entity whose epoch counts from its own zero. The join and reconnect placements are decided by

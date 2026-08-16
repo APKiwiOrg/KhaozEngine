@@ -34,8 +34,10 @@ public sealed class StalePoolReturnException : InvalidOperationException
     /// <summary>The pool slot the refused rental named, or -1 when the rental was not this pool's to return.</summary>
     public int Slot { get; }
 
-    /// <summary>The message text, built here so a test can assert the wording without catching anything.</summary>
-    public static string BuildMessage(int slot) =>
+    /// <summary>The message text, built here so a test can assert the wording without catching anything.
+    /// Internal (<c>InternalsVisibleTo</c>) because that test is its only caller outside the constructor, and a
+    /// message builder is not something a consumer has any reason to call.</summary>
+    internal static string BuildMessage(int slot) =>
         slot < 0
             ? "A pooled item was returned to a pool it did not come from, or an empty rental was returned. "
               + "A PoolRental only ever goes back to the ObjectPool that handed it out, and a rental from a "

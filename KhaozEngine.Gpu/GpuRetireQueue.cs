@@ -301,28 +301,37 @@ namespace KhaozEngine.Gpu
         /// fence (or the frame delay) would leak the tail. This path keeps the drain on purpose even where fences
         /// are available, and even for a <see cref="CreateFrameCounted"/> queue: shutdown is the one place
         /// correctness is worth more than the stall, and a poll would have to spin.
-        /// <para><b>TEARDOWN ONLY, and that is enforced rather than described.</b> Called while anything is
-        /// recording on the device it refuses with <see cref="GpuDrainDuringRecordingException"/> and frees
-        /// nothing, because the drain it opens with says nothing about a list that has not been submitted, so the
-        /// disposals behind it would be a use-after-free (see that type). The refusal does not depend on there
-        /// being anything pending: a call that happens to find the queue empty is the same mistake, and one that
-        /// only throws sometimes is worse than one that always does. The per-frame path is
-        /// <see cref="Retire(System.IDisposable)"/> plus <see cref="BeginFrame"/>, neither of which drains.</para></summary>
-        /// <exception cref="GpuDrainDuringRecordingException">Something is recording on this queue's device.
-        /// Nothing was drained and nothing was destroyed.</exception>
+        /// <para><b>TEARDOWN ONLY, and that is enforced rather than described.</b> Called with something pending
+        /// while anything is recording on the device, it refuses with
+        /// <see cref="GpuDrainDuringRecordingException"/> and frees nothing, because the drain it opens with says
+        /// nothing about a list that has not been submitted, so the disposals behind it would be a use-after-free
+        /// (see that type). The per-frame path is <see cref="Retire(System.IDisposable)"/> plus
+        /// <see cref="BeginFrame"/>, neither of which drains.</para>
+        /// <para><b>An EMPTY flush stays a no-op, deliberately, even mid-recording.</b> With nothing pending
+        /// there is no drain and no disposal, so there is nothing for the refusal to protect, and refusing anyway
+        /// would break the recovery path the seam's own nested-recording refusal creates: a capture refused
+        /// mid-frame (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/424">#424</see>) tears down the
+        /// half-built renderer it had already constructed, from inside the outer recording, and that teardown
+        /// frees nothing. Turning that into a second exception would replace the useful diagnosis with an
+        /// unrelated one and leak the renderer as well.</para></summary>
+        /// <exception cref="GpuDrainDuringRecordingException">Something is recording on this queue's device and
+        /// this queue has resources to free. Nothing was drained and nothing was destroyed.</exception>
         public void FlushAll()
         {
-            // THE REFUSAL COMES FIRST, before the nothing-pending shortcut, so misuse is caught on the call rather
-            // than on the state the call happened to find. Same shape as the seam's nested-recording refusal
-            // (#424): a device-level operation that cannot be correct mid-recording says so by name.
+            // A batch always owns at least one entry, so an empty holding means there are no batches either and
+            // there is nothing to drain for. This shortcut comes BEFORE the refusal below on purpose: see the
+            // empty-flush paragraph on this member.
+            if (_pending.Count == 0) return;
+
+            // THE REFUSAL, on the one call that would actually drain and destroy, which is the only shape of this
+            // that can be unsafe. Same shape as the seam's nested-recording refusal (#424): a device-level
+            // operation that cannot be correct mid-recording says so by name rather than doing half of it.
             if (_device is { } device && GpuRecording.OpenOwner(device) is { } owner)
                 throw new GpuDrainDuringRecordingException(owner);
 
-            // A batch always owns at least one entry, so an empty holding means there are no batches either and
-            // there is nothing to drain for. Drain BEFORE anything else: it is what makes both the disposals below
-            // and the fence recycling safe (a recycled fence gets Reset on its next submit, and resetting one still
-            // in flight is a validation error, so the drain has to have retired every in-flight submission first).
-            if (_pending.Count == 0) return;
+            // Drain BEFORE anything else: it is what makes both the disposals below and the fence recycling safe
+            // (a recycled fence gets Reset on its next submit, and resetting one still in flight is a validation
+            // error, so the drain has to have retired every in-flight submission first).
             _drainDevice();
             for (int i = 0; i < _pending.Count; i++) _pending[i].Dispose();
             _pending.Clear();
@@ -332,10 +341,11 @@ namespace KhaozEngine.Gpu
         }
 
         /// <summary>Flush everything pending, then free the barrier's own GPU objects. Renderer teardown, and it
-        /// inherits <see cref="FlushAll"/>'s refusal: tearing a renderer down from inside an open recording is the
-        /// same use-after-free, so it is refused there too rather than half-done.</summary>
-        /// <exception cref="GpuDrainDuringRecordingException">Something is recording on this queue's device.
-        /// Nothing was freed, including the barrier.</exception>
+        /// inherits <see cref="FlushAll"/>'s refusal exactly, including the empty case: tearing a renderer down
+        /// from inside an open recording is the same use-after-free when there is a tail to free, and nothing at
+        /// all when there is not.</summary>
+        /// <exception cref="GpuDrainDuringRecordingException">Something is recording on this queue's device and
+        /// this queue has resources to free. Nothing was freed, including the barrier.</exception>
         public void Dispose()
         {
             FlushAll();

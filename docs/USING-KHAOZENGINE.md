@@ -11219,11 +11219,12 @@ the frame's list it raises `GpuNestedRecordingException` naming both sides, whic
 nested recording rather than corrupting your frame.
 
 `FlushAll()` and the `Dispose()` that calls it are the TEARDOWN path on either factory, and the seam holds
-them to it: called while anything is recording on that device they raise `GpuDrainDuringRecordingException`
-naming the open recording, and free nothing. The reason is that their drain waits out work that was
-SUBMITTED, so it says nothing at all about the draws sitting in an open list, and freeing behind it is a
-use-after-free with a drain in front of it. It refuses whether or not anything is pending. Mid-frame, use
-`Retire` and let `BeginFrame` do the freeing.
+them to it: called with something pending while anything is recording on that device they raise
+`GpuDrainDuringRecordingException` naming the open recording, and free nothing. The reason is that their
+drain waits out work that was SUBMITTED, so it says nothing at all about the draws sitting in an open list,
+and freeing behind it is a use-after-free with a drain in front of it. Mid-frame, use `Retire` and let
+`BeginFrame` do the freeing. An empty flush is still a no-op there, so a renderer half-built by a capture the
+seam refused mid-frame can still be torn down on the way out.
 
 `CreateFrameCounted(gd, frameDelay)` is the answer when your frame boundary is inside the recording and
 you cannot move it. It never mints a fence and never drains on the frame path (only at teardown), so a

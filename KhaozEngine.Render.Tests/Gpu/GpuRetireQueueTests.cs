@@ -448,9 +448,12 @@ namespace KhaozEngine.Tests.Gpu
             {
                 var ex = Assert.Throws<GpuDrainDuringRecordingException>(() => queue.FlushAll());
                 Assert.Equal("the window's frame list", ex.Owner);
-                // And it does not depend on there being anything to free: a call that happens to find the queue
-                // empty is the same mistake, and a guard that only fires sometimes is worse than one that always does.
-                Assert.Throws<GpuDrainDuringRecordingException>(() => empty.FlushAll());
+                // But an EMPTY flush stays a no-op there, and that carve-out is load-bearing rather than lenient:
+                // a capture refused mid-frame by the seam's own nested-recording refusal (#424) disposes the
+                // half-built batch it had already constructed from inside the outer recording, freeing nothing.
+                // Refusing that would swap the useful diagnosis for an unrelated one and leak the batch as well.
+                empty.FlushAll();
+                empty.Dispose();
             }
 
             Assert.Equal(0, device.WaitForIdleCalls);   // refused BEFORE the drain, not after it

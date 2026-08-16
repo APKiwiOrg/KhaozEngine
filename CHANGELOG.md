@@ -427,9 +427,17 @@ from the record phase. That is worse than the stall it looks like. A drain waits
 says nothing about the draws in the open list, and the disposals immediately behind it can still be referenced by
 them, which is a use-after-free wearing a drain. So `FlushAll` (and the `Dispose` that calls it) now refuses while
 anything is recording on its device, with a new `GpuDrainDuringRecordingException` naming the open recording, the
-same shape as the seam's nested-recording refusal (#424). It refuses whether or not anything is pending, because a
-guard that fires only on the state the call happened to find is worse than one that always fires. Two headless tests
-pin both halves: refused with nothing freed inside `GpuRecording.Open`, and the ordinary drain-and-free outside it.
+same shape as the seam's nested-recording refusal (#424).
+
+**An EMPTY flush stays a no-op there, and that carve-out is load-bearing rather than lenient.** The first cut refused
+unconditionally, on the reasoning that a guard firing only on the state the call happened to find is worse than one
+that always fires. It broke the recovery path #424's own refusal creates, which is exactly the thing a mid-frame
+refusal is meant to leave usable: an offscreen 2D capture attempted inside a frame's recording is refused when it
+opens its list, and its `finally` then disposes the `SpriteBatch` it had already constructed, from inside that outer
+recording, with nothing retired. Refusing that swapped the useful diagnosis for an unrelated exception and leaked
+the batch, which `NestedRecordingSiteTests` caught. With nothing pending there is no drain and no disposal, so there
+is nothing for the refusal to protect. Three headless tests pin the shape: refused with nothing freed inside
+`GpuRecording.Open`, the empty flush and dispose still no-ops there, and the ordinary drain-and-free outside.
 
 **Additive surface.** `KhaozEngine.Gpu` gains two public types (`GpuRetireQueue`: `Create`,
 `CreateFrameCounted`, `Retire`, `BeginFrame`, `FlushAll`, `Dispose`, `PendingCount`, `FrameDelay`,

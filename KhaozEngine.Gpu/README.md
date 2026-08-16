@@ -299,12 +299,13 @@ What it owns today:
     the default and at a depth of 4 and has to be raised with the knob past that. On this path the count is the
     whole safety argument, and too small a delay is a use-after-free rather than an artifact.
   - **`FlushAll()` and `Dispose()` are TEARDOWN, and the seam enforces that.** Both drain the device and then
-    destroy everything pending, so calling either while anything is recording on that device raises
-    `GpuDrainDuringRecordingException` naming the open recording, and frees nothing. A drain only waits out work
-    that was already SUBMITTED, so it says nothing about the draws in an open list, and the disposals behind it
-    would be a use-after-free with a drain in front of it. The refusal fires whether or not anything is pending,
-    because a guard that only fires sometimes is worse than one that always does. Mid-frame, `Retire` plus
-    `BeginFrame` is the pair that frees things, and neither drains.
+    destroy everything pending, so calling either with something pending while anything is recording on that
+    device raises `GpuDrainDuringRecordingException` naming the open recording, and frees nothing. A drain only
+    waits out work that was already SUBMITTED, so it says nothing about the draws in an open list, and the
+    disposals behind it would be a use-after-free with a drain in front of it. Mid-frame, `Retire` plus
+    `BeginFrame` is the pair that frees things, and neither drains. An EMPTY flush stays a no-op even
+    mid-recording: there is no drain and no disposal to protect, and refusing it would break the teardown a
+    capture does after the seam refuses it mid-frame (#424).
   - **Gate on `GpuCapabilities.SupportsCompletionFences`, and expect two backends to say no.** Metal and Vulkan
     report true. Direct3D11 and OpenGL report FALSE even though Veldrid hands out a `Fence` on them, because on
     those backends it is a `ManualResetEvent` set on the CPU as the submit call returns, which is a submit receipt

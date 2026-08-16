@@ -45,7 +45,10 @@ namespace KhaozEngine.Gpu.Internal
     /// consumer that GENERATES shader sources per frame would otherwise grow this without limit, so past the
     /// capacity the cache stops inserting and keeps compiling, which is the behaviour that existed before it. It
     /// never evicts, since an eviction policy on a set that is a compile-time constant in every shipped case is
-    /// machinery with nothing to do.
+    /// machinery with nothing to do. The capacity check is not taken under a lock, so a burst of concurrent misses
+    /// can land a few entries past it. That is a bound of capacity plus the number of threads compiling at once,
+    /// which is still a bound, and closing the window would cost a lock on the one path that is already the slow
+    /// one for a reason nobody would ever observe.
     /// </para>
     /// <para>
     /// <b>THE KILL SWITCH IS <c>KE_SPIRV_CACHE</c></b>, read once, with the disable words <see cref="GpuDiskCache"/>

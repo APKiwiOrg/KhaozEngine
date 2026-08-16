@@ -894,7 +894,7 @@ Alternatives weighed. **Always whole-load in the editor**: simplest, but it hand
 that is supposed to author it. The window is the middle path and it is small because `SaveTiled` is already
 per-file, so a partial save is a natural consequence rather than a new mechanism.
 
-`MapEdit.Tool` (`ke-mapedit`, 68 verbs) follows the same rule through `MapEditSession.Open`
+`MapEdit.Tool` (`ke-mapedit`, 78 verbs) follows the same rule through `MapEditSession.Open`
 (`MapEditSession.cs:34`) and its two save paths (`:75`, `:92`), and gains `set_window`, `window_status` and
 `retile`. Its `validate` verb currently does `MapDocumentFile.SaveText` plus schema validation
 (`MapEditSession.cs:116`), which walks straight into the ceiling on a large document. It switches to

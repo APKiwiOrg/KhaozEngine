@@ -233,8 +233,9 @@ speed.
 ### 5.6 Mutation API
 
 `TileWorldDocument` is a mutable model with `TileRegion` accessors (`GetRegion`, `GetOrCreateRegion`,
-`TryGetTile`, `SetHeight`, `SetUnderlay`, ...). It has no undo of its own: undo is the editor kernel's job
-(section 8), and both frontends mutate through `TileWorldCommands`. The document raises no events. Instead
+`TryGetTile`, `SetHeight`, `SetUnderlay`, ...). It has no undo of its own: undo is the command layer's job
+(section 8), and both frontends mutate through the `KhaozEngine.TileWorld.Editing` commands R3 shipped, which
+8.2 names in full. There is no `TileWorldCommands` type. The document raises no events. Instead
 every mutation returns the dirty rect it touched, which the commands accumulate for the collision rebake and
 the region-plane remesh.
 
@@ -249,7 +250,7 @@ the region-plane remesh.
 | 0 | `Blocked` | void underlay, `Settings.Blocked`, a `Solid` footprint tile, a `Diagonal` archetype |
 | 1..4 | `WallN`, `WallE`, `WallS`, `WallW` | a `Wall` on this tile facing that edge, or the mirrored edge of a wall on the neighbour |
 | 5..8 | `CornerNE`, `CornerNW`, `CornerSE`, `CornerSW` | a `WallCorner` (with its two edges) |
-| 9 | `ProjectileBlocked` | reserved for ranged line of sight (sub-project 3), never set in this program |
+| 9 | `ProjectileBlocked` | reserved for ranged line of sight in a later sub-project, never set in this program |
 | 10 | `Decoration` | reserved, never set in this program |
 
 `TileCollisionBaker.Bake(document, catalogs)` builds every region-plane at load. `Rebake(document, catalogs,
@@ -280,7 +281,7 @@ world. Reads outside storage answer `Blocked` for the same reason: an unloaded r
 `dir`'s edge, the entering tile is not `Blocked` and has no wall on the opposite edge, and a diagonal step
 additionally requires both orthogonal intermediate steps to be legal (no corner cutting, and the corner bits
 block the diagonal). For an NxN agent the same check runs over the leading edge tiles of the footprint. This
-is the one primitive the tick movement (sub-project 3) and the pathfinder share.
+is the one primitive the tick movement of the next sub-project and the pathfinder share.
 
 ### 6.3 Pathfinder
 
@@ -307,7 +308,7 @@ It is not built now, because nothing in this program calls it.
 
 - `TileRaycast.Pick(document, plane, origin, direction, maxDistance = 2000f) -> TileHit? { X, Z, Plane, Point,
   Distance }`: ray against the lattice triangles of the loaded regions, in the document package because
-  sub-project 3's click-to-walk needs it server-free.
+  the next sub-project's click-to-walk needs it server-free.
 - `TilePrefab`: `Extract(document, catalogs, rect, planeFrom, planeCount, includeObjects, includeMarkers,
   name) -> TilePrefab` (dense layers per plane, objects and markers with rect-relative coordinates, catalog
   ids by value plus each object's UNROTATED footprint size so a later rotation needs no catalog) and
@@ -511,9 +512,10 @@ only), multi-object marquee. Filed as follow-ups if wanted, not built.
 
 ## 9. The MCP tool (`KhaozEngine.TileEdit.Tool`, `ke-tileedit`)
 
-Same skeleton as `ke-mapedit`: stdio host, `TileEditSession` (one locked open world), `TileQueryService`,
-`TileMutationService`, `TileRenderService`, attribute-registered verbs behind the guard, structured JSON
-results, exceptions turned into structured errors. Two seams:
+Same skeleton as `ke-mapedit`: stdio host, `TileEditSession` (one locked open world), `QueryService`,
+`MutationService`, `RenderService`, attribute-registered verbs behind the guard, structured JSON
+results, exceptions turned into structured errors. Only the session carries the `Tile` prefix, because only
+the session is a name the engine has more than one of. Two seams:
 
 - **One command set for both frontends.** Mutation verbs execute an `ITileCommand` through the session's
   `TileEditingDocument`, so `undo(steps)` and `redo(steps)` exist in MCP and an AI edit and a human edit are
@@ -547,9 +549,8 @@ Verb families:
 `tiles_get_rect` and `walkable_rect` exist so the AI can read an area for a few hundred tokens instead of
 thousands. Grimhollow registers the tool in its `.mcp.json` the way Ruinborne registers `ke-mapedit`.
 
-**What shipped against this table: 43 verbs, the table plus one, with four argument shapes corrected.** The
-extra verb is `object_set_tags`, which the table above omitted and a scatter needs, since tags are how a client
-finds again what it strewed. The corrections, each because the spec's shape did not survive contact:
+**What shipped against this table: its 43 verbs, with four argument shapes corrected.** The corrections, each
+because the spec's shape did not survive contact:
 
 - **`render_*` return the image INLINE, not a path.** Each hands back two content blocks, a text block naming
   the framing (rect, plane, scale and overlays for the top-down, eye, target, size and roof observer for the
@@ -628,12 +629,15 @@ Headless, in per-area test projects, per the repo rule.
   silently skipped without it, so a plain run proving 0 failed is not evidence the goldens passed: 0 SKIPPED in
   that namespace is.
 - `KhaozEngine.TileWorld.Tests/TileWorld/Editing/`: the command layer, shipped in R3. Every command's undo
-  restores a byte-identical document (compared by `TileWorldHash`), capture-once semantics across
+  restores a byte-identical document (compared by `TileWorldHash`) APART FROM four limits, which
+  `KhaozEngine.TileWorld.Editing/README.md` states in full as the canonical list and this suite pins as tests
+  rather than as prose: an object whose ANCHOR falls outside a `SnapshotRectCommand`'s rect, a region created
+  or deleted inside the mutate, `PlacePrefab`'s redo taking fresh object ids, and a `SetCornerHeightsCommand`
+  above plane 0 materialising the derived lattice. Alongside that: capture-once semantics across
   execute/undo/redo, the dirty rects each command reports, history coalescing and the merge barrier, the
   editing document's collision upkeep and plane rejection, `IsDirty` against the saved marker, the
-  `TileEditOps` brushes and batches (falloff rings, blur convergence, scatter determinism), the
-  `SnapshotRectCommand` limits stated as tests rather than as prose, and `PgmReader`'s header rules including
-  the one-whitespace delimiter. It lives beside the document's own tests rather than in a
+  `TileEditOps` brushes and batches (falloff rings, blur convergence, scatter determinism), and `PgmReader`'s
+  header rules including the one-whitespace delimiter. It lives beside the document's own tests rather than in a
   `KhaozEngine.TileWorld.Editing.Tests` project, the same repo norm the renderer's tests follow.
 - `KhaozEngine.TileEdit.Tests`: the tool, shipped in R3. Session lifecycle (open, create, save, no-world
   errors, path resolution against the world directory), each verb family through its service, the overlay
@@ -654,7 +658,8 @@ pushed and packed to `local-feed`, no tags unless the user says so:
 - **R1**: `TileWorld` (document, file form, catalogs, validator, migrations, collision map + baker,
   `CanStep`, pathfinder, raycast, prefab) + tests. Shipped.
 - **R2**: `TileWorld.Render3D` alone (mesher, props, scene seam, view, residency, snapshot, two goldens) + tests.
-  Shipped, riding an in-flight patch version rather than taking a minor of its own.
+  Shipped, riding the in-flight version rather than taking one of its own. That version is the MINOR `17.37.0`,
+  re-tiered on `main` while the round was in flight, not the patch it was when the round started.
 - **R3**: `TileWorld.Editing` (the command layer, GPU-free, in `Foundation`) + `TileEdit.Tool` (`ke-tileedit`,
   43 verbs) + tests. Shipped, riding the same in-flight version as R2.
 - **R4**: the Grimhollow bootstrap, section 10 in full: the engine pin, `ke-tileedit` registered in the repo,
@@ -681,16 +686,19 @@ needs to open and draw an authored world exists after R3, and a world nobody has
 can judge. So R4 takes the bootstrap and R5 takes the editor, in the order the consumers actually arrive.
 Nothing about either piece of work changed, only when it happens. The design's own load-bearing claim survives
 untouched, because R5's editor wraps the commands R3 shipped rather than a second set. Sub-project 1's scope
-did not move either: R4 ends at the fly camera, and tick-based click-to-walk stays sub-project 2 with its own
-spec (section 14).
+did not move either: R4 ends at the fly camera, and tick-based click-to-walk stays with the next sub-project
+and its own spec (section 14).
 
 ## 14. Deferred, with the reason
 
 Each of these is filed as an issue when its round lands, not carried here.
 
 - Tick-based click-to-walk movement: not part of this sub-project at all. R4 (section 13) ends at the fly
-  camera over the authored world, and walking lands in sub-project 2 of Grimhollow with its own spec, which is
-  where the server shell, auth and persistence arrive too.
+  camera over the authored world, and walking lands in the next sub-project of Grimhollow with its own spec,
+  alongside the server shell, auth and persistence. The prose here says "the next sub-project" rather than a
+  number on purpose: the orientation list at the top of this doc splits the shell and the walking into (2) and
+  (3), and the round notes elsewhere in the fleet treat them as one, so the number is the part nobody has
+  settled and the ordering is the part everybody agrees on.
 - Textured ground materials and a water shader: v1 is vertex colour only. UVs and `Kind = Water` are
   reserved so the format does not move.
 - The over/under bridge plane trick: `Settings.Bridge` is reserved, semantics undefined until a bridge is

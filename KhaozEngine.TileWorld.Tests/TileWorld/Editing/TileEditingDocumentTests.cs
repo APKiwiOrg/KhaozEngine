@@ -35,6 +35,56 @@ public class TileEditingDocumentTests
         public override void Revert(TileWorldDocument doc) => doc.RemoveObject(_id);
     }
 
+    // Moves one object and merges with a later move of the SAME object, the mergeable gesture the dirty-rect
+    // absorption contract exists for: the head command has to carry every tile the whole gesture passed
+    // through, or an undo leaves the tiles the middle of the gesture touched with stale collision.
+    sealed class MoveTreeCommand : TileCommandBase
+    {
+        readonly long _id;
+        readonly int _plane;
+        readonly int _fromX;
+        readonly int _fromZ;
+        int _toX;
+        int _toZ;
+
+        public MoveTreeCommand(long id, int fromX, int fromZ, int toX, int toZ, int plane) : base("Move tree")
+        {
+            _id = id;
+            _plane = plane;
+            _fromX = fromX;
+            _fromZ = fromZ;
+            _toX = toX;
+            _toZ = toZ;
+            Dirty.Add(new TileDirtyRect(new TileRect(fromX, fromZ, 1, 1), plane));
+            Dirty.Add(new TileDirtyRect(new TileRect(toX, toZ, 1, 1), plane));
+        }
+
+        public override void Apply(TileWorldDocument doc) => doc.MoveObject(_id, _toX, _toZ, _plane);
+
+        public override void Revert(TileWorldDocument doc) => doc.MoveObject(_id, _fromX, _fromZ, _plane);
+
+        public override bool TryMerge(ITileCommand next)
+        {
+            if (next is not MoveTreeCommand c || c._id != _id || c._plane != _plane) return false;
+            _toX = c._toX;
+            _toZ = c._toZ;
+            AbsorbDirty(c);
+            return true;
+        }
+    }
+
+    // Reports a rect on a plane the collision map does not have, so the tests can pin that the document
+    // rejects it before the mutation lands rather than throwing half way through the rebake.
+    sealed class BadPlaneCommand : TileCommandBase
+    {
+        public BadPlaneCommand(int plane) : base("Bad plane") =>
+            Dirty.Add(new TileDirtyRect(new TileRect(5, 5, 1, 1), plane));
+
+        public override void Apply(TileWorldDocument doc) => doc.SetUnderlay(5, 5, 0, 7);
+
+        public override void Revert(TileWorldDocument doc) => doc.SetUnderlay(5, 5, 0, 1);
+    }
+
     // Mergeable per tile, so the tests can drive a coalescing gesture through the document.
     sealed class SetUnderlayCommand : TileCommandBase
     {
@@ -218,6 +268,48 @@ public class TileEditingDocumentTests
 
         Assert.True(ed.Redo());
         Assert.Equal(TileCollisionFlags.Blocked, ed.Collision.Get(10, 10, 0));
+    }
+
+    [Fact]
+    public void A_merged_gesture_rebakes_every_tile_it_passed_through()
+    {
+        TileWorldDocument doc = TileWorldTestData.FlatWorld();
+        TileObject tree = doc.AddObject("tree", 10, 10, 0, 0);
+        var ed = new TileEditingDocument(doc, Cat);
+        Assert.Equal(TileCollisionFlags.Blocked, ed.Collision.Get(10, 10, 0));
+
+        ed.Execute(new MoveTreeCommand(tree.Id, 10, 10, 12, 10, 0));
+        ed.Execute(new MoveTreeCommand(tree.Id, 12, 10, 14, 10, 0));   // same gesture, merges
+
+        Assert.Equal(1, ed.History.UndoDepth);
+        Assert.Equal(TileCollisionFlags.Blocked, ed.Collision.Get(14, 10, 0));
+        Assert.Equal(TileCollisionFlags.None, ed.Collision.Get(10, 10, 0));
+
+        // The head command reverts the WHOLE gesture, so its rects have to cover the tile the second half of
+        // the gesture reached. Without that the object leaves and its Blocked bit stays behind for good.
+        Assert.True(ed.Undo());
+        Assert.Equal(TileCollisionFlags.None, ed.Collision.Get(14, 10, 0));
+        Assert.Equal(TileCollisionFlags.None, ed.Collision.Get(12, 10, 0));
+        Assert.Equal(TileCollisionFlags.Blocked, ed.Collision.Get(10, 10, 0));
+
+        Assert.True(ed.Redo());
+        Assert.Equal(TileCollisionFlags.Blocked, ed.Collision.Get(14, 10, 0));
+        Assert.Equal(TileCollisionFlags.None, ed.Collision.Get(10, 10, 0));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(99)]
+    public void A_dirty_rect_on_a_plane_the_map_lacks_fails_before_anything_applies(int plane)
+    {
+        TileEditingDocument ed = Editing(out TileWorldDocument doc);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => ed.Execute(new BadPlaneCommand(plane)));
+
+        Assert.Equal(0, ed.History.UndoDepth);
+        Assert.False(ed.IsDirty);
+        Assert.Empty(ed.PendingRebuilds);
+        Assert.Equal((ushort)1, doc.GetUnderlay(5, 5, 0));
     }
 
     [Fact]

@@ -18,7 +18,9 @@ public sealed class TileEditingDocument
     readonly List<TileDirtyRect> _pending = new();
 
     /// <summary>Opens a document for editing against the catalogs its content is authored with, baking the
-    /// collision map once up front.</summary>
+    /// collision map once up front. <see cref="Collision"/> takes its plane count from
+    /// <see cref="TileWorldDocument.PlaneCount"/> here and keeps it: a later change to the document's plane
+    /// count is not tracked, and needs a fresh editing document.</summary>
     public TileEditingDocument(TileWorldDocument doc, TileWorldCatalogs catalogs)
     {
         Document = doc ?? throw new ArgumentNullException(nameof(doc));
@@ -65,10 +67,12 @@ public sealed class TileEditingDocument
     public event Action<ITileCommand>? CommandRedone;
 
     /// <summary>Applies a command through the history stack, rebakes collision over its dirty rects, then
-    /// raises <see cref="CommandApplied"/>. This is the one mutation entry point.</summary>
+    /// raises <see cref="CommandApplied"/>. This is the one mutation entry point. A command reporting a rect on
+    /// a plane the collision map does not have is rejected here, before it applies.</summary>
     public void Execute(ITileCommand command)
     {
         ArgumentNullException.ThrowIfNull(command);
+        RequireKnownPlanes(command);
         int depthBefore = History.UndoDepth;
         History.Execute(Document, command);
         // If this edit discarded a redo branch that held the saved point, the saved state is gone for good.
@@ -83,6 +87,7 @@ public sealed class TileEditingDocument
     public bool Undo()
     {
         ITileCommand? command = History.PeekUndo();
+        if (command is not null) RequireKnownPlanes(command);
         if (!History.Undo(Document)) return false;
         if (command is not null)
         {
@@ -97,6 +102,7 @@ public sealed class TileEditingDocument
     public bool Redo()
     {
         ITileCommand? command = History.PeekRedo();
+        if (command is not null) RequireKnownPlanes(command);
         if (!History.Redo(Document)) return false;
         if (command is not null)
         {
@@ -123,14 +129,30 @@ public sealed class TileEditingDocument
     public void AcknowledgeRebuilds() => _pending.Clear();
 
     // Rebakes one rect per plane the command reports and records the same rects for the renderer. Called AFTER
-    // the history call, so the document already holds the post-edit state the rebake re-derives from.
+    // the history call, so the document already holds the post-edit state the rebake re-derives from. The plane
+    // check runs again first, in its own pass: the mutation entry points check before anything applies, which
+    // is the guarantee that matters, but a command that builds its rects WHILE applying has nothing to check
+    // until here, and a bad plane halfway through this loop would leave the map partly rebaked.
     void RefreshCollision(ITileCommand command)
     {
+        RequireKnownPlanes(command);
         foreach (TileDirtyRect d in command.DirtyRects)
         {
             if (d.Rect.IsEmpty) continue;
             TileCollisionBaker.Rebake(Collision, Document, Catalogs, d.Rect, d.Plane);
             _pending.Add(d);
         }
+    }
+
+    // Every rect's plane, checked in one pass before any of them is rebaked, so a bad plane is a clean throw
+    // rather than a half-applied edit. TileCollisionMap would throw on the write anyway, from deep inside the
+    // baker and only once earlier rects had already landed.
+    void RequireKnownPlanes(ITileCommand command)
+    {
+        foreach (TileDirtyRect d in command.DirtyRects)
+            if ((uint)d.Plane >= (uint)Collision.PlaneCount)
+                throw new ArgumentOutOfRangeException(
+                    "plane", d.Plane,
+                    $"command '{command.Label}' reports a dirty rect on plane {d.Plane}, the collision map has planes 0 to {Collision.PlaneCount - 1}.");
     }
 }

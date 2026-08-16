@@ -23,7 +23,11 @@ public interface ITileCommand
     void Revert(TileWorldDocument doc);
 
     /// <summary>True when this command can absorb a newer one of the same gesture (drag coalescing): the pair
-    /// collapses to one undo step.</summary>
+    /// collapses to one undo step. An implementation that returns true MUST first union
+    /// <paramref name="next"/>'s <see cref="DirtyRects"/> into its own (<see cref="TileCommandBase.AbsorbDirty"/>
+    /// does it), because the merged command is the only one left to revert and the document rebakes collision
+    /// from the rects it reports. A move that drags an object from A to B and then B to C, and keeps only its
+    /// original A and B rects, leaves C reading blocked for good once the gesture is undone.</summary>
     bool TryMerge(ITileCommand next);
 
     /// <summary>Every tile rect and plane this edit touched, in either direction. Applying and reverting reach
@@ -60,12 +64,13 @@ public abstract class TileCommandBase : ITileCommand
     /// <inheritdoc/>
     public virtual bool TryMerge(ITileCommand next) => false;
 
-    /// <summary>Records a rect on a plane, dropping an empty one and an exact repeat (a re-apply after undo
-    /// walks the same tiles, and a rebake of the same rect twice only costs time).</summary>
-    protected void MarkDirty(TileRect rect, int plane)
+    /// <summary>Takes over the rects of a command this one just swallowed in <see cref="TryMerge"/>, so the
+    /// surviving command still covers every tile the whole gesture touched. Repeats are kept rather than
+    /// filtered, because rebaking one rect twice only costs time while scanning for duplicates costs a pass
+    /// over the accumulated set on every step of a long drag.</summary>
+    protected void AbsorbDirty(ITileCommand other)
     {
-        if (rect.IsEmpty) return;
-        var d = new TileDirtyRect(rect, plane);
-        if (!Dirty.Contains(d)) Dirty.Add(d);
+        ArgumentNullException.ThrowIfNull(other);
+        Dirty.AddRange(other.DirtyRects);
     }
 }

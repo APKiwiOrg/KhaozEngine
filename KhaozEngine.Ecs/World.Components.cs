@@ -102,6 +102,10 @@ public sealed partial class World
 
         rec.Archetype = to;
         rec.Row = destRow;
+
+        // Rows moved in two archetypes, so any serial iteration in flight is now walking a stale row range.
+        // Counted here rather than in Set/Remove so a future caller of MoveEntity cannot forget it.
+        MarkStructuralChange(add ? "Set/Add" : nameof(Remove));
     }
 
     private Archetype GetOrCreateArchetype(int[] sortedSig)

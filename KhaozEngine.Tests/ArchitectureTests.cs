@@ -299,7 +299,7 @@ public class ArchitectureTests
                 "App", "CodeHealth.Analyzers", "Collision", "Content", "Determinism", "Diagnostics", "Dungeon",
                 "Ecs", "Http", "Identity", "Locomotion", "MapDoc", "Navigation", "Objectives", "Persistence",
                 "Physics", "Platform", "Primitives", "Progression", "Serialization", "ServerStatus", "Social",
-                "Stats", "Terrain", "TileWorld", "Updates",
+                "Stats", "Terrain", "TileWorld", "TileWorld.Editing", "Updates",
             }
         },
         {

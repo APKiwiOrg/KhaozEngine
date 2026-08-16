@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Library</OutputType>
+    <!-- Pinned so the declared namespaces stay KhaozEngine.Tests.*, consistent with every other split
+         test project. -->
+    <RootNamespace>KhaozEngine.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The ONLY reference: the tool (RootNamespace KhaozEngine.TileEdit) brings TileWorld.Editing,
+         TileWorld.Render3D, Imaging, ModelContextProtocol and Microsoft.Extensions.Hosting transitively.
+         Push CI selects test projects by the reference graph, so an extra reference here would only
+         widen what a diff drags in. -->
+    <ProjectReference Include="../KhaozEngine.TileEdit.Tool/KhaozEngine.TileEdit.Tool.csproj" />
+  </ItemGroup>
+</Project>

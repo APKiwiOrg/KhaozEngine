@@ -12078,12 +12078,17 @@ persistence.OnRecordQuarantined += (accountId, reason) => Log.Warn($"{accountId}
 A record that fails either check - or whose stored JSON does not even parse - is quarantined WHOLE rather
 than partially applied: its raw, undecoded bytes are copied verbatim to
 `{QuarantineKeyPrefix}{KeyPrefix}{accountId}` (default `quarantine:player:{accountId}`) in the same
-`IWorldStore`, `OnRecordQuarantined(accountId, reason)` fires, and the player is left at its **default
-spawn** - never placed from the bad record. The dirty-tracking baseline is deliberately not advanced for a
-quarantined record, so the fresh-spawn state stays dirty and the **next periodic save overwrites the bad
-primary**, while the quarantine copy survives untouched as a **forensic copy** for offline inspection (it
-is never itself restored automatically). `MmoServerSample` demonstrates the full loop: it captures,
-validates, and applies an exact-HP blob (`PrivateStats`) and rejects a wrong-length or out-of-range value.
+`IWorldStore`, `OnRecordQuarantined(accountId, reason)` fires, and the player is **reset to the host's
+configured spawn** as a teleport, with its resume hint forgotten - never placed from the bad record, and
+never left standing on the hint the join seeded it from (see the resume-hint section below: `Bounds` vets
+the loaded record, never the hint, so declining to place a rejoiner would leave it on an unvalidated
+position). The reset goes through `IWorldPersistenceHost.TryGetConfiguredSpawn`, a default interface method
+returning false, so a host that installs no resume provider keeps the old shape and simply keeps the spawn
+it built the join at. The dirty-tracking baseline is deliberately not advanced for a quarantined record, so
+that fresh spawn state stays dirty and the **next periodic save overwrites the bad primary**, while the
+quarantine copy survives untouched as a **forensic copy** for offline inspection (it is never itself
+restored automatically). `MmoServerSample` demonstrates the full loop: it captures, validates, and applies
+an exact-HP blob (`PrivateStats`) and rejects a wrong-length or out-of-range value.
 
 **An undecodable record is not an outage.** A record whose JSON fails to parse takes the SAME quarantine
 path as a failed `Bounds`/`ValidateGameState` check, clearing the load-on-join guard so persistence resumes

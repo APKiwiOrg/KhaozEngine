@@ -17,5 +17,21 @@ public sealed partial class ShardedWorldServer
     private Vector3 JoinSpawn(int slot, string accountId) =>
         resumePosition is not null && resumePosition(accountId, out Vector3 resumed)
             ? resumed
-            : config.SpawnPosition?.Invoke(slot) ?? new Vector3(slot * 2f, 0f, 0f);
+            : ConfiguredSpawn(slot);
+
+    // The hint-free half of JoinSpawn: the configured spawn, else the per-slot default spread. Kept separate so the
+    // reset TryGetConfiguredSpawn hands back cannot itself be the rejected hint.
+    private Vector3 ConfiguredSpawn(int slot) => config.SpawnPosition?.Invoke(slot) ?? new Vector3(slot * 2f, 0f, 0f);
+
+    /// <inheritdoc/>
+    public bool TryGetConfiguredSpawn(int slot, out PlayerMoveState spawn)
+    {
+        if (!netIdBySlot.ContainsKey(slot)) { spawn = default; return false; }
+        // The same clamp OnJoin runs, in the frame of the cell that CONTAINS the configured spawn, coming back
+        // absolute. The reset itself moves the entity through SetPlayerState, so the owning cell follows on the
+        // next handoff pass exactly as any other out-of-cell placement does.
+        Vector3 at = ConfiguredSpawn(slot);
+        spawn = RuntimeFor(host.CellFor(at.X, at.Z)).SpawnClamp(new PlayerMoveState { Position = at }, config.TickSeconds);
+        return true;
+    }
 }

@@ -76,7 +76,7 @@ public sealed class WorldPersistenceConfig
 /// <summary>
 /// Wires an <see cref="IWorldStore"/> into the <see cref="WorldServer"/> lifecycle so the world survives a
 /// restart. Backend-agnostic (only <see cref="IWorldStore"/> + <see cref="PlayerRecord"/>):
-/// load-on-join (place the player at the saved position, or leave the default spawn if absent),
+/// load-on-join (place the player at the saved position, or leave the join's own spawn if absent),
 /// save-on-leave (persist the final state), and a periodic snapshot of players whose state changed since their
 /// last save. Async loads are applied to the server on the server thread inside <see cref="Update"/> (never from
 /// a background continuation), so a genuinely-async backend can't race the tick loop.
@@ -111,10 +111,16 @@ public sealed class WorldPersistenceConfig
 /// <see cref="WorldPersistenceConfig.ValidateGameState"/> verdict on its durable blob, and a decode guard (a record
 /// whose JSON no longer parses). A record that fails ANY check is quarantined WHOLE: its raw bytes are copied verbatim
 /// to <c>{QuarantineKeyPrefix}{KeyPrefix}{accountId}</c> (default <c>quarantine:player:{accountId}</c>), the player is
-/// NOT placed from it (so it keeps its default spawn, a fresh start), <see cref="OnRecordQuarantined"/> fires on the
-/// server thread, and the clean baseline is deliberately NOT advanced to the bad record. Because the baseline moves to
-/// the loaded bytes only on a SUCCESSFUL apply, a quarantined record is never marked clean, so the next dirty pass
-/// overwrites the bad PRIMARY record with the fresh-spawn state while the quarantine copy survives for offline repair.
+/// NOT placed from it and is instead RESET to the host's configured spawn, as a fresh start and as a genuine teleport,
+/// with its resume hint forgotten so a further rejoin cannot re-seed the rejected position. That reset is not
+/// ceremony: the join seed means a rejoiner is already standing on the hint, which nothing here validated
+/// (<see cref="WorldPersistenceConfig.Bounds"/> vets the loaded record, never the hint), so simply declining to place
+/// them would leave a rejected record's player on an unvalidated position. Then <see cref="OnRecordQuarantined"/>
+/// fires on the server thread, and the clean baseline is deliberately NOT advanced to the bad record. Because the
+/// baseline moves to the loaded bytes only on a SUCCESSFUL apply, a quarantined record is never marked clean, so the
+/// next dirty pass overwrites the bad PRIMARY record with that fresh spawn state while the quarantine copy survives
+/// for offline repair. A host that implements no <see cref="IWorldPersistenceHost.TryGetConfiguredSpawn"/> keeps the
+/// old shape (no placement), which is the right answer for it: with no seed installed there is nothing to undo.
 /// This also fixes an undecodable RECORD, which previously faulted the load and left the guard set forever (progress
 /// silently stopped persisting): it is now routed through quarantine, which clears the guard so persistence resumes.
 /// A store READ fault is NOT quarantine - the record was never read, so the outage retry above still applies.</para>
@@ -170,8 +176,9 @@ public sealed class WorldPersistence
     /// when a loaded record failed validation and was quarantined WHOLE: (accountId, reason). The raw record's copy
     /// to the quarantine key has only been queued (a Tracked <c>SaveAsync</c>) by the time this fires, not
     /// necessarily completed: an async store may still be writing it, though <see cref="FlushAsync"/> awaits that
-    /// write before it returns. The player keeps its default spawn, and the primary record will be overwritten by the
-    /// fresh state on the next dirty pass. The reason is the bounds/blob/decode message, for logging or alerting. On
+    /// write before it returns. By the time this fires the player has already been reset to the host's configured
+    /// spawn (as a teleport) and its resume hint forgotten, and the primary record will be overwritten by that fresh
+    /// state on the next dirty pass. The reason is the bounds/blob/decode message, for logging or alerting. On
     /// the <see cref="FlushAsync"/> path the invoking continuation may run on a thread-pool thread rather than the
     /// true server thread, under FlushAsync's own documented precondition that it only be invoked when the server
     /// loop is idle.</summary>
@@ -237,7 +244,7 @@ public sealed class WorldPersistence
     private async Task LoadOnJoinAsync(int slot, string accountId)
     {
         byte[]? data = await store.LoadAsync(Key(accountId)).ConfigureAwait(false);
-        if (data is null)                                  // no save -> keep the default spawn
+        if (data is null)                                  // no save -> keep wherever the join built them (spawn, or this account's hint)
         {
             loadsInFlight.TryRemove(accountId, out _);     // brand-new player: nothing stored to clobber, drop the guard now
             return;
@@ -322,12 +329,12 @@ public sealed class WorldPersistence
 
     // Validates then applies (or quarantines) loaded records on the server thread. A record fails validation if it
     // carries a decode failure, its position is out of bounds, or the game's blob verdict rejects it - checked in that
-    // order, first hit wins. On failure the WHOLE record is copied verbatim to the quarantine key, the guard clears,
-    // the player is left at its default spawn (no SetPlayerState) and the baseline is untouched (so the fresh state
-    // overwrites the bad primary next pass), and OnRecordQuarantined fires. On success: position first (as a teleport
-    // only when it actually moves the player - see below), then the opaque game blob (only when present and a hook is
-    // set), then advance the baseline to the loaded bytes, record the resume hint, then clear the guard. Shared by
-    // Update and FlushAsync so both paths validate identically.
+    // order, first hit wins. On failure the WHOLE record is copied verbatim to the quarantine key, the resume hint is
+    // forgotten, the player is RESET to the host's configured spawn as a teleport, the guard clears and the baseline
+    // is untouched (so that fresh state overwrites the bad primary next pass), and OnRecordQuarantined fires. On
+    // success: position first (as a teleport only when it actually moves the player - see below), then the opaque
+    // game blob (only when present and a hook is set), then advance the baseline to the loaded bytes, record the
+    // resume hint, then clear the guard. Shared by Update and FlushAsync so both paths validate identically.
     private void DrainApplyQueue()
     {
         while (applyQueue.TryDequeue(out PendingApply a))
@@ -344,6 +351,17 @@ public sealed class WorldPersistence
             if (failure is not null)
             {
                 Track(store.SaveAsync(config.QuarantineKeyPrefix + Key(a.AccountId), a.Raw));   // copy the bad record verbatim, awaited by FlushAsync
+                // Reset to the configured spawn RATHER than simply declining to place the player. Before the join
+                // seed, "not applied" meant the player kept the spawn the join built them at and quarantine needed
+                // no placement at all. It does not mean that any more: a rejoin is built at the resume hint, which
+                // no check here ever saw (config.Bounds is applied to the LOADED record, not to the hint), so
+                // declining would leave a rejected record's player standing on an unvalidated position - and the
+                // decode-failure and ValidateGameState triggers reach that state with no bounds divergence at all.
+                // Forget the hint first, so a further rejoin cannot re-seed the position this record was rejected
+                // for, and place as a genuine teleport: policy moved the player, and the client should cut.
+                resumeHints.Forget(a.AccountId);
+                if (server.TryGetConfiguredSpawn(a.Slot, out PlayerMoveState spawn))
+                    server.SetPlayerState(a.Slot, spawn, teleport: true);
                 loadsInFlight.TryRemove(a.AccountId, out _);   // quarantined, so the account is now free to dirty-save the fresh spawn over the bad primary
                 OnRecordQuarantined?.Invoke(a.AccountId, failure);
                 continue;                                      // NOT applied, baseline NOT advanced

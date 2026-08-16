@@ -104,7 +104,10 @@ public class WorldPersistenceReconnectTeleportTests
     }
 
     // A persistence-backed single-world server plus an auto-reconnecting client on the same hub, joined and ready.
-    static Rig ConnectSingle(InMemoryWorldStore store, Func<int, Vector3>? spawn = null)
+    // A long save interval is the default: no periodic pass can overwrite a record a test injected during the
+    // disconnect window. A row that needs load validation passes its own pcfg (keep that interval when it does).
+    static Rig ConnectSingle(InMemoryWorldStore store, Func<int, Vector3>? spawn = null,
+        WorldPersistenceConfig? pcfg = null)
     {
         var hub = new InMemoryHub();
         var config = new WorldServerConfig
@@ -115,8 +118,7 @@ public class WorldPersistenceReconnectTeleportTests
             SpawnPosition = spawn ?? (_ => Vector3.Zero),
         };
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
-        // A long interval: no periodic pass can overwrite a record a test injected during the disconnect window.
-        var persistence = new WorldPersistence(server, store, new WorldPersistenceConfig { SaveIntervalSeconds = 999f });
+        var persistence = new WorldPersistence(server, store, pcfg ?? new WorldPersistenceConfig { SaveIntervalSeconds = 999f });
         var builtAt = new List<Vector3>();
         server.PlayerJoined += (slot, _) =>
         {
@@ -144,7 +146,7 @@ public class WorldPersistenceReconnectTeleportTests
 
     // The multi-cell twin of ConnectSingle: the same wiring against ShardedWorldServer, whose OnJoin builds the
     // entity in whichever cell the resolved spawn falls in.
-    static Rig ConnectSharded(InMemoryWorldStore store)
+    static Rig ConnectSharded(InMemoryWorldStore store, WorldPersistenceConfig? pcfg = null)
     {
         var hub = new InMemoryHub();
         var config = new ShardedWorldServerConfig
@@ -157,7 +159,7 @@ public class WorldPersistenceReconnectTeleportTests
             SpawnPosition = _ => Vector3.Zero,
         };
         var server = new ShardedWorldServer(hub.Server, config, Flat, MoveTuning.Default);
-        var persistence = new WorldPersistence(server, store, new WorldPersistenceConfig { SaveIntervalSeconds = 999f });
+        var persistence = new WorldPersistence(server, store, pcfg ?? new WorldPersistenceConfig { SaveIntervalSeconds = 999f });
         var builtAt = new List<Vector3>();
         server.PlayerJoined += (slot, _) =>
         {
@@ -295,7 +297,56 @@ public class WorldPersistenceReconnectTeleportTests
         Assert.Equal(1, fired);   // exactly one: the restore genuinely moved the player 1.4 km
     }
 
-    // ---- (4) the sharded twin of (1) ----
+    // ---- (4) a rejoin whose record is REJECTED does not get to keep the seeded position ----
+
+    [Fact]
+    public void A_rejoin_whose_record_is_quarantined_is_reset_to_the_configured_spawn()
+    {
+        // The seed changed what "not applied" means. Quarantine used to leave the player on the spawn the join had
+        // built them at, so it needed no placement of its own; now the join builds a known account at its resume
+        // hint, and nothing in the load path ever validated THAT (Bounds vets the loaded record). So a rejected
+        // record has to reset the player, or the three quarantine triggers all end with the player standing exactly
+        // where the record that was just rejected said they were.
+        var store = new InMemoryWorldStore();
+        Rig rig = ConnectSingle(store, pcfg: new WorldPersistenceConfig
+        {
+            SaveIntervalSeconds = 999f,
+            Bounds = new RectBounds(-100f, -100f, 100f, 100f),   // Parked is well outside it
+        });
+        ParkAwayFromSpawn(rig);
+
+        string? quarantined = null;
+        rig.Persistence.OnRecordQuarantined += (acct, _) => quarantined = acct;
+        int fired = 0;
+        rig.Client.LocalTeleported += () => fired++;   // subscribed after the park, so only the rejoin can fire it
+
+        // The drop persists the parked position, and the rejoin is seeded from it - and then the load of that same
+        // record is rejected for being out of bounds, which is the shortest honest path to a quarantined REJOIN.
+        Assert.True(rig.DropAndReconnect(), "the client never reconnected after the transport drop");
+        Assert.Equal(2, rig.BuiltAt.Count);
+        Assert.True(Vector3.Distance(rig.BuiltAt[1], Parked) < 0.5f,
+            $"the rejoin has to have been seeded for this row to prove anything ({rig.BuiltAt[1]})");
+
+        rig.Idle(40);   // the load lands, the drain quarantines it, the reset goes out on a snapshot
+
+        Assert.Equal(Account, quarantined);
+        var spawn = new Vector3(0f, MoveTuning.Default.CapsuleHalfHeight, 0f);
+        Assert.True(Vector3.Distance(rig.LocalPosition(), spawn) < 0.5f,
+            $"a quarantined rejoin belongs on the configured spawn, not on the rejected position ({rig.LocalPosition()})");
+        Assert.Equal(1, fired);   // exactly one, and it is the reset: policy moved the player 500 m, so the client cuts
+
+        // The hint is dropped too, which is what stops the next rejoin re-seeding the position just rejected. This
+        // is the assertion that pins Forget: the rejoin below would land on the spawn either way, because the leave
+        // it comes after records the (now spawn) position anyway.
+        Assert.False(rig.Persistence.ResumeHints.TryGet(Account, out _));
+
+        Assert.True(rig.DropAndReconnect(), "the client never reconnected after the second transport drop");
+        Assert.Equal(3, rig.BuiltAt.Count);
+        Assert.True(Vector3.Distance(rig.BuiltAt[2], spawn) < 0.5f,
+            $"a further rejoin belongs on the spawn as well ({rig.BuiltAt[2]})");
+    }
+
+    // ---- (5) the sharded twin of (1) ----
 
     [Fact]
     public void A_stationary_rejoin_on_a_persisted_sharded_server_reports_no_teleport()
@@ -326,5 +377,40 @@ public class WorldPersistenceReconnectTeleportTests
             $"the player should have resumed where it was ({rig.LocalPosition()})");
         Assert.Equal(0, fired);
         Assert.Equal(epochBefore, rig.Client.LocalTeleportEpoch);
+    }
+
+    // ---- (6) the sharded twin of (4): the reset clamps in the cell that CONTAINS the configured spawn ----
+
+    [Fact]
+    public void A_quarantined_rejoin_on_a_sharded_server_is_reset_to_the_configured_spawn()
+    {
+        // Worth its own row rather than trusting the single-head one: the sharded head resolves the reset position
+        // through a different clamp (the containing cell's runtime), and the reset then moves the entity out of the
+        // cell it rejoined in, which is the ordinary out-of-cell placement its next handoff pass settles.
+        var store = new InMemoryWorldStore();
+        Rig rig = ConnectSharded(store, new WorldPersistenceConfig
+        {
+            SaveIntervalSeconds = 999f,
+            Bounds = new RectBounds(-100f, -100f, 100f, 100f),
+        });
+        rig.TeleportOnlyPlayer(Parked);
+        rig.Idle(60);
+        Assert.True(Vector3.Distance(rig.LocalPosition(), Parked) < 0.5f,
+            $"the player has to be parked off the spawn for this row to prove anything (it is at {rig.LocalPosition()})");
+
+        string? quarantined = null;
+        rig.Persistence.OnRecordQuarantined += (acct, _) => quarantined = acct;
+
+        Assert.True(rig.DropAndReconnect(), "the client never reconnected after the transport drop");
+        Assert.Equal(2, rig.BuiltAt.Count);
+        Assert.True(Vector3.Distance(rig.BuiltAt[1], Parked) < 0.5f,
+            $"the rejoin has to have been seeded for this row to prove anything ({rig.BuiltAt[1]})");
+
+        rig.Idle(60);   // quarantine, reset, and the handoff back to the spawn cell
+
+        Assert.Equal(Account, quarantined);
+        Assert.True(Vector3.Distance(rig.LocalPosition(), new Vector3(0f, MoveTuning.Default.CapsuleHalfHeight, 0f)) < 0.5f,
+            $"a quarantined rejoin belongs on the configured spawn, not on the rejected position ({rig.LocalPosition()})");
+        Assert.False(rig.Persistence.ResumeHints.TryGet(Account, out _));
     }
 }

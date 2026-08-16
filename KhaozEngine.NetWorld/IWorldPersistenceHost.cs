@@ -51,4 +51,18 @@ public interface IWorldPersistenceHost
     /// joins its own way.</para>
     /// </summary>
     void SetResumePositionProvider(ResumePositionProvider? provider) { }
+
+    /// <summary>
+    /// Where the host WOULD have built this slot with no resume hint at all: the configured spawn, ground-clamped
+    /// the same way a join clamps it, in ABSOLUTE world metres. Deliberately hint-free, which is the whole point of
+    /// it: it is the position a rejected record has to be reset to.
+    /// <para>This is the other half of <see cref="SetResumePositionProvider"/>. Seeding the join means a REJECTED
+    /// load can no longer just decline to place the player: they are already standing on the hint, which nothing
+    /// validated. <see cref="WorldPersistence"/> calls this on quarantine and places the player here as a genuine
+    /// teleport, because policy moved them (see <see cref="WorldPersistence"/>).</para>
+    /// <para>Returns false for an unknown slot, and from the default implementation, which is what a host that
+    /// installs no resume provider wants: with no seed there is nothing to undo, so the player is already on
+    /// whatever spawn that host built them at.</para>
+    /// </summary>
+    bool TryGetConfiguredSpawn(int slot, out PlayerMoveState spawn) { spawn = default; return false; }
 }

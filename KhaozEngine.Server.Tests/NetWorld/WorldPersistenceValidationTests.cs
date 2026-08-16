@@ -15,11 +15,16 @@ namespace KhaozEngine.Tests.NetWorld;
 /// <summary>
 /// Locks the server-side validate-and-quarantine seam on <see cref="WorldPersistence"/>: a loaded player record that
 /// fails validation (out-of-bounds position, a rejecting game-blob verdict, or undecodable JSON) is quarantined WHOLE
-/// under <c>quarantine:player:{accountId}</c>, the player spawns fresh, <see cref="WorldPersistence.OnRecordQuarantined"/>
-/// fires on the server thread, and the <c>lastSaved</c> baseline never moves to the bad record so the fresh spawn
+/// under <c>quarantine:player:{accountId}</c>, the player is RESET to the host's configured spawn (as a teleport, with
+/// its resume hint forgotten), <see cref="WorldPersistence.OnRecordQuarantined"/>
+/// fires on the server thread, and the <c>lastSaved</c> baseline never moves to the bad record so that fresh spawn
 /// overwrites the primary on the next dirty pass while the quarantine copy survives. A faulted store READ keeps the
 /// old outage semantics (guard stays set, no quarantine). Drives the real <c>WorldServer</c> through the same
 /// <see cref="Harness"/> pattern as <c>WorldPersistenceTests</c>.
+/// <para>Every row here is a FIRST join, which has no resume hint, so the quarantine reset lands the player exactly
+/// where the pre-reset code left them. The rejoin case - where the join was seeded and the reset is the only thing
+/// standing between a rejected record and a player parked on an unvalidated position - is
+/// <see cref="WorldPersistenceReconnectTeleportTests"/>'s quarantine row.</para>
 /// </summary>
 public class WorldPersistenceValidationTests
 {

@@ -10,8 +10,14 @@ namespace KhaozEngine.TileEdit.Tools;
 ///
 /// <para>Coordinates across the whole tool surface are TILE space: x runs east, z runs north, and a plane is a
 /// storey index from 0. A rect is given as four ints (x, z, width, height) whose far edges are EXCLUSIVE, so
-/// (0, 0, 64, 64) is the tiles 0..63 on both axes. Every path argument resolves against the OPEN WORLD's own
-/// directory when it is relative, never against the process working directory.</para></summary>
+/// (0, 0, 64, 64) is the tiles 0..63 on both axes.</para>
+///
+/// <para>Paths split in two, and the split is here rather than anywhere else in the tool. The two verbs that
+/// OPEN a world (<c>world_open</c> and <c>world_create</c>) name a directory before there is a world to be
+/// relative to, so a relative path there resolves against the PROCESS working directory, which belongs to
+/// whichever client launched the server: prefer an absolute path for both. Every other path-taking verb in the
+/// tool (the heightmap import, the three prefab verbs, both renders' save paths) resolves a relative path
+/// against the OPEN WORLD's own directory instead.</para></summary>
 [McpServerToolType]
 public sealed class WorldTools(TileEditSession session, QueryService query, MutationService mutate)
 {
@@ -39,7 +45,7 @@ public sealed class WorldTools(TileEditSession session, QueryService query, Muta
 
     /// <summary>A flat summary of the open world.</summary>
     [McpServerTool(Name = "world_summary"), Description("Returns a flat summary of the open world: id, display name, directory, plane count, tile size, region/object/marker counts, the world hash, the dirty flag, the undo and redo depths with their labels, and the manifest's catalog paths. Read this after any batch of edits to see where the history stands.")]
-    public WorldSummary WorldSummary()
+    public WorldSummary Summary()
         => ToolGuard.Guard(session.Summary);
 
     /// <summary>Validates the open world without throwing.</summary>

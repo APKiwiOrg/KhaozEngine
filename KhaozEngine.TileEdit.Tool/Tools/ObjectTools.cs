@@ -23,9 +23,9 @@ public sealed class ObjectTools(QueryService query, MutationService mutate)
         [Description("Anchor tile x (east).")] int x,
         [Description("Anchor tile z (north).")] int z,
         [Description("Plane index, 0 is the ground storey.")] int plane,
-        [Description("Quarter turns clockwise, 0 to 3 (0 west, 1 north, 2 east, 3 south). Defaults to 0.")] int rotation = 0,
+        [Description("Quarter turns clockwise, 0 to 3 (0 west, 1 north, 2 east, 3 south). Outside that range is refused. Defaults to 0.")] int rotation = 0,
         [Description("Authoring tags to attach, for later lookup with object_find. Null means none.")] string[]? tags = null)
-        => ToolGuard.Guard(() => mutate.ObjectPlace(archetypeId, x, z, plane, rotation, tags));
+        => ToolGuard.Guard(() => mutate.ObjectPlace(archetypeId, x, z, plane, ToolArgs.Rotation(rotation), tags));
 
     /// <summary>Moves one object's anchor.</summary>
     [McpServerTool(Name = "object_move"), Description("Moves one object's anchor tile, and its plane with it. One undo step. Returns the undo label, the dirty flag, the undo depth, the new world hash and the rects touched, which cover both the old footprint and the new one.")]
@@ -40,8 +40,8 @@ public sealed class ObjectTools(QueryService query, MutationService mutate)
     [McpServerTool(Name = "object_rotate"), Description("Turns one object in place. A non-square archetype covers different tiles afterwards, so the dirty rects cover both footprints. One undo step. Returns the mutation fields.")]
     public MutationResult ObjectRotate(
         [Description("The object id.")] long id,
-        [Description("Quarter turns clockwise, 0 to 3 (0 west, 1 north, 2 east, 3 south).")] int rotation)
-        => ToolGuard.Guard(() => mutate.ObjectRotate(id, rotation));
+        [Description("Quarter turns clockwise, 0 to 3 (0 west, 1 north, 2 east, 3 south). Outside that range is refused.")] int rotation)
+        => ToolGuard.Guard(() => mutate.ObjectRotate(id, ToolArgs.Rotation(rotation)));
 
     /// <summary>Deletes one object.</summary>
     [McpServerTool(Name = "object_remove"), Description("Deletes one object. One undo step, and the undo puts it back with the id it had, so every reference still resolves. Returns the mutation fields, whose dirty rects cover the object's whole footprint.")]
@@ -88,8 +88,9 @@ public sealed class ObjectTools(QueryService query, MutationService mutate)
         [Description("End tile x, included in the run.")] int toX,
         [Description("End tile z, included in the run.")] int toZ,
         [Description("Plane index, 0 is the ground storey.")] int plane,
-        [Description("Quarter turns clockwise applied to every object, 0 to 3. Defaults to 0.")] int rotation = 0)
-        => ToolGuard.Guard(() => mutate.ObjectLine(archetypeId, fromX, fromZ, toX, toZ, plane, rotation));
+        [Description("Quarter turns clockwise applied to every object, 0 to 3. Outside that range is refused. Defaults to 0.")] int rotation = 0)
+        => ToolGuard.Guard(() => mutate.ObjectLine(archetypeId, fromX, fromZ, toX, toZ, plane,
+            ToolArgs.Rotation(rotation)));
 
     /// <summary>A deterministic scatter over a rect.</summary>
     [McpServerTool(Name = "objects_scatter"), Description("Scatters one archetype over a rect as a SINGLE undo step: a grid at the given spacing, each point jittered from a hash of that point and the seed, skipping tiles that are blocked or already occupied. The same arguments always produce the same world, and an empty result is a legitimate answer for a crowded rect. Returns the mutation fields plus how many landed and their ids.")]

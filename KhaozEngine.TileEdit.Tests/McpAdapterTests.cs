@@ -13,6 +13,7 @@ using KhaozEngine.Tests.Gpu;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Xunit;
@@ -191,6 +192,83 @@ public class McpAdapterTests
         string text = ErrorText(bad);
         Assert.Contains("triangle", text, StringComparison.Ordinal);
         Assert.Contains("CornerThreeQuarter", text, StringComparison.Ordinal);
+
+        // And the numeric form is refused over the wire too, not only in the unit rows below: "1" would
+        // otherwise parse as DiagonalHalf, which the client never named.
+        CallToolResult numeric = await harness.CallAsync("tile_set", cts.Token,
+            ("x", 1), ("z", 1), ("plane", 0), ("shape", "1"));
+        Assert.True(numeric.IsError);
+        Assert.Contains("by NAME", ErrorText(numeric), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WorldOpen_RoundTripsAWorldThisSessionWroteEarlier()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var temp = new TempDir();
+        string world = temp.Sub("world");
+        await using McpHarness harness = await McpHarness.StartAsync(cts.Token);
+        await harness.CreateWorldAsync(world, cts.Token);
+
+        await harness.CallAsync("tiles_fill", cts.Token,
+            ("x", 0), ("z", 0), ("width", 4), ("height", 4), ("plane", 0), ("underlay", 1));
+        CallToolResult saved = await harness.CallAsync("world_save", cts.Token);
+        Assert.NotEqual(true, saved.IsError);
+        string savedHash = Deserialize<SaveResult>(saved).WorldHash;
+
+        // A fresh open of the same directory, through the wire, replacing the world the session already held.
+        CallToolResult opened = await harness.CallAsync("world_open", cts.Token, ("path", world));
+        Assert.NotEqual(true, opened.IsError);
+
+        OpenResult reopened = Deserialize<OpenResult>(opened);
+        Assert.Equal("wire-world", reopened.Id);
+        Assert.Equal(savedHash, reopened.Summary.WorldHash);
+        // A reopened world is clean and carries no history, and the paint survived the round trip.
+        Assert.False(reopened.Summary.Dirty);
+        Assert.Equal(0, reopened.Summary.UndoDepth);
+        Assert.Equal(1, Deserialize<TileInfo>(await harness.CallAsync("tile_get", cts.Token,
+            ("x", 2), ("z", 2), ("plane", 0))).Underlay);
+    }
+
+    [GpuFact]
+    public async Task RenderView_ReturnsAFramingLineThenThePngImage()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+        using var temp = new TempDir();
+        await using McpHarness harness = await McpHarness.StartAsync(cts.Token);
+        await harness.CreateWorldAsync(temp.Sub("world"), cts.Token);
+        await harness.CallAsync("tiles_fill", cts.Token,
+            ("x", 0), ("z", 0), ("width", 32), ("height", 32), ("plane", 0), ("underlay", 1));
+
+        // The worked example from the verb's own description, run for real: looking at tile (10, 20) from the
+        // south-east. World z is minus tile z, so the target sits at world z -20.5 and the eye south of it at
+        // -12.
+        CallToolResult result = await harness.CallAsync("render_view", cts.Token,
+            ("eyeX", 18.0), ("eyeY", 8.0), ("eyeZ", -12.0),
+            ("targetX", 10.5), ("targetY", 0.0), ("targetZ", -20.5),
+            ("width", 96), ("height", 64), ("observerX", 10), ("observerZ", 20));
+        Assert.NotEqual(true, result.IsError);
+
+        Assert.Equal(2, result.Content.Count);
+        var framing = Assert.IsType<TextContentBlock>(result.Content[0]);
+        Assert.Contains("perspective", framing.Text, StringComparison.Ordinal);
+        Assert.Contains("(10, 20, p0)", framing.Text, StringComparison.Ordinal);
+
+        var image = Assert.IsType<ImageContentBlock>(result.Content[1]);
+        Assert.Equal("image/png", image.MimeType);
+        byte[] png = Convert.FromBase64String(Encoding.ASCII.GetString(image.Data.Span));
+        Assert.Equal(new byte[] { 0x89, 0x50, 0x4E, 0x47 }, png[..4]);
+
+        // The same shot moved a long way off the painted region, which can only see empty space. A PNG came
+        // back either way, so the ONLY thing separating a correctly framed example from a plausible-looking
+        // wrong one is that these two differ. Without this the row would pass with the sign of world z flipped.
+        CallToolResult offWorld = await harness.CallAsync("render_view", cts.Token,
+            ("eyeX", 518.0), ("eyeY", 8.0), ("eyeZ", 488.0),
+            ("targetX", 510.5), ("targetY", 0.0), ("targetZ", 479.5),
+            ("width", 96), ("height", 64));
+        Assert.NotEqual(true, offWorld.IsError);
+        var empty = Assert.IsType<ImageContentBlock>(offWorld.Content[1]);
+        Assert.NotEqual(image.Data.ToArray(), empty.Data.ToArray());
     }
 
     [GpuFact]
@@ -301,5 +379,140 @@ public class McpAdapterTests
             await _host.StopAsync();
             _host.Dispose();
         }
+    }
+}
+
+/// <summary>The checks the VERB layer owns, which no service test can reach because the services never see these
+/// values: a rotation outside 0..3 (the command layer masks it), a material id outside a ushort (the wire has
+/// one number type), a shape or setting given as a number (Enum.TryParse would take it), and the observer pair
+/// on a perspective render. Each row calls the tool class directly rather than over the wire, because the thing
+/// under test is the argument check and not the transport, and each asserts on the McpException the guard maps
+/// the failure to, which is exactly what a client sees.
+///
+/// <para>No GPU here on purpose. Every one of these fires while the arguments are still being evaluated, before
+/// the service call that would build a device, which is itself part of what the rows pin: a bad argument costs
+/// nothing.</para></summary>
+public class VerbArgumentTests
+{
+    sealed class Fixture : IDisposable
+    {
+        public TempDir Temp { get; } = new();
+        public TileEditSession Session { get; }
+        public TileTools Tiles { get; }
+        public ObjectTools Objects { get; }
+
+        public Fixture()
+        {
+            Session = TileEditTestWorld.NewSession(Temp.Sub("world"));
+            var query = new QueryService(Session);
+            var mutate = new MutationService(Session);
+            Tiles = new TileTools(query, mutate);
+            Objects = new ObjectTools(query, mutate);
+        }
+
+        public void Dispose() => Temp.Dispose();
+    }
+
+    // The verb layer's failures reach a client as McpException, so that is what these assert on. Asserting the
+    // inner ArgumentException type instead would pass even if ToolGuard stopped being applied.
+    static string Refused(Action call)
+    {
+        McpException ex = Assert.Throws<McpException>(call);
+        return ex.Message;
+    }
+
+    [Fact]
+    public void RenderView_TakesBothObserverHalvesOrNeither()
+    {
+        var render = new RenderTools(new RenderService(new TileEditSession()));
+
+        string onlyX = Refused(() => render.RenderView(1f, 2f, 3f, 4f, 5f, 6f, 64, 64, observerX: 10));
+        Assert.Contains("observerX", onlyX, StringComparison.Ordinal);
+        Assert.Contains("observerZ", onlyX, StringComparison.Ordinal);
+
+        string onlyZ = Refused(() => render.RenderView(1f, 2f, 3f, 4f, 5f, 6f, 64, 64, observerZ: 20));
+        Assert.Contains("observerX", onlyZ, StringComparison.Ordinal);
+        Assert.Contains("observerZ", onlyZ, StringComparison.Ordinal);
+
+        // Neither half is the legal null case, so it gets past the pair check and fails on the CLOSED SESSION
+        // instead, which is the proof the check let it through rather than the proof of a second refusal.
+        Assert.Contains("world_open",
+            Refused(() => render.RenderView(1f, 2f, 3f, 4f, 5f, 6f, 64, 64)), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MaterialIds_OutsideAUshortAreRefusedNamingTheWireArgument()
+    {
+        using var f = new Fixture();
+
+        string underlay = Refused(() => f.Tiles.TileSet(0, 0, 0, underlay: 70000));
+        Assert.Contains("65535", underlay, StringComparison.Ordinal);
+        // The wire name, not the helper's own parameter name: a client never sent anything called "id".
+        Assert.Contains("underlay", underlay, StringComparison.Ordinal);
+        Assert.DoesNotContain("Parameter 'id'", underlay, StringComparison.Ordinal);
+
+        string overlay = Refused(() => f.Tiles.TilesFill(0, 0, 4, 4, 0, overlay: -1));
+        Assert.Contains("overlay", overlay, StringComparison.Ordinal);
+
+        // The boundary itself is legal, so the check refuses what is out of range rather than what is large.
+        f.Tiles.TilesFill(0, 0, 1, 1, 0, underlay: ushort.MaxValue);
+        Assert.Equal(ushort.MaxValue, f.Session.Read(e => e.Document.GetUnderlay(0, 0, 0)));
+    }
+
+    [Fact]
+    public void Rotations_OutsideZeroToThreeAreRefusedRatherThanMasked()
+    {
+        using var f = new Fixture();
+
+        // 7 and 3 are the same rotation to the command layer, which masks with "and 3". They are not the same
+        // request, so the verb layer refuses rather than guessing which one the client meant.
+        foreach (int bad in new[] { 4, 7, -1 })
+        {
+            string message = Refused(() => f.Tiles.TilesFill(0, 0, 2, 2, 0, overlay: 2, rotation: bad));
+            Assert.Contains("rotation must be 0..3", message, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("rotation must be 0..3",
+            Refused(() => f.Tiles.TileSet(0, 0, 0, overlay: 2, rotation: 9)), StringComparison.Ordinal);
+        Assert.Contains("rotation must be 0..3",
+            Refused(() => f.Objects.ObjectPlace("tree", 1, 1, 0, rotation: 4)), StringComparison.Ordinal);
+        Assert.Contains("rotation must be 0..3",
+            Refused(() => f.Objects.ObjectsLine("wall", 0, 0, 2, 0, 0, rotation: 5)), StringComparison.Ordinal);
+
+        long id = f.Objects.ObjectPlace("tree", 5, 5, 0, rotation: 3).ObjectId;
+        Assert.Contains("rotation must be 0..3",
+            Refused(() => f.Objects.ObjectRotate(id, 4)), StringComparison.Ordinal);
+        // Every legal value still lands, so the check is a range guard and not a blanket refusal.
+        f.Objects.ObjectRotate(id, 2);
+        Assert.Equal(2, f.Session.Read(e => e.Document.FindObject(id)!.Rotation));
+    }
+
+    [Fact]
+    public void ShapesAndSettings_AreNamesAndNeverNumbers()
+    {
+        using var f = new Fixture();
+
+        // "1" would parse as DiagonalHalf and "9" as a shape with no renderer case, both from a client that
+        // named no shape at all.
+        foreach (string numeric in new[] { "1", "9", "-2" })
+        {
+            string message = Refused(() => f.Tiles.TileSet(0, 0, 0, shape: numeric));
+            Assert.Contains("by NAME", message, StringComparison.Ordinal);
+            Assert.Contains("CornerThreeQuarter", message, StringComparison.Ordinal);
+        }
+
+        string settings = Refused(() => f.Tiles.TileSet(0, 0, 0, settings: "Blocked,2"));
+        Assert.Contains("by NAME", settings, StringComparison.Ordinal);
+        Assert.Contains("NoDraw", settings, StringComparison.Ordinal);
+
+        // The names themselves still work, case-insensitively and with spaces around the commas.
+        f.Tiles.TileSet(0, 0, 0, overlay: 2, shape: "cornerQUARTER", settings: " Blocked , NoDraw ");
+        TileInfo tile = new QueryService(f.Session).TileGet(0, 0, 0);
+        Assert.Equal("CornerQuarter", tile.Shape);
+        Assert.Equal("Blocked,NoDraw", tile.Settings);
+
+        // And an empty settings string is the documented clear, not a refusal.
+        f.Tiles.TileSet(0, 0, 0, settings: "");
+        Assert.Equal("None", new QueryService(f.Session).TileGet(0, 0, 0).Settings);
     }
 }

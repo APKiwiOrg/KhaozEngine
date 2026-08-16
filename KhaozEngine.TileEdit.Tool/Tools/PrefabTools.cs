@@ -31,14 +31,14 @@ public sealed class PrefabTools(QueryService query, MutationService mutate)
             savePath, includeObjects, includeMarkers));
 
     /// <summary>Stamps a prefab file into the world.</summary>
-    [McpServerTool(Name = "prefab_place"), Description("Stamps a prefab file into the open world with its south-west corner at the given tile, turned by the given quarter turns. Everything the prefab carries (layers, heights, objects, markers) lands as a SINGLE undo step. Returns the mutation fields.")]
+    [McpServerTool(Name = "prefab_place"), Description("Stamps a prefab file into the open world with its south-west corner at the given tile, turned by the given quarter turns. Everything the prefab carries (layers, heights, objects, markers) lands as a SINGLE undo step. Caveat on redo: this stamp re-runs on redo rather than restoring what it made, so the objects come back with FRESH ids and the world hash after a place, undo and redo differs from the hash after the place alone. The world is the same world, the object ids are not. Returns the mutation fields.")]
     public MutationResult PrefabPlace(
         [Description("Path to the prefab json. A relative path resolves against the OPEN WORLD's directory.")] string prefabPath,
         [Description("Tile x the prefab's west edge lands on.")] int x,
         [Description("Tile z the prefab's south edge lands on.")] int z,
         [Description("Plane the prefab's lowest plane lands on.")] int plane,
-        [Description("Quarter turns clockwise to turn the whole prefab by, 0 to 3. Defaults to 0.")] int rotation = 0)
-        => ToolGuard.Guard(() => mutate.PrefabPlace(prefabPath, x, z, plane, rotation));
+        [Description("Quarter turns clockwise to turn the whole prefab by, 0 to 3. Outside that range is refused. Defaults to 0.")] int rotation = 0)
+        => ToolGuard.Guard(() => mutate.PrefabPlace(prefabPath, x, z, plane, ToolArgs.Rotation(rotation)));
 
     /// <summary>Lists the prefab files in a directory.</summary>
     [McpServerTool(Name = "prefab_list"), Description("Lists the prefab json files in a directory, by name, each with its full path and size in bytes. A relative directory resolves against the OPEN WORLD's directory. Fails when the directory does not exist.")]

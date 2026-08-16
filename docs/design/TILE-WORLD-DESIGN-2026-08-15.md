@@ -1,7 +1,8 @@
 # OSRS-style tile world: document, collision, renderer, editor kernel, tile editor and MCP tool (2026-08-15)
 
-Status: R1 shipped (document, file form, catalogs, validator, collision, pathfinder, raycast, prefabs), R2 and
-R3 pending. Program issue:
+Status: R1 and R2 shipped (document, file form, catalogs, validator, collision, pathfinder, raycast, prefabs, then
+the renderer: ground mesher, props, view, residency, snapshot, goldens), R3 pending (editor kernel, tile editor,
+MCP tool). Program issue:
 [#629](https://github.com/APKiwiOrg/KhaozEngine/issues/629). First adopter: Grimhollow, a new low-poly 3D
 MMO on the Ruinborne shell (repo to be scaffolded, `APKiwiOrg/Grimhollow`).
 
@@ -342,6 +343,35 @@ coalescing scheduler. Sub-chunking is not built until measured.
   can land later without touching the mesher's logic. `Kind = Water` renders as flat colour in v1 and is
   reserved for a shader pass.
 
+**Fold-backs from the R2 implementation.** Five things this sketch left open were decided while building it, and
+the shipped behaviour is the authority:
+
+- **The mesh is REGION LOCAL, drawn with a translation.** `Build` returns vertices in the region's own frame with
+  absolute Y, and `TileGroundMesher.WorldMatrix(doc, region)` is the pure translation that places it. Absolute
+  world positions in the vertex buffer would have cost float precision far from the origin for no gain, and a
+  region-local mesh moves an unload to dropping one handle.
+- **Vertices are PER TRIANGLE, never shared.** Two triangles of one tile can carry different colours (the overlay
+  paints some and not others), so sharing corners would need the colour to be a per-face attribute the model path
+  does not have. The 16k-vertex estimate above therefore roughly doubles, which is still cheap enough that an edit
+  rebuilds the whole region-plane.
+- **Normals are central differences over the GLOBAL lattice.** `CornerNormal` reads `CornerHeightCm` one corner
+  out on each axis, which crosses region borders by construction, so two regions meeting at a corner compute a
+  bit-identical normal. The world-z gradient takes `+hz` rather than `-hz`, because tile z and world z run
+  opposite ways (7.4). A mid-edge point averages its two corners' normals and renormalises, so a cut edge lights
+  as the surface does there. `SmoothNormals = false` is the flat-shaded alternative, one face normal per triangle,
+  flipped up rather than the winding being reversed, because the renderer culls nothing.
+- **A dangling material id renders MAGENTA** (`TileGroundMesher.MissingMaterialColor`), not void and not the
+  default ground. An id the catalogs no longer define is a content bug, and the failure mode that costs the most
+  is the one nobody sees: an invisible tile reads as authored void.
+- **Overlay shapes are exact geometry through one shared triangulation.** The cut is
+  `TileTriangulation.Triangulate` in `KhaozEngine.TileWorld` (`TileLatticePoint` lattice points, `TileLatticeTriangle` records,
+  `MaxTriangles` 4), called with the same inputs by the mesher and by `TileRaycast`, so a click lands on the
+  triangle that was drawn rather than on a plain pair that is the wrong height in the middle of a corner-cut tile.
+  A shape whose overlay material is missing meshes as `Full`, and the raycast reads that identically. Triangles
+  are normalised to one winding in TILE space, which the z flip mirrors in world space. That is inert here (the
+  renderer culls nothing and a flat normal is flipped up), and it is normalised anyway so a future culling pass
+  keeps or drops a tile's triangles together instead of half of them.
+
 ### 7.2 Objects
 
 `TileObjectProps.Build(document, catalogs, region) -> PropPlacement[]`, fed to the existing
@@ -359,6 +389,52 @@ and configurable for the client). Plane rules: all planes are drawn, and `IsRoof
 observer are hidden while the observer's tile carries `Indoors`, which is OSRS's global roof-hide. Headless
 PNG for MCP goes through the same `Render3DSnapshot` path `ke-mapedit` uses, with `TileWorldView` in place
 of `ViewportWorld`.
+
+**Fold-backs from the R2 implementation.**
+
+- **`ITileWorldScene` is the seam, not `Scene3D`.** The view talks to a six-member interface (`LoadMesh`,
+  `UnloadMesh`, `DrawMesh`, `LoadPropMeshes`, `UnloadPropMeshes`, `DrawProps`) shaped exactly on what `Scene3D`
+  and the prop renderer already offer. `Scene3DTileWorldScene` ships and forwards straight through, and the tests
+  drive a recording fake, so every view and residency rule (dirty coalescing, the flush budget, the roof rule,
+  ring hysteresis, neighbour marking) is covered headless with no device. This was not in the sketch and is the
+  single change that made the round testable.
+- **A per-flush rebuild budget, because streaming makes bursts real.** `TileWorldViewOptions.MaxRebuildsPerFlush`
+  (16) caps how many queued region-planes one flush remeshes, oldest first, with `PendingRebuilds` reporting the
+  remainder and `Flush(int)` overriding it. The burst is not theoretical: two region loads in one update against a
+  four-plane world is 64 marks. The budget counts only rebuilds that PRODUCE a mesh, so an authored-plane-0 world
+  does not burn three quarters of every flush on region-planes that mesh to null, and a mark on a region that is
+  not loaded is dropped free.
+- **Streaming a region marks its eight neighbours dirty, on load AND on unload.** A region mesh is not
+  self-contained (7.1's fold-backs), so a region meshed while its neighbour was absent carries an edge-extended
+  border, which on a ridge along the shared border is a full-height crack rather than a subtle seam. Marking wide
+  is free because the flush drops what is not loaded, and the budget keeps the burst off one frame.
+  `PrimeAround` therefore ends with an unbudgeted flush, so a teleport settles in one call.
+- **The dirty margin is 2 tiles, unconditionally.** `MarkDirty(TileRect, plane)` expands by
+  `TileWorldView.DirtyRegionMargin` before turning the rect into region marks: a corner is shared by four tiles,
+  a central-difference normal reads one corner further still, and a corner colour averages the tiles meeting
+  there. The rect does not say which of those three an edit touched, and marking wide costs nothing.
+- **A dirty region is never streamed out.** `TileWorldSource.Unload` throws on unsaved edits, so the residency
+  keeps that region resident past the unload radius and logs once instead. The resident set can then exceed the
+  ring, which is the correct trade: an editor holds a handful of dirty regions, and the alternative is losing the
+  edit.
+
+### 7.4 Handedness: world z is minus tile z
+
+Decided at R2 plan execution: the tile-to-world mapping negates z, and every conversion goes through one
+`TileWorldSpace` helper in `KhaozEngine.TileWorld`. The document's convention is x east, z north, y up, but the
+engine renders right-handed with y up, where a camera facing +z has east on its LEFT and a top-down view with
++z up on screen has east on the left. The first captures proved it rather than argued it: the top-down with east
+right came out with north DOWN, and the perspective looking north-west put the road, which is west of the house,
+on the RIGHT. So the naive `worldZ = +tileZ * TileSize` renders the world as its own mirror image against a
+compass, and a north-up minimap would contradict what the player sees. Negating z fixes it at one seam: north
+(+tile z) becomes -world z, which is also a right-handed camera's default forward, and (east, north, up) =
+(+x, -z, +y) stays a right-handed triple, so the top-down gets north up and east right at once rather than
+having to trade one for the other. Two consequences fall out and are pinned by tests. A region-local ground mesh
+runs from 0 to MINUS 64 tiles on z, and its lattice normal takes +hz rather than -hz because the tile-z gradient
+and the world-z gradient have opposite signs. And the yaw for an instance rotation is NEGATIVE per quarter turn
+(section 7.2's `Rotation * 90 + YawOffsetDegrees`, negated), because a row-vector `CreateRotationY(t)` sends the
+west point `(-0.5, 0, 0)` to `(-0.5 cos t, 0, +0.5 sin t)`, which only reaches the north point `(0, 0, -0.5)` at
+t of -90 degrees.
 
 ## 8. The editor kernel (`KhaozEngine.Editor`) and the tile editor (`KhaozEngine.TileEditor`)
 
@@ -483,10 +559,19 @@ Headless, in per-area test projects, per the repo rule.
   a table (one row per rule in 6.1), cross-region wall mirroring, `CanStep` including no-corner-cutting and
   NxN agents, pathfinder determinism (same inputs, same tiles, both heads' order), nearest-reachable, raycast
   against a known lattice, prefab extract/place round trip under all four rotations, torn-write refusal.
-- `KhaozEngine.TileWorld.Render3D.Tests`: mesher geometry (triangle counts per shape, the diagonal rule,
-  corner blend, zero seams: adjacent regions produce identical shared-corner positions), residency ring, and
-  one `GpuFact` golden of a tiny world, baked on all backends through the cross-platform bake before it can
-  gate.
+- `KhaozEngine.TileWorld.Render3D`: mesher geometry (triangle counts per shape, the diagonal rule, corner blend,
+  zero seams: adjacent regions produce identical shared-corner positions), the prop yaw and anchor conventions,
+  view bookkeeping (dirty coalescing, the flush budget, the roof rule, handle lifetime), residency ring, and the
+  `GpuFact` goldens, baked on all backends through the cross-platform bake before they can gate.
+  **These live in `KhaozEngine.Render.Tests/TileWorld/` (namespace `KhaozEngine.Tests.TileWorld`), not in a
+  separate `KhaozEngine.TileWorld.Render3D.Tests` project as written above.** That is the repo norm rather than an
+  exception: `Terrain.Render3D`'s tests live there too, and `GoldenCompare`, the golden comparer every image
+  regression goes through, is internal to that assembly. Splitting a project out would mean either duplicating the
+  comparer or making it public, both worse than one extra `ProjectReference`. The CPU tests live there with the
+  goldens rather than being split across two homes, so the package's whole suite runs from one filter
+  (`--filter "FullyQualifiedName~KhaozEngine.Tests.TileWorld"`). The GPU half needs `KE_GPU_TESTS=1` and is
+  silently skipped without it, so a plain run proving 0 failed is not evidence the goldens passed: 0 SKIPPED in
+  that namespace is.
 - `KhaozEngine.Editor.Tests`: history coalescing, document dirty/undo, tool registry. `MapEditor`'s existing
   tests stay untouched and pass through the shims.
 - `KhaozEngine.TileEditor.Tests`: every command's undo restores a byte-identical document, brush coalescing.
@@ -500,10 +585,18 @@ Engine work in worktree `feature/tile-world`, three rounds under the riding rule
 pushed and packed to `local-feed`, no tags unless the user says so:
 
 - **R1**: `TileWorld` (document, file form, catalogs, validator, migrations, collision map + baker,
-  `CanStep`, pathfinder, raycast, prefab) + tests. Minor bump.
-- **R2**: `Editor` kernel extraction with the forwarding aliases, `TileWorld.Render3D` (mesher, props,
-  view, residency, golden). Minor bump.
-- **R3**: `TileEditor` + `TileEdit.Tool` + tests. Minor bump.
+  `CanStep`, pathfinder, raycast, prefab) + tests. Shipped.
+- **R2**: `TileWorld.Render3D` alone (mesher, props, scene seam, view, residency, snapshot, two goldens) + tests.
+  Shipped, riding an in-flight patch version rather than taking a minor of its own.
+- **R3**: `Editor` kernel extraction with the forwarding aliases, then `TileEditor` + `TileEdit.Tool` + tests.
+
+**Delivery-order change, decided at R2 plan time and confirmed by the round.** The `Editor` kernel extraction
+(section 8.1) was planned for R2 and moved to R3. It has NO consumer until `TileEditor` exists, so doing it in R2
+would have shipped forwarding aliases nothing calls and frozen a kernel shape before the editor that has to live
+in it, which is exactly the ordering that produces an abstraction fitted to a guess. The renderer, by contrast,
+has two consumers waiting the moment it lands (the goldens, and R3's editor viewport and MCP render verbs), so R2
+is the renderer alone. Nothing about the extraction changed, only when it happens, and it now lands in the same
+round as its first caller.
 
 Then Grimhollow: scaffold, editor head, kit generation, catalogs, the authored world.
 

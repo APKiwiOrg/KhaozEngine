@@ -6419,6 +6419,12 @@ string identity = TileWorldHash.OfWorld(reloaded);       // what a client and a 
 a negative coordinate lands in a negative region with a local coordinate in 0..63. Rotation is quarter turns
 clockwise from above, 0 west, 1 north, 2 east, 3 south, on objects, on overlay shapes and on prefab stamps.
 
+**Tile space is not render space, and `TileWorldSpace` is the only place that knows it.** The document is x east,
+z NORTH, y up, while the engine renders right handed with y up where a camera facing +z has +x on its left, so
+world z is MINUS tile z: `TileWorldSpace.WorldX/WorldZ/TileX/TileZ/ToWorld` is the whole seam, and `HeightAt`, the
+raycast, the ground mesher and the prop anchors all go through it. See the rendering section below for why that
+buys a top-down view with north up and east right at the same time.
+
 **Streaming.** `TileWorldSource.Open(dir)` reads the manifest only and materialises regions on demand through
 `EnsureLoaded(coord)` or `EnsureLoaded(rect)`, each hash-checked exactly like an eager load, and `Unload(coord)`
 drops a clean region while keeping its hash so a later save carries it through untouched. `TileWorldFile.Load`
@@ -6433,11 +6439,66 @@ objects. Pass `Rebake` a rect covering the FULL footprint of anything you remove
 `TilePath.Reached`, never on `Tiles.Count`: a partial walk to the nearest reachable tile carries steps too.
 
 **Picking and prefabs.** `TileRaycast.Pick(doc, plane, origin, direction)` is the GPU-free ray against the
-lattice, splitting each tile with `TileTriangulation.SplitSwNe`, the same rule the ground mesher uses, so a
-click lands on the triangle that is drawn. `TilePrefabs.Extract`/`Rotate`/`Place` lift a rect of tiles (layers,
+lattice, cutting each tile with `TileTriangulation.Triangulate`, the same shape triangulation the ground mesher
+uses over the same `TileLatticePoint` lattice and `SplitSwNe` diagonal choice, so a click lands on the triangle that is
+drawn. Every triangle comes back wound the same way, so a pass that culls a face direction keeps or drops all of
+them together. `TilePrefabs.Extract`/`Rotate`/`Place` lift a rect of tiles (layers,
 relative heights, objects, markers) and stamp it elsewhere at any rotation, with `TilePrefabFile` as the JSON
 form. A stamp is additive per layer, so clear the rect first if you want a replace. Full API summary: the
 `KhaozEngine.TileWorld` package README. Design rationale: `docs/design/TILE-WORLD-DESIGN-2026-08-15.md`.
+
+---
+
+## Tile world rendering (`KhaozEngine.TileWorld.Render3D`)
+
+The render arm of the tile world, in the `Game3D` umbrella: a vertex-colour ground mesher over the existing lit
+model path (no new shader), tile objects through the `Terrain.Render3D` prop path, a view that owns a world's
+meshes and props in a `Scene3D`, region streaming, and headless capture. Kept separate from the document package
+so a server or a tool never drags in `Render3D`.
+
+```csharp
+var scene = new Scene3DTileWorldScene(scene3d);              // the shipped ITileWorldScene, tests use a fake
+var resolver = new GreyboxMeshResolver(doc.TileSize);        // a game supplies its own ITileMeshResolver
+using var view = new TileWorldView(scene, doc, catalogs, resolver);
+var residency = new TileRegionResidency(source, view, TileResidencyConfig.Default);  // TileWorldSource
+
+residency.PrimeAround(playerTile);                           // teleport: fill the ring and settle NOW
+
+// per frame
+view.Observer = playerTile;                                  // drives the roof rule
+residency.Update(playerTile);                                // budgeted ring move, 2 region loads by default
+view.Draw(cameraSubject);                                    // flushes queued rebuilds, then queues the draws
+
+// an editor announces what it wrote, and the view coalesces it into one rebuild per region-plane
+view.MarkDirty(editedRect, plane);
+
+// a headless map shot, exactly 4 px per tile, north up and east right
+byte[] rgba = TileWorldSnapshot.CaptureTopDown(doc, catalogs, resolver,
+    new TileRect(0, 0, 32, 32), plane: 0, pxPerTile: 4);
+PngWriter.Save("map.png", rgba, 32 * 4, 32 * 4);
+```
+
+**Two conventions carry over from the document.** World z is MINUS tile z (`TileWorldSpace`), so a region-local
+ground mesh runs from 0 to minus 64 tiles on z and `TileGroundMesher.WorldMatrix` translates it into place, and
+an object's yaw is NEGATIVE per quarter turn, which is what makes `Matrix4x4.CreateRotationY` turn clockwise seen
+from above with north up. Both are the price of one thing worth having: (east, north, up) = (+x, -z, +y) is a
+right-handed triple, so a single top-down view has north UP and east RIGHT instead of trading one for the other.
+
+**The view coalesces, the residency streams.** `MarkDirty` grows a tile rect by a 2-tile margin before turning it
+into region marks, because corner heights, central-difference normals and the four-tile corner blend all read
+ACROSS region borders, so an edit one tile inside a border changes the neighbour's mesh. `Flush` then rebuilds
+oldest first up to `TileWorldViewOptions.MaxRebuildsPerFlush` (16), leaving the rest counted by `PendingRebuilds`,
+and `Flush(int.MaxValue)` is the settle-now form. Streaming a region marks its eight neighbours dirty on every
+plane in both directions, so a border meshed while its neighbour was absent is not stale forever. A dirty region
+is never streamed out (unloading unsaved edits would throw, so it stays resident and logs once), and a torn region
+file throws `TileWorldException` straight out of `Update` rather than drawing a hole.
+
+**Capture is the same code path as the goldens.** `TileWorldSnapshot.CaptureTopDown` sizes the image outright at
+`pxPerTile` pixels a tile rather than framing it, so the scale is exact, and `CapturePerspective` shoots from an
+eye toward a target with the observer defaulting to the tile under the target, so a shot aimed inside a house
+hides that house's roof. Both take a `configureScene` callback that runs LAST, so your lighting, post or camera
+settings win over everything the helper set. Full API summary: the `KhaozEngine.TileWorld.Render3D` package
+README.
 
 ---
 

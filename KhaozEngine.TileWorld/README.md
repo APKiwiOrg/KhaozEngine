@@ -13,6 +13,17 @@ are `TileObject.X/Z` and `TileMarker.X/Z`. The owning region is always `RegionCo
 a negative coordinate lands in a negative region with a local coordinate in 0..63. **Rotation is quarter turns
 clockwise from above**, 0 west, 1 north, 2 east, 3 south, on objects, overlay shapes and prefab stamps.
 
+**World z is MINUS tile z, and `TileWorldSpace` is the only place that knows it.** The engine renders in a
+right-handed space with y up, where a camera facing +z has +x on its left, so mapping the document's north
+(+tile z) onto +world z renders the world mirrored against a compass and makes a north-up minimap contradict
+what the player sees. Negating z instead puts north on -z, which is also a right-handed camera's default
+forward, and keeps (east, north, up) = (+x, -z, +y) a right-handed triple, so one top-down view has north up
+AND east right. `TileWorldSpace.WorldX/WorldZ/TileX/TileZ/ToWorld` are the whole seam: every conversion between
+the two spaces goes through them, including `HeightAt`, the raycast, the ground mesher's vertices and region
+transform, and the prop anchors. Two consequences worth stating outright: a region-local ground mesh runs from
+0 to MINUS 64 tiles on z, and an object's yaw is NEGATIVE per quarter turn, which is what makes a rotation turn
+clockwise viewed from above with north up.
+
 `TileRect` is a rect of world tiles with EXCLUSIVE far edges (`X1`, `Z1`, plus `FromCorners`, `Expand`,
 `Intersect`, `Union`, `Intersects`, `Contains`), and `TileDirection` with `TileDirections.All/Delta/IsDiagonal`
 gives the eight step directions in the fixed W, E, S, N, SW, SE, NW, NE order the pathfinder needs.
@@ -127,11 +138,22 @@ to the goal, then by BFS distance, then by scan order, and a start on a `Blocked
 
 `TileRaycast.Pick(doc, plane, origin, direction, maxDistance = 2000f)` marches the lattice in XZ and returns the
 first `TileHit(X, Z, Plane, Point, Distance)`, or null. The direction need not be normalised, a plane outside
-the document throws as soon as the walk touches a tile, and world units are tiles times
-`TileWorldDocument.TileSize` on x and z and metres on y. `TileTriangulation.SplitSwNe` is the ONE
-diagonal-split rule, shared with the ground mesher so a click lands on the triangle that is drawn: a
-`DiagonalHalf` overlay forces the split, otherwise the diagonal whose corners differ least in height wins. The
-raycast winds its triangles downward, harmless for its two-sided test, and a culled mesher winds the other way.
+the document throws as soon as the walk touches a tile, and world units are tiles times `TileWorldDocument.TileSize`
+with z running the OTHER WAY from tile z, so the conversion goes through `TileWorldSpace` rather than a bare
+divide. `HeightAt` reads its world position the same way.
+
+`TileTriangulation` is the ONE tile triangulation, shared with the ground mesher in
+`KhaozEngine.TileWorld.Render3D` so a click lands on the triangle that is drawn, and the raycast hits a SHAPED
+tile at the surface that was actually drawn rather than at the plain pair. `SplitSwNe(h00, h10, h01, h11, shape,
+rotation)` is the shared split choice: a `DiagonalHalf` overlay forces the diagonal, otherwise the one whose
+corners differ least in height wins. `Triangulate(shape, rotation, splitSwNe, into)` is the shared shape
+triangulation, writing up to `MaxTriangles` (4) `TileLatticeTriangle(A, B, C, Overlay)` records over the eight
+`TileLatticePoint` lattice points (four corners plus four mid-edge points), two for a plain tile or a diagonal
+half and four for a corner cut. `Local(point)` places a lattice point in tile-local 0..1 and `Ends(point, out
+first, out second)` names the two corners a mid-edge point averages, a corner being its own pair so a caller maps
+every point the same way. Every triangle comes back wound the SAME way (counter-clockwise on x and z), so a
+pass that culls a face direction keeps or drops all of them together rather than half of them. Pass the shape
+the tile actually draws with, so a shape whose overlay material is missing is passed as `Full`.
 
 `TilePrefab` is a rect of tiles lifted out of a world (every layer, corner heights relative to the rect's SW
 corner, objects and markers in prefab-relative coordinates) that can be stamped elsewhere with a rotation.

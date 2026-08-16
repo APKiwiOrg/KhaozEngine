@@ -119,8 +119,9 @@ public class TileEditOpsTests
 
         ed.Execute(TileEditOps.Scatter(ed, "tree", new TileRect(10, 10, 12, 12), 0, 4, 1, 20260816));
 
-        // Nine grid points, seven placements: two of them jitter off the north edge of the rect and are
-        // dropped, which is the skip rule doing its job rather than a gap in the golden.
+        // Nine grid points, seven placements: two of them jitter out of the rect (one off the south edge to
+        // z 9, one off the west edge to x 9) and are dropped, which is the skip rule doing its job rather than
+        // a gap in the golden.
         Assert.Equal(
             new[] { (11, 10), (14, 11), (13, 13), (19, 14), (10, 17), (13, 17), (19, 18) },
             Anchors(doc, "tree"));

@@ -246,9 +246,10 @@ public class ObjectPoolTests
 
     /// <summary>
     /// Generation wraparound. The counter is a plain <c>int</c> bumped once per rent and once per release, so it
-    /// wraps after 2^32 rent/release cycles of one slot. Wrapping is mod-2^32 arithmetic, which preserves the
-    /// odd-is-rented parity exactly, so a stale rental is still refused across the boundary. The seam winds the
-    /// counter to the edge because performing 2^32 real rentals is not a test.
+    /// comes back to a value it already held after 2^31 rent/release cycles of one slot, each cycle advancing it
+    /// by 2 through the full mod-2^32 range. That arithmetic preserves the odd-is-rented parity exactly, so a
+    /// stale rental is still refused across the boundary. The seam winds the counter to the edge because
+    /// performing 2^31 real rent/release cycles is not a test.
     /// </summary>
     [Fact]
     public void GenerationWraparoundStillRefusesAStaleRental()

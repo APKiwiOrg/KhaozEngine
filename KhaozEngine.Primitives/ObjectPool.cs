@@ -24,9 +24,10 @@ namespace KhaozEngine.Primitives;
 /// on the free list. A rental handle records the generation it was stamped with, and a return is accepted only
 /// when the slot's counter still reads that value. Both bumps are unchecked, and wrapping preserves parity
 /// (the counter is plain mod-2^32 arithmetic), so the odd/even invariant survives overflow intact. A wrapped
-/// counter can only produce a false accept for a caller still holding a rental 2^32 rent/release cycles after
-/// it ended, which is not a practical concern: a slot rented and released every frame at 60Hz reaches that
-/// after roughly two years of unbroken running.
+/// counter can only produce a false accept for a caller still holding a rental 2^31 rent/release cycles after
+/// it ended (each cycle advances the counter by 2, so it takes 2^31 of them to walk the full 2^32 back to the
+/// value the stale handle recorded), which is not a practical concern: a slot rented and released every frame
+/// at 60Hz reaches that after roughly 414 days of unbroken running.
 /// </para>
 /// </summary>
 public sealed class ObjectPool<T> where T : class, IPoolable
@@ -203,8 +204,9 @@ public sealed class ObjectPool<T> where T : class, IPoolable
 
     /// <summary>
     /// Test seam (<c>InternalsVisibleTo</c>): winds a slot's generation counter to an arbitrary value, so the
-    /// wraparound behaviour can be exercised without performing 2^32 rentals. The value must be even, because
-    /// even means free and the slot has to be free for the next rent to bump it to the odd live value.
+    /// wraparound behaviour can be exercised without performing 2^31 rent/release cycles. The value must be
+    /// even, because even means free and the slot has to be free for the next rent to bump it to the odd live
+    /// value.
     /// </summary>
     internal void SetSlotGenerationForTest(int slot, int generation) => generations[slot] = generation;
 

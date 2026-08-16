@@ -58,10 +58,18 @@ automatically, so this is transparent to every other package.
   `DesignViewport`. `WindowBounds` (10.38.0) is the whole window mapped into design space - `DesignBounds`
   plus the letterbox bars - so a full-window fill covers the bars; it is a default-interface-member derived
   from the scale + offset and reduces to `DesignBounds` when unletterboxed.
-- `ObjectPool<T>` / `IPoolable` - fixed-capacity free-list pool (absorbed from the retired
-  `KhaozEngine.Pooling` package in 9.0.0). Items are prewarmed via a factory, `Rent` returns null on
-  exhaustion, `Return`/`Clear` call `Reset`, and the active set stays compacted so
-  `GetActive(0..ActiveCount-1)` visits every live item with no gaps.
+- `ObjectPool<T>` / `IPoolable` / `PoolRental<T>` - fixed-capacity free-list pool (absorbed from the
+  retired `KhaozEngine.Pooling` package in 9.0.0). Items are prewarmed via a factory, `Return`/`Clear`
+  call `Reset`, and the active set stays compacted so `GetActive(0..ActiveCount-1)` visits every live
+  item with no gaps. Rent through `TryRent(out PoolRental<T>)`, which is `false` when the pool is
+  exhausted and otherwise hands out a handle naming THAT RENTAL rather than the slot. `Return(in
+  rental)` refuses a rental that is already over (returned once, or its slot rented out again since)
+  with a `StalePoolReturnException`, and `TryReturn(in rental)` is the non-throwing half for an
+  idempotent dispose or a `finally` block. `PoolRental<T>` is a `readonly struct` passed by `in`, so
+  the pool still allocates nothing per rent or return.
+  The older `Rent()` / `Return(item)` pair still works and is unchanged, but it identifies rentals by
+  the item reference alone, and successive rentals of a slot are the same object, so a stale return
+  frees the current renter's item out from under it. New code takes the handle.
 - `TrailSampler` / `TrailPoint` - a pure, render-free ring of timed motion-trail samples bounded by a max
   age and a max count. `Add(position, nowSeconds)` appends and evicts aged/overflow from the oldest end,
   `Prune(nowSeconds)` decays the tail while the emitter idles, and `Samples` returns the live tail
@@ -98,10 +106,13 @@ Color tint = Color.FromHex("#FF8800").WithAlpha(0.5f);
 
 ```csharp
 var pool = new ObjectPool<Bullet>(() => new Bullet(), prewarmCount: 64);
-Bullet? b = pool.Rent();                    // null when exhausted
-for (int i = 0; i < pool.ActiveCount; i++)
-    pool.GetActive(i).Update(dt);
-pool.Return(b!);                            // calls b.Reset()
+if (pool.TryRent(out PoolRental<Bullet> rental))   // false when exhausted
+{
+    Bullet b = rental.Item!;
+    for (int i = 0; i < pool.ActiveCount; i++)
+        pool.GetActive(i).Update(dt);
+    pool.Return(in rental);                 // calls b.Reset(); refuses a rental that is already over
+}
 ```
 
 ```csharp

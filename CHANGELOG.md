@@ -18,7 +18,7 @@ not validated, which it emitted 99 times on one CI run while naming a variable n
 disambiguation now reads both variables and every validation wrapper Metal has been measured handing back. Fixing
 that turned up a fact neither issue had: shader validation alone answers with `MTLGPUDebugDevice` on real Apple
 silicon and `MTLLegacySVDevice` on a hosted runner, so the check asks whether anything is validating rather than
-whether one named class came back. And the native Vulkan backend's per-draw image transition walk now stops at the set count the bound pipeline layout declares, the same limit its bind flush already stopped at, so a draw no longer barriers, and in the sharp case reopens its render pass for, images belonging to a set the current pipeline dropped.
+whether one named class came back. And the native Vulkan backend's per-draw image transition walk now stops at the set count the bound pipeline layout declares, the same limit its bind flush already stopped at, so a draw no longer barriers, and in the sharp case reopens its render pass for, images belonging to a set the current pipeline dropped. Away from the GPU, `ObjectPool<T>` gained a rental handle that names one RENTAL rather than one slot, so a stale or duplicate return of an item whose slot has since been rented out again is refused by name instead of silently freeing the current renter's item out from under it and letting the pool hand the same object to two owners.
 
 ### A logger from the ambient facade follows the facade (#616)
 
@@ -156,6 +156,42 @@ is what owes a bind, declared is what can be bound at all, and a set bound befor
 the draw after it and still owes its compute rule 1 transition without owing a bind. A slot past the limit keeps
 its record and is walked again the moment a layout declares it. Three device-free tests in the new
 `VulkanTransitionWalkTests` drive both cost shapes and the clean declared slot that must keep being walked.
+
+### `ObjectPool` rents a RENTAL, not a slot (#149)
+
+**The hole.** `ObjectPool<T>.Return` matched on `item.PoolIndex`, which the pool stamps once at construction
+and never revises, so it names a SLOT and not a particular rental of that slot. Return an item, let something
+else rent the slot it freed, and a stale or duplicate `Return` of the first item still matched: the pool reset
+and freed the SECOND renter's item out from under it, then handed the same object out again to a third caller
+while the second still believed it held it exclusively. Nothing threw and nothing logged, and the two owners
+scribbling over each other surfaced somewhere unrelated. Latent rather than live, because the two in-repo
+callers each did a strict rent-then-return-once inside a `finally`, but `Primitives` is in every umbrella so the
+unguarded API reached all four games.
+
+**A generation stamped on the item does not fix it, which is worth writing down because it is the obvious
+move.** Successive rentals of a slot ARE the same object. Whatever the pool writes onto the item for rental A
+is overwritten when B rents that slot, so a stale `Return(A)` reads B's value, matches, and frees B exactly as
+before. The information that separates a finished rental from the live one cannot live on the shared object at
+all. It has to sit in the caller's hand.
+
+**So the caller holds it.** Each slot now carries a generation counter bumped once when it is rented and once
+when it is released, which makes the counter odd exactly while the slot is rented and even exactly while it is
+free. `TryRent(out PoolRental<T>)` hands back a handle carrying the slot plus the generation it was stamped
+with, and `Return(in PoolRental<T>)` accepts only while the counter still reads that generation. A rental that
+is over, foreign to the pool, or empty is refused by name with `StalePoolReturnException` rather than acted on.
+`TryReturn(in PoolRental<T>)` is the non-throwing half, for an idempotent dispose that may return twice and for
+a `finally` block, where a throwing refusal would replace the exception already unwinding. Both bumps are
+unchecked and mod-2^32 wrapping preserves the odd/even parity, so the invariant survives overflow: a false
+accept would need a caller still holding a rental 2^32 rent/release cycles of that slot after it ended, which a
+test drives at the wraparound boundary.
+
+**Additive, so `IPoolable` and the older pair are untouched.** No new member on the interface, so every existing
+implementer still compiles unchanged, and `PoolRental<T>` is a `readonly struct` passed by `in`, so a
+rent-use-return cycle still allocates nothing (held to that by a test in the `AllocSensitive` collection).
+`Rent()` and `Return(item)` keep their exact current behaviour and are now documented for what they cannot see,
+with a test pinning that limitation rather than leaving it to prose. `EntityCommandBuffer.Playback` and `World`'s
+`ForEach`/`ParallelForEach` query pool both moved to the checked pair, so the engine's own code models the
+pattern new callers copy.
 
 ## 17.36.1
 

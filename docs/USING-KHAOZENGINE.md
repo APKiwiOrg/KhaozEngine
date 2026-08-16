@@ -10116,7 +10116,7 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   uses the GLFW provider `AppWindow` registers at startup (the working Windows/Linux/macOS path), so a windowed
   game gets a working text clipboard for free; a windowless/headless tool registers none and has text only on
   macOS (via `NSPasteboard`).
-- **`KhaozEngine.Primitives`** also carries `ObjectPool<T>` (O(1) rent/return, swap-removal compaction; absorbed from the retired `KhaozEngine.Pooling` in 9.0.0).
+- **`KhaozEngine.Primitives`** also carries `ObjectPool<T>` (O(1) rent/return, swap-removal compaction, absorbed from the retired `KhaozEngine.Pooling` in 9.0.0). Rent through `TryRent` and its `PoolRental<T>` handle, not the older `Rent()`/`Return(item)` pair - see "Pooling: rent through the rental handle" below.
 - **`KhaozEngine.Collision`**: deterministic `CircleCollision` + `SpatialHashGrid` (bit-identical for lockstep).
 - **`KhaozEngine.Determinism`**: `DeterministicFpScope` - forces a canonical CPU floating-point environment
   for fixed-tick / lockstep sims (see "Deterministic floating point" below).
@@ -10148,6 +10148,53 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   the `NetServer` session inbox and the LiteNetLib transport inboxes use so a stalled or flooded host can't grow
   undrained events without bound; tune it with the optional `maxQueuedEvents` ctor arg (default 10,000) and watch
   `DroppedEventCount`, which stays 0 for a host that drains each poll as contracted.
+
+---
+
+## Pooling: rent through the rental handle (`KhaozEngine.Primitives`)
+
+`ObjectPool<T>` has two rent/return pairs. Use the checked one:
+
+```csharp
+var pool = new ObjectPool<Bullet>(() => new Bullet(), prewarmCount: 64);
+
+if (pool.TryRent(out PoolRental<Bullet> rental))
+{
+    Bullet b = rental.Item!;
+    // ... use b for as long as the rental lasts ...
+    pool.Return(in rental);          // throws StalePoolReturnException if this rental is already over
+}
+
+for (int i = 0; i < pool.ActiveCount; i++)
+    pool.GetActive(i).Update(dt);
+```
+
+`TryRent` is `false` (and writes the empty rental) when the pool is exhausted. `PoolRental<T>` is a
+`readonly struct` passed by `in`, so a rent-use-return cycle allocates nothing.
+
+**Why the handle and not the item.** A pool reuses the same object for successive rentals, so after
+`Return(b)` and a fresh rent, your stale `b` variable and the pool's newly rented item are the same
+reference. Nothing readable off the object separates the finished rental from the live one, so the older
+`Rent()` / `Return(item)` pair accepts a stale return and frees the current renter's item out from under it,
+then hands the same object to a second owner. The rental handle carries the slot plus a generation the pool
+bumps on every rent and release, which is the information that is missing from the object itself
+([#149](https://github.com/APKiwiOrg/KhaozEngine/issues/149)).
+
+**Which return to call.** `Return(in rental)` throws `StalePoolReturnException` on a rental that is over,
+foreign, or empty, which is what you want for a genuine caller bug. `TryReturn(in rental)` returns `false`
+instead, for an idempotent dispose that may return twice and, importantly, inside a `finally`, where a throw
+would replace the exception already unwinding:
+
+```csharp
+pool.TryRent(out PoolRental<Bullet> rental);
+try { Fire(rental.Item!); } finally { pool.TryReturn(in rental); }
+```
+
+`Rent()` and `Return(item)` still work and are unchanged. They cannot make the check, so treat them as the
+legacy pair and move new code to the handle.
+
+`Clear()` ends every outstanding rental, so returning one afterwards is refused rather than freeing whatever
+has since taken its slot.
 
 ---
 

@@ -293,7 +293,11 @@ What it owns today:
     nothing recording on the device (the frame's prepare phase), or the seam refuses it with
     `GpuNestedRecordingException`. `CreateFrameCounted(device, frameDelay)` never mints a fence and never drains on
     the frame path, for a renderer whose only per-frame hook is INSIDE the frame's recording. `SpriteBatch` is that
-    renderer, and it passes the swapchain depth plus one, which is the whole safety argument on that path.
+    renderer, and it passes 4. The delay has to beat the deepest the CPU runs ahead of the GPU, which on the
+    engine's own backends is what `KE_METAL_FRAMES_IN_FLIGHT` / `KE_VULKAN_FRAMES_IN_FLIGHT` /
+    `KE_D3D11_FRAMES_IN_FLIGHT` set (default 3, up to 16) rather than the swapchain's image count, so 4 holds at
+    the default and at a depth of 4 and has to be raised with the knob past that. On this path the count is the
+    whole safety argument, and too small a delay is a use-after-free rather than an artifact.
   - **Gate on `GpuCapabilities.SupportsCompletionFences`, and expect two backends to say no.** Metal and Vulkan
     report true. Direct3D11 and OpenGL report FALSE even though Veldrid hands out a `Fence` on them, because on
     those backends it is a `ManualResetEvent` set on the CPU as the submit call returns, which is a submit receipt

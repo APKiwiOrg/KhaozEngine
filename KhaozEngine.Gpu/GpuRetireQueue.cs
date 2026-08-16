@@ -121,12 +121,22 @@ namespace KhaozEngine.Gpu
         /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/424">#424</see>), and a drain there is the
         /// per-frame stall this whole type exists to remove
         /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/84">#84</see>).
-        /// <para><b>The contract the caller takes on.</b> <paramref name="frameDelay"/> boundaries must be more
-        /// than the deepest the CPU ever runs ahead of the GPU, because that count is the whole argument here.
-        /// Pass the swapchain depth plus one. That is the same bet the 2D vertex-buffer ring already makes every
-        /// frame when it rewrites a slot it last handed the GPU <c>RingDepth</c> frames ago, so a queue at that
-        /// depth is not a weaker guarantee than the renderer around it already runs on. It IS weaker than
-        /// <see cref="Create"/>, which is why picking it is a decision rather than a default.</para>
+        /// <para><b>The contract the caller takes on, and the number it is measured against.</b>
+        /// <paramref name="frameDelay"/> boundaries must be MORE than the deepest the CPU ever runs ahead of the
+        /// GPU, because that count is the whole argument here. That depth is not the swapchain's image count: on
+        /// the engine's own backends it is the pipeline depth their frames-in-flight knob sets
+        /// (<c>KE_METAL_FRAMES_IN_FLIGHT</c>, <c>KE_VULKAN_FRAMES_IN_FLIGHT</c>, <c>KE_D3D11_FRAMES_IN_FLIGHT</c>:
+        /// default 3, settable up to 16), because that is where the backend stops the CPU and waits. A delay of 4
+        /// therefore holds at the default and at a depth of 4, and stops holding above it, so a consumer who
+        /// raises the knob past 4 raises this with it. <c>SpriteBatch</c> passes 4 (<c>RingDepth + 1</c>), which
+        /// coincides with that bound at the default depth and is the same number its vertex ring already bets on
+        /// when it rewrites a slot it last handed the GPU <c>RingDepth</c> frames ago.</para>
+        /// <para><b>The two bets fail differently, which is why this one is spelled out.</b> A ring slot rewritten
+        /// a frame early tears that frame's geometry, and the next frame draws correctly. A batch destroyed a
+        /// frame early frees memory the GPU is still reading, which is a use-after-free rather than an artifact
+        /// (Mesa lavapipe segfaults on it). So the ring sitting at its own margin is not a reason to relax this
+        /// one, and this factory stays weaker than <see cref="Create"/>, which is why picking it is a decision
+        /// rather than a default.</para>
         /// </summary>
         /// <param name="device">The device whose resources this queue frees. Drained once, at teardown.</param>
         /// <param name="frameDelay">Frame boundaries a batch waits before it is destroyed (clamped to at least 1).</param>

@@ -9014,6 +9014,10 @@ slot, and a frame boundary waiting for a uniform ring segment. A count of zero a
 default is deep enough, and a non-zero count is what the lever answers. Raising it costs one command pool per
 list plus one copy of every uniform buffer, per extra frame.
 
+**Past 4 it outruns the 2D batch's deferred retirement.** `SpriteBatch` frees an evicted resource set or a
+replaced buffer 4 frame boundaries after retiring it, on the frame count alone with no fence behind it, so a
+depth above 4 can destroy a resource the GPU has not finished reading.
+
 **`KE_VULKAN_PIPELINE_CACHE` controls the persisted pipeline cache.** Compiled pipelines are cached on disk under
 `<local-app-data>/KhaozEngine/vulkan-pipeline-cache/<engine version>/`, in one blob per device keyed on the
 driver's own `pipelineCacheUUID`, its version and the engine version, so only the first start on a given engine
@@ -9327,6 +9331,10 @@ something real. Ship 3. A value that is set and understood as nothing WARNS and 
 session log names the depth this run actually got, because a capture is only evidence about the number it was
 taken at.
 
+**Past 4 it outruns the 2D batch's deferred retirement.** `SpriteBatch` frees an evicted resource set or a
+replaced buffer 4 frame boundaries after retiring it, on the frame count alone with no fence behind it, so a
+depth above 4 can destroy a resource the GPU has not finished reading.
+
 **One thing behaves differently at 1**, and it is worth knowing before reading a capture taken there: a
 device-level `UpdateBuffer` on a uniform buffer BLOCKS at that depth. It never blocks at any other, because it
 copies the current segment and defers the segments still in flight, and at a depth of one there are no others,
@@ -9520,6 +9528,10 @@ There is one field lever, `KE_D3D11_FRAMES_IN_FLIGHT=<n>` (default 3, range 1 to
 of uniform data are kept. It exists so a soak can settle whether three is enough, and the count of times a frame
 had to wait for a segment to come free is recorded for the session telemetry to carry once a device exists to
 report it.
+
+**Past 4 it outruns the 2D batch's deferred retirement.** `SpriteBatch` frees an evicted resource set or a
+replaced buffer 4 frame boundaries after retiring it, on the frame count alone with no fence behind it, so a
+depth above 4 can destroy a resource the GPU has not finished reading.
 
 ### Uniform buffers on the native Vulkan backend (17.32.0)
 
@@ -11208,9 +11220,13 @@ nested recording rather than corrupting your frame.
 
 `CreateFrameCounted(gd, frameDelay)` is the answer when your frame boundary is inside the recording and
 you cannot move it. It never mints a fence and never drains on the frame path (only at teardown), so a
-batch is destroyed purely on the frame count. Pass the swapchain depth plus one, and understand that the
-count is then the whole safety argument. `SpriteBatch` uses it for exactly that reason: its `NewFrame` is
-called from the record phase by every host it has.
+batch is destroyed purely on the frame count. Pass MORE than the deepest your backend lets the CPU run
+ahead of the GPU, which on the engine's own backends is what `KE_METAL_FRAMES_IN_FLIGHT`,
+`KE_VULKAN_FRAMES_IN_FLIGHT` and `KE_D3D11_FRAMES_IN_FLIGHT` set (default 3, settable up to 16), not the
+swapchain's image count. The count is then the whole safety argument, and getting it wrong frees memory
+the GPU is still reading rather than producing an artifact. `SpriteBatch` uses this factory because its
+`NewFrame` is called from the record phase by every host it has, and passes 4, which holds at the default
+depth and at a depth of 4.
 
 **Or build it yourself.** The fence seam is public. `IGpuResourceFactory.CreateFence()`
 returns an unsignaled `IGpuFence` (and throws when the capability is false, rather than hand back one

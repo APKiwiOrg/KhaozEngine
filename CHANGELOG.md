@@ -400,10 +400,20 @@ retirement fence means opening a command list of its own, and `SpriteBatch.NewFr
 frame's own recording by every host it has (`GameApp`'s record phase, and both offscreen 2D captures from inside
 their `GpuRecording.Open` scope). A fenced queue there would hit the seam's nested-recording refusal (#424) on
 every frame that retired anything. So the new `GpuRetireQueue.CreateFrameCounted(device, frameDelay)` never mints
-a fence and never drains on the frame path (teardown still drains once), and `SpriteBatch` passes the swapchain
-depth plus one, which is the same margin its vertex ring already reuses a slot on. `Scene3D.Begin` is in the
-prepare phase and keeps the fenced path, unchanged. A test pins the choice by driving the batch across an
+a fence and never drains on the frame path (teardown still drains once), and `SpriteBatch` passes 4. `Scene3D.Begin`
+is in the prepare phase and keeps the fenced path, unchanged. A test pins the choice by driving the batch across an
 eviction cutoff from inside an open recording, so an "upgrade" to the fenced factory fails rather than shipping.
+
+**What that 4 is measured against, since a frame count is only as good as the number behind it.** The bound is the
+deepest the CPU ever runs ahead of the GPU, which is NOT the swapchain image count: on the engine's own backends it
+is the pipeline depth `KE_METAL_FRAMES_IN_FLIGHT`, `KE_VULKAN_FRAMES_IN_FLIGHT` and `KE_D3D11_FRAMES_IN_FLIGHT` set,
+default 3 and settable up to 16, because that is where the backend stops the CPU and waits. So a delay of 4 holds at
+the default and at a depth of 4, and stops holding above it, and the three knobs' docs now say so where a consumer
+would raise one. `SpriteBatch`'s own value coincides with that bound: `RingDepth + 1`, one more than the vertex ring
+it sits beside. The two bets are not equally forgiving, which is the part worth carrying: a ring slot rewritten a
+frame early tears that frame's geometry and the next frame is correct, where a batch destroyed a frame early frees
+memory the GPU is still reading, which is a use-after-free that segfaults under lavapipe. The ring already running
+at its own margin is therefore not an argument for relaxing the queue's.
 
 **Scope, and what is still open.** This resolves #84 and lands the structural half of #80. The five Render3D
 renderers that keep a hand-rolled `_retired` list for grow-path buffers (`ModelRenderer`, `GroundDecalRenderer`,

@@ -162,7 +162,7 @@ void main() {
         uint _vpDynamicOffset;            // byte offset of the current Begin's slot, bound with set 1 on every draw
         // Deferred disposal for what this batch frees mid-life (evicted sets, the buffers a grow replaced). FRAME
         // COUNTED, not fenced: NewFrame runs inside the frame's own recording, so neither a fence nor a drain can be
-        // taken there (#424, #84). RingDepth + 1 boundaries is the margin the ring below already reuses a slot on.
+        // taken there (#424, #84). RingDepth + 1 holds while KE_*_FRAMES_IN_FLIGHT is 4 or less (default 3).
         readonly GpuRetireQueue _retire;
 
         IGpuCommandList _cl = null!;

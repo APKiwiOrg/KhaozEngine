@@ -431,6 +431,16 @@ the next one reads. `KE_SPIRV_CACHE` switches the whole thing off with the same 
 disk caches take, and the `disableGpuDiskCache` dispatch input on `cross-platform-gpu.yml` now sets it alongside
 them, so a run that asks to be cacheless is one.
 
+**On the software legs, measured against the same full-tier dispatch #332 was measured against.** The
+`vulkan-native` lavapipe leg runs `KhaozEngine.Render.Tests` under strict Vulkan validation, and vstest reports
+6401 tests in 52.6 minutes before against 6434 tests in 15.4 minutes after, all green both times. Per class on
+that leg, with the test counts matching row for row: `GoldenSnapshotTests` 112.8s to 12.6s, `HdrShowcaseGpuTests`
+95.0s to 8.4s, `FlipbookParticleGpuTests` 88.0s to 6.5s, `GroundDecalVoidGoldenTests` 74.0s to 5.8s,
+`FarFromOriginGoldenTests` 66.0s to 5.9s, `ShadowCascadeCullGpuTests` 59.0s to 4.5s. The two rows that barely move
+are the two benchmarks, which run a fixed iteration count and therefore lose one constructor rather than a
+proportion. The `direct3d11-native` WARP leg goes 21m31s to 17m1s on the same assembly, and logs no per-test
+durations to break down.
+
 **What it does not fix.** The cost of a `Scene3D` after this is pipeline creation, which is per device by nature
 and which a software rasterizer pays much more of than Metal does, since lavapipe and WARP compile the module into
 machine code at pipeline creation rather than at shader creation. A test class that builds several scenes on one
@@ -454,9 +464,10 @@ both.
 cost 2.57 s to construct. Re-measured on the same machine with the memo off and on, which is exactly that
 before and after, `WaterShoreGpuTests` goes 23.4s to 3.7s, `WaterSurfProbe` 15.8s to 4.2s,
 `WaterClipmapAcceptanceTests` 10.6s to 6.0s and `WaterDistanceBandingProbe` 9.5s to 3.4s, against about 1.7s of
-process start for a class that captures nothing at all. `WaterClipmapAcceptanceTests` turned out not to be
-scene-bound in the first place: it builds one `Scene3D` and drives `OceanFftProducer` directly for the other
-seven tests.
+process start for a class that captures nothing at all. On the lavapipe leg, where the same table was measured at
+38.0s, 20.5s, 13.0s and 12.0s, the five rows this issue named as the biggest remaining line are 120.5s before and
+13.3s after, none of it from a test change. `WaterClipmapAcceptanceTests` turned out not to be scene-bound in the
+first place: it builds one `Scene3D` and drives `OceanFftProducer` directly for the other seven tests.
 
 **And two of them are blocked by a defect the attempt found**
 ([#645](https://github.com/APKiwiOrg/KhaozEngine/issues/645)). `WaterBathymetryMap` gates its depth-texture

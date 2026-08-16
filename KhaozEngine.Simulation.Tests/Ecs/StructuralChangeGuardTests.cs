@@ -95,6 +95,36 @@ public class StructuralChangeGuardTests
         });
     }
 
+    /// <summary>
+    /// The <c>Entities()</c> check has to follow the yield rather than precede it, and this is the pass that tells
+    /// the two apart. The loop bound is the LIVE archetype count, so a despawn from the body shrinks it: with the
+    /// check sitting before the yield, a two-entity pass yields the first entity, the body despawns it, the bound
+    /// drops to 1, the index reaches 1, and the enumerator ends normally having never run the check again. It
+    /// returns cleanly, one entity silently skipped, which is the exact failure #118 exists to refuse and which
+    /// <c>ForEach</c> (checking after every action) already refused. Both forms must stop at the offending row.
+    /// </summary>
+    [Fact]
+    public void EntitiesRefusesADespawnThatEmptiesTheArchetype()
+    {
+        World w = WorldWith(2);
+        int visited = 0;
+        Assert.Throws<StructuralChangeDuringIterationException>(() =>
+        {
+            foreach (Entity e in w.Query().With<Pos>().Entities()) { visited++; w.Despawn(e); }
+        });
+        Assert.Equal(1, visited);
+    }
+
+    [Fact]
+    public void ForEachRefusesTheSameArchetypeEmptyingDespawn()
+    {
+        World w = WorldWith(2);
+        int visited = 0;
+        Assert.Throws<StructuralChangeDuringIterationException>(
+            () => w.ForEach((Entity e, ref Pos _) => { visited++; w.Despawn(e); }));
+        Assert.Equal(1, visited);
+    }
+
     // Every arity got the guard, not only the one the issue quoted. T2 and T8 bracket the range.
     [Fact]
     public void TheGuardCoversTheTwoComponentOverload()

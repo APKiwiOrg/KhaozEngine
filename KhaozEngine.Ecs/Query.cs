@@ -71,10 +71,15 @@ public sealed partial class Query
         Refresh();
         int version = _world.StructuralVersion;
         foreach (Archetype a in _matched)
+            // The check follows the yield, exactly as ForEach checks after each action, and the order is
+            // load-bearing rather than stylistic: the bound is the LIVE a.Count, so a despawn from the loop body
+            // shrinks it. Checking BEFORE the yield lets that shrink end the loop first, and a two-entity pass
+            // that despawns as it goes then returns normally having silently skipped the second entity, which is
+            // the corruption this guard exists to refuse.
             for (int r = 0; r < a.Count; r++)
             {
-                ThrowIfStructurallyChanged(version);   // catches what the PREVIOUS element's loop body did
                 yield return a.Entities[r];
+                ThrowIfStructurallyChanged(version);
             }
     }
 

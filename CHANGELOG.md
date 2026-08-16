@@ -283,8 +283,9 @@ is over, foreign to the pool, or empty is refused by name with `StalePoolReturnE
 `TryReturn(in PoolRental<T>)` is the non-throwing half, for an idempotent dispose that may return twice and for
 a `finally` block, where a throwing refusal would replace the exception already unwinding. Both bumps are
 unchecked and mod-2^32 wrapping preserves the odd/even parity, so the invariant survives overflow: a false
-accept would need a caller still holding a rental 2^32 rent/release cycles of that slot after it ended, which a
-test drives at the wraparound boundary.
+accept would need a caller still holding a rental 2^31 rent/release cycles of that slot after it ended (a cycle
+advances the counter by 2, so 2^31 of them walk the full 2^32 back to the stale handle's value, about 414 days
+at one cycle per frame at 60Hz), which a test drives at the wraparound boundary.
 
 **Additive, so `IPoolable` and the older pair are untouched.** No new member on the interface, so every existing
 implementer still compiles unchanged, and `PoolRental<T>` is a `readonly struct` passed by `in`, so a
@@ -292,7 +293,8 @@ rent-use-return cycle still allocates nothing (held to that by a test in the `Al
 `Rent()` and `Return(item)` keep their exact current behaviour and are now documented for what they cannot see,
 with a test pinning that limitation rather than leaving it to prose. `EntityCommandBuffer.Playback` and `World`'s
 `ForEach`/`ParallelForEach` query pool both moved to the checked pair, so the engine's own code models the
-pattern new callers copy.
+pattern new callers copy. This is additive public API (two types, three members), so 17.36.2 as a patch
+understates it: the version is re-cut as a minor before tagging.
 
 ## 17.36.1
 

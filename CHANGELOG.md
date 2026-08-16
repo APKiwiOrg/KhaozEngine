@@ -435,8 +435,37 @@ them, so a run that asks to be cacheless is one.
 and which a software rasterizer pays much more of than Metal does, since lavapipe and WARP compile the module into
 machine code at pipeline creation rather than at shader creation. A test class that builds several scenes on one
 device still saves by building one, which is what
-[#639](https://github.com/APKiwiOrg/KhaozEngine/issues/639) is about, and sharing a `Scene3D` per device rather
-than per scene is filed separately.
+[#639](https://github.com/APKiwiOrg/KhaozEngine/issues/639) is about, and sharing the shader objects and pipelines
+per device rather than per scene is filed as
+[#644](https://github.com/APKiwiOrg/KhaozEngine/issues/644) with the measured 35 ms it is worth.
+
+### The per-plane look tests stop rendering the same three pictures twice (#639)
+
+Test-only, no package API or engine behaviour changed. `PerPlaneWaterLookGpuTests`' two tests each opened with the
+identical three captures, with identical arguments, so the class took eight pictures to look at five. A new
+`PerPlaneWaterLookFootprints` class fixture computes them once. It shares the RESULT rather than the scene, so
+every capture still runs through the untouched `Render3DSnapshot` path on its own device and its own scene, none
+of `OceanFocusScene`'s producer-state reasoning applies, and no determinism pin is needed. Assertions are
+untouched and the numbers the class prints are identical, checked by running it both ways and diffing them. Metal
+wall with the two levers separated: 23.4s before either, 15s with this alone, 3.9s with #640 alone, 3.7s with
+both.
+
+**The rest of #639's list is not converted, and the numbers are why.** Its table was measured when a `Scene3D`
+cost 2.57 s to construct. Re-measured on the same machine with the memo off and on, which is exactly that
+before and after, `WaterShoreGpuTests` goes 23.4s to 3.7s, `WaterSurfProbe` 15.8s to 4.2s,
+`WaterClipmapAcceptanceTests` 10.6s to 6.0s and `WaterDistanceBandingProbe` 9.5s to 3.4s, against about 1.7s of
+process start for a class that captures nothing at all. `WaterClipmapAcceptanceTests` turned out not to be
+scene-bound in the first place: it builds one `Scene3D` and drives `OceanFftProducer` directly for the other
+seven tests.
+
+**And two of them are blocked by a defect the attempt found**
+([#645](https://github.com/APKiwiOrg/KhaozEngine/issues/645)). `WaterBathymetryMap` gates its depth-texture
+upload on `WaterBathymetry.Revision`, which is a PER-INSTANCE counter, so replacing
+`WaterSettings.Bathymetry` with a different field of the same resolution leaves the previous field's depths on the
+GPU. `WaterShoreGpuTests` and `WaterSurfProbe` build a fresh field per capture and are correct today only because
+each capture also builds a fresh scene. Measured on a shared scene, in the shore class's own order, the shoaled
+capture came back byte-identical to the NO-FIELD one. That reaches consumers, not just tests: a game streaming a
+new depth field keeps rendering the old shore, with a plausible picture and no error.
 
 ### The ocean focus tests share one scene, and the cost they were blamed for was not the ocean (#332)
 

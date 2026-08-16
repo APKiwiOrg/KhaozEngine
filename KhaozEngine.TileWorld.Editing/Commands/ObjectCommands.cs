@@ -93,18 +93,21 @@ public sealed class MoveObjectCommand : TileCommandBase
     public override void Apply(TileWorldDocument doc)
     {
         ArgumentNullException.ThrowIfNull(doc);
-        // Both checks before anything is captured or written: a move that cannot land must leave the object
-        // where it was AND leave this command uncaptured, so a later retry still records the true origin.
+        // Every check before anything is captured: a move that cannot land must leave the object where it was
+        // AND leave this command uncaptured, so a later retry still records the true origin. MoveObject
+        // validates the plane, the id and the destination region before it writes a field, so reading the
+        // origin off the object and only then calling it gives that ordering for all three, and the plane
+        // range keeps the document's own message instead of a second copy of it here.
         TileObject o = TileObjectEdit.Require(doc, _id);
-        doc.RequireRegion(_toX, _toZ);
+        (int fromX, int fromZ, int fromPlane, int rotation) = (o.X, o.Z, o.Plane, o.Rotation);
+        doc.MoveObject(_id, _toX, _toZ, _toPlane);
         if (!_captured)
         {
-            (_fromX, _fromZ, _fromPlane) = (o.X, o.Z, o.Plane);
-            AddFootprint(doc, o.X, o.Z, o.Plane, o.Rotation);
-            AddFootprint(doc, _toX, _toZ, _toPlane, o.Rotation);
+            (_fromX, _fromZ, _fromPlane) = (fromX, fromZ, fromPlane);
+            AddFootprint(doc, fromX, fromZ, fromPlane, rotation);
+            AddFootprint(doc, _toX, _toZ, _toPlane, rotation);
             _captured = true;
         }
-        doc.MoveObject(_id, _toX, _toZ, _toPlane);
     }
 
     /// <summary>Puts the object back on the tile it started this gesture on.</summary>

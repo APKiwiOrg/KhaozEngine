@@ -147,6 +147,9 @@ public class McpAdapterTests
     public async Task FailedVerb_SurfacesTheTileWorldExceptionMessage()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        // Declared before the harness, as every other row here does: disposal runs in reverse, so a temp
+        // directory declared after it would be deleted while the session still holds the world inside it.
+        using var temp = new TempDir();
         await using McpHarness harness = await McpHarness.StartAsync(cts.Token);
 
         // world_save with nothing open: the session throws TileWorldException, ToolGuard maps it to an
@@ -159,7 +162,6 @@ public class McpAdapterTests
 
         // And a message the service composed at runtime, naming the id that was not found, reaches the client
         // just as intact.
-        using var temp = new TempDir();
         await harness.CreateWorldAsync(temp.Sub("world"), cts.Token);
         CallToolResult missing = await harness.CallAsync("object_get", cts.Token, ("id", 9999L));
 

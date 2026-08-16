@@ -258,17 +258,9 @@ public sealed partial class QueryService(TileEditSession session)
                 $"the rect ({rect.X}, {rect.Z}, {rect.Width}, {rect.Height}) covers nothing.", nameof(rect));
     }
 
-    // Every query that reads the COLLISION MAP checks the plane through here first. The map answers Blocked for
-    // a plane it does not have, by design (an unloaded region has to read as a wall rather than as a void), so a
-    // query handed a plane the world does not have would come back as a plausible map of solid rock instead of
-    // an error. Every other layer reads through the document, which throws for itself. A closed session throws
-    // TileWorldException from Read before the range is ever considered, which is the right precedence: no world
-    // open is the more fundamental complaint.
-    void RequirePlane(int plane)
-    {
-        int planes = session.Read(e => e.Document.PlaneCount);
-        if ((uint)plane >= (uint)planes)
-            throw new ArgumentOutOfRangeException(nameof(plane), plane,
-                $"the world has {planes} planes, so the plane must be 0..{planes - 1}.");
-    }
+    // Every query that reads the COLLISION MAP checks the plane through here first. The rule and its reasoning
+    // live on the session, because the write side needs exactly the same check (objects_scatter would otherwise
+    // skip every tile of a plane the world does not have and report a successful scatter of nothing), and one
+    // helper is one message.
+    void RequirePlane(int plane) => session.RequirePlane(plane);
 }

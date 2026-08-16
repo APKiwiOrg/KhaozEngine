@@ -9,9 +9,6 @@ public sealed record RectInfo(int X, int Z, int Width, int Height)
 {
     /// <summary>The wire form of a document rect.</summary>
     public static RectInfo Of(TileRect rect) => new(rect.X, rect.Z, rect.Width, rect.Height);
-
-    /// <summary>The rect as the document's own type, for a caller that wants to keep working with it.</summary>
-    public TileRect ToRect() => new(X, Z, Width, Height);
 }
 
 /// <summary>One rect a mutation touched, on one plane: what a renderer would have to rebuild.</summary>

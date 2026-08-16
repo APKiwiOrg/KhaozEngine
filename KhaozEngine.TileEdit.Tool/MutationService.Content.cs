@@ -52,12 +52,26 @@ public sealed partial class MutationService
     /// <summary>A deterministic scatter of one archetype over a rect: a grid at <paramref name="spacing"/> tiles
     /// jittered by up to <paramref name="jitter"/> from a hash of the point and <paramref name="seed"/>, skipping
     /// blocked and already-occupied tiles. The same arguments always produce the same world, and the result can
-    /// legitimately be empty.</summary>
+    /// legitimately be empty. A plane the world does not have and an archetype the catalogs do not define are
+    /// both refused up front, so an empty result always means the ground rejected every point.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">The plane is outside the world's range.</exception>
+    /// <exception cref="TileWorldException">The archetype is not in the catalogs.</exception>
     public PlacementBatchResult ObjectScatter(string archetypeId, TileRect rect, int plane, int spacing,
         int jitter, int seed)
     {
+        // Both checks run BEFORE the grid walk, because a scatter answers everything it cannot place by
+        // skipping the point, and an empty result is legitimate. A plane the world does not have reads as
+        // Blocked on every tile, so it would skip every point and report a successful scatter of nothing, and
+        // an unknown archetype would do the same whenever no point survived the rect, since the archetype is
+        // only checked inside a PlaceObjectCommand that a placement-free scatter never builds. The message is
+        // the one PlaceObjectCommand gives, so a client sees the same refusal from object_place.
+        session.RequirePlane(plane);
         (MutationResult result, CompositeCommand command) = ExecuteCapturing(e =>
-            TileEditOps.Scatter(e, archetypeId, rect, plane, spacing, jitter, seed));
+        {
+            if (e.Catalogs.Archetype(archetypeId) is null)
+                throw new TileWorldException($"archetype '{archetypeId}' is not in the catalogs");
+            return TileEditOps.Scatter(e, archetypeId, rect, plane, spacing, jitter, seed);
+        });
         return new PlacementBatchResult(result, PlacedIds(command));
     }
 

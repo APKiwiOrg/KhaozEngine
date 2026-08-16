@@ -225,7 +225,35 @@ public class MutationServiceTests
         PlacementBatchResult second = f.Mutate.ObjectScatter("bush", new TileRect(30, 30, 10, 10), 0, 4, 2, seed: 11);
 
         Assert.Equal(first.Count, second.Count);
+        // Without this, a scatter that placed NOTHING passes every line above by comparing two empty sets,
+        // which is exactly how a bad plane went unnoticed for seven review rounds.
+        Assert.NotEmpty(firstTiles);
         Assert.Equal(firstTiles, f.Query.ObjectFind(archetypeId: "bush").Select(o => o.X * 1000 + o.Z).ToArray());
+    }
+
+    [Fact]
+    public void ObjectScatter_RefusesAPlaneTheWorldDoesNotHave()
+    {
+        using var f = new Fixture();
+
+        // The collision map answers Blocked for a plane it does not have, so an unchecked scatter would skip
+        // every point and report a successful placement of nothing.
+        ArgumentOutOfRangeException ex = Assert.Throws<ArgumentOutOfRangeException>(
+            () => f.Mutate.ObjectScatter("tree", new TileRect(20, 20, 8, 8), 9, 3, 1, seed: 7));
+        Assert.Contains("0..3", ex.Message, StringComparison.Ordinal);
+        Assert.Empty(f.Query.ObjectFind(archetypeId: "tree"));
+    }
+
+    [Fact]
+    public void ObjectScatter_RefusesAnArchetypeTheCatalogsDoNotDefine()
+    {
+        using var f = new Fixture();
+
+        // The archetype is otherwise only checked inside a PlaceObjectCommand, which a scatter that survives
+        // no point never builds.
+        TileWorldException ex = Assert.Throws<TileWorldException>(
+            () => f.Mutate.ObjectScatter("no-such-archetype", new TileRect(20, 20, 8, 8), 0, 3, 1, seed: 7));
+        Assert.Contains("no-such-archetype", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]

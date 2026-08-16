@@ -57,7 +57,7 @@ public sealed class HeightTools(QueryService query, MutationService mutate)
         [Description("Corner rect width, x + width exclusive.")] int width,
         [Description("Corner rect height, z + height exclusive.")] int height,
         [Description("Plane index, 0 is the ground storey.")] int plane,
-        [Description("How many blur passes to run. Defaults to 1.")] int iterations = 1)
+        [Description("How many blur passes to run, 1 to 64. Defaults to 1.")] int iterations = 1)
         => ToolGuard.Guard(() => mutate.HeightsSmooth(new TileRect(x, z, width, height), plane, iterations));
 
     /// <summary>Reads the corner-height lattice.</summary>

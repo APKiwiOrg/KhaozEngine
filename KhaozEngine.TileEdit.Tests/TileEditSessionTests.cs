@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using KhaozEngine.TileEdit;
 using KhaozEngine.TileWorld;
@@ -76,6 +77,23 @@ public class TileEditSessionTests
         Assert.Equal("sibling", reopened.Summary().Id);
         Assert.Equal(Path.GetFullPath(tmp.Sub(TileEditTestWorld.CatalogFileName)), reopened.CatalogPaths[0]);
         Assert.NotEmpty(new QueryService(reopened).CatalogList("materials").Materials);
+    }
+
+    [Fact]
+    public void Open_NormalisesTheWorldPathItEchoesBack()
+    {
+        using var tmp = new TempDir();
+        string dir = tmp.Sub("world");
+        TileEditTestWorld.NewSession(dir);
+
+        var reopened = new TileEditSession();
+        // The same directory reached the long way round. Every other path this tool returns is normalised
+        // through ResolvePath, so the world's own must be too rather than echoing the client's spelling.
+        OpenResult opened = reopened.Open(Path.Combine(dir, "..", "world"));
+
+        Assert.Equal(Path.GetFullPath(dir), opened.Path);
+        Assert.DoesNotContain("..", reopened.Summary().Path, StringComparison.Ordinal);
+        Assert.Equal(Path.GetFullPath(dir), reopened.Save().Path);
     }
 
     [Fact]

@@ -53,7 +53,7 @@ public sealed class TileEditSession
             }
             IReadOnlyList<string> resolved = ResolveCatalogPaths(path, doc.CatalogPaths);
             OpenLocked(doc, TileWorldCatalogs.Load(resolved), path, resolved);
-            return new OpenResult(path, doc.Id, doc.DisplayName, BuildSummaryLocked());
+            return new OpenResult(_path!, doc.Id, doc.DisplayName, BuildSummaryLocked());
         }
     }
 
@@ -98,7 +98,7 @@ public sealed class TileEditSession
             TileWorldFile.Save(doc, path, force: true);
 
             OpenLocked(doc, catalogs, path, resolved);
-            return new OpenResult(path, doc.Id, doc.DisplayName, BuildSummaryLocked());
+            return new OpenResult(_path!, doc.Id, doc.DisplayName, BuildSummaryLocked());
         }
     }
 
@@ -225,6 +225,27 @@ public sealed class TileEditSession
         lock (_lock) RequireOpenLocked();
     }
 
+    /// <summary>Throws unless <paramref name="plane"/> is one the open world has, naming the legal range.
+    ///
+    /// <para>Lives here rather than on one service because BOTH sides need it and for the same reason: anything
+    /// that reads the DERIVED collision map gets <c>Blocked</c> back for a plane the world does not have, by
+    /// design (an unloaded region has to read as a wall rather than as a void), so a caller handed a plane out
+    /// of range would get a plausible map of solid rock, or a mutation that silently skipped every tile,
+    /// instead of an error. Layers read through the document, which throws for itself.</para></summary>
+    /// <exception cref="TileWorldException">No world is open, which is the more fundamental complaint and is
+    /// therefore reported first.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The plane is outside the world's range.</exception>
+    public void RequirePlane(int plane)
+    {
+        lock (_lock)
+        {
+            int planes = RequireOpenLocked().Document.PlaneCount;
+            if ((uint)plane >= (uint)planes)
+                throw new ArgumentOutOfRangeException(nameof(plane), plane,
+                    $"the world has {planes} planes, so the plane must be 0..{planes - 1}.");
+        }
+    }
+
     /// <summary>Turns a caller-supplied path into a normalised absolute one: a relative path resolves against
     /// the open world's directory, the same rule the manifest's catalog entries follow, and a rooted one is
     /// normalised as it stands so an echoed path never carries a <c>..</c> segment back to the client.
@@ -263,10 +284,13 @@ public sealed class TileEditSession
     static IReadOnlyList<string> ResolveCatalogPaths(string worldDirectory, IEnumerable<string> entries) =>
         entries.Select(e => Path.IsPathRooted(e) ? e : Path.GetFullPath(Path.Combine(worldDirectory, e))).ToArray();
 
+    // The world directory is stored NORMALISED, so OpenResult.Path, SaveResult.Path and WorldSummary.Path echo
+    // the same absolute form every other path this tool hands back goes through ResolvePath to get. A client
+    // that opened "worlds/../worlds/grimhollow" gets told where the world actually is.
     void OpenLocked(TileWorldDocument doc, TileWorldCatalogs catalogs, string path, IReadOnlyList<string> resolved)
     {
         _editing = new TileEditingDocument(doc, catalogs);
-        _path = path;
+        _path = Path.GetFullPath(path);
         _catalogPaths = resolved;
     }
 

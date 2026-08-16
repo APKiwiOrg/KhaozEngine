@@ -350,10 +350,21 @@ self-rescue) on both `WorldServer` and `ShardedWorldServer`. Normal per-tick mov
 sim carries it through `PlayerMoveSimulator.Step`; the sharded `PlayerMovementSystem` writes movement fields in place
 and never touches it). `ClientPrediction.Reconcile` force-cuts on an epoch advance regardless of `HardSnapDistance`.
 
-`WorldClient` surfaces one uniform signal for join, reconnect, AND in-session teleports: the **`LocalTeleported`**
-event plus a monotonic **`LocalTeleportEpoch`** counter (poll it frame-to-frame if you prefer). A consumer uses it to
-snap the follow camera (`FollowCamera3D.Warp`) and optionally run a screen transition (see `KhaozEngine.Render3D`
-`ITransition`). Mismatched wire generations are rejected at connect by the always-on `WireGenerationAuthenticator`.
+`WorldClient` surfaces it as the **`LocalTeleported`** event plus a monotonic **`LocalTeleportEpoch`** counter (poll it
+frame-to-frame if you prefer). A consumer uses it to snap the follow camera (`FollowCamera3D.Warp`) and optionally run
+a screen transition (see `KhaozEngine.Render3D` `ITransition`). Mismatched wire generations are rejected at connect by
+the always-on `WireGenerationAuthenticator`.
+
+The signal means the local player's position changed DISCONTINUOUSLY: the join placement, an in-session server
+teleport, or a reconnect that resumed the session somewhere else. **A transport reconnect that resumes the same
+position does not fire it** (#409). Prediction is still reseeded across the reconnect (fresh transport, fresh server
+slot, fresh net id, fresh authoritative entity), but none of that moves the player, so a consumer answering the event
+with a world-scale reaction - re-centring a terrain streamer's ring, rebuilding an occlusion cache - no longer pays it
+every time a lossy link drops. The resume counts as a teleport only when the player moved by at least
+`PredictionSettings.HardSnapDistance` while the client was away. Tighten it via `WorldClientConfig.Prediction`.
+
+`RemoteTeleports` follows the same advance-only rule: a remote's replicated epoch going backwards (its `MovementState`
+momentarily unreadable) is not a teleport, and neither is the recovery back off that dip.
 
 ## Per-entity speed scale: haste, slow, root (since 14.26.0)
 

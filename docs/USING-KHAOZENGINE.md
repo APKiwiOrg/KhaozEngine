@@ -12209,12 +12209,13 @@ the feature just ignores it.
 
 A teleport is two problems. (1) The **avatar + camera must cut, not glide**, even when the destination is near.
 Client reconciliation decides cut-vs-glide by distance, so a short in-session hop would smooth. The server carries a
-monotonic **teleport epoch** on the authoritative movement state and bumps it only at teleport sites (join/reconnect
+monotonic **teleport epoch** on the authoritative movement state and bumps it only at teleport sites (load-on-join
 placement, admin `Teleport`, self-rescue) via `SetPlayerState(..., teleport: true)`. `ClientPrediction.Reconcile`
-force-cuts on an epoch advance regardless of distance, and `WorldClient` surfaces one uniform signal:
+force-cuts on an epoch ADVANCE regardless of distance, and `WorldClient` surfaces the signal:
 
 ```csharp
-// Push: react the frame a local teleport lands (join, reconnect, or an in-session server teleport).
+// Push: react the frame the local player's position changes discontinuously (join, an in-session server
+// teleport, or a reconnect that resumed the session somewhere else).
 client.LocalTeleported += () =>
 {
     camera.Warp(client.LocalRenderState.Position);   // FollowCamera3D: cut the follow camera, no ease (the whole login-fly fix)
@@ -12223,6 +12224,18 @@ client.LocalTeleported += () =>
 // Poll alternative (robust to multiple teleports between frames, needs no clearing):
 if (client.LocalTeleportEpoch != _lastSeen) { _lastSeen = client.LocalTeleportEpoch; /* warp + transition */ }
 ```
+
+**A transport reconnect that resumes the same position is not a teleport** (#409). This matters because the reaction
+is expensive by design: a consumer typically answers it by warping the camera, running a screen transition, and
+re-centring everything keyed to the player's position - a terrain streamer's ring above all. Reporting a reconnect as
+a teleport made a client on a lossy link rebuild its world on every drop while the player stood still. Prediction is
+still reseeded across the reconnect (fresh transport, fresh server slot, fresh net id, fresh authoritative entity),
+but the signal is withheld unless the player actually moved while the client was away, by at least
+`PredictionSettings.HardSnapDistance`. Tighten that via `WorldClientConfig.Prediction` for a shorter leash. The epoch
+cannot decide this on its own: a rejoining client is a fresh authoritative entity whose epoch counts from its own
+zero. For the same reason the epoch compare is an ADVANCE past a high-water mark, never any inequality: the epoch
+reads 0 whenever the movement component is momentarily unreadable, so a real stream dips and recovers, and both edges
+used to fire a cut.
 
 `FollowCamera3D.Warp(target)` forces the smoothed target so `EffectiveTarget == target` that frame with zero
 trailing (normal damping resumes next frame); `SnapToTarget()` collapses in-flight damping onto the current `Target`.

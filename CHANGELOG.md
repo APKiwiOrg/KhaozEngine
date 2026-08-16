@@ -18,7 +18,7 @@ not validated, which it emitted 99 times on one CI run while naming a variable n
 disambiguation now reads both variables and every validation wrapper Metal has been measured handing back. Fixing
 that turned up a fact neither issue had: shader validation alone answers with `MTLGPUDebugDevice` on real Apple
 silicon and `MTLLegacySVDevice` on a hosted runner, so the check asks whether anything is validating rather than
-whether one named class came back. And the native Vulkan backend's per-draw image transition walk now stops at the set count the bound pipeline layout declares, the same limit its bind flush already stopped at, so a draw no longer barriers, and in the sharp case reopens its render pass for, images belonging to a set the current pipeline dropped.
+whether one named class came back. And the native Vulkan backend's per-draw image transition walk now stops at the set count the bound pipeline layout declares, the same limit its bind flush already stopped at, so a draw no longer barriers, and in the sharp case reopens its render pass for, images belonging to a set the current pipeline dropped. On the netcode side, a transport reconnect no longer reads to the consumer as a teleport when it resumes the player where they were, and the teleport epoch cuts on an advance rather than on any change, so a client on a lossy link stops paying a world-scale teleport reaction (a terrain streamer's whole ring, a camera cut) on every drop and on an epoch that momentarily reads as absent.
 
 ### A logger from the ambient facade follows the facade (#616)
 
@@ -156,6 +156,56 @@ is what owes a bind, declared is what can be bound at all, and a set bound befor
 the draw after it and still owes its compute rule 1 transition without owing a bind. A slot past the limit keeps
 its record and is walked again the moment a layout declares it. Three device-free tests in the new
 `VulkanTransitionWalkTests` drive both cost shapes and the clean declared slot that must keep being walked.
+
+### A transport reconnect is not a teleport, and the epoch compare fires on an advance (#409)
+
+`ClientPrediction.Reconcile` reported `ReconciliationResult.Teleported` on any (re)seed and on any change of the
+authoritative teleport epoch. Two defects came out of that, both of them making a correct session read as a
+displacement the consumer had to answer expensively. Public behaviour changes on `KhaozEngine.Netcode`
+(`ReconciliationResult.Teleported`, `ClientPrediction.Reseed`) and `KhaozEngine.NetWorld`
+(`WorldClient.LocalTeleported` / `LocalTeleportEpoch` / `RemoteTeleports`). No API signature changed.
+
+**Every transport reconnect surfaced as a teleport.** `WorldClient.StartAttempt` clears `LocalNetId` on each
+reconnect attempt, so the next ingest reads as the session's first and calls `ClientPrediction.Reseed`, and the
+reseed armed the teleport flag unconditionally. Nothing about that involves the server: a reconnect fired the
+signal with no epoch change at all, and a client on a lossy link fired it on every drop. The contract's reaction
+is expensive by design (warp the camera, run a transition, re-centre everything keyed to the player's position),
+so a consumer honouring it paid a world-scale cost for a session event that moved nobody. Ruinborne rebuilt its
+whole terrain ring while the player stood still
+([Ruinborne#388](https://github.com/APKiwiOrg/Ruinborne/issues/388)). This also corrects the record in
+Ruinborne#341, whose trace concluded only join, respawn, self-rescue and admin teleports advance the epoch: the
+reconnect reseed path was missed.
+
+**The contract is positional now, and Reseed decides it.** `Teleported` means the local player's world position
+changed DISCONTINUOUSLY. `Reset` (a first-ever join) still reports one unconditionally, because there is no prior
+position for the placement to be continuous with. `Reseed` measures the resume displacement instead, in 3D and in
+absolute space so an island re-anchor across the reconnect measures zero, and reports a teleport only when it
+reaches `PredictionSettings.HardSnapDistance`. Below that the session simply resumes: prediction is still reseeded
+(the render offsets, the inter-tick phase and the authoritative basis all have to be rebuilt against the new
+session), and the signal stays quiet. Consumers wanting a shorter leash tighten `HardSnapDistance` via
+`WorldClientConfig.Prediction`.
+
+**The epoch could not have decided it, which is why the fix is positional.** A rejoining client is a FRESH
+authoritative entity: both server heads allocate a new `NetId` per join (`WorldServer.OnJoin`,
+`ShardedWorldServer`), and its teleport epoch counts from its own zero. The epoch a reconnect lands on therefore
+bears no relation to the one the previous session ended on, so no comparison across the reconnect can mean
+anything, and only the position can. In-session teleports are untouched: a server-side respawn, an admin move or a
+self-rescue still advances the epoch and still cuts.
+
+**The epoch compare is monotonic.** It fired on any inequality, and the epoch reads a default 0 whenever the host
+serves a state with its movement component momentarily absent (`WorldClient`'s own remote read, and
+`ShardedWorldServer.SetPlayerState` on the server), so a real stream dips 5 to 0 to 5. A last-seen store made the
+dip silent and the RECOVERY read as a fresh advance, which is the every-snapshot fire. Both the local compare in
+`ClientPrediction.Reconcile` and the remote one in `WorldClient.FlushTeleportedRemotes` now hold the epoch as a
+high-water mark and cut only on an advance past it, so neither edge of a dip costs anything and a genuine advance
+still cuts as it always did.
+
+**Tests.** Three rows in a new `WorldClientReconnectTeleportTests` drive the live loopback harness: a transport
+drop and reconnect with the player stationary (the reconnect is real, the net id is reissued, and the signal stays
+quiet), a first join, and a server teleport both before and after a reconnect. `A_remote_epoch_that_dips_and_recovers`
+feeds hand-built snapshots to drive the remote flush across a dip and its recovery, and two new
+`ClientPredictionTests` cover the continuous resume and the local epoch dip directly. All four behavioural rows
+fail against the pre-fix sources.
 
 ## 17.36.1
 

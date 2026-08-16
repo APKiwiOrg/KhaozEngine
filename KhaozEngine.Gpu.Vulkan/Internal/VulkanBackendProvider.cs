@@ -21,9 +21,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// That ordering is deliberate rather than an artefact. The probe answers a question about the MACHINE, which
     /// is what a settings screen and the fallback path consume, and it is the row that makes a silent fallback
     /// impossible: without it a soak session could measure the incumbent Veldrid Vulkan backend and file the
-    /// numbers under the native one. Whether this package can build a device is a different fact, answered by
-    /// whether the row that builds it has landed, and folding the two together would make the probe answer false
-    /// for a reason that has nothing to do with the hardware.
+    /// numbers under the native one. Whether this package can build a device is a different fact, answered
+    /// row by row through the build-out and settled as yes now that every row has landed, and folding the two
+    /// together would make the probe answer false for a reason that has nothing to do with the hardware.
     /// </para>
     /// <para>
     /// KEEPING THEM APART IS NOT THE SAME AS NOT ASKING, and that is what <see cref="CreateHeadless"/> got wrong
@@ -136,9 +136,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // The MACHINE-level refusal, and it quotes the probe's own sentence rather than paraphrasing it, so the
         // three machine states each read as themselves: no loader names the loader, a loader with no driver names
         // the driver and the package that installs one, and a device below the floor names the requirement. It
-        // must be tellable apart from a refusal about the PACKAGE (a window kind with no surface extension, or a
-        // command list member whose row has not landed) and from GpuBackendProviderMissingException, which is
-        // about the WIRING. That three-way split is decision V-I4.
+        // must be tellable apart from a refusal about the PACKAGE (a window kind with no surface extension is the
+        // one left, now that every work-breakdown row has landed and no member refuses by naming one) and from
+        // GpuBackendProviderMissingException, which is about the WIRING. That three-way split is decision V-I4.
         static NotSupportedException ThisMachineCannot(string missing)
             => new("The native Vulkan backend cannot create a device on this machine: " + missing
                 + ". This is a statement about the MACHINE rather than about the package, which returns a real "

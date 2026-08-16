@@ -14,6 +14,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// or null.</param>
     /// <param name="Armed">The tier the Metal runtime really has, read from the LAUNCH environment. This is the
     /// one that is true.</param>
+    /// <param name="DebugLayerArmed">Whether <c>MTL_DEBUG_LAYER</c> itself was in the launch environment. Kept
+    /// beside <paramref name="Armed"/> rather than derived from it, because the tier is a MERGE and the merge
+    /// loses the one distinction the device-class check needs: the shader variable alone reports the same
+    /// <see cref="MetalValidationMode.Shaders"/> tier as both variables together and gets a different device
+    /// class. Deriving the variable back out of the tier is what made #628's warning name a variable nobody had
+    /// set.</param>
+    /// <param name="ShaderValidationArmed">Whether <c>MTL_SHADER_VALIDATION</c> itself was in the launch
+    /// environment.</param>
     /// <param name="DebugLayerSetInProcessOnly">Whether <c>MTL_DEBUG_LAYER</c> is set in the managed environment
     /// and was NOT in the launch environment, which is the "set after the runtime read it" case M-G3's log line
     /// asks for. Detected rather than guessed: on Unix the CLR keeps its own copy of the environment and
@@ -24,11 +32,22 @@ namespace KhaozEngine.Gpu.Metal.Internal
         MetalValidationMode Requested,
         string? UnrecognizedValue,
         MetalValidationMode Armed,
+        bool DebugLayerArmed,
+        bool ShaderValidationArmed,
         bool DebugLayerSetInProcessOnly,
         bool ShaderValidationSetInProcessOnly)
     {
         /// <summary>Whether the tier asked for is higher than the tier that is armed, which is the case worth a
-        /// WARN: the tester believes they are validating and they are not.</summary>
+        /// WARN: the tester believes they are validating and they are not.
+        /// <para>
+        /// IT COMPARES RUNGS, AND THE RUNGS ARE NOT NESTED, so it misses one combination: a process asking for
+        /// <see cref="MetalValidationMode.On"/> with only <c>MTL_SHADER_VALIDATION</c> armed reads as
+        /// <see cref="MetalValidationMode.Shaders"/>, which is the HIGHER rung, so nothing warns even though the
+        /// API validation tier it asked for is absent. Recorded as
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/634 rather than fixed here, because the fix compares
+        /// per-variable instead and that changes what this WARN means.
+        /// </para>
+        /// </summary>
         internal bool RequestedMoreThanArmed => Requested > Armed;
     }
 
@@ -90,15 +109,21 @@ namespace KhaozEngine.Gpu.Metal.Internal
             (bool shaderArmed, bool shaderInProcessOnly) =
                 ReadProcessVariable(MetalValidation.ShaderValidationVar);
 
-            // Shader validation is the higher rung and implies the API layer, so a process that armed only the
-            // shader variable still reports the higher tier. Reporting Off there would be the reverse of the
-            // failure this whole type exists to prevent.
+            // Shader validation is the higher RUNG on this ordering, so a process that armed only the shader
+            // variable still reports the higher tier. Reporting Off there would be the reverse of the failure
+            // this whole type exists to prevent.
+            //
+            // The rung does NOT imply the API layer, and reading it that way is what #628 was. MTL_SHADER_
+            // VALIDATION alone gets in-shader bounds checking WITHOUT the API validation tier, which is what
+            // MetalValidation.ActiveDescription says on that branch and what the device class confirms:
+            // MTLGPUDebugDevice or MTLLegacySVDevice comes back rather than MTLDebugDevice, and the two are
+            // different wrappers rather than one nested in the other.
             MetalValidationMode armed = shaderArmed
                 ? MetalValidationMode.Shaders
                 : debugArmed ? MetalValidationMode.On : MetalValidationMode.Off;
 
-            return new MetalValidationArming(requested, unrecognized, armed, debugInProcessOnly,
-                shaderInProcessOnly);
+            return new MetalValidationArming(requested, unrecognized, armed, debugArmed, shaderArmed,
+                debugInProcessOnly, shaderInProcessOnly);
         }
 
         // Whether a process-level variable is armed, and whether it is armed ONLY in the managed environment,

@@ -210,6 +210,34 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// did.</summary>
         internal int RecordedSlotCount => _recorded;
 
+        /// <summary>
+        /// HOW FAR THE BOUND PIPELINE LAYOUT REACHES: its own set count, capped by what has been recorded. One past
+        /// the highest slot the next command can name at all, and therefore where every per-command walk over the
+        /// records stops.
+        /// <para>
+        /// THE FLUSH STOPS HERE BECAUSE A BIND PAST IT IS AN INVALID CALL
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/625): <c>vkCmdBindDescriptorSets</c> requires
+        /// <c>firstSet</c> plus the set count to stay inside <c>setLayoutCount</c>, and a slot past it has no entry
+        /// to be bound against. It is read here rather than folded into the bindable predicate, because a slot out
+        /// of reach must KEEP its dirty mark for the next layout that declares it, and every path through that
+        /// predicate spends one.
+        /// </para>
+        /// <para>
+        /// <see cref="VulkanDrawRecorder"/>'S BOUND-IMAGE WALK STOPS HERE TOO, from the other end
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/626): a transition past it is not invalid, it is work
+        /// for an image no shader on the bound pipeline can read. This is deliberately NOT a bound on DIRTY slots,
+        /// which is a different question entirely: dirty is what owes a bind, declared is what can be bound at all,
+        /// and a set bound before a dispatch still owes the rule 1 transition at the draw after it without owing a
+        /// bind.
+        /// </para>
+        /// <para>
+        /// WITH NO PIPELINE BOUND IT REACHES EVERYTHING, deliberately. That is the case <c>RequireLayout</c> refuses
+        /// by name, and a limit of zero there would turn a draw issued before a pipeline into silence.
+        /// </para>
+        /// </summary>
+        internal int BindableSlotLimit()
+            => _pipelineSetLayouts is null ? _recorded : Math.Min(_recorded, _pipelineSetLayouts.Length);
+
         /// <summary>How many slots the record currently has room for. Grows to cover a slot and never per
         /// rebind.</summary>
         internal int SlotCapacity => _slots.Length;
@@ -230,7 +258,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <para>
         /// IT ANSWERS FOR EVERY RECORDED SLOT AND NOT ONLY THE DIRTY ONES, deliberately. A set bound before a
         /// dispatch that then moved one of its images to <c>GENERAL</c> is still bound at the next draw, and a
-        /// dirty-only walk would miss exactly the case rule 1 exists for.
+        /// dirty-only walk would miss exactly the case rule 1 exists for. Which slots a caller ASKS about is its
+        /// own question and the two callers answer it differently: the image walk stops at
+        /// <see cref="BindableSlotLimit"/> and <see cref="VulkanComputeHazards"/>'s does not
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/632).
         /// </para>
         /// </summary>
         internal VulkanBoundSet BoundAt(uint slot) => slot < (uint)_recorded ? _slots[slot].Bound : default;
@@ -465,16 +496,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // A slot the flush will put into a run: owing a bind and holding a set to bind. Both halves are checked at
         // the run's start and again at every step, because a run is exactly the maximal span where both hold.
         bool IsBindable(int slot) => _slots[slot].Dirty && _slots[slot].Bound.IsBound;
-
-        // HOW FAR ONE FLUSH REACHES: the bound pipeline layout's own set count, because vkCmdBindDescriptorSets
-        // requires firstSet plus the set count to stay inside setLayoutCount and a slot past it has no entry to be
-        // bound against at all. Read here rather than folded into IsBindable, because a slot out of reach must keep
-        // its mark and every path through that predicate spends one.
-        //
-        // WITH NO PIPELINE BOUND IT REACHES EVERYTHING, deliberately. That is the case RequireLayout refuses by
-        // name, and a limit of zero there would turn a draw issued before a pipeline into silence.
-        int BindableSlotLimit()
-            => _pipelineSetLayouts is null ? _recorded : Math.Min(_recorded, _pipelineSetLayouts.Length);
 
         // A bind names a pipeline layout, so a run with no pipeline bound is not something to round down to
         // nothing: it would be vkCmdBindDescriptorSets with VK_NULL_HANDLE, which is invalid, and the caller's real

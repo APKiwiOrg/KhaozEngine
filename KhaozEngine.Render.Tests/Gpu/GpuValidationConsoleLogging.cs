@@ -11,20 +11,28 @@ namespace KhaozEngine.Tests.Gpu
     /// https://github.com/APKiwiOrg/KhaozEngine/issues/617 is why it is no longer Vulkan's alone.
     ///
     /// <para><b>WHY ONE HOST RATHER THAN ONE PER BACKEND.</b> <see cref="Log.Configure(LoggerOptions)"/> SHUTS
-    /// DOWN the manager it replaces, and shutdown disposes and clears that manager's sink list, while an
-    /// <c>ILogger</c> handed out earlier keeps pointing at the manager it came from. Both native backends resolve
-    /// their loggers once into <c>static readonly</c> fields, so a second configure anywhere in this process
-    /// orphans every producer that had already resolved one. Two module initializers would be exactly that second
-    /// configure, on a leg where both rungs happened to be armed. So the call lives here, once, and each backend
-    /// contributes only a DECISION (is my rung armed) and a SCOPE (my category prefix).</para>
+    /// DOWN the manager it replaces, and shutdown disposes and clears that manager's sink list. A second
+    /// configure anywhere in this process therefore throws away the first host's sink, and the artifact ends up
+    /// holding whatever the LAST configure admitted rather than the union of the armed rungs. Two module
+    /// initializers would be exactly that second configure, on a leg where both rungs happened to be armed. So
+    /// the call lives here, once, and each backend contributes only a DECISION (is my rung armed) and a SCOPE
+    /// (my category prefix).</para>
+    ///
+    /// <para>A second failure used to ride on top of that one and no longer does. An <c>ILogger</c> handed out by
+    /// the facade used to keep pointing at the manager it came from, so a reconfigure ORPHANED every producer
+    /// that had already resolved one, and both native backends resolve theirs once into <c>static readonly</c>
+    /// fields. 17.36.2 moved that binding to the facade (#616): a logger from <c>Log.For</c> now finds the
+    /// configured manager per call, so a producer resolved before a reconfigure follows it. The one-host rule
+    /// above is untouched by that, because it is about which SINK survives, not about which producers reach
+    /// it.</para>
     ///
     /// <para><b>WHAT #617 MEASURED, AND WHY THE METAL HALF EXISTS.</b> The metal-native leg's first ever run under
     /// <c>MTL_SHADER_VALIDATION=1</c> failed 186 of 6201 rows, every golden reading back as nothing but the pass
     /// clear colour, and the uploaded <c>metal-validation-shader-validation-metal-native</c> artifact contained no
     /// Metal diagnostic of any kind. It could not have contained one. The native Metal backend reports the armed
     /// tier, the device class, and EVERY failed command buffer through the ambient <see cref="Log"/> facade
-    /// (<c>MetalGpuDevice.ReportDeviceClass</c> and <c>MetalDeviceLossLatch.Check</c>), and that facade hands out
-    /// <c>NullLogger</c> until something calls <see cref="Log.Configure(LoggerOptions)"/>. Nothing in this
+    /// (<c>MetalGpuDevice.ReportDeviceClass</c> and <c>MetalDeviceLossLatch.Check</c>), and that facade discards
+    /// everything until something calls <see cref="Log.Configure(LoggerOptions)"/>. Nothing in this
     /// assembly did on a Metal leg, so the one question the run existed to answer (did the command buffers fail,
     /// or did they succeed and draw nothing) was unanswerable from its own evidence.</para>
     ///
@@ -54,9 +62,9 @@ namespace KhaozEngine.Tests.Gpu
             string? vulkanLever = Environment.GetEnvironmentVariable(
                 KhaozEngine.Gpu.Vulkan.Internal.VulkanValidation.EnvVarName);
             bool vulkanArmed = VulkanValidationConsoleLogging.IsArmed(vulkanLever);
-            KhaozEngine.Gpu.Metal.Internal.MetalValidationMode metalArmed =
-                MetalValidationConsoleLogging.ArmedTier();
-            bool metalIsArmed = MetalValidationConsoleLogging.IsArmed(metalArmed);
+            KhaozEngine.Gpu.Metal.Internal.MetalValidationArming metalArming =
+                MetalValidationConsoleLogging.ArmedReading();
+            bool metalIsArmed = MetalValidationConsoleLogging.IsArmed(metalArming.Armed);
 
             // Both levers are read before anything is constructed, so an unarmed process leaves this file having
             // done nothing but a handful of environment reads.
@@ -82,7 +90,7 @@ namespace KhaozEngine.Tests.Gpu
             if (metalIsArmed)
             {
                 Log.Get(MetalValidationConsoleLogging.HostCategory)
-                    .Info(MetalValidationConsoleLogging.ArmedAnnouncement(metalArmed));
+                    .Info(MetalValidationConsoleLogging.ArmedAnnouncement(metalArming));
             }
         }
 

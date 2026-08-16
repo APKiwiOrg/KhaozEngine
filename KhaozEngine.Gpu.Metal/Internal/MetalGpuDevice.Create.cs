@@ -279,10 +279,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (arming.Armed == MetalValidationMode.Off) return;
 
             string className = device.ClassName();
-            log.Info(MetalValidation.ActiveDescription(arming.Armed, className));
+            log.Info(MetalValidation.ActiveDescription(
+                arming.DebugLayerArmed, arming.ShaderValidationArmed, className));
 
-            if (!MetalValidation.LooksLikeADebugDevice(className))
-                log.Warn(MetalValidation.ArmedButNotADebugDeviceWarning(className));
+            // ONLY WHEN THE CLASS DISAGREES WITH WHAT WAS ARMED. It used to be "the class does not contain
+            // Debug", which fired on every device creation of a MTL_SHADER_VALIDATION-only run (99 of them on
+            // run 31874140088) and told the reader to disbelieve a run that was validating
+            // (https://github.com/APKiwiOrg/KhaozEngine/issues/628).
+            if (MetalValidation.DisagreesWithArming(
+                    arming.DebugLayerArmed, arming.ShaderValidationArmed, className))
+            {
+                log.Warn(MetalValidation.ArmedButWrongDeviceClassWarning(
+                    arming.DebugLayerArmed, arming.ShaderValidationArmed, className));
+            }
         }
 
         static InvalidOperationException NoEligibleDevice(in MetalSelectedDevice selected)

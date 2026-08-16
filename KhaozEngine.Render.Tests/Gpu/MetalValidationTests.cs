@@ -68,17 +68,89 @@ namespace KhaozEngine.Tests.Gpu
             => Assert.Equal(expected, MetalValidation.IsArmed(value));
 
         /// <summary>
-        /// ROW 1'S CONTROL, REUSED AS A RUNTIME CHECK. A device created under Metal API validation is an
-        /// <c>MTLDebugDevice</c> rather than the driver's own class, which is how the spike proved the mechanism
-        /// in the first place, and it is what lets the engine report what the runtime actually did instead of
-        /// echoing the environment back.
+        /// ROW 1'S CONTROL, REUSED AS A RUNTIME CHECK AND WIDENED TO ALL FOUR MEASURED CLASSES. A device created
+        /// under Metal API validation is an <c>MTLDebugDevice</c> rather than the driver's own class, which is
+        /// how the spike proved the mechanism in the first place. #614 added the capture class and #628 added
+        /// <c>MTLLegacySVDevice</c>, which is a VALIDATION device and read as an unvalidated one for a release.
         /// </summary>
         [Theory]
-        [InlineData("MTLDebugDevice", true)]
-        [InlineData("AGXG14CDevice", false)]
-        [InlineData("", false)]
-        public void LooksLikeADebugDevice_ReadsTheClassNameTheSpikeMeasured(string className, bool expected)
-            => Assert.Equal(expected, MetalValidation.LooksLikeADebugDevice(className));
+        [InlineData("MTLDebugDevice", "Debug")]
+        // Shader validation alone has TWO measured spellings: the hosted runner's and real Apple silicon's.
+        // MTLGPUDebugDevice contains "Debug", so it also pins the order inside the classifier.
+        [InlineData("MTLLegacySVDevice", "ShaderValidation")]
+        [InlineData("MTLGPUDebugDevice", "ShaderValidation")]
+        [InlineData("CaptureMTLDevice", "Capture")]
+        [InlineData("AGXG14CDevice", "Driver")]
+        [InlineData("", "Driver")]
+        public void ClassifyDevice_ReadsEveryClassThatHasBeenMeasured(string className, string expected)
+            => Assert.Equal(expected, MetalValidation.ClassifyDevice(className).ToString());
+
+        /// <summary>
+        /// THE DEBUG LAYER WINS WHEN BOTH ARE SET, which is measured rather than assumed and is what makes the
+        /// shader-only case a different expectation rather than the same one.
+        /// </summary>
+        [Theory]
+        [InlineData(true, true, "Debug")]
+        [InlineData(true, false, "Debug")]
+        [InlineData(false, true, "ShaderValidation")]
+        [InlineData(false, false, "Driver")]
+        public void ExpectedDeviceClass_FollowsWhichVariableIsArmed(
+            bool debug, bool shaders, string expected)
+            => Assert.Equal(expected, MetalValidation.ExpectedDeviceClass(debug, shaders).ToString());
+
+        /// <summary>
+        /// #628'S CASE, AS THE ROW THAT WOULD HAVE CAUGHT IT. A process armed with <c>MTL_SHADER_VALIDATION</c>
+        /// alone gets a shader-validation device, which IS validated, and the old substring check called that a
+        /// disagreement 99 times on one run. Every armed row here is a launch environment that has actually been
+        /// measured, so the table is a record rather than a prediction.
+        /// <para>
+        /// THE QUESTION IS "IS ANYTHING VALIDATING", not "did one exact class come back". Shader validation
+        /// answers <c>MTLLegacySVDevice</c> on the hosted runner and <c>MTLGPUDebugDevice</c> on real Apple
+        /// silicon, so a class-equality check would warn on whichever machine it was not written against, which
+        /// is the same defect one machine further along.
+        /// </para>
+        /// </summary>
+        [Theory]
+        // Armed and something is validating: no warning at all, whichever wrapper answered.
+        [InlineData(true, false, "MTLDebugDevice", false)]
+        [InlineData(true, true, "MTLDebugDevice", false)]
+        [InlineData(false, true, "MTLLegacySVDevice", false)]
+        [InlineData(false, true, "MTLGPUDebugDevice", false)]
+        // Armed and displaced by a capture, which is #614's row and stays a warning.
+        [InlineData(true, false, "CaptureMTLDevice", true)]
+        // Armed and nothing at all is holding the device, which is the case nobody has observed.
+        [InlineData(true, false, "AGXG14CDevice", true)]
+        [InlineData(false, true, "AGXG14CDevice", true)]
+        // Nothing armed is never a disagreement, whatever came back.
+        [InlineData(false, false, "AGXG14CDevice", false)]
+        [InlineData(false, false, "MTLDebugDevice", false)]
+        public void DisagreesWithArming_FiresOnlyWhenNothingIsValidatingAfterAll(
+            bool debug, bool shaders, string className, bool expected)
+            => Assert.Equal(expected, MetalValidation.DisagreesWithArming(debug, shaders, className));
+
+        /// <summary>
+        /// THE WARNING NAMES THE VARIABLE THAT WAS SET AND NO OTHER. Naming <c>MTL_DEBUG_LAYER</c> on a run that
+        /// only ever set the shader variable sends the reader to look at something they never touched, which is
+        /// the second half of #628.
+        /// </summary>
+        [Fact]
+        public void TheDisagreementWarning_NamesOnlyTheVariableThatWasArmed()
+        {
+            string shaderOnly = MetalValidation.ArmedButWrongDeviceClassWarning(
+                false, true, "AGXG14CDevice");
+
+            Assert.Contains(MetalValidation.ShaderValidationVar, shaderOnly, StringComparison.Ordinal);
+            Assert.DoesNotContain(MetalValidation.DebugLayerVar, shaderOnly, StringComparison.Ordinal);
+            Assert.Contains("MTLLegacySVDevice", shaderOnly, StringComparison.Ordinal);
+
+            string capture = MetalValidation.ArmedButWrongDeviceClassWarning(true, false, "CaptureMTLDevice");
+
+            Assert.Contains(MetalValidation.DebugLayerVar, capture, StringComparison.Ordinal);
+            Assert.DoesNotContain(MetalValidation.ShaderValidationVar, capture, StringComparison.Ordinal);
+            // The capture cause is MEASURED, so it names it instead of asking for a bug report.
+            Assert.Contains("MTL_CAPTURE_ENABLED", capture, StringComparison.Ordinal);
+            Assert.DoesNotContain("has not been observed", capture, StringComparison.Ordinal);
+        }
 
         /// <summary>
         /// THE WARN THAT MATTERS MOST NAMES THE EXACT PREFIX TO RE-RUN WITH. A tester mid-diagnosis who is told
@@ -112,20 +184,40 @@ namespace KhaozEngine.Tests.Gpu
         /// reads.</summary>
         [Fact]
         public void AnUnvalidatedRun_LogsNoLineAtAll()
-            => Assert.Equal("", MetalValidation.ActiveDescription(MetalValidationMode.Off, "AGXG14CDevice"));
+            => Assert.Equal("", MetalValidation.ActiveDescription(false, false, "AGXG14CDevice"));
 
         [Fact]
         public void AValidatedRun_NamesTheTierAndTheDeviceClass()
         {
-            string line = MetalValidation.ActiveDescription(MetalValidationMode.Shaders, "MTLDebugDevice");
+            string line = MetalValidation.ActiveDescription(true, true, "MTLDebugDevice");
 
             Assert.Contains("SHADER VALIDATION", line, StringComparison.Ordinal);
             Assert.Contains("MTLDebugDevice", line, StringComparison.Ordinal);
             // Section 16 is explicit that neither tier is a synchronisation validator, and the API tier's line is
-            // where a reader would otherwise assume it was.
-            Assert.Contains("NOT a synchronisation validator",
-                MetalValidation.ActiveDescription(MetalValidationMode.On, "MTLDebugDevice"),
+            // where a reader would otherwise assume it was. Asserted as the whole clause: "synchronisation
+            // validator" on its own passes on a line claiming the opposite just as happily.
+            Assert.Contains("Neither tier is a synchronisation validator",
+                MetalValidation.ActiveDescription(true, false, "MTLDebugDevice"),
                 StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// THE SHADER-ONLY RUN READS AS VALIDATED, which is the line a reader of a #628 artifact was looking at
+        /// while 99 warnings underneath told them the opposite. It names the shader variable and not the debug
+        /// one, and it says what <c>MTLLegacySVDevice</c> IS rather than printing the class bare.
+        /// </summary>
+        [Theory]
+        [InlineData("MTLLegacySVDevice")]
+        [InlineData("MTLGPUDebugDevice")]
+        public void AShaderOnlyRun_ReadsAsValidatedAndNamesItsOwnVariable(string className)
+        {
+            string line = MetalValidation.ActiveDescription(false, true, className);
+
+            Assert.Contains("SHADER VALIDATION is ACTIVE", line, StringComparison.Ordinal);
+            Assert.Contains(className, line, StringComparison.Ordinal);
+            Assert.Contains("SHADER validation layer holding the device", line, StringComparison.Ordinal);
+            Assert.Contains(MetalValidation.ShaderValidationVar, line, StringComparison.Ordinal);
+            Assert.DoesNotContain(MetalValidation.DebugLayerVar, line, StringComparison.Ordinal);
         }
     }
 

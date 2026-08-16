@@ -51,16 +51,30 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <c>SHADER_READ_ONLY_OPTIMAL</c>, which is the same walk with the layout taken off the binding rather than
     /// off the texture.</para>
     ///
-    /// <para><b>THE TRANSITION WALK COVERS EVERY RECORDED SLOT AND NOT ONLY THE DIRTY ONES.</b> A set bound before
-    /// a dispatch is still bound at the draw after it, and a dirty-only walk would skip the rule 1 transition on
-    /// exactly the sequence rule 1 names. It costs a scan of a handful of images per command with NO native call
-    /// in the common case, because <see cref="VulkanLayoutTracker"/> emits nothing for an image already in the
-    /// layout it is being asked for, which every plain sampled texture is. The graphics arm scans TWICE, once to
-    /// ask whether the pass has to close and once to transition, and that is the cheaper half of the trade: a
-    /// second scan makes no call at all, where closing every pass unconditionally would cost a
+    /// <para><b>THE TRANSITION WALK COVERS EVERY SLOT THE BOUND LAYOUT DECLARES AND NOT ONLY THE DIRTY ONES.</b> A
+    /// set bound before a dispatch is still bound at the draw after it, and a dirty-only walk would skip the rule 1
+    /// transition on exactly the sequence rule 1 names. It costs a scan of a handful of images per command with NO
+    /// native call in the common case, because <see cref="VulkanLayoutTracker"/> emits nothing for an image already
+    /// in the layout it is being asked for, which every plain sampled texture is. The graphics arm scans TWICE,
+    /// once to ask whether the pass has to close and once to transition, and that is the cheaper half of the trade:
+    /// a second scan makes no call at all, where closing every pass unconditionally would cost a
     /// <c>vkCmdEndRendering</c> and a <c>vkCmdBeginRendering</c> per draw. That is what keeps V-T2's gated
     /// invariant true: no pipeline barrier, and no pass boundary either, between two draws that touch no new
     /// texture.</para>
+    ///
+    /// <para><b>AND DECLARED IS WHERE IT STOPS, WHICH IS A DIFFERENT BOUND FROM DIRTY AND NOT A RETREAT TOWARDS IT</b>
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/626). A switch to a pipeline declaring FEWER sets leaves the
+    /// dropped slots recording their sets deliberately, so the trip back rebinds them
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/625), and those slots were walked here as well: their images
+    /// were asked for a layout no shader on the bound pipeline could read them in. Where the image was already
+    /// resting there the tracker emitted nothing, which is why the shipped post chain showed no extra barrier and
+    /// why this was never a wrong picture. Where it was NOT, the draw paid a barrier to move an image out of the
+    /// layout its real consumer wants, and the consumer paid a second one to move it back. The sharp shape is a
+    /// dropped set naming an image the pass BEGIN itself moves, a <c>RenderTarget | Sampled</c> target: the walk is
+    /// owed a transition the instant the pass reopens, so the draw ends the pass, transitions, reopens, and the
+    /// begin puts the attachment straight back, at EVERY draw of that pass rather than once. Both walks therefore
+    /// stop at <see cref="VulkanBindRecords.BindableSlotLimit"/>, the same limit the flush stops at, and a slot past
+    /// it is walked again the moment a layout declares it.</para>
     ///
     /// <para><b>NOTHING HERE IS SYNCHRONISED</b>, on the same grounds as the list that owns it.</para>
     /// </summary>
@@ -176,14 +190,19 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _geometry.Flush(_emitter, commandBuffer);
         }
 
-        // EVERY IMAGE EVERY RECORDED SLOT BINDS, INTO THE LAYOUT ITS BINDING NEEDS. One tracker call per image,
-        // which emits a barrier only when the image is not already there, so the common frame pays a scan and no
-        // native call at all. See the class note for why the walk is over recorded rather than dirty slots.
+        // EVERY IMAGE EVERY SLOT THE BOUND LAYOUT DECLARES BINDS, INTO THE LAYOUT ITS BINDING NEEDS. One tracker
+        // call per image, which emits a barrier only when the image is not already there, so the common frame pays
+        // a scan and no native call at all. See the class note for why the walk is over declared slots rather than
+        // dirty ones, and for what stopping at the declared count is really about.
         void TransitionBoundImages(ulong commandBuffer, VulkanBindRecords binds)
         {
             if (_layouts is null) return;
 
-            for (uint slot = 0; slot < (uint)binds.RecordedSlotCount; slot++)
+            // READ ONCE, like the flush's own, because nothing this walk does can move it: a transition binds no
+            // pipeline.
+            uint limit = (uint)binds.BindableSlotLimit();
+
+            for (uint slot = 0; slot < limit; slot++)
             {
                 VulkanBoundSet bound = binds.BoundAt(slot);
                 if (!bound.IsBound) continue;
@@ -199,11 +218,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // pass over the same handful of images and it makes no call, which is the trade this shape takes: a scan
         // the common draw pays twice, against an end and a begin the common draw would pay once. The scan costs
         // nothing native and the pair costs two commands and a loadOp reset.
+        //
+        // IT IS BOUNDED IDENTICALLY, AND THAT IS LOAD-BEARING RATHER THAN TIDY. This answer is what decides whether
+        // the pass is ended, so a walk that reached further than the one that emits would end passes for nothing,
+        // and one that reached less far would leave a barrier to be recorded INSIDE an open render pass instance,
+        // which is the invalid call step 1 exists to prevent. The two bounds are the same expression on purpose.
         bool NeedsTransition(VulkanBindRecords binds)
         {
             if (_layouts is null) return false;
 
-            for (uint slot = 0; slot < (uint)binds.RecordedSlotCount; slot++)
+            uint limit = (uint)binds.BindableSlotLimit();
+
+            for (uint slot = 0; slot < limit; slot++)
             {
                 VulkanBoundSet bound = binds.BoundAt(slot);
                 if (!bound.IsBound) continue;

@@ -13,7 +13,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// row that owns the sink writes the four-line implementation over
     /// <see cref="VulkanBufferUpload.Record"/>. That keeps this row's half (the arena, the size classes, the
     /// retention cap, the narrowed barrier and the ROUTING DECISION) complete and driven by tests, without
-    /// pre-empting the shape of a recorder that does not exist yet.</para>
+    /// pre-empting the shape of a recorder that did not exist when this row was written.</para>
     ///
     /// <para><b>NULL ONLY ON A LIST A TEST CONSTRUCTED.</b> Every device-created list carries an uploader since
     /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/519">row 9</see> built

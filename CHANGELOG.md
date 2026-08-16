@@ -5,6 +5,158 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.36.2
+
+A logger taken from the ambient `Log` facade now follows the facade instead of the manager that happened to be
+configured when it was resolved, so a consumer that calls `Log.Configure` after any engine type has been touched
+is no longer silently unlogged in that type for the rest of the process. Alongside it, two reporting defects that
+each made a correct run read as a broken one. The native Vulkan backend's `CreateTexture` refusal told a caller
+their sample count lost to a conservative ceiling of 1 that a landed row replaced two releases ago, and sent them
+to a closed issue for the real number, so the message now states the ceiling the driver actually reported and how
+it was derived. And the native Metal backend stopped warning that a `MTL_SHADER_VALIDATION`-only run was probably
+not validated, which it emitted 99 times on one CI run while naming a variable nobody had set: the device-class
+disambiguation now reads both variables and every validation wrapper Metal has been measured handing back. Fixing
+that turned up a fact neither issue had: shader validation alone answers with `MTLGPUDebugDevice` on real Apple
+silicon and `MTLLegacySVDevice` on a hosted runner, so the check asks whether anything is validating rather than
+whether one named class came back. And the native Vulkan backend's per-draw image transition walk now stops at the set count the bound pipeline layout declares, the same limit its bind flush already stopped at, so a draw no longer barriers, and in the sharp case reopens its render pass for, images belonging to a set the current pipeline dropped.
+
+### A logger from the ambient facade follows the facade (#616)
+
+**The bug, and why it left nothing to notice ([#616](https://github.com/APKiwiOrg/KhaozEngine/issues/616)).**
+`Log.For<T>()` and `Log.Get(category)` returned a `CategoryLogger` pinned to the manager configured at that
+instant, and `Log.Configure` SHUTS DOWN the manager it replaces, which disposes and clears that manager's sinks.
+Twenty-three types across `Gpu`, `Gpu.Vulkan`, `Gpu.D3D11` and `Gpu.Metal` cache their logger in a
+`static readonly ILogger` field resolved at type initialization, which is the natural way to write a logging call
+site. Which logger such a field held for the life of the process therefore depended on whether its type was
+touched before or after the process configured logging, and the loser of that race wrote into a manager with no
+sinks: still reporting itself enabled, still submitting, and dropping every entry. Nothing threw and nothing
+warned, and a dropped log line and a clean run look identical, so a game that probed a GPU capability or
+registered a backend before configuring its log simply never heard from those types again.
+
+**Fixed at the facade, not at the twenty-three call sites.** `Log.For<T>()` and `Log.Get(category)` now hand back
+an ambient logger that holds a CATEGORY and no manager, and reads the configured manager on every call. A logger
+resolved before `Log.Configure` starts writing the moment configuration lands, and one resolved before a
+reconfigure follows the new manager rather than the shut-down one. Per-instance resolution in each type (the
+`VulkanValidationPump` treatment in 17.36.0) was the alternative, and it was rejected: it fixes the instances,
+leaves every genuinely static call site broken, and leaves the twenty-fourth site free to make the same mistake
+again. The existing static fields are correct as they stand and were left alone.
+
+**What it costs.** One volatile read per message, in place of the field read the pinned logger did, and no
+allocation the old path did not already make. A new test in the `LoggingSerial` collection measures a
+level-filtered call through a cached logger at zero bytes allocated. `Log.For<T>()` also caches its logger per `T`
+in a generic static, so it now allocates nothing after the first call for a type, where before it built a
+`CategoryLogger` on every call. The manager is read ONCE per message into a local, so a `Log.Configure` racing a
+log call sends the whole entry to one manager or the whole entry to the other, never half to each, and a submit
+into a manager shut down inside that window is dropped rather than thrown (which `LogManager.Submit` already
+guaranteed for every other racing writer).
+
+**`LogManager.GetLogger` is unchanged and still pins to its manager.** That is the injected path, and a logger a
+caller took from a manager it owns has to keep writing to that manager, or every DI wiring and every test that
+asserts against its own sink stops meaning what it says. The internal `NullLogger` is gone, subsumed by an ambient
+logger with nothing configured.
+
+**Consequence for the #565 test host, noted and deliberately not acted on.** `KhaozEngine.Render.Tests` carries a
+hard rule that no test may reconfigure the facade, because a reconfigure used to orphan every producer that had
+already resolved a logger. That half of the hazard is now gone. The rule stands anyway on its own separate
+reason, which this release did not change: a second `Configure` still disposes the first host's console sink, so
+an armed validation run would still end up with an artifact holding whatever the last configure admitted. The
+comments on `GpuValidationConsoleLogging` and `VulkanValidationConsoleLogging` now say which half is which.
+
+### The Metal device-class disambiguation reads both variables and four device classes (#628)
+
+`MetalGpuDevice` logs which validation tier is really armed and checks that against the device's own Objective-C
+class, because a validated device is a different class from the driver's own. That check was one substring test,
+`deviceClassName.Contains("Debug")`, and a process launched with `MTL_SHADER_VALIDATION=1` and no
+`MTL_DEBUG_LAYER` failed it. On CI run `31874140088` the backend emitted 99 copies of a WARN telling the reader
+to disbelieve a run that was validating perfectly well, and the WARN named `MTL_DEBUG_LAYER`, which that run had
+never set. No public API changed: `MetalValidation` and everything around it are internal.
+
+**Two things are fixed and one was discovered.** The arming record now carries `MTL_DEBUG_LAYER` and
+`MTL_SHADER_VALIDATION` separately instead of only the merged tier, because the merge loses the one distinction
+the class check needs (the shader variable alone and both variables together both report tier `Shaders` and get
+different device classes). Every line that names a variable now names the one that was actually armed, the INFO
+line included, where a shader-only run used to be described as coming from `MTL_DEBUG_LAYER` as well. And the
+class check became `MetalValidation.ClassifyDevice`, over four kinds: `MTLDebugDevice` is the API validation
+layer holding the device, a shader-validation wrapper is the shader layer holding it, `CaptureMTLDevice` is a
+GPU-trace capture that has DISPLACED the layer (#614), and anything else is the driver's own class. The WARN
+fires only when a variable is armed and none of the validation wrappers came back.
+
+**The discovery, measured while fixing it, is that shader validation has TWO class names.** The issue was filed
+on a hosted `macos-26` runner reporting `MTLLegacySVDevice`. The same launch environment on real Apple silicon
+(Mac14,6 / Apple M2 Max, macOS 26.6.1 build 25G76) reports `MTLGPUDebugDevice`. So the check deliberately does
+NOT compare against one expected class name: it asks whether ANY validation wrapper is holding the device,
+because pinning it to either spelling puts the false warning straight back on the other machine. That is the
+same defect one machine further along, and it is why `MTLGPUDebugDevice` is classified ahead of `MTLDebugDevice`
+in the classifier, the first containing the second.
+
+Measured on that M2 Max, one `[GpuFact]` under `KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native` at detailed
+verbosity, three launch environments:
+
+| launch environment | device class | INFO line | disambiguation WARNs |
+| --- | --- | --- | --- |
+| `MTL_SHADER_VALIDATION=1` | `MTLGPUDebugDevice` | `Metal SHADER VALIDATION is ACTIVE ... (from MTL_SHADER_VALIDATION ...)`, read as the shader validation layer holding the device | 0 |
+| `MTL_DEBUG_LAYER=1` | `MTLDebugDevice` | `Metal API validation is ACTIVE ... (from MTL_DEBUG_LAYER ...)` | 0 |
+| both | `MTLDebugDevice` | `Metal API validation is ACTIVE with SHADER VALIDATION ... (from MTL_DEBUG_LAYER and MTL_SHADER_VALIDATION ...)` | 0 |
+
+The debug layer wins the class when both are armed, which is what makes the shader-only case a genuinely
+different expectation rather than the same one.
+
+**The same defect had a second home in the test host, and one predicate replaces two.** `KhaozEngine.Render.Tests`
+writes a header at the top of every armed Metal artifact, and it named `MTL_DEBUG_LAYER` and
+`MTL_SHADER_VALIDATION` on every armed run because it was handed the merged tier, which cannot tell a shader-only
+launch from a both-armed one. It now takes the arming reading rather than the tier and names only what was
+actually set. That line matters more than the backend's did: it is the FIRST line of the artifact, so it fixed
+the reader's belief about the launch environment before any engine line could correct it.
+`MetalCaptureDisplacementTripwire` also carried its own copy of "is this class validating", written as a private
+substring test precisely because the engine's helper of the day would have redded the deep tier for arming the
+deep tier. That helper is gone, so the tripwire asks `MetalValidation.ClassifyDevice` instead and the two cannot
+answer differently about the same device. Its 41 rows pass unchanged on the shared predicate.
+
+### The native Vulkan ledger stops describing landed rows as open (#627)
+
+The work-breakdown rows that built `KhaozEngine.Gpu.Vulkan` all landed, and prose in that package still said
+otherwise in three places, one of them a runtime message. `CreateTexture`'s `ArgumentException` ended with "this
+device's ceiling is still the conservative 1 that row 4 pinned" and pointed at the closed capability row for the
+real computation. That row landed in `17.34.0`, so the ceiling is a real driver reading and the message now says
+what it is and where it came from: `vkGetPhysicalDeviceImageFormatProperties` per MRT target with that target's
+own usage, reduced to the highest supported sample bit, minimised over the three targets. Its `<exception>` doc
+says the same. `VulkanGpuDevice` also claimed recording rows were still open on `VulkanCommandList` (row 15
+closed the last of them) and that the uniform ring's frame boundary and `DrainRetiredResources` had no caller
+(`Present` calls both, since row 17). No behaviour changed.
+
+The rest of the package was swept for the same class of claim, and the widest one was the package Description
+itself, which is what a NuGet reader sees: it still read `IN PROGRESS` and listed recording content, descriptor
+sets, framebuffers, shaders, pipelines and the windowed swapchain as not built yet. The package README's "what
+is not built yet" section, the capability read's MSAA constant docs and future-tense row references in nine more
+files went with it. The refusal test asserted the old message contained the closed row's number, and now asserts
+the reported ceiling, the driver query, and that the closed row is NOT named.
+
+### The per-draw transition walk stops where the bound pipeline layout stops (#626)
+
+`VulkanDrawRecorder`'s bound-image walk, and the ask that decides whether the open render pass has to close for
+it, both read every RECORDED descriptor slot. #625 stopped the bind flush at the bound layout's declared set
+count and left these two behind. No public API changes: the whole schedule is internal to
+`KhaozEngine.Gpu.Vulkan`.
+
+**It was wasted work rather than a wrong picture, and that distinction is the whole finding.** Every barrier the
+over-broad walk emitted was correct, was recorded in the list-local layout tracker, and was restored at `End`, so
+no consumer ever read a layout that was not true. What it did was move images no shader on the bound pipeline can
+read. Where the image was already resting where its binding wanted it the tracker emitted nothing, which is why
+the shipped post chain never showed an extra barrier and why #625's nine victims measured no extra cost.
+
+**Two shapes where it was not free.** A dispatch that leaves a storage texture in `GENERAL` and a dropped set
+that names it as sampled cost the next draw one barrier to move it out of the layout its real consumer wants, and
+the next dispatch a second one to move it back. The sharp shape is a dropped set naming an image the pass BEGIN
+itself moves, a `RenderTarget | Sampled` target that rests in `SHADER_READ_ONLY_OPTIMAL`: the walk was owed a
+transition the instant the pass reopened, so the draw ended the pass, transitioned, reopened, and the begin put
+the attachment straight back, at EVERY draw of that pass rather than once.
+
+**The bound is DECLARED and not dirty, which is a different question and the one a fix could get wrong.** Dirty
+is what owes a bind, declared is what can be bound at all, and a set bound before a dispatch is still bound at
+the draw after it and still owes its compute rule 1 transition without owing a bind. A slot past the limit keeps
+its record and is walked again the moment a layout declares it. Three device-free tests in the new
+`VulkanTransitionWalkTests` drive both cost shapes and the clean declared slot that must keep being walked.
+
 ## 17.36.1
 
 The native Vulkan backend's staged buffer upload now barriers on the way IN as well as on the way out, closing

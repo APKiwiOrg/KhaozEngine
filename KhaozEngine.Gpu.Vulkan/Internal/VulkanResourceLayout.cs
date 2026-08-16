@@ -23,7 +23,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// lookup at all.</para>
     ///
     /// <para><b>IT HOLDS NO SEAM AND NO CACHE.</b> The cache is a constructor parameter and not a field, so a
-    /// layout carries a handle and no way to make another one. That is not tidiness: row 11 will hold layouts on
+    /// layout carries a handle and no way to make another one. That is not tidiness: row 11 holds layouts on
     /// the recording path, and a layout that could reach the descriptor seam would carry
     /// <c>vkAllocateDescriptorSets</c> into the recorder's field graph and break decision V-D2's unreachability
     /// walk.</para>

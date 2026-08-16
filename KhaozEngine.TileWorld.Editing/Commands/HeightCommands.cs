@@ -38,19 +38,32 @@ public sealed class SetCornerHeightsCommand : TileCommandBase
                 plane));
     }
 
+    /// <summary>Corners the rect covers, whether or not the world holds a region for each of them.</summary>
+    public int CornerCount => _cornerRect.IsEmpty ? 0 : _cornerRect.Width * _cornerRect.Height;
+
+    /// <summary>Corners the last <see cref="Apply"/> actually wrote, which is below <see cref="CornerCount"/>
+    /// when the rect reached space no region holds, so a tool can report how much of a brush or an imported
+    /// heightmap fell outside the world. Zero before the first apply.</summary>
+    public int WrittenCount { get; private set; }
+
     /// <summary>Writes the new heights, capturing the old ones the first time round.</summary>
     public override void Apply(TileWorldDocument doc)
     {
         ArgumentNullException.ThrowIfNull(doc);
+        WrittenCount = 0;
         if (_cornerRect.IsEmpty) return;
         if (!_captured) Capture(doc);
         int i = 0;
         for (int z = _cornerRect.Z; z < _cornerRect.Z1; z++)
             for (int x = _cornerRect.X; x < _cornerRect.X1; x++, i++)
+            {
                 // The write result IS the record of what to restore, so it is refreshed on every apply. A redo
                 // after a region was deleted under this command writes fewer corners than the first apply did,
                 // and the revert has to follow that rather than write into a region that is no longer there.
-                _written![i] = doc.TrySetCornerHeightCm(x, z, _plane, _newCm[i]);
+                bool wrote = doc.TrySetCornerHeightCm(x, z, _plane, _newCm[i]);
+                _written![i] = wrote;
+                if (wrote) WrittenCount++;
+            }
     }
 
     /// <summary>Restores the corners this command actually wrote, leaving the skipped ones alone.</summary>

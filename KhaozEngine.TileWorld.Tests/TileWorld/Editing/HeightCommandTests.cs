@@ -55,7 +55,12 @@ public class HeightCommandTests
 
         // Corner 63 is writable. Corner 64 reads by edge-extension from this region but has no region of its
         // own, so it cannot be written, and corner 65 resolves to nothing at all.
-        ed.Execute(new SetCornerHeightsCommand(new TileRect(63, 5, 3, 1), 0, new short[] { 500, 700, 900 }));
+        var cmd = new SetCornerHeightsCommand(new TileRect(63, 5, 3, 1), 0, new short[] { 500, 700, 900 });
+        ed.Execute(cmd);
+
+        // The counts are what lets a tool say how many corners of the brush fell outside the world.
+        Assert.Equal(3, cmd.CornerCount);
+        Assert.Equal(1, cmd.WrittenCount);
 
         Assert.Equal(500, doc.CornerHeightCm(63, 5, 0));
         Assert.Equal(500, doc.CornerHeightCm(64, 5, 0));   // edge-extended from 63, NOT the 700 we asked for

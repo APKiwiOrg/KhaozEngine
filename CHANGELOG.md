@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 17.36.2
+## 17.37.0
 
 A logger taken from the ambient `Log` facade now follows the facade instead of the manager that happened to be
 configured when it was resolved, so a consumer that calls `Log.Configure` after any engine type has been touched
@@ -18,7 +18,15 @@ not validated, which it emitted 99 times on one CI run while naming a variable n
 disambiguation now reads both variables and every validation wrapper Metal has been measured handing back. Fixing
 that turned up a fact neither issue had: shader validation alone answers with `MTLGPUDebugDevice` on real Apple
 silicon and `MTLLegacySVDevice` on a hosted runner, so the check asks whether anything is validating rather than
-whether one named class came back. And the native Vulkan backend's per-draw image transition walk now stops at the set count the bound pipeline layout declares, the same limit its bind flush already stopped at, so a draw no longer barriers, and in the sharp case reopens its render pass for, images belonging to a set the current pipeline dropped. Alongside all of that, round 2 of the tile-world program lands as a new package, `KhaozEngine.TileWorld.Render3D`, which draws a `KhaozEngine.TileWorld` document through the existing lit model and prop paths.
+whether one named class came back. And the native Vulkan backend's per-draw image transition walk now stops
+at the set count the bound pipeline layout declares, the same limit its bind flush already stopped at, so a
+draw no longer barriers, and in the sharp case reopens its render pass for, images belonging to a set the
+current pipeline dropped. Away from the GPU, `ObjectPool<T>` gained a rental handle that names one RENTAL
+rather than one slot, so a stale or duplicate return of an item whose slot has since been rented out again is
+refused by name instead of silently freeing the current renter's item out from under it and letting the pool
+hand the same object to two owners. Alongside all of that, round 2 of the tile-world program lands as a new
+package, `KhaozEngine.TileWorld.Render3D`, which draws a `KhaozEngine.TileWorld` document through the
+existing lit model and prop paths.
 
 ### The tile world renderer package (#629)
 
@@ -111,7 +119,7 @@ for this round and has moved to round 3: it has no consumer until `TileEditor` e
 ship forwarding aliases nothing calls and freeze a kernel shape before the editor that has to live in it. Round 3
 is that kernel, the `TileEditor` GUI and the `ke-tileedit` MCP tool together. Ground materials are still colour
 only, with tile-local UVs written so a texture path can land later without touching the mesher's logic, and
-`Kind = Water` still renders as flat colour.
+`Kind = Water` still renders as flat colour. On the netcode side, a transport reconnect no longer reads to the consumer as a teleport when its resume snapshot places the player where they were, and instead glides the small displacement so the avatar stays with the camera nothing warped, while the teleport epoch cuts on an advance rather than on any change, so a client on a lossy link stops paying a world-scale teleport reaction (a terrain streamer's whole ring, a camera cut) on every drop and on an epoch that momentarily reads as absent. The verdict is measured on the resume snapshot, so the server decides whether a rejoin is quiet, and a server that spawns the rejoiner before restoring their stored position still teleports them twice.
 
 ### A logger from the ambient facade follows the facade (#616)
 
@@ -249,6 +257,120 @@ is what owes a bind, declared is what can be bound at all, and a set bound befor
 the draw after it and still owes its compute rule 1 transition without owing a bind. A slot past the limit keeps
 its record and is walked again the moment a layout declares it. Three device-free tests in the new
 `VulkanTransitionWalkTests` drive both cost shapes and the clean declared slot that must keep being walked.
+
+### `ObjectPool` rents a RENTAL, not a slot (#149)
+
+**The hole.** `ObjectPool<T>.Return` matched on `item.PoolIndex`, which the pool stamps once at construction
+and never revises, so it names a SLOT and not a particular rental of that slot. Return an item, let something
+else rent the slot it freed, and a stale or duplicate `Return` of the first item still matched: the pool reset
+and freed the SECOND renter's item out from under it, then handed the same object out again to a third caller
+while the second still believed it held it exclusively. Nothing threw and nothing logged, and the two owners
+scribbling over each other surfaced somewhere unrelated. Latent rather than live, because the two in-repo
+callers each did a strict rent-then-return-once inside a `finally`, but `Primitives` is in every umbrella so the
+unguarded API reached all four games.
+
+**A generation stamped on the item does not fix it, which is worth writing down because it is the obvious
+move.** Successive rentals of a slot ARE the same object. Whatever the pool writes onto the item for rental A
+is overwritten when B rents that slot, so a stale `Return(A)` reads B's value, matches, and frees B exactly as
+before. The information that separates a finished rental from the live one cannot live on the shared object at
+all. It has to sit in the caller's hand.
+
+**So the caller holds it.** Each slot now carries a generation counter bumped once when it is rented and once
+when it is released, which makes the counter odd exactly while the slot is rented and even exactly while it is
+free. `TryRent(out PoolRental<T>)` hands back a handle carrying the slot plus the generation it was stamped
+with, and `Return(in PoolRental<T>)` accepts only while the counter still reads that generation. A rental that
+is over, foreign to the pool, or empty is refused by name with `StalePoolReturnException` rather than acted on.
+`TryReturn(in PoolRental<T>)` is the non-throwing half, for an idempotent dispose that may return twice and for
+a `finally` block, where a throwing refusal would replace the exception already unwinding. Both bumps are
+unchecked and mod-2^32 wrapping preserves the odd/even parity, so the invariant survives overflow: a false
+accept would need a caller still holding a rental 2^31 rent/release cycles of that slot after it ended (a cycle
+advances the counter by 2, so 2^31 of them walk the full 2^32 back to the stale handle's value, about 414 days
+at one cycle per frame at 60Hz), which a test drives at the wraparound boundary.
+
+**Additive, so `IPoolable` and the older pair are untouched.** No new member on the interface, so every existing
+implementer still compiles unchanged, and `PoolRental<T>` is a `readonly struct` passed by `in`, so a
+rent-use-return cycle still allocates nothing (held to that by a test in the `AllocSensitive` collection).
+`Rent()` and `Return(item)` keep their exact current behaviour and are now documented for what they cannot see,
+with a test pinning that limitation rather than leaving it to prose. `EntityCommandBuffer.Playback` and `World`'s
+`ForEach`/`ParallelForEach` query pool both moved to the checked pair, so the engine's own code models the
+pattern new callers copy. This is additive public API (two types, three members), which is why this entry is
+17.37.0 rather than the 17.36.2 patch it was staged as: the pool handle and the new `KhaozEngine.TileWorld.Render3D`
+package both make the staged set minor-shaped, and the version was re-cut once on main before tagging.
+
+### A transport reconnect is not a teleport, and the epoch compare fires on an advance (#409)
+
+`ClientPrediction.Reconcile` reported `ReconciliationResult.Teleported` on any (re)seed and on any change of the
+authoritative teleport epoch. Two defects came out of that, both of them making a correct session read as a
+displacement the consumer had to answer expensively. Public behaviour changes on `KhaozEngine.Netcode`
+(`ReconciliationResult.Teleported`, `ClientPrediction.Reseed`) and `KhaozEngine.NetWorld`
+(`WorldClient.LocalTeleported` / `LocalTeleportEpoch` / `RemoteTeleports`). No API signature changed.
+
+**Every transport reconnect surfaced as a teleport.** `WorldClient.StartAttempt` clears `LocalNetId` on each
+reconnect attempt, so the next ingest reads as the session's first and calls `ClientPrediction.Reseed`, and the
+reseed armed the teleport flag unconditionally. Nothing about that involves the server: a reconnect fired the
+signal with no epoch change at all, and a client on a lossy link fired it on every drop. The contract's reaction
+is expensive by design (warp the camera, run a transition, re-centre everything keyed to the player's position),
+so a consumer honouring it paid a world-scale cost for a session event that moved nobody. Ruinborne rebuilt its
+whole terrain ring while the player stood still
+([Ruinborne#388](https://github.com/APKiwiOrg/Ruinborne/issues/388)). This also corrects the record in
+Ruinborne#341, whose trace concluded only join, respawn, self-rescue and admin teleports advance the epoch: the
+reconnect reseed path was missed.
+
+**The contract is positional now, and Reseed decides it.** `Teleported` means the local player's world position
+changed DISCONTINUOUSLY. `Reset` (a first-ever join) still reports one unconditionally, because there is no prior
+position for the placement to be continuous with. `Reseed` measures the resume displacement instead, in 3D and in
+absolute space so an island re-anchor across the reconnect measures zero, and reports a teleport only when it
+reaches `PredictionSettings.HardSnapDistance`. Below that the session simply resumes: prediction is still reseeded
+(the inter-tick phase and the authoritative basis have to be rebuilt against the new session), and the signal stays
+quiet. Consumers wanting a shorter leash tighten `HardSnapDistance` via `WorldClientConfig.Prediction`.
+
+**The same verdict decides whether the avatar cuts or glides.** It has to, because the consumer's camera warp hangs
+off the signal. A reported teleport cuts: `Reseed` drops the render offsets, so the avatar is on the resume position
+the frame the seed lands and the warp meets it there. A quiet resume must not cut, because nothing tells that camera
+to warp, so the sub-threshold displacement is re-anchored into the decaying render offset instead and glides away
+like an ordinary correction. Dropping the offsets on both verdicts put the avatar on the resume position instantly
+while the camera eased the whole way behind it, which is the camera-flying artifact the teleport signal exists to
+prevent, inverted. The re-anchor is computed in absolute space, so a resume that arrives in a different island frame
+glides nothing.
+
+**What the client measures is the resume SNAPSHOT, so the server decides whether a rejoin is quiet, and the
+persistence path is not there yet.** `WorldServer.OnJoin` builds the rejoiner's entity at
+`WorldServerConfig.SpawnPosition`, the next `Tick` serves that spawn with no gate on the load `WorldPersistence`
+started off `PlayerJoined`, and the stored position is applied afterwards through
+`SetPlayerState(..., teleport: true)`. A player standing further than `HardSnapDistance` from the spawn therefore
+still sees two teleports on rejoin: the reseed onto the spawn, then the restore's epoch advance. That is unchanged
+from before this work (the reseed reported one unconditionally then), and it is why this change alone does not make
+a persistence-backed reconnect quiet. Filed as
+[#642](https://github.com/APKiwiOrg/KhaozEngine/issues/642) with the two fix shapes. A game that restores position
+synchronously at the join spawn gets the quiet reconnect today.
+
+**The epoch could not have decided it, which is why the fix is positional.** A rejoining client is a FRESH
+authoritative entity: both server heads allocate a new `NetId` per join (`WorldServer.OnJoin`,
+`ShardedWorldServer`), and its teleport epoch counts from its own zero. The epoch a reconnect lands on therefore
+bears no relation to the one the previous session ended on, so no comparison across the reconnect can mean
+anything, and only the position can. In-session teleports are untouched: a server-side respawn, an admin move or a
+self-rescue still advances the epoch and still cuts.
+
+**The epoch compare is monotonic.** It fired on any inequality, and the epoch reads a default 0 whenever the host
+serves a state with its movement component momentarily absent (`WorldClient`'s own remote read, and
+`ShardedWorldServer.SetPlayerState` on the server), so a real stream dips 5 to 0 to 5. A last-seen store made the
+dip silent and the RECOVERY read as a fresh advance, which is the every-snapshot fire. Both the local compare in
+`ClientPrediction.Reconcile` and the remote one in `WorldClient.FlushTeleportedRemotes` now hold the epoch as a
+high-water mark and cut only on an advance past it, so neither edge of a dip costs anything and a genuine advance
+still cuts as it always did.
+
+**Tests.** Three rows in a new `WorldClientReconnectTeleportTests` drive the live loopback harness: a transport
+drop and reconnect with the player stationary, a first join, and a server teleport both before and after a
+reconnect. The stationary row moves the player 500 m off the spawn first and runs against a harness server that
+records the departing session's final position (off `PlayerLeaving`, in absolute metres) and hands it back as the
+next join's spawn, which is the synchronous form of a load-on-join. Both halves are load-bearing: parked on the
+spawn, "resumed where they were" and "resumed at the spawn" are the same point, and the row passes whether or not
+anything was restored. Bypassing the restore fails it at `<400, 0.9, 300> -> <0, 0.9, 0>`.
+`A_remote_epoch_that_dips_and_recovers` feeds hand-built snapshots to drive the remote flush across a dip and its
+recovery. In `ClientPredictionTests`, two rows cover the continuous resume and the local epoch dip directly and two
+more pin the cut-vs-glide split at 150 m and 50 m, and a row in `ClientFrameAdoptionTests` reseeds across a frame
+change at one world position (anchor 384,256 to the origin frame), which reports a teleport plus a 480 m glide the
+moment the anchors come out of the resume measurement. Every behavioural row fails against the pre-fix sources.
 
 ### The ocean focus tests share one scene, and the cost they were blamed for was not the ocean (#332)
 

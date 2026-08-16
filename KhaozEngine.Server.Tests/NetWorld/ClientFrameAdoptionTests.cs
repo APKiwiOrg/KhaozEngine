@@ -116,6 +116,42 @@ public class ClientFrameAdoptionTests
     }
 
     [Fact]
+    public void A_reseed_across_a_frame_change_at_the_same_absolute_position_is_not_a_teleport()
+    {
+        // #409's resume verdict is measured in ABSOLUTE space, and this is the row that pins it. A reconnect can
+        // legitimately come back in a DIFFERENT island frame than the dropped session was carrying: the rejoining
+        // client adopts whatever stamp the first snapshot of the new session happens to carry, and the server
+        // re-anchors on its own schedule. Differencing the two frame-LOCAL positions would read the anchor delta as a
+        // resume displacement - 480 m of it here, nearly five times HardSnapDistance - and report a teleport, plus a
+        // render glide a frame-width wide, for a player who did not move at all.
+        var carriedAnchor = new Vector2(WorldFrame.Grid * 3f, WorldFrame.Grid * 2f);   // 384, 256
+        var at = new Vector3(400f, 0.9f, 300f);                                        // 16, 44 inside that frame
+
+        PlayerMoveSimulator sim = Simulator();
+        sim.Frame = new WorldFrame(3, 2);
+        ClientPrediction<PlayerMoveState, MoveCommand> prediction = Predictor(sim);
+        prediction.Reset(Seed(at, carriedAnchor));
+        prediction.Reconcile(0, Seed(at, carriedAnchor), lastAcknowledgedSeq: -1);   // consume the join signal
+
+        // The two really are different spaces, or the rest proves nothing: one world position, two local ones.
+        PlayerMoveState resume = Seed(at, Vector2.Zero);
+        Assert.Equal(new Vector2(16f, 44f),
+            new Vector2(prediction.PredictedState.Position.X, prediction.PredictedState.Position.Z));
+        Assert.Equal(new Vector2(400f, 300f), new Vector2(resume.Position.X, resume.Position.Z));
+
+        sim.Frame = WorldFrame.Origin;
+        prediction.Reseed(resume);
+        ReconciliationResult rr = prediction.Reconcile(1, resume, lastAcknowledgedSeq: -1);
+
+        Assert.False(rr.Teleported, "the session resumed at the same world position, so nobody teleported");
+        Assert.False(rr.HardSnapApplied);
+        // And it does not glide either: the quiet resume carries the ABSOLUTE displacement into the render offset,
+        // and that is zero here, so the avatar neither cuts nor drifts across the screen while an offset decays.
+        Assert.True(Vector3.Distance(prediction.RenderedState.Absolute.Position, at) < 0.01f,
+            $"the avatar rendered at {prediction.RenderedState.Absolute.Position}, not at {at}");
+    }
+
+    [Fact]
     public void A_state_that_never_opted_into_frames_never_reaches_the_throwing_wither()
     {
         // The DIM contract: WithFrameAnchor's default throws, and it is unreachable unless the two anchors actually

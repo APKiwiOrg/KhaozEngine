@@ -5279,7 +5279,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.36.2" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.37.0" />
 ```
 
 ```csharp
@@ -8801,7 +8801,7 @@ run inside the engine's process-wide device-creation gate, so a provider needs n
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.36.2" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.37.0" />
 ```
 
 ```csharp
@@ -8835,7 +8835,7 @@ that up front is what routes it through the reported fallback instead of a crash
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.36.2" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.37.0" />
 ```
 
 ```csharp
@@ -9073,7 +9073,7 @@ is no recovery path: a lost device stays lost, which is what the liveness token 
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.36.2" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.37.0" />
 ```
 
 ```csharp
@@ -10177,7 +10177,7 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   uses the GLFW provider `AppWindow` registers at startup (the working Windows/Linux/macOS path), so a windowed
   game gets a working text clipboard for free; a windowless/headless tool registers none and has text only on
   macOS (via `NSPasteboard`).
-- **`KhaozEngine.Primitives`** also carries `ObjectPool<T>` (O(1) rent/return, swap-removal compaction; absorbed from the retired `KhaozEngine.Pooling` in 9.0.0).
+- **`KhaozEngine.Primitives`** also carries `ObjectPool<T>` (O(1) rent/return, swap-removal compaction, absorbed from the retired `KhaozEngine.Pooling` in 9.0.0). Rent through `TryRent` and its `PoolRental<T>` handle, not the older `Rent()`/`Return(item)` pair - see "Pooling: rent through the rental handle" below.
 - **`KhaozEngine.Collision`**: deterministic `CircleCollision` + `SpatialHashGrid` (bit-identical for lockstep).
 - **`KhaozEngine.Determinism`**: `DeterministicFpScope` - forces a canonical CPU floating-point environment
   for fixed-tick / lockstep sims (see "Deterministic floating point" below).
@@ -10209,6 +10209,55 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   the `NetServer` session inbox and the LiteNetLib transport inboxes use so a stalled or flooded host can't grow
   undrained events without bound; tune it with the optional `maxQueuedEvents` ctor arg (default 10,000) and watch
   `DroppedEventCount`, which stays 0 for a host that drains each poll as contracted.
+
+---
+
+## Pooling: rent through the rental handle (`KhaozEngine.Primitives`)
+
+`ObjectPool<T>` has two rent/return pairs. Use the checked one:
+
+```csharp
+var pool = new ObjectPool<Bullet>(() => new Bullet(), prewarmCount: 64);
+
+if (pool.TryRent(out PoolRental<Bullet> rental))
+{
+    Bullet b = rental.Item!;
+    // ... use b for as long as the rental lasts ...
+    pool.Return(in rental);          // throws StalePoolReturnException if this rental is already over
+}
+
+for (int i = 0; i < pool.ActiveCount; i++)
+    pool.GetActive(i).Update(dt);
+```
+
+`TryRent` is `false` (and writes the empty rental) when the pool is exhausted. `PoolRental<T>` is a
+`readonly struct` passed by `in`, so a rent-use-return cycle allocates nothing.
+
+**Why the handle and not the item.** A pool reuses the same object for successive rentals, so after
+`Return(b)` and a fresh rent, your stale `b` variable and the pool's newly rented item are the same
+reference. Nothing readable off the object separates the finished rental from the live one, so the older
+`Rent()` / `Return(item)` pair accepts a stale return and frees the current renter's item out from under it,
+then hands the same object to a second owner. The rental handle carries the slot plus a generation the pool
+bumps on every rent and release, which is the information that is missing from the object itself
+([#149](https://github.com/APKiwiOrg/KhaozEngine/issues/149)).
+
+**Which return to call.** `Return(in rental)` throws `StalePoolReturnException` on a rental that is over,
+foreign, or empty, which is what you want for a genuine caller bug. `TryReturn(in rental)` returns `false`
+instead, for an idempotent dispose that may return twice and, importantly, inside a `finally`, where a throw
+would replace the exception already unwinding:
+
+```csharp
+if (!pool.TryRent(out PoolRental<Bullet> rental))
+    return;                          // exhausted: nothing was rented, so there is nothing to return
+
+try { Fire(rental.Item!); } finally { pool.TryReturn(in rental); }
+```
+
+`Rent()` and `Return(item)` still work and are unchanged. They cannot make the check, so treat them as the
+legacy pair and move new code to the handle.
+
+`Clear()` ends every outstanding rental, so returning one afterwards is refused rather than freeing whatever
+has since taken its slot.
 
 ---
 
@@ -12270,12 +12319,13 @@ the feature just ignores it.
 
 A teleport is two problems. (1) The **avatar + camera must cut, not glide**, even when the destination is near.
 Client reconciliation decides cut-vs-glide by distance, so a short in-session hop would smooth. The server carries a
-monotonic **teleport epoch** on the authoritative movement state and bumps it only at teleport sites (join/reconnect
+monotonic **teleport epoch** on the authoritative movement state and bumps it only at teleport sites (load-on-join
 placement, admin `Teleport`, self-rescue) via `SetPlayerState(..., teleport: true)`. `ClientPrediction.Reconcile`
-force-cuts on an epoch advance regardless of distance, and `WorldClient` surfaces one uniform signal:
+force-cuts on an epoch ADVANCE regardless of distance, and `WorldClient` surfaces the signal:
 
 ```csharp
-// Push: react the frame a local teleport lands (join, reconnect, or an in-session server teleport).
+// Push: react the frame the local player's position changes discontinuously (join, an in-session server
+// teleport, or a reconnect that resumed the session somewhere else).
 client.LocalTeleported += () =>
 {
     camera.Warp(client.LocalRenderState.Position);   // FollowCamera3D: cut the follow camera, no ease (the whole login-fly fix)
@@ -12284,6 +12334,29 @@ client.LocalTeleported += () =>
 // Poll alternative (robust to multiple teleports between frames, needs no clearing):
 if (client.LocalTeleportEpoch != _lastSeen) { _lastSeen = client.LocalTeleportEpoch; /* warp + transition */ }
 ```
+
+**A transport reconnect whose resume snapshot places the player where they were is not a teleport** (#409). This
+matters because the reaction is expensive by design: a consumer typically answers it by warping the camera, running a
+screen transition, and re-centring everything keyed to the player's position - a terrain streamer's ring above all.
+Reporting a reconnect as a teleport made a client on a lossy link rebuild its world on every drop while the player
+stood still. Prediction is still reseeded across the reconnect (fresh transport, fresh server slot, fresh net id,
+fresh authoritative entity), but the signal is withheld unless the resume snapshot lands at least
+`PredictionSettings.HardSnapDistance` from where this client was. Tighten that via `WorldClientConfig.Prediction` for
+a shorter leash. Below the threshold the resume also GLIDES rather than cutting, so the avatar stays with the camera
+that nothing warped. The epoch cannot decide any of this on its own: a rejoining client is a fresh authoritative
+entity whose epoch counts from its own zero. For the same reason the epoch compare is an ADVANCE past a high-water
+mark, never any inequality: the epoch reads 0 whenever the movement component is momentarily unreadable, so a real
+stream dips and recovers, and both edges used to fire a cut.
+
+**The resume snapshot is what the client measures, so the server decides whether a rejoin is quiet.** A server that
+spawns the rejoiner and restores their stored position afterwards still produces TWO teleports on rejoin, and this
+is the shape `WorldServer` + `WorldPersistence` have today: `OnJoin` builds the entity at
+`WorldServerConfig.SpawnPosition`, the next `Tick` serves that spawn to the client with no gate on the outstanding
+load, and the restore lands later via `SetPlayerState(..., teleport: true)`. So the client reseeds onto the SPAWN
+(a teleport for anyone standing further than `HardSnapDistance` from it) and then takes the restore's epoch advance
+as a second one. Tracked at https://github.com/APKiwiOrg/KhaozEngine/issues/642. A game that restores position
+synchronously at the join spawn (or withholds the first snapshot until the load lands) gets the quiet reconnect
+described above.
 
 `FollowCamera3D.Warp(target)` forces the smoothed target so `EffectiveTarget == target` that frame with zero
 trailing (normal damping resumes next frame); `SnapToTarget()` collapses in-flight damping onto the current `Target`.

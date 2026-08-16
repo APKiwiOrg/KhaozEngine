@@ -712,7 +712,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
 
     private void OnJoin(int slot, string subject, string displayName)
     {
-        string accountId = string.IsNullOrEmpty(subject) ? $"guest:{slot}" : subject;
+        string accountId = string.IsNullOrEmpty(subject) ? $"{ResumePositionCache.GuestAccountPrefix}{slot}" : subject;
         if (banStore is not null && banStore.IsBanned(accountId))
         {
             // Typed rejection, no engine-authored text: the client maps ServerNoticeKind.Banned to its own localized
@@ -730,7 +730,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         deltaReplicator?.Forget(slot);
         deltaCapableSlots.Remove(slot);
 
-        Vector3 spawn = config.SpawnPosition?.Invoke(slot) ?? new Vector3(slot * 2f, 0f, 0f);
+        Vector3 spawn = JoinSpawn(slot, accountId);   // a known rejoiner is built where it left (see JoinSpawn)
         // Ground-clamp the spawn (an idle step settles Y onto the terrain + half-height). The clamp runs in the frame
         // of the cell that contains the spawn point, using that cell's physics world, and comes back ABSOLUTE - the
         // cell the player actually lands in is keyed off that absolute position, exactly as before.

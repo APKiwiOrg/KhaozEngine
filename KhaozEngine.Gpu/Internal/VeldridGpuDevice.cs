@@ -267,12 +267,27 @@ namespace KhaozEngine.Gpu.Internal
 
         // THE GLSL IS COMPILED HERE INSTEAD OF INSIDE CreateFromSpirv (#640), which is the same move
         // CreateComputeShaderFromSpirv below already makes and for a neighbouring reason. That one needed the
-        // module so it could read the workgroup size back; this one needs it so the memo has something to hold.
-        // CreateFromSpirv sniffs the SPIR-V magic and skips its own shaderc call when the bytes are already a
-        // module, so what reaches Veldrid is byte for byte what its internal EnsureSpirv would have produced from
-        // the same source under the same defaults, and the cross-compile and shader creation past that point are
-        // untouched. Worth 2515 ms of a 2560 ms Scene3D constructor on Metal, and the same order everywhere else,
+        // module so it could read the workgroup size back, and this one needs it so the memo has something to
+        // hold. Worth 2515 ms of a 2560 ms Scene3D constructor on Metal, and the same order everywhere else,
         // because that constructor asks for 34 shader sets and every one of them was a fresh glslang run.
+        //
+        // WHY THE REROUTED BYTES ARE THE SAME BYTES, read off Veldrid.SPIRV 1.0.15 rather than assumed.
+        // CreateFromSpirv has two branches and both sniff the SPIR-V magic before compiling anything, so a module
+        // passed in is passed through either way. It is NOT EnsureSpirv that runs on the backends this actually
+        // reaches: that member is the Vulkan branch only. On Direct3D 11 and Metal the compile lives inside
+        // SpirvCompilation.CompileVertexFragment, per stage, behind a Util.HasSpirvHeader check, and it is issued
+        // as CompileGlslToSpirv(..., string.Empty, stage, debug: target == GLSL || target == ESSL, 0, null).
+        // For an HLSL or MSL target that debug flag is FALSE, the macro count is zero, and string.Empty resolves
+        // to the same <veldrid-spirv-input> diagnostic name a null does (CompileGlslToSpirv substitutes it for
+        // either), which is every input to the compile the call below makes under GlslCompileOptions.Default. So
+        // the bytes match, and the cross-compile and shader creation past that point are untouched.
+        //
+        // THE ONE TARGET WHERE THEY WOULD NOT MATCH IS OPENGL, and it is unreachable. For a GLSL or ESSL target
+        // that same expression compiles with debug: true, and SPIRV-Cross derives GL resource NAMES from the
+        // debug information, so rerouting through the line below would drop them. GpuDeviceContext refuses an
+        // OpenGL device on both the windowed and the headless path with NotSupportedException, so no call can
+        // arrive on that target today. If one ever can, this reroute must pass debug: true for it or the names
+        // break. HlslCrossCompilePin records the decompiled shape of the overload this rides on.
         static byte[] ToSpirv(string glsl, GpuShaderStages stage) =>
             SpirvCompileCache.Shared.GetOrCompile(VeldridDefaultsIdentity, stage, glsl,
                 () => SpirvCompilation.CompileGlslToSpirv(

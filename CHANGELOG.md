@@ -505,10 +505,22 @@ scene after it 21 ms, and a scene on a brand-new device 21 ms.
 `SpirvFrontEnd.ToSpirv`, which is now memoized, so the native Vulkan and Direct3D 11 paths stop recompiling and the
 native Metal one keeps skipping the front end entirely when its MSL disk cache is warm. The incumbent Veldrid
 device compiles its own graphics pair through the memo and hands `CreateFromSpirv` the SPIR-V rather than the GLSL,
-which is the move `CreateComputeShaderFromSpirv` beside it already made for its own reason. `CreateFromSpirv`
-sniffs the SPIR-V magic and skips its own glslang call, so what reaches Veldrid is byte for byte what its internal
-`EnsureSpirv` produced from the same source under the same defaults, and the cross-compile and shader creation past
-that point are untouched.
+which is the move `CreateComputeShaderFromSpirv` beside it already made for its own reason.
+
+**Why the rerouted bytes are the same bytes, read off `Veldrid.SPIRV` 1.0.15 rather than assumed.**
+`CreateFromSpirv` has two branches and both sniff the SPIR-V magic before compiling anything, so a module handed
+in is handed through either way. The member that runs is not `EnsureSpirv`, which is the Vulkan branch only. On
+Direct3D 11 and Metal the compile lives inside `SpirvCompilation.CompileVertexFragment`, per stage, behind a
+`Util.HasSpirvHeader` check, issued as
+`CompileGlslToSpirv(..., string.Empty, stage, debug: target == GLSL || target == ESSL, 0, null)`. For an HLSL or
+MSL target that debug flag is false, the macro count is zero, and `string.Empty` resolves to the same
+`<veldrid-spirv-input>` diagnostic name a null does, which is every input to the compile the engine now makes
+under `GlslCompileOptions.Default`. So the bytes match, and the cross-compile and shader creation past that point
+are untouched. The one target where they would not match is OpenGL: that same expression compiles with
+`debug: true` there, and SPIRV-Cross derives GL resource names from the debug information, so the reroute would
+drop them. `GpuDeviceContext` refuses an OpenGL device on both the windowed and the headless path with
+`NotSupportedException`, so nothing can arrive on that target today, and if that ever changes the reroute must
+pass `debug: true` for it.
 
 **The pin separation is kept rather than quietly collapsed.** `SpirvFrontEndPin` governs every engine-owned
 compile and the incumbent deliberately keeps the library's own defaults, two sets maintained independently whose

@@ -914,6 +914,31 @@ lock at all is held while a backend is inside `Begin`, which matters because Beg
 native Metal and Vulkan backends while their rings wait for the GPU. A process-wide gate around it would have
 turned one device's backpressure into every other device's stall, which is exactly what the first cut did.
 
+## GPU seam member: deferred retirement leaves Render3D (`GpuRetireQueue`, 17.36.2)
+
+`GpuRetireQueue` is a new PUBLIC type on `KhaozEngine.Gpu` (with `GpuRetireBarrier` internal beside it), moved
+wholesale out of `KhaozEngine.Render3D/Internal` where it was called `RetiredResourcePool`. It adds no reference
+in either direction: the type only ever named `IGpuDevice`, `IGpuFence`, `IGpuCommandList` and `IDisposable`, so
+it was already sitting one package too high, and `Render3D` reaches it now the same way it reaches every other
+seam type. The move is what [#80](https://github.com/APKiwiOrg/KhaozEngine/issues/80) asked for: the safe
+retire-instead-of-dispose idiom was hand-rolled per renderer, and a renderer that never copied it (Distortion,
+Water) simply had the use-after-free instead.
+
+**It is deliberately NOT a member of `IGpuDevice`.** `Retire(IDisposable)` on the interface was the shape #80
+proposed, and it fails on two counts: a device has no frame boundary, which is the only point at which freeing is
+provably safe, and adding an interface member breaks all four backend implementations plus every test fake, which
+is a major-version change to fix a hitch. A seam-owned type that any renderer instantiates gets the same
+by-construction safety with an additive surface.
+
+**The recording gate above is what shapes its two factories, and this is the interesting part.** `Create` mints
+its fence by opening a command list of its own, so it can only be advanced where nothing is recording on the
+device. `Scene3D.Begin` is in the frame's prepare phase and qualifies. `SpriteBatch.NewFrame` is in the RECORD
+phase on every host it has (`GameApp` calls it inside the frame's list, and both offscreen 2D captures call it
+inside their own `GpuRecording.Open` scope), so a fenced queue there would be refused by the gate on every frame
+that retired anything. `CreateFrameCounted` is that caller's answer: no fence, no drain on the frame path, and
+the frame count carries the whole argument. Two renderers on one seam type, taking different paths through it for
+a reason that is a property of WHERE they sit in the frame, not of what they render.
+
 ## GPU-backend invariant: ONE uniform buffer per pipeline (Metal via Veldrid/SPIRV-Cross)
 
 **MEASURED 2026-08-11: this is the INCUMBENT'S BUFFER NUMBERING, not a property of Metal.** The rule below is

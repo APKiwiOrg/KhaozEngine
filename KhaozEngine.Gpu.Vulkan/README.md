@@ -240,7 +240,7 @@ a convention, because fence B signalling says nothing about submission A. With o
 theorem: a timeline semaphore's signal operations must strictly increase, and a queue's signal operations on one
 semaphore execute in submission order, so the counter reaching 6 requires the signal at 5 to have happened,
 which requires submission 5's commands to have completed. Polling a later fence therefore transitively covers
-every earlier submission, which is what `RetiredResourcePool` relies on.
+every earlier submission, which is what `GpuRetireQueue` relies on.
 
 **A fence poll never waits and never takes a lock.** `IGpuFence.Signaled` is one `vkGetSemaphoreCounterValue`
 compared against the fence's target, and `Reset` unarms it for a later submit. After the device is destroyed

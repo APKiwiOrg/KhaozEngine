@@ -790,7 +790,7 @@ presents as a golden mismatch that reads like a rendering bug.
 
 Veldrid's D3D11 fence is a `ManualResetEvent` set on the CPU the instant `ExecuteCommandList` returns, a
 submit receipt rather than a completion signal, which is why `SupportsCompletionFences` is hardcoded false,
-`GpuRetireBarrier.TryCreate` returns null, `RetiredResourcePool` keeps a frame-count fallback and two tests
+`GpuRetireBarrier.TryCreate` returns null, `GpuRetireQueue` keeps a frame-count fallback and two tests
 skip.
 
 Primary: one device-wide monotonic `ID3D11Fence` via `ID3D11Device5::CreateFence`, signalled with
@@ -799,7 +799,7 @@ a non-blocking read, which is exactly what the seam demands. `Reset()` re-arms w
 Fallback for pre-Windows-10-1703: `ID3D11Query(QueryType.Event)` polled with `DO_NOT_FLUSH`, also
 non-blocking. `SupportsCompletionFences = true` on both paths.
 
-Downstream, all flipping the day this lands: the retire barrier stops returning null, `RetiredResourcePool`
+Downstream, all flipping the day this lands: the retire barrier stops returning null, `GpuRetireQueue`
 gets the fenced path, `RetireFenceGpuTests` and `Scene3DUnloadDrainTests` stop skipping, and the barrier's own
 recorded hazard (it submits an empty list from inside `Scene3D.Begin`) does not exist under deferred recording,
 because replaying an empty stream clears nothing. **The one thing that made real fences dangerous on D3D11 is

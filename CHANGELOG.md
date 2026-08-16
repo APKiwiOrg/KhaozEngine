@@ -18,7 +18,7 @@ not validated, which it emitted 99 times on one CI run while naming a variable n
 disambiguation now reads both variables and every validation wrapper Metal has been measured handing back. Fixing
 that turned up a fact neither issue had: shader validation alone answers with `MTLGPUDebugDevice` on real Apple
 silicon and `MTLLegacySVDevice` on a hosted runner, so the check asks whether anything is validating rather than
-whether one named class came back. And the native Vulkan backend's per-draw image transition walk now stops at the set count the bound pipeline layout declares, the same limit its bind flush already stopped at, so a draw no longer barriers, and in the sharp case reopens its render pass for, images belonging to a set the current pipeline dropped.
+whether one named class came back. And the native Vulkan backend's per-draw image transition walk now stops at the set count the bound pipeline layout declares, the same limit its bind flush already stopped at, so a draw no longer barriers, and in the sharp case reopens its render pass for, images belonging to a set the current pipeline dropped. Last, the 2D batch's resource-set eviction stops draining the whole device on the frame thread every time a texture ages out of its cache, which was a guaranteed hitch roughly every ten seconds for a game that streams sprites: the deferred-retirement machinery Render3D had hand-rolled is now a public `GpuRetireQueue` on the GPU seam, and the sprite batch feeds it.
 
 ### A logger from the ambient facade follows the facade (#616)
 
@@ -156,6 +156,45 @@ is what owes a bind, declared is what can be bound at all, and a set bound befor
 the draw after it and still owes its compute rule 1 transition without owing a bind. A slot past the limit keeps
 its record and is walked again the moment a layout declares it. Three device-free tests in the new
 `VulkanTransitionWalkTests` drive both cost shapes and the clean declared slot that must keep being walked.
+
+### Deferred GPU retirement moves to the seam, and 2D set eviction stops stalling the frame (#84, #80)
+
+**The hitch.** `SpriteBatch.EvictStaleSets` runs from `NewFrame` on every frame, and the moment any
+`(texture, sampler)` resource set crossed the `SetEvictAfterFrames` cutoff it called a full
+`IGpuDevice.WaitForIdle()` before disposing the stale sets. For a game that streams sprites, that is a guaranteed
+whole-pipeline stall on the frame thread roughly every ten seconds, and in the worst case (textures churning near
+the eviction window) close to every frame. The rest of the file already avoided exactly this: the vertex-buffer
+ring and the view-projection UBO both defer instead of draining.
+
+**The fix is the seam owning the mechanism, rather than a fourth copy of it.** `RetiredResourcePool` and its
+`GpuRetireBarrier` moved out of `KhaozEngine.Render3D/Internal` into `KhaozEngine.Gpu` as the public
+`GpuRetireQueue` (the barrier stays internal). The type only ever named `IGpuDevice`, `IGpuFence`,
+`IGpuCommandList` and `IDisposable`, so lifting it added no reference in either direction and changed no
+behaviour for `Scene3D`, which now builds one through `GpuRetireQueue.Create(gd)`. `SpriteBatch` feeds the same
+queue from three sites: the evicted sets, the view-projection UBO and set a grow replaces (previously held until
+`Dispose`), and the vertex buffer a flush-buffer grow replaces (previously freed behind its own `WaitForIdle`).
+Nothing about eviction ELIGIBILITY changed: a set becomes stale on exactly the frame it always did, only its
+disposal moved behind the queue. Sprite output is unchanged, pixel for pixel.
+
+**Why the 2D queue is frame-counted where the 3D one is fenced, which is the part worth remembering.** Minting a
+retirement fence means opening a command list of its own, and `SpriteBatch.NewFrame` is called from inside the
+frame's own recording by every host it has (`GameApp`'s record phase, and both offscreen 2D captures from inside
+their `GpuRecording.Open` scope). A fenced queue there would hit the seam's nested-recording refusal (#424) on
+every frame that retired anything. So the new `GpuRetireQueue.CreateFrameCounted(device, frameDelay)` never mints
+a fence and never drains on the frame path (teardown still drains once), and `SpriteBatch` passes the swapchain
+depth plus one, which is the same margin its vertex ring already reuses a slot on. `Scene3D.Begin` is in the
+prepare phase and keeps the fenced path, unchanged. A test pins the choice by driving the batch across an
+eviction cutoff from inside an open recording, so an "upgrade" to the fenced factory fails rather than shipping.
+
+**Scope, and what is still open.** This resolves #84 and lands the structural half of #80. The five Render3D
+renderers that keep a hand-rolled `_retired` list for grow-path buffers (`ModelRenderer`, `GroundDecalRenderer`,
+`ParticleRenderer`, `OverlayMeshRenderer`, `ShadowMapRenderer`) are NOT migrated here, and neither is the
+inline-dispose bug in `DistortionRenderer` / `WaterRenderer` (#22): those free at teardown, which is conservative
+rather than wrong, and moving them changes when 3D resources die. #80 stays open with that as its remaining work.
+
+**Additive surface.** `KhaozEngine.Gpu` gains one public type (`GpuRetireQueue`: `Create`,
+`CreateFrameCounted`, `Retire`, `BeginFrame`, `FlushAll`, `Dispose`, `PendingCount`, `FrameDelay`,
+`DefaultFrameDelay`). Nothing was removed or changed, and the rename is of a type that was internal.
 
 ## 17.36.1
 

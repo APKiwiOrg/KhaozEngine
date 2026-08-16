@@ -11015,13 +11015,14 @@ no-op (device destruction already freed all child objects), so a wrapper that ou
 teardown can neither drain nor destroy against a dead device. Veldrid's deferred-disposal path was
 evaluated as a non-stalling alternative and rejected:
 under Mesa's threaded queue its disposal flush can lose a wakeup and hang the process, so the engine
-drains instead. The engine's own renderers follow this rule for texture unload (`Scene3D.UnloadTexture`),
-resize-driven render target replacement (`RenderResources`, `Render3DPreview.Resize`), and sprite-batch
-set eviction and buffer growth (`SpriteBatch`). A custom renderer or content-streaming system built
-directly on `KhaozEngine.Gpu` should follow the same rule for anything it frees outside of full teardown.
+drains instead. The engine's own renderers follow this rule for texture unload (`Scene3D.UnloadTexture`)
+and resize-driven render target replacement (`RenderResources`, `Render3DPreview.Resize`). A custom
+renderer or content-streaming system built directly on `KhaozEngine.Gpu` should follow the same rule for
+anything it frees outside of full teardown, or hand the resource to a `GpuRetireQueue` (below) and never
+drain at all.
 
 **Streamed MESH unload does not drain at all.** `Scene3D.UnloadMesh` hands the mesh's vertex buffer,
-index buffer and material set to an internal pool instead. At the next `Scene3D.Begin` the pool seals
+index buffer and material set to a `GpuRetireQueue` instead. At the next `Scene3D.Begin` the queue seals
 everything retired during the frame just ended into one batch and marks the submission stream with a
 fence, and it destroys that batch on the first later `Begin` whose fence polls signaled. Nothing blocks:
 retirement is event-driven, and the frame boundary costs one empty fenced submission on frames that
@@ -11060,7 +11061,48 @@ unload paths (texture, skinned mesh, splat material) still drain per call, none 
 streaming path, and moving them over is
 [#383](https://github.com/APKiwiOrg/KhaozEngine/issues/383).
 
-**Building the same thing yourself.** The fence seam is public. `IGpuResourceFactory.CreateFence()`
+**2D set eviction does not drain either, since 17.36.2.** `SpriteBatch` keeps one resource set per
+`(texture, sampler)` and evicts the ones unused for `600` frames, and that sweep used to take a full
+`WaitForIdle` on the frame thread every time anything aged out: a guaranteed hitch roughly every ten
+seconds for a game that streams sprites ([#84](https://github.com/APKiwiOrg/KhaozEngine/issues/84)). The
+evicted sets, and the buffers a UBO or vertex-buffer grow replaces, go to a `GpuRetireQueue` now. It is a
+frame-counted one rather than a fenced one, because `SpriteBatch.NewFrame` is called from inside the
+frame's own recording and a fence there would be the nested recording the seam refuses. Nothing about
+`SetEvictAfterFrames` changed: a set becomes eligible on exactly the frame it always did, and only the
+disposal moved behind the queue's deferral. Pixels are unaffected.
+
+**`GpuRetireQueue`: the whole mechanism, owned by the seam.** Feed it, advance it once per frame, dispose
+it at teardown. It is what both engine renderers use, and a renderer of your own gets the same behaviour
+without hand-rolling the batching, the fence recycling or the ordering.
+
+```csharp
+readonly GpuRetireQueue _retire = GpuRetireQueue.Create(gd);   // fenced where the device can, drains where it cannot
+
+void OnFrameBoundary()  // before the frame's command list is opened
+{
+    _retire.BeginFrame();      // frees what the GPU has provably finished with
+}
+
+void Unload(MyThing thing)
+{
+    _retire.Retire(thing.VertexBuffer, thing.IndexBuffer, thing.MaterialSet);   // no drain, no destroy
+}
+
+public void Dispose() => _retire.Dispose();   // one drain, then the tail
+```
+
+`Create` mints its fence by opening a command list of its own, so it must be built and advanced where
+NOTHING is recording on the device: the frame's PREPARE phase, not its record phase. Called from inside
+the frame's list it raises `GpuNestedRecordingException` naming both sides, which is the seam refusing a
+nested recording rather than corrupting your frame.
+
+`CreateFrameCounted(gd, frameDelay)` is the answer when your frame boundary is inside the recording and
+you cannot move it. It never mints a fence and never drains on the frame path (only at teardown), so a
+batch is destroyed purely on the frame count. Pass the swapchain depth plus one, and understand that the
+count is then the whole safety argument. `SpriteBatch` uses it for exactly that reason: its `NewFrame` is
+called from the record phase by every host it has.
+
+**Or build it yourself.** The fence seam is public. `IGpuResourceFactory.CreateFence()`
 returns an unsignaled `IGpuFence` (and throws when the capability is false, rather than hand back one
 that lies), `IGpuDevice.Submit(cl, fence)` signals it on GPU completion, `IGpuFence.Signaled` polls
 without blocking, and `Reset()` returns it for reuse. There is deliberately no blocking wait on the

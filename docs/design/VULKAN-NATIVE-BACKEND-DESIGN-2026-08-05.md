@@ -1366,7 +1366,7 @@ convention, because fence B signalling says nothing about submission A. With one
 theorem: a timeline semaphore's signal operations must strictly increase, and a queue's signal operations on one
 semaphore execute in submission order, so the value reaching 6 requires the signal at 5 to have happened, which
 requires submission 5's commands to have completed. Polling a later fence therefore transitively covers every
-earlier submission, which is what `RetiredResourcePool` relies on.
+earlier submission, which is what `GpuRetireQueue` relies on.
 
 `Submit(cl, fence)` is ONE `vkQueueSubmit` (V-F3). The incumbent's second empty submit signalling an internal
 tracking fence is not inherited, and one timeline collapses three separate completion mechanisms (user fences,

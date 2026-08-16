@@ -21,10 +21,18 @@ public interface IPredictedState<TSelf>
 
     /// <summary>
     /// A monotonic teleport epoch stamped by the authoritative host onto this state. Client prediction compares it
-    /// across reconciliations: an ADVANCE marks a hard teleport - an intentional discontinuity (join/reconnect
-    /// placement, respawn, admin or fast-travel move) that must CUT instantly rather than glide, regardless of the
+    /// across reconciliations: an ADVANCE marks a hard teleport - an intentional discontinuity (respawn, admin or
+    /// fast-travel move) that must CUT instantly rather than glide, regardless of the
     /// <see cref="PredictionSettings.HardSnapDistance"/> gate. Defaults to 0 for states with no teleport concept, so
     /// an ordinary predicted state keeps its distance-only cut-vs-glide behaviour with no change required.
+    /// <para><b>Advance means strictly greater than the highest value observed so far</b>, not merely different, and
+    /// the client holds that highest value as a watermark. A host that momentarily cannot read the component this
+    /// epoch lives on serves a default 0, so a real stream dips and recovers; only a genuine advance past the
+    /// watermark is a teleport, and the dip and the recovery are both ignored.</para>
+    /// <para>The epoch is per-session and NOT comparable across a reconnect: a rejoining client is a fresh
+    /// authoritative entity whose epoch counts from its own zero. The join and reconnect placements are decided by
+    /// <see cref="ClientPrediction{TState,TCommand}.Reset"/> / <see cref="ClientPrediction{TState,TCommand}.Reseed"/>
+    /// instead, on prior state and resume distance.</para>
     /// </summary>
     uint TeleportEpoch => 0;
 

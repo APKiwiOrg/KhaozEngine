@@ -8,7 +8,7 @@ public sealed partial class World
     // allocate per call. The Query is rented, iterated, and returned all within the ForEach call, so
     // its lifetime is provably call-scoped (it never escapes). On Return the wrapper's Reset clears the
     // query for the next rent. Nested ForEach (a ForEach inside an action) is safe: when the single
-    // pooled instance is already rented, Rent returns null and we fall back to a fresh Query, so each
+    // pooled instance is already rented, TryRent comes back false and we fall back to a fresh Query, so each
     // nesting level uses a distinct instance and never aliases the outer iteration's matched set.
     internal sealed class PoolableQuery : IPoolable
     {
@@ -24,38 +24,42 @@ public sealed partial class World
     /// <summary>Starts a filtered query.</summary>
     public Query Query() => new(this);
 
-    private Query RentForEachQuery(out PoolableQuery? rented)
+    private Query RentForEachQuery(out PoolRental<PoolableQuery> rented)
     {
         // Renting a query is the shared entry for every ForEach/ParallelForEach. Guarding here rejects reentrant
         // iteration (a ForEach or nested ParallelForEach) from inside a parallel action. The outer ParallelForEach
         // rents BEFORE its parallel section starts, so it never trips its own guard.
         ThrowIfInParallelSection("ForEach");
-        rented = _forEachQueryPool.Rent();
-        return rented?.Query ?? new Query(this);   // pool exhausted (nested) -> fresh, un-pooled instance
+        return _forEachQueryPool.TryRent(out rented)
+            ? rented.Item!.Query
+            : new Query(this);   // pool exhausted (nested) -> fresh, un-pooled instance
     }
 
-    private void ReturnForEachQuery(PoolableQuery? rented)
+    private void ReturnForEachQuery(in PoolRental<PoolableQuery> rented)
     {
-        if (rented is not null) _forEachQueryPool.Return(rented);
+        // TryReturn, not Return: every caller returns from a finally, where a throwing refusal would replace the
+        // exception the ForEach body was already unwinding. It also absorbs the empty rental a pool-exhausted
+        // (nested) rent wrote, which is what the old null check did.
+        _forEachQueryPool.TryReturn(in rented);
     }
 
     public void ForEach<T1>(RefAction<T1> a) where T1 : struct, IComponent
     {
-        Query q = RentForEachQuery(out PoolableQuery? rented);
+        Query q = RentForEachQuery(out PoolRental<PoolableQuery> rented);
         try { q.ForEach(a); } finally { ReturnForEachQuery(rented); }
     }
 
     public void ForEach<T1, T2>(RefAction<T1, T2> a)
         where T1 : struct, IComponent where T2 : struct, IComponent
     {
-        Query q = RentForEachQuery(out PoolableQuery? rented);
+        Query q = RentForEachQuery(out PoolRental<PoolableQuery> rented);
         try { q.ForEach(a); } finally { ReturnForEachQuery(rented); }
     }
 
     public void ForEach<T1, T2, T3>(RefAction<T1, T2, T3> a)
         where T1 : struct, IComponent where T2 : struct, IComponent where T3 : struct, IComponent
     {
-        Query q = RentForEachQuery(out PoolableQuery? rented);
+        Query q = RentForEachQuery(out PoolRental<PoolableQuery> rented);
         try { q.ForEach(a); } finally { ReturnForEachQuery(rented); }
     }
 
@@ -63,7 +67,7 @@ public sealed partial class World
         where T1 : struct, IComponent where T2 : struct, IComponent where T3 : struct, IComponent
         where T4 : struct, IComponent
     {
-        Query q = RentForEachQuery(out PoolableQuery? rented);
+        Query q = RentForEachQuery(out PoolRental<PoolableQuery> rented);
         try { q.ForEach(a); } finally { ReturnForEachQuery(rented); }
     }
 
@@ -71,7 +75,7 @@ public sealed partial class World
         where T1 : struct, IComponent where T2 : struct, IComponent where T3 : struct, IComponent
         where T4 : struct, IComponent where T5 : struct, IComponent
     {
-        Query q = RentForEachQuery(out PoolableQuery? rented);
+        Query q = RentForEachQuery(out PoolRental<PoolableQuery> rented);
         try { q.ForEach(a); } finally { ReturnForEachQuery(rented); }
     }
 
@@ -79,7 +83,7 @@ public sealed partial class World
         where T1 : struct, IComponent where T2 : struct, IComponent where T3 : struct, IComponent
         where T4 : struct, IComponent where T5 : struct, IComponent where T6 : struct, IComponent
     {
-        Query q = RentForEachQuery(out PoolableQuery? rented);
+        Query q = RentForEachQuery(out PoolRental<PoolableQuery> rented);
         try { q.ForEach(a); } finally { ReturnForEachQuery(rented); }
     }
 
@@ -88,7 +92,7 @@ public sealed partial class World
         where T4 : struct, IComponent where T5 : struct, IComponent where T6 : struct, IComponent
         where T7 : struct, IComponent
     {
-        Query q = RentForEachQuery(out PoolableQuery? rented);
+        Query q = RentForEachQuery(out PoolRental<PoolableQuery> rented);
         try { q.ForEach(a); } finally { ReturnForEachQuery(rented); }
     }
 
@@ -97,7 +101,7 @@ public sealed partial class World
         where T4 : struct, IComponent where T5 : struct, IComponent where T6 : struct, IComponent
         where T7 : struct, IComponent where T8 : struct, IComponent
     {
-        Query q = RentForEachQuery(out PoolableQuery? rented);
+        Query q = RentForEachQuery(out PoolRental<PoolableQuery> rented);
         try { q.ForEach(a); } finally { ReturnForEachQuery(rented); }
     }
 }

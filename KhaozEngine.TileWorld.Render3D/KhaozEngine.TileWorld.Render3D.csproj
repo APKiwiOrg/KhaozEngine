@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.TileWorld.Render3D</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Renders KhaozEngine.TileWorld worlds through the existing Render3D lit model path: a vertex-colour ground mesher (one GltfMesh per region-plane, corner-blended underlays, shaped overlays, seamless lattice normals, no new shader), tile objects through the Terrain.Render3D prop path, TileWorldView (per-region meshes and props in a Scene3D, dirty coalescing, the OSRS roof-hide rule), TileRegionResidency (a Chebyshev ring of regions around an observer over TileWorldSource) and TileWorldSnapshot (headless top-down and perspective PNG capture for tools and tests). GPU-bound companion of KhaozEngine.TileWorld, in the Game3D umbrella.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.TileWorld/KhaozEngine.TileWorld.csproj" />
+    <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
+    <ProjectReference Include="../KhaozEngine.Terrain.Render3D/KhaozEngine.Terrain.Render3D.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

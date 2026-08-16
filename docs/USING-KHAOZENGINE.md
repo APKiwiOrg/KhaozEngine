@@ -5279,7 +5279,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.36.2" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.37.0" />
 ```
 
 ```csharp
@@ -6419,6 +6419,12 @@ string identity = TileWorldHash.OfWorld(reloaded);       // what a client and a 
 a negative coordinate lands in a negative region with a local coordinate in 0..63. Rotation is quarter turns
 clockwise from above, 0 west, 1 north, 2 east, 3 south, on objects, on overlay shapes and on prefab stamps.
 
+**Tile space is not render space, and `TileWorldSpace` is the only place that knows it.** The document is x east,
+z NORTH, y up, while the engine renders right handed with y up where a camera facing +z has +x on its left, so
+world z is MINUS tile z: `TileWorldSpace.WorldX/WorldZ/TileX/TileZ/ToWorld` is the whole seam, and `HeightAt`, the
+raycast, the ground mesher and the prop anchors all go through it. See the rendering section below for why that
+buys a top-down view with north up and east right at the same time.
+
 **Streaming.** `TileWorldSource.Open(dir)` reads the manifest only and materialises regions on demand through
 `EnsureLoaded(coord)` or `EnsureLoaded(rect)`, each hash-checked exactly like an eager load, and `Unload(coord)`
 drops a clean region while keeping its hash so a later save carries it through untouched. `TileWorldFile.Load`
@@ -6433,11 +6439,66 @@ objects. Pass `Rebake` a rect covering the FULL footprint of anything you remove
 `TilePath.Reached`, never on `Tiles.Count`: a partial walk to the nearest reachable tile carries steps too.
 
 **Picking and prefabs.** `TileRaycast.Pick(doc, plane, origin, direction)` is the GPU-free ray against the
-lattice, splitting each tile with `TileTriangulation.SplitSwNe`, the same rule the ground mesher uses, so a
-click lands on the triangle that is drawn. `TilePrefabs.Extract`/`Rotate`/`Place` lift a rect of tiles (layers,
+lattice, cutting each tile with `TileTriangulation.Triangulate`, the same shape triangulation the ground mesher
+uses over the same `TileLatticePoint` lattice and `SplitSwNe` diagonal choice, so a click lands on the triangle that is
+drawn. Every triangle comes back wound the same way, so a pass that culls a face direction keeps or drops all of
+them together. `TilePrefabs.Extract`/`Rotate`/`Place` lift a rect of tiles (layers,
 relative heights, objects, markers) and stamp it elsewhere at any rotation, with `TilePrefabFile` as the JSON
 form. A stamp is additive per layer, so clear the rect first if you want a replace. Full API summary: the
 `KhaozEngine.TileWorld` package README. Design rationale: `docs/design/TILE-WORLD-DESIGN-2026-08-15.md`.
+
+---
+
+## Tile world rendering (`KhaozEngine.TileWorld.Render3D`)
+
+The render arm of the tile world, in the `Game3D` umbrella: a vertex-colour ground mesher over the existing lit
+model path (no new shader), tile objects through the `Terrain.Render3D` prop path, a view that owns a world's
+meshes and props in a `Scene3D`, region streaming, and headless capture. Kept separate from the document package
+so a server or a tool never drags in `Render3D`.
+
+```csharp
+var scene = new Scene3DTileWorldScene(scene3d);              // the shipped ITileWorldScene, tests use a fake
+var resolver = new GreyboxMeshResolver(doc.TileSize);        // a game supplies its own ITileMeshResolver
+using var view = new TileWorldView(scene, doc, catalogs, resolver);
+var residency = new TileRegionResidency(source, view, TileResidencyConfig.Default);  // TileWorldSource
+
+residency.PrimeAround(playerTile);                           // teleport: fill the ring and settle NOW
+
+// per frame
+view.Observer = playerTile;                                  // drives the roof rule
+residency.Update(playerTile);                                // budgeted ring move, 2 region loads by default
+view.Draw(cameraSubject);                                    // flushes queued rebuilds, then queues the draws
+
+// an editor announces what it wrote, and the view coalesces it into one rebuild per region-plane
+view.MarkDirty(editedRect, plane);
+
+// a headless map shot, exactly 4 px per tile, north up and east right
+byte[] rgba = TileWorldSnapshot.CaptureTopDown(doc, catalogs, resolver,
+    new TileRect(0, 0, 32, 32), plane: 0, pxPerTile: 4);
+PngWriter.Save("map.png", rgba, 32 * 4, 32 * 4);
+```
+
+**Two conventions carry over from the document.** World z is MINUS tile z (`TileWorldSpace`), so a region-local
+ground mesh runs from 0 to minus 64 tiles on z and `TileGroundMesher.WorldMatrix` translates it into place, and
+an object's yaw is NEGATIVE per quarter turn, which is what makes `Matrix4x4.CreateRotationY` turn clockwise seen
+from above with north up. Both are the price of one thing worth having: (east, north, up) = (+x, -z, +y) is a
+right-handed triple, so a single top-down view has north UP and east RIGHT instead of trading one for the other.
+
+**The view coalesces, the residency streams.** `MarkDirty` grows a tile rect by a 2-tile margin before turning it
+into region marks, because corner heights, central-difference normals and the four-tile corner blend all read
+ACROSS region borders, so an edit one tile inside a border changes the neighbour's mesh. `Flush` then rebuilds
+oldest first up to `TileWorldViewOptions.MaxRebuildsPerFlush` (16), leaving the rest counted by `PendingRebuilds`,
+and `Flush(int.MaxValue)` is the settle-now form. Streaming a region marks its eight neighbours dirty on every
+plane in both directions, so a border meshed while its neighbour was absent is not stale forever. A dirty region
+is never streamed out (unloading unsaved edits would throw, so it stays resident and logs once), and a torn region
+file throws `TileWorldException` straight out of `Update` rather than drawing a hole.
+
+**Capture is the same code path as the goldens.** `TileWorldSnapshot.CaptureTopDown` sizes the image outright at
+`pxPerTile` pixels a tile rather than framing it, so the scale is exact, and `CapturePerspective` shoots from an
+eye toward a target with the observer defaulting to the tile under the target, so a shot aimed inside a house
+hides that house's roof. Both take a `configureScene` callback that runs LAST, so your lighting, post or camera
+settings win over everything the helper set. Full API summary: the `KhaozEngine.TileWorld.Render3D` package
+README.
 
 ---
 
@@ -8740,7 +8801,7 @@ run inside the engine's process-wide device-creation gate, so a provider needs n
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.36.2" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.37.0" />
 ```
 
 ```csharp
@@ -8774,7 +8835,7 @@ that up front is what routes it through the reported fallback instead of a crash
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.36.2" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.37.0" />
 ```
 
 ```csharp
@@ -9012,7 +9073,7 @@ is no recovery path: a lost device stays lost, which is what the liveness token 
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.36.2" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.37.0" />
 ```
 
 ```csharp
@@ -10116,7 +10177,7 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   uses the GLFW provider `AppWindow` registers at startup (the working Windows/Linux/macOS path), so a windowed
   game gets a working text clipboard for free; a windowless/headless tool registers none and has text only on
   macOS (via `NSPasteboard`).
-- **`KhaozEngine.Primitives`** also carries `ObjectPool<T>` (O(1) rent/return, swap-removal compaction; absorbed from the retired `KhaozEngine.Pooling` in 9.0.0).
+- **`KhaozEngine.Primitives`** also carries `ObjectPool<T>` (O(1) rent/return, swap-removal compaction, absorbed from the retired `KhaozEngine.Pooling` in 9.0.0). Rent through `TryRent` and its `PoolRental<T>` handle, not the older `Rent()`/`Return(item)` pair - see "Pooling: rent through the rental handle" below.
 - **`KhaozEngine.Collision`**: deterministic `CircleCollision` + `SpatialHashGrid` (bit-identical for lockstep).
 - **`KhaozEngine.Determinism`**: `DeterministicFpScope` - forces a canonical CPU floating-point environment
   for fixed-tick / lockstep sims (see "Deterministic floating point" below).
@@ -10148,6 +10209,55 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   the `NetServer` session inbox and the LiteNetLib transport inboxes use so a stalled or flooded host can't grow
   undrained events without bound; tune it with the optional `maxQueuedEvents` ctor arg (default 10,000) and watch
   `DroppedEventCount`, which stays 0 for a host that drains each poll as contracted.
+
+---
+
+## Pooling: rent through the rental handle (`KhaozEngine.Primitives`)
+
+`ObjectPool<T>` has two rent/return pairs. Use the checked one:
+
+```csharp
+var pool = new ObjectPool<Bullet>(() => new Bullet(), prewarmCount: 64);
+
+if (pool.TryRent(out PoolRental<Bullet> rental))
+{
+    Bullet b = rental.Item!;
+    // ... use b for as long as the rental lasts ...
+    pool.Return(in rental);          // throws StalePoolReturnException if this rental is already over
+}
+
+for (int i = 0; i < pool.ActiveCount; i++)
+    pool.GetActive(i).Update(dt);
+```
+
+`TryRent` is `false` (and writes the empty rental) when the pool is exhausted. `PoolRental<T>` is a
+`readonly struct` passed by `in`, so a rent-use-return cycle allocates nothing.
+
+**Why the handle and not the item.** A pool reuses the same object for successive rentals, so after
+`Return(b)` and a fresh rent, your stale `b` variable and the pool's newly rented item are the same
+reference. Nothing readable off the object separates the finished rental from the live one, so the older
+`Rent()` / `Return(item)` pair accepts a stale return and frees the current renter's item out from under it,
+then hands the same object to a second owner. The rental handle carries the slot plus a generation the pool
+bumps on every rent and release, which is the information that is missing from the object itself
+([#149](https://github.com/APKiwiOrg/KhaozEngine/issues/149)).
+
+**Which return to call.** `Return(in rental)` throws `StalePoolReturnException` on a rental that is over,
+foreign, or empty, which is what you want for a genuine caller bug. `TryReturn(in rental)` returns `false`
+instead, for an idempotent dispose that may return twice and, importantly, inside a `finally`, where a throw
+would replace the exception already unwinding:
+
+```csharp
+if (!pool.TryRent(out PoolRental<Bullet> rental))
+    return;                          // exhausted: nothing was rented, so there is nothing to return
+
+try { Fire(rental.Item!); } finally { pool.TryReturn(in rental); }
+```
+
+`Rent()` and `Return(item)` still work and are unchanged. They cannot make the check, so treat them as the
+legacy pair and move new code to the handle.
+
+`Clear()` ends every outstanding rental, so returning one afterwards is refused rather than freeing whatever
+has since taken its slot.
 
 ---
 

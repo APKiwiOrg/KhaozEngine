@@ -7951,6 +7951,32 @@ sub-RNGs) gives platform-stable RNG for lockstep sims; `WorldSerializer` round-t
 `KhaozEngine.Serialization.JsonDefaults.IncludeFields`). (`DeterministicRng` lives in
 `KhaozEngine.Primitives`, and the ECS uses it for lockstep RNG.)
 
+**Structural changes during iteration are forbidden, and since 17.36.2 they are refused (#118).** Iteration walks
+each archetype's rows by index. A structural change made DIRECTLY from inside a `ForEach` action, or from the body
+of an `Entities()` loop, swap-removes rows underneath that walk, and a change that grows the archetype resizes the
+column arrays the in-flight action's `ref` parameters point into. Both used to corrupt the pass in silence. They
+now throw `StructuralChangeDuringIterationException`, naming the world call that did it. Structural means the four
+things that add or remove an archetype row: `Spawn`, `Despawn`, `Remove<T>`, and a `Set<T>`/`Add<T>` that adds a
+component the entity did not already have.
+
+```csharp
+// Throws StructuralChangeDuringIterationException at the first despawn:
+world.ForEach((Entity e, ref Health h) => { if (h.Value <= 0) world.Despawn(e); });
+
+// Record it instead, and play back at a safe point (World.Update flushes Commands after each system):
+world.ForEach((Entity e, ref Health h) => { if (h.Value <= 0) world.Commands.Despawn(e); });
+world.Commands.Playback(world);
+```
+
+Collecting the entities into a list inside the loop and acting on them after it works equally well, and is what
+most of the engine's own serial callers do. What is NOT affected: writing through the `ref` parameters, and
+reading or writing components through the world (`Has` / `Get` / `TryGet`, and a `Set<T>` that overwrites a
+component the entity already has). None of those move a row, so none of them trip the guard. The check is one
+integer compare per row against a delegate call per row, and unlike `ParallelHazardChecks` it has no off switch:
+what it prevents is silent data corruption rather than a diagnosable crash. Its parallel counterpart is
+`ParallelAccessViolationException` (see "Parallel `ForEach` + access declarations" below), which is stricter
+because a parallel action must also stay off other entities entirely.
+
 **Stateless hashing for procedural content (`StableHash`, 14.9.0, `KhaozEngine.Primitives`).** When you need
 reproducible values keyed off ids or coordinates with NO shared RNG stream to thread through - a client deriving
 the same scatter pattern from an effect id, terrain detail keyed off a tile coordinate - use `StableHash`: a pure

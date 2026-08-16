@@ -18,7 +18,7 @@ not validated, which it emitted 99 times on one CI run while naming a variable n
 disambiguation now reads both variables and every validation wrapper Metal has been measured handing back. Fixing
 that turned up a fact neither issue had: shader validation alone answers with `MTLGPUDebugDevice` on real Apple
 silicon and `MTLLegacySVDevice` on a hosted runner, so the check asks whether anything is validating rather than
-whether one named class came back. And the native Vulkan backend's per-draw image transition walk now stops at the set count the bound pipeline layout declares, the same limit its bind flush already stopped at, so a draw no longer barriers, and in the sharp case reopens its render pass for, images belonging to a set the current pipeline dropped.
+whether one named class came back. And the native Vulkan backend's per-draw image transition walk now stops at the set count the bound pipeline layout declares, the same limit its bind flush already stopped at, so a draw no longer barriers, and in the sharp case reopens its render pass for, images belonging to a set the current pipeline dropped. The ECS closes two defects on the same swap-remove: a structural change made from inside a serial `ForEach` or `Entities()` loop now throws `StructuralChangeDuringIterationException` instead of silently losing a survivor's write to a dead row, and a vacated column slot is cleared, so a despawned component carrying a managed reference stops pinning it for the life of the archetype.
 
 ### A logger from the ambient facade follows the facade (#616)
 
@@ -156,6 +156,72 @@ is what owes a bind, declared is what can be bound at all, and a set bound befor
 the draw after it and still owes its compute rule 1 transition without owing a bind. A slot past the limit keeps
 its record and is walked again the moment a layout declares it. Three device-free tests in the new
 `VulkanTransitionWalkTests` drive both cost shapes and the clean declared slot that must keep being walked.
+
+### A structural change from inside a serial iteration is refused rather than corrupting it (#118)
+
+`Query.ForEach<T1..T8>` cached the archetype row count once per archetype, before the row loop, so a despawn or an
+add/remove-component from inside the action swap-removed rows underneath a stale count. New public API:
+`StructuralChangeDuringIterationException`.
+
+**The measured shape.** Eight entities numbered 0 to 7 in one archetype, an action that despawns every multiple of
+three and adds 100 to the rest. The survivors came out 101, 102, 104, 105 and **7**. Entity 7 was swap-removed down
+into row 0 when entity 0 despawned, was visited again at its now-dead row 7, and its `+100` landed in that dead slot
+instead of its live row. Nothing threw. A change that GROWS the archetype is worse still: `Column<T>.EnsureCapacity`
+resizes the backing array, and the `ref` parameters already handed to the in-flight action point into the old one,
+so every write the action makes after that point is unrecoverably lost. The same misuse in a `ParallelForEach`
+action has always been a loud `ParallelAccessViolationException`, so this was silent in exactly the code where it
+is hardest to spot.
+
+**The contract was enforced, not relaxed.** The alternative was to make iteration robust (walk backwards, or re-read
+`Count` and re-visit the swapped-in row), and it was rejected on three counts. The doc remark on both `ForEach` and
+`Entities()` has forbidden structural changes since the API landed and pointed at the deferred path. That deferred
+path, `World.Commands` / `EntityCommandBuffer`, already exists, is already correct, and `World.Update` already
+flushes it after every system. And a census of every `ForEach` and `Entities()` caller in the engine, the samples,
+the benchmarks and the test suites found not one that makes a structural change inside a serial callback: they all
+collect first and mutate after the loop, including the two that look closest to the line (`ShardHost.MigrateCrossings`
+and `CellSim.ReleaseMigrating`). Making iteration robust would have bought a semantic nobody uses (is the
+swapped-in row revisited or skipped?) at the cost of documenting it forever.
+
+**How it works.** `World` counts every change that adds or removes an archetype row in a `StructuralVersion`. Each
+`ForEach` overload and `Entities()` snapshots it and rechecks it around each callback, and a mismatch throws
+`StructuralChangeDuringIterationException` naming the world call that made the change. One integer compare per row,
+against a delegate invocation per row. Unlike `ParallelHazardChecks` it has no off switch: that guard reads every
+world call including reads and earns its switch, this one reads a single field, and what it prevents is silent data
+corruption rather than a diagnosable crash.
+
+**Reading and writing components mid-iteration is untouched.** The `ref` parameters, and `Has` / `Get` / `TryGet`
+plus a `Set<T>` that OVERWRITES a component the entity already has, move no rows and do not count. That is what the
+engine's own serial callers do (the Sharding owner scans read `Has<Ghost>` per row), so the guard costs them
+nothing. **The one thing to check when adopting** is a call site that despawns from inside an `Entities()` loop:
+that shape silently skipped entities before and now throws, so it surfaces as an exception rather than as the
+missing despawns it was already producing.
+
+### A vacated column slot is cleared, so a despawn stops pinning what the row held (#119)
+
+`Column<T>.SwapRemove` copied the last live row down over the removed one and left the slot it came from holding its
+old value, and the tail-removal branch of `Archetype.SwapRemove` (the `row == last` case, which every shrinking
+archetype ends on and which a one-entity archetype hits every time) cleared nothing at all. Internal to
+`KhaozEngine.Ecs`, no public API change.
+
+**Why a stale slot is not harmless.** `Column<T>` requires only `T : struct`, so a component may carry a managed
+reference: a wrapper around a texture, a `List<T>`, a `string`, an array. Rows past `Archetype.Count` are never read
+again, but they stay REACHABLE through `Column<T>.Data`, which is all it takes to keep what they point at alive. An
+archetype whose population only shrinks after a peak, a wave of projectiles despawning at the end of a level, never
+revisits those slots, so the retention lasts for the life of the process. It scales with despawn churn rather than
+with live entity count, which is why nothing about a steady-state world showed it.
+
+**The fix and its cost.** Both branches now clear the vacated slot through a new `Column.ClearRow`, gated on
+`RuntimeHelpers.IsReferenceOrContainsReferences<T>()`. That is a JIT-time constant, so for an unmanaged column the
+body folds away entirely and the hot despawn path pays nothing, and for a reference-carrying one the store IS the
+fix. `Archetype.Entities` is deliberately left alone: `Entity` is two integers with no managed reference in it, so
+clearing its tail would be a store that frees nothing.
+
+**The array still never shrinks, and that half is by design rather than unfixed.** The backing array is a grow-only
+arena. Archetype population is a sawtooth (a wave spawns, despawns, and the next wave spawns into the same rows), so
+a shrink heuristic would hand memory back only to re-allocate and re-copy it moments later, and it would need a
+hysteresis policy nobody has a measurement to choose. What the retained capacity must not do is retain component
+DATA, and it no longer does: past `Count` every slot is `default`, so the arena costs zeroed bytes and pins nothing.
+That reasoning is now a doc comment on `Column<T>` rather than only a decision.
 
 ## 17.36.1
 

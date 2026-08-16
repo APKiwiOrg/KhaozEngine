@@ -36,7 +36,10 @@ public sealed class SetTilesCommand : TileCommandBase
         _shape = shape;
         _rotation = rotation;
         _settings = settings;
-        Dirty.Add(new TileDirtyRect(rect, plane));
+        // A degenerate rect touches nothing, so it reports nothing. The document skips an empty rect when it
+        // rebakes, but a renderer reading PendingRebuilds should not have to know that, and the plane of a
+        // command that covers no tiles at all is not worth failing an execute over.
+        if (!rect.IsEmpty) Dirty.Add(new TileDirtyRect(rect, plane));
     }
 
     /// <summary>Writes the fill, capturing what it overwrites the first time round.</summary>

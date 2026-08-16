@@ -109,6 +109,12 @@ public class LayerCommandTests
     }
 
     [Fact]
+    public void A_degenerate_rect_reports_no_dirty_rect_at_all()
+    {
+        Assert.Empty(FullFill(new TileRect(2, 3, 0, 4), 0).DirtyRects);
+    }
+
+    [Fact]
     public void A_fill_spanning_two_existing_regions_writes_both()
     {
         TileWorldDocument doc = TileWorldTestData.FlatWorld(4, new RegionCoord(0, 0), new RegionCoord(1, 0));

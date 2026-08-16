@@ -10,8 +10,10 @@ public static partial class TileEditOps
     /// <summary>Raises (or lowers, with a negative delta) every corner of the rect. With
     /// <paramref name="falloff"/> at 0 the whole rect moves by the flat delta. Above 0 the delta is scaled by
     /// 1 - falloff * (distance / halfExtent) clamped into 0..1, where distance is the Chebyshev distance from
-    /// the rect centre in corner units and halfExtent is half the larger of the rect's two dimensions, so
-    /// falloff 1 fades a square brush to nothing at its edge and 0.5 fades it to half.</summary>
+    /// the rect centre in corner units and halfExtent is the distance from that centre out to the rect's
+    /// OUTERMOST ring, half of the larger dimension less one. That makes falloff 1 fade a square brush to
+    /// exactly nothing on its edge ring and 0.5 fade it to half there. A rect one corner wide or tall has no
+    /// extent to fade across, so every corner keeps the full delta whatever the falloff.</summary>
     public static SetCornerHeightsCommand Raise(TileWorldDocument doc, TileRect cornerRect, int plane, int deltaCm,
         float falloff = 0f)
     {
@@ -20,7 +22,9 @@ public static partial class TileEditOps
         if (cm.Length == 0) return new SetCornerHeightsCommand(cornerRect, plane, cm);
         float centreX = (cornerRect.X + cornerRect.X1 - 1) * 0.5f;
         float centreZ = (cornerRect.Z + cornerRect.Z1 - 1) * 0.5f;
-        float halfExtent = Math.Max(cornerRect.Width, cornerRect.Height) * 0.5f;
+        // Rings, not dimensions: a 5 wide rect reaches 2 corners out from its centre, not 2.5, and dividing by
+        // the half-dimension would leave the edge ring at a fifth of the delta on a falloff of 1.
+        float halfExtent = (Math.Max(cornerRect.Width, cornerRect.Height) - 1) * 0.5f;
         int i = 0;
         for (int z = cornerRect.Z; z < cornerRect.Z1; z++)
             for (int x = cornerRect.X; x < cornerRect.X1; x++, i++)
@@ -31,7 +35,9 @@ public static partial class TileEditOps
                     float distance = Math.Max(Math.Abs(x - centreX), Math.Abs(z - centreZ));
                     weight = Math.Clamp(1f - falloff * (distance / halfExtent), 0f, 1f);
                 }
-                cm[i] = ClampCm(cm[i] + (int)MathF.Round(deltaCm * weight, MidpointRounding.AwayFromZero));
+                // Widened before the add, so a delta near the int ceiling saturates at the short bounds instead
+                // of wrapping the sum and landing the brush at the bottom of the world.
+                cm[i] = ClampCm(cm[i] + (long)MathF.Round(deltaCm * weight, MidpointRounding.AwayFromZero));
             }
         return new SetCornerHeightsCommand(cornerRect, plane, cm);
     }
@@ -48,7 +54,7 @@ public static partial class TileEditOps
         {
             long sum = 0;
             foreach (short v in cm) sum += v;
-            target = ClampCm((int)Math.Round(sum / (double)cm.Length, MidpointRounding.AwayFromZero));
+            target = ClampCm((long)Math.Round(sum / (double)cm.Length, MidpointRounding.AwayFromZero));
         }
         for (int i = 0; i < cm.Length; i++) cm[i] = target;
         return new SetCornerHeightsCommand(cornerRect, plane, cm);
@@ -57,11 +63,14 @@ public static partial class TileEditOps
     /// <summary>Runs an iterated 3 by 3 box blur over the corner rect. Each pass averages the nine corners
     /// around each one, taking the neighbours that fall outside the rect from the document (they are read
     /// fresh, never written, so the smoothed patch blends into the terrain around it instead of stepping off
-    /// it), and rounds back to whole centimetres before the next pass runs.</summary>
+    /// it), and rounds back to whole centimetres before the next pass runs. Takes 1 to 64 iterations: the
+    /// result has long since converged by 64, and the ceiling stops a mistyped count from walking the rect
+    /// billions of times inside a tool call that cannot be cancelled.</summary>
     public static SetCornerHeightsCommand Smooth(TileWorldDocument doc, TileRect cornerRect, int plane, int iterations)
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentOutOfRangeException.ThrowIfLessThan(iterations, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(iterations, 64);
         short[] current = ReadCorners(doc, cornerRect, plane);
         if (current.Length == 0) return new SetCornerHeightsCommand(cornerRect, plane, current);
         short[] next = new short[current.Length];
@@ -97,7 +106,7 @@ public static partial class TileEditOps
                 sum += cornerRect.Contains(nx, nz)
                     ? current[(nz - cornerRect.Z) * cornerRect.Width + (nx - cornerRect.X)]
                     : doc.CornerHeightCm(nx, nz, plane);
-        return ClampCm((int)Math.Round(sum / 9.0, MidpointRounding.AwayFromZero));
+        return ClampCm((long)Math.Round(sum / 9.0, MidpointRounding.AwayFromZero));
     }
 
     // The corner rect's current heights, row-major with z outer, which is the order every command and factory
@@ -114,6 +123,7 @@ public static partial class TileEditOps
     }
 
     // Heights are centimetres in a short, so a raise that would overflow the lattice saturates at its bounds
-    // instead of wrapping the terrain from its ceiling to its floor.
-    static short ClampCm(int cm) => (short)Math.Clamp(cm, short.MinValue, short.MaxValue);
+    // instead of wrapping the terrain from its ceiling to its floor. Takes a long, so the arithmetic feeding it
+    // has room to overshoot the short range (and the int range) before it gets here.
+    static short ClampCm(long cm) => (short)Math.Clamp(cm, short.MinValue, short.MaxValue);
 }

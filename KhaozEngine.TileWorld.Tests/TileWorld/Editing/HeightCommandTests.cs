@@ -107,20 +107,55 @@ public class HeightCommandTests
     }
 
     [Fact]
-    public void Raise_scales_the_delta_by_distance_from_the_centre_when_falloff_is_set()
+    public void Raise_with_a_falloff_of_one_reaches_zero_on_the_edge_ring()
     {
         TileEditingDocument ed = Editing(out TileWorldDocument doc);
+        // An edge corner with something already on it, so the zero delta out there is visible as "left where it
+        // was" rather than being indistinguishable from the flat zero lattice around it.
+        doc.SetCornerHeightCm(10, 10, 0, 250);
 
-        // A 5 by 5 corner rect centred on (12, 12), half extent 2.5, falloff 1: the weight is
-        // 1 - chebyshev / 2.5, so ring 0 keeps 100, ring 1 gets 60 and ring 2 gets 20.
+        // A 5 by 5 corner rect centred on (12, 12) reaches 2 corners out, so the weight is 1 - chebyshev / 2:
+        // ring 0 keeps 100, ring 1 gets 50 and the edge ring gets nothing at all.
         ed.Execute(TileEditOps.Raise(doc, new TileRect(10, 10, 5, 5), 0, 100, falloff: 1f));
 
         Assert.Equal(100, doc.CornerHeightCm(12, 12, 0));
-        Assert.Equal(60, doc.CornerHeightCm(11, 12, 0));
-        Assert.Equal(60, doc.CornerHeightCm(12, 13, 0));
-        Assert.Equal(20, doc.CornerHeightCm(10, 10, 0));
-        Assert.Equal(20, doc.CornerHeightCm(12, 10, 0));
-        Assert.Equal(20, doc.CornerHeightCm(14, 14, 0));
+        Assert.Equal(50, doc.CornerHeightCm(11, 12, 0));
+        Assert.Equal(50, doc.CornerHeightCm(12, 13, 0));
+        Assert.Equal(50, doc.CornerHeightCm(13, 13, 0));
+        Assert.Equal(250, doc.CornerHeightCm(10, 10, 0));   // edge ring, untouched by a zero delta
+        Assert.Equal(0, doc.CornerHeightCm(12, 10, 0));
+        Assert.Equal(0, doc.CornerHeightCm(14, 14, 0));
+    }
+
+    [Fact]
+    public void Raise_falloff_handles_an_even_sized_rect_with_a_half_corner_centre()
+    {
+        TileEditingDocument ed = Editing(out TileWorldDocument doc);
+
+        // A 4 by 4 corner rect has no middle corner: its centre falls on (11.5, 11.5) and its half extent is
+        // 1.5. The inner 2 by 2 sits at chebyshev 0.5, so it keeps 1 - 0.5 / 1.5 of the delta, which rounds to
+        // 67, and the outer ring sits at 1.5, exactly the extent, so it gets nothing.
+        ed.Execute(TileEditOps.Raise(doc, new TileRect(10, 10, 4, 4), 0, 100, falloff: 1f));
+
+        Assert.Equal(67, doc.CornerHeightCm(11, 11, 0));
+        Assert.Equal(67, doc.CornerHeightCm(12, 11, 0));
+        Assert.Equal(67, doc.CornerHeightCm(11, 12, 0));
+        Assert.Equal(67, doc.CornerHeightCm(12, 12, 0));
+        Assert.Equal(0, doc.CornerHeightCm(10, 10, 0));
+        Assert.Equal(0, doc.CornerHeightCm(13, 13, 0));
+        Assert.Equal(0, doc.CornerHeightCm(11, 10, 0));
+        Assert.Equal(0, doc.CornerHeightCm(13, 11, 0));
+    }
+
+    [Fact]
+    public void Raise_keeps_the_full_delta_when_the_rect_is_too_small_to_fade_across()
+    {
+        TileEditingDocument ed = Editing(out TileWorldDocument doc);
+
+        // One corner wide, so there is no ring to fade out to and the falloff has nothing to divide by.
+        ed.Execute(TileEditOps.Raise(doc, new TileRect(10, 10, 1, 1), 0, 100, falloff: 1f));
+
+        Assert.Equal(100, doc.CornerHeightCm(10, 10, 0));
     }
 
     [Fact]
@@ -212,12 +247,14 @@ public class HeightCommandTests
     }
 
     [Fact]
-    public void Smooth_rejects_a_non_positive_iteration_count()
+    public void Smooth_rejects_an_iteration_count_outside_its_bounds()
     {
         TileWorldDocument doc = TileWorldTestData.FlatWorld();
 
         Assert.Throws<ArgumentOutOfRangeException>(() => TileEditOps.Smooth(doc, new TileRect(4, 4, 3, 3), 0, 0));
         Assert.Throws<ArgumentOutOfRangeException>(() => TileEditOps.Smooth(doc, new TileRect(4, 4, 3, 3), 0, -1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => TileEditOps.Smooth(doc, new TileRect(4, 4, 3, 3), 0, 65));
+        TileEditOps.Smooth(doc, new TileRect(4, 4, 3, 3), 0, 64);   // the ceiling itself is allowed
     }
 
     [Fact]

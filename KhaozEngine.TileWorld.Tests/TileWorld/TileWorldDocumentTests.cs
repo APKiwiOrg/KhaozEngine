@@ -221,6 +221,69 @@ public class TileWorldDocumentTests
     }
 
     [Fact]
+    public void AddObjectWithId_inserts_at_the_given_id_and_never_lets_the_allocator_fall_behind_it()
+    {
+        var doc = new TileWorldDocument { Id = "w", DisplayName = "W" };
+        doc.GetOrCreateRegion(new RegionCoord(0, 0));
+
+        TileObject high = doc.AddObjectWithId(50, "tree", 3, 4, 0, 5, new[] { "old" });
+
+        Assert.Equal(50, high.Id);
+        Assert.Equal(1, high.Rotation);   // masked into 0..3, the same as AddObject
+        Assert.Equal(new[] { "old" }, high.Tags);
+        Assert.Same(high, doc.FindObject(50));
+        Assert.Contains(high, doc.GetRegion(new RegionCoord(0, 0))!.Objects);
+        // The allocator jumps past a re-inserted id so the next fresh one cannot collide with it.
+        Assert.Equal(51, doc.NextObjectId);
+
+        doc.AddObjectWithId(10, "tree", 5, 6, 0, 0, null);
+        Assert.Equal(51, doc.NextObjectId);
+        Assert.Equal(51, doc.AddObject("tree", 7, 8, 0, 0).Id);
+    }
+
+    [Fact]
+    public void AddObjectWithId_refuses_an_id_that_is_already_in_use()
+    {
+        var doc = new TileWorldDocument { Id = "w", DisplayName = "W" };
+        doc.GetOrCreateRegion(new RegionCoord(0, 0));
+        TileObject first = doc.AddObject("tree", 3, 4, 0, 0);
+
+        var ex = Assert.Throws<TileWorldException>(() => doc.AddObjectWithId(first.Id, "tree", 9, 9, 0, 0, null));
+
+        Assert.Contains(first.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), ex.Message);
+        Assert.Single(doc.AllObjects());
+    }
+
+    [Fact]
+    public void RestoreRegion_reattaches_a_detached_region_and_reindexes_its_objects()
+    {
+        var doc = new TileWorldDocument { Id = "w", DisplayName = "W" };
+        var coord = new RegionCoord(1, 2);
+        TileRegion region = doc.GetOrCreateRegion(coord);
+        TileObject o = doc.AddObject("tree", coord.OriginX + 3, coord.OriginZ + 4, 0, 0);
+        Assert.True(doc.RemoveRegion(coord));
+        Assert.Null(doc.FindObject(o.Id));
+
+        doc.RestoreRegion(region);
+
+        Assert.Same(region, doc.GetRegion(coord));
+        Assert.Same(o, doc.FindObject(o.Id));
+        // The coordinate is taken now, so a second restore is the same refusal AttachRegion gives the loader.
+        Assert.Throws<ArgumentException>(() => doc.RestoreRegion(region));
+    }
+
+    [Fact]
+    public void RestoreRegion_refuses_a_region_whose_plane_count_does_not_match()
+    {
+        var doc = new TileWorldDocument { Id = "w", DisplayName = "W", PlaneCount = 4 };
+
+        var ex = Assert.Throws<TileWorldException>(() => doc.RestoreRegion(new TileRegion(new RegionCoord(0, 0), 2)));
+
+        Assert.Contains("restore", ex.Message);
+        Assert.Empty(doc.Regions);
+    }
+
+    [Fact]
     public void RemoveRegion_drops_its_objects_from_the_index()
     {
         var doc = new TileWorldDocument { Id = "w", DisplayName = "W" };

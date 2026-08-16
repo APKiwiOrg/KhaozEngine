@@ -39,4 +39,20 @@ public static class TileWorldTestData
         }
         return doc;
     }
+
+    /// <summary>The greybox catalogs plus the two shapes the editing tests need and greybox does not carry: a
+    /// 2x3 solid <c>hall</c>, whose footprint is neither square nor one tile wide, so a rotation moves tiles a
+    /// square archetype's would not, and a 3x1 solid <c>beam</c> for the second non-square case.</summary>
+    public static TileWorldCatalogs EditingCatalogs() => TileWorldCatalogs.Merge(
+        TileWorldCatalogs.Greybox(),
+        TileWorldCatalogs.LoadJson(
+            """
+            {
+              "archetypes": [
+                { "id": "hall", "name": "hall", "meshRef": "test/hall.glb", "sizeX": 2, "sizeZ": 3, "collisionKind": "Solid" },
+                { "id": "beam", "name": "beam", "meshRef": "test/beam.glb", "sizeX": 3, "sizeZ": 1, "collisionKind": "Solid" }
+              ]
+            }
+            """,
+            "editing-tests"));
 }

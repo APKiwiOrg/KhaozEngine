@@ -79,12 +79,46 @@ the retained pending buffer.
 
 Since 10.65.0 a **teleport epoch** makes an intentional teleport cut regardless of distance. `IPredictedState<T>`
 carries an optional monotonic `TeleportEpoch` (a default-interface member returning 0, so a state with no teleport
-concept is unchanged). When the epoch on the authoritative basis advances, `Reconcile` force-hard-snaps (bypassing
+concept is unchanged). When the epoch on the authoritative basis ADVANCES, `Reconcile` force-hard-snaps (bypassing
 the `HardSnapDistance` gate, so a short in-session teleport cuts instead of gliding) and returns
-`ReconciliationResult.Teleported = true`. `Teleported` is also set on the FIRST reconcile after a `Reset`/`Reseed`,
-so a consumer gets one uniform "a teleport landed this frame" signal for join, reconnect, AND in-session teleports
-(e.g. to snap a follow camera + run a transition). An ordinary smoothed correction never sets it. The host is
-expected to advance the epoch ONLY at real teleport sites; normal movement leaves it unchanged.
+`ReconciliationResult.Teleported = true`. The host is expected to advance the epoch ONLY at real teleport sites, and
+normal movement leaves it unchanged.
+
+Advance means strictly greater than the highest epoch seen so far, and the client holds that highest value as a
+watermark. Any inequality is not enough: the epoch reads 0 whenever the host serves a state whose movement component
+is momentarily unreadable, so a real stream dips and recovers, and treating either edge as a teleport fired the cut on
+ordinary snapshots (#409).
+
+`Teleported` means **the local player's world position changed discontinuously**, and nothing else sets it:
+
+| What happened | `Teleported` |
+| --- | --- |
+| First reconcile after `Reset` (a first-ever join) | yes, always: there is no prior position to be continuous with |
+| First reconcile after `Reseed` (a reconnect), resume position within `HardSnapDistance` | **no** |
+| First reconcile after `Reseed`, resume position at or beyond `HardSnapDistance` | yes: the player moved while away |
+| An authoritative epoch advance (respawn, admin move, fast travel) | yes |
+| An ordinary smoothed correction | no |
+
+The reconnect row is the one that bites. A reconnect rebuilds everything about the session, and it used to report a
+teleport unconditionally, so a consumer honouring the contract paid its full teleport reaction on every drop and a
+client on a lossy link paid it repeatedly. `Reseed` measures the resume displacement instead (3D, in absolute space so
+an island re-anchor across the reconnect counts as zero) and stays quiet when the player did not actually move. The
+epoch cannot decide this: a rejoining client is a fresh authoritative entity whose epoch counts from its own zero, so
+it bears no relation to the one the previous session ended on. Tighten `HardSnapDistance` if a consumer wants a
+shorter leash on what counts as "moved".
+
+The same verdict decides whether the avatar cuts or glides, because the consumer's camera warp hangs off the signal.
+A reported teleport cuts: `Reseed` drops the render offsets, so the avatar is on the resume position the frame the
+seed lands and the warp meets it there. A quiet resume glides: the sub-threshold displacement is re-anchored into the
+decaying render offset (in absolute space, so a resume arriving in a different island frame glides nothing) and
+decays away like an ordinary correction, because nothing warps the camera on that path and an instant cut would leave
+the avatar ahead of it.
+
+What the client measures is the resume snapshot, so the SERVER decides whether a reconnect is quiet. A server that
+spawns the rejoiner and restores their stored position afterwards hands the client the spawn first, which is a
+teleport for anyone standing further than `HardSnapDistance` from it, and then a second one when the restore advances
+the epoch. `KhaozEngine.NetWorld`'s `WorldServer` plus `WorldPersistence` are that shape today
+([#642](https://github.com/APKiwiOrg/KhaozEngine/issues/642)).
 
 A **frame anchor** makes a floating-origin shift invisible instead of catastrophic. `IPredictedState<T>` carries an
 optional `FrameAnchor` (a default-interface member returning `Vector2.Zero`, so a state with no frame concept is

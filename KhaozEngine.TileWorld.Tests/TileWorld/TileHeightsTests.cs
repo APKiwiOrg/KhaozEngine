@@ -97,10 +97,13 @@ public class TileHeightsTests
         doc.SetCornerHeightCm(11, 10, 0, 100);
         doc.SetCornerHeightCm(10, 11, 0, 100);
         doc.SetCornerHeightCm(11, 11, 0, 200);
-        Assert.Equal(1.0f, doc.HeightAt(10.5f, 10.5f, 0), 4);
-        Assert.Equal(0.5f, doc.HeightAt(10.5f, 10.0f, 0), 4);
-        Assert.Equal(2.0f, doc.HeightAt(11.0f, 11.0f, 0), 4);
+        // World z is minus tile z, so tile z 10.5 is sampled at world z -10.5.
+        Assert.Equal(1.0f, doc.HeightAt(10.5f, -10.5f, 0), 4);
+        Assert.Equal(0.5f, doc.HeightAt(10.5f, -10.0f, 0), 4);
+        Assert.Equal(2.0f, doc.HeightAt(11.0f, -11.0f, 0), 4);
+        // A POSITIVE world z is south of the authored square, on flat ground.
+        Assert.Equal(0f, doc.HeightAt(10.5f, 10.5f, 0), 4);
         doc.TileSize = 2f;
-        Assert.Equal(1.0f, doc.HeightAt(21f, 21f, 0), 4);
+        Assert.Equal(1.0f, doc.HeightAt(21f, -21f, 0), 4);
     }
 }

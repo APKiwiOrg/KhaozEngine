@@ -3,7 +3,7 @@
     <PackageId>KhaozEngine.Game3D</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Description>Umbrella metapackage for a desktop 3D game on the KhaozEngine 5.x stack: a strict superset of KhaozEngine.Game2D plus Render3D and Game.Render3D (the 3D scene integration: GameApp3D, IGameScene3D, and the SceneManager.Draw3D extension), the Ground* telegraph extensions, and Terrain.Render3D (the chunked-LOD terrain mesh builder over KhaozEngine.Terrain's analytic field). One reference gives the full 2D + 3D + game-loop stack. No networking (Netcode) - add KhaozEngine.Netcode.LiteNetLib if you need it. Contains no code; just dependencies.</Description>
+    <Description>Umbrella metapackage for a desktop 3D game on the KhaozEngine 5.x stack: a strict superset of KhaozEngine.Game2D plus Render3D and Game.Render3D (the 3D scene integration: GameApp3D, IGameScene3D, and the SceneManager.Draw3D extension), the Ground* telegraph extensions, Terrain.Render3D (the chunked-LOD terrain mesh builder over KhaozEngine.Terrain's analytic field), and TileWorld.Render3D (the ground mesher, prop path, region streaming and snapshot capture that render a KhaozEngine.TileWorld document). One reference gives the full 2D + 3D + game-loop stack. No networking (Netcode) - add KhaozEngine.Netcode.LiteNetLib if you need it. Contains no code; just dependencies.</Description>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>
@@ -20,6 +20,8 @@
     <ProjectReference Include="../KhaozEngine.Game.Render3D/KhaozEngine.Game.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Telegraphs.Render3D/KhaozEngine.Telegraphs.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Terrain.Render3D/KhaozEngine.Terrain.Render3D.csproj" />
+    <!-- the tile-world renderer: ground mesher, tile props, region streaming, snapshot capture -->
+    <ProjectReference Include="../KhaozEngine.TileWorld.Render3D/KhaozEngine.TileWorld.Render3D.csproj" />
     <!-- the modern particle sim <-> Render3D adapter (looks, presets, light-linked draws) -->
     <ProjectReference Include="../KhaozEngine.Particles.Render3D/KhaozEngine.Particles.Render3D.csproj" />
     <!-- physics seam only; the BepuPhysics backend (KhaozEngine.Physics.Bepu) is an opt-in sibling

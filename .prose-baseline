@@ -35,8 +35,8 @@
 # This file is per-repo and is NOT part of the verbatim template layer.
 
 832 CHANGELOG.md
-318 docs/USING-KHAOZENGINE.md
-35 README.md
+317 docs/USING-KHAOZENGINE.md
+34 README.md
 33 KhaozEngine.NetWorld/README.md
 26 docs/SECURITY-BASELINE.md
 25 KhaozEngine.Gui/README.md
@@ -45,9 +45,9 @@
 20 KhaozEngine.Windowing/README.md
 15 docs/DEPENDENCY-SEAMS.md
 14 docs/UPDATER.md
-14 KhaozEngine.Netcode/README.md
 14 KhaozEngine.Game.Render3D/README.md
 13 KhaozEngine.Physics.Bepu/README.md
+13 KhaozEngine.Netcode/README.md
 11 AGENTS.md
 10 KhaozEngine.Replication/README.md
 9 docs/CROSS-PLATFORM.md

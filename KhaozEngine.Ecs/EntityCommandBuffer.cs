@@ -53,8 +53,12 @@ public sealed class EntityCommandBuffer
     /// <summary>Applies all recorded commands in order, then clears the buffer.</summary>
     public void Playback(World world)
     {
-        PoolableRemapDictionary remap = _remapPool.Rent()
-            ?? throw new InvalidOperationException("EntityCommandBuffer.Playback is not re-entrant: remap pool exhausted.");
+        if (!_remapPool.TryRent(out PoolRental<PoolableRemapDictionary> rental))
+        {
+            throw new InvalidOperationException("EntityCommandBuffer.Playback is not re-entrant: remap pool exhausted.");
+        }
+
+        PoolableRemapDictionary remap = rental.Item!;
 
         try
         {
@@ -74,7 +78,9 @@ public sealed class EntityCommandBuffer
         }
         finally
         {
-            _remapPool.Return(remap);   // Reset() clears Dict; safe even when an exception is thrown.
+            // TryReturn, not Return: this runs in a finally, so a throwing refusal would replace whatever
+            // exception the playback body was already unwinding. Reset() clears Dict either way.
+            _remapPool.TryReturn(in rental);
             _cmds.Clear();
             _nextPlaceholder = -1;      // reset the placeholder counter so a played-back buffer is fully
                                         // equivalent to a fresh one (matters for pooled, long-lived reuse:

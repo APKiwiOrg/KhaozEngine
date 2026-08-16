@@ -481,17 +481,113 @@ public class ClientPredictionTests
     }
 
     [Fact]
-    public void First_reconcile_after_reseed_reports_teleported_without_double_firing()
+    public void Reseed_that_lands_beyond_the_hardsnap_distance_reports_teleported_without_double_firing()
     {
-        // The reconnect signal: Reseed captures the epoch it seeds on, so the first post-reseed reconcile fires the
-        // teleport once (from the seed), not twice (it must not also count the seed epoch as an advance).
+        // A reconnect that resumes somewhere ELSE (500 units away, well past HardSnapDistance's 100) is a genuine
+        // teleport: the player really did move while the client was away. It fires ONCE - the seed reports it, and the
+        // epoch the seed captured must not also count as an in-session advance and fire a second time.
         var p = NewEpoch(seedEpoch: 1);
         p.Reconcile(0, new EpochState(Vector2.Zero, 1), lastAcknowledgedSeq: -1); // consume the join signal
-        p.Reseed(new EpochState(new Vector2(50f, 0f), 5));
-        var r = p.Reconcile(1, new EpochState(new Vector2(50f, 0f), 5), lastAcknowledgedSeq: -1);
+        p.Reseed(new EpochState(new Vector2(500f, 0f), 5));
+        var r = p.Reconcile(1, new EpochState(new Vector2(500f, 0f), 5), lastAcknowledgedSeq: -1);
         Assert.True(r.Teleported);
-        var r2 = p.Reconcile(2, new EpochState(new Vector2(50f, 0f), 5), lastAcknowledgedSeq: -1);
+        var r2 = p.Reconcile(2, new EpochState(new Vector2(500f, 0f), 5), lastAcknowledgedSeq: -1);
         Assert.False(r2.Teleported);   // steady after the reseed: no re-fire
+    }
+
+    [Fact]
+    public void Reseed_that_resumes_the_same_position_is_not_a_teleport()
+    {
+        // #409: a transport reconnect reseeds prediction (fresh session, fresh net id, fresh authoritative entity) but
+        // moves the player nowhere. Reporting that as a teleport made every reconnect cost a consumer its full
+        // teleport reaction - Ruinborne rebuilt its whole terrain ring while the player stood still, and a lossy link
+        // paid it again on every drop. The seed still happens, only the signal is withheld.
+        var p = NewEpoch(seedEpoch: 1);
+        p.Reconcile(0, new EpochState(Vector2.Zero, 1), lastAcknowledgedSeq: -1);   // join
+        p.Predict(new Vector2(60f, 0f));                                           // walk one tick: X = 1
+        p.Reconcile(1, new EpochState(new Vector2(1f, 0f), 1), lastAcknowledgedSeq: 0);
+
+        // The link drops and comes back on a fresh session: same position, and an epoch counting from its own zero
+        // (the new entity's, unrelated to the 1 the old session ended on - so it must not read as a change either).
+        p.Reseed(new EpochState(new Vector2(1f, 0f), 0));
+        var r = p.Reconcile(2, new EpochState(new Vector2(1f, 0f), 0), lastAcknowledgedSeq: 0);
+        Assert.False(r.Teleported, "a reconnect that resumes the same position is not a teleport");
+        Assert.False(r.HardSnapApplied);
+
+        // The prediction WAS reseeded regardless: the basis is adopted and the session carries on.
+        Assert.Equal(1f, p.PredictedState.Position.X, 3);
+        var r2 = p.Reconcile(3, new EpochState(new Vector2(1f, 0f), 0), lastAcknowledgedSeq: 0);
+        Assert.False(r2.Teleported);
+    }
+
+    [Fact]
+    public void Reseed_below_the_hardsnap_distance_glides_the_resume_instead_of_cutting_it()
+    {
+        // The resume verdict decides the RENDER as well as the signal, and it has to, because the consumer's camera
+        // warp hangs off the signal. A sub-threshold resume reports no teleport, so nothing warps the camera - and a
+        // reseed that dropped the render offsets anyway would put the avatar on the resume position instantly while
+        // the camera eased the whole 50 m behind it. Below the threshold the session simply resumes: the displacement
+        // is re-anchored into the render offset and glides, so the avatar and the camera stay together.
+        var p = NewPrediction();
+        p.Reconcile(0, new FakeState(Vector2.Zero), lastAcknowledgedSeq: -1);   // consume the join signal
+        float renderedBefore = p.RenderedState.Position.X;
+
+        p.Reseed(new FakeState(new Vector2(50f, 0f)));   // half of the default 100u HardSnapDistance
+
+        Assert.Equal(50f, p.PredictedState.Position.X, 3);          // the basis is adopted either way
+        Assert.Equal(renderedBefore, p.RenderedState.Position.X, 3); // ... but nothing cut on screen
+        var r = p.Reconcile(1, new FakeState(new Vector2(50f, 0f)), lastAcknowledgedSeq: -1);
+        Assert.False(r.Teleported, "50u is inside HardSnapDistance, so the resume is not a teleport");
+        Assert.False(r.HardSnapApplied);
+        Assert.Equal(renderedBefore, p.RenderedState.Position.X, 3); // and the reconcile preserved the glide
+
+        // It really is a glide and not a stall: the offset decays toward the resume position the way an ordinary
+        // correction does, and settles on it.
+        for (int i = 0; i < 8; i++) p.AdvancePresentation(Tick);
+        float midGlide = p.RenderedState.Position.X;
+        Assert.True(midGlide > renderedBefore + 1f && midGlide < 49f,
+            $"the resume should be part way through its glide, not cut and not stalled (rendered at {midGlide})");
+        for (int i = 0; i < 240; i++) p.AdvancePresentation(Tick);
+        Assert.Equal(50f, p.RenderedState.Position.X, 2);
+    }
+
+    [Fact]
+    public void Reseed_beyond_the_hardsnap_distance_cuts_the_resume()
+    {
+        // The other side of the same verdict: 150u is a real teleport, the signal fires, and the avatar is ON the
+        // resume position the frame the seed lands (no glide) because the consumer warps its camera to meet it.
+        var p = NewPrediction();
+        p.Reconcile(0, new FakeState(Vector2.Zero), lastAcknowledgedSeq: -1);   // consume the join signal
+
+        p.Reseed(new FakeState(new Vector2(150f, 0f)));
+
+        Assert.Equal(150f, p.RenderedState.Position.X, 3);   // cut: rendered == predicted, no offset carried
+        var r = p.Reconcile(1, new FakeState(new Vector2(150f, 0f)), lastAcknowledgedSeq: -1);
+        Assert.True(r.Teleported, "150u is beyond HardSnapDistance: the player moved while the client was away");
+        Assert.Equal(150f, p.RenderedState.Position.X, 3);
+    }
+
+    [Fact]
+    public void Epoch_that_dips_to_zero_and_recovers_never_reports_a_teleport()
+    {
+        // #409: the compare fired on ANY change. The authoritative epoch reads 0 whenever the host serves a state
+        // whose movement component is momentarily absent, so a real stream dips 5 -> 0 -> 5: the dip fired one cut and
+        // the recovery fired another, on snapshots where nothing moved. Only an advance past the high-water mark is a
+        // teleport now, so neither edge fires - and a genuine advance past it still does.
+        var p = NewEpoch(seedEpoch: 5);
+        p.Reconcile(0, new EpochState(Vector2.Zero, 5), lastAcknowledgedSeq: -1);   // consume the join signal
+
+        var dip = p.Reconcile(1, new EpochState(Vector2.Zero, 0), lastAcknowledgedSeq: -1);
+        Assert.False(dip.Teleported, "an epoch that goes BACKWARDS is not a teleport");
+        Assert.False(dip.HardSnapApplied);
+
+        var recovered = p.Reconcile(2, new EpochState(Vector2.Zero, 5), lastAcknowledgedSeq: -1);
+        Assert.False(recovered.Teleported, "recovering from the dip re-reads an already-seen epoch, not an advance");
+        Assert.False(recovered.HardSnapApplied);
+
+        var real = p.Reconcile(3, new EpochState(Vector2.Zero, 6), lastAcknowledgedSeq: -1);
+        Assert.True(real.Teleported, "a genuine advance past the watermark must still fire");
+        Assert.True(real.HardSnapApplied);
     }
 
     [Fact]

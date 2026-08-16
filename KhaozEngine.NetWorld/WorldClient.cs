@@ -203,12 +203,24 @@ public sealed partial class WorldClient : IDisposable
     public ServerNotice? LastNotice { get; private set; }
 
     /// <summary>
-    /// Raised during <see cref="Poll"/> (on snapshot/delta ingest) when a local teleport landed this ingest: the
-    /// first authoritative frame after a connect or reconnect (join/reconnect placement), or an in-session server
-    /// teleport (an advance of the authoritative <see cref="MovementState.TeleportEpoch"/> - admin, self-rescue,
-    /// fast-travel). The local avatar has already cut to the new position; the consumer reacts by snapping the follow
-    /// camera onto <see cref="LocalRenderState"/> (<c>FollowCamera3D.Warp</c>) and optionally running a screen
-    /// transition. Distinct from an ordinary reconciliation correction, which never fires this.
+    /// Raised during <see cref="Poll"/> (on snapshot/delta ingest) when the local player's world position changed
+    /// DISCONTINUOUSLY this ingest: the first authoritative frame after a connect (the join placement), an in-session
+    /// server teleport (an advance of the authoritative <see cref="MovementState.TeleportEpoch"/> - admin,
+    /// self-rescue, fast-travel), or a reconnect that resumed the session somewhere else. The local avatar has already
+    /// cut to the new position, and the consumer reacts by snapping the follow camera onto <see cref="LocalRenderState"/>
+    /// (<c>FollowCamera3D.Warp</c>) and optionally running a screen transition. Distinct from an ordinary
+    /// reconciliation correction, which never fires this.
+    /// <para><b>A transport reconnect that resumes the same position does NOT fire this.</b> Prediction is still
+    /// reseeded across the reconnect (a rejoining client gets a fresh net id, a fresh authoritative entity, and a
+    /// fresh session), but none of that moves the player, so a consumer answering this event with a world-scale
+    /// reaction - re-centring a terrain streamer's ring, rebuilding an occlusion cache - does not pay it every time a
+    /// lossy link drops. The resume is treated as a teleport only when the resume SNAPSHOT lands at least
+    /// <see cref="PredictionSettings.HardSnapDistance"/> from where this client was. Tighten that setting via
+    /// <see cref="WorldClientConfig.Prediction"/> if a consumer wants a shorter leash.</para>
+    /// <para>The snapshot is what decides it, so the server does. A server that spawns the rejoiner and restores the
+    /// stored position afterwards (which is what <c>WorldServer</c> plus <c>WorldPersistence</c> do today) still fires
+    /// this twice on a rejoin: once for the reseed onto the spawn, once for the restore's epoch advance. Tracked at
+    /// https://github.com/APKiwiOrg/KhaozEngine/issues/642.</para>
     /// </summary>
     public event Action? LocalTeleported;
 
@@ -689,12 +701,22 @@ public sealed partial class WorldClient : IDisposable
             long id = kv.Key;
             if (id == localNetId) continue;
             uint epoch = world.TryGet(kv.Value, out MovementState ms) ? ms.TeleportEpoch : 0u;
-            if (lastTeleportEpochByEntity.TryGetValue(id, out uint prev) && epoch != prev)
+            bool known = lastTeleportEpochByEntity.TryGetValue(id, out uint prev);
+            if (known && epoch > prev)                        // strictly an ADVANCE, never any inequality
             {
                 view.SnapInterpolationToNewest(id);
                 remoteTeleports.Add(id);   // surface the hard cut so a cosmetic layer (RemoteTeleports) can match it
             }
-            lastTeleportEpochByEntity[id] = epoch;
+            // Held as a high-water mark, not a last-seen value, for the dip an ALREADY-KNOWN entity takes: the epoch
+            // reads 0 whenever this read finds no MovementState on a snapshot that carried one before, and on the
+            // server where it rebuilds the state (ShardedWorldServer.SetPlayerState), so a real stream can dip and
+            // recover. Storing the dip would make the recovery back to the true epoch read as a fresh advance and cut
+            // the remote a second time, which is the every-snapshot flip-flop this holds off.
+            // First SIGHT is a different case and is not what the watermark covers: an entity seen before its
+            // MovementState replicates records 0, and the true epoch arriving after it reads as a genuine advance and
+            // snaps. That is harmless (the buffer it snaps to is all the samples there are) and the `known` guard
+            // above is what keeps the first observation itself silent.
+            lastTeleportEpochByEntity[id] = known && prev > epoch ? prev : epoch;
         }
 
         // Prune epochs for entities no longer present (left AoI / despawned), so the map cannot grow unbounded.

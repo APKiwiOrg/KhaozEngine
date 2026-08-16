@@ -521,6 +521,53 @@ public class ClientPredictionTests
     }
 
     [Fact]
+    public void Reseed_below_the_hardsnap_distance_glides_the_resume_instead_of_cutting_it()
+    {
+        // The resume verdict decides the RENDER as well as the signal, and it has to, because the consumer's camera
+        // warp hangs off the signal. A sub-threshold resume reports no teleport, so nothing warps the camera - and a
+        // reseed that dropped the render offsets anyway would put the avatar on the resume position instantly while
+        // the camera eased the whole 50 m behind it. Below the threshold the session simply resumes: the displacement
+        // is re-anchored into the render offset and glides, so the avatar and the camera stay together.
+        var p = NewPrediction();
+        p.Reconcile(0, new FakeState(Vector2.Zero), lastAcknowledgedSeq: -1);   // consume the join signal
+        float renderedBefore = p.RenderedState.Position.X;
+
+        p.Reseed(new FakeState(new Vector2(50f, 0f)));   // half of the default 100u HardSnapDistance
+
+        Assert.Equal(50f, p.PredictedState.Position.X, 3);          // the basis is adopted either way
+        Assert.Equal(renderedBefore, p.RenderedState.Position.X, 3); // ... but nothing cut on screen
+        var r = p.Reconcile(1, new FakeState(new Vector2(50f, 0f)), lastAcknowledgedSeq: -1);
+        Assert.False(r.Teleported, "50u is inside HardSnapDistance, so the resume is not a teleport");
+        Assert.False(r.HardSnapApplied);
+        Assert.Equal(renderedBefore, p.RenderedState.Position.X, 3); // and the reconcile preserved the glide
+
+        // It really is a glide and not a stall: the offset decays toward the resume position the way an ordinary
+        // correction does, and settles on it.
+        for (int i = 0; i < 8; i++) p.AdvancePresentation(Tick);
+        float midGlide = p.RenderedState.Position.X;
+        Assert.True(midGlide > renderedBefore + 1f && midGlide < 49f,
+            $"the resume should be part way through its glide, not cut and not stalled (rendered at {midGlide})");
+        for (int i = 0; i < 240; i++) p.AdvancePresentation(Tick);
+        Assert.Equal(50f, p.RenderedState.Position.X, 2);
+    }
+
+    [Fact]
+    public void Reseed_beyond_the_hardsnap_distance_cuts_the_resume()
+    {
+        // The other side of the same verdict: 150u is a real teleport, the signal fires, and the avatar is ON the
+        // resume position the frame the seed lands (no glide) because the consumer warps its camera to meet it.
+        var p = NewPrediction();
+        p.Reconcile(0, new FakeState(Vector2.Zero), lastAcknowledgedSeq: -1);   // consume the join signal
+
+        p.Reseed(new FakeState(new Vector2(150f, 0f)));
+
+        Assert.Equal(150f, p.RenderedState.Position.X, 3);   // cut: rendered == predicted, no offset carried
+        var r = p.Reconcile(1, new FakeState(new Vector2(150f, 0f)), lastAcknowledgedSeq: -1);
+        Assert.True(r.Teleported, "150u is beyond HardSnapDistance: the player moved while the client was away");
+        Assert.Equal(150f, p.RenderedState.Position.X, 3);
+    }
+
+    [Fact]
     public void Epoch_that_dips_to_zero_and_recovers_never_reports_a_teleport()
     {
         // #409: the compare fired on ANY change. The authoritative epoch reads 0 whenever the host serves a state

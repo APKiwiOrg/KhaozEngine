@@ -170,8 +170,7 @@ public sealed class ClientPrediction<TState, TCommand>
     /// does) would make every post-reconnect command land at or below that watermark, the server would reject them
     /// all as stale, and the player would be pinned at the authoritative position forever. Pending commands are
     /// kept on purpose: the very next <see cref="Reconcile"/> drops the ones the new server has acknowledged and
-    /// replays the rest on top of <paramref name="basis"/>, so the local avatar snaps cleanly to the reconnect
-    /// position with no render glide and no lost input.
+    /// replays the rest on top of <paramref name="basis"/>, so no input is lost across the reconnect.
     /// <para><b>A reseed is only reported as a teleport when the world position is genuinely discontinuous.</b> The
     /// resume displacement - the 3D distance from the state this client was carrying to <paramref name="basis"/>,
     /// measured in absolute space so an island re-anchor across the reconnect counts as zero - is compared against
@@ -180,6 +179,14 @@ public sealed class ClientPrediction<TState, TCommand>
     /// the new session), but <see cref="ReconciliationResult.Teleported"/> stays false, so a consumer that answers a
     /// teleport with an expensive world-scale reaction does not pay it every time a lossy link drops. At or above it
     /// the player really did move while disconnected and the teleport is reported as it always was.</para>
+    /// <para><b>The same verdict decides whether the avatar cuts or glides, because the consumer's camera hangs off
+    /// it.</b> A reported teleport CUTS: the render offsets drop, so the avatar is on the resume position the frame
+    /// the seed lands, and the consumer warps its follow camera to meet it. A quiet resume must therefore NOT cut,
+    /// because nothing tells that camera to warp: the sub-threshold displacement is re-anchored into the decaying
+    /// render offset instead and glides away like any ordinary correction, so the avatar and the eased camera stay
+    /// together. Zeroing the offsets on both verdicts put the avatar on the new position instantly while the camera
+    /// eased the whole way behind it, which is the camera-flying artifact the teleport signal exists to prevent, just
+    /// inverted.</para>
     /// <para>Position is the ONLY sound signal here, because the epoch cannot be compared across a reconnect: the
     /// server allocates a fresh net id and a fresh entity per join, whose <see cref="IPredictedState{TSelf}.TeleportEpoch"/>
     /// counts from its own zero, so it bears no relation to the epoch the previous session ended on.</para>
@@ -189,13 +196,37 @@ public sealed class ClientPrediction<TState, TCommand>
         // Decide the resume verdict BEFORE the basis overwrites the state this client was carrying - that carried
         // state is the only record of where the player was when the link dropped.
         seedReportsTeleport = ResumeDisplacement(basis) >= settings.HardSnapDistance;
+        // Sample the ACTUAL on-screen position (inter-tick interpolated + the in-flight offset) before the rebase, in
+        // ABSOLUTE space for the same reason ResumeDisplacement measures there: an island re-anchor across the
+        // reconnect moved nothing, so it must contribute nothing to the glide. renderOffset is a delta and therefore
+        // frame-invariant, which is what lets it be re-anchored across the frame change at all.
+        float frac = InterTickFraction;
+        Vector2 renderedAbsolute = predictedState.FrameAnchor
+            + Vector2.Lerp(previousPredictedPosition, predictedState.Position, frac) + renderOffset;
+        float renderedVertical = Lerp(previousPredictedVertical, predictedState.Vertical, frac) + verticalRenderOffset;
+
         predictedState = basis;
         previousPredictedPosition = basis.Position;
         previousPredictedVertical = basis.Vertical;
         secondsSinceLastPredict = settings.TickSeconds; // start fully on the current state (frac = 1)
-        renderOffset = Vector2.Zero;
+        if (seedReportsTeleport)
+        {
+            // A reported teleport CUTS: drop the offsets so rendered == predicted the frame the seed lands, matched by
+            // the camera warp the consumer runs off the signal.
+            renderOffset = Vector2.Zero;
+            verticalRenderOffset = 0f;
+        }
+        else
+        {
+            // A quiet resume GLIDES: re-anchor the offsets so the rendered position is exactly where it already was,
+            // and let the sub-threshold displacement decay away as an ordinary correction. Nothing fires the
+            // consumer's camera warp on this path, so cutting here would strand the avatar ahead of its camera.
+            renderOffset = renderedAbsolute - (basis.FrameAnchor + basis.Position);
+            verticalRenderOffset = renderedVertical - basis.Vertical;
+        }
+        // Either way the carried smoothing velocity is stale (the offsets just moved discontinuously), so both axes
+        // restart from rest - the same rule Reconcile's C1 branch applies whenever it re-anchors.
         renderOffsetVelocity = Vector2.Zero;
-        verticalRenderOffset = 0f;
         verticalRenderOffsetVelocity = 0f;
         predictedHorizontalSpeed = 0f;
         stepCumulativeY = 0f;

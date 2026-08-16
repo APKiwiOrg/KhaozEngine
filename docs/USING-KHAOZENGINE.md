@@ -11006,6 +11006,20 @@ the process apart. What you get for free:
   (`off`, `0`, `false`, `no`, `none`). Reach for it if you are chasing a miscompile and need to state that every
   module in the run came out of the compiler rather than out of a dictionary.
 
+**On a native backend, that switch alone does not buy you a fresh compile.** The native Metal and Direct3D 11
+backends answer a repeat out of their own shader disk cache BEFORE the front end is reached, so with a warm cache
+they compile nothing whether or not this memo is off, and the run is not the fresh one you asked for. Set the
+backend's own variable alongside it:
+
+```bash
+KE_SPIRV_CACHE=off KE_METAL_MSL_CACHE=off      # native Metal
+KE_SPIRV_CACHE=off KE_D3D11_SHADER_CACHE=off   # native Direct3D 11
+```
+
+The incumbent Veldrid backends and the native Vulkan one need only `KE_SPIRV_CACHE=off`, because nothing on
+those paths sits in front of the compiler (the Vulkan disk cache holds pipelines, which is after it).
+`cross-platform-gpu.yml`'s `disableGpuDiskCache` dispatch sets all four together for this reason.
+
 The cache holds 512 distinct modules and then stops inserting, which is far above what any engine-owned run
 reaches. If your game GENERATES shader sources at runtime rather than shipping them as constants, that bound is
 the one to know about: past it, compilation behaves exactly as it did before this existed.

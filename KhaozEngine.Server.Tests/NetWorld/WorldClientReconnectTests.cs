@@ -116,8 +116,12 @@ public class WorldClientReconnectTests
         Assert.Equal(WorldConnectionState.Connected, client.ConnectionState);
         Assert.True(client.LocalNetId > 0, "no local net id after reconnect");
 
-        // Let a couple of snapshots settle so any reconnect re-seed has happened.
-        for (int i = 0; i < 4; i++)
+        // Let the resumed session settle. Longer than the re-seed itself needs, on purpose: the restart puts the
+        // player back at the fresh server's spawn, and a resume inside HardSnapDistance is a QUIET one (#409), so
+        // that displacement is GLIDED through the decaying render offset rather than cut to. The rows below read the
+        // rendered position, so they have to start after the glide has settled or they measure it instead of the
+        // input response (which is the smaller of the two over any window this short).
+        for (int i = 0; i < 40; i++)
         {
             client.SendInput(forward);
             server2.Poll(); server2.Tick(config.TickSeconds);

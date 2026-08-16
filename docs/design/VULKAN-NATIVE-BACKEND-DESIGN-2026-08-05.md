@@ -1366,11 +1366,11 @@ convention, because fence B signalling says nothing about submission A. With one
 theorem: a timeline semaphore's signal operations must strictly increase, and a queue's signal operations on one
 semaphore execute in submission order, so the value reaching 6 requires the signal at 5 to have happened, which
 requires submission 5's commands to have completed. Polling a later fence therefore transitively covers every
-earlier submission, which is what `RetiredResourcePool` relies on.
+earlier submission, which is what `GpuRetireQueue` relies on.
 
 `Submit(cl, fence)` is ONE `vkQueueSubmit` (V-F3). The incumbent's second empty submit signalling an internal
 tracking fence is not inherited, and one timeline collapses three separate completion mechanisms (user fences,
-tracking fences, staging recycling) into one primitive that the ring's segment gate and the retire pool both
+tracking fences, staging recycling) into one primitive that the ring's segment gate and the `GpuRetireQueue` both
 read.
 
 `WaitForIdle` is `vkWaitSemaphores` on the last submitted value with an infinite timeout, counted into
@@ -2384,7 +2384,7 @@ plan somebody is still executing.
 | **Changing the present-mode preference order, including `FIFO_RELAXED` under a vsync request** | It is arguably wrong and it is #380's variable. Moving it here would corrupt that measurement (11.1) |
 | **`storeOp = DONT_CARE` for depth** | Leaves contents undefined, and undefined is not stable across runs, which the goldens require (7.1) |
 | **`vkQueueWaitIdle` for `WaitForIdle`** | Holds the queue lock and gives nothing to count. `vkWaitSemaphores` on the device timeline is the same guarantee, countable and lock-free |
-| **Per-submit `VkFence` objects instead of one device timeline** | The seam's documented fence ordering becomes a convention rather than a theorem, and the retire pool depends on it (10.1) |
+| **Per-submit `VkFence` objects instead of one device timeline** | The seam's documented fence ordering becomes a convention rather than a theorem, and the `GpuRetireQueue` depends on it (10.1) |
 | **`vkCmdUpdateBuffer` for per-frame uniform writes** | Capped at 65536 bytes, must be outside a render pass, and is therefore the same render-pass split the ring exists to remove |
 | **N descriptor sets per resource set, one per frame** | Multiplies descriptor sets by `FramesInFlight`, breaks the write-once immutable-set invariant, and reintroduces the per-frame descriptor bookkeeping this design most wants none of |
 | **Hand-rolled Vulkan P/Invoke, TerraFX, and vendoring Veldrid's `Vulkan.*` bindings** | Thousands of lines where every mistake is a memory corruption, a second unfamiliar vendor with no loader helpers, and Veldrid-derived code inside the backend built to remove Veldrid (3.1) |

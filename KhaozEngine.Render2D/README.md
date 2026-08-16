@@ -15,7 +15,12 @@
   view-projection rides in a per-`Begin` uniform buffer), so there is no per-corner CPU `Vector4.Transform` -
   the transform is a single GPU multiply per vertex instead of four CPU transforms per quad. `FrameStats`
   exposes always-on per-frame draw counters (quads, draw calls, flushes, texture switches, vertex-upload bytes
-  as a `Primitives.RenderFrameStats`), reset each `NewFrame` and read after the frame's draws.
+  as a `Primitives.RenderFrameStats`), reset each `NewFrame` and read after the frame's draws. The batch caches one
+  resource set per `(texture, sampler)` and evicts the ones unused for 600 frames, so a game that streams sprites
+  does not accumulate one set per texture ever drawn. **That sweep never stalls the frame thread** (since 17.37.0):
+  evicted sets, and the buffers a grow replaces, go to a `Gpu.GpuRetireQueue` and are destroyed a few frame
+  boundaries later instead of behind the `WaitForIdle` the eviction path used to take every time anything aged out
+  ([#84](https://github.com/APKiwiOrg/KhaozEngine/issues/84)). Eligibility is unchanged, only the disposal moved.
 - `Camera2D` - position/zoom/rotation 2D camera (headless, unit-tested) + the camera-feel layer (follow,
   look-ahead, eased blends, room cameras, parallax).
 - `Texture2D` - GPU texture. PNG load via StbImageSharp. Dispose drains the device (`WaitForIdle`) before

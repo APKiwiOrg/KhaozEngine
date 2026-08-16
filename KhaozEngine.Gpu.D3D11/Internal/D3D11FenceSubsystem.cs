@@ -44,7 +44,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// the LIVE drain, which is the only path that can actually hang.</para>
     ///
     /// <para><b>Not thread-safe for its own counters.</b> The telemetry accumulators are driven from the frame
-    /// thread, the same contract <c>RetiredResourcePool</c> and the water renderer's counters already have.</para>
+    /// thread, the same contract <c>GpuRetireQueue</c> and the water renderer's counters already have.</para>
     /// </summary>
     internal sealed class D3D11FenceSubsystem : IDisposable, ID3D11SubmitSignal, ID3D11CompletionRead
     {
@@ -109,7 +109,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </para>
         /// <para>
         /// Turning this true is what flips four things downstream on the day the native device lands:
-        /// <c>GpuRetireBarrier.TryCreate</c> stops returning null, <c>RetiredResourcePool</c> takes its fenced
+        /// <c>GpuRetireBarrier.TryCreate</c> stops returning null, <c>GpuRetireQueue</c> takes its fenced
         /// path instead of the frame-count fallback, and <c>RetireFenceGpuTests</c> and
         /// <c>Scene3DUnloadDrainTests</c> stop skipping.
         /// </para>

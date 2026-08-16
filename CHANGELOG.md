@@ -21,17 +21,20 @@ silicon and `MTLLegacySVDevice` on a hosted runner, so the check asks whether an
 whether one named class came back. And the native Vulkan backend's per-draw image transition walk now stops
 at the set count the bound pipeline layout declares, the same limit its bind flush already stopped at, so a
 draw no longer barriers, and in the sharp case reopens its render pass for, images belonging to a set the
-current pipeline dropped. Away from the GPU, `ObjectPool<T>` gained a rental handle that names one RENTAL
-rather than one slot, so a stale or duplicate return of an item whose slot has since been rented out again is
-refused by name instead of silently freeing the current renter's item out from under it and letting the pool
-hand the same object to two owners. Alongside all of that, round 2 of the tile-world program lands as a new
-package, `KhaozEngine.TileWorld.Render3D`, which draws a `KhaozEngine.TileWorld` document through the
-existing lit model and prop paths. The ECS closes two defects on the same swap-remove: a structural
+current pipeline dropped. Still on the GPU side, the 2D batch's resource-set eviction stops draining the whole
+device on the frame thread every time a texture ages out of its cache, which was a guaranteed hitch roughly every
+ten seconds for a game that streams sprites: the deferred-retirement machinery Render3D had hand-rolled is now a
+public `GpuRetireQueue` on the GPU seam, and the sprite batch feeds it. Away from the GPU, `ObjectPool<T>` gained a
+rental handle that names one RENTAL rather than one slot, so a stale or duplicate return of an item whose slot has
+since been rented out again is refused by name instead of silently freeing the current renter's item out from under
+it and letting the pool hand the same object to two owners. Alongside all of that, round 2 of the tile-world
+program lands as a new package, `KhaozEngine.TileWorld.Render3D`, which draws a `KhaozEngine.TileWorld` document
+through the existing lit model and prop paths. The ECS closes two defects on the same swap-remove: a structural
 change made from inside a serial `ForEach` or `Entities()` loop now throws
-`StructuralChangeDuringIterationException` instead of silently losing a survivor's write to a dead row,
-and a vacated column slot is cleared, so a despawned component carrying a managed reference stops
-pinning it for the life of the archetype. That first one is a behaviour break for two of the four games,
-loudly and on their next adopt rather than quietly, and the #118 section below names their systems.
+`StructuralChangeDuringIterationException` instead of silently losing a survivor's write to a dead row, and a
+vacated column slot is cleared, so a despawned component carrying a managed reference stops pinning it for the life
+of the archetype. That first one is a behaviour break for two of the four games, loudly and on their next adopt
+rather than quietly, and the #118 section below names their systems.
 
 ### The tile world renderer package (#629)
 
@@ -410,6 +413,74 @@ that byte-for-byte against the same scene rendered through the untouched `Render
 device. That is strictly stronger than the two independent captures it replaces: it covers both reproducibility
 and the reuse every other capture in the class depends on, and it is where a producer that started carrying state
 across a configuration change would go red first.
+
+### Deferred GPU retirement moves to the seam, and 2D set eviction stops stalling the frame (#84, #80)
+
+**The hitch.** `SpriteBatch.EvictStaleSets` runs from `NewFrame` on every frame, and the moment any
+`(texture, sampler)` resource set crossed the `SetEvictAfterFrames` cutoff it called a full
+`IGpuDevice.WaitForIdle()` before disposing the stale sets. For a game that streams sprites, that is a guaranteed
+whole-pipeline stall on the frame thread roughly every ten seconds, and in the worst case (textures churning near
+the eviction window) close to every frame. The rest of the file already avoided exactly this: the vertex-buffer
+ring and the view-projection UBO both defer instead of draining.
+
+**The fix is the seam owning the mechanism, rather than a fourth copy of it.** `RetiredResourcePool` and its
+`GpuRetireBarrier` moved out of `KhaozEngine.Render3D/Internal` into `KhaozEngine.Gpu` as the public
+`GpuRetireQueue` (the barrier stays internal). The type only ever named `IGpuDevice`, `IGpuFence`,
+`IGpuCommandList` and `IDisposable`, so lifting it added no reference in either direction and changed no
+behaviour for `Scene3D`, which now builds one through `GpuRetireQueue.Create(gd)`. `SpriteBatch` feeds the same
+queue from three sites: the evicted sets, the view-projection UBO and set a grow replaces (previously held until
+`Dispose`), and the vertex buffer a flush-buffer grow replaces (previously freed behind its own `WaitForIdle`).
+Nothing about eviction ELIGIBILITY changed: a set becomes stale on exactly the frame it always did, only its
+disposal moved behind the queue. Sprite output is unchanged, pixel for pixel.
+
+**Why the 2D queue is frame-counted where the 3D one is fenced, which is the part worth remembering.** Minting a
+retirement fence means opening a command list of its own, and `SpriteBatch.NewFrame` is called from inside the
+frame's own recording by every host it has (`GameApp`'s record phase, and both offscreen 2D captures from inside
+their `GpuRecording.Open` scope). A fenced queue there would hit the seam's nested-recording refusal (#424) on
+every frame that retired anything. So the new `GpuRetireQueue.CreateFrameCounted(device, frameDelay)` never mints
+a fence and never drains on the frame path (teardown still drains once), and `SpriteBatch` passes 4. `Scene3D.Begin`
+is in the prepare phase and keeps the fenced path, unchanged. A test pins the choice by driving the batch across an
+eviction cutoff from inside an open recording, so an "upgrade" to the fenced factory fails rather than shipping.
+
+**What that 4 is measured against, since a frame count is only as good as the number behind it.** The bound is the
+deepest the CPU ever runs ahead of the GPU, which is NOT the swapchain image count: on the engine's own backends it
+is the pipeline depth `KE_METAL_FRAMES_IN_FLIGHT`, `KE_VULKAN_FRAMES_IN_FLIGHT` and `KE_D3D11_FRAMES_IN_FLIGHT` set,
+default 3 and settable up to 16, because that is where the backend stops the CPU and waits. So a delay of 4 holds at
+the default and at a depth of 4, and stops holding above it, and the three knobs' docs now say so where a consumer
+would raise one. `SpriteBatch`'s own value coincides with that bound: `RingDepth + 1`, one more than the vertex ring
+it sits beside. The two bets are not equally forgiving, which is the part worth carrying: a ring slot rewritten a
+frame early tears that frame's geometry and the next frame is correct, where a batch destroyed a frame early frees
+memory the GPU is still reading, which is a use-after-free that segfaults under lavapipe. The ring already running
+at its own margin is therefore not an argument for relaxing the queue's.
+
+**Scope, and what is still open.** This resolves #84 and lands the structural half of #80. The five Render3D
+renderers that keep a hand-rolled `_retired` list for grow-path buffers (`ModelRenderer`, `GroundDecalRenderer`,
+`ParticleRenderer`, `OverlayMeshRenderer`, `ShadowMapRenderer`) are NOT migrated here, and neither is the
+inline-dispose bug in `DistortionRenderer` / `WaterRenderer` (#22): those free at teardown, which is conservative
+rather than wrong, and moving them changes when 3D resources die. #80 stays open with that as its remaining work.
+
+**`FlushAll` is teardown, and that is now enforced rather than described.** It is public, and it drained the device
+unconditionally, including from inside an open `GpuRecording`, which a probe reached: one full `WaitForIdle` taken
+from the record phase. That is worse than the stall it looks like. A drain waits out work that was SUBMITTED, so it
+says nothing about the draws in the open list, and the disposals immediately behind it can still be referenced by
+them, which is a use-after-free wearing a drain. So `FlushAll` (and the `Dispose` that calls it) now refuses while
+anything is recording on its device, with a new `GpuDrainDuringRecordingException` naming the open recording, the
+same shape as the seam's nested-recording refusal (#424).
+
+**An EMPTY flush stays a no-op there, and that carve-out is load-bearing rather than lenient.** The first cut refused
+unconditionally, on the reasoning that a guard firing only on the state the call happened to find is worse than one
+that always fires. It broke the recovery path #424's own refusal creates, which is exactly the thing a mid-frame
+refusal is meant to leave usable: an offscreen 2D capture attempted inside a frame's recording is refused when it
+opens its list, and its `finally` then disposes the `SpriteBatch` it had already constructed, from inside that outer
+recording, with nothing retired. Refusing that swapped the useful diagnosis for an unrelated exception and leaked
+the batch, which `NestedRecordingSiteTests` caught. With nothing pending there is no drain and no disposal, so there
+is nothing for the refusal to protect. Three headless tests pin the shape: refused with nothing freed inside
+`GpuRecording.Open`, the empty flush and dispose still no-ops there, and the ordinary drain-and-free outside.
+
+**Additive surface.** `KhaozEngine.Gpu` gains two public types (`GpuRetireQueue`: `Create`,
+`CreateFrameCounted`, `Retire`, `BeginFrame`, `FlushAll`, `Dispose`, `PendingCount`, `FrameDelay`,
+`DefaultFrameDelay`, and `GpuDrainDuringRecordingException`: `Owner`, `BuildMessage`). Nothing was removed or
+changed, and the rename is of a type that was internal.
 
 ### A structural change from inside a serial iteration is refused rather than corrupting it (#118)
 

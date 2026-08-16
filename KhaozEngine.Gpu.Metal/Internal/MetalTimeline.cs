@@ -19,7 +19,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// queue's signal operations on one event execute in submission order and the values are monotonic, so the
     /// counter reaching 6 requires the signal at 5 to have happened, which requires submission 5 to have
     /// completed. Polling a later fence therefore transitively covers every earlier submission, which is exactly
-    /// what <c>RetiredResourcePool</c> relies on and what row 8's segment gate reads. That is V-F2's argument
+    /// what <c>GpuRetireQueue</c> relies on and what row 8's segment gate reads. That is V-F2's argument
     /// reaching the same conclusion because it is the same primitive under a different name (M-F4). Stated
     /// precisely, so a gap cannot be read as a hole in it: the counter reaching V implies every submission that
     /// SIGNALS a value at or below V has completed, and a value nobody ever encoded signals nothing and covers

@@ -1,9 +1,8 @@
 using System.Collections.Generic;
-using KhaozEngine.Gpu;
 
-namespace KhaozEngine.Render3D.Internal
+namespace KhaozEngine.Gpu.Internal
 {
-    /// <summary>The proof a <see cref="RetiredResourcePool"/> frees a batch behind: something that can mark a point
+    /// <summary>The proof a <see cref="GpuRetireQueue"/> frees a batch behind: something that can mark a point
     /// in the submission stream and later be asked, without blocking, whether the GPU has reached it.
     /// <para>An interface rather than the device directly so the pool's whole ripeness policy is headless-testable
     /// (a test drives the signal by hand and asserts exactly which frame a batch dies on), and so a device with no
@@ -41,7 +40,7 @@ namespace KhaozEngine.Render3D.Internal
     /// pipeline stall it replaces.</para>
     ///
     /// <para><b>Not thread-safe</b>, and it does not need to be: it is driven from
-    /// <see cref="RetiredResourcePool.BeginFrame"/> and nothing else, which is the frame thread by that type's own
+    /// <see cref="GpuRetireQueue.BeginFrame"/> and nothing else, which is the frame thread by that type's own
     /// contract.</para></summary>
     internal sealed class GpuRetireBarrier : IRetireBarrier
     {

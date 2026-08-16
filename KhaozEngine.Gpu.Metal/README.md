@@ -251,7 +251,7 @@ made after some earlier work signals only once the queue has drained through it.
 submission that is a convention, because callback B firing says nothing about submission A, and Metal delivers
 handlers on an arbitrary internal thread in no guaranteed order. A queue's signals on one event execute in
 submission order with monotonic values, so the counter reaching 6 requires the signal at 5 to have happened.
-Polling a later fence therefore covers every earlier submission, which is what `RetiredResourcePool` relies on.
+Polling a later fence therefore covers every earlier submission, which is what `GpuRetireQueue` relies on.
 
 **The completion handler is not deleted along with the fence dictionary.** It survives with reporting as its
 only job: reading `status` and `error` at completion, which the incumbent never does for `error` at all, so a

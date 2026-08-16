@@ -45,9 +45,12 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   material, dissolve, edgeWidth, edgeColor)` - the rigid mirror of the skinned `DrawSkinned` dissolve, folded
   into the shared model pipeline so it stays one instanced draw per mesh), per-mesh albedo textures, lighting, camera-facing billboards, an
   immediate-mode debug-draw overlay (line/ray/box/grid/axes/circle) plus depth-tested debug wire volumes
-  (sphere/dome/cylinder/circle), composited into the window. `UnloadTexture`/`UnloadMesh`/`UnloadSkinnedMesh`/
-  `UnloadSplatMaterial` drain the device (`IGpuDevice.WaitForIdle`) before disposing GPU resources, since a
-  queued upload or draw may still reference them.
+  (sphere/dome/cylinder/circle), composited into the window. The four unload calls do NOT all free the same way.
+  `UnloadMesh` RETIRES its buffers and per-mesh material set through the seam's `GpuRetireQueue` and does not
+  drain at all: the queue destroys them a few frames later, once a fence (or the frame count) says the GPU is
+  done, which is what took the per-chunk stall off the terrain streaming path. `UnloadProp` forwards to it, so it
+  behaves the same. `UnloadTexture`, `UnloadSkinnedMesh` and `UnloadSplatMaterial` still drain the device
+  (`IGpuDevice.WaitForIdle`) before disposing, since a queued upload or draw may still reference them.
 - `Scene3D.PrepareFrame()` - the frame's pre-recording phase. Call it once per frame, after the frame's
   `Draw*` calls and BEFORE opening the command list the scene is recorded into. Subsystems whose per-frame GPU work
   cannot go in the frame's list (the FFT ocean's priming dispatch, which needs a submit + device wait of its own)

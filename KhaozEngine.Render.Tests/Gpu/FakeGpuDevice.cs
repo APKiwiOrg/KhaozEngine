@@ -75,6 +75,22 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>Hands out the inert resource handles <see cref="FakeGpuDevice"/> is built on.</summary>
     internal sealed class FakeGpuResourceFactory : IGpuResourceFactory
     {
+        /// <summary>Every resource set this factory has handed out, in creation order, so a test can ask WHEN one
+        /// was freed rather than only whether the count changed. That is the question deferred retirement raises:
+        /// a set dropped from a cache and a set actually destroyed are no longer the same moment (#84).</summary>
+        internal List<FakeResourceSet> ResourceSets { get; } = new();
+
+        /// <summary>How many of <see cref="ResourceSets"/> have been disposed.</summary>
+        internal int DisposedResourceSetCount
+        {
+            get
+            {
+                int n = 0;
+                foreach (FakeResourceSet s in ResourceSets) if (s.Disposed) n++;
+                return n;
+            }
+        }
+
         public IGpuBuffer CreateBuffer(in GpuBufferDescription d) => new FakeBuffer(d.SizeInBytes);
         public IGpuTexture CreateTexture(in GpuTextureDescription d)
             => new FakeTexture(d.Width, d.Height, d.MipLevels, d.SampleCount, d.Format);
@@ -92,7 +108,12 @@ namespace KhaozEngine.Tests.Gpu
 
         public IGpuSampler CreateSampler(in GpuSamplerDescription d) => new FakeSampler();
         public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d) => new FakeResourceLayout();
-        public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d) => new FakeResourceSet();
+        public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d)
+        {
+            var set = new FakeResourceSet();
+            ResourceSets.Add(set);
+            return set;
+        }
         public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl) => new FakeShaderSet();
         public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d) => new FakePipeline();
         public IGpuCommandList CreateCommandList() => new NullGpuCommandList();
@@ -152,7 +173,16 @@ namespace KhaozEngine.Tests.Gpu
 
     internal sealed class FakeSampler : IGpuSampler { public void Dispose() { } }
     internal sealed class FakeResourceLayout : IGpuResourceLayout { public void Dispose() { } }
-    internal sealed class FakeResourceSet : IGpuResourceSet { public void Dispose() { } }
+
+    internal sealed class FakeResourceSet : IGpuResourceSet
+    {
+        /// <summary>Whether the owner freed this binding. Paired with
+        /// <see cref="FakeGpuResourceFactory.ResourceSets"/> to pin the frame a retired set is destroyed on.</summary>
+        internal bool Disposed { get; private set; }
+
+        public void Dispose() => Disposed = true;
+    }
+
     internal sealed class FakeShaderSet : IGpuShaderSet { public void Dispose() { } }
     internal sealed class FakePipeline : IGpuPipeline { public void Dispose() { } }
 

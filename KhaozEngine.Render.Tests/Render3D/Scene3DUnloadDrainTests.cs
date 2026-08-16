@@ -91,7 +91,7 @@ namespace KhaozEngine.Tests.Render3D
                 for (int i = 0; i < 8; i++) scene.UnloadMesh(scene.LoadMesh(Triangle()));
                 int before = spy.WaitForIdleCalls;
 
-                for (int i = 0; i < RetiredResourcePool.DefaultFrameDelay; i++) scene.Begin();
+                for (int i = 0; i < GpuRetireQueue.DefaultFrameDelay; i++) scene.Begin();
 
                 Assert.Equal(before + 1, spy.WaitForIdleCalls);   // one drain for the whole batch, not one per mesh
                 Assert.Equal(0, scene.RetiredResourceCount);
@@ -121,7 +121,7 @@ namespace KhaozEngine.Tests.Render3D
                 // Poll to ripeness. The batch is sealed on the first boundary and freed on the first boundary its
                 // fence has signaled, which may well be that same one: an empty submission behind an idle queue
                 // completes in microseconds. WHICH boundary it lands on is not the contract and is not asserted
-                // here (RetiredResourcePoolTests drives a fence by hand for that). The bound is generous only so a
+                // here (GpuRetireQueueTests drives a fence by hand for that). The bound is generous only so a
                 // loaded machine cannot flake it.
                 for (int i = 0; i < 200 && scene.RetiredResourceCount > 0; i++)
                 {

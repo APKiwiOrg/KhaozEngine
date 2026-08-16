@@ -790,7 +790,7 @@ presents as a golden mismatch that reads like a rendering bug.
 
 Veldrid's D3D11 fence is a `ManualResetEvent` set on the CPU the instant `ExecuteCommandList` returns, a
 submit receipt rather than a completion signal, which is why `SupportsCompletionFences` is hardcoded false,
-`GpuRetireBarrier.TryCreate` returns null, `RetiredResourcePool` keeps a frame-count fallback and two tests
+`GpuRetireBarrier.TryCreate` returns null, `GpuRetireQueue` keeps a frame-count fallback and two tests
 skip.
 
 Primary: one device-wide monotonic `ID3D11Fence` via `ID3D11Device5::CreateFence`, signalled with
@@ -799,7 +799,7 @@ a non-blocking read, which is exactly what the seam demands. `Reset()` re-arms w
 Fallback for pre-Windows-10-1703: `ID3D11Query(QueryType.Event)` polled with `DO_NOT_FLUSH`, also
 non-blocking. `SupportsCompletionFences = true` on both paths.
 
-Downstream, all flipping the day this lands: the retire barrier stops returning null, `RetiredResourcePool`
+Downstream, all flipping the day this lands: the retire barrier stops returning null, `GpuRetireQueue`
 gets the fenced path, `RetireFenceGpuTests` and `Scene3DUnloadDrainTests` stop skipping, and the barrier's own
 recorded hazard (it submits an empty list from inside `Scene3D.Begin`) does not exist under deferred recording,
 because replaying an empty stream clears nothing. **The one thing that made real fences dangerous on D3D11 is
@@ -824,7 +824,7 @@ empty one, so the risk is purely performance and therefore measurable rather tha
 `WaitForIdle` as its ordering primitive, and a primitive that does nothing on one backend makes the contract's
 guarantees backend-dependent in an undocumented way. The measurement is currently a lie:
 `OceanFftProducer.LastStallMs` reads near zero because the call it times is empty, and the native backend
-exists to enable attribution work. And the one HOT caller, the retire pool's per-boundary drain fallback,
+exists to enable attribution work. And the one HOT caller, the `GpuRetireQueue`'s per-boundary drain fallback,
 disappears in the same change because real fences ship with it, so the net hot-path cost is plausibly
 negative.
 
@@ -946,7 +946,7 @@ is not shipped.
 | # | Bet | Measurement gate | Kill switch | Exit criterion |
 |---|---|---|---|---|
 | M1 | The deferred recording model (R1) is not slower than immediate emit. The named risk is NOT the memcpy but the loss of overlap between engine CPU work and driver-side consumption, given #417 measured that driver threading helps | See the note below. **M1 is a milestone, not an issue's exit criterion**, and it is measured on the minimal renderable path, not on a stub | `KE_D3D11_RECORD=immediate` selects the immediate-emit driver (R2), with the ring degrading to per-flush map and unmap | Deferred is within 2 per cent of immediate on the reporting machine's #410 scene at the 17.24.0 baseline. Passing REMOVES `KE_D3D11_RECORD` and deletes the immediate driver. Failing inverts it: R2 becomes the shipped model, U2 degrades to draft A's shadow scheme, and the deferred driver is deleted instead |
-| M2 | A real `WaitForIdle` (C6) costs less than it saves, because the retire pool's per-boundary drain fallback disappears in the same change | Drain count and total drain duration per frame in the telemetry session, plus `OceanFftProducer.LastStallMs` becoming a true number | `KE_D3D11_REAL_DRAIN=0` restores the no-op, for the soak window only | Two consecutive soak builds show total drain duration under 0.2 ms per frame at the 125 fps baseline. Then the switch is removed. If it does not, F1 (the automatic-hazard capability) becomes a blocker rather than a follow-up |
+| M2 | A real `WaitForIdle` (C6) costs less than it saves, because the `GpuRetireQueue`'s per-boundary drain fallback disappears in the same change | Drain count and total drain duration per frame in the telemetry session, plus `OceanFftProducer.LastStallMs` becoming a true number | `KE_D3D11_REAL_DRAIN=0` restores the no-op, for the soak window only | Two consecutive soak builds show total drain duration under 0.2 ms per frame at the 125 fps baseline. Then the switch is removed. If it does not, F1 (the automatic-hazard capability) becomes a blocker rather than a follow-up |
 | M3 | `FramesInFlight = 3` is enough that segment backpressure never blocks the CPU (U5). This is also a behaviour change: the seam documents that the CPU may be several frames ahead | A backpressure stall counter and accumulated stall time in the telemetry session | `KE_D3D11_FRAMES_IN_FLIGHT=<n>` | Backpressure stall count is zero across a full soak capture window. A non-zero count means 3 is wrong, not that the design is |
 | M4 | Array-batched emission (R6) collapses the model set to 4 native calls, the worst-case water set to 6, and an offsets-only rebind to 1 per visible stage | The device-free budget test, confirmed on the first green run and then frozen as marginal assertions (T2) | none needed, it is a call-count property with no runtime risk | First green run's measured per-draw deltas are recorded in this document's history and become the frozen marginals |
 | M5 | (observation, not a bet) W1 defers the flip model, so v1 carries the incumbent's blit present path unchanged and CANNOT discriminate whether the blit model is the mechanism behind #380 | None available in v1. A native soak that reproduces #380 unchanged is consistent with both "blit causes it" and "blit does not", so it proves nothing either way. The DISCRIMINATING measurement is the same scene on the F4 flip-model prototype, A/B against v1's blit path on the same machine and build | n/a, v1 changes nothing here | Recorded so that a reader does not mistake an unchanged #380 in the soak for evidence. #380 stays its own issue with its own unverified mechanism list |

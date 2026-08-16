@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 17.36.2
+## 17.37.0
 
 A logger taken from the ambient `Log` facade now follows the facade instead of the manager that happened to be
 configured when it was resolved, so a consumer that calls `Log.Configure` after any engine type has been touched
@@ -293,8 +293,9 @@ rent-use-return cycle still allocates nothing (held to that by a test in the `Al
 `Rent()` and `Return(item)` keep their exact current behaviour and are now documented for what they cannot see,
 with a test pinning that limitation rather than leaving it to prose. `EntityCommandBuffer.Playback` and `World`'s
 `ForEach`/`ParallelForEach` query pool both moved to the checked pair, so the engine's own code models the
-pattern new callers copy. This is additive public API (two types, three members), so 17.36.2 as a patch
-understates it: the version is re-cut as a minor before tagging.
+pattern new callers copy. This is additive public API (two types, three members), which is why this entry is
+17.37.0 rather than the 17.36.2 patch it was staged as: the pool handle and the new `KhaozEngine.TileWorld.Render3D`
+package both make the staged set minor-shaped, and the version was re-cut once on main before tagging.
 
 ## 17.36.1
 

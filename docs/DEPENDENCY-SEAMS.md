@@ -409,6 +409,23 @@ field to sample, and it does not reference `Navigation` either: per-edge walls c
 `IPathPlanner` adapter over it (tile centres to `Vector3`) is a follow-up for when NPC AI wants `Navigation`'s
 utilities, and would live on the `TileWorld` side, so the non-edge holds either way.
 
+`KhaozEngine.TileWorld.Render3D` is the render arm, split off exactly as `Terrain.Render3D` is from `Terrain`, so
+the document package stays GPU-free for a server or a tool:
+
+```
+KhaozEngine.TileWorld.Render3D -> KhaozEngine.TileWorld          (the document it meshes, plus TileWorldSpace and TileTriangulation)
+KhaozEngine.TileWorld.Render3D -> KhaozEngine.Render3D           (Scene3D, GltfMesh/GltfMeshPart, ModelVertex, MeshHandle, the cameras, Render3DSnapshot)
+KhaozEngine.TileWorld.Render3D -> KhaozEngine.Terrain.Render3D   (PropPlacement and the Scene3D.DrawProps/LoadPropMeshes prop path)
+KhaozEngine.Game3D -> KhaozEngine.TileWorld.Render3D             (umbrella ProjectReference, like every other Game3D package)
+```
+
+All four are forward edges onto packages that already sit below it, and nothing references back. The
+`Terrain.Render3D` edge is the one worth naming: the tile world reuses the prop renderer outright (LOD, instancing,
+distance dissolve) rather than growing a second placement path, which is why an edge to the terrain render arm
+exists at all when there is none between `TileWorld` and `Terrain` themselves. `TileWorldView` reaches the scene
+through its own `ITileWorldScene` seam rather than a `Scene3D` field, so every view and residency rule is testable
+without a device, and `Scene3DTileWorldScene` is the one place the two meet.
+
 ## Surface-source seam: INavSurfaceProvider (a deliberate non-edge)
 
 The step-aware overworld bake (`NavGridBaker.BakeOverworldSteps`) needs a per-cell walkable surface

@@ -18,7 +18,94 @@ not validated, which it emitted 99 times on one CI run while naming a variable n
 disambiguation now reads both variables and every validation wrapper Metal has been measured handing back. Fixing
 that turned up a fact neither issue had: shader validation alone answers with `MTLGPUDebugDevice` on real Apple
 silicon and `MTLLegacySVDevice` on a hosted runner, so the check asks whether anything is validating rather than
-whether one named class came back. And the native Vulkan backend's per-draw image transition walk now stops at the set count the bound pipeline layout declares, the same limit its bind flush already stopped at, so a draw no longer barriers, and in the sharp case reopens its render pass for, images belonging to a set the current pipeline dropped.
+whether one named class came back. And the native Vulkan backend's per-draw image transition walk now stops at the set count the bound pipeline layout declares, the same limit its bind flush already stopped at, so a draw no longer barriers, and in the sharp case reopens its render pass for, images belonging to a set the current pipeline dropped. Alongside all of that, round 2 of the tile-world program lands as a new package, `KhaozEngine.TileWorld.Render3D`, which draws a `KhaozEngine.TileWorld` document through the existing lit model and prop paths.
+
+### The tile world renderer package (#629)
+
+`KhaozEngine.TileWorld.Render3D` is a new packable package in the `Game3D` umbrella, round 2 of the tile-world
+program. It renders a `KhaozEngine.TileWorld` document: a vertex-colour ground mesher over the existing lit model
+path, tile objects through the existing `Terrain.Render3D` prop path, and the runtime that owns a world's meshes
+and props inside a `Scene3D` with region streaming and headless capture on top. There is no new shader and no new
+material, the OSRS look is vertex colour, and the split from the document package is the same one
+`Terrain.Render3D` makes from `Terrain`, so a server or an authoring tool still reads a world without pulling in
+`Render3D`.
+
+**The public surface, by area.** Ground: `TileGroundMesher.Build`/`WorldMatrix`/`CornerNormal`/`CornerColor`/
+`MissingMaterialColor` with `TileGroundMesherOptions` (`JitterAmplitude`, `SmoothNormals`), and `TileColors.Parse`/
+`Jitter`/`Blend`/`Void`. Objects: `TileObjectProps.Build`/`YawRadians`/`AnchorPosition` over
+`TileRegionProps(Ground, Roofs)`, resolved through `ITileMeshResolver` with `GreyboxMeshResolver` (`Resolve`,
+`ColorOf`, `Box`) as the shipped stand-in. Scene seam: `ITileWorldScene` and the `Scene3DTileWorldScene` adapter.
+Runtime: `TileWorldView` (`LoadRegion`, `UnloadRegion`, `MarkDirty` by region-plane or by world tile rect, `Flush`
+and `Flush(int)`, `Draw`, `Observer`, `ObserverIndoors`, `LoadedRegions`, `LoadedRegionCount`, `PendingRebuilds`,
+`LastDrawnProps`, `Dispose`) with `TileWorldViewOptions` (`PropDrawRadius`, `Mesher`, `MaxRebuildsPerFlush`,
+`Log`), and `TileRegionResidency` (`Update`, `PrimeAround`, `Resident`, `Config`, `Log`) with
+`TileResidencyConfig` (`LoadRadius`, `UnloadRadius`, `MaxLoadsPerUpdate`, `Default`, `Validate`). Capture:
+`TileWorldSnapshot.CaptureTopDown`/`CapturePerspective`.
+
+**World z is now MINUS tile z, and that is visible from the document package too.** The document's convention is x
+east, z north, y up, but the engine renders right handed with y up, where a camera facing +z has +x on its LEFT.
+The first captures proved the consequence rather than argued it: a top-down with east right came out with north
+DOWN, and a perspective looking north-west put the road, which is west of the house, on the RIGHT. So the naive
+mapping renders the world as its own mirror image against a compass, and a north-up minimap would contradict what
+the player sees. `TileWorldSpace` is new public API in `KhaozEngine.TileWorld` and is the one seam that fixes it:
+`WorldX`, `WorldZ`, `TileX`, `TileZ` and `ToWorld`, with north on -z, which is also a right-handed camera's
+default forward, so (east, north, up) = (+x, -z, +y) stays a right-handed triple and one top-down view has north
+UP and east RIGHT at once instead of trading one for the other. `HeightAt` and `TileRaycast` read their world
+positions through it, a region-local ground mesh runs from 0 to MINUS 64 tiles on z, and an object's yaw is
+NEGATIVE per quarter turn, which is what makes `Matrix4x4.CreateRotationY` turn clockwise seen from above with
+north up.
+
+**One triangulation, shared, so a click lands on the triangle that was drawn.** `TileTriangulation` gains
+`Triangulate(shape, rotation, splitSwNe, into)` alongside the existing `SplitSwNe`, writing up to `MaxTriangles`
+(4) `TileTriangle(A, B, C, Overlay)` records over the eight `TilePoint` lattice points (four corners plus four
+mid-edge points), with `Local` and `Ends` as the point helpers. Two triangles come back for a plain tile or a
+diagonal half and four for a corner cut, and every one of them is wound the SAME way in tile space, so a pass that
+culls a face direction keeps or drops all of them together rather than half of them. Both the mesher and
+`TileRaycast` now go through it, so `TileRaycast` hits a shaped tile at the surface that is actually drawn, where
+before it tested the plain pair and reported the wrong height in the middle of a corner-cut tile whose corners are
+not coplanar.
+
+**The mesher is region-local and seamless by construction.** `Build` returns one `GltfMesh` per region-plane in
+region-local coordinates, drawn at the pure translation `WorldMatrix` gives, or null when the region-plane has no
+drawable tile. Normals are central differences over the GLOBAL height lattice, which reads ACROSS region borders,
+so two regions meeting at a corner compute the identical normal and a border has neither a crack nor a lighting
+step. Corner colours average the up-to-four tiles sharing the corner, each carrying a deterministic per-tile
+brightness jitter hashed from the world tile coordinate, and a `NoDraw` tile still contributes its underlay so the
+ground stays continuous across a hole punched for an object floor. A material id the catalogs do not define
+renders magenta rather than invisible. Vertices are never shared between triangles, because two triangles of one
+tile can carry different colours.
+
+**Edits coalesce and streaming settles.** `MarkDirty(worldRect, plane)` grows the rect by a 2-tile margin before
+turning it into region marks, because corner heights, the central-difference normals and the four-tile corner
+blend all read across region borders, so an edit one tile inside a border genuinely changes the NEIGHBOUR's mesh.
+Marks dedupe, so a stroke touching the same tiles a hundred times remeshes each region-plane once. `Flush`
+rebuilds oldest first up to `MaxRebuildsPerFlush` (16) and leaves the rest counted by `PendingRebuilds`, which
+matters because streaming one region marks its eight neighbours dirty on every plane, in both directions, so a
+border meshed while its neighbour was absent is not stale forever. The budget bounds UPLOADS rather than mesher
+CPU (a rebuild producing no mesh does not spend it), a rebuild that throws is dropped rather than retried every
+frame, and `Flush(int.MaxValue)` is the settle-now form `PrimeAround` finishes with, so a teleport does not spend
+frames drawing borders meshed against a neighbour that had not arrived yet. `TileRegionResidency` never streams
+out a region with unsaved edits, because unloading one would throw on a frame that has nothing to do with editing,
+and a torn region file throws `TileWorldException` straight out of `Update` rather than being papered over as a
+hole.
+
+**Capture is the same code path a golden and a tool both take.** `CaptureTopDown` sizes the image outright at
+exactly `pxPerTile` pixels a tile with north up and east right, rather than framing it, because a fit margin turns
+an exact scale into an approximate one, and `CapturePerspective` shoots from an eye toward a target with the
+observer defaulting to the tile under the target, so a shot aimed inside a house hides that house's roof. Two
+`[GpuFact]` goldens lock the pair, `tileworld_greybox` (perspective, observer indoors, roofs hidden) and
+`tileworld_topdown` (map shot, roofs drawn), both over the greybox world with a flat background so the comparison
+grid spends its cells on the tile renderer rather than on a procedural sky. Both were baked on Metal here and on
+D3D11 and Vulkan through the cross-platform bake dispatch before this landed. The tests live in
+`KhaozEngine.Render.Tests/TileWorld/` alongside the package's CPU tests, which is the repo norm rather than the
+separate test project design section 12 named, because `GoldenCompare` is internal to that assembly.
+
+**What is deliberately absent.** No editor and no MCP tool. The `KhaozEngine.Editor` kernel extraction was planned
+for this round and has moved to round 3: it has no consumer until `TileEditor` exists, so extracting it now would
+ship forwarding aliases nothing calls and freeze a kernel shape before the editor that has to live in it. Round 3
+is that kernel, the `TileEditor` GUI and the `ke-tileedit` MCP tool together. Ground materials are still colour
+only, with tile-local UVs written so a texture path can land later without touching the mesher's logic, and
+`Kind = Water` still renders as flat colour.
 
 ### A logger from the ambient facade follows the facade (#616)
 

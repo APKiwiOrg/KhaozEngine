@@ -245,7 +245,7 @@ every earlier submission, which is what `GpuRetireQueue` relies on.
 **A fence poll never waits and never takes a lock.** `IGpuFence.Signaled` is one `vkGetSemaphoreCounterValue`
 compared against the fence's target, and `Reset` unarms it for a later submit. After the device is destroyed
 every fence reads SIGNALLED, because a dead device has no outstanding work and answering otherwise strands a
-retire pool on a batch it can never free.
+retire queue on a batch it can never free.
 
 **`WaitForIdle` is `vkWaitSemaphores` on the last submitted value, with no timeout, counted into `DrainCount`
 and `DrainMs`.** Not `vkQueueWaitIdle`: a semaphore wait holds no queue lock, so a drain on one thread does not

@@ -712,7 +712,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
 
     private void OnJoin(int slot, string subject, string displayName)
     {
-        string accountId = string.IsNullOrEmpty(subject) ? $"guest:{slot}" : subject;
+        string accountId = string.IsNullOrEmpty(subject) ? $"{ResumePositionCache.GuestAccountPrefix}{slot}" : subject;
         if (banStore is not null && banStore.IsBanned(accountId))
         {
             // Typed rejection, no engine-authored text: the client maps ServerNoticeKind.Banned to its own localized

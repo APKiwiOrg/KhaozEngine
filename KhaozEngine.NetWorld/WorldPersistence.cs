@@ -62,6 +62,11 @@ public sealed class WorldPersistenceConfig
     /// handful of ticks the player may have been simulated for while the load was in flight. Beyond it the restore
     /// really did move the player and is reported as the teleport it is. Zero or less makes every restore a
     /// teleport (the pre-17.37.0 behaviour).
+    /// <para>The window is measured at DRAIN time, against where the player stands when the load actually lands, so
+    /// on a high-latency store a rejoiner who is already moving can travel past it before the restore arrives and
+    /// take the hard cut anyway. That is not a regression (every restore was a teleport before this), but the
+    /// benefit degrades as store latency rises, and widening this is the knob for a slow store. The loopback rig the
+    /// tests drive cannot show it: its store answers synchronously.</para>
     /// </summary>
     public float QuietRestoreDistance { get; init; } = 1f;
 

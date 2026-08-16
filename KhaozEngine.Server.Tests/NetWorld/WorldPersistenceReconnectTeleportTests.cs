@@ -107,7 +107,7 @@ public class WorldPersistenceReconnectTeleportTests
     // A long save interval is the default: no periodic pass can overwrite a record a test injected during the
     // disconnect window. A row that needs load validation passes its own pcfg (keep that interval when it does).
     static Rig ConnectSingle(InMemoryWorldStore store, Func<int, Vector3>? spawn = null,
-        WorldPersistenceConfig? pcfg = null)
+        WorldPersistenceConfig? pcfg = null, bool anonymous = false)
     {
         var hub = new InMemoryHub();
         var config = new WorldServerConfig
@@ -127,7 +127,7 @@ public class WorldPersistenceReconnectTeleportTests
         var endpoint = new Endpoint();
         var client = new WorldClient(
             () => { INetTransport t = hub.CreateClient(); endpoint.Live = t; return t; },
-            Flat, MoveTuning.Default, NewClientConfig(), Encoding.UTF8.GetBytes(Account));
+            Flat, MoveTuning.Default, NewClientConfig(), anonymous ? null : Encoding.UTF8.GetBytes(Account));
         var rig = new Rig
         {
             Hub = hub,
@@ -346,7 +346,36 @@ public class WorldPersistenceReconnectTeleportTests
             $"a further rejoin belongs on the spawn as well ({rig.BuiltAt[2]})");
     }
 
-    // ---- (5) the sharded twin of (1) ----
+    // ---- (5) a tokenless guest gets no seed at all, because its key names a recycled slot ----
+
+    [Fact]
+    public void A_tokenless_guest_rejoin_is_built_on_the_configured_spawn()
+    {
+        // Both heads key a tokenless connection guest:{slot}, and the slot is recycled to whoever connects next, so
+        // a hint under that key would build a DIFFERENT player on the last occupant's position - and silently,
+        // because the seed carries no teleport of its own. ResumePositionCache refuses the prefix outright.
+        var store = new InMemoryWorldStore();
+        Rig rig = ConnectSingle(store, anonymous: true);
+        ParkAwayFromSpawn(rig);
+
+        Assert.Equal(0, rig.Persistence.ResumeHints.Count);   // nothing was recorded for it in the first place
+        Assert.True(rig.DropAndReconnect(), "the guest never reconnected after the transport drop");
+
+        var spawn = new Vector3(0f, MoveTuning.Default.CapsuleHalfHeight, 0f);
+        Assert.Equal(2, rig.BuiltAt.Count);
+        Assert.True(Vector3.Distance(rig.BuiltAt[1], spawn) < 0.5f,
+            $"a guest rejoin belongs on the configured spawn, whoever held the slot last ({rig.BuiltAt[1]})");
+        Assert.Equal(0, rig.Persistence.ResumeHints.Count);
+
+        // What this row does NOT fix, and is pinned here so the residual is visible rather than folklore: the
+        // PERSISTENCE keying is unchanged and predates the seed, so the record saved under player:guest:0 still
+        // loads onto whoever recycles the slot, and still moves them - as a teleport, which is the honest part.
+        rig.Idle(40);
+        Assert.True(Vector3.Distance(rig.LocalPosition(), Parked) < 0.5f,
+            $"the stored guest record still restores, pre-existing and unchanged ({rig.LocalPosition()})");
+    }
+
+    // ---- (6) the sharded twin of (1) ----
 
     [Fact]
     public void A_stationary_rejoin_on_a_persisted_sharded_server_reports_no_teleport()
@@ -379,7 +408,7 @@ public class WorldPersistenceReconnectTeleportTests
         Assert.Equal(epochBefore, rig.Client.LocalTeleportEpoch);
     }
 
-    // ---- (6) the sharded twin of (4): the reset clamps in the cell that CONTAINS the configured spawn ----
+    // ---- (7) the sharded twin of (4): the reset clamps in the cell that CONTAINS the configured spawn ----
 
     [Fact]
     public void A_quarantined_rejoin_on_a_sharded_server_is_reset_to_the_configured_spawn()

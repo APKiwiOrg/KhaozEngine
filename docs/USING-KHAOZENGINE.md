@@ -12126,6 +12126,15 @@ still applies the stored record over it, so a position that changed while the pl
 teleport, reported once. `ResumePositionCache` is public (`Record`, `TryGet`, `Forget`, `Clear`, `Count`,
 `Capacity`) and is not thread-safe - both engine call sites are on the server thread.
 
+Two things the seed deliberately does not cover. A **tokenless** connection is keyed `guest:{slot}`
+(`ResumePositionCache.GuestAccountPrefix`) and gets no hint at all, recorded or read: slots are recycled, so
+that key names a seat rather than a player and a hint under it would build a brand-new guest on the last
+occupant's position with no teleport to signal it. Give players a connect token if returning to where they
+left matters. And the **quiet window is measured at drain time**, against where the player stands when the
+load lands, so on a high-latency store a rejoiner who is moving can cross `QuietRestoreDistance` before the
+restore arrives and take a hard cut. Nothing regressed there (every restore was a teleport before), but the
+benefit does degrade with store latency, and widening the distance is the knob for a slow store.
+
 ### Per-cell world persistence (`CellPersistence`)
 
 `KhaozEngine.NetWorld.CellPersistence` wires an `IWorldStore` into a `ShardHost`-based server (through

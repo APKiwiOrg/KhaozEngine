@@ -109,10 +109,15 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
     the spawn and a second for the restore. The hint is never the authority - the async load still runs and still
     applies the stored record over it - but when the two agree the restore lands within
     `WorldPersistenceConfig.QuietRestoreDistance` (default 1 m) of where the player already is and is applied
-    WITHOUT advancing the teleport epoch, so the whole rejoin is quiet. `ResumeHintCapacity` (default 1024,
-    least-recently-recorded evicted) bounds the cache; 0 turns the seed off. The hints are memory-only, so after a
-    process restart the first rejoin of each account falls back to the configured spawn and takes the restore
-    teleport, unless the game pre-warms `ResumeHints` from its own store at boot.
+    WITHOUT advancing the teleport epoch, so the whole rejoin is quiet. That quiet window is measured at DRAIN
+    time, against where the player stands when the load finally lands, so on a high-latency store a rejoiner who
+    is moving can cross it before the restore arrives and take a hard cut. That is not a regression (every restore
+    was a teleport before), but the benefit does degrade as store latency rises. `ResumeHintCapacity` (default
+    1024, least-recently-recorded evicted) bounds the cache; 0 turns the seed off. The hints are memory-only, so
+    after a process restart the first rejoin of each account falls back to the configured spawn and takes the
+    restore teleport, unless the game pre-warms `ResumeHints` from its own store at boot. A TOKENLESS connection
+    (keyed `guest:{slot}`, `ResumePositionCache.GuestAccountPrefix`) gets no hint at all, recorded or read: the
+    slot is recycled to the next connection, so that key names a seat rather than a player.
   - **Load validation and quarantine.** Two optional hooks on `WorldPersistenceConfig`, both evaluated on the
     server thread inside the load-on-join apply step: **`Bounds`** (`WorldBounds`, the same type the movement
     clamp uses) rejects a loaded position outside the play area. **`ValidateGameState`**
@@ -122,8 +127,12 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
     record that fails either check is quarantined WHOLE rather than partially applied: its raw, undecoded bytes
     are copied verbatim to `{QuarantineKeyPrefix}{KeyPrefix}{accountId}` (default
     `quarantine:player:{accountId}`, where `QuarantineKeyPrefix` defaults to `"quarantine:"`) in the same
-    `IWorldStore`, the player is left at its default spawn (a **fresh spawn** - never placed from the bad
-    record), and **`OnRecordQuarantined`** (`event Action<string, string>`, accountId + reason) fires. The
+    `IWorldStore`, the player is **reset to the host's configured spawn** as a teleport with its resume hint
+    forgotten (a **fresh spawn** - never placed from the bad record, and never left standing on the hint the join
+    seeded it from, which no check here validated), and **`OnRecordQuarantined`** (`event Action<string, string>`,
+    accountId + reason) fires. The reset goes through `IWorldPersistenceHost.TryGetConfiguredSpawn`, a default
+    interface method returning false, so a host with no resume provider installed keeps the old no-placement
+    shape. The
     `lastSaved` dirty-tracking baseline is deliberately NOT advanced for a quarantined record (it only advances
     on a successful apply), so the fresh-spawn state stays dirty against the store and the **next periodic save
     overwrites the bad primary** record, while the quarantine copy survives untouched as a **forensic copy**
@@ -383,9 +392,10 @@ hint keyed by account id before the entity exists, so a rejoiner's first snapsho
 left, and `WorldPersistence` applies the loaded record without advancing the epoch when the player is already
 standing on it (`WorldPersistenceConfig.QuietRestoreDistance`). A stationary in-session rejoin therefore reports no
 teleport at all, where it used to report two: the reseed onto the spawn, then the restore's epoch advance. What
-still reports one is a rejoin that really moved - a record changed while the player was offline, or a first rejoin
-after a process restart, where the hints are empty and the restore is the only thing that knows the position (see
-the `WorldPersistence` bullet above for pre-warming across a restart).
+still reports one is a rejoin that really moved - a record changed while the player was offline, a rejoin whose
+record was QUARANTINED (the player is reset to the configured spawn, deliberately as a teleport), a tokenless
+guest, or a first rejoin after a process restart, where the hints are empty and the restore is the only thing that
+knows the position (see the `WorldPersistence` bullet above for pre-warming across a restart).
 
 `RemoteTeleports` follows the same advance-only rule: a remote's replicated epoch going backwards (its `MovementState`
 momentarily unreadable) is not a teleport, and neither is the recovery back off that dip.

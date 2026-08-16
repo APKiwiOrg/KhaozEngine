@@ -41,6 +41,13 @@ public delegate bool ResumePositionProvider(string accountId, out Vector3 positi
 /// has seen a million accounts holds a fixed number of them. A capacity of zero (or less) holds nothing, which is
 /// how a game opts the whole mechanism out.</para>
 ///
+/// <para><b>Guest keys are refused outright</b> (see <see cref="GuestAccountPrefix"/>), by both
+/// <see cref="Record"/> and <see cref="TryGet"/>. A tokenless connection is keyed <c>guest:{slot}</c> by both
+/// server heads, and slots RECYCLE, so that key names a chair rather than a person: the next guest to take the
+/// seat is a different player, and a hint held under it would build them on the last occupant's position with no
+/// teleport signal at all, which is worse than the double teleport this cache exists to remove. A resume hint
+/// needs durable identity, and a guest has none.</para>
+///
 /// <para><b>Not thread-safe.</b> Both engine call sites (the join read, and the record on leave / on a restore
 /// apply) run on the server thread. Pre-warm it before the server starts polling, or from that same thread.</para>
 /// </summary>
@@ -58,6 +65,16 @@ public sealed class ResumePositionCache
         public Vector3 Position { get; set; }
     }
 
+    /// <summary>The account-id prefix both server heads key a TOKENLESS connection under (<c>guest:{slot}</c>).
+    /// This cache holds nothing under it and answers nothing for it: the slot in that key is recycled to the next
+    /// connection, so it identifies a seat rather than a player (see the type doc).</summary>
+    public const string GuestAccountPrefix = "guest:";
+
+    // A key naming a recycled slot rather than a durable account. Checked on Record AND on TryGet: Record alone
+    // closes it today, and the read-side check is what keeps it closed if a future path ever writes an entry
+    // without going through Record.
+    private static bool IsGuest(string accountId) => accountId.StartsWith(GuestAccountPrefix, StringComparison.Ordinal);
+
     /// <summary>Creates a cache holding at most <paramref name="capacity"/> accounts (default 1024). Zero or less
     /// holds nothing at all, which turns the resume-spawn seed off for a server wired to this cache.</summary>
     public ResumePositionCache(int capacity = 1024)
@@ -74,10 +91,11 @@ public sealed class ResumePositionCache
 
     /// <summary>Records (or refreshes) an account's last known ABSOLUTE world position, evicting the
     /// least-recently-recorded account when that would exceed <see cref="Capacity"/>. No-op for a null or empty
-    /// account id, and for a cache whose capacity is zero or less.</summary>
+    /// account id, for a <see cref="GuestAccountPrefix"/> key, and for a cache whose capacity is zero or
+    /// less.</summary>
     public void Record(string accountId, Vector3 position)
     {
-        if (Capacity <= 0 || string.IsNullOrEmpty(accountId)) return;
+        if (Capacity <= 0 || string.IsNullOrEmpty(accountId) || IsGuest(accountId)) return;
         if (byAccount.TryGetValue(accountId, out LinkedListNode<Entry>? existing))
         {
             existing.Value.Position = position;
@@ -93,12 +111,14 @@ public sealed class ResumePositionCache
         byAccount[accountId] = order.AddLast(new Entry(accountId, position));
     }
 
-    /// <summary>The account's last known ABSOLUTE world position, if it is still held. Reading does NOT refresh
-    /// recency: a join reads once and the leave that follows records again, so counting the read too would keep an
-    /// account that never came back alive on a single failed connect.</summary>
+    /// <summary>The account's last known ABSOLUTE world position, if it is still held. Always false for a
+    /// <see cref="GuestAccountPrefix"/> key. Reading does NOT refresh recency: a join reads once and the leave that
+    /// follows records again, so counting the read too would keep an account that never came back alive on a single
+    /// failed connect.</summary>
     public bool TryGet(string accountId, out Vector3 position)
     {
-        if (!string.IsNullOrEmpty(accountId) && byAccount.TryGetValue(accountId, out LinkedListNode<Entry>? node))
+        if (!string.IsNullOrEmpty(accountId) && !IsGuest(accountId)
+            && byAccount.TryGetValue(accountId, out LinkedListNode<Entry>? node))
         {
             position = node.Value.Position;
             return true;

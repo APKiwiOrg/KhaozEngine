@@ -271,8 +271,11 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     public bool TryGetPlayerNetId(int slot, out long netId) => netIdBySlot.TryGetValue(slot, out netId);
 
     /// <summary>Raised after a player entity has spawned: (slot, accountId). The accountId is the verified subject
-    /// the <see cref="IConnectionAuthenticator"/> bound the connection to, or <c>guest:{slot}</c> when that subject
-    /// is empty. A persistence layer loads the saved record here.</summary>
+    /// the <see cref="IConnectionAuthenticator"/> bound the connection to, or
+    /// <c><see cref="ResumePositionCache.GuestAccountPrefix"/>{slot}</c> when that subject is empty. A persistence
+    /// layer loads the saved record here. That guest key names a RECYCLED slot rather than a person, so
+    /// <see cref="ResumePositionCache"/> holds no resume hint for it and a guest join is always built on the
+    /// configured spawn. Give a game durable identity (a connect token) if returning players matter.</summary>
     public event Action<int, string>? PlayerJoined;
 
     /// <summary>Raised just before a player despawns: (slot, accountId, final state). A persistence layer
@@ -631,7 +634,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
 
     private void OnJoin(int slot, string subject, string displayName)
     {
-        string accountId = string.IsNullOrEmpty(subject) ? $"guest:{slot}" : subject;
+        string accountId = string.IsNullOrEmpty(subject) ? $"{ResumePositionCache.GuestAccountPrefix}{slot}" : subject;
         if (banStore is not null && banStore.IsBanned(accountId))
         {
             // Typed rejection, no engine-authored text: the client maps ServerNoticeKind.Banned to its own localized

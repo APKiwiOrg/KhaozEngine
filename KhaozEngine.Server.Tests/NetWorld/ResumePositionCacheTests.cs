@@ -65,6 +65,23 @@ public class ResumePositionCacheTests
     }
 
     [Fact]
+    public void A_guest_key_is_refused()
+    {
+        // guest:{slot} is what both heads key a tokenless connection under, and slots are recycled to the next
+        // connection, so the key names a seat rather than a player. A hint held under it would build a brand-new
+        // guest on the last occupant's position, silently (no restore, so no teleport signal either).
+        var cache = new ResumePositionCache();
+        cache.Record(ResumePositionCache.GuestAccountPrefix + "0", new Vector3(400f, 0.9f, 300f));
+
+        Assert.Equal(0, cache.Count);
+        Assert.False(cache.TryGet("guest:0", out _));
+
+        // It is the PREFIX that is refused, not the word: an account genuinely called "guest" is an account.
+        cache.Record("guest", Vector3.One);
+        Assert.True(cache.TryGet("guest", out _));
+    }
+
+    [Fact]
     public void Forget_and_Clear_drop_hints()
     {
         var cache = new ResumePositionCache(capacity: 4);

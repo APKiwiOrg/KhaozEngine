@@ -96,12 +96,13 @@ namespace KhaozEngine.Tests.Gpu
 
         // ---- the two sides ---------------------------------------------------------------------------------
 
-        // THE INCUMBENT'S OWN CALL, replicated argument for argument. This is what Veldrid.SPIRV's
-        // CreateFromSpirv does with GLSL bytes on a Vulkan device, where it takes the short path and hands the
-        // compiled SPIR-V straight to vkCreateShaderModule with no cross-compilation, and it is also the call
-        // VeldridGpuDevice.CreateComputeShaderFromSpirv makes for itself so it can read the workgroup size.
-        // GlslCompileOptions.Default is the library's set and is deliberately NOT routed through the pin: the
-        // whole point is that the two are maintained separately and asserted equal.
+        // THE INCUMBENT'S OWN CALL, replicated argument for argument, and since #640 it IS the call, not a
+        // replica of one: both of VeldridGpuDevice's shader paths compile each stage's GLSL themselves under
+        // GlslCompileOptions.Default before handing the module on, and the graphics one passes this exact null
+        // file name. It is also what Veldrid.SPIRV's CreateFromSpirv would do with GLSL bytes on a Vulkan
+        // device, where the short path hands the compiled SPIR-V straight to vkCreateShaderModule with no
+        // cross-compilation. GlslCompileOptions.Default is the library's set and is deliberately NOT routed
+        // through the pin: the whole point is that the two are maintained separately and asserted equal.
         static byte[] TheIncumbentsOwnCall(string glsl, GpuShaderStages stage)
             => SpirvCompilation.CompileGlslToSpirv(glsl, null, ToVeldrid(stage), GlslCompileOptions.Default)
                 .SpirvBytes;

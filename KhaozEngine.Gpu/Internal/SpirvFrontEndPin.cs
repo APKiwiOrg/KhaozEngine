@@ -22,17 +22,22 @@ namespace KhaozEngine.Gpu.Internal
     /// reading it as such reads it backwards. All of it is needed and none of it substitutes for the rest.
     /// </para>
     /// <para>
-    /// WHAT THE INCUMBENT ACTUALLY DOES, read rather than assumed. <c>VeldridGpuDevice.CreateShadersFromSpirv</c>
-    /// calls <c>Veldrid.SPIRV</c>'s <c>CreateFromSpirv</c> with GLSL bytes and no options, and
-    /// <c>CreateComputeShaderFromSpirv</c> calls <c>SpirvCompilation.CompileGlslToSpirv</c> itself with
-    /// <c>GlslCompileOptions.Default</c> so it can read the workgroup size back. Neither goes through this pin,
-    /// on purpose: that wrapper leaves the graph only when Veldrid itself does. On a Vulkan device the
-    /// <c>CreateFromSpirv</c> overload takes the short path: the source is compiled to SPIR-V with the library's
-    /// own defaults and handed straight to <c>vkCreateShaderModule</c>, with no cross-compilation at all, because
-    /// Vulkan consumes SPIR-V. The only thing that differs between the two call shapes is the diagnostic FILE
-    /// NAME, which the incumbent leaves null and this engine sets to <c>&lt;label&gt;.&lt;stage&gt;</c>. The
-    /// parity check is what establishes that the name never reaches the module while <see cref="Debug"/> is
-    /// false, and what would catch it starting to.
+    /// WHAT THE INCUMBENT ACTUALLY DOES, read rather than assumed. BOTH of <c>VeldridGpuDevice</c>'s shader paths
+    /// call <c>SpirvCompilation.CompileGlslToSpirv</c> themselves under <c>GlslCompileOptions.Default</c> and hand
+    /// the resulting module to <c>Veldrid.SPIRV</c>'s <c>CreateFromSpirv</c>. <c>CreateComputeShaderFromSpirv</c>
+    /// always did, so it could read the workgroup size back, and
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/640">#640</see> moved
+    /// <c>CreateShadersFromSpirv</c> to the same shape so one memo could sit in front of glslang for a wrapper
+    /// that was recompiling the same <c>const string</c> on every device. Neither goes through this pin, on
+    /// purpose: that wrapper leaves the graph only when Veldrid itself does. Handing that library a module rather
+    /// than a source changes nothing below it, because every branch of it sniffs the SPIR-V header first.
+    /// <c>EnsureSpirv</c> does on the Vulkan branch, where the bytes reach <c>vkCreateShaderModule</c> with no
+    /// cross-compilation at all because Vulkan consumes SPIR-V, and
+    /// <c>SpirvCompilation.CompileVertexFragment</c> does per stage on every other. The only thing that differs
+    /// between the two option sets is the diagnostic FILE NAME, which the incumbent leaves null on its graphics
+    /// path and names <c>compute</c> on its compute one, while this engine sets
+    /// <c>&lt;label&gt;.&lt;stage&gt;</c>. The parity check is what establishes that the name never reaches the
+    /// module while <see cref="Debug"/> is false, and what would catch it starting to.
     /// </para>
     /// <para>
     /// WHY EACH VALUE IS WHAT IT IS. <see cref="Debug"/> off is the value the engine has always shipped under, and

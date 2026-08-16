@@ -25,9 +25,9 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// THE EQUALITY IS NOT TRUE BY CONSTRUCTION, which is exactly why it is checked.
     /// <see cref="MslCrossCompilePin"/> governs every engine-owned MSL emission, while <c>VeldridGpuDevice</c>
-    /// hands GLSL to the three-argument <c>CreateFromSpirv</c>, which constructs <c>new CrossCompileOptions()</c>
-    /// and forwards it. The two sets are maintained INDEPENDENTLY, so a flip of one pin value moves one side of
-    /// an equality nothing else was watching.
+    /// hands memoized SPIR-V to the three-argument <c>CreateFromSpirv</c>, which constructs
+    /// <c>new CrossCompileOptions()</c> and forwards it. The two sets are maintained INDEPENDENTLY, so a flip of
+    /// one pin value moves one side of an equality nothing else was watching.
     /// </para>
     /// <para>
     /// AND IT IS A STANDING TEST RATHER THAN ONLY THE ONE-OFF MEASUREMENT, which is phase 3's upgrade inherited
@@ -114,10 +114,12 @@ namespace KhaozEngine.Tests.Gpu
 
         // ---- the incumbent's side ---------------------------------------------------------------------------
         //
-        // Replicated argument for argument. VeldridGpuDevice hands GLSL to the three-argument CreateFromSpirv,
-        // which compiles the front end internally and then calls exactly these two members with
-        // `new CrossCompileOptions()`. The default-constructed options are deliberately NOT routed through the
-        // pin: the whole point is that the two sets are maintained separately and asserted equal.
+        // Replicated argument for argument, and since #640 that replication is exact rather than equivalent.
+        // VeldridGpuDevice compiles each stage's GLSL to SPIR-V itself and hands the modules to the
+        // three-argument CreateFromSpirv, which sniffs the SPIR-V header, skips its own front-end call and
+        // reaches exactly these two members with `new CrossCompileOptions()`. So what goes in below is the same
+        // shape the shipped path puts in. The default-constructed options are deliberately NOT routed through
+        // the pin: the whole point is that the two sets are maintained separately and asserted equal.
 
         static VertexFragmentCompilationResult TheIncumbentsOwnPairCall(byte[] vertexSpirv, byte[] fragmentSpirv)
             => SpirvCompilation.CompileVertexFragment(

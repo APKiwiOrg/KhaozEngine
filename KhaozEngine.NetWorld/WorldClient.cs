@@ -203,12 +203,20 @@ public sealed partial class WorldClient : IDisposable
     public ServerNotice? LastNotice { get; private set; }
 
     /// <summary>
-    /// Raised during <see cref="Poll"/> (on snapshot/delta ingest) when a local teleport landed this ingest: the
-    /// first authoritative frame after a connect or reconnect (join/reconnect placement), or an in-session server
-    /// teleport (an advance of the authoritative <see cref="MovementState.TeleportEpoch"/> - admin, self-rescue,
-    /// fast-travel). The local avatar has already cut to the new position; the consumer reacts by snapping the follow
-    /// camera onto <see cref="LocalRenderState"/> (<c>FollowCamera3D.Warp</c>) and optionally running a screen
-    /// transition. Distinct from an ordinary reconciliation correction, which never fires this.
+    /// Raised during <see cref="Poll"/> (on snapshot/delta ingest) when the local player's world position changed
+    /// DISCONTINUOUSLY this ingest: the first authoritative frame after a connect (the join placement), an in-session
+    /// server teleport (an advance of the authoritative <see cref="MovementState.TeleportEpoch"/> - admin,
+    /// self-rescue, fast-travel), or a reconnect that resumed the session somewhere else. The local avatar has already
+    /// cut to the new position; the consumer reacts by snapping the follow camera onto <see cref="LocalRenderState"/>
+    /// (<c>FollowCamera3D.Warp</c>) and optionally running a screen transition. Distinct from an ordinary
+    /// reconciliation correction, which never fires this.
+    /// <para><b>A transport reconnect that resumes the same position does NOT fire this.</b> Prediction is still
+    /// reseeded across the reconnect (a rejoining client gets a fresh net id, a fresh authoritative entity, and a
+    /// fresh session), but none of that moves the player, so a consumer answering this event with a world-scale
+    /// reaction - re-centring a terrain streamer's ring, rebuilding an occlusion cache - does not pay it every time a
+    /// lossy link drops. The resume is treated as a teleport only when the position genuinely moved while the client
+    /// was away, by at least <see cref="PredictionSettings.HardSnapDistance"/>; tighten that setting via
+    /// <see cref="WorldClientConfig.Prediction"/> if a consumer wants a shorter leash.</para>
     /// </summary>
     public event Action? LocalTeleported;
 
@@ -689,12 +697,18 @@ public sealed partial class WorldClient : IDisposable
             long id = kv.Key;
             if (id == localNetId) continue;
             uint epoch = world.TryGet(kv.Value, out MovementState ms) ? ms.TeleportEpoch : 0u;
-            if (lastTeleportEpochByEntity.TryGetValue(id, out uint prev) && epoch != prev)
+            bool known = lastTeleportEpochByEntity.TryGetValue(id, out uint prev);
+            if (known && epoch > prev)                        // strictly an ADVANCE, never any inequality
             {
                 view.SnapInterpolationToNewest(id);
                 remoteTeleports.Add(id);   // surface the hard cut so a cosmetic layer (RemoteTeleports) can match it
             }
-            lastTeleportEpochByEntity[id] = epoch;
+            // Held as a high-water mark, not a last-seen value. The epoch reads 0 whenever MovementState is
+            // momentarily absent - on the line above when the component has not replicated yet, and on the server
+            // where it rebuilds the state (ShardedWorldServer.SetPlayerState) - so a real stream can dip and recover.
+            // Storing the dip would make the recovery back to the true epoch read as a fresh advance and cut the
+            // remote a second time, which is the every-snapshot flip-flop this holds off.
+            lastTeleportEpochByEntity[id] = known && prev > epoch ? prev : epoch;
         }
 
         // Prune epochs for entities no longer present (left AoI / despawned), so the map cannot grow unbounded.

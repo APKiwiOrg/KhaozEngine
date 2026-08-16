@@ -432,6 +432,69 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Fact]
+        public void FlushAll_inside_an_open_recording_is_refused()
+        {
+            // FlushAll opens with a WaitForIdle, and a drain waits out work that was SUBMITTED. An open recording
+            // has not been, so the drain says nothing about the draws in that list and the disposals behind it are
+            // a use-after-free with a drain in front of it. The teardown path therefore refuses mid-recording by
+            // name, the way the seam refuses a nested recording (#424), rather than reading as safe in review.
+            var device = new SpyGpuDevice(new FakeGpuDevice());
+            GpuRetireQueue queue = GpuRetireQueue.CreateFrameCounted(device, 4);
+            var res = new FakeResource();
+            queue.Retire(res);
+            GpuRetireQueue empty = GpuRetireQueue.CreateFrameCounted(device, 4);
+
+            using (GpuRecording.Open(device, device.Factory.CreateCommandList(), "the window's frame list"))
+            {
+                var ex = Assert.Throws<GpuDrainDuringRecordingException>(() => queue.FlushAll());
+                Assert.Equal("the window's frame list", ex.Owner);
+                // And it does not depend on there being anything to free: a call that happens to find the queue
+                // empty is the same mistake, and a guard that only fires sometimes is worse than one that always does.
+                Assert.Throws<GpuDrainDuringRecordingException>(() => empty.FlushAll());
+            }
+
+            Assert.Equal(0, device.WaitForIdleCalls);   // refused BEFORE the drain, not after it
+            Assert.Equal(0, res.DisposeCount);
+            Assert.Equal(1, queue.PendingCount);
+        }
+
+        [Fact]
+        public void FlushAll_outside_a_recording_drains_and_frees()
+        {
+            // The other half of the guard: with nothing recording, teardown is exactly what it always was.
+            var device = new SpyGpuDevice(new FakeGpuDevice());
+            GpuRetireQueue queue = GpuRetireQueue.CreateFrameCounted(device, 4);
+            var res = new FakeResource();
+            queue.Retire(res);
+
+            queue.FlushAll();
+
+            Assert.Equal(1, device.WaitForIdleCalls);
+            Assert.Equal(1, res.DisposeCount);
+            Assert.Equal(0, queue.PendingCount);
+        }
+
+        [Fact]
+        public void Dispose_inherits_the_refusal_and_frees_nothing()
+        {
+            // Dispose is FlushAll plus the barrier, so tearing a renderer down from inside the frame's own
+            // recording is the same use-after-free, and is refused whole rather than done half way.
+            var device = new SpyGpuDevice(new FakeGpuDevice());
+            GpuRetireQueue queue = GpuRetireQueue.CreateFrameCounted(device, 4);
+            var res = new FakeResource();
+            queue.Retire(res);
+
+            using (GpuRecording.Open(device, device.Factory.CreateCommandList(), "an offscreen 2D capture"))
+                Assert.Throws<GpuDrainDuringRecordingException>(queue.Dispose);
+
+            Assert.Equal(0, res.DisposeCount);
+
+            queue.Dispose();   // outside the recording it is the ordinary teardown
+            Assert.Equal(1, device.WaitForIdleCalls);
+            Assert.Equal(1, res.DisposeCount);
+        }
+
+        [Fact]
         public void Dispose_flushes_the_tail_and_frees_the_barrier()
         {
             var barrier = new FakeBarrier();

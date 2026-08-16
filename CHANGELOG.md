@@ -421,9 +421,20 @@ renderers that keep a hand-rolled `_retired` list for grow-path buffers (`ModelR
 inline-dispose bug in `DistortionRenderer` / `WaterRenderer` (#22): those free at teardown, which is conservative
 rather than wrong, and moving them changes when 3D resources die. #80 stays open with that as its remaining work.
 
-**Additive surface.** `KhaozEngine.Gpu` gains one public type (`GpuRetireQueue`: `Create`,
+**`FlushAll` is teardown, and that is now enforced rather than described.** It is public, and it drained the device
+unconditionally, including from inside an open `GpuRecording`, which a probe reached: one full `WaitForIdle` taken
+from the record phase. That is worse than the stall it looks like. A drain waits out work that was SUBMITTED, so it
+says nothing about the draws in the open list, and the disposals immediately behind it can still be referenced by
+them, which is a use-after-free wearing a drain. So `FlushAll` (and the `Dispose` that calls it) now refuses while
+anything is recording on its device, with a new `GpuDrainDuringRecordingException` naming the open recording, the
+same shape as the seam's nested-recording refusal (#424). It refuses whether or not anything is pending, because a
+guard that fires only on the state the call happened to find is worse than one that always fires. Two headless tests
+pin both halves: refused with nothing freed inside `GpuRecording.Open`, and the ordinary drain-and-free outside it.
+
+**Additive surface.** `KhaozEngine.Gpu` gains two public types (`GpuRetireQueue`: `Create`,
 `CreateFrameCounted`, `Retire`, `BeginFrame`, `FlushAll`, `Dispose`, `PendingCount`, `FrameDelay`,
-`DefaultFrameDelay`). Nothing was removed or changed, and the rename is of a type that was internal.
+`DefaultFrameDelay`, and `GpuDrainDuringRecordingException`: `Owner`, `BuildMessage`). Nothing was removed or
+changed, and the rename is of a type that was internal.
 
 ## 17.36.1
 

@@ -19,6 +19,48 @@ namespace KhaozEngine.Gpu
         FrameCountOnly,
     }
 
+    /// <summary>
+    /// The refusal <see cref="GpuRetireQueue.FlushAll"/> gets instead of a drain that proves nothing. Thrown when
+    /// the flush is asked for while something is recording on the queue's device, which is the one place the
+    /// teardown path can be reached from the middle of a frame.
+    /// <para>
+    /// WHY A DRAIN THERE IS WORSE THAN A STALL. <see cref="IGpuDevice.WaitForIdle"/> waits out work that has been
+    /// SUBMITTED. An open recording has not been submitted, so the drain returns having said nothing at all about
+    /// the draws sitting in that list, and the resources freed immediately after it can still be referenced by
+    /// them. That is a use-after-free with a drain in front of it, which reads as safe in review and segfaults
+    /// under Mesa lavapipe. The per-frame answer is <see cref="GpuRetireQueue.Retire(System.IDisposable)"/> plus
+    /// <see cref="GpuRetireQueue.BeginFrame"/>, which is what the whole type is for.
+    /// </para>
+    /// <para>
+    /// It carries <see cref="Owner"/>, the recording that was open, for the same reason
+    /// <see cref="GpuNestedRecordingException"/> does: the stack trace names only the caller that was refused
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/424">#424</see>).
+    /// </para>
+    /// </summary>
+    public sealed class GpuDrainDuringRecordingException : InvalidOperationException
+    {
+        /// <summary>Build the refusal. <paramref name="owner"/> is the recording that was already open.</summary>
+        public GpuDrainDuringRecordingException(string owner)
+            : base(BuildMessage(owner))
+        {
+            Owner = owner;
+        }
+
+        /// <summary>Who was recording on the device when the flush was refused.</summary>
+        public string Owner { get; }
+
+        /// <summary>The message text, built here so a test can assert the wording without catching anything.
+        /// </summary>
+        public static string BuildMessage(string owner) =>
+            $"GpuRetireQueue.FlushAll was called while {owner} is recording on this device. FlushAll, and the "
+            + "Dispose that calls it, are the TEARDOWN path: they drain the device with IGpuDevice.WaitForIdle "
+            + "and then destroy everything pending. A drain only waits out work that was already SUBMITTED, so "
+            + "an open recording is not covered by it, and a resource freed behind that drain can still be "
+            + "referenced by the draws in the open list. Retire the resource instead and let BeginFrame destroy "
+            + "it once the frame count or the fence says the GPU is done, and flush or dispose the queue outside "
+            + "the frame's recording, where a stall costs nothing.";
+    }
+
     /// <summary>Deferred disposal for GPU resources freed mid-life (a streamed mesh unloaded while the scene keeps
     /// running, a sprite atlas whose descriptor set fell out of the working set). Retirements are grouped into a
     /// per-frame BATCH at the next frame boundary, each batch is stamped with a GPU fence submitted at that
@@ -77,6 +119,9 @@ namespace KhaozEngine.Gpu
         readonly Action _drainDevice;
         readonly IRetireBarrier? _barrier;
         readonly GpuRetireFallback _fallback;
+        // The device the open-recording register is asked about before FlushAll drains it. Null only for the
+        // internal ctor a test drives with a bare drain action, where there is no device to be recording on.
+        readonly IGpuDevice? _device;
         // Retired resources, appended in retirement order and freed from the front. The retirement FRAME is not
         // stored per entry: batching at the frame boundary means one batch is exactly one frame's retirements, so
         // the batch carries the single stamp the fallback ripeness test needs.
@@ -109,7 +154,7 @@ namespace KhaozEngine.Gpu
         {
             ArgumentNullException.ThrowIfNull(device);
             return new GpuRetireQueue(device.WaitForIdle, GpuRetireBarrier.TryCreate(device),
-                GpuRetireFallback.DrainDevice, frameDelay);
+                GpuRetireFallback.DrainDevice, frameDelay, device);
         }
 
         /// <summary>
@@ -143,7 +188,7 @@ namespace KhaozEngine.Gpu
         public static GpuRetireQueue CreateFrameCounted(IGpuDevice device, int frameDelay)
         {
             ArgumentNullException.ThrowIfNull(device);
-            return new GpuRetireQueue(device.WaitForIdle, null, GpuRetireFallback.FrameCountOnly, frameDelay);
+            return new GpuRetireQueue(device.WaitForIdle, null, GpuRetireFallback.FrameCountOnly, frameDelay, device);
         }
 
         /// <summary>Build a queue over the device drain it runs before destroying anything on the fallback path
@@ -151,13 +196,18 @@ namespace KhaozEngine.Gpu
         /// <paramref name="barrier"/> that replaces that drain with a poll. A null barrier is the supported
         /// fallback, not an error. <paramref name="frameDelay"/> below 1 is clamped to 1, so a resource is never
         /// destroyed inside the call that retired it. Internal so a test can drive the ripeness policy by hand;
-        /// production builds one through <see cref="Create"/> or <see cref="CreateFrameCounted"/>.</summary>
+        /// production builds one through <see cref="Create"/> or <see cref="CreateFrameCounted"/>.
+        /// <para><paramref name="device"/> is only ever asked whether something is recording on it, which is what
+        /// <see cref="FlushAll"/> refuses on. A test driving a bare drain action passes none, and gets no
+        /// refusal, because there is no device for a recording to be open on.</para></summary>
         internal GpuRetireQueue(Action drainDevice, IRetireBarrier? barrier = null,
-            GpuRetireFallback fallback = GpuRetireFallback.DrainDevice, int frameDelay = DefaultFrameDelay)
+            GpuRetireFallback fallback = GpuRetireFallback.DrainDevice, int frameDelay = DefaultFrameDelay,
+            IGpuDevice? device = null)
         {
             _drainDevice = drainDevice ?? throw new ArgumentNullException(nameof(drainDevice));
             _barrier = barrier;
             _fallback = fallback;
+            _device = device;
             FrameDelay = frameDelay < 1 ? 1 : frameDelay;
         }
 
@@ -250,9 +300,24 @@ namespace KhaozEngine.Gpu
         /// <summary>Destroy everything pending right now, draining once first. For teardown, where waiting out a
         /// fence (or the frame delay) would leak the tail. This path keeps the drain on purpose even where fences
         /// are available, and even for a <see cref="CreateFrameCounted"/> queue: shutdown is the one place
-        /// correctness is worth more than the stall, and a poll would have to spin.</summary>
+        /// correctness is worth more than the stall, and a poll would have to spin.
+        /// <para><b>TEARDOWN ONLY, and that is enforced rather than described.</b> Called while anything is
+        /// recording on the device it refuses with <see cref="GpuDrainDuringRecordingException"/> and frees
+        /// nothing, because the drain it opens with says nothing about a list that has not been submitted, so the
+        /// disposals behind it would be a use-after-free (see that type). The refusal does not depend on there
+        /// being anything pending: a call that happens to find the queue empty is the same mistake, and one that
+        /// only throws sometimes is worse than one that always does. The per-frame path is
+        /// <see cref="Retire(System.IDisposable)"/> plus <see cref="BeginFrame"/>, neither of which drains.</para></summary>
+        /// <exception cref="GpuDrainDuringRecordingException">Something is recording on this queue's device.
+        /// Nothing was drained and nothing was destroyed.</exception>
         public void FlushAll()
         {
+            // THE REFUSAL COMES FIRST, before the nothing-pending shortcut, so misuse is caught on the call rather
+            // than on the state the call happened to find. Same shape as the seam's nested-recording refusal
+            // (#424): a device-level operation that cannot be correct mid-recording says so by name.
+            if (_device is { } device && GpuRecording.OpenOwner(device) is { } owner)
+                throw new GpuDrainDuringRecordingException(owner);
+
             // A batch always owns at least one entry, so an empty holding means there are no batches either and
             // there is nothing to drain for. Drain BEFORE anything else: it is what makes both the disposals below
             // and the fence recycling safe (a recycled fence gets Reset on its next submit, and resetting one still
@@ -266,7 +331,11 @@ namespace KhaozEngine.Gpu
             _batched = 0;
         }
 
-        /// <summary>Flush everything pending, then free the barrier's own GPU objects. Renderer teardown.</summary>
+        /// <summary>Flush everything pending, then free the barrier's own GPU objects. Renderer teardown, and it
+        /// inherits <see cref="FlushAll"/>'s refusal: tearing a renderer down from inside an open recording is the
+        /// same use-after-free, so it is refused there too rather than half-done.</summary>
+        /// <exception cref="GpuDrainDuringRecordingException">Something is recording on this queue's device.
+        /// Nothing was freed, including the barrier.</exception>
         public void Dispose()
         {
             FlushAll();

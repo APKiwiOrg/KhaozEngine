@@ -956,6 +956,13 @@ that retired anything. `CreateFrameCounted` is that caller's answer: no fence, n
 the frame count carries the whole argument. Two renderers on one seam type, taking different paths through it for
 a reason that is a property of WHERE they sit in the frame, not of what they render.
 
+**And the gate reaches the teardown path too, which is the edge that is easy to miss.** `FlushAll` is public and
+drains, so it is reachable from inside a recording exactly as a fenced `BeginFrame` is, with a worse failure: a
+drain waits out SUBMITTED work, an open list has not been submitted, so the disposals behind that drain are a
+use-after-free the drain appears to justify. It reads the same register (`GpuRecording.OpenOwner`) and refuses with
+`GpuDrainDuringRecordingException`, which is why the queue holds its `IGpuDevice` at all rather than only the drain
+delegate it used to take.
+
 ## GPU-backend invariant: ONE uniform buffer per pipeline (Metal via Veldrid/SPIRV-Cross)
 
 **MEASURED 2026-08-11: this is the INCUMBENT'S BUFFER NUMBERING, not a property of Metal.** The rule below is

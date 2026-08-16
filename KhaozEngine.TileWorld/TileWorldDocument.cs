@@ -64,6 +64,23 @@ public sealed partial class TileWorldDocument
     {
         if (region.Planes.Length != PlaneCount)
             throw new TileWorldException($"region {region.Coord}: has {region.Planes.Length} planes, the document has {PlaneCount}");
+        Attach(region);
+    }
+
+    /// <summary>Puts a region this document previously held back where it was, the undo of a region delete.
+    /// Same semantics as <see cref="AttachRegion"/> (the coordinate must be free) with a message that says
+    /// restore, because a plane-count mismatch here means the document's plane count moved under a command
+    /// rather than that a file on disk disagrees with the manifest.</summary>
+    internal void RestoreRegion(TileRegion region)
+    {
+        ArgumentNullException.ThrowIfNull(region);
+        if (region.Planes.Length != PlaneCount)
+            throw new TileWorldException($"region {region.Coord}: cannot restore a region with {region.Planes.Length} planes into a document with {PlaneCount}");
+        Attach(region);
+    }
+
+    void Attach(TileRegion region)
+    {
         _regions.Add(region.Coord, region);
         UnloadedRegionHashes.Remove(region.Coord);
         foreach (TileObject o in region.Objects) _objectIndex[o.Id] = region;
@@ -99,20 +116,36 @@ public sealed partial class TileWorldDocument
     /// <summary>Takes the next free object id and advances the allocator.</summary>
     public long AllocateObjectId() => NextObjectId++;
 
-    /// <summary>Places a new object in the region holding (x, z), which must exist.</summary>
+    /// <summary>Places a new object in the region holding (x, z), which must exist. The destination is checked
+    /// BEFORE an id is taken, so a placement that lands outside the authored world does not burn one.</summary>
     public TileObject AddObject(string archetypeId, int x, int z, int plane, int rotation, IEnumerable<string>? tags = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(archetypeId);
         RequirePlane(plane);
+        RequireRegion(x, z);
+        return AddObjectWithId(AllocateObjectId(), archetypeId, x, z, plane, rotation, tags);
+    }
+
+    /// <summary>Inserts an object at a GIVEN id, the re-add half of an undoable place or delete: an object has
+    /// to come back with the id it left with, or every reference to it (a marker's tag, a quest hook, a saved
+    /// region file) points at nothing after one undo. Throws when the id is already in use, and pulls
+    /// <see cref="NextObjectId"/> past the id so a later fresh allocation cannot collide with it. The allocator
+    /// is never pulled BACK, which is why a redo can re-add the same id safely.</summary>
+    internal TileObject AddObjectWithId(long id, string archetypeId, int x, int z, int plane, int rotation, IEnumerable<string>? tags)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(archetypeId);
+        RequirePlane(plane);
+        if (_objectIndex.ContainsKey(id)) throw new TileWorldException($"object {id} already exists");
         TileRegion region = RequireRegion(x, z);
         var o = new TileObject
         {
-            Id = AllocateObjectId(), ArchetypeId = archetypeId, X = x, Z = z, Plane = plane, Rotation = rotation & 3,
+            Id = id, ArchetypeId = archetypeId, X = x, Z = z, Plane = plane, Rotation = rotation & 3,
             Tags = tags is null ? null : tags.ToList(),
         };
         region.Objects.Add(o);
         region.Dirty = true;
         _objectIndex[o.Id] = region;
+        if (id >= NextObjectId) NextObjectId = id + 1;
         return o;
     }
 

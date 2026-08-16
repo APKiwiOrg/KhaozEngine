@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>ke-tileedit</ToolCommandName>
+    <PackageId>KhaozEngine.TileEdit.Tool</PackageId>
+    <RootNamespace>KhaozEngine.TileEdit</RootNamespace>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>The ke-tileedit MCP server: opens, queries, mutates, validates, renders, and saves KhaozEngine tile worlds over stdio for AI-driven world authoring. Every mutation runs through the KhaozEngine.TileWorld.Editing command layer, so an MCP edit is undoable exactly like a GUI one. Author-time dev tool, not a runtime package.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.TileWorld.Editing/KhaozEngine.TileWorld.Editing.csproj" />
+    <ProjectReference Include="../KhaozEngine.TileWorld.Render3D/KhaozEngine.TileWorld.Render3D.csproj" />
+    <ProjectReference Include="../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.TileEdit.Tests" />
+  </ItemGroup>
+</Project>

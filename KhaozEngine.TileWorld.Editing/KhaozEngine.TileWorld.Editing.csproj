@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.TileWorld.Editing</PackageId>
+    <RootNamespace>KhaozEngine.TileWorld.Editing</RootNamespace>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>The GPU-free command layer over a KhaozEngine tile world document: reversible commands with undo and redo, gesture coalescing, and an editing document that keeps the derived collision map in step with every edit through accumulated dirty rects. The one mutation path shared by the ke-tileedit MCP tool and, later, the GUI tile editor, so both get identical undo semantics by construction. References KhaozEngine.TileWorld only, so it stays in the Foundation umbrella and needs no renderer.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.TileWorld/KhaozEngine.TileWorld.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.TileWorld.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.TileEdit.Tool" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

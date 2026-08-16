@@ -11,5 +11,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.TileWorld/KhaozEngine.TileWorld.csproj" />
+    <ProjectReference Include="../KhaozEngine.TileWorld.Editing/KhaozEngine.TileWorld.Editing.csproj" />
   </ItemGroup>
 </Project>

@@ -144,11 +144,21 @@ public sealed class TileRegionResidency
     /// <param name="observer">The tile the ring is centred on.</param>
     public void Update(TileCoord observer) => Move(observer, _config.MaxLoadsPerUpdate);
 
-    /// <summary>Fills the whole ring around the observer in one call, ignoring the per-update budget, and drops
-    /// what the move left behind. The loading-moment form: a teleport, a zone change or a camera jump runs this
-    /// before the next draw, so nothing renders a hole while the budget catches up.</summary>
+    /// <summary>Fills the whole ring around the observer in one call, ignoring the per-update budget, drops what
+    /// the move left behind, and settles every border the streaming just dirtied. The loading-moment form: a
+    /// teleport, a zone change or a camera jump runs this before the next draw, so nothing renders a hole while
+    /// the budget catches up.
+    /// <para>The closing settle is <see cref="TileWorldView.Flush(int)"/> with no budget, and it is the half that
+    /// is easy to leave out. Loading the ring alone leaves the view's rebuild queue full: the regions loaded early
+    /// were meshed while their later neighbours were still absent, so their borders carry edge-extended heights
+    /// and blended-against-nothing corners until the per-frame budget works through the queue. On a teleport that
+    /// is several frames of visible cracks at exactly the moment the player is looking at new terrain.</para></summary>
     /// <param name="observer">The tile the ring is centred on.</param>
-    public void PrimeAround(TileCoord observer) => Move(observer, int.MaxValue);
+    public void PrimeAround(TileCoord observer)
+    {
+        Move(observer, int.MaxValue);
+        _view.Flush(int.MaxValue);
+    }
 
     void Move(TileCoord observer, int budget)
     {

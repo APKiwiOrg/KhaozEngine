@@ -14,7 +14,7 @@ public sealed class TileWorldViewOptions
     /// <summary>The settings every region-plane ground mesh is built with.</summary>
     public TileGroundMesherOptions Mesher { get; set; } = new();
 
-    /// <summary>How many queued region-planes one <see cref="TileWorldView.Flush"/> may remesh, oldest first.
+    /// <summary>How many queued region-planes one <see cref="TileWorldView.Flush()"/> may remesh, oldest first.
     /// The rest stay queued for the next flush, so a burst spreads over frames instead of landing on one.
     /// <para>The burst is real rather than theoretical: streaming one region in marks its eight neighbours dirty
     /// on every plane, because the mesher reads heights, normals and corner colours ACROSS region borders, so a
@@ -173,7 +173,7 @@ public sealed class TileWorldView : IDisposable
         FreeMeshes(handles);
     }
 
-    /// <summary>Queues one region-plane for a rebuild at the next <see cref="Flush"/>. A plane outside the
+    /// <summary>Queues one region-plane for a rebuild at the next <see cref="Flush()"/>. A plane outside the
     /// document is ignored, and a region that is not loaded is dropped when the flush runs.</summary>
     public void MarkDirty(RegionCoord region, int plane)
     {
@@ -208,7 +208,20 @@ public sealed class TileWorldView : IDisposable
     /// Called at the start of <see cref="Draw"/>, so an explicit call is only needed to pay the cost off the draw
     /// path. Whatever the budget did not reach stays queued and is counted by
     /// <see cref="PendingRebuilds"/>.</summary>
-    public void Flush()
+    public void Flush() => Flush(_options.MaxRebuildsPerFlush);
+
+    /// <summary>The same drain against an explicit budget, which overrides
+    /// <see cref="TileWorldViewOptions.MaxRebuildsPerFlush"/> for this one call. <see cref="int.MaxValue"/> is the
+    /// settle-now form a loading moment wants, and is what a residency prime finishes with, so a teleport does not
+    /// spend frames drawing borders meshed against a neighbour that had not arrived yet.
+    /// <para>A rebuild that produces NO mesh (the region-plane has no drawable tile) does not spend budget. It
+    /// uploads nothing and frees nothing, and a four-plane document where one plane is authored would otherwise
+    /// burn three quarters of every flush on region-planes that mesh to null.</para>
+    /// <para>A rebuild that THROWS is dropped along with everything already completed ahead of it: the exception
+    /// propagates, the queue keeps only what this call had not reached, and that region-plane keeps its previous
+    /// mesh rather than being retried on every frame from here on.</para></summary>
+    /// <param name="maxRebuilds">Mesh-producing rebuilds this call may perform, treated as 1 when below 1.</param>
+    public void Flush(int maxRebuilds)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         // One settings lookup a frame, which is what it costs to stay right when the tile UNDER a stationary
@@ -216,7 +229,7 @@ public sealed class TileWorldView : IDisposable
         ObserverIndoors = IndoorsAt(_observer);
         if (_dirtyOrder.Count == 0) return;
 
-        int budget = Math.Max(1, _options.MaxRebuildsPerFlush);
+        int budget = Math.Max(1, maxRebuilds);
         int taken = 0;
         int scanned = 0;
         try
@@ -235,7 +248,9 @@ public sealed class TileWorldView : IDisposable
                 if (handles.Meshes[plane] is { } old) _scene.UnloadMesh(old);
                 handles.Meshes[plane] = rebuilt;
                 handles.Props[plane] = TileObjectProps.Build(_doc, _catalogs, region, plane);
-                taken++;
+                // Only a mesh that was actually built counts. The budget exists to bound uploads and handle
+                // churn, and an empty region-plane produces neither.
+                if (rebuilt is not null) taken++;
             }
         }
         finally

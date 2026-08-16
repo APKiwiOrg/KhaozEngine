@@ -242,6 +242,31 @@ public class TileRegionResidencyTests
     }
 
     [Fact]
+    public void PrimeAround_settles_every_border_before_it_returns()
+    {
+        using var tmp = new TempDir();
+        TileWorldSource source = TileWorldSource.Open(TileRenderTestData.SaveRidgeGrid(tmp, 2, 1));
+        var scene = new RecordingTileWorldScene();
+        using TileWorldView view = View(scene, source);
+        var residency = new TileRegionResidency(source, view, TileResidencyConfig.Default);
+        var west = new RegionCoord(0, 0);
+
+        // The prime loads the west region before the east one, so the west border is meshed against an absent
+        // neighbour and immediately marked. A teleport cannot afford to wait frames for that queue to drain.
+        residency.PrimeAround(At(0, 0));
+        Assert.Equal(0, view.PendingRebuilds);
+        int settledLoads = scene.MeshLoads.Count;
+
+        // The draw is only how a test reads the handle. It must build nothing, which is what proves the border
+        // below was already correct when PrimeAround returned.
+        int handle = DrawAndRead(scene, view, source.Document, west);
+        Assert.Equal(settledLoads, scene.MeshLoads.Count);
+        IReadOnlyList<float> ridge = BorderHeights(scene, handle);
+        Assert.NotEmpty(ridge);
+        Assert.All(ridge, y => Assert.Equal(TileRenderTestData.RidgeHeightCm / 100d, y, 3));
+    }
+
+    [Fact]
     public void A_streamed_out_neighbour_rebuilds_the_border()
     {
         using var tmp = new TempDir();

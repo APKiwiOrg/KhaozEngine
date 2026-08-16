@@ -38,11 +38,15 @@ public class TileWorldViewTests
     }
 
     // Two regions of grass side by side in x, so a dirty rect near their shared border has a neighbour to reach.
-    static TileWorldDocument TwoRegionGrass()
+    static TileWorldDocument TwoRegionGrass() => GrassRow(2);
+
+    // A west-to-east run of grass regions on plane 0, every one of them meshing to a real ground mesh.
+    static TileWorldDocument GrassRow(int regions)
     {
         var doc = new TileWorldDocument { Id = "tile-view-tests", DisplayName = "Tile view tests" };
-        foreach (RegionCoord region in new[] { new RegionCoord(0, 0), new RegionCoord(1, 0) })
+        for (int rx = 0; rx < regions; rx++)
         {
+            var region = new RegionCoord(rx, 0);
             doc.GetOrCreateRegion(region);
             for (int z = 0; z < TileRegion.Size; z++)
                 for (int x = 0; x < TileRegion.Size; x++)
@@ -190,6 +194,54 @@ public class TileWorldViewTests
     public void MaxRebuildsPerFlush_drains_the_queue_oldest_first()
     {
         var scene = new RecordingTileWorldScene();
+        // Three regions, so all three marks below are real mesh-producing rebuilds rather than empty planes,
+        // which the budget does not charge for.
+        TileWorldDocument doc = GrassRow(3);
+        var west = new RegionCoord(0, 0);
+        var middle = new RegionCoord(1, 0);
+        var east = new RegionCoord(2, 0);
+        using TileWorldView view = View(scene, doc, options: new TileWorldViewOptions { MaxRebuildsPerFlush = 1 });
+        view.LoadRegion(west);
+        view.LoadRegion(middle);
+        view.LoadRegion(east);
+
+        view.Draw(Vector3.Zero);
+        int west0 = HandleOf(scene, doc, west);
+        int middle0 = HandleOf(scene, doc, middle);
+        int east0 = HandleOf(scene, doc, east);
+        scene.ClearFrame();
+
+        view.MarkDirty(west, 0);
+        view.MarkDirty(middle, 0);
+        view.MarkDirty(east, 0);
+        Assert.Equal(3, view.PendingRebuilds);
+
+        // One a frame, oldest first: the other two marks are queued behind the west one and untouched.
+        view.Draw(Vector3.Zero);
+        Assert.Equal(2, view.PendingRebuilds);
+        int west1 = HandleOf(scene, doc, west);
+        Assert.NotEqual(west0, west1);
+        Assert.Equal(middle0, HandleOf(scene, doc, middle));
+        Assert.Equal(east0, HandleOf(scene, doc, east));
+        scene.ClearFrame();
+
+        view.Draw(Vector3.Zero);
+        Assert.Equal(1, view.PendingRebuilds);
+        Assert.NotEqual(middle0, HandleOf(scene, doc, middle));
+        Assert.Equal(east0, HandleOf(scene, doc, east));
+        Assert.Equal(west1, HandleOf(scene, doc, west));
+        scene.ClearFrame();
+
+        view.Draw(Vector3.Zero);
+        Assert.Equal(0, view.PendingRebuilds);
+        Assert.NotEqual(east0, HandleOf(scene, doc, east));
+        Assert.Equal(west1, HandleOf(scene, doc, west));
+    }
+
+    [Fact]
+    public void An_empty_region_plane_does_not_spend_the_rebuild_budget()
+    {
+        var scene = new RecordingTileWorldScene();
         TileWorldDocument doc = TwoRegionGrass();
         var west = new RegionCoord(0, 0);
         var east = new RegionCoord(1, 0);
@@ -201,30 +253,19 @@ public class TileWorldViewTests
         int west0 = HandleOf(scene, doc, west), east0 = HandleOf(scene, doc, east);
         scene.ClearFrame();
 
-        view.MarkDirty(west, 0);
-        view.MarkDirty(east, 0);
+        // Planes 1 to 3 of the west region hold no drawable tile, so they mesh to null. A budget of one still
+        // reaches the real rebuild behind them in the same flush, which is the whole point: a four-plane document
+        // with one authored plane must not spend three flushes on nothing.
         view.MarkDirty(west, 1);
-        Assert.Equal(3, view.PendingRebuilds);
+        view.MarkDirty(west, 2);
+        view.MarkDirty(west, 3);
+        view.MarkDirty(east, 0);
+        Assert.Equal(4, view.PendingRebuilds);
 
-        // One a frame, oldest first: the east mark is queued behind the west one and its mesh is untouched.
-        view.Draw(Vector3.Zero);
-        Assert.Equal(2, view.PendingRebuilds);
-        int west1 = HandleOf(scene, doc, west);
-        Assert.NotEqual(west0, west1);
-        Assert.Equal(east0, HandleOf(scene, doc, east));
-        scene.ClearFrame();
-
-        view.Draw(Vector3.Zero);
-        Assert.Equal(1, view.PendingRebuilds);
-        Assert.NotEqual(east0, HandleOf(scene, doc, east));
-        Assert.Equal(west1, HandleOf(scene, doc, west));
-        scene.ClearFrame();
-
-        // The last mark is the west region's plane 1, which has no drawable tile, so it drains the queue without
-        // changing a drawn handle.
         view.Draw(Vector3.Zero);
         Assert.Equal(0, view.PendingRebuilds);
-        Assert.Equal(west1, HandleOf(scene, doc, west));
+        Assert.NotEqual(east0, HandleOf(scene, doc, east));
+        Assert.Equal(west0, HandleOf(scene, doc, west));
     }
 
     [Fact]

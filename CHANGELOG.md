@@ -438,8 +438,9 @@ that leg, with the test counts matching row for row: `GoldenSnapshotTests` 112.8
 95.0s to 8.4s, `FlipbookParticleGpuTests` 88.0s to 6.5s, `GroundDecalVoidGoldenTests` 74.0s to 5.8s,
 `FarFromOriginGoldenTests` 66.0s to 5.9s, `ShadowCascadeCullGpuTests` 59.0s to 4.5s. The two rows that barely move
 are the two benchmarks, which run a fixed iteration count and therefore lose one constructor rather than a
-proportion. The `direct3d11-native` WARP leg goes 21m31s to 17m1s on the same assembly, and logs no per-test
-durations to break down.
+proportion. The incumbent `vulkan` leg on the same rasterizer goes 53m30s to 20m29s, and the `direct3d11-native`
+WARP leg 21m31s to 17m1s, both green and both on the same assembly. Neither logs per-test durations to break
+down.
 
 **What it does not fix.** The cost of a `Scene3D` after this is pipeline creation, which is per device by nature
 and which a software rasterizer pays much more of than Metal does, since lavapipe and WARP compile the module into

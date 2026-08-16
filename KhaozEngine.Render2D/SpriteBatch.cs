@@ -852,11 +852,11 @@ void main() {
 
         public void Dispose()
         {
+            _retire.Dispose();   // one drain, then the retired tail. FIRST, so the drain covers everything below too
             foreach (List<IGpuBuffer> vbs in _vbRing)
                 foreach (var vb in vbs) vb?.Dispose();
             foreach (var s in _sets.Values) s.Dispose();
             _vpSet.Dispose(); _vpUbo.Dispose(); _vpLayout.Dispose();
-            _retire.Dispose();   // one drain, then the retired tail that would otherwise outlive the batch
             _pipeline.Dispose(); _additivePipeline.Dispose(); _layout.Dispose();
             _shaders.Dispose();
         }

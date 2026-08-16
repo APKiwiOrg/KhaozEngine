@@ -1,7 +1,5 @@
 using System;
 using System.Numerics;
-using KhaozEngine.Gpu;
-using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using Xunit;
 
@@ -23,62 +21,28 @@ namespace KhaozEngine.Tests.Gpu
     /// </para>
     /// <para>
     /// Sizes stay small (two cascades at 64, a 320x240 target) because these run on lavapipe and WARP as well as
-    /// Metal, and none of the claims need a big picture.
+    /// Metal, and none of the claims need a big picture. Every capture goes through ONE scene held by the
+    /// <see cref="OceanFocusScene"/> class fixture rather than standing up its own, which is what
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/332">#332</see> is about: the fixture's own
+    /// docs carry the measurement and the argument that reuse changes no picture, and
+    /// <see cref="TheSameSamplingFrameRendersTheSamePictureTwice"/> is where that argument is asserted rather
+    /// than assumed.
     /// </para>
     /// </summary>
-    public sealed class OceanFocusGpuTests
+    public sealed class OceanFocusGpuTests : IClassFixture<OceanFocusScene>
     {
-        const int W = 320, H = 240;
+        const int W = OceanFocusScene.Width, H = OceanFocusScene.Height;
 
-        /// <summary>How the sea state is configured before a test's own overrides. Deliberately the shipped
-        /// defaults except for the two knobs that make this affordable on a software rasterizer.</summary>
-        static void BaseSea(WaterSeaState sea)
-        {
-            sea.Seed = 20260726;
-            sea.CascadeCount = 2;
-            sea.CascadeResolution = 64;
-        }
+        readonly OceanFocusScene _sea;
 
-        /// <summary>The scene: open water from an ELEVATED vantage, which is where the tiling this release is
-        /// about actually reads, framed so the surface fills most of the picture.</summary>
-        static byte[] Capture(Action<WaterSeaState> configure)
-        {
-            MeshHandle seabed = default;
-            return Render3DSnapshot.Capture(W, H,
-                setup: scene =>
-                {
-                    seabed = scene.LoadMesh(MeshPrimitives.Tile(400f, 1f));
-                    scene.Post.Starfield = false;
-                    scene.Post.Outline = true;
-                    scene.Post.BackgroundColor = new Color(0.10f, 0.12f, 0.16f, 1f);
-                    scene.Post.Sky.Enabled = true;
-                    scene.Post.Sky.Anchor = SunAnchor.StylizedBackdrop;
-                    scene.Post.Sky.HorizonColor = new Color(0.66f, 0.72f, 0.80f, 1f);
-                    scene.Post.Sky.ZenithColor = new Color(0.20f, 0.40f, 0.72f, 1f);
-                    scene.Post.LightDirection = new Vector3(-0.45f, -0.75f, -0.4f);
+        public OceanFocusGpuTests(OceanFocusScene sea) => _sea = sea;
 
-                    scene.Post.Water.WaveSource = WaterWaveSource.FftOcean;
-                    BaseSea(scene.Post.Water.SeaState);
-                    configure(scene.Post.Water.SeaState);
+        byte[] Capture(Action<WaterSeaState> configure) => _sea.Capture(configure);
 
-                    scene.Camera.Frame(new Vector3(0f, -10f, 0f), new Vector3(0f, 35f, 150f));
-                    scene.EffectTimeSeconds = 0f;
-                },
-                drawFrame: scene =>
-                {
-                    scene.Draw(seabed, Matrix4x4.CreateTranslation(0f, -14f, 0f), new Color(0.18f, 0.20f, 0.18f, 1f));
-                    scene.DrawWater(new WaterPlane(centerX: 0f, surfaceY: 0f, centerZ: 0f, halfExtentX: 300f));
-                },
-                frames: 2);
-        }
-
-        static void RequireCompute()
-        {
-            using GpuDeviceContext probe = GpuDeviceContext.CreateHeadless();
-            Assert.True(probe.GpuDevice.Capabilities.SupportsCompute,
-                $"{probe.GpuDevice.Backend} reports no compute support, so this scene would silently fall back to " +
+        void RequireCompute()
+            => Assert.True(_sea.SupportsCompute,
+                $"{_sea.Backend} reports no compute support, so this scene would silently fall back to " +
                 "the procedural surface and none of these assertions would be about the FFT sampling frame");
-        }
 
         /// <summary>
         /// The surface still reads as a lit sea: enough water-ish cells to fill the frame, and enough brightness
@@ -116,6 +80,17 @@ namespace KhaozEngine.Tests.Gpu
             int n = 0;
             for (int i = 0; i < a.Length; i++) if (a[i] != b[i]) n++;
             return n;
+        }
+
+        /// <summary>The island configuration: all three knobs on together. Named once because two tests render
+        /// it - the composition test and the control that pins the shared scene against a fresh one.</summary>
+        static void AllThree(WaterSeaState sea)
+        {
+            sea.OnshoreFocusPoint = new Vector2(0f, -40f);
+            sea.OnshoreFocusStrength = 1f;
+            sea.CascadeRotationDegrees = new Vector3(0f, 19f, 37f);
+            sea.DomainWarpMetres = 100f;
+            sea.DomainWarpWavelengthMetres = 1250f;
         }
 
         // ---- The default really is the identity, all the way through the pipeline ------------------------------
@@ -290,15 +265,7 @@ namespace KhaozEngine.Tests.Gpu
             // the warp bends the domain, the focus turns it per position, and the cascade offsets turn each
             // lattice again on top. Composition errors (a rotation applied to an already-rotated position, a
             // vector left in the wrong frame) show up here rather than in any of the three alone.
-            byte[] all = Capture(sea =>
-            {
-                sea.OnshoreFocusPoint = new Vector2(0f, -40f);
-                sea.OnshoreFocusStrength = 1f;
-                sea.CascadeRotationDegrees = new Vector3(0f, 19f, 37f);
-                sea.DomainWarpMetres = 100f;
-                sea.DomainWarpWavelengthMetres = 1250f;
-            });
-            AssertReadsAsSea(all, "focus + cascade offsets + warp");
+            AssertReadsAsSea(Capture(AllThree), "focus + cascade offsets + warp");
         }
 
         // ---- Determinism ---------------------------------------------------------------------------------------
@@ -311,15 +278,25 @@ namespace KhaozEngine.Tests.Gpu
             // Bitwise, not within a tolerance. The frame is a pure function of position and the settings bag, so a
             // difference between two runs would mean something in it depends on state that should not be in the
             // model - and the goldens' whole affordability rests on this surface being reproducible.
-            void Configure(WaterSeaState sea)
-            {
-                sea.OnshoreFocusPoint = new Vector2(0f, -40f);
-                sea.OnshoreFocusStrength = 1f;
-                sea.CascadeRotationDegrees = new Vector3(0f, 19f, 37f);
-                sea.DomainWarpMetres = 100f;
-            }
+            //
+            // The two runs are as independent as this suite can make them, which is what turns one determinism
+            // check into the licence for the other ten tests (#332). The first deliberately runs LAST on a scene
+            // that has already rendered four other configurations, so it carries whatever the FFT foam
+            // accumulator, the ping-ponged row intermediates and the frame clock carried forward from them. The
+            // second builds its own device and its own scene through the public snapshot helper and has no
+            // history at all. Byte equality therefore says both that the sampling frame is reproducible AND that
+            // a reused scene renders the same picture a fresh one does, which is the assumption every shared
+            // capture in this class rests on. If a producer ever starts carrying state across a configuration
+            // change, this is the test that goes red, and it goes red before any picture-based assertion does.
+            Capture(_ => { });
+            Capture(sea => sea.OnshoreFocusStrength = 0.5f);
+            Capture(sea => sea.CascadeRotationDegrees = new Vector3(0f, 19f, 37f));
+            Capture(sea => sea.DomainWarpMetres = 100f);
 
-            Assert.Equal(0, DifferingBytes(Capture(Configure), Capture(Configure)));
+            byte[] shared = Capture(AllThree);
+            byte[] alone = OceanFocusScene.CaptureOnItsOwnDevice(AllThree);
+
+            Assert.Equal(0, DifferingBytes(shared, alone));
         }
     }
 }

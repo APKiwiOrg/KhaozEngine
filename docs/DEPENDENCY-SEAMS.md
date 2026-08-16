@@ -73,7 +73,7 @@ this doc cannot silently drift apart.
 | Image decode | `KhaozEngine.Render2D` `ImageRgba` (`Decode`/`Load` -> engine RGBA8 value type) | (containment, in `ImageRgba`) | StbImageSharp |
 | Font rasterization | `KhaozEngine.Render2D` `SpriteFont` (glyphs baked to an engine texture atlas) | (containment, in `SpriteFont`) | StbTrueTypeSharp |
 | Content validation | `KhaozEngine.Content` `JsonSchemaValidator` (`Validate` -> engine `ValidationReport`) | (containment, in validator) | JsonSchema.Net |
-| MCP server protocol | `KhaozEngine.MapEdit.Tool` (`Program.cs`, the `ke-mapedit` dev tool, not an engine package) is the sole referencer, no engine package references the SDK | (containment, not a swap) | ModelContextProtocol SDK |
+| MCP server protocol | The two dev tools, not engine packages: `KhaozEngine.MapEdit.Tool` (`Program.cs`, `ke-mapedit`) and `KhaozEngine.TileEdit.Tool` (`Program.cs`, `ke-tileedit`). No engine package references the SDK | (containment, not a swap) | ModelContextProtocol SDK |
 
 `KhaozEngine.Sharding` gained the snapshot/restore primitives the per-cell persistence seam above is built on
 (`CellSim.SnapshotOwned`/`RestoreOwned`/`MaxOwnedNetId`, `ShardHost.CellCreated`/`EnsureCell`) with no storage
@@ -425,6 +425,45 @@ distance dissolve) rather than growing a second placement path, which is why an 
 exists at all when there is none between `TileWorld` and `Terrain` themselves. `TileWorldView` reaches the scene
 through its own `ITileWorldScene` seam rather than a `Scene3D` field, so every view and residency rule is testable
 without a device, and `Scene3DTileWorldScene` is the one place the two meet.
+
+`KhaozEngine.TileWorld.Editing` is the command layer, and it is deliberately NOT part of either of the two
+packages above:
+
+```
+KhaozEngine.TileWorld.Editing -> KhaozEngine.TileWorld   (the document it mutates, plus TileRect, TileFootprint and the collision baker)
+KhaozEngine.Foundation -> KhaozEngine.TileWorld.Editing  (umbrella ProjectReference, like every other Foundation package)
+```
+
+One forward edge and one umbrella edge, and `TileWorld` does not reference it back. It is GPU-free and
+render-free on purpose: two frontends author a tile world (the `ke-tileedit` MCP tool now, a GUI tile editor
+later), both need the same undo stack, and a command layer living in either one would let the two drift apart
+on what a single edit is. The `MapDoc` side is the counter-example rather than the precedent: its command stack
+sits inside `KhaozEngine.MapEditor`, which carries Gui, Render3D and Terrain.Render3D, so `ke-mapedit` drags a
+renderer in for two verbs. That is why `TileEdit.Tool` references `TileWorld.Editing` where the design
+originally had it referencing a `TileEditor` GUI package.
+
+`KhaozEngine.TileWorld` grants `InternalsVisibleTo` to `KhaozEngine.TileWorld.Editing` (alongside its test
+assembly). It exists for exactly two members, both of which are the undo half of a public operation and neither
+of which is safe as public API: `TileWorldDocument.AddObjectWithId`, which re-adds an object at a GIVEN id so
+an undone place or delete comes back with the id it left with (a public one would let content invent ids and
+collide with the allocator), and `TileWorldDocument.RestoreRegion`, which re-attaches the exact region instance
+a `DeleteRegionCommand` detached (a public one would let a caller attach a region built anywhere, with any
+plane count, into any document).
+
+The MCP tool sits above all three and is a dev tool rather than an engine package, exactly like
+`KhaozEngine.MapEdit.Tool`:
+
+```
+KhaozEngine.TileEdit.Tool -> KhaozEngine.TileWorld.Editing    (every mutation is a command through TileEditingDocument)
+KhaozEngine.TileEdit.Tool -> KhaozEngine.TileWorld.Render3D   (TileWorldSnapshot and GreyboxMeshResolver, for the two render verbs)
+KhaozEngine.TileEdit.Tool -> KhaozEngine.Imaging              (PngWriter.Encode, to turn a captured buffer into PNG bytes)
+KhaozEngine.TileEdit.Tool -> ModelContextProtocol             (the MCP server SDK, contained here as it is in ke-mapedit)
+KhaozEngine.TileEdit.Tool -> Microsoft.Extensions.Hosting     (the stdio host, contained the same way)
+```
+
+It is in no umbrella and nothing in the engine references it. The `TileWorld.Render3D` edge is the whole reason
+the render verbs need a GPU while the other 41 do not, and it is the one edge that would disappear if the
+render verbs ever moved to a separate tool.
 
 ## Surface-source seam: INavSurfaceProvider (a deliberate non-edge)
 
@@ -1089,4 +1128,4 @@ To swap or add a backend for a seam that already has the separate-package split:
 | Image decode | `../KhaozEngine.Render2D/ImageRgba.cs` (contains StbImageSharp) | (containment) |
 | Font rasterization | `../KhaozEngine.Render2D/SpriteFont.cs` (contains StbTrueTypeSharp) | (containment) |
 | Content validation | `../KhaozEngine.Content/JsonSchemaValidator.cs` (contains JsonSchema.Net) | (containment) |
-| MCP server protocol | `../KhaozEngine.MapEdit.Tool/Program.cs` (sole referencer, dev tool) | (containment) |
+| MCP server protocol | `../KhaozEngine.MapEdit.Tool/Program.cs`, `../KhaozEngine.TileEdit.Tool/Program.cs` (dev tools, the only referencers) | (containment) |

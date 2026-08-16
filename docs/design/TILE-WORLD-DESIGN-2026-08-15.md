@@ -1,8 +1,10 @@
 # OSRS-style tile world: document, collision, renderer, editor kernel, tile editor and MCP tool (2026-08-15)
 
-Status: R1 and R2 shipped (document, file form, catalogs, validator, collision, pathfinder, raycast, prefabs, then
-the renderer: ground mesher, props, view, residency, snapshot, goldens), R3 pending (editor kernel, tile editor,
-MCP tool). Program issue:
+Status: R1, R2 and R3 shipped (document, file form, catalogs, validator, collision, pathfinder, raycast, prefabs,
+then the renderer: ground mesher, props, view, residency, snapshot, goldens, then the editing kernel
+`KhaozEngine.TileWorld.Editing` and the `ke-tileedit` MCP tool), R4 pending (Grimhollow playable bootstrap), R5
+(editor kernel extraction and the GUI tile editor). Section 13 carries the delivery-order reasoning. Program
+issue:
 [#629](https://github.com/APKiwiOrg/KhaozEngine/issues/629). First adopter: Grimhollow, a new low-poly 3D
 MMO on the Ruinborne shell (repo to be scaffolded, `APKiwiOrg/Grimhollow`).
 
@@ -92,9 +94,10 @@ Five engine packages on the shared version line, one game head.
 |---|---|---|---|
 | `KhaozEngine.TileWorld` | Foundation | Primitives, Serialization (Content only if the catalog loader reuses its manifest helpers, decided at plan time) | Document, file form, catalogs, validator, migrations, collision map + baker, pathfinder, raycast, prefab |
 | `KhaozEngine.TileWorld.Render3D` | Game3D | TileWorld, Render3D, Terrain.Render3D | Ground mesher, `TileWorldView`, `TileRegionResidency`, prop bridge, roof rules |
+| `KhaozEngine.TileWorld.Editing` | Foundation | TileWorld | The command layer: `ITileCommand`/`TileDirtyRect`/`TileCommandBase`, `TileEditHistory`, `TileEditingDocument`, the concrete commands, `TileEditOps`, `PgmReader` |
 | `KhaozEngine.Editor` | none (dev tooling, like MapEditor) | Gui, Game.Render3D, Render3D | The extracted editor kernel |
-| `KhaozEngine.TileEditor` | none | Editor, TileWorld, TileWorld.Render3D | `TileEditorScene`, tools, `TileWorldCommands` |
-| `KhaozEngine.TileEdit.Tool` | none (dotnet tool, `ke-tileedit`) | TileEditor, ModelContextProtocol | The MCP tool |
+| `KhaozEngine.TileEditor` | none | Editor, TileWorld, TileWorld.Editing, TileWorld.Render3D | `TileEditorScene`, tools, wrapping the command layer's commands |
+| `KhaozEngine.TileEdit.Tool` | none (dotnet tool, `ke-tileedit`) | TileWorld.Editing, TileWorld.Render3D, Imaging, ModelContextProtocol | The MCP tool |
 
 `Terrain.Render3D` on the renderer is for `PropLayer`/`PropRenderer`, which live there today. If that prop
 path is ever lifted to `Render3D` proper the edge disappears, but lifting it is not this program's job.
@@ -103,6 +106,15 @@ landing scene and settings dialog need `Gui`, the gizmos and environment need `R
 
 Whether `Editor` and the two `Tile*` editor packages join an umbrella: no. `MapEditor` is not in one either.
 They are dev tooling referenced by editor heads explicitly.
+
+**`TileWorld.Editing` is new against the original plan, and it is why the tool shipped before the GUI.** The
+plan above had the command set inside `TileEditor`, which made `TileEdit.Tool` depend on a Gui and Render3D
+package to reach it, and made the MCP tool undeliverable until the GUI editor existed. R3 moved the commands
+into their own GPU-free package instead, referencing `TileWorld` alone, so the tool ships on the document plus
+the renderer and nothing else. The design's load-bearing claim, ONE command set for both frontends (section 9),
+is unchanged and in fact easier to keep: the R5 `TileEditor` wraps these same commands rather than owning them,
+so neither frontend can quietly become the definition of what an edit is. Being GPU-free also puts the layer in
+the `Foundation` umbrella and puts its whole test suite in a headless project.
 
 ## 5. The document model (`KhaozEngine.TileWorld`)
 
@@ -463,6 +475,17 @@ Lifted out of `MapEditor` into `KhaozEngine.Editor`, keeping behaviour and tests
 
 ### 8.2 The tile editor
 
+**Shipped ahead of this section: the commands.** R3 landed the whole mutation half of what this section
+describes as `KhaozEngine.TileWorld.Editing`, so `TileWorldCommands` below is not a type to write, it is
+`SetTilesCommand`, `SetCornerHeightsCommand`, `PlaceObjectCommand`, `MoveObjectCommand`, `RotateObjectCommand`,
+`RemoveObjectCommand`, `SetObjectTagsCommand`, `SetMarkerCommand`, `RemoveMarkerCommand`,
+`CreateRegionCommand`, `DeleteRegionCommand`, `CompositeCommand` and `SnapshotRectCommand`, driven through
+`TileEditingDocument` (which also owns the history, the saved marker, the derived collision rebake and the
+dirty rects a remesh consumes) with `TileEditOps` as the brush and batch factories. What R5 still owes is the
+frontend: `TileEditorScene`, the tools below, the overlays and the palettes, hosted over those commands. Brush
+drags coalesce through `ITileCommand.TryMerge`, which the MCP tool deliberately does not use (it seals after
+every verb), so gesture coalescing is a GUI concern that already has its mechanism waiting.
+
 `TileEditorScene : GameScene` + `TileEditorOptions { WorldPath, Catalogs (resolved from the manifest by the
 head, overridable), SettingsStore, RenderDistanceRegions }`.
 
@@ -493,27 +516,60 @@ Same skeleton as `ke-mapedit`: stdio host, `TileEditSession` (one locked open wo
 `TileMutationService`, `TileRenderService`, attribute-registered verbs behind the guard, structured JSON
 results, exceptions turned into structured errors. Two seams:
 
-- **One command set for both frontends.** Mutation verbs execute `TileWorldCommands` through an
-  `EditorDocument<TileWorldDocument>` in the session, so `undo(steps)` and `redo` exist in MCP and an AI edit
-  and a human edit are byte-identical mutations.
-- **The world is self-describing** (`CatalogPaths`), so `world_open(path)` is one argument.
+- **One command set for both frontends.** Mutation verbs execute an `ITileCommand` through the session's
+  `TileEditingDocument`, so `undo(steps)` and `redo(steps)` exist in MCP and an AI edit and a human edit are
+  byte-identical mutations. Shipped as written, with the command layer in `TileWorld.Editing` rather than in
+  `TileEditor` (section 4).
+- **The world is self-describing** (`CatalogPaths`), so `world_open(path)` is one argument. Those catalog
+  paths, and every other path argument any verb takes, resolve against the WORLD directory, never the process
+  working directory: an MCP server is launched by a client whose working directory is its own business, so a
+  world resolved against it would be a world that only loaded for one client. The two verbs that OPEN a world
+  are the exception, having no world to be relative to yet, and want an absolute path.
+- **One verb is one undo step.** The session seals the gesture after every command, so the command layer's
+  drag coalescing never fires over MCP, where each call is a discrete instruction rather than one sample of a
+  held mouse button. The R5 GUI drives `TileEditingDocument` directly and keeps the coalescing.
+- **Rows on the wire run north first.** Every ASCII map and every height row set has row 0 as the HIGHEST z of
+  the rect, each row west to east, so `height_get_rect` hands its rows straight to `height_set` without
+  flipping the terrain.
 
 Verb families:
 
 | Family | Verbs |
 |---|---|
-| World | `world_open`, `world_create(path, id, name, planeCount, tileSize, catalogPaths)`, `world_save`, `world_summary`, `world_validate`, `catalog_list(kind)`, `region_create`, `region_delete`, `region_list`, `undo`, `redo` |
+| World | `world_open`, `world_create(path, id, displayName, catalogPaths, planeCount, tileSize)`, `world_save`, `world_summary`, `world_validate`, `catalog_list(kind)`, `region_create`, `region_delete`, `region_list`, `undo`, `redo` |
 | Tiles | `tile_get(x, z, plane)` (all layers + decoded collision), `tile_set`, `tiles_fill(rect, plane, underlay?, overlay?, shape?, rotation?, settings?)`, `tiles_get_rect(rect, plane, layer)` (one char per tile) |
-| Heights | `height_set`, `height_raise(rect, plane, delta, falloff?)`, `height_flatten(rect, plane, to?)`, `height_smooth(rect, plane, iterations)`, `height_get_rect`, `height_import(png, rect, plane, min, max)` |
-| Objects | `object_place`, `object_move`, `object_rotate`, `object_remove`, `object_get`, `objects_in_rect`, `object_find(archetype?, tag?)`, `objects_line(archetype, from, to, plane)`, `objects_scatter(archetype, rect, plane, spacing, jitter, seed)` |
+| Heights | `height_set`, `height_raise(rect, plane, delta, falloff?)`, `height_flatten(rect, plane, to?)`, `height_smooth(rect, plane, iterations)`, `height_get_rect`, `height_import(pgmPath, rect, plane, minCm, maxCm)` |
+| Objects | `object_place`, `object_move`, `object_rotate`, `object_remove`, `object_set_tags`, `object_get`, `objects_in_rect`, `object_find(archetype?, tag?)`, `objects_line(archetype, from, to, plane)`, `objects_scatter(archetype, rect, plane, spacing, jitter, seed)` |
 | Markers | `marker_set`, `marker_remove`, `marker_list` |
-| Prefabs | `prefab_save(name, rect, planes)`, `prefab_place(name, x, z, plane, rotation)`, `prefab_list` |
-| Collision | `collision_at`, `is_walkable`, `path(from, to, plane, agentSize)`, `walkable_rect(rect, plane)` (ASCII map) |
-| Render | `render_topdown(rect, plane, png, pxPerTile, overlays)`, `render_view(eye, target, png, size)` |
+| Prefabs | `prefab_save(rect, planeFrom, planeCount, savePath, includeObjects?, includeMarkers?)`, `prefab_place(prefabPath, x, z, plane, rotation)`, `prefab_list(directory)` |
+| Collision | `collision_at`, `is_walkable`, `path(from, to, plane, agentSize, maxRadius)`, `walkable_rect(rect, plane)` (ASCII map) |
+| Render | `render_topdown(rect, plane, pxPerTile, overlays, savePath?)`, `render_view(eye, target, size, observer?, savePath?)` |
 
 `tiles_get_rect` and `walkable_rect` exist so the AI can read an area for a few hundred tokens instead of
-thousands. `render_*` return the PNG path (read inline). Grimhollow registers the tool in its `.mcp.json`
-the way Ruinborne registers `ke-mapedit`.
+thousands. Grimhollow registers the tool in its `.mcp.json` the way Ruinborne registers `ke-mapedit`.
+
+**What shipped against this table: 43 verbs, the table plus one, with four argument shapes corrected.** The
+extra verb is `object_set_tags`, which the table above omitted and a scatter needs, since tags are how a client
+finds again what it strewed. The corrections, each because the spec's shape did not survive contact:
+
+- **`render_*` return the image INLINE, not a path.** Each hands back two content blocks, a text block naming
+  the framing (rect, plane, scale and overlays for the top-down, eye, target, size and roof observer for the
+  view) and then the PNG itself, with the text first so a client can map image pixels back to tiles before it
+  looks at them. `savePath` became an OPTIONAL extra rather than the delivery mechanism: given, it also writes
+  the file and joins the saved path to the framing line. `render_view` also took an `observer` pair, so a shot
+  aimed inside a building can hide that building's roof.
+- **`height_import` reads a binary PGM (netpbm P5, 8 or 16 bit), not a PNG.** A PGM is a header of ASCII
+  decimals followed by raw big-endian samples, so the reader is `PgmReader` in `TileWorld.Editing`. A PNG needs
+  a deflate decoder that no engine package ships, and this program was not the place to add one, so the verb
+  refuses PNG by name and says to convert first. If a PNG path is ever wanted, that is an engine-wide image
+  decode question rather than a tile-world one.
+- **The prefab verbs take PATHS, not names.** There is no prefab registry, so `prefab_save` extracts a rect to
+  a file (its name without the extension becoming the prefab's name) and `prefab_place` and `prefab_list` take
+  a file and a directory. `prefab_save` is the one write verb here that changes nothing about the world, so it
+  is NOT an undo step (deleting the file is the undo), while every other mutating verb is exactly one.
+- **`tile_set` is exactly a 1x1 `tiles_fill`**, kept as its own verb because a single tile is the common case
+  and not because it does anything else, and clearing a rect is a `tiles_fill` with underlay 0, overlay 0,
+  shape `Full`, rotation 0 and settings `none` rather than a verb of its own.
 
 ## 10. Grimhollow bootstrap and starter content
 
@@ -572,39 +628,67 @@ Headless, in per-area test projects, per the repo rule.
   (`--filter "FullyQualifiedName~KhaozEngine.Tests.TileWorld"`). The GPU half needs `KE_GPU_TESTS=1` and is
   silently skipped without it, so a plain run proving 0 failed is not evidence the goldens passed: 0 SKIPPED in
   that namespace is.
+- `KhaozEngine.TileWorld.Tests/TileWorld/Editing/`: the command layer, shipped in R3. Every command's undo
+  restores a byte-identical document (compared by `TileWorldHash`), capture-once semantics across
+  execute/undo/redo, the dirty rects each command reports, history coalescing and the merge barrier, the
+  editing document's collision upkeep and plane rejection, `IsDirty` against the saved marker, the
+  `TileEditOps` brushes and batches (falloff rings, blur convergence, scatter determinism), the
+  `SnapshotRectCommand` limits stated as tests rather than as prose, and `PgmReader`'s header rules including
+  the one-whitespace delimiter. It lives beside the document's own tests rather than in a
+  `KhaozEngine.TileWorld.Editing.Tests` project, the same repo norm the renderer's tests follow.
+- `KhaozEngine.TileEdit.Tests`: the tool, shipped in R3. Session lifecycle (open, create, save, no-world
+  errors, path resolution against the world directory), each verb family through its service, the overlay
+  painter, the render service, and the verbs at the WIRE through the same `McpBootstrap` composition the stdio
+  host uses, so a registration the host would expose and the tests would not cannot exist. The render tests
+  need a GPU and skip without one.
 - `KhaozEngine.Editor.Tests`: history coalescing, document dirty/undo, tool registry. `MapEditor`'s existing
-  tests stay untouched and pass through the shims.
-- `KhaozEngine.TileEditor.Tests`: every command's undo restores a byte-identical document, brush coalescing.
-- `KhaozEngine.TileEdit.Tool.Tests`: session lifecycle, each verb family through its service, structured
-  errors for the failure cases in section 11.
+  tests stay untouched and pass through the shims. R5.
+- `KhaozEngine.TileEditor.Tests`: the GUI half, R5. The command-undo proof it was written for has already
+  landed in the command layer's own tests above, so what is left here is tool behaviour and brush coalescing.
 - Grimhollow: the world proof in section 10.
 
 ## 13. Release split
 
-Engine work in worktree `feature/tile-world`, three rounds under the riding rules, each merged to `main`,
+Engine work in worktree `feature/tile-world`, rounds under the riding rules, each merged to `main`,
 pushed and packed to `local-feed`, no tags unless the user says so:
 
 - **R1**: `TileWorld` (document, file form, catalogs, validator, migrations, collision map + baker,
   `CanStep`, pathfinder, raycast, prefab) + tests. Shipped.
 - **R2**: `TileWorld.Render3D` alone (mesher, props, scene seam, view, residency, snapshot, two goldens) + tests.
   Shipped, riding an in-flight patch version rather than taking a minor of its own.
-- **R3**: `Editor` kernel extraction with the forwarding aliases, then `TileEditor` + `TileEdit.Tool` + tests.
+- **R3**: `TileWorld.Editing` (the command layer, GPU-free, in `Foundation`) + `TileEdit.Tool` (`ke-tileedit`,
+  43 verbs) + tests. Shipped, riding the same in-flight version as R2.
+- **R4**: the Grimhollow playable bootstrap. The client draws the world through `TileWorld.Render3D`,
+  click-to-walk lands on the tick over the derived collision map, and the server shell stands up. Pending.
+- **R5**: the `Editor` kernel extraction with the forwarding aliases, then the `TileEditor` GUI over the
+  commands R3 already shipped. Pending.
 
-**Delivery-order change, decided at R2 plan time and confirmed by the round.** The `Editor` kernel extraction
+**Delivery-order change 1, decided at R2 plan time and confirmed by the round.** The `Editor` kernel extraction
 (section 8.1) was planned for R2 and moved to R3. It has NO consumer until `TileEditor` exists, so doing it in R2
 would have shipped forwarding aliases nothing calls and frozen a kernel shape before the editor that has to live
 in it, which is exactly the ordering that produces an abstraction fitted to a guess. The renderer, by contrast,
-has two consumers waiting the moment it lands (the goldens, and R3's editor viewport and MCP render verbs), so R2
-is the renderer alone. Nothing about the extraction changed, only when it happens, and it now lands in the same
-round as its first caller.
+has two consumers waiting the moment it lands (the goldens, and the editor viewport and MCP render verbs), so R2
+is the renderer alone.
 
-Then Grimhollow: scaffold, editor head, kit generation, catalogs, the authored world.
+**Delivery-order change 2, decided at R3 plan time: the kernel and the GUI moved again, to R5, and R4 became
+the playable bootstrap.** The same has-a-consumer test that moved the kernel out of R2 moves it out of R3. Once
+the command layer is its own GPU-free package (section 4), the MCP tool needs neither the kernel nor the GUI to
+ship, and the GUI editor has no consumer until a human wants to author a world BY HAND. The MCP tool is the
+AI-first authoring path this program was specified around, so that moment is later than it looked when the
+rounds were written. What does have a consumer now is a playable Grimhollow: everything the client needs to
+draw and walk a world exists after R3, and a world nobody can walk through is a world nobody can judge. So R4
+takes the baseline and R5 takes the editor, in the order the consumers actually arrive. Nothing about either
+piece of work changed, only when it happens. The design's own load-bearing claim survives untouched, because
+R5's editor wraps the commands R3 shipped rather than a second set.
+
+Then the rest of Grimhollow: kit generation, catalogs, and the authored world.
 
 ## 14. Deferred, with the reason
 
 Each of these is filed as an issue when its round lands, not carried here.
 
-- Tick-based click-to-walk movement: sub-project 2 of Grimhollow, its own spec.
+- Tick-based click-to-walk movement: not part of the engine rounds. It lands in the Grimhollow playable
+  bootstrap (R4 in section 13), which is that sub-project and carries its own spec.
 - Textured ground materials and a water shader: v1 is vertex colour only. UVs and `Kind = Water` are
   reserved so the format does not move.
 - The over/under bridge plane trick: `Settings.Bridge` is reserved, semantics undefined until a bridge is

@@ -49,6 +49,10 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Textured props](#textured-props)
 - [Ground-cover scatter and understory companions](#ground-cover-scatter-and-understory-companions)
 - [Map documents (`KhaozEngine.MapDoc`)](#map-documents-khaozenginemapdoc)
+- [Tile world (`KhaozEngine.TileWorld`)](#tile-world-khaozenginetileworld)
+- [Tile world rendering (`KhaozEngine.TileWorld.Render3D`)](#tile-world-rendering-khaozenginetileworldrender3d)
+- [Tile world editing (`KhaozEngine.TileWorld.Editing`)](#tile-world-editing-khaozenginetileworldediting)
+- [ke-tileedit (`KhaozEngine.TileEdit.Tool`)](#ke-tileedit-khaozenginetileedittool)
 - [Editor building blocks (`NumberField` / `TreeView` / `PropertyGrid` / `FlyCamera3D` / `RayMath` / `TerrainRaycast`)](#editor-building-blocks-numberfield-treeview-propertygrid-flycamera3d-raymath-terrainraycast)
 - [Map editor (`KhaozEngine.MapEditor`)](#map-editor-khaozenginemapeditor)
 - [ke-mapedit (`KhaozEngine.MapEdit.Tool`)](#ke-mapedit-khaozenginemapedittool)
@@ -6499,6 +6503,173 @@ eye toward a target with the observer defaulting to the tile under the target, s
 hides that house's roof. Both take a `configureScene` callback that runs LAST, so your lighting, post or camera
 settings win over everything the helper set. Full API summary: the `KhaozEngine.TileWorld.Render3D` package
 README.
+
+---
+
+## Tile world editing (`KhaozEngine.TileWorld.Editing`)
+
+The editing kernel over the document, in the `Foundation` umbrella: every mutation is a reversible command, so
+undo and redo behave the same way whoever issued the edit. GPU-free and render-free, which is what lets the
+`ke-tileedit` MCP tool and, in a later round, the GUI tile editor share ONE command set instead of drifting
+apart on what a single edit is.
+
+```csharp
+var editing = new TileEditingDocument(doc, catalogs);    // bakes the collision map once, up front
+
+// a command straight
+editing.Execute(new SetTilesCommand(new TileRect(0, 0, 16, 16), plane: 0,
+    underlay: 1, overlay: null, shape: null, rotation: null, settings: null));
+
+// or a factory that READS the document and hands back the command that expresses the edit
+editing.Execute(TileEditOps.Raise(doc, new TileRect(4, 4, 9, 9), plane: 0, deltaCm: 150, falloff: 1f));
+editing.Execute(TileEditOps.Scatter(editing, "tree_oak", new TileRect(20, 20, 24, 24), plane: 0,
+    spacing: 3, jitter: 1, seed: 7));                    // deterministic, one undo step
+
+editing.Undo();                                          // collision rebaked over the same rects
+editing.Redo();
+
+foreach (TileDirtyRect d in editing.PendingRebuilds)     // hand the renderer what moved
+    view.MarkDirty(d.Rect, d.Plane);
+editing.AcknowledgeRebuilds();
+
+if (editing.IsDirty) { TileWorldFile.Save(doc, dir); editing.MarkSaved(); }
+```
+
+**`TileEditingDocument` is the one mutation path, and that is what makes undo total.** It owns the document,
+the `TileEditHistory`, the saved marker and the derived `TileCollisionMap`. `Execute`, `Undo` and `Redo` each
+rebake collision over the command's dirty rects before returning, so a query right after an edit sees
+consistent collision without a full world rebake, and each raises `CommandApplied` / `CommandUndone` /
+`CommandRedone` once the map is up to date. A command reporting a rect on a plane the map does not have is
+rejected in one pass BEFORE anything applies. `IsDirty` is tracked by history POSITION against `MarkSaved`, so
+undoing back to the saved point clears it.
+
+**Dirty rects are the contract.** A command reports every tile whose layers, corners or collision moved,
+including the FULL footprint of anything it removed (measured before the removal, because a rebake cannot
+measure what is gone) and, for a corner height, the tiles on both sides of that corner.
+`TileEditingDocument.PendingRebuilds` accumulates them in edit order for a renderer to consume through
+`AcknowledgeRebuilds`, unmerged: a rebuild is idempotent, while folding rects from unrelated edits into one
+bounding rect would cover the whole world after two edits at opposite corners. `TileWorldView.MarkDirty`
+already adds its own two-tile seam margin, so pass the rect as reported.
+
+**Gesture coalescing is for drags, and a frontend opts in by not sealing.** `TryMerge` lets a command absorb a
+newer one of the same gesture so a hundred mouse-move samples land as one undo step, and the surviving command
+takes over the absorbed one's rects (it is the only one left to revert). Any undo or redo raises a merge
+barrier, and `SealGesture()` raises the same barrier on a drag release, focus loss or save. The MCP tool seals
+after every command, so one verb is one undo step there.
+
+**The commands.** `SetTilesCommand` (a rect fill of any subset of the authored layers, a null layer untouched),
+`SetCornerHeightsCommand` (a rect of CORNERS, skipping corners no region holds and reporting `WrittenCount`
+against `CornerCount`), `PlaceObjectCommand` / `MoveObjectCommand` / `RotateObjectCommand` /
+`RemoveObjectCommand` / `SetObjectTagsCommand`, `SetMarkerCommand` / `RemoveMarkerCommand`,
+`CreateRegionCommand` / `DeleteRegionCommand`, `CompositeCommand` (a list of commands as one undo step, rolled
+back whole when a child throws) and `SnapshotRectCommand` (an arbitrary mutation made undoable by capturing the
+rect's pre-image first). An object placed and then undone comes back with the id it HAD on redo, so anything
+referring to it by id keeps resolving.
+
+**`TileEditOps` builds the commands, it does not mutate.** `Raise` (with an edge falloff), `Flatten`, `Smooth`
+(an iterated box blur reading its outside neighbours from the document, so a patch blends into the terrain
+around it), `SetHeights`, `Line` (Bresenham, one object per tile, one undo step), `Scatter` (a jittered grid
+whose offsets come from a hash of the point and the seed, so the same arguments always produce the same world),
+`PlacePrefab` and `ImportHeights`. `PgmReader` decodes the binary PGM (netpbm P5, 8 or 16 bit) a heightmap
+import takes, PGM rather than PNG because the engine ships no deflate decoder. Write those files with LF line
+endings: a CRLF header spends its CR as the single delimiter byte and leaves the LF as sample 0, which shifts
+the whole raster.
+
+Two limits are worth knowing before leaning on the general case. A `SnapshotRectCommand` owns what was inside
+its rect when it looked and nothing else, so an object anchored outside but overhanging in is not restored, and
+a region the mutation created inside the rect is not removed by the revert. And its REDO re-runs the mutation
+rather than replaying writes, so a prefab stamp redone lands the same content wearing FRESH object ids and a
+different world hash. Full API summary and the rest of the limits: the `KhaozEngine.TileWorld.Editing` package
+README.
+
+---
+
+## ke-tileedit (`KhaozEngine.TileEdit.Tool`)
+
+The `ke-tileedit` dotnet tool is an MCP (Model Context Protocol) server over stdio: it opens, queries, mutates,
+validates, renders and saves tile worlds, so an AI client can author one before any GUI editor exists. Every
+mutation runs through `KhaozEngine.TileWorld.Editing`, the same command layer the later GUI editor drives, so
+an MCP edit and a GUI edit are the same undoable operation.
+
+**Wiring into Claude Code.** Register the tool as an MCP server, repo-local for development:
+
+```bash
+claude mcp add ke-tileedit -- dotnet run --project /path/to/KhaozEngine.TileEdit.Tool -c Debug
+```
+
+Or against the packaged tool, once installed (`dotnet tool install --global KhaozEngine.TileEdit.Tool`):
+
+```bash
+claude mcp add ke-tileedit -- ke-tileedit
+```
+
+Equivalent `.mcp.json` entry (repo-local form):
+
+```json
+{
+  "mcpServers": {
+    "ke-tileedit": {
+      "command": "dotnet",
+      "args": ["run", "--project", "/path/to/KhaozEngine.TileEdit.Tool", "-c", "Debug"]
+    }
+  }
+}
+```
+
+**Session model.** One world open at a time (`TileEditSession`, all members lock internally): the
+`TileEditingDocument`, the directory it came from, and the catalog paths it resolved. The world is
+self-describing, so `world_open(path)` is one argument, and there is no dirty guard, since the client's git
+diff is the safety net and `world_summary` reports the dirty flag. ONE VERB IS ONE UNDO STEP: the session
+seals the gesture after every command, because over MCP each call is a discrete instruction rather than one
+sample of a held mouse button, and two `object_move` calls that quietly became one undo step would leave a
+client unable to step back through its own edits. Collision is rebaked over each edit's dirty rects before the
+next query reads it.
+
+**Catalog paths, and every other path argument, resolve against the WORLD directory**, never the process
+working directory, because an MCP server is started by a client whose working directory is its own business.
+The two verbs that OPEN a world (`world_open`, `world_create`) are the exception, since there is no world to be
+relative to yet: pass them an absolute path.
+
+**Verb families (43 tools).** World lifecycle, catalogs, regions and history (`world_open`, `world_create`,
+`world_save`, `world_summary`, `world_validate`, `catalog_list`, `region_create`, `region_delete`,
+`region_list`, `undo`, `redo`), tiles (`tile_get`, `tile_set`, `tiles_fill`, `tiles_get_rect`), heights
+(`height_set`, `height_raise`, `height_flatten`, `height_smooth`, `height_get_rect`, `height_import`), objects
+(`object_place`, `object_move`, `object_rotate`, `object_remove`, `object_set_tags`, `object_get`,
+`objects_in_rect`, `object_find`, `objects_line`, `objects_scatter`), markers (`marker_set`, `marker_remove`,
+`marker_list`), prefabs (`prefab_save`, `prefab_place`, `prefab_list`), derived collision (`collision_at`,
+`is_walkable`, `path`, `walkable_rect`) and renders (`render_topdown`, `render_view`). The per-verb reference,
+with every argument and the ASCII map legends, is the
+[`KhaozEngine.TileEdit.Tool` README](../KhaozEngine.TileEdit.Tool/README.md).
+
+**Coordinates and row order.** Tile space throughout (x east, z north, plane a storey index from 0), a rect is
+`x, z, width, height` with the far edges EXCLUSIVE, heights live on CORNERS so their rects are one wider and
+one deeper than the tiles they carry, and rotation is quarter turns clockwise (0 west, 1 north, 2 east, 3
+south). Every ASCII map and every height row set runs NORTH FIRST, row 0 being the highest z and each row west
+to east, so `height_get_rect` hands its rows straight to `height_set` without flipping the terrain.
+`render_view` is the one verb in WORLD metres, where y is up and world z is MINUS tile z: to look at tile
+(10, 20) from the south-east, target world (10.5, 0, -20.5) with the eye at (18, 8, -12).
+
+**Renders return the image inline.** `render_topdown` and `render_view` are the only two verbs that need a GPU
+(a headless Metal, D3D11 or Vulkan device, through `TileWorldSnapshot`, the same path the render goldens take),
+and both hand back a text block naming the framing followed by the PNG itself, with an optional `savePath` that
+ALSO writes the file and joins the saved path to that framing line. Everything else runs on a machine with no
+display. `height_import` reads binary PGM (P5) rather than PNG, since the engine ships no PNG decoder, so
+convert first.
+
+A short authoring run:
+
+```text
+world_create("/abs/path/assets/worlds/hollowmere", "hollowmere", "Hollowmere", ["../../catalogs/ground.json"])
+tiles_fill(0, 0, 64, 64, 0, underlay: 2)       # grass over the starter region
+height_raise(20, 20, 13, 13, 0, 220, 0.8)      # a hill, faded out at its edge ring
+height_flatten(8, 8, 7, 7, 0)                  # flat ground for a building
+object_place("well", 10, 10, 0)
+objects_scatter("tree_oak", 40, 0, 24, 24, 0, spacing: 3, jitter: 1, seed: 7)
+marker_set("spawn", 10, 12, 0)
+walkable_rect(0, 0, 32, 32, 0)                 # cheap ASCII check before rendering
+render_topdown(0, 0, 64, 64, 0, pxPerTile: 6, overlays: "grid,collision,objects")
+world_save()
+```
 
 ---
 

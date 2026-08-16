@@ -29,7 +29,10 @@ rental handle that names one RENTAL rather than one slot, so a stale or duplicat
 since been rented out again is refused by name instead of silently freeing the current renter's item out from under
 it and letting the pool hand the same object to two owners. Alongside all of that, round 2 of the tile-world
 program lands as a new package, `KhaozEngine.TileWorld.Render3D`, which draws a `KhaozEngine.TileWorld` document
-through the existing lit model and prop paths. The ECS closes two defects on the same swap-remove: a structural
+through the existing lit model and prop paths. Round 3 follows it into the same version with two more:
+`KhaozEngine.TileWorld.Editing`, the GPU-free command layer that makes every edit to a tile world undoable, and
+`KhaozEngine.TileEdit.Tool`, the `ke-tileedit` MCP server that authors a world over 43 verbs on top of it. The
+ECS closes two defects on the same swap-remove: a structural
 change made from inside a serial `ForEach` or `Entities()` loop now throws
 `StructuralChangeDuringIterationException` instead of silently losing a survivor's write to a dead row, and a
 vacated column slot is cleared, so a despawned component carrying a managed reference stops pinning it for the life
@@ -125,9 +128,101 @@ separate test project design section 12 named, because `GoldenCompare` is intern
 **What is deliberately absent.** No editor and no MCP tool. The `KhaozEngine.Editor` kernel extraction was planned
 for this round and has moved to round 3: it has no consumer until `TileEditor` exists, so extracting it now would
 ship forwarding aliases nothing calls and freeze a kernel shape before the editor that has to live in it. Round 3
-is that kernel, the `TileEditor` GUI and the `ke-tileedit` MCP tool together. Ground materials are still colour
+then moved it again, to round 5, and shipped the MCP tool over a standalone command layer instead. The next
+subsection carries that reasoning. Ground materials are still colour
 only, with tile-local UVs written so a texture path can land later without touching the mesher's logic, and
 `Kind = Water` still renders as flat colour. On the netcode side, a transport reconnect no longer reads to the consumer as a teleport when its resume snapshot places the player where they were, and instead glides the small displacement so the avatar stays with the camera nothing warped, while the teleport epoch cuts on an advance rather than on any change, so a client on a lossy link stops paying a world-scale teleport reaction (a terrain streamer's whole ring, a camera cut) on every drop and on an epoch that momentarily reads as absent. The verdict is measured on the resume snapshot, so the server decides whether a rejoin is quiet, and a server that spawns the rejoiner before restoring their stored position still teleports them twice.
+
+### The tile world editing kernel and the ke-tileedit MCP tool (#629)
+
+Round 3 of the tile-world program lands as two packages. `KhaozEngine.TileWorld.Editing` is a new packable
+package in the `Foundation` umbrella that references `KhaozEngine.TileWorld` and nothing else: every mutation of
+a `TileWorldDocument` is a reversible command, so undo is total by construction rather than by discipline.
+`KhaozEngine.TileEdit.Tool` is a `PackAsTool` dotnet tool, `ke-tileedit`, an MCP server over stdio carrying 43
+verbs, so an AI client can author a tile world before any GUI editor exists. The command layer is its own
+GPU-free package rather than part of either frontend, which is the correction of the `MapDoc` shape: that stack
+keeps its command set inside `KhaozEngine.MapEditor`, so `ke-mapedit` drags Gui, Render3D and Terrain.Render3D
+in for two render verbs.
+
+**The command contract.** `ITileCommand` is `Label`, `Apply(doc)`, `Revert(doc)`, `TryMerge(next)` and
+`DirtyRects`, with `TileCommandBase` as the shared base carrying the label, an accumulating `Dirty` list, a
+no-merge default and `AbsorbDirty`. `TileDirtyRect(Rect, Plane)` is the unit both collision rebaking and
+renderer invalidation work in, a rect of world tiles on one plane with far edges exclusive. Applying and
+reverting reach the same tiles, so one set serves both directions, and it has to cover every tile whose layers,
+corners or collision moved, INCLUDING the full footprint of an object the command removes (measured with
+`TileFootprint.Of` before the removal, because a rebake cannot measure what is gone) and, for a corner height,
+the tiles on both sides of that corner. A command captures what it needs to revert itself on the FIRST apply
+only, so a redo replays the same edit rather than capturing the state its own previous apply left behind, which
+would turn the next undo into a no-op. A `TryMerge` returning true MUST union the absorbed command's rects into
+its own, because the survivor is the only one left to revert: a drag that moves an object from A to B and then B
+to C while keeping only its A and B rects leaves C reading blocked for good once the gesture is undone.
+
+**`TileEditHistory` and `TileEditingDocument`.** The history is the undo/redo stack with gesture coalescing:
+`Execute(doc, command)` applies and pushes, clearing redo, unless the top command absorbs the new one, and
+`Undo`/`Redo` move one step and return false on an empty stack, alongside `CanUndo`, `CanRedo`, `UndoLabel`,
+`RedoLabel`, `UndoDepth` and `RedoDepth`. A merge barrier goes up after any undo or redo so the next edit starts
+a fresh step instead of coalescing into a reactivated one, and `SealGesture()` raises the same barrier at an
+explicit boundary. `TileEditingDocument(doc, catalogs)` is the layer a frontend actually drives: it owns
+`Document`, `Catalogs`, `History` and the DERIVED `Collision` map, baked once at construction and rebaked over
+each command's dirty rects as it applies, reverts or reapplies, so a query right after an edit reads consistent
+collision with no full-world rebake. A command reporting a rect on a plane the map does not have is rejected in
+one pass BEFORE anything applies, rather than throwing from inside the baker with earlier rects already landed.
+`PendingRebuilds` accumulates those rects in edit order for a renderer and `AcknowledgeRebuilds()` clears them,
+unmerged on purpose, because a rebuild is idempotent while folding rects from unrelated edits into one bounding
+rect would cover the whole world after two edits at opposite corners. `IsDirty` is tracked by history POSITION
+against `MarkSaved()`, so undoing back to the saved point clears it, and a fresh edit that discards the branch
+holding the saved point makes that state unreachable and leaves the flag set until the next save.
+`CommandApplied`, `CommandUndone` and `CommandRedone` fire once the collision map is up to date.
+
+**The commands and the factories.** `SetTilesCommand` (a rect fill of any subset of the authored layers, a null
+layer neither read, captured nor touched, every region checked before a single write), `SetCornerHeightsCommand`
+(a rect of CORNERS, skipping corners no region holds and reporting `WrittenCount` against `CornerCount`),
+`PlaceObjectCommand`, `MoveObjectCommand`, `RotateObjectCommand`, `RemoveObjectCommand`, `SetObjectTagsCommand`,
+`SetMarkerCommand`, `RemoveMarkerCommand`, `CreateRegionCommand`, `DeleteRegionCommand`, `CompositeCommand` (a
+list of commands as one undo step, rolled back whole when a child throws) and `SnapshotRectCommand` (an
+arbitrary mutation made undoable by capturing the rect's pre-image first). An object placed and undone comes
+back on redo with the id it HAD, so a region file, a quest hook or a later command that refers to it by id keeps
+resolving. `TileEditOps` is the factory set that READS the document and returns the command expressing the edit,
+never mutating: `Raise` (with an edge falloff), `Flatten`, `Smooth`, `SetHeights`, `Line`, a hash-deterministic
+`Scatter`, `PlacePrefab` and `ImportHeights`, with `PgmReader`/`PgmImage` decoding the binary PGM (netpbm P5, 8
+or 16 bit) a heightmap import takes. PGM rather than PNG because that format is a header of ASCII decimals
+followed by raw big-endian samples, while PNG needs a deflate decoder the engine does not ship.
+
+**Two `TileWorldDocument` internals, and the grant that reaches them.** `KhaozEngine.TileWorld` now grants
+`InternalsVisibleTo` to `KhaozEngine.TileWorld.Editing` for exactly two new members, both the undo half of a
+public operation and neither safe as public API. `AddObjectWithId` re-adds an object at a GIVEN id, which is
+what lets an undone place or delete come back wearing the id it left with, and a public form would let content
+invent ids and collide with the allocator. `RestoreRegion` re-attaches the exact region instance a
+`DeleteRegionCommand` detached, and a public form would let a caller attach a region built anywhere, with any
+plane count, into any document.
+
+**The tool.** `TileEditSession` holds one open world and locks internally, and it is the only stateful object:
+the `TileEditingDocument`, the directory it came from, and the catalog paths it resolved, with `QueryService`,
+`MutationService`, `RenderService` and `TopDownOverlayPainter` behind it. Catalog paths in `world.json`, and
+every other path argument a verb takes, resolve against the WORLD directory rather than the process working
+directory, because an MCP server is started by a client whose working directory is its own business and a world
+that only loaded from one directory would be a world that only loaded for one client. The two verbs that OPEN a
+world are the exception, since there is no world to be relative to yet. ONE VERB IS ONE UNDO STEP: the session
+seals the gesture after every command, because over MCP each call is a discrete instruction rather than one
+sample of a held mouse button, and two `object_move` calls that quietly became one step would leave a client
+unable to walk back through its own edits. The GUI editor of a later round drives `TileEditingDocument` directly
+and keeps the coalescing for its drag tools. Every ASCII map and every height row set runs NORTH FIRST, row 0
+being the highest z, so `height_get_rect` hands its rows straight to `height_set` without flipping the terrain.
+`height_import` takes a binary PGM for the reason above and says so in its own error. `render_topdown` and
+`render_view` are the only two verbs that need a GPU, and both return the image INLINE as a framing text block
+followed by the PNG itself, with an optional `savePath` that additionally writes the file and joins the saved
+path to that framing line.
+
+**The delivery order changed again, and this is the shape it settled into.** R3 was specified as the
+`KhaozEngine.Editor` kernel extraction plus the `TileEditor` GUI plus the MCP tool. It shipped as the command
+layer plus the MCP tool, and the kernel and the GUI moved to R5. The reason is what has a consumer. A playable
+Grimhollow baseline is now the fastest thing to reach, so R4 is that bootstrap (the client drawing the world
+through `TileWorld.Render3D`, click-to-walk on the tick over the collision map, and the server shell), and the
+GUI editor has no consumer at all until a human needs to author by hand, which the MCP tool defers. The design's
+own load-bearing claim, one command set for both frontends, is unaffected: the R5 editor wraps these same
+commands rather than a second set, which is exactly why the layer is a package of its own rather than something
+the tool owns. Tests land in `KhaozEngine.TileWorld.Tests/TileWorld/Editing/` for the command layer and in the
+new `KhaozEngine.TileEdit.Tests` for the session, the services, the overlay painter and the verbs at the wire.
 
 ### A logger from the ambient facade follows the facade (#616)
 

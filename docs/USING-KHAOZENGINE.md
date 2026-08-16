@@ -10247,7 +10247,9 @@ instead, for an idempotent dispose that may return twice and, importantly, insid
 would replace the exception already unwinding:
 
 ```csharp
-pool.TryRent(out PoolRental<Bullet> rental);
+if (!pool.TryRent(out PoolRental<Bullet> rental))
+    return;                          // exhausted: nothing was rented, so there is nothing to return
+
 try { Fire(rental.Item!); } finally { pool.TryReturn(in rental); }
 ```
 

@@ -215,10 +215,11 @@ path to that framing line.
 
 **The delivery order changed again, and this is the shape it settled into.** R3 was specified as the
 `KhaozEngine.Editor` kernel extraction plus the `TileEditor` GUI plus the MCP tool. It shipped as the command
-layer plus the MCP tool, and the kernel and the GUI moved to R5. The reason is what has a consumer. A playable
-Grimhollow baseline is now the fastest thing to reach, so R4 is that bootstrap (the client drawing the world
-through `TileWorld.Render3D`, click-to-walk on the tick over the collision map, and the server shell), and the
-GUI editor has no consumer at all until a human needs to author by hand, which the MCP tool defers. The design's
+layer plus the MCP tool, and the kernel and the GUI moved to R5. The reason is what has a consumer. The
+Grimhollow bootstrap is now the fastest thing to reach, so R4 is that (the engine pin, the tool registered, the
+greybox kit and catalogs, the authored starter world, and a client drawing it through `TileWorld.Render3D` under
+the fly camera, with click-to-walk still sub-project 2's own spec), and the GUI editor has no consumer at all
+until a human needs to author by hand, which the MCP tool defers. The design's
 own load-bearing claim, one command set for both frontends, is unaffected: the R5 editor wraps these same
 commands rather than a second set, which is exactly why the layer is a package of its own rather than something
 the tool owns. Tests land in `KhaozEngine.TileWorld.Tests/TileWorld/Editing/` for the command layer and in the

@@ -2,10 +2,9 @@
 
 Status: R1, R2 and R3 shipped (document, file form, catalogs, validator, collision, pathfinder, raycast, prefabs,
 then the renderer: ground mesher, props, view, residency, snapshot, goldens, then the editing kernel
-`KhaozEngine.TileWorld.Editing` and the `ke-tileedit` MCP tool), R4 pending (Grimhollow playable bootstrap), R5
-(editor kernel extraction and the GUI tile editor). Section 13 carries the delivery-order reasoning. Program
-issue:
-[#629](https://github.com/APKiwiOrg/KhaozEngine/issues/629). First adopter: Grimhollow, a new low-poly 3D
+`KhaozEngine.TileWorld.Editing` and the `ke-tileedit` MCP tool), R4 pending (the Grimhollow bootstrap under
+the fly camera), R5 (editor kernel extraction and the GUI tile editor). Section 13 carries the delivery-order
+reasoning. Program issue: [#629](https://github.com/APKiwiOrg/KhaozEngine/issues/629). First adopter: Grimhollow, a new low-poly 3D
 MMO on the Ruinborne shell (repo to be scaffolded, `APKiwiOrg/Grimhollow`).
 
 This is sub-project 1 of the Grimhollow program. The full program, for orientation only, is: (1) this tile
@@ -658,8 +657,10 @@ pushed and packed to `local-feed`, no tags unless the user says so:
   Shipped, riding an in-flight patch version rather than taking a minor of its own.
 - **R3**: `TileWorld.Editing` (the command layer, GPU-free, in `Foundation`) + `TileEdit.Tool` (`ke-tileedit`,
   43 verbs) + tests. Shipped, riding the same in-flight version as R2.
-- **R4**: the Grimhollow playable bootstrap. The client draws the world through `TileWorld.Render3D`,
-  click-to-walk lands on the tick over the derived collision map, and the server shell stands up. Pending.
+- **R4**: the Grimhollow bootstrap, section 10 in full: the engine pin, `ke-tileedit` registered in the repo,
+  the Blender greybox kit and its catalogs, the authored 3x3 starter world, and a client that opens that
+  world through `TileWorld.Render3D` under the fly camera. That is the whole of sub-project 1's game side and
+  the baseline the program is judged on. Pending.
 - **R5**: the `Editor` kernel extraction with the forwarding aliases, then the `TileEditor` GUI over the
   commands R3 already shipped. Pending.
 
@@ -671,24 +672,25 @@ has two consumers waiting the moment it lands (the goldens, and the editor viewp
 is the renderer alone.
 
 **Delivery-order change 2, decided at R3 plan time: the kernel and the GUI moved again, to R5, and R4 became
-the playable bootstrap.** The same has-a-consumer test that moved the kernel out of R2 moves it out of R3. Once
+the Grimhollow bootstrap.** The same has-a-consumer test that moved the kernel out of R2 moves it out of R3. Once
 the command layer is its own GPU-free package (section 4), the MCP tool needs neither the kernel nor the GUI to
 ship, and the GUI editor has no consumer until a human wants to author a world BY HAND. The MCP tool is the
 AI-first authoring path this program was specified around, so that moment is later than it looked when the
-rounds were written. What does have a consumer now is a playable Grimhollow: everything the client needs to
-draw and walk a world exists after R3, and a world nobody can walk through is a world nobody can judge. So R4
-takes the baseline and R5 takes the editor, in the order the consumers actually arrive. Nothing about either
-piece of work changed, only when it happens. The design's own load-bearing claim survives untouched, because
-R5's editor wraps the commands R3 shipped rather than a second set.
-
-Then the rest of Grimhollow: kit generation, catalogs, and the authored world.
+rounds were written. What does have a consumer now is the Grimhollow side of section 10: everything the client
+needs to open and draw an authored world exists after R3, and a world nobody has flown through is a world nobody
+can judge. So R4 takes the bootstrap and R5 takes the editor, in the order the consumers actually arrive.
+Nothing about either piece of work changed, only when it happens. The design's own load-bearing claim survives
+untouched, because R5's editor wraps the commands R3 shipped rather than a second set. Sub-project 1's scope
+did not move either: R4 ends at the fly camera, and tick-based click-to-walk stays sub-project 2 with its own
+spec (section 14).
 
 ## 14. Deferred, with the reason
 
 Each of these is filed as an issue when its round lands, not carried here.
 
-- Tick-based click-to-walk movement: not part of the engine rounds. It lands in the Grimhollow playable
-  bootstrap (R4 in section 13), which is that sub-project and carries its own spec.
+- Tick-based click-to-walk movement: not part of this sub-project at all. R4 (section 13) ends at the fly
+  camera over the authored world, and walking lands in sub-project 2 of Grimhollow with its own spec, which is
+  where the server shell, auth and persistence arrive too.
 - Textured ground materials and a water shader: v1 is vertex colour only. UVs and `Kind = Water` are
   reserved so the format does not move.
 - The over/under bridge plane trick: `Settings.Bridge` is reserved, semantics undefined until a bridge is

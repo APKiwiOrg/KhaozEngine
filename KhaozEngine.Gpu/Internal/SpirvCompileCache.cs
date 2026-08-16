@@ -100,6 +100,12 @@ namespace KhaozEngine.Gpu.Internal
             };
         }
 
+        /// <summary>Whether this cache memoizes at all, which is what <see cref="DisableVariable"/> decides for
+        /// <see cref="Shared"/>. A test that pins "this compiled nothing" has to read it, because the whole claim
+        /// is off when the kill switch is set and a run that asked to be cacheless must not go red for
+        /// succeeding.</summary>
+        internal bool Enabled => _enabled;
+
         /// <summary>How many times a source actually reached the compiler through this cache. The number a test
         /// pins when it asserts that a second scene on a warm process compiles nothing.</summary>
         internal long CompileCount => Interlocked.Read(ref _compiles);

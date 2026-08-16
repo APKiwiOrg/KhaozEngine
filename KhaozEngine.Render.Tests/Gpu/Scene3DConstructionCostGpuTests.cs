@@ -28,6 +28,13 @@ namespace KhaozEngine.Tests.Gpu
     /// rather than a per-backend family.
     /// </para>
     /// <para>
+    /// <b>UNDER <c>KE_SPIRV_CACHE=off</c> BOTH CASES ASSERT THE OPPOSITE</b> rather than skipping. That switch is
+    /// on `cross-platform-gpu.yml`'s cacheless dispatch, which exists to rule the caches out of a flake
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/614">#614</see>), so a run that asked for no
+    /// memo must not go red for getting none. A skip would leave the kill switch itself unexercised on the one
+    /// run that uses it, and a switch nothing checks is how a cacheless run ends up quietly caching.
+    /// </para>
+    /// <para>
     /// Enlisted in <c>SpirvCompileCacheSerial</c> because it reads a process-global counter every other GPU class
     /// in this assembly also moves.
     /// </para>
@@ -52,7 +59,7 @@ namespace KhaozEngine.Tests.Gpu
             using (var second = new Scene3D(gd, framebuffer.Outputs, null)) { }
             long after = SpirvCompileCache.Shared.CompileCount;
 
-            Assert.Equal(before, after);
+            AssertMemoDidItsJob(before, after);
         }
 
         [GpuFact]
@@ -72,7 +79,26 @@ namespace KhaozEngine.Tests.Gpu
                 BuildOneScene(second.GpuDevice);
             }
 
-            Assert.Equal(before, SpirvCompileCache.Shared.CompileCount);
+            AssertMemoDidItsJob(before, SpirvCompileCache.Shared.CompileCount);
+        }
+
+        /// <summary>
+        /// The memo compiled nothing across that span, or, when the kill switch is set, it compiled the whole
+        /// scene's worth again. Both are a claim, and the second one is what keeps `KE_SPIRV_CACHE=off` from
+        /// being a variable nothing has ever checked does anything.
+        /// </summary>
+        static void AssertMemoDidItsJob(long before, long after)
+        {
+            if (SpirvCompileCache.Shared.Enabled)
+            {
+                Assert.Equal(before, after);
+                return;
+            }
+
+            Assert.True(after > before,
+                $"{SpirvCompileCache.DisableVariable} is set, so this run asked for no memo at all, and the second "
+                + "scene should have compiled its sources from scratch. It compiled none, which means something "
+                + "else is caching them and the cacheless dispatch is not cacheless.");
         }
 
         static void BuildOneScene(IGpuDevice gd)

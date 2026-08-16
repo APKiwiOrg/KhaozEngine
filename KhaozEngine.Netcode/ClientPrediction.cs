@@ -114,8 +114,13 @@ public sealed class ClientPrediction<TState, TCommand>
     /// isolated step EXACTLY ONCE and ease it with a render-time-decaying vertical offset (the continuous stair glide
     /// renders such singles raw, so they would otherwise pop as a mini-teleport). Incremented only on the commanded
     /// <see cref="Predict"/> path and NEVER on a reconciliation replay, so replaying the pending window across a step tick
-    /// does not double-count it. Zero until the first step, and reset to zero by <see cref="Reset"/> / <see cref="Reseed"/>
-    /// (paired with the teleport signal a consumer uses to re-baseline the smoother, so a reset is never read as a step).
+    /// does not double-count it. Zero until the first step, and reset to zero by <see cref="Reset"/> / <see cref="Reseed"/>.
+    /// <para>A join and a teleport-reporting resume PAIR that zeroing with the teleport signal, so the consumer
+    /// re-baselines its smoother in the same frame and the drop is never read as a step. A QUIET resume (a reconnect
+    /// inside <see cref="PredictionSettings.HardSnapDistance"/>) zeroes it with no signal, so the consumer does see one
+    /// spurious delta there. That is harmless rather than merely tolerated: the shipped bridge answers a detected step
+    /// by freezing the mesh at its PREVIOUS DRAWN height rather than by applying the impulse, and a quiet resume renders
+    /// continuously (see <see cref="Reseed"/>), so the freeze it computes is approximately zero.</para>
     /// </summary>
     public float StepCumulativeY => stepCumulativeY;
 

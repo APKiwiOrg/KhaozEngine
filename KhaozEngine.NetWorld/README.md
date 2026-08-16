@@ -356,12 +356,21 @@ a screen transition (see `KhaozEngine.Render3D` `ITransition`). Mismatched wire 
 the always-on `WireGenerationAuthenticator`.
 
 The signal means the local player's position changed DISCONTINUOUSLY: the join placement, an in-session server
-teleport, or a reconnect that resumed the session somewhere else. **A transport reconnect that resumes the same
-position does not fire it** (#409). Prediction is still reseeded across the reconnect (fresh transport, fresh server
-slot, fresh net id, fresh authoritative entity), but none of that moves the player, so a consumer answering the event
-with a world-scale reaction - re-centring a terrain streamer's ring, rebuilding an occlusion cache - no longer pays it
-every time a lossy link drops. The resume counts as a teleport only when the player moved by at least
-`PredictionSettings.HardSnapDistance` while the client was away. Tighten it via `WorldClientConfig.Prediction`.
+teleport, or a reconnect that resumed the session somewhere else. **A transport reconnect whose resume snapshot places
+the player where they were does not fire it** (#409). Prediction is still reseeded across the reconnect (fresh
+transport, fresh server slot, fresh net id, fresh authoritative entity), but none of that moves the player, so a
+consumer answering the event with a world-scale reaction - re-centring a terrain streamer's ring, rebuilding an
+occlusion cache - no longer pays it every time a lossy link drops. The resume counts as a teleport only when it lands
+at least `PredictionSettings.HardSnapDistance` from where the client was, and below that it glides rather than cutting,
+so the avatar stays with the camera nothing warped. Tighten the threshold via `WorldClientConfig.Prediction`.
+
+The client measures the RESUME SNAPSHOT, so the server decides whether a rejoin is quiet, and the persistence path
+here is not yet. `WorldServer.OnJoin` builds the rejoiner's entity at `WorldServerConfig.SpawnPosition`, the next
+`Tick` serves that spawn with no gate on the outstanding load, and `WorldPersistence` applies the stored position
+afterwards via `SetPlayerState(..., teleport: true)`. A player who was more than `HardSnapDistance` from the spawn
+therefore still gets two teleports on rejoin: the reseed onto the spawn, then the restore's epoch advance. Tracked at
+https://github.com/APKiwiOrg/KhaozEngine/issues/642. Restore the position synchronously at the join spawn (or withhold
+the first snapshot until the load lands) and the reconnect is quiet.
 
 `RemoteTeleports` follows the same advance-only rule: a remote's replicated epoch going backwards (its `MovementState`
 momentarily unreadable) is not a teleport, and neither is the recovery back off that dip.

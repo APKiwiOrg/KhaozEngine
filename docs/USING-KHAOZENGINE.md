@@ -12225,17 +12225,28 @@ client.LocalTeleported += () =>
 if (client.LocalTeleportEpoch != _lastSeen) { _lastSeen = client.LocalTeleportEpoch; /* warp + transition */ }
 ```
 
-**A transport reconnect that resumes the same position is not a teleport** (#409). This matters because the reaction
-is expensive by design: a consumer typically answers it by warping the camera, running a screen transition, and
-re-centring everything keyed to the player's position - a terrain streamer's ring above all. Reporting a reconnect as
-a teleport made a client on a lossy link rebuild its world on every drop while the player stood still. Prediction is
-still reseeded across the reconnect (fresh transport, fresh server slot, fresh net id, fresh authoritative entity),
-but the signal is withheld unless the player actually moved while the client was away, by at least
-`PredictionSettings.HardSnapDistance`. Tighten that via `WorldClientConfig.Prediction` for a shorter leash. The epoch
-cannot decide this on its own: a rejoining client is a fresh authoritative entity whose epoch counts from its own
-zero. For the same reason the epoch compare is an ADVANCE past a high-water mark, never any inequality: the epoch
-reads 0 whenever the movement component is momentarily unreadable, so a real stream dips and recovers, and both edges
-used to fire a cut.
+**A transport reconnect whose resume snapshot places the player where they were is not a teleport** (#409). This
+matters because the reaction is expensive by design: a consumer typically answers it by warping the camera, running a
+screen transition, and re-centring everything keyed to the player's position - a terrain streamer's ring above all.
+Reporting a reconnect as a teleport made a client on a lossy link rebuild its world on every drop while the player
+stood still. Prediction is still reseeded across the reconnect (fresh transport, fresh server slot, fresh net id,
+fresh authoritative entity), but the signal is withheld unless the resume snapshot lands at least
+`PredictionSettings.HardSnapDistance` from where this client was. Tighten that via `WorldClientConfig.Prediction` for
+a shorter leash. Below the threshold the resume also GLIDES rather than cutting, so the avatar stays with the camera
+that nothing warped. The epoch cannot decide any of this on its own: a rejoining client is a fresh authoritative
+entity whose epoch counts from its own zero. For the same reason the epoch compare is an ADVANCE past a high-water
+mark, never any inequality: the epoch reads 0 whenever the movement component is momentarily unreadable, so a real
+stream dips and recovers, and both edges used to fire a cut.
+
+**The resume snapshot is what the client measures, so the server decides whether a rejoin is quiet.** A server that
+spawns the rejoiner and restores their stored position afterwards still produces TWO teleports on rejoin, and this
+is the shape `WorldServer` + `WorldPersistence` have today: `OnJoin` builds the entity at
+`WorldServerConfig.SpawnPosition`, the next `Tick` serves that spawn to the client with no gate on the outstanding
+load, and the restore lands later via `SetPlayerState(..., teleport: true)`. So the client reseeds onto the SPAWN
+(a teleport for anyone standing further than `HardSnapDistance` from it) and then takes the restore's epoch advance
+as a second one. Tracked at https://github.com/APKiwiOrg/KhaozEngine/issues/642. A game that restores position
+synchronously at the join spawn (or withholds the first snapshot until the load lands) gets the quiet reconnect
+described above.
 
 `FollowCamera3D.Warp(target)` forces the smoothed target so `EffectiveTarget == target` that frame with zero
 trailing (normal damping resumes next frame); `SnapToTarget()` collapses in-flight damping onto the current `Target`.

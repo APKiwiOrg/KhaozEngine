@@ -18,7 +18,7 @@ not validated, which it emitted 99 times on one CI run while naming a variable n
 disambiguation now reads both variables and every validation wrapper Metal has been measured handing back. Fixing
 that turned up a fact neither issue had: shader validation alone answers with `MTLGPUDebugDevice` on real Apple
 silicon and `MTLLegacySVDevice` on a hosted runner, so the check asks whether anything is validating rather than
-whether one named class came back. And the native Vulkan backend's per-draw image transition walk now stops at the set count the bound pipeline layout declares, the same limit its bind flush already stopped at, so a draw no longer barriers, and in the sharp case reopens its render pass for, images belonging to a set the current pipeline dropped. On the netcode side, a transport reconnect no longer reads to the consumer as a teleport when it resumes the player where they were, and the teleport epoch cuts on an advance rather than on any change, so a client on a lossy link stops paying a world-scale teleport reaction (a terrain streamer's whole ring, a camera cut) on every drop and on an epoch that momentarily reads as absent.
+whether one named class came back. And the native Vulkan backend's per-draw image transition walk now stops at the set count the bound pipeline layout declares, the same limit its bind flush already stopped at, so a draw no longer barriers, and in the sharp case reopens its render pass for, images belonging to a set the current pipeline dropped. On the netcode side, a transport reconnect no longer reads to the consumer as a teleport when its resume snapshot places the player where they were, and instead glides the small displacement so the avatar stays with the camera nothing warped, while the teleport epoch cuts on an advance rather than on any change, so a client on a lossy link stops paying a world-scale teleport reaction (a terrain streamer's whole ring, a camera cut) on every drop and on an epoch that momentarily reads as absent. The verdict is measured on the resume snapshot, so the server decides whether a rejoin is quiet, and a server that spawns the rejoiner before restoring their stored position still teleports them twice.
 
 ### A logger from the ambient facade follows the facade (#616)
 
@@ -181,9 +181,28 @@ changed DISCONTINUOUSLY. `Reset` (a first-ever join) still reports one unconditi
 position for the placement to be continuous with. `Reseed` measures the resume displacement instead, in 3D and in
 absolute space so an island re-anchor across the reconnect measures zero, and reports a teleport only when it
 reaches `PredictionSettings.HardSnapDistance`. Below that the session simply resumes: prediction is still reseeded
-(the render offsets, the inter-tick phase and the authoritative basis all have to be rebuilt against the new
-session), and the signal stays quiet. Consumers wanting a shorter leash tighten `HardSnapDistance` via
-`WorldClientConfig.Prediction`.
+(the inter-tick phase and the authoritative basis have to be rebuilt against the new session), and the signal stays
+quiet. Consumers wanting a shorter leash tighten `HardSnapDistance` via `WorldClientConfig.Prediction`.
+
+**The same verdict decides whether the avatar cuts or glides.** It has to, because the consumer's camera warp hangs
+off the signal. A reported teleport cuts: `Reseed` drops the render offsets, so the avatar is on the resume position
+the frame the seed lands and the warp meets it there. A quiet resume must not cut, because nothing tells that camera
+to warp, so the sub-threshold displacement is re-anchored into the decaying render offset instead and glides away
+like an ordinary correction. Dropping the offsets on both verdicts put the avatar on the resume position instantly
+while the camera eased the whole way behind it, which is the camera-flying artifact the teleport signal exists to
+prevent, inverted. The re-anchor is computed in absolute space, so a resume that arrives in a different island frame
+glides nothing.
+
+**What the client measures is the resume SNAPSHOT, so the server decides whether a rejoin is quiet, and the
+persistence path is not there yet.** `WorldServer.OnJoin` builds the rejoiner's entity at
+`WorldServerConfig.SpawnPosition`, the next `Tick` serves that spawn with no gate on the load `WorldPersistence`
+started off `PlayerJoined`, and the stored position is applied afterwards through
+`SetPlayerState(..., teleport: true)`. A player standing further than `HardSnapDistance` from the spawn therefore
+still sees two teleports on rejoin: the reseed onto the spawn, then the restore's epoch advance. That is unchanged
+from before this work (the reseed reported one unconditionally then), and it is why this change alone does not make
+a persistence-backed reconnect quiet. Filed as
+[#642](https://github.com/APKiwiOrg/KhaozEngine/issues/642) with the two fix shapes. A game that restores position
+synchronously at the join spawn gets the quiet reconnect today.
 
 **The epoch could not have decided it, which is why the fix is positional.** A rejoining client is a FRESH
 authoritative entity: both server heads allocate a new `NetId` per join (`WorldServer.OnJoin`,
@@ -201,11 +220,17 @@ high-water mark and cut only on an advance past it, so neither edge of a dip cos
 still cuts as it always did.
 
 **Tests.** Three rows in a new `WorldClientReconnectTeleportTests` drive the live loopback harness: a transport
-drop and reconnect with the player stationary (the reconnect is real, the net id is reissued, and the signal stays
-quiet), a first join, and a server teleport both before and after a reconnect. `A_remote_epoch_that_dips_and_recovers`
-feeds hand-built snapshots to drive the remote flush across a dip and its recovery, and two new
-`ClientPredictionTests` cover the continuous resume and the local epoch dip directly. All four behavioural rows
-fail against the pre-fix sources.
+drop and reconnect with the player stationary, a first join, and a server teleport both before and after a
+reconnect. The stationary row moves the player 500 m off the spawn first and runs against a harness server that
+records the departing session's final position (off `PlayerLeaving`, in absolute metres) and hands it back as the
+next join's spawn, which is the synchronous form of a load-on-join. Both halves are load-bearing: parked on the
+spawn, "resumed where they were" and "resumed at the spawn" are the same point, and the row passes whether or not
+anything was restored. Bypassing the restore fails it at `<400, 0.9, 300> -> <0, 0.9, 0>`.
+`A_remote_epoch_that_dips_and_recovers` feeds hand-built snapshots to drive the remote flush across a dip and its
+recovery. In `ClientPredictionTests`, two rows cover the continuous resume and the local epoch dip directly and two
+more pin the cut-vs-glide split at 150 m and 50 m, and a row in `ClientFrameAdoptionTests` reseeds across a frame
+change at one world position (anchor 384,256 to the origin frame), which reports a teleport plus a 480 m glide the
+moment the anchors come out of the resume measurement. Every behavioural row fails against the pre-fix sources.
 
 ## 17.36.1
 

@@ -214,9 +214,13 @@ public sealed partial class WorldClient : IDisposable
     /// reseeded across the reconnect (a rejoining client gets a fresh net id, a fresh authoritative entity, and a
     /// fresh session), but none of that moves the player, so a consumer answering this event with a world-scale
     /// reaction - re-centring a terrain streamer's ring, rebuilding an occlusion cache - does not pay it every time a
-    /// lossy link drops. The resume is treated as a teleport only when the position genuinely moved while the client
-    /// was away, by at least <see cref="PredictionSettings.HardSnapDistance"/>; tighten that setting via
+    /// lossy link drops. The resume is treated as a teleport only when the resume SNAPSHOT lands at least
+    /// <see cref="PredictionSettings.HardSnapDistance"/> from where this client was; tighten that setting via
     /// <see cref="WorldClientConfig.Prediction"/> if a consumer wants a shorter leash.</para>
+    /// <para>The snapshot is what decides it, so the server does. A server that spawns the rejoiner and restores the
+    /// stored position afterwards (which is what <c>WorldServer</c> plus <c>WorldPersistence</c> do today) still fires
+    /// this twice on a rejoin: once for the reseed onto the spawn, once for the restore's epoch advance. Tracked at
+    /// https://github.com/APKiwiOrg/KhaozEngine/issues/642.</para>
     /// </summary>
     public event Action? LocalTeleported;
 

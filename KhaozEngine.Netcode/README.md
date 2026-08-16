@@ -107,6 +107,19 @@ epoch cannot decide this: a rejoining client is a fresh authoritative entity who
 it bears no relation to the one the previous session ended on. Tighten `HardSnapDistance` if a consumer wants a
 shorter leash on what counts as "moved".
 
+The same verdict decides whether the avatar cuts or glides, because the consumer's camera warp hangs off the signal.
+A reported teleport cuts: `Reseed` drops the render offsets, so the avatar is on the resume position the frame the
+seed lands and the warp meets it there. A quiet resume glides: the sub-threshold displacement is re-anchored into the
+decaying render offset (in absolute space, so a resume arriving in a different island frame glides nothing) and
+decays away like an ordinary correction, because nothing warps the camera on that path and an instant cut would leave
+the avatar ahead of it.
+
+What the client measures is the resume snapshot, so the SERVER decides whether a reconnect is quiet. A server that
+spawns the rejoiner and restores their stored position afterwards hands the client the spawn first, which is a
+teleport for anyone standing further than `HardSnapDistance` from it, and then a second one when the restore advances
+the epoch. `KhaozEngine.NetWorld`'s `WorldServer` plus `WorldPersistence` are that shape today
+([#642](https://github.com/APKiwiOrg/KhaozEngine/issues/642)).
+
 A **frame anchor** makes a floating-origin shift invisible instead of catastrophic. `IPredictedState<T>` carries an
 optional `FrameAnchor` (a default-interface member returning `Vector2.Zero`, so a state with no frame concept is
 unchanged) naming the planar space its `Position` is expressed against, plus a `WithFrameAnchor(anchor, position)`

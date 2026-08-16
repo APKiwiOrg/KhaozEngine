@@ -47,15 +47,17 @@ public static class TileObjectProps
         return new TileRegionProps(ground, roofs);
     }
 
-    /// <summary>The yaw in radians for an instance rotation, POSITIVE per quarter turn. That sign is what makes
-    /// <c>Matrix4x4.CreateRotationY</c> turn clockwise seen from above with north up (x east, z north, y up):
-    /// under rotation 1 a mesh point on the WEST side of the tile centre lands on the NORTH side, which is the
-    /// tile-world convention (0 west, 1 north, 2 east, 3 south). The archetype's yaw offset is added on top, for
-    /// a mesh authored off-axis.</summary>
+    /// <summary>The yaw in radians for an instance rotation, NEGATIVE per quarter turn. That sign is what makes
+    /// <c>Matrix4x4.CreateRotationY</c> turn clockwise seen from above with north up: north is -z in world space
+    /// (<see cref="TileWorldSpace"/>), and a row-vector rotation by t sends the west point (-0.5, 0, 0) to
+    /// (-0.5 cos t, 0, +0.5 sin t), which only reaches the north point (0, 0, -0.5) at t of -90 degrees. Under
+    /// rotation 1 a mesh point on the WEST side of the tile centre therefore lands on the NORTH side, which is
+    /// the tile-world convention (0 west, 1 north, 2 east, 3 south). The archetype's yaw offset is folded in
+    /// under the same sign, for a mesh authored off-axis.</summary>
     public static float YawRadians(TileObjectArchetype archetype, int rotation)
     {
         ArgumentNullException.ThrowIfNull(archetype);
-        return (rotation * DegreesPerRotation + archetype.YawOffsetDegrees) * (MathF.PI / 180f);
+        return -(rotation * DegreesPerRotation + archetype.YawOffsetDegrees) * (MathF.PI / 180f);
     }
 
     /// <summary>Where an instance's mesh origin sits in world metres: the centre of the footprint it covers after
@@ -68,8 +70,8 @@ public static class TileObjectProps
         ArgumentNullException.ThrowIfNull(o);
 
         (int sizeX, int sizeZ) = TileFootprint.Rotated(archetype, o.Rotation);
-        float cx = (o.X + sizeX / 2f) * doc.TileSize;
-        float cz = (o.Z + sizeZ / 2f) * doc.TileSize;
+        float cx = TileWorldSpace.WorldX(o.X + sizeX / 2f, doc.TileSize);
+        float cz = TileWorldSpace.WorldZ(o.Z + sizeZ / 2f, doc.TileSize);
         return new Vector3(cx, doc.HeightAt(cx, cz, o.Plane), cz);
     }
 }

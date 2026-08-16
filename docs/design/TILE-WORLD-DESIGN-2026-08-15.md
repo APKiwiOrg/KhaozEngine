@@ -360,6 +360,24 @@ observer are hidden while the observer's tile carries `Indoors`, which is OSRS's
 PNG for MCP goes through the same `Render3DSnapshot` path `ke-mapedit` uses, with `TileWorldView` in place
 of `ViewportWorld`.
 
+### 7.4 Handedness: world z is minus tile z
+
+Decided at R2 plan execution: the tile-to-world mapping negates z, and every conversion goes through one
+`TileWorldSpace` helper in `KhaozEngine.TileWorld`. The document's convention is x east, z north, y up, but the
+engine renders right-handed with y up, where a camera facing +z has east on its LEFT and a top-down view with
++z up on screen has east on the left. The first captures proved it rather than argued it: the top-down with east
+right came out with north DOWN, and the perspective looking north-west put the road, which is west of the house,
+on the RIGHT. So the naive `worldZ = +tileZ * TileSize` renders the world as its own mirror image against a
+compass, and a north-up minimap would contradict what the player sees. Negating z fixes it at one seam: north
+(+tile z) becomes -world z, which is also a right-handed camera's default forward, and (east, north, up) =
+(+x, -z, +y) stays a right-handed triple, so the top-down gets north up and east right at once rather than
+having to trade one for the other. Two consequences fall out and are pinned by tests. A region-local ground mesh
+runs from 0 to MINUS 64 tiles on z, and its lattice normal takes +hz rather than -hz because the tile-z gradient
+and the world-z gradient have opposite signs. And the yaw for an instance rotation is NEGATIVE per quarter turn
+(section 7.2's `Rotation * 90 + YawOffsetDegrees`, negated), because a row-vector `CreateRotationY(t)` sends the
+west point `(-0.5, 0, 0)` to `(-0.5 cos t, 0, +0.5 sin t)`, which only reaches the north point `(0, 0, -0.5)` at
+t of -90 degrees.
+
 ## 8. The editor kernel (`KhaozEngine.Editor`) and the tile editor (`KhaozEngine.TileEditor`)
 
 ### 8.1 Kernel extraction

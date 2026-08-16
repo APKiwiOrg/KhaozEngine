@@ -16,7 +16,7 @@ public class TileWorldViewTests
 {
     // Near enough to the house that every one of its props is inside the default draw radius, so a missing draw
     // is the roof rule or a lost handle, never the distance cull.
-    static readonly Vector3 HouseFocus = new(11f, 0f, 10.5f);
+    static readonly Vector3 HouseFocus = new(11f, 0f, -10.5f);
 
     // The house's ten wall-family objects on plane 0 and its six roof tiles on plane 1.
     const int HouseGroundProps = 10;

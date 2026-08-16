@@ -7,7 +7,8 @@ namespace KhaozEngine.TileWorld;
 public readonly record struct TileHit(int X, int Z, int Plane, Vector3 Point, float Distance);
 
 /// <summary>Ray against the tile lattice, GPU-free, so the editor's click and the game's click-to-walk share
-/// it. World units are tiles times <see cref="TileWorldDocument.TileSize"/> on x/z and metres on y.</summary>
+/// it. World units are tiles times <see cref="TileWorldDocument.TileSize"/> on x/z and metres on y, with world z
+/// running opposite to tile z through <see cref="TileWorldSpace"/>.</summary>
 public static class TileRaycast
 {
     /// <summary>The first ground hit along the ray on this plane, or null when it crosses no solid tile.
@@ -19,10 +20,13 @@ public static class TileRaycast
         Vector3 dir = Vector3.Normalize(direction);
         float ts = doc.TileSize;
 
-        // 2D DDA over tiles in XZ.
-        float px = origin.X / ts, pz = origin.Z / ts;
+        // 2D DDA over tiles in XZ, run entirely in TILE space. The world-to-tile map is linear (a scale plus a
+        // flip of z, no translation), so a DIRECTION converts exactly as a position does, and the flip is what
+        // makes a ray with a positive world dir.Z walk toward DECREASING tile z. Everything below reads the
+        // signs off dx and dz, so nothing else in the march has to know about the flip.
+        float px = TileWorldSpace.TileX(origin.X, ts), pz = TileWorldSpace.TileZ(origin.Z, ts);
         int tx = (int)MathF.Floor(px), tz = (int)MathF.Floor(pz);
-        float dx = dir.X / ts, dz = dir.Z / ts;
+        float dx = TileWorldSpace.TileX(dir.X, ts), dz = TileWorldSpace.TileZ(dir.Z, ts);
         bool vertical = MathF.Abs(dx) < 1e-6f && MathF.Abs(dz) < 1e-6f;
         int stepX = dx > 0 ? 1 : -1, stepZ = dz > 0 ? 1 : -1;
         float tDeltaX = MathF.Abs(dx) < 1e-9f ? float.PositiveInfinity : MathF.Abs(1f / dx);
@@ -49,10 +53,10 @@ public static class TileRaycast
         float ts = doc.TileSize;
         short h00 = doc.CornerHeightCm(tx, tz, plane), h10 = doc.CornerHeightCm(tx + 1, tz, plane);
         short h01 = doc.CornerHeightCm(tx, tz + 1, plane), h11 = doc.CornerHeightCm(tx + 1, tz + 1, plane);
-        var sw = new Vector3(tx * ts, h00 * 0.01f, tz * ts);
-        var se = new Vector3((tx + 1) * ts, h10 * 0.01f, tz * ts);
-        var nw = new Vector3(tx * ts, h01 * 0.01f, (tz + 1) * ts);
-        var ne = new Vector3((tx + 1) * ts, h11 * 0.01f, (tz + 1) * ts);
+        Vector3 sw = TileWorldSpace.ToWorld(tx, h00 * 0.01f, tz, ts);
+        Vector3 se = TileWorldSpace.ToWorld(tx + 1, h10 * 0.01f, tz, ts);
+        Vector3 nw = TileWorldSpace.ToWorld(tx, h01 * 0.01f, tz + 1, ts);
+        Vector3 ne = TileWorldSpace.ToWorld(tx + 1, h11 * 0.01f, tz + 1, ts);
         TileOverlayShape authored = doc.GetOverlayShape(tx, tz, plane);
         int rotation = doc.GetOverlayRotation(tx, tz, plane);
         bool swne = TileTriangulation.SplitSwNe(h00, h10, h01, h11, authored, rotation);

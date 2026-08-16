@@ -13,6 +13,17 @@ are `TileObject.X/Z` and `TileMarker.X/Z`. The owning region is always `RegionCo
 a negative coordinate lands in a negative region with a local coordinate in 0..63. **Rotation is quarter turns
 clockwise from above**, 0 west, 1 north, 2 east, 3 south, on objects, overlay shapes and prefab stamps.
 
+**World z is MINUS tile z, and `TileWorldSpace` is the only place that knows it.** The engine renders in a
+right-handed space with y up, where a camera facing +z has +x on its left, so mapping the document's north
+(+tile z) onto +world z renders the world mirrored against a compass and makes a north-up minimap contradict
+what the player sees. Negating z instead puts north on -z, which is also a right-handed camera's default
+forward, and keeps (east, north, up) = (+x, -z, +y) a right-handed triple, so one top-down view has north up
+AND east right. `TileWorldSpace.WorldX/WorldZ/TileX/TileZ/ToWorld` are the whole seam: every conversion between
+the two spaces goes through them, including `HeightAt`, the raycast, the ground mesher's vertices and region
+transform, and the prop anchors. Two consequences worth stating outright: a region-local ground mesh runs from
+0 to MINUS 64 tiles on z, and an object's yaw is NEGATIVE per quarter turn, which is what makes a rotation turn
+clockwise viewed from above with north up.
+
 `TileRect` is a rect of world tiles with EXCLUSIVE far edges (`X1`, `Z1`, plus `FromCorners`, `Expand`,
 `Intersect`, `Union`, `Intersects`, `Contains`), and `TileDirection` with `TileDirections.All/Delta/IsDiagonal`
 gives the eight step directions in the fixed W, E, S, N, SW, SE, NW, NE order the pathfinder needs.

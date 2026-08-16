@@ -49,12 +49,17 @@ public static partial class TileGroundMesher
         return mesh.ToMesh();
     }
 
-    /// <summary>Where a region's mesh sits in the world: its SW corner, with Y left at 0 because the mesh
-    /// already carries absolute corner heights.</summary>
+    /// <summary>Where a region's mesh sits in the world: the corner of its lowest tile coordinates, with Y left
+    /// at 0 because the mesh already carries absolute corner heights. The mesh itself is region-LOCAL and runs
+    /// from 0 to +64 tiles on x but from 0 to MINUS 64 tiles on z, because world z is minus tile z
+    /// (<see cref="TileWorldSpace"/>).</summary>
     public static Matrix4x4 WorldMatrix(TileWorldDocument doc, RegionCoord region)
     {
         ArgumentNullException.ThrowIfNull(doc);
-        return Matrix4x4.CreateTranslation(region.OriginX * doc.TileSize, 0f, region.OriginZ * doc.TileSize);
+        return Matrix4x4.CreateTranslation(
+            TileWorldSpace.WorldX(region.OriginX, doc.TileSize),
+            0f,
+            TileWorldSpace.WorldZ(region.OriginZ, doc.TileSize));
     }
 
     /// <summary>The smooth normal at a lattice corner, from central differences over the global height lattice.
@@ -65,7 +70,10 @@ public static partial class TileGroundMesher
         float hx = doc.CornerHeight(worldX + 1, worldZ, plane) - doc.CornerHeight(worldX - 1, worldZ, plane);
         float hz = doc.CornerHeight(worldX, worldZ + 1, plane) - doc.CornerHeight(worldX, worldZ - 1, plane);
         float span = 2f * doc.TileSize;
-        return Vector3.Normalize(new Vector3(-hx / span, 1f, -hz / span));
+        // The normal is WORLD space, and hz is a difference in TILE z, which runs opposite to world z. So the
+        // world-z gradient of the surface is -hz/span, and negating that for the normal leaves +hz/span: ground
+        // rising toward north (-world z) tilts its normal toward +world z, which is south.
+        return Vector3.Normalize(new Vector3(-hx / span, 1f, hz / span));
     }
 
     /// <summary>The blended underlay colour at a lattice corner: the average of the jittered material colours of

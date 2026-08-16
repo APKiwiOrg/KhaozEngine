@@ -18,10 +18,12 @@ public interface ITileMeshResolver
 /// <summary>A resolver with no content behind it: one procedural vertex-coloured box per archetype, sized from
 /// the archetype's footprint and shaped by its collision kind, so a world renders recognisably before any mesh
 /// is authored. Boxes are centred on the footprint in x and z with their base at y 0, matching the anchor the
-/// object-to-prop pass produces, and a wall hugs the WEST edge of its footprint so instance rotation 0 reads as
-/// a west wall. Only the footprint extent scales with the tile size: every thickness and height here (wall,
-/// roof, tree, post, the default box) is an absolute measurement in metres, so a bigger tile makes a wider
-/// wall, never a taller one. Used by the tests and as the engine's default placeholder.</summary>
+/// object-to-prop pass produces, and a wall hugs the WEST edge of its footprint (-x) so instance rotation 0
+/// reads as a west wall, with a corner wall adding the north edge, which is -z rather than +z because world z
+/// is minus tile z (<see cref="TileWorldSpace"/>). Only the footprint extent scales with the tile size: every
+/// thickness and height here (wall, roof, tree, post, the default box) is an absolute measurement in metres, so
+/// a bigger tile makes a wider wall, never a taller one. Used by the tests and as the engine's default
+/// placeholder.</summary>
 public sealed class GreyboxMeshResolver : ITileMeshResolver
 {
     /// <summary>Thickness in metres of a wall slab, across the edge it sits on.</summary>
@@ -158,8 +160,10 @@ public sealed class GreyboxMeshResolver : ITileMeshResolver
     static GltfMesh WestSlab(float halfX, float halfZ, Vector4 color) =>
         Box(new Vector3(-halfX, 0f, -halfZ), new Vector3(-halfX + WallThickness, WallHeight, halfZ), color);
 
+    // North is MINUS z in world space (TileWorldSpace), so the north slab hugs the -z face of the footprint, not
+    // the +z one a tile-space reading of the axis would suggest.
     static GltfMesh NorthSlab(float halfX, float halfZ, Vector4 color) =>
-        Box(new Vector3(-halfX, 0f, halfZ - WallThickness), new Vector3(halfX, WallHeight, halfZ), color);
+        Box(new Vector3(-halfX, 0f, -halfZ), new Vector3(halfX, WallHeight, -halfZ + WallThickness), color);
 
     static GltfMesh Combine(GltfMesh first, GltfMesh second)
     {

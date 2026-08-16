@@ -72,10 +72,11 @@ public static partial class TileGroundMesher
     {
         int cx = c.OriginX + lx + dx;
         int cz = c.OriginZ + lz + dz;
-        var position = new Vector3(
-            (lx + dx) * c.TileSize,
+        Vector3 position = TileWorldSpace.ToWorld(
+            lx + dx,
             c.Doc.CornerHeightCm(cx, cz, c.Plane) * 0.01f,
-            (lz + dz) * c.TileSize);
+            lz + dz,
+            c.TileSize);
         Vector3 normal = c.Options.SmoothNormals ? CornerNormal(c.Doc, cx, cz, c.Plane) : Vector3.UnitY;
         Vector4 color = flat ?? CornerColor(c.Doc, c.Catalogs, cx, cz, c.Plane, c.Options);
         return new LatticePoint(position, normal, color, new Vector2(dx, dz));
@@ -105,7 +106,7 @@ public static partial class TileGroundMesher
             Uv = uv;
         }
 
-        /// <summary>Region-local position, with absolute Y in metres.</summary>
+        /// <summary>Region-local position (z negative, see <see cref="TileWorldSpace"/>), absolute Y in metres.</summary>
         public Vector3 Position { get; }
         /// <summary>The lattice normal here.</summary>
         public Vector3 Normal { get; }

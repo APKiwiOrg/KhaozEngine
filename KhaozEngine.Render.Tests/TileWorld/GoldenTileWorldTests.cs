@@ -33,9 +33,10 @@ public class GoldenTileWorldTests
         scene.Post.BackgroundColor = new Color(0.08f, 0.09f, 0.12f, 1f);
     };
 
-    /// <summary>The greybox world from an eye south-east of the house and above it, looking down at the house. The
-    /// observer defaults to the tile under the target, which the house flags indoors, so this is the roofs-hidden
-    /// half of the pair.</summary>
+    /// <summary>The greybox world from an eye south-east of the house and above it, looking down at the house,
+    /// which is north-west of the eye. World z is minus tile z, so the house's tile (12, 11) is world (12, -11)
+    /// and south-east of it is +x and +z. The observer defaults to the tile under the target, which the house
+    /// flags indoors, so this is the roofs-hidden half of the pair.</summary>
     [GpuFact]
     public void Golden3D_TileWorld_Greybox()
     {
@@ -44,8 +45,8 @@ public class GoldenTileWorldTests
             doc,
             TileRenderTestData.Catalogs,
             new GreyboxMeshResolver(doc.TileSize),
-            eye: new Vector3(30f, 18f, -6f),
-            target: new Vector3(12f, 0f, 11f),
+            eye: new Vector3(30f, 18f, 6f),
+            target: new Vector3(12f, 0f, -11f),
             PerspectiveWidth,
             PerspectiveHeight,
             configureScene: FlatBackground);
@@ -54,7 +55,8 @@ public class GoldenTileWorldTests
     }
 
     /// <summary>The same world straight down over its south-west 32 tiles at four pixels a tile, which covers the
-    /// road, the house and the hill. The observer stands above the world, so this is the roofs-drawn half.</summary>
+    /// road, the house and the hill. The observer stands above the world, so this is the roofs-drawn half. North
+    /// is UP and east is RIGHT on the image, both at once, which is what the tile-to-world z flip buys.</summary>
     [GpuFact]
     public void Golden3D_TileWorld_TopDown()
     {

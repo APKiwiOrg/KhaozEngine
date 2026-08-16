@@ -29,7 +29,8 @@ public class TileGroundMesherTests
         foreach (ModelVertex v in mesh.Vertices)
         {
             Assert.InRange(v.Position.X, 0f, span);
-            Assert.InRange(v.Position.Z, 0f, span);
+            // The region-local mesh runs from 0 to MINUS the region span on z, because world z is minus tile z.
+            Assert.InRange(v.Position.Z, -span, 0f);
             if (NearTheHill(v.Position, doc.TileSize)) continue;
             Assert.True(v.Normal.Y > 0.99f, $"corner ({v.Position.X}, {v.Position.Z}) should be flat");
         }
@@ -59,11 +60,17 @@ public class TileGroundMesherTests
         TileWorldDocument doc = TileRenderTestData.HillWorld();
         GltfMesh mesh = Require(doc, 0);
 
-        ModelVertex raised = FindCorner(mesh, 21f * doc.TileSize, 21f * doc.TileSize);
+        ModelVertex raised = FindCorner(mesh, doc, 21f, 21f);
         Assert.Equal(2f, raised.Position.Y, 1e-5f);
+        Assert.Equal(-21f * doc.TileSize, raised.Position.Z, 1e-5f);
 
         // The lattice climbs toward +x on the hill's west flank, so the normal there leans toward -x.
         Assert.True(TileGroundMesher.CornerNormal(doc, 20, 21, 0).X < 0f);
+        // The south flank climbs toward NORTH, which is -world z, so the normal there leans toward +world z.
+        // A normal leaning -z here would be the mirrored lighting the z flip exists to prevent.
+        Assert.True(TileGroundMesher.CornerNormal(doc, 21, 20, 0).Z > 0f);
+        // And the north flank, where the lattice falls away northward, leans the other way.
+        Assert.True(TileGroundMesher.CornerNormal(doc, 21, 22, 0).Z < 0f);
         Assert.Equal(Vector3.UnitY, TileGroundMesher.CornerNormal(doc, 30, 30, 0));
     }
 
@@ -78,9 +85,8 @@ public class TileGroundMesherTests
         Assert.NotNull(westMesh);
         Assert.NotNull(eastMesh);
 
-        float z = 10f * doc.TileSize;
-        ModelVertex a = FindCorner(westMesh!, TileRegion.Size * doc.TileSize, z);
-        ModelVertex b = FindCorner(eastMesh!, 0f, z);
+        ModelVertex a = FindCorner(westMesh!, doc, TileRegion.Size, 10f);
+        ModelVertex b = FindCorner(eastMesh!, doc, 0f, 10f);
 
         Vector3 wa = Vector3.Transform(a.Position, TileGroundMesher.WorldMatrix(doc, west));
         Vector3 wb = Vector3.Transform(b.Position, TileGroundMesher.WorldMatrix(doc, east));
@@ -197,8 +203,9 @@ public class TileGroundMesherTests
         Vector4 east = TileGroundMesher.CornerColor(doc, catalogs, x + 1, z, 0, options);
         Assert.NotEqual(west, east);
 
-        float midX = (x + 0.5f) * doc.TileSize;
-        ModelVertex mid = FindCorner(mesh, midX, z * doc.TileSize);
+        float midX = TileWorldSpace.WorldX(x + 0.5f, doc.TileSize);
+        float southZ = TileWorldSpace.WorldZ(z, doc.TileSize);
+        ModelVertex mid = FindCorner(mesh, doc, x + 0.5f, z);
         Assert.Equal(0.5f, mid.Position.Y, 1e-5f);
 
         // The point is on the cut, so the mesh carries both a painted copy and blended ones. The blended copies
@@ -211,7 +218,7 @@ public class TileGroundMesherTests
             foreach (ModelVertex v in new[] { t.A, t.B, t.C })
             {
                 if (MathF.Abs(v.Position.X - midX) > 1e-4f) continue;
-                if (MathF.Abs(v.Position.Z - z * doc.TileSize) > 1e-4f) continue;
+                if (MathF.Abs(v.Position.Z - southZ) > 1e-4f) continue;
                 Assert.Equal((west + east) * 0.5f, v.Color);
                 blended = true;
             }
@@ -282,17 +289,17 @@ public class TileGroundMesherTests
 
         // Triangles (SW, SE, NE) and (SW, NE, NW): the split's two ends appear in both, the others once each.
         List<ModelVertex> swne = TileVertices(mesh, doc, 40, 40);
-        Assert.Equal(2, CountAt(swne, 40f, 40f));
-        Assert.Equal(2, CountAt(swne, 41f, 41f));
-        Assert.Equal(1, CountAt(swne, 41f, 40f));
-        Assert.Equal(1, CountAt(swne, 40f, 41f));
+        Assert.Equal(2, CountAt(swne, doc, 40f, 40f));
+        Assert.Equal(2, CountAt(swne, doc, 41f, 41f));
+        Assert.Equal(1, CountAt(swne, doc, 41f, 40f));
+        Assert.Equal(1, CountAt(swne, doc, 40f, 41f));
 
         // Triangles (SW, SE, NW) and (SE, NE, NW).
         List<ModelVertex> nwse = TileVertices(mesh, doc, 44, 44);
-        Assert.Equal(2, CountAt(nwse, 45f, 44f));
-        Assert.Equal(2, CountAt(nwse, 44f, 45f));
-        Assert.Equal(1, CountAt(nwse, 44f, 44f));
-        Assert.Equal(1, CountAt(nwse, 45f, 45f));
+        Assert.Equal(2, CountAt(nwse, doc, 45f, 44f));
+        Assert.Equal(2, CountAt(nwse, doc, 44f, 45f));
+        Assert.Equal(1, CountAt(nwse, doc, 44f, 44f));
+        Assert.Equal(1, CountAt(nwse, doc, 45f, 45f));
     }
 
     [Fact]
@@ -302,10 +309,10 @@ public class TileGroundMesherTests
         doc.TileSize = 2f;
         GltfMesh mesh = Require(doc, 0);
 
-        ModelVertex raised = FindCorner(mesh, 42f, 42f);
+        ModelVertex raised = FindCorner(mesh, doc, 21f, 21f);
         Assert.Equal(42f, raised.Position.X, 1e-5f);
         Assert.Equal(2f, raised.Position.Y, 1e-5f);
-        Assert.Equal(42f, raised.Position.Z, 1e-5f);
+        Assert.Equal(-42f, raised.Position.Z, 1e-5f);
 
         // The same 2 m rise spread over a 2 m tile is half the gradient, so the normal stands closer to straight up.
         TileWorldDocument unit = TileRenderTestData.HillWorld();
@@ -315,6 +322,12 @@ public class TileGroundMesherTests
         Assert.Equal(128f, world.Translation.X, 1e-5f);
         Assert.Equal(0f, world.Translation.Y, 1e-5f);
         Assert.Equal(0f, world.Translation.Z, 1e-5f);
+
+        // A region NORTH of the origin translates to negative world z, which is what pins the sign: the x and z
+        // legs of the transform would be indistinguishable off region (1, 0) alone.
+        Matrix4x4 northward = TileGroundMesher.WorldMatrix(doc, new RegionCoord(0, 1));
+        Assert.Equal(0f, northward.Translation.X, 1e-5f);
+        Assert.Equal(-128f, northward.Translation.Z, 1e-5f);
     }
 
     [Fact]
@@ -335,7 +348,7 @@ public class TileGroundMesherTests
 
         // The corner the grass tile shares with the NoDraw dirt tile. A NoDraw tile draws no ground of its own but
         // still contributes its underlay to the blend, so this corner lands between the two materials.
-        ModelVertex shared = FindCorner(mesh, 41f, 40f);
+        ModelVertex shared = FindCorner(mesh, doc, 41f, 40f);
         Assert.InRange(shared.Color.X, grass + 0.05f, dirt - 0.05f);
     }
 
@@ -365,8 +378,8 @@ public class TileGroundMesherTests
     // The hill raises corners 20..22, so only corners 19..23 on both axes can see a height difference.
     static bool NearTheHill(Vector3 p, float tileSize)
     {
-        int cx = (int)MathF.Round(p.X / tileSize);
-        int cz = (int)MathF.Round(p.Z / tileSize);
+        int cx = (int)MathF.Round(TileWorldSpace.TileX(p.X, tileSize));
+        int cz = (int)MathF.Round(TileWorldSpace.TileZ(p.Z, tileSize));
         return cx >= TileRenderTestData.HillMin - 1 && cx <= TileRenderTestData.HillMax + 1
             && cz >= TileRenderTestData.HillMin - 1 && cz <= TileRenderTestData.HillMax + 1;
     }
@@ -382,8 +395,8 @@ public class TileGroundMesherTests
             ModelVertex b = mesh.Vertices[mesh.Indices32[t * 3 + 1]];
             ModelVertex c = mesh.Vertices[mesh.Indices32[t * 3 + 2]];
             Vector3 centre = (a.Position + b.Position + c.Position) / 3f;
-            if ((int)MathF.Floor(centre.X / doc.TileSize) != localX) continue;
-            if ((int)MathF.Floor(centre.Z / doc.TileSize) != localZ) continue;
+            if ((int)MathF.Floor(TileWorldSpace.TileX(centre.X, doc.TileSize)) != localX) continue;
+            if ((int)MathF.Floor(TileWorldSpace.TileZ(centre.Z, doc.TileSize)) != localZ) continue;
             found.Add(new MeshTriangle(a, b, c));
         }
         return found;
@@ -422,12 +435,13 @@ public class TileGroundMesherTests
     static bool IsFlat(in MeshTriangle t, Vector4 color) =>
         t.A.Color == color && t.B.Color == color && t.C.Color == color;
 
-    // The triangle's centroid in tile-local terms, 0 to 1 across whichever tile it belongs to.
+    // The triangle's centroid in tile-local terms, 0 to 1 across whichever tile it belongs to. Tile terms, not
+    // world ones, so the y component still reads "north is up" whichever way world z runs.
     static Vector2 LocalCentroid(in MeshTriangle t, TileWorldDocument doc)
     {
         Vector3 centre = (t.A.Position + t.B.Position + t.C.Position) / 3f;
-        float x = centre.X / doc.TileSize;
-        float z = centre.Z / doc.TileSize;
+        float x = TileWorldSpace.TileX(centre.X, doc.TileSize);
+        float z = TileWorldSpace.TileZ(centre.Z, doc.TileSize);
         return new Vector2(x - MathF.Floor(x), z - MathF.Floor(z));
     }
 
@@ -455,9 +469,12 @@ public class TileGroundMesherTests
         public ModelVertex C { get; }
     }
 
-    // The one vertex the mesh carries at this region-local corner, asserting every copy of it agrees.
-    static ModelVertex FindCorner(GltfMesh mesh, float x, float z)
+    // The one vertex the mesh carries at this region-local corner, asserting every copy of it agrees. The corner
+    // is named in TILE units and converted here, so no call site has to spell the z flip out.
+    static ModelVertex FindCorner(GltfMesh mesh, TileWorldDocument doc, float cornerX, float cornerZ)
     {
+        float x = TileWorldSpace.WorldX(cornerX, doc.TileSize);
+        float z = TileWorldSpace.WorldZ(cornerZ, doc.TileSize);
         ModelVertex? first = null;
         foreach (ModelVertex v in mesh.Vertices)
         {
@@ -466,14 +483,16 @@ public class TileGroundMesherTests
             Assert.Equal(first.Value.Position, v.Position);
             Assert.Equal(first.Value.Normal, v.Normal);
         }
-        Assert.True(first.HasValue, $"no vertex at region-local ({x}, {z})");
+        Assert.True(first.HasValue, $"no vertex at region-local tile corner ({cornerX}, {cornerZ})");
         return first!.Value;
     }
 
-    // How many of these vertices sit at the region-local corner (x, z), which is how a tile's emitted triangle pair
+    // How many of these vertices sit at the region-local tile corner, which is how a tile's emitted triangle pair
     // is read back: the two ends of the split diagonal are each in both triangles, the other two corners in one.
-    static int CountAt(List<ModelVertex> vertices, float x, float z)
+    static int CountAt(List<ModelVertex> vertices, TileWorldDocument doc, float cornerX, float cornerZ)
     {
+        float x = TileWorldSpace.WorldX(cornerX, doc.TileSize);
+        float z = TileWorldSpace.WorldZ(cornerZ, doc.TileSize);
         int found = 0;
         foreach (ModelVertex v in vertices)
             if (MathF.Abs(v.Position.X - x) < 1e-4f && MathF.Abs(v.Position.Z - z) < 1e-4f) found++;

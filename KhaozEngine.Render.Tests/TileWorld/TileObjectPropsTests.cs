@@ -18,6 +18,7 @@ public class TileObjectPropsTests
 
     // The convention test the whole yaw sign hangs off: a mesh point on the WEST side of the tile centre has to
     // land on the NORTH side after one quarter turn, because rotation counts quarter turns clockwise from above.
+    // North is -world z, so the landing point is (0, 0, -0.5) and the yaw that gets there is NEGATIVE.
     [Fact]
     public void Rotation_1_turns_a_west_edge_point_to_the_north_edge()
     {
@@ -25,14 +26,15 @@ public class TileObjectPropsTests
         Vector3 turned = Vector3.Transform(new Vector3(-0.5f, 0f, 0f), Matrix4x4.CreateRotationY(yaw));
         Assert.Equal(0f, turned.X, Tolerance);
         Assert.Equal(0f, turned.Y, Tolerance);
-        Assert.Equal(0.5f, turned.Z, Tolerance);
+        Assert.Equal(-0.5f, turned.Z, Tolerance);
+        Assert.True(yaw < 0f, "negative yaw is what turns clockwise viewed from above with north up");
     }
 
     [Theory]
-    [InlineData(0, -0.5f, 0f)]   // west stays west
-    [InlineData(1, 0f, 0.5f)]    // west turns north
-    [InlineData(2, 0.5f, 0f)]    // west turns east
-    [InlineData(3, 0f, -0.5f)]   // west turns south
+    [InlineData(0, -0.5f, 0f)]    // west stays west
+    [InlineData(1, 0f, -0.5f)]    // west turns north, which is -z
+    [InlineData(2, 0.5f, 0f)]     // west turns east
+    [InlineData(3, 0f, 0.5f)]     // west turns south, which is +z
     public void Every_rotation_turns_the_west_edge_point_clockwise(int rotation, float x, float z)
     {
         float yaw = TileObjectProps.YawRadians(Archetype("wall"), rotation);
@@ -61,14 +63,14 @@ public class TileObjectPropsTests
         // and the tile south of it is the doorway.
         PropPlacement wall = props.Ground.Single(p =>
             p.Id == "wall" &&
-            p.X == (TileRenderTestData.HouseDoorX + 0.5f) * doc.TileSize &&
-            p.Z == (TileRenderTestData.HouseMaxZ + 0.5f) * doc.TileSize);
+            p.X == TileWorldSpace.WorldX(TileRenderTestData.HouseDoorX + 0.5f, doc.TileSize) &&
+            p.Z == TileWorldSpace.WorldZ(TileRenderTestData.HouseMaxZ + 0.5f, doc.TileSize));
 
         // Assert the north yaw directly rather than against YawRadians, so this test still fails if the whole
         // convention flips sign underneath both of them.
         Vector3 turned = Vector3.Transform(new Vector3(-0.5f, 0f, 0f), Matrix4x4.CreateRotationY(wall.Yaw));
         Assert.Equal(0f, turned.X, Tolerance);
-        Assert.Equal(0.5f, turned.Z, Tolerance);
+        Assert.Equal(-0.5f, turned.Z, Tolerance);
 
         Assert.Equal(0f, wall.Y, Tolerance);
         Assert.Equal(1f, wall.Scale, Tolerance);
@@ -84,8 +86,9 @@ public class TileObjectPropsTests
         TileRegionProps props = TileObjectProps.Build(doc, TileRenderTestData.Catalogs, TileRenderTestData.Region, 0);
         PropPlacement rock = props.Ground.Single(p => p.Id == "rock_large");
 
-        Assert.Equal(11f * doc.TileSize, rock.X, Tolerance);
-        Assert.Equal(11f * doc.TileSize, rock.Z, Tolerance);
+        Assert.Equal(TileWorldSpace.WorldX(11f, doc.TileSize), rock.X, Tolerance);
+        Assert.Equal(TileWorldSpace.WorldZ(11f, doc.TileSize), rock.Z, Tolerance);
+        Assert.Equal(-11f, rock.Z, Tolerance);
     }
 
     [Fact]
@@ -97,8 +100,8 @@ public class TileObjectPropsTests
         TileRegionProps props = TileObjectProps.Build(doc, TileRenderTestData.Catalogs, TileRenderTestData.Region, 0);
         PropPlacement bench = props.Ground.Single(p => p.Id == "bench");
 
-        Assert.Equal(21f * doc.TileSize, bench.X, Tolerance);
-        Assert.Equal(20.5f * doc.TileSize, bench.Z, Tolerance);
+        Assert.Equal(TileWorldSpace.WorldX(21f, doc.TileSize), bench.X, Tolerance);
+        Assert.Equal(TileWorldSpace.WorldZ(20.5f, doc.TileSize), bench.Z, Tolerance);
     }
 
     [Fact]
@@ -112,7 +115,7 @@ public class TileObjectPropsTests
         PropPlacement rock = props.Ground.Single(p => p.Id == "rock_large");
 
         Assert.Equal(22f, rock.X, Tolerance);
-        Assert.Equal(22f, rock.Z, Tolerance);
+        Assert.Equal(-22f, rock.Z, Tolerance);
     }
 
     [Fact]
@@ -138,14 +141,14 @@ public class TileObjectPropsTests
         TileRegionProps props = TileObjectProps.Build(doc, TileRenderTestData.Catalogs, TileRenderTestData.Region, 0);
         PropPlacement tree = props.Ground.Single(p => p.Id == "tree");
 
-        // HeightAt takes WORLD units and divides by the tile size itself, so the anchor has to hand it the
-        // scaled centre. Anchoring inside the raised block separates the two readings: the world-unit centre
-        // 41 comes back as tile 20.5 and finds the hill, while the unscaled tile centre 20.5 would be divided
-        // again down to tile 10.25 and find flat ground.
+        // HeightAt takes WORLD units and converts them itself, so the anchor has to hand it the scaled centre.
+        // Anchoring inside the raised block separates the two readings: the world-unit centre (41, -41) comes
+        // back as tile (20.5, 20.5) and finds the hill, while the unscaled tile centre would be scaled again
+        // down to tile 10.25 and find flat ground.
         Assert.Equal(41f, tree.X, Tolerance);
-        Assert.Equal(41f, tree.Z, Tolerance);
+        Assert.Equal(-41f, tree.Z, Tolerance);
         Assert.Equal(TileRenderTestData.HillHeightCm / 100f, tree.Y, Tolerance);
-        Assert.Equal(0f, doc.HeightAt(20.5f, 20.5f, 0), Tolerance);
+        Assert.Equal(0f, doc.HeightAt(20.5f, -20.5f, 0), Tolerance);
     }
 
     [Fact]
@@ -249,8 +252,21 @@ public class TileObjectPropsTests
         // Two boxes, so twice a box's 24 vertices and 36 indices.
         Assert.Equal(48, corner.Vertices.Length);
         Assert.Equal(72, corner.Indices32.Length);
+        // Together the two slabs fill the footprint's full extent on both axes: the west one runs the full depth
+        // and the north one the full width.
         Assert.Equal(-0.5f, corner.Vertices.Min(v => v.Position.X), Tolerance);
+        Assert.Equal(0.5f, corner.Vertices.Max(v => v.Position.X), Tolerance);
+        Assert.Equal(-0.5f, corner.Vertices.Min(v => v.Position.Z), Tolerance);
         Assert.Equal(0.5f, corner.Vertices.Max(v => v.Position.Z), Tolerance);
+
+        // The two slabs are the only geometry here, so every vertex east of the west slab's inner face belongs to
+        // the north one. That is what pins the north edge at world -z: with north on +z they would all sit at the
+        // far side instead, and the corner would read as south west.
+        float inner = -0.5f + GreyboxMeshResolver.WallThickness;
+        Assert.All(
+            corner.Vertices.Where(v => v.Position.X > inner + Tolerance),
+            v => Assert.True(v.Position.Z <= inner + Tolerance,
+                $"a north slab vertex should sit at the -z edge, not z {v.Position.Z}"));
     }
 
     [Fact]

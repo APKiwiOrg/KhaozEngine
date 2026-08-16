@@ -19,15 +19,11 @@ public static class TileWorldSnapshot
     public const float TopDownTiltRadians = 0.017f;
 
     /// <summary>The top-down camera's azimuth in radians, which decides which way the compass falls on the image.
-    /// Zero puts world +x (east) to the RIGHT and world +z (north) DOWN, which is what this actually renders (the
-    /// two captures were read off the image, not derived).
-    /// <para>North up AND east right cannot both be had, which is worth stating because a map reader will expect
-    /// them. With x east, z north and y up, east cross north points DOWN, so that triple is left handed while the
-    /// render space is right handed, and a camera looking down the world's up axis has to give one of them up. A
-    /// vertical image flip would buy north up at the price of MIRRORING every shape, which is strictly worse than
-    /// a compass that reads the other way. So the choice is between this and its 180 degree rotation
-    /// (<see cref="MathF.PI"/> here, which gives north up and east left), and east-right wins by matching the map
-    /// editor's own top-down capture, so the engine's two orthographic map renders agree.</para></summary>
+    /// Zero puts world +x to the RIGHT and world -z UP, and since world z is minus tile z
+    /// (<see cref="TileWorldSpace"/>) that is east right and NORTH UP, the pair a map reader expects. Both are
+    /// had at once because (east, north, up) = (+x, -z, +y) is a right-handed triple, which is the whole reason
+    /// the tile-to-world seam flips z: mapping north onto +z would make the triple left handed against a right
+    /// handed render space, and a camera looking down would then have to give one of them up.</summary>
     public const float TopDownAzimuth = 0f;
 
     /// <summary>Metres of vertical slack added above the highest and below the lowest sampled corner before the
@@ -93,7 +89,8 @@ public static class TileWorldSnapshot
         int height = rect.Height * pxPerTile;
         float tileSize = doc.TileSize;
         (float midY, float spanY) = VerticalFrame(doc, rect, plane);
-        var centre = new Vector3((rect.X + rect.Width * 0.5f) * tileSize, midY, (rect.Z + rect.Height * 0.5f) * tileSize);
+        Vector3 centre = TileWorldSpace.ToWorld(
+            rect.X + rect.Width * 0.5f, midY, rect.Z + rect.Height * 0.5f, tileSize);
 
         TileWorldViewOptions viewOptions = options ?? TopDownDefaults(rect, tileSize);
         List<RegionCoord> regions = RegionsTouching(doc, rect);
@@ -169,7 +166,7 @@ public static class TileWorldSnapshot
         Vector3 unit = Vector3.Normalize(look);
 
         float tileSize = doc.TileSize;
-        TileCoord subject = observer ?? new TileCoord(TileAt(target.X, tileSize), TileAt(target.Z, tileSize), 0);
+        TileCoord subject = observer ?? new TileCoord(TileXAt(target.X, tileSize), TileZAt(target.Z, tileSize), 0);
         List<RegionCoord> regions = RegionsAround(doc, subject.Region, PerspectiveRegionRadius);
         TileWorldViewOptions viewOptions = options ?? new TileWorldViewOptions();
 
@@ -277,6 +274,9 @@ public static class TileWorldSnapshot
     }
 
     // Floors rather than truncates, so a world point west or south of the origin lands in the tile that covers it
-    // instead of the one on the other side of zero.
-    static int TileAt(float world, float tileSize) => (int)MathF.Floor(world / tileSize);
+    // instead of the one on the other side of zero. Two of them because the two axes convert differently: world z
+    // is minus tile z (TileWorldSpace), so one shared helper would put the z reading a tile out on one side.
+    static int TileXAt(float worldX, float tileSize) => (int)MathF.Floor(TileWorldSpace.TileX(worldX, tileSize));
+
+    static int TileZAt(float worldZ, float tileSize) => (int)MathF.Floor(TileWorldSpace.TileZ(worldZ, tileSize));
 }

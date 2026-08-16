@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Threading.Tasks;
 using KhaozEngine.WorldStore;
 
@@ -46,6 +47,25 @@ public sealed class WorldPersistenceConfig
     public PlayerGameStateValidate? ValidateGameState { get; init; }
 
     /// <summary>
+    /// How many accounts the resume-hint cache holds (<see cref="WorldPersistence.ResumeHints"/>), which is what
+    /// lets a REJOINING player's entity be built where they left instead of at the configured spawn. Default 1024.
+    /// Zero or less holds nothing, which turns the join seed off and returns the head to the pre-17.37.0 behaviour
+    /// (spawn first, restore afterwards, two teleports for anyone away from the spawn).
+    /// </summary>
+    public int ResumeHintCapacity { get; init; } = 1024;
+
+    /// <summary>
+    /// How far (world metres) a loaded position may be from where the player already stands and still be applied
+    /// QUIETLY: written without advancing the teleport epoch, so the client glides the remainder off instead of
+    /// cutting. Default 1. A rejoiner seeded from the resume hint is already on the loaded position, so the restore
+    /// moves nothing and must not report a teleport (#642); the metre of slack covers the ground clamp and the
+    /// handful of ticks the player may have been simulated for while the load was in flight. Beyond it the restore
+    /// really did move the player and is reported as the teleport it is. Zero or less makes every restore a
+    /// teleport (the pre-17.37.0 behaviour).
+    /// </summary>
+    public float QuietRestoreDistance { get; init; } = 1f;
+
+    /// <summary>
     /// Key prefix under which a quarantined record's raw bytes are copied verbatim. The quarantine key is
     /// <c>{QuarantineKeyPrefix}{KeyPrefix}{accountId}</c> (default <c>quarantine:player:{accountId}</c>), so the intact
     /// original survives for offline inspection while the primary record is free to be overwritten by the fresh spawn.
@@ -60,6 +80,19 @@ public sealed class WorldPersistenceConfig
 /// save-on-leave (persist the final state), and a periodic snapshot of players whose state changed since their
 /// last save. Async loads are applied to the server on the server thread inside <see cref="Update"/> (never from
 /// a background continuation), so a genuinely-async backend can't race the tick loop.
+///
+/// <para>A REJOIN is seeded rather than only restored. Every position this layer persists is also kept as an
+/// in-process hint (<see cref="ResumeHints"/>, installed on the host at construction through
+/// <see cref="IWorldPersistenceHost.SetResumePositionProvider"/>), and the host builds a known account's entity
+/// there instead of at its configured spawn. That matters because the client decides whether a rejoin moved the
+/// player by measuring the RESUME SNAPSHOT: serving the spawn first and restoring afterwards reported one teleport
+/// for the spawn and a second for the restore, which is what made a reconnect rebuild a consumer's whole streaming
+/// ring while the player stood still (#642). The seed is a hint and never the authority - the asynchronous load
+/// still runs, and still applies the stored record over it - but when the two agree the restore now lands within
+/// <see cref="WorldPersistenceConfig.QuietRestoreDistance"/> of where the player already is and is applied WITHOUT
+/// advancing the teleport epoch, so the whole rejoin is quiet. The hints are memory-only: after a process restart
+/// the first rejoin of each account falls back to the configured spawn and takes the restore teleport, unless the
+/// game pre-warms <see cref="ResumeHints"/> from its own store at boot.</para>
 ///
 /// <para>While a load-on-join is still in flight, the account is guarded: the periodic dirty pass and save-on-leave
 /// both skip it, so a save firing mid-load can't overwrite the stored record (position AND the durable game blob)
@@ -120,6 +153,9 @@ public sealed class WorldPersistence
     // In-flight loads/saves, so FlushAsync can await them (tests + shutdown).
     private readonly object pendingLock = new();
     private readonly List<Task> pending = new();
+    // Where each account was last seen, so a rejoin is BUILT there instead of at the configured spawn (see the
+    // class doc). Server-thread only: written from OnPlayerLeaving and the apply drain, read from the host's join.
+    private readonly ResumePositionCache resumeHints;
     private float sinceSave;
 
     /// <summary>Raised on the server thread from <see cref="Update"/> (via <see cref="PrunePending"/>) or from
@@ -170,9 +206,20 @@ public sealed class WorldPersistence
         this.server = server ?? throw new ArgumentNullException(nameof(server));
         this.store = store ?? throw new ArgumentNullException(nameof(store));
         this.config = config ?? new WorldPersistenceConfig();
+        resumeHints = new ResumePositionCache(this.config.ResumeHintCapacity);
         server.PlayerJoined += OnPlayerJoined;
         server.PlayerLeaving += OnPlayerLeaving;
+        // Install the join seed BEFORE any join can arrive. A game with its own account store installs its own
+        // provider after constructing this layer, which replaces (rather than chains onto) the one wired here.
+        server.SetResumePositionProvider(resumeHints.TryGet);
     }
+
+    /// <summary>Where each account was last seen, in ABSOLUTE world metres: the hint the host's join reads to build
+    /// a rejoining player's entity where they left rather than at the configured spawn (see the class doc, and
+    /// <see cref="WorldPersistenceConfig.ResumeHintCapacity"/> for its bound). Recorded on save-on-leave and on a
+    /// successful load-on-join apply. Exposed so a game can pre-warm it from its own store at boot, which is what
+    /// extends the quiet rejoin across a process restart. Read and write it on the server thread.</summary>
+    public ResumePositionCache ResumeHints => resumeHints;
 
     private string Key(string accountId) => config.KeyPrefix + accountId;
 
@@ -222,6 +269,10 @@ public sealed class WorldPersistence
     private void OnPlayerLeaving(int slot, string accountId, PlayerMoveState finalState)
     {
         if (loadsInFlight.ContainsKey(accountId)) return;   // load still outstanding: the stored record was never applied, so IT - not this pre-restore live state - is the truth worth keeping
+        // Past that guard the live state IS the truth, so it is both what gets saved and what the next join is
+        // seeded from. Deliberately not recorded above it: a hint taken from never-restored state would seed the
+        // rejoin at the default spawn and then take the restore teleport, which is the bug this exists to fix.
+        resumeHints.Record(accountId, finalState.Position);
         Track(SaveIfDirtyAsync(accountId, BuildRecordBytes(slot, accountId, finalState)));
     }
 
@@ -273,9 +324,10 @@ public sealed class WorldPersistence
     // carries a decode failure, its position is out of bounds, or the game's blob verdict rejects it - checked in that
     // order, first hit wins. On failure the WHOLE record is copied verbatim to the quarantine key, the guard clears,
     // the player is left at its default spawn (no SetPlayerState) and the baseline is untouched (so the fresh state
-    // overwrites the bad primary next pass), and OnRecordQuarantined fires. On success: position first, then the
-    // opaque game blob (only when present and a hook is set), then advance the baseline to the loaded bytes, then clear
-    // the guard. Shared by Update and FlushAsync so both paths validate identically.
+    // overwrites the bad primary next pass), and OnRecordQuarantined fires. On success: position first (as a teleport
+    // only when it actually moves the player - see below), then the opaque game blob (only when present and a hook is
+    // set), then advance the baseline to the loaded bytes, record the resume hint, then clear the guard. Shared by
+    // Update and FlushAsync so both paths validate identically.
     private void DrainApplyQueue()
     {
         while (applyQueue.TryDequeue(out PendingApply a))
@@ -297,10 +349,19 @@ public sealed class WorldPersistence
                 continue;                                      // NOT applied, baseline NOT advanced
             }
 
-            server.SetPlayerState(a.Slot, a.State, teleport: true);   // placing a loaded player is a teleport (cut, no glide)
+            // Placing a loaded player is a teleport only when it MOVES them. A rejoiner whose join was seeded from
+            // the resume hint is already standing on the loaded position, and advancing the epoch there would
+            // report a second teleport for a move of nothing - the half of the double-teleport the seed cannot fix
+            // on its own (#642). Both sides are absolute world metres (TryGetPlayerState hands out absolute, and a
+            // stored record is written absolute), so the comparison needs no frame conversion. A host that cannot
+            // read the state back is treated as a move, which is the pre-17.37.0 behaviour.
+            bool moved = !server.TryGetPlayerState(a.Slot, out PlayerMoveState live)
+                || Vector3.Distance(live.Position, a.State.Position) > config.QuietRestoreDistance;
+            server.SetPlayerState(a.Slot, a.State, teleport: moved);
             if (a.Game is { Length: > 0 } && config.ApplyGameState is { } apply)
                 apply(new PlayerPersistenceContext(a.Slot, a.AccountId), a.Game);
             lastSaved[a.AccountId] = a.Raw;                 // loaded == clean baseline, set at apply time (never for a quarantined record)
+            resumeHints.Record(a.AccountId, a.State.Position);   // the restored position is now the account's last known one
             loadsInFlight.TryRemove(a.AccountId, out _);   // restore applied, the account is now safe to dirty-save
         }
     }

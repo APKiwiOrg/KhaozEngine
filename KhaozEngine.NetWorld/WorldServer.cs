@@ -650,7 +650,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         deltaReplicator?.Forget(slot);
         deltaCapableSlots.Remove(slot);
 
-        Vector3 spawn = config.SpawnPosition?.Invoke(slot) ?? new Vector3(slot * 2f, 0f, 0f);
+        Vector3 spawn = JoinSpawn(slot, accountId);   // a known rejoiner is built where it left (see JoinSpawn)
         // Ground-clamp the spawn (an idle step settles Y onto the terrain + half-height). The spawn position is
         // authored ABSOLUTE, so it converts into the island first: the clamp step queries the island's physics
         // world and samplers, which speak the island's space.

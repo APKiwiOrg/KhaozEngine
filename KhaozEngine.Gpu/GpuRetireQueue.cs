@@ -67,7 +67,7 @@ namespace KhaozEngine.Gpu
     /// boundary, and a batch is destroyed on the first later frame boundary whose fence polls signaled. Nothing
     /// blocks: a burst of unloads costs one empty fenced submission, not a pipeline stall.
     /// <para><b>The seam owns this so a renderer does not have to.</b> The idiom was hand-rolled per renderer
-    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/80">#80</see>), which is how two Render3D
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/80">#80</see>), which is how two 3D
     /// renderers ended up disposing grown buffers inline instead, and how
     /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/84">#84</see> left a full
     /// <see cref="IGpuDevice.WaitForIdle"/> on <c>SpriteBatch</c>'s per-frame path. A renderer that feeds this
@@ -104,9 +104,9 @@ namespace KhaozEngine.Gpu
     /// teardown, which for a streaming world is the whole unloaded ring. A host that drives the renderer without a
     /// frame boundary (a tool, a test, an offscreen render) must call one of the two itself.</para>
     /// <para><b>Host contract.</b> A frame's command list must be submitted before the NEXT
-    /// <see cref="BeginFrame"/>. Every host does this (<c>AppWindow.Run</c> submits and presents at the end of the
-    /// frame, <c>Render3DPreview.Capture</c> and <c>Render3DSnapshot.Capture</c> submit inside the call that
-    /// rendered), and point 1 above rests on it. A host that recorded draws across two Begin calls and submitted
+    /// <see cref="BeginFrame"/>. Every frame-loop host the engine ships does this (the windowed loop submits and
+    /// presents at the end of the frame, and each offscreen capture submits inside the call that rendered), and
+    /// point 1 above rests on it. A host that recorded draws across two Begin calls and submitted
     /// once at the end would break it, and would have been equally broken by the frame-count scheme.</para></summary>
     public sealed class GpuRetireQueue : IDisposable
     {
@@ -215,7 +215,7 @@ namespace KhaozEngine.Gpu
         public int FrameDelay { get; }
 
         /// <summary>Resources retired but not yet destroyed. Counts the whole holding, sealed batches and this
-        /// frame's not-yet-sealed tail alike, which is what <c>Scene3D.RetiredResourceCount</c> surfaces.</summary>
+        /// frame's not-yet-sealed tail alike, which is what a scene's retired-resource count surfaces.</summary>
         public int PendingCount => _pending.Count;
 
         /// <summary>Batches sealed and waiting on their fence. Diagnostic seam for the tests that pin how many

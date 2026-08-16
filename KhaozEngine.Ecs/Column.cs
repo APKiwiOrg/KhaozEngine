@@ -20,8 +20,11 @@ internal abstract class Column
 /// an archetype that peaks at N rows keeps room for N for as long as it exists. That is deliberate. Archetype
 /// population is a sawtooth (a wave of projectiles spawns, despawns, and the next wave spawns into the same rows),
 /// and a shrink heuristic would hand the array back only to re-allocate and re-copy it moments later. What the
-/// retained capacity must NOT do is retain component DATA, which is what <see cref="ClearRow"/> is for: past
-/// <see cref="Archetype.Count"/> every slot holds <c>default</c>, so the arena costs zeroed bytes and pins nothing.
+/// retained capacity must NOT do is keep a managed object ALIVE, which is what <see cref="ClearRow"/> is for: a
+/// column whose <typeparamref name="T"/> carries a reference is cleared past <see cref="Archetype.Count"/>, so the
+/// arena pins nothing. An unmanaged column keeps whatever bytes were last written there, by design and not by
+/// oversight: the clear compiles away for it, and stale bytes nothing reads and nothing points at cost only the
+/// address space the arena was always going to hold.
 /// </remarks>
 internal sealed class Column<T> : Column where T : struct
 {

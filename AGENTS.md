@@ -87,8 +87,9 @@ exception is the trivial-change case below.
 - **A GPU test class that captures more than a couple of pictures shares ONE `Scene3D` through a class fixture.**
   `new Scene3D(...)` costs about 2.57 seconds, near enough all of it pipeline creation and near enough
   independent of what the scene contains, while a capture through an already-built one costs 3 ms and the device
-  itself under a millisecond. That is what took `OceanFocusGpuTests` to 25 minutes on each software leg (#332)
-  and what https://github.com/APKiwiOrg/KhaozEngine/issues/640 is about. `KhaozEngine.Render.Tests/Gpu/OceanFocusScene.cs`
+  itself under a millisecond. It is what made `OceanFocusGpuTests` 105s of the lavapipe leg's full suite for 11
+  tests (#332), and what https://github.com/APKiwiOrg/KhaozEngine/issues/640 is about.
+  `KhaozEngine.Render.Tests/Gpu/OceanFocusScene.cs`
   is the pattern and the assembly's first class fixture: it creates its device LAZILY, so a plain `dotnet test`
   that skips every `[GpuFact]` never asks for one, and it holds no process-global state, so it needs no
   `DisableParallelization` collection. **A reused scene is never assumed to render what a fresh one does.** State

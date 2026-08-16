@@ -252,19 +252,29 @@ its record and is walked again the moment a layout declares it. Three device-fre
 
 ### The ocean focus tests share one scene, and the cost they were blamed for was not the ocean (#332)
 
-Test-only, no package API or engine behaviour changed. `OceanFocusGpuTests` took the cross-platform GPU matrix's
-full-tier `Render.Tests` step from 6m12s to 30m53s on windows/WARP and from 1m41s to 26m8s on ubuntu/lavapipe when
-it landed in 16.5.0. The class captured 23 pictures and stood up its own `Scene3D` for each one. It now renders
-every configuration through a single scene held by a new `OceanFocusScene` class fixture, the first class fixture
-in `KhaozEngine.Render.Tests`, and drops from 62s to 7s on Metal with no assertion weakened or removed.
+Test-only, no package API or engine behaviour changed. `OceanFocusGpuTests` captured 23 pictures and stood up its
+own `Scene3D` for each one. It now renders every configuration through a single scene held by a new
+`OceanFocusScene` class fixture, the first class fixture in `KhaozEngine.Render.Tests`, and drops from 62s to 7s
+on Metal and from 105s to 10s on the lavapipe leg, with no assertion weakened or removed.
 
-**The measurement contradicts the issue's root cause, which is the part worth keeping.** #332 attributed the cost
-to re-running the FFT ocean's compute dispatches under software emulation. Timed on Metal, a capture is 2571 ms,
-of which 2570 ms is the `Scene3D` constructor building the frame's pipelines. The device is under a millisecond,
-the two frames and the readback are 99 ms, and the ocean's compute dispatches are 93 ms of that 99. A capture
-through an already-built scene costs 3 ms. A procedural-water scene constructs in the same 2578 ms, so the cost
-belongs to `Scene3D` rather than to the ocean, and the two fixes the issue proposed (a smaller cascade
-resolution, fewer captures per test) would have addressed 4 per cent of it.
+**Both halves of #332 turned out to be wrong, and correcting them is most of the value here.** The issue reported
+that this class took the matrix's `Render.Tests` step from 6m12s to 30m53s on windows/WARP and from 1m41s to
+26m8s on ubuntu/lavapipe, and attributed it to the FFT ocean's compute dispatches under software emulation.
+
+The 25 minutes is a tier artifact. The two runs compared were `30200597601`, a PUSH on `main`, and `30202360738`,
+a `workflow_dispatch` on `feature/water-focus`. A push runs the software legs at `FullyQualifiedName~Golden` and
+a dispatch runs them at `Category!=LiveSocket`, so that pair measures golden-only against the full suite. The
+Metal legs in the same two runs are the tell and the issue quoted them without drawing the conclusion: Metal is
+`fullSuite: always`, runs the same 11 tests on both triggers, and moved 3m56s to 4m28s. Measured properly, on the
+full-tier baseline dispatch `31922664860`, the class costs 105s on lavapipe, not 25 minutes.
+
+The root cause is wrong too, and this one is worth carrying forward. Timed on Metal, a capture is 2571 ms, of
+which 2570 ms is the `Scene3D` constructor building the frame's pipelines. The device is under a millisecond, the
+two frames and the readback are 99 ms, and the ocean's compute dispatches are 93 ms of that 99. A capture through
+an already-built scene costs 3 ms. A procedural-water scene constructs in the same 2578 ms, so the cost belongs to
+`Scene3D` rather than to the ocean, and the two fixes the issue proposed (a smaller cascade resolution, fewer
+captures per test) would have addressed 4 per cent of it. That `Scene3D` cost is filed on its own as
+[#640](https://github.com/APKiwiOrg/KhaozEngine/issues/640), because every capture test in the assembly pays it.
 
 **A reused scene is not assumed to be free, it is asserted to be.** The FFT foam accumulator, the ping-ponged row
 intermediates and the frame clock all survive a frame by design, so `TheSameSamplingFrameRendersTheSamePictureTwice`

@@ -314,8 +314,8 @@ a future runner image cannot redden the incumbent leg, and the layer manifest is
 layer only WARNs and creates the device anyway, which would leave a validation gate passing while validating
 nothing.
 
-**A dispatch can run the whole matrix with the GPU shader disk caches OFF** (`disableGpuDiskCache`, default
-false). The three backends' caches are one mechanism, `KhaozEngine.Gpu/Internal/GpuDiskCache`, reached through
+**A dispatch can run the whole matrix with the GPU shader caches OFF** (`disableGpuDiskCache`, default
+false). The three backends' DISK caches are one mechanism, `KhaozEngine.Gpu/Internal/GpuDiskCache`, reached through
 `KE_METAL_MSL_CACHE`, `KE_D3D11_SHADER_CACHE` and `KE_VULKAN_PIPELINE_CACHE`. Each takes a directory path
 verbatim, treats blank as the default location under local app data, and recognises five disable words
 (`off`, `0`, `false`, `no`, `none`, trimmed and case-insensitive), which is why anything else, a typo included,
@@ -323,6 +323,11 @@ is read as a directory name and caches happily under it. The input sets all thre
 the sync job, so a cacheless run is uniform and nothing in it is left comparing a cacheless leg against a
 cached one. Empty is the shipped default rather than a third state, so every push, the cron and every dispatch
 that leaves the box unticked behave exactly as before the input existed.
+Since [#640](https://github.com/APKiwiOrg/KhaozEngine/issues/640) the same value also sets `KE_SPIRV_CACHE`,
+which is not a disk cache at all: it is the process-wide memo in front of glslang, so it holds nothing across
+boots and cannot serve the stale entry #614 is looking for. It is on the switch because it CAN serve one bad
+emission to every test in a process, which a cacheless A/B has to be able to rule out, and because a run
+described as cacheless that still memoized would be describing itself falsely.
 It exists for [#614](https://github.com/APKiwiOrg/KhaozEngine/issues/614), where the metal-native leg fails
 roughly one varying GPU test per boot on the hosted paravirtual adapter, bit-identically wrong when it is
 wrong, while the same commit passes on real Metal locally and the incumbent Metal leg passes beside it. A warm

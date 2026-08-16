@@ -85,10 +85,13 @@ exception is the trivial-change case below.
   leaves them running in parallel with everything else, which is how #349 sat open under a collection attribute
   that looked like a fix.
 - **A GPU test class that captures more than a couple of pictures shares ONE `Scene3D` through a class fixture.**
-  `new Scene3D(...)` costs about 2.57 seconds, near enough all of it pipeline creation and near enough
-  independent of what the scene contains, while a capture through an already-built one costs 3 ms and the device
-  itself under a millisecond. It is what made `OceanFocusGpuTests` 105s of the lavapipe leg's full suite for 11
-  tests (#332), and what https://github.com/APKiwiOrg/KhaozEngine/issues/640 is about.
+  `new Scene3D(...)` used to cost about 2.57 seconds and made `OceanFocusGpuTests` 105s of the lavapipe leg's full
+  suite for 11 tests (#332). #640 found that 2515 ms of that was glslang recompiling the same unchanged shader
+  sources on every call, and a process-wide memo (`SpirvCompileCache`, `KE_SPIRV_CACHE` switches it off) took the
+  constructor to 21 ms on Metal, first scene in a process apart. What is LEFT is pipeline creation, which is per
+  device by nature and which the software legs pay much more of than Metal does, so the fixture is still the right
+  shape for a class that captures a lot: a capture through an already-built scene costs 3 ms and a device under a
+  millisecond. Measure before you convert one, because the number this rule was written against has moved.
   `KhaozEngine.Render.Tests/Gpu/OceanFocusScene.cs`
   is the pattern and the assembly's first class fixture: it creates its device LAZILY, so a plain `dotnet test`
   that skips every `[GpuFact]` never asks for one, and it holds no process-global state, so it needs no

@@ -11,14 +11,20 @@ namespace KhaozEngine.Tests.Gpu
     /// alive for the whole class as an xUnit <c>IClassFixture</c>.
     /// <para>
     /// <b>Why it exists (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/332">#332</see>).</b> That
-    /// class captured 23 pictures, and every capture stood up its own <see cref="Scene3D"/>. Measured on Metal,
-    /// a capture costs 2571 ms of which 2570 ms is the <see cref="Scene3D"/> constructor building the frame's
-    /// pipelines: the device itself is under a millisecond, the two frames and the readback are 99 ms, and the
-    /// FFT ocean's compute dispatches are 93 ms of that 99. A capture through an ALREADY-BUILT scene costs 3 ms.
-    /// So the cost the issue attributed to re-running the compute dispatches is really pipeline creation, and it
-    /// is the software legs' shader compilers that make it hurt there rather than anything about the ocean.
-    /// Building the scene once and re-rendering it is therefore worth roughly 850x per capture, and reducing the
-    /// ocean's resolution or cascade count would have bought back 4 per cent of the wrong number.
+    /// class captured 23 pictures, and every capture stood up its own <see cref="Scene3D"/>. Measured on Metal at
+    /// the time, a capture cost 2571 ms of which 2570 ms was the <see cref="Scene3D"/> constructor: the device
+    /// itself is under a millisecond, the two frames and the readback are 99 ms, and the FFT ocean's compute
+    /// dispatches are 93 ms of that 99. A capture through an ALREADY-BUILT scene costs 3 ms. So the cost the issue
+    /// attributed to re-running the compute dispatches was never about the ocean at all, and reducing the ocean's
+    /// resolution or cascade count would have bought back 4 per cent of the wrong number.
+    /// <para>
+    /// <b>THE 2570 ms IS HISTORY NOW, AND THE FIXTURE IS NOT.</b>
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/640">#640</see> found that 2515 ms of it was
+    /// glslang recompiling the same unchanged sources on every call and memoized them, which took the constructor
+    /// to 21 ms on Metal. What is left is pipeline creation, which is per device by nature and which the software
+    /// legs pay far more of than Metal does, so building one scene and re-rendering it is still the right shape
+    /// for a class that captures 23 pictures. The ratio it is worth is a much smaller number than it was.
+    /// </para>
     /// </para>
     /// <para>
     /// <b>What re-rendering one scene costs in rigour, and what pays it back.</b> A reused scene carries state a

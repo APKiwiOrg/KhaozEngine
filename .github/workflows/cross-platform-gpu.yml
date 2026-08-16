@@ -154,7 +154,8 @@
 #
 # Running the matrix WITHOUT the GPU shader disk caches (#614):
 #   Dispatch with disableGpuDiskCache = true. Every leg's test step and the sync job then set all three
-#   cache variables to `off`, so no backend reads or writes an entry for the whole run. That is the A/B
+#   cache variables to `off`, plus KE_SPIRV_CACHE for the in-memory front-end memo (#640), so no backend
+#   reads or writes an entry and nothing is compiled once and reused for the whole run. That is the A/B
 #   for a flake that could be a warm cache entry read back wrong: the same commit, cacheless. Every other
 #   trigger leaves the variables blank, which is the default location and the shipped behaviour.
 #
@@ -1111,6 +1112,12 @@ jobs:
           KE_METAL_MSL_CACHE: ${{ env.GPU_DISK_CACHE }}
           KE_D3D11_SHADER_CACHE: ${{ env.GPU_DISK_CACHE }}
           KE_VULKAN_PIPELINE_CACHE: ${{ env.GPU_DISK_CACHE }}
+          # AND THE IN-MEMORY ONE, from the same value (#640). SpirvCompileCache is not a disk cache and holds
+          # nothing across boots, so it cannot serve the stale entry #614 is looking for. It CAN serve one bad
+          # emission to every test in a process, which is a shape a cacheless A/B has to be able to rule out, and
+          # a run described as cacheless that still memoized would be describing itself falsely. It takes the same
+          # five disable words, so the one value drives all four.
+          KE_SPIRV_CACHE: ${{ env.GPU_DISK_CACHE }}
           # EMPTY ON EITHER GUEST LEG for every trigger, bake dispatches included (decisions I3 and V-T1). A guest
           # leg verifies a golden family it does not own, so GoldenCompare.BakeRefusal turns KE_UPDATE_GOLDENS=1
           # under its token into a hard failure BY DESIGN: baking there would overwrite the very references it is
@@ -1570,6 +1577,8 @@ jobs:
           # this file already records against an artifact whose name is false. Only the Vulkan variable can do
           # anything here, and it is the pipeline cache the native backend writes.
           KE_VULKAN_PIPELINE_CACHE: ${{ env.GPU_DISK_CACHE }}
+          # The in-memory front-end memo, off on the same terms as the matrix legs (#640).
+          KE_SPIRV_CACHE: ${{ env.GPU_DISK_CACHE }}
         # pipefail explicitly, for the reason the matrix job's test step states: this is a gating command and
         # its exit code must not depend on an implicit shell option.
         #

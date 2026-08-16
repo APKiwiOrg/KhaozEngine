@@ -380,6 +380,64 @@ more pin the cut-vs-glide split at 150 m and 50 m, and a row in `ClientFrameAdop
 change at one world position (anchor 384,256 to the origin frame), which reports a teleport plus a 480 m glide the
 moment the anchors come out of the resume measurement. Every behavioural row fails against the pre-fix sources.
 
+### A shader source is compiled to SPIR-V once per process instead of once per call (#640)
+
+`new Scene3D(...)` costs 21 ms on Metal where it cost 2560 ms, and the second scene is as cheap as the tenth on a
+device the first one never touched. No public API moved and no picture moved. What changed is that the engine
+stopped handing glslang the same unchanged `const string` over and over: a new process-wide memo,
+`KhaozEngine.Gpu/Internal/SpirvCompileCache`, sits in front of the GLSL-to-SPIR-V compile and is keyed on the
+source, the stage and the identity of the option set the caller compiles under.
+
+**The measurement, which is what makes this a defect rather than a tuning idea.** #332 established that a
+`Scene3D` constructor was 2570 ms of a 2571 ms capture, and [#640](https://github.com/APKiwiOrg/KhaozEngine/issues/640)
+asked where those 2570 ms go. Timed per renderer on Metal, they are spread across all seventeen of them
+(`ModelRenderer` 718 ms, `PixelPostProcess` 636 ms, the other fifteen between 68 ms and 137 ms each), which is the
+first sign that nothing scene-specific is happening. Splitting one shader-set creation into its three stages
+answers it: the constructor asks for 34 shader sets, which is 68 stage compiles, and 2515 ms of the 2560 ms is
+glslang. SPIRV-Cross to MSL is 21 ms across all 68 and the driver's own shader-object creation is about 14 ms.
+None of it was cached anywhere, so the second scene paid it again, and so did the first scene on a second device,
+and so did every one of the hundreds of `Render3DSnapshot.Capture` calls in `KhaozEngine.Render.Tests`, each of
+which builds a device and a scene of its own.
+
+**Process-wide and not per device, which is the whole reason it helps the shapes that hurt.** SPIR-V is
+device-free: the same source under the same options is the same module whichever device is about to consume it,
+which is exactly why the native Vulkan backend can already key its `VkShaderModule` dedup on a hash of these bytes
+alone. A per-device memo would have left a GPU test, which creates a device per capture, and a game opening a
+second window paying the full compile. Measured on Metal after the change: first scene in a process 1953 ms, every
+scene after it 21 ms, and a scene on a brand-new device 21 ms.
+
+**Every backend gets it, by two different routes.** The three native backends compile through
+`SpirvFrontEnd.ToSpirv`, which is now memoized, so the native Vulkan and Direct3D 11 paths stop recompiling and the
+native Metal one keeps skipping the front end entirely when its MSL disk cache is warm. The incumbent Veldrid
+device compiles its own graphics pair through the memo and hands `CreateFromSpirv` the SPIR-V rather than the GLSL,
+which is the move `CreateComputeShaderFromSpirv` beside it already made for its own reason. `CreateFromSpirv`
+sniffs the SPIR-V magic and skips its own glslang call, so what reaches Veldrid is byte for byte what its internal
+`EnsureSpirv` produced from the same source under the same defaults, and the cross-compile and shader creation past
+that point are untouched.
+
+**The pin separation is kept rather than quietly collapsed.** `SpirvFrontEndPin` governs every engine-owned
+compile and the incumbent deliberately keeps the library's own defaults, two sets maintained independently whose
+equality is asserted by `VulkanSpirvIncumbentParityTests` rather than held by construction. The memo's key carries
+an options-identity string for that reason, so a divergence between the two produces two cache entries instead of
+one wrong answer, and the front end's half of the key also carries the diagnostic label, because the label reaches
+the module the moment `SpirvFrontEndPin.Debug` is flipped.
+
+**What it costs, stated.** A cached module is held for the life of the process, and the key holds its source
+string alive with it. The engine ships 76 stage emissions across 59 distinct modules, and a `Scene3D` alone
+accounts for 48 of them, so `SpirvCompileCache.DefaultCapacity` is 512 and past it the cache stops inserting and
+keeps compiling, which is the behaviour that existed before it. Nothing evicts. Every caller is handed a copy of
+the module rather than the cached array, so a caller that has no idea it is holding shared state cannot mutate what
+the next one reads. `KE_SPIRV_CACHE` switches the whole thing off with the same five disable words the three GPU
+disk caches take, and the `disableGpuDiskCache` dispatch input on `cross-platform-gpu.yml` now sets it alongside
+them, so a run that asks to be cacheless is one.
+
+**What it does not fix.** The cost of a `Scene3D` after this is pipeline creation, which is per device by nature
+and which a software rasterizer pays much more of than Metal does, since lavapipe and WARP compile the module into
+machine code at pipeline creation rather than at shader creation. A test class that builds several scenes on one
+device still saves by building one, which is what
+[#639](https://github.com/APKiwiOrg/KhaozEngine/issues/639) is about, and sharing a `Scene3D` per device rather
+than per scene is filed separately.
+
 ### The ocean focus tests share one scene, and the cost they were blamed for was not the ocean (#332)
 
 Test-only, no package API or engine behaviour changed. `OceanFocusGpuTests` captured 23 pictures and stood up its

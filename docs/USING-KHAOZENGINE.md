@@ -10983,6 +10983,33 @@ shader fails CI instead of surfacing only when a player on that backend loads th
 `ShaderValidation.ValidateCompute(computeGlsl, label?)` is the single-stage sibling for a compute shader
 (see the next section).
 
+### A shader source is compiled to SPIR-V once per process (17.37.0)
+
+Nothing to call and nothing to configure, but worth knowing about if you have ever wondered why standing up a
+scene was slow. Every GLSL-to-SPIR-V compile in the engine, whichever backend you are on and whether it comes
+through `CreateShadersFromSpirv`, `CreateComputeShaderFromSpirv` or `ShaderValidation`, now goes through a
+process-wide memo keyed on the source, the stage and the compile options. A repeat is a dictionary lookup.
+
+That matters because shader sources are constants and the engine compiled them again for every object that wanted
+one. `new Scene3D(...)` asks its device for 34 shader sets, which is 68 stage compiles, and on an M-series Mac
+those compiles were 2515 ms of a 2560 ms constructor
+([#640](https://github.com/APKiwiOrg/KhaozEngine/issues/640)). The constructor is now 21 ms, the first scene in
+the process apart. What you get for free:
+
+- **A level reload, a second window, an editor preview or a headless capture stops paying for shaders.** The memo
+  is process-wide rather than per device, because SPIR-V is device-free, so a fresh device is as cheap as a warm
+  one.
+- **Cold start still pays once.** Nothing is cached to disk here (the three native backends have their own disk
+  caches for their own emissions, see `KE_METAL_MSL_CACHE` and friends), so the first scene in a process compiles
+  the sources it needs.
+- **`KE_SPIRV_CACHE=off` turns it off** for the run, taking the same five disable words the disk caches take
+  (`off`, `0`, `false`, `no`, `none`). Reach for it if you are chasing a miscompile and need to state that every
+  module in the run came out of the compiler rather than out of a dictionary.
+
+The cache holds 512 distinct modules and then stops inserting, which is far above what any engine-owned run
+reaches. If your game GENERATES shader sources at runtime rather than shipping them as constants, that bound is
+the one to know about: past it, compilation behaves exactly as it did before this existed.
+
 ### It also checks the Metal binding order (17.36.0)
 
 This is the half that is not a compile failure anywhere. Metal has no binding decorations: the cross-compiler

@@ -313,6 +313,18 @@ What it owns today:
     that cannot get one keeps whatever it did before. The opt-in `KhaozEngine.Gpu.D3D11` native backend is the
     exception among the Direct3D 11 paths and reports TRUE, on a real device-wide completion counter, but its
     device is not creatable yet so nothing reaches that answer today.
+- **A shader source is compiled to SPIR-V once per process** (since 17.37.0,
+  [#640](https://github.com/APKiwiOrg/KhaozEngine/issues/640)) - `CreateShadersFromSpirv` and
+  `CreateComputeShaderFromSpirv` go through a process-wide memo in front of glslang, keyed on the source, the stage
+  and the option set the caller compiles under. Nothing about the seam changed: the same call returns the same
+  module it always did, and a caller still gets an array it owns. What changed is that a repeat is a dictionary
+  lookup rather than a compile, which took `new Scene3D(...)` from 2560 ms to 21 ms on Metal, first scene in a
+  process apart. It is PROCESS-wide rather than per device on purpose, because SPIR-V is device-free, so a headless
+  capture that stands up a device per picture and a game that opens a second window both hit it. Bounded at 512
+  distinct modules, past which it compiles without inserting (the engine ships 59 distinct modules and a `Scene3D`
+  reaches 48 of them), and nothing evicts. `KE_SPIRV_CACHE` switches it off with the same five disable words the
+  three backends' shader DISK caches take (`off`, `0`, `false`, `no`, `none`), for a session that needs to state
+  that every module in the run came out of the compiler.
 - **Compute** (since 15.2.0) - `IGpuResourceFactory.CreateComputeShaderFromSpirv(computeGlsl)` compiles a GLSL 450
   compute source into an `IGpuComputeShader`, and `CreateComputePipeline(in GpuComputePipelineDescription)` builds an
   `IGpuComputePipeline` over it plus its resource layouts. Both handle types are separate from the graphics

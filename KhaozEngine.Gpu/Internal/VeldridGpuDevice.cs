@@ -255,11 +255,34 @@ namespace KhaozEngine.Gpu.Internal
             _ => throw new ArgumentException($"Unsupported bindable resource: {r?.GetType().Name ?? "null"}"),
         };
 
+        /// <summary>
+        /// A one-line rendering of the option set BOTH of this device's shader paths compile under, which is the
+        /// library's own defaults and deliberately not <c>SpirvFrontEndPin</c>. It is the memo key's options
+        /// component (#640), and it is a literal here rather than a value read off Veldrid because the whole point
+        /// of the separation is that this wrapper's defaults are maintained by the library and the engine's are
+        /// maintained by the pin. Their equality is asserted by <c>VulkanSpirvIncumbentParityTests</c>, and this
+        /// string is what keeps a divergence producing two cache entries rather than one wrong answer.
+        /// </summary>
+        const string VeldridDefaultsIdentity = "veldrid/spirv-defaults;debug=0;macros=0;entryPoint=main";
+
+        // THE GLSL IS COMPILED HERE INSTEAD OF INSIDE CreateFromSpirv (#640), which is the same move
+        // CreateComputeShaderFromSpirv below already makes and for a neighbouring reason. That one needed the
+        // module so it could read the workgroup size back; this one needs it so the memo has something to hold.
+        // CreateFromSpirv sniffs the SPIR-V magic and skips its own shaderc call when the bytes are already a
+        // module, so what reaches Veldrid is byte for byte what its internal EnsureSpirv would have produced from
+        // the same source under the same defaults, and the cross-compile and shader creation past that point are
+        // untouched. Worth 2515 ms of a 2560 ms Scene3D constructor on Metal, and the same order everywhere else,
+        // because that constructor asks for 34 shader sets and every one of them was a fresh glslang run.
+        static byte[] ToSpirv(string glsl, GpuShaderStages stage) =>
+            SpirvCompileCache.Shared.GetOrCompile(VeldridDefaultsIdentity, stage, glsl,
+                () => SpirvCompilation.CompileGlslToSpirv(
+                    glsl, null, VeldridMap.ToVeldrid(stage), GlslCompileOptions.Default).SpirvBytes);
+
         public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl)
         {
             Shader[] shaders = GraphicsDevice.ResourceFactory.CreateFromSpirv(
-                new ShaderDescription(ShaderStages.Vertex, Encoding.UTF8.GetBytes(vertGlsl), "main"),
-                new ShaderDescription(ShaderStages.Fragment, Encoding.UTF8.GetBytes(fragGlsl), "main"));
+                new ShaderDescription(ShaderStages.Vertex, ToSpirv(vertGlsl, GpuShaderStages.Vertex), "main"),
+                new ShaderDescription(ShaderStages.Fragment, ToSpirv(fragGlsl, GpuShaderStages.Fragment), "main"));
             return new VeldridGpuShaderSet(_liveness, shaders);
         }
 
@@ -273,8 +296,12 @@ namespace KhaozEngine.Gpu.Internal
             byte[] spirv;
             try
             {
-                spirv = SpirvCompilation.CompileGlslToSpirv(
-                    computeGlsl, "compute", ShaderStages.Compute, GlslCompileOptions.Default).SpirvBytes;
+                // Memoized on the same terms as the graphics pair above (#640). The diagnostic file name is fixed
+                // for every compute source, so the stage alone separates these entries from that path's.
+                spirv = SpirvCompileCache.Shared.GetOrCompile(
+                    VeldridDefaultsIdentity, GpuShaderStages.Compute, computeGlsl,
+                    () => SpirvCompilation.CompileGlslToSpirv(
+                        computeGlsl, "compute", ShaderStages.Compute, GlslCompileOptions.Default).SpirvBytes);
             }
             catch (Exception ex)
             {

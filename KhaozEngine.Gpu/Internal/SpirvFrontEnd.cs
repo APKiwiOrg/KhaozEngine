@@ -79,8 +79,16 @@ namespace KhaozEngine.Gpu.Internal
                 // incumbent's own path passes NO file name, and every shipped program still compiled to
                 // byte-identical SPIR-V under both. VulkanSpirvIncumbentParityTests re-checks it on every leg,
                 // so a flip of the Debug pin fails there rather than quietly moving the bytes.
-                return SpirvCompilation.CompileGlslToSpirv(glsl, $"{tag}.{stage}", veldridStage, _options)
-                    .SpirvBytes;
+                //
+                // THE TAG IS STILL IN THE MEMO'S KEY (#640), precisely because that equality is a fact about the
+                // Debug pin rather than a property of the compiler. Keying without it would be correct only while
+                // the pin stays false, and would start handing one label's module to another the moment it was
+                // flipped, which is the run where a reader most needs the names to be right. Every call site names
+                // one source, so carrying it costs no entries.
+                return SpirvCompileCache.Shared.GetOrCompile(
+                    SpirvFrontEndPin.Identity + ";label=" + tag, stage, glsl,
+                    () => SpirvCompilation.CompileGlslToSpirv(glsl, $"{tag}.{stage}", veldridStage, _options)
+                        .SpirvBytes);
             }
             catch (Exception ex)
             {

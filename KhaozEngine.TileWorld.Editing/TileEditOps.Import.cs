@@ -28,10 +28,19 @@ public static partial class TileEditOps
     public static SetCornerHeightsCommand ImportHeights(PgmImage image, TileRect cornerRect, int plane,
         short minCm, short maxCm)
     {
-        if (image.Samples is null || image.Width <= 0 || image.Height <= 0 || image.MaxValue <= 0
-            || image.Samples.Length != image.Width * image.Height)
+        // Three separate refusals rather than one catch-all: a default PgmImage, a hand-built one with a maxval
+        // nothing can be divided by, and one whose sample count contradicts its own dimensions are three
+        // different mistakes, and a caller reading the message should learn which it made.
+        if (image.Samples is null || image.Width <= 0 || image.Height <= 0)
             throw new ArgumentException(
                 "the image carries no samples, read one with PgmReader.Read first.", nameof(image));
+        if (image.MaxValue <= 0)
+            throw new ArgumentException(
+                $"the image's maxval is {image.MaxValue}, so no sample of it maps onto a height.", nameof(image));
+        if ((long)image.Width * image.Height != image.Samples.Length)
+            throw new ArgumentException(
+                $"the image is {image.Width} by {image.Height} and carries {image.Samples.Length} samples.",
+                nameof(image));
         if (maxCm < minCm)
             throw new ArgumentException(
                 $"the height range runs from {minCm} to {maxCm} cm, which is backwards.", nameof(maxCm));

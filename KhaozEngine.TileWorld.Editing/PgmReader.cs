@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Security;
 
 namespace KhaozEngine.TileWorld.Editing;
 
@@ -12,7 +13,17 @@ namespace KhaozEngine.TileWorld.Editing;
 public readonly record struct PgmImage(int Width, int Height, int MaxValue, ushort[] Samples)
 {
     /// <summary>The sample at column x of row y, row 0 being the TOP row of the image.</summary>
-    public ushort Sample(int x, int y) => Samples[y * Width + x];
+    public ushort Sample(int x, int y)
+    {
+        // Checked per axis rather than left to the flat array's own bounds check: a y of 1 on a 2 by 1 image
+        // indexes a slot that EXISTS on a wider image, so the raw index would quietly hand back the wrong
+        // sample instead of throwing.
+        if ((uint)x >= (uint)Width)
+            throw new ArgumentOutOfRangeException(nameof(x), x, $"the image is {Width} columns wide.");
+        if ((uint)y >= (uint)Height)
+            throw new ArgumentOutOfRangeException(nameof(y), y, $"the image is {Height} rows tall.");
+        return Samples[y * Width + x];
+    }
 }
 
 /// <summary>Reads binary PGM (netpbm P5) greyscale images, 8 or 16 bit, which is how a heightmap painted in
@@ -30,20 +41,35 @@ public static class PgmReader
     public static PgmImage Read(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
+        string file = path.Length == 0 ? "<empty path>" : path;
         byte[] bytes;
         try
         {
             bytes = File.ReadAllBytes(path);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+        // Every way a file read can fail lands here, the rejected path shapes (an empty or malformed path is an
+        // ArgumentException) included. A caller of this layer handles one exception type from a bad file, so a
+        // path it never validated must not escape as a raw framework exception.
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException
+            or ArgumentException or SecurityException)
         {
-            throw new TileWorldException($"{path}: cannot read the heightmap file. {ex.Message}", ex);
+            throw new TileWorldException($"{file}: cannot read the heightmap file. {ex.Message}", ex);
         }
-        return Read(bytes, path);
+        return Read(bytes, file);
     }
 
     /// <summary>Reads a binary PGM already in memory, naming <paramref name="name"/> (or "&lt;bytes&gt;" when
-    /// there is none) in any error.</summary>
+    /// there is none) in any error.
+    ///
+    /// The header is the magic P5 then width, height and maxval as ASCII decimals, with whitespace or a hash
+    /// comment (to the end of its line) allowed between any two of them. Maxval is then closed by EXACTLY ONE
+    /// whitespace byte, and no comment may follow it, because the byte after that one is already the first
+    /// sample of the raster.
+    ///
+    /// That rule makes line endings matter: a header terminated with CRLF spends its CR as the delimiter and
+    /// leaves the LF as sample 0, shifting the whole raster by a byte. Write PGMs with LF line endings. The
+    /// reader cannot paper over it, since a raster whose first sample is genuinely 10 looks identical to a
+    /// stray LF, and guessing between them would corrupt one of the two files silently.</summary>
     public static PgmImage Read(ReadOnlySpan<byte> bytes, string? name = null)
     {
         string file = string.IsNullOrEmpty(name) ? "<bytes>" : name;

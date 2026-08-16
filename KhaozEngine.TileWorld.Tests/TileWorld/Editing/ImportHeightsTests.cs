@@ -68,6 +68,24 @@ public class ImportHeightsTests
     }
 
     [Fact]
+    public void A_rect_one_corner_wide_takes_the_images_first_column_down_its_whole_height()
+    {
+        TileEditingDocument ed = Editing(out TileWorldDocument doc);
+        // Top row 0 and 100, bottom row 40 and 80, maxval 100 imported to 0..100 cm, so sample equals
+        // centimetre again.
+        var image = new PgmImage(2, 2, 100, new ushort[] { 0, 100, 40, 80 });
+
+        // One corner wide, so there is no span to stretch the image's x across and the east column (100 and 80)
+        // is never sampled. Down the three corners the west column stretches as before: the north corner takes
+        // the top sample, the south corner the bottom one, and the middle corner their mean.
+        ed.Execute(TileEditOps.ImportHeights(image, new TileRect(10, 10, 1, 3), 0, 0, 100));
+
+        Assert.Equal(0, doc.CornerHeightCm(10, 12, 0));
+        Assert.Equal(20, doc.CornerHeightCm(10, 11, 0));
+        Assert.Equal(40, doc.CornerHeightCm(10, 10, 0));
+    }
+
+    [Fact]
     public void A_sample_maps_linearly_from_zero_and_maxval_onto_the_height_range()
     {
         TileEditingDocument ed = Editing(out TileWorldDocument doc);

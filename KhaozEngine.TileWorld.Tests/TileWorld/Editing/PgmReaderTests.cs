@@ -71,6 +71,44 @@ public class PgmReaderTests
     }
 
     [Fact]
+    public void A_comment_may_open_immediately_after_the_magic()
+    {
+        // No whitespace between P5 and the hash, so the comment IS the separator that the header needs before
+        // width.
+        PgmImage image = PgmReader.Read(Pgm("P5# straight off the magic\n2 2\n255\n", 1, 2, 3, 4));
+
+        Assert.Equal(2, image.Width);
+        Assert.Equal(new ushort[] { 1, 2, 3, 4 }, image.Samples);
+    }
+
+    [Fact]
+    public void A_crlf_header_spends_its_carriage_return_and_leaves_the_line_feed_as_sample_zero()
+    {
+        // Pinning the netpbm rule rather than endorsing this file: exactly one whitespace byte closes the
+        // header, so a CRLF terminator shifts the whole raster by a byte. It cannot be fixed up, because a
+        // raster whose first sample is genuinely 10 is byte for byte the same file. Write PGMs with LF.
+        PgmImage image = PgmReader.Read(Pgm("P5\n2 2\n255\r\n", 11, 12, 13));
+
+        Assert.Equal(10, image.Sample(0, 0));   // the orphaned line feed
+        Assert.Equal(11, image.Sample(1, 0));
+        Assert.Equal(12, image.Sample(0, 1));
+        Assert.Equal(13, image.Sample(1, 1));
+    }
+
+    [Fact]
+    public void A_sample_outside_the_image_is_refused_on_the_axis_that_is_out()
+    {
+        PgmImage image = PgmReader.Read(Pgm("P5\n2 1\n255\n", 1, 2));
+
+        // Row 1 indexes a slot a 2 by 2 image would have, so an unchecked read would return a neighbour's
+        // sample rather than throwing.
+        Assert.Throws<ArgumentOutOfRangeException>(() => image.Sample(0, 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => image.Sample(2, 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => image.Sample(-1, 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => image.Sample(0, -1));
+    }
+
+    [Fact]
     public void Exactly_one_whitespace_byte_closes_the_header()
     {
         // The second newline is NOT a separator, it is sample 0 of the raster, worth 10. A reader that skipped
@@ -198,6 +236,17 @@ public class PgmReaderTests
         var ex = Assert.Throws<TileWorldException>(() => PgmReader.Read(path));
 
         Assert.Contains(path, ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_path_the_framework_itself_rejects_still_comes_back_as_a_tile_world_error()
+    {
+        // An empty path fails inside File.ReadAllBytes as an ArgumentException. A caller of this layer handles
+        // one exception type from a bad file, so that must not escape raw.
+        var ex = Assert.Throws<TileWorldException>(() => PgmReader.Read(""));
+
+        Assert.Contains("empty path", ex.Message, StringComparison.Ordinal);
+        Assert.Throws<ArgumentNullException>(() => PgmReader.Read(null!));
     }
 
     [Fact]

@@ -12093,6 +12093,34 @@ load, and the fault surfaces through `OnStoreError` instead of `OnRecordQuaranti
 undecodable record was treated like an outage too, which left the guard set forever for a record that could
 never succeed on a retry - that player's persistence silently stopped for the rest of the session.
 
+**A rejoin is SEEDED, not only restored** (since 17.37.0). Load-on-join used to be the *only* thing that
+put a returning player back: the head built the entity at its configured spawn, the next tick served that
+spawn, and the stored position arrived a frame or more later. The client reads the resume SNAPSHOT to
+decide whether a rejoin moved the player, so that order reported two teleports for anyone away from the
+spawn - the reseed onto the spawn, then the restore's epoch advance - and a consumer answering the signal
+with a world-scale reaction paid it twice per reconnect. Every persisted position is now also kept as an
+in-process hint and the head builds a known account's entity there:
+
+```csharp
+var persistence = new WorldPersistence(server, store, new WorldPersistenceConfig
+{
+    ResumeHintCapacity = 4096,     // accounts held, least-recently-recorded evicted (default 1024; 0 = off)
+    QuietRestoreDistance = 1f,     // a restore landing this close is applied without advancing the epoch
+});
+// Optional, and the only thing that extends the quiet rejoin across a process restart: the hints are
+// memory-only, so warm them from your own store at boot, on the server thread, before it starts polling.
+foreach ((string accountId, Vector3 last) in LoadLastKnownPositions())
+    persistence.ResumeHints.Record(accountId, last);
+```
+
+`WorldPersistence` installs the hint on the host itself (`IWorldPersistenceHost.SetResumePositionProvider`,
+implemented by both `WorldServer` and `ShardedWorldServer`), so a persistence-backed server needs no
+wiring. A game with its own account store can install its own `ResumePositionProvider` instead, after
+constructing the persistence layer. The hint is never the authority: the asynchronous load still runs and
+still applies the stored record over it, so a position that changed while the player was away is still a
+teleport, reported once. `ResumePositionCache` is public (`Record`, `TryGet`, `Forget`, `Clear`, `Count`,
+`Capacity`) and is not thread-safe - both engine call sites are on the server thread.
+
 ### Per-cell world persistence (`CellPersistence`)
 
 `KhaozEngine.NetWorld.CellPersistence` wires an `IWorldStore` into a `ShardHost`-based server (through
@@ -12425,7 +12453,8 @@ the feature just ignores it.
 A teleport is two problems. (1) The **avatar + camera must cut, not glide**, even when the destination is near.
 Client reconciliation decides cut-vs-glide by distance, so a short in-session hop would smooth. The server carries a
 monotonic **teleport epoch** on the authoritative movement state and bumps it only at teleport sites (load-on-join
-placement, admin `Teleport`, self-rescue) via `SetPlayerState(..., teleport: true)`. `ClientPrediction.Reconcile`
+placement that actually moves the player, admin `Teleport`, self-rescue) via `SetPlayerState(..., teleport: true)`.
+`ClientPrediction.Reconcile`
 force-cuts on an epoch ADVANCE regardless of distance, and `WorldClient` surfaces the signal:
 
 ```csharp
@@ -12453,15 +12482,16 @@ entity whose epoch counts from its own zero. For the same reason the epoch compa
 mark, never any inequality: the epoch reads 0 whenever the movement component is momentarily unreadable, so a real
 stream dips and recovers, and both edges used to fire a cut.
 
-**The resume snapshot is what the client measures, so the server decides whether a rejoin is quiet.** A server that
-spawns the rejoiner and restores their stored position afterwards still produces TWO teleports on rejoin, and this
-is the shape `WorldServer` + `WorldPersistence` have today: `OnJoin` builds the entity at
-`WorldServerConfig.SpawnPosition`, the next `Tick` serves that spawn to the client with no gate on the outstanding
-load, and the restore lands later via `SetPlayerState(..., teleport: true)`. So the client reseeds onto the SPAWN
-(a teleport for anyone standing further than `HardSnapDistance` from it) and then takes the restore's epoch advance
-as a second one. Tracked at https://github.com/APKiwiOrg/KhaozEngine/issues/642. A game that restores position
-synchronously at the join spawn (or withholds the first snapshot until the load lands) gets the quiet reconnect
-described above.
+**The resume snapshot is what the client measures, so the SERVER decides whether a rejoin is quiet**, and since
+17.37.0 the shipped persistence path decides it correctly (#642). A server that spawned the rejoiner at
+`WorldServerConfig.SpawnPosition` and restored their stored position afterwards produced TWO teleports: the client
+reseeded onto the spawn (a teleport for anyone standing further than `HardSnapDistance` from it) and then took the
+restore's epoch advance as a second one. Both heads now resolve a joining slot's spawn through a resume hint keyed
+by account id before the entity exists, so the first snapshot already carries the position the player left, and
+`WorldPersistence` applies the loaded record without advancing the epoch when the player is already standing on it.
+A stationary in-session rejoin is silent end to end. A rejoin that really moved - a record changed while the player
+was offline, or a first rejoin after a process restart with no warmed hints - still reports exactly one. See
+"A rejoin is SEEDED, not only restored" in the persistence section for the knobs and the pre-warm.
 
 `FollowCamera3D.Warp(target)` forces the smoothed target so `EffectiveTarget == target` that frame with zero
 trailing (normal damping resumes next frame); `SnapToTarget()` collapses in-flight damping onto the current `Target`.

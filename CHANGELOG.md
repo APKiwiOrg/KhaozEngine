@@ -34,7 +34,68 @@ change made from inside a serial `ForEach` or `Entities()` loop now throws
 `StructuralChangeDuringIterationException` instead of silently losing a survivor's write to a dead row, and a
 vacated column slot is cleared, so a despawned component carrying a managed reference stops pinning it for the life
 of the archetype. That first one is a behaviour break for two of the four games, loudly and on their next adopt
-rather than quietly, and the #118 section below names their systems.
+rather than quietly, and the #118 section below names their systems. On the netcode side, the reconnect work below
+gets its second half: a persistence-backed server no longer teleports a rejoining player twice (once onto the
+configured spawn, once when the stored position lands afterwards), because both server heads now build a returning
+account's entity where it left, and the restore that follows is applied quietly when it moves nothing. That was the
+server-side cause of a client rebuilding its whole streaming ring on every dropped connection, which the #409
+client-side fix could not reach.
+
+### A persistence-backed rejoin is built where the player left, not on the spawn (#642)
+
+The server decides whether a rejoin is quiet, because the resume SNAPSHOT is what the client measures (#409, in
+this same version). The shipped persistence path did not: `WorldServer.OnJoin` and `ShardedWorldServer.OnJoin`
+built every rejoiner's entity at the configured spawn, the next `Tick` served it with no gate on the load
+`WorldPersistence` had started off `PlayerJoined`, and the stored position arrived afterwards through
+`SetPlayerState(..., teleport: true)`. A player standing further than `HardSnapDistance` from the spawn therefore
+took TWO teleports on every reconnect: the reseed onto the spawn, then the restore's epoch advance. That is the
+caveat the #409 section below names as still open, and it is **resolved in this same version by this change**. It
+is also the server-side cause of [Ruinborne#388](https://github.com/APKiwiOrg/Ruinborne/issues/388), whose whole
+terrain ring rebuilt on every drop while the player stood still.
+
+**The join spawn is resolved through a resume hint, before the entity exists.** New public API on
+`KhaozEngine.NetWorld`: the `ResumePositionProvider` delegate (`bool (string accountId, out Vector3 position)`),
+the bounded `ResumePositionCache` that backs one, and `IWorldPersistenceHost.SetResumePositionProvider` to install
+it. Both heads consult it for a joining slot's account id and fall back to `SpawnPosition` (then the per-slot
+default spread) when it knows nothing, so a first-ever join is untouched. The seam member is a DEFAULT interface
+method, so an existing `IWorldPersistenceHost` implementer keeps compiling and simply keeps spawning joins its own
+way. `WorldPersistence` records the hint on save-on-leave and on a successful load-on-join apply, and installs it
+on the host at construction, so a persistence-backed server needs no wiring at all: it adopts the fix by upgrading.
+
+**The restore is a teleport only when it MOVES the player.** The seed alone leaves one teleport standing, because
+the epoch advance is not positional the way the reseed verdict is: `ClientPrediction.Reconcile` cuts on ANY advance
+past its high-water mark, by design, so a restore landing on the position the player is already standing on still
+reported a teleport for a move of nothing. `WorldPersistence` now measures the loaded position against the live one
+(both absolute world metres, no frame conversion needed) and passes `teleport: false` when they are within
+`WorldPersistenceConfig.QuietRestoreDistance` (default 1 m, which covers the ground clamp and the handful of ticks
+a player may have been simulated for while the load was in flight). Neither half closes this alone: the seed kills
+the reseed onto the spawn, the quiet apply kills the restore's epoch advance, and each was measured leaving exactly
+one teleport standing without the other.
+
+**The hint is a hint, and the store still wins.** The asynchronous load runs exactly as before and still applies
+the stored record over the seeded position, so a record that changed while the player was offline (a respawn, an
+offline admin move, another process) relocates them and reports its one honest teleport. The cache is bounded by
+`WorldPersistenceConfig.ResumeHintCapacity` (default 1024 accounts, least-recently-recorded evicted, 0 turns the
+seed off) so a server that has seen a million accounts holds a fixed number of them, and it is memory-only: after a
+process restart the first rejoin of each account falls back to the configured spawn and takes the restore teleport.
+A game that wants that case covered too pre-warms `WorldPersistence.ResumeHints` from its own store at boot, which
+is why the cache is public (`Record`, `TryGet`, `Forget`, `Clear`, `Count`, `Capacity`). Withholding the first
+snapshot until the load lands was the other candidate shape and is not what landed: it needs a wire-level "not yet"
+the client understands plus a timeout so a dead store cannot strand a player with no snapshot at all, where this
+needs neither, and it would have changed the serve loop for every server to fix a case the seed already covers.
+
+**Tests.** A new `WorldPersistenceReconnectTeleportTests` drives the real loopback stack (an auto-reconnecting
+`WorldClient`, a `WorldServer` or `ShardedWorldServer`, a `WorldPersistence` over an `InMemoryWorldStore`) in the
+field's frame order - poll, tick, then `WorldPersistence.Update` - so a restore always lands at least one snapshot
+behind the join, which is what a genuinely remote store does. `WorldClientReconnectTeleportTests` deliberately does
+not cover this: its harness restores synchronously as the next join's spawn. Four rows. The reported case (parked
+at 400, 0.9, 300 with the spawn at the origin, transport drop, no input) asserts the rejoin was BUILT at the parked
+position, that the resume snapshot carries it, and that the consumer-visible teleport fires zero times. A
+first-ever join still lands on the configured spawn and still reports its one teleport. A record that changed
+during the disconnect window wins over the hint and reports exactly one. The fourth is the sharded twin of the
+first.
+Against the pre-fix sources the three behavioural rows fail with the entity built at `<0, 0.9, 0>` and two
+teleports fired where zero and one were expected. `ResumePositionCacheTests` pins the bound and the eviction order.
 
 ### The tile world renderer package (#629)
 

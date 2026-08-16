@@ -29,14 +29,23 @@ public class WorldClientReconnectTeleportTests
     static readonly Func<float, float, float> Flat = (x, z) => 0f;
     const float Dt = 1f / 30f;
 
-    // Spawn every slot at the same place, so a recycled-vs-fresh server slot cannot smuggle a real displacement into
-    // the reconnect and make the "no teleport" assertion pass for the wrong reason.
-    static WorldServerConfig NewServerConfig() => new()
+    // The harness server RESTORES the session's position on rejoin: it records what the departing player left
+    // (PlayerLeaving hands the final state back in absolute world metres, exactly what a persistence layer writes) and
+    // hands it straight back as the next join's spawn. That is the synchronous form of a real server's load-on-join,
+    // and it is what makes the stationary-reconnect row below able to fail: with every slot pinned to the origin, a
+    // player parked on the spawn makes "resumed where they were" and "resumed at the spawn" the same point, so the row
+    // holds whether or not anything was restored. Absent a stored position it still spawns every slot at the same
+    // place, so a recycled-vs-fresh slot cannot smuggle a displacement in either.
+    // (KhaozEngine's own WorldPersistence restores ASYNCHRONOUSLY, after the rejoiner's first snapshot has already
+    // gone out at the config spawn. That is a real gap on that path and not what these rows cover.)
+    sealed class SessionStore { public Vector3? Last; }
+
+    static WorldServerConfig NewServerConfig(SessionStore? store = null) => new()
     {
         TickSeconds = Dt,
         InterestRadius = 500f,
         MaxPlayers = 8,
-        SpawnPosition = _ => Vector3.Zero,
+        SpawnPosition = _ => store?.Last ?? Vector3.Zero,
     };
 
     static WorldClientConfig NewClientConfig() => new()
@@ -91,8 +100,10 @@ public class WorldClientReconnectTeleportTests
     static Rig Connect()
     {
         var hub = new InMemoryHub();
-        WorldServerConfig config = NewServerConfig();
+        var store = new SessionStore();
+        WorldServerConfig config = NewServerConfig(store);
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
+        server.PlayerLeaving += (_, _, state) => store.Last = state.Position;   // the departing session's last word
         var endpoint = new Endpoint();
         var client = new WorldClient(
             () => { INetTransport t = hub.CreateClient(); endpoint.Live = t; return t; },
@@ -132,13 +143,21 @@ public class WorldClientReconnectTeleportTests
     public void Transport_drop_and_reconnect_while_stationary_is_not_a_teleport()
     {
         Rig rig = Connect();
+
+        // Put the player a long way OFF the spawn before the drop, on a server that hands the position back at the
+        // rejoin. Both halves are load-bearing: parked on the spawn, the "resumed where they were" assertion below
+        // cannot tell a restored session from a fresh one at the origin, and it passes either way. 500 m out is five
+        // times HardSnapDistance, so a resume at the spawn would report a teleport as loudly as it can.
+        rig.Server.Teleport(PlayerRef.Slot(rig.Server.JoinedSlots.First()), new Vector3(400f, 0.9f, 300f));
         for (int i = 0; i < 30; i++) { rig.Client.SendInput(MoveCommand.Idle); rig.Frame(); }
 
         long netIdBefore = rig.Client.LocalNetId;
         uint teleportsBefore = rig.Client.LocalTeleportEpoch;
         Vector3 posBefore = rig.LocalPosition();
+        Assert.True(Vector3.Distance(posBefore, Vector3.Zero) > 100f,
+            $"the player has to be off the spawn for this row to prove anything (it is at {posBefore})");
         int fired = 0;
-        rig.Client.LocalTeleported += () => fired++;   // subscribed AFTER the join, so only the resume can fire it
+        rig.Client.LocalTeleported += () => fired++;   // subscribed AFTER the move, so only the resume can fire it
 
         Assert.True(rig.DropAndReconnect(), "the client never reconnected after the transport drop");
 
@@ -146,7 +165,8 @@ public class WorldClientReconnectTeleportTests
         for (int i = 0; i < 20; i++) { rig.Client.SendInput(MoveCommand.Idle); rig.Frame(); }
 
         // The reconnect really did rebuild the session (otherwise the assertions below prove nothing): the server
-        // allocates a fresh net id per join, so a resumed client is a DIFFERENT entity than the one that dropped.
+        // allocates a fresh net id per join, so a resumed client is a DIFFERENT entity than the one that dropped, and
+        // the position it comes back on was restored rather than never lost.
         Assert.True(rig.Client.LocalNetId > 0);
         Assert.NotEqual(netIdBefore, rig.Client.LocalNetId);
         Assert.Equal(WorldConnectionState.Connected, rig.Client.ConnectionState);
@@ -210,9 +230,10 @@ public class WorldClientReconnectTeleportTests
     public void A_remote_epoch_that_dips_and_recovers_is_not_a_remote_teleport()
     {
         // The remote flush read the replicated epoch as a teleport on ANY change. That epoch reads 0 whenever the
-        // movement component is momentarily unreadable (here when it has not replicated onto the entity yet, and on
-        // the server where it rebuilds the state), so a real stream can dip and recover - which cut the remote once on
-        // the dip and once on the recovery, streaking nothing but costing every observer a snap.
+        // movement component is momentarily unreadable on a known entity (on the server where it rebuilds the state,
+        // and on any read that finds no component on a snapshot that carried one before), so a real stream can dip and
+        // recover - which cut the remote once on the dip and once on the recovery, streaking nothing but costing every
+        // observer a snap. The dip is fed here as an explicit 0 on the wire.
         var (serverTransport, clientTransport) = LoopbackTransport.CreatePair();
         var server = new NetServer(serverTransport, maxPlayers: 4, new AllowAllAuthenticator());
         using var client = new WorldClient(clientTransport, Flat, MoveTuning.Default, new WorldClientConfig());

@@ -90,4 +90,65 @@ public class WorldForEachPoolingTests
         Assert.Equal(3, outerVisits);              // outer iteration not truncated by the nested call
         Assert.Equal(9f, innerSumAcrossOuter);     // inner saw all 3 entities on each of the 3 outer steps
     }
+
+    /// <summary>
+    /// One level deeper than the pool is prewarmed for, which is the branch the earlier nesting test never
+    /// reaches. The pool holds 4 instances, so levels 1 to 4 each rent one and level 5 finds it empty:
+    /// <c>TryRent</c> comes back false, writes the empty rental, and <c>RentForEachQuery</c> falls back to a
+    /// fresh un-pooled Query. That level still iterates correctly, and its <c>finally</c> hands the empty
+    /// rental to <c>TryReturn</c>, which has to ABSORB it rather than throw, because a throw there would
+    /// replace whatever exception the body was already unwinding. The pool ends the whole descent back at 4
+    /// free, so the fallback level leaks nothing into the pool it never took anything from.
+    /// </summary>
+    [Fact]
+    public void ForEachNestedPastThePrewarmFallsBackAndTheEmptyRentalIsAbsorbed()
+    {
+        var w = MakeWorld(3);   // three entities, X = 1 each
+
+        Assert.Equal(4, w._forEachQueryPool.FreeCount);   // the prewarm, and so the depth the pool covers
+        Assert.Equal(0, w._forEachQueryPool.ActiveCount);
+
+        var visitsAtDepth = new int[5];
+        float deepestSum = 0f;
+        int exhaustionChecks = 0;
+
+        void Descend(int depth)
+        {
+            bool descendedFromHere = false;
+            w.ForEach((Entity _, ref Pos p) =>
+            {
+                visitsAtDepth[depth - 1]++;
+
+                if (depth < 5)
+                {
+                    // Descend once per level, so the deepest level runs a single time rather than 3^4 times.
+                    if (descendedFromHere) return;
+                    descendedFromHere = true;
+                    Descend(depth + 1);
+                    return;
+                }
+
+                deepestSum += p.X;
+                exhaustionChecks++;
+
+                // Every pooled instance is out at levels 1 to 4, so this level is running on the fallback.
+                Assert.Equal(4, w._forEachQueryPool.ActiveCount);
+                Assert.Equal(0, w._forEachQueryPool.FreeCount);
+
+                // The exhausted path itself, asserted directly rather than inferred from the result.
+                Assert.False(w._forEachQueryPool.TryRent(out var empty));
+                Assert.True(empty.IsEmpty);
+                Assert.Null(empty.Item);
+                Assert.False(w._forEachQueryPool.TryReturn(in empty));   // absorbed, not thrown
+            });
+        }
+
+        Descend(1);
+
+        Assert.Equal(new[] { 3, 3, 3, 3, 3 }, visitsAtDepth);   // no level truncated by the one below it
+        Assert.Equal(3f, deepestSum);                           // the fallback level saw all 3 entities
+        Assert.Equal(3, exhaustionChecks);                      // and stayed exhausted for all 3 of them
+        Assert.Equal(0, w._forEachQueryPool.ActiveCount);
+        Assert.Equal(4, w._forEachQueryPool.FreeCount);          // every pooled rental came back
+    }
 }

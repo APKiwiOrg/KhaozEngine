@@ -86,6 +86,8 @@
     <ProjectReference Include="../KhaozEngine.Terrain/KhaozEngine.Terrain.csproj" />
     <!-- Scene3DChunkSink (base namespace KhaozEngine.Terrain) lives in the Render3D companion assembly. -->
     <ProjectReference Include="../KhaozEngine.Terrain.Render3D/KhaozEngine.Terrain.Render3D.csproj" />
+    <!-- TileWorld folder covers the tile-world renderer, which also drags in the TileWorld document package. -->
+    <ProjectReference Include="../KhaozEngine.TileWorld.Render3D/KhaozEngine.TileWorld.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
     <ProjectReference Include="../KhaozEngine.TestSupport/KhaozEngine.TestSupport.csproj" />
     <ProjectReference Include="../KhaozEngine.TestSupport.Gpu/KhaozEngine.TestSupport.Gpu.csproj" />

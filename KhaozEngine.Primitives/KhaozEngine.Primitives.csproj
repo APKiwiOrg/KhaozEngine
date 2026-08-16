@@ -17,4 +17,10 @@
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- ObjectPool's per-slot generation counter is private, and winding one to the edge of int is the only
+         way to test wraparound without 2^32 real rentals. Exposes the SetSlotGenerationForTest seam only. -->
+    <InternalsVisibleTo Include="KhaozEngine.Foundation.Tests" />
+  </ItemGroup>
 </Project>

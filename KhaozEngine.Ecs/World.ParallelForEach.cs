@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.ExceptionServices;
+using KhaozEngine.Primitives;
 using KhaozEngine.Simulation;
 
 namespace KhaozEngine.Ecs;
@@ -50,7 +51,7 @@ public sealed partial class World
         where T1 : struct, IComponent
     {
         ArgumentNullException.ThrowIfNull(action);
-        Query q = RentForEachQuery(out PoolableQuery? rented);
+        Query q = RentForEachQuery(out PoolRental<PoolableQuery> rented);
         BeginParallelSection();
         try { q.ParallelForEach(action, scheduler ?? DefaultScheduler); }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
@@ -61,7 +62,7 @@ public sealed partial class World
         where T1 : struct, IComponent where T2 : struct, IComponent
     {
         ArgumentNullException.ThrowIfNull(action);
-        Query q = RentForEachQuery(out PoolableQuery? rented);
+        Query q = RentForEachQuery(out PoolRental<PoolableQuery> rented);
         BeginParallelSection();
         try { q.ParallelForEach(action, scheduler ?? DefaultScheduler); }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
@@ -72,7 +73,7 @@ public sealed partial class World
         where T1 : struct, IComponent where T2 : struct, IComponent where T3 : struct, IComponent
     {
         ArgumentNullException.ThrowIfNull(action);
-        Query q = RentForEachQuery(out PoolableQuery? rented);
+        Query q = RentForEachQuery(out PoolRental<PoolableQuery> rented);
         BeginParallelSection();
         try { q.ParallelForEach(action, scheduler ?? DefaultScheduler); }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
@@ -84,7 +85,7 @@ public sealed partial class World
         where T4 : struct, IComponent
     {
         ArgumentNullException.ThrowIfNull(action);
-        Query q = RentForEachQuery(out PoolableQuery? rented);
+        Query q = RentForEachQuery(out PoolRental<PoolableQuery> rented);
         BeginParallelSection();
         try { q.ParallelForEach(action, scheduler ?? DefaultScheduler); }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
@@ -96,7 +97,7 @@ public sealed partial class World
         where T4 : struct, IComponent where T5 : struct, IComponent
     {
         ArgumentNullException.ThrowIfNull(action);
-        Query q = RentForEachQuery(out PoolableQuery? rented);
+        Query q = RentForEachQuery(out PoolRental<PoolableQuery> rented);
         BeginParallelSection();
         try { q.ParallelForEach(action, scheduler ?? DefaultScheduler); }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
@@ -108,7 +109,7 @@ public sealed partial class World
         where T4 : struct, IComponent where T5 : struct, IComponent where T6 : struct, IComponent
     {
         ArgumentNullException.ThrowIfNull(action);
-        Query q = RentForEachQuery(out PoolableQuery? rented);
+        Query q = RentForEachQuery(out PoolRental<PoolableQuery> rented);
         BeginParallelSection();
         try { q.ParallelForEach(action, scheduler ?? DefaultScheduler); }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
@@ -121,7 +122,7 @@ public sealed partial class World
         where T7 : struct, IComponent
     {
         ArgumentNullException.ThrowIfNull(action);
-        Query q = RentForEachQuery(out PoolableQuery? rented);
+        Query q = RentForEachQuery(out PoolRental<PoolableQuery> rented);
         BeginParallelSection();
         try { q.ParallelForEach(action, scheduler ?? DefaultScheduler); }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
@@ -134,7 +135,7 @@ public sealed partial class World
         where T7 : struct, IComponent where T8 : struct, IComponent
     {
         ArgumentNullException.ThrowIfNull(action);
-        Query q = RentForEachQuery(out PoolableQuery? rented);
+        Query q = RentForEachQuery(out PoolRental<PoolableQuery> rented);
         BeginParallelSection();
         try { q.ParallelForEach(action, scheduler ?? DefaultScheduler); }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
@@ -151,7 +152,7 @@ public sealed partial class World
         where T1 : struct, IComponent
     {
         ArgumentNullException.ThrowIfNull(action);
-        Query q = RentForEachQuery(out PoolableQuery? rented);
+        Query q = RentForEachQuery(out PoolRental<PoolableQuery> rented);
         List<EntityCommandBuffer> sink = RentEcbSink();
         bool sectionOk = false;
         BeginParallelSection();
@@ -165,7 +166,7 @@ public sealed partial class World
         where T1 : struct, IComponent where T2 : struct, IComponent
     {
         ArgumentNullException.ThrowIfNull(action);
-        Query q = RentForEachQuery(out PoolableQuery? rented);
+        Query q = RentForEachQuery(out PoolRental<PoolableQuery> rented);
         List<EntityCommandBuffer> sink = RentEcbSink();
         bool sectionOk = false;
         BeginParallelSection();
@@ -179,7 +180,7 @@ public sealed partial class World
         where T1 : struct, IComponent where T2 : struct, IComponent where T3 : struct, IComponent
     {
         ArgumentNullException.ThrowIfNull(action);
-        Query q = RentForEachQuery(out PoolableQuery? rented);
+        Query q = RentForEachQuery(out PoolRental<PoolableQuery> rented);
         List<EntityCommandBuffer> sink = RentEcbSink();
         bool sectionOk = false;
         BeginParallelSection();
@@ -194,7 +195,7 @@ public sealed partial class World
         where T4 : struct, IComponent
     {
         ArgumentNullException.ThrowIfNull(action);
-        Query q = RentForEachQuery(out PoolableQuery? rented);
+        Query q = RentForEachQuery(out PoolRental<PoolableQuery> rented);
         List<EntityCommandBuffer> sink = RentEcbSink();
         bool sectionOk = false;
         BeginParallelSection();

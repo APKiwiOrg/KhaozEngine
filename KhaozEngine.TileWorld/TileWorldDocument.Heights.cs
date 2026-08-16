@@ -59,10 +59,12 @@ public sealed partial class TileWorldDocument
         region.Dirty = true;
     }
 
-    /// <summary>Bilinear height in metres at a world position (world units = tiles * <see cref="TileSize"/>).</summary>
+    /// <summary>Bilinear height in metres at a world position. World units are tiles times
+    /// <see cref="TileSize"/>, with z running the other way from tile z, so the conversion goes through
+    /// <see cref="TileWorldSpace"/> rather than a bare divide.</summary>
     public float HeightAt(float worldX, float worldZ, int plane)
     {
-        float tx = worldX / TileSize, tz = worldZ / TileSize;
+        float tx = TileWorldSpace.TileX(worldX, TileSize), tz = TileWorldSpace.TileZ(worldZ, TileSize);
         int x0 = (int)MathF.Floor(tx), z0 = (int)MathF.Floor(tz);
         float fx = tx - x0, fz = tz - z0;
         float h00 = CornerHeight(x0, z0, plane), h10 = CornerHeight(x0 + 1, z0, plane);

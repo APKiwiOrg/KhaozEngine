@@ -402,7 +402,7 @@ public sealed class SocialPresenceController : IDisposable
 
         if (connectAttempts >= maxConnectAttempts)
         {
-            log.Debug($"social: no platform client after {connectAttempts} attempt(s); giving up until Retry().");
+            log.Debug($"social: no platform client after {connectAttempts} attempt(s), giving up until Retry().");
             SetState(SocialPresenceState.GivenUp);
             return;
         }
@@ -478,7 +478,7 @@ public sealed class SocialPresenceController : IDisposable
             // flapping platform client never fails one. Discord mid-restart is the real case, since its
             // handshake succeeds the moment the bytes are written and the socket dies right after. So the
             // spent attempts carry forward, and running out of them here is what ends the cycle.
-            log.Debug($"social: the connection dropped {connectAttempts} time(s) without holding; giving up until Retry().");
+            log.Debug($"social: the connection dropped {connectAttempts} time(s) without holding, giving up until Retry().");
             SetState(SocialPresenceState.GivenUp);
             return;
         }

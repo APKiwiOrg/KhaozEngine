@@ -19,6 +19,15 @@ namespace KhaozEngine.Social;
 /// <see cref="SocialPresenceState.Connected"/>, so a handler that publishes its own line on that event wins
 /// and stays published.
 /// <para>
+/// A drop only refills the connect budget when the session HELD, meaning it lasted at least
+/// <see cref="SocialPresenceOptions.StableConnectionSpan"/>. A connect that dies sooner than that carries its
+/// spent attempts forward, so a platform client that accepts every connect and loses it again immediately
+/// reaches <see cref="SocialPresenceState.GivenUp"/> rather than cycling for the rest of the process. With
+/// <see cref="SocialPresenceOptions.MaxConnectAttempts"/> of 1, a held session's drop therefore gets ONE
+/// reconnect attempt, one <see cref="SocialPresenceOptions.ConnectRetryDelay"/> later rather than
+/// immediately as the cold start at <see cref="Initialize"/> does, and then gives up.
+/// </para>
+/// <para>
 /// A handler wired straight to <see cref="Retry"/> on <see cref="SocialPresenceState.GivenUp"/> should know
 /// that the forced attempt runs inside the event, while the state is still <c>GivenUp</c>. With no budget
 /// left to re-arm (<see cref="SocialPresenceOptions.MaxConnectAttempts"/> of 1) that is one extra attempt and
@@ -44,12 +53,14 @@ public sealed class SocialPresenceController : IDisposable
     private readonly TimeSpan maxRetryDelay;
     private readonly double retryBackoff;
     private readonly int maxConnectAttempts;
+    private readonly TimeSpan stableConnectionSpan;
 
     private SocialPresenceState state = SocialPresenceState.Uninitialized;
     private bool hasConnected;
     private int connectAttempts;
     private TimeSpan retryDelay;
     private DateTime nextAttemptUtc;
+    private DateTime connectedAtUtc = DateTime.MinValue;
 
     private RichPresence lastPresence;
     private bool hasLastPresence;
@@ -75,6 +86,7 @@ public sealed class SocialPresenceController : IDisposable
         maxRetryDelay = cappedMax > initialRetryDelay ? cappedMax : initialRetryDelay;
         retryBackoff = this.options.ConnectRetryBackoff > 1.0 ? this.options.ConnectRetryBackoff : 1.0;
         maxConnectAttempts = this.options.MaxConnectAttempts > 1 ? this.options.MaxConnectAttempts : 1;
+        stableConnectionSpan = ClampDelay(this.options.StableConnectionSpan);
         retryDelay = initialRetryDelay;
 
         this.provider.JoinRequested += OnJoinRequested;
@@ -232,8 +244,13 @@ public sealed class SocialPresenceController : IDisposable
     {
         if (!EnsureReady())
         {
-            // Nothing has been published, so the clear just cancels whatever was waiting on the connect.
+            // Nothing can be published right now, so the clear cancels whatever was waiting on the connect.
+            // It also has to forget what the controller believes is live: a clear during an outage means the
+            // game wants nothing on screen, and leaving the dedupe cache holding the pre-drop line would
+            // dedupe the game's own attempt to put that same line back after the reconnect.
             DropHeldPresence();
+            hasLastPresence = false;
+            lastPresence = default;
             return;
         }
 
@@ -369,6 +386,7 @@ public sealed class SocialPresenceController : IDisposable
             // line held during the wait, or the stale hold overwrites it and, because the hold also primes
             // the dedupe cache, nothing republishes for the rest of the session.
             hasConnected = true;
+            connectedAtUtc = UtcNow;
             bool transitioned = AssignState(SocialPresenceState.Connected);
             PublishHeldPresence();
 
@@ -420,9 +438,9 @@ public sealed class SocialPresenceController : IDisposable
 
     // A connection that DROPPED is recoverable, unlike one that threw: the provider reported it itself by
     // going !IsConnected, which the seam defines as leaving it ready for another TryInitialize. So the
-    // session re-enters the same backoff a cold start uses, with a fresh budget and a fresh wait, and the
-    // provider is deliberately NOT disposed - disposing it is exactly what made the terminal path impossible
-    // to come back from.
+    // session re-enters the same backoff a cold start uses, and the provider is deliberately NOT disposed -
+    // disposing it is exactly what made the terminal path impossible to come back from. What the budget does
+    // depends on whether the session HELD: see the flap guard below.
     private void BeginReconnect()
     {
         log.Debug("social: the provider reports a dropped connection; reconnecting.");
@@ -436,13 +454,39 @@ public sealed class SocialPresenceController : IDisposable
             hasPendingPresence = true;
         }
 
-        connectAttempts = 0;
-        retryDelay = initialRetryDelay;
+        // The dedupe cache describes a platform client that is GONE, so it is dropped here - after the hold
+        // above has taken its copy of it, which is the whole reason these two are in this order. Whatever the
+        // reconnect publishes primes it again. Left standing, it swallows the game's first SetPresence after
+        // the outage whenever that line matches the pre-drop one, which is exactly what a ClearPresence
+        // during the outage produces: the platform is correctly blank, the controller believes the old line
+        // is live, and a change-driven publisher stays blank until it happens to set a different line.
+        hasLastPresence = false;
+        lastPresence = default;
+        lastPublishUtc = DateTime.MinValue;
 
-        // The first attempt waits out the initial delay rather than going on the spot. The platform client
-        // is mid-shutdown at the instant its socket dies, so an immediate attempt spends a budget on a
-        // failure that is as good as certain.
-        nextAttemptUtc = Schedule(UtcNow, retryDelay);
+        DateTime now = UtcNow;
+        if (now - connectedAtUtc >= stableConnectionSpan)
+        {
+            // A session that ran for a while and then ended is a real outage: full budget, initial wait.
+            connectAttempts = 0;
+            retryDelay = initialRetryDelay;
+        }
+        else if (connectAttempts >= maxConnectAttempts)
+        {
+            // A connect that dies inside StableConnectionSpan is a FLAP, and a flap resetting the budget is
+            // a loop with no exit: only a failed attempt reaches the budget check in AttemptConnect, and a
+            // flapping platform client never fails one. Discord mid-restart is the real case, since its
+            // handshake succeeds the moment the bytes are written and the socket dies right after. So the
+            // spent attempts carry forward, and running out of them here is what ends the cycle.
+            log.Debug($"social: the connection dropped {connectAttempts} time(s) without holding; giving up until Retry().");
+            SetState(SocialPresenceState.GivenUp);
+            return;
+        }
+
+        // The first attempt waits out the delay rather than going on the spot. The platform client is
+        // mid-shutdown at the instant its socket dies, so an immediate attempt spends a budget on a failure
+        // that is as good as certain.
+        nextAttemptUtc = Schedule(now, retryDelay);
         retryDelay = GrowDelay(retryDelay);
         SetState(SocialPresenceState.Reconnecting);
     }

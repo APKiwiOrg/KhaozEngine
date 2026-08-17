@@ -12,9 +12,9 @@ namespace KhaozEngine.Social;
 /// 2m33s and 3m33s, so a Discord that appears anywhere in the first few minutes still gets presence,
 /// and a machine with no Discord at all stops being asked after eight tries instead of polling for the
 /// whole session. Every value is clamped to something usable, so a nonsensical setting degrades rather
-/// than throws: both waits are pulled into [0, 1 day], which is well past anything that can serve a client
-/// starting alongside the game and keeps the schedule off the date arithmetic that an unbounded wait
-/// overflows.
+/// than throws: every span here is pulled into [0, 1 day], which is well past anything that can serve a
+/// client starting alongside the game and keeps the schedule off the date arithmetic that an unbounded
+/// wait overflows.
 /// </remarks>
 public sealed class SocialPresenceOptions
 {
@@ -42,4 +42,14 @@ public sealed class SocialPresenceOptions
     /// old one-shot behaviour: fail once, never retry. Default 8.
     /// </summary>
     public int MaxConnectAttempts { get; init; } = 8;
+
+    /// <summary>
+    /// How long a connection has to last before the drop that ends it counts as a real session ending
+    /// rather than a flap. A session that held at least this long gets a fresh
+    /// <see cref="MaxConnectAttempts"/> budget on the way back, and a shorter one carries its spent
+    /// attempts forward, so a platform client that accepts every connect and loses it again immediately
+    /// still runs out of budget instead of cycling for the rest of the process. Default 30s, clamped to
+    /// [0, 1 day]. Zero opts out: every drop is then treated as a held session.
+    /// </summary>
+    public TimeSpan StableConnectionSpan { get; init; } = TimeSpan.FromSeconds(30);
 }

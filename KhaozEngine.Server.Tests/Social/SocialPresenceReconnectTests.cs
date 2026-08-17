@@ -114,6 +114,10 @@ public class SocialPresenceReconnectTests
         controller.Initialize();
         Assert.Equal(SocialPresenceState.Connected, controller.State);
 
+        // A session that actually ran before Discord went away, so the drop that ends it is the real thing
+        // rather than a flap, and is entitled to a budget of its own.
+        clock.Advance(TimeSpan.FromSeconds(31));
+
         // Discord is gone for good: the socket is dead and nothing will connect to it again.
         fake.ConnectedResult = false;
         fake.InitializeResult = false;
@@ -157,6 +161,109 @@ public class SocialPresenceReconnectTests
         clock.Advance(TimeSpan.FromSeconds(1));
         controller.Update();
         Assert.Equal(SocialPresenceState.Connected, controller.State);
+    }
+
+    [Fact]
+    public void AConnectionThatKeepsDroppingTheInstantItLands_RunsOutOfBudget_InsteadOfFlappingForever()
+    {
+        var clock = new StoppedClock();
+
+        // TryInitialize keeps saying yes and the connection is dead again by the next probe. A real Discord
+        // mid-restart does this: its handshake succeeds the moment the bytes are written, and the socket it
+        // was written to is already going away.
+        var fake = new FakeSocialProvider { ConnectedResult = false };
+        using var controller = new SocialPresenceController(fake, Options(maxAttempts: 4, retrySeconds: 1), clock.Now);
+
+        controller.Initialize();
+        controller.SetPresence(new RichPresence { Details = "In Game" });
+
+        // Ten simulated minutes of it. Every cycle connects, republishes and drops on one frame, so before
+        // the flap guard this ran a status line flipping every few seconds and a SET_ACTIVITY per cycle for
+        // as long as the game was open.
+        for (int i = 0; i < 200; i++)
+        {
+            clock.Advance(TimeSpan.FromSeconds(3));
+            controller.Update();
+        }
+
+        // Four connects, four publishes, then nothing at all: the drop after the last one has no budget left
+        // to reset, so it ends the cycle the way an unreachable platform client ends a cold start.
+        Assert.Equal(SocialPresenceState.GivenUp, controller.State);
+        Assert.Equal(4, fake.InitializedWith.Count);
+        Assert.Equal(4, fake.PresenceCalls.Count);
+    }
+
+    [Fact]
+    public void ASessionThatHeldBeforeItDropped_GetsAFreshBudget_NotTheColdStartsLeftovers()
+    {
+        var clock = new StoppedClock();
+        var fake = new FakeSocialProvider();
+        using var controller = new SocialPresenceController(fake, Options(maxAttempts: 2, retrySeconds: 1), clock.Now);
+
+        controller.Initialize();
+        Assert.Equal(SocialPresenceState.Connected, controller.State);
+
+        // Past StableConnectionSpan, so this is a session ending rather than a flap.
+        clock.Advance(TimeSpan.FromSeconds(31));
+        fake.ConnectedResult = false;
+        fake.InitializeResult = false;
+        controller.Update();
+        Assert.Equal(SocialPresenceState.Reconnecting, controller.State);
+
+        // Both attempts of the budget are there to spend. Carrying the cold start's one forward would have
+        // given up on this first one instead.
+        clock.Advance(TimeSpan.FromSeconds(1));
+        controller.Update();
+        Assert.Equal(2, fake.InitializedWith.Count);
+        Assert.Equal(SocialPresenceState.Reconnecting, controller.State);
+
+        clock.Advance(TimeSpan.FromSeconds(2));
+        controller.Update();
+        Assert.Equal(3, fake.InitializedWith.Count);
+        Assert.Equal(SocialPresenceState.GivenUp, controller.State);
+    }
+
+    [Fact]
+    public void AClearDuringTheOutage_LeavesThePreDropLinePublishable_RatherThanDedupedAway()
+    {
+        var clock = new StoppedClock();
+        var fake = new FakeSocialProvider();
+
+        // The republish throttle is well past the whole test, so it cannot be what publishes the last line:
+        // the only thing that decides it is what the dedupe cache believes is currently on the platform.
+        var options = new SocialPresenceOptions
+        {
+            ConnectRetryDelay = TimeSpan.FromSeconds(3),
+            MaxConnectAttempts = 8,
+            RepublishInterval = TimeSpan.FromMinutes(5),
+        };
+        using var controller = new SocialPresenceController(fake, options, clock.Now);
+
+        var line = new RichPresence { Details = "In Game", State = "Boss Rush" };
+        controller.Initialize();
+        controller.SetPresence(line);
+        Assert.Single(fake.PresenceCalls);
+
+        clock.Advance(TimeSpan.FromSeconds(31));
+        fake.ConnectedResult = false;
+        controller.Update();
+        Assert.Equal(SocialPresenceState.Reconnecting, controller.State);
+
+        // The game clears while the platform is down, so the reconnect deliberately comes back blank.
+        controller.ClearPresence();
+
+        fake.ConnectedResult = true;
+        clock.Advance(TimeSpan.FromSeconds(3));
+        controller.Update();
+        Assert.Equal(SocialPresenceState.Connected, controller.State);
+        Assert.Single(fake.PresenceCalls);
+
+        // And the line the session was showing before the drop can go back up. The cache described a client
+        // that no longer exists, so it is not allowed to swallow this: a change-driven publisher would
+        // otherwise stay blank until it happened to set some different line.
+        controller.SetPresence(line);
+        Assert.Equal(2, fake.PresenceCalls.Count);
+        Assert.Equal("Boss Rush", fake.PresenceCalls[1].State);
     }
 
     [Fact]

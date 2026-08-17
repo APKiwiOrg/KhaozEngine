@@ -12,9 +12,9 @@ namespace KhaozEngine.Render3D
     /// <b>It is a plain CPU array, deliberately.</b> Every consumer already has the ground height somewhere - a
     /// terrain field, a heightmap, a collision mesh - and none of them have it as a GPU texture in a format the
     /// water pass could read. Asking for an <c>IGpuTexture</c> would push the format, the usage flags and the
-    /// upload into each game; asking for depths in metres pushes nothing. The renderer owns the texture, uploads on
-    /// a <see cref="Revision"/> change and never re-uploads otherwise, so a field that is baked once at load costs
-    /// one upload for the life of the process.
+    /// upload into each game; asking for depths in metres pushes nothing. The renderer owns the texture, uploads
+    /// when the field is replaced or its <see cref="Revision"/> moves and never re-uploads otherwise, so a field
+    /// that is baked once at load costs one upload for the life of the process.
     /// </para>
     /// <para>
     /// <b>What a value MEANS.</b> <see cref="Depths"/>[z * <see cref="Resolution"/> + x] is the water depth in
@@ -82,8 +82,14 @@ namespace KhaozEngine.Render3D
         /// <see cref="MarkChanged"/>.</summary>
         public float[] Depths { get; }
 
-        /// <summary>Bumped by <see cref="MarkChanged"/>. The renderer re-uploads when it sees a different value and
-        /// does nothing at all otherwise, so a static coastline costs one upload ever.</summary>
+        /// <summary>Bumped by <see cref="MarkChanged"/>. The renderer re-uploads when it sees a different value on
+        /// THIS field and does nothing at all otherwise, so a static coastline costs one upload ever.
+        /// <para>
+        /// <b>It counts versions of one field, not fields.</b> Every instance starts at 0, so two separately built
+        /// fields routinely carry the same number and this is not an identity. The renderer keys its upload on the
+        /// field's reference as well, which is why REPLACING <see cref="WaterSettings.Bathymetry"/> re-uploads
+        /// without needing a <see cref="MarkChanged"/> on the incoming field (#645).
+        /// </para></summary>
         public int Revision { get; private set; }
 
         /// <summary>World size of one texel on X: the spacing the surf band's up-slope difference is taken

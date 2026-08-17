@@ -314,6 +314,12 @@ namespace KhaozEngine.Render3D
         /// has no cascades - it is a closed-form component stack whose whole point is that it needs no maps. The
         /// stylized path keeps <see cref="FoamShoreWidth"/>, which is a shoreline BAND rather than a breaking one.
         /// </para>
+        /// <para>
+        /// <b>Assigning a different field is supported and re-uploads</b>, whatever the incoming field's
+        /// <see cref="WaterBathymetry.Revision"/> reads, so streaming a new region or moving between water bodies
+        /// needs nothing but the assignment. Before 17.37.0 a replacement of the SAME resolution was silently
+        /// ignored and the previous field's depths stayed on the GPU (#645).
+        /// </para>
         /// </summary>
         public WaterBathymetry? Bathymetry;
 

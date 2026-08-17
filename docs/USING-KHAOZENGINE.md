@@ -2913,8 +2913,15 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     - **The seam is a plain CPU array**, not a texture: a `WaterBathymetry` holds water depth in METRES (still
       water minus ground, so positive is water and zero or less is land) over a world-space XZ rectangle, and
       `FillFromGround(groundHeight, surfaceY)` fills it from any height function - a terrain field, a heightmap, a
-      collision query. The renderer owns the texture and re-uploads only when `Revision` moves, so a coastline
-      baked once at load costs one upload for the life of the process. **Outside the rectangle the surface reads
+      collision query. The renderer owns the texture and re-uploads only when the field is REPLACED or its
+      `Revision` moves, so a coastline baked once at load costs one upload for the life of the process.
+      **Swapping in a different field is supported** and re-uploads whatever the incoming field's `Revision`
+      reads, which is what makes streaming a new region or moving between water bodies a plain assignment. Before
+      17.37.0 a replacement of the same resolution was silently ignored and the previous field's depths stayed on
+      the GPU, so a game that swapped its field kept rendering the old shore (#645). `Revision` counts versions of
+      ONE field, not fields: every instance starts at 0, so two separately built fields routinely carry the same
+      number, and `MarkChanged` is for mutating `Depths` in place rather than for announcing a replacement.
+      **Outside the rectangle the surface reads
       as deep open water**, which is what makes it affordable to bake a coastal strip at a useful resolution
       instead of a whole ocean at a useless one. Resolution wants to resolve the SHAPE of the coast, not its
       texture: a texel every few metres reads well, and what it must not do is miss a feature the surf is meant to
@@ -8435,12 +8442,15 @@ Rules for consumers:
   `Log.For<T>()` / `Log.Get(...)` is bound to its category and to the facade, not to whichever manager was
   configured when you asked for it, so it reads the current one on every call. Cache it in a
   `static readonly ILogger` field if you like: touching the type before `Log.Configure` runs, or reconfiguring
-  afterwards to swap the sink set, leaves that field writing to the live manager either way (17.36.2, #616). The one
+  afterwards to swap the sink set, leaves that field writing to the live manager either way (17.37.0, #616). The one
   logger this does NOT apply to is `LogManager.GetLogger(...)`, which is bound to the manager you took it from,
-  on purpose, so an injected manager and its sink keep meaning what they say. `CrashHandler.Install()` is the
-  other thing that still cares about order: it pins `Log.Manager` at install time and reports the fatal line
-  through that pinned manager, so install it AFTER `Log.Configure` and re-install it if you reconfigure, or the
-  crash line lands in a manager whose sinks were disposed (tracked to make it resolve per report: #633).
+  on purpose, so an injected manager and its sink keep meaning what they say.
+- **`CrashHandler.Install()` follows the facade too, so install it wherever you like** (17.37.0, #633). It arms
+  the process handlers and captures no manager, and resolves the configured one when a crash is actually
+  reported, so installing it before `Log.Configure` arms normally and starts reporting the moment configuration
+  lands, and a later reconfigure takes the fatal crash line with it. There is no re-install step any more. The
+  overload that takes a manager, `CrashHandler.Install(myManager)`, is the injected shape and PINS to that
+  manager on purpose, the same split as `LogManager.GetLogger` against `Log.For<T>()`.
 - Pick a **category**, then log under it (pass an exception as the optional second argument):
   - A single class's logging → `Log.For<T>()` (category = the type name).
   - A feature/subsystem spanning several classes, or a game-side module with no single owning type → 

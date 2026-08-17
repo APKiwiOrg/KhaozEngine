@@ -21,7 +21,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>A second failure used to ride on top of that one and no longer does. An <c>ILogger</c> handed out by
     /// the facade used to keep pointing at the manager it came from, so a reconfigure ORPHANED every producer
     /// that had already resolved one, and both native backends resolve theirs once into <c>static readonly</c>
-    /// fields. 17.36.2 moved that binding to the facade (#616): a logger from <c>Log.For</c> now finds the
+    /// fields. 17.37.0 moved that binding to the facade (#616): a logger from <c>Log.For</c> now finds the
     /// configured manager per call, so a producer resolved before a reconfigure follows it. The one-host rule
     /// above is untouched by that, because it is about which SINK survives, not about which producers reach
     /// it.</para>

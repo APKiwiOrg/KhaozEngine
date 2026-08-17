@@ -31,7 +31,7 @@ namespace KhaozEngine.Tests.Gpu
     /// against a <see cref="LogManager"/> they own.
     /// </para>
     /// <para>
-    /// PART of that used to be a second, worse failure, and 17.36.2 removed it (#616). A logger handed out by the
+    /// PART of that used to be a second, worse failure, and 17.37.0 removed it (#616). A logger handed out by the
     /// facade used to keep pointing at the manager it came from, so every logger resolved before a reconfigure
     /// wrote into a gutted manager for the rest of the process: enabled, submitting, and silent. Several Vulkan
     /// types resolve their logger once into a <c>static readonly</c> field, so one reconfigure orphaned the very

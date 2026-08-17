@@ -44,6 +44,14 @@ A logger from `LogManager.GetLogger(...)` is the deliberate opposite: it belongs
 life, which is what makes the injected path (DI, and a test asserting against a manager it owns) mean what it
 says.
 
+`CrashHandler.Install()` is on the facade side of that split. It arms the process handlers and holds no manager,
+resolving the configured one when a crash is reported, so install it before or after `Log.Configure` and
+reconfigure as often as you like: the fatal crash line follows the live manager and needs no re-install.
+`CrashHandler.Install(myManager)` is the injected shape and pins to the manager you hand it. Because arming no
+longer depends on a manager being configured, an unobserved task exception is marked observed while the handler
+is installed even if nothing is configured to log it, which only shows at all if you have switched
+`ThrowUnobservedTaskExceptions` on.
+
 ## One-call session bootstrap (`SessionLog`)
 
 The block above (file sink + console sink + `Log.Configure` + `CrashHandler.Install`) is the same at every game's
@@ -134,6 +142,8 @@ Do **not** prefix the message with the category: `Log.Info("[CloudSave] saved")`
 - `ILogger` - category logger (`Trace`/`Debug`/`Info`/`Warn`/`Error`/`Fatal`, each with an optional exception).
 - `ILogSink` + `FileSink` (rotate-on-launch + size rotation + retention), `ConsoleSink`, `DebugSink`, `InMemorySink`. Implement `ILogSink` for custom targets (in-game console, crash uploader).
 - `CrashHandler` - wires `AppDomain.UnhandledException` + `TaskScheduler.UnobservedTaskException` into the log.
+  `Install()` follows the ambient `Log` (resolved per crash, so install order does not matter), `Install(manager)`
+  pins to the manager you pass.
 - `CrashReport` + `CrashReportOptions` + `CrashReportKind` - the last-chance crash FILE, written with no logging
   configured. The kind picks the stem: an unhandled exception is a crash, an unobserved task exception is a task
   fault, and they retain separately.

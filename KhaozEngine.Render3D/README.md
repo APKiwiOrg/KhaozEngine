@@ -449,7 +449,10 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
 - Bathymetry, shoaling and breaking surf (since 17.3.0, `WaterSettings.Bathymetry`, **null by default = the
   16.12.0 surface, byte for byte**; needs `WaterWaveSource.FftOcean`): a `WaterBathymetry` is water depth in
   metres over a world-space XZ rectangle, supplied as a plain `float[]` the consumer writes (`FillFromGround` fills
-  it from any ground-height function) and re-uploaded only when its `Revision` moves. With one bound, each cascade
+  it from any ground-height function) and re-uploaded only when the field is replaced or its `Revision` moves.
+  Assigning a different field is a plain assignment and always re-uploads, whatever its `Revision` reads: before
+  17.37.0 a same-resolution replacement was silently ignored and the old depths stayed bound (#645). With one
+  bound, each cascade
   is scaled by `tanh(k d)` against its own energy-weighted mean wave number, so the long swell calms in metres of
   depth while the chop rides in untouched (`ShoalingStrength`, `ShoalingDepthScale`); and where the depth falls
   below `Hs / SurfBreakerIndex` the surface foams, gated on the incoming wave's CREST PHASE so the white surges up

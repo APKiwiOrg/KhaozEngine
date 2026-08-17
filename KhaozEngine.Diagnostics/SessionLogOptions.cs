@@ -42,6 +42,9 @@ public sealed class SessionLogOptions
     /// <summary>
     /// When true, <see cref="CrashHandler.Install()"/> is called so an unhandled or unobserved-task exception
     /// lands as a <see cref="LogLevel.Fatal"/> entry and is flushed before the process dies. Default true.
+    /// <para>That install resolves the configured manager when the crash is reported rather than capturing this
+    /// one, so a game that later calls <see cref="Log.Configure(LoggerOptions)"/> to swap its sink set keeps its
+    /// crash line, in the new manager, with no re-install (#633).</para>
     /// </summary>
     public bool InstallCrashHandler { get; set; } = true;
 

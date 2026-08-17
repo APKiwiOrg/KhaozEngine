@@ -19,10 +19,22 @@ namespace KhaozEngine.Render3D.Rendering
     /// rectangle constants the water shaders map world XZ through. Owned by <see cref="WaterRenderer"/>, which
     /// hands it the frame's settings and binds <see cref="Texture"/> unconditionally.
     /// <para>
-    /// <b>Uploads are revision-driven, and that is the whole cost model.</b> A depth field is a property of the
-    /// world, not of the frame: a consumer bakes it once at load and never touches it again, so the steady state
-    /// here is zero work per frame. <see cref="WaterBathymetry.MarkChanged"/> is what re-uploads, so a game with a
-    /// tide or a destructible coast pays exactly when it changes something.
+    /// <b>Uploads are gated on WHICH field and WHICH version of it, and that is the whole cost model.</b> A depth
+    /// field is a property of the world, not of the frame: a consumer bakes it once at load and never touches it
+    /// again, so the steady state here is zero work per frame. <see cref="WaterBathymetry.MarkChanged"/> is what
+    /// re-uploads a field in place, so a game with a tide or a destructible coast pays exactly when it changes
+    /// something, and REPLACING <see cref="WaterSettings.Bathymetry"/> with another field re-uploads too.
+    /// </para>
+    /// <para>
+    /// <b>The identity half of that gate is not optional (#645).</b>
+    /// <see cref="WaterBathymetry.Revision"/> is a per-instance counter starting at 0, so two freshly built fields
+    /// both sit at 1 after one <see cref="WaterBathymetry.FillFromGround"/>. Comparing the revision alone made a
+    /// same-resolution replacement a no-op and left the PREVIOUS field's depths on the GPU, with
+    /// <see cref="Active"/> true and a plausible-looking picture rather than an error. Comparing the field by
+    /// reference alongside its revision is the same shape <see cref="WaterRenderer"/> already binds its resource
+    /// set with (<c>ReferenceEquals(_bound, res) &amp;&amp; res.Generation == _boundGen</c>), and it costs one
+    /// reference compare on a path that already early-outs. The map holds that reference, so the last uploaded
+    /// field stays alive as long as the texture built from it does.
     /// </para>
     /// <para>
     /// <b>rgba16f rather than a single-channel float.</b> <see cref="GpuPixelFormat.R32Float"/> is documented as
@@ -45,6 +57,7 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuSampler? _sampler;
         IGpuTexture? _map;
         int _resolution;
+        WaterBathymetry? _uploaded;
         int _revision = int.MinValue;
         byte[] _scratch = Array.Empty<byte>();
 
@@ -78,7 +91,8 @@ namespace KhaozEngine.Render3D.Rendering
 
         /// <summary>
         /// Bring the depth texture up to date with the frame's settings. Cheap and idempotent: with no field set,
-        /// or with an unchanged <see cref="WaterBathymetry.Revision"/>, it does nothing but report.
+        /// or with the SAME field still at the same <see cref="WaterBathymetry.Revision"/>, it does nothing but
+        /// report. A different field always uploads, whatever its revision reads.
         /// </summary>
         /// <param name="field">The consumer's field, or null.</param>
         /// <returns>True when a field is live and the shaders should read it.</returns>
@@ -88,6 +102,9 @@ namespace KhaozEngine.Render3D.Rendering
             LastUploads = 0;
             if (field == null)
             {
+                // The texture and what it holds are BOTH kept across an inactive stretch, deliberately: a consumer
+                // that switches shoaling off and back on with the same field pays nothing, and the picture is
+                // right because only another field could have overwritten the texture meanwhile.
                 Active = false;
                 return false;
             }
@@ -106,10 +123,15 @@ namespace KhaozEngine.Render3D.Rendering
                 _revision = int.MinValue;
             }
 
-            if (_revision != field.Revision)
+            // Identity FIRST, then version. A revision only means anything within one field: the resize branch
+            // above catches a replacement that changes the resolution, and this catches the ordinary case where it
+            // does not (#645). Note that leaves the branch above resetting a revision the reference compare would
+            // have caught anyway, which is belt and braces rather than the thing doing the work.
+            if (!ReferenceEquals(_uploaded, field) || _revision != field.Revision)
             {
                 Pack(field.Depths, _scratch, _resolution);
                 _gd.UpdateTexture(_map, _scratch, 0, 0, (uint)_resolution, (uint)_resolution);
+                _uploaded = field;
                 _revision = field.Revision;
                 LastUploads = 1;
             }

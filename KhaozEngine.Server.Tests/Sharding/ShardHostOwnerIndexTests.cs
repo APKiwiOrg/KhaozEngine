@@ -11,8 +11,9 @@ namespace KhaozEngine.Tests.Sharding;
 /// The netId -&gt; (cell, entity) ownership index (gap 6 of the MMO arch review): <see cref="CellSim.TryGetOwned"/>
 /// and <see cref="ShardHost.TryGetOwner"/> resolve owners in O(1) off a maintained index instead of a linear
 /// <c>World.ForEach</c>. These tests pin the correctness bar: the index equals a from-scratch scan after every
-/// tick (including a migration stress), a ghost never resolves as an owner, the hot lookup allocates nothing, and
-/// the pre-index raw spawn idiom still resolves (fallback behind the index).
+/// tick (including a migration stress), a ghost never resolves as an owner, and the pre-index raw spawn idiom
+/// still resolves (fallback behind the index). The hot lookup's zero-allocation bar is next door in
+/// <see cref="ShardHostOwnerIndexAllocationTests"/>, which needs a serialized collection this class does not.
 /// </summary>
 public class ShardHostOwnerIndexTests
 {
@@ -194,25 +195,66 @@ public class ShardHostOwnerIndexTests
         Assert.True(cell.OwnedIndexEntries.ContainsKey(99));  // the fallback cached it
     }
 
+}
+
+/// <summary>
+/// The zero-allocation half of <see cref="ShardHostOwnerIndexTests"/>, in a class of its own because it belongs in
+/// the non-parallel <c>AllocSensitive</c> collection (see <see cref="AllocSensitiveCollection"/>) and the four
+/// correctness rows next door do not: serializing them would cost the whole migration stress on every run for no
+/// benefit. Its assertion reads <c>GC.GetAllocatedBytesForCurrentThread()</c>, which is per thread but not immune
+/// to the rest of the assembly, because xUnit reuses worker threads across collections and a gen-0 collection
+/// triggered by a parallel class can land inside the measurement window and be attributed here.
+/// <para>That is issue #264, nine sightings across CI legs and dev machines measuring 440, 1464, 1944, 2360, 5976,
+/// 7384 and 8192 bytes, every one of them passing in isolation immediately afterwards. Two defences, matching
+/// what the assembly's other allocation-sensitive classes already carry: this collection keeps the measurement off
+/// the parallel pool, and <see cref="AllocAssert.NoPerCallAllocation"/> retries once so a single stray collection
+/// cannot fail the run while a real per-lookup allocation still fails both passes.</para>
+/// </summary>
+[Collection("AllocSensitive")]
+public class ShardHostOwnerIndexAllocationTests
+{
+    private struct Pos : IComponent { public float X; public float Y; }
+
+    private static bool PosAccessor(World world, Entity e, out float x, out float y)
+    {
+        if (world.TryGet(e, out Pos p)) { x = p.X; y = p.Y; return true; }
+        x = y = 0f;
+        return false;
+    }
+
     [Fact]
     public void TryGetOwner_HotLookups_AllocateNothing()
     {
-        ReplicationRegistry registry = Registry();
-        ShardHost host = HandoffHost(registry);
-        for (int i = 0; i < 16; i++)
-            Spawn(host, netId: 500 + i, x: (i % 4) * 100f + 50f, y: (i / 4) * 100f + 50f, out _);
+        var registry = new ReplicationRegistry();
+        registry.Register<Pos>(1,
+            (p, bw) => { bw.Write(p.X); bw.Write(p.Y); },
+            br => new Pos { X = br.ReadSingle(), Y = br.ReadSingle() });
+        ShardHost host = new(cellSize: 100f, tickSeconds: 0.1f, registry, interestCellSize: 100f,
+            overlapMargin: 0f, positionAccessor: PosAccessor);
 
-        // Warm: populate the index and trigger any first-call JIT before measuring.
+        for (int i = 0; i < 16; i++)
+        {
+            float x = (i % 4) * 100f + 50f;
+            float y = (i / 4) * 100f + 50f;
+            Entity e = host.SpawnOwned(x, y, netId: 500 + i, out CellSim cell);
+            cell.World.Set(e, new Pos { X = x, Y = y });
+        }
+
+        void HotLookups()
+        {
+            for (int loop = 0; loop < 1000; loop++)
+                for (int i = 0; i < 16; i++)
+                    host.TryGetOwner(500 + i, out _, out _);
+        }
+
+        // Warm: populate the index and trigger any first-call JIT before measuring. The measured local runs once
+        // here too, so its own first-call cost is outside every measured window.
         for (int warm = 0; warm < 4; warm++)
             for (int i = 0; i < 16; i++)
                 Assert.True(host.TryGetOwner(500 + i, out _, out _));
+        HotLookups();
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int loop = 0; loop < 1000; loop++)
-            for (int i = 0; i < 16; i++)
-                host.TryGetOwner(500 + i, out _, out _);
-        long after = GC.GetAllocatedBytesForCurrentThread();
-
-        Assert.Equal(0, after - before); // the O(1) index hit path is allocation-free
+        // The O(1) index hit path is allocation-free.
+        AllocAssert.NoPerCallAllocation("16000 ShardHost.TryGetOwner index hits", HotLookups);
     }
 }

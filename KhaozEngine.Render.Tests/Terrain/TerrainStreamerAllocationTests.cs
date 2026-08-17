@@ -14,6 +14,7 @@ namespace KhaozEngine.Tests.Terrain
     /// allocate elsewhere (the far-chunk list, the ready/taken lists sized to the variable ready set), so a
     /// whole-frame zero-allocation assertion would fail for reasons unrelated to this closure. A warm-up pass first,
     /// matching the PropRendererAllocationTests pattern (issue #393).</para></summary>
+    [Collection("AllocSensitive")]   // a zero-allocation reading measures its neighbours too (#264)
     public sealed class TerrainStreamerAllocationTests
     {
         [Fact]

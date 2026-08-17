@@ -250,22 +250,23 @@ public class TeleportEpochBasisTests
     public void A_forced_missing_basis_is_announced_rather_than_silently_stamped_from_zero()
     {
         // Every row above shows the miss is unreachable. This one FORCES it, by stripping MovementState off a live
-        // player entity, and pins that reaching it is loud: TeleportEpochGuard reports before returning 0, so a future
-        // path that produces this state announces itself instead of shipping a swallowed teleport to every client.
+        // player entity, and pins that reaching it is loud: TeleportEpochGuard counts the miss, logs it, and in a
+        // Debug build asserts on it, before returning 0. So a future path that produces this state announces itself
+        // instead of shipping a swallowed teleport to every client.
         //
-        // It catches by MESSAGE rather than by type on purpose. The guard uses Debug.Assert, the house pattern for an
-        // invariant (BepuPhysicsWorld, Scene3D.RenderOrigin), and the VSTest host translates a failed Debug.Fail into
-        // its own DebugAssertException so the run does not die. That type belongs to the harness, not to anything the
-        // engine ships or should reference, so the marker text is what this asserts on.
+        // The counter is the half that holds in EVERY build. CI tests Release (ci-selective-test.sh and ci.yml both
+        // pass -c Release), where Debug.Assert is compiled out entirely and SetPlayerState returns normally, while a
+        // local dotnet test runs Debug, where the VSTest host turns the failed assert into its own
+        // DebugAssertException. The first shape of this row asserted only on the throw and went red on the first
+        // push, green locally, which is why the two halves are now split by configuration below.
         //
-        // That rescue is the TEST PLATFORM's, not the runtime's, and this row depends on it: VSTest installs a
-        // DebugProvider that turns the failed assert into a throw. Run this assembly under Microsoft.Testing.Platform,
-        // or execute the dll directly, and the same call reaches Environment.FailFast and takes the whole run down
-        // rather than failing one test. The error log the guard emits FIRST is the half that does not depend on the
-        // harness, but asserting on it here would mean calling the process-global Log.Configure, and Server.Tests has
-        // no LoggingSerial collection to serialize that against (the collection lives in Foundation.Tests, and xUnit
-        // collections do not cross assemblies), so the log line is deliberately left unasserted rather than bought
-        // with unguarded process-global state.
+        // The Debug half catches by MESSAGE rather than by type on purpose: DebugAssertException belongs to the
+        // harness, not to anything the engine ships, so the marker text is what this asserts on. And that rescue is
+        // the TEST PLATFORM's, not the runtime's: under Microsoft.Testing.Platform, or with the dll run directly, the
+        // same call reaches Environment.FailFast and takes the whole run down rather than failing one test. The error
+        // log the guard emits is deliberately left unasserted: it needs the process-global Log.Configure, and this
+        // assembly has no LoggingSerial collection to serialize that against (it lives in Foundation.Tests, and xUnit
+        // collections do not cross assemblies).
         ShardedWorldServerConfig cfg = ShardCfg();
         (ShardedWorldServer server, NetClient client) = ConnectSharded(cfg, "forced");
         int slot = server.JoinedSlots.First();
@@ -274,10 +275,16 @@ public class TeleportEpochBasisTests
 
         cell.World.Remove<MovementState>(player);
 
-        Exception raised = Assert.ThrowsAny<Exception>(() =>
-            server.SetPlayerState(slot, new PlayerMoveState { Position = new Vector3(9f, 0f, 9f) }, teleport: true));
+        long before = TeleportEpochGuard.MissCount;
+        var moved = new PlayerMoveState { Position = new Vector3(9f, 0f, 9f) };
+#if DEBUG
+        Exception raised = Assert.ThrowsAny<Exception>(() => server.SetPlayerState(slot, moved, teleport: true));
         Assert.Contains("no teleport-epoch basis", raised.Message);
         Assert.Contains("#637", raised.Message);
+#else
+        server.SetPlayerState(slot, moved, teleport: true);
+#endif
+        Assert.Equal(before + 1, TeleportEpochGuard.MissCount);
     }
 
     // ---- The two #642 paths, which both place a freshly reseeded entity ----

@@ -707,8 +707,11 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     running). Each `AnimationLayer` is a clip + its own looping playhead + a blend weight + an optional `BoneMask` +
     a `LayerMode`. `BoneMask` is per-node weights 0..1 (`BoneMask.Full`/`.Empty`, `BoneMask.Subtree(skel, root, w)`
     for "this bone and all descendants at weight w" - the upper-body-action shape). Override lerps toward the layer
-    pose by `weight x mask`; Additive applies the clip's delta from its first frame (the reference), rotations
-    composed multiplicatively, scaled by `weight x mask`. `SetBaseLocals` sets an external base (the locomotion
+    pose by `weight x mask`. Additive applies the clip's delta from its first frame (the reference), scaled by
+    `weight x mask`: the rotation delta is both EXTRACTED and APPLIED in the joint's LOCAL frame
+    (`delta = inverse(reference) * sample`, applied as `base * delta`), so a base equal to the reference reproduces
+    the clip's authored pose exactly. Translation and scale add componentwise (scale as an offset, so unit scale is
+    a no-op). `SetBaseLocals` sets an external base (the locomotion
     crossfade) the stack composites over instead of the rest pose. Zero layers is the rest pose and a single
     full-weight unmasked Override layer is byte-identical to the single-clip path, so existing skinned rendering is
     unchanged until a game adds a layer. Rotation blending matches the crossfade (shortest-arc `Quaternion.Slerp` +

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Ecs;
 
@@ -42,6 +43,14 @@ namespace KhaozEngine.NetWorld;
 internal static class TeleportEpochGuard
 {
     private static readonly ILogger Log = Diagnostics.Log.Get("TeleportEpoch");
+    private static long misses;
+
+    /// <summary>
+    /// How many times a basis read has missed in this process. The one observable of the miss that does not depend
+    /// on the build configuration or the test host: the log line needs a configured sink and the assert exists only
+    /// in Debug, so this is what a test pins in every configuration (CI tests Release, a local run tests Debug).
+    /// </summary>
+    internal static long MissCount => Interlocked.Read(ref misses);
 
     /// <summary>The single-<see cref="World"/> head's basis: the epoch on the slot's authoritative state.</summary>
     internal static uint BaseEpoch(Dictionary<int, PlayerMoveState> stateBySlot, int slot) =>
@@ -65,6 +74,7 @@ internal static class TeleportEpochGuard
                        + "teleport stamps from 0 and moves the authoritative epoch backwards. The client holds the "
                        + "epoch as a high-water mark, so it will SWALLOW every teleport until the counter climbs "
                        + "back past its watermark. See KhaozEngine #637 for the invariants this breaks.";
+        Interlocked.Increment(ref misses);
         Log.Error(message);
         Debug.Assert(false, message);
         return 0u;

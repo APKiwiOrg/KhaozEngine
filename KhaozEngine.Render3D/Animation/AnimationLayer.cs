@@ -12,9 +12,9 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Add: the layer contributes its DELTA from a reference frame (its first frame), scaled by
         /// weight x mask, on top of the base. Rotations compose multiplicatively in the joint's LOCAL frame
-        /// (delta = sample * inverse(reference), applied as base * delta - the Unity/Unreal/glTF-additive convention);
-        /// translation/scale-offset add. The mode a stackable modifier uses (an additive lean or recoil layered over
-        /// whatever plays beneath).</summary>
+        /// (delta = inverse(reference) * sample, applied as base * delta, the Unity/Unreal/glTF-additive convention),
+        /// so a base equal to the reference reproduces the authored sample. Translation/scale add as offsets. The mode
+        /// a stackable modifier uses (an additive lean or recoil layered over whatever plays beneath).</summary>
         Additive,
     }
 

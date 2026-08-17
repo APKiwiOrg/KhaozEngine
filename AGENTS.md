@@ -101,6 +101,13 @@ exception is the trivial-change case below.
   pins its picture byte-for-byte against the same scene rendered through `Render3DSnapshot.Capture` on its own
   device. That test is the licence for the rest, and it is what goes red first if a producer starts carrying
   state across a configuration change.
+- **CI tests Release, a local `dotnet test` runs Debug.** `ci.yml` and `scripts/ci-selective-test.sh` both pass
+  `-c Release`, so `Debug.Assert`, `[Conditional("DEBUG")]` members and `#if DEBUG` blocks do not exist on the
+  runner. A test that asserts on Debug-only behaviour passes on every developer machine and goes red on the first
+  push (`TeleportEpochBasisTests`, #637, asserted that a forced miss THROWS via the test host's `Debug.Assert`
+  rescue: green locally, red on CI). Pin a configuration-independent observable (a counter, a log line, a return
+  value) and put the Debug-only escalation under `#if DEBUG` in the test itself. When a change leans on any of
+  those constructs, run the affected test project once with `-c Release` before merging.
 - Hit-test via `InputManager`/`Pointer` bounds helpers (`IsTapIn`, etc.), never raw position + button.
 - **The KESIZE file-size ratchet is compile-time, and moving a baseline is the USER's call.** When
   KESIZE001/002 fires, the fix is to put the new code in its own type. Never split a file at an

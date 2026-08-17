@@ -3572,13 +3572,24 @@ its descendants (the torso + arms + head) at `weight`, everything else 0 - the u
     anim.GetBonePalette(pose);          // composite -> reused Matrix4x4[] buffer, allocation-free
     scene.DrawSkinned(mesh, pose, world, tint);
 
-`Override` lerps a masked node from the base toward the layer pose by `weight x mask(node)`; `Additive` applies
+`Override` lerps a masked node from the base toward the layer pose by `weight x mask(node)`. `Additive` applies
 the clip's delta from its **first frame** (the reference), scaled by `weight x mask`, so a recoil/lean clip stacks
 on top of whatever plays beneath. Rotation blending matches the crossfade (shortest-arc `Quaternion.Slerp` then
-re-normalize); additive rotation deltas compose multiplicatively in the joint's LOCAL frame
-(`delta = sample * inverse(reference)`, applied as `base * delta`, the Unity/Unreal/glTF-additive convention: an
-additive clip is authored as a per-joint delta in the joint's own local space, so an aim offset or attack bends
-the joint relative to its current local pose rather than swinging it around the parent axis). **Byte-stable:** zero layers is the rest pose and a single full-weight, unmasked `Override`
+re-normalize).
+
+**The additive rotation convention, in full: the delta is both EXTRACTED and APPLIED in the joint's LOCAL frame.**
+`delta = inverse(reference) * sample`, applied as `base * delta` (the Unity/Unreal/glTF-additive convention). An
+additive clip is authored as a per-joint delta in the joint's own local space, so an aim offset or attack bends the
+joint relative to its current local pose rather than swinging it around the parent axis. The invariant that follows,
+and the one to test against: **when the base IS the reference, the layer reproduces the clip's authored pose
+exactly**, because `reference * inverse(reference) * sample == sample`. Translation and scale deltas are
+componentwise (`base + (sample - reference) * w`, scale as an OFFSET so unit scale stays a no-op), so they have no
+side to get wrong. Extracting the rotation delta as `sample * inverse(reference)` instead is the PARENT-frame delta
+and gives the sample conjugated by the reference, which matches only when the reference is identity. That was the
+shipped behaviour through 17.36.1 (fixed in 17.37.0): a clip whose t=0 pose is rotated, which is every glTF humanoid
+shoulder and spine, came out wrong.
+
+**Byte-stable:** zero layers is the rest pose and a single full-weight, unmasked `Override`
 layer is bit-identical to the single-clip path, so a character that never adds a layer renders exactly as before.
 Steady-state `Update`/`GetBonePalette` allocate nothing.
 
@@ -12249,6 +12260,22 @@ not ordered across a rapid leave/rejoin that overlaps an in-flight load-on-join,
 pre-leave state, which the next periodic save reconciles. Use a stable account id; serialize your own per-account
 store operations if a session needs strict ordering. Subscribe to **`WorldPersistence.OnStoreError`** to log/alert
 when a background load or save faults (a store outage); the failed save's state stays dirty and retries on the next pass.
+
+**A completed load is applied to the ACCOUNT, not to the slot it was issued for.** A slot number is a seat: both
+heads free it on leave and hand the lowest free one to the next connection, so on a slow store an account that
+joins and drops before its record arrives can have a stranger sitting in its seat by the time it does. The drain
+re-resolves the seat's current occupant and **drops** a record whose account no longer holds it, rather than
+writing one player's position, teleport and durable blob onto another (#646). A drop is announced through
+**`WorldPersistence.OnLoadApplyDropped`** (`event Action<string, int>`, accountId + slot) and an `Info` log line
+under the `WorldPersistence` category, and nothing at all is written: the dropped account's stored record is
+untouched, stays guarded, and is read again on its next join. A tokenless connection is keyed `guest:{slot}` and is
+covered by the same comparison, but two SUCCESSIVE guests on one seat share that key and are indistinguishable
+here, which is the separate keying question tracked in the engine's issues.
+
+```csharp
+persistence.OnLoadApplyDropped += (accountId, slot) =>
+    Log.Info($"{accountId} left slot {slot} before its record landed, so the restore was dropped");
+```
 
 ```csharp
 var persistence = new WorldPersistence(server, store, new WorldPersistenceConfig

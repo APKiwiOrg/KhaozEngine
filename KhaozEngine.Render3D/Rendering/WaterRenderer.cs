@@ -579,8 +579,8 @@ namespace KhaozEngine.Render3D.Rendering
                     + "Scene3D.PrepareFrame() (see IFramePreparer).");
             _ocean.Record(cl);
             var oceanMaps = OceanMaps.From(_ocean);
-            // The depth field, likewise once per frame and ahead of BindTargets. Uploads only on a revision
-            // change, so the steady state is a compare and nothing else.
+            // The depth field, likewise once per frame and ahead of BindTargets. Uploads only when the field
+            // itself or its revision changed (#645), so the steady state is a compare and nothing else.
             _bathymetry.Update(settings.Bathymetry);
             ShoreMaps shore = _bathymetry.Snapshot();
             BindTargets(res);

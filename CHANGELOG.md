@@ -309,8 +309,10 @@ built every rejoiner's entity at the configured spawn, the next `Tick` served it
 `SetPlayerState(..., teleport: true)`. A player standing further than `HardSnapDistance` from the spawn therefore
 took TWO teleports on every reconnect: the reseed onto the spawn, then the restore's epoch advance. That is the
 caveat the #409 section below names as still open, and it is **resolved in this same version by this change**. It
-is also the server-side cause of [Ruinborne#388](https://github.com/APKiwiOrg/Ruinborne/issues/388), whose whole
-terrain ring rebuilt on every drop while the player stood still.
+is also the server-side cause of the reconnect ring-wipe amplifier that the
+[Ruinborne#388](https://github.com/APKiwiOrg/Ruinborne/issues/388) investigation found on the way (the whole terrain
+ring rebuilt on every drop while the player stood still), one strand of that issue and not the issue itself:
+#388 is the Windows D3D11 frame-rate decay and stays open on its shadow-pass stall (#410).
 
 **The join spawn is resolved through a resume hint, before the entity exists.** New public API on
 `KhaozEngine.NetWorld`: the `ResumePositionProvider` delegate (`bool (string accountId, out Vector3 position)`),
@@ -806,8 +808,9 @@ reseed armed the teleport flag unconditionally. Nothing about that involves the 
 signal with no epoch change at all, and a client on a lossy link fired it on every drop. The contract's reaction
 is expensive by design (warp the camera, run a transition, re-centre everything keyed to the player's position),
 so a consumer honouring it paid a world-scale cost for a session event that moved nobody. Ruinborne rebuilt its
-whole terrain ring while the player stood still
-([Ruinborne#388](https://github.com/APKiwiOrg/Ruinborne/issues/388)). This also corrects the record in
+whole terrain ring while the player stood still, the amplifier its
+[Ruinborne#388](https://github.com/APKiwiOrg/Ruinborne/issues/388) investigation turned up in 0.16.6 (that issue
+itself is the D3D11 frame-rate decay and is not closed by this). This also corrects the record in
 Ruinborne#341, whose trace concluded only join, respawn, self-rescue and admin teleports advance the epoch: the
 reconnect reseed path was missed.
 

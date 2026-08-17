@@ -389,6 +389,33 @@ public class SocialPresenceRetryTests
     }
 
     [Fact]
+    public void AnAbsurdElapsedSpan_DoesNotThrow_OnEitherPath()
+    {
+        // #657: the same underflow the retry delay had, one member over. Both the connected path and the held
+        // (still connecting) path derive a start instant from UtcNow - elapsed, so both saturate instead of throw.
+        var clock = new StoppedClock();
+        var connecting = new FakeSocialProvider { FailInitializeCount = 1 };
+        using var held = new SocialPresenceController(connecting, Options(maxAttempts: 8), clock.Now);
+        held.Initialize();
+        Assert.Equal(SocialPresenceState.Connecting, held.State);
+        Assert.Null(Record.Exception(() =>
+            held.SetElapsedPresence(new RichPresence { Details = "In Game" }, TimeSpan.MaxValue)));
+
+        var connectedFake = new FakeSocialProvider();
+        using var live = new SocialPresenceController(connectedFake, Options(maxAttempts: 8), clock.Now);
+        live.Initialize();
+        Assert.Equal(SocialPresenceState.Connected, live.State);
+        Assert.Null(Record.Exception(() =>
+            live.SetElapsedPresence(new RichPresence { Details = "In Game" }, TimeSpan.MaxValue)));
+        RichPresence sent = Assert.Single(connectedFake.PresenceCalls);
+        Assert.Equal(DateTime.MinValue, sent.StartTimestampUtc);
+
+        // A negative span still starts now, as before.
+        live.SetElapsedPresence(new RichPresence { Details = "Lobby" }, TimeSpan.FromMinutes(-5));
+        Assert.Equal(clock.UtcNow, connectedFake.PresenceCalls[^1].StartTimestampUtc);
+    }
+
+    [Fact]
     public void AnUncappedMaxRetryDelay_DoesNotOverflowTheSecondAttempt()
     {
         var clock = new StoppedClock();

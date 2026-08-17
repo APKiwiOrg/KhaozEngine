@@ -1092,7 +1092,9 @@ threw `ArgumentOutOfRangeException` straight out of `Initialize()`, and `MaxConn
 the end of `DateTime`. That is exactly the "clamped, degrades rather than throws" contract the options carry, so
 both waits are now pulled into `[0, 1 day]` at construction, and the addition itself saturates at
 `DateTime.MaxValue` rather than throwing, because scheduling is on the `Update()` path and a presence controller
-does not get to end the frame.
+does not get to end the frame. `SetElapsedPresence` had the same underflow one member over (#657): `UtcNow - elapsed`
+with only negatives floored, so an absurd span threw out of a public presence call on both the connected and the
+held path. It now saturates at the earliest instant the calendar holds, and a negative span still starts now.
 
 **Tests.** Twenty-two rows in `SocialPresenceRetryTests`, all on a clock the test moves by hand so the schedule is
 asserted rather than slept through: fails twice then connects on the third attempt with the presence set during

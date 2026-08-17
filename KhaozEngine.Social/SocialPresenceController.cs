@@ -197,7 +197,7 @@ public sealed class SocialPresenceController : IDisposable
         }
 
         DateTime now = UtcNow;
-        RichPresence withTimer = presence with { StartTimestampUtc = now - Clamp(elapsed) };
+        RichPresence withTimer = presence with { StartTimestampUtc = StartInstant(now, elapsed) };
 
         // Dedupe on everything except the timestamp so we do not spam a per-frame elapsed update,
         // but still republish on the interval so the timer stays live after a reconnect.
@@ -412,10 +412,21 @@ public sealed class SocialPresenceController : IDisposable
             return;
         }
 
-        HoldForConnect(presence with { StartTimestampUtc = UtcNow - Clamp(elapsed) });
+        HoldForConnect(presence with { StartTimestampUtc = StartInstant(UtcNow, elapsed) });
     }
 
-    private static TimeSpan Clamp(TimeSpan elapsed) => elapsed < TimeSpan.Zero ? TimeSpan.Zero : elapsed;
+    // The start instant an elapsed span implies, without date arithmetic that can throw out of a public presence
+    // call (#657): a negative span starts now, and a span longer than the calendar can hold saturates at the
+    // earliest representable instant instead of underflowing DateTime.
+    private static DateTime StartInstant(DateTime now, TimeSpan elapsed)
+    {
+        if (elapsed <= TimeSpan.Zero)
+        {
+            return now;
+        }
+
+        return now - DateTime.MinValue < elapsed ? DateTime.MinValue : now - elapsed;
+    }
 
     private void DropHeldPresence()
     {

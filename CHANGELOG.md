@@ -96,7 +96,8 @@ it keeps working whichever way that lands.
 
 **What this does not change:** a rapid leave and rejoin by the SAME account starts a second load under the same key
 while the first is still in flight (`loadsInFlight` is a set, not a refcount), and both loads apply. That is the
-same account and the same record, so nothing crosses players, and it is now pinned by test rather than assumed.
+same account and the same record, so nothing crosses players, and it is now pinned by test rather than assumed
+(#654, which also records why the account comparison cannot reach it).
 
 ### Replacing the bathymetry field uploads it, instead of keeping the old depths (#645)
 

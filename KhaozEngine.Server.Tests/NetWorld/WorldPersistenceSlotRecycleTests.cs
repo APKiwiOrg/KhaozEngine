@@ -248,8 +248,8 @@ public class WorldPersistenceSlotRecycleTests
         // and both of them apply. Here that is benign (same account, same record, and the identity check passes
         // because alpha really does hold the slot again), and it is the row that proves the drop rule is not just
         // dropping everything. The residual it leaves is the guard: the FIRST apply clears it while the second load
-        // is still outstanding, so a save can land in between and the late apply then writes over it. That is
-        // out of scope here and filed separately.
+        // is still outstanding, so a save can land in between and the late apply then writes over it. That is out of
+        // scope here and filed as #654, which is the issue to change this row from.
         Rig rig = await SingleAsync();
 
         Peer first = rig.Connect(Alpha);

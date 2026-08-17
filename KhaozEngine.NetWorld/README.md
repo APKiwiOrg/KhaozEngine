@@ -379,8 +379,11 @@ high-water mark (#409), so an epoch pushed back down makes every teleport SILENT
 watermark again. Neither head can reach a missing basis on a joined player (#637 refuted it: the slot tables are
 written and cleared together on the single-`World` head, and on the sharded head the component is set before the slot
 is published, always migrates as a built-in, is never in a cell blob, cannot be evicted out from under a joined
-player, and resolves to no owner at all while an entity is ghosted or mid-handoff). The read reports through
-`Debug.Assert` and an error log if it ever does miss, rather than silently stamping from 0.
+player, and resolves to no owner at all while an entity is ghosted or mid-handoff). The read announces a miss rather
+than silently stamping from 0. The error log always runs and names the head and the slot, and in a Debug build a
+`Debug.Assert` follows it (a fail-fast outside a test host, a failed test under one). A Release build, which is what
+every consumer's packed nupkg is, gets the log line alone and keeps running, so a live server stays up with the miss
+recorded. Loud where loud is free, a recorded line where a live server needs it quiet.
 
 `WorldClient` surfaces it as the **`LocalTeleported`** event plus a monotonic **`LocalTeleportEpoch`** counter (poll it
 frame-to-frame if you prefer). A consumer uses it to snap the follow camera (`FollowCamera3D.Warp`) and optionally run

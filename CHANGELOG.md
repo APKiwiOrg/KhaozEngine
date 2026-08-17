@@ -71,8 +71,12 @@ joined player is unevictable twice over, once on the server's own pinned-cell se
 entity frozen between a migrate and its ack resolves to no owner and the placement is skipped rather than stamped.
 
 **What ships is the announcement, not a fix.** The two reads move behind a new internal `TeleportEpochGuard`, whose
-miss path reports through `Debug.Assert` and an error log naming the slot, the head and the consequence, then
-returns the same 0 as before, so nothing observable changes on a path that cannot run. `TeleportEpochBasisTests`
+miss path logs an error naming the slot, the head and the consequence, then returns the same 0 as before, so nothing
+observable changes on a path that cannot run. That log line is all a Release build does, because the `Debug.Assert`
+that follows it is compiled out of Release entirely, and a Release build is what every consumer's packed nupkg is: a
+live server stays up with the miss recorded through its own sinks. A Debug build gets the assert on top, which is a
+fail-fast outside a test host and a failed test under one. Loud where loud is free, a recorded line where a live
+server needs it quiet. The guard covers a MISSING basis and not a stale one, which is #653's case. `TeleportEpochBasisTests`
 pins the invariants above by driving each window (the join seam on both heads, teleports across cell handoffs, an
 entity forced into the handoff freeze, a cell restore into the very cell a player stands in, an eviction pass
 around a joined player) and pins that a forced miss is loud. The #642 placements were checked on the way past and

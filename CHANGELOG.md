@@ -52,7 +52,46 @@ and refuted: neither head can reach that miss on a joined player, the invariants
 test, and the read itself reports rather than silently stamping 0 if a future path ever does reach it. On the render
 side, handing the water surface a NEW depth field of the same resolution now actually reaches the GPU: the
 upload was gated on a per-instance revision counter, so a replacement read as no change and the previous
-field's depths stayed bound, drawing a plausible shore for the wrong coastline with no error anywhere.
+field's depths stayed bound, drawing a plausible shore for the wrong coastline with no error anywhere. And beside
+it, the third-person follow camera stops issuing a broadphase physics sweep on every read of `Eye`: a game that
+opted into the occlusion spring-arm was paying 33 sweeps a frame for a value that changes once, and now pays one.
+
+### The follow camera computes its eye once a frame, not once a read (#28)
+
+`FollowCamera3D.Eye` ran a full `IPhysicsWorld.SweepCapsule` plus a `GroundHeight` sample on EVERY property read.
+`Forward`, `View`, `ViewProjection`, `AbsoluteViewProjection`, `WorldToScreen`, `ScreenToRay` and `ScreenToGround`
+all funnel back through it, so one `Scene3D.Render` re-entered it at 33 sites and issued 33 sweeps where one would
+do. Nothing at the call sites said so, because the sibling `IsoCamera3D.Eye` is pure arithmetic and reads like it.
+Only a consumer that opted into `Occlusion` paid, which is any third-person game with walls.
+
+**The getter computes at most once per distinct set of inputs.** The cache is keyed on what the last computation
+actually read rather than dropped by each setter, and that is the one real design decision here: the camera's knobs
+are public FIELDS (`Target`, `Yaw`, `HeightOffset`, `Occlusion`, `GroundHeight` and the rest), so there is no setter
+to hook, and turning them into properties to get one would be a binary-breaking change to a shipped public API.
+Comparing the inputs is strictly stronger anyway, since it also catches a field written through an alias. A knob
+written BETWEEN two reads costs one more sweep, deliberately: the caller changed the camera, so the second read
+must not answer with the pre-change eye.
+
+**A per-frame latch bounds what the key cannot see.** The physics world's own contents and whatever the ground
+delegate samples are both outside the camera: a wall slides in, terrain deforms, and no camera field changed.
+`IIsoCamera3D.BeginFrame()` is the boundary, and `Scene3D` calls it from `LatchRenderOrigin`, which is the frame's
+first reader of `cam.Eye`. It is a DEFAULT interface member with an empty body rather than the separate opt-in
+interface `IRenderOriginAware` had to be, because a no-op needs no backing storage: it breaks no existing
+implementer, `IsoCamera3D` and `FlyCamera3D` inherit the empty body, and a consumer camera written before it
+existed keeps compiling and costs nothing. `FollowCamera3D.InvalidateEye()` is the same lever by hand, for a
+consumer that drives the camera with no `Scene3D` anywhere, and that consumer is the one case where the cache can
+go stale: it must call one of the two once a frame.
+
+**Two counters come with it**, cumulative since construction in the shape `GpuDeviceCounters` argues for at length.
+`FollowCamera3D.OcclusionSweepCount` is the sweeps this camera has issued, so a game can watch its own load and see
+a number climbing faster than its frame count (which means something is writing a knob between reads).
+`EyeComputeCount` counts full computations whether or not the spring-arm is on, so it still moves for a camera whose
+per-read cost is the ground sample or just the trigonometry.
+
+No golden moved, and none could: the cached value IS what the same frame's first read computed, bit for bit, and a
+sweep against a broadphase nothing steps between two reads is deterministic. Nine headless rows pin it, including
+the two that fail if the cache is too aggressive rather than too weak (a wall that moves between frames must change
+the eye, and a mid-frame knob must too).
 
 ### Replacing the bathymetry field uploads it, instead of keeping the old depths (#645)
 

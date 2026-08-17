@@ -4399,6 +4399,32 @@ pulled so the eye can never collapse onto the target. The sweep hits statics onl
 `GroundHeight` clamp, so a ground dip still lifts the already pulled-in eye. Null (the default) leaves the eye
 purely geometric, so existing cameras are unchanged.
 
+**The eye is computed once a frame, not once a read (since 17.37.0).** `Eye` is the expensive property here, and
+`Forward`, `View`, `ViewProjection`, `AbsoluteViewProjection`, `WorldToScreen`, `ScreenToRay` and `ScreenToGround`
+all funnel back through it, so one `Scene3D.Render` reads it over thirty times. It caches, keyed on the inputs the
+last computation read, which means writing any knob (`Target`, `Yaw`, `Pitch`, `Distance`, `HeightOffset`, the
+occlusion knobs, `GroundHeight`, `GroundClearance`) between two reads recomputes on the next one, as it must.
+
+What the camera cannot see is the world moving underneath it: a wall slides in, terrain deforms, and no camera
+field changed. `IIsoCamera3D.BeginFrame()` is the boundary that bounds the cache at one frame.
+**`Scene3D.Begin()` calls it on the active camera for you**, so a game that renders through a scene needs no
+adoption at all. A consumer that drives a `FollowCamera3D` with no `Scene3D` (a headless projection pass, a tool)
+calls `camera.BeginFrame()` once a frame itself, or `camera.InvalidateEye()` at the moment it moves an occluder.
+`BeginFrame` is a default interface member with an empty body, so `IsoCamera3D`, `FlyCamera3D` and any camera you
+wrote yourself inherit a no-op and are completely unaffected.
+
+Two cumulative counters (never reset, in the same shape as `GpuDeviceCounters`) show the load:
+`OcclusionSweepCount` is the sweeps this camera has issued, and `EyeComputeCount` is full eye computations whether
+or not the spring-arm is on. A healthy game shows one of each per rendered frame. A sweep count climbing much
+faster than the frame count means something is writing a camera knob between reads.
+
+```csharp
+scene.CameraOverride = camera;   // set the camera first: Begin latches the ACTIVE one
+scene.Begin();                   // the frame's first Eye read recomputes, every read after it is free
+// ... queue draws, and read camera.WorldToScreen(...) for nameplates as often as you like ...
+scene.Render(cl, framebuffer);
+```
+
 ---
 
 ## Prop scatter + asset pipeline (`AssetManifest` / `PropScatter` / `Scene3D.DrawProps`)

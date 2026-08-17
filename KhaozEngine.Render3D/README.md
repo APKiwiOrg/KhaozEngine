@@ -16,6 +16,14 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
 - `FollowCamera3D.Warp(target)` / `SnapToTarget()` (since 10.65.0) - hard-cut the third-person follow camera onto a
   point with no ease (the 3D counterpart of `Render2D.CameraFollow.Warp`), for a teleport/respawn so the smoothed
   camera does not "fly" across the jump.
+- `FollowCamera3D.Eye` is computed once per frame, not once per read (since 17.37.0). With the `Occlusion`
+  spring-arm on, every read used to issue its own broadphase sweep, and `Forward`/`View`/`ViewProjection`/
+  `WorldToScreen`/`ScreenToRay` all funnel through it. The cache is keyed on the inputs the last computation read,
+  so writing any knob mid-frame recomputes, and it is bounded by `IIsoCamera3D.BeginFrame()`, a no-op default
+  interface member `Scene3D.Begin` calls on the active camera so a world that moves between frames (a wall slides
+  in, terrain deforms) is never answered with last frame's eye. Drive the camera without a `Scene3D` and you call
+  `BeginFrame()` (or `FollowCamera3D.InvalidateEye()`) once a frame yourself. `OcclusionSweepCount` /
+  `EyeComputeCount` are cumulative-since-construction counters for watching the load.
 - Teleport transitions (`ITransition` + `HardBlink` / `CameraDissolve` / `CharDissolve`, since 10.65.0) - a phased
   cover -> swap -> optional streaming hold -> reveal state machine (pure timing) that masks a teleport swap +
   destination pop-in. A teleport is a hard cut, so `HardBlink` defaults to an instant, reveal-only cover (opaque on the

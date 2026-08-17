@@ -13,6 +13,28 @@ namespace KhaozEngine.Render3D
         Vector3 Forward { get; }
 
         /// <summary>
+        /// Tell the camera a new frame has started, so anything it cached for the previous one is dropped.
+        /// <see cref="Scene3D.Begin"/> calls it on the active camera before anything reads <see cref="Eye"/>, which
+        /// is what makes a camera whose eye depends on something OUTSIDE itself (a physics world that can slide a
+        /// wall in, a terrain that can deform) recompute once a frame instead of holding a value nothing about the
+        /// camera invalidates.
+        /// <para>
+        /// The default body does nothing, which is exactly right for a camera that is pure arithmetic over its own
+        /// fields: <see cref="IsoCamera3D"/>, <see cref="FlyCamera3D"/>, and every consumer camera written before
+        /// this member existed. <see cref="FollowCamera3D"/> is the only implementation that overrides it today, to
+        /// drop the eye its occlusion sweep produced. It is a DEFAULT interface member rather than the separate
+        /// opt-in interface <see cref="IRenderOriginAware"/> had to be, because a no-op needs no backing storage:
+        /// adding it here breaks no existing implementer and costs a camera that ignores it nothing at all.
+        /// </para>
+        /// <para>
+        /// Calling it more than once in a frame is harmless, since the worst it can cost is one recompute. NOT
+        /// calling it is the failure worth knowing about, and it belongs to a consumer that drives a camera with no
+        /// <see cref="Scene3D"/> anywhere: call it once per frame yourself there.
+        /// </para>
+        /// </summary>
+        void BeginFrame() { }
+
+        /// <summary>
         /// Project a world point to a screen pixel (the forward inverse of <c>ScreenToRay</c>; top-left origin,
         /// y-down, matching the displayed image). Returns <c>false</c> with <paramref name="screenPixel"/> = default
         /// when the point is not in front of the camera (behind it, or outside the near/far depth range), so a caller

@@ -94,10 +94,20 @@ namespace KhaozEngine.Render3D
         /// Latch this frame's render origin. Called first thing in <see cref="Begin"/>, so every submission that
         /// follows lands in one frame, and so the camera is already in that frame for any
         /// <c>WorldToScreen</c> a consumer runs between Begin and the render.
+        /// <para>
+        /// It also carries the frame's camera latch (<see cref="IIsoCamera3D.BeginFrame"/>), which lives here
+        /// rather than beside it in <see cref="Begin"/> because THIS METHOD is the frame's first reader of
+        /// <c>cam.Eye</c>, two lines down. A camera that caches per-frame work keyed on its own fields cannot see
+        /// the world move underneath it (a wall slides in, terrain deforms), so the latch is what bounds that
+        /// cache at one frame instead of leaving it to go stale indefinitely. See
+        /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/28">#28</see>. It is a no-op on every camera
+        /// that does not override it, which today is all of them but <see cref="FollowCamera3D"/>.
+        /// </para>
         /// </summary>
         void LatchRenderOrigin()
         {
             IIsoCamera3D cam = ActiveCamera;
+            cam.BeginFrame();   // must precede the Eye read below, and every other read this frame
             Vector3 wanted = _renderOriginOverride ?? WorldFrame.Nearest(cam.Eye).Anchor;
             // Whole-pipeline fallback, never a partial one: a camera that cannot build its view against an origin
             // renders entirely absolute, so its geometry and its view can never end up in different spaces.

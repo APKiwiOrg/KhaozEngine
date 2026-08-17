@@ -166,40 +166,147 @@ namespace KhaozEngine.Render3D
             }
         }
 
+        // -------------------------------------------------------------------------------------------------
+        // Eye cache. See https://github.com/APKiwiOrg/KhaozEngine/issues/28.
+        //
+        // Eye is read many times per rendered frame: Forward, View, ViewProjection, AbsoluteViewProjection,
+        // WorldToScreen, ScreenToRay and ScreenToGround all funnel back through it, and one Scene3D.Render
+        // re-enters it at over thirty sites. With Occlusion set, every one of those reads used to issue its own
+        // broadphase SweepCapsule and its own GroundHeight sample, so nothing at the call sites signalled that
+        // reading a camera property was expensive. The getter now computes at most once per distinct set of
+        // inputs and hands the same Vector3 back for the rest of the frame.
+        //
+        // WHY THE CACHE IS KEYED ON THE INPUTS rather than dropped by each setter: the camera's knobs are public
+        // FIELDS (Target, Yaw, HeightOffset, Occlusion, GroundHeight and the rest), so there is no setter to
+        // hook. Turning them into properties to get one would be a binary-breaking change to a shipped public
+        // API. Comparing what the last computation actually read is strictly stronger anyway, because it also
+        // catches a field written through an alias or a ref. A knob written BETWEEN two reads therefore costs one
+        // more sweep, deliberately: the caller changed the camera, so the second read must not answer with the
+        // pre-change eye.
+        //
+        // WHAT THE KEY CANNOT SEE is the physics world's contents and whatever the ground delegate samples. A
+        // wall slides in or terrain deforms, and nothing about the camera changed. That is what BeginFrame is
+        // for (IIsoCamera3D.BeginFrame): Scene3D.Begin drops the cache at the top of every frame, before
+        // LatchRenderOrigin takes this frame's first read.
+        //
+        // Single-threaded by construction, exactly like every other field on this class. A camera is a frame
+        // object owned by the thread that renders it, so there are no locks here and none are wanted.
+
+        /// <summary>
+        /// The inputs <see cref="Eye"/> reads, snapshotted so a later read can tell whether recomputing could
+        /// possibly produce anything different. The two seam members compare by <c>Equals</c>: reference equality
+        /// for the physics world, and method-plus-target equality for the ground delegate, so two separately
+        /// allocated delegates over the same instance method count as the same sampler (they are). Both are
+        /// conservative in the safe direction, since the worst a false difference costs is one recompute.
+        /// <see cref="OcclusionOrigin"/> is in here because a rebased world moves the frame the sweep start is
+        /// expressed in without any camera field changing.
+        /// </summary>
+        readonly record struct EyeInputs(
+            Vector3 Target, float Yaw, float Pitch, float Distance, float HeightOffset,
+            IPhysicsWorld? Occlusion, Vector3 OcclusionOrigin, float OcclusionRadius, float OcclusionSkin,
+            float MinOcclusionDistance, Func<float, float, float>? GroundHeight, float GroundClearance);
+
+        EyeInputs _eyeInputs;
+        Vector3 _eye;
+        bool _eyeValid;
+        long _eyeComputes;
+        long _occlusionSweeps;
+
+        /// <summary>
+        /// Broadphase sweeps this camera has issued through <see cref="Occlusion"/> since it was constructed,
+        /// cumulative and never reset. Zero while <see cref="Occlusion"/> is null, because the spring-arm is the
+        /// only thing here that queries physics at all.
+        /// <para>
+        /// Cumulative rather than per frame for the reason <c>GpuDeviceCounters</c> gives at length: a counter
+        /// sampled at whatever cadence a consumer chooses answers a window's question by subtraction, whereas a
+        /// per-frame value reports only the frames the sampler happened to land on. One frame's cost is the
+        /// difference across that frame. A steady one per rendered frame is the healthy reading, and a number
+        /// climbing far faster than the frame count means something is writing a camera knob between reads.
+        /// </para>
+        /// </summary>
+        public long OcclusionSweepCount => _occlusionSweeps;
+
+        /// <summary>
+        /// Full <see cref="Eye"/> computations since construction, cumulative like <see cref="OcclusionSweepCount"/>
+        /// and counted whether or not <see cref="Occlusion"/> is set. It is the one number that still moves when the
+        /// spring-arm is off, so it is what shows the cache working for a camera whose per-read cost is the
+        /// <see cref="GroundHeight"/> sample or just the trigonometry.
+        /// </summary>
+        public long EyeComputeCount => _eyeComputes;
+
+        /// <summary>
+        /// Drop the cached <see cref="Eye"/>, so the next read recomputes it. Idempotent and cheap. Call it after
+        /// changing something the camera cannot see (moving an occluder, deforming the ground under the eye) if
+        /// that happens mid-frame. <see cref="BeginFrame"/> is the once-a-frame form and is what
+        /// <see cref="Scene3D"/> calls.
+        /// </summary>
+        public void InvalidateEye() => _eyeValid = false;
+
+        /// <summary>
+        /// A new frame has started: drop the cached <see cref="Eye"/>. See
+        /// <see cref="IIsoCamera3D.BeginFrame"/> for the contract, and call it yourself once per frame if you drive
+        /// this camera without a <see cref="Scene3D"/>.
+        /// </summary>
+        public void BeginFrame() => InvalidateEye();
+
+        /// <summary>
+        /// The absolute world-space eye position: the geometric boom position, pulled in by the optional
+        /// <see cref="Occlusion"/> sweep and then lifted by the optional <see cref="GroundHeight"/> clearance.
+        /// Computed once per distinct set of inputs per frame and cached, so reading it (or anything built on it)
+        /// repeatedly across one frame costs one sweep, not one per read.
+        /// </summary>
         public Vector3 Eye
         {
             get
             {
-                Vector3 target = EffectiveTarget;
-                Vector3 eye = target + DirToEye * _distance + new Vector3(0f, HeightOffset, 0f);
-                if (Occlusion is { } world)
-                {
-                    // Sweep a sphere probe (a zero-length capsule) from the target toward the desired eye along the
-                    // boom. The first static hit clamps how far out the boom can extend, mirroring the
-                    // hit.Distance - skin convention CharacterMovement uses for its own swept collide-and-slide. The
-                    // pull-in is floored at MinOcclusionDistance so a static right at the target never collapses the
-                    // eye onto it (which would leave Forward/View with a zero-length look direction).
-                    Vector3 toEye = eye - target;
-                    float dist = toEye.Length();
-                    if (dist > 1e-6f)
-                    {
-                        // The sweep START is a query coordinate, so it is expressed in the physics world's own space
-                        // (IPhysicsWorld.Origin): the camera speaks absolute, and against a rebased world an
-                        // unreduced start silently stops finding anything. The DIRECTION and the returned distance
-                        // are frame-invariant, so only this one operand converts.
-                        Vector3 dir = toEye / dist;
-                        if (world.SweepCapsule(new CapsuleShape(OcclusionRadius, 0f), Pose.At(target - world.Origin), dir, dist,
-                                out SweepHit hit, QueryFilter.StaticsOnly))
-                            eye = target + dir * MathF.Max(MinOcclusionDistance, hit.Distance - OcclusionSkin);
-                    }
-                }
-                if (GroundHeight is { } ground)
-                {
-                    float floor = ground(eye.X, eye.Z) + GroundClearance;
-                    if (eye.Y < floor) eye.Y = floor;   // keep the eye out of the terrain in a dip
-                }
-                return eye;
+                EyeInputs inputs = CurrentEyeInputs();
+                if (_eyeValid && inputs == _eyeInputs) return _eye;
+                _eye = ComputeEye();
+                _eyeInputs = inputs;
+                _eyeValid = true;
+                _eyeComputes++;
+                return _eye;
             }
+        }
+
+        EyeInputs CurrentEyeInputs() => new(
+            EffectiveTarget, Yaw, _pitch, _distance, HeightOffset,
+            Occlusion, Occlusion?.Origin ?? Vector3.Zero, OcclusionRadius, OcclusionSkin, MinOcclusionDistance,
+            GroundHeight, GroundClearance);
+
+        /// <summary>The uncached geometry, byte for byte what the getter used to run on every read.</summary>
+        Vector3 ComputeEye()
+        {
+            Vector3 target = EffectiveTarget;
+            Vector3 eye = target + DirToEye * _distance + new Vector3(0f, HeightOffset, 0f);
+            if (Occlusion is { } world)
+            {
+                // Sweep a sphere probe (a zero-length capsule) from the target toward the desired eye along the
+                // boom. The first static hit clamps how far out the boom can extend, mirroring the
+                // hit.Distance - skin convention CharacterMovement uses for its own swept collide-and-slide. The
+                // pull-in is floored at MinOcclusionDistance so a static right at the target never collapses the
+                // eye onto it (which would leave Forward/View with a zero-length look direction).
+                Vector3 toEye = eye - target;
+                float dist = toEye.Length();
+                if (dist > 1e-6f)
+                {
+                    // The sweep START is a query coordinate, so it is expressed in the physics world's own space
+                    // (IPhysicsWorld.Origin): the camera speaks absolute, and against a rebased world an
+                    // unreduced start silently stops finding anything. The DIRECTION and the returned distance
+                    // are frame-invariant, so only this one operand converts.
+                    Vector3 dir = toEye / dist;
+                    _occlusionSweeps++;
+                    if (world.SweepCapsule(new CapsuleShape(OcclusionRadius, 0f), Pose.At(target - world.Origin), dir, dist,
+                            out SweepHit hit, QueryFilter.StaticsOnly))
+                        eye = target + dir * MathF.Max(MinOcclusionDistance, hit.Distance - OcclusionSkin);
+                }
+            }
+            if (GroundHeight is { } ground)
+            {
+                float floor = ground(eye.X, eye.Z) + GroundClearance;
+                if (eye.Y < floor) eye.Y = floor;   // keep the eye out of the terrain in a dip
+            }
+            return eye;
         }
 
         public Vector3 Forward => Vector3.Normalize(EffectiveTarget - Eye);

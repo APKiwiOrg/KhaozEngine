@@ -53,6 +53,47 @@ test, and the read itself reports rather than silently stamping 0 if a future pa
 side, handing the water surface a NEW depth field of the same resolution now actually reaches the GPU: the
 upload was gated on a per-instance revision counter, so a replacement read as no change and the previous
 field's depths stayed bound, drawing a plausible shore for the wrong coastline with no error anywhere.
+Also on the render side, an additive animation layer now applies the pose its clip was authored with. The
+compositor took the rotation delta off one side of the reference and applied it to the other, which is correct only
+when the reference rotation is identity, and a rigged humanoid's shoulders and spine are never identity at a clip's
+first frame. Nothing in the fleet renders differently today, because no game runs an additive layer yet, but the
+next one to add one gets the authored pose instead of a pose twisted by the rig's own rest rotation.
+
+### An additive animation layer applies the authored pose, not the pose conjugated by its reference (#20)
+
+`LayerMode.Additive` contributes a clip's delta from its own first frame (the reference) on top of whatever plays
+beneath. `LayeredAnimator.ApplyAdditive` built that rotation delta as `sample * inverse(reference)`, the delta in
+the joint's PARENT frame, and then applied it as `base * delta`, which is application in the joint's LOCAL frame.
+The two sides only agree when the reference rotation is identity, or when it happens to commute with the sample.
+
+**What a game sees change.** An additive layer over a rigged humanoid now bends the joint the way the clip was
+authored. Before, any joint whose additive reference was rotated (a glTF humanoid's shoulder, spine, neck, hip, so
+in practice most of the upper body) received the authored rotation CONJUGATED by that reference: the right amount
+of rotation about the wrong axis, which reads as a limb swinging in an unrelated direction and gets worse the
+further the rest pose is from identity. A joint whose reference is identity is unaffected, and every additive
+translation and scale offset is unaffected.
+
+**Nothing in the fleet moves on this release.** Ruinborne is the only game on `LayeredAnimator` and it drives every
+layer through `AnimatedCharacter.PlayAction` in its default `LayerMode.Override` (the swing, the arm hold, the NPC
+bite), so it has no additive layer to change. Hardpoint, Nullwake and SpaceGame do not use the layer stack at all.
+No golden moves either: no GPU test in the suite touches `LayeredAnimator`, so there is nothing to rebake on any of
+the three backends. This lands as a correctness fix that unblocks the first additive layer anyone writes, not as a
+migration.
+
+**The fix and the convention, stated once.** The delta is now extracted on the side it is applied:
+`delta = inverse(reference) * sample`, applied as `base * delta`, both in the joint's LOCAL frame (the
+Unity/Unreal/glTF-additive convention). The invariant that follows is the one to test an additive path against:
+with `base == reference` the result is `reference * inverse(reference) * sample == sample`, the authored pose
+reproduced exactly. Translation and scale were already right and are unchanged: both deltas are componentwise
+subtractions applied by componentwise addition, between quantities already in one frame, and addition commutes, so
+neither channel has a side to get wrong.
+
+**Why the suite could not see it.** Every additive-rotation test used an identity reference, where the two
+extractions are the same quaternion. Four new rows in `LayeredAnimatorTests` use a reference that is both
+non-identity and non-commuting with the sample (90 degrees about X against an offset about Y), driven through the
+real `LayeredAnimator` / `BonePalette` path: the `base == reference` invariant, the `base != reference` formula
+pinned to a closed-form result, the half-weight slerp toward the local-frame delta, and a translation and scale row
+that passes on both extractions and pins them as frame-agnostic. All four fail on the old extraction.
 
 ### Replacing the bathymetry field uploads it, instead of keeping the old depths (#645)
 

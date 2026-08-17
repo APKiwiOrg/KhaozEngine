@@ -31,6 +31,12 @@ internal sealed class DiscordIpcClient : IDisposable
 
     public bool TryConnect(string clientId)
     {
+        // Re-attemptable per the ISocialProvider contract: a previous attempt that got as far as the
+        // handshake can have left a partial frame in the buffer, and decoding it against the new
+        // connection's bytes would desync every frame after it.
+        readBuffer.Clear();
+        LocalUser = null;
+
         try
         {
             if (!transport.TryConnect())

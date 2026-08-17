@@ -257,6 +257,15 @@ public class TeleportEpochBasisTests
         // invariant (BepuPhysicsWorld, Scene3D.RenderOrigin), and the VSTest host translates a failed Debug.Fail into
         // its own DebugAssertException so the run does not die. That type belongs to the harness, not to anything the
         // engine ships or should reference, so the marker text is what this asserts on.
+        //
+        // That rescue is the TEST PLATFORM's, not the runtime's, and this row depends on it: VSTest installs a
+        // DebugProvider that turns the failed assert into a throw. Run this assembly under Microsoft.Testing.Platform,
+        // or execute the dll directly, and the same call reaches Environment.FailFast and takes the whole run down
+        // rather than failing one test. The error log the guard emits FIRST is the half that does not depend on the
+        // harness, but asserting on it here would mean calling the process-global Log.Configure, and Server.Tests has
+        // no LoggingSerial collection to serialize that against (the collection lives in Foundation.Tests, and xUnit
+        // collections do not cross assemblies), so the log line is deliberately left unasserted rather than bought
+        // with unguarded process-global state.
         ShardedWorldServerConfig cfg = ShardCfg();
         (ShardedWorldServer server, NetClient client) = ConnectSharded(cfg, "forced");
         int slot = server.JoinedSlots.First();

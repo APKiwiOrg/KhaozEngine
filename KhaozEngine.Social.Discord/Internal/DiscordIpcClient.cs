@@ -9,7 +9,7 @@ namespace KhaozEngine.Social.Discord.Internal;
 /// SUBSCRIBE to join events, and a non-blocking dispatch pump. Every socket operation is wrapped so a
 /// failure flips the client to disconnected rather than throwing, and <see cref="Pump"/> also notices the
 /// quiet death (a Discord that quit without a Close frame, which throws nothing anywhere) by asking the
-/// transport whether it is still connected. Pure protocol logic; the real socket lives in
+/// transport whether it is still connected. Pure protocol logic, and the real socket lives in
 /// <see cref="NamedPipeDiscordTransport"/>.
 /// </summary>
 internal sealed class DiscordIpcClient : IDisposable

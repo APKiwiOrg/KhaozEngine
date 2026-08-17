@@ -38,4 +38,12 @@ game retrying anything. `TryInitialize` is therefore safe to call again on the s
 reconnect tears down whatever the previous attempt left open and starts a fresh session, dropping the old
 connection's partial frames and identity.
 
+Neither is quitting Discord mid-session. That drop is a QUIET one: the socket closes with no goodbye frame
+and nothing throws anywhere, so the IPC client checks its transport on every pump and treats a transport
+that is no longer connected as the end of the session. `IsConnected` then goes false, which is what the
+controller reads as "reconnect" rather than "give up", and the drop also hands the socket and its reader
+thread back immediately instead of holding them for the length of the backoff. A `Close` frame, when
+Discord does send one, ends the session the same way. The player gets presence back on the next successful
+connect, showing whatever line was live when Discord went away.
+
 Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).

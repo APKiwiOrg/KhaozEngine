@@ -12,7 +12,8 @@ Steam/other later) for rich presence, local identity, and join/invite. Depends o
   `SetPresence(in RichPresence)`, `ClearPresence()`, `TryGetLocalUser(out SocialUser)`, and the
   `JoinRequested(string secret)` / `JoinRequestReceived(JoinRequest)` events. Best-effort: never throws.
   `TryInitialize` must be re-attemptable on the same instance, because the controller retries a failed
-  connect rather than rebuilding the provider.
+  connect rather than rebuilding the provider. `IsConnected` is also how a provider reports that a live
+  connection DROPPED, and the only answer that gets the session back (see the connect contract below).
 - **`RichPresence`** - `Details`, `State`, `StartTimestampUtc`/`EndTimestampUtc`, `LargeImage`/
   `SmallImage` (`PresenceImage`), `Party` (`PresenceParty`), `JoinSecret`/`SpectateSecret`, `Buttons`
   (`PresenceButton`). Empty fields are omitted by the backend.
@@ -24,7 +25,9 @@ Steam/other later) for rich presence, local identity, and join/invite. Depends o
   `IsEnabled`, `SetPresence`, `SetElapsedPresence`, `ClearPresence`, `Update()`, `TryGetLocalUser`, and
   the `StateChanged` / `JoinRequested` / `JoinRequestReceived` events.
 - **`SocialPresenceState`** - `Uninitialized`, `Connecting`, `Connected`, `GivenUp`, `Disabled`,
-  `Disposed`. Poll `State` for a status line, or subscribe to `StateChanged`.
+  `Disposed`, `Reconnecting`. Poll `State` for a status line, or subscribe to `StateChanged`.
+  `Reconnecting` is a session that HAD a connection and lost it, as against `Connecting`, which has never
+  had one.
 - **`SocialPresenceOptions`** - `RepublishInterval`, plus the connect-retry schedule
   (`ConnectRetryDelay`, `MaxConnectRetryDelay`, `ConnectRetryBackoff`, `MaxConnectAttempts`).
 
@@ -77,15 +80,38 @@ took. The hold publishes **before** `StateChanged` reports `Connected`, so a han
 line on that event wins and stays published, instead of being overwritten by the line the game had already
 moved past.
 
-Two failures are NOT retried, on purpose. A provider that fails once **connected** ends the session and
-disposes the provider (`Disabled`): a dead transport is not a cold start, and the game loop is never
-touched either way. And a controller with no backend at all (the `NullSocialProvider` default) goes
-straight to `Disabled` without arming any timer, so opting out costs nothing per frame. Neither does a
-settled session: `Connected`, `GivenUp` and `Disabled` all read the clock zero times per `Update()`, since
-only the backoff schedule needs one.
+## A connection that drops comes back
+
+The same machinery covers the player who quits Discord halfway through a session, which is the commoner
+half. `Update()` reads `provider.IsConnected` once a frame while connected, and a false takes the
+controller to `Reconnecting`: the same backoff, with a fresh attempt budget and a fresh wait, the provider
+kept rather than disposed, and `GivenUp` at the end of it if the platform never comes back (`Retry()`
+re-arms that, exactly as it does from a cold start). The first attempt waits out `ConnectRetryDelay` rather
+than going immediately, because the platform client is mid-shutdown at the instant its socket dies.
+
+The presence that was live at the drop is republished once when the reconnect lands, so a game does not
+come back blank, and an elapsed timer keeps its absolute start across an outage of any length. A
+`SetPresence` during the outage is held and wins instead (latest wins, as always), and a `ClearPresence`
+during the outage cancels the republish. Nothing is published, and the provider is not even pumped, while
+the session is down.
+
+**Writing a provider: which answer means what.** A transport that dies must be reported by returning false
+from `IsConnected`, which is the recoverable signal: the controller keeps the provider and calls
+`TryInitialize` again, so a provider that goes false has to leave itself connectable. THROWING means
+something else and is terminal (below). A backend that can tell a plain disconnect from a real failure
+should route the disconnect to `IsConnected`.
+
+Two failures are NOT retried, on purpose. A provider that THROWS ends the session and disposes the
+provider (`Disabled`), because a provider that threw is in a state the seam cannot promise anything about,
+and the game loop is never touched either way. And a controller with no backend at all (the
+`NullSocialProvider` default) goes straight to `Disabled` without arming any timer, so opting out costs
+nothing per frame. Neither does a settled session: `Connected`, `GivenUp` and `Disabled` all read the clock
+zero times per `Update()`, since only the backoff schedule needs one. The drop probe on the connected path
+is one bool read on the seam, and reaches for the clock only once it finds a drop.
 
 `Retry()` forces an attempt now and re-arms a controller that gave up, for a game that knows something the
-controller cannot ("the player just launched Discord", "the user pressed Reconnect"). It is a no-op once
+controller cannot ("the player just launched Discord", "the user pressed Reconnect"). It works the same
+whether the controller has never connected or is working its way back from a drop, and is a no-op once
 connected, disabled or disposed.
 
 Wiring a `StateChanged` handler straight to `Retry()` on `GivenUp` is worth one note: the forced attempt
@@ -101,6 +127,7 @@ social.StateChanged += s => statusLine = s switch
 {
     SocialPresenceState.Connecting => Strings.SocialConnecting,
     SocialPresenceState.Connected => Strings.SocialConnected,
+    SocialPresenceState.Reconnecting => Strings.SocialReconnecting,
     SocialPresenceState.GivenUp => Strings.SocialUnavailable,
     _ => default,
 };

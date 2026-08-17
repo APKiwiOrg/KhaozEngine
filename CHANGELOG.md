@@ -67,8 +67,10 @@ Back on the netcode side, a completed load-on-join is now applied to the ACCOUNT
 number it was issued for, so a player who takes a freed seat on a slow store can no longer be teleported onto the
 previous occupant's saved position and handed their durable blob.
 And on the social seam, a player whose Discord was still starting when the game launched no longer loses rich
-presence for the entire session: the one-shot connect became a bounded retry driven from the frame pump, so the
-four games pick the fix up by upgrading, with no call-site change in any of them.
+presence for the entire session, and neither does one who quits Discord halfway through it: the one-shot connect
+became a bounded retry driven from the frame pump, and a live connection that later drops re-enters that same
+retry and comes back showing the line that was on screen when the platform went away, so the four games pick both
+halves up by upgrading, with no call-site change in any of them.
 
 ### An additive animation layer applies the authored pose, not the pose conjugated by its reference (#20)
 
@@ -1278,6 +1280,84 @@ handler on `GivenUp` gets, since the docs now state it.
 deduped by the equality guard. With a larger budget the forced attempt re-arms the whole schedule and the
 controller lands back in `Connecting`, so the handler is a reconnect loop rather than one extra try. Both halves
 are in the controller's own doc comment and in the two places a game reads about the contract.
+
+### Quitting Discord mid-session reconnects instead of publishing into nothing (#655)
+
+The other half of #158, and the half a player is far more likely to hit. `SocialPresenceController` never looked
+at `ISocialProvider.IsConnected`. It tracked its own state from what `TryInitialize` returned and from provider
+methods THROWING, so the only way a live session could end was an exception. The Discord backend does not throw
+on a drop, and mostly cannot: a player who quits Discord closes the socket, the reader thread hits end-of-stream,
+and no read or write anywhere raises anything. `DiscordIpcClient` never asked its transport either, so it stayed
+"connected" too. Net effect of the pair: the controller sat in `Connected` with `IsEnabled` true, publishing
+presence into a client that was gone, for the rest of the session, and relaunching Discord recovered nothing
+because nobody reconnected the transport. All four games pump `Update()` per frame and none worked around it.
+
+**A drop is now detected on the seam, once per frame, for the price of one bool.** `Update()` reads
+`provider.IsConnected` after pumping the provider, and a false is what starts the recovery. The clock is read
+only once the answer is no, so the `Connected` invariant #158 pinned holds unchanged: a live session still reads
+the clock zero times per frame over a thousand frames, and now also probes exactly a thousand times. The order is
+deliberate. Pumping is where a backend notices its own transport died, so probing after the pump sees the drop on
+the frame it happened rather than the frame after.
+
+**The seam says which answer means what, because it did not before.** `ISocialProvider.IsConnected` is now
+documented as the way a provider REPORTS a drop, and the only answer that gets a session back: the controller
+re-enters its connect backoff, keeps the provider, and calls `TryInitialize` again, so a provider whose
+connection dies must go false there and leave itself connectable, exactly as it must after a failed connect. A
+THROW keeps its old meaning and stays terminal, disposing the provider, because a provider that threw is in a
+state the seam cannot promise anything about, whereas a clean false is the provider asserting it is ready to be
+asked again. A backend that can tell the two apart routes a plain disconnect to the first, which is what the
+Discord one now does.
+
+**The recovery is the cold-start backoff, with the session's memory intact.** A drop re-enters the same schedule
+with a fresh attempt budget and a fresh wait, and the provider is deliberately NOT disposed: disposing it is
+exactly what made the terminal path impossible to come back from. The first attempt waits out
+`ConnectRetryDelay` rather than going on the spot, because the platform client is mid-shutdown at the instant its
+socket dies and an immediate attempt spends a budget on a certain failure. Exhausting the budget lands in
+`GivenUp` the same way a cold start does, `Retry()` re-arms it, and `GivenUp` still costs nothing per frame.
+Presence is not published while the session is down, and the provider is not even pumped.
+
+**What comes back on screen is what was on it.** The presence that was live at the drop moves into the same hold
+#158 already publishes on connect, so a reconnect republishes it once rather than coming back blank, and it
+primes the dedupe cache so the game re-sending that line stays quiet. A `SetPresence` during the outage overwrites
+the hold and wins, since latest-wins is what the hold already meant, and a `ClearPresence` during the outage
+cancels it entirely. An elapsed-timer presence keeps its absolute start instant, so the timer reads correctly
+across an outage of any length.
+
+**New public surface: one enum member.** `SocialPresenceState.Reconnecting`, for a session that had a connection
+and lost it, as distinct from `Connecting`, which has never had one. Everything inside the controller treats the
+two identically, and the only reason the value exists is that "Discord disconnected, reconnecting" and
+"connecting" are different things for a game to put on a status line. A session that has connected once reports
+`Reconnecting` for the rest of its life, however many times it drops, because what separates the two is whether
+presence was ever live rather than where the schedule is. The member is APPENDED to the enum rather than placed
+next to `Connecting`, so no existing member's numeric value moves.
+
+**The Discord backend needed the drop to be detectable at all.** `DiscordIpcClient.Pump()` now asks the transport
+whether it is still connected, after draining reads so the frames Discord did send before going are still
+handled. That is the only evidence a quiet death leaves: the `Close` opcode path only fires when Discord says
+goodbye first, which a quit does not. And `Disconnect()` now tears the transport down instead of only flipping a
+bool, which was harmless while a drop ended the session for good and is not now that one is routinely followed by
+another connect on the same instance: the socket and its reader thread would otherwise sit there for the whole
+backoff. `IDiscordIpcTransport` gained `Disconnect()` for that (drop the connection, stay reusable) alongside the
+terminal `Dispose()`, and the named-pipe transport's teardown is idempotent, safe on an instance that never
+connected, and guarded against joining the reader from the reader's own thread.
+
+**One latent race closed on the way past, because the reconnect makes it reachable.** `NamedPipeDiscordTransport`
+kept one `running` flag and one reader thread field for the whole transport, so a reader still unwinding from a
+dead connection could clear the flag a newer `TryConnect` had just set, which would read as an instant re-drop.
+That was nearly unreachable while a process made one connection, and several connections per process is the
+normal case now. Each connection and its reader thread are one object, and a reader only ever retires its own.
+
+**Tests.** Six rows in a new `SocialPresenceReconnectTests`, on the same hand-moved clock #158 uses: a drop
+re-entering the backoff with no publish and no pump while down, no attempt before the initial delay, and the last
+presence republished once on the way back with the dedupe cache primed by it, a presence set during the outage
+being what publishes instead, a drop that never comes back giving up after its fresh budget and `Retry()`
+re-arming it into `Reconnecting`, a live connection costing one probe and no clock read over a thousand frames, a
+throwing probe staying terminal like every other throw, and `Dispose` mid-reconnect stopping everything. All six
+fail against the shipped controller. Four more in `DiscordIpcClientTests` cover the backend half, all four red
+before it: a quiet death, a `Close` frame, and a throwing read each disconnecting AND tearing the transport down
+once, and a reconnect on the same client after a drop being a fresh session that fails once and then lands. Three
+in a new `NamedPipeDiscordTransportTests` pin the teardown contract on the paths that need no Discord socket. The
+`StoppedClock` the suites share moved out of `SocialPresenceRetryTests` into its own file.
 
 ## 17.36.1
 

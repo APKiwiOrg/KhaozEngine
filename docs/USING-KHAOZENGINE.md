@@ -5631,11 +5631,31 @@ the moment the connect lands, so the menu line a game sets at startup is not los
 The hold publishes **before** `StateChanged` reports `Connected`, which is what makes the obvious pattern
 (publish the real presence from the `Connected` handler) work: the handler's line lands last and stays.
 
-Two failures stay terminal on purpose. A provider that fails once **connected** ends the session and
-disposes the provider, because a dead transport is not a cold start. And a game with no backend gets the
+### A connection that drops comes back too
+
+Quitting Discord mid-session is the commoner half of the same problem, and it runs on the same machinery.
+`Update()` reads `provider.IsConnected` once a frame while connected, and a false takes the controller to
+`Reconnecting`: the same backoff with a fresh budget and a fresh wait, the provider kept rather than
+disposed, and `GivenUp` at the end of it if the platform never returns (`Retry()` re-arms that as usual).
+The first attempt waits out `ConnectRetryDelay` rather than firing on the spot, since the platform client
+is mid-shutdown at the instant its socket dies. `Reconnecting` exists as a separate state only so a game
+can say "lost Discord, reconnecting" rather than "connecting": everything inside the controller treats it
+exactly like `Connecting`, and a session that has connected once reports `Reconnecting` for the rest of its
+life however many times it drops.
+
+The presence that was live at the drop is republished once on the way back, so the game does not return
+blank, and an elapsed timer keeps its absolute start across an outage of any length. A `SetPresence` during
+the outage is held and wins instead (latest wins, as always), and a `ClearPresence` during the outage
+cancels the republish. Nothing publishes, and the provider is not pumped, while the session is down.
+
+Two failures stay terminal on purpose. A provider that THROWS ends the session and disposes the provider,
+because a provider that threw is in a state the seam cannot promise anything about, whereas a clean
+`IsConnected == false` is it asserting the opposite. And a game with no backend gets the
 `NullSocialProvider`, which the controller reads as a deliberate opt-out and takes straight to `Disabled`
 without arming any timer, so opting out costs nothing per frame. Nor does a settled session: `Connected`,
 `GivenUp` and `Disabled` all read the clock zero times per `Update()`, since only the backoff needs one.
+The drop probe on the connected path is one bool read on the seam, and reaches for the clock only once it
+finds a drop.
 
 ```csharp
 // A status line, and a manual reconnect. Both optional: a game that wants neither writes no new code.
@@ -5645,6 +5665,7 @@ social.StateChanged += s => statusLine = s switch
 {
     SocialPresenceState.Connecting => Strings.SocialConnecting,
     SocialPresenceState.Connected => Strings.SocialConnected,
+    SocialPresenceState.Reconnecting => Strings.SocialReconnecting,
     SocialPresenceState.GivenUp => Strings.SocialUnavailable,
     _ => default,                 // default(LocalizedText) resolves to the empty string
 };
@@ -5660,7 +5681,11 @@ reconnect loop rather than one extra try.
 
 Writing an `ISocialProvider` of your own: `TryInitialize` has to be re-attemptable on the same instance,
 since the controller retries the provider it holds rather than building a new one. Drop whatever a
-half-finished attempt left behind rather than carrying it into the next one.
+half-finished attempt left behind rather than carrying it into the next one. And report a transport that
+DIED by returning false from `IsConnected` rather than by throwing: false is the recoverable answer (the
+controller keeps you and calls `TryInitialize` again, so leave yourself connectable), a throw is the
+terminal one. A backend that can tell a plain disconnect from a real failure routes the disconnect to
+`IsConnected`.
 
 ---
 

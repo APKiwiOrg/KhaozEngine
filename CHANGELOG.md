@@ -9,7 +9,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 A logger taken from the ambient `Log` facade now follows the facade instead of the manager that happened to be
 configured when it was resolved, so a consumer that calls `Log.Configure` after any engine type has been touched
-is no longer silently unlogged in that type for the rest of the process. Alongside it, two reporting defects that
+is no longer silently unlogged in that type for the rest of the process. `CrashHandler` was the last thing in the
+engine still pinning a manager at install time, and it resolves the live one when the crash is actually reported
+now, so a game that swaps its sink set after startup keeps the highest-value line the engine writes, and
+installing the handler before logging is configured arms it instead of quietly doing nothing at all. Alongside
+them, two reporting defects that
 each made a correct run read as a broken one. The native Vulkan backend's `CreateTexture` refusal told a caller
 their sample count lost to a conservative ceiling of 1 that a landed row replaced two releases ago, and sent them
 to a closed issue for the real number, so the message now states the ceiling the driver actually reported and how
@@ -406,6 +410,46 @@ already resolved a logger. That half of the hazard is now gone. The rule stands 
 reason, which this release did not change: a second `Configure` still disposes the first host's console sink, so
 an armed validation run would still end up with an artifact holding whatever the last configure admitted. The
 comments on `GpuValidationConsoleLogging` and `VulkanValidationConsoleLogging` now say which half is which.
+
+### The crash line resolves its manager when the crash happens (#633)
+
+**The same seam as #616, on the one line nobody can afford to lose**
+([#633](https://github.com/APKiwiOrg/KhaozEngine/issues/633)). `CrashHandler.Install()` read `Log.Manager` once
+and handed it to `Install(LogManager)`, which stored it, and the report wrote through that stored manager for the
+life of the install. `SessionLog.Configure` runs `Log.Configure` and then `CrashHandler.Install()`, which is the
+shipped bootstrap for every game head, so a game that later swapped its sink set with a second `Log.Configure`
+left the handler pointed at the manager that call had just shut down. Shutdown flushes, disposes and CLEARS that
+manager's sinks, so the fatal entry went into a disposed queue (dropped, by the same `Submit` guarantee that
+protects every racing writer) or against an empty sink snapshot. The crash was recorded nowhere, and the live
+session log, the file a player actually sends, said nothing about it. The mirror-image case cost the same line
+for a different reason: `CrashHandler.Install()` called before `Log.Configure` saw a null `Log.Manager` and
+returned without arming anything, permanently.
+
+**`Install()` now arms and captures nothing.** The report resolves `Log.Current` on the crash path, the same
+volatile read #616 above gives every ambient logger, so install order stops mattering in both directions.
+Install before `Log.Configure` and the handler is armed, reporting from the moment configuration lands. Reconfigure
+afterwards and the crash line moves to the new manager with everything else. There is no re-install step, and the
+terminating-crash shutdown reuses the manager the fatal entry just went to rather than resolving a second
+time, so it closes the log file the crash was written to rather than one somebody replaced in between. A report with nothing configured does nothing and never throws, which is the old
+`NullLogger` behaviour and non-negotiable on a path the runtime enters while the process is already dying.
+
+**`Install(LogManager)` still pins, deliberately.** A caller who hands in a manager owns it, and the crash line
+belongs in that manager's sinks whatever the ambient facade is doing. It is the `LogManager.GetLogger` against
+`Log.For<T>()` split, and this release gives it its own regression test rather than leaving it as an accident of
+the implementation. Arming is tracked separately from the pinned manager, so an ambient install (armed, nothing
+pinned) and an uninstalled handler do not read the same, and `Uninstall` still leaves the report inert even while
+the ambient log is live.
+
+**`CrashReport` was checked and does not share the shape.** The last-chance crash FILE from 17.36.0 pins a
+`CrashReportOptions` value at arming, which is a destination description rather than a live manager: nothing
+shuts it down, nothing clears it, and its first-wins arming is a documented choice so a turn-key `GameApp` cannot
+downgrade a head that armed its own. It stays as it is.
+
+**Five headless tests in the `LoggingSerial` collection.** The reconfigure case in the shipped `SessionLog`
+order, the install-before-configure case, the armed-but-unconfigured report, the injected-manager pin across an
+ambient reconfigure, and the uninstalled handler against a live ambient log. Each builds its own managers and
+finishes by shutting them down rather than re-adopting one it already shut down, since a re-adopted manager is a
+silent no-op logger for the rest of the run.
 
 ### The Metal device-class disambiguation reads both variables and four device classes (#628)
 

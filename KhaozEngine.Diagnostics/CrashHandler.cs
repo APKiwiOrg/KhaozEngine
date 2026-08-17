@@ -14,7 +14,10 @@ namespace KhaozEngine.Diagnostics;
 /// <see cref="Log.Current"/> on the crash path, the same volatile read every ambient logger does since #616. So
 /// install order stopped mattering in both directions: installing BEFORE <see cref="Log.Configure(LoggerOptions)"/>
 /// arms normally and starts reporting the moment configuration lands, and a later reconfigure moves the crash
-/// line to the new manager with it.</para>
+/// line to the new manager with it. Arming unconditionally widens one thing beyond logging: the task handler
+/// calls <see cref="UnobservedTaskExceptionEventArgs.SetObserved"/>, so an unobserved task exception is now
+/// marked observed even with nothing configured to log it, where the old install armed nothing at all in that
+/// case (visible only under <c>ThrowUnobservedTaskExceptions</c>, which the engine never turns on).</para>
 ///
 /// <para>What that fixes is the highest-value line the engine writes going missing without a trace.
 /// <see cref="SessionLog"/> configures a manager and installs this handler right after, so a game that later
@@ -123,10 +126,21 @@ public static class CrashHandler
     private static void OnUnhandled(object exceptionObject, bool isTerminating)
     {
         string context = isTerminating ? "Unhandled exception (terminating)" : "Unhandled exception";
-        Report(context, exceptionObject as Exception, exceptionObject);
+
+        LogManager? m = null;
+        try
+        {
+            m = Resolve();
+            ReportTo(m, context, exceptionObject as Exception, exceptionObject);
+        }
+        catch { /* crash path: never throw */ }
+
         if (isTerminating)
         {
-            try { Resolve()?.Shutdown(); }
+            // Shut down the manager the entry was actually written to, held from the resolve above. Resolving a
+            // second time here would let a Log.Configure landing between the two flush one manager and close the
+            // other, which is the pinning bug of #633 reintroduced inside a single crash.
+            try { m?.Shutdown(); }
             catch { /* crash path: never throw */ }
         }
     }
@@ -138,15 +152,27 @@ public static class CrashHandler
     /// </summary>
     internal static void Report(string context, Exception? exception, object? raw)
     {
-        LogManager? m = Resolve();
-        if (m is null) return;
+        // The resolve sits inside the try as well, so the never-throws promise covers the whole call and not
+        // just the writing half.
+        try { ReportTo(Resolve(), context, exception, raw); }
+        catch { /* crash path: never throw */ }
+    }
+
+    /// <summary>
+    /// Writes the fatal entry to an ALREADY RESOLVED manager and flushes it. The caller resolves, so a crash that
+    /// also shuts the manager down closes the same one it wrote to. A null manager (uninstalled, or nothing
+    /// configured) does nothing, and this never throws.
+    /// </summary>
+    private static void ReportTo(LogManager? manager, string context, Exception? exception, object? raw)
+    {
+        if (manager is null) return;
 
         try
         {
-            var log = m.GetLogger("Crash");
+            var log = manager.GetLogger("Crash");
             if (exception is not null) log.Fatal(context, exception);
             else log.Fatal($"{context}: {raw}");
-            m.Flush();
+            manager.Flush();
         }
         catch { /* crash path: never throw */ }
     }

@@ -47,7 +47,10 @@ says.
 `CrashHandler.Install()` is on the facade side of that split. It arms the process handlers and holds no manager,
 resolving the configured one when a crash is reported, so install it before or after `Log.Configure` and
 reconfigure as often as you like: the fatal crash line follows the live manager and needs no re-install.
-`CrashHandler.Install(myManager)` is the injected shape and pins to the manager you hand it.
+`CrashHandler.Install(myManager)` is the injected shape and pins to the manager you hand it. Because arming no
+longer depends on a manager being configured, an unobserved task exception is marked observed while the handler
+is installed even if nothing is configured to log it, which only shows at all if you have switched
+`ThrowUnobservedTaskExceptions` on.
 
 ## One-call session bootstrap (`SessionLog`)
 

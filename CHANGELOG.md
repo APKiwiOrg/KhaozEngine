@@ -381,11 +381,11 @@ for a different reason: `CrashHandler.Install()` called before `Log.Configure` s
 returned without arming anything, permanently.
 
 **`Install()` now arms and captures nothing.** The report resolves `Log.Current` on the crash path, the same
-volatile read every ambient logger has made since 17.36.2, so install order stops mattering in both directions.
+volatile read #616 above gives every ambient logger, so install order stops mattering in both directions.
 Install before `Log.Configure` and the handler is armed, reporting from the moment configuration lands. Reconfigure
 afterwards and the crash line moves to the new manager with everything else. There is no re-install step, and the
-terminating-crash shutdown resolves the same way, so it closes the log file the crash was written to rather than a
-manager somebody replaced. A report with nothing configured does nothing and never throws, which is the old
+terminating-crash shutdown reuses the manager the fatal entry just went to rather than resolving a second
+time, so it closes the log file the crash was written to rather than one somebody replaced in between. A report with nothing configured does nothing and never throws, which is the old
 `NullLogger` behaviour and non-negotiable on a path the runtime enters while the process is already dying.
 
 **`Install(LogManager)` still pins, deliberately.** A caller who hands in a manager owns it, and the crash line

@@ -29,7 +29,9 @@ Steam/other later) for rich presence, local identity, and join/invite. Depends o
   `Reconnecting` is a session that HAD a connection and lost it, as against `Connecting`, which has never
   had one.
 - **`SocialPresenceOptions`** - `RepublishInterval`, plus the connect-retry schedule
-  (`ConnectRetryDelay`, `MaxConnectRetryDelay`, `ConnectRetryBackoff`, `MaxConnectAttempts`).
+  (`ConnectRetryDelay`, `MaxConnectRetryDelay`, `ConnectRetryBackoff`, `MaxConnectAttempts`) and
+  `StableConnectionSpan`, the age a connection has to reach before the drop that ends it refills the
+  attempt budget.
 
 ## Usage
 
@@ -69,9 +71,11 @@ yet (Discord takes a few seconds to start, and a player can easily launch the ga
 goes to `Connecting` and re-attempts from `Update()` on a doubling backoff: roughly 0s, 3s, 9s, 21s, 45s,
 1m33s, 2m33s and 3m33s by default, then `GivenUp`. So a game connects itself with no retry code of its
 own, and a machine with no Discord at all is not polled for the whole session. Tune the schedule with
-`SocialPresenceOptions`, and set `MaxConnectAttempts = 1` for the old fail-once behaviour. Both waits are
-clamped to `[0, 1 day]`, so `TimeSpan.MaxValue` reads as "no cap" and degrades to the day rather than
-overflowing the schedule.
+`SocialPresenceOptions`, and set `MaxConnectAttempts = 1` for the old fail-once behaviour: at that setting a
+drop later in the session gets ONE reconnect attempt, one `ConnectRetryDelay` after the drop rather than
+immediately as the cold-start attempt at `Initialize()` goes, and then `GivenUp`. Every wait is clamped to
+`[0, 1 day]`, so `TimeSpan.MaxValue` reads as "no cap" and degrades to the day rather than overflowing the
+schedule.
 
 Presence set while the controller is still connecting is held (the latest one, never a queue) and
 published as soon as the connect lands, so a menu line set at startup is not lost to the wait. A held
@@ -89,11 +93,21 @@ kept rather than disposed, and `GivenUp` at the end of it if the platform never 
 re-arms that, exactly as it does from a cold start). The first attempt waits out `ConnectRetryDelay` rather
 than going immediately, because the platform client is mid-shutdown at the instant its socket dies.
 
+That fresh budget is what `StableConnectionSpan` (default 30s) qualifies. A drop only refills it if the
+connection HELD for at least that long. A platform client that accepts a connect and loses it again
+immediately is flapping rather than dropping (Discord mid-restart does this: its handshake succeeds the
+moment the bytes are written, into a socket that is already going away), and a flap carries its spent
+attempts forward instead, so the cycle ends in `GivenUp` rather than reconnecting and re-publishing every
+few seconds for as long as the game is open. Set it to zero to opt out and treat every drop as a held
+session.
+
 The presence that was live at the drop is republished once when the reconnect lands, so a game does not
 come back blank, and an elapsed timer keeps its absolute start across an outage of any length. A
 `SetPresence` during the outage is held and wins instead (latest wins, as always), and a `ClearPresence`
 during the outage cancels the republish. Nothing is published, and the provider is not even pumped, while
-the session is down.
+the session is down. The dedupe cache is dropped at the drop and re-primed by whatever the reconnect
+publishes, so the line a game sets after coming back is judged against what is actually on the platform
+now, not against what the dead client was showing.
 
 **Writing a provider: which answer means what.** A transport that dies must be reported by returning false
 from `IsConnected`, which is the recoverable signal: the controller keeps the provider and calls

@@ -70,7 +70,9 @@ And on the social seam, a player whose Discord was still starting when the game 
 presence for the entire session, and neither does one who quits Discord halfway through it: the one-shot connect
 became a bounded retry driven from the frame pump, and a live connection that later drops re-enters that same
 retry and comes back showing the line that was on screen when the platform went away, so the four games pick both
-halves up by upgrading, with no call-site change in any of them.
+halves up by upgrading, with no call-site change in any of them. A client that FLAPS rather than drops, accepting
+every connect and losing it again immediately as Discord does mid-restart, runs that retry out of budget and
+gives up instead of reconnecting and republishing every few seconds for the rest of the session.
 
 ### An additive animation layer applies the authored pose, not the pose conjugated by its reference (#20)
 
@@ -1314,7 +1316,23 @@ exactly what made the terminal path impossible to come back from. The first atte
 `ConnectRetryDelay` rather than going on the spot, because the platform client is mid-shutdown at the instant its
 socket dies and an immediate attempt spends a budget on a certain failure. Exhausting the budget lands in
 `GivenUp` the same way a cold start does, `Retry()` re-arms it, and `GivenUp` still costs nothing per frame.
-Presence is not published while the session is down, and the provider is not even pumped.
+Presence is not published while the session is down, and the provider is not even pumped. With
+`MaxConnectAttempts = 1`, the old fail-once shape, a drop therefore gets exactly one reconnect attempt, one
+`ConnectRetryDelay` after the drop rather than immediately as the cold start at `Initialize()` goes, and then
+`GivenUp`.
+
+**But the fresh budget is only for a session that HELD, or the recovery is a loop with no exit.** The budget is
+spent by FAILED attempts, and a platform client can accept every connect and lose it again on the same frame
+without ever failing one. Discord mid-restart is the real case rather than a contrived one, because
+`DiscordIpcClient.TryConnect` succeeds as soon as the handshake bytes are written and the socket they went into
+is already going away. A drop that resets the budget unconditionally then reconnects, republishes, drops and
+rearms forever: simulated over ten minutes it ran 200 connects, 200 `SET_ACTIVITY` frames and 400 state
+transitions, a status line flipping every three seconds for as long as the game is open. Before this release
+that scenario was terminal instead, so it is a failure mode the reconnect introduced rather than one it
+inherited. The reconnect now asks how long the connection lasted: at least `StableConnectionSpan` and it was a
+session ending, so the budget refills, and less than that and it was a flap, so the spent attempts carry forward
+and the cycle reaches `GivenUp` like anything else that runs out of them. The wait keeps growing across a flap
+too, so even a run inside the budget backs off rather than hammering.
 
 **What comes back on screen is what was on it.** The presence that was live at the drop moves into the same hold
 #158 already publishes on connect, so a reconnect republishes it once rather than coming back blank, and it
@@ -1323,13 +1341,26 @@ the hold and wins, since latest-wins is what the hold already meant, and a `Clea
 cancels it entirely. An elapsed-timer presence keeps its absolute start instant, so the timer reads correctly
 across an outage of any length.
 
-**New public surface: one enum member.** `SocialPresenceState.Reconnecting`, for a session that had a connection
+**And the dedupe cache goes with the connection it described.** The cache is what makes calling `SetPresence`
+every frame cheap: an unchanged line is dropped unless it is older than `RepublishInterval`. Carried across a
+drop it says a line is live on a client that no longer exists, and the reconnect does not always put that line
+back. `ClearPresence` during the outage is the case that bites, since it correctly cancels the republish and
+leaves the platform blank while the cache still claims the pre-drop line: a game that then sets that same line
+again is deduped against a client showing nothing, and a change-driven publisher stays blank until it happens to
+set some different line. So the drop invalidates the cache, after the hold has taken its copy of it, and whatever
+the reconnect publishes primes it again. The not-ready `ClearPresence` path drops it too, which is the same
+statement made where a game makes it.
+
+**New public surface: one enum member and one option.** `SocialPresenceState.Reconnecting`, for a session that had a connection
 and lost it, as distinct from `Connecting`, which has never had one. Everything inside the controller treats the
 two identically, and the only reason the value exists is that "Discord disconnected, reconnecting" and
 "connecting" are different things for a game to put on a status line. A session that has connected once reports
 `Reconnecting` for the rest of its life, however many times it drops, because what separates the two is whether
 presence was ever live rather than where the schedule is. The member is APPENDED to the enum rather than placed
-next to `Connecting`, so no existing member's numeric value moves.
+next to `Connecting`, so no existing member's numeric value moves. The option is
+`SocialPresenceOptions.StableConnectionSpan`, the age a connection has to reach before the drop that ends it
+refills the attempt budget, defaulting to 30 seconds and clamped into `[0, 1 day]` like every other span on that
+type. Zero opts out and restores the unconditional refill, for a game that would rather flap than give up.
 
 **The Discord backend needed the drop to be detectable at all.** `DiscordIpcClient.Pump()` now asks the transport
 whether it is still connected, after draining reads so the frames Discord did send before going are still
@@ -1341,19 +1372,40 @@ backoff. `IDiscordIpcTransport` gained `Disconnect()` for that (drop the connect
 terminal `Dispose()`, and the named-pipe transport's teardown is idempotent, safe on an instance that never
 connected, and guarded against joining the reader from the reader's own thread.
 
+`DiscordIpcClient.TryConnect` also clears `IsConnected` at the top now, alongside the buffer and identity it
+already reset. Nothing before this release could see the difference, because the only way to reach that method
+with the flag set was to reconnect after a live session and nothing reconnected. Now that something does, a
+reconnect attempt that fails at the transport leaves the flag reporting the PREVIOUS session's connection, which
+is the exact state the controller reads as "still up" and the whole defect being fixed here.
+
 **One latent race closed on the way past, because the reconnect makes it reachable.** `NamedPipeDiscordTransport`
 kept one `running` flag and one reader thread field for the whole transport, so a reader still unwinding from a
 dead connection could clear the flag a newer `TryConnect` had just set, which would read as an instant re-drop.
 That was nearly unreachable while a process made one connection, and several connections per process is the
 normal case now. Each connection and its reader thread are one object, and a reader only ever retires its own.
+The same reader also re-checks that its connection is still live UNDER the buffer lock before appending to it,
+which closes the other half: teardown only waits 200ms for a reader to unwind, so one that outlives its join
+could otherwise append a dead connection's bytes into the buffer the next session is decoding from, and every
+frame after them would decode against the wrong offset. Teardown clears the flag before it takes the lock, so a
+stale reader either appended ahead of the clear (and the clear wiped it) or reads false and appends nothing.
+The `current` connection field is `volatile` for honest reads rather than as a claim of thread safety: the class
+is driven from the frame thread, every caller of the teardown is one of its own public members, and the comment
+that said it was safe from any thread now says which two things actually cross a thread boundary and how each is
+handled.
 
-**Tests.** Six rows in a new `SocialPresenceReconnectTests`, on the same hand-moved clock #158 uses: a drop
+**Tests.** Nine rows in a new `SocialPresenceReconnectTests`, on the same hand-moved clock #158 uses: a drop
 re-entering the backoff with no publish and no pump while down, no attempt before the initial delay, and the last
 presence republished once on the way back with the dedupe cache primed by it, a presence set during the outage
 being what publishes instead, a drop that never comes back giving up after its fresh budget and `Retry()`
 re-arming it into `Reconnecting`, a live connection costing one probe and no clock read over a thousand frames, a
-throwing probe staying terminal like every other throw, and `Dispose` mid-reconnect stopping everything. All six
-fail against the shipped controller. Four more in `DiscordIpcClientTests` cover the backend half, all four red
+throwing probe staying terminal like every other throw, and `Dispose` mid-reconnect stopping everything. Six of
+them fail against the shipped controller. The other three are the flap guard and the cache invalidation: a
+provider that connects and drops again on the same frame reaching `GivenUp` after four cycles rather than running
+200 of them over ten simulated minutes, a session that held past `StableConnectionSpan` still getting both
+attempts of its budget rather than the cold start's leftovers, and a `ClearPresence` during an outage leaving the
+pre-drop line publishable afterwards instead of deduped away, with `RepublishInterval` set past the whole test so
+the throttle cannot be what publishes it. The first and third of those fail against the reconnect as first
+written. Four more in `DiscordIpcClientTests` cover the backend half, all four red
 before it: a quiet death, a `Close` frame, and a throwing read each disconnecting AND tearing the transport down
 once, and a reconnect on the same client after a drop being a fresh session that fails once and then lands. Three
 in a new `NamedPipeDiscordTransportTests` pin the teardown contract on the paths that need no Discord socket. The

@@ -5621,9 +5621,11 @@ can easily launch the game first, so a connect that fails puts the controller in
 re-attempts from `Update()` on a doubling backoff: roughly 0s, 3s, 9s, 21s, 45s, 1m33s, 2m33s and 3m33s by
 default, then `GivenUp`. A Discord that appears in the first few minutes is caught, and a machine that has
 none stops being polled. Tune it on `SocialPresenceOptions` (`ConnectRetryDelay`, `MaxConnectRetryDelay`,
-`ConnectRetryBackoff`, `MaxConnectAttempts`), where `MaxConnectAttempts = 1` is the old fail-once shape.
-Both waits are clamped to `[0, 1 day]`, so `TimeSpan.MaxValue` reads as "no cap" and degrades to the day
-rather than overflowing the schedule and throwing out of `Update()`.
+`ConnectRetryBackoff`, `MaxConnectAttempts`), where `MaxConnectAttempts = 1` is the old fail-once shape: at
+that setting a drop later in the session gets ONE reconnect attempt, one `ConnectRetryDelay` after the drop
+rather than immediately as the cold-start attempt at `Initialize()` goes, and then `GivenUp`. Every wait is
+clamped to `[0, 1 day]`, so `TimeSpan.MaxValue` reads as "no cap" and degrades to the day rather than
+overflowing the schedule and throwing out of `Update()`.
 
 Presence set while the controller is still connecting is held (latest wins, never a queue) and published
 the moment the connect lands, so the menu line a game sets at startup is not lost to the wait. A held
@@ -5643,10 +5645,20 @@ can say "lost Discord, reconnecting" rather than "connecting": everything inside
 exactly like `Connecting`, and a session that has connected once reports `Reconnecting` for the rest of its
 life however many times it drops.
 
+The fresh budget is qualified by `StableConnectionSpan` (default 30s): a drop refills it only if the
+connection held for at least that long. A platform client that accepts a connect and loses it again on the
+same frame is flapping rather than dropping, and Discord mid-restart really does that, since its handshake
+succeeds as soon as the bytes are written into a socket that is already going away. A flap carries its
+spent attempts forward instead of resetting them, so it reaches `GivenUp` rather than reconnecting and
+re-publishing every few seconds for the whole session. Zero opts out and treats every drop as held.
+
 The presence that was live at the drop is republished once on the way back, so the game does not return
 blank, and an elapsed timer keeps its absolute start across an outage of any length. A `SetPresence` during
 the outage is held and wins instead (latest wins, as always), and a `ClearPresence` during the outage
-cancels the republish. Nothing publishes, and the provider is not pumped, while the session is down.
+cancels the republish. Nothing publishes, and the provider is not pumped, while the session is down. The
+dedupe cache goes with the connection and is re-primed by whatever the reconnect publishes, so a line the
+game sets after coming back is compared against what is on the platform now rather than against what the
+dead client was left showing.
 
 Two failures stay terminal on purpose. A provider that THROWS ends the session and disposes the provider,
 because a provider that threw is in a state the seam cannot promise anything about, whereas a clean

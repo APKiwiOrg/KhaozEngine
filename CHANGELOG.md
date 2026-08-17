@@ -42,7 +42,52 @@ gets its second half: a persistence-backed server no longer teleports a rejoinin
 configured spawn, once when the stored position lands afterwards), because both server heads now build a returning
 account's entity where it left, and the restore that follows is applied quietly when it moves nothing. That was the
 server-side cause of a client rebuilding its whole streaming ring on every dropped connection, which the #409
-client-side fix could not reach.
+client-side fix could not reach. On the render side, handing the water surface a NEW depth field of the same
+resolution now actually reaches the GPU: the upload was gated on a per-instance revision counter, so a
+replacement read as no change and the previous field's depths stayed bound, drawing a plausible shore for the
+wrong coastline with no error anywhere.
+
+### Replacing the bathymetry field uploads it, instead of keeping the old depths (#645)
+
+`WaterSettings.Bathymetry` is the seam a game streams a coastline through: a new region, a move between water
+bodies, an editor changing a lake. Assigning a different `WaterBathymetry` over an existing one did nothing at
+all unless the resolution changed with it.
+
+`WaterBathymetryMap.Update` decided whether to re-upload the depth texture with `_revision != field.Revision`.
+`WaterBathymetry.Revision` is a PER-INSTANCE counter starting at 0, so it identifies a version of one field and
+says nothing about which field it belongs to, and two freshly built fields both sit at 1 after the single
+`MarkChanged` that `FillFromGround` does for you. The map compared that number across DIFFERENT fields, saw no
+change, and left the previous field's depths on the GPU with `Active` true, the rectangle constants updated to
+the new field, and every other part of the water pass correct. The failure mode was a plausible-looking picture
+rather than an error, which is the worst shape a rendering defect comes in.
+
+**The gate now asks which field as well as which version.** The map holds the uploaded field by reference and
+compares that first, then the revision. That is the same shape `WaterRenderer.BindTargets` already binds its
+resource set with (`ReferenceEquals(_bound, res) && res.Generation == _boundGen`, a pattern `GroundDecalRenderer`,
+`ParticleRenderer`, `DistortionRenderer` and `PixelPostProcess` all share), and it costs one reference compare on
+a path that already early-outs. `MarkChanged` is unchanged and still the way to re-upload a field mutated in
+place, the steady state is still zero work per frame, and a field baked once at load still costs one upload for
+the life of the process.
+
+Two paths deliberately did not move. A replacement at a DIFFERENT resolution was never broken: that branch drains
+the device, drops the texture and re-uploads on its own, and it is untouched. And setting `Bathymetry` back to
+`null` still costs nothing to undo, because the inactive arm keeps both the texture and the record of what is in
+it, so switching shoaling off and on with the same field uploads nothing.
+
+No golden moved, and none could have: a golden scene binds one field and never replaces it, which is exactly the
+case a correctly gated upload leaves byte-identical.
+
+Found by the #639 lane, which tried to share one `Scene3D` across water configurations and measured the shoaled
+capture coming back byte-identical to the no-field one, and a scene that had seen the sloped field first
+returning the sloped depths for the deep field. That is also why the defect survived four releases: every water
+capture in the suite built its own scene, so every map only ever saw the FIRST field it was given. This unblocks
+the `WaterShore` and `WaterSurfProbe` fixture conversions #639 had to leave out.
+
+Coverage is in both places it needs to be. `WaterBathymetryUploadGateTests` drives the map on a recording device
+and pins the upload arithmetic AND the bytes: a same-resolution swap uploads the new depths, an in-place mutation
+plus `MarkChanged` uploads again, five steady frames on one field upload once, a resolution change still goes
+through the drain path, and an off-and-on round trip uploads nothing. `WaterBathymetrySwapGpuTests` renders the
+#639 lane's sequence through ONE scene, because a stale texture is invisible to a headless test.
 
 ### A persistence-backed rejoin is built where the player left, not on the spawn (#642)
 
@@ -680,7 +725,9 @@ upload on `WaterBathymetry.Revision`, which is a PER-INSTANCE counter, so replac
 GPU. `WaterShoreGpuTests` and `WaterSurfProbe` build a fresh field per capture and are correct today only because
 each capture also builds a fresh scene. Measured on a shared scene, in the shore class's own order, the shoaled
 capture came back byte-identical to the NO-FIELD one. That reaches consumers, not just tests: a game streaming a
-new depth field keeps rendering the old shore, with a plausible picture and no error.
+new depth field keeps rendering the old shore, with a plausible picture and no error. **That defect is fixed in
+this same version** (the #645 section above), so the block on those two conversions is lifted and they are simply
+not done here.
 
 ### The ocean focus tests share one scene, and the cost they were blamed for was not the ocean (#332)
 

@@ -2913,8 +2913,15 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     - **The seam is a plain CPU array**, not a texture: a `WaterBathymetry` holds water depth in METRES (still
       water minus ground, so positive is water and zero or less is land) over a world-space XZ rectangle, and
       `FillFromGround(groundHeight, surfaceY)` fills it from any height function - a terrain field, a heightmap, a
-      collision query. The renderer owns the texture and re-uploads only when `Revision` moves, so a coastline
-      baked once at load costs one upload for the life of the process. **Outside the rectangle the surface reads
+      collision query. The renderer owns the texture and re-uploads only when the field is REPLACED or its
+      `Revision` moves, so a coastline baked once at load costs one upload for the life of the process.
+      **Swapping in a different field is supported** and re-uploads whatever the incoming field's `Revision`
+      reads, which is what makes streaming a new region or moving between water bodies a plain assignment. Before
+      17.37.0 a replacement of the same resolution was silently ignored and the previous field's depths stayed on
+      the GPU, so a game that swapped its field kept rendering the old shore (#645). `Revision` counts versions of
+      ONE field, not fields: every instance starts at 0, so two separately built fields routinely carry the same
+      number, and `MarkChanged` is for mutating `Depths` in place rather than for announcing a replacement.
+      **Outside the rectangle the surface reads
       as deep open water**, which is what makes it affordable to bake a coastal strip at a useful resolution
       instead of a whole ocean at a useless one. Resolution wants to resolve the SHAPE of the coast, not its
       texture: a texel every few metres reads well, and what it must not do is miss a feature the surf is meant to

@@ -12,17 +12,26 @@ namespace KhaozEngine.Social;
 /// 2m33s and 3m33s, so a Discord that appears anywhere in the first few minutes still gets presence,
 /// and a machine with no Discord at all stops being asked after eight tries instead of polling for the
 /// whole session. Every value is clamped to something usable, so a nonsensical setting degrades rather
-/// than throws.
+/// than throws: both waits are pulled into [0, 1 day], which is well past anything that can serve a client
+/// starting alongside the game and keeps the schedule off the date arithmetic that an unbounded wait
+/// overflows.
 /// </remarks>
 public sealed class SocialPresenceOptions
 {
     /// <summary>Minimum wall-clock time before an unchanged presence is re-published. Default 15s.</summary>
     public TimeSpan RepublishInterval { get; init; } = TimeSpan.FromSeconds(15);
 
-    /// <summary>Wait before the second connect attempt. Each later wait multiplies it. Default 3s.</summary>
+    /// <summary>
+    /// Wait before the second connect attempt. Each later wait multiplies it. Default 3s, clamped to
+    /// [0, 1 day].
+    /// </summary>
     public TimeSpan ConnectRetryDelay { get; init; } = TimeSpan.FromSeconds(3);
 
-    /// <summary>Ceiling the growing wait stops at, so a long session never idles for minutes. Default 60s.</summary>
+    /// <summary>
+    /// Ceiling the growing wait stops at, so a long session never idles for minutes. Default 60s, clamped to
+    /// [0, 1 day], so <see cref="TimeSpan.MaxValue"/> reads as "no cap" and degrades to the day rather than
+    /// overflowing the schedule.
+    /// </summary>
     public TimeSpan MaxConnectRetryDelay { get; init; } = TimeSpan.FromSeconds(60);
 
     /// <summary>Multiplier applied to the wait after each failed attempt. Values below 1 are treated as 1. Default 2.</summary>

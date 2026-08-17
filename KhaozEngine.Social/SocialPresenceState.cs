@@ -2,7 +2,8 @@ namespace KhaozEngine.Social;
 
 /// <summary>
 /// The connection lifecycle of a <see cref="SocialPresenceController"/>. Read it to drive a status line
-/// ("connecting to Discord...", "Discord not found"), and subscribe to
+/// (a "connecting" or "not found" line, resolved through the game's localization catalog the way any other
+/// player-facing text is), and subscribe to
 /// <see cref="SocialPresenceController.StateChanged"/> to be told when it moves.
 /// </summary>
 public enum SocialPresenceState

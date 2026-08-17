@@ -306,6 +306,156 @@ public class SocialPresenceRetryTests
     }
 
     [Fact]
+    public void APresenceSetFromTheConnectedHandler_BeatsTheOneHeldWhileConnecting()
+    {
+        var clock = new StoppedClock();
+        var fake = new FakeSocialProvider { FailInitializeCount = 1 };
+        using var controller = new SocialPresenceController(fake, Options(maxAttempts: 8), clock.Now);
+
+        // The documented pattern: publish the real line the moment the platform is up.
+        controller.StateChanged += s =>
+        {
+            if (s == SocialPresenceState.Connected)
+            {
+                controller.SetPresence(new RichPresence { Details = "In Game" });
+            }
+        };
+
+        controller.Initialize();
+        controller.SetPresence(new RichPresence { Details = "In Menu" });    // held for the connect
+
+        clock.Advance(TimeSpan.FromSeconds(3));
+        controller.Update();
+
+        // The hold publishes first, so what the platform is left showing is the handler's line, not the
+        // menu line the game had already moved past.
+        Assert.Equal(2, fake.PresenceCalls.Count);
+        Assert.Equal("In Menu", fake.PresenceCalls[0].Details);
+        Assert.Equal("In Game", fake.PresenceCalls[1].Details);
+
+        // Nothing republishes the stale line for the rest of the session either.
+        for (int i = 0; i < 200; i++)
+        {
+            controller.Update();
+        }
+
+        Assert.Equal(2, fake.PresenceCalls.Count);
+
+        // And the dedupe cache was primed with the handler's line, not the held one: re-sending it is quiet,
+        // which is only true if "In Game" is what the controller believes is currently published.
+        controller.SetPresence(new RichPresence { Details = "In Game" });
+        Assert.Equal(2, fake.PresenceCalls.Count);
+    }
+
+    [Fact]
+    public void AConnectRetryDelayOfMaxValue_IsClamped_NotThrownOutOfInitialize()
+    {
+        var clock = new StoppedClock();
+        var fake = new FakeSocialProvider { InitializeResult = false };
+        var options = new SocialPresenceOptions
+        {
+            ConnectRetryDelay = TimeSpan.MaxValue,       // the natural spelling of "wait forever"
+            MaxConnectAttempts = 8,
+        };
+        using var controller = new SocialPresenceController(fake, options, clock.Now);
+
+        Assert.Null(Record.Exception(() => controller.Initialize()));
+        Assert.Equal(SocialPresenceState.Connecting, controller.State);
+
+        // Clamped to the one-day ceiling, so the schedule still runs instead of parking past the end of time.
+        clock.Advance(TimeSpan.FromDays(1));
+        Assert.Null(Record.Exception(() => controller.Update()));
+        Assert.Equal(2, fake.InitializedWith.Count);
+    }
+
+    [Fact]
+    public void AConnectRetryDelayOfMillionsOfDays_IsClamped_NotThrownOutOfInitialize()
+    {
+        var clock = new StoppedClock();
+        var fake = new FakeSocialProvider { InitializeResult = false };
+        var options = new SocialPresenceOptions
+        {
+            ConnectRetryDelay = TimeSpan.FromDays(3_000_000),   // finite, and still past the end of DateTime
+            MaxConnectAttempts = 8,
+        };
+        using var controller = new SocialPresenceController(fake, options, clock.Now);
+
+        Assert.Null(Record.Exception(() => controller.Initialize()));
+        Assert.Equal(SocialPresenceState.Connecting, controller.State);
+
+        clock.Advance(TimeSpan.FromDays(1));
+        Assert.Null(Record.Exception(() => controller.Update()));
+        Assert.Equal(2, fake.InitializedWith.Count);
+    }
+
+    [Fact]
+    public void AnUncappedMaxRetryDelay_DoesNotOverflowTheSecondAttempt()
+    {
+        var clock = new StoppedClock();
+        var fake = new FakeSocialProvider { InitializeResult = false };
+        var options = new SocialPresenceOptions
+        {
+            ConnectRetryDelay = TimeSpan.FromDays(2_000_000),   // fits the first schedule, doubles past the end
+            MaxConnectRetryDelay = TimeSpan.MaxValue,           // the natural spelling of "no cap"
+            MaxConnectAttempts = 8,
+        };
+        using var controller = new SocialPresenceController(fake, options, clock.Now);
+
+        Assert.Null(Record.Exception(() => controller.Initialize()));
+
+        // The unclamped growth overflowed here, out of Update() and into the game loop.
+        clock.Advance(TimeSpan.FromDays(2_000_000));
+        Assert.Null(Record.Exception(() => controller.Update()));
+        Assert.Equal(2, fake.InitializedWith.Count);
+        Assert.Equal(SocialPresenceState.Connecting, controller.State);
+    }
+
+    [Fact]
+    public void ConnectedUpdate_NeverReadsTheClock()
+    {
+        var clock = new StoppedClock();
+        var fake = new FakeSocialProvider();
+        using var controller = new SocialPresenceController(fake, Options(maxAttempts: 8), clock.Now);
+
+        controller.Initialize();
+        Assert.Equal(SocialPresenceState.Connected, controller.State);
+
+        // A connected session pumps the provider and nothing else: the backoff schedule is gone, so the
+        // per-frame cost of the controller is one virtual call, not a clock read.
+        int readsBefore = clock.Reads;
+        for (int i = 0; i < 1000; i++)
+        {
+            controller.Update();
+        }
+
+        Assert.Equal(readsBefore, clock.Reads);
+        Assert.Equal(1000, fake.UpdateCalls);
+    }
+
+    [Fact]
+    public void GivenUpUpdate_NeverReadsTheClock()
+    {
+        var clock = new StoppedClock();
+        var fake = new FakeSocialProvider { InitializeResult = false };
+        using var controller = new SocialPresenceController(fake, Options(maxAttempts: 1), clock.Now);
+
+        controller.Initialize();
+        Assert.Equal(SocialPresenceState.GivenUp, controller.State);
+
+        // Given up costs nothing per frame either, so a machine with no platform client is not paying for
+        // one for the rest of the session.
+        int readsBefore = clock.Reads;
+        for (int i = 0; i < 1000; i++)
+        {
+            controller.Update();
+        }
+
+        Assert.Equal(readsBefore, clock.Reads);
+        Assert.Equal(0, fake.UpdateCalls);
+        Assert.Single(fake.InitializedWith);
+    }
+
+    [Fact]
     public void ThrowingStateChangedHandler_IsContained()
     {
         var clock = new StoppedClock();
@@ -317,6 +467,67 @@ public class SocialPresenceRetryTests
         clock.Advance(TimeSpan.FromSeconds(3));
         Assert.Null(Record.Exception(() => controller.Update()));
         Assert.Equal(SocialPresenceState.Connected, controller.State);
+    }
+
+    [Fact]
+    public void AutoRetryFromTheGivenUpHandler_GetsOneMoreAttempt_AndNoSecondGivenUp()
+    {
+        var clock = new StoppedClock();
+        var fake = new FakeSocialProvider { InitializeResult = false };
+        var seen = new List<SocialPresenceState>();
+        using var controller = new SocialPresenceController(fake, Options(maxAttempts: 1), clock.Now);
+        controller.StateChanged += s =>
+        {
+            seen.Add(s);
+            if (s == SocialPresenceState.GivenUp)
+            {
+                controller.Retry();
+            }
+        };
+
+        controller.Initialize();
+
+        // Retry() runs its attempt synchronously inside the event, while the state is still GivenUp, so the
+        // repeat transition is deduped and the handler is never re-entered. One extra attempt, no loop.
+        Assert.Equal(2, fake.InitializedWith.Count);
+        Assert.Equal(new[] { SocialPresenceState.GivenUp }, seen);
+        Assert.Equal(SocialPresenceState.GivenUp, controller.State);
+    }
+
+    [Fact]
+    public void AutoRetryFromTheGivenUpHandler_ReArmsTheWholeScheduleWhenThereIsABudgetToReArm()
+    {
+        var clock = new StoppedClock();
+        var fake = new FakeSocialProvider { InitializeResult = false };
+        var seen = new List<SocialPresenceState>();
+        using var controller = new SocialPresenceController(fake, Options(maxAttempts: 3, retrySeconds: 1), clock.Now);
+        controller.StateChanged += s =>
+        {
+            seen.Add(s);
+            if (s == SocialPresenceState.GivenUp)
+            {
+                controller.Retry();
+            }
+        };
+
+        controller.Initialize();
+        clock.Advance(TimeSpan.FromSeconds(1));
+        controller.Update();
+        clock.Advance(TimeSpan.FromSeconds(2));
+        controller.Update();                    // third attempt gives up, and the handler re-arms from there
+
+        // The forced attempt has a fresh budget, so it lands in Connecting rather than back in GivenUp: an
+        // auto-retry handler is a reconnect loop, not a single extra try.
+        Assert.Equal(4, fake.InitializedWith.Count);
+        Assert.Equal(SocialPresenceState.Connecting, controller.State);
+        Assert.Equal(
+            new[]
+            {
+                SocialPresenceState.Connecting,
+                SocialPresenceState.GivenUp,
+                SocialPresenceState.Connecting,
+            },
+            seen);
     }
 
     [Fact]

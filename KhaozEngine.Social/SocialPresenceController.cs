@@ -12,8 +12,27 @@ namespace KhaozEngine.Social;
 /// stays terminal for the session and disposes the provider, so a platform failure never reaches the
 /// game loop. Provider-neutral, so it drives Discord today and any future backend unchanged.
 /// </summary>
+/// <remarks>
+/// Presence held during the wait is published BEFORE <see cref="StateChanged"/> announces
+/// <see cref="SocialPresenceState.Connected"/>, so a handler that publishes its own line on that event wins
+/// and stays published.
+/// <para>
+/// A handler wired straight to <see cref="Retry"/> on <see cref="SocialPresenceState.GivenUp"/> should know
+/// that the forced attempt runs inside the event, while the state is still <c>GivenUp</c>. With no budget
+/// left to re-arm (<see cref="SocialPresenceOptions.MaxConnectAttempts"/> of 1) that is one extra attempt and
+/// NO second <c>GivenUp</c> event, because the repeat transition is deduped by the equality guard. With a
+/// larger budget the forced attempt re-arms the whole schedule and the controller lands back in
+/// <see cref="SocialPresenceState.Connecting"/>, so the handler is a reconnect loop rather than one extra try.
+/// </para>
+/// </remarks>
 public sealed class SocialPresenceController : IDisposable
 {
+    // Ceiling both configured retry waits are clamped to. Nothing above it can serve the case the retry
+    // exists for (a platform client that starts within the first few minutes), and an unbounded wait
+    // overflows the date arithmetic that schedules the next attempt. TimeSpan.MaxValue is the natural way
+    // to spell "no cap" on MaxConnectRetryDelay, so it has to land here rather than throw.
+    private static readonly TimeSpan RetryDelayCeiling = TimeSpan.FromDays(1);
+
     private readonly ISocialProvider provider;
     private readonly SocialPresenceOptions options;
     private readonly Func<DateTimeOffset> clock;
@@ -48,8 +67,9 @@ public sealed class SocialPresenceController : IDisposable
         this.options = options ?? new SocialPresenceOptions();
         this.clock = clock ?? (() => DateTimeOffset.UtcNow);
 
-        initialRetryDelay = this.options.ConnectRetryDelay > TimeSpan.Zero ? this.options.ConnectRetryDelay : TimeSpan.Zero;
-        maxRetryDelay = this.options.MaxConnectRetryDelay > initialRetryDelay ? this.options.MaxConnectRetryDelay : initialRetryDelay;
+        initialRetryDelay = ClampDelay(this.options.ConnectRetryDelay);
+        TimeSpan cappedMax = ClampDelay(this.options.MaxConnectRetryDelay);
+        maxRetryDelay = cappedMax > initialRetryDelay ? cappedMax : initialRetryDelay;
         retryBackoff = this.options.ConnectRetryBackoff > 1.0 ? this.options.ConnectRetryBackoff : 1.0;
         maxConnectAttempts = this.options.MaxConnectAttempts > 1 ? this.options.MaxConnectAttempts : 1;
         retryDelay = initialRetryDelay;
@@ -317,8 +337,20 @@ public sealed class SocialPresenceController : IDisposable
 
         if (connected)
         {
-            SetState(SocialPresenceState.Connected);
+            // Assign, publish, THEN notify - in that order, and not for tidiness. A game handler that
+            // publishes its own presence on Connected (the pattern the docs teach) has to land AFTER the
+            // line held during the wait, or the stale hold overwrites it and, because the hold also primes
+            // the dedupe cache, nothing republishes for the rest of the session.
+            bool transitioned = AssignState(SocialPresenceState.Connected);
             PublishHeldPresence();
+
+            // A held publish that fails takes the session to Disabled and announces it. There is no
+            // Connected left to announce at that point.
+            if (transitioned && state == SocialPresenceState.Connected)
+            {
+                NotifyStateChanged(SocialPresenceState.Connected);
+            }
+
             return;
         }
 
@@ -329,7 +361,7 @@ public sealed class SocialPresenceController : IDisposable
             return;
         }
 
-        nextAttemptUtc = UtcNow + retryDelay;
+        nextAttemptUtc = Schedule(UtcNow, retryDelay);
         retryDelay = GrowDelay(retryDelay);
         SetState(SocialPresenceState.Connecting);
     }
@@ -339,6 +371,24 @@ public sealed class SocialPresenceController : IDisposable
         double grown = current.Ticks * retryBackoff;
         return grown >= maxRetryDelay.Ticks ? maxRetryDelay : TimeSpan.FromTicks((long)grown);
     }
+
+    // The options contract is that a nonsensical value degrades rather than throws, so a wait is pulled into
+    // [0, RetryDelayCeiling] instead of being handed to date arithmetic that would overflow on it.
+    private static TimeSpan ClampDelay(TimeSpan value)
+    {
+        if (value <= TimeSpan.Zero)
+        {
+            return TimeSpan.Zero;
+        }
+
+        return value > RetryDelayCeiling ? RetryDelayCeiling : value;
+    }
+
+    // Saturate rather than throw. The clamp above already keeps this off the edge, but scheduling runs on the
+    // Update() path, and an ArgumentOutOfRangeException reaching the game loop out of a presence controller is
+    // never the right answer to a silly option value.
+    private static DateTime Schedule(DateTime now, TimeSpan delay)
+        => DateTime.MaxValue - now < delay ? DateTime.MaxValue : now + delay;
 
     // Keep the LATEST desired presence, never a queue: what the game wants shown is whatever it asked for
     // last, and replaying an older one on connect would publish a line the game already moved past.
@@ -408,12 +458,28 @@ public sealed class SocialPresenceController : IDisposable
 
     private void SetState(SocialPresenceState next)
     {
+        if (AssignState(next))
+        {
+            NotifyStateChanged(next);
+        }
+    }
+
+    // Assign only, so a caller that has work to do BEFORE the game hears about the transition can order the
+    // two itself (the connect does: it publishes the held presence in between). Returns true when this was a
+    // real transition, which is also the equality guard that stops a repeat state re-announcing itself.
+    private bool AssignState(SocialPresenceState next)
+    {
         if (state == next)
         {
-            return;
+            return false;
         }
 
         state = next;
+        return true;
+    }
+
+    private void NotifyStateChanged(SocialPresenceState next)
+    {
         try
         {
             StateChanged?.Invoke(next);

@@ -344,7 +344,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     {
         if (netIdBySlot.TryGetValue(slot, out long netId) && host.TryGetOwner(netId, out CellSim cell, out Entity e))
         {
-            uint baseEpoch = cell.World.TryGet(e, out MovementState prev) ? prev.TeleportEpoch : 0u;
+            uint baseEpoch = TeleportEpochGuard.BaseEpoch(cell.World, e, slot);   // reports rather than zeroing
             PlayerMoveState next = state;
             next.TeleportEpoch = teleport ? baseEpoch + 1u : baseEpoch;   // server owns the monotonic epoch
             // The state came from OUTSIDE the simulation (an admin teleport, a load-on-join record, a self-rescue),

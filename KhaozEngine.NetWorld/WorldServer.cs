@@ -309,7 +309,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     public void SetPlayerState(int slot, in PlayerMoveState state, bool teleport = false)
     {
         if (!entityBySlot.TryGetValue(slot, out Entity e)) return;
-        uint baseEpoch = stateBySlot.TryGetValue(slot, out PlayerMoveState cur) ? cur.TeleportEpoch : 0u;
+        uint baseEpoch = TeleportEpochGuard.BaseEpoch(stateBySlot, slot);   // reports rather than silently zeroing
         PlayerMoveState next = ToIsland(state);
         next.TeleportEpoch = teleport ? baseEpoch + 1u : baseEpoch;   // server owns the monotonic epoch
         stateBySlot[slot] = next;

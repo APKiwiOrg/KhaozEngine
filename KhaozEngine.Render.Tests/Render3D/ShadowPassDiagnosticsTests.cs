@@ -28,11 +28,12 @@ namespace KhaozEngine.Tests.Render3D
     public sealed class ShadowPassDiagnosticsTests
     {
         static ShadowPassDiagnostics Snapshot(bool rendered = true, bool hadPrevious = true,
-            bool anySkinnedCaster = false, bool resolutionChanged = false, bool lightMatrixChanged = false,
-            bool casterDataChanged = false, int skinnedCasterCount = 0, int cascadeCount = 4,
-            int[]? rigidSpans = null, int rigidDrawCalls = 0, int skinnedDrawCalls = 0)
+            bool anySkinnedCaster = false, bool skinnedCastersCleared = false, bool resolutionChanged = false,
+            bool lightMatrixChanged = false, bool casterDataChanged = false, int skinnedCasterCount = 0,
+            int cascadeCount = 4, int[]? rigidSpans = null, int rigidDrawCalls = 0, int skinnedDrawCalls = 0)
             => new(active: true, rendered: rendered, skipped: !rendered, hadPrevious: hadPrevious,
-                anySkinnedCaster: anySkinnedCaster, resolutionChanged: resolutionChanged,
+                anySkinnedCaster: anySkinnedCaster, skinnedCastersCleared: skinnedCastersCleared,
+                resolutionChanged: resolutionChanged,
                 lightMatrixChanged: lightMatrixChanged, casterDataChanged: casterDataChanged,
                 skinnedCasterCount: skinnedCasterCount, cascadeCount: cascadeCount,
                 rigidSpanCounts: rigidSpans ?? Array.Empty<int>(),
@@ -43,10 +44,11 @@ namespace KhaozEngine.Tests.Render3D
         {
             ShadowPassDiagnostics d = Snapshot(hadPrevious: false);
             Assert.True(Scene3D.ShadowDepthPassDirty(hadPrevious: false, anySkinnedCaster: false,
-                resolutionChanged: false, lightMatrixChanged: false, casterDataChanged: false));
+                skinnedCastersCleared: false, resolutionChanged: false, lightMatrixChanged: false, casterDataChanged: false));
             Assert.True(d.Rendered);
             Assert.False(d.HadPrevious);
             Assert.False(d.AnySkinnedCaster);
+            Assert.False(d.SkinnedCastersCleared);
             Assert.False(d.ResolutionChanged);
             Assert.False(d.LightMatrixChanged);
             Assert.False(d.CasterDataChanged);
@@ -59,11 +61,32 @@ namespace KhaozEngine.Tests.Render3D
             // moved, no matrix changed, no caster changed, and the pass still re-records because a skinned caster
             // is present at all. Bone palettes are not hashed, so this bit alone forces every frame dirty.
             Assert.True(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: true,
-                resolutionChanged: false, lightMatrixChanged: false, casterDataChanged: false));
+                skinnedCastersCleared: false, resolutionChanged: false, lightMatrixChanged: false, casterDataChanged: false));
             ShadowPassDiagnostics d = Snapshot(anySkinnedCaster: true, skinnedCasterCount: 3);
             Assert.True(d.Rendered);
             Assert.True(d.AnySkinnedCaster);
+            Assert.False(d.SkinnedCastersCleared);
             Assert.Equal(3, d.SkinnedCasterCount);
+            Assert.False(d.ResolutionChanged);
+            Assert.False(d.LightMatrixChanged);
+            Assert.False(d.CasterDataChanged);
+        }
+
+        [Fact]
+        public void A_vanished_skinned_caster_is_the_only_reason_it_names()
+        {
+            // The #23 row, and the only reason bit that can be set while AnySkinnedCaster is CLEAR: the skinned
+            // casters the last rendered pass drew are all gone, so the pass renders once to lift their shadows off
+            // the atlas it would otherwise reuse. A field trace that saw Rendered with every reason clear would be
+            // reading a snapshot that cannot explain its own decision, which is what this bit prevents.
+            Assert.True(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: false,
+                skinnedCastersCleared: true, resolutionChanged: false, lightMatrixChanged: false,
+                casterDataChanged: false));
+            ShadowPassDiagnostics d = Snapshot(skinnedCastersCleared: true);
+            Assert.True(d.Rendered);
+            Assert.True(d.SkinnedCastersCleared);
+            Assert.False(d.AnySkinnedCaster);
+            Assert.Equal(0, d.SkinnedCasterCount);
             Assert.False(d.ResolutionChanged);
             Assert.False(d.LightMatrixChanged);
             Assert.False(d.CasterDataChanged);
@@ -76,10 +99,11 @@ namespace KhaozEngine.Tests.Render3D
             // knob (ThrowIfAtlasCommitted), so no running scene can change it between two passes. The bit is still
             // read and forwarded, so it is pinned here rather than left untested.
             Assert.True(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: false,
-                resolutionChanged: true, lightMatrixChanged: false, casterDataChanged: false));
+                skinnedCastersCleared: false, resolutionChanged: true, lightMatrixChanged: false, casterDataChanged: false));
             ShadowPassDiagnostics d = Snapshot(resolutionChanged: true);
             Assert.True(d.ResolutionChanged);
             Assert.False(d.AnySkinnedCaster);
+            Assert.False(d.SkinnedCastersCleared);
             Assert.False(d.LightMatrixChanged);
             Assert.False(d.CasterDataChanged);
         }
@@ -88,10 +112,11 @@ namespace KhaozEngine.Tests.Render3D
         public void Light_matrix_change_is_the_only_reason_it_names()
         {
             Assert.True(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: false,
-                resolutionChanged: false, lightMatrixChanged: true, casterDataChanged: false));
+                skinnedCastersCleared: false, resolutionChanged: false, lightMatrixChanged: true, casterDataChanged: false));
             ShadowPassDiagnostics d = Snapshot(lightMatrixChanged: true);
             Assert.True(d.LightMatrixChanged);
             Assert.False(d.AnySkinnedCaster);
+            Assert.False(d.SkinnedCastersCleared);
             Assert.False(d.ResolutionChanged);
             Assert.False(d.CasterDataChanged);
         }
@@ -100,10 +125,11 @@ namespace KhaozEngine.Tests.Render3D
         public void Caster_data_change_is_the_only_reason_it_names()
         {
             Assert.True(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: false,
-                resolutionChanged: false, lightMatrixChanged: false, casterDataChanged: true));
+                skinnedCastersCleared: false, resolutionChanged: false, lightMatrixChanged: false, casterDataChanged: true));
             ShadowPassDiagnostics d = Snapshot(casterDataChanged: true);
             Assert.True(d.CasterDataChanged);
             Assert.False(d.AnySkinnedCaster);
+            Assert.False(d.SkinnedCastersCleared);
             Assert.False(d.ResolutionChanged);
             Assert.False(d.LightMatrixChanged);
         }
@@ -112,11 +138,12 @@ namespace KhaozEngine.Tests.Render3D
         public void Clean_stationary_frame_names_no_reason_and_reports_no_work()
         {
             Assert.False(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: false,
-                resolutionChanged: false, lightMatrixChanged: false, casterDataChanged: false));
+                skinnedCastersCleared: false, resolutionChanged: false, lightMatrixChanged: false, casterDataChanged: false));
             ShadowPassDiagnostics d = Snapshot(rendered: false);
             Assert.True(d.Skipped);
             Assert.False(d.Rendered);
             Assert.False(d.AnySkinnedCaster);
+            Assert.False(d.SkinnedCastersCleared);
             Assert.False(d.ResolutionChanged);
             Assert.False(d.LightMatrixChanged);
             Assert.False(d.CasterDataChanged);
@@ -194,8 +221,8 @@ namespace KhaozEngine.Tests.Render3D
                 for (int i = 0; i < 256; i++)
                 {
                     sink = new ShadowPassDiagnostics(active: true, rendered: true, skipped: false, hadPrevious: true,
-                        anySkinnedCaster: true, resolutionChanged: false, lightMatrixChanged: true,
-                        casterDataChanged: true, skinnedCasterCount: 19, cascadeCount: 4,
+                        anySkinnedCaster: true, skinnedCastersCleared: false, resolutionChanged: false,
+                        lightMatrixChanged: true, casterDataChanged: true, skinnedCasterCount: 19, cascadeCount: 4,
                         rigidSpanCounts: spans, rigidDrawCalls: 700, skinnedDrawCalls: 76);
                     total += sink.TotalRigidSpanCount + sink.TotalDrawCalls + sink.RigidSpanCount(2);
                 }

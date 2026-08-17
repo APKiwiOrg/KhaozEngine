@@ -84,15 +84,19 @@ public class WorldPersistenceValidationTests
     // Used only by FlushAsync_AwaitsDrainGeneratedQuarantineWrite below, which needs the load-on-join task tracked
     // without ever calling Persistence.Update - the real Harness's PumpUntil always calls Update, which would drain
     // the apply queue itself before FlushAsync gets a chance to.
+    // It has to REMEMBER who joined, even though this test asserts nothing about placement: the apply drain
+    // re-resolves the slot's occupant and drops a record whose account no longer holds it (#646), so a host that
+    // answers "nobody" for every slot never reaches validation at all.
     private sealed class FakeHost : IWorldPersistenceHost
     {
+        private readonly Dictionary<int, string> accounts = new();
         public event Action<int, string>? PlayerJoined;
         public event Action<int, string, PlayerMoveState>? PlayerLeaving;
         public void SetPlayerState(int slot, in PlayerMoveState state, bool teleport = false) { }
-        public IReadOnlyCollection<int> JoinedSlots => Array.Empty<int>();
-        public bool TryGetAccountId(int slot, out string accountId) { accountId = string.Empty; return false; }
+        public IReadOnlyCollection<int> JoinedSlots => accounts.Keys;
+        public bool TryGetAccountId(int slot, out string accountId) => accounts.TryGetValue(slot, out accountId!);
         public bool TryGetPlayerState(int slot, out PlayerMoveState state) { state = default; return false; }
-        public void Join(int slot, string accountId) => PlayerJoined?.Invoke(slot, accountId);
+        public void Join(int slot, string accountId) { accounts[slot] = accountId; PlayerJoined?.Invoke(slot, accountId); }
         // Unused by this test (only join-time behavior is exercised) but kept so the event is not flagged CS0067.
         public void Leave(int slot, string accountId, PlayerMoveState state) => PlayerLeaving?.Invoke(slot, accountId, state);
     }

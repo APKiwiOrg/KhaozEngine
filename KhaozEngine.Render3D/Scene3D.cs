@@ -81,8 +81,8 @@ namespace KhaozEngine.Render3D
         // Shadow depth-pass dirty-skip state (efficiency): the 2048^2 light-space depth map is a persistent GPU
         // texture, so when nothing shadow-relevant changed since the last RENDERED pass the pass is skipped and the
         // prior map is reused (never cleared) - a mostly-static scene stops repainting every caster into it every
-        // frame. Kept from the last rendered pass, compared against this frame in RenderInternal. The caster
-        // signature buffers are swapped (not copied) when a dirty pass commits, so the check stays allocation-free.
+        // frame. What the last rendered pass drew, and the commit that advances it, live in
+        // Scene3D.ShadowDirtyState.cs; the decision itself is taken in RenderInternal below.
         bool _shadowPassRendered;             // a real depth pass has rendered since construction (map holds valid content)
         bool _shadowPassSkippedLastFrame;     // the last rendered frame reused the prior depth map (public signal below)
         ShadowPassDiagnostics _lastShadowPassDiagnostics;
@@ -100,13 +100,6 @@ namespace KhaozEngine.Render3D
         // from the same fitted radius + resolution.
         readonly float[] _cascadeNoiseScales = new float[ShadowSettings.MaxCascades];
         int _cascadeCount;                    // active cascade count this frame
-        readonly Matrix4x4[] _lastCascadeCpuVps = new Matrix4x4[ShadowSettings.MaxCascades];    // last rendered pass's per-cascade CPU fit
-        int _lastShadowCascadeCount;          // last rendered pass's cascade count
-        int _lastShadowResolution;            // allocated per-cascade shadow-map resolution at the last rendered pass
-        List<ShadowCasterSpan> _lastShadowCasterRuns = new();          // last pass's drawn caster spans (see Scene3D.ShadowCasters.cs)
-        List<ShadowCasterInstance> _lastShadowCasterModels = new();    // last pass's caster world matrices + dissolves
-        List<ShadowCasterSpan> _shadowCasterRunsScratch = new();       // this-frame scratch (swapped in on commit)
-        List<ShadowCasterInstance> _shadowCasterModelsScratch = new();
         // Per-frame animated-water-surface requests (Rendering gap #5). Cleared each Begin() like the decal queue;
         // opt-in - an empty queue means the water pass (Rendering.WaterRenderer) never runs this frame.
         readonly List<WaterPlane> _waterPlanes = new();
@@ -1954,6 +1947,12 @@ namespace KhaozEngine.Render3D
                 SetShadowReceiverTail();
                 BuildShadowCasterSpans(_shadowCasterRunsScratch, _shadowCasterModelsScratch);
                 bool hadPrevious = _shadowPassRendered;
+                bool anySkinnedCaster = skinnedCasterCount > 0;
+                // A skinned caster dirties the pass while it EXISTS, so the frame the last one vanishes on is the
+                // frame that has to lift its shadow off the atlas (issue #23). Nothing else here can see that: the
+                // skinned casters are not in the rigid signature, and a frozen camera under a held sun leaves every
+                // other input clean, so without this the atlas would be reused with the character still on it.
+                bool skinnedCastersCleared = SkinnedCastersCleared(anySkinnedCaster);
                 bool resolutionChanged = hadPrevious && _model.ShadowMap.Resolution != _lastShadowResolution;
                 bool lightMatrixChanged = hadPrevious && ShadowCascadeVpsChanged(
                     _cascadeCpuVps, _cascadeCount, _lastCascadeCpuVps, _lastShadowCascadeCount);
@@ -1961,7 +1960,8 @@ namespace KhaozEngine.Render3D
                     _shadowCasterRunsScratch, _shadowCasterModelsScratch, _lastShadowCasterRuns, _lastShadowCasterModels);
                 bool dirty = ShadowDepthPassDirty(
                     hadPrevious: hadPrevious,
-                    anySkinnedCaster: skinnedCasterCount > 0,
+                    anySkinnedCaster: anySkinnedCaster,
+                    skinnedCastersCleared: skinnedCastersCleared,
                     resolutionChanged: resolutionChanged,
                     lightMatrixChanged: lightMatrixChanged,
                     casterDataChanged: casterDataChanged);
@@ -1974,23 +1974,16 @@ namespace KhaozEngine.Render3D
                     // compare), so it can never change the drawn set without one of those dirtying the pass first.
                     BuildCascadeCasterSpans(_cascadeCount);
                     RenderShadowDepthPass(cl, _cascadeCasterSpans);
-                    // Commit this frame's signature as next frame's reference. Swap the reused buffers (no copy/alloc):
-                    // the scratch now holds the just-rendered casters, so make it the kept copy and reuse the old kept
-                    // copy as next frame's scratch.
-                    (_lastShadowCasterRuns, _shadowCasterRunsScratch) = (_shadowCasterRunsScratch, _lastShadowCasterRuns);
-                    (_lastShadowCasterModels, _shadowCasterModelsScratch) = (_shadowCasterModelsScratch, _lastShadowCasterModels);
-                    Array.Copy(_cascadeCpuVps, _lastCascadeCpuVps, _cascadeCount);
-                    _lastShadowCascadeCount = _cascadeCount;
-                    _lastShadowResolution = _model.ShadowMap.Resolution;
-                    _shadowPassRendered = true;
+                    // What this pass just drew becomes next frame's reference (see Scene3D.ShadowDirtyState.cs).
+                    CommitShadowDirtyState(anySkinnedCaster);
                 }
                 else
                     _shadowPassSkippedLastFrame = true;
                 // Recorded AFTER the decision so one snapshot describes one frame: the per-cascade rigid span counts
                 // and the raw draw calls only exist once the pass has walked them, and a skipped frame must report
                 // zero of both rather than the last rendered pass's numbers (issue #410).
-                RecordShadowPassDiagnostics(dirty, hadPrevious, skinnedCasterCount > 0, resolutionChanged,
-                    lightMatrixChanged, casterDataChanged, skinnedCasterCount, _cascadeCount);
+                RecordShadowPassDiagnostics(dirty, hadPrevious, anySkinnedCaster, skinnedCastersCleared,
+                    resolutionChanged, lightMatrixChanged, casterDataChanged, skinnedCasterCount, _cascadeCount);
                 if (EnableTiming) shadowDepthMs = ElapsedMs(timingStart);
             }
             else

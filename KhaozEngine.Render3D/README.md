@@ -144,11 +144,13 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   `ShadowConstantBias`/`ShadowSlopeBias` (defaults `0.0004`/`0.0015`). On a device without depth-sample support
   (`GpuCapabilities.SupportsShadowMaps` false) it degrades to `Blob`. The atlas persists across frames, so the pass
   **dirty-skips**: it re-renders only when a shadow-relevant input changed (ANY cascade's fitted matrix, the rigid
-  caster set/transforms, the resolution, or any animated skinned caster present) and otherwise reuses the prior atlas,
+  caster set/transforms, the resolution, any animated skinned caster present, or the skinned casters the last
+  rendered pass drew having all gone) and otherwise reuses the prior atlas,
   so a mostly-static scene stops repainting it every frame. A skipped pass adds zero shadow draw calls to
   `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` for a simple diagnostics signal, or
   `Scene3D.LastShadowPassDiagnostics` (a `ShadowPassDiagnostics`) for the whole last-frame decision: `Rendered` /
-  `Skipped` / `HadPrevious`, one bit per dirty reason (`AnySkinnedCaster`, `ResolutionChanged`, `LightMatrixChanged`,
+  `Skipped` / `HadPrevious`, one bit per dirty reason (`AnySkinnedCaster`, `SkinnedCastersCleared`,
+  `ResolutionChanged`, `LightMatrixChanged`,
   `CasterDataChanged`), `SkinnedCasterCount` / `CascadeCount`, and what the pass actually recorded, namely
   `RigidSpanCount(cascade)` / `TotalRigidSpanCount` plus the raw `RigidDrawCalls` / `SkinnedDrawCalls` /
   `TotalDrawCalls`. Same last-frame shape as `PassTimingsMs`, always on and allocation-free, so a game can sample it
@@ -707,8 +709,11 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     running). Each `AnimationLayer` is a clip + its own looping playhead + a blend weight + an optional `BoneMask` +
     a `LayerMode`. `BoneMask` is per-node weights 0..1 (`BoneMask.Full`/`.Empty`, `BoneMask.Subtree(skel, root, w)`
     for "this bone and all descendants at weight w" - the upper-body-action shape). Override lerps toward the layer
-    pose by `weight x mask`; Additive applies the clip's delta from its first frame (the reference), rotations
-    composed multiplicatively, scaled by `weight x mask`. `SetBaseLocals` sets an external base (the locomotion
+    pose by `weight x mask`. Additive applies the clip's delta from its first frame (the reference), scaled by
+    `weight x mask`: the rotation delta is both EXTRACTED and APPLIED in the joint's LOCAL frame
+    (`delta = inverse(reference) * sample`, applied as `base * delta`), so a base equal to the reference reproduces
+    the clip's authored pose exactly. Translation and scale add componentwise (scale as an offset, so unit scale is
+    a no-op). `SetBaseLocals` sets an external base (the locomotion
     crossfade) the stack composites over instead of the rest pose. Zero layers is the rest pose and a single
     full-weight unmasked Override layer is byte-identical to the single-clip path, so existing skinned rendering is
     unchanged until a game adds a layer. Rotation blending matches the crossfade (shortest-arc `Quaternion.Slerp` +

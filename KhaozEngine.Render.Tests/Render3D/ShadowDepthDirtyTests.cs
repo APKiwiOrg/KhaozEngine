@@ -41,14 +41,18 @@ namespace KhaozEngine.Tests.Render3D
         {
             // hadPrevious false: no valid map to reuse yet, so the pass must render regardless of everything else.
             Assert.True(Scene3D.ShadowDepthPassDirty(hadPrevious: false, anySkinnedCaster: false,
-                resolutionChanged: false, lightMatrixChanged: false, casterDataChanged: false));
+                skinnedCastersCleared: false, resolutionChanged: false, lightMatrixChanged: false,
+                casterDataChanged: false));
         }
 
         [Fact]
         public void Unchanged_static_scene_is_not_dirty()
         {
+            // A scene with no skinned caster now AND none on the last rendered pass: nothing of theirs is on the
+            // atlas, so there is nothing to lift off it and the map is reused.
             Assert.False(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: false,
-                resolutionChanged: false, lightMatrixChanged: false, casterDataChanged: false));
+                skinnedCastersCleared: false, resolutionChanged: false, lightMatrixChanged: false,
+                casterDataChanged: false));
         }
 
         [Fact]
@@ -56,15 +60,61 @@ namespace KhaozEngine.Tests.Render3D
         {
             // A skinned caster animates its bones every frame. The palette is not hashed, so its mere presence is dirty.
             Assert.True(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: true,
-                resolutionChanged: false, lightMatrixChanged: false, casterDataChanged: false));
+                skinnedCastersCleared: false, resolutionChanged: false, lightMatrixChanged: false,
+                casterDataChanged: false));
         }
 
         [Fact]
         public void Resolution_light_and_caster_changes_each_force_dirty()
         {
-            Assert.True(Scene3D.ShadowDepthPassDirty(true, false, resolutionChanged: true, lightMatrixChanged: false, casterDataChanged: false));
-            Assert.True(Scene3D.ShadowDepthPassDirty(true, false, resolutionChanged: false, lightMatrixChanged: true, casterDataChanged: false));
-            Assert.True(Scene3D.ShadowDepthPassDirty(true, false, resolutionChanged: false, lightMatrixChanged: false, casterDataChanged: true));
+            Assert.True(Scene3D.ShadowDepthPassDirty(true, false, false, resolutionChanged: true, lightMatrixChanged: false, casterDataChanged: false));
+            Assert.True(Scene3D.ShadowDepthPassDirty(true, false, false, resolutionChanged: false, lightMatrixChanged: true, casterDataChanged: false));
+            Assert.True(Scene3D.ShadowDepthPassDirty(true, false, false, resolutionChanged: false, lightMatrixChanged: false, casterDataChanged: true));
+        }
+
+        // ---- A vanished skinned caster leaves a ghost shadow on the reused atlas (issue #23) ---------------------
+        // The skinned casters are NOT in the rigid caster signature (BuildShadowCasterSpans walks _runs only), so
+        // the frame a character despawns reads every other input as unchanged. The atlas is reused and never
+        // cleared, so it still holds the character's shadow. That is what SkinnedCastersCleared exists for: the
+        // one skinned transition presence alone cannot express.
+
+        [Fact]
+        public void A_vanished_skinned_caster_forces_one_re_render()
+        {
+            // The exact reported frame: the last skinned caster is gone, the camera and the sun are frozen, the
+            // rigid casters have not moved. Before #23 every input read false here and the pass was skipped, which
+            // left the character's shadow on the ground. It must render.
+            Assert.True(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: false,
+                skinnedCastersCleared: true, resolutionChanged: false, lightMatrixChanged: false,
+                casterDataChanged: false));
+        }
+
+        [Fact]
+        public void The_frame_after_a_vanished_skinned_caster_is_clean_again()
+        {
+            // The re-render above commits "no skinned casters" as the new reference, so the transition is false on
+            // the next frame and the scene goes straight back to reusing the atlas. Exactly ONE extra pass, which
+            // is what keeps the #410 dirty-skip worth having.
+            Assert.False(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: false,
+                skinnedCastersCleared: false, resolutionChanged: false, lightMatrixChanged: false,
+                casterDataChanged: false));
+        }
+
+        [Fact]
+        public void A_skinned_caster_set_that_changes_while_one_remains_is_already_dirty()
+        {
+            // Character A despawns as character B spawns in the same frame. The rigid signature cannot see either
+            // of them - BuildShadowCasterSpans walks _runs, and a skinned draw is never in _runs - so the ground
+            // under them compares equal and casterDataChanged is false.
+            var ground = Runs((3, 1, 1));
+            Assert.False(Scene3D.ShadowCastersChanged(ground, Models(0f), ground, Models(0f)));
+
+            // It does not matter: the count stayed above zero, so anySkinnedCaster is still true and the pass
+            // renders on presence alone. The set identity therefore needs no signature of its own, and the ONLY
+            // skinned transition presence cannot see is the one to NONE, which is the case above.
+            Assert.True(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: true,
+                skinnedCastersCleared: false, resolutionChanged: false, lightMatrixChanged: false,
+                casterDataChanged: false));
         }
 
         [Fact]
@@ -126,14 +176,14 @@ namespace KhaozEngine.Tests.Render3D
             bool lightMatrixChanged = last != now;
             Assert.True(lightMatrixChanged);
             Assert.True(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: false,
-                resolutionChanged: false, lightMatrixChanged: lightMatrixChanged, casterDataChanged: false));
+                skinnedCastersCleared: false, resolutionChanged: false, lightMatrixChanged: lightMatrixChanged, casterDataChanged: false));
 
             // And when the sun HOLDS still (identical direction), the light matrix is unchanged, so a static scene
             // correctly reuses the persistent depth map (not dirtied by the light).
             var held = ShadowMapMath.BuildLightViewProj(new Vector3(-0.8f, -0.4f, -0.2f), focus, 16f, 2048);
             Assert.Equal(now, held);
             Assert.False(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: false,
-                resolutionChanged: false, lightMatrixChanged: now != held, casterDataChanged: false));
+                skinnedCastersCleared: false, resolutionChanged: false, lightMatrixChanged: now != held, casterDataChanged: false));
         }
 
         [Fact]
@@ -204,7 +254,7 @@ namespace KhaozEngine.Tests.Render3D
             bool changed = Scene3D.ShadowCascadeVpsChanged(noon, 3, evening, 3);
             Assert.True(changed);
             Assert.True(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: false,
-                resolutionChanged: false, lightMatrixChanged: changed, casterDataChanged: false));
+                skinnedCastersCleared: false, resolutionChanged: false, lightMatrixChanged: changed, casterDataChanged: false));
 
             // A held sun (identical direction) leaves every cascade unchanged, so a static scene reuses the atlas.
             var held = CascadeVps(new Vector3(-0.8f, -0.4f, -0.2f), f, 16f, 56f, 130f);

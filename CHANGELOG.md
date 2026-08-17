@@ -53,9 +53,129 @@ test, and the read itself reports rather than silently stamping 0 if a future pa
 side, handing the water surface a NEW depth field of the same resolution now actually reaches the GPU: the
 upload was gated on a per-instance revision counter, so a replacement read as no change and the previous
 field's depths stayed bound, drawing a plausible shore for the wrong coastline with no error anywhere.
+Also on the render side, an additive animation layer now applies the pose its clip was authored with. The
+compositor took the rotation delta off one side of the reference and applied it to the other, which is correct only
+when the reference rotation is identity, and a rigged humanoid's shoulders and spine are never identity at a clip's
+first frame. Nothing in the fleet renders differently today, because no game runs an additive layer yet, but the
+next one to add one gets the authored pose instead of a pose twisted by the rig's own rest rotation. And the
+shadow atlas stops keeping a despawned character's shadow: a skinned caster dirtied the depth pass for as long
+as it existed and nothing recorded that one HAD existed, so the frame the last one vanished on read every input
+as unchanged, reused the atlas, and left the shadow lying on the ground until something unrelated moved. Back on the
+netcode side, a completed load-on-join is now applied to the ACCOUNT that asked for it rather than to the slot
+number it was issued for, so a player who takes a freed seat on a slow store can no longer be teleported onto the
+previous occupant's saved position and handed their durable blob.
 And on the social seam, a player whose Discord was still starting when the game launched no longer loses rich
 presence for the entire session: the one-shot connect became a bounded retry driven from the frame pump, so the
 four games pick the fix up by upgrading, with no call-site change in any of them.
+
+### An additive animation layer applies the authored pose, not the pose conjugated by its reference (#20)
+
+`LayerMode.Additive` contributes a clip's delta from its own first frame (the reference) on top of whatever plays
+beneath. `LayeredAnimator.ApplyAdditive` built that rotation delta as `sample * inverse(reference)`, the delta in
+the joint's PARENT frame, and then applied it as `base * delta`, which is application in the joint's LOCAL frame.
+The two sides only agree when the reference rotation is identity, or when it happens to commute with the sample.
+
+**What a game sees change.** An additive layer over a rigged humanoid now bends the joint the way the clip was
+authored. Before, any joint whose additive reference was rotated (a glTF humanoid's shoulder, spine, neck, hip, so
+in practice most of the upper body) received the authored rotation CONJUGATED by that reference: the right amount
+of rotation about the wrong axis, which reads as a limb swinging in an unrelated direction and gets worse the
+further the rest pose is from identity. A joint whose reference is identity is unaffected, and every additive
+translation and scale offset is unaffected.
+
+**Nothing in the fleet moves on this release.** Ruinborne is the only game on `LayeredAnimator` and it drives every
+layer through `AnimatedCharacter.PlayAction` in its default `LayerMode.Override` (the swing, the arm hold, the NPC
+bite), so it has no additive layer to change. Hardpoint, Nullwake and SpaceGame do not use the layer stack at all.
+No golden moves either: no GPU test in the suite touches `LayeredAnimator`, so there is nothing to rebake on any of
+the three backends. This lands as a correctness fix that unblocks the first additive layer anyone writes, not as a
+migration.
+
+**The fix and the convention, stated once.** The delta is now extracted on the side it is applied:
+`delta = inverse(reference) * sample`, applied as `base * delta`, both in the joint's LOCAL frame (the
+Unity/Unreal/glTF-additive convention). The invariant that follows is the one to test an additive path against:
+with `base == reference` the result is `reference * inverse(reference) * sample == sample`, the authored pose
+reproduced exactly. Translation and scale were already right and are unchanged: both deltas are componentwise
+subtractions applied by componentwise addition, between quantities already in one frame, and addition commutes, so
+neither channel has a side to get wrong.
+
+**Why the suite could not see it.** Every additive-rotation test used an identity reference, where the two
+extractions are the same quaternion. Four new rows in `LayeredAnimatorTests` use a reference that is both
+non-identity and non-commuting with the sample (90 degrees about X against an offset about Y), driven through the
+real `LayeredAnimator` / `BonePalette` path: the `base == reference` invariant, the `base != reference` formula
+pinned to a closed-form result, the half-weight slerp toward the local-frame delta, and a translation and scale row
+that passes on both extractions and pins them as frame-agnostic. All four fail on the old extraction.
+
+### A completed load-on-join lands on the account, not on the recycled seat (#646)
+
+`WorldPersistence` captured the joining `slot` in its `PendingApply`, awaited the store off-thread, and applied the
+loaded record back to that same slot number. A slot is a seat, not a name: both heads free it on leave and
+`SlotAllocator` hands the lowest free one straight to the next connection (both `OnJoin` methods explicitly clear
+the previous occupant's per-slot state, which is the same fact stated from the other side). An account that joined
+and dropped while its read was in flight therefore had its stored position, its teleport and its durable game blob
+written onto whoever recycled the seat. Reproduced on a gated store through both heads: alpha joins slot 0 with its
+load parked, drops, beta joins and takes slot 0, the load releases, and beta lands on alpha's stored position.
+
+**Since 17.37.0 it could also land silently**, which is why this is a fix rather than a note. The apply is now
+conditional on the live state (`TryGetPlayerState` then a `QuietRestoreDistance` compare), and on a recycled slot
+that live state is the NEW occupant's, so two players standing within the quiet window of each other made the
+misapplication land with `teleport: false`: no epoch advance, no `LocalTeleported`, nothing for a client to notice.
+Before 17.37.0 every apply was a teleport, so the same misapplication at least announced itself as a cut.
+
+**The drain re-resolves the seat and drops what is not this account's.** `DrainApplyQueue` now asks
+`IWorldPersistenceHost.TryGetAccountId(slot)` who holds the slot and drops the record unless it is still the
+account the load was issued for. That member was already on the seam and is not a default method, so every host
+that answers it truthfully for its joined slots (both engine heads and `MmoServerSample` do) gets the guarantee
+with no change. A game's own host that stubs it to `false` now loses load-on-join outright rather than applying
+blind, which is the safer failure and is what the seam doc now says. The check runs BEFORE validation deliberately: the
+quarantine path PLACES the slot at the configured spawn, so a bad record belonging to a departed account would
+otherwise teleport a stranger. Such a record simply stays in the store un-quarantined and is re-read, and
+quarantined, on that account's next join, which is the shape a store read outage already had.
+
+**A drop is announced, never a silent continue.** New public API on `KhaozEngine.NetWorld`:
+`WorldPersistence.OnLoadApplyDropped` (`event Action<string, int>`, accountId + slot), raised on the server thread
+from the drain, alongside an `Info` log line under the `WorldPersistence` category naming the account, the slot and
+whoever holds it now. The dropped account's `loadsInFlight` guard is deliberately LEFT SET: the record was never
+applied, so it is still the truth for that account, and the guard is exactly what keeps it from being overwritten
+by live state until a later rejoin re-reads it.
+
+**A tokenless guest is covered, and the guest-after-guest case still is not.** A guest is keyed `guest:{slot}`,
+which is not an account key, so a guest recycling an account's seat drops that account's record by the same
+comparison. Two SUCCESSIVE guests on one seat share the key and remain indistinguishable here, which is the
+separate persistence-keying defect (#647) and is untouched: this check compares whatever key the head derived, so
+it keeps working whichever way that lands.
+
+**What this does not change:** a rapid leave and rejoin by the SAME account starts a second load under the same key
+while the first is still in flight (`loadsInFlight` is a set, not a refcount), and both loads apply. That is the
+same account and the same record, so nothing crosses players, and it is now pinned by test rather than assumed
+(#654, which also records why the account comparison cannot reach it).
+
+### A vanished skinned caster takes its shadow off the reused atlas (#23)
+
+The cascade atlas is persistent and is REUSED, not cleared, on a frame the depth pass skips, so everything the
+dirty check compares is compared against the last RENDERED pass. Skinned presence was the one input that was
+not: `ShadowDepthPassDirty` took `anySkinnedCaster` from the current frame only, and the skinned casters are not
+in the rigid caster signature (`BuildShadowCasterSpans` walks the rigid runs). So the frame a character despawned,
+or was dropped by `ClassifySkinnedVisibility`, read every input false and reused an atlas with that character's
+shadow baked into it. Under a frozen camera and a held sun nothing else could trip, and the texel-snapped cascade
+fit widens that: sub-texel camera motion leaves the light matrices equal too, so a perfectly still camera was
+never required. The shadow stayed on the ground until an unrelated event (a full-texel pan, a sun move past the
+17.36.1 light hold, a rigid caster change, a resolution change) forced a re-render.
+
+`Scene3D` now keeps the last rendered pass's skinned presence alongside the other last-rendered state, and the
+some-to-none transition is a sixth dirty input. It fires on exactly the frame the last skinned caster stops being
+drawn, so the pass re-renders once and lifts the shadow off, and the commit that pass makes records "no skinned
+casters", so the frame after it is clean again and a stationary scene goes straight back to skipping. Nothing else
+changes cadence: presence already forces a render while any skinned caster exists, so a set that CHANGES while the
+count stays above zero (one character despawning as another spawns) was dirty before and still is. The reverse
+transition needs nothing either, because an arriving caster is present.
+
+`ShadowPassDiagnostics` gains `SkinnedCastersCleared` beside the other reason bits, so a field trace can tell the
+one-frame clearing pass apart from a pass that re-recorded for any other reason. It is the only reason bit that can
+be set while `AnySkinnedCaster` is clear. The #410 design doc's list of dirty inputs is history and is left as it
+was written: the input set is six now, not five, and `ShadowPassDiagnostics` plus the Render3D README carry the
+current one.
+
+The last-rendered state and the commit that advances it moved into a new `Scene3D.ShadowDirtyState.cs` partial,
+beside the transition rule that reads them. No public API moved, and the pure compares stay where they were.
 
 ### Replacing the bathymetry field uploads it, instead of keeping the old depths (#645)
 
@@ -131,7 +251,10 @@ fail-fast outside a test host and a failed test under one. Loud where loud is fr
 server needs it quiet. The guard covers a MISSING basis and not a stale one, which is #653's case. `TeleportEpochBasisTests`
 pins the invariants above by driving each window (the join seam on both heads, teleports across cell handoffs, an
 entity forced into the handoff freeze, a cell restore into the very cell a player stands in, an eviction pass
-around a joined player) and pins that a forced miss is loud. The #642 placements were checked on the way past and
+around a joined player) and pins that a forced miss is loud in every build configuration: the guard counts its
+misses (`TeleportEpochGuard.MissCount`, internal), which is the observable that holds where the assert does not,
+because CI tests Release and the first shape of that row asserted only on the Debug-only throw and went red on
+the first push. The #642 placements were checked on the way past and
 both stamp forward on the entity the join built: the async restore and the quarantine reset each land at epoch 1.
 
 ### A persistence-backed rejoin is built where the player left, not on the spawn (#642)

@@ -2436,13 +2436,17 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       cascade matrices (which fold in the light direction, the camera-frustum slice, and the light distance, so a
       moving sun past the light-hold threshold below, or a camera pan/turn past a texel, re-renders), the rigid caster
       set + world transforms, the map
-      resolution, or any animated skinned caster present (a bone pose can change every frame, so any skinned caster
-      forces a re-render). An unchanged static scene reuses the prior atlas and skips every caster draw, so a
+      resolution, any animated skinned caster present (a bone pose can change every frame, so any skinned caster
+      forces a re-render), or the skinned casters the last rendered pass DREW having all gone this frame (since
+      17.37.0, issue #23: the atlas is reused rather than cleared, so the frame a character despawns has to
+      re-render once to take its shadow off it, and the frame after that is clean again).
+      An unchanged static scene reuses the prior atlas and skips every caster draw, so a
       mostly-static view stops repainting the shadow map each frame. A skipped pass contributes zero shadow draw
       calls to `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` (last rendered frame, always `false` when
       the tier is not `ShadowMap`) for a HUD/diagnostics signal. `LastShadowPassDiagnostics` (a
       `ShadowPassDiagnostics`) gives the full decision: whether the pass rendered or skipped, whether a prior atlas
-      existed, each dirty reason on its own bit (`AnySkinnedCaster`, `ResolutionChanged`, `LightMatrixChanged`,
+      existed, each dirty reason on its own bit (`AnySkinnedCaster`, `SkinnedCastersCleared`, `ResolutionChanged`,
+      `LightMatrixChanged`,
       `CasterDataChanged`), the skinned-caster and cascade counts, AND what the pass recorded this frame:
       `RigidSpanCount(cascade)` / `TotalRigidSpanCount` (the span lists it walked, per cascade, after the cull split
       them) plus the raw `RigidDrawCalls` / `SkinnedDrawCalls` / `TotalDrawCalls` it issued. It is a last-frame
@@ -2452,7 +2456,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       the last RENDERED pass across a skip. And `RigidDrawCalls` sits at or below `TotalRigidSpanCount`, because a
       span whose mesh was unloaded between the span build and the draw is walked and then skipped. Reason bits are
       the diagnosis: a stationary scene reporting `AnySkinnedCaster` and nothing else is re-recording the whole
-      atlas every frame purely because a skinned caster exists, since bone palettes are not hashed. The receiver
+      atlas every frame purely because a skinned caster exists, since bone palettes are not hashed, and a single
+      frame reporting `SkinnedCastersCleared` and nothing else is the one-frame pass that lifts a departed
+      character's shadow off the atlas. That is the only reason bit that can be set while `AnySkinnedCaster` is
+      clear. The receiver
       tail (light matrix + bias/strength) is
       still applied on a skipped frame, so bias/strength tweaks take effect immediately and the receivers sample the
       map with the matrix it was baked against.

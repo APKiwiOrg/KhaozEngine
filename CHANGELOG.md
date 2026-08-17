@@ -52,7 +52,39 @@ and refuted: neither head can reach that miss on a joined player, the invariants
 test, and the read itself reports rather than silently stamping 0 if a future path ever does reach it. On the render
 side, handing the water surface a NEW depth field of the same resolution now actually reaches the GPU: the
 upload was gated on a per-instance revision counter, so a replacement read as no change and the previous
-field's depths stayed bound, drawing a plausible shore for the wrong coastline with no error anywhere.
+field's depths stayed bound, drawing a plausible shore for the wrong coastline with no error anywhere. And the
+shadow atlas stops keeping a despawned character's shadow: a skinned caster dirtied the depth pass for as long
+as it existed and nothing recorded that one HAD existed, so the frame the last one vanished on read every input
+as unchanged, reused the atlas, and left the shadow lying on the ground until something unrelated moved.
+
+### A vanished skinned caster takes its shadow off the reused atlas (#23)
+
+The cascade atlas is persistent and is REUSED, not cleared, on a frame the depth pass skips, so everything the
+dirty check compares is compared against the last RENDERED pass. Skinned presence was the one input that was
+not: `ShadowDepthPassDirty` took `anySkinnedCaster` from the current frame only, and the skinned casters are not
+in the rigid caster signature (`BuildShadowCasterSpans` walks the rigid runs). So the frame a character despawned,
+or was dropped by `ClassifySkinnedVisibility`, read every input false and reused an atlas with that character's
+shadow baked into it. Under a frozen camera and a held sun nothing else could trip, and the texel-snapped cascade
+fit widens that: sub-texel camera motion leaves the light matrices equal too, so a perfectly still camera was
+never required. The shadow stayed on the ground until an unrelated event (a full-texel pan, a sun move past the
+17.36.1 light hold, a rigid caster change, a resolution change) forced a re-render.
+
+`Scene3D` now keeps the last rendered pass's skinned presence alongside the other last-rendered state, and the
+some-to-none transition is a sixth dirty input. It fires on exactly the frame the last skinned caster stops being
+drawn, so the pass re-renders once and lifts the shadow off, and the commit that pass makes records "no skinned
+casters", so the frame after it is clean again and a stationary scene goes straight back to skipping. Nothing else
+changes cadence: presence already forces a render while any skinned caster exists, so a set that CHANGES while the
+count stays above zero (one character despawning as another spawns) was dirty before and still is. The reverse
+transition needs nothing either, because an arriving caster is present.
+
+`ShadowPassDiagnostics` gains `SkinnedCastersCleared` beside the other reason bits, so a field trace can tell the
+one-frame clearing pass apart from a pass that re-recorded for any other reason. It is the only reason bit that can
+be set while `AnySkinnedCaster` is clear. The #410 design doc's list of dirty inputs is history and is left as it
+was written: the input set is six now, not five, and `ShadowPassDiagnostics` plus the Render3D README carry the
+current one.
+
+The last-rendered state and the commit that advances it moved into a new `Scene3D.ShadowDirtyState.cs` partial,
+beside the transition rule that reads them. No public API moved, and the pure compares stay where they were.
 
 ### Replacing the bathymetry field uploads it, instead of keeping the old depths (#645)
 

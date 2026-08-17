@@ -144,11 +144,13 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   `ShadowConstantBias`/`ShadowSlopeBias` (defaults `0.0004`/`0.0015`). On a device without depth-sample support
   (`GpuCapabilities.SupportsShadowMaps` false) it degrades to `Blob`. The atlas persists across frames, so the pass
   **dirty-skips**: it re-renders only when a shadow-relevant input changed (ANY cascade's fitted matrix, the rigid
-  caster set/transforms, the resolution, or any animated skinned caster present) and otherwise reuses the prior atlas,
+  caster set/transforms, the resolution, any animated skinned caster present, or the skinned casters the last
+  rendered pass drew having all gone) and otherwise reuses the prior atlas,
   so a mostly-static scene stops repainting it every frame. A skipped pass adds zero shadow draw calls to
   `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` for a simple diagnostics signal, or
   `Scene3D.LastShadowPassDiagnostics` (a `ShadowPassDiagnostics`) for the whole last-frame decision: `Rendered` /
-  `Skipped` / `HadPrevious`, one bit per dirty reason (`AnySkinnedCaster`, `ResolutionChanged`, `LightMatrixChanged`,
+  `Skipped` / `HadPrevious`, one bit per dirty reason (`AnySkinnedCaster`, `SkinnedCastersCleared`,
+  `ResolutionChanged`, `LightMatrixChanged`,
   `CasterDataChanged`), `SkinnedCasterCount` / `CascadeCount`, and what the pass actually recorded, namely
   `RigidSpanCount(cascade)` / `TotalRigidSpanCount` plus the raw `RigidDrawCalls` / `SkinnedDrawCalls` /
   `TotalDrawCalls`. Same last-frame shape as `PassTimingsMs`, always on and allocation-free, so a game can sample it

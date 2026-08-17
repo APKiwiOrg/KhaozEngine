@@ -42,7 +42,41 @@ gets its second half: a persistence-backed server no longer teleports a rejoinin
 configured spawn, once when the stored position lands afterwards), because both server heads now build a returning
 account's entity where it left, and the restore that follows is applied quietly when it moves nothing. That was the
 server-side cause of a client rebuilding its whole streaming ring on every dropped connection, which the #409
-client-side fix could not reach.
+client-side fix could not reach. The lead that work left behind, that a server-side epoch stamp built on a missing
+basis could move the authoritative epoch backwards and be swallowed by the client's new watermark, was chased down
+and refuted: neither head can reach that miss on a joined player, the invariants that forbid it are now pinned by
+test, and the read itself reports rather than silently stamping 0 if a future path ever does reach it.
+
+### A backwards teleport epoch is refuted, and the basis read says so if it is ever wrong (#637)
+
+Both server heads derive the next teleport epoch from the one the player already carries, each with a fallback to
+zero: `WorldServer` reads `stateBySlot`, `ShardedWorldServer` reads the owning cell's `MovementState`. #409 named
+those fallbacks as the source of the backwards epochs its old `!=` compare was flip-flopping on, and left the
+reachability question open. It matters more since #409 landed, not less: the client now holds the epoch as a
+high-water mark and cuts only on an advance past it, so a backwards stamp no longer fires spuriously, it goes
+SILENT. A genuine teleport stamped at 1 against a watermark of 7 lands with no cut, no camera warp and no
+transition, and stays that way until the counter climbs back past the watermark. The positional gates catch only
+the long ones, so the failure would show up as short in-session teleports quietly not cutting, which is exactly
+the case the epoch exists for.
+
+**Neither fallback is reachable on a live joined player.** On the single-`World` head, `entityBySlot` (the guard),
+`stateBySlot` (the basis) and `netIdBySlot` are written together in `OnJoin` and removed together in `OnLeave`, and
+nowhere else, so the guard passing already proves the basis is there. The sharded head is five invariants rather
+than one. `OnJoin` sets `MovementState` on the entity BEFORE it publishes the slot's NetId, so the join seam has no
+window. `MovementState` is a built-in component id, and `ReplicationRegistry.Register` throws on a built-in
+registered with anything but `ReplicationChannels.Default`, so the epoch always rides a cell handoff. A cell blob
+never carries a player, because `CellSim.SnapshotOwned` excludes the NetIds the server hands it. A cell owning a
+joined player is unevictable twice over, once on the server's own pinned-cell set and once on
+`ShardHost.CanRemoveCell`. And a ghosted or mid-handoff copy is excluded from the ownership lookup entirely, so an
+entity frozen between a migrate and its ack resolves to no owner and the placement is skipped rather than stamped.
+
+**What ships is the announcement, not a fix.** The two reads move behind a new internal `TeleportEpochGuard`, whose
+miss path reports through `Debug.Assert` and an error log naming the slot, the head and the consequence, then
+returns the same 0 as before, so nothing observable changes on a path that cannot run. `TeleportEpochBasisTests`
+pins the invariants above by driving each window (the join seam on both heads, teleports across cell handoffs, an
+entity forced into the handoff freeze, a cell restore into the very cell a player stands in, an eviction pass
+around a joined player) and pins that a forced miss is loud. The #642 placements were checked on the way past and
+both stamp forward on the entity the join built: the async restore and the quarantine reset each land at epoch 1.
 
 ### A persistence-backed rejoin is built where the player left, not on the spawn (#642)
 

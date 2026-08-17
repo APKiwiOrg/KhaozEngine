@@ -372,6 +372,16 @@ actually moves the player, since 17.37.0 (see below). Normal per-tick movement p
 sim carries it through `PlayerMoveSimulator.Step`; the sharded `PlayerMovementSystem` writes movement fields in place
 and never touches it). `ClientPrediction.Reconcile` force-cuts on an epoch advance regardless of `HardSnapDistance`.
 
+**The stamp is always built on the epoch the player already carries**, never on the one an incoming `PlayerMoveState`
+happens to hold, so the counter only ever climbs within a session. Reading that basis is the one place a backwards
+stamp could come from, and a backwards stamp is invisible rather than noisy: the client holds the epoch as a
+high-water mark (#409), so an epoch pushed back down makes every teleport SILENT until the counter climbs past the
+watermark again. Neither head can reach a missing basis on a joined player (#637 refuted it: the slot tables are
+written and cleared together on the single-`World` head, and on the sharded head the component is set before the slot
+is published, always migrates as a built-in, is never in a cell blob, cannot be evicted out from under a joined
+player, and resolves to no owner at all while an entity is ghosted or mid-handoff). The read reports through
+`Debug.Assert` and an error log if it ever does miss, rather than silently stamping from 0.
+
 `WorldClient` surfaces it as the **`LocalTeleported`** event plus a monotonic **`LocalTeleportEpoch`** counter (poll it
 frame-to-frame if you prefer). A consumer uses it to snap the follow camera (`FollowCamera3D.Warp`) and optionally run
 a screen transition (see `KhaozEngine.Render3D` `ITransition`). Mismatched wire generations are rejected at connect by

@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Threading.Tasks;
+using KhaozEngine.Diagnostics;
 using KhaozEngine.WorldStore;
 
 namespace KhaozEngine.NetWorld;
@@ -111,6 +112,18 @@ public sealed class WorldPersistenceConfig
 /// reconciles it). Use a stable account id. If a session needs strict ordering, serialize your own per-account store
 /// operations on top.</para>
 ///
+/// <para>The ACCOUNT, not the slot, is what a completed load is applied to. A slot number is only a seat: both heads
+/// hand the lowest free one to the next connection, so an account that joins and drops while its load is still in
+/// flight frees its slot immediately and the next player can be sitting in it by the time the record lands. The drain
+/// therefore re-resolves the slot's current occupant (<see cref="IWorldPersistenceHost.TryGetAccountId"/>) and DROPS a
+/// record whose account no longer holds it, rather than writing one player's stored position, teleport and durable
+/// blob onto another (#646). A drop is announced through <see cref="OnLoadApplyDropped"/> and a log line, never
+/// silently, and it deliberately leaves the account's <c>loadsInFlight</c> guard SET: the account is gone, its stored
+/// record was never applied, and the guard is exactly what keeps that record safe from being overwritten by live state
+/// until a later rejoin retries the load. A tokenless guest is covered by the same comparison, since a guest key
+/// differs from any account key, but two SUCCESSIVE guests on one recycled slot share the key <c>guest:{slot}</c> and
+/// so are indistinguishable here: that is the separate keying defect (#647), untouched by this check.</para>
+///
 /// <para>Loaded records are validated on the server thread before they are applied, via
 /// <see cref="WorldPersistenceConfig.Bounds"/> (position must be in-bounds), the game's
 /// <see cref="WorldPersistenceConfig.ValidateGameState"/> verdict on its durable blob, and a decode guard (a record
@@ -138,6 +151,10 @@ public sealed class WorldPersistenceConfig
 /// </summary>
 public sealed class WorldPersistence
 {
+    // Resolved once per type, ambient: it follows Log.Configure rather than pinning whatever manager happened to be
+    // configured when this type was first touched (#616).
+    private static readonly ILogger Log = Diagnostics.Log.Get("WorldPersistence");
+
     private readonly IWorldPersistenceHost server;
     private readonly IWorldStore store;
     private readonly WorldPersistenceConfig config;
@@ -188,6 +205,16 @@ public sealed class WorldPersistence
     /// true server thread, under FlushAsync's own documented precondition that it only be invoked when the server
     /// loop is idle.</summary>
     public event Action<string, string>? OnRecordQuarantined;
+
+    /// <summary>Raised on the server thread from the apply drain when a completed load-on-join was DROPPED because
+    /// the slot it was issued for no longer belongs to that account: (accountId, slot). Both heads recycle a freed
+    /// slot to the next connection, so an account that drops while its load is in flight can have a stranger sitting
+    /// in its seat by the time the record arrives, and applying it there would move THAT player to this account's
+    /// stored position and hand them its durable blob (#646). Nothing is written for a dropped record: the account's
+    /// stored record is untouched and still guarded, and a later rejoin loads it again. The same drop is written to
+    /// the log at <see cref="LogLevel.Info"/> under the <c>WorldPersistence</c> category, naming the account, the
+    /// slot and whoever holds it now, so a server that subscribes to nothing still records it.</summary>
+    public event Action<string, int>? OnLoadApplyDropped;
 
     // A loaded record marshalled to the server thread for validation + apply. Raw is the exact stored bytes (copied
     // verbatim on quarantine). State/Game are the decoded position and blob (default/null when DecodeFailure is set).
@@ -332,7 +359,9 @@ public sealed class WorldPersistence
             foreach (Exception ex in failures) OnStoreError?.Invoke(ex);
     }
 
-    // Validates then applies (or quarantines) loaded records on the server thread. A record fails validation if it
+    // Re-resolves identity, then validates, then applies (or quarantines) loaded records on the server thread. A
+    // record whose slot has been recycled to another account is dropped outright (see the loop below and #646).
+    // Past that, a record fails validation if it
     // carries a decode failure, its position is out of bounds, or the game's blob verdict rejects it - checked in that
     // order, first hit wins. On failure the WHOLE record is copied verbatim to the quarantine key, the resume hint is
     // forgotten, the player is RESET to the host's configured spawn as a teleport, the guard clears and the baseline
@@ -344,6 +373,27 @@ public sealed class WorldPersistence
     {
         while (applyQueue.TryDequeue(out PendingApply a))
         {
+            // Identity first, ahead of every other check. PendingApply carries the slot the account joined on, and
+            // that slot is a seat rather than a name: the SlotAllocator hands the lowest free one to the next
+            // connection, so a leave during the store read frees it and the load can land on a stranger. Re-resolve
+            // the seat's current occupant and drop the record when it is not this account's any more (#646). It has
+            // to run BEFORE validation because the quarantine path PLACES the slot at the configured spawn, which on
+            // a recycled slot would teleport the new occupant for a record that was never theirs. A bad record
+            // belonging to a departed account simply stays in the store, un-quarantined, and is re-read (and then
+            // quarantined) on that account's next join, which is the same shape a store outage already has.
+            bool held = server.TryGetAccountId(a.Slot, out string occupant);
+            if (!held || !string.Equals(occupant, a.AccountId, StringComparison.Ordinal))
+            {
+                // Deliberately NOT clearing loadsInFlight: the record was never applied, so it is still the truth for
+                // that account and the guard is what stops live state overwriting it. The account is not connected
+                // under this slot any more, so the guard costs nothing until it rejoins and the retry clears it.
+                Log.Info($"load-on-join for account '{a.AccountId}' dropped: slot {a.Slot} now holds "
+                       + (held ? $"account '{occupant}'" : "no player")
+                       + ", so the stored record was not applied and stays guarded for that account's next join.");
+                OnLoadApplyDropped?.Invoke(a.AccountId, a.Slot);
+                continue;
+            }
+
             string? failure = a.DecodeFailure;
             if (failure is null && config.Bounds is { } b && !b.Contains(a.State.Position.X, a.State.Position.Z))
                 failure = $"position ({a.State.Position.X}, {a.State.Position.Z}) outside world bounds";

@@ -32,6 +32,11 @@ internal sealed class NamedPipeDiscordTransport : IDiscordIpcTransport
 
     public bool TryConnect()
     {
+        // The controller re-attempts a failed connect on this same instance, so tear down anything a
+        // previous attempt left live first. Overwriting the stream instead would leak it AND leave its
+        // reader thread appending into the shared buffer, interleaving two connections' bytes.
+        Teardown();
+
         for (int i = 0; i < 10; i++)
         {
             Stream? s = OperatingSystem.IsWindows() ? TryConnectWindows(i) : TryConnectUnix(i);
@@ -164,12 +169,18 @@ internal sealed class NamedPipeDiscordTransport : IDiscordIpcTransport
         }
     }
 
-    public void Dispose()
+    public void Dispose() => Teardown();
+
+    private void Teardown()
     {
         running = false;
         try { stream?.Dispose(); } catch { /* ignore */ }
         try { reader?.Join(200); } catch { /* ignore */ }
         stream = null;
         reader = null;
+        lock (gate)
+        {
+            pending.Clear();
+        }
     }
 }

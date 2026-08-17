@@ -21,7 +21,7 @@ namespace KhaozEngine.Render3D
     /// <see cref="Scene3D.LastShadowPassDiagnostics"/>.
     /// <para>
     /// Every field is captured from the decision the pass ACTED on, not recomputed afterwards. The reason bits are
-    /// the exact five inputs handed to <see cref="Scene3D.ShadowDepthPassDirty"/>, and the counts are read inside
+    /// the exact six inputs handed to <see cref="Scene3D.ShadowDepthPassDirty"/>, and the counts are read inside
     /// <c>RenderShadowDepthPass</c> as it walks each cascade, so a span the pass skipped (its mesh was unloaded
     /// between the span build and the draw) is visible as a span count above the raw draw count rather than being
     /// silently folded away.
@@ -63,6 +63,13 @@ namespace KhaozEngine.Render3D
         /// caster count alone, with no pose compare: bone palettes are not hashed, so ANY skinned caster present
         /// dirties the pass on every frame, including a wholly stationary scene.</summary>
         public bool AnySkinnedCaster { get; }
+
+        /// <summary>Whether the skinned casters the last rendered pass drew have ALL gone this frame, which forces
+        /// one re-render to lift their shadows off the reused atlas (issue #23). Set on exactly the frame the last
+        /// skinned caster stops being drawn and clear on every frame after it, so a stationary scene that a
+        /// character just left reads this once and then goes back to skipping. It is the only reason bit that can be
+        /// set while <see cref="AnySkinnedCaster"/> is clear.</summary>
+        public bool SkinnedCastersCleared { get; }
 
         /// <summary>Whether the shadow atlas resolution changed since its last rendered pass.</summary>
         public bool ResolutionChanged { get; }
@@ -120,8 +127,8 @@ namespace KhaozEngine.Render3D
         }
 
         internal ShadowPassDiagnostics(bool active, bool rendered, bool skipped, bool hadPrevious,
-            bool anySkinnedCaster, bool resolutionChanged, bool lightMatrixChanged, bool casterDataChanged,
-            int skinnedCasterCount, int cascadeCount, ReadOnlySpan<int> rigidSpanCounts,
+            bool anySkinnedCaster, bool skinnedCastersCleared, bool resolutionChanged, bool lightMatrixChanged,
+            bool casterDataChanged, int skinnedCasterCount, int cascadeCount, ReadOnlySpan<int> rigidSpanCounts,
             int rigidDrawCalls, int skinnedDrawCalls)
         {
             Active = active;
@@ -129,6 +136,7 @@ namespace KhaozEngine.Render3D
             Skipped = skipped;
             HadPrevious = hadPrevious;
             AnySkinnedCaster = anySkinnedCaster;
+            SkinnedCastersCleared = skinnedCastersCleared;
             ResolutionChanged = resolutionChanged;
             LightMatrixChanged = lightMatrixChanged;
             CasterDataChanged = casterDataChanged;

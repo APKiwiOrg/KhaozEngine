@@ -188,15 +188,18 @@ namespace KhaozEngine.Render3D
         /// under a static sun pays the depth pass once). There is no valid previous map
         /// (<paramref name="hadPrevious"/> false, e.g. the first shadow frame). <paramref name="anySkinnedCaster"/>
         /// is present (a skinned caster's bone pose can animate every frame, and hashing bone palettes is not worth
-        /// it - any skinned caster forces a re-render). The map resolution changed
-        /// (<paramref name="resolutionChanged"/>, which also reallocates the target). The fitted light matrix changed
-        /// (<paramref name="lightMatrixChanged"/>). The rigid caster set / world transforms / dissolves changed
-        /// (<paramref name="casterDataChanged"/>). Otherwise the previous depth map is still correct and the pass is
-        /// skipped (the map is reused, NOT cleared).
+        /// it - any skinned caster forces a re-render). The skinned casters the last rendered pass DREW have all
+        /// gone away (<paramref name="skinnedCastersCleared"/>, issue #23: presence alone cannot see that, so the
+        /// frame a character despawns would otherwise reuse an atlas with its shadow still baked into it). The map
+        /// resolution changed (<paramref name="resolutionChanged"/>, which also reallocates the target). The fitted
+        /// light matrix changed (<paramref name="lightMatrixChanged"/>). The rigid caster set / world transforms /
+        /// dissolves changed (<paramref name="casterDataChanged"/>). Otherwise the previous depth map is still
+        /// correct and the pass is skipped (the map is reused, NOT cleared).
         /// </summary>
-        internal static bool ShadowDepthPassDirty(bool hadPrevious, bool anySkinnedCaster,
+        internal static bool ShadowDepthPassDirty(bool hadPrevious, bool anySkinnedCaster, bool skinnedCastersCleared,
             bool resolutionChanged, bool lightMatrixChanged, bool casterDataChanged)
-            => !hadPrevious || anySkinnedCaster || resolutionChanged || lightMatrixChanged || casterDataChanged;
+            => !hadPrevious || anySkinnedCaster || skinnedCastersCleared
+             || resolutionChanged || lightMatrixChanged || casterDataChanged;
 
         /// <summary>
         /// Pure sequence compare of two captured shadow-caster signatures (each a per-span mesh handle + instance

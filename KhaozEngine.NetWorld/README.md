@@ -98,7 +98,15 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   in flight the account is guarded (the periodic pass and save-on-leave skip it) so a save landing mid-load can't
   overwrite the stored record with default-spawn state and erase the blob; `capture` returning null/empty is
   destructive (it *erases* the stored blob - "no game state", not "keep existing"), never a "not loaded yet" signal.
-  `OnStoreError` surfaces a faulted background load/save (store outage). The periodic pass batches every dirty
+  `OnStoreError` surfaces a faulted background load/save (store outage). A completed load is applied to the
+  ACCOUNT rather than to the slot it was issued for: slots are seats and both heads recycle a freed one to the next
+  connection, so the drain re-resolves the slot's occupant (`IWorldPersistenceHost.TryGetAccountId`) and DROPS a
+  record whose account no longer holds it instead of writing that account's position, teleport and durable blob
+  onto the new occupant (#646). A drop writes nothing (the stored record stays intact and guarded for that
+  account's next join) and is announced through **`OnLoadApplyDropped`** (`event Action<string, int>`,
+  accountId + slot) plus an `Info` log line naming the account, the slot and its current occupant. A tokenless
+  guest is keyed `guest:{slot}` and is covered by the same comparison, but two SUCCESSIVE guests on one slot share
+  that key and are indistinguishable here (see the keying note under the resume-hint bullet). The periodic pass batches every dirty
   player's record into one `IWorldStore.SaveManyAsync` call instead of one `SaveAsync` per player. A faulted batch
   leaves every player in it dirty for the next pass (save-on-leave still uses a single-record `SaveAsync`).
   - **A rejoin is SEEDED, not only restored (since 17.37.0).** Every position this layer persists is also kept as

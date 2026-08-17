@@ -12,7 +12,16 @@ public interface ISocialProvider : IDisposable
     /// <summary>True once connected to the platform client and ready to publish presence.</summary>
     bool IsConnected { get; }
 
-    /// <summary>Connect for the given platform application/client id. Returns false on any failure.</summary>
+    /// <summary>
+    /// Connect for the given platform application/client id. Returns false on any failure.
+    /// <para>
+    /// Must be RE-ATTEMPTABLE on the same instance: <see cref="SocialPresenceController"/> retries a
+    /// failed connect on a backoff rather than throwing the provider away, because the usual reason for
+    /// one is that the platform client has not finished starting. A provider that failed here therefore
+    /// has to leave itself in a state a later call can connect from, and must drop anything a
+    /// half-finished attempt left behind rather than carry it into the next one.
+    /// </para>
+    /// </summary>
     bool TryInitialize(string applicationId);
 
     /// <summary>Pump platform callbacks. Call once per frame on the main thread.</summary>

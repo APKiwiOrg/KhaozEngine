@@ -13,12 +13,28 @@ namespace KhaozEngine.Tests.Gpu
     /// depth map persists across frames, so an unchanged static shadow scene reuses it and skips the caster draws:
     /// (a) proves a static second frame skips AND renders pixel-identically to the freshly-rendered first frame,
     /// (b) proves a moved caster re-renders (the shadow moves and the frame is NOT skipped), (c) proves a scene with
-    /// an animated skinned caster never skips. Driven through Render3DPreview so the per-frame skip flag can be read
-    /// after each render. Gated on KE_GPU_TESTS.
+    /// an animated skinned caster never skips, and (d) proves that when that skinned caster VANISHES the pass
+    /// re-renders once and takes its shadow off the reused atlas, then goes back to skipping (issue #23). Driven
+    /// through Render3DPreview so the per-frame skip flag can be read after each render. Gated on KE_GPU_TESTS.
     /// </summary>
     public sealed class ShadowDepthDirtySkipGpuTests
     {
         const int W = 256, H = 200;
+        // How much darker than the unlit-by-the-sun floor a pixel has to be to count as shadowed, and how close to
+        // it a pixel has to come back to count as lit again. Both in 0..255 luma, and the gap between them is the
+        // margin that keeps a half-lifted shadow from reading as either. Metal measures the shadowed floor at
+        // (123,135,177) against (205,206,218) lit, a drop of 71, and 0 once the caster's shadow is off the atlas.
+        const int ShadowDrop = 40;
+        const int LitTolerance = 12;
+        // How much redder than blue an opaque pixel may be before it counts as the warm-tinted caster rather than
+        // the floor (see CasterPixels). Measured on Metal: the caster's body is 23 over, the floor 12 under.
+        const int WarmthMargin = 12;
+        // How many still-dark floor pixels are tolerated once the caster is gone. Metal measures 0 with the fix and
+        // 459 without it, so the bar sits an order of magnitude below the ghost and well above rasteriser noise.
+        const int GhostTolerance = 40;
+        // How high above the floor the ghost test's caster hangs: out of the camera's view, inside the sun's. See
+        // that test for why its own body must not be in the picture.
+        const float GhostCasterHeight = 3.4f;
 
         static void ConfigureShadowScene(Scene3D scene)
         {
@@ -39,6 +55,51 @@ namespace KhaozEngine.Tests.Gpu
             for (int i = 0; i < a.Length; i++) d += Math.Abs(a[i] - b[i]);
             return d;
         }
+
+        static int Luma(byte[] px, int p) => (px[p * 4] * 299 + px[p * 4 + 1] * 587 + px[p * 4 + 2] * 114) / 1000;
+
+        static bool Opaque(byte[] px, int p) => px[p * 4 + 3] > 200;
+
+        /// <summary>How many opaque pixels carry the skinned caster's warm tint (measured 23 red over blue on its
+        /// body, against 1 UNDER on the deepest shadowed floor). The ghost test asserts this is zero: its caster
+        /// hangs above the camera's view, so nothing but the caster's SHADOW is ever in the picture, and every
+        /// pixel that changes when it despawns is therefore the atlas rather than the colour pass.</summary>
+        static int CasterPixels(byte[] px)
+        {
+            int n = 0;
+            for (int p = 0; p < px.Length / 4; p++)
+                if (Opaque(px, p) && px[p * 4] - px[p * 4 + 2] > WarmthMargin) n++;
+            return n;
+        }
+
+        /// <summary>The floor pixel the caster darkened most against the same view with no caster in it: the
+        /// deepest point of the shadow it threw. -1 when no floor pixel was darkened enough to measure, which the
+        /// caller reports rather than passing vacuously.</summary>
+        static int ProbeShadowPixel(byte[] empty, byte[] cast)
+        {
+            int best = -1, drop = ShadowDrop;
+            for (int p = 0; p < empty.Length / 4; p++)
+            {
+                if (!Opaque(empty, p) || !Opaque(cast, p)) continue;
+                int d = Luma(empty, p) - Luma(cast, p);
+                if (d > drop) { drop = d; best = p; }
+            }
+            return best;
+        }
+
+        /// <summary>How many floor pixels are still measurably darker than the caster-free control: the ghost's
+        /// area, in pixels. 0 once the vanished caster's shadow has been lifted off the atlas.</summary>
+        static int GhostPixels(byte[] empty, byte[] px)
+        {
+            int n = 0;
+            for (int p = 0; p < empty.Length / 4; p++)
+                if (Opaque(empty, p) && Luma(empty, p) - Luma(px, p) > ShadowDrop) n++;
+            return n;
+        }
+
+        /// <summary>Whether the floor at <paramref name="p"/> is back within tolerance of the caster-free control,
+        /// which is what "lit again" means for a pixel that was in shadow.</summary>
+        static bool Lit(byte[] empty, byte[] px, int p) => Math.Abs(Luma(empty, p) - Luma(px, p)) <= LitTolerance;
 
         static int DarkPixels(byte[] px)
         {
@@ -145,6 +206,82 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(diagnostics.Rendered);
             Assert.True(diagnostics.LightMatrixChanged);
             Assert.False(diagnostics.CasterDataChanged);
+        }
+
+        [GpuFact]
+        public void Vanished_skinned_caster_takes_its_shadow_off_the_reused_atlas()
+        {
+            // Issue #23, through the real pass on one scene and one device. Four frames of the SAME frozen view:
+            // the floor alone, the floor plus a skinned caster, then the floor alone again twice. Nothing else
+            // moves, so the only reason frame 3 can differ from frame 1 is what the depth pass left on the atlas.
+            //
+            // The caster hangs above the camera's view and inside the sun's, which is the case the issue names (a
+            // character the main pass culls and the shadow pass keeps - see ClassifySkinnedVisibility). It is also
+            // what makes the picture provable: its own body is never drawn, so every pixel that changes when it
+            // despawns is its SHADOW. Standing it in view instead would put its body, and the outline around that
+            // body, on the very floor pixels the probe is looking at, and those light up when it despawns whether
+            // or not its shadow does.
+            using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = ctx.GpuDevice;
+            using var preview = new Render3DPreview(gd, W, H);
+            ConfigureShadowScene(preview.Scene);
+            MeshHandle floor = preview.Scene.LoadMesh(MeshPrimitives.Tile(10f, 0.1f));
+            var limb = new SkinnedLimb(preview.Scene, radius: 0.4f, length: 2.5f, ringSegments: 8, radialSegments: 8,
+                boneCount: 5, ChainConfig.Writhe, Axis.Z);
+            limb.Update(new Vector3(0f, GhostCasterHeight, 0f), Vector3.UnitZ, Vector3.UnitY, 1.0f);
+
+            void DrawFloor(Scene3D s) => s.Draw(floor, Matrix4x4.CreateTranslation(0f, 0f, 0f));
+            void DrawFloorAndLimb(Scene3D s)
+            {
+                DrawFloor(s);
+                limb.Draw(s, Matrix4x4.CreateTranslation(0f, GhostCasterHeight, 0f), new Color(0.8f, 0.4f, 0.3f, 1f));
+            }
+
+            // Frame 1: the caster-free control. This is what the floor looks like with nothing over it, and it is
+            // the picture frames 3 and 4 have to come back to.
+            byte[] empty = Read(gd, preview.Capture(DrawFloor));
+            // Frame 2: the caster arrives and casts. Presence alone dirties the pass, so this one always rendered.
+            byte[] cast = Read(gd, preview.Capture(DrawFloorAndLimb));
+            Assert.True(preview.Scene.LastShadowPassDiagnostics.AnySkinnedCaster);
+            Assert.Equal(0, CasterPixels(cast));   // the caster's body is out of frame: only its shadow is here
+
+            int probe = ProbeShadowPixel(empty, cast);
+            Assert.True(probe >= 0,
+                "the skinned caster cast no measurable shadow on the floor, so this test cannot see the ghost at " +
+                "all. Check the sun direction and the caster height against the camera framing.");
+
+            // Frame 3: the caster is gone and NOTHING else changed. Before #23 every dirty input read false here,
+            // the pass was skipped, and the atlas still held the caster's shadow: the ghost.
+            byte[] gone = Read(gd, preview.Capture(DrawFloor));
+
+            // The symptom first: the ground where the shadow was must be lit again, and no measurable patch of the
+            // floor may still be darker than the control.
+            Assert.True(Lit(empty, gone, probe), $"the vanished caster's shadow is still on the floor at pixel {probe} " +
+                $"(luma {Luma(gone, probe)} against {Luma(empty, probe)} with no caster and {Luma(cast, probe)} " +
+                "with one). The depth pass reused an atlas the caster is still baked into (#23).");
+            Assert.True(GhostPixels(empty, gone) < GhostTolerance,
+                $"{GhostPixels(empty, gone)} floor pixels are still darker than the caster-free control after the " +
+                "caster vanished, so a shadow of it is still on the atlas (#23).");
+
+            // Then the mechanism, so a future regression says which half moved.
+            ShadowPassDiagnostics clearing = preview.Scene.LastShadowPassDiagnostics;
+            Assert.True(clearing.Rendered, "the frame a skinned caster vanishes on must re-render the depth pass");
+            Assert.True(clearing.SkinnedCastersCleared);
+            Assert.False(clearing.AnySkinnedCaster);
+            Assert.False(clearing.LightMatrixChanged);
+            Assert.False(clearing.CasterDataChanged);   // the floor is the only rigid caster, and it never moved
+
+            // Frame 4: still nothing but the floor. The clearing pass committed "no skinned casters", so this one
+            // has nothing left to react to and must go back to reusing the atlas - exactly ONE extra render.
+            byte[] settled = Read(gd, preview.Capture(DrawFloor));
+            Assert.True(preview.Scene.ShadowPassSkippedLastFrame,
+                "clearing a vanished caster must cost one pass, not turn the dirty-skip off for good");
+            Assert.False(preview.Scene.LastShadowPassDiagnostics.Rendered);
+            Assert.False(preview.Scene.LastShadowPassDiagnostics.SkinnedCastersCleared);
+            Assert.True(Lit(empty, settled, probe));
+            Assert.Equal(0, Diff(gone, settled));   // the reused atlas must render identically to the pass that made it
+
+            limb.Dispose();
         }
 
         [GpuFact]

@@ -6,7 +6,7 @@ namespace KhaozEngine.Render3D
     /// The instrument half of the shadow depth pass: the raw per-frame counters the pass writes as it records, and
     /// the one place <see cref="ShadowPassDiagnostics"/> is built from them.
     /// <para>
-    /// It exists because the pass's cost and the pass's REASON are recorded in different places. The five dirty
+    /// It exists because the pass's cost and the pass's REASON are recorded in different places. The six dirty
     /// inputs are known before <c>RenderShadowDepthPass</c> runs, the per-cascade span counts and the raw draw calls
     /// only exist after it has walked them, and a frame that skipped recorded neither. Building the snapshot in one
     /// step at the end of the shadow decision is what keeps those halves consistent: every field in a given snapshot
@@ -47,13 +47,14 @@ namespace KhaozEngine.Render3D
         /// </para>
         /// </summary>
         void RecordShadowPassDiagnostics(bool rendered, bool hadPrevious, bool anySkinnedCaster,
-            bool resolutionChanged, bool lightMatrixChanged, bool casterDataChanged, int skinnedCasterCount,
-            int cascadeCount)
+            bool skinnedCastersCleared, bool resolutionChanged, bool lightMatrixChanged, bool casterDataChanged,
+            int skinnedCasterCount, int cascadeCount)
         {
             ReadOnlySpan<int> spans = rendered ? _shadowPassRigidSpans : ReadOnlySpan<int>.Empty;
             _lastShadowPassDiagnostics = new ShadowPassDiagnostics(
                 active: true, rendered: rendered, skipped: !rendered, hadPrevious: hadPrevious,
-                anySkinnedCaster: anySkinnedCaster, resolutionChanged: resolutionChanged,
+                anySkinnedCaster: anySkinnedCaster, skinnedCastersCleared: skinnedCastersCleared,
+                resolutionChanged: resolutionChanged,
                 lightMatrixChanged: lightMatrixChanged, casterDataChanged: casterDataChanged,
                 skinnedCasterCount: skinnedCasterCount, cascadeCount: cascadeCount,
                 rigidSpanCounts: spans,

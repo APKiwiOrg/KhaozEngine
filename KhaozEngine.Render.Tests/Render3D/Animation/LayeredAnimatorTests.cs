@@ -408,6 +408,182 @@ namespace KhaozEngine.Tests.Render3D.Animation
             Assert.False(QuatClose(got, rejected, 1e-4f), "half-weight must NOT be Slerp(...) * base");
         }
 
+        // ---- Non-identity additive reference: the side the delta is EXTRACTED on (#20) ----
+        //
+        // Every additive-rotation test above this block uses an IDENTITY reference (or one whose sample equals it),
+        // where inverse(reference) * sample and sample * inverse(reference) are the same quaternion, so none of them
+        // can see which side the delta comes off. That is exactly how the wrong side shipped through 17.36.1. The
+        // rows below use a reference that is BOTH non-identity AND non-commuting with the sample, which is the real
+        // shape of every glTF humanoid (a t=0 shoulder/spine is rotated, and the additive clip bends it about a
+        // different axis). The convention, stated once: delta = inverse(reference) * sample, applied as base * delta.
+        //
+        // The identity-reference rows keep passing unchanged and are the other half of the pin:
+        // Additive_RotationDelta_AppliesInLocalFrame_BaseTimesDelta_NotDeltaTimesBase (the order pin),
+        // Additive_RotationDelta_HalfWeight_AppliesInLocalFrame, Additive_ShortestArc_NegatedReferenceStillCorrect.
+
+        // The reference pose all four rows below share: 90 degrees about X, so it does NOT commute with a rotation
+        // about Y, and both extraction sides are distinguishable.
+        static Quaternion Ref90X() => Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI / 2f);
+
+        // An additive clip that keys ONE node from `reference` at t=0 to `sample` at t=1, so t=1 samples the authored
+        // pose against a non-identity reference. This is the shape a glTF additive clip has: its own first frame is
+        // the reference, and it is NOT identity.
+        static AnimationClip AdditiveClip(string name, int node, Quaternion reference, Quaternion sample) =>
+            new AnimationClip(name, 1f, new List<JointTrack>
+            {
+                new JointTrack(node)
+                {
+                    Rotation = new QuaternionTrack(new[] { 0f, 1f }, new[] { reference, sample }, InterpolationMode.Linear),
+                },
+            });
+
+        [Fact]
+        public void Additive_NonIdentityReference_BaseEqualsReference_ReproducesSampleExactly()
+        {
+            // THE defining invariant of additive animation: when the base IS the clip's reference, the additive layer
+            // must reproduce the clip's authored pose. base * (inverse(reference) * sample) == sample.
+            // The rejected extraction gives base * (sample * inverse(reference)) == the sample CONJUGATED by the
+            // reference, which for a 90X reference and a 45Y offset is a visibly different pose.
+            Skeleton skel = OneBone();
+            Quaternion refRot = Ref90X();
+            Quaternion sampleRot = Quaternion.Normalize(refRot * Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 4f));
+
+            var baseClip = PoseClip("base", 0, Vector3.Zero, refRot, Vector3.One);   // base == the additive reference
+            AnimationClip add = AdditiveClip("add", 0, refRot, sampleRot);
+
+            var anim = new LayeredAnimator(skel);
+            anim.AddLayer(baseClip, LayerMode.Override);
+            AnimationLayer al = anim.AddLayer(add, LayerMode.Additive);
+            al.Time = 1f;
+
+            Quaternion got = SampleLocals(anim, skel)[0].Rotation;
+
+            Quaternion conjugated = Quaternion.Normalize(refRot * Quaternion.Normalize(sampleRot * Quaternion.Inverse(refRot)));
+            Assert.True(QuatClose(got, sampleRot, 1e-4f), "base == reference must reproduce the authored sample");
+            Assert.False(QuatClose(got, conjugated, 1e-4f), "must NOT be the sample conjugated by the reference");
+        }
+
+        [Fact]
+        public void Additive_NonIdentityReference_BaseDiffersFromReference_IsLocalFrameFormula()
+        {
+            // base != reference, reference non-identity. Reference 90X, base = reference plus a local 90Z, sample =
+            // reference plus a local 90Y. The local-frame delta is then exactly 90Y, so the result is
+            // 90X * 90Z * 90Y, which works out to a clean 90 degrees about Z - the numeric pin.
+            Skeleton skel = OneBone();
+            Quaternion refRot = Ref90X();
+            Quaternion baseRot = Quaternion.Normalize(refRot * Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 2f));
+            Quaternion sampleRot = Quaternion.Normalize(refRot * Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 2f));
+
+            var baseClip = PoseClip("base", 0, Vector3.Zero, baseRot, Vector3.One);
+            AnimationClip add = AdditiveClip("add", 0, refRot, sampleRot);
+
+            var anim = new LayeredAnimator(skel);
+            anim.AddLayer(baseClip, LayerMode.Override);
+            AnimationLayer al = anim.AddLayer(add, LayerMode.Additive);
+            al.Time = 1f;
+
+            Quaternion got = SampleLocals(anim, skel)[0].Rotation;
+
+            // The formula, and the same value stated independently as a closed form (0, 0, sin45, cos45).
+            Quaternion formula = Quaternion.Normalize(baseRot * Quaternion.Normalize(Quaternion.Inverse(refRot) * sampleRot));
+            Quaternion closedForm = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 2f);
+            Assert.True(QuatClose(got, formula, 1e-4f), "result must be base * inverse(reference) * sample");
+            Assert.True(QuatClose(got, closedForm, 1e-4f), "90X * 90Z * 90Y is a clean 90 about Z");
+            Assert.Equal(0f, MathF.Abs(got.X), 4);
+            Assert.Equal(0f, MathF.Abs(got.Y), 4);
+            Assert.Equal(0.7071068f, MathF.Abs(got.Z), 4);
+            Assert.Equal(0.7071068f, MathF.Abs(got.W), 4);
+
+            Quaternion rejected = Quaternion.Normalize(baseRot * Quaternion.Normalize(sampleRot * Quaternion.Inverse(refRot)));
+            Assert.False(QuatClose(got, rejected, 1e-4f), "must NOT be base * sample * inverse(reference)");
+        }
+
+        [Fact]
+        public void Additive_NonIdentityReference_HalfWeight_SlerpsTowardTheLocalFrameDelta()
+        {
+            // Weight blending with a non-identity reference. The class scales the delta by slerping from IDENTITY
+            // toward the full delta and composes that on the right: result = base * Slerp(Identity, delta, w). With
+            // base == reference and a full delta of 90Y, half weight lands on reference * 45Y, exactly halfway from
+            // the reference to the authored sample.
+            Skeleton skel = OneBone();
+            Quaternion refRot = Ref90X();
+            Quaternion sampleRot = Quaternion.Normalize(refRot * Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 2f));
+
+            var baseClip = PoseClip("base", 0, Vector3.Zero, refRot, Vector3.One);
+            AnimationClip add = AdditiveClip("add", 0, refRot, sampleRot);
+
+            var anim = new LayeredAnimator(skel);
+            anim.AddLayer(baseClip, LayerMode.Override);
+            AnimationLayer al = anim.AddLayer(add, LayerMode.Additive, weight: 0.5f);
+            al.Time = 1f;
+
+            Quaternion got = SampleLocals(anim, skel)[0].Rotation;
+
+            Quaternion halfDelta = Quaternion.Normalize(
+                Quaternion.Slerp(Quaternion.Identity, Quaternion.Normalize(Quaternion.Inverse(refRot) * sampleRot), 0.5f));
+            Quaternion expected = Quaternion.Normalize(refRot * halfDelta);
+            Quaternion closedForm = Quaternion.Normalize(refRot * Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 4f));
+
+            Assert.True(QuatClose(got, expected, 1e-4f), "half weight must be base * Slerp(Identity, localDelta, 0.5)");
+            Assert.True(QuatClose(got, closedForm, 1e-4f), "half of a 90Y local delta is 45Y in the joint's own frame");
+            Assert.Equal(0.6532815f, MathF.Abs(got.X), 4);
+            Assert.Equal(0.2705981f, MathF.Abs(got.Y), 4);
+            Assert.Equal(0.2705981f, MathF.Abs(got.Z), 4);
+            Assert.Equal(0.6532815f, MathF.Abs(got.W), 4);
+
+            Quaternion rejectedDelta = Quaternion.Normalize(
+                Quaternion.Slerp(Quaternion.Identity, Quaternion.Normalize(sampleRot * Quaternion.Inverse(refRot)), 0.5f));
+            Assert.False(QuatClose(got, Quaternion.Normalize(refRot * rejectedDelta), 1e-4f),
+                "must NOT slerp toward the parent-frame delta");
+        }
+
+        [Fact]
+        public void Additive_TranslationAndScale_AreFrameAgnostic_UnderNonIdentityReference()
+        {
+            // Translation and scale have no side to get wrong: both deltas are componentwise SUBTRACTIONS applied by
+            // componentwise ADDITION, between quantities already in one frame (a local translation is parent-frame, a
+            // scale is a per-axis factor on the joint's own axes), and addition commutes. So they were already correct
+            // and stay correct, including with a non-identity reference ROTATION on the same node. This row pins that:
+            // with base == reference the whole pose (all three channels) reproduces the authored sample.
+            Skeleton skel = OneBone();
+            Quaternion refRot = Ref90X();
+            Quaternion sampleRot = Quaternion.Normalize(refRot * Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 3f));
+            var refT = new Vector3(2f, -1f, 0.5f);
+            var sampleT = new Vector3(5f, 3f, -2f);
+            var refS = new Vector3(1.5f, 0.5f, 2f);
+            var sampleS = new Vector3(0.25f, 3f, 1f);
+
+            var baseClip = PoseClip("base", 0, refT, refRot, refS);   // base == the additive reference, all channels
+            var add = new AnimationClip("add", 1f, new List<JointTrack>
+            {
+                new JointTrack(0)
+                {
+                    Translation = new Vector3Track(new[] { 0f, 1f }, new[] { refT, sampleT }, InterpolationMode.Linear),
+                    Rotation = new QuaternionTrack(new[] { 0f, 1f }, new[] { refRot, sampleRot }, InterpolationMode.Linear),
+                    Scale = new Vector3Track(new[] { 0f, 1f }, new[] { refS, sampleS }, InterpolationMode.Linear),
+                },
+            });
+
+            var anim = new LayeredAnimator(skel);
+            anim.AddLayer(baseClip, LayerMode.Override);
+            AnimationLayer al = anim.AddLayer(add, LayerMode.Additive);
+            al.Time = 1f;
+
+            JointPose got = SampleLocals(anim, skel)[0];
+            // Channel by channel, and the two linear ones FIRST on purpose: they hold under the wrong rotation side
+            // too, which is the evidence that the defect was rotation-only and these two needed no change.
+            Assert.True(Vector3.Distance(got.Translation, sampleT) < 1e-4f, "translation must reproduce the authored sample");
+            Assert.True(Vector3.Distance(got.Scale, sampleS) < 1e-4f, "scale must reproduce the authored sample");
+            Assert.True(QuatClose(got.Rotation, sampleRot, 1e-4f), "rotation must reproduce the authored sample");
+
+            // Half weight lands exactly halfway on both linear channels, which is the offset convention (a scale
+            // OFFSET, not a ratio), unchanged by this fix.
+            al.Weight = 0.5f;
+            JointPose half = SampleLocals(anim, skel)[0];
+            Assert.True(Vector3.Distance(half.Translation, refT + (sampleT - refT) * 0.5f) < 1e-4f);
+            Assert.True(Vector3.Distance(half.Scale, refS + (sampleS - refS) * 0.5f) < 1e-4f);
+        }
+
         // ---- Shortest-arc double-cover pin ----
 
         [Fact]
@@ -453,7 +629,7 @@ namespace KhaozEngine.Tests.Render3D.Animation
             var anim = new LayeredAnimator(skel);
             anim.AddLayer(baseClip, LayerMode.Override);
             AnimationLayer al = anim.AddLayer(add, LayerMode.Additive);
-            al.Time = 1f;   // delta = sample * inverse(-identity) = 60Y regardless of the reference's hemisphere
+            al.Time = 1f;   // delta = inverse(-identity) * sample = 60Y regardless of the reference's hemisphere
 
             Assert.True(QuatClose(SampleLocals(anim, skel)[0].Rotation, sampleRot, 1e-4f));
         }

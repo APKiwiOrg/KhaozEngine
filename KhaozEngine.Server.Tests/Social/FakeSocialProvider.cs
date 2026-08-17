@@ -24,12 +24,26 @@ internal sealed class FakeSocialProvider : ISocialProvider
     public bool ThrowOnSetPresence { get; set; }
     public bool ThrowOnUpdate { get; set; }
 
+    /// <summary>Throws out of <see cref="TryInitialize"/>, as a backend with a missing native layer can.</summary>
+    public bool ThrowOnInitialize { get; set; }
+
+    /// <summary>
+    /// The first N connect attempts return false, whatever <see cref="InitializeResult"/> says: the
+    /// platform client that starts up a few seconds after the game does.
+    /// </summary>
+    public int FailInitializeCount { get; set; }
+
     public bool IsConnected => ConnectedResult;
 
     public bool TryInitialize(string applicationId)
     {
         InitializedWith.Add(applicationId);
-        return InitializeResult;
+        if (ThrowOnInitialize)
+        {
+            throw new InvalidOperationException("boom");
+        }
+
+        return InitializedWith.Count > FailInitializeCount && InitializeResult;
     }
 
     public void Update()

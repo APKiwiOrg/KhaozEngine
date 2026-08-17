@@ -4411,7 +4411,11 @@ field changed. `IIsoCamera3D.BeginFrame()` is the boundary that bounds the cache
 adoption at all. A consumer that drives a `FollowCamera3D` with no `Scene3D` (a headless projection pass, a tool)
 calls `camera.BeginFrame()` once a frame itself, or `camera.InvalidateEye()` at the moment it moves an occluder.
 `BeginFrame` is a default interface member with an empty body, so `IsoCamera3D`, `FlyCamera3D` and any camera you
-wrote yourself inherit a no-op and are completely unaffected.
+wrote yourself inherit a no-op and are completely unaffected. One ordering to know: `Scene3D.Begin()` runs at
+render time, so a gameplay read of `Eye` (or `ScreenToRay`) taken in your update step, BEFORE that frame's `Begin`,
+answers from the last computation. With `Occlusion` set and no camera knob changed since, that is the previous
+frame's sweep. A follow camera whose target moves every frame recomputes anyway. If yours can stand still while
+the world moves around it and you pick from the update step, call `InvalidateEye()` after stepping physics.
 
 Two cumulative counters (never reset, in the same shape as `GpuDeviceCounters`) show the load:
 `OcclusionSweepCount` is the sweeps this camera has issued, and `EyeComputeCount` is full eye computations whether

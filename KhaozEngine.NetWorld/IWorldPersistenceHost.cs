@@ -30,7 +30,12 @@ public interface IWorldPersistenceHost
     /// <summary>The slots of all currently joined players.</summary>
     IReadOnlyCollection<int> JoinedSlots { get; }
 
-    /// <summary>The account id for a joined slot (connect token or fallback).</summary>
+    /// <summary>
+    /// The account id for a joined slot (connect token or fallback). Load-bearing, not informational: the periodic
+    /// save skips a slot this answers <c>false</c> for, and since #646 the load-on-join apply DROPS a record whose
+    /// account no longer holds the slot, so a host that does not answer for its joined slots gets neither saves
+    /// nor restores. Answer it from the same table the join wrote, before <c>PlayerJoined</c> is raised.
+    /// </summary>
     bool TryGetAccountId(int slot, out string accountId);
 
     /// <summary>The current authoritative movement state for a joined slot.</summary>

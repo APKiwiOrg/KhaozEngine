@@ -76,7 +76,9 @@ Before 17.37.0 every apply was a teleport, so the same misapplication at least a
 **The drain re-resolves the seat and drops what is not this account's.** `DrainApplyQueue` now asks
 `IWorldPersistenceHost.TryGetAccountId(slot)` who holds the slot and drops the record unless it is still the
 account the load was issued for. That member was already on the seam and is not a default method, so every host
-(including a game's own) gets the guarantee with no change. The check runs BEFORE validation deliberately: the
+that answers it truthfully for its joined slots (both engine heads and `MmoServerSample` do) gets the guarantee
+with no change. A game's own host that stubs it to `false` now loses load-on-join outright rather than applying
+blind, which is the safer failure and is what the seam doc now says. The check runs BEFORE validation deliberately: the
 quarantine path PLACES the slot at the configured spawn, so a bad record belonging to a departed account would
 otherwise teleport a stranger. Such a record simply stays in the store un-quarantined and is re-read, and
 quarantined, on that account's next join, which is the shape a store read outage already had.

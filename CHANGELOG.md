@@ -52,7 +52,51 @@ and refuted: neither head can reach that miss on a joined player, the invariants
 test, and the read itself reports rather than silently stamping 0 if a future path ever does reach it. On the render
 side, handing the water surface a NEW depth field of the same resolution now actually reaches the GPU: the
 upload was gated on a per-instance revision counter, so a replacement read as no change and the previous
-field's depths stayed bound, drawing a plausible shore for the wrong coastline with no error anywhere.
+field's depths stayed bound, drawing a plausible shore for the wrong coastline with no error anywhere. Back on the
+netcode side, a completed load-on-join is now applied to the ACCOUNT that asked for it rather than to the slot
+number it was issued for, so a player who takes a freed seat on a slow store can no longer be teleported onto the
+previous occupant's saved position and handed their durable blob.
+
+### A completed load-on-join lands on the account, not on the recycled seat (#646)
+
+`WorldPersistence` captured the joining `slot` in its `PendingApply`, awaited the store off-thread, and applied the
+loaded record back to that same slot number. A slot is a seat, not a name: both heads free it on leave and
+`SlotAllocator` hands the lowest free one straight to the next connection (both `OnJoin` methods explicitly clear
+the previous occupant's per-slot state, which is the same fact stated from the other side). An account that joined
+and dropped while its read was in flight therefore had its stored position, its teleport and its durable game blob
+written onto whoever recycled the seat. Reproduced on a gated store through both heads: alpha joins slot 0 with its
+load parked, drops, beta joins and takes slot 0, the load releases, and beta lands on alpha's stored position.
+
+**Since 17.37.0 it could also land silently**, which is why this is a fix rather than a note. The apply is now
+conditional on the live state (`TryGetPlayerState` then a `QuietRestoreDistance` compare), and on a recycled slot
+that live state is the NEW occupant's, so two players standing within the quiet window of each other made the
+misapplication land with `teleport: false`: no epoch advance, no `LocalTeleported`, nothing for a client to notice.
+Before 17.37.0 every apply was a teleport, so the same misapplication at least announced itself as a cut.
+
+**The drain re-resolves the seat and drops what is not this account's.** `DrainApplyQueue` now asks
+`IWorldPersistenceHost.TryGetAccountId(slot)` who holds the slot and drops the record unless it is still the
+account the load was issued for. That member was already on the seam and is not a default method, so every host
+(including a game's own) gets the guarantee with no change. The check runs BEFORE validation deliberately: the
+quarantine path PLACES the slot at the configured spawn, so a bad record belonging to a departed account would
+otherwise teleport a stranger. Such a record simply stays in the store un-quarantined and is re-read, and
+quarantined, on that account's next join, which is the shape a store read outage already had.
+
+**A drop is announced, never a silent continue.** New public API on `KhaozEngine.NetWorld`:
+`WorldPersistence.OnLoadApplyDropped` (`event Action<string, int>`, accountId + slot), raised on the server thread
+from the drain, alongside an `Info` log line under the `WorldPersistence` category naming the account, the slot and
+whoever holds it now. The dropped account's `loadsInFlight` guard is deliberately LEFT SET: the record was never
+applied, so it is still the truth for that account, and the guard is exactly what keeps it from being overwritten
+by live state until a later rejoin re-reads it.
+
+**A tokenless guest is covered, and the guest-after-guest case still is not.** A guest is keyed `guest:{slot}`,
+which is not an account key, so a guest recycling an account's seat drops that account's record by the same
+comparison. Two SUCCESSIVE guests on one seat share the key and remain indistinguishable here, which is the
+separate persistence-keying defect (#647) and is untouched: this check compares whatever key the head derived, so
+it keeps working whichever way that lands.
+
+**What this does not change:** a rapid leave and rejoin by the SAME account starts a second load under the same key
+while the first is still in flight (`loadsInFlight` is a set, not a refcount), and both loads apply. That is the
+same account and the same record, so nothing crosses players, and it is now pinned by test rather than assumed.
 
 ### Replacing the bathymetry field uploads it, instead of keeping the old depths (#645)
 

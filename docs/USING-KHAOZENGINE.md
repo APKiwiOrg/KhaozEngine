@@ -12243,6 +12243,22 @@ pre-leave state, which the next periodic save reconciles. Use a stable account i
 store operations if a session needs strict ordering. Subscribe to **`WorldPersistence.OnStoreError`** to log/alert
 when a background load or save faults (a store outage); the failed save's state stays dirty and retries on the next pass.
 
+**A completed load is applied to the ACCOUNT, not to the slot it was issued for.** A slot number is a seat: both
+heads free it on leave and hand the lowest free one to the next connection, so on a slow store an account that
+joins and drops before its record arrives can have a stranger sitting in its seat by the time it does. The drain
+re-resolves the seat's current occupant and **drops** a record whose account no longer holds it, rather than
+writing one player's position, teleport and durable blob onto another (#646). A drop is announced through
+**`WorldPersistence.OnLoadApplyDropped`** (`event Action<string, int>`, accountId + slot) and an `Info` log line
+under the `WorldPersistence` category, and nothing at all is written: the dropped account's stored record is
+untouched, stays guarded, and is read again on its next join. A tokenless connection is keyed `guest:{slot}` and is
+covered by the same comparison, but two SUCCESSIVE guests on one seat share that key and are indistinguishable
+here, which is the separate keying question tracked in the engine's issues.
+
+```csharp
+persistence.OnLoadApplyDropped += (accountId, slot) =>
+    Log.Info($"{accountId} left slot {slot} before its record landed, so the restore was dropped");
+```
+
 ```csharp
 var persistence = new WorldPersistence(server, store, new WorldPersistenceConfig
 {

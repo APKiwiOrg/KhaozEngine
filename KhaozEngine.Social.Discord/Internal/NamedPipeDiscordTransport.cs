@@ -24,7 +24,11 @@ internal sealed class NamedPipeDiscordTransport : IDiscordIpcTransport
 
     private readonly object gate = new();
     private readonly List<byte> pending = new();
-    private Connection? current;
+
+    // Volatile so the reads are honest rather than cached: the frame thread writes this field and the
+    // members that read it are cheap flag checks with no lock of their own. It does not make the class
+    // thread-safe, and is not meant to (see Teardown).
+    private volatile Connection? current;
 
     public bool IsConnected => current is { Live: true };
 
@@ -117,6 +121,16 @@ internal sealed class NamedPipeDiscordTransport : IDiscordIpcTransport
             bool overflow;
             lock (gate)
             {
+                // Re-check under the gate, because a reader whose Join(200) timed out is still running while
+                // the NEXT session drains this same buffer, and its bytes landing there would desync every
+                // frame decoded after them. Teardown clears Live BEFORE it takes the gate to clear pending,
+                // so a stale reader either appended ahead of that clear (and the clear wiped it) or reads
+                // false here and appends nothing.
+                if (!connection.Live)
+                {
+                    break;
+                }
+
                 for (int i = 0; i < read; i++)
                 {
                     pending.Add(buffer[i]);
@@ -174,9 +188,12 @@ internal sealed class NamedPipeDiscordTransport : IDiscordIpcTransport
 
     public void Dispose() => Teardown();
 
-    // Idempotent, and safe to call from any thread. The reader never calls in today (it only fills the
-    // buffer), but a drop is noticed from either side of this class, so the join is guarded against a
-    // self-join rather than left to throw into a catch that hides it.
+    // Idempotent, and driven from the frame thread: every caller is a public member of this class, and the
+    // game loop is what calls those, so two teardowns do not race each other. Two things still cross a
+    // thread boundary, and both are handled rather than assumed away. The reader thread reads Live and the
+    // pending buffer, so Live is volatile and cleared BEFORE the gate is taken, and pending is only ever
+    // touched under it. And the reader thread could in principle be the caller, so the join is guarded
+    // against a self-join rather than left to throw into a catch that hides it.
     private void Teardown()
     {
         Connection? connection = current;

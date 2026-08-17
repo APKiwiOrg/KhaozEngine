@@ -1079,15 +1079,41 @@ leaked the stream and interleaved two connections' bytes in one buffer. `NamedPi
 before reconnecting and `DiscordIpcClient` drops the previous session's partial frames and identity, so a
 reconnect is a new session rather than a continuation of a dead one.
 
-**Tests.** Fourteen rows in `SocialPresenceRetryTests`, all on a clock the test moves by hand so the schedule is
+**Two defects the first cut of this shipped, both found by review before release.** The first: the held presence
+published AFTER `StateChanged` announced `Connected`, so the obvious game pattern (publish the real presence from
+the `Connected` handler) was overwritten by the stale held line the moment the handler returned, and because the
+hold also primed the dedupe cache, nothing republished for the rest of the session. A game that set "MENU" at
+startup and "IN-GAME" on connect showed MENU forever. The connect now assigns the state, publishes the hold, and
+notifies last, so the handler's line lands after the hold and stays. `SetState` splits into an assign that reports
+whether the transition was real and a separate notify, which is the whole of the mechanism. The second: the
+schedule read `UtcNow + retryDelay` unclamped, so `ConnectRetryDelay = TimeSpan.MaxValue` or a few million days
+threw `ArgumentOutOfRangeException` straight out of `Initialize()`, and `MaxConnectRetryDelay = TimeSpan.MaxValue`
+(the natural way to write "no cap") threw out of `Update()` on the second attempt once the doubling had run past
+the end of `DateTime`. That is exactly the "clamped, degrades rather than throws" contract the options carry, so
+both waits are now pulled into `[0, 1 day]` at construction, and the addition itself saturates at
+`DateTime.MaxValue` rather than throwing, because scheduling is on the `Update()` path and a presence controller
+does not get to end the frame.
+
+**Tests.** Twenty-two rows in `SocialPresenceRetryTests`, all on a clock the test moves by hand so the schedule is
 asserted rather than slept through: fails twice then connects on the third attempt with the presence set during
 the wait published once on arrival, fails forever and gives up after the bounded attempts then never touches the
 provider again until `Retry()` re-arms it, a throwing `TryInitialize` treated as a failed attempt that never
 escapes `Update()`, no attempt one tick before the interval is up plus the doubling and its cap, and Dispose
 mid-retry stopping the attempts, the pump and `Retry()` together. Against the one-shot behaviour twelve of the
-fourteen fail. The two that do not are the two invariants this change deliberately preserved: an opted-out
-controller costing nothing, and a mid-session failure staying terminal. Two more rows on the Discord side cover
-the reuse the controller now depends on.
+original fourteen fail. The two that do not are the two invariants this change deliberately preserved: an
+opted-out controller costing nothing, and a mid-session failure staying terminal. Two more rows on the Discord
+side cover the reuse the controller now depends on. The review round added eight: a presence published from the
+`Connected` handler beating the held line and staying published for 200 frames after, the three absurd delay
+settings above degrading instead of throwing, zero clock reads per frame in `Connected` and in `GivenUp` over a
+thousand frames each (the opt-out row already pinned `Disabled`), and both halves of what an auto-`Retry()`
+handler on `GivenUp` gets, since the docs now state it.
+
+**One re-entrancy note, now documented rather than discovered.** A `StateChanged` handler that calls `Retry()` on
+`GivenUp` runs its forced attempt inside the event, while the state is still `GivenUp`. With
+`MaxConnectAttempts = 1` that is one extra attempt and no second `GivenUp` event, because the repeat transition is
+deduped by the equality guard. With a larger budget the forced attempt re-arms the whole schedule and the
+controller lands back in `Connecting`, so the handler is a reconnect loop rather than one extra try. Both halves
+are in the controller's own doc comment and in the two places a game reads about the contract.
 
 ## 17.36.1
 

@@ -5574,28 +5574,41 @@ re-attempts from `Update()` on a doubling backoff: roughly 0s, 3s, 9s, 21s, 45s,
 default, then `GivenUp`. A Discord that appears in the first few minutes is caught, and a machine that has
 none stops being polled. Tune it on `SocialPresenceOptions` (`ConnectRetryDelay`, `MaxConnectRetryDelay`,
 `ConnectRetryBackoff`, `MaxConnectAttempts`), where `MaxConnectAttempts = 1` is the old fail-once shape.
+Both waits are clamped to `[0, 1 day]`, so `TimeSpan.MaxValue` reads as "no cap" and degrades to the day
+rather than overflowing the schedule and throwing out of `Update()`.
 
 Presence set while the controller is still connecting is held (latest wins, never a queue) and published
 the moment the connect lands, so the menu line a game sets at startup is not lost to the wait. A held
 `SetElapsedPresence` keeps its absolute start instant, so the timer reads correctly however long it took.
+The hold publishes **before** `StateChanged` reports `Connected`, which is what makes the obvious pattern
+(publish the real presence from the `Connected` handler) work: the handler's line lands last and stays.
 
 Two failures stay terminal on purpose. A provider that fails once **connected** ends the session and
 disposes the provider, because a dead transport is not a cold start. And a game with no backend gets the
 `NullSocialProvider`, which the controller reads as a deliberate opt-out and takes straight to `Disabled`
-without arming any timer, so opting out costs nothing per frame.
+without arming any timer, so opting out costs nothing per frame. Nor does a settled session: `Connected`,
+`GivenUp` and `Disabled` all read the clock zero times per `Update()`, since only the backoff needs one.
 
 ```csharp
 // A status line, and a manual reconnect. Both optional: a game that wants neither writes no new code.
+// statusLine is a LocalizedText and Strings.* are the game's own StringId constants, so the status
+// resolves through the catalog like every other player-facing label.
 social.StateChanged += s => statusLine = s switch
 {
-    SocialPresenceState.Connecting => "Connecting to Discord...",
-    SocialPresenceState.Connected => "Discord connected",
-    SocialPresenceState.GivenUp => "Discord not found",
-    _ => string.Empty,
+    SocialPresenceState.Connecting => Strings.SocialConnecting,
+    SocialPresenceState.Connected => Strings.SocialConnected,
+    SocialPresenceState.GivenUp => Strings.SocialUnavailable,
+    _ => default,                 // default(LocalizedText) resolves to the empty string
 };
 
 social.Retry();   // force an attempt now, and re-arm a controller that gave up
 ```
+
+A handler wired straight to `Retry()` on `GivenUp` re-enters the controller from inside the event, while the
+state is still `GivenUp`. With `MaxConnectAttempts = 1` that is one extra attempt and no second `GivenUp`
+event, because the repeat transition is deduped by the equality guard. With a larger budget the forced
+attempt re-arms the whole schedule and the controller lands back in `Connecting`, so the handler is a
+reconnect loop rather than one extra try.
 
 Writing an `ISocialProvider` of your own: `TryInitialize` has to be re-attemptable on the same instance,
 since the controller retries the provider it holds rather than building a new one. Drop whatever a

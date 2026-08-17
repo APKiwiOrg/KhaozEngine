@@ -28,7 +28,14 @@ social.Initialize();
 // ... social.SetPresence(...); social.Update() once per frame; social.Dispose() at shutdown.
 ```
 
-Get a Discord Application id from the Discord Developer Portal. If Discord is not running the provider
+Get a Discord Application id from the Discord Developer Portal. While Discord is not running the provider
 stays disconnected and every call is a silent no-op.
+
+Discord not being up at launch is the normal case, not an error: it takes a few seconds to start and
+players often launch the game first. `SocialPresenceController` re-attempts a failed connect on a bounded
+backoff from its per-frame `Update()`, so the provider connects itself once Discord appears without the
+game retrying anything. `TryInitialize` is therefore safe to call again on the same provider instance: a
+reconnect tears down whatever the previous attempt left open and starts a fresh session, dropping the old
+connection's partial frames and identity.
 
 Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).

@@ -53,6 +53,9 @@ test, and the read itself reports rather than silently stamping 0 if a future pa
 side, handing the water surface a NEW depth field of the same resolution now actually reaches the GPU: the
 upload was gated on a per-instance revision counter, so a replacement read as no change and the previous
 field's depths stayed bound, drawing a plausible shore for the wrong coastline with no error anywhere.
+And on the social seam, a player whose Discord was still starting when the game launched no longer loses rich
+presence for the entire session: the one-shot connect became a bounded retry driven from the frame pump, so the
+four games pick the fix up by upgrading, with no call-site change in any of them.
 
 ### Replacing the bathymetry field uploads it, instead of keeping the old depths (#645)
 
@@ -1021,6 +1024,70 @@ nothing. An unmanaged column keeps whatever bytes were last written there, becau
 `IsReferenceOrContainsReferences<T>` and compiles away for it, and bytes nothing reads and nothing points at cost
 only address space the arena was going to hold anyway. That reasoning is now a doc comment on `Column<T>` rather
 than only a decision.
+
+### A failed Discord connect is a cold start, not the end of the session (#158)
+
+`SocialPresenceController.Initialize()` attempted to connect exactly once. `TryInitialize` returning false, or
+throwing, set a permanent `disabled` flag, disposed the provider, and made every later `Initialize()` return at
+the guard. The realistic trigger is not an exotic one: Discord takes a few seconds to start, so a player who
+launches the game first loses rich presence for the whole play session and gets it back only by restarting. All
+four games call `Initialize()` once at startup and none of them worked around it, so the failure was live
+everywhere rather than theoretical.
+
+**A failed connect now schedules another one.** The controller retries from `Update()` on a doubling backoff:
+attempts land at roughly 0s, 3s, 9s, 21s, 45s, 1m33s, 2m33s and 3m33s, then it stops asking. A Discord that shows
+up anywhere in the first few minutes is caught, and a machine that has none is not polled for the rest of the
+session. Every number is a knob on the existing `SocialPresenceOptions` (`ConnectRetryDelay`,
+`MaxConnectRetryDelay`, `ConnectRetryBackoff`, `MaxConnectAttempts`), each clamped to something usable, and
+`MaxConnectAttempts = 1` reproduces the old one-shot behaviour exactly for a game that wants it. New public
+`Retry()` forces an attempt on the game's own signal (a Reconnect button, a "Discord just launched" notification)
+and re-arms a controller that had given up.
+
+**Consumer note: the games adopt this by upgrading.** A one-shot `Initialize()` at startup plus the per-frame
+`Update()` every game already calls IS the self-healing shape now. Hardpoint, Nullwake, SpaceGame and Ruinborne
+need no code change at all, and none of their existing presence tests change behaviour. `Retry()` and the new
+state are there for a game that wants a status line or a manual reconnect, not as a migration step.
+
+**What is retried is deliberately narrow.** A provider that fails while CONNECTED is still terminal for the
+session and still disposes the provider, because a dead transport is a different animal from a client that has
+not started yet, and reconnecting a mid-session drop is not what this change is. A `TryInitialize` that THROWS is
+counted as a failed attempt rather than a session kill, which matters because a backend whose native or transport
+layer is missing can throw where the contract says return false, and `Update()` must never carry that into the
+game loop. A game with no backend gets the `NullSocialProvider`, which the controller now recognises as an opt-out
+and takes straight to `Disabled` without arming anything: an opted-out game reads the clock zero times per frame,
+which a test pins over a hundred frames.
+
+**Presence set before the connect lands is kept.** The latest one, never a queue, because what the game wants
+shown is whatever it asked for last. It publishes on the first successful connect and primes the dedupe cache, so
+the menu line a game sets at startup survives the wait instead of vanishing into a no-op. A held
+`SetElapsedPresence` stores the absolute start instant rather than the elapsed span, so the timer still reads
+correctly however long the connect took, and a `ClearPresence` during the wait cancels what was held.
+
+**New public surface**, all additive: `SocialPresenceState` (`Uninitialized`, `Connecting`, `Connected`,
+`GivenUp`, `Disabled`, `Disposed`), the read-only `SocialPresenceController.State`, the `StateChanged` event
+(contained the same way the join callbacks are, so a throwing game handler cannot kill the session), `Retry()`,
+the four options above, and an optional `Func<DateTimeOffset>` clock on the constructor, matching the injectable
+clock every other engine type with a schedule already takes. `SocialPresenceOptions` moved to its own file on the
+way past.
+
+**Retrying on the instance, not through a factory.** `ISocialProvider.TryInitialize` now states outright that it
+must be re-attemptable, because the controller keeps the provider it was given rather than rebuilding one. The
+Discord backend already was for the case that matters, which is the whole point of checking: a transport connect
+that finds no socket writes no state at all, so the next attempt starts clean. The case it was NOT safe for was a
+connect that died mid-handshake, which left a live stream and its reader thread behind, so a re-attempt would have
+leaked the stream and interleaved two connections' bytes in one buffer. `NamedPipeDiscordTransport` tears down
+before reconnecting and `DiscordIpcClient` drops the previous session's partial frames and identity, so a
+reconnect is a new session rather than a continuation of a dead one.
+
+**Tests.** Fourteen rows in `SocialPresenceRetryTests`, all on a clock the test moves by hand so the schedule is
+asserted rather than slept through: fails twice then connects on the third attempt with the presence set during
+the wait published once on arrival, fails forever and gives up after the bounded attempts then never touches the
+provider again until `Retry()` re-arms it, a throwing `TryInitialize` treated as a failed attempt that never
+escapes `Update()`, no attempt one tick before the interval is up plus the doubling and its cap, and Dispose
+mid-retry stopping the attempts, the pump and `Retry()` together. Against the one-shot behaviour twelve of the
+fourteen fail. The two that do not are the two invariants this change deliberately preserved: an opted-out
+controller costing nothing, and a mid-session failure staying terminal. Two more rows on the Discord side cover
+the reuse the controller now depends on.
 
 ## 17.36.1
 

@@ -5555,16 +5555,51 @@ social.SetElapsedPresence(new RichPresence { Details = "In Game", State = "Boss 
 // One-click "Join Game" from a friend's profile (needs a JoinSecret on the presence):
 social.JoinRequested += secret => myNetcode.JoinFromSecret(secret);
 
-// Pump once per frame; dispose at shutdown.
+// Pump once per frame, and dispose at shutdown. Update() also drives the connect retry.
 social.Update();
 ```
 
 A game keeps only its Discord Application id, its presence copy, and its mode->`RichPresence` mapping.
-Everything else (connection, throttling, error handling, self-disable on failure) is engine-owned. The
-Discord backend talks to the local Discord client over its IPC socket (Windows named pipe, unix domain
-socket) with zero native libraries; if Discord is not running the provider stays disconnected and every
-call is a silent no-op. The native Discord Social SDK (friends/lobbies/voice) is out of scope and would
-be a separate opt-in backend behind the same `ISocialProvider`.
+Everything else (connection, retry, throttling, error handling, self-disable on failure) is engine-owned.
+The Discord backend talks to the local Discord client over its IPC socket (Windows named pipe, unix domain
+socket) with zero native libraries, and while Discord is not running the provider stays disconnected and
+every call is a silent no-op. The native Discord Social SDK (friends/lobbies/voice) is out of scope and
+would be a separate opt-in backend behind the same `ISocialProvider`.
+
+### Connecting is retried, so launching before Discord does still gets presence
+
+`Initialize()` is one call for the game, not one attempt. Discord takes a few seconds to start and a player
+can easily launch the game first, so a connect that fails puts the controller in `Connecting` and it
+re-attempts from `Update()` on a doubling backoff: roughly 0s, 3s, 9s, 21s, 45s, 1m33s, 2m33s and 3m33s by
+default, then `GivenUp`. A Discord that appears in the first few minutes is caught, and a machine that has
+none stops being polled. Tune it on `SocialPresenceOptions` (`ConnectRetryDelay`, `MaxConnectRetryDelay`,
+`ConnectRetryBackoff`, `MaxConnectAttempts`), where `MaxConnectAttempts = 1` is the old fail-once shape.
+
+Presence set while the controller is still connecting is held (latest wins, never a queue) and published
+the moment the connect lands, so the menu line a game sets at startup is not lost to the wait. A held
+`SetElapsedPresence` keeps its absolute start instant, so the timer reads correctly however long it took.
+
+Two failures stay terminal on purpose. A provider that fails once **connected** ends the session and
+disposes the provider, because a dead transport is not a cold start. And a game with no backend gets the
+`NullSocialProvider`, which the controller reads as a deliberate opt-out and takes straight to `Disabled`
+without arming any timer, so opting out costs nothing per frame.
+
+```csharp
+// A status line, and a manual reconnect. Both optional: a game that wants neither writes no new code.
+social.StateChanged += s => statusLine = s switch
+{
+    SocialPresenceState.Connecting => "Connecting to Discord...",
+    SocialPresenceState.Connected => "Discord connected",
+    SocialPresenceState.GivenUp => "Discord not found",
+    _ => string.Empty,
+};
+
+social.Retry();   // force an attempt now, and re-arm a controller that gave up
+```
+
+Writing an `ISocialProvider` of your own: `TryInitialize` has to be re-attemptable on the same instance,
+since the controller retries the provider it holds rather than building a new one. Drop whatever a
+half-finished attempt left behind rather than carrying it into the next one.
 
 ---
 

@@ -15,6 +15,7 @@ namespace KhaozEngine.Tests.Terrain
     /// rather than <c>DrawProps</c>, because the queue path is the same emit loop with the same sink shape and needs
     /// no GPU device. A warm-up pass first, so the instance buffer has reached its steady-state capacity and the JIT
     /// has resolved the generic instantiation: what is left is the per-call cost, and it must be nothing.</para></summary>
+    [Collection("AllocSensitive")]   // a zero-allocation reading measures its neighbours too (#264)
     public sealed class PropRendererAllocationTests
     {
         static Dictionary<string, MeshHandle> Meshes() => new() { ["pine_a"] = new MeshHandle(1), ["rock_a"] = new MeshHandle(2) };

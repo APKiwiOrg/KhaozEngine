@@ -17,6 +17,7 @@ namespace KhaozEngine.Tests.Render3D
     /// list is empty (lambda construction is eager), so an empty run list is enough to prove the fix without
     /// needing a full render or loaded meshes. Needs a live Scene3D (GPU-backed construction), so this is a
     /// GpuFact, but no frame is actually rendered.</para></summary>
+    [Collection("AllocSensitive")]   // a zero-allocation reading measures its neighbours too (#264)
     public sealed class Scene3DAlphaCutoffAllocationTests
     {
         [GpuFact]

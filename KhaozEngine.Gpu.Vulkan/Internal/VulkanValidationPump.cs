@@ -84,7 +84,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// message this pump exists to surface was then dropped by a process that HAD configured a sink,
         /// invisibly, because a dropped log line and a clean run look identical.
         /// <para>
-        /// 17.36.2 FIXED THAT AT THE FACADE (#616), so a static field would now be correct too: <c>Log.For</c>
+        /// 17.37.0 FIXED THAT AT THE FACADE (#616), so a static field would now be correct too: <c>Log.For</c>
         /// hands back a logger bound to the category and not to a manager, and it finds the configured manager
         /// on every call. This stays per-pump anyway. It costs one <c>Log.For</c> call next to creating a Vulkan
         /// instance, and the ctor parameter above (the reason the fallback is resolved at all) is per-pump by

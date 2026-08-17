@@ -8435,7 +8435,7 @@ Rules for consumers:
   `Log.For<T>()` / `Log.Get(...)` is bound to its category and to the facade, not to whichever manager was
   configured when you asked for it, so it reads the current one on every call. Cache it in a
   `static readonly ILogger` field if you like: touching the type before `Log.Configure` runs, or reconfiguring
-  afterwards to swap the sink set, leaves that field writing to the live manager either way (17.36.2, #616). The one
+  afterwards to swap the sink set, leaves that field writing to the live manager either way (17.37.0, #616). The one
   logger this does NOT apply to is `LogManager.GetLogger(...)`, which is bound to the manager you took it from,
   on purpose, so an injected manager and its sink keep meaning what they say.
 - **`CrashHandler.Install()` follows the facade too, so install it wherever you like** (17.37.0, #633). It arms

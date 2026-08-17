@@ -169,7 +169,10 @@ fail-fast outside a test host and a failed test under one. Loud where loud is fr
 server needs it quiet. The guard covers a MISSING basis and not a stale one, which is #653's case. `TeleportEpochBasisTests`
 pins the invariants above by driving each window (the join seam on both heads, teleports across cell handoffs, an
 entity forced into the handoff freeze, a cell restore into the very cell a player stands in, an eviction pass
-around a joined player) and pins that a forced miss is loud. The #642 placements were checked on the way past and
+around a joined player) and pins that a forced miss is loud in every build configuration: the guard counts its
+misses (`TeleportEpochGuard.MissCount`, internal), which is the observable that holds where the assert does not,
+because CI tests Release and the first shape of that row asserted only on the Debug-only throw and went red on
+the first push. The #642 placements were checked on the way past and
 both stamp forward on the entity the join built: the async restore and the quarantine reset each land at epoch 1.
 
 ### A persistence-backed rejoin is built where the player left, not on the spawn (#642)

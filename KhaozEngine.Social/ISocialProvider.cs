@@ -9,7 +9,20 @@ namespace KhaozEngine.Social;
 /// </summary>
 public interface ISocialProvider : IDisposable
 {
-    /// <summary>True once connected to the platform client and ready to publish presence.</summary>
+    /// <summary>
+    /// True once connected to the platform client and ready to publish presence.
+    /// <para>
+    /// This is also how a provider REPORTS A DROP, and the only way that gets a session back.
+    /// <see cref="SocialPresenceController"/> polls it once per frame while connected and reads a false as
+    /// "the transport died": it re-enters its connect backoff, keeps the provider, and calls
+    /// <see cref="TryInitialize"/> again. So a provider whose connection dies mid-session must go false here
+    /// and leave itself in a state a later <see cref="TryInitialize"/> can connect from, exactly as it must
+    /// after a failed connect. Throwing instead is the OTHER answer and means something different: a throw
+    /// is terminal for the session and disposes the provider, because a provider that threw is in a state
+    /// the seam cannot promise anything about. A backend that can tell a plain disconnect from a genuine
+    /// failure should route the disconnect here rather than throw.
+    /// </para>
+    /// </summary>
     bool IsConnected { get; }
 
     /// <summary>

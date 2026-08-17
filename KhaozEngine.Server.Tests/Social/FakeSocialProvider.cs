@@ -24,6 +24,19 @@ internal sealed class FakeSocialProvider : ISocialProvider
     public bool ThrowOnSetPresence { get; set; }
     public bool ThrowOnUpdate { get; set; }
 
+    /// <summary>
+    /// Throws out of <see cref="IsConnected"/>. The seam says a provider reports a drop by returning false
+    /// here, but the controller reads it every frame, so a backend that throws instead must not reach the
+    /// game loop either.
+    /// </summary>
+    public bool ThrowOnIsConnected { get; set; }
+
+    /// <summary>
+    /// How often <see cref="IsConnected"/> was read, which is the controller's per-frame drop probe: a live
+    /// session is supposed to pay this one bool and nothing else.
+    /// </summary>
+    public int IsConnectedReads { get; private set; }
+
     /// <summary>Throws out of <see cref="TryInitialize"/>, as a backend with a missing native layer can.</summary>
     public bool ThrowOnInitialize { get; set; }
 
@@ -33,7 +46,23 @@ internal sealed class FakeSocialProvider : ISocialProvider
     /// </summary>
     public int FailInitializeCount { get; set; }
 
-    public bool IsConnected => ConnectedResult;
+    /// <summary>
+    /// Set <see cref="ConnectedResult"/> to false to play the player quitting Discord mid-session: the
+    /// transport is gone, and the provider says so here rather than throwing.
+    /// </summary>
+    public bool IsConnected
+    {
+        get
+        {
+            IsConnectedReads++;
+            if (ThrowOnIsConnected)
+            {
+                throw new InvalidOperationException("boom");
+            }
+
+            return ConnectedResult;
+        }
+    }
 
     public bool TryInitialize(string applicationId)
     {

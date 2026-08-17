@@ -6,11 +6,13 @@ namespace KhaozEngine.Social;
 /// <summary>
 /// Game-facing presence orchestrator over any <see cref="ISocialProvider"/>. Handles lazy init, dedupe
 /// (only re-send when content changed), throttled republish, an elapsed-timer helper, and the split
-/// between a platform client that is not up YET and one that has died. A failed connect is retried from
-/// <see cref="Update"/> on a bounded backoff (and on demand via <see cref="Retry"/>), so a game that
-/// launched before Discord did picks presence up on its own. A failure of an already-connected provider
-/// stays terminal for the session and disposes the provider, so a platform failure never reaches the
-/// game loop. Provider-neutral, so it drives Discord today and any future backend unchanged.
+/// between a platform client that is not up YET, one that has gone away, and one that has failed. A failed
+/// connect is retried from <see cref="Update"/> on a bounded backoff (and on demand via <see cref="Retry"/>),
+/// so a game that launched before Discord did picks presence up on its own. A CONNECTION that later drops
+/// (the player quit Discord mid-session) re-enters that same backoff and republishes the presence that was
+/// live at the drop. A provider that THROWS is the one terminal case: it ends the session and disposes the
+/// provider, so a platform failure never reaches the game loop. Provider-neutral, so it drives Discord today
+/// and any future backend unchanged.
 /// </summary>
 /// <remarks>
 /// Presence held during the wait is published BEFORE <see cref="StateChanged"/> announces
@@ -44,6 +46,7 @@ public sealed class SocialPresenceController : IDisposable
     private readonly int maxConnectAttempts;
 
     private SocialPresenceState state = SocialPresenceState.Uninitialized;
+    private bool hasConnected;
     private int connectAttempts;
     private TimeSpan retryDelay;
     private DateTime nextAttemptUtc;
@@ -123,8 +126,9 @@ public sealed class SocialPresenceController : IDisposable
     /// <summary>
     /// Force a connect attempt now, ignoring any wait still owed, and re-arm the schedule if the
     /// controller had given up. For a game that knows something the controller cannot ("the player just
-    /// launched Discord", "the user pressed Reconnect"). A no-op once the session is connected, disabled
-    /// by a mid-session failure, or disposed.
+    /// launched Discord", "the user pressed Reconnect"). Works the same whether the controller has never
+    /// connected or is working its way back from a drop. A no-op once the session is connected, disabled
+    /// by a provider that threw, or disposed.
     /// </summary>
     public void Retry()
     {
@@ -246,10 +250,13 @@ public sealed class SocialPresenceController : IDisposable
         }
     }
 
-    /// <summary>Pump the provider, and drive the connect-retry schedule. Call once per frame.</summary>
+    /// <summary>
+    /// Pump the provider, drive the connect-retry schedule, and notice a connection that has dropped.
+    /// Call once per frame.
+    /// </summary>
     public void Update()
     {
-        if (state == SocialPresenceState.Connecting && UtcNow >= nextAttemptUtc)
+        if (IsAwaitingConnect && UtcNow >= nextAttemptUtc)
         {
             AttemptConnect();
         }
@@ -267,6 +274,14 @@ public sealed class SocialPresenceController : IDisposable
         {
             log.Debug($"social: update failed ({ex.GetType().Name}); disabling.");
             DisableSession();
+            return;
+        }
+
+        // The pump above runs game callbacks (a join event), and a game handler is allowed to dispose the
+        // controller from inside one, so the session may be gone by the time it returns.
+        if (state == SocialPresenceState.Connected)
+        {
+            ProbeConnection();
         }
     }
 
@@ -308,6 +323,18 @@ public sealed class SocialPresenceController : IDisposable
 
     private DateTime UtcNow => clock().UtcDateTime;
 
+    // Connecting (never reached the platform yet) and Reconnecting (had it, lost it) run one schedule, so
+    // everything that drives the backoff asks this rather than naming one of them and quietly excluding
+    // the other.
+    private bool IsAwaitingConnect
+        => state is SocialPresenceState.Connecting or SocialPresenceState.Reconnecting;
+
+    // Which of the two a failed attempt lands in. A session that has connected ONCE is reconnecting for the
+    // rest of its life, however many times it drops and however many attempts a round takes: what separates
+    // the two is whether presence was ever live, not where the schedule is.
+    private SocialPresenceState WaitingState
+        => hasConnected ? SocialPresenceState.Reconnecting : SocialPresenceState.Connecting;
+
     private bool EnsureReady()
     {
         if (state == SocialPresenceState.Uninitialized)
@@ -341,6 +368,7 @@ public sealed class SocialPresenceController : IDisposable
             // publishes its own presence on Connected (the pattern the docs teach) has to land AFTER the
             // line held during the wait, or the stale hold overwrites it and, because the hold also primes
             // the dedupe cache, nothing republishes for the rest of the session.
+            hasConnected = true;
             bool transitioned = AssignState(SocialPresenceState.Connected);
             PublishHeldPresence();
 
@@ -363,7 +391,60 @@ public sealed class SocialPresenceController : IDisposable
 
         nextAttemptUtc = Schedule(UtcNow, retryDelay);
         retryDelay = GrowDelay(retryDelay);
-        SetState(SocialPresenceState.Connecting);
+        SetState(WaitingState);
+    }
+
+    // The drop check, and the whole per-frame cost of it: one bool read on the seam. The clock is read only
+    // once the answer is NO, which is what keeps a live session's Update() off the clock entirely. It runs
+    // AFTER the pump because pumping is where a backend notices its own transport died, so a drop is seen on
+    // the frame it happened rather than the one after.
+    private void ProbeConnection()
+    {
+        bool live;
+        try
+        {
+            live = provider.IsConnected;
+        }
+        catch (Exception ex)
+        {
+            log.Debug($"social: connection probe failed ({ex.GetType().Name}); disabling.");
+            DisableSession();
+            return;
+        }
+
+        if (!live)
+        {
+            BeginReconnect();
+        }
+    }
+
+    // A connection that DROPPED is recoverable, unlike one that threw: the provider reported it itself by
+    // going !IsConnected, which the seam defines as leaving it ready for another TryInitialize. So the
+    // session re-enters the same backoff a cold start uses, with a fresh budget and a fresh wait, and the
+    // provider is deliberately NOT disposed - disposing it is exactly what made the terminal path impossible
+    // to come back from.
+    private void BeginReconnect()
+    {
+        log.Debug("social: the provider reports a dropped connection; reconnecting.");
+
+        // Come back showing what was on screen when the platform went away, unless the game moved on during
+        // the outage: a SetPresence while disconnected holds the newer line, and latest wins as it always
+        // does. A ClearPresence during the outage drops it, so nothing is republished at all.
+        if (!hasPendingPresence && hasLastPresence)
+        {
+            pendingPresence = lastPresence;
+            hasPendingPresence = true;
+        }
+
+        connectAttempts = 0;
+        retryDelay = initialRetryDelay;
+
+        // The first attempt waits out the initial delay rather than going on the spot. The platform client
+        // is mid-shutdown at the instant its socket dies, so an immediate attempt spends a budget on a
+        // failure that is as good as certain.
+        nextAttemptUtc = Schedule(UtcNow, retryDelay);
+        retryDelay = GrowDelay(retryDelay);
+        SetState(SocialPresenceState.Reconnecting);
     }
 
     private TimeSpan GrowDelay(TimeSpan current)
@@ -458,8 +539,9 @@ public sealed class SocialPresenceController : IDisposable
         }
     }
 
-    // Terminal for the session: a provider that failed while connected has a dead transport, which is a
-    // different case from a platform client that has not started yet, and is not retried.
+    // Terminal for the session, and the only path that is. A provider that THREW is in a state the seam
+    // cannot promise anything about, which is a different case both from a platform client that has not
+    // started yet and from one that went away cleanly, and is not retried.
     private void DisableSession()
     {
         DropHeldPresence();

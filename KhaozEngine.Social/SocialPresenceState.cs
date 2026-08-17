@@ -27,12 +27,27 @@ public enum SocialPresenceState
     GivenUp,
 
     /// <summary>
-    /// Terminal for the session. Either the provider failed mid-use (a transport death, which is not a
-    /// cold-start race and is not retried), or there is no backend at all and social was never going to
-    /// connect. The provider has been disposed.
+    /// Terminal for the session. Either a provider call THREW mid-use (a provider that throws is in an
+    /// unknown state, so the seam cannot promise it can be connected again), or there is no backend at all
+    /// and social was never going to connect. The provider has been disposed. A connection that merely
+    /// DROPPED is not this: that is <see cref="Reconnecting"/>.
     /// </summary>
     Disabled,
 
     /// <summary>The controller has been disposed. Every call is a no-op.</summary>
     Disposed,
+
+    /// <summary>
+    /// A live connection dropped (the provider went <see cref="ISocialProvider.IsConnected"/> false, the way
+    /// a player quitting Discord mid-session leaves it) and the controller is working its way back on the
+    /// same backoff a cold start uses. Presence set while in this state is held, and the presence that was
+    /// live at the drop is republished when the reconnect lands. It differs from <see cref="Connecting"/>
+    /// only in what a game can SAY about it ("lost Discord, reconnecting" rather than "connecting"):
+    /// everything inside the controller treats the two identically.
+    /// <para>
+    /// It sits at the end rather than beside <see cref="Connecting"/> on purpose. Appending is what keeps
+    /// every existing member's numeric value where it was, which an inserted member would have moved.
+    /// </para>
+    /// </summary>
+    Reconnecting,
 }

@@ -596,22 +596,4 @@ public class SocialPresenceRetryTests
         Assert.Single(fake.InitializedWith);
         Assert.Equal(SocialPresenceState.Disabled, controller.State);
     }
-
-    /// <summary>A clock that only moves when the test says so, and counts how often it was read.</summary>
-    private sealed class StoppedClock
-    {
-        private DateTimeOffset now = new(2026, 8, 17, 9, 0, 0, TimeSpan.Zero);
-
-        public int Reads { get; private set; }
-
-        public DateTime UtcNow => now.UtcDateTime;
-
-        public Func<DateTimeOffset> Now => () =>
-        {
-            Reads++;
-            return now;
-        };
-
-        public void Advance(TimeSpan by) => now += by;
-    }
 }

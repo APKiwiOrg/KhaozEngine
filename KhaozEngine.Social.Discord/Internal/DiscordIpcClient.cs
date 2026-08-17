@@ -7,8 +7,10 @@ namespace KhaozEngine.Social.Discord.Internal;
 /// <summary>
 /// Speaks the Discord IPC protocol over an <see cref="IDiscordIpcTransport"/>: handshake, SET_ACTIVITY,
 /// SUBSCRIBE to join events, and a non-blocking dispatch pump. Every socket operation is wrapped so a
-/// failure flips the client to disconnected rather than throwing. Pure protocol logic; the real socket
-/// lives in <see cref="NamedPipeDiscordTransport"/>.
+/// failure flips the client to disconnected rather than throwing, and <see cref="Pump"/> also notices the
+/// quiet death (a Discord that quit without a Close frame, which throws nothing anywhere) by asking the
+/// transport whether it is still connected. Pure protocol logic; the real socket lives in
+/// <see cref="NamedPipeDiscordTransport"/>.
 /// </summary>
 internal sealed class DiscordIpcClient : IDisposable
 {
@@ -36,6 +38,7 @@ internal sealed class DiscordIpcClient : IDisposable
         // connection's bytes would desync every frame after it.
         readBuffer.Clear();
         LocalUser = null;
+        IsConnected = false;
 
         try
         {
@@ -105,6 +108,19 @@ internal sealed class DiscordIpcClient : IDisposable
             ProcessFrames();
         }
         catch (Exception)
+        {
+            Disconnect();
+            return;
+        }
+
+        // A Discord that QUITS rarely says goodbye first: the socket just closes, the reader thread hits
+        // end-of-stream, and nothing here reads or writes anything that would throw. So the transport going
+        // !IsConnected is the only evidence of it, and without this the client stayed "connected" to a
+        // client that was gone, silently dropping every SetActivity for the rest of the session (#655).
+        // Read the frames Discord did manage to send BEFORE noticing, hence after the drain rather than
+        // before it. The IsConnected half is what keeps a Close frame in that same drain from tearing the
+        // transport down twice.
+        if (IsConnected && !transport.IsConnected)
         {
             Disconnect();
         }
@@ -186,10 +202,23 @@ internal sealed class DiscordIpcClient : IDisposable
 
     private string NextNonce() => (++nonce).ToString(System.Globalization.CultureInfo.InvariantCulture);
 
+    // Ends the session and hands the transport back CLEAN, so the reconnect the controller is about to
+    // schedule starts from nothing. Leaving the socket and its reader thread live through the whole backoff
+    // was harmless while a drop ended the session for good, and is not now that one is routinely followed by
+    // another connect on the same instance. Only ever called from the frame thread (every caller is a public
+    // member of this class), so the transport's reader-join is never a self-join here.
     private void Disconnect()
     {
         IsConnected = false;
         LocalUser = null;
+        try
+        {
+            transport.Disconnect();
+        }
+        catch (Exception)
+        {
+            // Suppress: this IS the failure path, and the next TryConnect tears down again anyway.
+        }
     }
 
     public void Dispose()

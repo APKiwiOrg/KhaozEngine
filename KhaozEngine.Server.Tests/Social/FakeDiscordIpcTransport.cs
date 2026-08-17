@@ -13,14 +13,34 @@ internal sealed class FakeDiscordIpcTransport : IDiscordIpcTransport
     public bool ConnectResult { get; set; } = true;
     public bool IsConnected { get; private set; }
     public int DisposeCalls { get; private set; }
+    public int DisconnectCalls { get; private set; }
     public bool ThrowOnWrite { get; set; }
+
+    /// <summary>Throws out of <see cref="Read"/>, the way a socket that broke mid-session does.</summary>
+    public bool ThrowOnRead { get; set; }
 
     public IReadOnlyList<byte> Written => written;
 
     public bool TryConnect()
     {
+        // A fresh connection: the previous session's queued frames are not this one's.
+        incoming.Clear();
         IsConnected = ConnectResult;
         return ConnectResult;
+    }
+
+    /// <summary>
+    /// The player quits Discord. The socket closes with no Close frame and no exception anywhere: the real
+    /// transport's reader thread hits end-of-stream and goes !IsConnected, and that is the whole of the
+    /// evidence the client gets.
+    /// </summary>
+    public void SimulateQuietDeath() => IsConnected = false;
+
+    public void Disconnect()
+    {
+        DisconnectCalls++;
+        IsConnected = false;
+        incoming.Clear();
     }
 
     /// <summary>Queue a full frame the next Read(s) will surface.</summary>
@@ -39,6 +59,11 @@ internal sealed class FakeDiscordIpcTransport : IDiscordIpcTransport
 
     public int Read(Span<byte> buffer)
     {
+        if (ThrowOnRead)
+        {
+            throw new System.IO.IOException("broken pipe");
+        }
+
         if (incoming.Count == 0)
         {
             return 0;

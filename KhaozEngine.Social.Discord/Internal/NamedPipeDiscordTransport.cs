@@ -24,11 +24,9 @@ internal sealed class NamedPipeDiscordTransport : IDiscordIpcTransport
 
     private readonly object gate = new();
     private readonly List<byte> pending = new();
-    private Stream? stream;
-    private Thread? reader;
-    private volatile bool running;
+    private Connection? current;
 
-    public bool IsConnected => running && stream is not null;
+    public bool IsConnected => current is { Live: true };
 
     public bool TryConnect()
     {
@@ -42,10 +40,14 @@ internal sealed class NamedPipeDiscordTransport : IDiscordIpcTransport
             Stream? s = OperatingSystem.IsWindows() ? TryConnectWindows(i) : TryConnectUnix(i);
             if (s is not null)
             {
-                stream = s;
-                running = true;
-                reader = new Thread(ReadLoop) { IsBackground = true, Name = "discord-ipc-reader" };
-                reader.Start();
+                var connection = new Connection(s);
+                connection.Reader = new Thread(() => ReadLoop(connection))
+                {
+                    IsBackground = true,
+                    Name = "discord-ipc-reader",
+                };
+                current = connection;
+                connection.Reader.Start();
                 return true;
             }
         }
@@ -91,21 +93,16 @@ internal sealed class NamedPipeDiscordTransport : IDiscordIpcTransport
         return null;
     }
 
-    private void ReadLoop()
+    private void ReadLoop(Connection connection)
     {
         byte[] buffer = new byte[4096];
-        Stream? s = stream;
-        if (s is null)
-        {
-            return;
-        }
 
-        while (running)
+        while (connection.Live)
         {
             int read;
             try
             {
-                read = s.Read(buffer, 0, buffer.Length);
+                read = connection.Stream.Read(buffer, 0, buffer.Length);
             }
             catch (Exception)
             {
@@ -114,7 +111,7 @@ internal sealed class NamedPipeDiscordTransport : IDiscordIpcTransport
 
             if (read <= 0)
             {
-                break; // closed
+                break; // closed: Discord went away, and this is the only place that hears about it
             }
 
             bool overflow;
@@ -134,19 +131,23 @@ internal sealed class NamedPipeDiscordTransport : IDiscordIpcTransport
             }
         }
 
-        running = false;
+        // Retire THIS connection, and only it. A reader still unwinding after a reconnect must not be able
+        // to mark the connection that replaced it dead, which a flag shared across connections lets it do.
+        // Reconnecting mid-session is routine now (#655), so several connections per process is the normal
+        // case rather than the exotic one.
+        connection.Live = false;
     }
 
     public void Write(ReadOnlySpan<byte> bytes)
     {
-        Stream? s = stream;
-        if (s is null)
+        Connection? connection = current;
+        if (connection is null)
         {
             return;
         }
 
-        s.Write(bytes);
-        s.Flush();
+        connection.Stream.Write(bytes);
+        connection.Stream.Flush();
     }
 
     public int Read(Span<byte> buffer)
@@ -169,18 +170,46 @@ internal sealed class NamedPipeDiscordTransport : IDiscordIpcTransport
         }
     }
 
+    public void Disconnect() => Teardown();
+
     public void Dispose() => Teardown();
 
+    // Idempotent, and safe to call from any thread. The reader never calls in today (it only fills the
+    // buffer), but a drop is noticed from either side of this class, so the join is guarded against a
+    // self-join rather than left to throw into a catch that hides it.
     private void Teardown()
     {
-        running = false;
-        try { stream?.Dispose(); } catch { /* ignore */ }
-        try { reader?.Join(200); } catch { /* ignore */ }
-        stream = null;
-        reader = null;
+        Connection? connection = current;
+        current = null;
+        if (connection is null)
+        {
+            return;
+        }
+
+        connection.Live = false;
+        try { connection.Stream.Dispose(); } catch { /* ignore */ }
+
+        Thread? reader = connection.Reader;
+        if (reader is not null && reader != Thread.CurrentThread)
+        {
+            try { reader.Join(200); } catch { /* ignore */ }
+        }
+
         lock (gate)
         {
             pending.Clear();
         }
+    }
+
+    // One connection and the thread draining it, kept together so a reader only ever touches its own.
+    private sealed class Connection
+    {
+        public Connection(Stream stream) => Stream = stream;
+
+        public Stream Stream { get; }
+
+        public Thread? Reader { get; set; }
+
+        public volatile bool Live = true;
     }
 }

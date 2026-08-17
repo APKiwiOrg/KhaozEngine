@@ -104,6 +104,81 @@ public class DiscordIpcClientTests
     }
 
     [Fact]
+    public void Pump_ASocketThatDiedQuietly_Disconnects_AndHandsTheTransportBackClean()
+    {
+        // #655: a player quitting Discord is the common shape of a drop, and the quiet one. No Close frame,
+        // no throw from any read or write, just a socket that is not there. Nothing but the transport's own
+        // IsConnected reports it, and before this the client sat "connected" to it for the whole session.
+        var transport = new FakeDiscordIpcTransport();
+        using DiscordIpcClient client = Connected(transport);
+        transport.EnqueueFrame(DiscordIpcOpcode.Frame,
+            """{"cmd":"DISPATCH","evt":"READY","data":{"user":{"id":"5","username":"kiwi","global_name":"Kiwi"}}}""");
+        client.Pump();
+        Assert.NotNull(client.LocalUser);
+
+        transport.SimulateQuietDeath();
+        client.Pump();
+
+        Assert.False(client.IsConnected);
+        Assert.Null(client.LocalUser);
+
+        // And the socket plus its reader thread are released now, not left live for the whole reconnect
+        // backoff the controller is about to sit through.
+        Assert.Equal(1, transport.DisconnectCalls);
+    }
+
+    [Fact]
+    public void Pump_CloseFrame_TearsTheTransportDown_Once()
+    {
+        var transport = new FakeDiscordIpcTransport();
+        using DiscordIpcClient client = Connected(transport);
+        transport.EnqueueFrame(DiscordIpcOpcode.Close, "{}");
+
+        client.Pump();
+
+        Assert.False(client.IsConnected);
+        Assert.Equal(1, transport.DisconnectCalls);
+    }
+
+    [Fact]
+    public void Pump_AReadThatThrows_TearsTheTransportDown()
+    {
+        var transport = new FakeDiscordIpcTransport { ThrowOnRead = true };
+        using DiscordIpcClient client = Connected(transport);
+
+        client.Pump();
+
+        Assert.False(client.IsConnected);
+        Assert.Equal(1, transport.DisconnectCalls);
+    }
+
+    [Fact]
+    public void AfterADrop_ReconnectingOnTheSameClient_IsAFreshSession()
+    {
+        var transport = new FakeDiscordIpcTransport();
+        using DiscordIpcClient client = Connected(transport);
+        transport.SimulateQuietDeath();
+        client.Pump();
+        Assert.False(client.IsConnected);
+
+        // Discord is still gone when the controller's first reconnect attempt lands, and a failed attempt
+        // leaves the client down rather than half-up.
+        transport.ConnectResult = false;
+        Assert.False(client.TryConnect("app-1"));
+        Assert.False(client.IsConnected);
+
+        // Then it is back, on the same client and the same transport instance.
+        transport.ConnectResult = true;
+        Assert.True(client.TryConnect("app-1"));
+        Assert.True(client.IsConnected);
+
+        transport.EnqueueFrame(DiscordIpcOpcode.Frame,
+            """{"cmd":"DISPATCH","evt":"READY","data":{"user":{"id":"9","username":"back","global_name":null}}}""");
+        client.Pump();
+        Assert.Equal("back", client.LocalUser!.Value.Username);
+    }
+
+    [Fact]
     public void ClearActivity_WritesNullActivityFrame()
     {
         var transport = new FakeDiscordIpcTransport();

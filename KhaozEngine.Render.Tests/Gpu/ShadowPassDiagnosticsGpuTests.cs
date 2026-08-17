@@ -47,6 +47,7 @@ namespace KhaozEngine.Tests.Gpu
             if (reason != nameof(d.AnySkinnedCaster)) Assert.False(d.AnySkinnedCaster);
             if (reason != nameof(d.LightMatrixChanged)) Assert.False(d.LightMatrixChanged);
             if (reason != nameof(d.CasterDataChanged)) Assert.False(d.CasterDataChanged);
+            if (reason != nameof(d.SkinnedCastersCleared)) Assert.False(d.SkinnedCastersCleared);
         }
 
         [GpuFact]

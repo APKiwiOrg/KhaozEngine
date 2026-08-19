@@ -321,7 +321,7 @@ namespace KhaozEngine.Gpu
             // waits out everything SUBMITTED, and every batch here was sealed behind a fence submitted at an
             // earlier boundary (or, for the batch sealed moments ago in this same call, at this one), so the drain
             // proves the lot of them complete and the whole holding is freed behind it. Freeing all of it rather
-            // than just the oldest is what makes the cost one drain per MaxSealedBatches frames of fall-behind
+            // than just the oldest is what makes the cost one drain per MaxSealedBatches + 1 frames of fall-behind
             // instead of one per frame: trimming back to the cap would put the count over it again on the very
             // next retiring frame.
             //

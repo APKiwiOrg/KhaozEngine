@@ -137,7 +137,8 @@ namespace KhaozEngine.Tests.Gpu
             Dictionary<string, string> emitted = EmitEverything();
             int distinct = emitted.Values.Distinct(StringComparer.Ordinal).Count();
 
-            Assert.Equal(76, emitted.Count);
+            // 78 since R5 added the tile-ground pair (the 76 in the note above is the 2026-08-08 measurement).
+            Assert.Equal(78, emitted.Count);
             Assert.True(distinct < emitted.Count,
                 $"The {emitted.Count} shipped stage emissions produced {distinct} distinct SPIR-V modules, so "
                 + "nothing is shared and decision V-S7's dedup buys nothing. Measured at 59 distinct on "

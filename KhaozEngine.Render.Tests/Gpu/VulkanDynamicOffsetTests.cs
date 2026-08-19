@@ -53,7 +53,7 @@ namespace KhaozEngine.Tests.Gpu
                 shapes.Add((name, harness.Set(name)));
             }
 
-            Assert.Equal(33, shapes.Count);
+            Assert.Equal(34, shapes.Count);   // 34 since R5 added the tile-ground layout
 
             for (int segment = 0; segment < harness.Rings.FramesInFlight; segment++)
             {

@@ -48,7 +48,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The cascade resolutions <c>OceanFftProducer</c> can compile a kernel for.</summary>
         public static readonly int[] OceanResolutions = { 32, 64, 128, 256 };
 
-        /// <summary>Every distinct shipped vertex and fragment pair, 34 of them.</summary>
+        /// <summary>Every distinct shipped vertex and fragment pair, 35 of them.</summary>
         public static IEnumerable<ShippedGraphicsProgram> GraphicsPrograms()
         {
             // Render2D.
@@ -63,6 +63,9 @@ namespace KhaozEngine.Tests.Gpu
             // The terrain pass. One half of decision S5's regression evidence: its interpolant ORDERING is what
             // keeps the fragment-used outputs a gap-free prefix.
             yield return new("Splat", ShaderSources.SplatVert, ShaderSources.SplatFrag);
+            // The tile-world ground pass. Same lesson applied ahead of the incident: every interpolant it emits is
+            // read by the fragment, so its pixel-input block is gap-free by construction.
+            yield return new("TileGround", ShaderSources.TileGroundVert, ShaderSources.TileGroundFrag);
 
             // Render3D shadow atlas. The other half of the S5 evidence: every one of these vertex sources carries
             // the sink that stops SPIRV-Cross dropping a declared-but-unread input and holing the signature.

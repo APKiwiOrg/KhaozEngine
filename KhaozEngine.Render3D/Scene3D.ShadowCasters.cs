@@ -164,7 +164,11 @@ namespace KhaozEngine.Render3D
                 if (!_slots.IsValid(run.Mesh.Index, run.Mesh.Generation)) continue;
                 var m = _meshes[run.Mesh.Index];
                 if (m is not { } mesh) continue;
-                if (mesh.SplatMaterial >= 0) continue;   // terrain does not cast (receive-only) - matches the depth pass
+                // Splat terrain does not cast (receive-only), matching the depth pass. TILE GROUND IS NOT EXCLUDED
+                // HERE ON PURPOSE: a tile world's ground carries authored height, so it casts like a model mesh
+                // (tile-world design section 7.5), and the exclusion below is deliberately keyed on SplatMaterial
+                // alone rather than on "draws through a ground pipeline".
+                if (mesh.SplatMaterial >= 0) continue;
                 int first = spans.Count;
                 AppendCasterSpans(run.Mesh.Index, run.Mesh.Generation, run.Start, run.Count, _instanceCastKinds, spans);
                 for (int i = first; i < spans.Count; i++)

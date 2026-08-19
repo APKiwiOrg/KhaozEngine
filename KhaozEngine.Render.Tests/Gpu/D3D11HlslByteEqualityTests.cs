@@ -118,9 +118,10 @@ namespace KhaozEngine.Tests.Gpu
             var graphics = D3D11ShaderProgramCatalog.GraphicsPrograms().ToArray();
             var compute = D3D11ShaderProgramCatalog.ComputeKernels().ToArray();
 
-            // 36 non-test CreateShadersFromSpirv call sites, 34 distinct source pairs (the Line pair is created
-            // three times). Two compute kernels across the four reachable cascade resolutions.
-            Assert.Equal(34, graphics.Length);
+            // 37 non-test CreateShadersFromSpirv call sites, 35 distinct source pairs (the Line pair is created
+            // three times). R5's tile-ground pass is the newest, and the count moves with every pipeline the
+            // renderers gain. Two compute kernels across the four reachable cascade resolutions.
+            Assert.Equal(35, graphics.Length);
             Assert.Equal(8, compute.Length);
 
             Assert.Equal(graphics.Length, graphics.Select(p => p.Name).Distinct(StringComparer.Ordinal).Count());

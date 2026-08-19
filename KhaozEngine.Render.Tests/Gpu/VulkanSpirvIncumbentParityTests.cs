@@ -81,7 +81,8 @@ namespace KhaozEngine.Tests.Gpu
                 }
             }
 
-            Assert.Equal(76, compared);
+            // 78 since R5 added the tile-ground pair. The count moves with every pipeline the renderers gain.
+            Assert.Equal(78, compared);
             Assert.True(problems.Count == 0,
                 $"{problems.Count} of {compared} shipped stages no longer compile to the same SPIR-V under "
                 + $"{nameof(SpirvFrontEndPin)} as under the incumbent Veldrid device's own defaults, so the two "

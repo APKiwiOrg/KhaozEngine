@@ -80,6 +80,9 @@ namespace KhaozEngine.Tests.Gpu
                     T("ShadowMap"), S("ShadowSamp")),
                 ["Model.splat"] = L(U("U", VF), T("AlbedoArray"), T("NormalArray"), S("Sampler"), T("ShadowMap"),
                     S("ShadowSamp")),
+                // Render3D/Rendering/ModelRenderer.TileGround.cs:33. Albedo only, so one array where the splat
+                // layout has two, and the shadow map stays last.
+                ["Model.tileGround"] = L(U("U", VF), T("AlbedoArray"), S("Sampler"), T("ShadowMap"), S("ShadowSamp")),
 
                 // Render3D/Rendering/OceanFftProducer.cs:506 and :510, both compute
                 ["OceanFft.row"] = L(U("Params", C), Rw("H0Buf", C), Rw("WorkBuf", C)),
@@ -153,6 +156,7 @@ namespace KhaozEngine.Tests.Gpu
             ("ModelRenderer", ["Model"]),
             ("ModelRenderer dissolve", ["Model"]),
             ("ModelRenderer splat", ["Model.splat"]),
+            ("ModelRenderer tile ground", ["Model.tileGround"]),
             ("OceanFftProducer row", ["OceanFft.row"]),
             ("OceanFftProducer col", ["OceanFft.col"]),
             ("OverlayMeshRenderer", ["OverlayMesh"]),
@@ -186,8 +190,10 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void EveryShippedPipeline_StaysWithinTheRequiredMinimumDynamicUniformBuffers()
         {
-            Assert.Equal(33, ShippedLayouts.Count);
-            Assert.Equal(33, ShippedPipelines.Count);
+            // 34 since R5 added the tile-ground layout and pipeline. Both counts move together whenever a
+            // renderer gains a pipeline, and are stated so an emptied table cannot pass by agreeing with itself.
+            Assert.Equal(34, ShippedLayouts.Count);
+            Assert.Equal(34, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

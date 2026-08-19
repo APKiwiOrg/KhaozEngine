@@ -5,8 +5,8 @@ using KhaozEngine.Render3D.Rendering;
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
-    /// The scene's two create-upload-and-mip sequences, together in one type because they share the property that
-    /// makes them delicate: both build an expensive GPU resource BEFORE they open the command list that finishes
+    /// The scene's create-upload-and-mip sequences, together in one type because they share the property that
+    /// makes them delicate: each builds an expensive GPU resource BEFORE it opens the command list that finishes
     /// it, and that open can be refused.
     /// <para>
     /// A mipped load opens a transient recording through <see cref="GpuRecording"/>, so calling one mid-frame
@@ -84,6 +84,31 @@ namespace KhaozEngine.Render3D.Internal
                 throw;
             }
             return (albedo, normal);
+        }
+
+        /// <summary>Create ONE mipped RGBA8 texture array (one layer per <paramref name="layers"/> entry), upload
+        /// every layer's level 0, and generate the mip chain in one transient command list. The albedo-only sibling
+        /// of <see cref="CreateSplatArrays"/>, for the tile-ground pass, which ships no normal maps. Same failure
+        /// contract: a refused mid-frame open (#424) frees the array, so the caller owns nothing when this
+        /// throws.</summary>
+        internal static IGpuTexture CreateAlbedoArray(
+            IGpuDevice gd, uint w, uint h, uint mips, IReadOnlyList<TileGroundLayerImage> layers, string owner)
+        {
+            const GpuTextureUsage usage = GpuTextureUsage.Sampled | GpuTextureUsage.GenerateMipmaps;
+            IGpuTexture albedo = gd.Factory.CreateTexture(GpuTextureDescription.Texture2DArray(
+                w, h, GpuPixelFormat.R8G8B8A8UNorm, usage, (uint)layers.Count, mips));
+            try
+            {
+                for (int L = 0; L < layers.Count; L++)
+                    gd.UpdateTexture(albedo, layers[L].AlbedoRgba, 0, 0, w, h, mipLevel: 0, arrayLayer: (uint)L);
+                GenerateMips(gd, owner, albedo, null);
+            }
+            catch
+            {
+                albedo.Dispose();
+                throw;
+            }
+            return albedo;
         }
 
         // One transient list for the whole generate, opened through the seam's register so a mid-frame call

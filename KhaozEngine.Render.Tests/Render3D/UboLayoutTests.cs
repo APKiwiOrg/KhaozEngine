@@ -98,6 +98,7 @@ namespace KhaozEngine.Tests.Render3D
                 ("SkinnedModelFrag", ShaderSources.SkinnedModelFrag),
                 ("SkinnedModelDissolveFrag", ShaderSources.SkinnedModelDissolveFrag),
                 ("SplatVert", ShaderSources.SplatVert), ("SplatFrag", ShaderSources.SplatFrag),
+                ("TileGroundVert", ShaderSources.TileGroundVert), ("TileGroundFrag", ShaderSources.TileGroundFrag),
                 ("WaterVert", ShaderSources.WaterVert), ("WaterFrag", ShaderSources.WaterFrag),
             })
                 Assert.True(src.Contains("vec4 RenderOrigin;"),
@@ -381,13 +382,14 @@ namespace KhaozEngine.Tests.Render3D
         {
             // The cascaded shadow tail (mat4 ShadowMat[4] + vec4 ShadowParams + vec4 ShadowParams2 + vec4
             // ShadowNormalOffsets) rides in the frame UBO after the light arrays, in ALL FOUR shaders that declare the
-            // `U` block (both stages of model + splat). If any one drops or mis-sizes a member, the block layout
-            // diverges and the shadow tail / splat params tail land at the wrong offset on that stage.
+            // `U` block (both stages of model, splat and tile ground). If any one drops or mis-sizes a member, the
+            // block layout diverges and the shadow tail / per-material params tail land at the wrong offset there.
             string mats = "mat4 ShadowMat[" + ModelRenderer.MaxCascades + "];";
             foreach (var (name, src) in new[]
             {
                 ("ModelVert", ShaderSources.ModelVert), ("ModelFrag", ShaderSources.ModelFrag),
                 ("SplatVert", ShaderSources.SplatVert), ("SplatFrag", ShaderSources.SplatFrag),
+                ("TileGroundVert", ShaderSources.TileGroundVert), ("TileGroundFrag", ShaderSources.TileGroundFrag),
             })
             {
                 Assert.True(src.Contains(mats),
@@ -409,6 +411,58 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("sampleKeyShadow(", ShaderSources.LightingCommonGlsl);
             Assert.Contains("sampleKeyShadow(ShadowMap, ShadowSamp", ShaderSources.ModelFrag);
             Assert.Contains("sampleKeyShadow(ShadowMap, ShadowSamp", ShaderSources.SplatFrag);
+            Assert.Contains("sampleKeyShadow(ShadowMap, ShadowSamp", ShaderSources.TileGroundFrag);
+        }
+
+        // ---- Tile-ground material params tail ----
+
+        [Fact]
+        public void TileGroundParamsBytes_MatchesGlslTail_MaxMaterialsPlusMisc()
+        {
+            // The tail in the TileGroundFrag `U` block is TintTiling[MaxMaterials] + Misc, and BuildParams returns
+            // exactly that many vec4. If the two drift, the params land at the wrong offset behind the frame block.
+            Assert.Equal((TileGroundMaterialConfig.MaxMaterials + 1) * 16, (int)TileGroundMaterialConfig.ParamsBytes);
+            Assert.Equal(
+                (int)TileGroundMaterialConfig.ParamsBytes / 16,
+                TileGroundMaterialConfig.BuildParams(new[] { new TileGroundLayerImage() }, 0.15f).Length);
+        }
+
+        [Fact]
+        public void TileGroundShaders_DeclareTintTilingArray_SizedByMaxMaterials()
+        {
+            // Build the GLSL spelling from the C# constant, so raising MaxMaterials without editing both shaders
+            // trips here rather than reading past the array on the GPU. Other half in ShaderSources.TileGround.cs.
+            string tintTiling = "vec4 TintTiling[" + TileGroundMaterialConfig.MaxMaterials + "];";
+
+            Assert.True(ShaderSources.TileGroundVert.Contains(tintTiling),
+                $"TileGroundVert lost '{tintTiling}': drifted from TileGroundMaterialConfig.MaxMaterials ({TileGroundMaterialConfig.MaxMaterials}). Fix ShaderSources.TileGroundVert or the constant.");
+            Assert.True(ShaderSources.TileGroundFrag.Contains(tintTiling),
+                $"TileGroundFrag lost '{tintTiling}': drifted from TileGroundMaterialConfig.MaxMaterials ({TileGroundMaterialConfig.MaxMaterials}). Fix ShaderSources.TileGroundFrag or the constant.");
+        }
+
+        [Fact]
+        public void TileGroundTail_AppendsAtUboBytesOffset_PerGlslComment()
+        {
+            // Same tripwire as the splat tail: the renderer writes the params at UboBytes
+            // (ModelRenderer.CreateTileGroundParamsUbo), and both shaders quote that offset in their block comment.
+            string glslOffset = "(offset " + ModelRenderer.UboBytes + ")";
+            Assert.True(ShaderSources.TileGroundVert.Contains(glslOffset),
+                $"TileGroundVert no longer documents '{glslOffset}': the params append offset drifted from ModelRenderer.UboBytes ({ModelRenderer.UboBytes}). Fix the ShaderSources.TileGroundVert comment or the UBO size.");
+            Assert.True(ShaderSources.TileGroundFrag.Contains(glslOffset),
+                $"TileGroundFrag no longer documents '{glslOffset}': the params append offset drifted from ModelRenderer.UboBytes ({ModelRenderer.UboBytes}). Fix the ShaderSources.TileGroundFrag comment or the UBO size.");
+        }
+
+        [Fact]
+        public void TileGroundFrag_BlendsFourCornerSlots_AndReadsThemWithTheRoundingIdiom()
+        {
+            // Four slots per tile is the whole design (one per tile corner), and a slot held as a float is read back
+            // with the +0.5 round the splat pass uses. A change to either without the C# side is a silent
+            // mis-material, so pin both spellings.
+            Assert.Contains("for (int L = 0; L < 4; L++)", ShaderSources.TileGroundFrag);
+            Assert.Contains("float w[4] = float[4]", ShaderSources.TileGroundFrag);
+            Assert.Contains("int slot[4] = int[4](int(vSlots.x + 0.5)", ShaderSources.TileGroundFrag);
+            // Renormalised by their OWN sum: there is no one-minus-sum fifth layer on this pipeline.
+            Assert.DoesNotContain("1.0 - (a0 + a1 + a2 + a3)", ShaderSources.TileGroundFrag);
         }
 
         // ---- Sky background pass UBO (SkyRenderer) ----

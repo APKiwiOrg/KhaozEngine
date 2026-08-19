@@ -15,7 +15,8 @@ namespace KhaozEngine.Tests.Gpu
     /// fresh one.
     /// <para>
     /// <b>WHAT WENT WRONG AND WHY A COUNTER PINS IT RATHER THAN A CLOCK.</b> A scene's constructor asks its device
-    /// for 34 shader sets, which is 68 stage compiles across 48 distinct sources, and every one of them was a fresh
+    /// for 35 shader sets, which is 70 stage compiles across 50 distinct sources (R5's tile-ground pass added one
+    /// set and two sources, and the numbers move with every pipeline the scene gains), and every one was a fresh
     /// glslang run against a <c>const string</c> that had not changed. Measured on Metal, that was 2515 ms of a
     /// 2560 ms constructor, and it did not fall on the second scene, the tenth, or the first scene on a second
     /// device. The regression this test exists to catch is a caller or a backend stepping back around

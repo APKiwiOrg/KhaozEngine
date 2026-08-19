@@ -11,7 +11,7 @@ namespace KhaozEngine.Tests.Gpu
     /// or a backend cross-compile miscompile now fails the build instead of only surfacing at first run on a real
     /// device of that backend. The pairs mirror how the renderers actually create pipelines from ShaderSources:
     /// <list type="bullet">
-    /// <item>ModelVert+ModelFrag, SplatVert+SplatFrag (ModelRenderer)</item>
+    /// <item>ModelVert+ModelFrag, SplatVert+SplatFrag, TileGroundVert+TileGroundFrag (ModelRenderer)</item>
     /// <item>ShadowDepthVert+ShadowDepthFrag, ShadowDepthDissolveVert+ShadowDepthDissolveFrag (ShadowMapRenderer's
     /// two rigid depth pipelines)</item>
     /// <item>LineVert+LineFrag (LineRenderer via OverlayRenderer)</item>
@@ -39,6 +39,12 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void Splat()
             => ShaderValidation.ValidatePair(ShaderSources.SplatVert, ShaderSources.SplatFrag, "Splat");
+
+        // The tile-world ground pass (tile-world design section 7.5): one albedo array, four corner material
+        // slots per triangle. Same one-UBO and gap-free-interpolant shape as the splat pair it sits beside.
+        [Fact]
+        public void TileGround()
+            => ShaderValidation.ValidatePair(ShaderSources.TileGroundVert, ShaderSources.TileGroundFrag, "TileGround");
 
         [Fact]
         public void ShadowDepth()

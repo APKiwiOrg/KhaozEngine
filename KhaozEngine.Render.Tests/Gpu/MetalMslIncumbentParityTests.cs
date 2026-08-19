@@ -92,7 +92,8 @@ namespace KhaozEngine.Tests.Gpu
 
             _output.WriteLine($"compared {compared} emitted stages, {problems.Count} differ");
 
-            Assert.Equal(76, compared);
+            // 78 since R5 added the tile-ground pair. The count moves with every pipeline the renderers gain.
+            Assert.Equal(78, compared);
             Assert.True(problems.Count == 0,
                 $"{problems.Count} of {compared} shipped stages no longer emit the same MSL under "
                 + $"{nameof(MslCrossCompilePin)} as under the incumbent Veldrid Metal device's own defaults, so "

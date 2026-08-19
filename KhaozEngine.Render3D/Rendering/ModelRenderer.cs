@@ -294,7 +294,10 @@ namespace KhaozEngine.Render3D.Rendering
 
             _splatShaders = factory.CreateShadersFromSpirv(ShaderSources.SplatVert, ShaderSources.SplatFrag);
 
-            // Build the model + splat pipelines from the MRT outputs (rebuilt by SetOutputs when MSAA changes).
+            // Tile-ground layout + shaders (ModelRenderer.TileGround.cs). Same one-UBO shape, one albedo array.
+            CreateTileGroundResources(factory);
+
+            // Build the model + splat + tile-ground pipelines from the MRT outputs (rebuilt by SetOutputs when MSAA changes).
             BuildPipelines(factory, modelOutputs);
         }
 
@@ -304,7 +307,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// materials survive the rebuild.</summary>
         public void SetOutputs(GpuOutputDescription modelOutputs)
         {
-            _pipeline.Dispose(); _splatPipeline.Dispose(); _dissolvePipeline.Dispose();
+            _pipeline.Dispose(); _splatPipeline.Dispose(); _dissolvePipeline.Dispose(); _tileGroundPipeline.Dispose();
             _skinnedPipeline.Dispose(); _skinnedDissolvePipeline.Dispose();
             BuildPipelines(_gd.Factory, modelOutputs);
         }
@@ -392,6 +395,9 @@ namespace KhaozEngine.Render3D.Rendering
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
                 Outputs = modelOutputs,
             });
+
+            // Tile ground: the same two vertex layouts, its own shaders + resource layout (ModelRenderer.TileGround.cs).
+            BuildTileGroundPipeline(factory, modelOutputs, vertexLayout, instanceLayout);
 
             // GPU-skinning pipelines. ONE vertex buffer slot: the rest-pose SkinnedVertex stream (Position/Normal/
             // Color/TexCoord/BoneIndices/BoneWeights/Tangent = locations 0..6), no per-instance stream (the per-draw
@@ -765,7 +771,8 @@ namespace KhaozEngine.Render3D.Rendering
             _white.Dispose(); _flatNormal.Dispose(); _defaultRough.Dispose(); // _sampler is the device built-in (non-owning); do not dispose it.
             _shaders.Dispose();
             _dissolvePipeline.Dispose(); _dissolveShaders.Dispose();
-            _splatPipeline.Dispose(); _splatLayout.Dispose(); _splatShaders.Dispose(); _terrainSampler.Dispose();
+            _splatPipeline.Dispose(); _splatLayout.Dispose(); _splatShaders.Dispose();
+            DisposeTileGroundResources(); _terrainSampler.Dispose();  // the tile-ground sets bind that sampler too
             _skinnedPipeline.Dispose(); _skinnedDissolvePipeline.Dispose();
             _skinnedShaders.Dispose(); _skinnedDissolveShaders.Dispose();
             _skinnedDefaultFragSet.Dispose(); _skinnedVertexLayout.Dispose(); _skinnedFragLayout.Dispose();

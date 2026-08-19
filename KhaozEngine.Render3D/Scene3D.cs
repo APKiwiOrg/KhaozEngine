@@ -55,9 +55,6 @@ namespace KhaozEngine.Render3D
         readonly GpuRetireQueue _retired;   // mesh buffers freed mid-life, destroyed behind one drain per frame
         // Loaded albedo textures, indexed by TextureHandle.Index. Shared across meshes; disposed in Dispose.
         readonly List<IGpuTexture?> _textures = new();   // a slot is nulled by UnloadTexture (handle stays stable, not recycled)
-        // Loaded splat-terrain materials, indexed by SplatMaterialHandle.ListIndex. Each owns its two texture
-        // arrays + params UBO + resource set; shared across meshes; disposed in Dispose / UnloadSplatMaterial.
-        readonly List<SplatMaterialEntry?> _splatMaterials = new();
         // Per-texture billboard resource sets, parallel to _textures (ListIndex), created lazily the first time a
         // texture is used for a textured billboard. Disposed in Dispose.
         readonly List<IGpuResourceSet?> _texBillboardSets = new();
@@ -542,7 +539,7 @@ namespace KhaozEngine.Render3D
             return LoadMeshInternal(mesh, null, material.ListIndex);
         }
 
-        MeshHandle LoadMeshInternal(GltfMesh mesh, IGpuResourceSet? material, int splatMaterial = -1, float alphaCutoff = 0f)
+        MeshHandle LoadMeshInternal(GltfMesh mesh, IGpuResourceSet? material, int splatMaterial = -1, float alphaCutoff = 0f, int tileGroundMaterial = -1)
         {
             var f = _gd.Factory;
             var vb = f.CreateBuffer(new GpuBufferDescription((uint)(mesh.Vertices.Length * ModelVertex.SizeInBytes), GpuBufferUsage.VertexBuffer));
@@ -551,7 +548,7 @@ namespace KhaozEngine.Render3D
 
             MeshBounds bounds = MeshBounds.FromVertices(mesh.Vertices);
             int index = _slots.Alloc(out int generation);
-            var slot = new Mesh(vb, ib, mesh.Indices32.Length, mesh.IndexFormat, in bounds, material, splatMaterial, alphaCutoff);
+            var slot = new Mesh(vb, ib, mesh.Indices32.Length, mesh.IndexFormat, in bounds, material, splatMaterial, alphaCutoff, tileGroundMaterial);
             if (index < _meshes.Count) _meshes[index] = slot;   // reused freed slot
             else _meshes.Add(slot);                              // fresh appended slot
             return new MeshHandle(index, generation);
@@ -609,42 +606,6 @@ namespace KhaozEngine.Render3D
             _textures.Add(TextureUploads.CreateMipped(
                 _gd, rgba, (uint)width, (uint)height, policy.LevelsFor(width, height), "Scene3D.LoadTexture"));
             return new TextureHandle(_textures.Count - 1);
-        }
-
-        /// <summary>Upload a 5-layer splat-terrain material: two texture arrays (albedo + tangent-space normal, one
-        /// layer per <see cref="SplatLayerImage"/>, all the same <paramref name="width"/> x <paramref name="height"/>
-        /// RGBA8), with full mip chains generated, plus a params UBO (per-layer tint/tiling/roughness + triplanar
-        /// sharpness + projection + base specular). Returns a handle to draw meshes through the splat pipeline. The
-        /// material is owned by the scene and freed in <see cref="Dispose"/> (or <see cref="UnloadSplatMaterial"/>);
-        /// it is shared across every mesh that references it (e.g. all terrain chunks).
-        /// <para>NOT A MID-FRAME CALL either: the two mip chains need a command list of their own, so this
-        /// refuses with <see cref="GpuNestedRecordingException"/> while a frame is recording (#424).</para></summary>
-        public SplatMaterialHandle LoadSplatMaterial(int width, int height, IReadOnlyList<SplatLayerImage> layers,
-            float triplanarSharpness = 8f, SplatProjection projection = SplatProjection.Triplanar, float baseSpecStrength = 0.15f,
-            TerrainSamplerConfig? sampler = null)
-        {
-            if (layers.Count != SplatMaterialConfig.LayerCount)
-                throw new ArgumentException($"a splat material needs exactly {SplatMaterialConfig.LayerCount} layers, got {layers.Count}.", nameof(layers));
-            uint w = (uint)width, h = (uint)height, mips = SplatMaterialConfig.MipLevelCount(width, height);
-            // Both arrays, uploaded and mipped in one transient list, and freed TOGETHER if that list is refused
-            // mid-frame: two 5-layer mipped arrays are the most expensive thing a refusal could have stranded
-            // (#424).
-            (IGpuTexture albedo, IGpuTexture normal) =
-                TextureUploads.CreateSplatArrays(_gd, w, h, mips, layers, "Scene3D.LoadSplatMaterial");
-
-            var data = SplatMaterialConfig.BuildParams(layers, triplanarSharpness, projection, baseSpecStrength);
-            // Combined UBO: frame uniforms (re-synced each frame in the splat pass) + these params appended. One
-            // uniform buffer for the whole splat pipeline (Metal mis-binds a second UBO; see ModelRenderer).
-            var ubo = _model.CreateSplatParamsUbo(in data);
-
-            // A material that overrides the sampler gets its own (owned, disposed with the material); otherwise the
-            // set binds the renderer's shared default sampler and nothing extra is owned here.
-            IGpuSampler? ownedSampler = sampler.HasValue ? _model.CreateTerrainSampler(sampler.Value) : null;
-            var set = ownedSampler is null
-                ? _model.CreateSplatMaterialSet(ubo, albedo, normal)
-                : _model.CreateSplatMaterialSet(ubo, albedo, normal, ownedSampler);
-            _splatMaterials.Add(new SplatMaterialEntry(albedo, normal, ubo, set, ownedSampler));
-            return new SplatMaterialHandle(_splatMaterials.Count - 1);
         }
 
         /// <summary>Upload a glTF material's auto-read <see cref="GltfMaterialMaps"/> (from
@@ -757,41 +718,6 @@ namespace KhaozEngine.Render3D
             _meshes[h.Index] = null;
         }
 
-        /// <summary>Free a splat-terrain material's GPU resources (its texture arrays, params UBO, resource set) and
-        /// release its slot. A <c>default</c>/Invalid handle is a no-op. Meshes still referencing it must be unloaded
-        /// first (they hold no reference after this). Also a no-op once <see cref="Dispose"/> has run: Dispose
-        /// already freed every splat material and cleared the backing list, so a caller that still holds a handle
-        /// (e.g. a world disposed after its owning scene) would otherwise index past the end of the now-empty list
-        /// and get an <see cref="ArgumentOutOfRangeException"/> instead of a silent no-op.</summary>
-        public void UnloadSplatMaterial(SplatMaterialHandle h)
-        {
-            if (!h.IsValid || h.ListIndex >= _splatMaterials.Count) return;
-            var m = _splatMaterials[h.ListIndex];
-            // Queued GPU work may still reference the material's arrays/UBO/set, so drain the device first.
-            if (m != null) { _gd.WaitForIdle(); m.Dispose(); }
-            _splatMaterials[h.ListIndex] = null;
-        }
-
-        /// <summary>Diagnostic: read one mip level (and array layer) of a splat material's ALBEDO texture array back
-        /// to the CPU as packed RGBA8; <paramref name="width"/>/<paramref name="height"/> receive that mip's own
-        /// dimensions. Lets a game/test verify the generated mip chain on a real device - e.g. whether a high mip is
-        /// a real blurred downsample (its average colour matches mip 0, low detail) versus a copy of mip 0 (still
-        /// detailed) or empty (near-black), which is how a broken GPU mip generation shows up. Requires a mappable
-        /// device; not on the per-frame path.</summary>
-        public byte[] DebugReadSplatAlbedoMip(SplatMaterialHandle h, int mipLevel, int arrayLayer, out int width, out int height)
-        {
-            if (!h.IsValid) throw new ArgumentException("splat material handle is Invalid.", nameof(h));
-            var m = _splatMaterials[h.ListIndex] ?? throw new ArgumentException("splat material is not loaded (already unloaded).", nameof(h));
-            var tex = m.AlbedoArray;
-            if (mipLevel < 0 || (uint)mipLevel >= tex.MipLevels)
-                throw new ArgumentOutOfRangeException(nameof(mipLevel), $"mip {mipLevel} out of range (texture has {tex.MipLevels} levels).");
-            if (arrayLayer < 0)
-                throw new ArgumentOutOfRangeException(nameof(arrayLayer));
-            width = Math.Max(1, (int)tex.Width >> mipLevel);
-            height = Math.Max(1, (int)tex.Height >> mipLevel);
-            return GpuReadback.ToRgbaMip(_gd, tex, (uint)mipLevel, (uint)arrayLayer, width, height);
-        }
-
         /// <summary>Diagnostic: read the key-light shadow depth map (R32F light-space depth) back to the CPU as a
         /// float array, row-major, top-left. Lets a test/tool verify the depth pass on a real device (e.g. that
         /// casters wrote near depths and the cleared background stayed 1.0). Requires a mappable device; not on the
@@ -869,12 +795,6 @@ namespace KhaozEngine.Render3D
         internal int LiveMeshCount
         {
             get { int n = 0; foreach (var m in _meshes) if (m != null) n++; return n; }
-        }
-
-        /// <summary>Number of splat-material slots still holding a live material (loaded and not yet unloaded). For tests.</summary>
-        internal int LiveSplatMaterialCount
-        {
-            get { int n = 0; foreach (var m in _splatMaterials) if (m != null) n++; return n; }
         }
 
         /// <summary>Upload a skinned mesh to the GPU once; returns a handle to draw it with
@@ -2003,7 +1923,7 @@ namespace KhaozEngine.Render3D
                     if (!_slots.IsValid(run.Mesh.Index, run.Mesh.Generation)) continue;
                     var m = _meshes[run.Mesh.Index];
                     if (m is not { } mesh) continue;
-                    if (mesh.SplatMaterial >= 0) continue;   // drawn in the splat pass below
+                    if (mesh.SplatMaterial >= 0 || mesh.TileGroundMaterial >= 0) continue;   // drawn in a ground pass below
                     // Draw only the visible contiguous sub-spans of this run (against the already-uploaded buffer).
                     uint spanStart = run.Start; uint spanLen = 0;
                     for (uint s = 0; s < run.Count; s++)
@@ -2013,29 +1933,10 @@ namespace KhaozEngine.Render3D
                     }
                     if (spanLen > 0) { _model.DrawMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, mesh.MaterialSet); CountMeshDraw(mesh.IndexCount, spanLen); }
                 }
-                // Splat-terrain pass: same uploaded instance buffer, the dedicated 5-layer texture-array pipeline.
-                // Each material's combined UBO holds frame + params in one buffer, so re-sync this frame's uniforms
-                // into every loaded material's UBO before drawing (usually one terrain material).
-                for (int i = 0; i < _splatMaterials.Count; i++)
-                    if (_splatMaterials[i] is { } syncSm) _model.WriteFrameUniformsTo(cl, syncSm.Ubo);
-                bool splatBound = false;
-                foreach (var run in _runs)
-                {
-                    if (!_slots.IsValid(run.Mesh.Index, run.Mesh.Generation)) continue;
-                    var m = _meshes[run.Mesh.Index];
-                    if (m is not { } mesh) continue;
-                    if (mesh.SplatMaterial < 0) continue;
-                    var sm = _splatMaterials[mesh.SplatMaterial];
-                    if (sm is null) continue;
-                    if (!splatBound) { _model.BindSplatPass(cl); splatBound = true; }
-                    uint spanStart = run.Start; uint spanLen = 0;
-                    for (uint s = 0; s < run.Count; s++)
-                    {
-                        if (_instanceVisible[run.Start + s]) { if (spanLen == 0) spanStart = run.Start + s; spanLen++; }
-                        else if (spanLen > 0) { _model.DrawSplatMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, sm.Set); CountMeshDraw(mesh.IndexCount, spanLen); spanLen = 0; }
-                    }
-                    if (spanLen > 0) { _model.DrawSplatMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, sm.Set); CountMeshDraw(mesh.IndexCount, spanLen); }
-                }
+                // The two ground passes, each on its own pipeline against the same uploaded instance buffer:
+                // splat terrain (Scene3D.SplatMaterial.cs) then tile ground (Scene3D.TileGround.cs).
+                DrawSplatRuns(cl);
+                DrawTileGroundRuns(cl);
             }
 
             // Blob shadows (receiver-only): with the resolved tier at Blob, turn each queued ShadowBlob into a dark
@@ -2599,8 +2500,8 @@ namespace KhaozEngine.Render3D
             _texBillboardSets.Clear();
             foreach (var t in _textures) t?.Dispose();
             _textures.Clear();
-            foreach (var s in _splatMaterials) s?.Dispose();
-            _splatMaterials.Clear();
+            DisposeSplatMaterials();
+            DisposeTileGroundMaterials();
         }
 
         readonly struct Mesh
@@ -2617,6 +2518,9 @@ namespace KhaozEngine.Render3D
             /// -1 (the normal model pipeline). Splat meshes carry no per-mesh <see cref="MaterialSet"/> (the splat set
             /// is shared and owned by the scene), so unload frees only Vb/Ib.</summary>
             public readonly int SplatMaterial;
+            // Index into Scene3D's tile-ground material list when this mesh draws through the tile-ground pipeline,
+            // else -1. Shared and scene-owned like SplatMaterial, but tile ground CASTS shadows (see ShadowCasters).
+            public readonly int TileGroundMaterial;
             /// <summary>Mesh-local bounds (AABB + bounding sphere) computed once at load from the vertex positions,
             /// for frustum culling. The renderer transforms these by the per-instance world matrix (no per-frame
             /// vertex scan).</summary>
@@ -2625,24 +2529,10 @@ namespace KhaozEngine.Render3D
             /// this mesh's per-instance <c>SpecParams.z</c> by <c>ApplyAlphaCutoffs</c> so the model fragment
             /// discards texels below it (MASK foliage renders as its silhouette). 0 keeps the render byte-identical.</summary>
             public readonly float AlphaCutoff;
-            public Mesh(IGpuBuffer vb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, in MeshBounds bounds, IGpuResourceSet? materialSet = null, int splatMaterial = -1, float alphaCutoff = 0f)
+            public Mesh(IGpuBuffer vb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, in MeshBounds bounds, IGpuResourceSet? materialSet = null, int splatMaterial = -1, float alphaCutoff = 0f, int tileGroundMaterial = -1)
             {
-                Vb = vb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; Bounds = bounds; MaterialSet = materialSet; SplatMaterial = splatMaterial; AlphaCutoff = alphaCutoff;
+                Vb = vb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; Bounds = bounds; MaterialSet = materialSet; SplatMaterial = splatMaterial; AlphaCutoff = alphaCutoff; TileGroundMaterial = tileGroundMaterial;
             }
-        }
-
-        /// <summary>A loaded splat-terrain material: the two 5-layer texture arrays (albedo, normal), the combined
-        /// frame+params UBO (frame portion re-synced each frame), and the resource set. Owned by Scene3D; shared by
-        /// every mesh that uses it.</summary>
-        sealed class SplatMaterialEntry
-        {
-            public readonly IGpuTexture AlbedoArray, NormalArray;
-            public readonly IGpuBuffer Ubo;
-            public readonly IGpuResourceSet Set;
-            readonly IGpuSampler? _ownedSampler;   // non-null only when the material overrode the shared sampler
-            public SplatMaterialEntry(IGpuTexture albedo, IGpuTexture normal, IGpuBuffer ubo, IGpuResourceSet set, IGpuSampler? ownedSampler = null)
-            { AlbedoArray = albedo; NormalArray = normal; Ubo = ubo; Set = set; _ownedSampler = ownedSampler; }
-            public void Dispose() { Set.Dispose(); AlbedoArray.Dispose(); NormalArray.Dispose(); Ubo.Dispose(); _ownedSampler?.Dispose(); }
         }
 
         /// <summary>A GPU-resident skinned mesh: its vertex/index buffers, index count, optional material set, the
@@ -2906,12 +2796,12 @@ namespace KhaozEngine.Render3D
                 bool valid = _slots.IsValid(run.Mesh.Index, run.Mesh.Generation);
                 Mesh mesh = default; bool haveMesh = false;
                 if (valid && _meshes[run.Mesh.Index] is { } m) { mesh = m; haveMesh = true; }
-                // Terrain (splat) chunks draw chunk-local under a PURE TRANSLATION (their region origin), so their
-                // local AABB offset by that translation IS the world AABB: cull them with the tighter AABB test (a
-                // flat chunk's bounding sphere is far too conservative), and the offset is exact. Props/models use
-                // the world-sphere test (cheap under arbitrary scale/rotation). A splat instance under a rotation or
-                // a scale (not produced by the terrain path) falls back to the sphere test.
-                bool splatPlaced = haveMesh && mesh.SplatMaterial >= 0;
+                // Ground chunks (splat terrain, and a tile world's region planes) draw chunk-local under a PURE
+                // TRANSLATION (their region origin), so their local AABB offset by that translation IS the world
+                // AABB: cull them with the tighter AABB test (a flat chunk's bounding sphere is far too
+                // conservative), and the offset is exact. Props/models use the world-sphere test (cheap under
+                // arbitrary scale/rotation), and so does a ground instance under a rotation or a scale.
+                bool splatPlaced = haveMesh && (mesh.SplatMaterial >= 0 || mesh.TileGroundMaterial >= 0);
                 for (uint s = 0; s < run.Count; s++)
                 {
                     int slot = (int)(run.Start + s);

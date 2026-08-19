@@ -7,7 +7,12 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.37.1
 
-A greybox roof now sits on the walls it covers instead of floating a whole plane above them.
+A greybox roof now sits on the walls it covers instead of floating a whole plane above them. Alongside it, the two
+remaining ways player persistence could file or apply a record against the wrong player: a load-on-join belongs to
+one SESSION now rather than to an account, so an account that leaves and rejoins inside a single store read no
+longer applies both of its outstanding loads and no longer has the first of them clear the guard while the second
+is still in the air. And a tokenless connection is no longer persisted under the seat it happens to be sitting in,
+which is what used to load one guest's stored position onto the next guest to take that slot.
 
 - **`GreyboxMeshResolver` builds every shape in its own PLANE's local space** (`KhaozEngine.TileWorld.Render3D`).
   A roof archetype is placed on the plane ABOVE the walls it covers, which is exactly what `TileWorldView`'s
@@ -26,6 +31,40 @@ A greybox roof now sits on the walls it covers instead of floating a whole plane
   the walled house whose roof moved.
 
 Found by the Grimhollow adopt, where the greybox house rendered with a visibly detached roof slab.
+
+- **`WorldPersistence`'s load-on-join guard is a SESSION, not a set** (`KhaozEngine.NetWorld`). `loadsInFlight` was a
+  `ConcurrentDictionary<string, byte>` keyed by account, and `OnPlayerJoined` wrote the key and started a load per
+  JOIN, so an account that dropped and rejoined while its first store read was still outstanding had TWO loads in
+  flight under one key. The first to land cleared the guard for both. Two consequences, and this closes both: the
+  account was unguarded from that moment, so a periodic dirty pass or a save-on-leave could write pre-restore live
+  state over the stored record inside the exact window the guard exists to close, and the second load then applied
+  unconditionally, carrying whatever the store held when IT read, which pulled a player who had moved since back to
+  a superseded position (as a teleport once the distance passed `QuietRestoreDistance`). Every join now takes a
+  monotonic token, `loadsInFlight` maps an account to the token of its CURRENT session, `PendingApply` carries the
+  token it was read for, and the drain drops any load whose token is not the current one. A drop uses the machinery
+  #646 already added, `OnLoadApplyDropped` plus an `Info` log line, and deliberately does not clear the guard, so
+  the record stays protected until the live session's own load lands. Both landing orders behave the same: whichever
+  of the two arrives first, exactly one apply happens (the live session's) and exactly one drop. Neither the account
+  nor the slot could tell the two loads apart, since both are the same account, usually on the same recycled seat,
+  which is why #646's identity check did not reach this. A rejoin deliberately issues a fresh read rather than
+  adopting the outstanding one: that read was issued for the previous session's seat, may already have completed,
+  and its bytes are the older of the two answers. A second CONCURRENT session for one account now supersedes the
+  first here too, which one account keying one record was never a shape two live players could share. Closes #654.
+- **A tokenless connection is not persisted, and never under `guest:{slot}`** (`KhaozEngine.NetWorld`). Both heads
+  key a connection with no verified subject `guest:{slot}`, and both hand a freed slot straight to the next
+  connection, so that key named a chair rather than a player and `WorldPersistence` stored under
+  `player:guest:{slot}`. A guest joining on a freed slot therefore loaded the PREVIOUS guest's position and durable
+  blob, and moved onto it. The resume-hint half was already closed by `ResumePositionCache` refusing the prefix
+  (17.37.0), so a guest join was never BUILT on the last occupant's position, but the persistence keying predates
+  all of it and still applied the record afterwards, as a teleport. `WorldPersistence` now files nothing for a
+  tokenless connection in either direction: no load-on-join, no save-on-leave, no periodic pass and no in-flight
+  guard, so a guest is built on the host's configured spawn every session. New
+  **`WorldPersistenceConfig.PersistGuests`** (default false) opts a game that runs tokenless BY DESIGN back in,
+  under a durable `guest:{guid}` minted per session at join and NEVER the seat, so no guest can inherit another's
+  record. What that buys is stated plainly in its doc: the minted id is unreachable afterwards, so it is
+  crash-safety within a session and an audit trail, never a guest's return. New public
+  **`ResumePositionCache.IsGuestAccount(string)`**, the one predicate over `GuestAccountPrefix` both the hint cache
+  and the persistence layer now ask, so the two answers cannot drift. Closes #647.
 
 ## 17.37.0
 

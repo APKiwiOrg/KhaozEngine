@@ -11975,7 +11975,8 @@ while (client.TryDequeueEvent(out ClientSessionEvent ce)) { /* Joined(ce.Slot) /
 token for the same account carries the same subject, so persistence keyed on the subject survives token rotation.
 `WorldServer`/`ShardedWorldServer` take the authenticator as an optional last constructor argument (default
 `AllowAllAuthenticator`) and use `ev.Subject` as the persisted `accountId`, falling back to `guest:{slot}` when it
-is empty.
+is empty. That fallback names a recycled seat rather than a player, so `WorldPersistence` stores nothing under it
+unless the game sets `WorldPersistenceConfig.PersistGuests` (see the persistence section).
 
 **Client-side shape pre-filter without the secret (`SignedToken.TryParseUnverified`, 14.9.0).** The HMAC secret
 lives only on the server, so a client that wants to sanity-check a pasted or launch-supplied token's SHAPE before
@@ -12365,32 +12366,49 @@ Both live in the one `player:{accountId}` record, so position and the game blob 
 *either* re-saves. Because the record is account-keyed, the blob is **unaffected by cell handoff** (unlike
 registered components, which migrate cell-to-cell with the entity).
 
-**Load-on-join guards the account against a clobbering save.** On a genuinely-async store (Azure SQL / Ruinborne),
+**Load-on-join guards the SESSION against a clobbering save.** On a genuinely-async store (Azure SQL / Ruinborne),
 a load-on-join runs in the background while the tick loop keeps going. Until the loaded record is applied on the
 server thread, `WorldPersistence` guards that account: the periodic dirty pass and save-on-leave both skip it, so a
 save firing mid-load can't overwrite the stored record (position **and** the game blob) with the default-spawn state
-the player is still holding and erase progression. The guard clears when the record applies, or immediately if there
-was no saved record (a new player). One edge remains: on an async store, store operations for the same account are
-not ordered across a rapid leave/rejoin that overlaps an in-flight load-on-join, so a rejoin can briefly apply
-pre-leave state, which the next periodic save reconciles. Use a stable account id; serialize your own per-account
-store operations if a session needs strict ordering. Subscribe to **`WorldPersistence.OnStoreError`** to log/alert
-when a background load or save faults (a store outage); the failed save's state stays dirty and retries on the next pass.
+the player is still holding and erase progression. The guard clears when that session's record applies, or
+immediately if there was no saved record (a new player).
 
-**A completed load is applied to the ACCOUNT, not to the slot it was issued for.** A slot number is a seat: both
-heads free it on leave and hand the lowest free one to the next connection, so on a slow store an account that
-joins and drops before its record arrives can have a stranger sitting in its seat by the time it does. The drain
+It is a session and not a flag because an account that leaves and rejoins inside one store read has TWO loads
+outstanding under one key. Every join takes a monotonic token, the guard holds the current session's, and a load
+carrying any other token is dropped (below). As a plain flag the first load to land cleared the guard for both,
+which reopened the save window while its sibling was still in the air, and then let that sibling apply a record the
+live session had already moved past - a yank backwards, and past `QuietRestoreDistance` a teleport (#654). A second
+CONCURRENT session for one account supersedes the first the same way, which one account keying one record could not
+support in any case. One ordering edge remains: a save-on-leave and the rejoin's own load can be in flight at the
+same instant on an async store, and store operations for one account are not ordered against each other, so a rejoin
+can briefly apply pre-leave state, which the next periodic save reconciles. Use a stable account id, and serialize
+your own per-account store operations if a session needs strict ordering. Subscribe to
+**`WorldPersistence.OnStoreError`** to log/alert when a background load or save faults (a store outage). The failed
+save's state stays dirty and retries on the next pass.
+
+**A completed load belongs to the SESSION that read it, not to the slot or the account alone.** A slot number is a
+seat: both heads free it on leave and hand the lowest free one to the next connection, so on a slow store an account
+that joins and drops before its record arrives can have a stranger sitting in its seat by the time it does. The drain
 re-resolves the seat's current occupant and **drops** a record whose account no longer holds it, rather than
-writing one player's position, teleport and durable blob onto another (#646). A drop is announced through
+writing one player's position, teleport and durable blob onto another (#646). It drops a record whose join token is
+not the account's current one for the same reason: that read was issued for a session that has ended, and its bytes
+predate everything the live session has done (#654). Either drop is announced through
 **`WorldPersistence.OnLoadApplyDropped`** (`event Action<string, int>`, accountId + slot) and an `Info` log line
-under the `WorldPersistence` category, and nothing at all is written: the dropped account's stored record is
-untouched, stays guarded, and is read again on its next join. A tokenless connection is keyed `guest:{slot}` and is
-covered by the same comparison, but two SUCCESSIVE guests on one seat share that key and are indistinguishable
-here, which is the separate keying question tracked in the engine's issues.
+under the `WorldPersistence` category naming which of the two it was, and nothing at all is written: the dropped
+account's stored record is untouched, stays guarded, and is read again on its next join.
 
 ```csharp
 persistence.OnLoadApplyDropped += (accountId, slot) =>
-    Log.Info($"{accountId} left slot {slot} before its record landed, so the restore was dropped");
+    Log.Info($"{accountId} was not the party slot {slot}'s record was read for, so the restore was dropped");
 ```
+
+**A tokenless connection is not persisted at all** (default). Both heads key one `guest:{slot}`, and the slot is
+recycled, so that key names a seat: the record a guest left behind used to load onto whoever took the seat next and
+move them to a stranger's last position (#647). There is no load-on-join, no save-on-leave, no periodic pass and no
+guard for one now, and a guest is built on the configured spawn every session. A game that runs tokenless BY DESIGN
+sets **`WorldPersistenceConfig.PersistGuests = true`**, which files each guest under a durable `guest:{guid}` minted
+for that one session and never under the seat. That buys crash-safety within a session and an audit trail, never a
+guest's return: nothing can present the minted id again. Give players a connect token if returning matters.
 
 ```csharp
 var persistence = new WorldPersistence(server, store, new WorldPersistenceConfig
@@ -12495,13 +12513,15 @@ wiring. A game with its own account store can install its own `ResumePositionPro
 constructing the persistence layer. The hint is never the authority: the asynchronous load still runs and
 still applies the stored record over it, so a position that changed while the player was away is still a
 teleport, reported once. `ResumePositionCache` is public (`Record`, `TryGet`, `Forget`, `Clear`, `Count`,
-`Capacity`) and is not thread-safe - both engine call sites are on the server thread.
+`Capacity`, and the static `IsGuestAccount`) and is not thread-safe - both engine call sites are on the server
+thread.
 
 Two things the seed deliberately does not cover. A **tokenless** connection is keyed `guest:{slot}`
-(`ResumePositionCache.GuestAccountPrefix`) and gets no hint at all, recorded or read: slots are recycled, so
-that key names a seat rather than a player and a hint under it would build a brand-new guest on the last
-occupant's position with no teleport to signal it. Give players a connect token if returning to where they
-left matters. And the **quiet window is measured at drain time**, against where the player stands when the
+(`ResumePositionCache.GuestAccountPrefix`, tested with `ResumePositionCache.IsGuestAccount`) and gets no hint at
+all, recorded or read: slots are recycled, so that key names a seat rather than a player and a hint under it would
+build a brand-new guest on the last occupant's position with no teleport to signal it. The persistence layer refuses
+the same key for the same reason (see `PersistGuests` above). Give players a connect token if returning to where
+they left matters. And the **quiet window is measured at drain time**, against where the player stands when the
 load lands, so on a high-latency store a rejoiner who is moving can cross `QuietRestoreDistance` before the
 restore arrives and take a hard cut. Nothing regressed there (every restore was a teleport before), but the
 benefit does degrade with store latency, and widening the distance is the knob for a slow store.

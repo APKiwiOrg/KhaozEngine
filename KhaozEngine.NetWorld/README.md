@@ -98,15 +98,18 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   in flight the account is guarded (the periodic pass and save-on-leave skip it) so a save landing mid-load can't
   overwrite the stored record with default-spawn state and erase the blob; `capture` returning null/empty is
   destructive (it *erases* the stored blob - "no game state", not "keep existing"), never a "not loaded yet" signal.
-  `OnStoreError` surfaces a faulted background load/save (store outage). A completed load is applied to the
-  ACCOUNT rather than to the slot it was issued for: slots are seats and both heads recycle a freed one to the next
-  connection, so the drain re-resolves the slot's occupant (`IWorldPersistenceHost.TryGetAccountId`) and DROPS a
-  record whose account no longer holds it instead of writing that account's position, teleport and durable blob
-  onto the new occupant (#646). A drop writes nothing (the stored record stays intact and guarded for that
-  account's next join) and is announced through **`OnLoadApplyDropped`** (`event Action<string, int>`,
-  accountId + slot) plus an `Info` log line naming the account, the slot and its current occupant. A tokenless
-  guest is keyed `guest:{slot}` and is covered by the same comparison, but two SUCCESSIVE guests on one slot share
-  that key and are indistinguishable here (see the keying note under the resume-hint bullet). The periodic pass batches every dirty
+  `OnStoreError` surfaces a faulted background load/save (store outage). A completed load is applied to the SESSION
+  that read it, and neither the slot number nor the account id alone identifies one, so the drain checks both and
+  DROPS a record that fails either. Slots are seats and both heads recycle a freed one to the next connection, so the
+  drain re-resolves the slot's occupant (`IWorldPersistenceHost.TryGetAccountId`) rather than writing a departed
+  account's position, teleport and durable blob onto the new one (#646). And every join takes a monotonic token that
+  the guard holds for the duration, so an account that leaves and rejoins inside one store read - two loads
+  outstanding under one key - applies only the live session's, instead of applying both and letting the first of them
+  clear the guard while its sibling was still in flight (#654). A drop writes nothing (the stored record stays intact
+  and guarded for that account's next join) and is announced through **`OnLoadApplyDropped`**
+  (`event Action<string, int>`, accountId + slot) plus an `Info` log line naming the account, the slot and which of
+  the two reasons it was. A tokenless connection never reaches either check, because it is not persisted at all (see
+  the keying note under the resume-hint bullet). The periodic pass batches every dirty
   player's record into one `IWorldStore.SaveManyAsync` call instead of one `SaveAsync` per player. A faulted batch
   leaves every player in it dirty for the next pass (save-on-leave still uses a single-record `SaveAsync`).
   - **A rejoin is SEEDED, not only restored (since 17.37.0).** Every position this layer persists is also kept as
@@ -123,9 +126,18 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
     was a teleport before), but the benefit does degrade as store latency rises. `ResumeHintCapacity` (default
     1024, least-recently-recorded evicted) bounds the cache; 0 turns the seed off. The hints are memory-only, so
     after a process restart the first rejoin of each account falls back to the configured spawn and takes the
-    restore teleport, unless the game pre-warms `ResumeHints` from its own store at boot. A TOKENLESS connection
-    (keyed `guest:{slot}`, `ResumePositionCache.GuestAccountPrefix`) gets no hint at all, recorded or read: the
-    slot is recycled to the next connection, so that key names a seat rather than a player.
+    restore teleport, unless the game pre-warms `ResumeHints` from its own store at boot.
+  - **A tokenless connection is not persisted, and gets no hint either.** Both heads key one `guest:{slot}`
+    (`ResumePositionCache.GuestAccountPrefix`, and `ResumePositionCache.IsGuestAccount` is the shared predicate), and
+    the slot is recycled to the next connection, so that key names a seat rather than a player. `ResumePositionCache`
+    holds and answers nothing under it, and since #647 `WorldPersistence` files nothing under it either: no
+    load-on-join, no save-on-leave, no periodic pass, no in-flight guard, and the host's configured spawn every
+    session. Before that the record a guest left behind loaded onto whoever took the seat next and moved them, as a
+    teleport, to a stranger's last position. A game that runs tokenless BY DESIGN opts back in with
+    **`WorldPersistenceConfig.PersistGuests`** (default false), which files each guest under a durable
+    `guest:{guid}` minted for that one session and never under the seat. Be clear about what that buys: the minted id
+    is unreachable afterwards, so it is crash-safety within a session and an audit trail, never a guest's return.
+    Give players a connect token if returning to where they left matters.
   - **Load validation and quarantine.** Two optional hooks on `WorldPersistenceConfig`, both evaluated on the
     server thread inside the load-on-join apply step: **`Bounds`** (`WorldBounds`, the same type the movement
     clamp uses) rejects a loaded position outside the play area. **`ValidateGameState`**

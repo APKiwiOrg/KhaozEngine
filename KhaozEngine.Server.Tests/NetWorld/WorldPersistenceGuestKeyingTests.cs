@@ -215,4 +215,41 @@ public class WorldPersistenceGuestKeyingTests
         Assert.Equal(2, both.Count);                 // two sessions, two records, and neither of them is the seat
         Assert.DoesNotContain(SeatKey, both);
     }
+
+    // ---- (4) the game's own hook sees the key the record is filed under, not the chair ----
+
+    [Fact]
+    public async Task PersistGuests_hands_the_capture_hook_the_key_the_record_is_filed_under()
+    {
+        // PlayerPersistenceContext.AccountId is documented as the durable id the record is keyed by, and a game
+        // reads it as one: it is what a durable blob gets indexed under on the game's own side, and what an audit
+        // line names. Both save paths used to hand the hook the id the HEAD derived, which for an opted-in guest is
+        // guest:{slot} - the seat identity this whole change exists to keep out of the store, arriving through the
+        // one seam the game actually reads.
+        var captured = new List<string>();
+        Rig rig = Build(new WorldPersistenceConfig
+        {
+            SaveIntervalSeconds = 999f,
+            PersistGuests = true,
+            CaptureGameState = (in PlayerPersistenceContext ctx) => { captured.Add(ctx.AccountId); return new byte[] { 7 }; },
+        });
+
+        INetTransport guest = rig.ConnectGuest();
+        rig.Park(0);
+
+        rig.Persistence.SaveDirtyPass();             // the periodic pass
+        await rig.Persistence.FlushAsync();
+        string fromPass = Assert.Single(captured);
+
+        captured.Clear();
+        rig.Drop(guest);                             // and save-on-leave
+        await rig.Persistence.FlushAsync();
+        string fromLeave = Assert.Single(captured);
+
+        string key = Assert.Single(await rig.KeysAsync());
+        Assert.StartsWith(GuestKeyPrefix, key, StringComparison.Ordinal);
+        Assert.Equal(key, "player:" + fromPass);     // was player:guest:0, the chair
+        Assert.Equal(key, "player:" + fromLeave);
+        Assert.NotEqual(ResumePositionCache.GuestAccountPrefix + "0", fromPass);
+    }
 }

@@ -138,12 +138,15 @@ public class WorldPersistenceSlotRecycleTests
         }
     }
 
-    // A persistence-backed single-World head on a gated store, with alpha's record pre-seeded.
-    private static async Task<Rig> SingleAsync()
+    // A persistence-backed single-World head on a gated store, with alpha's record pre-seeded. Pass seeded: false
+    // for the rows that need alpha's load to come back with NOTHING stored, which is a different code path: it never
+    // reaches the apply drain, and clears the guard inline instead.
+    private static async Task<Rig> SingleAsync(bool seeded = true)
     {
         var inner = new InMemoryWorldStore();
-        await inner.SaveAsync("player:" + Alpha, PlayerRecord.From(new PlayerMoveState { Position = Stored },
-            Encoding.UTF8.GetBytes("alpha-blob")).Encode());
+        if (seeded)
+            await inner.SaveAsync("player:" + Alpha, PlayerRecord.From(new PlayerMoveState { Position = Stored },
+                Encoding.UTF8.GetBytes("alpha-blob")).Encode());
         var store = new GatedWorldStore(inner);
         var hub = new InMemoryHub();
         var config = new WorldServerConfig
@@ -394,5 +397,62 @@ public class WorldPersistenceSlotRecycleTests
         Assert.Equal(new[] { (Alpha, 0) }, rig.Dropped);          // was empty: the superseded session's load applied too
         Assert.Equal(new[] { Alpha }, rig.Applied);               // was [alpha, alpha]
         Assert.Equal(Stored, rig.State(0).Position);              // and the restore itself still works
+    }
+
+    // ---- (5) the same rule on the NULL-load path, which never reaches the drain ----
+
+    [Fact]
+    public async Task A_superseded_sessions_empty_load_does_not_unguard_the_live_session()
+    {
+        // The one window in which ClearGuard comparing the VALUE is what does the work. Every other clear runs
+        // through the apply drain, which has already matched the token by the time it gets there, so a key-only
+        // TryRemove would behave identically. A load that finds NOTHING stored never reaches the drain at all: it
+        // clears the guard inline, from its own thread-pool continuation, and for an account that leaves and rejoins
+        // inside that read the continuation lands AFTER the successor's join has written its own token. Keyed by
+        // account alone it takes the LIVE session's guard with it, and the periodic pass then writes the pre-restore
+        // state the live session is still holding while its own read is unanswered. The row pins the invariant (a
+        // guard belongs to the session that set it) rather than a data loss: with nothing stored under the key yet
+        // there is no record for that write to destroy, which is exactly why this path is easy to leave uncovered.
+        Rig rig = await SingleAsync(seeded: false);
+
+        Peer first = rig.Connect(Alpha);
+        rig.Pump(() => first.Client.Slot >= 0 && rig.Host.JoinedSlots.Count == 1);
+        Assert.Equal(0, first.Client.Slot);
+        Assert.Equal(1, rig.Store.PendingLoads);
+
+        rig.Drop(first);
+        rig.Pump(() => rig.Host.JoinedSlots.Count == 0);
+
+        Peer again = rig.Connect(Alpha);
+        rig.Pump(() => again.Client.Slot >= 0 && rig.Host.JoinedSlots.Count == 1);
+        Assert.Equal(0, again.Client.Slot);
+        Assert.Equal(2, rig.Store.PendingLoads);                   // two reads outstanding under one key, both of them empty
+
+        // Release the superseded session's read. There is no apply and no drop to wait on, so wait for the read
+        // itself to return and then SAMPLE the window repeatedly rather than probing it once: the inline clear runs
+        // a continuation behind the read, and a single forced pass could otherwise land in front of the very thing
+        // it is there to catch and pass for the wrong reason.
+        Assert.True(rig.Store.ReleaseOneLoad(oldest: true), "no load was parked to release");
+        for (int i = 0; i < 200 && rig.Store.CompletedLoads == 0; i++)
+        {
+            rig.Pump(() => false, 1);
+            await Task.Delay(1);
+        }
+        Assert.Equal(1, rig.Store.CompletedLoads);                 // the superseded session's read really did return
+
+        for (int i = 0; i < 60; i++)
+        {
+            rig.Persistence.SaveDirtyPass();                       // the periodic pass, forced into the window
+            Assert.DoesNotContain("player:" + Alpha, rig.Store.SavedKeys);   // the live session's guard held
+            rig.Pump(() => false, 1);
+            await Task.Delay(1);
+        }
+
+        // And it is a guard rather than a wedge: the live session's own read clears it, and the next pass writes.
+        await rig.SettleLoadsAsync();
+        Assert.Empty(rig.Dropped);                                 // an empty load carries no record, so nothing is ever dropped
+        rig.Persistence.SaveDirtyPass();
+        await rig.Persistence.FlushAsync();
+        Assert.Contains("player:" + Alpha, rig.Store.SavedKeys);
     }
 }

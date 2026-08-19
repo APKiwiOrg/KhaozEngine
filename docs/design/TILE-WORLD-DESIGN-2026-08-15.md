@@ -1,9 +1,10 @@
 # OSRS-style tile world: document, collision, renderer, editor kernel, tile editor and MCP tool (2026-08-15)
 
-Status: R1, R2 and R3 shipped (document, file form, catalogs, validator, collision, pathfinder, raycast, prefabs,
+Status: R1 to R4 shipped (document, file form, catalogs, validator, collision, pathfinder, raycast, prefabs,
 then the renderer: ground mesher, props, view, residency, snapshot, goldens, then the editing kernel
-`KhaozEngine.TileWorld.Editing` and the `ke-tileedit` MCP tool), R4 pending (the Grimhollow bootstrap under
-the fly camera), R5 (editor kernel extraction and the GUI tile editor). Section 13 carries the delivery-order
+`KhaozEngine.TileWorld.Editing` and the `ke-tileedit` MCP tool, then the Grimhollow bootstrap under the fly
+camera at Grimhollow 0.2.0), R5 in design (textured ground materials and river water, section 7.5), R6
+pending (editor kernel extraction and the GUI tile editor). Section 13 carries the delivery-order
 reasoning. Program issue: [#629](https://github.com/APKiwiOrg/KhaozEngine/issues/629). First adopter: Grimhollow, a new low-poly 3D
 MMO on the Ruinborne shell (repo to be scaffolded, `APKiwiOrg/Grimhollow`).
 
@@ -351,9 +352,9 @@ coalescing scheduler. Sub-chunking is not built until measured.
   underlay fills the remainder.
 - Smooth normals from the lattice. Void tiles emit nothing. No skirts and no seams: the lattice is global,
   so neighbouring regions share corner heights exactly.
-- v1 is colour-only. UVs are written tile-local (0..1) so a texture path (per-material submesh with an atlas)
-  can land later without touching the mesher's logic. `Kind = Water` renders as flat colour in v1 and is
-  reserved for a shader pass.
+- v1 was colour-only, with UVs written tile-local (0..1) and `Kind = Water` rendering as flat colour. R5
+  replaces both: the ground material in 7.5 and the water planes in 7.6. The mesher's geometry, split rule,
+  corner blend and overlay cut do not change, only what a vertex carries and which pipeline draws it.
 
 **Fold-backs from the R2 implementation.** Five things this sketch left open were decided while building it, and
 the shipped behaviour is the authority:
@@ -447,6 +448,129 @@ and the world-z gradient have opposite signs. And the yaw for an instance rotati
 (section 7.2's `Rotation * 90 + YawOffsetDegrees`, negated), because a row-vector `CreateRotationY(t)` sends the
 west point `(-0.5, 0, 0)` to `(-0.5 cos t, 0, +0.5 sin t)`, which only reaches the north point `(0, 0, -0.5)` at
 t of -90 degrees.
+
+### 7.5 Ground materials (R5): textures per catalog material, blended at the corners
+
+The R4 fly-through (Grimhollow 0.2.0) showed what vertex colour alone gives: ground in flat soft blobs, a river
+as a blue strip, roads as tan strips. Section 14 had deferred textured ground and water as "v1 is vertex colour
+only, UVs and `Kind = Water` reserved". This is that item, designed against the renderer as it stands.
+
+**What already exists, and why it is not simply reused.** The continuous terrain (`Terrain.Render3D`) draws
+through a splat pipeline (`ShaderSources.Terrain`, `Scene3D.LoadSplatMaterial`, `LoadMesh(mesh,
+SplatMaterialHandle)`) that is already a texture ARRAY, triplanar or planar world-space tiling, per-layer tint
+and tiles-per-metre, lit and shadowed by the same `LightingCommonGlsl` block the model path uses. It takes any
+`GltfMesh`. What it cannot do is N materials: its layer count is a `const 5`, the four leading weights ride in
+`ModelVertex.Color` and the fifth is the remainder, the tint UBO is `vec4[5]`. A tile world's catalog is open
+ended (Hollowmere's ground catalog has 13 materials and one region touches 11 of them), so five fixed slots per
+mesh cannot hold it. Fold-in (widen the splat pipeline to N) was weighed and rejected: it is Ruinborne's live
+terrain path with goldens of its own, and the tile ground's vertex needs differ (a palette per triangle, a
+jitter scalar, no per-vertex splat weights over a fixed set). What IS reused is everything around the pipeline:
+the texture-array creation (`TextureUploads.CreateSplatArrays` or its sibling), the lighting block, the MRT
+layout, the mip policy, the PNG decode (`ImageRgba` in `Render2D`, which `Render3D` already references), and
+the constraints the terrain pass already paid for (one UBO per pipeline on Metal, textures sampled in binding
+order, fragment interpolants contiguous from location 0 for FXC).
+
+**The pipeline: `TileGround`, one new shader pair in `Render3D`, same vertex layout as the model path.**
+`ModelVertex` does not change, so the mesher keeps emitting `GltfMesh` and nothing in the upload path moves.
+The fields are repurposed for this pipeline only:
+
+- `Color` = the four blend weights of the triangle's palette (`Color.a` carries the fourth, renormalised in the
+  fragment the way the splat pass does).
+- `Uv.x`, `Uv.y`, `Tangent.x`, `Tangent.y` = the four palette slot indices into the material array, as floats
+  holding integers. They are CONSTANT across a triangle (the mesher already emits per-triangle vertices, 7.1), so
+  linear interpolation cannot smear them. `Tangent.z` = the per-tile brightness jitter, `Tangent.w` = 0.
+- `Normal` = the lattice normal as today. No normal maps in R5: the OSRS register is flat low-frequency
+  texture under smooth lighting, and four more array samples per fragment buy little. The array is built
+  albedo-only, and a `NormalArray` is the documented next step if the look wants it (section 14).
+
+The fragment samples the albedo array four times (`textureGrad`, derivatives hoisted, same as the terrain
+pass), `uv = worldXZ * tilesPerMetre[slot]` from the absolute world position (`RenderOrigin` added back, as the
+terrain pass does), blends by the weights, multiplies by `tint[slot] * jitter`, then the shared lighting and the
+three MRTs. One UBO holds everything per material set: `vec4 TintTiling[MaxMaterials]` (tint rgb, tiles per
+metre) plus a misc vector, `MaxMaterials = 64` (1 KB, a catalog larger than that is split across sets by the
+caller and is not a 2026 problem). The pipeline is built beside the splat one in `ModelRenderer.BuildPipelines`
+(same vertex + instance layouts, a new resource layout: UBO, albedo array, sampler, shadow map last), and it is
+one more entry in the memoised shader set, so the second `Scene3D` in a process compiles nothing new.
+
+**The material set: `Scene3D.LoadTileGroundMaterial(TileGroundMaterialSet) -> TileGroundMaterialHandle`,
+`LoadMesh(mesh, TileGroundMaterialHandle)`.** A set is N layers of equal size (`width`, `height`, `AlbedoRgba`,
+`Tint`, `TilesPerMetre` per layer) plus the sampler config. `TileWorld.Render3D` builds it from the catalog:
+`TileGroundMaterials.Build(catalogs, resolveTexture)` gives every catalog material a slot in id order of the
+catalog. A material with `Texture` set is decoded through `ImageRgba` (path resolved RELATIVE TO THE CATALOG FILE
+that declared it, the same rule `world.json` uses for its catalog paths), and must match the set's size, a
+mismatch is a `TileWorldException` naming the material and both sizes, not a silent resample. A material with no
+`Texture` gets a flat layer of its catalog `Color` (one fill, same size), so the colour-only world of R1 to R4
+renders through the SAME pipeline and the same goldens path, just without texture detail. Textured materials
+take a white tint (the texture IS the colour, the catalog `Color` stays what the top-down painter, the
+minimap and the untextured fallback use). `TilesPerMetre` defaults to 0.5 (a 2 m repeat, which at 1 u = 1 m
+puts two tiles per texture repeat and reads as OSRS-scale grain) and is a per-material override in the catalog
+(`tilesPerMetre`, optional, the one field the schema gains). Loading happens once per view construction or
+catalog change, never mid-frame (a mipped upload opens its own command list, #424).
+
+**The mesher: a palette per triangle, weights per vertex.** `TileGroundMesher.CornerColor` already walks the
+up-to-four tiles sharing a corner and reads their underlay ids. R5 keeps that walk and turns it into a corner
+MATERIAL SET: `{materialId -> weight}` where each sharing tile contributes 1/n (void and `NoDraw` tiles
+excluded as today). A triangle's palette is the union of its three corners' sets, capped at four: when the union
+is larger, the four materials with the largest summed weight stay and the rest fold into the triangle's own
+tile material, so a tile is never drawn without itself. Each vertex's `Color` is its corner's weights remapped
+onto the triangle palette (zero for a palette slot the corner does not carry). Overlay triangles carry a
+single-material palette at weight 1, exactly as their flat colour works today, so a shaped road edge stays an
+exact cut and the soft transition lives in the underlay corners around it. The jitter scalar is the existing
+`TileColors.Jitter` value per tile. `TileColors.Blend` stays for the headless colour readers (`TileGet`, the
+painter, the snapshot's top-down default colour) and for a caller that opts out of the textured pipeline.
+
+**The view.** `TileWorldView` asks `ITileWorldScene` for `LoadTileGroundMaterial` once and uploads each
+region-plane mesh with the handle. `TileWorldViewOptions.GroundMaterials` is the hook (null = build from the
+catalogs with no texture root, i.e. flat layers). The fake scene in the tests records the material handle like it
+records meshes, so the view stays headless-testable, and the two existing goldens are rebaked on all three
+families because the untextured world now draws through the new pipeline. Two new goldens: `tileworld_textured`
+(a two-material checker set generated in the test, no image files in the engine repo) and `tileworld_river`
+(7.6). `TileWorldSnapshot` and therefore `ke-tileedit`'s renders take it for free.
+
+**Deliberately not done.** Normal maps (section 14). sRGB (the engine has no sRGB formats, everything is
+sampled in gamma space and the goldens are baked that way, a colour-space change is fleet-wide and not this
+program's). An overlay edge feather (a road blending into grass along its cut edge): the cut is exact by design
+(7.1), the feather would need a second palette per overlay triangle, and the shaped edges already break the
+hard line. Per-vertex texture rotation (the OSRS trick that hides tiling): noted, cheap later, not now.
+
+### 7.6 Water (R5): the engine's water pass, one plane per water body
+
+Water is the existing `Scene3D.DrawWater(in WaterPlane)` pass with a per-plane `WaterLook`, the pass Ruinborne
+uses for its sea and its inland lake. Nothing new is drawn: the depth tint, the shore foam band and the
+waterline feather all read the SCENE DEPTH BUFFER (the pass reconstructs the ground under each water pixel from
+the resolved depth), so no bathymetry map, no scene-wide setting, no new shader. The tile world's part is
+deciding WHERE the planes are:
+
+- **Water tiles are ground.** A `Kind = Water` material meshes like any other underlay (its texture is the
+  river BED, mud or stones, and the author sinks the bed by lowering the corner heights, which is the authoring
+  model: water is carved, not placed). `Settings.Blocked` on water tiles stays a content decision, as today.
+- **`TileWaterPlanes.Collect(doc, catalogs, region, plane) -> IReadOnlyList<WaterPlane>`:** the region-plane's
+  water tiles are grouped into 4-connected components, each component becomes ONE axis-aligned plane over its
+  bounding box, surface Y = the maximum corner height along the component's tiles (the rim corners it shares
+  with the bank) minus 2 cm, tile centres converted through `TileWorldSpace` (world z = minus tile z, 7.4).
+  One plane per body rather than one per tile because the pass draws a fixed 97x97 grid per plane (about 55k
+  triangles), so a 200-tile river must be one plane, not two hundred. The bounding box over-covers at bends,
+  and that is fine: a water fragment over ground that is ABOVE the surface fails the depth test and never
+  shows, which is exactly how the lake and the sea work. What the box must not do is reach a sunk area that is
+  not water, so the planes are per component, not per region.
+- **A sloped river renders as steps.** One surface height per component. A river that descends is authored as
+  separate bodies at each level (a weir or a rapid between them), which is also how OSRS does it. Noted in 14.
+- **`TileWaterLooks.River`** joins the engine's presets: procedural waves, zero swell, small normal strength, no
+  surf, no foam strength beyond the shore band, a browner shallow colour and a shorter `ShallowDepth` (0.8 m)
+  than the sea, so a 60 to 80 cm bed reads as deep enough to darken. The look is per plane and
+  `TileWorldViewOptions.WaterLook` overrides it for a world that wants something else.
+- **The view submits every frame.** `TileWorldView.Draw` enqueues the planes of each loaded region-plane
+  (collected at mesh-build time, rebuilt with the region, cached on the region handle) through a new
+  `ITileWorldScene.DrawWater` seam member. Planes from neighbouring regions are disjoint by construction (a
+  component is clipped to its region), so the depth-write-off blend never double-darkens. A body that
+  crosses a region border is two planes meeting at the border, the same surface height if the banks agree,
+  which the authoring pass keeps true.
+- **Collision, pathing, raycast, the top-down painter: unchanged.** Water is a ground material with a pass on
+  top. `TileRaycast.Pick` still lands on the bed, which is what an editor click wants.
+
+**Deliberately not done.** Flowing water (a scrolling direction per body), river-width-aware foam, a water
+level per region or per world (the component rim rule needs no authored number), and sloped surfaces. Each is
+a `WaterLook` or collector extension, none moves the format.
 
 ## 8. The editor kernel (`KhaozEngine.Editor`) and the tile editor (`KhaozEngine.TileEditor`)
 
@@ -596,6 +720,19 @@ server, auth and persistence come in sub-project 2 by cloning Ruinborne's shell 
   `WorldHash`, bakes collision, and finds a path from the spawn marker to the bank marker. Plus rendered PNGs
   and the user's fly-through in `Grimhollow.Editor`.
 
+**How R4 actually authored Hollowmere, and the correction.** R4 shipped the world out of `Grimhollow.WorldGen`,
+a C# program of hand-chosen placements (every building, road, marker at a coordinate a person picked) driven
+through the `TileWorld.Editing` commands, plus `objects_scatter` for the forest edge and a hash function for the
+grass tints. It was the fastest route to a first world from a session that could not reach the MCP tool, and it
+is not the authoring model: the map is hand authored, like OSRS and like Ruinborne's, and AI-first means through
+`ke-tileedit` verbs in a session with the tool registered, not through a generator. From R5's Grimhollow round
+on, Hollowmere is edited by hand through `ke-tileedit` (the river bed and banks, road shoulders, crop rows, the
+tints that follow slope and water rather than a hash), `Grimhollow.WorldGen` is retired once that pass lands
+(its prefab builders survive as prefab FILES under `assets/prefabs`, which the tool stamps), and the test that
+regenerates the world and compares hashes goes with it. What stays as proof: validate against the catalogs,
+markers present, sealed building shells (the door-blocked negative walk), the spawn-to-bank path, and a pinned
+hash of the committed world that a content change updates deliberately.
+
 ## 11. Failure handling
 
 - Load: schema errors name region and JSON path, a region hash mismatch names the region and refuses, a
@@ -662,11 +799,16 @@ pushed and packed to `local-feed`, no tags unless the user says so:
   re-tiered on `main` while the round was in flight, not the patch it was when the round started.
 - **R3**: `TileWorld.Editing` (the command layer, GPU-free, in `Foundation`) + `TileEdit.Tool` (`ke-tileedit`,
   43 verbs) + tests. Shipped, riding the same in-flight version as R2.
-- **R4**: the Grimhollow bootstrap, section 10 in full: the engine pin, `ke-tileedit` registered in the repo,
-  the Blender greybox kit and its catalogs, the authored 3x3 starter world, and a client that opens that
-  world through `TileWorld.Render3D` under the fly camera. That is the whole of sub-project 1's game side and
-  the baseline the program is judged on. Pending.
-- **R5**: the `Editor` kernel extraction with the forwarding aliases, then the `TileEditor` GUI over the
+- **R4**: the Grimhollow bootstrap, section 10: the engine pin, `ke-tileedit` registered in the repo, the
+  catalogs, the 3x3 starter world, and a client that opens that world through `TileWorld.Render3D` under the
+  fly camera. Shipped as Grimhollow 0.2.0, with `GreyboxMeshResolver` boxes standing in for the Blender kit
+  (the kit and a glb resolver are Grimhollow#4, their own small round). The round also found and fixed the
+  greybox roof lift (engine 17.37.1) and filed two engine fit-failure pairs (#658 prefab extract and the
+  derived plane lift, #659 no marker index in the manifest).
+- **R5**: ground materials (7.5) and water (7.6) in `Render3D` + `TileWorld.Render3D`, two new goldens and the
+  two existing ones rebaked, then the Grimhollow side: CC0 textures per catalog material with credits, the
+  hand-authored terrain pass through `ke-tileedit`, `WorldGen` retired (section 10). In design.
+- **R6**: the `Editor` kernel extraction with the forwarding aliases, then the `TileEditor` GUI over the
   commands R3 already shipped. Pending.
 
 **Delivery-order change 1, decided at R2 plan time and confirmed by the round.** The `Editor` kernel extraction
@@ -685,7 +827,12 @@ rounds were written. What does have a consumer now is the Grimhollow side of sec
 needs to open and draw an authored world exists after R3, and a world nobody has flown through is a world nobody
 can judge. So R4 takes the bootstrap and R5 takes the editor, in the order the consumers actually arrive.
 Nothing about either piece of work changed, only when it happens. The design's own load-bearing claim survives
-untouched, because R5's editor wraps the commands R3 shipped rather than a second set. Sub-project 1's scope
+untouched, because the editor round wraps the commands R3 shipped rather than a second set.
+
+**Delivery-order change 3, decided after the R4 fly-through: ground materials and water go before the editor.**
+The fly-through is the first time a person judged the world, and the judgement was about the ground (flat
+colour blobs, a blue strip for a river), not about tooling. The GUI editor still has no consumer, the textured
+ground has one standing in front of it. So R5 is 7.5 and 7.6 and the editor moves to R6. Sub-project 1's scope
 did not move either: R4 ends at the fly camera, and tick-based click-to-walk stays with the next sub-project
 and its own spec (section 14).
 
@@ -699,8 +846,10 @@ Each of these is filed as an issue when its round lands, not carried here.
   number on purpose: the orientation list at the top of this doc splits the shell and the walking into (2) and
   (3), and the round notes elsewhere in the fleet treat them as one, so the number is the part nobody has
   settled and the ordering is the part everybody agrees on.
-- Textured ground materials and a water shader: v1 is vertex colour only. UVs and `Kind = Water` are
-  reserved so the format does not move.
+- Textured ground materials and water: deferred from v1, now R5 (7.5 and 7.6). What R5 in turn leaves out:
+  normal maps for ground materials (a second array, four more samples), an overlay edge feather, per-vertex
+  texture rotation against tiling, flowing water and sloped river surfaces (one surface height per water body
+  in R5, a descending river is authored as bodies with a drop between them).
 - The over/under bridge plane trick: `Settings.Bridge` is reserved, semantics undefined until a bridge is
   authored that needs it.
 - Auto-tiling road brushes and multi-object marquee in the GUI: AI-first, the MCP verbs cover the need.

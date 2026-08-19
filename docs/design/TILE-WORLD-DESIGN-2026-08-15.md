@@ -405,9 +405,10 @@ of `ViewportWorld`.
 
 **Fold-backs from the R2 implementation.**
 
-- **`ITileWorldScene` is the seam, not `Scene3D`.** The view talks to a six-member interface (`LoadMesh`,
-  `UnloadMesh`, `DrawMesh`, `LoadPropMeshes`, `UnloadPropMeshes`, `DrawProps`) shaped exactly on what `Scene3D`
-  and the prop renderer already offer. `Scene3DTileWorldScene` ships and forwards straight through, and the tests
+- **`ITileWorldScene` is the seam, not `Scene3D`.** The view talks to a small interface (six members in R2: `LoadMesh`,
+  `UnloadMesh`, `DrawMesh`, `LoadPropMeshes`, `UnloadPropMeshes`, `DrawProps`, plus R5's `LoadTileGroundMaterial`,
+  the material `LoadMesh` overload and `DrawWater` as default implementations, 7.5 and 7.6) shaped exactly on
+  what `Scene3D` and the prop renderer already offer. `Scene3DTileWorldScene` ships and forwards straight through, and the tests
   drive a recording fake, so every view and residency rule (dirty coalescing, the flush budget, the roof rule,
   ring hysteresis, neighbour marking) is covered headless with no device. This was not in the sketch and is the
   single change that made the round testable.
@@ -474,58 +475,89 @@ order, fragment interpolants contiguous from location 0 for FXC).
 `ModelVertex` does not change, so the mesher keeps emitting `GltfMesh` and nothing in the upload path moves.
 The fields are repurposed for this pipeline only:
 
-- `Color` = the four blend weights of the triangle's palette (`Color.a` carries the fourth, renormalised in the
-  fragment the way the splat pass does).
-- `Uv.x`, `Uv.y`, `Tangent.x`, `Tangent.y` = the four palette slot indices into the material array, as floats
-  holding integers. They are CONSTANT across a triangle (the mesher already emits per-triangle vertices, 7.1), so
-  linear interpolation cannot smear them. `Tangent.z` = the per-tile brightness jitter, `Tangent.w` = 0.
+- Every triangle of a tile carries the SAME four material slots: the material chosen at each of the tile's
+  four corners (SW, SE, NW, NE, see the mesher rule below), as floats holding integers in `Uv.x`, `Uv.y`,
+  `Tangent.x`, `Tangent.y`. They are constant across the triangle (the mesher emits per-triangle vertices,
+  7.1), so interpolation cannot smear them, and the fragment reads them as `int(x + 0.5)` the way the splat
+  pass reads its packed values.
+- `Color` = that vertex's four weights over the tile's four corner slots, all four in `Color`, renormalised by
+  their own sum in the fragment, no one-minus-sum remainder (the splat pass's fifth-layer idiom does not
+  apply). A corner vertex is one-hot on its own slot, a mid-edge point (an overlay cut) is 0.5 and 0.5 on its
+  two end corners, a tile-centre point 0.25 on each. An overlay triangle puts its overlay material in slot 0
+  at weight 1 and zero elsewhere.
+- `Tangent.z` = the per-vertex brightness jitter, the same sharing-tile average the colour path uses today, so
+  it stays soft across corners rather than stepping per tile. `Tangent.w` = 0.
 - `Normal` = the lattice normal as today. No normal maps in R5: the OSRS register is flat low-frequency
   texture under smooth lighting, and four more array samples per fragment buy little. The array is built
-  albedo-only, and a `NormalArray` is the documented next step if the look wants it (section 14).
+  albedo-only (a new albedo-only sibling of `TextureUploads.CreateSplatArrays`, which wants both maps), and a
+  `NormalArray` is the documented next step if the look wants it (section 14).
+
+Why four slots per tile rather than a palette per triangle: continuity. Today a lattice corner is one colour
+shared by every triangle touching it, so the ground is C0 continuous by construction. A per-triangle palette
+capped at four would make two triangles either side of a tile edge fold a busy corner differently and seam
+along that edge. With the slots fixed per TILE and a corner vertex one-hot on its own corner's material, a
+shared corner samples the same material at weight 1 from every triangle, and a shared edge interpolates the
+same two materials with the same weights from both sides, so the surface is continuous everywhere at four
+samples per fragment and there is no cap to fall off.
 
 The fragment samples the albedo array four times (`textureGrad`, derivatives hoisted, same as the terrain
 pass), `uv = worldXZ * tilesPerMetre[slot]` from the absolute world position (`RenderOrigin` added back, as the
 terrain pass does), blends by the weights, multiplies by `tint[slot] * jitter`, then the shared lighting and the
-three MRTs. One UBO holds everything per material set: `vec4 TintTiling[MaxMaterials]` (tint rgb, tiles per
-metre) plus a misc vector, `MaxMaterials = 64` (1 KB, a catalog larger than that is split across sets by the
-caller and is not a 2026 problem). The pipeline is built beside the splat one in `ModelRenderer.BuildPipelines`
-(same vertex + instance layouts, a new resource layout: UBO, albedo array, sampler, shadow map last), and it is
-one more entry in the memoised shader set, so the second `Scene3D` in a process compiles nothing new.
+three MRTs. One UBO holds everything per material set: the frame block the model path already shares, then
+`vec4 TintTiling[MaxMaterials]` (tint rgb, tiles per metre) plus a misc vector, `MaxMaterials = 64` (1 KB, a
+catalog larger than that is split across sets by the caller and is not a 2026 problem). The pipeline is built
+beside the splat one in `ModelRenderer.BuildPipelines` (same vertex + instance layouts, a resource layout of
+UBO, albedo array, sampler, then the shadow map and its sampler LAST because Metal samples in binding order),
+every interpolant the fragment reads sits gap-free from location 0 (the FXC rule the terrain pass learned), and
+it is one more entry in the memoised shader set, so the second `Scene3D` in a process compiles nothing new.
+The ground CASTS shadows, as it does today through the model path (the splat terrain is the one that opts
+out), so the shadow-caster loop treats a tile-ground mesh like a model mesh, and the rebaked goldens move only
+for the texturing.
 
 **The material set: `Scene3D.LoadTileGroundMaterial(TileGroundMaterialSet) -> TileGroundMaterialHandle`,
 `LoadMesh(mesh, TileGroundMaterialHandle)`.** A set is N layers of equal size (`width`, `height`, `AlbedoRgba`,
 `Tint`, `TilesPerMetre` per layer) plus the sampler config. `TileWorld.Render3D` builds it from the catalog:
 `TileGroundMaterials.Build(catalogs, resolveTexture)` gives every catalog material a slot in id order of the
 catalog. A material with `Texture` set is decoded through `ImageRgba` (path resolved RELATIVE TO THE CATALOG FILE
-that declared it, the same rule `world.json` uses for its catalog paths), and must match the set's size, a
-mismatch is a `TileWorldException` naming the material and both sizes, not a silent resample. A material with no
+that declared it, through a new public `TileWorldCatalogs.MaterialSource(id)`, the same rule `world.json` uses
+for its catalog paths, and a material whose catalog came from memory rather than a file cannot carry a relative
+`Texture` at all, a `TileWorldException` names it), and must match the set's size, a mismatch is a
+`TileWorldException` naming the material and both sizes, not a silent resample. A material with no
 `Texture` gets a flat layer of its catalog `Color` (one fill, same size), so the colour-only world of R1 to R4
 renders through the SAME pipeline and the same goldens path, just without texture detail. Textured materials
-take a white tint (the texture IS the colour, the catalog `Color` stays what the top-down painter, the
-minimap and the untextured fallback use). `TilesPerMetre` defaults to 0.5 (a 2 m repeat, which at 1 u = 1 m
+take a white tint (the texture IS the colour, the catalog `Color` stays what the headless readers and the
+untextured flat-layer fallback use). `TilesPerMetre` defaults to 0.5 (a 2 m repeat, which at 1 u = 1 m
 puts two tiles per texture repeat and reads as OSRS-scale grain) and is a per-material override in the catalog
-(`tilesPerMetre`, optional, the one field the schema gains). Loading happens once per view construction or
+(`tilesPerMetre`, optional, the one field the catalog schema gains, which matters because the schema is
+`additionalProperties: false`). Loading happens once per view construction or
 catalog change, never mid-frame (a mipped upload opens its own command list, #424).
 
-**The mesher: a palette per triangle, weights per vertex.** `TileGroundMesher.CornerColor` already walks the
-up-to-four tiles sharing a corner and reads their underlay ids. R5 keeps that walk and turns it into a corner
-MATERIAL SET: `{materialId -> weight}` where each sharing tile contributes 1/n (void and `NoDraw` tiles
-excluded as today). A triangle's palette is the union of its three corners' sets, capped at four: when the union
-is larger, the four materials with the largest summed weight stay and the rest fold into the triangle's own
-tile material, so a tile is never drawn without itself. Each vertex's `Color` is its corner's weights remapped
-onto the triangle palette (zero for a palette slot the corner does not carry). Overlay triangles carry a
-single-material palette at weight 1, exactly as their flat colour works today, so a shaped road edge stays an
-exact cut and the soft transition lives in the underlay corners around it. The jitter scalar is the existing
-`TileColors.Jitter` value per tile. `TileColors.Blend` stays for the headless colour readers (`TileGet`, the
-painter, the snapshot's top-down default colour) and for a caller that opts out of the textured pipeline.
+**The mesher: one material per corner, four slots per tile.** `TileGroundMesher.CornerColor` already walks
+the up-to-four tiles sharing a corner and reads their underlay ids. R5 keeps that walk and picks the corner's
+MATERIAL: the id with the most sharing tiles (void and `NoDraw` excluded as today), ties broken by the lower
+material id. The tie-break must be the same from every tile that shares the corner or the corner seams, so it
+is deterministic and tile-independent by construction, and a change to it moves the goldens, which is wanted. Each tile then carries its
+four corner materials as its four slots, every vertex of every triangle in the tile gets its weights over those
+slots as described above, and the jitter per vertex is the sharing-tile average. A grass tile next to dirt
+therefore blends from grass at its inner corners to dirt at the boundary corners (whichever id wins the 2 vs 2
+tie), which is the OSRS soft edge, one tile wide, while a shaped overlay cut stays exact. `TileColors.Blend`
+stays for the headless colour readers (`TileGet`, the top-down overlay painter, the flat-layer fill) and for a
+caller that opts out of the textured pipeline. The rule is pinned by a test that meshes two regions sharing a
+corner and asserts the corner slot and weight agree from every touching triangle.
 
 **The view.** `TileWorldView` asks `ITileWorldScene` for `LoadTileGroundMaterial` once and uploads each
 region-plane mesh with the handle. `TileWorldViewOptions.GroundMaterials` is the hook (null = build from the
-catalogs with no texture root, i.e. flat layers). The fake scene in the tests records the material handle like it
-records meshes, so the view stays headless-testable, and the two existing goldens are rebaked on all three
-families because the untextured world now draws through the new pipeline. Two new goldens: `tileworld_textured`
-(a two-material checker set generated in the test, no image files in the engine repo) and `tileworld_river`
-(7.6). `TileWorldSnapshot` and therefore `ke-tileedit`'s renders take it for free.
+catalogs with no texture root, i.e. flat layers). The new `ITileWorldScene` members (`LoadTileGroundMaterial`, `LoadMesh` with a material handle,
+`DrawWater`) ship as DEFAULT interface implementations (the no-material upload and a no-op), so the two
+existing implementers outside the engine's control (Grimhollow's test fake, and any consumer's) keep compiling
+and the change stays additive. The fake scene in the tests records the material handle like it records meshes,
+so the view stays headless-testable, and the two existing goldens are rebaked on all three families because
+the untextured world now draws through the new pipeline. Two new goldens, `tileworld_textured` (a two-material
+checker set generated in the test, no image files in the engine repo) and `tileworld_river` (7.6), in test
+methods whose names carry `Golden` (the CI filter selects on the name). `TileWorldSnapshot` IS the 3D path, so
+its perspective and top-down captures, and therefore `ke-tileedit`'s renders, come back textured. What still
+reads the catalog colour is the headless side: `tile_get`, the top-down overlay painter's tints, and the
+flat-layer fill for an untextured material.
 
 **Deliberately not done.** Normal maps (section 14). sRGB (the engine has no sRGB formats, everything is
 sampled in gamma space and the goldens are baked that way, a colour-space change is fleet-wide and not this
@@ -545,26 +577,39 @@ deciding WHERE the planes are:
   river BED, mud or stones, and the author sinks the bed by lowering the corner heights, which is the authoring
   model: water is carved, not placed). `Settings.Blocked` on water tiles stays a content decision, as today.
 - **`TileWaterPlanes.Collect(doc, catalogs, region, plane) -> IReadOnlyList<WaterPlane>`:** the region-plane's
-  water tiles are grouped into 4-connected components, each component becomes ONE axis-aligned plane over its
-  bounding box, surface Y = the maximum corner height along the component's tiles (the rim corners it shares
-  with the bank) minus 2 cm, tile centres converted through `TileWorldSpace` (world z = minus tile z, 7.4).
-  One plane per body rather than one per tile because the pass draws a fixed 97x97 grid per plane (about 55k
-  triangles), so a 200-tile river must be one plane, not two hundred. The bounding box over-covers at bends,
-  and that is fine: a water fragment over ground that is ABOVE the surface fails the depth test and never
-  shows, which is exactly how the lake and the sea work. What the box must not do is reach a sunk area that is
-  not water, so the planes are per component, not per region.
+  water tiles are grouped into 4-connected components, each component gets ONE surface height (the maximum
+  corner height over the component's tiles, which is the rim it shares with the bank, minus 2 cm), and the
+  component's tile mask is cut into a DISJOINT set of maximal axis-aligned rectangles (row runs merged across
+  rows while their span is identical, the usual greedy decomposition, deterministic), one `WaterPlane` per
+  rectangle, tile centres converted through `TileWorldSpace` (world z = minus tile z, 7.4). Not one plane per
+  tile, because the pass draws a fixed 97x97 grid per plane (18,432 triangles and about 113 KB of vertices
+  uploaded per plane per frame), so a straight 3-wide river must be one plane and a bend a few. And NOT one
+  bounding box per component: a box over-covers at bends, and water over-cover is only hidden where the ground
+  under it is ABOVE the surface (the pass is depth-test-less with depth-write off, and discards only once the
+  ground is at or above the surface). A ditch beside a bend, a cave mouth, a sunk road cut, any non-water
+  ground below the rim inside the box would render as water, which is the exact failure Ruinborne's inland
+  lake was built to avoid (it covers a round basin with inscribed strips for this reason). The rectangles are
+  the component's own tiles and nothing else, so nothing that is not water gets a surface. The collector
+  asserts pairwise disjointness over every plane a region-plane emits, because two overlapping planes
+  double-darken (the blend is depth-write off) and the boundary reads as a crisp step, and it logs once when a
+  region-plane emits more than 16 planes, which is the signal that an author drew a river that wants fewer,
+  longer runs.
 - **A sloped river renders as steps.** One surface height per component. A river that descends is authored as
   separate bodies at each level (a weir or a rapid between them), which is also how OSRS does it. Noted in 14.
-- **`TileWaterLooks.River`** joins the engine's presets: procedural waves, zero swell, small normal strength, no
-  surf, no foam strength beyond the shore band, a browner shallow colour and a shorter `ShallowDepth` (0.8 m)
-  than the sea, so a 60 to 80 cm bed reads as deep enough to darken. The look is per plane and
-  `TileWorldViewOptions.WaterLook` overrides it for a world that wants something else.
+- **`TileWaterLooks.River`** is a `static readonly WaterLook` in `TileWorld.Render3D` (a per-plane look, not an
+  `OceanPreset`, which mutates scene-wide water settings): procedural waves, zero swell, small normal strength,
+  no surf, no foam beyond the shore band, a browner shallow colour and a shorter `ShallowDepth` (0.8 m) than
+  the sea, so a 60 to 80 cm bed reads as deep enough to darken. Ruinborne's inland lake look is the reference
+  values. `TileWorldViewOptions.WaterLook` overrides it for a world that wants something else. The grid mode
+  stays the scene's (camera focused by default, the clipmap mode is scene-wide and camera centred, neither is
+  chosen per plane).
 - **The view submits every frame.** `TileWorldView.Draw` enqueues the planes of each loaded region-plane
   (collected at mesh-build time, rebuilt with the region, cached on the region handle) through a new
-  `ITileWorldScene.DrawWater` seam member. Planes from neighbouring regions are disjoint by construction (a
-  component is clipped to its region), so the depth-write-off blend never double-darkens. A body that
-  crosses a region border is two planes meeting at the border, the same surface height if the banks agree,
-  which the authoring pass keeps true.
+  `ITileWorldScene.DrawWater` seam member. Planes from neighbouring regions are disjoint because a component
+  is clipped to its region and region rects are disjoint, and planes within a region are disjoint by the
+  decomposition, so the depth-write-off blend never double-darkens. A body that crosses a region border is two
+  planes meeting at the border, the same surface height if the banks agree, which the authoring pass keeps
+  true (and a mismatch shows as a 2 cm lip at the border, visible on purpose rather than hidden).
 - **Collision, pathing, raycast, the top-down painter: unchanged.** Water is a ground material with a pass on
   top. `TileRaycast.Pick` still lands on the bed, which is what an editor click wants.
 

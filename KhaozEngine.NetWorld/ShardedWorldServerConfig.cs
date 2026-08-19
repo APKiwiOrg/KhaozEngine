@@ -67,7 +67,7 @@ public sealed partial class ShardedWorldServerConfig
     public int MaxGameMessageBytes { get; init; } = 1024;
 
     /// <summary>What happens when a client presents a connect token whose authenticated subject ALREADY holds a slot
-    /// on this server (one account, two clients); mirrors <see cref="WorldServerConfig.DuplicateSessions"/>. Default
+    /// on this server (one account, two clients), mirroring <see cref="WorldServerConfig.DuplicateSessions"/>. Default
     /// <see cref="DuplicateSessionPolicy.KickOlder"/>: the new session wins and the older one is disconnected with a
     /// distinct reason the client surfaces (<see cref="DisconnectReason.SignedInElsewhere"/>), its leave running
     /// before the new join is admitted so persistence sees leave-then-join rather than two live sessions sharing one

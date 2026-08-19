@@ -298,6 +298,27 @@ What it owns today:
     `KE_D3D11_FRAMES_IN_FLIGHT` set (default 3, up to 16) rather than the swapchain's image count, so 4 holds at
     the default and at a depth of 4 and has to be raised with the knob past that. On this path the count is the
     whole safety argument, and too small a delay is a use-after-free rather than an artifact.
+  - **The safety valve bounds the holding, and it is the only reason the fence path ever drains.** A batch on the
+    fence path lives until its fence signals, so a CPU that outruns its GPU (a software rasterizer, a weak card, an
+    offscreen loop with no swapchain throttling it) grew the pending list, the batch list and the barrier's fence
+    pool with no limit at all ([#425](https://github.com/APKiwiOrg/KhaozEngine/issues/425)). Past
+    `MaxSealedBatches` sealed batches the queue stops polling and pays ONE `WaitForIdle`, which proves every
+    submitted batch complete, then frees the whole holding behind it. `Create(device, frameDelay,
+    maxSealedBatches)` sets it and `DefaultMaxSealedBatches` is 8: comfortably above the deepest a PRESENTED loop
+    reaches, since the present stops the CPU at `KE_*_FRAMES_IN_FLIGHT` frames ahead (default 3) and each of those
+    frames has to have retired something to seal a batch. Raising that knob past 8 wants this raised with it or you
+    buy a drain you did not need, and there is no way to do it from outside the engine today
+    ([#661](https://github.com/APKiwiOrg/KhaozEngine/issues/661)). What actually decides whether it fires is how far
+    ahead the LOOP gets rather than how fast the GPU is: an offscreen loop that submits without presenting has
+    nothing throttling it and runs eight or nine frames ahead on an M2 Max, where the engine's own 400-frame churn
+    test parks the peak holding exactly on the cap and fires the valve anywhere from once to a couple of dozen times
+    a run, against the 396 drains the unfenced fallback pays. The count is not reproducible, since it tracks how far
+    ahead that pass got. The peak on the cap is. `ValveDrains` counts the firings, and it is the honest signal that
+    the CPU is running away from the GPU rather than a defect reading. `SealedBatchCount`
+    is the batch-level view of the holding that the bound is written against, next to the resource-level
+    `PendingCount`. The frame-counted policies need no valve and get none: a batch there dies on the frame count
+    alone, which caps the holding at `FrameDelay` batches by construction, and `CreateFrameCounted` must not drain
+    on the frame path at all.
   - **`FlushAll()` and `Dispose()` are TEARDOWN, and the seam enforces that.** Both drain the device and then
     destroy everything pending, so calling either with something pending while anything is recording on that
     device raises `GpuDrainDuringRecordingException` naming the open recording, and frees nothing. A drain only

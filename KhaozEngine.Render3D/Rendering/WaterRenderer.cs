@@ -19,7 +19,7 @@ namespace KhaozEngine.Render3D.Rendering
     /// per-decal slot pattern so multiple planes never share/overwrite one slot regardless of backend buffer-write
     /// ordering).
     /// </summary>
-    internal sealed class WaterRenderer : IDisposable, IFramePreparer
+    internal sealed partial class WaterRenderer : IDisposable, IFramePreparer
     {
         /// <summary>Packed water-plane UBO matching the <c>Water</c> block in <see cref="ShaderSources.WaterFrag"/>
         /// (2 mat4 + 34 vec4; every member 16-byte aligned, so std140 needs no extra padding).</summary>
@@ -287,6 +287,7 @@ namespace KhaozEngine.Render3D.Rendering
             _capacity = Math.Max(planeCount, _capacity == 0 ? 4 : _capacity * 2);
             _ubo?.Dispose();
             _ubo = _gd.Factory.CreateBuffer(new GpuBufferDescription((uint)_capacity * SlotBytes, GpuBufferUsage.UniformBuffer));
+            ResizeUboImage(_capacity);   // the CPU mirror the whole-buffer upload covers (WaterRenderer.SlotUpload.cs)
             _set?.Dispose(); _set = null;
         }
 
@@ -600,8 +601,11 @@ namespace KhaozEngine.Render3D.Rendering
                 OceanMaps planeMaps = effective.WaveSource == WaterWaveSource.FftOcean ? oceanMaps : default;
                 var u = PackUbo(clipVp, viewProj, lightDirection, lightColor, cameraPos, effective, sky, timeSeconds,
                     planeMaps, renderOrigin, shore, planes[i].SurfaceY);
-                cl.UpdateBuffer(_ubo!, (uint)i * SlotBytes, in u);
+                PackSlot(i, in u);
             }
+            // ONE whole-buffer write for every plane's slot, ahead of every draw that binds one. A per-plane write
+            // was a per-plane blocking Map on D3D11 (#408); see WaterRenderer.SlotUpload.cs.
+            UploadSlots(cl);
 
             // Clipmap: every upload happens HERE, before a single draw is recorded, so no plane's geometry can be
             // written over another's mid-pass and the draw loop below touches no buffer contents at all.

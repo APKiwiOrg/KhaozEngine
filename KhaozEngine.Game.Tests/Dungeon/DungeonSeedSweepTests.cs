@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics;
 using System.Linq;
 using KhaozEngine.Dungeon;
@@ -7,16 +8,30 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Dungeon
 {
     // Task 14: the thousand-seed regression net. Tasks 3-8 already guarantee every invariant checked here, so this
-    // sweep is expected to pass on first run; it exists to catch a future regression across a wide seed range, not
+    // sweep is expected to pass on first run: it exists to catch a future regression across a wide seed range, not
     // to prove anything new about the generator today.
+    //
+    // WHAT BOUNDS THE SWEEP (#217, #507, #651). The bound used to be a stopwatch, 60s on the wide sweep and 180s on
+    // the narrow one. It tripped four times on hosted runners, at 1.1x, 1.3x, 1.8x and 6.9x its budget, and caught a
+    // generator regression exactly zero times: a wall-clock number on a shared VM measures the VM, and every trip
+    // reds a blocking leg and costs a full re-run. Raising the constant only moves the same coin flip further out.
+    // The bounds below move when the GENERATOR moves and not otherwise:
+    //   - DETERMINISM. A sampled seed is generated twice and both layouts must fold to the same LayoutHash, so an
+    //     ambient-state dependence (a clock read, an unordered walk, a static cache) fails here rather than
+    //     desyncing a client from the server later. Nothing else in the suite asserts this across a seed range.
+    //   - PER-SEED WORK. The geometry a seed carves stays inside a budget. A runaway carve or route loop is the
+    //     algorithmic blowup the stopwatch was really watching for (the only kind of slowdown that costs minutes
+    //     rather than seconds), and it moves these counts. This fails on the offending seed BY NAME, where the
+    //     stopwatch failed on whichever seed the runner happened to be busy during.
+    // The elapsed time is still measured and still written to the test output, total plus per-seed median and the
+    // slowest seed. Read it when you want the number. Nothing asserts on it.
     public class DungeonSeedSweepTests
     {
         readonly ITestOutputHelper _out;
         public DungeonSeedSweepTests(ITestOutputHelper output) => _out = output;
 
-        // Measured locally at ~1000 seeds well under the 60s guard (see the runtime report written by the Fact
-        // below), so the full 0..999 range stays in. If a future slowdown pushes this sweep past ~60s, drop to
-        // 250 and note the measured runtime here.
+        // The full 0..999 range stays in: the sweep costs a fraction of a second per hundred seeds, and the range is
+        // the point (a rare seed is exactly what this net is for).
         const int SeedCount = 1000;
 
         static DungeonConfig Config() => new()
@@ -44,58 +59,73 @@ namespace KhaozEngine.Tests.Dungeon
             HallMaxLengthTiles = 16,
         };
 
+        // Per-seed geometry, counted while the invariants are walked (so it costs nothing extra) and bounded below.
+        readonly record struct SeedWork(int WalkableCells, int PathTiles, int Rooms, int Edges)
+        {
+            public SeedWork Max(SeedWork other) => new(
+                Math.Max(WalkableCells, other.WalkableCells),
+                Math.Max(PathTiles, other.PathTiles),
+                Math.Max(Rooms, other.Rooms),
+                Math.Max(Edges, other.Edges));
+
+            public override string ToString() =>
+                $"{WalkableCells} walkable cells, {PathTiles} path tiles, {Rooms} rooms, {Edges} edges";
+        }
+
+        // Budgets: roughly 2x the peak each config actually produces across the whole 0..999 range. Measured, not
+        // guessed (2026-08-19: narrow peaked at 637 walkable cells / 54 path tiles / 14 rooms / 15 edges, wide at
+        // 1009 / 117 / 14 / 16), and the sweep prints the peak it saw on every run, so drift shows in the log
+        // without anyone editing a constant. Loose enough that ordinary retuning of room counts or corridor widths
+        // never touches them, tight enough that a carve or route loop which runs away goes straight through.
+        static readonly SeedWork NarrowBudget = new(WalkableCells: 1300, PathTiles: 120, Rooms: 28, Edges: 40);
+        static readonly SeedWork WideBudget = new(WalkableCells: 2100, PathTiles: 250, Rooms: 28, Edges: 40);
+
+        // Determinism is a property of the generator, not of a particular seed, so it is checked on a spread SAMPLE
+        // (every 20th seed, 50 of them) rather than on all 1000. An ambient-state dependence shows up on nearly
+        // every seed, so the sample catches it, and the sweep does not pay a second full pass of generation to find
+        // that out.
+        const int DeterminismSampleStride = 20;
+
         [Fact]
         public void SweepThousandSeeds_AllSolvable_AllInvariants()
         {
             DungeonConfig config = Config();
+            var perSeedTicks = new long[SeedCount];
+            SeedWork peak = default;
             Stopwatch stopwatch = Stopwatch.StartNew();
 
             for (ulong seed = 0; seed < SeedCount; seed++)
             {
+                long started = stopwatch.ElapsedTicks;
+
                 // Generate throws InvalidOperationException on an unsolvable layout (DungeonSolver.Verify inside
                 // DungeonGenerator.Generate), so a bad seed fails loudly here before we even reach the asserts below.
                 DungeonLayout layout = DungeonGenerator.Generate(config, seed);
 
-                DungeonSolveReport report = DungeonSolver.Verify(layout);
-                Assert.True(report.IsSolvable, $"seed {seed} produced an unsolvable layout: {string.Join(" ", report.Errors)}");
-                Assert.Empty(report.Errors);
-
-                AssertWallPassHolds(layout, seed);
-                AssertPlacementsWithinPlotBounds(layout, seed);
-                AssertStairPairsConsistent(layout, seed);
+                peak = peak.Max(AssertSeedInvariants(config, layout, seed, NarrowBudget));
+                perSeedTicks[seed] = stopwatch.ElapsedTicks - started;
             }
 
             stopwatch.Stop();
-            _out.WriteLine($"Swept {SeedCount} seeds (0..{SeedCount - 1}) in {stopwatch.ElapsedMilliseconds} ms.");
-
-            // 180s, not 60: since the 13.0.3 test split, dotnet test runs the 16 test assemblies in
-            // parallel, so this sweep competes with the live-GPU Render suite on the Metal leg (worst
-            // observed there: 78.5s). The guard exists to catch algorithmic blowups, which cost minutes,
-            // not seconds, so the headroom keeps the tripwire meaningful under the new profile (#217).
-            Assert.True(
-                stopwatch.Elapsed.TotalSeconds < 180,
-                $"sweep of {SeedCount} seeds took {stopwatch.Elapsed.TotalSeconds:F1}s, exceeding the 180s runtime guard.");
+            ReportSweep("", stopwatch, perSeedTicks, peak);
         }
 
         [Fact]
         public void SweepThousandSeeds_WideCorridorsAndHalls_AllSolvable_AllInvariants()
         {
             DungeonConfig config = WideConfig();
-            Stopwatch stopwatch = Stopwatch.StartNew();
+            var perSeedTicks = new long[SeedCount];
+            SeedWork peak = default;
             bool sawWideCorridor = false;
             bool sawHall = false;
+            Stopwatch stopwatch = Stopwatch.StartNew();
 
             for (ulong seed = 0; seed < SeedCount; seed++)
             {
+                long started = stopwatch.ElapsedTicks;
                 DungeonLayout layout = DungeonGenerator.Generate(config, seed);
 
-                DungeonSolveReport report = DungeonSolver.Verify(layout);
-                Assert.True(report.IsSolvable, $"seed {seed} produced an unsolvable layout: {string.Join(" ", report.Errors)}");
-                Assert.Empty(report.Errors);
-
-                AssertWallPassHolds(layout, seed);
-                AssertPlacementsWithinPlotBounds(layout, seed);
-                AssertStairPairsConsistent(layout, seed);
+                peak = peak.Max(AssertSeedInvariants(config, layout, seed, WideBudget));
                 AssertCorridorBandsRectangular(layout, seed);
 
                 foreach (DungeonEdge edge in layout.Edges.Where(e => e.Kind == DungeonEdgeKind.Corridor))
@@ -110,18 +140,77 @@ namespace KhaozEngine.Tests.Dungeon
                 {
                     sawHall = true;
                 }
+
+                perSeedTicks[seed] = stopwatch.ElapsedTicks - started;
             }
 
             stopwatch.Stop();
-            _out.WriteLine($"Swept {SeedCount} wide+hall seeds (0..{SeedCount - 1}) in {stopwatch.ElapsedMilliseconds} ms.");
+            ReportSweep("wide+hall ", stopwatch, perSeedTicks, peak);
 
             // The sweep is only meaningful if the new code paths actually fire somewhere in the range.
             Assert.True(sawWideCorridor, "no wide corridor was produced across the wide-config seed range");
             Assert.True(sawHall, "no hall room was produced across the wide-config seed range");
+        }
 
-            Assert.True(
-                stopwatch.Elapsed.TotalSeconds < 60,
-                $"wide+hall sweep of {SeedCount} seeds took {stopwatch.Elapsed.TotalSeconds:F1}s, exceeding the 60s runtime guard.");
+        // Everything one seed owes: solvable, every layout invariant, a carve that stays inside the per-seed budget,
+        // and (on a sampled seed) a second generation that lands on the same layout. Returns the geometry it counted
+        // so the caller can carry the peak.
+        static SeedWork AssertSeedInvariants(DungeonConfig config, DungeonLayout layout, ulong seed, SeedWork budget)
+        {
+            DungeonSolveReport report = DungeonSolver.Verify(layout);
+            Assert.True(report.IsSolvable, $"seed {seed} produced an unsolvable layout: {string.Join(" ", report.Errors)}");
+            Assert.Empty(report.Errors);
+
+            int walkable = AssertWallPassHolds(layout, seed);
+            AssertPlacementsWithinPlotBounds(layout, seed);
+            AssertStairPairsConsistent(layout, seed);
+            if (seed % DeterminismSampleStride == 0) AssertRegeneratesIdentically(config, layout, seed);
+
+            var work = new SeedWork(walkable, layout.Edges.Sum(e => e.Path.Count), layout.Rooms.Count, layout.Edges.Count);
+            AssertWithinBudget(work, budget, seed);
+
+            // The generator can decline to place a room it cannot fit, never invent one: a placed count above the
+            // requested target means the room loop itself ran away, which is the cheapest possible read on it.
+            Assert.True(layout.Rooms.Count <= config.RoomCountTarget,
+                $"seed {seed}: placed {layout.Rooms.Count} rooms against a target of {config.RoomCountTarget}.");
+            return work;
+        }
+
+        static void AssertWithinBudget(SeedWork work, SeedWork budget, ulong seed)
+        {
+            if (work.WalkableCells > budget.WalkableCells)
+                Assert.Fail($"seed {seed}: carved {work.WalkableCells} walkable cells, over the {budget.WalkableCells} per-seed budget.");
+            if (work.PathTiles > budget.PathTiles)
+                Assert.Fail($"seed {seed}: routed {work.PathTiles} edge path tiles, over the {budget.PathTiles} per-seed budget.");
+            if (work.Rooms > budget.Rooms)
+                Assert.Fail($"seed {seed}: placed {work.Rooms} rooms, over the {budget.Rooms} per-seed budget.");
+            if (work.Edges > budget.Edges)
+                Assert.Fail($"seed {seed}: produced {work.Edges} edges, over the {budget.Edges} per-seed budget.");
+        }
+
+        // Generation is a pure function of (config, seed): a second run in the same process must fold to the same
+        // LayoutHash, which covers the raster, rooms, edges, keys and markers with float BITS rather than
+        // GetHashCode, so it is stable across platforms and process runs (DungeonLayout.LayoutHash).
+        static void AssertRegeneratesIdentically(DungeonConfig config, DungeonLayout first, ulong seed)
+        {
+            ulong once = first.LayoutHash();
+            ulong twice = DungeonGenerator.Generate(config, seed).LayoutHash();
+            if (once != twice)
+                Assert.Fail($"seed {seed}: regenerating the same config produced a different layout ({once:x16} then {twice:x16}).");
+        }
+
+        void ReportSweep(string label, Stopwatch stopwatch, long[] perSeedTicks, SeedWork peak)
+        {
+            var sorted = (long[])perSeedTicks.Clone();
+            Array.Sort(sorted);
+            double toMs = 1000.0 / Stopwatch.Frequency;
+            long worst = sorted[^1];
+            int worstSeed = Array.IndexOf(perSeedTicks, worst);
+
+            _out.WriteLine($"Swept {SeedCount} {label}seeds (0..{SeedCount - 1}) in {stopwatch.ElapsedMilliseconds} ms.");
+            // Diagnostic only. No assertion reads these numbers, deliberately: see the note on the class.
+            _out.WriteLine($"Per-seed cost: median {sorted[SeedCount / 2] * toMs:F3} ms, slowest {worst * toMs:F3} ms (seed {worstSeed}).");
+            _out.WriteLine($"Peak per-seed work: {peak}.");
         }
 
         // Every corridor edge is a straight rectangular tube: its door band is 2 * w cells (w per end) and its
@@ -142,9 +231,13 @@ namespace KhaozEngine.Tests.Dungeon
             }
         }
 
-        // No walkable cell may be 8-adjacent (same floor) to an Empty cell after the wall pass.
-        static void AssertWallPassHolds(DungeonLayout layout, ulong seed)
+        // No walkable cell may be 8-adjacent (same floor) to an Empty cell after the wall pass. Returns the count of
+        // walkable cells it visited, which is the per-seed work budget's carve measure (free here, since this is the
+        // one pass that already visits every cell).
+        static int AssertWallPassHolds(DungeonLayout layout, ulong seed)
         {
+            int walkable = 0;
+
             for (int f = 0; f < layout.Floors; f++)
             {
                 for (int x = 0; x < layout.Width; x++)
@@ -155,6 +248,8 @@ namespace KhaozEngine.Tests.Dungeon
                         {
                             continue;
                         }
+
+                        walkable++;
 
                         for (int dx = -1; dx <= 1; dx++)
                         {
@@ -168,6 +263,8 @@ namespace KhaozEngine.Tests.Dungeon
                     }
                 }
             }
+
+            return walkable;
         }
 
         // Every room rect and every edge path/door tile must sit inside the raster the layout was allocated with.

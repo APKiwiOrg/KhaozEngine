@@ -508,9 +508,10 @@ public class WorldPickupTests
     [Fact]
     public void ShardedWorldServer_DespawnEntity_clears_an_entity_the_seam_never_spawned()
     {
-        // The boot-sweep primitive for the CellPersistence hazard: a pickup resurrected out of a cell save is a plain
-        // owned entity carrying PickupState that WorldPickups knows nothing about. It still has to be removable, and
-        // on the sharded server it is, because DespawnEntity resolves through the shard host's ownership index.
+        // The primitive behind the one-time boot sweep for blobs saved before pickups became Transient: such a
+        // resurrected pickup is a plain owned entity carrying PickupState that WorldPickups knows nothing about. It
+        // still has to be removable, and on the sharded server it is, because DespawnEntity resolves through the
+        // shard host's ownership index.
         (INetTransport serverTransport, INetTransport clientTransport) = LoopbackTransport.CreatePair();
         ShardedWorldServerConfig cfg = SmallCells();
         var server = new ShardedWorldServer(serverTransport, cfg, Flat, MoveTuning.Default);

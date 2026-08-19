@@ -479,11 +479,11 @@ namespace KhaozEngine.Render3D.Rendering
         /// frame via <see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer)"/>) followed by the per-material <paramref name="data"/> at
         /// offset <see cref="UboBytes"/>. One uniform buffer holds both, so the splat pipeline binds a single UBO
         /// (see SplatVert/SplatFrag). Owned by Scene3D; shared by every chunk using this material.</summary>
-        public IGpuBuffer CreateSplatParamsUbo(in SplatParamsData data)
+        public SplatUniformBuffer CreateSplatParamsUbo(in SplatParamsData data)
         {
             var ubo = _gd.Factory.CreateBuffer(new GpuBufferDescription(UboBytes + SplatParamsData.SizeInBytes, GpuBufferUsage.UniformBuffer));
             _gd.UpdateBuffer(ubo, UboBytes, in data);
-            return ubo;
+            return new SplatUniformBuffer(ubo, in data, UboBytes);
         }
 
         /// <summary>Build a splat-terrain material resource set: the combined frame+params UBO + the two 5-layer

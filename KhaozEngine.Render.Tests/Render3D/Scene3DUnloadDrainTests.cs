@@ -12,10 +12,11 @@ namespace KhaozEngine.Tests.Render3D
     // (GpuDeviceContext remarks): Scene3D used to Dispose() a mid-life resource immediately on Unload*, racing any
     // upload or draw still queued on the device (Mesa lavapipe executes queued work on its own thread and segfaults
     // on a resource freed out from under it). These tests pin WHERE the protection lands via a spy device (the
-    // ordering inside a method is not observable through the device seam). The texture path still drains inside the
-    // unload call. The mesh path retires, and how the retirement is proved safe now depends on the backend: a
-    // device that signals a fence on GPU completion polls that fence and never drains, and one that does not keeps
-    // the frame-count delay behind a single WaitForIdle. Both are covered below.
+    // ordering inside a method is not observable through the device seam). EVERY unload path retires now (#383, the
+    // texture path was the last one still draining inside the call), and how the retirement is proved safe depends
+    // on the backend: a device that signals a fence on GPU completion polls that fence and never drains, and one
+    // that does not keeps the frame-count delay behind a single WaitForIdle. Both are covered below.
+    // Scene3DUnloadRetireTests is the same coverage for the other three paths, headless on FakeGpuDevice, and
     // Scene3DTextureUnloadTests is the behavioural (slot-freeing) coverage.
     public sealed class Scene3DUnloadDrainTests
     {
@@ -34,8 +35,13 @@ namespace KhaozEngine.Tests.Render3D
             return (gpu, spy, scene, tex, fb);
         }
 
+        // The texture path moved off the per-unload drain too (#383). The 1-mip LoadTexture path still returns
+        // with its UpdateTexture staging copy queued, and that copy is what the drain here was protecting, but it
+        // is SUBMITTED by the time the unload returns, so the retirement fence sits behind it in the submission
+        // stream and proves the same thing without the stall. An atlas swap or a nameplate texture streaming out
+        // no longer costs a pipeline flush on the frame thread.
         [GpuFact]
-        public void UnloadTexture_DrainsTheDevice()
+        public void UnloadTexture_DoesNotDrainTheDevice()
         {
             var (gpu, spy, scene, tex, fb) = MakeScene();
             using (gpu) using (scene) using (tex) using (fb)
@@ -45,8 +51,9 @@ namespace KhaozEngine.Tests.Render3D
 
                 scene.UnloadTexture(h);
 
-                Assert.True(spy.WaitForIdleCalls > before,
-                    "UnloadTexture must drain the device (WaitForIdle) before disposing the texture");
+                Assert.Equal(before, spy.WaitForIdleCalls);
+                Assert.True(scene.RetiredResourceCount > 0,
+                    "the unloaded texture must be HELD by the retire queue, not destroyed and not leaked");
             }
         }
 

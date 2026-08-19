@@ -2801,7 +2801,7 @@ namespace KhaozEngine.Render3D
                 // AABB: cull them with the tighter AABB test (a flat chunk's bounding sphere is far too
                 // conservative), and the offset is exact. Props/models use the world-sphere test (cheap under
                 // arbitrary scale/rotation), and so does a ground instance under a rotation or a scale.
-                bool splatPlaced = haveMesh && (mesh.SplatMaterial >= 0 || mesh.TileGroundMaterial >= 0);
+                bool materialPassPlaced = haveMesh && (mesh.SplatMaterial >= 0 || mesh.TileGroundMaterial >= 0);
                 for (uint s = 0; s < run.Count; s++)
                 {
                     int slot = (int)(run.Start + s);
@@ -2809,7 +2809,7 @@ namespace KhaozEngine.Render3D
                     if (haveMesh)
                     {
                         Matrix4x4 world = _instanceData[slot].Model;
-                        if (splatPlaced && IsPureTranslation(world, out Vector3 t))
+                        if (materialPassPlaced && IsPureTranslation(world, out Vector3 t))
                             visible = frustum.IntersectsAabb(mesh.Bounds.Min + t, mesh.Bounds.Max + t);
                         else
                         {

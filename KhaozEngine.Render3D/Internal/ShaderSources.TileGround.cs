@@ -154,8 +154,12 @@ void main() {
     float w[4] = float[4](a0, a1, a2, a3);
 
     // The four corner slots. Held as floats and read back with the +0.5 round the splat pass uses, because a float
-    // that carries an integer can arrive a hair under it and truncation would then pick the wrong material.
-    int slot[4] = int[4](int(vSlots.x + 0.5), int(vSlots.y + 0.5), int(vSlots.z + 0.5), int(vSlots.w + 0.5));
+    // that carries an integer can arrive a hair under it and truncation would then pick the wrong material. The
+    // clamp to 0..63 is not decoration: the index reaches BOTH the TintTiling array and the texture array's layer,
+    // and an out-of-range index into a uniform block array is undefined behaviour rather than a wrap, which on one
+    // backend reads whatever follows the block. A mesher bug should show as the wrong material, not as garbage.
+    int slot[4] = int[4](clamp(int(vSlots.x + 0.5), 0, 63), clamp(int(vSlots.y + 0.5), 0, 63),
+                         clamp(int(vSlots.z + 0.5), 0, 63), clamp(int(vSlots.w + 0.5), 0, 63));
 
     // Screen-space world derivatives, taken ONCE here in uniform control flow (before the loop's data-dependent
     // `continue`). The UV is wpAbs.xz * tile, so its texture-space gradient is the matching world derivative scaled
@@ -186,9 +190,10 @@ void main() {
 
     // Lighting via the shared block (ShaderSources.LightingCommonGlsl, spliced in above). Base specular strength
     // from Misc.x. The exponent is a CONSTANT rather than roughness-derived: a tile-ground layer carries no
-    // roughness channel (the set is albedo-only, section 7.5), so there is nothing to ease it across. The value is
-    // the midpoint of the splat pass's smooth-to-rough range, which reads as matte ground under the cel light.
-    const float TILEGROUND_SPEC_EXP = 24.0;
+    // roughness channel (the set is albedo-only, section 7.5), so there is nothing to ease it across. 28 is the
+    // midpoint of the splat pass's SPLAT_SPEC_EXP_SMOOTH 48 to SPLAT_SPEC_EXP_ROUGH 8 range, which is the exponent
+    // that pass would reach at roughness 0.5, so ground under this pipeline highlights like middling terrain.
+    const float TILEGROUND_SPEC_EXP = 28.0;
     float specStrength = Misc.x;
     // Key-light shadow: sampled AFTER the albedo array (Metal first-sample-order: ShadowMap is binding 3, last).
     // Tile ground RECEIVES shadows identically to models and terrain, via the same shared helper.

@@ -9827,13 +9827,15 @@ else { /* GpuRecording.OpenOwner(gd) says who has it */ }
 Branch on it to avoid an expected refusal, never to make one impossible.
 
 The exception is what you now get for calling one of these mid-frame, on every backend: `Scene3D.LoadTexture`
-with mips, `Scene3D.LoadSplatMaterial`, `Scene3D.DebugReadShadowMap`, `Scene3D.DebugReadSplatAlbedoMip`, any
+with mips, `Scene3D.LoadSplatMaterial`, `Scene3D.LoadTileGroundMaterial`, `Scene3D.DebugReadShadowMap`,
+`Scene3D.DebugReadSplatAlbedoMip`, any
 `GpuReadback` entry point, `Render2DSurface.CaptureToTexture` / `CaptureToRgba`, `Render3DPreview.Capture`,
 `Render3DPreview.ReadbackRgba`, and `Scene3D.Begin` on a device with GPU completion fences (its retire barrier
 submits). Move the call into the pre-record phase. A one-level `LoadTexture` opens no list and is unaffected.
 
 Two things about recovering from it. The refusal frees whatever the call had already built (the texture, the two
-splat arrays, the offscreen target, the barrier's fence), so catching it and moving the call leaks nothing even
+splat arrays, the tile-ground albedo array, the offscreen target, the barrier's fence), so catching it and moving
+the call leaks nothing even
 if the same call is retried every frame. And **`Scene3D.Begin`'s refusal is data-dependent while the rest are
 not**: its retire barrier only runs on a `Begin` that follows a retirement, so a host that begins the scene from
 inside the frame's recording boots perfectly clean and throws on the first mesh unload, potentially minutes in.

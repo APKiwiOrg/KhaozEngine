@@ -187,6 +187,35 @@ void main() { Data[gl_GlobalInvocationID.x] = 1.0; }";
         }
 
         /// <summary>
+        /// THE SAME RULE ON THE TILE-GROUND PAIR, which states it in its own comment and is the newest pass to
+        /// depend on it. It takes the terrain lesson one step further: the fragment reads EVERY interpolant the
+        /// vertex declares, so the two signatures are the same set and there is no fragment-unused output for
+        /// SPIRV-Cross to drop in the first place. That equality is asserted rather than just the contiguity,
+        /// because contiguity alone would still pass a future edit that added an unused output above the live
+        /// block and then, one edit later, below it.
+        /// </summary>
+        [Fact]
+        public void TheTileGroundInterpolants_AreGapFreeAndEntirelyRead()
+        {
+            CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
+                ShaderSources.TileGroundVert, ShaderSources.TileGroundFrag, "TileGround");
+
+            uint[] vertexOutputs = Semantics(pair.VertexSource, "SPIRV_Cross_Output");
+            uint[] fragmentInputs = Semantics(pair.FragmentSource, "SPIRV_Cross_Input");
+
+            Assert.NotEmpty(fragmentInputs);
+            AssertContiguousFromZero(fragmentInputs, "TileGround fragment inputs",
+                "ShaderSources.TileGround.cs states this rule in its own comment: the fragment reads every "
+                + "interpolant the vertex emits, so the pixel-input block is gap-free by construction. A hole "
+                + "there is what blew the terrain to flat white on FXC and WARP.");
+            AssertContiguousFromZero(vertexOutputs, "TileGround vertex outputs",
+                "An output the fragment does not read would be dropped here and leave the gap this pair is "
+                + "written to avoid.");
+
+            Assert.Equal(vertexOutputs, fragmentInputs);
+        }
+
+        /// <summary>
         /// THE OVERLAY INCIDENT, ASSERTED. The overlay mesh vertex declares the full ModelVertex stream so the
         /// model pass's own vertex buffer binds unchanged, and means only Position and Color. Normal sits at
         /// location 1 between them, so dropping it holed the emitted signature at TEXCOORD0 then TEXCOORD2. This

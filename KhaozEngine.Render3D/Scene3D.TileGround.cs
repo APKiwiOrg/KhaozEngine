@@ -56,6 +56,12 @@ namespace KhaozEngine.Render3D
             IReadOnlyList<TileGroundLayerImage> layers, float baseSpecStrength = 0.15f,
             TerrainSamplerConfig? sampler = null)
         {
+            // A non-positive size would reach the texture description as a huge uint and fail somewhere in the
+            // seam, so it is caught by name here. Zero is the likelier mistake of the two, from an unset field.
+            if (width <= 0)
+                throw new ArgumentOutOfRangeException(nameof(width), width, "tile-ground layer width must be positive.");
+            if (height <= 0)
+                throw new ArgumentOutOfRangeException(nameof(height), height, "tile-ground layer height must be positive.");
             if (layers.Count < 1 || layers.Count > TileGroundMaterialConfig.MaxMaterials)
                 throw new ArgumentException(
                     $"a tile-ground material needs 1 to {TileGroundMaterialConfig.MaxMaterials} layers, got {layers.Count}.",
@@ -93,7 +99,11 @@ namespace KhaozEngine.Render3D
         /// vertex <c>Color</c> carries the four corner weights, <c>Uv.xy</c> plus <c>Tangent.xy</c> the four corner
         /// material slots, and <c>Tangent.z</c> the per-vertex brightness jitter. An invalid handle falls back to
         /// the untextured model path. The material is shared (owned by the scene), so unloading the mesh does NOT
-        /// free it.</summary>
+        /// free it.
+        /// <para>THE JITTER IS A MULTIPLIER, NOT AN OFFSET, so <c>Tangent.z</c> of 0 renders that vertex BLACK.
+        /// A mesher that wants no jitter writes 1.0, never 0, and a mesh built for the model pipeline (where
+        /// <c>Tangent</c> is a tangent frame and <c>Tangent.z</c> is whatever the exporter wrote) is not a
+        /// tile-ground mesh. This is the failure that looks like a lighting bug and is not one.</para></summary>
         public MeshHandle LoadMesh(GltfMesh mesh, TileGroundMaterialHandle material)
         {
             if (!material.IsValid) return LoadMesh(mesh);

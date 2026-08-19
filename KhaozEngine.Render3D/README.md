@@ -57,8 +57,9 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   `UnloadMesh` RETIRES its buffers and per-mesh material set through the seam's `GpuRetireQueue` and does not
   drain at all: the queue destroys them a few frames later, once a fence (or the frame count) says the GPU is
   done, which is what took the per-chunk stall off the terrain streaming path. `UnloadProp` forwards to it, so it
-  behaves the same. `UnloadTexture`, `UnloadSkinnedMesh` and `UnloadSplatMaterial` still drain the device
-  (`IGpuDevice.WaitForIdle`) before disposing, since a queued upload or draw may still reference them.
+  behaves the same. `UnloadTexture`, `UnloadSkinnedMesh`, `UnloadSplatMaterial` and `UnloadTileGroundMaterial`
+  still drain the device (`IGpuDevice.WaitForIdle`) before disposing, since a queued upload or draw may still
+  reference them.
 - `Scene3D.PrepareFrame()` - the frame's pre-recording phase. Call it once per frame, after the frame's
   `Draw*` calls and BEFORE opening the command list the scene is recorded into. Subsystems whose per-frame GPU work
   cannot go in the frame's list (the FFT ocean's priming dispatch, which needs a submit + device wait of its own)
@@ -74,7 +75,8 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   issue #429). A host that does neither no longer gets a silently corrupt frame on one backend: every scene path
   that opens a list of its own goes through the seam's open-recording register, so the nesting is a
   `GpuNestedRecordingException` naming both sides on every backend (issue #424). The calls that refuse mid-frame
-  are a mipped `LoadTexture`, `LoadSplatMaterial`, `DebugReadShadowMap`, `DebugReadSplatAlbedoMip`,
+  are a mipped `LoadTexture`, `LoadSplatMaterial`, `LoadTileGroundMaterial`, `DebugReadShadowMap`,
+  `DebugReadSplatAlbedoMip`,
   `Render3DPreview.Capture`, `Render3DPreview.ReadbackRgba`, and `Scene3D.Begin` on a device with GPU completion
   fences (its retire barrier submits). Every one of them frees whatever it had already built before it was
   refused, so catching the exception and moving the call costs nothing. **`Scene3D.Begin`'s refusal is

@@ -335,14 +335,18 @@ namespace KhaozEngine.Render3D.Rendering
                     new GpuVertexElement("IModel3", GpuVertexElementFormat.Float4),
                     new GpuVertexElement("ITint", GpuVertexElementFormat.Float4),
                     new GpuVertexElement("IEmissive", GpuVertexElementFormat.Float4),
+                    // Location 11: per-instance material params. Consumed by ModelVert and SplatVert. The
+                    // TILE-GROUND pipeline shares this layout and declares nothing from 11 up (it derives its
+                    // specular from the material UBO), so 11, 12 and 13 are all trailing inputs there. The rule the
+                    // three of them rely on is the same one: a TRAILING input the shader does not declare is valid
+                    // on all three backends, while a hole below a declared one is not.
                     new GpuVertexElement("ISpecParams", GpuVertexElementFormat.Float4),
-                    // Location 12: dynamic-geometry decal mask (0 static / 1 skinned). Consumed by ModelVert; the
-                    // splat pipeline shares this instance layout and ignores it (a trailing input the shader does not
-                    // read is valid on all three backends).
+                    // Location 12: dynamic-geometry decal mask (0 static / 1 skinned). Consumed by ModelVert. The
+                    // splat and tile-ground pipelines share this instance layout and ignore it.
                     new GpuVertexElement("IDynamic", GpuVertexElementFormat.Float1),
                     // Location 13: per-instance rigid dissolve (issue #253) - x = threshold, y = edge width. Consumed
-                    // by ModelVert (passed to ModelFrag, which gates on x > 0). The splat pipeline and the CharDissolve
-                    // pipeline both share this layout and ignore this trailing input.
+                    // by ModelVert (passed to ModelFrag, which gates on x > 0). The splat, tile-ground and
+                    // CharDissolve pipelines all share this layout and ignore this trailing input.
                     new GpuVertexElement("IDissolve", GpuVertexElementFormat.Float2),
                 });
 

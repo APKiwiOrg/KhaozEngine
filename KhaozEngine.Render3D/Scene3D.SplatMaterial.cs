@@ -15,7 +15,7 @@ namespace KhaozEngine.Render3D
     public sealed partial class Scene3D
     {
         // Loaded splat-terrain materials, indexed by SplatMaterialHandle.ListIndex. Each owns its two texture
-        // arrays + params UBO + resource set; shared across meshes; disposed in Dispose / UnloadSplatMaterial.
+        // arrays + params UBO + resource set, shared across meshes, disposed in Dispose or UnloadSplatMaterial.
         readonly List<SplatMaterialEntry?> _splatMaterials = new();
 
         /// <summary>Upload a 5-layer splat-terrain material: two texture arrays (albedo + tangent-space normal, one
@@ -74,7 +74,7 @@ namespace KhaozEngine.Render3D
         /// dimensions. Lets a game/test verify the generated mip chain on a real device - e.g. whether a high mip is
         /// a real blurred downsample (its average colour matches mip 0, low detail) versus a copy of mip 0 (still
         /// detailed) or empty (near-black), which is how a broken GPU mip generation shows up. Requires a mappable
-        /// device; not on the per-frame path.</summary>
+        /// device, and not on the per-frame path.</summary>
         public byte[] DebugReadSplatAlbedoMip(SplatMaterialHandle h, int mipLevel, int arrayLayer, out int width, out int height)
         {
             if (!h.IsValid) throw new ArgumentException("splat material handle is Invalid.", nameof(h));

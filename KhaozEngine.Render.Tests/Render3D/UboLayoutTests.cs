@@ -417,6 +417,24 @@ namespace KhaozEngine.Tests.Render3D
         // ---- Tile-ground material params tail ----
 
         [Fact]
+        public void TileGroundShaders_DeclarePointLightArrays_SizedByMaxPointLights()
+        {
+            // TileGroundVert/Frag share the same frame UBO header (incl. the two point-light arrays) as the model
+            // and splat passes. Same tripwire, other half in ShaderSources.TileGround.cs.
+            string posArray = "vec4 PointPosRadius[" + ModelRenderer.MaxPointLights + "];";
+            string colArray = "vec4 PointColorIntensity[" + ModelRenderer.MaxPointLights + "];";
+
+            Assert.True(ShaderSources.TileGroundVert.Contains(posArray),
+                $"TileGroundVert lost '{posArray}': drifted from ModelRenderer.MaxPointLights ({ModelRenderer.MaxPointLights}). Fix ShaderSources.TileGroundVert or the constant.");
+            Assert.True(ShaderSources.TileGroundVert.Contains(colArray),
+                $"TileGroundVert lost '{colArray}': drifted from ModelRenderer.MaxPointLights ({ModelRenderer.MaxPointLights}). Fix ShaderSources.TileGroundVert or the constant.");
+            Assert.True(ShaderSources.TileGroundFrag.Contains(posArray),
+                $"TileGroundFrag lost '{posArray}': drifted from ModelRenderer.MaxPointLights ({ModelRenderer.MaxPointLights}). Fix ShaderSources.TileGroundFrag or the constant.");
+            Assert.True(ShaderSources.TileGroundFrag.Contains(colArray),
+                $"TileGroundFrag lost '{colArray}': drifted from ModelRenderer.MaxPointLights ({ModelRenderer.MaxPointLights}). Fix ShaderSources.TileGroundFrag or the constant.");
+        }
+
+        [Fact]
         public void TileGroundParamsBytes_MatchesGlslTail_MaxMaterialsPlusMisc()
         {
             // The tail in the TileGroundFrag `U` block is TintTiling[MaxMaterials] + Misc, and BuildParams returns
@@ -460,7 +478,12 @@ namespace KhaozEngine.Tests.Render3D
             // mis-material, so pin both spellings.
             Assert.Contains("for (int L = 0; L < 4; L++)", ShaderSources.TileGroundFrag);
             Assert.Contains("float w[4] = float[4]", ShaderSources.TileGroundFrag);
-            Assert.Contains("int slot[4] = int[4](int(vSlots.x + 0.5)", ShaderSources.TileGroundFrag);
+            // Clamped to the last valid slot, since the index reaches the UBO array AND the texture array layer,
+            // and an out-of-range uniform-array index is undefined rather than wrapped. Spelled from the constant.
+            string firstSlot = "int slot[4] = int[4](clamp(int(vSlots.x + 0.5), 0, "
+                + (TileGroundMaterialConfig.MaxMaterials - 1) + ")";
+            Assert.True(ShaderSources.TileGroundFrag.Contains(firstSlot),
+                $"TileGroundFrag lost '{firstSlot}': the slot clamp drifted from TileGroundMaterialConfig.MaxMaterials ({TileGroundMaterialConfig.MaxMaterials}). Fix ShaderSources.TileGroundFrag or the constant.");
             // Renormalised by their OWN sum: there is no one-minus-sum fifth layer on this pipeline.
             Assert.DoesNotContain("1.0 - (a0 + a1 + a2 + a3)", ShaderSources.TileGroundFrag);
         }

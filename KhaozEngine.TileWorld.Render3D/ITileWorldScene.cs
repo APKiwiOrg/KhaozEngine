@@ -34,6 +34,10 @@ public interface ITileWorldScene
     int DrawProps(IReadOnlyList<PropPlacement> placements,
                   IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
                   Vector3 focus, float drawRadius);
+
+    /// <summary>Queues one water surface for this frame, defaulting to a no-op so an implementation written
+    /// before water existed keeps compiling and simply draws none.</summary>
+    void DrawWater(in WaterPlane plane) { }
 }
 
 /// <summary>The shipped <see cref="ITileWorldScene"/>: every member forwards straight to a <see cref="Scene3D"/>
@@ -76,4 +80,7 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene
                          IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
                          Vector3 focus, float drawRadius) =>
         _scene.DrawProps(placements, parts, focus, drawRadius);
+
+    /// <inheritdoc />
+    public void DrawWater(in WaterPlane plane) => _scene.DrawWater(plane);
 }

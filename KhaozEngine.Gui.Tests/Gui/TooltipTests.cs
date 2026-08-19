@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.App;
@@ -16,6 +17,24 @@ namespace KhaozEngine.Tests.Gui
         {
             public float LineHeight => 20f;
             public Vector2 Measure(string text) => new(text.Length * 10f, 20f);
+        }
+
+        // The same 10px/char metrics, tallying how often each exact string is measured. Wrapping a body line
+        // measures that line's own full text once, as the does-it-fit probe, before any candidate slice is
+        // measured, so the tally for a source line IS the number of word-wrap passes over it.
+        sealed class CountingFont : ITextMeasurer
+        {
+            readonly Dictionary<string, int> _counts = new(StringComparer.Ordinal);
+
+            public float LineHeight => 20f;
+
+            public Vector2 Measure(string text)
+            {
+                _counts[text] = _counts.TryGetValue(text, out int n) ? n + 1 : 1;
+                return new(text.Length * 10f, 20f);
+            }
+
+            public int WrapsOf(string sourceLine) => _counts.TryGetValue(sourceLine, out int n) ? n : 0;
         }
 
         static readonly FixedFont Font = new();
@@ -276,6 +295,35 @@ namespace KhaozEngine.Tests.Gui
             Assert.True(rScaled.Width <= 100f);  // stays within the cap
             // Two wrapped lines at scale 2: contentH = (20*2+3)*2 - 3 = 83 -> panelH 83+16=99.
             Assert.Equal(99f, rScaled.Height);
+        }
+
+        [Fact]
+        public void Draw_layout_wraps_the_body_once_and_hands_the_wrapped_lines_back()
+        {
+            // The draw path takes its bounds AND the lines it walks from a single layout pass. Measuring the
+            // bounds alone and measuring them for a draw therefore cost exactly the same, because the wrap
+            // happens once either way. Draw used to word-wrap a second time with the identical font, lines and
+            // width cap to get the lines back, so every visible tooltip wrapped its body twice per frame.
+            const string body = "one two three four";
+            var lines = One(body);
+
+            var boundsOnly = new CountingFont();
+            Rect measured = Tooltip.ComputeBounds(boundsOnly, "", "", boundsOnly, boundsOnly, lines,
+                new Vector2(400, 300), View, M, 100f, 1f);
+
+            var drawLayout = new CountingFont();
+            Rect forDraw = Tooltip.ComputeBounds(drawLayout, "", "", drawLayout, drawLayout, lines,
+                new Vector2(400, 300), View, M, 100f, 1f, out List<TooltipLine> visual);
+
+            Assert.Equal(measured, forDraw);
+            Assert.Equal(1, boundsOnly.WrapsOf(body));
+            Assert.Equal(1, drawLayout.WrapsOf(body));
+
+            // And what comes back is the wrapped body the bounds were measured from, ready to draw.
+            Assert.Equal(3, visual.Count);
+            Assert.Equal("one two", visual[0].Text);
+            Assert.Equal("three", visual[1].Text);
+            Assert.Equal("four", visual[2].Text);
         }
 
         [Fact]

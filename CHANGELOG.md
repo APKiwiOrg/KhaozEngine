@@ -7,8 +7,17 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.37.1
 
-A greybox roof now sits on the walls it covers instead of floating a whole plane above them.
+A greybox roof now sits on the walls it covers instead of floating a whole plane above them. Alongside it, five
+contained fixes: a tooltip that word-wrapped its body twice every frame, a write queue whose backup rotation was
+off by default while the read side went looking for two generations, a mouse tap that vanished whenever its press
+and release landed in the same frame, and a path follower that skipped a waypoint on another layer and never
+replanned for a goal that moved straight up.
 
+- **`Tooltip` word-wraps its body once per frame instead of twice** (`KhaozEngine.Gui`). `Draw` measured the
+  bubble through `ComputeBounds`, which word-wraps the body to lay it out, then called the same wrap a second time
+  with the identical font, lines and width cap to get the lines it walks, throwing the first result away. The
+  layout pass hands its wrapped lines back to `Draw` now, so a visible tooltip does one wrap and allocates one
+  line list per frame rather than two. Closes #400.
 - **`GreyboxMeshResolver` builds every shape in its own PLANE's local space** (`KhaozEngine.TileWorld.Render3D`).
   A roof archetype is placed on the plane ABOVE the walls it covers, which is exactly what `TileWorldView`'s
   roof-hide rule keys on, and `TileObjectProps.AnchorPosition` anchors an object at `HeightAt(plane)`, so a

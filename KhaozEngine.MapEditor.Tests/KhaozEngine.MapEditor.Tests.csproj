@@ -32,5 +32,6 @@
     <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
     <!-- ViewportWorldDisposeOrderGpuTests / RenderServiceTests use [GpuFact]. -->
     <ProjectReference Include="../KhaozEngine.TestSupport.Gpu/KhaozEngine.TestSupport.Gpu.csproj" />
+    <ProjectReference Include="../KhaozEngine.TestSupport.Windowing/KhaozEngine.TestSupport.Windowing.csproj" />
   </ItemGroup>
 </Project>

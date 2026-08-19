@@ -222,7 +222,7 @@ KhaozEngine.Localization.Analyzers/   KhaozEngine.CodeHealth.Analyzers/
 KhaozEngine.Foundation/   KhaozEngine.Game2D/   KhaozEngine.Game3D/   KhaozEngine.Server/
 # Tests, samples, tools
 KhaozEngine.<Area>.Tests/ (Foundation, Simulation, Server, Render, Gui, MapEditor, Game, Audio, Particles, Showcase)   KhaozEngine.Tests/ (rump, cross-cutting only)
-KhaozEngine.TestSupport/   KhaozEngine.TestSupport.Services/   KhaozEngine.TestSupport.Gpu/   KhaozEngine.Showcase/ (menu hub: 2D, GUI, input, mini-game, 3D-world, networked-walk, map-editor rooms)
+KhaozEngine.TestSupport/   KhaozEngine.TestSupport.Services/   KhaozEngine.TestSupport.Gpu/   KhaozEngine.TestSupport.Windowing/   KhaozEngine.Showcase/ (menu hub: 2D, GUI, input, mini-game, 3D-world, networked-walk, map-editor rooms)
 SnapshotTool/ (also GPU-free `diff`/`score` subcommands)   MmoServerSample/ (reference dedicated MMO server)
 KhaozEngine.Updates.Tool/ (ke-updater)   KhaozEngine.Sfx.Tool/ (ke-sfxbake)   KhaozEngine.PropSurface.Tool/ (ke-propbake)
 KhaozEngine.MapEdit.Tool/ (ke-mapedit)   KhaozEngine.TileEdit.Tool/ (ke-tileedit)

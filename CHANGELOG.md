@@ -44,6 +44,22 @@ replanned for a goal that moved straight up.
   the new `PathFollowConfig.GoalRetargetVerticalTolerance` (default 0.8, matching `VerticalAcceptTolerance`)
   alongside the horizontal `GoalRetargetTolerance`. `ReplanCooldownSeconds` still gates how often a due
   replan reaches the planner, and `float.PositiveInfinity` restores the purely horizontal trigger. Closes #317.
+- **A mouse tap whose press and release land in one frame still registers** (`KhaozEngine.Windowing`).
+  `Pointer` derived its press edge purely from `IsDown` transitions, so when a press and its release both
+  queued inside a single frame the button was already up by the time `Update` ran, the latch never opened, and
+  the tap was invisible to every press-origin consumer, `IsTapIn` included. It happens on any frame hitch and
+  routinely at the engine's own background-throttle rates (15 Hz unfocused, 10 Hz minimized). The pointer now
+  completes that gesture from the snapshot's `MousePressed` edge: the frame reports as a release, with the
+  press-origin at the cursor, for the left, middle and right buttons alike. Reading the edge is purely
+  additive, so a producer that never fills `MousePressed` (a replay, a synthesized headless frame, a game's own
+  test rig) reads exactly as it did before and only loses the same-frame tap. Closes #300.
+- **Test frame builders derive real mouse edges** (`KhaozEngine.TestSupport.Windowing`, new, not packable).
+  About thirty test files built their `InputState` with an empty `MousePressed` while filling `MouseDown` from a
+  `down` bool, which models a HELD button and never a press EDGE, so the mouse press edge was systematically
+  unexercised across the suite, which is how the `Pointer` defect above stayed invisible. The new `MouseFrames`
+  helper derives the press and release sets from the previous frame's held set (one instance per test class,
+  never a static, so nothing crosses between the classes xUnit runs in parallel), and every one of those local
+  builders now goes through it.
 - **`GreyboxMeshResolver` builds every shape in its own PLANE's local space** (`KhaozEngine.TileWorld.Render3D`).
   A roof archetype is placed on the plane ABOVE the walls it covers, which is exactly what `TileWorldView`'s
   roof-hide rule keys on, and `TileObjectProps.AnchorPosition` anchors an object at `HeightAt(plane)`, so a

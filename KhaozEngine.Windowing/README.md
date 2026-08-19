@@ -155,7 +155,11 @@ Windowing + input foundation for the custom MonoGame-free stack.
   bare `AppWindow` host is covered - it also un-loses the Metal-vsync `Console.Error` warning above on a WinExe),
   and `GameApp` calls it first (opt out with `GameAppOptions.SuppressParentConsoleAttach`).
 - `InputManager` / `Pointer` - the higher-level read: unified pointer, edges, bounds helpers (`IsTapIn` etc.),
-  region blocking, keyboard/gamepad/menu navigation. The right button has the same bounds helpers as the left
+  region blocking, keyboard/gamepad/menu navigation. A tap whose press AND release land inside one frame still
+  registers: the button is already up when `Update` runs, so the down transition sees nothing and the pointer
+  completes the gesture off the snapshot's `MousePressed` edge, reporting the frame as a release with the
+  press-origin at the cursor. It matters on any frame hitch and at the background-throttle rates. Reading that
+  edge is additive, so a producer that only ever fills `MouseDown` behaves exactly as it always did. The right button has the same bounds helpers as the left
   (`IsRightTapIn` / `IsRightPressingIn`, forwarded on `InputManager`), carrying the same press-origin invariant
   off their own `RightPressOrigin` - what a right-click context menu hangs off, since hit-testing by raw
   position plus a button read is against the rule above. `ConsumeRightGesture()` / `IsRightConsumed` are the

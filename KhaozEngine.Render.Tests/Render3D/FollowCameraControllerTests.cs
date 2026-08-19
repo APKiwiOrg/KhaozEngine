@@ -9,17 +9,22 @@ namespace KhaozEngine.Tests.Render3D
 {
     public class FollowCameraControllerTests
     {
-        static InputState Frame(
+        // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and
+        // release edges derive from this test's own frame sequence and nothing crosses between tests.
+        readonly MouseFrames _mouse = new();
+
+        InputState Frame(
             Vector2 mouseDelta = default, float scroll = 0f,
             MouseButton? down = null)
         {
             var md = new HashSet<MouseButton>();
             if (down is MouseButton b) md.Add(b);
+            var (edgePressed, edgeReleased) = _mouse.Advance(md);
             return new InputState(
                 new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                md, new HashSet<MouseButton>(),
+                md, edgePressed,
                 mousePosition: Vector2.Zero, mouseDelta: mouseDelta, scrollDelta: scroll,
-                width: 800, height: 600);
+                width: 800, height: 600, mouseReleased: edgeReleased);
         }
 
         [Fact]

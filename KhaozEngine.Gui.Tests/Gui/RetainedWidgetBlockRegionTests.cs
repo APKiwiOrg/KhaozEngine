@@ -19,15 +19,20 @@ namespace KhaozEngine.Tests.Gui
         static readonly Vector2 Inside = new(160, 120);
         static readonly Vector2 Outside = new(10, 10);
 
-        static InputState Frame(Vector2 pos, bool down)
+        // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and
+        // release edges derive from this test's own frame sequence and nothing crosses between tests.
+        readonly MouseFrames _mouse = new();
+
+        InputState Frame(Vector2 pos, bool down)
         {
             var b = new HashSet<MouseButton>();
             if (down) b.Add(MouseButton.Left);
+            var (edgePressed, edgeReleased) = _mouse.Advance(b);
             return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                b, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540);
+                b, edgePressed, pos, Vector2.Zero, 0, 960, 540, mouseReleased: edgeReleased);
         }
 
-        static Pointer At(Vector2 pos)
+        Pointer At(Vector2 pos)
         {
             var p = new Pointer();
             p.Update(Frame(pos, false));
@@ -35,7 +40,7 @@ namespace KhaozEngine.Tests.Gui
         }
 
         // A press-origin tap (press and release both inside), the way the dropdown opens.
-        static void Tap(Dropdown d, Pointer p, Vector2 at)
+        void Tap(Dropdown d, Pointer p, Vector2 at)
         {
             p.Update(Frame(at, false)); d.Update(p);
             p.Update(Frame(at, true)); d.Update(p);

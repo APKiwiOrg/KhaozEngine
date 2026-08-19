@@ -27,17 +27,26 @@ namespace KhaozEngine.Tests.Windowing
                 Vector2.Zero, Vector2.Zero, scroll, 960, 540, pads);
         }
 
-        static InputState Mouse(Vector2 pos, bool leftDown = false, bool middleDown = false,
-                                IEnumerable<MouseButton>? pressed = null)
+        // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and
+        // release edges derive from this test's own frame sequence and nothing crosses between tests.
+        readonly MouseFrames _mouse = new();
+
+        InputState Mouse(Vector2 pos, bool leftDown = false, bool middleDown = false,
+                         IEnumerable<MouseButton>? pressed = null)
         {
             var down = new HashSet<MouseButton>();
             if (leftDown) down.Add(MouseButton.Left);
             if (middleDown) down.Add(MouseButton.Middle);
             var pr = new HashSet<MouseButton>(pressed ?? System.Array.Empty<MouseButton>());
             foreach (var b in pr) down.Add(b);
+            // The explicit `pressed` set stays authoritative (a test naming a press edge means it), and the
+            // derived edge fills in for the leftDown/middleDown bools, which model a HELD button and never
+            // said anything about the transition.
+            var (edgePressed, edgeReleased) = _mouse.Advance(down);
+            edgePressed.UnionWith(pr);
             return new InputState(
                 new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                down, pr, pos, Vector2.Zero, 0f, 960, 540);
+                down, edgePressed, pos, Vector2.Zero, 0f, 960, 540, mouseReleased: edgeReleased);
         }
 
         // A gamepad with the given buttons newly pressed this frame, on the given slot.

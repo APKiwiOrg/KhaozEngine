@@ -512,12 +512,17 @@ namespace KhaozEngine.Tests.MapEditor
 
         // A minimal mouse frame for driving the scene's real OnUpdate headless (mirrors the MapEditorSceneTests
         // MouseFrame idiom: a press/release edge is read from the transition between consecutive frames).
-        static InputState MouseFrame(Vector2 pos, bool leftDown)
+        // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and
+        // release edges derive from this test's own frame sequence and nothing crosses between tests.
+        readonly MouseFrames _mouse = new();
+
+        InputState MouseFrame(Vector2 pos, bool leftDown)
         {
             var down = new HashSet<MouseButton>();
             if (leftDown) down.Add(MouseButton.Left);
+            var (edgePressed, edgeReleased) = _mouse.Advance(down);
             return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                down, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 800, 600);
+                down, edgePressed, pos, Vector2.Zero, 0, 800, 600, mouseReleased: edgeReleased);
         }
 
         // A keyboard frame: the given keys fire their press edge this frame (and read as held).

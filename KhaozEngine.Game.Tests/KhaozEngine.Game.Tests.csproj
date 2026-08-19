@@ -72,6 +72,7 @@
          consume the cross-cluster fakes via their unchanged KhaozEngine.Tests.Updates / KhaozEngine.Tests.ServerStatus
          namespaces. -->
     <ProjectReference Include="../KhaozEngine.TestSupport/KhaozEngine.TestSupport.csproj" />
+    <ProjectReference Include="../KhaozEngine.TestSupport.Windowing/KhaozEngine.TestSupport.Windowing.csproj" />
     <ProjectReference Include="../KhaozEngine.TestSupport.Services/KhaozEngine.TestSupport.Services.csproj" />
   </ItemGroup>
 </Project>

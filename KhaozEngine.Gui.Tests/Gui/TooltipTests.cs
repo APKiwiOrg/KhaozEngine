@@ -43,16 +43,21 @@ namespace KhaozEngine.Tests.Gui
 
         static TooltipLine[] One(string s) => new[] { new TooltipLine(s, Vector4.One) };
 
-        static InputState Frame(Vector2 pos, bool down)
+        // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and
+        // release edges derive from this test's own frame sequence and nothing crosses between tests.
+        readonly MouseFrames _mouse = new();
+
+        InputState Frame(Vector2 pos, bool down)
         {
             var b = new HashSet<MouseButton>();
             if (down) b.Add(MouseButton.Left);
+            var (edgePressed, edgeReleased) = _mouse.Advance(b);
             return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                b, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540);
+                b, edgePressed, pos, Vector2.Zero, 0, 960, 540, mouseReleased: edgeReleased);
         }
 
         // Drive a fresh press-then-release gesture ending at `at`, so the pointer reports a tap released there.
-        static Pointer ReleaseAt(Vector2 at)
+        Pointer ReleaseAt(Vector2 at)
         {
             var p = new Pointer();
             p.Update(Frame(new Vector2(-1, -1), false));

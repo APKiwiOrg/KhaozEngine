@@ -10,6 +10,10 @@ namespace KhaozEngine.Windowing
     /// (<see cref="IsTapIn"/>, <see cref="IsPressingIn"/>, ...) rather than raw position + button checks.
     /// Ported from the MonoGame <c>InputManager</c> core (desktop/mouse; touch/gamepad are follow-ups; pinch/swipe
     /// gestures live in <c>PinchRecognizer</c>/<c>GestureRecognizer</c>).
+    /// <para>A tap whose press and release both land inside ONE frame still registers, as a release with the
+    /// press-origin at the cursor, provided the snapshot's <see cref="InputState.MousePressed"/> carries the
+    /// press edge. A producer that leaves that set empty is read exactly as before, so the only thing it loses
+    /// is the same-frame tap.</para>
     /// </summary>
     public sealed class Pointer
     {
@@ -33,12 +37,18 @@ namespace KhaozEngine.Windowing
 
         public bool IsDown => _down;
         public bool IsJustPressed => _down && !_wasDown;
+        /// <summary>True on the frame the left button went up. Also true on a frame whose snapshot reports a
+        /// press for a button that is already up again (a tap whose press and release both landed inside one
+        /// frame), where <see cref="IsJustPressed"/> never fires because the button was never observed down.
+        /// A tap is a press plus a release, so the release edge is the one the tap queries key on.</summary>
         public bool IsJustReleased => !_down && _wasDown;
         public bool IsMiddleDown => _mid;
         public bool IsMiddleJustPressed => _mid && !_wasMid;
+        /// <summary>The middle button's <see cref="IsJustReleased"/>, same-frame tap included.</summary>
         public bool IsMiddleJustReleased => !_mid && _wasMid;
         public bool IsRightDown => _right;
         public bool IsRightJustPressed => _right && !_wasRight;
+        /// <summary>The right button's <see cref="IsJustReleased"/>, same-frame tap included.</summary>
         public bool IsRightJustReleased => !_right && _wasRight;
 
         /// <summary>
@@ -93,12 +103,31 @@ namespace KhaozEngine.Windowing
             bool rightHeld = input.IsDown(MouseButton.Right);
             _right = rightHeld && (_wasRight || inWindow);
 
-            // A fresh press starts a fresh, unconsumed gesture. The right button latches its own origin and its own
+            // A tap whose press AND release both landed inside a single frame leaves the button already up by
+            // the time Update runs, so the IsDown transitions above see nothing at all and the tap is invisible
+            // to every press-origin consumer. It happens on any frame hitch, and routinely at the engine's own
+            // background-throttle rates (15 Hz unfocused, 10 Hz minimized, via BackgroundThrottlePolicy). The
+            // snapshot still carries the press edge, so complete the gesture here: report the frame as a
+            // RELEASE, since a tap is a press plus a release and the release edge is what the tap queries key
+            // on, with the press-origin at the cursor. The synthetic latch lasts exactly this frame, because
+            // the next Update reassigns _wasDown from _down, which stayed false throughout.
+            // Additive on purpose. A producer that never fills MousePressed (a replay, a synthesized headless
+            // frame, a game's own test rig) reads exactly as it did before, so nothing here tightens the
+            // contract Pointer places on InputState. See KhaozEngine#300.
+            bool leftTapped = !_down && !_wasDown && inWindow && input.WasPressed(MouseButton.Left);
+            if (leftTapped) _wasDown = true;
+            bool midTapped = !_mid && !_wasMid && inWindow && input.WasPressed(MouseButton.Middle);
+            if (midTapped) _wasMid = true;
+            bool rightTapped = !_right && !_wasRight && inWindow && input.WasPressed(MouseButton.Right);
+            if (rightTapped) _wasRight = true;
+
+            // A fresh press starts a fresh, unconsumed gesture, and a same-frame tap is a fresh press that also
+            // ended, so it starts one too. The right button latches its own origin and its own
             // consumed flag: a context menu opened by a right-click must not be blinded by a left-gesture consume,
             // and consuming the right gesture (so the menu that just opened does not immediately re-fire) must not
             // cancel an unrelated left tap in the same frame.
-            if (IsJustPressed) { _pressOrigin = _pos; _consumed = false; }
-            if (IsRightJustPressed) { _rightPressOrigin = _pos; _rightConsumed = false; }
+            if (IsJustPressed || leftTapped) { _pressOrigin = _pos; _consumed = false; }
+            if (IsRightJustPressed || rightTapped) { _rightPressOrigin = _pos; _rightConsumed = false; }
         }
 
         /// <summary>Reserve a region for an overlay this frame; the layer beneath checks <see cref="IsBlocked"/>. Cleared each <see cref="Update(KhaozEngine.Windowing.InputState)"/>.</summary>

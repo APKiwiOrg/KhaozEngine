@@ -28,25 +28,30 @@ namespace KhaozEngine.Tests.Gui
         // One frame's input: mouse position + left-button state + this frame's typed keys.
         // Typed keys go in BOTH KeysDown and KeysPressed (the pressed edge) so WasTyped fires,
         // matching how TextInputTests drives text entry.
-        static InputState Frame(Vector2 pos, bool leftDown, IEnumerable<Key>? keys = null)
+        // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and
+        // release edges derive from this test's own frame sequence and nothing crosses between tests.
+        readonly MouseFrames _mouse = new();
+
+        InputState Frame(Vector2 pos, bool leftDown, IEnumerable<Key>? keys = null)
         {
             var down = new HashSet<MouseButton>();
             if (leftDown) down.Add(MouseButton.Left);
             var k = new HashSet<Key>(keys ?? System.Array.Empty<Key>());
+            var (edgePressed, edgeReleased) = _mouse.Advance(down);
             return new InputState(
                 k, k, new HashSet<Key>(),
-                down, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540);
+                down, edgePressed, pos, Vector2.Zero, 0, 960, 540, mouseReleased: edgeReleased);
         }
 
         // Drive one frame through the manager and the field.
-        static void Step(InputManager input, NumberField f, Vector2 pos, bool leftDown, IEnumerable<Key>? keys = null)
+        void Step(InputManager input, NumberField f, Vector2 pos, bool leftDown, IEnumerable<Key>? keys = null)
         {
             input.Update(Frame(pos, leftDown, keys));
             f.Update(input, 0f);
         }
 
         // Press at `at`, then release at `at` with no travel = a tap that enters typing mode.
-        static void TapToEdit(InputManager input, NumberField f, Vector2 at)
+        void TapToEdit(InputManager input, NumberField f, Vector2 at)
         {
             Step(input, f, at, false);   // up (establishes position + prevPos)
             Step(input, f, at, true);    // press (sets the press origin)

@@ -653,7 +653,12 @@ im.Update(input, viewport);   // once per frame, BEFORE you query
 
 **Bounds helpers (use these):**
 - `IsTapIn(Rect)` - true on release **only if press-origin and release are both inside the rect**. The
-  click-through invariant.
+  click-through invariant. A tap whose press and release both land inside ONE frame counts: the button is
+  already up by the time `Update` runs, so the down transition sees nothing, and the pointer completes the
+  gesture from the snapshot's `MousePressed` edge instead (press-origin at the cursor, reported as a release
+  that frame). That is what keeps a tap alive across a frame hitch and at the background-throttle rates
+  (15 Hz unfocused, 10 Hz minimized). A producer that never fills `MousePressed` (a replay, a synthesized
+  headless frame) is read exactly as before, it just cannot express a same-frame tap.
 - `IsTapFromTo(originRect, releaseRect)` - press in one rect, release in another (tap-scrim-to-dismiss).
 - `IsPressingIn(Rect)` - held, press began inside, still inside ("pressed" visual).
 - `IsHoveringIn(Rect)` - inside and not pressed (desktop hover). Also false while the window is unfocused (a

@@ -156,22 +156,34 @@ namespace KhaozEngine.Render3D.Rendering
         void EnsureBound(RenderResources res)
         {
             if (ReferenceEquals(_bound, res) && res.Generation == _boundGen) return;
-            ClearSets();
+            ClearSets(null);   // a target rebind is not a frame boundary, so this one still drains
             _bound = res; _boundGen = res.Generation;
         }
 
-        void ClearSets()
+        // Drop the set cache, freeing the sets through <paramref name="retire"/> when the caller has a retire queue
+        // and behind a device drain when it does not. A cached set may still be referenced by queued draws, which is
+        // why one of the two is mandatory: the target rebind and teardown paths have no frame boundary left to reach
+        // and take the drain, the mid-life unload path takes the queue.
+        void ClearSets(GpuRetireQueue? retire)
         {
-            // A cached set may still be referenced by queued draws (Scene3D calls this mid-life from
-            // UnloadTexture), so drain the device before disposing.
-            if (_sets.Count > 0) _gd.WaitForIdle();
-            foreach (var kv in _sets) kv.Value.Dispose();
+            if (_sets.Count == 0) return;
+            if (retire is null) _gd.WaitForIdle();
+            foreach (var kv in _sets)
+            {
+                if (retire is null) kv.Value.Dispose();
+                else retire.Retire(kv.Value);
+            }
             _sets.Clear();
         }
 
         /// <summary>Drop every cached per-atlas resource set. Scene3D calls it when a texture the sets may reference
-        /// is unloaded, so a later load reusing the freed slot index cannot bind a stale texture.</summary>
-        public void InvalidateTextureSets() => ClearSets();
+        /// is unloaded, so a later load reusing the freed slot index cannot bind a stale texture.
+        /// <para>The sets go to <paramref name="retire"/> rather than being destroyed here, because this is reached
+        /// from <c>Scene3D.UnloadTexture</c> on the frame thread and the drain it would otherwise need is exactly
+        /// the stall that path was moved off
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/383">#383</see>). A scene that draws
+        /// particles at all would have kept its per-unload drain otherwise, through here.</para></summary>
+        public void InvalidateTextureSets(GpuRetireQueue retire) => ClearSets(retire);
 
         // Get (creating + caching on first use) the resource set for one atlas pair. -1 indices (or a resolver that
         // returns null for a since-unloaded slot) fall back to the dummy textures. Binding order matches _layout.
@@ -344,7 +356,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         public void Dispose()
         {
-            ClearSets();
+            ClearSets(null);   // teardown, where a stall costs nothing
             _dummyAtlas.Dispose();
             _dummyMv.Dispose();
             _pipeline.Dispose();

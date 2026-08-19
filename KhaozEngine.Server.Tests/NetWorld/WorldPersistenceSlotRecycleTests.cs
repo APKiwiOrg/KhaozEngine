@@ -25,13 +25,19 @@ namespace KhaozEngine.Tests.NetWorld;
 /// hold the load at the gate across the whole leave/join, which is the exact window a genuinely remote store opens
 /// and a synchronous <see cref="InMemoryWorldStore"/> cannot.</para>
 ///
+/// <para>The later rows carry #654, which is the same question one step in: a SESSION, not an account, is what a
+/// completed load belongs to. An account that drops and rejoins before its store read returns has TWO loads
+/// outstanding under one key, and the one issued by the session that ended must not apply over whatever the live
+/// session has done since, nor clear the guard that is holding the periodic pass off the stored record while its
+/// sibling is still in flight.</para>
+///
 /// <para>The HAPPY path (the account is still on the slot, so the load applies and moves it to the stored position)
 /// is already pinned and is not duplicated here: <see cref="WorldPersistenceTests.LoadOnJoin_RestoresSavedPosition"/>
 /// for the plain case, <see cref="WorldPersistenceTests.PeriodicSnapshot_DuringInFlightLoad_DoesNotClobberStoredRecord"/>
 /// for the same gated in-flight window this class uses, and
 /// <see cref="WorldPersistenceReconnectTeleportTests.A_stationary_rejoin_on_a_persisted_server_reports_no_teleport"/>
-/// for the seeded rejoin. <see cref="A_rejoin_by_the_same_account_before_its_first_load_lands_applies_both_loads"/>
-/// re-proves it on this rig too, which is what stops the identity check quietly dropping everything.</para>
+/// for the seeded rejoin. <see cref="A_rejoin_before_its_first_load_lands_applies_only_the_current_sessions_load"/>
+/// re-proves it on this rig too, which is what stops the identity checks quietly dropping everything.</para>
 /// </summary>
 public class WorldPersistenceSlotRecycleTests
 {
@@ -44,6 +50,15 @@ public class WorldPersistenceSlotRecycleTests
     // Where alpha's stored record says it is: far enough from the spawn that a misapplication is unmistakable, and
     // the position the reviewer's probe used.
     private static readonly Vector3 Stored = new(333f, 0f, -333f);
+
+    // Where a #654 row walks the LIVE player after its restore has already landed, so a stale load arriving
+    // afterwards has something newer to overwrite. Far from both the spawn and Stored.
+    private static readonly Vector3 Moved = new(120f, 0f, 120f);
+
+    // Horizontal distance only: the head ground-clamps Y on every tick, so a row that pumps frames between placing a
+    // player and reading it back would otherwise be comparing against a capsule half-height it never set.
+    private static float PlanarDistance(Vector3 a, Vector3 b) =>
+        Vector2.Distance(new Vector2(a.X, a.Z), new Vector2(b.X, b.Z));
 
     private sealed record Peer(NetClient Client, INetTransport Transport);
 
@@ -104,14 +119,34 @@ public class WorldPersistenceSlotRecycleTests
             await Persistence.FlushAsync();
             Persistence.Update(0f);
         }
+
+        /// <summary>Releases exactly ONE parked load and settles it, so a row can drive the order two loads
+        /// outstanding under one account land in. <see cref="SettleLoadsAsync"/> cannot do this: its FlushAsync would
+        /// await the load still parked at the gate. The released load's continuation runs on the thread pool, so this
+        /// YIELDS between server frames rather than spinning a fixed frame count - under the fully parallel assembly
+        /// the pool routinely takes longer to reach that work item than 400 tight frames take to run, which is a flake
+        /// and not a failure.</summary>
+        public async Task ReleaseOneAsync(bool oldest, Func<bool> until)
+        {
+            Assert.True(Store.ReleaseOneLoad(oldest), "no load was parked to release");
+            for (int i = 0; i < 500 && !until(); i++)
+            {
+                Pump(until, 1);
+                await Task.Delay(1);
+            }
+            Assert.True(until(), "the released load never landed: nothing new reached the apply drain");
+        }
     }
 
-    // A persistence-backed single-World head on a gated store, with alpha's record pre-seeded.
-    private static async Task<Rig> SingleAsync()
+    // A persistence-backed single-World head on a gated store, with alpha's record pre-seeded. Pass seeded: false
+    // for the rows that need alpha's load to come back with NOTHING stored, which is a different code path: it never
+    // reaches the apply drain, and clears the guard inline instead.
+    private static async Task<Rig> SingleAsync(bool seeded = true)
     {
         var inner = new InMemoryWorldStore();
-        await inner.SaveAsync("player:" + Alpha, PlayerRecord.From(new PlayerMoveState { Position = Stored },
-            Encoding.UTF8.GetBytes("alpha-blob")).Encode());
+        if (seeded)
+            await inner.SaveAsync("player:" + Alpha, PlayerRecord.From(new PlayerMoveState { Position = Stored },
+                Encoding.UTF8.GetBytes("alpha-blob")).Encode());
         var store = new GatedWorldStore(inner);
         var hub = new InMemoryHub();
         var config = new WorldServerConfig
@@ -221,10 +256,10 @@ public class WorldPersistenceSlotRecycleTests
     {
         // A guest has no account id to compare, which is the whole question this row settles: it is keyed
         // guest:{slot}, and that key is not alpha's, so the same comparison drops the record and the guest keeps its
-        // own spawn. What it does NOT cover is guest FOLLOWING guest on one slot, where both connections share the
-        // key guest:{slot} and are indistinguishable here. That is #647, untouched, and still fixable by giving a
-        // tokenless connection durable identity (or by not persisting one at all): this check compares whatever key
-        // the head derived, so it keeps working whichever way #647 lands.
+        // own spawn. Guest FOLLOWING guest on one seat, where both connections share the key guest:{slot} and are
+        // indistinguishable here, was the separate keying defect (#647) and is covered by
+        // WorldPersistenceGuestKeyingTests: a tokenless connection is not persisted under its seat at all now. This
+        // check still compares whatever key the head derived, which is why it kept working across that change.
         Rig rig = await SingleAsync();
         await RecycledSlotDoesNotTakeAlphasLoad(rig, null);
     }
@@ -240,16 +275,108 @@ public class WorldPersistenceSlotRecycleTests
 
     // ---- (4) the same ACCOUNT rejoining before its first load lands ----
 
-    [Fact]
-    public async Task A_rejoin_by_the_same_account_before_its_first_load_lands_applies_both_loads()
+    // Drives alpha to two loads outstanding under one account key: it joins with its load parked, drops, and rejoins
+    // before that read returns. Only the CURRENT session's load may apply. The other one was issued for a session
+    // that has ended, so applying it writes a record that was already superseded over whatever the live session has
+    // done since, and clearing the guard on the way out reopens the exact window the guard exists to close (#654).
+    private static async Task OnlyTheCurrentSessionsLoadApplies(Rig rig, bool staleLandsFirst)
     {
-        // Pins what actually happens rather than what ought to: loadsInFlight is a SET keyed by account, not a
-        // refcount and not a session, so a rejoin during an in-flight load starts a SECOND load under the same key
-        // and both of them apply. Here that is benign (same account, same record, and the identity check passes
-        // because alpha really does hold the slot again), and it is the row that proves the drop rule is not just
-        // dropping everything. The residual it leaves is the guard: the FIRST apply clears it while the second load
-        // is still outstanding, so a save can land in between and the late apply then writes over it. That is out of
-        // scope here and filed as #654, which is the issue to change this row from.
+        Peer first = rig.Connect(Alpha);
+        rig.Pump(() => first.Client.Slot >= 0 && rig.Host.JoinedSlots.Count == 1);
+        Assert.Equal(0, first.Client.Slot);
+        Assert.Equal(1, rig.Store.PendingLoads);
+
+        rig.Drop(first);
+        rig.Pump(() => rig.Host.JoinedSlots.Count == 0);
+
+        Peer again = rig.Connect(Alpha);
+        rig.Pump(() => again.Client.Slot >= 0 && rig.Host.JoinedSlots.Count == 1);
+        Assert.Equal(0, again.Client.Slot);                       // the same account recycles its own seat
+        Assert.Equal(2, rig.Store.PendingLoads);                  // TWO reads outstanding under ONE account key
+
+        if (staleLandsFirst)
+        {
+            // The superseded session's read returns first. It is dropped, and the guard it must NOT clear is what
+            // keeps the periodic pass off the stored record for the rest of the window.
+            await rig.ReleaseOneAsync(oldest: true, () => rig.Dropped.Count == 1);
+            Assert.Equal(new[] { (Alpha, 0) }, rig.Dropped);
+            Assert.Empty(rig.Applied);                            // no part of the stale record reached the player
+
+            rig.Persistence.SaveDirtyPass();                      // the periodic pass, forced into the open window
+            Assert.DoesNotContain("player:" + Alpha, rig.Store.SavedKeys);   // still guarded: nothing overwrote the record
+
+            await rig.ReleaseOneAsync(oldest: false, () => rig.Applied.Count == 1);
+            Assert.Equal(new[] { Alpha }, rig.Applied);           // the live session's own load, applied once
+            Assert.True(PlanarDistance(rig.State(0).Position, Stored) < 1f,
+                $"the live session's restore should have landed ({rig.State(0).Position})");
+        }
+        else
+        {
+            // The live session's read returns first and applies. Then the player MOVES, and the superseded session's
+            // read arrives afterwards carrying what the store held before any of it happened.
+            await rig.ReleaseOneAsync(oldest: false, () => rig.Applied.Count == 1);
+            Assert.Empty(rig.Dropped);
+            Assert.True(PlanarDistance(rig.State(0).Position, Stored) < 1f,
+                $"the live session's restore should have landed ({rig.State(0).Position})");
+
+            MoveLivePlayerTo(rig, Moved);
+
+            await rig.ReleaseOneAsync(oldest: true, () => rig.Dropped.Count == 1);
+            Assert.Equal(new[] { (Alpha, 0) }, rig.Dropped);
+            Assert.Equal(new[] { Alpha }, rig.Applied);           // and the stale durable blob was not re-applied
+            Assert.True(PlanarDistance(rig.State(0).Position, Moved) < 1f,
+                $"a stale load pulled the live player back onto its own record ({rig.State(0).Position})");
+        }
+
+        Assert.DoesNotContain("player:" + Alpha, rig.Store.SavedKeys);   // no row here ever wanted a write
+    }
+
+    // Walks the live player through the same seam persistence writes through, then lets the head settle it (the
+    // sharded twin has to hand the entity to whichever cell now contains it).
+    private static void MoveLivePlayerTo(Rig rig, Vector3 to)
+    {
+        rig.Host.SetPlayerState(0, new PlayerMoveState { Position = to }, teleport: true);
+        rig.Pump(() => false, 30);
+        Assert.True(PlanarDistance(rig.State(0).Position, to) < 1f,
+            $"the move did not take, so the row that follows proves nothing ({rig.State(0).Position})");
+    }
+
+    [Fact]
+    public async Task A_superseded_sessions_load_landing_first_is_dropped_and_keeps_the_guard()
+    {
+        Rig rig = await SingleAsync();
+        await OnlyTheCurrentSessionsLoadApplies(rig, staleLandsFirst: true);
+    }
+
+    [Fact]
+    public async Task A_superseded_sessions_load_landing_last_does_not_overwrite_newer_live_state()
+    {
+        Rig rig = await SingleAsync();
+        await OnlyTheCurrentSessionsLoadApplies(rig, staleLandsFirst: false);
+    }
+
+    [Fact]
+    public async Task A_superseded_sessions_load_landing_first_on_a_sharded_server_is_dropped()
+    {
+        Rig rig = await ShardedAsync();
+        await OnlyTheCurrentSessionsLoadApplies(rig, staleLandsFirst: true);
+    }
+
+    [Fact]
+    public async Task A_superseded_sessions_load_landing_last_on_a_sharded_server_is_dropped()
+    {
+        Rig rig = await ShardedAsync();
+        await OnlyTheCurrentSessionsLoadApplies(rig, staleLandsFirst: false);
+    }
+
+    [Fact]
+    public async Task A_rejoin_before_its_first_load_lands_applies_only_the_current_sessions_load()
+    {
+        // The order-free twin of the four rows above, and the one that proves the drop rule is not simply dropping
+        // everything: whichever of the two loads the thread pool happens to land first, exactly one apply happens
+        // (the live session's) and exactly one drop (the session that ended). Was pinned the other way until #654 -
+        // loadsInFlight was a SET keyed by account, not a session, so both loads applied and the first of them
+        // cleared the guard while its sibling was still outstanding.
         Rig rig = await SingleAsync();
 
         Peer first = rig.Connect(Alpha);
@@ -267,8 +394,65 @@ public class WorldPersistenceSlotRecycleTests
 
         await rig.SettleLoadsAsync();
 
-        Assert.Empty(rig.Dropped);                                // alpha holds the slot, so neither load is a stranger's
-        Assert.Equal(new[] { Alpha, Alpha }, rig.Applied);        // both loads applied, the second did not supersede the first
+        Assert.Equal(new[] { (Alpha, 0) }, rig.Dropped);          // was empty: the superseded session's load applied too
+        Assert.Equal(new[] { Alpha }, rig.Applied);               // was [alpha, alpha]
         Assert.Equal(Stored, rig.State(0).Position);              // and the restore itself still works
+    }
+
+    // ---- (5) the same rule on the NULL-load path, which never reaches the drain ----
+
+    [Fact]
+    public async Task A_superseded_sessions_empty_load_does_not_unguard_the_live_session()
+    {
+        // The one window in which ClearGuard comparing the VALUE is what does the work. Every other clear runs
+        // through the apply drain, which has already matched the token by the time it gets there, so a key-only
+        // TryRemove would behave identically. A load that finds NOTHING stored never reaches the drain at all: it
+        // clears the guard inline, from its own thread-pool continuation, and for an account that leaves and rejoins
+        // inside that read the continuation lands AFTER the successor's join has written its own token. Keyed by
+        // account alone it takes the LIVE session's guard with it, and the periodic pass then writes the pre-restore
+        // state the live session is still holding while its own read is unanswered. The row pins the invariant (a
+        // guard belongs to the session that set it) rather than a data loss: with nothing stored under the key yet
+        // there is no record for that write to destroy, which is exactly why this path is easy to leave uncovered.
+        Rig rig = await SingleAsync(seeded: false);
+
+        Peer first = rig.Connect(Alpha);
+        rig.Pump(() => first.Client.Slot >= 0 && rig.Host.JoinedSlots.Count == 1);
+        Assert.Equal(0, first.Client.Slot);
+        Assert.Equal(1, rig.Store.PendingLoads);
+
+        rig.Drop(first);
+        rig.Pump(() => rig.Host.JoinedSlots.Count == 0);
+
+        Peer again = rig.Connect(Alpha);
+        rig.Pump(() => again.Client.Slot >= 0 && rig.Host.JoinedSlots.Count == 1);
+        Assert.Equal(0, again.Client.Slot);
+        Assert.Equal(2, rig.Store.PendingLoads);                   // two reads outstanding under one key, both of them empty
+
+        // Release the superseded session's read. There is no apply and no drop to wait on, so wait for the read
+        // itself to return and then SAMPLE the window repeatedly rather than probing it once: the inline clear runs
+        // a continuation behind the read, and a single forced pass could otherwise land in front of the very thing
+        // it is there to catch and pass for the wrong reason.
+        Assert.True(rig.Store.ReleaseOneLoad(oldest: true), "no load was parked to release");
+        for (int i = 0; i < 200 && rig.Store.CompletedLoads == 0; i++)
+        {
+            rig.Pump(() => false, 1);
+            await Task.Delay(1);
+        }
+        Assert.Equal(1, rig.Store.CompletedLoads);                 // the superseded session's read really did return
+
+        for (int i = 0; i < 60; i++)
+        {
+            rig.Persistence.SaveDirtyPass();                       // the periodic pass, forced into the window
+            Assert.DoesNotContain("player:" + Alpha, rig.Store.SavedKeys);   // the live session's guard held
+            rig.Pump(() => false, 1);
+            await Task.Delay(1);
+        }
+
+        // And it is a guard rather than a wedge: the live session's own read clears it, and the next pass writes.
+        await rig.SettleLoadsAsync();
+        Assert.Empty(rig.Dropped);                                 // an empty load carries no record, so nothing is ever dropped
+        rig.Persistence.SaveDirtyPass();
+        await rig.Persistence.FlushAsync();
+        Assert.Contains("player:" + Alpha, rig.Store.SavedKeys);
     }
 }

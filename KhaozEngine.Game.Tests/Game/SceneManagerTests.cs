@@ -44,16 +44,21 @@ namespace KhaozEngine.Tests.Game
             return (new SceneManager(), new List<string>());
         }
 
-        static InputState Frame(Vector2 pos, bool leftDown)
+        // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and
+        // release edges derive from this test's own frame sequence and nothing crosses between tests.
+        readonly MouseFrames _mouse = new();
+
+        InputState Frame(Vector2 pos, bool leftDown)
         {
             var down = new HashSet<MouseButton>();
             if (leftDown) down.Add(MouseButton.Left);
+            var (edgePressed, edgeReleased) = _mouse.Advance(down);
             return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                down, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540);
+                down, edgePressed, pos, Vector2.Zero, 0, 960, 540, mouseReleased: edgeReleased);
         }
 
         // A pointer mid-gesture: pressed and released inside `rect`, so IsTapIn(rect) is true until consumed.
-        static Pointer MidTapPointer(Rect rect)
+        Pointer MidTapPointer(Rect rect)
         {
             var at = new Vector2(rect.X + rect.Width / 2f, rect.Y + rect.Height / 2f);
             var p = new Pointer();

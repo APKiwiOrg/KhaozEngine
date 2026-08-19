@@ -10,9 +10,9 @@ public sealed partial class ShardedWorldServer
 {
     /// <inheritdoc />
     /// <remarks>Resolves through the shard host's ownership index, so this finds ANY entity owned by a live cell,
-    /// including one <see cref="CellPersistence"/> restored from a save. That is deliberate: a boot sweep of
-    /// resurrected entities (see the persistence hazard on <see cref="WorldPickups"/>) has no other handle on them.
-    /// A ghost mirrored from a neighbouring cell is not owned here and does not resolve.</remarks>
+    /// including one <see cref="CellPersistence"/> restored from a save. That is deliberate: the one-time boot sweep
+    /// of entities resurrected out of a pre-<see cref="Transient"/> blob (see <see cref="WorldPickups"/>) has no
+    /// other handle on them. A ghost mirrored from a neighbouring cell is not owned here and does not resolve.</remarks>
     public bool TryGetEntity(long netId, out World world, out Entity entity)
     {
         if (!IsPlayerNetId(netId) && host.TryGetOwner(netId, out CellSim cell, out Entity found) && cell.World.IsAlive(found))
@@ -33,6 +33,15 @@ public sealed partial class ShardedWorldServer
         if (!host.TryGetOwner(netId, out CellSim cell, out Entity e) || !cell.World.IsAlive(e)) return false;
         cell.UnregisterOwned(netId);   // eager: drop it from the ownership index before despawning (as OnLeave does)
         cell.World.Despawn(e);
+        return true;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>Straight off the shard host's grid geometry (<see cref="ShardHost.CoordFor"/>), so it answers for
+    /// any coordinate in the world, including one whose cell has been evicted or was never instantiated.</remarks>
+    public bool TryGetCellCoord(float x, float z, out CellCoord coord)
+    {
+        coord = host.CoordFor(x, z);
         return true;
     }
 

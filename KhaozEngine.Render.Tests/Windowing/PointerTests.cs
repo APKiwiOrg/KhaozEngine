@@ -23,15 +23,35 @@ namespace KhaozEngine.Tests.Windowing
         static readonly Vector2 Reentry = new(200, 160);
         static readonly Rect HugeBox = new(-5000, -5000, 10000, 10000);
 
-        static InputState Frame(Vector2 pos, bool leftDown) => Frame(pos, leftDown, true);
+        // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and
+        // release edges derive from this test's own frame sequence and nothing crosses between tests.
+        readonly MouseFrames _mouse = new();
 
-        static InputState Frame(Vector2 pos, bool leftDown, bool focused)
+        InputState Frame(Vector2 pos, bool leftDown) => Frame(pos, leftDown, true);
+
+        InputState Frame(Vector2 pos, bool leftDown, bool focused)
         {
             var down = new HashSet<MouseButton>();
             if (leftDown) down.Add(MouseButton.Left);
+            return Frame(pos, down, focused);
+        }
+
+        // A frame whose snapshot reports a press for a button that is ALREADY up again: a tap whose press and
+        // release both queued inside one frame, which is what a frame hitch or the background throttle produces.
+        // Deliberately hand-built rather than derived, since no sequence of held-button frames can express it.
+        static InputState TapFrame(Vector2 pos, MouseButton button = MouseButton.Left, int width = 960) => new(
+            new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+            new HashSet<MouseButton>(), new HashSet<MouseButton> { button },
+            pos, Vector2.Zero, 0, width, 540,
+            mouseReleased: new HashSet<MouseButton> { button });
+
+        InputState Frame(Vector2 pos, IReadOnlySet<MouseButton> held, bool focused = true)
+        {
+            var (edgePressed, edgeReleased) = _mouse.Advance(held);
             return new InputState(
                 new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                down, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540, windowFocused: focused);
+                held, edgePressed, pos, Vector2.Zero, 0, 960, 540, windowFocused: focused,
+                mouseReleased: edgeReleased);
         }
 
         [Fact]
@@ -81,12 +101,14 @@ namespace KhaozEngine.Tests.Windowing
             Vector2 screen = vp.DesignToScreen(new Vector2(150, 140));   // -> (300, 340)
             Assert.Equal(new Vector2(300, 340), screen);
 
+            var mouse = new MouseFrames();
             InputState Win(bool down)
             {
                 var b = new HashSet<MouseButton>();
                 if (down) b.Add(MouseButton.Left);
+                var (edgePressed, edgeReleased) = mouse.Advance(b);
                 return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                    b, new HashSet<MouseButton>(), screen, Vector2.Zero, 0, 1920, 1200);
+                    b, edgePressed, screen, Vector2.Zero, 0, 1920, 1200, mouseReleased: edgeReleased);
             }
 
             var p = new Pointer();
@@ -336,9 +358,8 @@ namespace KhaozEngine.Tests.Windowing
             var down = new HashSet<MouseButton> { MouseButton.Middle, MouseButton.Right };
             var none = new HashSet<MouseButton>();
 
-            static InputState WithButtons(Vector2 pos, IReadOnlySet<MouseButton> heldButtons) => new(
-                new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                heldButtons, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540);
+            // The class-level builder, which derives the press/release edges across this sequence.
+            InputState WithButtons(Vector2 pos, IReadOnlySet<MouseButton> heldButtons) => Frame(pos, heldButtons);
 
             var p = new Pointer();
             p.Update(WithButtons(Inside, none));
@@ -355,6 +376,118 @@ namespace KhaozEngine.Tests.Windowing
             p.Update(WithButtons(FarBeyondEdge, none));        // released outside
             Assert.True(p.IsMiddleJustReleased);
             Assert.True(p.IsRightJustReleased);
+        }
+
+        // --- same-frame taps (#300) ---
+
+        [Fact]
+        public void A_tap_whose_press_and_release_land_in_one_frame_still_registers()
+        {
+            var p = new Pointer();
+            p.Update(Frame(Inside, false));      // idle over the box, button up
+            p.Update(TapFrame(Inside));          // press AND release inside this one frame
+
+            // The button is up in the snapshot, so the IsDown transition sees nothing at all: without reading
+            // the press edge the whole gesture is invisible and IsTapIn never fires.
+            Assert.False(p.IsDown);
+            Assert.False(p.IsJustPressed);
+            Assert.True(p.IsJustReleased);
+            Assert.Equal(Inside, p.PressOrigin);
+            Assert.True(p.IsTapIn(Box));
+        }
+
+        [Fact]
+        public void A_same_frame_tap_keeps_the_press_origin_invariant()
+        {
+            var p = new Pointer();
+            p.Update(Frame(Outside, false));
+            p.Update(TapFrame(Outside));         // the tap happened outside Box
+
+            Assert.True(p.IsJustReleased);
+            Assert.False(p.IsTapIn(Box));        // press origin AND release are both outside it
+            Assert.True(p.IsTapFromTo(new Rect(0, 0, 50, 50), new Rect(0, 0, 50, 50)));
+        }
+
+        [Fact]
+        public void A_same_frame_tap_lasts_exactly_one_frame()
+        {
+            var p = new Pointer();
+            p.Update(Frame(Inside, false));
+            p.Update(TapFrame(Inside));
+            Assert.True(p.IsTapIn(Box));
+
+            p.Update(Frame(Inside, false));      // the next idle frame
+            Assert.False(p.IsJustReleased);
+            Assert.False(p.IsTapIn(Box));
+        }
+
+        [Fact]
+        public void A_same_frame_tap_starts_a_fresh_unconsumed_gesture()
+        {
+            var p = new Pointer();
+            p.Update(Frame(Inside, false));
+            p.Update(Frame(Inside, true));
+            p.ConsumeGesture();                  // an earlier gesture was claimed
+            p.Update(Frame(Inside, false));
+            Assert.False(p.IsTapIn(Box));        // consumed, as it should be
+
+            p.Update(TapFrame(Inside));
+            Assert.False(p.IsConsumed);          // the tap is its own gesture
+            Assert.True(p.IsTapIn(Box));
+        }
+
+        [Fact]
+        public void The_right_button_gets_the_same_frame_tap_too()
+        {
+            var p = new Pointer();
+            p.Update(Frame(Inside, false));
+            p.Update(TapFrame(Inside, MouseButton.Right));
+
+            Assert.True(p.IsRightJustReleased);
+            Assert.Equal(Inside, p.RightPressOrigin);
+            Assert.True(p.IsRightTapIn(Box));
+            Assert.False(p.IsTapIn(Box));        // the left gesture is untouched
+        }
+
+        [Fact]
+        public void A_same_frame_tap_outside_the_client_area_is_ignored()
+        {
+            var p = new Pointer();
+            p.Update(Frame(Inside, false));
+            p.Update(TapFrame(FarBeyondEdge));   // beyond the 960x540 client area
+
+            Assert.False(p.IsJustReleased);
+            Assert.False(p.IsTapIn(HugeBox));
+        }
+
+        [Fact]
+        public void A_producer_that_never_fills_MousePressed_reads_exactly_as_before()
+        {
+            // The contract Pointer places on InputState is unchanged: a replay or a synthesized headless frame
+            // that only ever fills MouseDown still drives every press-origin query the way it always did. All
+            // it cannot do is express a same-frame tap, which no sequence of held-button frames can.
+            var p = new Pointer();
+            p.Update(Frame(Inside, false));
+            Assert.False(p.IsJustReleased);
+
+            p.Update(Frame(Inside, true));
+            Assert.True(p.IsJustPressed);
+            Assert.False(p.IsTapIn(Box));
+
+            p.Update(Frame(Inside, false));
+            Assert.True(p.IsJustReleased);
+            Assert.True(p.IsTapIn(Box));
+        }
+
+        [Fact]
+        public void A_same_frame_tap_reaches_IsTapIn_through_InputManager()
+        {
+            var input = new InputManager();
+            input.Update(Frame(Inside, false));
+            input.Update(TapFrame(Inside));
+
+            Assert.True(input.IsPointerJustReleased);
+            Assert.True(input.Pointer.IsTapIn(Box));
         }
     }
 }

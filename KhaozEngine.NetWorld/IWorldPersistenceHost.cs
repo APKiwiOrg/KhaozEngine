@@ -31,10 +31,12 @@ public interface IWorldPersistenceHost
     IReadOnlyCollection<int> JoinedSlots { get; }
 
     /// <summary>
-    /// The account id for a joined slot (connect token or fallback). Load-bearing, not informational: the periodic
-    /// save skips a slot this answers <c>false</c> for, and since #646 the load-on-join apply DROPS a record whose
-    /// account no longer holds the slot, so a host that does not answer for its joined slots gets neither saves
-    /// nor restores. Answer it from the same table the join wrote, before <c>PlayerJoined</c> is raised.
+    /// The account id for a joined slot (connect token, or the <see cref="ResumePositionCache.GuestAccountPrefix"/>
+    /// fallback for a tokenless connection). Load-bearing, not informational: the periodic save skips a slot this
+    /// answers <c>false</c> for, and since #646 the load-on-join apply DROPS a record whose account no longer holds
+    /// the slot, so a host that does not answer for its joined slots gets neither saves nor restores. Answer it from
+    /// the same table the join wrote, before <c>PlayerJoined</c> is raised. A guest fallback is answered here as
+    /// usual, but <see cref="WorldPersistence"/> never files a record under it (#647).
     /// </summary>
     bool TryGetAccountId(int slot, out string accountId);
 

@@ -90,8 +90,29 @@ public sealed class PathFollowConfig
     public float VerticalAcceptTolerance { get; init; } = 0.8f;
 
     /// <summary>How far (world units) the goal may move from the position it was planned against before
-    /// a replan is due.</summary>
+    /// a replan is due. Measured in XZ, so a goal that changes floor also has to pass
+    /// <see cref="GoalRetargetVerticalTolerance"/> to trigger a replan on height alone.</summary>
     public float GoalRetargetTolerance { get; init; } = 1.5f;
+
+    /// <summary>
+    /// How far (world units) the goal may move VERTICALLY from the height it was planned against before a
+    /// replan is due: the vertical twin of <see cref="GoalRetargetTolerance"/>, checked alongside it rather
+    /// than instead of it.
+    /// <para>
+    /// A goal taking a staircase moves straight up: same XZ, zero horizontal drift, so the horizontal trigger
+    /// alone never fires and the follower keeps steering the route it planned to the old floor until some
+    /// unrelated trigger (a corridor breach, a consumed path) happens to come along.
+    /// </para>
+    /// <para>
+    /// The default 0.8 matches <see cref="VerticalAcceptTolerance"/>, so any height change big enough that the
+    /// arrival check would no longer call the agent and the goal co-located is also big enough to replan for,
+    /// while ordinary ground variation under a goal walking level ground is not.
+    /// <see cref="ReplanCooldownSeconds"/> still gates how often a due replan actually reaches the planner, so
+    /// a goal that bobs vertically cannot spam it.
+    /// </para>
+    /// Set it to <see cref="float.PositiveInfinity"/> for a purely horizontal retarget trigger.
+    /// </summary>
+    public float GoalRetargetVerticalTolerance { get; init; } = 0.8f;
 
     /// <summary>How far (world units) the agent may stray from the corridor segment leading to the
     /// active waypoint before a replan is due.</summary>
@@ -105,8 +126,8 @@ public sealed class PathFollowConfig
     public PathQueryBudget Budget { get; init; } = PathQueryBudget.Default;
 
     /// <summary>Default tuning: a 0.6 unit accept radius paired with a 0.8 unit vertical tolerance, 1.5
-    /// unit goal-drift and 2.5 unit corridor tolerances, a 0.5 second replan cooldown, and
-    /// <see cref="PathQueryBudget.Default"/>.</summary>
+    /// unit horizontal and 0.8 unit vertical goal-drift tolerances, a 2.5 unit corridor tolerance, a 0.5
+    /// second replan cooldown, and <see cref="PathQueryBudget.Default"/>.</summary>
     public static PathFollowConfig Default { get; } = new();
 }
 
@@ -122,19 +143,40 @@ public sealed class PathFollower
 {
     readonly IPathPlanner _planner;
     readonly PathFollowConfig _config;
+    // Optional, and the only thing that lets the follower resolve which layer the AGENT is on. Null keeps the
+    // pre-existing XZ-only waypoint advance, so a consumer on a single-layer world (or one that never built a
+    // NavSpace of its own) is unaffected.
+    readonly NavSpace? _space;
 
     NavPath? _path;
     int _index;
     float _cooldown;
     Vector2 _plannedGoalXz;
+    // The goal's height at plan time, kept beside _plannedGoalXz rather than folded into it, so the two
+    // drift triggers keep their own tolerances (a floor apart vertically is a much smaller number than a
+    // floor apart horizontally).
+    float _plannedGoalY;
     Vector2 _planOriginXz;
 
     /// <summary>Builds a follower over <paramref name="planner"/>, using <paramref name="config"/> or
-    /// <see cref="PathFollowConfig.Default"/> when none is given.</summary>
-    public PathFollower(IPathPlanner planner, PathFollowConfig? config = null)
+    /// <see cref="PathFollowConfig.Default"/> when none is given.
+    /// <para><paramref name="space"/> is the <see cref="NavSpace"/> the planner plans over, and is what lets
+    /// the waypoint advance in <see cref="Tick"/> compare the agent's own layer
+    /// (<see cref="NavSpace.LayerAt"/>) against the layer each <see cref="NavWaypoint"/> carries. Pass it for
+    /// any multi-layer world: without it the advance is XZ-only, and the waypoint at the top of a stair link
+    /// sits one cell from its lower partner in XZ, well inside <see cref="PathFollowConfig.AcceptRadius"/>, so
+    /// the follower consumes it while the agent is still a floor below and skips the climb. Leaving it null
+    /// keeps exactly the old behaviour, which is what a single-layer world wants anyway. The space must be able
+    /// to RESOLVE a layer from a position: grids with surface heights, or finite Y bands (every engine baker
+    /// produces one of those). A multi-layer space of default <c>NavGrid.FromWalkable</c> grids has neither, so
+    /// <see cref="NavSpace.LayerAt"/> answers 0 everywhere and the follower never advances past a layer-1
+    /// waypoint. And <paramref name="space"/> resolves from the <c>position</c> handed to <see cref="Tick"/>, so
+    /// pass the agent's GROUND position, not a capsule centre, or low overhead geometry flips the layer.</para></summary>
+    public PathFollower(IPathPlanner planner, PathFollowConfig? config = null, NavSpace? space = null)
     {
         _planner = planner ?? throw new ArgumentNullException(nameof(planner));
         _config = config ?? PathFollowConfig.Default;
+        _space = space;
     }
 
     /// <summary>
@@ -170,8 +212,9 @@ public sealed class PathFollower
     /// <summary>
     /// Advances the follower by <paramref name="dt"/> seconds toward <paramref name="goal"/> from
     /// <paramref name="position"/>, replanning through the <see cref="IPathPlanner"/> as needed. Position
-    /// and goal are world space. Steering and every distance measure work in XZ, and the one use of Y is
-    /// the arrival check in step 2. In order, each tick:
+    /// and goal are world space. Steering and every distance measure work in XZ. Y is read by the arrival
+    /// check in step 2 and, when the follower was given a <see cref="NavSpace"/>, to resolve which layer the
+    /// agent is standing on for the waypoint advance in step 6. In order, each tick:
     /// <list type="number">
     /// <item>Drains the replan cooldown by <paramref name="dt"/>.</item>
     /// <item>Returns <see cref="PathFollowState.Arrived"/> immediately if already within
@@ -180,15 +223,19 @@ public sealed class PathFollower
     /// that clears the XZ radius but not the vertical tolerance (another floor, a ledge) falls through to
     /// the steps below instead, so the layer-aware planner is the one that decides how to reach it.</item>
     /// <item>Decides whether a replan is due: no stored path, the stored path is fully consumed, the goal
-    /// drifted past <see cref="PathFollowConfig.GoalRetargetTolerance"/> from where it was planned, or the
+    /// drifted past <see cref="PathFollowConfig.GoalRetargetTolerance"/> in XZ or past
+    /// <see cref="PathFollowConfig.GoalRetargetVerticalTolerance"/> in Y from where it was planned, or the
     /// agent strayed past <see cref="PathFollowConfig.CorridorTolerance"/> from the corridor segment
     /// leading to the active waypoint.</item>
     /// <item>Replans when due and the cooldown has fully drained, then resets the cooldown.</item>
     /// <item>Returns <see cref="PathFollowState.Unreachable"/> if there is no usable path (none stored,
     /// or the planner reported <see cref="NavPathStatus.Unreachable"/>, or it has no waypoints). The
     /// cooldown from step 4 naturally throttles retries on later ticks.</item>
-    /// <item>Advances past every waypoint already within <see cref="PathFollowConfig.AcceptRadius"/>. If
-    /// that consumes the whole path: a <see cref="NavPathStatus.Complete"/> path means the goal is
+    /// <item>Advances past every waypoint already within <see cref="PathFollowConfig.AcceptRadius"/> AND, when
+    /// the follower was given a <see cref="NavSpace"/>, on the same layer as the agent
+    /// (<see cref="NavSpace.LayerAt"/>). A waypoint on another layer is one the agent has to climb to, which
+    /// XZ proximity cannot witness, so the follower keeps steering at it until the agent actually gets there.
+    /// If that consumes the whole path: a <see cref="NavPathStatus.Complete"/> path means the goal is
     /// reached (<see cref="PathFollowState.Arrived"/>). A <see cref="NavPathStatus.Partial"/> path clears
     /// itself and steers straight at the raw goal for this one tick, until the next tick's replan (once
     /// the cooldown allows) picks up a fresh route.</item>
@@ -224,10 +271,13 @@ public sealed class PathFollower
             return new PathFollowOutput { WorldDir = Vector2.Zero, State = PathFollowState.Arrived, ActiveWaypoint = Vector2.Zero, HopStart = Vector2.Zero };
         }
 
-        // Step 3: decide whether a replan is due.
+        // Step 3: decide whether a replan is due. The vertical drift is its own term: a goal that takes a
+        // staircase moves straight up, so the XZ drift is exactly zero and the horizontal trigger alone
+        // would let the follower keep steering a route planned to the floor the goal has left.
         bool needsPlan = _path is null
             || _index >= _path.Waypoints.Count
             || Vector2.Distance(goalXz, _plannedGoalXz) > _config.GoalRetargetTolerance
+            || MathF.Abs(goal.Y - _plannedGoalY) > _config.GoalRetargetVerticalTolerance
             || DistanceToActiveCorridor(posXz) > _config.CorridorTolerance;
 
         // Step 4: replan, gated by the cooldown.
@@ -235,6 +285,7 @@ public sealed class PathFollower
         {
             _path = _planner.FindPath(position, goal, agentRadius, _config.Budget);
             _plannedGoalXz = goalXz;
+            _plannedGoalY = goal.Y;
             _planOriginXz = posXz;
             _index = 0;
             _cooldown = _config.ReplanCooldownSeconds;
@@ -246,9 +297,19 @@ public sealed class PathFollower
             return new PathFollowOutput { WorldDir = Vector2.Zero, State = PathFollowState.Unreachable, ActiveWaypoint = Vector2.Zero, HopStart = Vector2.Zero };
         }
 
-        // Step 6: advance past every waypoint already reached.
+        // Step 6: advance past every waypoint already reached. XZ proximity alone is not enough: a stair
+        // link's upper waypoint sits about one cell from its lower partner in XZ, inside the accept radius,
+        // so an agent standing at the bottom is "within reach" of the top and the loop would consume both in
+        // one pass and steer at whatever follows, skipping the climb outright. The waypoint already carries
+        // the layer it lives on, so when a NavSpace was supplied the agent's own layer has to match. The
+        // agent then has to physically get onto that layer before the follower moves on, which is the point:
+        // a link the agent cannot actually traverse leaves it steering at the link instead of walking a route
+        // it never took, and the consumer's own stuck detection is what should notice that.
         IReadOnlyList<NavWaypoint> waypoints = _path.Waypoints;
-        while (_index < waypoints.Count && Vector2.Distance(posXz, waypoints[_index].Position) <= _config.AcceptRadius)
+        int? agentLayer = _space?.LayerAt(position);
+        while (_index < waypoints.Count
+            && Vector2.Distance(posXz, waypoints[_index].Position) <= _config.AcceptRadius
+            && (agentLayer is null || waypoints[_index].Layer == agentLayer.Value))
         {
             _index++;
         }
@@ -284,15 +345,16 @@ public sealed class PathFollower
         return new PathFollowOutput { WorldDir = dir, State = PathFollowState.Following, ActiveWaypoint = active.Position, HopStart = Vector2.Zero };
     }
 
-    /// <summary>Clears all stored path state (path, index, cooldown, plan origin and goal), as if this
-    /// follower had just been constructed. The next <see cref="Tick"/> plans fresh with no cooldown
-    /// wait.</summary>
+    /// <summary>Clears all stored path state (path, index, cooldown, plan origin and goal, height
+    /// included), as if this follower had just been constructed. The next <see cref="Tick"/> plans fresh
+    /// with no cooldown wait.</summary>
     public void Reset()
     {
         _path = null;
         _index = 0;
         _cooldown = 0f;
         _plannedGoalXz = Vector2.Zero;
+        _plannedGoalY = 0f;
         _planOriginXz = Vector2.Zero;
     }
 

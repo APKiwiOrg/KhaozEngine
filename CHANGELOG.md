@@ -7,10 +7,132 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.37.1
 
-A greybox roof now sits on the walls it covers instead of floating a whole plane above them, and a cell
-blob finally records which wire generation wrote its component payloads, so an old save boots instead of
-being quarantined as corrupt.
+A greybox roof now sits on the walls it covers instead of floating a whole plane above them. Alongside it, the
+last four per-frame PARTIAL uniform-buffer writes in the engine are gone: water planes, overlay proxies,
+`SpriteBatch` view-projection slots and a splat material's combined block all pack into a CPU image and go up in
+one whole-buffer write, so no per-frame write on the D3D11 Veldrid leg takes the blocking staging route any
+more (the one load-time partial write a splat material still makes is once per material, not per frame).
+On the server side, a server-owned
+entity can finally opt out of cell persistence per ENTITY, so a world pickup or any other transient
+thing stops being caught in an interval save and resurrected on restart as a husk no subsystem is tracking, and the
+pickup seam gained the cell awareness it was missing, so unloading a cell takes its pickups' tracking with it instead
+of leaving an orb nobody can see still being offered.
+On the GPU seam, the
+deferred-retirement queue behind every mid-life resource free stops growing without bound on a device the CPU
+outruns, and the three `Scene3D` unload paths that still drained the whole device once per call moved onto it, which
+takes the pipeline stall off an MMO client's avatar despawn.
+Alongside it, five
+contained fixes: a tooltip that word-wrapped its body twice every frame, a write queue whose backup rotation was
+off by default while the read side went looking for two generations, a mouse tap that vanished whenever its press
+and release landed in the same frame, and a path follower that skipped a waypoint on another layer and never
+replanned for a goal that moved straight up.
+Still on the server, the two remaining
+ways player persistence could file or apply a record against the wrong player: a load-on-join belongs to
+one SESSION now rather than to an account, so an account that leaves and rejoins inside a single store read no
+longer applies both of its outstanding loads and no longer has the first of them clear the guard while the second
+is still in the air. And a tokenless connection is no longer persisted under the seat it happens to be sitting in,
+which is what used to load one guest's stored position onto the next guest to take that slot. And a cell blob
+finally records which wire generation wrote its component payloads, so an old save boots instead of being
+quarantined as corrupt.
 
+- **`GpuRetireQueue` has a safety valve, so a GPU the CPU runs away from no longer grows the holding forever**
+  (`KhaozEngine.Gpu`). On the fence path a batch lived until its fence signalled, with nothing bounding how many
+  could pile up, so a software rasterizer, a weak card or an offscreen loop with no swapchain throttling it grew the
+  pending list, the batch list and the barrier's fence pool monotonically. Past `MaxSealedBatches` sealed batches
+  (new knob, `DefaultMaxSealedBatches` is 8, a `Create` parameter) the queue stops polling and pays one
+  `WaitForIdle`, which proves every submitted batch complete, then frees the whole holding behind it. Freeing all of
+  it rather than trimming back to the cap is what makes the cost one drain per `MaxSealedBatches + 1` frames of
+  sustained fall-behind instead of one per frame. New `ValveDrains` counts them, and `SealedBatchCount` is public
+  now, because the bound is written in batches rather than resources. What decides whether it fires is how far
+  ahead the LOOP gets rather than how fast the GPU is: a windowed loop blocks in its present at the backend's
+  frames-in-flight depth and never reaches the cap, while an offscreen loop that submits without presenting runs
+  eight or nine frames ahead on an M2 Max, which is where the engine's own 400-frame churn test parks the peak
+  holding exactly on the cap and fires the valve anywhere from once to a couple of dozen times a run, against the
+  396 drains the unfenced fallback pays over the same run. The firing count does not reproduce between runs, since
+  it tracks how far ahead that pass got, so the peak sitting on the cap is the number to read. The
+  two frame-counted policies (`CreateFrameCounted`, and `Create`'s fallback on a backend with no completion fence)
+  get no valve and need none: a batch there dies on the frame count alone, which caps the holding at `FrameDelay`
+  batches by construction, and `CreateFrameCounted` must not drain on the frame path at all (#84). Eight is above
+  the deepest a healthy loop reaches, since the CPU runs at most `KE_METAL_FRAMES_IN_FLIGHT` /
+  `KE_VULKAN_FRAMES_IN_FLIGHT` / `KE_D3D11_FRAMES_IN_FLIGHT` frames ahead (default 3) and every one of those frames
+  has to have retired something to seal a batch. A consumer raising that knob past 8 wants this raised with it and
+  has no way to do it: the parameter is on `Create`, which no public route into a `Scene3D` reaches (#661).
+  Closes #425.
+- **`RetireFenceGpuTests` asserts the bound instead of a flat zero.** Its gate was `fencedDrains == 0`, which the
+  valve makes a property of how far ahead the loop runs, and that test's own churn runs through an offscreen
+  capture that never presents, so a flat zero would have failed it for doing its job. What is asserted now holds on
+  any device: every drain on the fence path came from the valve, the cap held at every frame boundary of the
+  400-frame churn, and the valve fired no more often than its own period allows. The headless rows drive the
+  fall-behind deliberately, with a barrier whose fences never signal, and pin the exact batch the valve fires on.
+- **`Scene3D.UnloadSkinnedMesh`, `UnloadTexture` and `UnloadSplatMaterial` retire instead of draining**
+  (`KhaozEngine.Render3D`). Each one used to call `IGpuDevice.WaitForIdle` inside the unload call and destroy its
+  resources behind it, which is correct and is a full pipeline flush on the frame thread, once per call. They hand
+  everything to the scene's `GpuRetireQueue` now, the way `UnloadMesh` has since 17.10.x, so a burst of unloads
+  costs one drain between all of them on an unfenced backend and none at all on a fenced one. The skinned path is
+  the one that was costing something in the field: an MMO client despawns avatars and corpses continuously as they
+  leave interest range and paid a device-wide stall for each. The texture path drops the particle renderer's cached
+  atlas resource sets through the queue too, which is where the drain would otherwise have survived for any scene
+  that draws particles at all. Nothing about WHEN a slot is released changed, only when the GPU object behind it is
+  destroyed, and the rule the drains existed for is unchanged: nothing is destroyed in the frame it was retired in.
+  Closes #383.
+- **`ParticleRenderer.InvalidateTextureSets` takes the retire queue** (`KhaozEngine.Render3D`). The type is
+  `internal sealed` and `Scene3D` is its only caller, so no public surface moved. The parameterless overload
+  drained the device itself. The two other paths into the same cache clear, a render-target rebind and teardown,
+  keep the drain: neither has a frame boundary left to reach.
+- **A skinned mesh's GPU-skinning material set is freed at scene teardown.** `Scene3D.Dispose` freed the set-0
+  CPU-path material set and not the set-1 GPU-skinning one, which `LoadSkinnedMesh` builds alongside it whenever the
+  mesh is textured, so a textured skinned mesh still loaded at teardown leaked one resource set. `UnloadSkinnedMesh`
+  always freed both. The native Vulkan backend reports that class of leak at device teardown as a
+  `VUID-vkDestroyDevice-device-05137` object leak. `Scene3DUnloadRetireTests` pins it headless, off the same fake
+  factory lists the unload rows read: load a TEXTURED skinned mesh so both sets exist, dispose the scene, and both
+  have to be gone.
+- **`Tooltip` word-wraps its body once per frame instead of twice** (`KhaozEngine.Gui`). `Draw` measured the
+  bubble through `ComputeBounds`, which word-wraps the body to lay it out, then called the same wrap a second time
+  with the identical font, lines and width cap to get the lines it walks, throwing the first result away. The
+  layout pass hands its wrapped lines back to `Draw` now, so a visible tooltip does one wrap and allocates one
+  line list per frame rather than two. Closes #400.
+- **`PersistenceQueue` rotates two backup generations by default** (`KhaozEngine.Persistence`). The
+  constructor's `backupGenerations` defaulted to 0 while both read sides default to 2, so a consumer that
+  builds the queue directly instead of through `GameStorage` wrote no `.bak1`/`.bak2` at all and the 13.6.0
+  recovery ladder had nothing to recover from: `LoadWithOutcome` and the `SettingsManager` ladder probed
+  generations that were never written. SpaceGame hit exactly that and had to pass `backupGenerations: 2` by
+  hand. The default is 2 now, matching `GameStorageOptions.BackupGenerations` and
+  `FileSettingsStorage.BackupGenerations`, so a bare queue paired with a bare `FileSettingsStorage` recovers
+  out of the box. A direct-queue consumer that counted on no `.bak` files appearing beside its writes now gets
+  two, and `backupGenerations: 0` still turns rotation off. Closes #234.
+- **`PathFollower` advances past a waypoint on the agent's own layer only** (`KhaozEngine.Navigation`). The
+  step-6 advance consumed every waypoint within `AcceptRadius` in XZ and never read the `Layer` each
+  `NavWaypoint` already carries, so the upper end of a stair link, which sits about one cell from its lower
+  partner in XZ and well inside the 0.6 default radius, was consumed while the agent was still a floor below
+  it. The follower steered at whatever came next and the climb was skipped. The constructor takes the
+  planner's `NavSpace` as an optional third argument now, and with it in hand the advance also requires the
+  waypoint's layer to match `NavSpace.LayerAt(position)`, so the follower keeps steering at the upper waypoint
+  until the agent is actually up there. Passing no space keeps the XZ-only advance exactly as it was, which is
+  what a single-layer world wants. Closes #316.
+- **`PathFollower` replans for a goal that moves straight up or down** (`KhaozEngine.Navigation`). The
+  retarget trigger compared the goal against `_plannedGoalXz`, a `Vector2`, so a goal that took a staircase
+  registered exactly zero drift: same XZ, one floor up, no replan due. The follower kept steering the route
+  it had planned to the old floor until some unrelated trigger (a corridor breach, a consumed path, the
+  cooldown plus one of those) happened to fire. The planned goal's height is tracked now and checked against
+  the new `PathFollowConfig.GoalRetargetVerticalTolerance` (default 0.8, matching `VerticalAcceptTolerance`)
+  alongside the horizontal `GoalRetargetTolerance`. `ReplanCooldownSeconds` still gates how often a due
+  replan reaches the planner, and `float.PositiveInfinity` restores the purely horizontal trigger. Closes #317.
+- **A mouse tap whose press and release land in one frame still registers** (`KhaozEngine.Windowing`).
+  `Pointer` derived its press edge purely from `IsDown` transitions, so when a press and its release both
+  queued inside a single frame the button was already up by the time `Update` ran, the latch never opened, and
+  the tap was invisible to every press-origin consumer, `IsTapIn` included. It happens on any frame hitch and
+  routinely at the engine's own background-throttle rates (15 Hz unfocused, 10 Hz minimized). The pointer now
+  completes that gesture from the snapshot's `MousePressed` edge: the frame reports as a release, with the
+  press-origin at the cursor, for the left, middle and right buttons alike. Reading the edge is purely
+  additive, so a producer that never fills `MousePressed` (a replay, a synthesized headless frame, a game's own
+  test rig) reads exactly as it did before and only loses the same-frame tap. Closes #300.
+- **Test frame builders derive real mouse edges** (`KhaozEngine.TestSupport.Windowing`, new, not packable).
+  About thirty test files built their `InputState` with an empty `MousePressed` while filling `MouseDown` from a
+  `down` bool, which models a HELD button and never a press EDGE, so the mouse press edge was systematically
+  unexercised across the suite, which is how the `Pointer` defect above stayed invisible. The new `MouseFrames`
+  helper derives the press and release sets from the previous frame's held set (one instance per test class,
+  never a static, so nothing crosses between the classes xUnit runs in parallel), and every one of those local
+  builders now goes through it.
 - **`GreyboxMeshResolver` builds every shape in its own PLANE's local space** (`KhaozEngine.TileWorld.Render3D`).
   A roof archetype is placed on the plane ABOVE the walls it covers, which is exactly what `TileWorldView`'s
   roof-hide rule keys on, and `TileObjectProps.AnchorPosition` anchors an object at `HeightAt(plane)`, so a
@@ -26,8 +148,140 @@ being quarantined as corrupt.
   goldens) now passes `doc.PlaneHeight`, so a world with a non-default plane height stays sealed too.
 - **`tileworld_greybox` and `tileworld_topdown` goldens rebaked** on all three backends, since both shots frame
   the walled house whose roof moved.
+- Found by the Grimhollow adopt, where the greybox house rendered with a visibly detached roof slab.
+- **`Transient`: a per-entity persist opt-out** (`KhaozEngine.Sharding`). A field-less ECS tag, beside `Ghost` and
+  `Migrating`, meaning this entity is never saved. `CellSim.SnapshotOwned` leaves it out of the cell blob entirely,
+  so a server-owned thing meant to outlive nothing (a world pickup, a timed spawn, a projectile, a temporary marker)
+  can no longer ride an interval save into the next process. It excludes the ENTITY, which is the axis a
+  `ReplicationChannels` flag cannot reach: a channel gates one component TYPE on one channel, so it is the wrong
+  grain twice over, and dropping a component's bytes would still persist the entity, just as a stripped husk, which
+  is worse than the behaviour it replaced. Deliberately in no `ReplicationRegistry`, since persistence is a
+  server-local decision no client needs to hear, so the marker spends no replication type id, adds no bytes to any
+  snapshot, and moves no blob layout. `ShardHost.ProcessHandoffs` carries the mark across a cell crossing (beside
+  the Migrate capture rather than inside it, since an unregistered tag cannot ride the capture), so a transient
+  entity walking into the next cell does not become persistable there. That covers a handoff **within one host**,
+  for any `ICellLink` shape: the mark is read when the Migrate is sent and consumed when it is adopted, so a link
+  that delivers the Migrate a later call (which every networked one does) still re-marks on arrival. It stops at the
+  node boundary on purpose, since the tag has no wire id: a crossing between two `ShardHost` instances carries the
+  mark in the link's own envelope or the destination adopts it unmarked. Closes #326.
+- **`ShardedWorldServer.MarkTransient(netId)` / `ClearTransient(netId)` / `IsTransient(netId)`**, the net-id
+  vocabulary a game already spawns in. Each refuses a player net id, since a player persists on its own record and
+  is excluded from cell snapshots anyway.
+- **A pickup is never persisted by default.** Every pickup `WorldPickups.Spawn` creates is marked `Transient`,
+  because the seam's state (the time-to-live, the clock, the offer records) lives in one process, so a restored
+  pickup is a plain entity carrying `PickupState` that the seam knows nothing about, offered to nobody and expiring
+  never. A game can still clear the mark (`ClearTransient(pickupNetId)` after `Spawn`) and the next save writes the
+  entity like any other, but what comes back is exactly that husk, because nothing rehydrates the seam's tracking:
+  a `WorldPickups.Rehydrate(world)` re-adopting restored `PickupState` entities is what persistent ground loot would
+  need, and is filed as #660. Until then a collectible meant to survive a restart belongs in the game's own content
+  or save data, which is also the only place its payload still means anything. **The
+  `DespawnEntity` boot sweep the docs used to hand every game is now only for blobs saved BEFORE this version**: a
+  save cannot be edited after the fact, so a world an older build wrote still holds husks and still wants the sweep
+  once. Nothing written since needs it.
+- **`WorldPickups` follows cell eviction** (#374). A pickup's tracking record is the seam's, not the entity's, so
+  unloading the cell holding the entity left the record standing: the proximity pass kept offering an orb nobody
+  could see, a collect still granted it, and the expiry despawn no-opped into an unloaded cell while dropping the
+  record. Hand the seam the evictor, through the new **`WorldPickupsConfig.Evictor`** or
+  **`WorldPickups.TrackEvictions(evictor)`** (with `StopTrackingEvictions` to undo it), and each
+  `CellEvictor.CellEvicted` drops that cell's pickups. A host that unloads cells its own way calls the new
+  **`ForgetCell(coord)`** or the general **`ForgetWhere(predicate)`** directly. The two changes compose: the evicted
+  cell's blob never carried the pickup, so recreating that coordinate restores no ghost orb either. Closes #374.
+- **`PickupRemovalReason.CellEvicted`**, so a game returning an uncollected payload to a loot table can tell an
+  unload from a deliberate removal, and **`PickupInfo.Cell`** (nullable, read once at spawn since a pickup never
+  moves, null on a single-world server) so a `ForgetWhere` predicate can express a rule over cells.
+- **`IWorldPickupHost.TryGetCellCoord(x, z, out coord)`**, a default interface method answering false, so a host
+  with no cell grid (every `WorldServer`) is unaffected. `ShardedWorldServer` answers off the shard host's grid
+  geometry, for any coordinate, including one whose cell has been evicted or was never instantiated.
+- Nothing on the wire moved: the marker is unregistered, so a `Replicate` and a `Migrate` capture of a marked entity
+  are byte-identical to the same entity unmarked, and no cell-blob migration was touched. Both are pinned by test.
+- Found closing https://github.com/APKiwiOrg/Ruinborne/issues/271, whose game-side workaround (a `ForgetCell` wired
+  to `CellEvicted`, plus a boot `DespawnEntity` sweep) is what the two seams above retire.
 
-Found by the Grimhollow adopt, where the greybox house rendered with a visibly detached roof slab.
+- **`CharacterMovement.cs` split into two more domain partials** (`KhaozEngine.Locomotion`): the post-sweep settle
+  pass to `CharacterMovement.Settle.cs`, and the paced step-up climb with its climb-signal export to
+  `CharacterMovement.Climb.cs`. 799 lines down to 556, a pure code move with no API and no behaviour change (#480).
+- **`VulkanPresentBoundary` and its test class split on the seam each had already marked** (`KhaozEngine.Gpu.Vulkan`,
+  `KhaozEngine.Render.Tests`): the recreation state machine to `VulkanPresentBoundary.Recreate.cs`, 799 lines down to
+  606, and the recreate half of its coverage to `VulkanPresentBoundaryTests.Recreate.cs`, 777 down to 332 (#559).
+
+- **Every per-frame uniform block now uploads WHOLE, on all four remaining sites** (`KhaozEngine.Render3D`,
+  `KhaozEngine.Render2D`). Veldrid's `D3D11CommandList.UpdateBufferCore` sends a PARTIAL write to a non-Dynamic
+  uniform buffer down its staging route: rent a staging buffer, hand it to `GraphicsDevice.UpdateBuffer`, which
+  Maps the IMMEDIATE context with `D3D11_MAP_WRITE` (not WRITE_DISCARD, no DO_NOT_WAIT) and blocks until the GPU
+  has released the buffer being recycled. Only a write covering the whole buffer from offset 0 takes the cheap
+  `UpdateSubresource` path, because Direct3D 11 forbids a partial box on a constant buffer. 17.18.0 and 17.20.0
+  packed the model frame block and the GPU-skinned main/shadow slots this way (worth 61.56 ms to 22.97 ms of
+  consumer shadow recording on a Windows client). This finishes the list. `WaterRenderer` packed one slot per
+  plane, `OverlayMeshRenderer` one per draw interleaved with the draws themselves, `SpriteBatch` one per `Begin`,
+  and a splat material's combined UBO wrote its frame head into a larger buffer. Each now mirrors its whole
+  buffer on the CPU and writes it once. Same bytes at the same offsets, so every golden is unchanged. Metal and
+  Vulkan are simply issued fewer commands, and the engine's own native D3D11 backend routes uniform writes
+  through `D3D11UniformRing` and never had the stall.
+- **A splat material retains its `SplatParamsData`.** `ModelRenderer.CreateSplatParamsUbo` returns the new
+  internal `SplatUniformBuffer` instead of a bare `IGpuBuffer`: it owns the buffer and a CPU mirror whose tail
+  already holds the params, which is what makes the whole block rebuildable from the CPU and therefore writable
+  in one command. That retention was the stated prerequisite for this site.
+- **`OverlayMeshRenderer.Draw` splits into `Enqueue` + `Flush`.** Packing a slot and recording a draw are now
+  two phases, so every slot is uploaded before the first draw binds one. The overlay pass moved out of
+  `Scene3D.cs` into `Scene3D.OverlayMeshPass.cs` with it, and the `SpriteBatch` slot bookkeeping into
+  `SpriteBatch.ViewProj.cs`. Both classes gained `partial`, and no public API moved.
+- **`SpriteBatch` still writes once per `Begin`, and that is deliberate.** A batch cannot fold its uploads into
+  one per frame the way a pass that knows every slot up front can, because a `Begin`'s draws are recorded before
+  the next `Begin` exists. Each `Begin` re-uploads the mirror whole instead, which rewrites the earlier slots
+  with bytes they already hold and costs a memcpy where it used to cost a blocking Map.
+- **The upload-shape guard covers all of it.** `FrameUniformUploadShapeGpuTests` gains a row per site, and its
+  GPU-skinned row now draws TWO casters so it really pins one slot per caster per cascade. The new device-free
+  `PackedUniformMirrorTests` asserts the other half, the BYTES: a packer that uploads the whole buffer with a
+  slot at the wrong offset satisfies the shape guard perfectly and renders garbage.
+
+Closes [#408](https://github.com/APKiwiOrg/KhaozEngine/issues/408), the residue the 17.18.0 and 17.20.0 packing
+left behind.
+
+- **`WorldPersistence`'s load-on-join guard is a SESSION, not a set** (`KhaozEngine.NetWorld`). `loadsInFlight` was a
+  `ConcurrentDictionary<string, byte>` keyed by account, and `OnPlayerJoined` wrote the key and started a load per
+  JOIN, so an account that dropped and rejoined while its first store read was still outstanding had TWO loads in
+  flight under one key. The first to land cleared the guard for both. Two consequences, and this closes both: the
+  account was unguarded from that moment, so a periodic dirty pass or a save-on-leave could write pre-restore live
+  state over the stored record inside the exact window the guard exists to close, and the second load then applied
+  unconditionally, carrying whatever the store held when IT read, which pulled a player who had moved since back to
+  a superseded position (as a teleport once the distance passed `QuietRestoreDistance`). Every join now takes a
+  monotonic token, `loadsInFlight` maps an account to the token of its CURRENT session, `PendingApply` carries the
+  token it was read for, and the drain drops any load whose token is not the current one. A drop uses the machinery
+  #646 already added, `OnLoadApplyDropped` plus an `Info` log line, and deliberately does not clear the guard, so
+  the record stays protected until the live session's own load lands. Both landing orders behave the same: whichever
+  of the two arrives first, exactly one apply happens (the live session's) and exactly one drop. Neither the account
+  nor the slot could tell the two loads apart, since both are the same account, usually on the same recycled seat,
+  which is why #646's identity check did not reach this. A rejoin deliberately issues a fresh read rather than
+  adopting the outstanding one: that read was issued for the previous session's seat, may already have completed,
+  and its bytes are the older of the two answers. A second CONCURRENT session for one account now supersedes the
+  first here too, and THAT configuration is a known regression rather than a fix: `NetServer` does not dedupe a join
+  by subject, so two clients presenting one token are two live sessions, the later one wins the guard, the earlier one
+  is never restored and plays from wherever its join built it, and once the winner leaves the next dirty pass can
+  write that pre-restore state over the account's record. Before this change both sessions restored the same record
+  and wrote the same state back. One account keying one record was never a shape two live players could share, and
+  the fix belongs at the join gate rather than in this layer, so it is tracked in
+  https://github.com/APKiwiOrg/KhaozEngine/issues/662. Closes #654.
+- **A tokenless connection is not persisted, and never under `guest:{slot}`** (`KhaozEngine.NetWorld`). Both heads
+  key a connection with no verified subject `guest:{slot}`, and both hand a freed slot straight to the next
+  connection, so that key named a chair rather than a player and `WorldPersistence` stored under
+  `player:guest:{slot}`. A guest joining on a freed slot therefore loaded the PREVIOUS guest's position and durable
+  blob, and moved onto it. The resume-hint half was already closed by `ResumePositionCache` refusing the prefix
+  (17.37.0), so a guest join was never BUILT on the last occupant's position, but the persistence keying predates
+  all of it and still applied the record afterwards, as a teleport. `WorldPersistence` now files nothing for a
+  tokenless connection in either direction: no load-on-join, no save-on-leave, no periodic pass and no in-flight
+  guard, so a guest is built on the host's configured spawn every session. New
+  **`WorldPersistenceConfig.PersistGuests`** (default false) opts a game that runs tokenless BY DESIGN back in,
+  under a durable `guest:{guid}` minted per session at join and NEVER the seat, so no guest can inherit another's
+  record. **`PlayerPersistenceContext.AccountId` carries that resolved key** at both save points, so a game's
+  `CaptureGameState` hook reads the id its record is actually filed under rather than the `guest:{slot}` the head
+  derived, which is the seat identity this change exists to keep out of the store. What that buys is stated plainly
+  in its doc: the minted id is unreachable afterwards, so it is
+  crash-safety within a session and an audit trail, never a guest's return. New public
+  **`ResumePositionCache.IsGuestAccount(string)`**, the one predicate over `GuestAccountPrefix` both the hint cache
+  and the persistence layer now ask, so the two answers cannot drift. That makes `guest:` a reserved subject prefix
+  the engine still enforces nowhere: `SignedToken.Mint` accepts any subject without a `.` and `AllowAllAuthenticator`
+  takes the client's raw bytes, so a game CAN mint `guest:alice` as a real account and get a player who is read as
+  tokenless and silently not persisted. Tracked in https://github.com/APKiwiOrg/KhaozEngine/issues/664. Closes #647.
 
 #### Cell blobs record the wire generation their built-in payloads were written at
 

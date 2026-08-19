@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
 
@@ -44,6 +45,20 @@ namespace KhaozEngine.Render3D.Rendering
         int _capacity;
         IGpuResourceSet? _set; // binds the 128-byte window into _ubo at offset 0; per-draw offset supplied at draw time
         Matrix4x4 _viewProj;   // this frame's clip-corrected view-projection (set by BeginFrame, written into every slot)
+
+        // THE SLOTS AS ONE CONTIGUOUS CPU IMAGE, and the queue that lets them all be packed before the first draw.
+        // A per-draw UpdateBuffer used to sit between the draws, and a PARTIAL write to a non-Dynamic uniform buffer
+        // is the shape Veldrid's D3D11CommandList.UpdateBufferCore sends down its staging route: rent a staging
+        // buffer, hand it to GraphicsDevice.UpdateBuffer, which Maps the IMMEDIATE context with D3D11_MAP_WRITE (not
+        // WRITE_DISCARD, no DO_NOT_WAIT) and blocks until the GPU has released the buffer being recycled. Only a
+        // write covering the whole buffer from offset 0 takes the cheap UpdateSubresource path, so a ten-proxy frame
+        // was ten CPU/GPU sync points inside the overlay encode and is one UpdateSubresource now (#408, the same
+        // packing ModelRenderer.FrameUbo.cs gave the model frame block in 17.18.0). Metal and Vulkan have no such
+        // split. Each slot holds exactly the bytes the per-draw write put there, at the same base, so the pass
+        // renders the same picture; what differs is the 128-byte pad each slot carries past its payload and the
+        // slots past this frame's draw count, neither of which any dynamic offset binds.
+        byte[] _image = Array.Empty<byte>();
+        readonly List<QueuedDraw> _queue = new();
 
         public OverlayMeshRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs)
         {
@@ -103,24 +118,39 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>Cache this frame's view-projection (already clip-Y corrected for the live backend, matching the
-        /// model pass). Written into every per-draw slot by <see cref="Draw"/> so the overlay depth is comparable to
+        /// model pass). Packed into every per-draw slot by <see cref="Enqueue"/> so the overlay depth is comparable to
         /// the mesh depth. Call once before the draw loop.</summary>
         public void BeginFrame(Matrix4x4 clipCorrectedViewProj) => _viewProj = clipCorrectedViewProj;
 
-        /// <summary>Draw one overlay mesh at <paramref name="world"/> into the model FB (already bound). Reserves and
-        /// binds this draw's own UBO slot (ViewProj + World) via a dynamic offset. <paramref name="drawIndex"/> is the
-        /// zero-based index of this draw within the frame's overlay queue and selects the slot; the caller passes the
-        /// queue length to <see cref="EnsureCapacity"/> once before the loop. <see cref="BeginFrame"/> must have run.</summary>
-        public void Draw(IGpuCommandList cl, IGpuBuffer vb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat,
+        /// <summary>Queue one overlay mesh at <paramref name="world"/> and pack its UBO slot (ViewProj + World) into
+        /// the CPU image. Nothing is recorded yet: <see cref="Flush"/> uploads every packed slot at once and then
+        /// records the draws. <paramref name="drawIndex"/> is the zero-based index of this draw within the frame's
+        /// overlay queue and selects the slot; the caller passes the queue length to <see cref="EnsureCapacity"/>
+        /// once before the loop. <see cref="BeginFrame"/> must have run.</summary>
+        public void Enqueue(IGpuBuffer vb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat,
             int drawIndex, Matrix4x4 world)
         {
             var slot = new DrawUbo { ViewProj = _viewProj, World = world };
-            cl.UpdateBuffer(_ubo!, (uint)(drawIndex * SlotBytes), in slot);
-            cl.SetPipeline(_pipeline);
-            cl.SetGraphicsResourceSet(0, _set!, (uint)(drawIndex * SlotBytes));   // dynamic offset selects this draw's slot
-            cl.SetVertexBuffer(0, vb);
-            cl.SetIndexBuffer(ib, indexFormat);
-            cl.DrawIndexed((uint)indexCount, 1, 0, 0, 0);
+            MemoryMarshal.Write(_image.AsSpan(drawIndex * SlotBytes, SlotBytes), in slot);
+            _queue.Add(new QueuedDraw(vb, ib, indexCount, indexFormat, drawIndex));
+        }
+
+        /// <summary>Upload every packed slot in ONE whole-buffer write, then record the queued draws into the model
+        /// FB (already bound). The upload is recorded ahead of the first draw that binds a slot, which is the whole
+        /// point of the split; see the <see cref="_image"/> note. A frame that queued nothing records nothing.</summary>
+        public void Flush(IGpuCommandList cl)
+        {
+            if (_queue.Count == 0) return;
+            cl.UpdateBuffer(_ubo!, 0, (ReadOnlySpan<byte>)_image);
+            foreach (QueuedDraw d in _queue)
+            {
+                cl.SetPipeline(_pipeline);
+                cl.SetGraphicsResourceSet(0, _set!, (uint)(d.DrawIndex * SlotBytes));   // dynamic offset selects this draw's slot
+                cl.SetVertexBuffer(0, d.Vb);
+                cl.SetIndexBuffer(d.Ib, d.IndexFormat);
+                cl.DrawIndexed((uint)d.IndexCount, 1, 0, 0, 0);
+            }
+            _queue.Clear();
         }
 
         /// <summary>Ensure the UBO holds at least <paramref name="drawCount"/> 256-byte slots, growing geometrically.
@@ -136,6 +166,9 @@ namespace KhaozEngine.Render3D.Rendering
             if (_ubo != null) _retired.Add(_ubo);
             _capacity = Math.Max(drawCount, _capacity == 0 ? 8 : _capacity * 2);
             _ubo = _gd.Factory.CreateBuffer(new GpuBufferDescription((uint)(_capacity * SlotBytes), GpuBufferUsage.UniformBuffer));
+            var image = new byte[checked(_capacity * SlotBytes)];
+            _image.AsSpan().CopyTo(image);
+            _image = image;
             _set?.Dispose();
             _set = CreateSet();
         }
@@ -150,6 +183,10 @@ namespace KhaozEngine.Render3D.Rendering
             public Matrix4x4 ViewProj;
             public Matrix4x4 World;
         }
+
+        /// <summary>One queued overlay draw: the mesh's buffers and the slot its packed uniforms landed in. Held
+        /// only between <see cref="Enqueue"/> and <see cref="Flush"/>, so no GPU resource outlives the frame.</summary>
+        readonly record struct QueuedDraw(IGpuBuffer Vb, IGpuBuffer Ib, int IndexCount, GpuIndexFormat IndexFormat, int DrawIndex);
 
         public void Dispose()
         {

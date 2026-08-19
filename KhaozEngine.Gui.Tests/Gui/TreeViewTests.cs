@@ -20,12 +20,18 @@ namespace KhaozEngine.Tests.Gui
         // Tree area X 0..200 (width 200), Y 0..120 (5 rows tall at RowHeight 24).
         static readonly Rect Area = new(0, 0, 200, 120);
 
-        static InputState Frame(Vector2 pos, bool down, float scroll = 0f)
+        // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and
+        // release edges derive from this test's own frame sequence and nothing crosses between tests. Both
+        // frame builders below share it: they drive one logical mouse.
+        readonly MouseFrames _mouse = new();
+
+        InputState Frame(Vector2 pos, bool down, float scroll = 0f)
         {
             var b = new HashSet<MouseButton>();
             if (down) b.Add(MouseButton.Left);
+            var (edgePressed, edgeReleased) = _mouse.Advance(b);
             return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                b, new HashSet<MouseButton>(), pos, Vector2.Zero, scroll, 960, 540);
+                b, edgePressed, pos, Vector2.Zero, scroll, 960, 540, mouseReleased: edgeReleased);
         }
 
         // Fixture: roots A (children A1, A2 where A2 has child A2a) and B.
@@ -45,7 +51,7 @@ namespace KhaozEngine.Tests.Gui
         }
 
         // A press-origin tap (press and release both at `at`), the way the pointer fires taps.
-        static void Tap(TreeView tree, InputManager input, Vector2 at)
+        void Tap(TreeView tree, InputManager input, Vector2 at)
         {
             input.Update(Frame(at, false)); tree.Update(input);
             input.Update(Frame(at, true)); tree.Update(input);
@@ -271,15 +277,16 @@ namespace KhaozEngine.Tests.Gui
         // ---- drag-and-drop row reorder ------------------------------------------------------------------
 
         // A frame carrying an optional held key set alongside the mouse (the reorder drag needs Escape mid-press).
-        static InputState KeyMouseFrame(Vector2 pos, bool down, HashSet<Key>? keys = null)
+        InputState KeyMouseFrame(Vector2 pos, bool down, HashSet<Key>? keys = null)
         {
             var mb = new HashSet<MouseButton>();
             if (down) mb.Add(MouseButton.Left);
+            var (edgePressed, edgeReleased) = _mouse.Advance(mb);
             return new InputState(keys ?? new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                mb, new HashSet<MouseButton>(), pos, Vector2.Zero, 0f, 960, 540);
+                mb, edgePressed, pos, Vector2.Zero, 0f, 960, 540, mouseReleased: edgeReleased);
         }
 
-        static void Step(TreeView tree, InputManager input, Vector2 pos, bool down, HashSet<Key>? keys = null)
+        void Step(TreeView tree, InputManager input, Vector2 pos, bool down, HashSet<Key>? keys = null)
         {
             input.Update(KeyMouseFrame(pos, down, keys));
             tree.Update(input);

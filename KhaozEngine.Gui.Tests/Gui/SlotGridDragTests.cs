@@ -21,10 +21,18 @@ namespace KhaozEngine.Tests.Gui
         static readonly Vector2 Slot1 = new(164, 120);
         static readonly Vector2 OffGrid = new(700, 480);
 
-        static InputState Frame(Vector2 pos, bool down) =>
-            new(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                down ? new HashSet<MouseButton> { MouseButton.Left } : new HashSet<MouseButton>(),
-                new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540);
+        // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and
+        // release edges derive from this test's own frame sequence and nothing crosses between tests.
+        readonly MouseFrames _mouse = new();
+
+        InputState Frame(Vector2 pos, bool down)
+        {
+            var held = new HashSet<MouseButton>();
+            if (down) held.Add(MouseButton.Left);
+            var (edgePressed, edgeReleased) = _mouse.Advance(held);
+            return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+                held, edgePressed, pos, Vector2.Zero, 0, 960, 540, mouseReleased: edgeReleased);
+        }
 
         static SlotGrid Draggable(string token = "potion")
         {
@@ -132,7 +140,7 @@ namespace KhaozEngine.Tests.Gui
         }
 
         // Carry a drag grabbed out of slot 0 and hover `to`. Returns the grid, the context and the pointer.
-        static (SlotGrid Grid, GuiDragContext Drag, Pointer Pointer) Carrying(Vector2 to)
+        (SlotGrid Grid, GuiDragContext Drag, Pointer Pointer) Carrying(Vector2 to)
         {
             SlotGrid g = Draggable();
             var drag = new GuiDragContext();

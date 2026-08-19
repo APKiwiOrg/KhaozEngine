@@ -18,12 +18,17 @@ namespace KhaozEngine.Tests.Gui
         static readonly Rect Btn = new(100, 100, 120, 40);
         static readonly Vector2 Center = new(160, 120);
 
-        static InputState Frame(Vector2 pos, bool down)
+        // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and
+        // release edges derive from this test's own frame sequence and nothing crosses between tests.
+        readonly MouseFrames _mouse = new();
+
+        InputState Frame(Vector2 pos, bool down)
         {
             var b = new HashSet<MouseButton>();
             if (down) b.Add(MouseButton.Left);
+            var (edgePressed, edgeReleased) = _mouse.Advance(b);
             return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                b, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540);
+                b, edgePressed, pos, Vector2.Zero, 0, 960, 540, mouseReleased: edgeReleased);
         }
 
         [Fact]

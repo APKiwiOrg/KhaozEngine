@@ -48,15 +48,23 @@ namespace KhaozEngine.NetWorld;
 /// through it. A game wanting a cylinder, a cone, a facing test or a line of sight adds it in
 /// <see cref="WorldPickupsConfig.OnCollect"/> and declines, which is what the callback is for.</para>
 ///
-/// <para><b>Persistence hazard (not solved here, name it in your boot sequence).</b> <see cref="CellPersistence"/>
-/// snapshots every owned non-player entity in a cell on an interval and has NO per-entity opt-out, so a live pickup
-/// can be caught in a save and resurrected on restart. A restored pickup is a plain entity carrying
-/// <see cref="PickupState"/> that THIS seam knows nothing about: it has no time-to-live and is offered to nobody, so
-/// it sits in the world forever. Nor can the component opt out of the persist channel: built-in ids below
-/// <see cref="KhaozEngine.Replication.ReplicationRegistry.FirstExtensionTypeId"/> are pinned to
-/// <see cref="KhaozEngine.Replication.ReplicationChannels.Default"/> and the registry throws otherwise. A game that
-/// persists cells should therefore sweep at boot, which is what
-/// <see cref="ShardedWorldServer.DespawnEntity"/> is for:
+/// <para><b>Persistence: a pickup is never saved by default.</b> Every pickup <see cref="Spawn"/> creates is marked
+/// <see cref="Transient"/>, so <see cref="CellPersistence"/> leaves it out of the cell blob and no restore brings it
+/// back. This seam's state (the time-to-live, the clock, the offer records) lives in this process only, so a
+/// resurrected pickup would be a plain entity carrying <see cref="PickupState"/> that the seam knows nothing about,
+/// offered to nobody and expiring never.
+/// <para>The mark is not a lock: a game may call <c>ShardedWorldServer.ClearTransient(pickupNetId)</c> after
+/// <see cref="Spawn"/> and the next save writes the entity like any other. What it gets back is precisely the husk
+/// above, because nothing rehydrates this seam's tracking: the restored entity is in no proximity scan, expires
+/// never, and neither <see cref="Despawn"/> nor <see cref="DespawnAll"/> nor <see cref="ForgetCell"/> can reach it.
+/// Making persistent ground loot actually work needs a <c>Rehydrate(world)</c> that re-adopts restored
+/// <see cref="PickupState"/> entities into this seam, filed as
+/// https://github.com/APKiwiOrg/KhaozEngine/issues/660. Until that lands, a collectible that outlives a restart
+/// belongs in the game's own content or save data, spawned again at boot, which is also the only way its payload can
+/// still mean anything.</para>
+/// <para><b>Blobs written before this version still hold husks</b>, since a save cannot be edited after the fact.
+/// Clearing those is a one-time boot sweep, run once against a world saved by an older build, and unnecessary for
+/// every save written since:
 /// <code>
 /// var stale = new List&lt;long&gt;();
 /// foreach (CellSim cell in server.Host.Cells)
@@ -65,7 +73,17 @@ namespace KhaozEngine.NetWorld;
 /// foreach (long netId in stale) server.DespawnEntity(netId);
 /// </code>
 /// Sweep before spawning this run's pickups, or the sweep eats them too. <see cref="DespawnAll"/> is the
-/// same-process equivalent and clears only what this seam is tracking.</para>
+/// same-process equivalent and clears only what this seam is tracking.</para></para>
+///
+/// <para><b>Cell eviction drops the pickups that went with the cell.</b> A pickup's tracking record is this seam's,
+/// not the entity's, so unloading the cell that held the entity would otherwise leave the record standing: the
+/// proximity pass keeps offering an orb nobody can see, a collect still grants it, and the expiry despawn no-ops
+/// into an unloaded cell. Hand the seam the <see cref="CellEvictor"/> (<see cref="WorldPickupsConfig.Evictor"/>, or
+/// <see cref="TrackEvictions"/> later) and it drops each evicted cell's pickups itself, reporting
+/// <see cref="PickupRemovalReason.CellEvicted"/>. A host that unloads cells its own way calls
+/// <see cref="ForgetCell"/> or <see cref="ForgetWhere"/> directly. Nothing is stranded on the far side either: the
+/// entity was transient, so the evicted cell's blob never carried it and recreating that coordinate restores no
+/// ghost orb.</para>
 ///
 /// <para><b>Threading.</b> Single-threaded, like the servers themselves: construct it, and call every member, on the
 /// server thread. Both game hooks are raised inline from <see cref="Update"/> on that thread.</para>
@@ -75,6 +93,10 @@ public sealed class WorldPickups
     private readonly IWorldPickupHost host;
     private readonly WorldPickupsConfig config;
     private readonly Dictionary<long, Pickup> live = new();
+
+    // The evictors this seam is subscribed to, so wiring the same one twice (config plus an explicit TrackEvictions,
+    // or two calls) subscribes once and forgets each evicted cell once.
+    private readonly HashSet<CellEvictor> trackedEvictors = new();
 
     // Per-Update scratch, reused so a steady-state tick allocates nothing. Both are sorted so the scan order is
     // deterministic (see the class remarks): a Dictionary's key order is an implementation detail, and which of two
@@ -95,6 +117,10 @@ public sealed class WorldPickups
         public float TimeToLive;    // <= 0: never expires
         public float Clock;         // seconds since spawn, advanced by Update's dt (no wall clock, so it is deterministic)
 
+        // The grid cell that owned the spawn position, read once at spawn (a pickup never moves, so it never
+        // changes) and null on a host with no cell grid. What ForgetCell matches on, without a per-forget host call.
+        public CellCoord? Cell;
+
         // playerNetId -> the Clock reading when that player was last offered this pickup. Presence means "already
         // offered while inside", and the value only matters when RetryDeclinedSeconds is on. An entry is dropped the
         // first tick the player is measured outside the radius, which is what makes re-entry a fresh offer.
@@ -108,6 +134,7 @@ public sealed class WorldPickups
     {
         this.host = host ?? throw new ArgumentNullException(nameof(host));
         this.config = config ?? new WorldPickupsConfig();
+        if (this.config.Evictor is not null) TrackEvictions(this.config.Evictor);
     }
 
     /// <summary>Number of pickups this seam is currently tracking.</summary>
@@ -171,6 +198,10 @@ public sealed class WorldPickups
             // World and an Entity and nothing else, which is precisely why the frame is published on the world.
             world.Set(entity, ReplicatedPosition.FromWorld(position, world.GetIslandFrame()));
             world.Set(entity, state);
+            // Never persisted (#326). Marked here rather than by the host, so it holds on the sharded server, on a
+            // consumer host, and from the very first snapshot the entity could appear in. Inert on a host with no
+            // cell persistence: an unregistered field-less tag costs an archetype bit and reaches no wire.
+            world.Set(entity, default(Transient));
         });
 
         live[netId] = new Pickup
@@ -181,6 +212,7 @@ public sealed class WorldPickups
             Radius = effectiveRadius,
             RadiusSquared = effectiveRadius * effectiveRadius,
             TimeToLive = effectiveTtl,
+            Cell = host.TryGetCellCoord(position.X, position.Z, out CellCoord coord) ? coord : null,
         };
         return netId;
     }
@@ -191,12 +223,15 @@ public sealed class WorldPickups
     {
         if (live.TryGetValue(netId, out Pickup? p))
         {
-            info = new PickupInfo(netId, p.PayloadId, p.OwnerNetId, p.Position, p.Radius, p.TimeToLive, p.Clock);
+            info = InfoOf(netId, p);
             return true;
         }
         info = default;
         return false;
     }
+
+    private static PickupInfo InfoOf(long netId, Pickup p) =>
+        new PickupInfo(netId, p.PayloadId, p.OwnerNetId, p.Position, p.Radius, p.TimeToLive, p.Clock) { Cell = p.Cell };
 
     /// <summary>
     /// Re-tags a live pickup's owner (<c>0</c> = unowned) and re-offers it to everyone standing on it, so the change
@@ -239,8 +274,8 @@ public sealed class WorldPickups
     /// Removes every pickup this seam is tracking and returns how many went. Each raises
     /// <see cref="WorldPickupsConfig.OnRemoved"/> with <see cref="PickupRemovalReason.Despawned"/>.
     /// <para>This clears what the seam KNOWS about, which is what this process spawned. It does NOT find a pickup
-    /// resurrected out of a cell save (see the persistence hazard in the type remarks) - that needs the world sweep
-    /// documented there, because the seam never saw those entities.</para>
+    /// resurrected out of a blob saved BEFORE pickups became transient (see the type remarks) - that needs the
+    /// one-time boot sweep documented there, because the seam never saw those entities.</para>
     /// </summary>
     public int DespawnAll()
     {
@@ -250,6 +285,86 @@ public sealed class WorldPickups
         int removed = 0;
         foreach (long netId in all)
             if (Remove(netId, PickupRemovalReason.Despawned, slot: -1, playerNetId: 0L)) removed++;
+        return removed;
+    }
+
+    /// <summary>
+    /// Drops every pickup this seam is tracking in <paramref name="coord"/>: their entities are despawned (a no-op
+    /// when the cell has already gone, which is the normal case) and each raises
+    /// <see cref="WorldPickupsConfig.OnRemoved"/> with <see cref="PickupRemovalReason.CellEvicted"/>. Returns how
+    /// many went.
+    /// <para>This is what a <see cref="CellEvictor"/> subscription calls, and the seam wires that for you: pass the
+    /// evictor as <see cref="WorldPickupsConfig.Evictor"/> or hand it to <see cref="TrackEvictions"/>. Call it
+    /// yourself only for a host that unloads cells its own way.</para>
+    /// <para>Always 0 on a host with no cell grid (<see cref="IWorldPickupHost.TryGetCellCoord"/> answers false, so
+    /// no pickup is in any cell). <see cref="ForgetWhere"/> is the general form.</para>
+    /// </summary>
+    public int ForgetCell(CellCoord coord) =>
+        RemoveMatching((_, p) => p.Cell == coord, PickupRemovalReason.CellEvicted);
+
+    /// <summary>
+    /// Drops every tracked pickup <paramref name="predicate"/> accepts, exactly as <see cref="Despawn"/> would have
+    /// one at a time (entity despawned, <see cref="WorldPickupsConfig.OnRemoved"/> raised with
+    /// <see cref="PickupRemovalReason.Despawned"/>). Returns how many went.
+    /// <para>The escape hatch for every rule this seam does not own: a zone that closed, one owner's whole loot, a
+    /// region of the map an admin cleared. The predicate is called once per tracked pickup, before anything is
+    /// removed, so it always sees the pre-pass population and a handler cannot be surprised mid-scan.</para>
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="predicate"/> is null.</exception>
+    public int ForgetWhere(Func<PickupInfo, bool> predicate)
+    {
+        ArgumentNullException.ThrowIfNull(predicate);
+        return RemoveMatching((netId, p) => predicate(InfoOf(netId, p)), PickupRemovalReason.Despawned);
+    }
+
+    /// <summary>
+    /// Subscribes this seam to <paramref name="evictor"/>'s <see cref="CellEvictor.CellEvicted"/>, so an unloaded
+    /// cell's pickups stop being tracked (and stop being offered) the moment the cell goes. True when this call
+    /// subscribed, false when the same evictor was already tracked, so wiring it twice is harmless.
+    /// <para><see cref="WorldPickupsConfig.Evictor"/> does exactly this at construction. Use the method instead when
+    /// the evictor is built after the seam, which is the usual order in a server bootstrap that reads its
+    /// persistence config late.</para>
+    /// <para>The subscription is a strong reference from the evictor to this seam, so a game that rebuilds its
+    /// pickup seam (per zone, per instance) while keeping one long-lived evictor must
+    /// <see cref="StopTrackingEvictions"/> on the old seam, or the old one stays alive and keeps handling every
+    /// eviction beside the new one.</para>
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="evictor"/> is null.</exception>
+    public bool TrackEvictions(CellEvictor evictor)
+    {
+        ArgumentNullException.ThrowIfNull(evictor);
+        if (!trackedEvictors.Add(evictor)) return false;
+        evictor.CellEvicted += OnCellEvicted;
+        return true;
+    }
+
+    /// <summary>Undoes <see cref="TrackEvictions"/>: this seam stops hearing that evictor. True when it was tracked.
+    /// For a server that tears a subsystem down without dropping the evictor with it.</summary>
+    /// <exception cref="ArgumentNullException"><paramref name="evictor"/> is null.</exception>
+    public bool StopTrackingEvictions(CellEvictor evictor)
+    {
+        ArgumentNullException.ThrowIfNull(evictor);
+        if (!trackedEvictors.Remove(evictor)) return false;
+        evictor.CellEvicted -= OnCellEvicted;
+        return true;
+    }
+
+    private void OnCellEvicted(CellCoord coord) => ForgetCell(coord);
+
+    // The shared body behind ForgetCell / ForgetWhere: select first, then remove. The selection list is a fresh
+    // allocation rather than the per-tick scratch on purpose - OnRemoved is game code that may itself spawn, despawn
+    // or forget, and these are bulk admin calls measured in ones per eviction, not per tick.
+    private int RemoveMatching(Func<long, Pickup, bool> match, PickupRemovalReason reason)
+    {
+        if (live.Count == 0) return 0;
+        var matched = new List<long>();
+        foreach (KeyValuePair<long, Pickup> kv in live)
+            if (match(kv.Key, kv.Value)) matched.Add(kv.Key);
+        if (matched.Count == 0) return 0;
+        matched.Sort();   // deterministic removal order, as every other pass here is
+        int removed = 0;
+        foreach (long netId in matched)
+            if (Remove(netId, reason, slot: -1, playerNetId: 0L)) removed++;
         return removed;
     }
 
@@ -370,4 +485,11 @@ public readonly record struct PickupInfo(
     Vector3 Position,
     float Radius,
     float TimeToLiveSeconds,
-    float AgeSeconds);
+    float AgeSeconds)
+{
+    /// <summary>The grid cell that owns its position, or null on a host with no cell grid (see
+    /// <see cref="IWorldPickupHost.TryGetCellCoord"/>). Read once at spawn, since a pickup never moves. What
+    /// <see cref="WorldPickups.ForgetCell"/> matches on, and what a <see cref="WorldPickups.ForgetWhere"/>
+    /// predicate reads to express a rule of its own over cells.</summary>
+    public CellCoord? Cell { get; init; }
+}

@@ -255,10 +255,17 @@ public sealed class PatchNotesViewTests
     const int DragWindowW = 320, DragWindowH = 20_000;
     static readonly Rect DragViewport = new(0, 10_000, 320, 220);
 
-    static InputState MouseDownFrame(Vector2 pos, int w, int h) =>
-        new(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-            new HashSet<MouseButton> { MouseButton.Left }, new HashSet<MouseButton>(),
-            pos, Vector2.Zero, 0f, w, h);
+    // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and
+    // release edges derive from this test's own frame sequence and nothing crosses between tests.
+    readonly MouseFrames _mouse = new();
+
+    InputState MouseDownFrame(Vector2 pos, int w, int h)
+    {
+        var held = new HashSet<MouseButton> { MouseButton.Left };
+        var (edgePressed, edgeReleased) = _mouse.Advance(held);
+        return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+            held, edgePressed, pos, Vector2.Zero, 0f, w, h, mouseReleased: edgeReleased);
+    }
 
     [Fact]
     public void Dragging_the_content_area_scrolls_it_and_clamps()

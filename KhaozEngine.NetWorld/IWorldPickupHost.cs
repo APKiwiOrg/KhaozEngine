@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using KhaozEngine.Ecs;
+using KhaozEngine.Sharding;
 
 namespace KhaozEngine.NetWorld;
 
@@ -50,4 +51,19 @@ public interface IWorldPickupHost
     /// this never touches). The counterpart to <see cref="SpawnEntity"/>.
     /// </summary>
     bool DespawnEntity(long netId);
+
+    /// <summary>
+    /// The grid cell that owns world position (<paramref name="x"/>, <paramref name="z"/>), so
+    /// <see cref="WorldPickups"/> can record which cell each pickup lives in and drop its tracking when that cell is
+    /// unloaded (<see cref="WorldPickups.ForgetCell"/>). Pure geometry: it answers for a coordinate whether or not a
+    /// cell is instantiated there, and instantiates nothing.
+    /// <para>The default implementation returns false, which is the honest answer for a host with no cell grid at
+    /// all. <see cref="WorldServer"/> takes it: a single-world server never evicts anything, so its pickups have no
+    /// cell to be stranded by. <see cref="ShardedWorldServer"/> overrides it.</para>
+    /// </summary>
+    bool TryGetCellCoord(float x, float z, out CellCoord coord)
+    {
+        coord = default;
+        return false;
+    }
 }

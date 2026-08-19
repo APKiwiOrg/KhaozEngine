@@ -90,6 +90,7 @@
     <ProjectReference Include="../KhaozEngine.TileWorld.Render3D/KhaozEngine.TileWorld.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
     <ProjectReference Include="../KhaozEngine.TestSupport/KhaozEngine.TestSupport.csproj" />
+    <ProjectReference Include="../KhaozEngine.TestSupport.Windowing/KhaozEngine.TestSupport.Windowing.csproj" />
     <ProjectReference Include="../KhaozEngine.TestSupport.Gpu/KhaozEngine.TestSupport.Gpu.csproj" />
   </ItemGroup>
 </Project>

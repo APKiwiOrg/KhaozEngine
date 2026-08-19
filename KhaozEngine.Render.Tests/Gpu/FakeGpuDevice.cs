@@ -80,6 +80,15 @@ namespace KhaozEngine.Tests.Gpu
         /// a set dropped from a cache and a set actually destroyed are no longer the same moment (#84).</summary>
         internal List<FakeResourceSet> ResourceSets { get; } = new();
 
+        /// <summary>Every texture this factory has handed out, in creation order. Same job as
+        /// <see cref="ResourceSets"/>: deferred retirement made "dropped by its owner" and "actually destroyed"
+        /// two different moments, so a test asserting WHEN a mid-life unload frees something needs the object
+        /// itself and not just a count (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/383">#383</see>).</summary>
+        internal List<FakeTexture> Textures { get; } = new();
+
+        /// <summary>Every buffer this factory has handed out, in creation order. See <see cref="Textures"/>.</summary>
+        internal List<FakeBuffer> Buffers { get; } = new();
+
         /// <summary>How many of <see cref="ResourceSets"/> have been disposed.</summary>
         internal int DisposedResourceSetCount
         {
@@ -91,9 +100,19 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
-        public IGpuBuffer CreateBuffer(in GpuBufferDescription d) => new FakeBuffer(d.SizeInBytes);
+        public IGpuBuffer CreateBuffer(in GpuBufferDescription d)
+        {
+            var b = new FakeBuffer(d.SizeInBytes);
+            Buffers.Add(b);
+            return b;
+        }
+
         public IGpuTexture CreateTexture(in GpuTextureDescription d)
-            => new FakeTexture(d.Width, d.Height, d.MipLevels, d.SampleCount, d.Format);
+        {
+            var t = new FakeTexture(d.Width, d.Height, d.MipLevels, d.SampleCount, d.Format);
+            Textures.Add(t);
+            return t;
+        }
 
         public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour)
         {
@@ -133,7 +152,12 @@ namespace KhaozEngine.Tests.Gpu
     {
         internal FakeBuffer(uint sizeInBytes) => SizeInBytes = sizeInBytes;
         public uint SizeInBytes { get; }
-        public void Dispose() { }
+
+        /// <summary>Whether the owner freed this handle, the same one thing <see cref="FakeTexture"/> records and
+        /// for the same reason: it is what pins the frame a retired buffer is actually destroyed on.</summary>
+        internal bool Disposed { get; private set; }
+
+        public void Dispose() => Disposed = true;
     }
 
     internal sealed class FakeTexture : IGpuTexture

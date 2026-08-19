@@ -274,8 +274,10 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     /// the <see cref="IConnectionAuthenticator"/> bound the connection to, or
     /// <c><see cref="ResumePositionCache.GuestAccountPrefix"/>{slot}</c> when that subject is empty. A persistence
     /// layer loads the saved record here. That guest key names a RECYCLED slot rather than a person, so
-    /// <see cref="ResumePositionCache"/> holds no resume hint for it and a guest join is always built on the
-    /// configured spawn. Give a game durable identity (a connect token) if returning players matter.</summary>
+    /// <see cref="ResumePositionCache"/> holds no resume hint for it and <see cref="WorldPersistence"/> files no
+    /// record under it either (#647): a guest join is always built on the configured spawn and, unless the game sets
+    /// <see cref="WorldPersistenceConfig.PersistGuests"/>, is not persisted at all. Give a game durable identity (a
+    /// connect token) if returning players matter.</summary>
     public event Action<int, string>? PlayerJoined;
 
     /// <summary>Raised just before a player despawns: (slot, accountId, final state). A persistence layer

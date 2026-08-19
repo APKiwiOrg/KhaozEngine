@@ -68,12 +68,17 @@ namespace KhaozEngine.Tests.MapEditor
                 Vector2.Zero, Vector2.Zero, 0, 960, 540);
         }
 
-        static InputState MouseFrame(Vector2 pos, bool leftDown)
+        // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and
+        // release edges derive from this test's own frame sequence and nothing crosses between tests.
+        readonly MouseFrames _mouse = new();
+
+        InputState MouseFrame(Vector2 pos, bool leftDown)
         {
             var down = new HashSet<MouseButton>();
             if (leftDown) down.Add(MouseButton.Left);
+            var (edgePressed, edgeReleased) = _mouse.Advance(down);
             return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                down, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 1200, 900);
+                down, edgePressed, pos, Vector2.Zero, 0, 1200, 900, mouseReleased: edgeReleased);
         }
 
         static ChoiceRow ChoiceRowByLabel(PropertyGrid grid, string label)
@@ -617,7 +622,7 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         // A press-origin tap driven through the dialog (press and release both at `at`), the PropertyGridTests idiom.
-        static void Tap(MapEditorSettingsDialog dialog, InputManager ui, Vector2 viewport, Vector2 at)
+        void Tap(MapEditorSettingsDialog dialog, InputManager ui, Vector2 viewport, Vector2 at)
         {
             ui.Update(MouseFrame(at, leftDown: false)); dialog.Update(ui, viewport, 0.016f);
             ui.Update(MouseFrame(at, leftDown: true)); dialog.Update(ui, viewport, 0.016f);

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.WorldStore;
@@ -72,6 +73,20 @@ public sealed class WorldPersistenceConfig
     public float QuietRestoreDistance { get; init; } = 1f;
 
     /// <summary>
+    /// Whether a TOKENLESS connection is persisted at all. Default FALSE, which is the answer #647 settled on: both
+    /// heads key a connection with no verified subject <c>guest:{slot}</c>, and a slot is a seat the next connection
+    /// inherits, so a record filed under it names a chair rather than a player and loaded onto whoever sat down
+    /// next. Off, such a connection is not persisted in any direction: no load-on-join, no save-on-leave, no
+    /// periodic pass, no in-flight guard, and the guest is built on the host's configured spawn every session.
+    /// <para>Set it true only if a game runs tokenless BY DESIGN and still wants durable state. The key is then a
+    /// durable <c>guest:{guid}</c> minted for that one session at join and NEVER the seat, so no guest can inherit
+    /// another's record. Be clear about what that buys: the minted id is unreachable afterwards (nothing can present
+    /// it again), so it is crash-safety within a session and an audit trail, never a guest's return. If returning
+    /// players matter, give them a connect token instead - that is what a durable identity is for.</para>
+    /// </summary>
+    public bool PersistGuests { get; init; }
+
+    /// <summary>
     /// Key prefix under which a quarantined record's raw bytes are copied verbatim. The quarantine key is
     /// <c>{QuarantineKeyPrefix}{KeyPrefix}{accountId}</c> (default <c>quarantine:player:{accountId}</c>), so the intact
     /// original survives for offline inspection while the primary record is free to be overwritten by the fresh spawn.
@@ -106,11 +121,36 @@ public sealed class WorldPersistenceConfig
 /// record has been applied (or quarantined) on the server thread, or immediately if the load found no saved record.
 /// Skipping the leave-save is intentional: the state was never applied, so the stored record - not the pre-restore
 /// live state - is the truth worth keeping. A faulted store READ is different: the guard is deliberately LEFT set so
-/// the intact stored record stays protected, and a later rejoin retries the read (outage semantics). One edge is not
-/// covered: on an async store, store operations for the same account are not ordered across a rapid leave/rejoin that
-/// overlaps an in-flight load-on-join, so a rejoin can briefly apply pre-leave state (the next periodic save
-/// reconciles it). Use a stable account id. If a session needs strict ordering, serialize your own per-account store
-/// operations on top.</para>
+/// the intact stored record stays protected, and a later rejoin retries the read (outage semantics).</para>
+///
+/// <para>The guard is held by a SESSION, not by an account. Every join takes a monotonic token, the guard holds the
+/// token of the account's current one, and a completed load whose token is not that one is DROPPED exactly as a
+/// recycled seat's is (below), without clearing the guard. That matters because an account that leaves and rejoins
+/// inside a single store read has TWO loads outstanding under one key. As a plain set, the first to land cleared the
+/// guard for both, which reopened the save window while its sibling was still in the air, and then let that sibling
+/// apply a record the live session had already moved on from - a yank backwards, and past
+/// <see cref="WorldPersistenceConfig.QuietRestoreDistance"/> a teleport (#654). Neither the account nor the slot can
+/// tell those two loads apart, since both are genuinely the same account on (usually) the same seat. Note this makes
+/// a SECOND concurrent session for one account supersede the first here too: one account keying one record was never
+/// a shape two live players could share, and the newer session is the better guess at which of them is real. A
+/// rejoin deliberately issues a fresh read rather than adopting the one already in flight: the outstanding read may
+/// already have completed, it was issued for the seat the previous session held, and its bytes are by then the older
+/// of the two answers. The saving would have been one store read on a path that only opens during an outstanding
+/// read.</para>
+///
+/// <para>One ordering edge remains, narrower than it was: a save-on-leave and the rejoin's own load can be in flight
+/// at the same instant on an async store, and store operations for one account are not ordered against each other,
+/// so a rejoin can briefly apply pre-leave state (the next periodic save reconciles it). Use a stable account id. If
+/// a session needs strict ordering, serialize your own per-account store operations on top.</para>
+///
+/// <para>A TOKENLESS connection is not persisted at all by default. Both heads key one <c>guest:{slot}</c>, and a
+/// slot is a seat the next connection inherits, so a record filed under that key named a chair and loaded onto
+/// whoever sat down next, moving them to a stranger's last position (#647). So there is no load-on-join, no
+/// save-on-leave, no periodic pass and no guard for one, and a guest is built on the host's configured spawn every
+/// session. A game that runs tokenless by design opts back in with
+/// <see cref="WorldPersistenceConfig.PersistGuests"/>, which files each guest under a durable key minted for that one
+/// session and never under the seat - crash-safety within a session, not a guest's return, since nothing can present
+/// the minted id again. Give players a connect token if returning to where they left matters.</para>
 ///
 /// <para>The ACCOUNT, not the slot, is what a completed load is applied to. A slot number is only a seat: both heads
 /// hand the lowest free one to the next connection, so an account that joins and drops while its load is still in
@@ -120,9 +160,9 @@ public sealed class WorldPersistenceConfig
 /// blob onto another (#646). A drop is announced through <see cref="OnLoadApplyDropped"/> and a log line, never
 /// silently, and it deliberately leaves the account's <c>loadsInFlight</c> guard SET: the account is gone, its stored
 /// record was never applied, and the guard is exactly what keeps that record safe from being overwritten by live state
-/// until a later rejoin retries the load. A tokenless guest is covered by the same comparison, since a guest key
-/// differs from any account key, but two SUCCESSIVE guests on one recycled slot share the key <c>guest:{slot}</c> and
-/// so are indistinguishable here: that is the separate keying defect (#647), untouched by this check.</para>
+/// until a later rejoin retries the load. Two SUCCESSIVE tokenless guests on one recycled slot used to be
+/// indistinguishable to this comparison, since both connections carry the key <c>guest:{slot}</c>. They no longer
+/// reach it: a tokenless connection is not persisted under its seat at all (see above, #647).</para>
 ///
 /// <para>Loaded records are validated on the server thread before they are applied, via
 /// <see cref="WorldPersistenceConfig.Bounds"/> (position must be in-bounds), the game's
@@ -169,15 +209,30 @@ public sealed class WorldPersistence
     // is set only on a SUCCESSFUL apply (in DrainApplyQueue), NOT at load time: a quarantined record must never be
     // marked clean, so the fresh-spawn state stays dirty and overwrites the bad primary on the next pass.
     private readonly ConcurrentDictionary<string, byte[]> lastSaved = new();
-    // accountId -> outstanding load-on-join guard. Set in OnPlayerJoined before the async load starts, cleared only
-    // AFTER the loaded record is applied OR quarantined on the server thread (DrainApplyQueue), or immediately when the
-    // load returns null (a brand-new player: no stored record to protect). SaveDirtyPass and OnPlayerLeaving skip an
-    // account still in this set, so a periodic save or a quick leave can't overwrite the stored record (position AND
-    // the durable game blob) with pre-restore state - the default spawn and a null blob - and permanently erase
-    // progression. A faulted store READ deliberately leaves the guard set so the intact stored record stays protected
-    // (a later rejoin retries the load), mirroring CellPersistence's loadsInFlight. An undecodable record is NOT a read
-    // fault - it read fine, it just won't parse - so it clears the guard via quarantine, not via the outage path.
-    private readonly ConcurrentDictionary<string, byte> loadsInFlight = new();
+    // accountId -> the join token of the session whose load-on-join is outstanding. Written in OnPlayerJoined before
+    // the async load starts, cleared only AFTER that session's loaded record is applied OR quarantined on the server
+    // thread (DrainApplyQueue), or immediately when its load returns null (a brand-new player: no stored record to
+    // protect). SaveDirtyPass and OnPlayerLeaving skip an account with an entry here, so a periodic save or a quick
+    // leave can't overwrite the stored record (position AND the durable game blob) with pre-restore state - the
+    // default spawn and a null blob - and permanently erase progression. A faulted store READ deliberately leaves the
+    // guard set so the intact stored record stays protected (a later rejoin retries the load), mirroring
+    // CellPersistence's loadsInFlight. An undecodable record is NOT a read fault - it read fine, it just won't parse -
+    // so it clears the guard via quarantine, not via the outage path.
+    //
+    // It holds a TOKEN rather than a presence flag because a load belongs to one JOIN, not to an account (#654). An
+    // account that leaves and rejoins while its store read is still outstanding has two loads in flight under one
+    // key: as a set, the first to land cleared the guard for both, which reopened the save window while its sibling
+    // was still in the air and then let that sibling write a superseded record over newer live state. Holding the
+    // CURRENT session's token means a load can be told apart from its own predecessor, which nothing about the
+    // account or the slot can do.
+    private readonly ConcurrentDictionary<string, long> loadsInFlight = new();
+    // Hands out one token per join, monotonic within THIS instance, which is the same scope loadsInFlight is keyed
+    // in, so a token identifies exactly one session of this layer. Two WorldPersistence instances hand out the same
+    // numbers and never compare them.
+    private long nextJoinToken;
+    // slot -> the durable key minted for the tokenless connection currently in that seat. Only ever populated when
+    // config.PersistGuests is set. Without it a tokenless connection is not persisted at all and needs no key (#647).
+    private readonly ConcurrentDictionary<int, string> guestKeys = new();
     // In-flight loads/saves, so FlushAsync can await them (tests + shutdown).
     private readonly object pendingLock = new();
     private readonly List<Task> pending = new();
@@ -206,14 +261,24 @@ public sealed class WorldPersistence
     /// loop is idle.</summary>
     public event Action<string, string>? OnRecordQuarantined;
 
-    /// <summary>Raised on the server thread from the apply drain when a completed load-on-join was DROPPED because
-    /// the slot it was issued for no longer belongs to that account: (accountId, slot). Both heads recycle a freed
-    /// slot to the next connection, so an account that drops while its load is in flight can have a stranger sitting
-    /// in its seat by the time the record arrives, and applying it there would move THAT player to this account's
-    /// stored position and hand them its durable blob (#646). Nothing is written for a dropped record: the account's
-    /// stored record is untouched and still guarded, and a later rejoin loads it again. The same drop is written to
-    /// the log at <see cref="LogLevel.Info"/> under the <c>WorldPersistence</c> category, naming the account, the
-    /// slot and whoever holds it now, so a server that subscribes to nothing still records it.</summary>
+    /// <summary>Raised on the server thread from the apply drain when a completed load-on-join was DROPPED rather
+    /// than applied: (accountId, slot). Two things drop a record, and both come down to the load having been read
+    /// for a party that is no longer the one sitting there.
+    /// <para>The SEAT moved on: both heads recycle a freed slot to the next connection, so an account that drops
+    /// while its load is in flight can have a stranger sitting in its seat by the time the record arrives, and
+    /// applying it there would move THAT player to this account's stored position and hand them its durable blob
+    /// (#646).</para>
+    /// <para>Or the SESSION did: an account that leaves and rejoins inside one store read has two loads outstanding
+    /// under one key, and the one belonging to the session that ended carries what the store held before the live
+    /// session even started, so applying it writes over everything that session has done since (#654).</para>
+    /// <para>Nothing is written for a dropped record either way, and the drop never clears the guard itself. In the
+    /// SEAT case the account is not connected under that slot any more, so its record stays guarded until it rejoins
+    /// and that read clears it. In the SESSION case the live session's own load is either still in the air, and still
+    /// guarding, or has already landed and applied, which is what cleared the guard: that account was restored, not
+    /// left behind. The same drop is written to the log at <see cref="LogLevel.Info"/> under the
+    /// <c>WorldPersistence</c> category, naming the account, the slot, which of the two reasons it was and, for the
+    /// session case, which of those two states the account is actually in, so a server that subscribes to nothing
+    /// still records it.</para></summary>
     public event Action<string, int>? OnLoadApplyDropped;
 
     // A loaded record marshalled to the server thread for validation + apply. Raw is the exact stored bytes (copied
@@ -222,10 +287,11 @@ public sealed class WorldPersistence
     // quarantine without ever touching State/Game.
     private readonly struct PendingApply
     {
-        public PendingApply(int slot, string accountId, byte[] raw, PlayerMoveState state, byte[]? game, string? decodeFailure)
+        public PendingApply(int slot, string accountId, long token, byte[] raw, PlayerMoveState state, byte[]? game, string? decodeFailure)
         {
             Slot = slot;
             AccountId = accountId;
+            Token = token;
             Raw = raw;
             State = state;
             Game = game;
@@ -234,6 +300,9 @@ public sealed class WorldPersistence
 
         public int Slot { get; }
         public string AccountId { get; }
+        /// <summary>The join this load was issued for. Compared against the account's CURRENT session at drain
+        /// time, which is what tells a load apart from one its own account's earlier session left behind (#654).</summary>
+        public long Token { get; }
         public byte[] Raw { get; }
         public PlayerMoveState State { get; }
         public byte[]? Game { get; }
@@ -260,7 +329,9 @@ public sealed class WorldPersistence
     /// extends the quiet rejoin across a process restart. Read and write it on the server thread.</summary>
     public ResumePositionCache ResumeHints => resumeHints;
 
-    private string Key(string accountId) => config.KeyPrefix + accountId;
+    // The store key for a resolved persistence key (see TryResolveKey), which for any connection carrying a verified
+    // subject is that account id.
+    private string Key(string persistenceKey) => config.KeyPrefix + persistenceKey;
 
     private void Track(Task task)
     {
@@ -269,16 +340,28 @@ public sealed class WorldPersistence
 
     private void OnPlayerJoined(int slot, string accountId)
     {
-        loadsInFlight[accountId] = 0;                       // guard the account until the loaded record applies (or the load returns null)
-        Track(LoadOnJoinAsync(slot, accountId));
+        if (ResumePositionCache.IsGuestAccount(accountId))
+        {
+            // A tokenless connection is handed to us as guest:{slot}, which names the chair and not the person
+            // (#647). It is never a store key. Off (the default), nothing about this connection is persisted at all,
+            // which is also why it needs no guard: there is no stored record to protect. On, the seat key is swapped
+            // for one minted here and unique to THIS session, and no load is issued for it either - a key created
+            // this instant cannot have a stored record waiting under it.
+            if (config.PersistGuests)
+                guestKeys[slot] = ResumePositionCache.GuestAccountPrefix + Guid.NewGuid().ToString("N");
+            return;
+        }
+        long token = Interlocked.Increment(ref nextJoinToken);
+        loadsInFlight[accountId] = token;                   // guard the account until THIS session's record applies (or its load returns null)
+        Track(LoadOnJoinAsync(slot, accountId, token));
     }
 
-    private async Task LoadOnJoinAsync(int slot, string accountId)
+    private async Task LoadOnJoinAsync(int slot, string accountId, long token)
     {
         byte[]? data = await store.LoadAsync(Key(accountId)).ConfigureAwait(false);
         if (data is null)                                  // no save -> keep wherever the join built them (spawn, or this account's hint)
         {
-            loadsInFlight.TryRemove(accountId, out _);     // brand-new player: nothing stored to clobber, drop the guard now
+            ClearGuard(accountId, token);                  // brand-new player: nothing stored to clobber, drop the guard now
             return;
         }
         // The baseline is NOT set here any more: it moves to apply time (DrainApplyQueue), so a quarantined record is
@@ -292,35 +375,79 @@ public sealed class WorldPersistence
         }
         catch (Exception ex)
         {
-            applyQueue.Enqueue(new PendingApply(slot, accountId, data, default, null, $"undecodable record: {ex.Message}"));
+            applyQueue.Enqueue(new PendingApply(slot, accountId, token, data, default, null, $"undecodable record: {ex.Message}"));
             return;                                        // guard stays set until the drain quarantines and clears it
         }
-        applyQueue.Enqueue(new PendingApply(slot, accountId, data, record.ToState(), record.Game, null));   // validated + guard cleared in DrainApplyQueue
+        applyQueue.Enqueue(new PendingApply(slot, accountId, token, data, record.ToState(), record.Game, null));   // validated + guard cleared in DrainApplyQueue
+    }
+
+    // Drops the guard only when it is still the one THIS session put there. A load left over from a superseded
+    // session must never reopen the window its successor's load is holding open (#654), and the pair overload is what
+    // makes that mechanical rather than a rule every call site has to remember: a stale token matches nothing and
+    // removes nothing.
+    private void ClearGuard(string accountId, long token) =>
+        loadsInFlight.TryRemove(new KeyValuePair<string, long>(accountId, token));
+
+    // The key this layer files a connection's record under. For a connection with a verified subject that IS the
+    // account id. A TOKENLESS one arrives as guest:{slot} and a slot is a seat the next connection inherits, so that
+    // key names a chair and a record filed under it lands on whoever sits down next (#647): it is therefore never a
+    // store key. With config.PersistGuests off this answers false and the connection is not persisted, and with it on
+    // the answer is the durable key minted for this session at join.
+    private bool TryResolveKey(int slot, string accountId, out string key)
+    {
+        if (!ResumePositionCache.IsGuestAccount(accountId)) { key = accountId; return true; }
+        if (config.PersistGuests && guestKeys.TryGetValue(slot, out string? minted)) { key = minted; return true; }
+        key = string.Empty;
+        return false;
     }
 
     // Captures the game blob (on the server thread - the caller is on the server thread) and encodes the full record.
-    private byte[] BuildRecordBytes(int slot, string accountId, in PlayerMoveState state)
+    // The context carries the RESOLVED key (TryResolveKey), never the id the head handed us, because
+    // PlayerPersistenceContext.AccountId is documented as the durable id the record is keyed by and the game reads it
+    // as one. The two are the same string for every connection with a verified subject. They diverge only for a
+    // tokenless one on a server that set PersistGuests, where the head's id is the seat guest:{slot} and the key is
+    // the durable id minted for this session, so passing the head's would hand the game back the seat identity #647
+    // exists to keep out of the store.
+    private byte[] BuildRecordBytes(int slot, string key, in PlayerMoveState state)
     {
-        byte[]? game = config.CaptureGameState?.Invoke(new PlayerPersistenceContext(slot, accountId));
+        byte[]? game = config.CaptureGameState?.Invoke(new PlayerPersistenceContext(slot, key));
         return PlayerRecord.From(state, game).Encode();
     }
 
     private void OnPlayerLeaving(int slot, string accountId, PlayerMoveState finalState)
     {
-        if (loadsInFlight.ContainsKey(accountId)) return;   // load still outstanding: the stored record was never applied, so IT - not this pre-restore live state - is the truth worth keeping
+        if (!TryResolveKey(slot, accountId, out string key)) return;   // a tokenless connection this layer does not persist (#647)
+        if (loadsInFlight.ContainsKey(key)) return;         // load still outstanding: the stored record was never applied, so IT - not this pre-restore live state - is the truth worth keeping
         // Past that guard the live state IS the truth, so it is both what gets saved and what the next join is
         // seeded from. Deliberately not recorded above it: a hint taken from never-restored state would seed the
-        // rejoin at the default spawn and then take the restore teleport, which is the bug this exists to fix.
+        // rejoin at the default spawn and then take the restore teleport, which is the bug this exists to fix. The
+        // hint is filed under the id the HOST will ask with at the next join, which for a guest key the cache
+        // refuses outright - correctly, since nothing can present a minted guest id again.
         resumeHints.Record(accountId, finalState.Position);
-        Track(SaveIfDirtyAsync(accountId, BuildRecordBytes(slot, accountId, finalState)));
+        Task save = SaveIfDirtyAsync(key, BuildRecordBytes(slot, key, finalState));
+        Track(ResumePositionCache.IsGuestAccount(key) ? RetireGuestSessionAsync(slot, key, save) : save);
     }
 
-    private async Task SaveIfDirtyAsync(string accountId, byte[] data)
+    // A minted guest key belongs to one session and is unreachable once that session ends, so after its final save
+    // there is nothing left to compare a future record against or to resolve the seat to. Drop both entries rather
+    // than leak one of each per tokenless connection on a server that opted in. The pair overload is what makes this
+    // safe against a successor that has already taken the seat: it removes only what THIS session put there.
+    private async Task RetireGuestSessionAsync(int slot, string key, Task save)
     {
-        if (lastSaved.TryGetValue(accountId, out byte[]? prev) && prev.AsSpan().SequenceEqual(data))
+        try { await save.ConfigureAwait(false); }
+        finally
+        {
+            lastSaved.TryRemove(key, out _);
+            guestKeys.TryRemove(new KeyValuePair<int, string>(slot, key));
+        }
+    }
+
+    private async Task SaveIfDirtyAsync(string key, byte[] data)
+    {
+        if (lastSaved.TryGetValue(key, out byte[]? prev) && prev.AsSpan().SequenceEqual(data))
             return;                                        // unchanged since last save
-        await store.SaveAsync(Key(accountId), data).ConfigureAwait(false);
-        lastSaved[accountId] = data;
+        await store.SaveAsync(Key(key), data).ConfigureAwait(false);
+        lastSaved[key] = data;
     }
 
     /// <summary>Call once per server frame. Applies any completed load-on-join state (on this thread) and runs
@@ -373,7 +500,33 @@ public sealed class WorldPersistence
     {
         while (applyQueue.TryDequeue(out PendingApply a))
         {
-            // Identity first, ahead of every other check. PendingApply carries the slot the account joined on, and
+            // SESSION first, because it is the narrower of the two identities: an account can be sitting in the seat
+            // and still not be the party this record was read for. loadsInFlight holds the token of the account's
+            // CURRENT join, so a load issued by a session that has since ended (a leave and rejoin inside one store
+            // read) fails to match, and a load whose account has no guard at all is stale by construction - the only
+            // thing that clears a guard is that same session's own load landing. Either way the record is dropped:
+            // it carries what the store held before the live session started, so applying it writes over everything
+            // that session has done since, and clearing the guard on the way out would reopen the save window its
+            // sibling load is still holding (#654). The guard is deliberately left exactly as it is.
+            bool guarded = loadsInFlight.TryGetValue(a.AccountId, out long current);
+            if (!guarded || current != a.Token)
+            {
+                // Name the state actually found, the way the seat check below does. The two halves reach here for
+                // different reasons and leave the account in different places: a live session's own load is still
+                // outstanding and still guarding the record, or there is no guard left at all because that load has
+                // already landed (or the account has since left). Reporting the first for both read as a guarantee
+                // in the landing-last case, where the guard is long gone by the time the stale load arrives.
+                Log.Info($"load-on-join for account '{a.AccountId}' dropped: it was read on slot {a.Slot} for an "
+                       + "earlier session that has since been superseded, so the stored record was not applied over "
+                       + "newer live state, and "
+                       + (guarded
+                           ? "the current session's own load is still outstanding and still guards the account."
+                           : "the account carries no guard any more, its current session's load having already landed."));
+                OnLoadApplyDropped?.Invoke(a.AccountId, a.Slot);
+                continue;
+            }
+
+            // Then the SEAT. PendingApply carries the slot the account joined on, and
             // that slot is a seat rather than a name: the SlotAllocator hands the lowest free one to the next
             // connection, so a leave during the store read frees it and the load can land on a stranger. Re-resolve
             // the seat's current occupant and drop the record when it is not this account's any more (#646). It has
@@ -417,7 +570,7 @@ public sealed class WorldPersistence
                 resumeHints.Forget(a.AccountId);
                 if (server.TryGetConfiguredSpawn(a.Slot, out PlayerMoveState spawn))
                     server.SetPlayerState(a.Slot, spawn, teleport: true);
-                loadsInFlight.TryRemove(a.AccountId, out _);   // quarantined, so the account is now free to dirty-save the fresh spawn over the bad primary
+                ClearGuard(a.AccountId, a.Token);              // quarantined, so the account is now free to dirty-save the fresh spawn over the bad primary
                 OnRecordQuarantined?.Invoke(a.AccountId, failure);
                 continue;                                      // NOT applied, baseline NOT advanced
             }
@@ -435,23 +588,24 @@ public sealed class WorldPersistence
                 apply(new PlayerPersistenceContext(a.Slot, a.AccountId), a.Game);
             lastSaved[a.AccountId] = a.Raw;                 // loaded == clean baseline, set at apply time (never for a quarantined record)
             resumeHints.Record(a.AccountId, a.State.Position);   // the restored position is now the account's last known one
-            loadsInFlight.TryRemove(a.AccountId, out _);   // restore applied, the account is now safe to dirty-save
+            ClearGuard(a.AccountId, a.Token);              // restore applied, the account is now safe to dirty-save
         }
     }
 
     /// <summary>Saves every joined player whose state changed since its last save.</summary>
     public void SaveDirtyPass()
     {
-        List<(string accountId, byte[] data)>? dirty = null;
+        List<(string key, byte[] data)>? dirty = null;
         foreach (int slot in new List<int>(server.JoinedSlots))
             if (server.TryGetAccountId(slot, out string accountId) &&
-                !loadsInFlight.ContainsKey(accountId) &&        // load outstanding: skip so this pass can't overwrite the stored record with pre-restore state
+                TryResolveKey(slot, accountId, out string key) &&   // a tokenless connection this layer does not persist (#647)
+                !loadsInFlight.ContainsKey(key) &&             // load outstanding: skip so this pass can't overwrite the stored record with pre-restore state
                 server.TryGetPlayerState(slot, out PlayerMoveState state))
             {
-                byte[] data = BuildRecordBytes(slot, accountId, state);
-                if (lastSaved.TryGetValue(accountId, out byte[]? prev) && prev.AsSpan().SequenceEqual(data))
+                byte[] data = BuildRecordBytes(slot, key, state);
+                if (lastSaved.TryGetValue(key, out byte[]? prev) && prev.AsSpan().SequenceEqual(data))
                     continue;                                    // unchanged since last save
-                (dirty ??= new List<(string, byte[])>()).Add((accountId, data));
+                (dirty ??= new List<(string, byte[])>()).Add((key, data));
             }
         if (dirty is not null) Track(SaveManyDirtyAsync(dirty));
     }
@@ -461,12 +615,12 @@ public sealed class WorldPersistence
     // batch leaves every account in it dirty for the next pass - the same "never mark a record clean before it is
     // actually saved" guarantee the old per-account SaveIfDirtyAsync gave, just at batch grain: one failed round
     // trip means the whole pass retries next interval, not only the one record that actually caused the fault.
-    private async Task SaveManyDirtyAsync(List<(string accountId, byte[] data)> dirty)
+    private async Task SaveManyDirtyAsync(List<(string key, byte[] data)> dirty)
     {
         var items = new List<(string Key, byte[] Data)>(dirty.Count);
-        foreach ((string accountId, byte[] data) in dirty) items.Add((Key(accountId), data));
+        foreach ((string key, byte[] data) in dirty) items.Add((Key(key), data));
         await store.SaveManyAsync(items).ConfigureAwait(false);
-        foreach ((string accountId, byte[] data) in dirty) lastSaved[accountId] = data;
+        foreach ((string key, byte[] data) in dirty) lastSaved[key] = data;
     }
 
     /// <summary>Awaits all in-flight loads/saves, then applies any pending loaded state. Call on shutdown (or in

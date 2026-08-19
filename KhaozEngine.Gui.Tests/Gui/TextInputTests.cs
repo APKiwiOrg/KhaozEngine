@@ -13,18 +13,23 @@ namespace KhaozEngine.Tests.Gui
         static readonly Vector2 Inside = new(150, 115);
         static readonly Vector2 Outside = new(10, 10);
 
-        static InputState Frame(Vector2 pos, bool leftDown, IEnumerable<Key>? pressed = null)
+        // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and
+        // release edges derive from this test's own frame sequence and nothing crosses between tests.
+        readonly MouseFrames _mouse = new();
+
+        InputState Frame(Vector2 pos, bool leftDown, IEnumerable<Key>? pressed = null)
         {
             var down = new HashSet<MouseButton>();
             if (leftDown) down.Add(MouseButton.Left);
             var keys = new HashSet<Key>(pressed ?? System.Array.Empty<Key>());
+            var (edgePressed, edgeReleased) = _mouse.Advance(down);
             return new InputState(
                 keys, keys, new HashSet<Key>(),
-                down, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540);
+                down, edgePressed, pos, Vector2.Zero, 0, 960, 540, mouseReleased: edgeReleased);
         }
 
         // Tap = press + release at the same point.
-        static void Tap(TextInput field, Pointer p, Vector2 at)
+        void Tap(TextInput field, Pointer p, Vector2 at)
         {
             p.Update(Frame(at, false)); field.Update(p, InputState.Empty, 0f);
             p.Update(Frame(at, true)); field.Update(p, InputState.Empty, 0f);

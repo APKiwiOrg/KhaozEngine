@@ -17,13 +17,21 @@ namespace KhaozEngine.Tests.Gui
         static readonly Rect Source = new(100, 100, 40, 40);   // the "slot" a drag is grabbed from
         static readonly Vector2 Grab = new(120, 120);          // its centre
 
-        static InputState Frame(Vector2 pos, bool down) =>
-            new(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                down ? new HashSet<MouseButton> { MouseButton.Left } : new HashSet<MouseButton>(),
-                new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540);
+        // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and
+        // release edges derive from this test's own frame sequence and nothing crosses between tests.
+        readonly MouseFrames _mouse = new();
+
+        InputState Frame(Vector2 pos, bool down)
+        {
+            var held = new HashSet<MouseButton>();
+            if (down) held.Add(MouseButton.Left);
+            var (edgePressed, edgeReleased) = _mouse.Advance(held);
+            return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+                held, edgePressed, pos, Vector2.Zero, 0, 960, 540, mouseReleased: edgeReleased);
+        }
 
         // A pointer already holding a press that began at `Grab` and has since moved to `to`.
-        static Pointer Held(Vector2 to)
+        Pointer Held(Vector2 to)
         {
             var p = new Pointer();
             p.Update(Frame(Grab, false));
@@ -35,7 +43,7 @@ namespace KhaozEngine.Tests.Gui
         static DragPayload Item(string token) => new(token, sourceId: "bag", sourceIndex: 3);
 
         // Arm a drag that has travelled well past the threshold and is now hovering `at`.
-        static (GuiDragContext Drag, Pointer Pointer) Dragging(Vector2 at)
+        (GuiDragContext Drag, Pointer Pointer) Dragging(Vector2 at)
         {
             var drag = new GuiDragContext();
             Pointer p = Held(at);

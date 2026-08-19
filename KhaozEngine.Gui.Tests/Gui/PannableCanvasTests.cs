@@ -12,12 +12,17 @@ namespace KhaozEngine.Tests.Gui
         // A 400x300 viewport offset to (200,150) in screen space.
         static readonly Rect Vp = new(200, 150, 400, 300);
 
-        static InputState Frame(Vector2 pos, bool down)
+        // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and
+        // release edges derive from this test's own frame sequence and nothing crosses between tests.
+        readonly MouseFrames _mouse = new();
+
+        InputState Frame(Vector2 pos, bool down)
         {
             var b = new HashSet<MouseButton>();
             if (down) b.Add(MouseButton.Left);
+            var (edgePressed, edgeReleased) = _mouse.Advance(b);
             return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                b, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540);
+                b, edgePressed, pos, Vector2.Zero, 0, 960, 540, mouseReleased: edgeReleased);
         }
 
         static PannableCanvas Canvas() => new()

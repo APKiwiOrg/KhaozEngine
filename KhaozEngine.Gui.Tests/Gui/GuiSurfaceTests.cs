@@ -12,14 +12,19 @@ namespace KhaozEngine.Tests.Gui
     {
         static readonly Rect Btn = new(100, 100, 120, 40);
 
-        static InputState Frame(Vector2 pos, bool down) => Frame(pos, down, true);
+        InputState Frame(Vector2 pos, bool down) => Frame(pos, down, true);
 
-        static InputState Frame(Vector2 pos, bool down, bool focused)
+        // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and
+        // release edges derive from this test's own frame sequence and nothing crosses between tests.
+        readonly MouseFrames _mouse = new();
+
+        InputState Frame(Vector2 pos, bool down, bool focused)
         {
             var b = new HashSet<MouseButton>();
             if (down) b.Add(MouseButton.Left);
+            var (edgePressed, edgeReleased) = _mouse.Advance(b);
             return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                b, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540, windowFocused: focused);
+                b, edgePressed, pos, Vector2.Zero, 0, 960, 540, windowFocused: focused, mouseReleased: edgeReleased);
         }
 
         // Surface needs no texture for headless interaction; null white is never drawn (batch is null).

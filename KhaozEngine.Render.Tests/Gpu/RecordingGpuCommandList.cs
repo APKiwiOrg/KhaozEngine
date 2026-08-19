@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 
@@ -20,8 +21,9 @@ namespace KhaozEngine.Tests.Gpu
     /// </para></summary>
     internal sealed class RecordingGpuCommandList : IGpuCommandList
     {
-        /// <summary>One recorded upload: which buffer, at what byte offset, how many bytes.</summary>
-        internal readonly record struct Upload(IGpuBuffer Buffer, uint Offset, uint Bytes)
+        /// <summary>One recorded upload: which buffer, at what byte offset, how many bytes, and (only when
+        /// <see cref="CapturePayloads"/> is on) the bytes themselves.</summary>
+        internal readonly record struct Upload(IGpuBuffer Buffer, uint Offset, uint Bytes, byte[]? Data = null)
         {
             /// <summary>Whether this write covers the destination from offset 0 to its end. That is the only shape
             /// Veldrid's D3D11 backend sends down the cheap <c>UpdateSubresource</c> path for a uniform buffer;
@@ -36,6 +38,12 @@ namespace KhaozEngine.Tests.Gpu
         readonly List<Resolve> _resolves = new();
 
         public RecordingGpuCommandList(IGpuCommandList inner) => Inner = inner;
+
+        /// <summary>Keep a COPY of each upload's bytes in <see cref="Upload.Data"/>, so a test can assert what a
+        /// packed CPU image actually holds and not only its extent. Off by default: a real frame's list carries
+        /// megabytes of vertex data a shape assertion never reads, and copying it would make every
+        /// <c>[GpuFact]</c> here pay for the one thing only the device-free mirror tests want.</summary>
+        public bool CapturePayloads { get; set; }
 
         /// <summary>The wrapped list. Submit THIS to the device.</summary>
         public IGpuCommandList Inner { get; }
@@ -65,13 +73,15 @@ namespace KhaozEngine.Tests.Gpu
 
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged
         {
-            _uploads.Add(new Upload(b, offsetBytes, (uint)Unsafe.SizeOf<T>()));
+            _uploads.Add(new Upload(b, offsetBytes, (uint)Unsafe.SizeOf<T>(),
+                CapturePayloads ? MemoryMarshal.AsBytes(new ReadOnlySpan<T>(in data)).ToArray() : null));
             Inner.UpdateBuffer(b, offsetBytes, in data);
         }
 
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged
         {
-            _uploads.Add(new Upload(b, offsetBytes, (uint)(data.Length * Unsafe.SizeOf<T>())));
+            _uploads.Add(new Upload(b, offsetBytes, (uint)(data.Length * Unsafe.SizeOf<T>()),
+                CapturePayloads ? MemoryMarshal.AsBytes(data).ToArray() : null));
             Inner.UpdateBuffer(b, offsetBytes, data);
         }
 

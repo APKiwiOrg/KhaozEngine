@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Sharding;
 
 namespace KhaozEngine.NetWorld;
 
@@ -37,8 +38,15 @@ public enum PickupRemovalReason
     Expired = 1,
 
     /// <summary>The game removed it explicitly (<see cref="WorldPickups.Despawn"/> /
-    /// <see cref="WorldPickups.DespawnAll"/>).</summary>
+    /// <see cref="WorldPickups.DespawnAll"/> / <see cref="WorldPickups.ForgetWhere"/>).</summary>
     Despawned = 2,
+
+    /// <summary>The cell holding it was unloaded (<see cref="WorldPickups.ForgetCell"/>, which a
+    /// <see cref="WorldPickupsConfig.Evictor"/> subscription calls on <see cref="CellEvictor.CellEvicted"/>). The
+    /// world took it, not the game and not a timer: nobody collected it and its time-to-live had not run out.
+    /// Distinguished from <see cref="Despawned"/> because a game that returns an uncollected payload to a loot
+    /// table, or logs why an orb never landed, needs to tell an unload from a deliberate removal.</summary>
+    CellEvicted = 3,
 }
 
 /// <summary>
@@ -88,6 +96,17 @@ public sealed class WorldPickupsConfig
     /// <summary>Raised on the server thread after a pickup has left the world, for every reason (see
     /// <see cref="PickupRemoval"/>). Observational: the entity is already gone.</summary>
     public Action<PickupRemoval>? OnRemoved { get; init; }
+
+    /// <summary>
+    /// The cell evictor to follow, so a pickup stops being tracked when the cell holding its entity is unloaded.
+    /// <see cref="WorldPickups"/> subscribes to its <see cref="CellEvictor.CellEvicted"/> at construction and calls
+    /// <see cref="WorldPickups.ForgetCell"/> per evicted coordinate.
+    /// <para>Null (the default) is correct for a server that never evicts, which includes every
+    /// <see cref="WorldServer"/>. A server that DOES evict and leaves this null keeps offering pickups in cells that
+    /// no longer exist, so set it, or call <see cref="WorldPickups.TrackEvictions"/> when the evictor is built after
+    /// the seam.</para>
+    /// </summary>
+    public CellEvictor? Evictor { get; init; }
 
     /// <summary>The collect radius, in metres, for a <see cref="WorldPickups.Spawn"/> that does not pass its own.
     /// Measured as a full 3D distance from the pickup to the player's authoritative position (see the

@@ -300,6 +300,38 @@ public class CellBlobInferenceTests
         Assert.Equal(0u, m.TeleportEpoch);   // generation 3 predates it
     }
 
+    /// <summary>
+    /// The rollback case, which the quarantine alone does not make safe: an older build skips a blob it cannot read
+    /// and starts the cell FRESH, and the next save pass then writes that empty cell over the main key.
+    /// <see cref="CellPersistenceConfig.FailFastOnTooNew"/> stops the boot instead, and even a caller that swallows
+    /// the throw keeps the stored blob, because the coordinate stays marked as a load in flight and the dirty pass
+    /// skips it.
+    /// </summary>
+    [Fact]
+    public async Task FailFastOnTooNew_StopsTheBoot_AndLeavesTheStoredBlobAlone()
+    {
+        byte[] fromTheFuture = CellBlobFixtures.Wrap(WireGenerationBlobMigration.StampedSchemaVersion,
+            MoveProtocol.WireProtocolVersion + 1,
+            new CellBlobFixtures.BodyBuilder()
+                .Entity(31, (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(10, Gen3Movement())))
+                .ToBody());
+        var store = new InMemoryWorldStore();
+        await store.SaveAsync("cell:0:0", fromTheFuture);
+
+        var host = new ShardPersistenceHost(MoveProtocol.CreateRegistry());
+        var cp = new CellPersistence(host, store, new CellPersistenceConfig { FailFastOnTooNew = true });
+        await cp.PreloadAsync();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => cp.FlushAsync());
+        Assert.Equal(1, cp.SkippedTooNewCellCount);
+
+        // Swallow it and keep ticking: the empty cell must still not reach the store.
+        cp.SaveDirtyPass();
+        await cp.FlushAsync();
+        Assert.Equal(fromTheFuture, await store.LoadAsync("cell:0:0"));
+        Assert.Equal(fromTheFuture, await store.LoadAsync("quarantine:cell:0:0"));
+    }
+
     [Fact]
     public void AssumedWireGeneration_OutsideTheKnownTable_ThrowsAtConstruction()
     {

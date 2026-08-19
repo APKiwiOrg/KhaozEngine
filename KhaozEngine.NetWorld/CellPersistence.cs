@@ -92,6 +92,11 @@ public sealed class CellPersistenceConfig
     /// quarantine is not harmless: the cell starts empty, the next <see cref="CellPersistence.SaveDirtyPass"/> writes that empty
     /// state over the main key, and only the quarantine copy still holds the world. Set this on a server whose
     /// operator would rather see the boot stop than have the save silently hollowed out.
+    /// <para>
+    /// The throw leaves that coordinate marked as a load in flight, deliberately: a caller that catches it and keeps
+    /// ticking still never writes the empty cell over the stored blob, because the dirty pass skips a coordinate
+    /// whose load has not been applied.
+    /// </para>
     /// </summary>
     public bool FailFastOnTooNew { get; init; }
 

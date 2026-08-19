@@ -36,6 +36,15 @@ public sealed partial class ShardedWorldServer
         return true;
     }
 
+    /// <inheritdoc />
+    /// <remarks>Straight off the shard host's grid geometry (<see cref="ShardHost.CoordFor"/>), so it answers for
+    /// any coordinate in the world, including one whose cell has been evicted or was never instantiated.</remarks>
+    public bool TryGetCellCoord(float x, float z, out CellCoord coord)
+    {
+        coord = host.CoordFor(x, z);
+        return true;
+    }
+
     // A player's entity is owned by the session layer (OnJoin / OnLeave) and is mutated through SetPlayerState, so it
     // must never be reachable through the server-owned-entity seam. Linear over the joined slots rather than a second
     // index: it is bounded by MaxPlayers and only runs on an explicit resolve or despawn, never per tick per entity.

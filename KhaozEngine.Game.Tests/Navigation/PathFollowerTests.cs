@@ -714,4 +714,70 @@ public class PathFollowerTests
         Assert.Equal(PathFollowState.Following, afterReset.State);
         Assert.Equal(new Vector2(5f, 5f), afterReset.ActiveWaypoint);
     }
+
+    // --- Layer-aware waypoint advance (#316). Two grids stacked on non-overlapping Y bands, neither carrying
+    // surface heights, so NavSpace.LayerAt falls back to the Y-band lookup: Y 0.5 is layer 0, Y 4 is layer 1.
+    static NavSpace TwoFloors() => new(new[]
+    {
+        NavGrid.FromWalkable(32, 32, 1f, 0f, 0f, (_, _) => true, yMin: 0f, yMax: 2f),
+        NavGrid.FromWalkable(32, 32, 1f, 0f, 0f, (_, _) => true, yMin: 2.5f, yMax: 6f),
+    });
+
+    // A stair link: its two ends are half a unit apart in XZ, well inside the 0.6 default accept radius, but a
+    // whole floor apart vertically.
+    static NavPath StairPath() => Complete(
+        new NavWaypoint(new Vector2(10f, 0f), 0),
+        new NavWaypoint(new Vector2(10.5f, 0f), 1),
+        new NavWaypoint(new Vector2(20f, 0f), 1));
+
+    [Fact]
+    public void Tick_AtTheFootOfAStair_DoesNotAdvancePastTheWaypointOnTheFloorAbove()
+    {
+        var planner = new FakePlanner();
+        planner.Enqueue(StairPath());
+        var follower = new PathFollower(planner, config: null, space: TwoFloors());
+        Vector3 goal = new Vector3(20f, 4f, 0f);
+
+        // Standing on the lower waypoint, on layer 0. The upper waypoint is 0.5 away in XZ, inside the accept
+        // radius, so an XZ-only advance would consume it too and steer straight at (20, 0), skipping the climb.
+        PathFollowOutput output = follower.Tick(new Vector3(10f, 0.5f, 0f), goal, AgentRadius, 0.016f);
+
+        Assert.Equal(PathFollowState.Following, output.State);
+        Assert.Equal(new Vector2(10.5f, 0f), output.ActiveWaypoint);
+        Assert.Equal(1, follower.ActiveWaypointIndex);
+    }
+
+    [Fact]
+    public void Tick_OnceTheAgentIsOnTheUpperLayer_AdvancesPastTheStairWaypoint()
+    {
+        var planner = new FakePlanner();
+        planner.Enqueue(StairPath());
+        var follower = new PathFollower(planner, config: null, space: TwoFloors());
+        Vector3 goal = new Vector3(20f, 4f, 0f);
+
+        follower.Tick(new Vector3(10f, 0.5f, 0f), goal, AgentRadius, 0.016f);
+        // Same XZ, one floor up: the agent has climbed, so the upper waypoint is genuinely reached now.
+        PathFollowOutput output = follower.Tick(new Vector3(10.5f, 4f, 0f), goal, AgentRadius, 0.016f);
+
+        Assert.Equal(1, planner.CallCount);
+        Assert.Equal(PathFollowState.Following, output.State);
+        Assert.Equal(new Vector2(20f, 0f), output.ActiveWaypoint);
+        Assert.Equal(2, follower.ActiveWaypointIndex);
+    }
+
+    [Fact]
+    public void Tick_WithNoNavSpace_KeepsTheXzOnlyAdvance()
+    {
+        var planner = new FakePlanner();
+        planner.Enqueue(StairPath());
+        var follower = new PathFollower(planner);
+        Vector3 goal = new Vector3(20f, 4f, 0f);
+
+        // No space to resolve the agent's layer with, so the advance stays exactly what it always was. This is
+        // the single-layer contract, kept deliberately: a consumer that never built a NavSpace is unaffected.
+        PathFollowOutput output = follower.Tick(new Vector3(10f, 0.5f, 0f), goal, AgentRadius, 0.016f);
+
+        Assert.Equal(new Vector2(20f, 0f), output.ActiveWaypoint);
+        Assert.Equal(2, follower.ActiveWaypointIndex);
+    }
 }

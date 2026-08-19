@@ -27,6 +27,15 @@ replanned for a goal that moved straight up.
   `FileSettingsStorage.BackupGenerations`, so a bare queue paired with a bare `FileSettingsStorage` recovers
   out of the box. A direct-queue consumer that counted on no `.bak` files appearing beside its writes now gets
   two, and `backupGenerations: 0` still turns rotation off. Closes #234.
+- **`PathFollower` advances past a waypoint on the agent's own layer only** (`KhaozEngine.Navigation`). The
+  step-6 advance consumed every waypoint within `AcceptRadius` in XZ and never read the `Layer` each
+  `NavWaypoint` already carries, so the upper end of a stair link, which sits about one cell from its lower
+  partner in XZ and well inside the 0.6 default radius, was consumed while the agent was still a floor below
+  it. The follower steered at whatever came next and the climb was skipped. The constructor takes the
+  planner's `NavSpace` as an optional third argument now, and with it in hand the advance also requires the
+  waypoint's layer to match `NavSpace.LayerAt(position)`, so the follower keeps steering at the upper waypoint
+  until the agent is actually up there. Passing no space keeps the XZ-only advance exactly as it was, which is
+  what a single-layer world wants. Closes #316.
 - **`GreyboxMeshResolver` builds every shape in its own PLANE's local space** (`KhaozEngine.TileWorld.Render3D`).
   A roof archetype is placed on the plane ABOVE the walls it covers, which is exactly what `TileWorldView`'s
   roof-hide rule keys on, and `TileObjectProps.AnchorPosition` anchors an object at `HeightAt(plane)`, so a

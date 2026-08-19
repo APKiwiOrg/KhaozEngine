@@ -300,6 +300,16 @@ A replan is due when: there is no stored path, the stored path is fully consumed
 replan only fires once `PathFollowConfig.ReplanCooldownSeconds` has drained, so a persistently unreachable
 goal or a jittery corridor breach does not spam the planner every tick.
 
+`PathFollower(planner, config, space)` takes the `NavSpace` the planner plans over as an optional third
+argument, and it is what makes the waypoint advance layer-aware. Every `NavWaypoint` carries the layer it
+lives on, and with a space in hand the follower checks that layer against the agent's own
+(`NavSpace.LayerAt`) before counting the waypoint as reached. Pass it for any multi-layer world: a stair
+link's upper waypoint sits about one cell from its lower partner in XZ, inside `AcceptRadius`, so an
+XZ-only advance consumes it while the agent is still a floor below and steers at whatever comes next,
+skipping the climb outright. With the space supplied the follower keeps steering at the upper waypoint
+until the agent is genuinely on that layer. Leaving it null keeps the XZ-only advance, which is what a
+single-layer world wants anyway.
+
 `PathFollowConfig` knobs (all `init`, `PathFollowConfig.Default` for the values below):
 
 - **`AcceptRadius`** (default 0.6) - XZ distance at which a waypoint or the goal counts as reached.
@@ -374,8 +384,9 @@ using KhaozEngine.Locomotion;
 
 // Bake once: one clearance grid serves every agent radius that queries it.
 NavGrid grid = NavGrid.FromWalkable(width, height, cellSize, originX, originZ, walkable);
-var planner = new GridPathPlanner(NavSpace.Single(grid));
-var follower = new PathFollower(planner);   // PathFollowConfig.Default
+var space = NavSpace.Single(grid);
+var planner = new GridPathPlanner(space);
+var follower = new PathFollower(planner, config: null, space: space);   // PathFollowConfig.Default
 
 // Every AI tick:
 PathFollowOutput output = follower.Tick(agent.Position, goal.Position, agentRadius, dt);

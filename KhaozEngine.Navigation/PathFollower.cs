@@ -122,6 +122,10 @@ public sealed class PathFollower
 {
     readonly IPathPlanner _planner;
     readonly PathFollowConfig _config;
+    // Optional, and the only thing that lets the follower resolve which layer the AGENT is on. Null keeps the
+    // pre-existing XZ-only waypoint advance, so a consumer on a single-layer world (or one that never built a
+    // NavSpace of its own) is unaffected.
+    readonly NavSpace? _space;
 
     NavPath? _path;
     int _index;
@@ -130,11 +134,19 @@ public sealed class PathFollower
     Vector2 _planOriginXz;
 
     /// <summary>Builds a follower over <paramref name="planner"/>, using <paramref name="config"/> or
-    /// <see cref="PathFollowConfig.Default"/> when none is given.</summary>
-    public PathFollower(IPathPlanner planner, PathFollowConfig? config = null)
+    /// <see cref="PathFollowConfig.Default"/> when none is given.
+    /// <para><paramref name="space"/> is the <see cref="NavSpace"/> the planner plans over, and is what lets
+    /// the waypoint advance in <see cref="Tick"/> compare the agent's own layer
+    /// (<see cref="NavSpace.LayerAt"/>) against the layer each <see cref="NavWaypoint"/> carries. Pass it for
+    /// any multi-layer world: without it the advance is XZ-only, and the waypoint at the top of a stair link
+    /// sits one cell from its lower partner in XZ, well inside <see cref="PathFollowConfig.AcceptRadius"/>, so
+    /// the follower consumes it while the agent is still a floor below and skips the climb. Leaving it null
+    /// keeps exactly the old behaviour, which is what a single-layer world wants anyway.</para></summary>
+    public PathFollower(IPathPlanner planner, PathFollowConfig? config = null, NavSpace? space = null)
     {
         _planner = planner ?? throw new ArgumentNullException(nameof(planner));
         _config = config ?? PathFollowConfig.Default;
+        _space = space;
     }
 
     /// <summary>
@@ -170,8 +182,9 @@ public sealed class PathFollower
     /// <summary>
     /// Advances the follower by <paramref name="dt"/> seconds toward <paramref name="goal"/> from
     /// <paramref name="position"/>, replanning through the <see cref="IPathPlanner"/> as needed. Position
-    /// and goal are world space. Steering and every distance measure work in XZ, and the one use of Y is
-    /// the arrival check in step 2. In order, each tick:
+    /// and goal are world space. Steering and every distance measure work in XZ. Y is read by the arrival
+    /// check in step 2 and, when the follower was given a <see cref="NavSpace"/>, to resolve which layer the
+    /// agent is standing on for the waypoint advance in step 6. In order, each tick:
     /// <list type="number">
     /// <item>Drains the replan cooldown by <paramref name="dt"/>.</item>
     /// <item>Returns <see cref="PathFollowState.Arrived"/> immediately if already within
@@ -187,8 +200,11 @@ public sealed class PathFollower
     /// <item>Returns <see cref="PathFollowState.Unreachable"/> if there is no usable path (none stored,
     /// or the planner reported <see cref="NavPathStatus.Unreachable"/>, or it has no waypoints). The
     /// cooldown from step 4 naturally throttles retries on later ticks.</item>
-    /// <item>Advances past every waypoint already within <see cref="PathFollowConfig.AcceptRadius"/>. If
-    /// that consumes the whole path: a <see cref="NavPathStatus.Complete"/> path means the goal is
+    /// <item>Advances past every waypoint already within <see cref="PathFollowConfig.AcceptRadius"/> AND, when
+    /// the follower was given a <see cref="NavSpace"/>, on the same layer as the agent
+    /// (<see cref="NavSpace.LayerAt"/>). A waypoint on another layer is one the agent has to climb to, which
+    /// XZ proximity cannot witness, so the follower keeps steering at it until the agent actually gets there.
+    /// If that consumes the whole path: a <see cref="NavPathStatus.Complete"/> path means the goal is
     /// reached (<see cref="PathFollowState.Arrived"/>). A <see cref="NavPathStatus.Partial"/> path clears
     /// itself and steers straight at the raw goal for this one tick, until the next tick's replan (once
     /// the cooldown allows) picks up a fresh route.</item>
@@ -246,9 +262,19 @@ public sealed class PathFollower
             return new PathFollowOutput { WorldDir = Vector2.Zero, State = PathFollowState.Unreachable, ActiveWaypoint = Vector2.Zero, HopStart = Vector2.Zero };
         }
 
-        // Step 6: advance past every waypoint already reached.
+        // Step 6: advance past every waypoint already reached. XZ proximity alone is not enough: a stair
+        // link's upper waypoint sits about one cell from its lower partner in XZ, inside the accept radius,
+        // so an agent standing at the bottom is "within reach" of the top and the loop would consume both in
+        // one pass and steer at whatever follows, skipping the climb outright. The waypoint already carries
+        // the layer it lives on, so when a NavSpace was supplied the agent's own layer has to match. The
+        // agent then has to physically get onto that layer before the follower moves on, which is the point:
+        // a link the agent cannot actually traverse leaves it steering at the link instead of walking a route
+        // it never took, and the consumer's own stuck detection is what should notice that.
         IReadOnlyList<NavWaypoint> waypoints = _path.Waypoints;
-        while (_index < waypoints.Count && Vector2.Distance(posXz, waypoints[_index].Position) <= _config.AcceptRadius)
+        int? agentLayer = _space?.LayerAt(position);
+        while (_index < waypoints.Count
+            && Vector2.Distance(posXz, waypoints[_index].Position) <= _config.AcceptRadius
+            && (agentLayer is null || waypoints[_index].Layer == agentLayer.Value))
         {
             _index++;
         }

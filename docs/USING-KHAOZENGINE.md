@@ -4882,8 +4882,13 @@ A game brain rarely wants to call `FindPath` itself: `PathFollower` owns the rep
 exhausted, the goal drifted, or the agent strayed off the planned corridor, each gated by a cooldown) and
 hands back a per-tick world-space direction:
 
+Hand it the `NavSpace` too on a multi-layer world. That third argument is what lets the waypoint advance
+compare the layer a waypoint carries against the agent's own (`NavSpace.LayerAt`). Without it the advance is
+XZ-only, and a stair link's upper waypoint sits about one cell from its lower partner in XZ, inside
+`AcceptRadius`, so the follower consumes it while the agent is still a floor below and skips the climb.
+
 ```csharp
-var follower = new PathFollower(planner);   // one instance per agent, PathFollowConfig.Default
+var follower = new PathFollower(planner, config: null, space: space);   // one per agent, PathFollowConfig.Default
 
 // every AI tick:
 PathFollowOutput output = follower.Tick(agent.Position, goal.Position, agentRadius, dt);

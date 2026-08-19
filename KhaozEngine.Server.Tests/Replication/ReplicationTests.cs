@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using KhaozEngine.Ecs;
 using KhaozEngine.Replication;
@@ -18,6 +19,35 @@ public class ReplicationTests
             read: br => new Pos { X = br.ReadSingle(), Y = br.ReadSingle() },
             lerp: (a, b, t) => new Pos { X = a.X + (b.X - a.X) * t, Y = a.Y + (b.Y - a.Y) * t });
         return r;
+    }
+
+    /// <summary>
+    /// A duplicate type id is rejected at registration, and the registry it was rejected on still writes exactly one
+    /// frame for that component.
+    /// <para>
+    /// The throw is not the interesting half. What an ACCEPTED duplicate would do is: the codec list the snapshot
+    /// writer iterates is in registration order, so a second entry for one id emits that component's frame twice per
+    /// entity, and the cell-blob walk retires every candidate wire generation on its no-repeat rule, which
+    /// quarantines every blob the server ever wrote. The rejection therefore has to land before the codec joins that
+    /// list, which is what the second half of this test pins.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void Register_DuplicateTypeId_Throws_AndLeavesTheRegistryWritingOneFrame()
+    {
+        ReplicationRegistry registry = NewRegistry();
+
+        var ex = Assert.Throws<InvalidOperationException>(() => registry.Register<Pos>(
+            typeId: 1,
+            write: (p, bw) => { bw.Write(p.X); bw.Write(p.Y); },
+            read: br => new Pos { X = br.ReadSingle(), Y = br.ReadSingle() }));
+        Assert.Equal("Type id 1 already registered.", ex.Message);
+
+        var world = new World();
+        Entity e = world.Spawn();
+        world.Set(e, new NetId(7));
+        world.Set(e, new Pos { X = 1, Y = 2 });
+        Assert.Equal(SnapshotWriter.Write(world, NewRegistry()), SnapshotWriter.Write(world, registry));
     }
 
     [Fact]

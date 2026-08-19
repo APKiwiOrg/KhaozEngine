@@ -77,6 +77,32 @@ Found by the Grimhollow adopt, where the greybox house rendered with a visibly d
   - **The chain infers once.** Each step now records the generation it produced, so the v3 -> v4 step no longer
     re-walks a body the v2 -> v3 step has already normalized. A v2 blob cost nine walks and two rewrites before,
     and that second inference was a second independent chance to get it wrong.
+  - **Neither knob can cost a cell any more, which a fix round later is what both of them were doing.** Both are
+    advertised as strictly helpful, so an operator is pushed at them, and each had a recovery path that did the
+    reverse. Supplying `Registry` retired EVERY candidate on a body carrying a retained unknown extension frame (an id
+    dropped from the registry, which retain-and-rewrite exists to carry forward verbatim), so a blob the same build
+    migrates cleanly without a registry quarantined as corrupt with one: 350 of 350 v2 bodies refused with the
+    registry supplied, against 321 migrated and 29 ambiguous without it. When that one rule is what emptied the field,
+    the inference is now decided again with it dropped and every other evidence rule kept, so the registry can still
+    turn an ambiguity into a migration and can never lose a blob an unsupplied registry would have brought in. A body
+    that walks nowhere either way now names the extension ids nobody registered, and both knobs.
+  - **`AssumedWireGeneration` serves both pre-v4 vintages, not whichever one it names.** `FrameV2ToV3` walks
+    generations 1 to 8 and `NormalizeV3ToV4` 9 to this build's, off one knob, so `AssumedWireGeneration = 5` brought
+    the v2 bodies in and threw on every v3 body in the same store, and 10 did the reverse. A long-lived save
+    legitimately holds both, so each step now IGNORES an assumed generation outside its own range and infers for that
+    step. The knob resolves the vintage it names and costs the other one nothing.
+  - **`CellPersistence` takes its registry from the host by default.** `ICellPersistenceHost` gained
+    `ReplicationRegistry? Registry` as a default interface member (null, so no existing implementer changes) and
+    `ShardedWorldServer` already exposed exactly that property, so a server gets the registry-aware inference without
+    handing the same object to `CellPersistenceConfig` as well. `CellPersistenceConfig.Registry` overrides it.
+  - **The display-name length cap is an evidence rule, not a structural one.** `CellBlobWalkPolicy` is documented as
+    shape-only when the generation is recorded, and the `MoveProtocol.MaxDisplayNameBytes` reject was running under it
+    anyway. Being a property of the WRITER it now sits with the other evidence rules and applies only while a
+    generation is being inferred, so a recorded generation is decoded rather than judged.
+  - **Ambiguity needs a movement frame, so a live save can carry almost none of the risk.** The 9-to-10 hop is two
+    bytes appended to `MovementState`, so a consumer whose server-owned entities carry no `MovementState` at all
+    cannot produce an ambiguous body in the 9..10 range. Ruinborne is that case (its wolves carry none), so its live
+    store has effectively no ambiguity risk from this.
 - **What this does to a save already on disk.** It is migrated in place on first load, ONE WAY. A v1, v2 or v3 blob is
   walked forward, restored, and rewritten once as a v4 blob stamped with this build's generation, after which later
   boots do no work at all. Payload fields that the writing generation predates restore at their defaults (a
@@ -113,8 +139,9 @@ Found by the Grimhollow adopt, where the greybox house rendered with a visibly d
   `CellBlobMigrationOptions` plus the options-taking overloads of `FrameV2ToV3` / `NormalizeV3ToV4`,
   `CellPersistenceConfig.Registry` / `AssumedWireGeneration` / `FailFastOnTooNew`, the five
   `CellPersistence.*CellCount` counters, `BuiltinBlobLayout.SwimmingWireGeneration` /
-  `MovementGroundedOffset` / `MovementSwimmingOffset`, and `ReplicationRegistry.IsRegistered`
-  (`KhaozEngine.Replication`).
+  `MovementGroundedOffset` / `MovementSwimmingOffset`, `ICellPersistenceHost.Registry` (a default interface member
+  returning null, which `CellPersistence` uses as the default for `CellPersistenceConfig.Registry`), and
+  `ReplicationRegistry.IsRegistered` (`KhaozEngine.Replication`).
 
 Closes #353 and #322: #322 asked which failure mode a generation-skewed blob actually takes. With the generation
 stamped, validated and refused when it is ambiguous, the answer is now a quarantine rather than world corruption in

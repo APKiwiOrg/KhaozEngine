@@ -12274,15 +12274,22 @@ persistence.Issue += issue => log.Info(issue.ToString());   // migrated / skippe
   ```csharp
   var persistence = new CellPersistence(host, store, new CellPersistenceConfig
   {
-      Registry = registry,            // the live MoveProtocol.CreateRegistry(...) this server restores with
+      Registry = registry,            // optional: defaults to the host's own, ICellPersistenceHost.Registry
       AssumedWireGeneration = 8,      // optional: what wrote this save's pre-v4 blobs (see the table below)
   });
   ```
 
   `Registry` only ever REMOVES candidates (an id nobody registered is not a component), so it cannot promote a wrong
-  reading, and it is usually what leaves exactly one candidate standing rather than none.
+  reading, and it is usually what leaves exactly one candidate standing rather than none. It is taken from the host by
+  default (`ICellPersistenceHost.Registry`, which `ShardedWorldServer` exposes), so setting it here overrides that
+  rather than switching it on. And supplying it cannot cost you a blob an unsupplied registry would have migrated: a
+  body whose only surviving readings were all retired by that one rule is carrying a RETAINED unknown extension frame,
+  which is bytes a real build wrote, so the inference is decided again with the rule dropped and the rest kept.
   `AssumedWireGeneration` replaces the inference entirely: the body is walked at that generation and nothing is
-  guessed, which is how an ambiguous cell is recovered rather than lost. Blobs that carry the v4 stamp ignore both.
+  guessed, which is how an ambiguous cell is recovered rather than lost. It names the generation of ONE vintage, and a
+  long-lived store holds two (a v2 body is generations 1 to 8, a v3 body 9 and up), so the migration step whose own
+  range does not contain it ignores it and goes on inferring. Setting it to 5 to bring this save's v2 blobs in
+  therefore costs the v3 blobs beside them nothing. Blobs that carry the v4 stamp ignore both.
   A save's generation is the highest row here whose version is at or below the engine version that wrote it:
 
   | wire generation | first engine version that wrote it |

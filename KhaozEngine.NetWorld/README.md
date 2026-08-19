@@ -208,9 +208,15 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
     byte, is the answer. Survivors that disagree are refused: the cell is quarantined as `QuarantinedAmbiguous` with
     its bytes intact, because a scoring rule between two clean readings is wrong in the under-read direction (an
     older candidate reads a payload short, and the leftover bytes re-sync into frames that can make it outscore the
-    truth). Two knobs move a cell from refused to migrated: `CellPersistenceConfig.Registry` (the live registry, which
-    removes candidates and can never promote a wrong one) and `CellPersistenceConfig.AssumedWireGeneration` (the
-    generation this save's pre-v4 blobs were written at, which replaces the inference outright).
+    truth). Two knobs move a cell from refused to migrated. `CellPersistenceConfig.Registry` is the live registry,
+    which removes candidates and can never promote a wrong one, defaults to the host's own
+    (`ICellPersistenceHost.Registry`, which `ShardedWorldServer` exposes) and cannot cost a blob an unsupplied
+    registry would have migrated: a body whose only surviving readings were retired by that one rule is a retained
+    unknown extension frame, so the inference is decided again with the rule dropped.
+    `CellPersistenceConfig.AssumedWireGeneration` is the generation this save's pre-v4 blobs were written at, which
+    replaces the inference outright. It names ONE vintage (the v2 bodies are generations 1 to 8, the v3 bodies 9 and
+    up), and a migration step whose own range does not contain it ignores it and goes on inferring, so a store
+    holding both vintages does not lose one to the knob set for the other.
   - **Rolling BACK past v4 hollows the save out, quarantine or not.** An older build quarantines the v4 blob and
     starts that cell fresh, so the cell is live and empty, and its next `SaveDirtyPass` writes an EMPTY v3 blob over
     the main key. Rolling forward afterwards restores nothing: the only surviving copy is `quarantine:cell:{x}:{y}`,

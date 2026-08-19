@@ -41,6 +41,16 @@ internal static class CellBlobRewriter
     /// <see cref="AmbiguousCellBlobGenerationException"/>. It never picks.
     /// </para>
     /// <para>
+    /// One of those rules can be wrong about the whole body rather than about a candidate. The registry rule reads
+    /// "nobody registered this id", and a RETAINED unknown extension frame is exactly that while still being bytes a
+    /// real build wrote - retain-and-rewrite carries a dropped id forward verbatim. On such a body the rule retires
+    /// every candidate at once, so supplying a registry turned a blob that migrates cleanly without one into a
+    /// quarantine labelled corrupt. When the registry rule is what emptied the field, the decision is taken again
+    /// with that one rule dropped (<see cref="CellBlobWalkPolicy.WithoutRegistry"/>) and the same three outcomes
+    /// apply. The registry stays a candidate REMOVER either way: it can turn an ambiguity into a migration, and it
+    /// can never cost a blob an unsupplied registry would have migrated.
+    /// </para>
+    /// <para>
     /// The scoring rule this replaced (keep the parse that recovers the MOST frames) was unsafe in the under-read
     /// direction. A candidate OLDER than the truth reads a built-in payload short, and the bytes it leaves behind
     /// re-sync into frames the walk happily copies, so it can outscore the truth and produce a structurally valid
@@ -57,26 +67,65 @@ internal static class CellBlobRewriter
         // rules could only ever turn a blob that decodes into a quarantine, with nothing to choose instead.
         CellBlobWalkPolicy effective = newestGeneration > oldestGeneration ? policy : CellBlobWalkPolicy.Structural;
 
+        List<ushort>? unregistered = null;
+        if (effective.KnownExtensionId is not null)
+        {
+            unregistered = new List<ushort>(2);
+            effective = effective.WatchingUnregistered(unregistered);
+        }
+
+        Verdict verdict = Decide(body, oldestGeneration, newestGeneration, toGeneration, widenNetIds, effective);
+        // Nothing survived, and the registry rule rejected at least one frame on the way: that is the retained
+        // unknown extension frame described above, not a body that fails to parse. Decide again without that rule.
+        if (verdict.Survivor is null && !verdict.Disagree && unregistered is { Count: > 0 })
+            verdict = Decide(body, oldestGeneration, newestGeneration, toGeneration, widenNetIds,
+                effective.WithoutRegistry());
+
+        if (verdict.Disagree) throw new AmbiguousCellBlobGenerationException(schemaLabel, verdict.Generations!);
+        if (verdict.Survivor is not null) return verdict.Survivor;
+
+        throw new InvalidOperationException(
+            NoCandidateMessage(schemaLabel, oldestGeneration, newestGeneration, unregistered));
+    }
+
+    // What one pass over the candidate range came to. Survivor null with Disagree false means the field is empty.
+    private readonly record struct Verdict(byte[]? Survivor, List<int>? Generations, bool Disagree);
+
+    private static Verdict Decide(byte[] body, int oldestGeneration, int newestGeneration, int toGeneration,
+        bool widenNetIds, CellBlobWalkPolicy policy)
+    {
         byte[]? survivor = null;
         List<int>? survivingGenerations = null;
         bool disagree = false;
         for (int from = oldestGeneration; from <= newestGeneration; from++)
         {
             int to = toGeneration == KeepSourceGeneration ? from : toGeneration;
-            if (!TryRewrite(body, from, to, widenNetIds, effective, out byte[]? rewritten)) continue;
+            if (!TryRewrite(body, from, to, widenNetIds, policy, out byte[]? rewritten)) continue;
             (survivingGenerations ??= new List<int>(2)).Add(from);
             if (survivor is null) { survivor = rewritten; continue; }
             // Two candidates that produce the SAME bytes are not a choice: the generations differ only in a field
             // this body does not carry (a gen-7 and a gen-8 body without a pickup frame are byte-identical).
             if (!rewritten.AsSpan().SequenceEqual(survivor)) disagree = true;
         }
+        return new Verdict(survivor, survivingGenerations, disagree);
+    }
 
-        if (disagree) throw new AmbiguousCellBlobGenerationException(schemaLabel, survivingGenerations!);
-        if (survivor is not null) return survivor;
-
-        throw new InvalidOperationException(
-            $"Snapshot body does not walk as a {schemaLabel} blob at any wire generation " +
-            $"{oldestGeneration}..{newestGeneration}; cannot migrate.");
+    // The message an operator reads before deciding what to do with the cell, so it names the cause it can act on
+    // (the ids the supplied registry did not know) and both knobs that can bring the blob in.
+    private static string NoCandidateMessage(string schemaLabel, int oldestGeneration, int newestGeneration,
+        List<ushort>? unregistered)
+    {
+        string retried = unregistered is { Count: > 0 }
+            ? $" The walk recovered extension id(s) {string.Join(", ", unregistered)}, which the supplied " +
+              $"{nameof(CellBlobMigrationOptions)}.{nameof(CellBlobMigrationOptions.Registry)} does not know, and " +
+              "deciding again without that rule did not find a candidate either."
+            : string.Empty;
+        return $"Snapshot body does not walk as a {schemaLabel} blob at any wire generation " +
+            $"{oldestGeneration}..{newestGeneration}, so it cannot be migrated." + retried +
+            $" Set {nameof(CellBlobMigrationOptions)}.{nameof(CellBlobMigrationOptions.AssumedWireGeneration)} to " +
+            "the generation the writing build was at, and pass that build's live registry as " +
+            $"{nameof(CellBlobMigrationOptions)}.{nameof(CellBlobMigrationOptions.Registry)}, so the walk has a " +
+            "stated generation to read the body at instead of a range to choose from.";
     }
 
     /// <summary>Rewrites <paramref name="body"/> from a KNOWN wire generation, throwing when it does not walk. The
@@ -160,10 +209,11 @@ internal static class CellBlobRewriter
 
             if (typeId == MoveProtocol.IdentityTypeId)
             {
-                // [ushort byteLen][byteLen UTF-8 bytes]. MoveProtocol truncates the name to MaxDisplayNameBytes on
-                // write, so a longer prefix means this candidate generation walked the body wrong (or the bytes are
-                // not a snapshot at all) rather than being a name to copy.
-                if (!TryReadUInt16(body, ref pos, out ushort nameLen) || nameLen > MoveProtocol.MaxDisplayNameBytes) return false;
+                // [ushort byteLen][byteLen UTF-8 bytes]. The prefix being within MoveProtocol.MaxDisplayNameBytes
+                // is a property of the WRITER, not of the format, so it is one of the policy's evidence rules
+                // (AcceptsDisplayName) rather than part of the structural walk: a recorded generation is decoded,
+                // never judged, and this walk must not refuse a name a build with a different cap wrote.
+                if (!TryReadUInt16(body, ref pos, out ushort nameLen)) return false;
                 if ((long)pos + nameLen > body.Length || !policy.AcceptsDisplayName(body, pos, nameLen)) return false;
                 bw.Write(nameLen);
                 if (!TryCopy(body, ref pos, bw, nameLen)) return false;

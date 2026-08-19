@@ -91,7 +91,11 @@ public static class PositionFrameBlobMigration
         options.Validate();
 
         int current = BuiltinBlobLayout.CurrentWireGeneration;
-        byte[] result = context.ResolvedGeneration(options) is int known
+        // The v2 vintage runs from the oldest generation the table knows (1 and 2 share a layout, so an operator who
+        // states either is walked at it) up to the last one before the schema moved to v3. An assumption outside
+        // that is about the v3 bodies in the same store, and this step infers instead of refusing.
+        byte[] result = context.ResolvedGeneration(options, BuiltinBlobLayout.OldestKnownWireGeneration,
+            NewestAbsolutePositionWireGeneration) is int known
             ? CellBlobRewriter.Rewrite(body, known, current, widenNetIds: false)
             : CellBlobRewriter.RewriteInferring(body, OldestAbsolutePositionWireGeneration,
                 NewestAbsolutePositionWireGeneration, current, widenNetIds: false, "v2 (absolute position)",

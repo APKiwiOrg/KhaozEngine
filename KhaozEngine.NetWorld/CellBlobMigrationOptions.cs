@@ -33,13 +33,17 @@ public sealed class CellBlobMigrationOptions
     /// The live replication registry (the one this build restores cells with), or null to skip registry-aware
     /// validation. Supplying it is strongly recommended: a candidate generation whose walk recovers an extension id
     /// this registry does not know is rejected, which is usually what turns an ambiguous blob (quarantined) into an
-    /// unambiguous one (migrated). It never makes a wrong parse win, only fewer parses survive.
+    /// unambiguous one (migrated). It never makes a wrong parse win, only fewer parses survive, and it can never cost
+    /// a blob that an unsupplied registry would have migrated.
     /// </summary>
     /// <remarks>
-    /// The one thing it costs: a blob carrying a RETAINED unknown extension frame (an id dropped from the registry,
-    /// see <see cref="CellPersistenceIssueKind.RetainedUnknownExtensions"/>) no longer has a candidate that survives,
-    /// so a pre-v4 blob in that state quarantines instead of migrating. Set <see cref="AssumedWireGeneration"/> to
-    /// bring it in: a known generation is walked directly and never registry-filtered.
+    /// That last guarantee needs one carve-out, because there is a blob this rule is wrong about rather than strict
+    /// about: a body carrying a RETAINED unknown extension frame (an id dropped from the registry, see
+    /// <see cref="CellPersistenceIssueKind.RetainedUnknownExtensions"/>) has EVERY candidate retired by it, while
+    /// being bytes a real build wrote and retain-and-rewrite exists to carry forward. So when this rule is what
+    /// emptied the field, <see cref="CellBlobRewriter.RewriteInferring"/> decides again with it dropped and every
+    /// other evidence rule kept, which lands on exactly what an unsupplied registry would have produced. Supplying
+    /// the registry therefore only ever tightens an ambiguity.
     /// </remarks>
     public ReplicationRegistry? Registry { get; init; }
 
@@ -50,6 +54,14 @@ public sealed class CellBlobMigrationOptions
     /// instead of trying candidates, which is both cheaper and incapable of choosing wrong. A body that does not walk
     /// at the stated generation is quarantined, never re-guessed.
     /// </summary>
+    /// <remarks>
+    /// It names the generation of ONE vintage, and a long-lived store legitimately holds two: the v2 bodies span
+    /// generations <see cref="BuiltinBlobLayout.OldestKnownWireGeneration"/>..<see cref="PositionFrameBlobMigration.NewestAbsolutePositionWireGeneration"/>
+    /// and the v3 bodies <see cref="WireGenerationBlobMigration.OldestUnstampedWireGeneration"/>..this build's. A
+    /// migration step whose own range does not contain the stated generation therefore IGNORES it and infers, rather
+    /// than refusing every body it was never meant to describe. So the knob resolves the vintage it names and costs
+    /// the other one nothing.
+    /// </remarks>
     public int? AssumedWireGeneration { get; init; }
 
     /// <summary>The registry's membership test as a predicate, or null when no registry was supplied. Cached: the
@@ -80,8 +92,17 @@ internal sealed class CellBlobMigrationContext
     /// <summary>The generation the body is known to be at, or null when nobody has established one.</summary>
     internal int? KnownWireGeneration { get; set; }
 
-    /// <summary>The generation to walk at: what a previous step established, else the operator's assumption, else
-    /// null for "infer it".</summary>
-    internal int? ResolvedGeneration(CellBlobMigrationOptions options) =>
-        KnownWireGeneration ?? options.AssumedWireGeneration;
+    /// <summary>
+    /// The generation the calling step should walk at: what a previous step established, else the operator's
+    /// assumption when it falls inside <paramref name="oldest"/>..<paramref name="newest"/> (the step's OWN vintage),
+    /// else null for "infer it". The range test is what lets one knob serve both pre-v4 vintages, see
+    /// <see cref="CellBlobMigrationOptions.AssumedWireGeneration"/>.
+    /// </summary>
+    internal int? ResolvedGeneration(CellBlobMigrationOptions options, int oldest, int newest)
+    {
+        if (KnownWireGeneration is int known) return known;
+        return options.AssumedWireGeneration is int assumed && assumed >= oldest && assumed <= newest
+            ? assumed
+            : null;
+    }
 }

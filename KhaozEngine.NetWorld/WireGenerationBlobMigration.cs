@@ -77,7 +77,9 @@ public static class WireGenerationBlobMigration
         int current = BuiltinBlobLayout.CurrentWireGeneration;
         if (context.KnownWireGeneration == current) return body;   // already normalized by an earlier chain step
 
-        byte[] result = context.ResolvedGeneration(options) is int known
+        // The v3 vintage starts where the v2 one stops and runs to this build's generation. An assumption below it
+        // is about the v2 bodies in the same store, so this step infers rather than refusing every v3 body.
+        byte[] result = context.ResolvedGeneration(options, OldestUnstampedWireGeneration, current) is int known
             ? CellBlobRewriter.Rewrite(body, known, current, widenNetIds: false)
             : CellBlobRewriter.RewriteInferring(body, OldestUnstampedWireGeneration, current, current,
                 widenNetIds: false, "v3 (framed position, wire generation unrecorded)",

@@ -104,6 +104,39 @@ internal static class CellBlobFixtures
         return ms.ToArray();
     }
 
+    /// <summary>A consumer extension frame's payload as the writer lays it down: <c>[7-bit len][bytes]</c>. The
+    /// framing is the same at every wire generation, since an extension frame is opaque to the engine.</summary>
+    internal static byte[] Extension(byte[] payload)
+    {
+        using var ms = new MemoryStream();
+        using var bw = new BinaryWriter(ms);
+        bw.Write7BitEncodedInt(payload.Length);
+        bw.Write(payload);
+        bw.Flush();
+        return ms.ToArray();
+    }
+
+    /// <summary>
+    /// A movement payload filled adversarially rather than plausibly: the quantized shorts that sit at the END of the
+    /// payload take any value in their range, including the ones that read as an extension type id and a frame length
+    /// when a candidate generation under-reads the payload. That is the shape a mis-inference needs, so a sweep that
+    /// seeds tidy values never finds one.
+    /// </summary>
+    internal static MovementState RandomMovement(Random rng) => new()
+    {
+        VerticalVelocity = (float)(rng.NextDouble() * 20 - 10),
+        Grounded = rng.Next(2) == 0,
+        TimeSinceGrounded = (float)rng.NextDouble(),
+        JumpBufferRemaining = (float)rng.NextDouble(),
+        Swimming = rng.Next(2) == 0,
+        TeleportEpoch = (uint)rng.Next(0, 1000),
+        ClimbRateQ = (sbyte)rng.Next(-128, 128),
+        SpeedScaleQ = (sbyte)rng.Next(-128, 128),
+        HorizontalVelocityXQ = (short)rng.Next(short.MinValue, short.MaxValue + 1),
+        HorizontalVelocityZQ = (short)rng.Next(short.MinValue, short.MaxValue + 1),
+        FacingYawQ = (short)rng.Next(short.MinValue, short.MaxValue + 1),
+    };
+
     /// <summary>Assembles a snapshot body: <c>[count][per entity: netId + (typeId, payload).. + 0]</c>. Entity ids are
     /// written 32-bit when the ctor's <c>netId32</c> is set (the pre-10.0.0 cell-blob schema v1 shape), 64-bit
     /// otherwise.</summary>

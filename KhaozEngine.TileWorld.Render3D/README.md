@@ -1,7 +1,7 @@
 # KhaozEngine.TileWorld.Render3D
 
 The render arm of [KhaozEngine.TileWorld](../KhaozEngine.TileWorld): meshes a tile world's ground into
-vertex-coloured `Render3D` meshes, places its objects through the `Terrain.Render3D` prop path, and owns the
+`Render3D` meshes for the tile-ground pipeline, places its objects through the `Terrain.Render3D` prop path, and owns the
 per-region scene handles, region streaming and headless snapshot capture on top. Kept separate from the
 render-free document so a server or tool never drags in `Render3D`. In the `Game3D` umbrella. Design:
 [docs/design/TILE-WORLD-DESIGN-2026-08-15.md](../docs/design/TILE-WORLD-DESIGN-2026-08-15.md).
@@ -17,32 +17,50 @@ one for the other. Every conversion here goes through `TileWorldSpace.WorldX/Wor
 fall out: a region-local ground mesh runs from 0 to MINUS 64 tiles on z, and an object's yaw is NEGATIVE per
 quarter turn.
 
-## Ground (`TileGroundMesher`, `TileColors`)
+## Ground (`TileGroundMesher`, `ITileGroundSlotMap`, `TileColors`)
 
 `TileGroundMesher.Build(doc, catalogs, region, plane, options)` returns the `GltfMesh` of one region-plane, or
 null when the region-plane has no drawable tile (underlay 0, or `TileSettings.NoDraw`). The mesh is REGION LOCAL,
 so draw it at `TileGroundMesher.WorldMatrix(doc, region)`, a pure translation to the region's lowest tile corner
 with Y left at 0 because the vertices already carry absolute corner heights. Vertices are the existing
-`ModelVertex` through the existing lit model path: no new material and no new shader.
+`ModelVertex`, with its fields repurposed for the tile-ground pipeline (`Scene3D.LoadTileGroundMaterial`), so
+nothing in the upload path moves.
 
-- **Colour is the OSRS look.** A corner's underlay colour is the average of the up-to-four tiles sharing it
-  (`TileGroundMesher.CornerColor`), each multiplied by a deterministic per-tile brightness jitter hashed from the
-  world tile coordinate (`TileColors.Jitter`, plus or minus 4 percent by default, `JitterAmplitude` 0 disables
-  it). Void tiles are excluded and all-void blends to `TileColors.Void`. A `NoDraw` tile draws no ground of its
-  own but still CONTRIBUTES its underlay, so ground stays continuous across a hole punched for an object floor.
-  `TileColors.Parse` reads `#rrggbb` or `#rrggbbaa`, and a material id the catalogs do not define renders as
-  `TileGroundMesher.MissingMaterialColor` (magenta), so a dangling id is visible rather than invisible.
+- **Four material slots per TILE, weights per vertex.** Every triangle of a tile carries the same four slots, one
+  per corner in SW, SE, NW, NE order, as floats in `Uv.x`, `Uv.y`, `Tangent.x` and `Tangent.y`. `Color` is that
+  vertex's four weights over them: one-hot at a corner, 0.5 and 0.5 at a mid-edge point of an overlay cut.
+  `Tangent.z` is the brightness jitter and `Tangent.w` is 0. Slots per tile rather than per triangle is what keeps
+  the ground continuous: a corner shared by four tiles is one-hot on the same material from all of them, and a
+  shared edge interpolates the same pair from either side.
+- **The corner material is the most-shared underlay.** `TileGroundMesher.CornerMaterial(doc, x, z, plane)` counts
+  the up-to-four tiles sharing a lattice corner and takes the id most of them carry, ties broken by the LOWER id
+  so every tile touching the corner picks the same one. Void tiles are the only exclusion: a `NoDraw` tile draws
+  no ground of its own but still contributes its underlay, so the ground does not step at the edge of a hole
+  punched for an object floor. `TileGroundMesherOptions.Slots` (an `ITileGroundSlotMap`) turns the id into the
+  material set's layer slot, and an id the set does not carry lands on its reserved `MissingSlot`, whose layer is
+  the magenta `TileGroundMesher.MissingMaterialColor`, so a dangling id is visible rather than invisible. The
+  default `IdentitySlotMap` maps every id to itself, for a caller that has not built a set yet.
+- **Jitter is per vertex, averaged at the corner.** `TileGroundMesher.CornerJitter` is the mean of
+  `TileColors.Jitter` (a deterministic multiplier hashed from the world tile coordinate, plus or minus 4 percent
+  by default, `JitterAmplitude` 0 disables it) over the same tiles, so the OSRS brightness variation stays soft
+  across a corner instead of stepping per tile. It is a MULTIPLIER: no jitter is 1, and a vertex carrying 0
+  renders black.
+- **The colour path stays for the headless readers.** `TileGroundMesher.CornerColor` still blends the up-to-four
+  sharing tiles' jittered material colours (`TileColors.Blend`, all-void blends to `TileColors.Void`), and
+  `TileColors.Parse` still reads `#rrggbb` or `#rrggbbaa`. The vertices no longer carry it: it is what `tile_get`,
+  the top-down overlay painter's tints and an untextured material's flat layer read.
 - **Overlays are exact geometry, not an approximation.** The tile is cut by the shared
   `TileTriangulation.Triangulate` (two triangles for a plain tile or a diagonal half, four for a corner cut) and
-  each triangle is painted with the flat overlay colour or left to the blended underlay. The raycast in
-  `KhaozEngine.TileWorld` calls the same function with the same inputs, so a click lands on the triangle that was
-  drawn. A shape with no overlay material meshes as the plain pair. Overlay alpha is forced to 1, so an authored
-  `#rrggbbaa` cannot make the ground translucent.
+  each triangle either names the overlay's slot in all four lanes at weight (1, 0, 0, 0) or is left to the tile's
+  own corner materials. An overlay keeps the per-corner jitter, so a paved tile still varies softly rather than
+  reading as one flat patch. The raycast in `KhaozEngine.TileWorld` calls the same function with the same inputs,
+  so a click lands on the triangle that was drawn. A shape with no overlay material meshes as the plain pair.
 - **Seamless by construction.** Normals come from the GLOBAL height lattice by central differences
   (`TileGroundMesher.CornerNormal`), which reads ACROSS region borders, so two regions meeting at a corner compute
   the identical normal and a border has neither a crack nor a lighting step. Set `SmoothNormals = false` for one
   flat normal per triangle instead. Vertices are never shared between triangles, because two triangles of one tile
-  can carry different colours, so the mesher emits per-triangle vertices.
+  can carry different slots and weights (an overlay paints some of them and not others), so the mesher emits
+  per-triangle vertices.
 
 ## Objects (`TileObjectProps`, `ITileMeshResolver`, `GreyboxMeshResolver`)
 

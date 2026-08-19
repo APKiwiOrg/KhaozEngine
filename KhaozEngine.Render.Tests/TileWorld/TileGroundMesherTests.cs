@@ -7,8 +7,11 @@ using Xunit;
 
 namespace KhaozEngine.Tests.TileWorld;
 
-/// <summary>The ground mesher: triangle counts, the void rule, lattice normals across a region border, flat and
-/// cut overlays with their mid-edge points, and the magenta a dangling material id renders as.</summary>
+/// <summary>The ground mesher's geometry: triangle counts, the void rule, lattice normals across a region border,
+/// flat and cut overlays with their mid-edge points, and the corner colours the headless readers still ask it for
+/// (including the magenta a dangling material id reads as). What the vertices carry for the tile-ground pipeline,
+/// the four corner slots and the weights and jitter over them, is
+/// <see cref="TileGroundMesherSlotTests"/>.</summary>
 public class TileGroundMesherTests
 {
     const int TilesPerRegion = TileRegion.Size * TileRegion.Size;
@@ -96,25 +99,24 @@ public class TileGroundMesherTests
     }
 
     [Fact]
-    public void Full_overlay_is_flat_and_unjittered()
+    public void The_colour_path_still_blends_a_grass_tile_around_its_material_colour()
     {
+        // The vertices carry slots and weights now, but CornerColor stays for the headless readers: tile_get, the
+        // top-down overlay painter's tints, and the flat layer an untextured material fills its slot with.
         TileWorldDocument doc = TileRenderTestData.RoadWorld();
         TileWorldCatalogs catalogs = TileRenderTestData.Catalogs;
-        GltfMesh mesh = Require(doc, 0, catalogs);
+        var options = new TileGroundMesherOptions();
 
-        Vector4 road = TileColors.Parse(catalogs.Material(TileRenderTestData.Road)!);
-        List<ModelVertex> paved = TileVertices(mesh, doc, TileRenderTestData.RoadMinX + 1, TileRenderTestData.RoadZ);
-        Assert.Equal(6, paved.Count);
-        foreach (ModelVertex v in paved) Assert.Equal(road, v.Color);
-
-        Vector4 grass = TileColors.Parse(catalogs.Material(TileRenderTestData.Grass)!);
-        List<ModelVertex> plain = TileVertices(mesh, doc, 30, 30);
-        Assert.Equal(6, plain.Count);
-        Assert.True(plain.Exists(v => v.Color != plain[0].Color), "jitter and blend should vary a grass tile's corners");
+        var corners = new List<Vector4>();
+        for (int dz = 0; dz <= 1; dz++)
+            for (int dx = 0; dx <= 1; dx++)
+                corners.Add(TileGroundMesher.CornerColor(doc, catalogs, 30 + dx, 30 + dz, 0, options));
+        Assert.True(corners.Exists(c => c != corners[0]), "jitter should vary a grass tile's corners");
 
         Vector4 sum = Vector4.Zero;
-        foreach (ModelVertex v in plain) sum += v.Color;
-        Vector4 average = sum / plain.Count;
+        foreach (Vector4 c in corners) sum += c;
+        Vector4 average = sum / corners.Count;
+        Vector4 grass = TileColors.Parse(catalogs.Material(TileRenderTestData.Grass)!);
         Assert.Equal(grass.X, average.X, 0.05f);
         Assert.Equal(grass.Y, average.Y, 0.05f);
         Assert.Equal(grass.Z, average.Z, 0.05f);
@@ -122,12 +124,23 @@ public class TileGroundMesherTests
     }
 
     [Fact]
+    public void Full_overlay_paints_every_vertex_of_the_tile_with_its_own_material()
+    {
+        TileWorldDocument doc = TileRenderTestData.RoadWorld();
+        GltfMesh mesh = Require(doc, 0);
+
+        List<ModelVertex> paved = TileVertices(mesh, doc, TileRenderTestData.RoadMinX + 1, TileRenderTestData.RoadZ);
+        Assert.Equal(6, paved.Count);
+        foreach (ModelVertex v in paved) Assert.Equal(RoadSlot, SoleSlot(v));
+    }
+
+    [Fact]
     public void DiagonalHalf_rotation_0_paints_the_north_west_half()
     {
-        (List<MeshTriangle> tile, Vector4 road, TileWorldDocument doc) = ShapedRoadTile(TileOverlayShape.DiagonalHalf, 0);
+        (List<MeshTriangle> tile, int road, TileWorldDocument doc) = ShapedRoadTile(TileOverlayShape.DiagonalHalf, 0);
 
         Assert.Equal(2, tile.Count);
-        MeshTriangle paved = Assert.Single(tile.FindAll(t => IsFlat(t, road)));
+        MeshTriangle paved = Assert.Single(tile.FindAll(t => IsPainted(t, road)));
         Vector2 centre = LocalCentroid(paved, doc);
         Assert.True(centre.X < 0.5f, $"the north west half sits west of the middle, not at {centre}");
         Assert.True(centre.Y > 0.5f, $"the north west half sits north of the middle, not at {centre}");
@@ -140,10 +153,10 @@ public class TileGroundMesherTests
     [InlineData(3, false, false)]
     public void DiagonalHalf_rotation_paints_the_matching_half(int rotation, bool east, bool north)
     {
-        (List<MeshTriangle> tile, Vector4 road, TileWorldDocument doc) = ShapedRoadTile(TileOverlayShape.DiagonalHalf, rotation);
+        (List<MeshTriangle> tile, int road, TileWorldDocument doc) = ShapedRoadTile(TileOverlayShape.DiagonalHalf, rotation);
 
         Assert.Equal(2, tile.Count);
-        MeshTriangle paved = Assert.Single(tile.FindAll(t => IsFlat(t, road)));
+        MeshTriangle paved = Assert.Single(tile.FindAll(t => IsPainted(t, road)));
         Vector2 centre = LocalCentroid(paved, doc);
         Assert.Equal(east, centre.X > 0.5f);
         Assert.Equal(north, centre.Y > 0.5f);
@@ -152,11 +165,11 @@ public class TileGroundMesherTests
     [Fact]
     public void CornerQuarter_rotation_2_paints_a_small_triangle_at_the_north_east_corner()
     {
-        (List<MeshTriangle> tile, Vector4 road, TileWorldDocument doc) = ShapedRoadTile(TileOverlayShape.CornerQuarter, 2);
+        (List<MeshTriangle> tile, int road, TileWorldDocument doc) = ShapedRoadTile(TileOverlayShape.CornerQuarter, 2);
 
         // The small triangle plus the remaining pentagon, fanned into three.
         Assert.Equal(4, tile.Count);
-        MeshTriangle paved = Assert.Single(tile.FindAll(t => IsFlat(t, road)));
+        MeshTriangle paved = Assert.Single(tile.FindAll(t => IsPainted(t, road)));
         Assert.Equal(doc.TileSize * doc.TileSize / 8f, GroundArea(paved), 1e-5f);
 
         Vector2 centre = LocalCentroid(paved, doc);
@@ -170,10 +183,10 @@ public class TileGroundMesherTests
     [InlineData(3, true, false)]
     public void CornerQuarter_rotation_selects_the_corner(int rotation, bool east, bool north)
     {
-        (List<MeshTriangle> tile, Vector4 road, TileWorldDocument doc) = ShapedRoadTile(TileOverlayShape.CornerQuarter, rotation);
+        (List<MeshTriangle> tile, int road, TileWorldDocument doc) = ShapedRoadTile(TileOverlayShape.CornerQuarter, rotation);
 
         Assert.Equal(4, tile.Count);
-        MeshTriangle paved = Assert.Single(tile.FindAll(t => IsFlat(t, road)));
+        MeshTriangle paved = Assert.Single(tile.FindAll(t => IsPainted(t, road)));
         Vector2 centre = LocalCentroid(paved, doc);
         Assert.Equal(east, centre.X > 0.5f);
         Assert.Equal(north, centre.Y > 0.5f);
@@ -188,7 +201,6 @@ public class TileGroundMesherTests
     public void A_cut_edge_midpoint_averages_the_two_corners_it_lies_between()
     {
         TileWorldDocument doc = TileRenderTestData.RoadWorld();
-        TileWorldCatalogs catalogs = TileRenderTestData.Catalogs;
         int x = TileRenderTestData.RoadDiagonalX;
         int z = TileRenderTestData.RoadZ;
         doc.SetOverlayShape(x, z, 0, TileOverlayShape.CornerQuarter);
@@ -196,11 +208,10 @@ public class TileGroundMesherTests
         // Rotation 0 cuts across the south and west mid-edge points, so raising the tile's SE corner puts the
         // south one halfway up a slope rather than on flat ground.
         doc.SetCornerHeightCm(x + 1, z, 0, 100);
-        GltfMesh mesh = Require(doc, 0, catalogs);
+        GltfMesh mesh = Require(doc, 0);
 
-        var options = new TileGroundMesherOptions();
-        Vector4 west = TileGroundMesher.CornerColor(doc, catalogs, x, z, 0, options);
-        Vector4 east = TileGroundMesher.CornerColor(doc, catalogs, x + 1, z, 0, options);
+        float west = TileGroundMesher.CornerJitter(doc, x, z, 0);
+        float east = TileGroundMesher.CornerJitter(doc, x + 1, z, 0);
         Assert.NotEqual(west, east);
 
         float midX = TileWorldSpace.WorldX(x + 0.5f, doc.TileSize);
@@ -209,17 +220,17 @@ public class TileGroundMesherTests
         Assert.Equal(0.5f, mid.Position.Y, 1e-5f);
 
         // The point is on the cut, so the mesh carries both a painted copy and blended ones. The blended copies
-        // are the ones that have to average, and they are what the ground either side of the cut meets.
-        Vector4 road = TileColors.Parse(catalogs.Material(TileRenderTestData.Road)!);
+        // are the ones that have to average, and they are what the ground either side of the cut meets. The
+        // jitter is what the corner colour used to carry: a scalar the two ends average into.
         bool blended = false;
         foreach (MeshTriangle t in TileTriangles(mesh, doc, x, z))
         {
-            if (IsFlat(t, road)) continue;
+            if (IsPainted(t, RoadSlot)) continue;
             foreach (ModelVertex v in new[] { t.A, t.B, t.C })
             {
                 if (MathF.Abs(v.Position.X - midX) > 1e-4f) continue;
                 if (MathF.Abs(v.Position.Z - southZ) > 1e-4f) continue;
-                Assert.Equal((west + east) * 0.5f, v.Color);
+                Assert.Equal((west + east) * 0.5f, v.Tangent.Z, 1e-6f);
                 blended = true;
             }
         }
@@ -229,10 +240,10 @@ public class TileGroundMesherTests
     [Fact]
     public void CornerThreeQuarter_is_the_complement()
     {
-        (List<MeshTriangle> tile, Vector4 road, TileWorldDocument doc) = ShapedRoadTile(TileOverlayShape.CornerThreeQuarter, 2);
+        (List<MeshTriangle> tile, int road, TileWorldDocument doc) = ShapedRoadTile(TileOverlayShape.CornerThreeQuarter, 2);
 
         Assert.Equal(4, tile.Count);
-        List<MeshTriangle> paved = tile.FindAll(t => IsFlat(t, road));
+        List<MeshTriangle> paved = tile.FindAll(t => IsPainted(t, road));
         Assert.Equal(3, paved.Count);
 
         float pavedArea = 0f;
@@ -240,7 +251,7 @@ public class TileGroundMesherTests
         Assert.Equal(doc.TileSize * doc.TileSize * 7f / 8f, pavedArea, 1e-5f);
 
         // The one triangle left to the ground is the small one at the rotation's corner, the north east.
-        MeshTriangle plain = Assert.Single(tile.FindAll(t => !IsFlat(t, road)));
+        MeshTriangle plain = Assert.Single(tile.FindAll(t => !IsPainted(t, road)));
         Vector2 centre = LocalCentroid(plain, doc);
         Assert.True(centre.X > 0.5f && centre.Y > 0.5f, $"the north east corner, not {centre}");
         Assert.Equal(doc.TileSize * doc.TileSize / 8f, GroundArea(plain), 1e-5f);
@@ -259,22 +270,23 @@ public class TileGroundMesherTests
     }
 
     [Fact]
-    public void Missing_material_renders_magenta()
+    public void Missing_material_still_reads_magenta_on_the_colour_path()
     {
         var doc = new TileWorldDocument { Id = "tile-render-dangling", DisplayName = "Dangling material" };
         doc.GetOrCreateRegion(TileRenderTestData.Region);
         doc.SetUnderlay(40, 40, 0, 99);
-        GltfMesh mesh = Require(doc, 0);
 
         // The tile is alone in a void region, so each of its corners blends exactly one tile: the dangling one.
-        Assert.Equal(6, mesh.Vertices.Length);
-        foreach (ModelVertex v in mesh.Vertices)
-        {
-            Assert.InRange(v.Color.X, 0.96f, 1.04f);
-            Assert.Equal(0f, v.Color.Y);
-            Assert.Equal(v.Color.X, v.Color.Z);
-            Assert.Equal(1f, v.Color.W);
-        }
+        var options = new TileGroundMesherOptions();
+        for (int dz = 0; dz <= 1; dz++)
+            for (int dx = 0; dx <= 1; dx++)
+            {
+                Vector4 c = TileGroundMesher.CornerColor(doc, TileRenderTestData.Catalogs, 40 + dx, 40 + dz, 0, options);
+                Assert.InRange(c.X, 0.96f, 1.04f);
+                Assert.Equal(0f, c.Y);
+                Assert.Equal(c.X, c.Z);
+                Assert.Equal(1f, c.W);
+            }
     }
 
     [Fact]
@@ -340,7 +352,6 @@ public class TileGroundMesherTests
         // tile and the NoDraw dirt tile and the assertion has no third material in it.
         doc.SetUnderlay(40, 39, 0, 0);
         doc.SetUnderlay(41, 39, 0, 0);
-        GltfMesh mesh = Require(doc, 0);
 
         TileWorldCatalogs catalogs = TileRenderTestData.Catalogs;
         float grass = TileColors.Parse(catalogs.Material(TileRenderTestData.Grass)!).X;
@@ -348,8 +359,8 @@ public class TileGroundMesherTests
 
         // The corner the grass tile shares with the NoDraw dirt tile. A NoDraw tile draws no ground of its own but
         // still contributes its underlay to the blend, so this corner lands between the two materials.
-        ModelVertex shared = FindCorner(mesh, doc, 41f, 40f);
-        Assert.InRange(shared.Color.X, grass + 0.05f, dirt - 0.05f);
+        Vector4 shared = TileGroundMesher.CornerColor(doc, catalogs, 41, 40, 0, new TileGroundMesherOptions());
+        Assert.InRange(shared.X, grass + 0.05f, dirt - 0.05f);
     }
 
     [Fact]
@@ -415,25 +426,46 @@ public class TileGroundMesherTests
         return found;
     }
 
-    // RoadWorld's shaped tile re-authored with one cut, read back as triangles alongside the road colour they are
+    // RoadWorld's shaped tile re-authored with one cut, read back as triangles alongside the road slot they are
     // tested against and the document the positions are measured in.
-    static (List<MeshTriangle> Tile, Vector4 Road, TileWorldDocument Doc) ShapedRoadTile(TileOverlayShape shape, int rotation)
+    static (List<MeshTriangle> Tile, int Road, TileWorldDocument Doc) ShapedRoadTile(TileOverlayShape shape, int rotation)
     {
         TileWorldDocument doc = TileRenderTestData.RoadWorld();
-        TileWorldCatalogs catalogs = TileRenderTestData.Catalogs;
         int x = TileRenderTestData.RoadDiagonalX;
         doc.SetOverlayShape(x, TileRenderTestData.RoadZ, 0, shape);
         doc.SetOverlayRotation(x, TileRenderTestData.RoadZ, 0, rotation);
 
-        GltfMesh mesh = Require(doc, 0, catalogs);
-        Vector4 road = TileColors.Parse(catalogs.Material(TileRenderTestData.Road)!);
-        return (TileTriangles(mesh, doc, x, TileRenderTestData.RoadZ), road, doc);
+        GltfMesh mesh = Require(doc, 0);
+        return (TileTriangles(mesh, doc, x, TileRenderTestData.RoadZ), RoadSlot, doc);
     }
 
-    // True when all three vertices carry the flat overlay colour, which is what marks a triangle as paved: the
-    // underlay path blends and jitters its corners, so it never lands on the material colour exactly.
-    static bool IsFlat(in MeshTriangle t, Vector4 color) =>
-        t.A.Color == color && t.B.Color == color && t.C.Color == color;
+    // The slot the default identity map holds the road in, which is the road's own material id.
+    static int RoadSlot => IdentitySlotMap.Instance.SlotOf(TileRenderTestData.Road);
+
+    // True when all three vertices are painted with this overlay slot: every lane naming it and all the weight on
+    // the first. An underlay triangle never looks like that, because its three points are one-hot on three
+    // different lanes (or half and half at a mid-edge point).
+    static bool IsPainted(in MeshTriangle t, int slot) =>
+        IsPainted(t.A, slot) && IsPainted(t.B, slot) && IsPainted(t.C, slot);
+
+    static bool IsPainted(ModelVertex v, int slot) =>
+        v.Color == new Vector4(1f, 0f, 0f, 0f)
+        && Slot(v.Uv.X) == slot && Slot(v.Uv.Y) == slot
+        && Slot(v.Tangent.X) == slot && Slot(v.Tangent.Y) == slot;
+
+    // The one slot every lane of the vertex names, asserting the four agree, which is what a painted vertex
+    // carries.
+    static int SoleSlot(ModelVertex v)
+    {
+        int slot = Slot(v.Uv.X);
+        Assert.Equal(slot, Slot(v.Uv.Y));
+        Assert.Equal(slot, Slot(v.Tangent.X));
+        Assert.Equal(slot, Slot(v.Tangent.Y));
+        return slot;
+    }
+
+    // A slot index out of the float lane that carries it, read the way the shader reads it.
+    static int Slot(float lane) => (int)MathF.Floor(lane + 0.5f);
 
     // The triangle's centroid in tile-local terms, 0 to 1 across whichever tile it belongs to. Tile terms, not
     // world ones, so the y component still reads "north is up" whichever way world z runs.

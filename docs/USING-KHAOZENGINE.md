@@ -6595,9 +6595,9 @@ form. A stamp is additive per layer, so clear the rect first if you want a repla
 
 ## Tile world rendering (`KhaozEngine.TileWorld.Render3D`)
 
-The render arm of the tile world, in the `Game3D` umbrella: a vertex-colour ground mesher over the existing lit
-model path (no new shader), tile objects through the `Terrain.Render3D` prop path, a view that owns a world's
-meshes and props in a `Scene3D`, region streaming, and headless capture. Kept separate from the document package
+The render arm of the tile world, in the `Game3D` umbrella: a ground mesher that emits each tile's four corner
+materials as slots for the tile-ground pipeline, tile objects through the `Terrain.Render3D` prop path, a view
+that owns a world's meshes and props in a `Scene3D`, region streaming, and headless capture. Kept separate from the document package
 so a server or a tool never drags in `Render3D`.
 
 ```csharp

@@ -534,7 +534,9 @@ catalog change, never mid-frame (a mipped upload opens its own command list, #42
 
 **The mesher: one material per corner, four slots per tile.** `TileGroundMesher.CornerColor` already walks
 the up-to-four tiles sharing a corner and reads their underlay ids. R5 keeps that walk and picks the corner's
-MATERIAL: the id with the most sharing tiles (void and `NoDraw` excluded as today), ties broken by the lower
+MATERIAL: the id with the most sharing tiles (void excluded as today, and a `NoDraw` tile COUNTED as today: it
+draws no ground of its own, but its underlay is what keeps the ground continuous across the hole it punches, and
+a rule that dropped it here while the colour path kept it would step at the edge of every object floor), ties broken by the lower
 material id. The tie-break must be the same from every tile that shares the corner or the corner seams, so it
 is deterministic and tile-independent by construction, and a change to it moves the goldens, which is wanted. Each tile then carries its
 four corner materials as its four slots, every vertex of every triangle in the tile gets its weights over those

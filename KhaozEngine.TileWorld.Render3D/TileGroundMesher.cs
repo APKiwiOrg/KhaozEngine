@@ -8,22 +8,36 @@ namespace KhaozEngine.TileWorld;
 /// <summary>Knobs for <see cref="TileGroundMesher"/>.</summary>
 public sealed class TileGroundMesherOptions
 {
+    ITileGroundSlotMap _slots = IdentitySlotMap.Instance;
+
     /// <summary>Per-tile brightness jitter, plus or minus this fraction of the material colour. 0 disables it.</summary>
     public float JitterAmplitude { get; set; } = TileColors.DefaultJitterAmplitude;
 
     /// <summary>True to take every corner normal from the global height lattice, false for one flat normal per
     /// triangle.</summary>
     public bool SmoothNormals { get; set; } = true;
+
+    /// <summary>Where the material ids in the vertices come from: the slot each one occupies in the material set
+    /// the mesh will be drawn with. Defaults to <see cref="IdentitySlotMap.Instance"/>, which is the stand-in for
+    /// a caller that has not built a set yet.</summary>
+    public ITileGroundSlotMap Slots
+    {
+        get => _slots;
+        set => _slots = value ?? throw new ArgumentNullException(nameof(value));
+    }
 }
 
-/// <summary>Builds the vertex-coloured ground mesh of one region-plane for the existing lit model path: each
-/// drawable tile cut into triangles by the shared <see cref="TileTriangulation"/> (two for a plain tile or a
-/// diagonal half, four for a corner cut), corner colours blended from the tiles that share the corner, and
-/// normals read from the global lattice so neighbouring regions agree exactly at their shared border.</summary>
+/// <summary>Builds the ground mesh of one region-plane for the tile-ground pipeline: each drawable tile cut into
+/// triangles by the shared <see cref="TileTriangulation"/> (two for a plain tile or a diagonal half, four for a
+/// corner cut), each tile carrying the four material slots of its corners with per-vertex weights over them, a
+/// per-vertex brightness jitter, and normals read from the global lattice so neighbouring regions agree exactly
+/// at their shared border. The material ids and the jitter are read from the GLOBAL tile grid, so a corner is
+/// the same material at the same weight from every tile and every region that touches it.</summary>
 public static partial class TileGroundMesher
 {
-    /// <summary>What a tile whose material id is missing from the catalogs renders as, so a dangling id is
-    /// visible rather than invisible.</summary>
+    /// <summary>What a material id missing from the catalogs reads as, so a dangling id is visible rather than
+    /// invisible: the colour the headless readers paint it, and the colour a material set fills its reserved
+    /// <see cref="ITileGroundSlotMap.MissingSlot"/> layer with.</summary>
     public static readonly Vector4 MissingMaterialColor = new(1f, 0f, 1f, 1f);
 
     /// <summary>The ground mesh of one region-plane in region-local coordinates (draw it with
@@ -133,22 +147,17 @@ public static partial class TileGroundMesher
         int rotation = c.Doc.GetOverlayRotation(x, z, c.Plane);
         bool swne = TileTriangulation.SplitSwNe(h00, h10, h01, h11, shape, rotation);
 
-        // Alpha is forced to 1 to match the blended underlay path, so an authored #rrggbbaa overlay cannot make the
-        // ground translucent.
+        // The overlay is a slot rather than a colour, so an id the catalogs no longer define lands on the slot
+        // map's reserved slot and paints from there, the same way a dangling underlay does.
         ushort overlay = c.Doc.GetOverlay(x, z, c.Plane);
-        Vector4? flat = null;
-        if (overlay != 0)
-        {
-            Vector4 overlayColor = MaterialColor(c.Catalogs, overlay);
-            flat = new Vector4(overlayColor.X, overlayColor.Y, overlayColor.Z, 1f);
-        }
+        int? overlaySlot = overlay == 0 ? null : c.Options.Slots.SlotOf(overlay);
 
         // A shape only cuts the tile when there is an overlay material to paint into the cut, so a shape with no
         // overlay meshes as the plain pair. The raycast reads the same two facts the same way, which is what keeps
         // a click on the triangle that was drawn. The split still comes from the authored shape above, because a
         // diagonal half forces the diagonal whether or not its material survived.
-        TileOverlayShape cut = flat is null ? TileOverlayShape.Full : shape;
-        AddCutTile(mesh, c, lx, lz, cut, rotation, flat, swne);
+        TileOverlayShape cut = overlaySlot is null ? TileOverlayShape.Full : shape;
+        AddCutTile(mesh, c, lx, lz, cut, rotation, overlaySlot, swne);
     }
 
     /// <summary>Adds a triangle, replacing the three corner normals with the triangle's own when the options ask
@@ -216,7 +225,7 @@ public static partial class TileGroundMesher
     }
 
     /// <summary>Collects per-triangle vertices and indices. Vertices are never shared, because two triangles of
-    /// one tile can carry different colours.</summary>
+    /// one tile can carry different slots and weights (an overlay paints some of them and not others).</summary>
     internal sealed class MeshAccumulator
     {
         readonly List<ModelVertex> _vertices = new();

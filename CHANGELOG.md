@@ -23,14 +23,17 @@ takes the pipeline stall off an MMO client's avatar despawn.
   now, because the bound is written in batches rather than resources. What decides whether it fires is how far
   ahead the LOOP gets rather than how fast the GPU is: a windowed loop blocks in its present at the backend's
   frames-in-flight depth and never reaches the cap, while an offscreen loop that submits without presenting runs
-  eight or nine frames ahead on an M2 Max, which is where the engine's own 400-frame churn test measures 16
-  firings against the 396 drains the unfenced fallback pays over the same run. The
+  eight or nine frames ahead on an M2 Max, which is where the engine's own 400-frame churn test parks the peak
+  holding exactly on the cap and fires the valve anywhere from once to a couple of dozen times a run, against the
+  396 drains the unfenced fallback pays over the same run. The firing count does not reproduce between runs, since
+  it tracks how far ahead that pass got, so the peak sitting on the cap is the number to read. The
   two frame-counted policies (`CreateFrameCounted`, and `Create`'s fallback on a backend with no completion fence)
   get no valve and need none: a batch there dies on the frame count alone, which caps the holding at `FrameDelay`
   batches by construction, and `CreateFrameCounted` must not drain on the frame path at all (#84). Eight is above
   the deepest a healthy loop reaches, since the CPU runs at most `KE_METAL_FRAMES_IN_FLIGHT` /
   `KE_VULKAN_FRAMES_IN_FLIGHT` / `KE_D3D11_FRAMES_IN_FLIGHT` frames ahead (default 3) and every one of those frames
-  has to have retired something to seal a batch, so a consumer raising that knob past 8 raises this with it.
+  has to have retired something to seal a batch. A consumer raising that knob past 8 wants this raised with it and
+  has no way to do it: the parameter is on `Create`, which no public route into a `Scene3D` reaches (#661).
   Closes #425.
 - **`RetireFenceGpuTests` asserts the bound instead of a flat zero.** Its gate was `fencedDrains == 0`, which the
   valve makes a property of how far ahead the loop runs, and that test's own churn runs through an offscreen
@@ -49,15 +52,17 @@ takes the pipeline stall off an MMO client's avatar despawn.
   that draws particles at all. Nothing about WHEN a slot is released changed, only when the GPU object behind it is
   destroyed, and the rule the drains existed for is unchanged: nothing is destroyed in the frame it was retired in.
   Closes #383.
-- **`ParticleRenderer.InvalidateTextureSets` takes the retire queue** (`KhaozEngine.Render3D`, breaking for a caller
-  outside the engine, though `Scene3D` is its only one). The parameterless overload drained the device itself. Its
-  two other call sites, a render-target rebind and teardown, keep the drain: neither has a frame boundary left to
-  reach.
+- **`ParticleRenderer.InvalidateTextureSets` takes the retire queue** (`KhaozEngine.Render3D`). The type is
+  `internal sealed` and `Scene3D` is its only caller, so no public surface moved. The parameterless overload
+  drained the device itself. The two other paths into the same cache clear, a render-target rebind and teardown,
+  keep the drain: neither has a frame boundary left to reach.
 - **A skinned mesh's GPU-skinning material set is freed at scene teardown.** `Scene3D.Dispose` freed the set-0
   CPU-path material set and not the set-1 GPU-skinning one, which `LoadSkinnedMesh` builds alongside it whenever the
   mesh is textured, so a textured skinned mesh still loaded at teardown leaked one resource set. `UnloadSkinnedMesh`
   always freed both. The native Vulkan backend reports that class of leak at device teardown as a
-  `VUID-vkDestroyDevice-device-05137` object leak.
+  `VUID-vkDestroyDevice-device-05137` object leak. `Scene3DUnloadRetireTests` pins it headless, off the same fake
+  factory lists the unload rows read: load a TEXTURED skinned mesh so both sets exist, dispose the scene, and both
+  have to be gone.
 - **`GreyboxMeshResolver` builds every shape in its own PLANE's local space** (`KhaozEngine.TileWorld.Render3D`).
   A roof archetype is placed on the plane ABOVE the walls it covers, which is exactly what `TileWorldView`'s
   roof-hide rule keys on, and `TileObjectProps.AnchorPosition` anchors an object at `HeightAt(plane)`, so a

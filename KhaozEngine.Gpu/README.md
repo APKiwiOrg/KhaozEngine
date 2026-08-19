@@ -306,11 +306,14 @@ What it owns today:
     submitted batch complete, then frees the whole holding behind it. `Create(device, frameDelay,
     maxSealedBatches)` sets it and `DefaultMaxSealedBatches` is 8: comfortably above the deepest a PRESENTED loop
     reaches, since the present stops the CPU at `KE_*_FRAMES_IN_FLIGHT` frames ahead (default 3) and each of those
-    frames has to have retired something to seal a batch. Raise it with that knob if you raise the knob past 8, or
-    you buy a drain you did not need. What actually decides whether it fires is how far ahead the LOOP gets rather
-    than how fast the GPU is: an offscreen loop that submits without presenting has nothing throttling it and runs
-    eight or nine frames ahead on an M2 Max, and the engine's own 400-frame churn test measures 16 firings there
-    against the 396 drains the unfenced fallback pays. `ValveDrains` counts them, and it is the honest signal that
+    frames has to have retired something to seal a batch. Raising that knob past 8 wants this raised with it or you
+    buy a drain you did not need, and there is no way to do it from outside the engine today
+    ([#661](https://github.com/APKiwiOrg/KhaozEngine/issues/661)). What actually decides whether it fires is how far
+    ahead the LOOP gets rather than how fast the GPU is: an offscreen loop that submits without presenting has
+    nothing throttling it and runs eight or nine frames ahead on an M2 Max, where the engine's own 400-frame churn
+    test parks the peak holding exactly on the cap and fires the valve anywhere from once to a couple of dozen times
+    a run, against the 396 drains the unfenced fallback pays. The count is not reproducible, since it tracks how far
+    ahead that pass got. The peak on the cap is. `ValveDrains` counts the firings, and it is the honest signal that
     the CPU is running away from the GPU rather than a defect reading. `SealedBatchCount`
     is the batch-level view of the holding that the bound is written against, next to the resource-level
     `PendingCount`. The frame-counted policies need no valve and get none: a batch there dies on the frame count

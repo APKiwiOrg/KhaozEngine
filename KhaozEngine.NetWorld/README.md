@@ -169,6 +169,14 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   cell-owned, non-player state only. Mirrors `WorldPersistence` but keyed by cell coordinate instead of account,
   including the batched periodic pass: every dirty cell's snapshot goes through one `IWorldStore.SaveManyAsync`
   call instead of one `SaveAsync` per cell (the meta write and quarantine writes stay single-record saves).
+  - **Per-entity opt-out (since 17.37.1).** An entity carrying `KhaozEngine.Sharding.Transient` is left out of the
+    blob entirely, so a server-owned thing meant to outlive nothing (a pickup, a timed spawn, a projectile) can no
+    longer be caught in a save and resurrected as a husk. It excludes the ENTITY, which is the axis a
+    `ReplicationChannels` flag cannot reach: a channel gates one component TYPE, and dropping a component's bytes
+    would still persist the entity, just as a stripped husk. Mark one with
+    `ShardedWorldServer.MarkTransient(netId)` (`ClearTransient` / `IsTransient` beside it), or set the tag directly
+    on the entity. It costs nothing on the wire (a field-less ECS tag, in no `ReplicationRegistry`, so no blob
+    layout moves) and follows the entity across a cell handoff.
   - **Schema evolution + restore hardening (since 9.33.0).** `CellPersistenceConfig.RegisterMigration(fromVersion,
     migrate)` registers ordered `CellSnapshotMigration` (`byte[] body -> byte[]`) steps that bring an older blob
     forward on load, before restore. The chain is validated at construction (contiguous, no gaps, none at/beyond
@@ -811,7 +819,14 @@ long orb = pickups.Spawn(dropPosition, payloadId: PackItem(itemIndex, quantity),
   not reach through it. A cylinder, a cone, a facing test or a line of sight goes in `OnCollect` as a decline.
 - **`Despawn(netId)` / `DespawnAll()`** remove pickups explicitly, and a time-to-live expires one on its own. Every
   route propagates to clients as a normal AoI removal and raises `OnRemoved` with a `PickupRemovalReason` of
-  `Collected` / `Expired` / `Despawned`.
+  `Collected` / `Expired` / `Despawned` / `CellEvicted`.
+- **Cell awareness (since 17.37.1).** A pickup's tracking record is the seam's, not the entity's, so unloading the
+  cell that held the entity would leave the record standing: an orb nobody can see keeps being offered, a collect
+  still grants it, and the expiry despawn no-ops into an unloaded cell. Hand the seam your evictor
+  (**`WorldPickupsConfig.Evictor`**, or **`TrackEvictions(evictor)`** when the evictor is built after the seam) and it
+  drops each evicted cell's pickups itself, reporting `PickupRemovalReason.CellEvicted`. A host that unloads cells its
+  own way calls **`ForgetCell(coord)`** or the general **`ForgetWhere(predicate)`** directly. `PickupInfo.Cell` is the
+  owning cell (null on a single-world server, which never evicts), read once at spawn since a pickup never moves.
 - **Client side.** `PickupState` is a **built-in** replicated component (`MoveProtocol.PickupTypeId` = 5), riding
   alongside the pickup's `ReplicatedPosition` exactly as `DynamicBodyState` does for a physics prop. Read it with
   `WorldClient.TryGetComponent<PickupState>(netId, out _)` to pick a model, a rarity tint, or an "it's yours"
@@ -821,13 +836,22 @@ long orb = pickups.Spawn(dropPosition, payloadId: PackItem(itemIndex, quantity),
   **`TryGetEntity(netId, out World, out Entity)`** and **`DespawnEntity(netId)`** on both servers, neither of which
   will ever touch a player entity.
 
-**Persistence hazard, worth knowing before you ship.** `CellPersistence` snapshots every owned non-player entity in a
-cell on an interval with **no per-entity opt-out**, so a live pickup can be caught in a save and resurrected on
-restart. A restored pickup is a plain entity carrying `PickupState` that the seam knows nothing about: no
-time-to-live, offered to nobody, standing forever. The component cannot opt out of the persist channel either, since
-built-in ids are pinned to `ReplicationChannels.Default`. A game that persists cells should sweep at boot, before
-spawning this run's pickups, which is what `ShardedWorldServer.DespawnEntity` is for (it resolves through the shard
-host's ownership index, so it finds restored entities the seam never saw):
+**A pickup is never persisted (since 17.37.1).** Every pickup `Spawn` creates is marked `Transient`
+(`KhaozEngine.Sharding`), so `CellPersistence` leaves it out of the cell blob and no restore can bring it back. That
+is not a tunable, because the alternative has no honest meaning: the seam's state (the time-to-live, the clock, the
+offer records) lives in this process only, so a resurrected pickup is a plain entity carrying `PickupState` that the
+seam knows nothing about, offered to nobody and expiring never. A collectible meant to outlive a restart belongs in
+the game's own content or save data, spawned again at boot, which is also the only place its payload still means
+anything.
+
+The same opt-out is reachable by hand for any other transient server-owned entity, a timed spawn or a wave of adds:
+**`ShardedWorldServer.MarkTransient(netId)`**, with **`ClearTransient`** and **`IsTransient`** beside it. The mark
+follows the entity across a cell handoff, so walking into the next cell does not make it persistable there.
+
+**Blobs written before 17.37.1 still hold husks**, since a save cannot be edited after the fact. Clearing those is a
+one-time boot sweep, run once against a world an older build saved, and unnecessary for every save written since
+(`ShardedWorldServer.DespawnEntity` resolves through the shard host's ownership index, so it finds restored entities
+the seam never saw):
 
 ```csharp
 var stale = new List<long>();
@@ -837,7 +861,8 @@ foreach (CellSim cell in server.Host.Cells)
 foreach (long netId in stale) server.DespawnEntity(netId);
 ```
 
-`DespawnAll()` is the same-process equivalent and clears only what the seam is currently tracking.
+Sweep before spawning this run's pickups, or the sweep eats them too. `DespawnAll()` is the same-process equivalent
+and clears only what the seam is currently tracking.
 
 ## Area-of-interest delta replication (since 9.18.0)
 

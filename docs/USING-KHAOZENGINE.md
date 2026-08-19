@@ -12546,6 +12546,16 @@ over `CellSim.SnapshotOwned`/`RestoreOwned` and `ShardHost.CellCreated`/`EnsureC
 `player:{accountId}` keyspace `WorldPersistence` uses, so the two coexist on the same `IWorldStore` without
 collision.
 
+**Opting one entity out (since 17.37.1).** Not everything a server owns is meant to outlive it. A world pickup, a
+timed spawn, a wave of adds, a projectile: caught in an interval save, each comes back on restart as a husk no
+subsystem is tracking. `ShardedWorldServer.MarkTransient(netId)` tags such an entity
+`KhaozEngine.Sharding.Transient` and `SnapshotOwned` leaves it out of the blob entirely, with `ClearTransient` and
+`IsTransient` beside it. It excludes the ENTITY, not a component's bytes, which is why it is not a
+`ReplicationChannels` flag: a channel gates one component TYPE, and dropping bytes would still persist the entity,
+just as a stripped husk. It reaches no wire (a field-less ECS tag in no `ReplicationRegistry`, so no snapshot grows
+and no blob layout moves) and it follows the entity across a cell handoff. `WorldPickups` marks everything it spawns,
+so a game on that seam needs none of this.
+
 Subscribe to **`CellPersistence.OnStoreError`** (`event Action<Exception>`, mirrors `WorldPersistence.OnStoreError`)
 to log/alert on a faulted background cell save, meta write, or quarantine write. The driver prunes the faulted task
 each `Update` (so a store outage can't grow the pending list unbounded or make the boot sequence
@@ -13281,9 +13291,29 @@ floor above does not reach through it. A cylinder, a cone, a facing requirement 
 `OnCollect` as a decline: that is what the callback is for.
 
 **Removal.** `Despawn(netId)` removes one, `DespawnAll()` removes every tracked pickup, and a `timeToLiveSeconds`
-expires one on its own. All three propagate to clients as a normal area-of-interest removal and raise `OnRemoved`
-with a `PickupRemovalReason` of `Collected` / `Expired` / `Despawned`, so a ledger row or a poof VFX has one place to
-hang off.
+expires one on its own. All of them propagate to clients as a normal area-of-interest removal and raise `OnRemoved`
+with a `PickupRemovalReason` of `Collected` / `Expired` / `Despawned` / `CellEvicted`, so a ledger row or a poof VFX
+has one place to hang off.
+
+**Cell awareness, if your server evicts cells (since 17.37.1).** A pickup's tracking record is the seam's, not the
+entity's, so unloading the cell that held the entity used to leave the record standing: the proximity pass kept
+offering an orb nobody could see, a collect still granted it, and the expiry despawn no-opped into an unloaded cell.
+Hand the seam your evictor and it drops each evicted cell's pickups itself:
+
+```csharp
+var evictor = new CellEvictor(server, persistence);
+var pickups = new WorldPickups(server, new WorldPickupsConfig { OnCollect = …, Evictor = evictor });
+// or, when the evictor is built after the seam:
+pickups.TrackEvictions(evictor);
+```
+
+That is the whole wiring. Each `CellEvicted` calls `ForgetCell(coord)`, which despawns those pickups (a no-op on the
+host, since the cell has already gone) and raises `OnRemoved` with `PickupRemovalReason.CellEvicted`, so a game that
+returns an uncollected payload to a loot table can tell an unload from a deliberate removal. A host that unloads
+cells its own way calls `ForgetCell(coord)` directly, and `ForgetWhere(predicate)` is the general form for every rule
+the seam does not own (a zone that closed, one owner's whole drop, a region an admin cleared). `PickupInfo.Cell` is
+the owning cell, read once at spawn since a pickup never moves, and null on a single-world server, which never
+evicts anything.
 
 **It is a wire break.** `PickupState` is a **built-in** replicated component (`MoveProtocol.PickupTypeId` = 5), not a
 consumer extension, so it is unframed: a client whose registry has no id 5 cannot skip those bytes and would hard-fail
@@ -13291,12 +13321,30 @@ its snapshot decode the first time a pickup entered its area of interest, mid-se
 `MoveProtocol.WireProtocolVersion` therefore bumps to **8**, which converts exactly that late failure into a clean
 `IncompatibleVersion` rejection at connect. **Client and server must ship together.**
 
-**Persistence hazard, read this before you ship a persistent server.** `CellPersistence` snapshots every owned
-non-player entity in a cell on an interval and has **no per-entity opt-out**, so a live pickup can be caught in a save
-and resurrected on restart. A restored pickup is a plain entity carrying `PickupState` that the seam knows nothing
-about: no time-to-live, offered to nobody, standing in the world forever. The component cannot opt out of the persist
-channel either, because built-in ids below `ReplicationRegistry.FirstExtensionTypeId` are pinned to
-`ReplicationChannels.Default` and the registry throws otherwise. Sweep at boot, before spawning this run's pickups:
+**A pickup is never persisted (since 17.37.1).** Every pickup `Spawn` creates is marked
+`KhaozEngine.Sharding.Transient`, so `CellPersistence` leaves it out of the cell blob and no restore can bring it
+back. There is no knob to turn that off, because the alternative has no honest meaning: the seam's state (the
+time-to-live, the clock, the offer records) lives in this process only, so a resurrected pickup is a plain entity
+carrying `PickupState` that the seam knows nothing about, offered to nobody and expiring never. A collectible meant
+to survive a restart belongs in your own content or save data, spawned again at boot, which is also the only place
+its payload still means anything.
+
+**The same opt-out is yours for any other transient server-owned entity.** A timed spawn, a wave of adds, a
+projectile, a temporary marker:
+
+```csharp
+long netId = server.SpawnEntity(x, z, (world, entity) => world.Set(entity, new EnemyKind { … }));
+server.MarkTransient(netId);   // ClearTransient / IsTransient beside it
+```
+
+It excludes the ENTITY rather than a component's bytes, which is the axis a `ReplicationChannels` flag cannot reach:
+a channel gates one component TYPE, and dropping bytes would still persist the entity, just as a stripped husk. It
+costs nothing on the wire (a field-less ECS tag in no `ReplicationRegistry`, so no blob layout moves) and it follows
+the entity across a cell handoff, so walking into the next cell does not make it persistable there.
+
+**Blobs written before 17.37.1 still hold husks**, since a save cannot be edited after the fact. That is a one-time
+boot sweep, run once against a world an older build saved and unnecessary for every save written since. Sweep before
+spawning this run's pickups, or the sweep eats them too:
 
 ```csharp
 var stale = new List<long>();

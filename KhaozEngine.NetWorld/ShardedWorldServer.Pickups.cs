@@ -10,9 +10,9 @@ public sealed partial class ShardedWorldServer
 {
     /// <inheritdoc />
     /// <remarks>Resolves through the shard host's ownership index, so this finds ANY entity owned by a live cell,
-    /// including one <see cref="CellPersistence"/> restored from a save. That is deliberate: a boot sweep of
-    /// resurrected entities (see the persistence hazard on <see cref="WorldPickups"/>) has no other handle on them.
-    /// A ghost mirrored from a neighbouring cell is not owned here and does not resolve.</remarks>
+    /// including one <see cref="CellPersistence"/> restored from a save. That is deliberate: the one-time boot sweep
+    /// of entities resurrected out of a pre-<see cref="Transient"/> blob (see <see cref="WorldPickups"/>) has no
+    /// other handle on them. A ghost mirrored from a neighbouring cell is not owned here and does not resolve.</remarks>
     public bool TryGetEntity(long netId, out World world, out Entity entity)
     {
         if (!IsPlayerNetId(netId) && host.TryGetOwner(netId, out CellSim cell, out Entity found) && cell.World.IsAlive(found))

@@ -74,8 +74,9 @@ started migrating) is reaped on lookup. `OwnerCount(netId)` is deliberately an i
 exactly-once handoff oracle that can observe a duplicate (2) or loss (0) the single-valued index never could.
 
 Per-cell persistence primitives on `CellSim`, storage-agnostic (no new dependency): `SnapshotOwned(excludedNetIds)`
-returns a durable Replication snapshot of the cell's owned (not `Ghost`, not `Migrating`) entities whose NetId is
-not in the excluded set, so a caller can persist non-player state while player entities persist separately.
+returns a durable Replication snapshot of the cell's owned (not `Ghost`, not `Migrating`, not `Transient`) entities
+whose NetId is not in the excluded set, so a caller can persist non-player state while player entities persist
+separately.
 `RestoreOwned(snapshot)` adopts a snapshot's entities back into the cell as freshly owned, keeping their NetIds,
 and returns the restored NetId list. `TryRestoreOwned(snapshot)` (since 9.33.0) is the non-throwing form returning
 a `CellRestoreResult`: a blob that fails to decode is rolled back (the partial apply is despawned, so the cell is
@@ -84,6 +85,17 @@ cell's registry does not know is retained per-netId and re-emitted verbatim by `
 so a registry downgrade cannot strip data at rest. `MaxOwnedNetId()` reads the highest owned NetId (0 if none),
 useful for resuming an id allocator. See `KhaozEngine.NetWorld.CellPersistence` for the `IWorldStore` wiring
 (migration chain, quarantine, diagnostics) built on these.
+
+**`Transient`: the per-entity persist opt-out (since 17.37.1).** A field-less tag, beside `Ghost` and `Migrating`,
+meaning this entity is never saved. `SnapshotOwned` leaves it out of the blob entirely, so a server-owned thing meant
+to outlive nothing (a world pickup, a timed spawn, a projectile) cannot be caught in an interval save and resurrected
+on restart as a husk no subsystem is tracking. It excludes the ENTITY, which is the axis a `ReplicationChannels` flag
+cannot reach: a channel gates one component TYPE on one channel, and dropping a component's bytes would still persist
+the entity, just as a stripped husk. Deliberately in no `ReplicationRegistry`, since persistence is a server-local
+decision no client needs to hear, so it spends no wire type id, adds no bytes to any snapshot, and moves no blob
+layout. `ShardHost.ProcessHandoffs` carries the mark across a crossing (it rides beside the Migrate capture rather
+than inside it), so a transient entity walking into the next cell does not become persistable there. What it cannot
+do is edit a blob already written: husks in older saves still need a one-time boot sweep.
 
 **Per-channel components (since 9.28.0).** The three cross-cell/persistence consumers each serve one
 `ReplicationChannels` channel, so a component only reaches the paths it declared (default `Replicate | Persist |

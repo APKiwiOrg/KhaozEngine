@@ -7,7 +7,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.37.1
 
-A greybox roof now sits on the walls it covers instead of floating a whole plane above them.
+A greybox roof now sits on the walls it covers instead of floating a whole plane above them. Alongside it, a
+server-owned entity can finally opt out of cell persistence per ENTITY, so a world pickup or any other transient
+thing stops being caught in an interval save and resurrected on restart as a husk no subsystem is tracking, and the
+pickup seam gained the cell awareness it was missing, so unloading a cell takes its pickups' tracking with it instead
+of leaving an orb nobody can see still being offered.
 
 - **`GreyboxMeshResolver` builds every shape in its own PLANE's local space** (`KhaozEngine.TileWorld.Render3D`).
   A roof archetype is placed on the plane ABOVE the walls it covers, which is exactly what `TileWorldView`'s
@@ -26,6 +30,47 @@ A greybox roof now sits on the walls it covers instead of floating a whole plane
   the walled house whose roof moved.
 
 Found by the Grimhollow adopt, where the greybox house rendered with a visibly detached roof slab.
+
+- **`Transient`: a per-entity persist opt-out** (`KhaozEngine.Sharding`). A field-less ECS tag, beside `Ghost` and
+  `Migrating`, meaning this entity is never saved. `CellSim.SnapshotOwned` leaves it out of the cell blob entirely,
+  so a server-owned thing meant to outlive nothing (a world pickup, a timed spawn, a projectile, a temporary marker)
+  can no longer ride an interval save into the next process. It excludes the ENTITY, which is the axis a
+  `ReplicationChannels` flag cannot reach: a channel gates one component TYPE on one channel, so it is the wrong
+  grain twice over, and dropping a component's bytes would still persist the entity, just as a stripped husk, which
+  is worse than the behaviour it replaced. Deliberately in no `ReplicationRegistry`, since persistence is a
+  server-local decision no client needs to hear, so the marker spends no replication type id, adds no bytes to any
+  snapshot, and moves no blob layout. `ShardHost.ProcessHandoffs` carries the mark across a cell crossing (beside
+  the Migrate capture rather than inside it, since an unregistered tag cannot ride the capture), so a transient
+  entity walking into the next cell does not become persistable there. Closes #326.
+- **`ShardedWorldServer.MarkTransient(netId)` / `ClearTransient(netId)` / `IsTransient(netId)`**, the net-id
+  vocabulary a game already spawns in. Each refuses a player net id, since a player persists on its own record and
+  is excluded from cell snapshots anyway.
+- **A pickup is never persisted**, and that is not a tunable. Every pickup `WorldPickups.Spawn` creates is marked
+  `Transient`, because the alternative has no honest meaning: the seam's state (the time-to-live, the clock, the
+  offer records) lives in one process, so a restored pickup was a plain entity carrying `PickupState` that the seam
+  knew nothing about, offered to nobody and expiring never. A collectible meant to survive a restart belongs in the
+  game's own content or save data, which is also the only place its payload still means anything. **The
+  `DespawnEntity` boot sweep the docs used to hand every game is now only for blobs saved BEFORE this version**: a
+  save cannot be edited after the fact, so a world an older build wrote still holds husks and still wants the sweep
+  once. Nothing written since needs it.
+- **`WorldPickups` follows cell eviction** (#374). A pickup's tracking record is the seam's, not the entity's, so
+  unloading the cell holding the entity left the record standing: the proximity pass kept offering an orb nobody
+  could see, a collect still granted it, and the expiry despawn no-opped into an unloaded cell while dropping the
+  record. Hand the seam the evictor, through the new **`WorldPickupsConfig.Evictor`** or
+  **`WorldPickups.TrackEvictions(evictor)`** (with `StopTrackingEvictions` to undo it), and each
+  `CellEvictor.CellEvicted` drops that cell's pickups. A host that unloads cells its own way calls the new
+  **`ForgetCell(coord)`** or the general **`ForgetWhere(predicate)`** directly. The two changes compose: the evicted
+  cell's blob never carried the pickup, so recreating that coordinate restores no ghost orb either. Closes #374.
+- **`PickupRemovalReason.CellEvicted`**, so a game returning an uncollected payload to a loot table can tell an
+  unload from a deliberate removal, and **`PickupInfo.Cell`** (nullable, read once at spawn since a pickup never
+  moves, null on a single-world server) so a `ForgetWhere` predicate can express a rule over cells.
+- **`IWorldPickupHost.TryGetCellCoord(x, z, out coord)`**, a default interface method answering false, so a host
+  with no cell grid (every `WorldServer`) is unaffected. `ShardedWorldServer` answers off the shard host's grid
+  geometry, for any coordinate, including one whose cell has been evicted or was never instantiated.
+- Nothing on the wire moved: the marker is unregistered, so a `Replicate` and a `Migrate` capture of a marked entity
+  are byte-identical to the same entity unmarked, and no cell-blob migration was touched. Both are pinned by test.
+- Found closing https://github.com/APKiwiOrg/Ruinborne/issues/271, whose game-side workaround (a `ForgetCell` wired
+  to `CellEvicted`, plus a boot `DespawnEntity` sweep) is what the two seams above retire.
 
 ## 17.37.0
 

@@ -267,8 +267,8 @@ public sealed class WorldPickups
     /// Removes every pickup this seam is tracking and returns how many went. Each raises
     /// <see cref="WorldPickupsConfig.OnRemoved"/> with <see cref="PickupRemovalReason.Despawned"/>.
     /// <para>This clears what the seam KNOWS about, which is what this process spawned. It does NOT find a pickup
-    /// resurrected out of a cell save (see the persistence hazard in the type remarks) - that needs the world sweep
-    /// documented there, because the seam never saw those entities.</para>
+    /// resurrected out of a blob saved BEFORE pickups became transient (see the type remarks) - that needs the
+    /// one-time boot sweep documented there, because the seam never saw those entities.</para>
     /// </summary>
     public int DespawnAll()
     {

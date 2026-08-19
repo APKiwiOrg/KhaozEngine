@@ -483,8 +483,13 @@ The fields are repurposed for this pipeline only:
 - `Color` = that vertex's four weights over the tile's four corner slots, all four in `Color`, renormalised by
   their own sum in the fragment, no one-minus-sum remainder (the splat pass's fifth-layer idiom does not
   apply). A corner vertex is one-hot on its own slot, a mid-edge point (an overlay cut) is 0.5 and 0.5 on its
-  two end corners, a tile-centre point 0.25 on each. An overlay triangle puts its overlay material in slot 0
-  at weight 1 and zero elsewhere.
+  two end corners, a tile-centre point 0.25 on each. An overlay triangle holds its overlay material in ALL FOUR
+  slots with weights (1, 0, 0, 0), so the painted part reads that one material flat however the tile under it
+  blends, and no lane can leak the ground's palette into it.
+- Every material set keeps its LAST slot (index `MaxMaterials - 1`, so 63) as the missing-material layer, filled
+  with the magenta of the dangling-id rule (7.1). `ITileGroundSlotMap.MissingSlot` names it and a dangling id maps
+  there, which is what carries that rule through texturing: slot 0 stays an ordinary material, because a set built
+  in catalog id order would otherwise burn its first layer in every set.
 - `Tangent.z` = the per-vertex brightness jitter, the same sharing-tile average the colour path uses today, so
   it stays soft across corners rather than stepping per tile. `Tangent.w` = 0.
 - `Normal` = the lattice normal as today. No normal maps in R5: the OSRS register is flat low-frequency

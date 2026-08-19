@@ -9,9 +9,16 @@ namespace KhaozEngine.TileWorld;
 public sealed class TileGroundMesherOptions
 {
     ITileGroundSlotMap _slots = IdentitySlotMap.Instance;
+    float _jitterAmplitude = TileColors.DefaultJitterAmplitude;
 
-    /// <summary>Per-tile brightness jitter, plus or minus this fraction of the material colour. 0 disables it.</summary>
-    public float JitterAmplitude { get; set; } = TileColors.DefaultJitterAmplitude;
+    /// <summary>Per-tile brightness jitter, plus or minus this fraction of the material colour, from 0 (which
+    /// disables it) up to but not including 1. The ceiling is load-bearing: the vertex carries the jitter as a
+    /// MULTIPLIER, so an amplitude of 1 or more could hand it the 0 that renders a vertex black.</summary>
+    public float JitterAmplitude
+    {
+        get => _jitterAmplitude;
+        set => _jitterAmplitude = TileGroundMesher.CheckedAmplitude(value, nameof(value));
+    }
 
     /// <summary>True to take every corner normal from the global height lattice, false for one flat normal per
     /// triangle.</summary>

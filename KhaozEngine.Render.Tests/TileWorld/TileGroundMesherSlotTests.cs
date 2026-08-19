@@ -222,7 +222,13 @@ public class TileGroundMesherSlotTests
         // centre point today, and TileTriangulation would have to grow one first.
         TileWorldDocument doc = TileRenderTestData.RoadWorld();
         foreach (ModelVertex v in TileVertices(Build(doc), doc, TileRenderTestData.RoadDiagonalX, TileRenderTestData.RoadZ))
-            Assert.Equal(1f, v.Color.X + v.Color.Y + v.Color.Z + v.Color.W, 1e-6f);
+        {
+            // OneHotSlot asserts the shape the name claims: exactly one lane carries the whole weight, which no
+            // mid-edge point can do. The lane it finds names either the grass under the tile or the road painted
+            // over half of it.
+            int slot = OneHotSlot(v);
+            Assert.True(slot == SlotOf(Grass) || slot == SlotOf(Road), $"unexpected slot {slot}");
+        }
 
         Span<TileLatticeTriangle> triangles = stackalloc TileLatticeTriangle[TileTriangulation.MaxTriangles];
         foreach (TileOverlayShape shape in Enum.GetValues<TileOverlayShape>())
@@ -293,6 +299,20 @@ public class TileGroundMesherSlotTests
 
         Assert.Equal(1f, TileGroundMesher.CornerJitter(doc, 40, 40, 0, 0f));
         foreach (ModelVertex v in Build(doc, options).Vertices) Assert.Equal(1f, v.Tangent.Z);
+    }
+
+    [Theory]
+    [InlineData(-0.01f)]
+    [InlineData(1f)]
+    [InlineData(2f)]
+    [InlineData(float.NaN)]
+    public void An_out_of_range_jitter_amplitude_is_refused(float amplitude)
+    {
+        // The multiplier is 1 plus or minus the amplitude, so an amplitude of 1 or more can hand a vertex the one
+        // value the packing cannot carry: 0, which renders black. Refusing it at the door leaves every jitter the
+        // mesher writes inside (0, 2), which is what the never-zero promise rests on.
+        Assert.Throws<ArgumentOutOfRangeException>(() => new TileGroundMesherOptions { JitterAmplitude = amplitude });
+        Assert.Throws<ArgumentOutOfRangeException>(() => TileGroundMesher.CornerJitter(GrassRegion(), 40, 40, 0, amplitude));
     }
 
     [Fact]

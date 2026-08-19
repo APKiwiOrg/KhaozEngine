@@ -59,7 +59,8 @@ public static partial class TileGroundMesher
     /// <summary>The brightness multiplier at a lattice corner: the mean of <see cref="TileColors.Jitter"/> over
     /// the same tiles <see cref="CornerMaterial"/> counts, so the ground varies softly across a corner instead of
     /// stepping at every tile edge, and 1 when none of them has an underlay. It is a MULTIPLIER the shader
-    /// applies to the sampled albedo, so no jitter is 1 and never 0: a vertex carrying 0 renders black.</summary>
+    /// applies to the sampled albedo, so no jitter is 1 and never 0: a vertex carrying 0 renders black. That is
+    /// why <paramref name="amplitude"/> is refused at 1 and above, which leaves every answer inside (0, 2).</summary>
     public static float CornerJitter(
         TileWorldDocument doc,
         int worldX,
@@ -68,6 +69,7 @@ public static partial class TileGroundMesher
         float amplitude = TileColors.DefaultJitterAmplitude)
     {
         ArgumentNullException.ThrowIfNull(doc);
+        CheckedAmplitude(amplitude, nameof(amplitude));
 
         float sum = 0f;
         int count = 0;
@@ -82,6 +84,15 @@ public static partial class TileGroundMesher
             }
         return count == 0 ? 1f : sum / count;
     }
+
+    /// <summary>The amplitude back, or a throw: it runs from 0 (no jitter) up to but not including 1, so the
+    /// multiplier stays strictly positive and no vertex can carry the 0 that renders black. NaN is refused by the
+    /// same test.</summary>
+    internal static float CheckedAmplitude(float amplitude, string parameterName) =>
+        amplitude >= 0f && amplitude < 1f
+            ? amplitude
+            : throw new ArgumentOutOfRangeException(
+                parameterName, amplitude, "the jitter amplitude runs from 0 up to but not including 1.");
 
     /// <summary>The four slots of the tile at region-local (lx, lz), one per corner.</summary>
     static TileCornerSlots TileSlots(in TileMeshContext c, int lx, int lz)

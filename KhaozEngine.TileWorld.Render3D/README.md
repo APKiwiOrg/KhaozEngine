@@ -45,10 +45,12 @@ nothing in the upload path moves.
   by default, `JitterAmplitude` 0 disables it) over the same tiles, so the OSRS brightness variation stays soft
   across a corner instead of stepping per tile. It is a MULTIPLIER: no jitter is 1, and a vertex carrying 0
   renders black.
-- **The colour path stays for the headless readers.** `TileGroundMesher.CornerColor` still blends the up-to-four
-  sharing tiles' jittered material colours (`TileColors.Blend`, all-void blends to `TileColors.Void`), and
-  `TileColors.Parse` still reads `#rrggbb` or `#rrggbbaa`. The vertices no longer carry it: it is what `tile_get`,
-  the top-down overlay painter's tints and an untextured material's flat layer read.
+- **The colour path stays, and nothing in the mesh path reads it.** `TileGroundMesher.CornerColor` still blends
+  the up-to-four sharing tiles' jittered material colours (`TileColors.Blend`, all-void blends to
+  `TileColors.Void`), and `TileColors.Parse` still reads `#rrggbb` or `#rrggbbaa`. That pair is the GPU-free
+  colour surface, for a caller that wants a tile's colour without the textured pipeline behind it: a minimap, a
+  2D painter, a tool query. The vertices do not carry it any more, and the mesher itself only calls
+  `TileColors.Jitter`.
 - **Overlays are exact geometry, not an approximation.** The tile is cut by the shared
   `TileTriangulation.Triangulate` (two triangles for a plain tile or a diagonal half, four for a corner cut) and
   each triangle either names the overlay's slot in all four lanes at weight (1, 0, 0, 0) or is left to the tile's

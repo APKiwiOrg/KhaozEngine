@@ -27,6 +27,9 @@ A greybox roof now sits on the walls it covers instead of floating a whole plane
 - **`CharacterMovement.cs` split into two more domain partials** (`KhaozEngine.Locomotion`): the post-sweep settle
   pass to `CharacterMovement.Settle.cs`, and the paced step-up climb with its climb-signal export to
   `CharacterMovement.Climb.cs`. 799 lines down to 556, a pure code move with no API and no behaviour change (#480).
+- **`VulkanPresentBoundary` and its test class split on the seam each had already marked** (`KhaozEngine.Gpu.Vulkan`,
+  `KhaozEngine.Render.Tests`): the recreation state machine to `VulkanPresentBoundary.Recreate.cs`, 799 lines down to
+  606, and the recreate half of its coverage to `VulkanPresentBoundaryTests.Recreate.cs`, 777 down to 332 (#559).
 
 Found by the Grimhollow adopt, where the greybox house rendered with a visibly detached roof slab.
 

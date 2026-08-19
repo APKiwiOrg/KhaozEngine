@@ -352,6 +352,143 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0, barrier.Releases);  // nothing to recycle: there was no fence
         }
 
+        // ---- the safety valve (#425) ----
+
+        [Fact]
+        public void The_valve_fires_on_the_batch_after_the_cap_and_frees_the_whole_holding()
+        {
+            // The failure #425 describes, driven deliberately: a barrier whose fences NEVER signal is a GPU the
+            // CPU has run away from, taken to its limit. Without the valve this loop ends holding a batch and a
+            // resource per frame forever, plus a device fence per frame that is never handed back.
+            const int Cap = 4;
+            var barrier = new FakeBarrier();
+            int drains = 0;
+            var pool = new GpuRetireQueue(() => drains++, barrier, maxSealedBatches: Cap);
+            var retired = new List<FakeResource>();
+
+            for (int frame = 0; frame < Cap; frame++)
+            {
+                var r = new FakeResource();
+                retired.Add(r);
+                pool.Retire(r);
+                pool.BeginFrame();
+            }
+
+            Assert.Equal(Cap, pool.SealedBatchCount);   // right up to the cap it is the ordinary fence path
+            Assert.Equal(Cap, pool.PendingCount);
+            Assert.Equal(0, drains);
+            Assert.Equal(0, pool.ValveDrains);
+            foreach (FakeResource r in retired) Assert.Equal(0, r.DisposeCount);
+
+            var overflow = new FakeResource();
+            retired.Add(overflow);
+            pool.Retire(overflow);
+            pool.BeginFrame();          // seals the Cap+1'th batch, which is the boundary that opens the valve
+
+            Assert.Equal(1, drains);
+            Assert.Equal(1, pool.ValveDrains);
+            Assert.Equal(0, pool.SealedBatchCount);
+            Assert.Equal(0, pool.PendingCount);
+            // Everything goes, including the batch sealed moments ago in this same call: the drain waits out every
+            // SUBMITTED command, and that batch's own fence was submitted just above it.
+            foreach (FakeResource r in retired) Assert.Equal(1, r.DisposeCount);
+            Assert.Equal(Cap + 1, barrier.Releases);   // every fence handed back, none left on the floor
+        }
+
+        [Fact]
+        public void A_device_that_never_catches_up_holds_no_more_than_the_cap_and_allocates_no_new_fences()
+        {
+            // The bound as an invariant rather than as one event: two hundred frames of a GPU that never signals
+            // anything, and the holding is checked at every single boundary. This is the assertion shape #425 asks
+            // for, and it is the one that holds on a device whose speed the test cannot know.
+            const int Cap = 8, Frames = 200;
+            var barrier = new FakeBarrier();
+            int drains = 0;
+            var pool = new GpuRetireQueue(() => drains++, barrier, maxSealedBatches: Cap);
+
+            for (int frame = 0; frame < Frames; frame++)
+            {
+                pool.Retire(new FakeResource());
+                pool.BeginFrame();
+                Assert.True(pool.SealedBatchCount <= Cap,
+                    $"frame {frame} held {pool.SealedBatchCount} sealed batches, past the cap of {Cap}");
+                Assert.True(pool.PendingCount <= Cap,
+                    $"frame {frame} held {pool.PendingCount} resources, past the cap of {Cap}");
+            }
+
+            // One drain per Cap + 1 frames of sustained fall-behind, and not one per frame: the valve frees the
+            // WHOLE holding, so the count has to climb from zero again before it can fire a second time.
+            Assert.Equal(Frames / (Cap + 1), drains);
+            Assert.Equal(drains, pool.ValveDrains);
+            // And the fence pool stops growing with it, which is the third thing #425 named. Cap + 1 is the most
+            // that are ever in flight at once, so that is the most the barrier ever had to create.
+            Assert.True(barrier.Issued.Distinct().Count() <= Cap + 1,
+                $"expected at most {Cap + 1} device fences to serve {Frames} frames, got {barrier.Issued.Distinct().Count()}");
+        }
+
+        [Fact]
+        public void A_device_that_keeps_up_never_opens_the_valve()
+        {
+            // The other half, and the one that keeps the fence path's whole claim honest: when the GPU is keeping
+            // pace the valve is invisible and nothing drains at all.
+            var barrier = new FakeBarrier();
+            var pool = new GpuRetireQueue(() => Assert.Fail("a device that keeps up must never drain"), barrier,
+                maxSealedBatches: 4);
+
+            for (int frame = 0; frame < 200; frame++)
+            {
+                pool.Retire(new FakeResource());
+                pool.BeginFrame();                                    // seal
+                foreach (FakeFence f in barrier.Issued) f.Signaled = true;
+                pool.BeginFrame();                                    // the GPU has caught up, so it is freed
+                Assert.Equal(0, pool.SealedBatchCount);
+            }
+
+            Assert.Equal(0, pool.ValveDrains);
+        }
+
+        [Fact]
+        public void FrameCountOnly_is_bounded_by_its_own_count_and_the_valve_never_drains_it()
+        {
+            // A cap of 1 is far below anything this policy reaches, and it still never drains: the valve is barred
+            // from the frame path here (#84), and it is not needed, because a batch dies on the count alone and the
+            // holding cannot pass FrameDelay batches however far behind the GPU is.
+            const int Delay = 4;
+            var queue = new GpuRetireQueue(() => Assert.Fail("FrameCountOnly must never drain on the frame path"),
+                barrier: null, fallback: GpuRetireFallback.FrameCountOnly, frameDelay: Delay, maxSealedBatches: 1);
+
+            for (int frame = 0; frame < 100; frame++)
+            {
+                queue.Retire(new FakeResource());
+                queue.BeginFrame();
+                Assert.True(queue.SealedBatchCount <= Delay,
+                    $"frame {frame} held {queue.SealedBatchCount} batches on a {Delay}-frame delay");
+            }
+
+            Assert.Equal(0, queue.ValveDrains);
+        }
+
+        [Fact]
+        public void A_cap_below_one_is_clamped_the_way_the_frame_delay_is()
+        {
+            var barrier = new FakeBarrier();
+            int drains = 0;
+            var pool = new GpuRetireQueue(() => drains++, barrier, maxSealedBatches: 0);
+            Assert.Equal(1, pool.MaxSealedBatches);
+
+            var first = new FakeResource();
+            pool.Retire(first);
+            pool.BeginFrame();               // one sealed batch, at the clamped cap, so still no drain
+            Assert.Equal(0, drains);
+            Assert.Equal(0, first.DisposeCount);
+
+            pool.Retire(new FakeResource());
+            pool.BeginFrame();               // two, which is past it
+
+            Assert.Equal(1, pool.ValveDrains);
+            Assert.Equal(0, pool.PendingCount);
+        }
+
         [Fact]
         public void FlushAll_still_drains_on_the_fence_path()
         {

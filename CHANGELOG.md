@@ -49,7 +49,13 @@ Found by the Grimhollow adopt, where the greybox house rendered with a visibly d
   which is why #646's identity check did not reach this. A rejoin deliberately issues a fresh read rather than
   adopting the outstanding one: that read was issued for the previous session's seat, may already have completed,
   and its bytes are the older of the two answers. A second CONCURRENT session for one account now supersedes the
-  first here too, which one account keying one record was never a shape two live players could share. Closes #654.
+  first here too, and THAT configuration is a known regression rather than a fix: `NetServer` does not dedupe a join
+  by subject, so two clients presenting one token are two live sessions, the later one wins the guard, the earlier one
+  is never restored and plays from wherever its join built it, and once the winner leaves the next dirty pass can
+  write that pre-restore state over the account's record. Before this change both sessions restored the same record
+  and wrote the same state back. One account keying one record was never a shape two live players could share, and
+  the fix belongs at the join gate rather than in this layer, so it is tracked in
+  https://github.com/APKiwiOrg/KhaozEngine/issues/662. Closes #654.
 - **A tokenless connection is not persisted, and never under `guest:{slot}`** (`KhaozEngine.NetWorld`). Both heads
   key a connection with no verified subject `guest:{slot}`, and both hand a freed slot straight to the next
   connection, so that key named a chair rather than a player and `WorldPersistence` stored under
@@ -61,10 +67,16 @@ Found by the Grimhollow adopt, where the greybox house rendered with a visibly d
   guard, so a guest is built on the host's configured spawn every session. New
   **`WorldPersistenceConfig.PersistGuests`** (default false) opts a game that runs tokenless BY DESIGN back in,
   under a durable `guest:{guid}` minted per session at join and NEVER the seat, so no guest can inherit another's
-  record. What that buys is stated plainly in its doc: the minted id is unreachable afterwards, so it is
+  record. **`PlayerPersistenceContext.AccountId` carries that resolved key** at both save points, so a game's
+  `CaptureGameState` hook reads the id its record is actually filed under rather than the `guest:{slot}` the head
+  derived, which is the seat identity this change exists to keep out of the store. What that buys is stated plainly
+  in its doc: the minted id is unreachable afterwards, so it is
   crash-safety within a session and an audit trail, never a guest's return. New public
   **`ResumePositionCache.IsGuestAccount(string)`**, the one predicate over `GuestAccountPrefix` both the hint cache
-  and the persistence layer now ask, so the two answers cannot drift. Closes #647.
+  and the persistence layer now ask, so the two answers cannot drift. That makes `guest:` a reserved subject prefix
+  the engine still enforces nowhere: `SignedToken.Mint` accepts any subject without a `.` and `AllowAllAuthenticator`
+  takes the client's raw bytes, so a game CAN mint `guest:alice` as a real account and get a player who is read as
+  tokenless and silently not persisted. Tracked in https://github.com/APKiwiOrg/KhaozEngine/issues/664. Closes #647.
 
 ## 17.37.0
 

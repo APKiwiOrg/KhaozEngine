@@ -12355,6 +12355,8 @@ engine never deserializes the blob; the game owns its format.
 - **`CaptureGameState`** runs on the server thread at every save point (save-on-leave and the periodic dirty
   pass). It is handed a `PlayerPersistenceContext` (`Slot` + `AccountId`), so it can read the live per-player
   object by `Slot`, and returns the serialized bytes (or null / empty for "no game state" - position only).
+  `AccountId` is always the key the record is FILED under, never the runtime seat: under `PersistGuests` a tokenless
+  connection reaches the hook as its minted `guest:{guid}`, not as the `guest:{slot}` the head derived.
   **Returning null / empty is destructive: it means "no game state", not "keep the existing blob".** After a save
   has written bytes, returning null / empty marks the record dirty and **erases** the stored blob. Never return it
   just because the live object isn't loaded yet - return the last-known bytes, or the player's progression is wiped.
@@ -12378,8 +12380,13 @@ outstanding under one key. Every join takes a monotonic token, the guard holds t
 carrying any other token is dropped (below). As a plain flag the first load to land cleared the guard for both,
 which reopened the save window while its sibling was still in the air, and then let that sibling apply a record the
 live session had already moved past - a yank backwards, and past `QuietRestoreDistance` a teleport (#654). A second
-CONCURRENT session for one account supersedes the first the same way, which one account keying one record could not
-support in any case. One ordering edge remains: a save-on-leave and the rejoin's own load can be in flight at the
+CONCURRENT session for one account supersedes the first the same way, and there it is a known REGRESSION rather than
+a fix: `NetServer` does not dedupe a join by subject, so two clients presenting one token are two live sessions, the
+LATER one wins the guard, the earlier one is never restored and plays from wherever its join built it, and once the
+winner leaves the next dirty pass can write that pre-restore state over the account's record. Before this change both
+sessions restored. One account keying one record was never a shape two live players could share, and the fix belongs
+at the join gate rather than here, so it is tracked in
+[#662](https://github.com/APKiwiOrg/KhaozEngine/issues/662). One ordering edge remains: a save-on-leave and the rejoin's own load can be in flight at the
 same instant on an async store, and store operations for one account are not ordered against each other, so a rejoin
 can briefly apply pre-leave state, which the next periodic save reconciles. Use a stable account id, and serialize
 your own per-account store operations if a session needs strict ordering. Subscribe to
@@ -12395,7 +12402,9 @@ not the account's current one for the same reason: that read was issued for a se
 predate everything the live session has done (#654). Either drop is announced through
 **`WorldPersistence.OnLoadApplyDropped`** (`event Action<string, int>`, accountId + slot) and an `Info` log line
 under the `WorldPersistence` category naming which of the two it was, and nothing at all is written: the dropped
-account's stored record is untouched, stays guarded, and is read again on its next join.
+record is untouched in the store, and the drop never clears a guard itself. A SEAT drop leaves the record guarded
+until that account rejoins and its own next read clears it. A SESSION drop leaves the live session's load to answer
+for it, either still in flight and still guarding or already applied, which is what cleared the guard.
 
 ```csharp
 persistence.OnLoadApplyDropped += (accountId, slot) =>
@@ -12409,6 +12418,12 @@ guard for one now, and a guest is built on the configured spawn every session. A
 sets **`WorldPersistenceConfig.PersistGuests = true`**, which files each guest under a durable `guest:{guid}` minted
 for that one session and never under the seat. That buys crash-safety within a session and an audit trail, never a
 guest's return: nothing can present the minted id again. Give players a connect token if returning matters.
+
+The `guest:` prefix is RESERVED by that rule and enforced nowhere. `SignedToken.Mint` accepts any subject that has no
+`.` in it, and `AllowAllAuthenticator` takes the client's raw bytes as the subject, so a game that mints
+`guest:alice` as a real account id gets a player the engine reads as tokenless and, by default, does not persist at
+all, silently. Do not namespace your own account ids under it. Tracked in
+[#664](https://github.com/APKiwiOrg/KhaozEngine/issues/664).
 
 ```csharp
 var persistence = new WorldPersistence(server, store, new WorldPersistenceConfig

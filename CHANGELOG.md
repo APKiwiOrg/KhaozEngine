@@ -18,6 +18,15 @@ replanned for a goal that moved straight up.
   with the identical font, lines and width cap to get the lines it walks, throwing the first result away. The
   layout pass hands its wrapped lines back to `Draw` now, so a visible tooltip does one wrap and allocates one
   line list per frame rather than two. Closes #400.
+- **`PersistenceQueue` rotates two backup generations by default** (`KhaozEngine.Persistence`). The
+  constructor's `backupGenerations` defaulted to 0 while both read sides default to 2, so a consumer that
+  builds the queue directly instead of through `GameStorage` wrote no `.bak1`/`.bak2` at all and the 13.6.0
+  recovery ladder had nothing to recover from: `LoadWithOutcome` and the `SettingsManager` ladder probed
+  generations that were never written. SpaceGame hit exactly that and had to pass `backupGenerations: 2` by
+  hand. The default is 2 now, matching `GameStorageOptions.BackupGenerations` and
+  `FileSettingsStorage.BackupGenerations`, so a bare queue paired with a bare `FileSettingsStorage` recovers
+  out of the box. A direct-queue consumer that counted on no `.bak` files appearing beside its writes now gets
+  two, and `backupGenerations: 0` still turns rotation off. Closes #234.
 - **`GreyboxMeshResolver` builds every shape in its own PLANE's local space** (`KhaozEngine.TileWorld.Render3D`).
   A roof archetype is placed on the plane ABOVE the walls it covers, which is exactly what `TileWorldView`'s
   roof-hide rule keys on, and `TileObjectProps.AnchorPosition` anchors an object at `HeightAt(plane)`, so a

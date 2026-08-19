@@ -11064,7 +11064,8 @@ by a restore that then also fails).
 `LastLoadOutcome` after each `Load()`, so a settings screen can surface "recovered from backup" or
 "settings reset" instead of silently swallowing it, matching the file settings' own `BackupGenerations`
 knob (separate from `GameStorageOptions.BackupGenerations` - set it to match if you want the same recovery
-depth).
+depth). A `PersistenceQueue` built directly rotates 2 generations by default too, so a consumer that skips
+`GameStorage` and drives the queue itself still writes the `.bak1`/`.bak2` this ladder reads.
 
 ---
 

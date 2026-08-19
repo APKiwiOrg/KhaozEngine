@@ -140,10 +140,16 @@ public sealed class WorldPersistenceConfig
 /// of the two answers. The saving would have been one store read on a path that only opens during an outstanding
 /// read.</para>
 ///
-/// <para>One ordering edge remains, narrower than it was: a save-on-leave and the rejoin's own load can be in flight
-/// at the same instant on an async store, and store operations for one account are not ordered against each other,
-/// so a rejoin can briefly apply pre-leave state (the next periodic save reconciles it). Use a stable account id. If
-/// a session needs strict ordering, serialize your own per-account store operations on top.</para>
+/// <para>A load-on-join also WAITS for the account's own outstanding writes, which is the other half of what the
+/// join gate made routine. Store operations for one key are not ordered against each other, so the save-on-leave and
+/// the rejoin's load issued from a single event drain race, and on any store whose write costs more than its read
+/// the read wins: the newcomer was restored onto the record from BEFORE the leave, and the next periodic save then
+/// wrote that rollback down as the truth. A kick is exactly that shape every time (#662), so every write this layer
+/// issues is published under its key, and a join whose key carries one awaits it before it reads. A write that FAILS
+/// still releases the join, which then reads whatever the store still holds - the same outage semantics a failed
+/// save already had, and never a join stranded behind a dead store. What that buys is per-key ordering between this
+/// layer's own writes and its own reads. It is not a distributed lock: a store also written by something else, or by
+/// a second process running this layer, still needs that store's own ordering. Use a stable account id.</para>
 ///
 /// <para>A TOKENLESS connection is not persisted at all by default. Both heads key one <c>guest:{slot}</c>, and a
 /// slot is a seat the next connection inherits, so a record filed under that key named a chair and loaded onto
@@ -228,6 +234,15 @@ public sealed class WorldPersistence
     // CURRENT session's token means a load can be told apart from its own predecessor, which nothing about the
     // account or the slot can do.
     private readonly ConcurrentDictionary<string, long> loadsInFlight = new();
+    // key -> a task that completes once every store WRITE issued so far under that key has landed. The mirror image
+    // of loadsInFlight, and it exists for the handover the join gate made routine: a kick runs the old session's
+    // save-on-leave and the newcomer's load-on-join out of ONE event drain, and store operations for one key are not
+    // ordered against each other, so on any store whose write costs more than its read the newcomer read the record
+    // from BEFORE the leave and was restored onto it - a rollback the next periodic save then made permanent (#662).
+    // A join whose key has an entry here awaits it before reading. Entries are written on the server thread (both
+    // save points) and removed from the write's own continuation, so the removal takes the pair overload and can
+    // only ever drop the entry it published.
+    private readonly ConcurrentDictionary<string, Task> savesInFlight = new();
     // Hands out one token per join, monotonic within THIS instance, which is the same scope loadsInFlight is keyed
     // in, so a token identifies exactly one session of this layer. Two WorldPersistence instances hand out the same
     // numbers and never compare them.
@@ -355,11 +370,28 @@ public sealed class WorldPersistence
         }
         long token = Interlocked.Increment(ref nextJoinToken);
         loadsInFlight[accountId] = token;                   // guard the account until THIS session's record applies (or its load returns null)
-        Track(LoadOnJoinAsync(slot, accountId, token));
+        // Read the account's outstanding write, if any, on the SERVER THREAD, before the load task starts: the
+        // save-on-leave that has to be waited for was published from this same drain, one event earlier.
+        savesInFlight.TryGetValue(accountId, out Task? outstandingSave);
+        Track(LoadOnJoinAsync(slot, accountId, token, outstandingSave));
     }
 
-    private async Task LoadOnJoinAsync(int slot, string accountId, long token)
+    private async Task LoadOnJoinAsync(int slot, string accountId, long token, Task? outstandingSave)
     {
+        if (outstandingSave is not null)
+        {
+            // A write for this key is still in the air - on the kick path it is the session this one just displaced,
+            // saving where the player actually was. Reading now would hand this session whatever the store held
+            // BEFORE that write, restore the player onto it, and let the next periodic pass write the rollback back
+            // down as the truth. A FAILED write must not strand the join: log it and read anyway, which yields the
+            // older record and is the same outage shape a failed save already has.
+            try { await outstandingSave.ConfigureAwait(false); }
+            catch (Exception ex)
+            {
+                Log.Warn($"the save outstanding for account '{accountId}' failed, so its load-on-join on slot {slot} "
+                       + "reads whatever the store still holds, which may predate that session's last state.", ex);
+            }
+        }
         byte[]? data = await store.LoadAsync(Key(accountId)).ConfigureAwait(false);
         if (data is null)                                  // no save -> keep wherever the join built them (spawn, or this account's hint)
         {
@@ -427,7 +459,36 @@ public sealed class WorldPersistence
         // refuses outright - correctly, since nothing can present a minted guest id again.
         resumeHints.Record(accountId, finalState.Position);
         Task save = SaveIfDirtyAsync(key, BuildRecordBytes(slot, key, finalState));
-        Track(ResumePositionCache.IsGuestAccount(key) ? RetireGuestSessionAsync(slot, key, save) : save);
+        if (ResumePositionCache.IsGuestAccount(key))
+        {
+            Track(RetireGuestSessionAsync(slot, key, save));   // a minted guest key is never loaded, so nothing waits on it
+            return;
+        }
+        Track(save);
+        Track(ReleaseWhenSavedAsync(key, PublishSave(key, save)));   // the rejoin's load waits behind this write
+    }
+
+    // Registers an outstanding write under one key and hands back the entry a join will await. Chains onto whatever
+    // was already outstanding for that key rather than replacing it, so the entry always covers EVERY write issued
+    // so far under it: a periodic batch and a save-on-leave can genuinely overlap for one account, and a join that
+    // awaited only the newer of the two would still be reading while the older was in the air. Server thread only.
+    private Task PublishSave(string key, Task save)
+    {
+        Task tail = savesInFlight.TryGetValue(key, out Task? prev) && !prev.IsCompleted
+            ? Task.WhenAll(prev, save)
+            : save;
+        savesInFlight[key] = tail;
+        return tail;
+    }
+
+    // Releases a published entry once its write has landed. Faults are swallowed HERE on purpose: the write itself is
+    // tracked separately and surfaces through OnStoreError, so rethrowing would report one store outage twice. This
+    // task's only job is to stop the key being guarded, which a failed write must do just as a successful one does.
+    private async Task ReleaseWhenSavedAsync(string key, Task tail)
+    {
+        try { await tail.ConfigureAwait(false); }
+        catch { /* already observed and surfaced by whoever tracked the underlying write */ }
+        savesInFlight.TryRemove(new KeyValuePair<string, Task>(key, tail));
     }
 
     // A minted guest key belongs to one session and is unreachable once that session ends, so after its final save
@@ -609,7 +670,12 @@ public sealed class WorldPersistence
                     continue;                                    // unchanged since last save
                 (dirty ??= new List<(string, byte[])>()).Add((key, data));
             }
-        if (dirty is not null) Track(SaveManyDirtyAsync(dirty));
+        if (dirty is null) return;
+        Task batch = SaveManyDirtyAsync(dirty);
+        Track(batch);
+        // The batch is an outstanding write for every account in it, so a rejoin landing while it is in the air waits
+        // behind it exactly as it waits behind a save-on-leave.
+        foreach ((string key, byte[] _) in dirty) Track(ReleaseWhenSavedAsync(key, PublishSave(key, batch)));
     }
 
     // Batches every dirty account's record into one store round trip (one SaveManyAsync call instead of N

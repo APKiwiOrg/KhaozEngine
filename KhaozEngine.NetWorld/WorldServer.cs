@@ -91,6 +91,15 @@ public sealed class WorldServerConfig
     /// is the only bound it enforces on it. Default 1024. The rate limiter (<see cref="AntiCheat"/>) runs in front of
     /// this, so game messages share the per-connection flood budget with moves.</summary>
     public int MaxGameMessageBytes { get; init; } = 1024;
+
+    /// <summary>What happens when a client presents a connect token whose authenticated subject ALREADY holds a slot
+    /// on this server (one account, two clients). Default <see cref="DuplicateSessionPolicy.KickOlder"/>: the new
+    /// session wins and the older one is disconnected with a distinct reason the client surfaces
+    /// (<see cref="DisconnectReason.SignedInElsewhere"/>), its leave running before the new join is admitted so
+    /// persistence sees leave-then-join rather than two live sessions sharing one account record. Set
+    /// <see cref="DuplicateSessionPolicy.RefuseNewer"/> to keep the existing session and refuse the newcomer instead.
+    /// A TOKENLESS connection has no subject and is never deduped.</summary>
+    public DuplicateSessionPolicy DuplicateSessions { get; init; } = DuplicateSessionPolicy.KickOlder;
 }
 
 /// <summary>
@@ -183,7 +192,8 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
             this.config.SamplerSpace);
         // Always enforce the engine wire generation at connect (independent of any consumer version gate), so a
         // wire-skewed or version-less client is rejected cleanly instead of admitted and left to misparse the wire.
-        net = new NetServer(transport, config.MaxPlayers, WireGenerationAuthenticator.Install(authenticator));
+        net = new NetServer(transport, config.MaxPlayers, WireGenerationAuthenticator.Install(authenticator),
+            duplicateSessions: config.DuplicateSessions);
         this.banStore = banStore;
         interest = new InterestGrid(MathF.Max(1f, config.InterestRadius));
     }

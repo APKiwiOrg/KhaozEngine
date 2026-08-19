@@ -304,6 +304,19 @@ public sealed partial class WorldClient : IDisposable
                         disconnectReasonDetail = requiredVersion;
                         FailAttempt(allowReconnect: false);
                     }
+                    else if (ev.RejectReason == SessionRejectReason.SignedInElsewhere ||
+                             ev.RejectReason == SessionRejectReason.AlreadySignedIn)
+                    {
+                        // The duplicate-session gate, either side of it. Terminal both ways: retrying the kick would
+                        // displace the session that just displaced this one (the two clients would trade the seat
+                        // forever), and retrying the refusal hammers a seat the other session may hold all day. The
+                        // game shows its own localized line for the reason and offers a manual sign-in.
+                        disconnectReason = ev.RejectReason == SessionRejectReason.SignedInElsewhere
+                            ? DisconnectReason.SignedInElsewhere
+                            : DisconnectReason.AlreadySignedIn;
+                        disconnectReasonDetail = string.Empty;
+                        FailAttempt(allowReconnect: false);
+                    }
                     else
                     {
                         disconnectReason = DisconnectReason.RejectedToken;

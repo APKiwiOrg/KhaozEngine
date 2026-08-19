@@ -21,4 +21,14 @@ public enum DisconnectReason
     /// the detail carries the decode error). Not retried: the client must update. Show "client out of date,
     /// please update".</summary>
     IncompatibleVersion,
+    /// <summary>This account signed in somewhere else and that session took the seat: the server ended THIS one
+    /// (<see cref="Netcode.DuplicateSessionPolicy.KickOlder"/>, the default). Not retried, deliberately: reconnecting
+    /// would kick the session that just displaced this one, and the two clients would trade the seat forever. Show
+    /// "signed in elsewhere" and let the player decide whether to sign in again.</summary>
+    SignedInElsewhere,
+    /// <summary>This account already holds a live session on the server, which kept its seat
+    /// (<see cref="Netcode.DuplicateSessionPolicy.RefuseNewer"/>): the join was refused rather than the other session
+    /// displaced. Not retried automatically (the other session may hold the seat indefinitely). Show "already signed
+    /// in" and offer a manual retry.</summary>
+    AlreadySignedIn,
 }

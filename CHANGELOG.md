@@ -36,6 +36,14 @@ replanned for a goal that moved straight up.
   waypoint's layer to match `NavSpace.LayerAt(position)`, so the follower keeps steering at the upper waypoint
   until the agent is actually up there. Passing no space keeps the XZ-only advance exactly as it was, which is
   what a single-layer world wants. Closes #316.
+- **`PathFollower` replans for a goal that moves straight up or down** (`KhaozEngine.Navigation`). The
+  retarget trigger compared the goal against `_plannedGoalXz`, a `Vector2`, so a goal that took a staircase
+  registered exactly zero drift: same XZ, one floor up, no replan due. The follower kept steering the route
+  it had planned to the old floor until some unrelated trigger (a corridor breach, a consumed path, the
+  cooldown plus one of those) happened to fire. The planned goal's height is tracked now and checked against
+  the new `PathFollowConfig.GoalRetargetVerticalTolerance` (default 0.8, matching `VerticalAcceptTolerance`)
+  alongside the horizontal `GoalRetargetTolerance`. `ReplanCooldownSeconds` still gates how often a due
+  replan reaches the planner, and `float.PositiveInfinity` restores the purely horizontal trigger. Closes #317.
 - **`GreyboxMeshResolver` builds every shape in its own PLANE's local space** (`KhaozEngine.TileWorld.Render3D`).
   A roof archetype is placed on the plane ABOVE the walls it covers, which is exactly what `TileWorldView`'s
   roof-hide rule keys on, and `TileObjectProps.AnchorPosition` anchors an object at `HeightAt(plane)`, so a

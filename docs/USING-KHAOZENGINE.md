@@ -4879,8 +4879,9 @@ NavPath path = planner.FindPath(start, goal, agentRadius: 0.4f);   // PathQueryB
 ### Follow it every tick
 
 A game brain rarely wants to call `FindPath` itself: `PathFollower` owns the replan decision (stored path
-exhausted, the goal drifted, or the agent strayed off the planned corridor, each gated by a cooldown) and
-hands back a per-tick world-space direction:
+exhausted, the goal drifted in XZ past `GoalRetargetTolerance` or in Y past
+`GoalRetargetVerticalTolerance`, or the agent strayed off the planned corridor, each gated by a cooldown)
+and hands back a per-tick world-space direction:
 
 Hand it the `NavSpace` too on a multi-layer world. That third argument is what lets the waypoint advance
 compare the layer a waypoint carries against the agent's own (`NavSpace.LayerAt`). Without it the advance is

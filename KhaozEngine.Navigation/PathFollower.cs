@@ -90,8 +90,29 @@ public sealed class PathFollowConfig
     public float VerticalAcceptTolerance { get; init; } = 0.8f;
 
     /// <summary>How far (world units) the goal may move from the position it was planned against before
-    /// a replan is due.</summary>
+    /// a replan is due. Measured in XZ, so a goal that changes floor also has to pass
+    /// <see cref="GoalRetargetVerticalTolerance"/> to trigger a replan on height alone.</summary>
     public float GoalRetargetTolerance { get; init; } = 1.5f;
+
+    /// <summary>
+    /// How far (world units) the goal may move VERTICALLY from the height it was planned against before a
+    /// replan is due: the vertical twin of <see cref="GoalRetargetTolerance"/>, checked alongside it rather
+    /// than instead of it.
+    /// <para>
+    /// A goal taking a staircase moves straight up: same XZ, zero horizontal drift, so the horizontal trigger
+    /// alone never fires and the follower keeps steering the route it planned to the old floor until some
+    /// unrelated trigger (a corridor breach, a consumed path) happens to come along.
+    /// </para>
+    /// <para>
+    /// The default 0.8 matches <see cref="VerticalAcceptTolerance"/>, so any height change big enough that the
+    /// arrival check would no longer call the agent and the goal co-located is also big enough to replan for,
+    /// while ordinary ground variation under a goal walking level ground is not.
+    /// <see cref="ReplanCooldownSeconds"/> still gates how often a due replan actually reaches the planner, so
+    /// a goal that bobs vertically cannot spam it.
+    /// </para>
+    /// Set it to <see cref="float.PositiveInfinity"/> for a purely horizontal retarget trigger.
+    /// </summary>
+    public float GoalRetargetVerticalTolerance { get; init; } = 0.8f;
 
     /// <summary>How far (world units) the agent may stray from the corridor segment leading to the
     /// active waypoint before a replan is due.</summary>
@@ -105,8 +126,8 @@ public sealed class PathFollowConfig
     public PathQueryBudget Budget { get; init; } = PathQueryBudget.Default;
 
     /// <summary>Default tuning: a 0.6 unit accept radius paired with a 0.8 unit vertical tolerance, 1.5
-    /// unit goal-drift and 2.5 unit corridor tolerances, a 0.5 second replan cooldown, and
-    /// <see cref="PathQueryBudget.Default"/>.</summary>
+    /// unit horizontal and 0.8 unit vertical goal-drift tolerances, a 2.5 unit corridor tolerance, a 0.5
+    /// second replan cooldown, and <see cref="PathQueryBudget.Default"/>.</summary>
     public static PathFollowConfig Default { get; } = new();
 }
 
@@ -131,6 +152,10 @@ public sealed class PathFollower
     int _index;
     float _cooldown;
     Vector2 _plannedGoalXz;
+    // The goal's height at plan time, kept beside _plannedGoalXz rather than folded into it, so the two
+    // drift triggers keep their own tolerances (a floor apart vertically is a much smaller number than a
+    // floor apart horizontally).
+    float _plannedGoalY;
     Vector2 _planOriginXz;
 
     /// <summary>Builds a follower over <paramref name="planner"/>, using <paramref name="config"/> or
@@ -193,7 +218,8 @@ public sealed class PathFollower
     /// that clears the XZ radius but not the vertical tolerance (another floor, a ledge) falls through to
     /// the steps below instead, so the layer-aware planner is the one that decides how to reach it.</item>
     /// <item>Decides whether a replan is due: no stored path, the stored path is fully consumed, the goal
-    /// drifted past <see cref="PathFollowConfig.GoalRetargetTolerance"/> from where it was planned, or the
+    /// drifted past <see cref="PathFollowConfig.GoalRetargetTolerance"/> in XZ or past
+    /// <see cref="PathFollowConfig.GoalRetargetVerticalTolerance"/> in Y from where it was planned, or the
     /// agent strayed past <see cref="PathFollowConfig.CorridorTolerance"/> from the corridor segment
     /// leading to the active waypoint.</item>
     /// <item>Replans when due and the cooldown has fully drained, then resets the cooldown.</item>
@@ -240,10 +266,13 @@ public sealed class PathFollower
             return new PathFollowOutput { WorldDir = Vector2.Zero, State = PathFollowState.Arrived, ActiveWaypoint = Vector2.Zero, HopStart = Vector2.Zero };
         }
 
-        // Step 3: decide whether a replan is due.
+        // Step 3: decide whether a replan is due. The vertical drift is its own term: a goal that takes a
+        // staircase moves straight up, so the XZ drift is exactly zero and the horizontal trigger alone
+        // would let the follower keep steering a route planned to the floor the goal has left.
         bool needsPlan = _path is null
             || _index >= _path.Waypoints.Count
             || Vector2.Distance(goalXz, _plannedGoalXz) > _config.GoalRetargetTolerance
+            || MathF.Abs(goal.Y - _plannedGoalY) > _config.GoalRetargetVerticalTolerance
             || DistanceToActiveCorridor(posXz) > _config.CorridorTolerance;
 
         // Step 4: replan, gated by the cooldown.
@@ -251,6 +280,7 @@ public sealed class PathFollower
         {
             _path = _planner.FindPath(position, goal, agentRadius, _config.Budget);
             _plannedGoalXz = goalXz;
+            _plannedGoalY = goal.Y;
             _planOriginXz = posXz;
             _index = 0;
             _cooldown = _config.ReplanCooldownSeconds;
@@ -310,15 +340,16 @@ public sealed class PathFollower
         return new PathFollowOutput { WorldDir = dir, State = PathFollowState.Following, ActiveWaypoint = active.Position, HopStart = Vector2.Zero };
     }
 
-    /// <summary>Clears all stored path state (path, index, cooldown, plan origin and goal), as if this
-    /// follower had just been constructed. The next <see cref="Tick"/> plans fresh with no cooldown
-    /// wait.</summary>
+    /// <summary>Clears all stored path state (path, index, cooldown, plan origin and goal, height
+    /// included), as if this follower had just been constructed. The next <see cref="Tick"/> plans fresh
+    /// with no cooldown wait.</summary>
     public void Reset()
     {
         _path = null;
         _index = 0;
         _cooldown = 0f;
         _plannedGoalXz = Vector2.Zero;
+        _plannedGoalY = 0f;
         _planOriginXz = Vector2.Zero;
     }
 

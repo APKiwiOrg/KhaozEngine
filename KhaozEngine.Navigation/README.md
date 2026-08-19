@@ -295,8 +295,9 @@ replanning through an `IPathPlanner` only when it must. A game brain owns one in
 `Tick(position, goal, agentRadius, dt)` every frame. Not thread-safe: one agent, one thread.
 
 A replan is due when: there is no stored path, the stored path is fully consumed, the goal drifted past
-`PathFollowConfig.GoalRetargetTolerance` from where it was planned, or the agent strayed past
-`PathFollowConfig.CorridorTolerance` from the corridor segment leading to the active waypoint. A due
+`PathFollowConfig.GoalRetargetTolerance` in XZ or past `PathFollowConfig.GoalRetargetVerticalTolerance` in
+Y from where it was planned, or the agent strayed past `PathFollowConfig.CorridorTolerance` from the
+corridor segment leading to the active waypoint. A due
 replan only fires once `PathFollowConfig.ReplanCooldownSeconds` has drained, so a persistently unreachable
 goal or a jittery corridor breach does not spam the planner every tick.
 
@@ -319,8 +320,16 @@ single-layer world wants anyway.
   is twice the canonical `MoveTuning.StepHeight` (0.4) and also covers the 0.6 of rise a 45-degree
   max-slope hillside gains across `AcceptRadius`, while staying far below the 4 m default
   `DungeonConfig.FloorHeightMeters`. `float.PositiveInfinity` gives a purely horizontal arrival check.
-- **`GoalRetargetTolerance`** (default 1.5) - how far the goal may move from where it was planned before
-  a replan is due.
+- **`GoalRetargetTolerance`** (default 1.5) - how far the goal may move in XZ from where it was planned
+  before a replan is due.
+- **`GoalRetargetVerticalTolerance`** (default 0.8) - the vertical twin of the above, checked alongside it.
+  A goal taking a staircase moves straight up, so its XZ drift is exactly zero and the horizontal trigger
+  alone never fires: the follower keeps steering a route planned to the floor the goal has left until some
+  unrelated trigger comes along. The default matches `VerticalAcceptTolerance`, so a height change big
+  enough that the arrival check would no longer call the two co-located is also big enough to replan for,
+  while ordinary ground variation under a goal walking level ground is not. `ReplanCooldownSeconds` still
+  gates how often a due replan reaches the planner. `float.PositiveInfinity` gives a purely horizontal
+  retarget trigger.
 - **`CorridorTolerance`** (default 2.5) - how far the agent may stray from the planned corridor before a
   replan is due.
 - **`ReplanCooldownSeconds`** (default 0.5) - minimum time between replans.

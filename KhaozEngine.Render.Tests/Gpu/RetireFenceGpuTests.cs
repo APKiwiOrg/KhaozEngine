@@ -21,8 +21,22 @@ namespace KhaozEngine.Tests.Gpu
     /// <para><b>Cost.</b> The same churn is then measured twice on ONE device in ONE process, once with the fence
     /// path and once with the capability suppressed so the frame-count-plus-drain fallback runs. In-process A/B for
     /// the reason ShadowCascadeCullPerfGpuTests gives: a number measured against a different build or a different
-    /// process is not comparable. The asserted claim is the drain COUNT, which is deterministic. The milliseconds
-    /// are printed, not gated, because a shared dev machine's timings are not a stable gate.</para>
+    /// process is not comparable. The asserted claim is the drain COUNT. The milliseconds are printed, not gated,
+    /// because a shared dev machine's timings are not a stable gate.</para>
+    /// <para><b>The drain count is no longer asserted as zero</b>, because since
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/425">#425</see> it is not device-independent. The
+    /// queue's safety valve pays one drain past its sealed-batch cap, which is what stops a CPU running away from
+    /// its GPU growing the holding without bound. What is asserted instead is that every drain came from the valve,
+    /// that the cap held at every frame boundary, and that the valve fired no more often than its own period
+    /// allows. See the gate at the bottom of this file.</para>
+    /// <para><b>And the valve fires HERE, on an M2 Max, which is worth knowing before reading the number.</b> The
+    /// churn below runs through <c>Render3DPreview.Capture</c>, which submits a frame and returns: there is no
+    /// swapchain and no present, so nothing throttles the CPU at all and it runs eight or nine frames ahead of the
+    /// GPU on hardware that is in no way struggling. The measured run is 16 valve drains over 400 frames against
+    /// the fallback's 396, and a peak holding that sits exactly on the cap. A windowed game does not look like
+    /// this: its present blocks at the backend's frames-in-flight depth (default 3), which is half the cap, so the
+    /// valve stays shut and the drain count really is zero. So a non-zero reading here is the instrument working,
+    /// and the shape to be alarmed by is a peak holding ABOVE the cap, which is what the gate checks.</para>
     /// <para>Gated on KE_GPU_TESTS. This leg runs on Metal locally. The Direct3D11/WARP and Vulkan/lavapipe legs
     /// run in CI on tag, and lavapipe is the one that matters for the crash: until it runs there, the Vulkan fence
     /// path is unproven and only the argument plus the Metal evidence stands behind it. WHICH DIRECT3D 11 BACKEND
@@ -57,7 +71,8 @@ namespace KhaozEngine.Tests.Gpu
         // One churn run: every frame loads a fresh set of meshes, draws them, then unloads the PREVIOUS frame's set
         // (whose buffers the just-submitted command list referenced). Returns the drains it cost and how long it
         // took. Everything is driven through Render3DPreview so the frame boundary and the submit are the real ones.
-        (int Drains, int FencedSubmits, double Ms, int PeakPending) Churn(IGpuDevice inner, bool suppressFences)
+        (int Drains, int FencedSubmits, double Ms, int PeakPending, int PeakBatches, int ValveDrains) Churn(
+            IGpuDevice inner, bool suppressFences)
         {
             var spy = new SpyGpuDevice(inner, suppressFences);
             using var preview = new Render3DPreview(spy, W, H);
@@ -67,7 +82,7 @@ namespace KhaozEngine.Tests.Gpu
 
             var previous = new List<MeshHandle>();
             var current = new List<MeshHandle>();
-            int peak = 0;
+            int peak = 0, peakBatches = 0;
 
             // Warm up outside the measurement: the first frames pay pipeline creation and JIT.
             for (int i = 0; i < 10; i++) preview.Capture(_ => { });
@@ -96,11 +111,16 @@ namespace KhaozEngine.Tests.Gpu
                 previous.AddRange(current);
 
                 if (scene.RetiredResourceCount > peak) peak = scene.RetiredResourceCount;
+                // Sampled at the frame boundary, which is where the valve's bound is stated: after a BeginFrame has
+                // returned, the queue holds at most MaxSealedBatches batches (#425). Sampling anywhere else would
+                // be sampling the middle of the sweep.
+                if (scene.RetiredBatchCount > peakBatches) peakBatches = scene.RetiredBatchCount;
             }
 
             double ms = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
             int drains = spy.WaitForIdleCalls - drainsBefore;
             int fenced = spy.FencedSubmitCalls - fencedBefore;
+            int valve = scene.RetireValveDrains;
 
             // Settle: unload the tail and run the pool until it is empty, so "drains to zero at idle" is a real
             // assertion and not a snapshot taken mid-burst. Every poll WAITS for the frame it just submitted.
@@ -123,14 +143,14 @@ namespace KhaozEngine.Tests.Gpu
                 $"the retired pool still holds {scene.RetiredResourceCount} resources after {SettleMs():F0} ms of "
                 + "settling with a device drain per poll, so the retirement fence never signaled");
 
-            return (drains, fenced, ms, peak);
+            return (drains, fenced, ms, peak, peakBatches, valve);
         }
 
         // Fences are a Vulkan and Metal capability (VeldridMap), so this SKIPS rather than fails on a backend
         // without them: asserting a capability the device cannot have is a red test for a feature that was never
         // claimed (#423). The two surfaces that publish it must still agree, which is asserted below.
         [GpuFact(RequiresCompletionFences = true)]
-        public void Mesh_churn_survives_hundreds_of_frames_and_the_fence_path_removes_every_drain()
+        public void Mesh_churn_survives_hundreds_of_frames_and_the_fence_path_drains_only_at_the_valve()
         {
             using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
             IGpuDevice gd = ctx.GpuDevice;
@@ -142,14 +162,17 @@ namespace KhaozEngine.Tests.Gpu
             var fenced = new List<double>();
             var fallback = new List<double>();
             int fencedDrains = -1, fallbackDrains = -1, fencedSubmits = -1, fencedPeak = 0, fallbackPeak = 0;
+            int fencedValveDrains = -1, fencedPeakBatches = 0;
             for (int round = 0; round < 3; round++)
             {
                 var a = Churn(gd, suppressFences: false);
                 var b = Churn(gd, suppressFences: true);
                 fenced.Add(a.Ms); fallback.Add(b.Ms);
                 fencedDrains = a.Drains; fallbackDrains = b.Drains; fencedSubmits = a.FencedSubmits;
+                fencedValveDrains = a.ValveDrains;
                 fencedPeak = Math.Max(fencedPeak, a.PeakPending);
                 fallbackPeak = Math.Max(fallbackPeak, b.PeakPending);
+                fencedPeakBatches = Math.Max(fencedPeakBatches, a.PeakBatches);
             }
 
             fenced.Sort(); fallback.Sort();
@@ -164,13 +187,43 @@ namespace KhaozEngine.Tests.Gpu
                            $"{fallbackMs / Frames,10:0.000} {fallbackPeak,10}");
             _out.WriteLine($"drains removed: {fallbackDrains} -> {fencedDrains}, " +
                            $"frame cost {fallbackMs / Frames:0.000} -> {fencedMs / Frames:0.000} ms/frame");
+            _out.WriteLine($"peak sealed batches {fencedPeakBatches} of a {GpuRetireQueue.DefaultMaxSealedBatches} " +
+                           $"cap, valve drains {fencedValveDrains}");
 
-            // The gate is the drain count, which is deterministic. Sustained churn retires on every frame, so the
-            // fallback pays a drain on very nearly every frame boundary once the delay is warm, and the fence path
-            // pays none at all.
-            Assert.Equal(0, fencedDrains);
+            // THE GATE, and it is written against the safety valve rather than against a flat zero (#425).
+            //
+            // A flat zero was the original assertion and it stopped being true the moment the holding got a bound.
+            // The fence path holds a batch until its fence signals, so a CPU that outruns its GPU used to grow the
+            // holding with no limit at all. Bounding it means the queue trades the poll for one drain past
+            // MaxSealedBatches batches, which makes the drain count a property of how far ahead the CPU gets, and
+            // this loop gets a long way ahead on any device because nothing here presents (see the class remark:
+            // 16 drains over 400 frames on an M2 Max). Asserting zero would fail the test for doing its job.
+            //
+            // So three claims that hold on any device, and together say what zero used to say:
+            //
+            // 1. Every drain on this path came from the valve. Nothing else on the fence path stalls the CPU, which
+            //    is the whole claim the fence path makes, and it is the half of the original assertion that was
+            //    actually about the code rather than about the machine. The printed line above records the count
+            //    for whichever device ran it.
+            Assert.Equal(fencedValveDrains, fencedDrains);
+            // 2. The bound held at every frame boundary of the churn. This is the assertion that goes red if the
+            //    valve stops working, on the exact device where it matters.
+            Assert.True(fencedPeakBatches <= GpuRetireQueue.DefaultMaxSealedBatches,
+                $"the retire queue held {fencedPeakBatches} sealed batches, past its cap of "
+                + $"{GpuRetireQueue.DefaultMaxSealedBatches}, so the bound is not holding");
+            // 3. And the valve cannot have fired more often than its own period allows: it frees the WHOLE holding,
+            //    so the count has to climb from zero again before it can fire once more. Off by one for the boundary
+            //    the run happens to start on.
+            int valveCeiling = Frames / (GpuRetireQueue.DefaultMaxSealedBatches + 1) + 1;
+            Assert.True(fencedDrains <= valveCeiling,
+                $"expected at most {valveCeiling} valve drains over {Frames} frames "
+                + $"(one per {GpuRetireQueue.DefaultMaxSealedBatches + 1}), got {fencedDrains}");
+            // The fallback is unchanged: sustained churn retires on every frame, so it drains on very nearly every
+            // frame boundary once the delay is warm. That gap is what the fence path bought.
             Assert.True(fallbackDrains > Frames / 2,
                 $"expected the unfenced fallback to drain on most frames of sustained churn, got {fallbackDrains} of {Frames}");
+            Assert.True(fencedDrains * 4 < fallbackDrains,
+                $"expected the fence path to drain far less than the fallback, got {fencedDrains} against {fallbackDrains}");
             // One fenced submission per frame that retired something, and not one per retired resource.
             Assert.True(fencedSubmits <= Frames + 2,
                 $"expected at most one fenced submission per frame, got {fencedSubmits} over {Frames} frames");

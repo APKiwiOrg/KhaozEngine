@@ -12285,6 +12285,76 @@ persistence.Issue += issue => log.Info(issue.ToString());   // migrated / skippe
   `SchemaVersion`), the same rules `KhaozEngine.Persistence.MigrationChain` enforces. Engine-owned built-in layout
   changes ship engine-provided migrations; consumer extension changes ship consumer migrations. A migrated cell is
   rewritten once with the current header so a later boot does not re-migrate.
+- **The blob header records the wire generation (schema v4, since 17.37.1).** An engine built-in is unframed on the
+  wire, so how many bytes its payload occupies in a stored body depends on the `MoveProtocol.WireProtocolVersion` the
+  writing build was at, NOT on the blob's schema version. Those two drifted apart for eight generations, so v4 stamps
+  the generation into the header (`[magic][schemaVersion][wireGeneration]`, 12 bytes) and `BuiltinBlobLayout` holds
+  the per-generation payload table the driver and every engine migration read. **A wire-generation bump therefore no
+  longer needs a schema bump**: the driver reads the stored generation and brings the body forward itself, reports it
+  as a `Migrated` issue carrying `wire generation N -> M`, and rewrites the blob once. A blob stamped at a generation
+  NEWER than the running build is `SkippedTooNew` (quarantined, never misread), which is the downgrade direction that
+  used to be a silent misparse.
+- **Blobs written before the stamp are inferred, and an inference that is not unique is REFUSED.** The migration
+  walks the body at every candidate generation and discards the ones that recovered something no build writes:
+  built-in ids ascend within an entity and none follows an extension frame, no id repeats, a movement payload's bool
+  bytes are 0 or 1, a display name is UTF-8, and an extension id the live registry never registered retires the
+  candidate that read it. One survivor (or several agreeing byte for byte) is the answer. Survivors that disagree
+  raise `AmbiguousCellBlobGenerationException`, and the driver quarantines the cell as `QuarantinedAmbiguous` with
+  its bytes intact. There is deliberately no tie-break: a scoring rule is wrong in the under-read direction, where a
+  candidate OLDER than the truth reads a built-in payload short and the bytes it leaves behind re-sync into frames
+  the walk copies, which used to let it beat the truth and restore silently wrong movement fields plus phantom
+  components.
+- **Two knobs, and both are worth setting on a server with pre-v4 saves.**
+
+  ```csharp
+  var persistence = new CellPersistence(host, store, new CellPersistenceConfig
+  {
+      Registry = registry,            // optional: defaults to the host's own, ICellPersistenceHost.Registry
+      AssumedWireGeneration = 8,      // optional: what wrote this save's pre-v4 blobs (see the table below)
+  });
+  ```
+
+  `Registry` only ever REMOVES candidates (an id nobody registered is not a component), so it cannot promote a wrong
+  reading, and it is usually what leaves exactly one candidate standing rather than none. It is taken from the host by
+  default (`ICellPersistenceHost.Registry`, which `ShardedWorldServer` exposes), so setting it here overrides that
+  rather than switching it on. And supplying it cannot cost you a blob an unsupplied registry would have migrated: a
+  body whose only surviving readings were all retired by that one rule is carrying a RETAINED unknown extension frame,
+  which is bytes a real build wrote, so the inference is decided again with the rule dropped and the rest kept.
+  `AssumedWireGeneration` replaces the inference entirely: the body is walked at that generation and nothing is
+  guessed, which is how an ambiguous cell is recovered rather than lost. It names the generation of ONE vintage, and a
+  long-lived store holds two (a v2 body is generations 1 to 8, a v3 body 9 and up), so the migration step whose own
+  range does not contain it ignores it and goes on inferring. Setting it to 5 to bring this save's v2 blobs in
+  therefore costs the v3 blobs beside them nothing. Blobs that carry the v4 stamp ignore both.
+  A save's generation is the highest row here whose version is at or below the engine version that wrote it:
+
+  | wire generation | first engine version that wrote it |
+  | --- | --- |
+  | 1 | pre-10.0.0 |
+  | 2 | 10.0.0 |
+  | 3 | 10.32.0 |
+  | 4 | 10.65.0 |
+  | 5 | 10.75.0 |
+  | 6 | 14.26.0 |
+  | 7 | 16.0.0 |
+  | 8 | 16.2.0 |
+  | 9 | 17.0.0 |
+  | 10 | 17.26.0 |
+
+- **What happens to blobs already on disk.** They are migrated on first load, one way. A v1, v2 or v3 blob is walked
+  forward and rewritten once as v4, after which boots do no work. Nothing is destroyed if that fails: the original
+  bytes go to `quarantine:cell:{x}:{y}` as always.
+- **Rolling BACK past v4 hollows the save out, and the quarantine copy does not save you.** An older build reports
+  `SkippedTooNew` for a v4 blob and starts that cell fresh, so the cell is live and empty and its next
+  `SaveDirtyPass` writes an EMPTY v3 blob over the main key. Rolling forward again restores nothing, because the only
+  surviving copy of that cell is the quarantine key, and the quarantine write overwrites that key unconditionally,
+  so a second rolled-back boot over the same coordinate replaces the good copy with the empty one. Copy the
+  quarantine keys out before restarting a rolled-back server, or set `CellPersistenceConfig.FailFastOnTooNew`, which
+  throws out of the load drain instead of starting the cell fresh so the boot stops rather than the save being
+  hollowed out. Once a server has written v4 blobs it should not be downgraded.
+- **What the boot came up as.** `CellPersistence` counts its load outcomes (`MigratedCellCount`,
+  `SkippedTooOldCellCount`, `SkippedTooNewCellCount`, `QuarantinedCorruptCellCount`,
+  `QuarantinedAmbiguousCellCount`) and writes one aggregate line at the end of each flush that changed any of them,
+  on top of the per-cell `Issue` event.
 - **Quarantine, not crash.** A blob that fails to decode (bad header, corrupt frame, a migration threw, or a blob
   older than the earliest migration / newer than this build) is copied to `quarantine:cell:{x}:{y}` and the cell
   starts fresh. Nothing is destroyed and the server keeps ticking, so a poisoned key can be recovered out of band

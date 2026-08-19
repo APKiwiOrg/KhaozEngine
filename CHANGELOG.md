@@ -39,6 +39,9 @@ a reason the client can show. What that handover leaves behind is a leave-save a
 drain, which no store orders against the other, so a join now waits for its account's outstanding writes before it
 reads. Without that, any store whose write costs more than its read restored the newcomer onto the record as it
 stood before the leave, and the next periodic save made the rollback permanent.
+And a cell blob
+finally records which wire generation wrote its component payloads, so an old save boots instead of being
+quarantined as corrupt.
 
 - **`GpuRetireQueue` has a safety valve, so a GPU the CPU runs away from no longer grows the holding forever**
   (`KhaozEngine.Gpu`). On the fence path a batch lived until its fence signalled, with nothing bounding how many
@@ -346,6 +349,126 @@ left behind.
   no such contract, and the new duplicate-session gate dereferenced it (`subject.Length`) on every accepted Hello.
   Null is read as the same "no subject" the empty string is: anonymous, never deduped, and admitted exactly as it was
   before the gate existed.
+
+#### Cell blobs record the wire generation their built-in payloads were written at
+
+- **`BuiltinBlobLayout` is the one per-generation payload table** (`KhaozEngine.NetWorld`). A built-in replicated
+  component is UNFRAMED (no length prefix), so anything that walks a persisted snapshot body frame by frame needs each
+  built-in's payload byte count, and that count is a function of the WIRE GENERATION the body was written at rather
+  than of the blob's schema version. The two drifted apart badly: `MoveProtocol.WireProtocolVersion` ran from 2 to 10
+  while `CellPersistenceConfig.SchemaVersion` sat first at 2 and then at 3, and `MovementState` grew in six of those
+  steps, so "a v2 blob" was seven different byte layouts with nothing on disk to tell them apart. Each of the two
+  engine migrations hand-rolled its own walk with its own hard-coded table, and `NetIdBlobMigration`'s said 13 bytes
+  while `PositionFrameBlobMigration`'s said 26, neither of which is right for most of the range either had to read.
+  There is one table now, `BuiltinBlobLayout.PayloadLength(typeId, wireGeneration)`, with a row per generation, and
+  one walk behind it that every migration and the driver share.
+- **The blob header carries the wire generation (schema v4).** `CellPersistence` writes
+  `[magic][schemaVersion][wireGeneration]` (12 bytes, against the 8-byte header below v4) and
+  `CellPersistenceConfig.SchemaVersion` now defaults to `WireGenerationBlobMigration.StampedSchemaVersion` = 4. The
+  point is what it removes: **a future wire-generation bump needs no schema bump and no new migration.** The driver
+  reads the stored generation, walks the body forward to this build's layout, surfaces a `Migrated` issue carrying
+  `wire generation N -> M`, and rewrites the blob once. And a blob stamped at a generation NEWER than the running
+  build is now `SkippedTooNew` with its bytes preserved, where before an engine downgrade silently misparsed the
+  bodies it could not read.
+- **Blobs written before the stamp are validated and, when two readings disagree, refused.**
+  `WireGenerationBlobMigration.NormalizeV3ToV4` (v3 -> v4) and the rewritten `PositionFrameBlobMigration.FrameV2ToV3`
+  (v2 -> v3) walk the body at every generation their schema version could have been written at. Each candidate is
+  judged against what the writer is known to do, not scored: built-in ids ascend within an entity and none follows an
+  extension frame, no id repeats, a movement payload's bool bytes are 0 or 1, a display name is UTF-8, and (when
+  `CellPersistenceConfig.Registry` is supplied) an extension id the live registry never registered retires the
+  candidate that recovered it. If exactly one candidate survives, or several survive to byte-identical results, that
+  is the answer. If they disagree the migration throws `AmbiguousCellBlobGenerationException` and the driver
+  quarantines the cell under the new `CellPersistenceIssueKind.QuarantinedAmbiguous`, naming the candidates. A body
+  that walks at no candidate throws and is quarantined as before.
+  - **This replaces the most-frames rule that shipped in the first cut of this section, which was wrong in the
+    under-read direction.** Its safety argument, that an over-long read can only swallow frames and never invent
+    them, holds only for candidates NEWER than the truth. An OLDER candidate reads a built-in payload SHORT, and
+    `ReplicationRegistry.IsExtension` is a pure numeric test, so any two leftover bytes at or above 16 open a
+    length-prefixed frame the walk copies verbatim. That candidate can recover MORE frames than the truth and win,
+    and its output is a structurally valid current-generation body: it does not throw, it is not quarantined, it
+    restores with zeroed horizontal velocity, a flipped ground flag and phantom components, and is then
+    re-persisted. A 2000-body randomised sweep put it at 48 silent mis-decodes over the v2 range and 1 over v3.
+    Both are zero now, and that sweep ships as a test.
+  - **Two knobs, because a refusal costs a cell.** `CellPersistenceConfig.Registry` takes the live replication
+    registry and is what usually leaves exactly one candidate standing rather than none (it can only remove
+    candidates, never promote a wrong one). `CellPersistenceConfig.AssumedWireGeneration` states the generation a
+    save's pre-v4 blobs were written at, which replaces the inference outright: the body is walked at that generation
+    and nothing is guessed. `docs/USING-KHAOZENGINE.md` carries the engine-version to wire-generation table for
+    setting it. Blobs that carry the stamp ignore both.
+  - **The chain infers once.** Each step now records the generation it produced, so the v3 -> v4 step no longer
+    re-walks a body the v2 -> v3 step has already normalized. A v2 blob cost nine walks and two rewrites before,
+    and that second inference was a second independent chance to get it wrong.
+  - **Neither knob can cost a cell any more, which a fix round later is what both of them were doing.** Both are
+    advertised as strictly helpful, so an operator is pushed at them, and each had a recovery path that did the
+    reverse. Supplying `Registry` retired EVERY candidate on a body carrying a retained unknown extension frame (an id
+    dropped from the registry, which retain-and-rewrite exists to carry forward verbatim), so a blob the same build
+    migrates cleanly without a registry quarantined as corrupt with one: 350 of 350 v2 bodies refused with the
+    registry supplied, against 321 migrated and 29 ambiguous without it. When that one rule is what emptied the field,
+    the inference is now decided again with it dropped and every other evidence rule kept, so the registry can still
+    turn an ambiguity into a migration and can never lose a blob an unsupplied registry would have brought in. A body
+    that walks nowhere either way now names the extension ids nobody registered, and both knobs.
+  - **`AssumedWireGeneration` serves both pre-v4 vintages, not whichever one it names.** `FrameV2ToV3` walks
+    generations 1 to 8 and `NormalizeV3ToV4` 9 to this build's, off one knob, so `AssumedWireGeneration = 5` brought
+    the v2 bodies in and threw on every v3 body in the same store, and 10 did the reverse. A long-lived save
+    legitimately holds both, so each step now IGNORES an assumed generation outside its own range and infers for that
+    step. The knob resolves the vintage it names and costs the other one nothing.
+  - **`CellPersistence` takes its registry from the host by default.** `ICellPersistenceHost` gained
+    `ReplicationRegistry? Registry` as a default interface member (null, so no existing implementer changes) and
+    `ShardedWorldServer` already exposed exactly that property, so a server gets the registry-aware inference without
+    handing the same object to `CellPersistenceConfig` as well. `CellPersistenceConfig.Registry` overrides it.
+  - **The display-name length cap is an evidence rule, not a structural one.** `CellBlobWalkPolicy` is documented as
+    shape-only when the generation is recorded, and the `MoveProtocol.MaxDisplayNameBytes` reject was running under it
+    anyway. Being a property of the WRITER it now sits with the other evidence rules and applies only while a
+    generation is being inferred, so a recorded generation is decoded rather than judged.
+  - **Ambiguity needs a movement frame, so a live save can carry almost none of the risk.** The 9-to-10 hop is two
+    bytes appended to `MovementState`, so a consumer whose server-owned entities carry no `MovementState` at all
+    cannot produce an ambiguous body in the 9..10 range. Ruinborne is that case (its wolves carry none), so its live
+    store has effectively no ambiguity risk from this.
+- **What this does to a save already on disk.** It is migrated in place on first load, ONE WAY. A v1, v2 or v3 blob is
+  walked forward, restored, and rewritten once as a v4 blob stamped with this build's generation, after which later
+  boots do no work at all. Payload fields that the writing generation predates restore at their defaults (a
+  generation-5 save has no `HorizontalVelocityXQ` bytes to read, so it restores as 0), which is the honest answer and
+  what the wire itself does for a field it never carried. Nothing is destroyed on failure: the original bytes still
+  go to `quarantine:cell:{x}:{y}`. A server that has written v4 blobs should not be downgraded, since an older build
+  reports `SkippedTooNew` and starts each cell fresh.
+- **What a ROLLBACK does to the save, spelled out.** A pre-17.37.1 build reading a v4 blob quarantines it as
+  `SkippedTooNew` and starts that cell fresh, which preserves the bytes under `quarantine:cell:{x}:{y}` but does NOT
+  leave the save intact: the cell is now empty and live, so the next `SaveDirtyPass` writes an EMPTY v3 blob over the
+  main key. Rolling forward again afterwards restores nothing, because the only surviving copy of that cell is the
+  quarantine key - and `CellPersistence.Quarantine` overwrites that key unconditionally, so a second rollback pass
+  over the same coordinate replaces the good copy with the empty one it just wrote. Copy the quarantine keys out
+  before restarting a rolled-back server, or set the new `CellPersistenceConfig.FailFastOnTooNew`, which throws out of
+  the load drain instead of starting the cell fresh, so the boot stops rather than hollowing the save out.
+- **Ops can see the shape of a boot.** `CellPersistence` counts its load outcomes
+  (`MigratedCellCount`, `SkippedTooOldCellCount`, `SkippedTooNewCellCount`, `QuarantinedCorruptCellCount`,
+  `QuarantinedAmbiguousCellCount`) and writes one aggregate line at the end of each flush that changed any of them,
+  so the boot flush says what the save came up as instead of leaving it to a subscriber nobody wired.
+- **The fix is a test, not a constant.** `BuiltinBlobLayoutTests` re-encodes `MovementState` field by field at every
+  wire generation, pins each row of the table against it, compares the NEWEST rung byte for byte against the live
+  `MoveProtocol.CreateRegistry` codec, and checks each rung is a prefix of the next. The byte comparison is the
+  staleness tripwire: a codec that grows without a table row goes red there rather than mis-walking every stored blob
+  months later, and the prefix property is what licenses bringing an old payload forward by padding it with zeros.
+  `PositionFrameBlobMigrationTests` now migrates a real body from all seven generations a v2 blob can carry, decoded
+  back through `ClientReplicationView` on the production registry. Its previous fixture seeded the CURRENT movement
+  encoder and called it v2, a schema/generation pairing no build ever wrote, which is exactly why the stale table
+  passed it.
+- **API:** new `BuiltinBlobLayout` and `WireGenerationBlobMigration` (`KhaozEngine.NetWorld`), new
+  `NetIdBlobMigration.NetId32WireGeneration` and `PositionFrameBlobMigration.OldestAbsolutePositionWireGeneration` /
+  `NewestAbsolutePositionWireGeneration`, and message-carrying overloads of `CellPersistenceIssue.Migrated` /
+  `SkippedTooNew` (the generation hop leaves both schema versions equal, so it needs somewhere to say so). Also new:
+  `AmbiguousCellBlobGenerationException` and `CellPersistenceIssueKind.QuarantinedAmbiguous`,
+  `CellBlobMigrationOptions` plus the options-taking overloads of `FrameV2ToV3` / `NormalizeV3ToV4`,
+  `CellPersistenceConfig.Registry` / `AssumedWireGeneration` / `FailFastOnTooNew`, the five
+  `CellPersistence.*CellCount` counters, `BuiltinBlobLayout.SwimmingWireGeneration` /
+  `MovementGroundedOffset` / `MovementSwimmingOffset`, `ICellPersistenceHost.Registry` (a default interface member
+  returning null, which `CellPersistence` uses as the default for `CellPersistenceConfig.Registry`), and
+  `ReplicationRegistry.IsRegistered` (`KhaozEngine.Replication`).
+
+Closes #353 and #322: #322 asked which failure mode a generation-skewed blob actually takes. With the generation
+stamped, validated and refused when it is ambiguous, the answer is now a quarantine rather than world corruption in
+every direction: a body from a NEWER generation is skipped on the stamp, a body whose recorded generation does not
+walk is quarantined, and a pre-stamp body that reads two ways is quarantined rather than migrated into one of the
+readings.
 
 ## 17.37.0
 

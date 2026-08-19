@@ -138,6 +138,14 @@ public sealed class ReplicationRegistry
     /// <summary>Codecs in registration order (the order the writer serializes present components).</summary>
     internal IReadOnlyList<ComponentCodec> Ordered => ordered;
 
+    /// <summary>
+    /// Whether this registry has a codec for <paramref name="typeId"/>. The public read side of the registration
+    /// table, for a caller that has to judge whether a type id it read out of stored bytes is one this build knows:
+    /// cell-blob persistence uses it to reject a candidate parse of a blob whose wire generation was never recorded
+    /// (an id nobody registered is far more likely to be a mis-walk than a component).
+    /// </summary>
+    public bool IsRegistered(ushort typeId) => byId.ContainsKey(typeId);
+
     internal bool TryGet(ushort typeId, out ComponentCodec codec) => byId.TryGetValue(typeId, out codec!);
 }
 

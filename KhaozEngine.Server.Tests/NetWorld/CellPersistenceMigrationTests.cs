@@ -52,7 +52,8 @@ public class CellPersistenceMigrationTests
         var seedHost = new FakeHost();
         seedHost.Snapshots[coord] = body;
         // Opt out of engine migrations here: this only WRITES a blob stamped at schemaVersion, and folding in the
-        // engine widening would (e.g. at v5) leave a gap in the chain and throw at construction.
+        // engine widening would (e.g. at v6) leave a gap in the chain and throw at construction. A schemaVersion at
+        // or above the stamped version also writes the wire-generation header word, exactly as the driver does.
         var seeder = new CellPersistence(seedHost, store,
             new CellPersistenceConfig { SchemaVersion = schemaVersion, IncludeEngineMigrations = false });
         seeder.SaveDirtyPass();
@@ -196,7 +197,7 @@ public class CellPersistenceMigrationTests
     public async Task Load_NewerThanSchema_SkippedTooNew_AndPreserved()
     {
         var store = new InMemoryWorldStore();
-        await SeedBlob(store, C00, 5, new byte[] { 0, 0, 0, 0 });   // stored at v5
+        await SeedBlob(store, C00, 6, new byte[] { 0, 0, 0, 0 });   // stored at v6
         byte[]? orig = await store.LoadAsync("cell:0:0");
 
         var host = new FakeHost();
@@ -208,7 +209,7 @@ public class CellPersistenceMigrationTests
         await cp.FlushAsync();
 
         Assert.False(host.Restored.ContainsKey(C00));
-        Assert.Contains(issues, i => i.Kind == CellPersistenceIssueKind.SkippedTooNew && i.FromVersion == 5);
+        Assert.Contains(issues, i => i.Kind == CellPersistenceIssueKind.SkippedTooNew && i.FromVersion == 6);
         Assert.Equal(orig, await store.LoadAsync("quarantine:cell:0:0"));
     }
 
@@ -217,9 +218,9 @@ public class CellPersistenceMigrationTests
     {
         var store = new InMemoryWorldStore();
         byte[] body = { 0, 0, 0, 0 };
-        await SeedBlob(store, C00, PositionFrameBlobMigration.FramedPositionSchemaVersion, body);   // stored at the current version (3)
+        await SeedBlob(store, C00, WireGenerationBlobMigration.StampedSchemaVersion, body);   // stored at the current version (4)
         var host = new FakeHost();
-        var cp = new CellPersistence(host, store);   // default SchemaVersion == the current version (3) == stored
+        var cp = new CellPersistence(host, store);   // default SchemaVersion == the current version (4) == stored
         var issues = new List<CellPersistenceIssue>();
         cp.Issue += issues.Add;
 

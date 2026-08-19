@@ -19,7 +19,10 @@ public enum DuplicateSessionPolicy
 
     /// <summary>The existing session keeps the seat and the NEW Hello is refused with
     /// <see cref="SessionRejectReason.AlreadySignedIn"/>. The safer answer for a server with no session-takeover story,
-    /// at the cost of the reconnect case above: a player whose link died is locked out until the server notices.</summary>
+    /// at the cost of the reconnect case above: a player whose link died is locked out until the server notices, which
+    /// on LiteNetLib's default <c>DisconnectTimeout</c> is 5 seconds after the link went quiet. That is why the
+    /// refusal is the one duplicate-session answer a client retries rather than treats as terminal: it displaces
+    /// nobody, and the seat it is waiting on is usually that same player's own dying connection.</summary>
     RefuseNewer,
 }
 
@@ -36,6 +39,8 @@ public static class SessionRejectReason
     public const string SignedInElsewhere = "ke:signed-in-elsewhere";
 
     /// <summary>Sent to the Hello being refused under <see cref="DuplicateSessionPolicy.RefuseNewer"/>: this account
-    /// already holds a live session on this server.</summary>
+    /// already holds a live session on this server. Retrying it is safe (nothing was displaced) and is what
+    /// <c>WorldClient</c> does, so a player waiting out their own dead connection's timeout gets back in on the
+    /// backoff instead of being sent to a manual sign-in.</summary>
     public const string AlreadySignedIn = "ke:already-signed-in";
 }

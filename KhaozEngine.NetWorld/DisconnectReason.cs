@@ -28,7 +28,10 @@ public enum DisconnectReason
     SignedInElsewhere,
     /// <summary>This account already holds a live session on the server, which kept its seat
     /// (<see cref="Netcode.DuplicateSessionPolicy.RefuseNewer"/>): the join was refused rather than the other session
-    /// displaced. Not retried automatically (the other session may hold the seat indefinitely). Show "already signed
-    /// in" and offer a manual retry.</summary>
+    /// displaced. RETRIED on the backoff, unlike <see cref="SignedInElsewhere"/>: a refusal displaces nobody, so
+    /// there is no seat to trade, and the usual holder of that seat is this player's own half-dead connection, which
+    /// the server drops once its transport timeout expires (5 s on LiteNetLib's default). Show "already signed in"
+    /// while the state is <c>Reconnecting</c>. Cap the asking with <see cref="ReconnectBackoff.MaxAttempts"/> if a
+    /// game would rather stop after a few.</summary>
     AlreadySignedIn,
 }

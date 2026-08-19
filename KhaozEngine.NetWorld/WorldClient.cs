@@ -304,18 +304,29 @@ public sealed partial class WorldClient : IDisposable
                         disconnectReasonDetail = requiredVersion;
                         FailAttempt(allowReconnect: false);
                     }
-                    else if (ev.RejectReason == SessionRejectReason.SignedInElsewhere ||
-                             ev.RejectReason == SessionRejectReason.AlreadySignedIn)
+                    else if (ev.RejectReason == SessionRejectReason.SignedInElsewhere)
                     {
-                        // The duplicate-session gate, either side of it. Terminal both ways: retrying the kick would
-                        // displace the session that just displaced this one (the two clients would trade the seat
-                        // forever), and retrying the refusal hammers a seat the other session may hold all day. The
-                        // game shows its own localized line for the reason and offers a manual sign-in.
-                        disconnectReason = ev.RejectReason == SessionRejectReason.SignedInElsewhere
-                            ? DisconnectReason.SignedInElsewhere
-                            : DisconnectReason.AlreadySignedIn;
+                        // The KICK half of the duplicate-session gate: another client took this account's seat.
+                        // Terminal, and the one reason here that has to be: retrying would displace the session that
+                        // just displaced this one, and the two clients would trade the seat forever. The game shows
+                        // its own localized line and offers a manual sign-in.
+                        disconnectReason = DisconnectReason.SignedInElsewhere;
                         disconnectReasonDetail = string.Empty;
                         FailAttempt(allowReconnect: false);
+                    }
+                    else if (ev.RejectReason == SessionRejectReason.AlreadySignedIn)
+                    {
+                        // The REFUSAL half (a RefuseNewer server). Retried, unlike the kick: a refusal displaces
+                        // nobody, so there is no seat to trade and no ping-pong to start. What is usually holding the
+                        // seat is this player's OWN half-dead connection, which the server drops once its transport
+                        // timeout expires (LiteNetLib leaves DisconnectTimeout at 5 s), and the default backoff
+                        // spends its first three attempts inside that window - so answering terminally dumped a
+                        // player to manual sign-in for a one-second blip. From attempt four (7.5 s in) the backoff
+                        // has outlasted the window and the seat is free. A game that would rather stop asking sets
+                        // ReconnectBackoff.MaxAttempts, or AutoReconnect false.
+                        disconnectReason = DisconnectReason.AlreadySignedIn;
+                        disconnectReasonDetail = string.Empty;
+                        FailAttempt(allowReconnect: true);
                     }
                     else
                     {

@@ -244,7 +244,7 @@ public sealed record TilePropDrawRecord(
 /// records every load, unload and draw, so a test asserts exact handle counts and exact draw contents. Unloading
 /// a handle that is not live throws, which turns a double free in the view into a failing test rather than a
 /// silent leak of the bug into a real device.</summary>
-public sealed class RecordingTileWorldScene : ITileWorldScene
+public sealed partial class RecordingTileWorldScene : ITileWorldScene
 {
     readonly HashSet<int> _alive = new();
     int _next;

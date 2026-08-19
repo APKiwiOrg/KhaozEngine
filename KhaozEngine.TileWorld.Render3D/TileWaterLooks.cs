@@ -25,7 +25,7 @@ public static class TileWaterLooks
     /// river.</para>
     /// <para><b>Shared and NOT to be mutated.</b> <see cref="WaterLook"/> is a class of public fields, so this
     /// one instance is handed to every plane of every world in the process. Copy it and change the copy, or pass
-    /// a look of your own through <see cref="TileWorldView.WaterLook"/>.</para></summary>
+    /// a look of your own through <see cref="TileWorldViewOptions.WaterLook"/>.</para></summary>
     public static readonly WaterLook River = new()
     {
         // ---- Kept from the inland lake ------------------------------------------------------------------

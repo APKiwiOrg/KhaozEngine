@@ -36,8 +36,8 @@ public class TileWorldViewWaterTests
                 doc.SetUnderlay(tx, tz, 0, Water);
     }
 
-    static TileWorldView View(RecordingTileWorldScene scene, TileWorldDocument doc) =>
-        new(scene, doc, TileRenderTestData.Catalogs, new GreyboxMeshResolver());
+    static TileWorldView View(RecordingTileWorldScene scene, TileWorldDocument doc, TileWorldViewOptions? options = null) =>
+        new(scene, doc, TileRenderTestData.Catalogs, new GreyboxMeshResolver(), options);
 
     // One frame: Draw queues the ground, the props and, by default, the water planes after them.
     static void Frame(TileWorldView view, RecordingTileWorldScene scene)
@@ -53,14 +53,15 @@ public class TileWorldViewWaterTests
         TileWorldDocument doc = GrassWorld();
         Paint(doc, 10, 10, 3, 6);
         var scene = new RecordingTileWorldScene();
-        using TileWorldView view = View(scene, doc);
+        var options = new TileWorldViewOptions();
+        using TileWorldView view = View(scene, doc, options);
         view.LoadRegion(Origin);
 
         Frame(view, scene);
         int queued = scene.WaterDraws.Count;
         Assert.True(queued > 0, "Draw should queue the river's planes by default");
 
-        view.DrawWater = false;
+        options.DrawWater = false;
         Frame(view, scene);
         Assert.Empty(scene.WaterDraws);
 
@@ -145,7 +146,8 @@ public class TileWorldViewWaterTests
         TileWorldDocument doc = GrassWorld();
         Paint(doc, 10, 10, 3, 6);
         var scene = new RecordingTileWorldScene();
-        using TileWorldView view = View(scene, doc);
+        var options = new TileWorldViewOptions();
+        using TileWorldView view = View(scene, doc, options);
         view.LoadRegion(Origin);
 
         Frame(view, scene);
@@ -153,12 +155,12 @@ public class TileWorldViewWaterTests
 
         // Swapping the look re-collects even though nothing was remeshed.
         var mine = new WaterLook { Opacity = 0.5f };
-        view.WaterLook = mine;
+        options.WaterLook = mine;
         Frame(view, scene);
         Assert.Same(mine, Assert.Single(scene.WaterDraws).Look);
 
         // Null means the scene's own water settings, which is what a plane with no look draws with.
-        view.WaterLook = null;
+        options.WaterLook = null;
         Frame(view, scene);
         Assert.Null(Assert.Single(scene.WaterDraws).Look);
     }

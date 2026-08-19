@@ -23,6 +23,18 @@ public sealed class TileWorldViewOptions
     /// share one across several views of the same catalog.</summary>
     public TileGroundMaterialSet? GroundMaterials { get; set; }
 
+    /// <summary>The look every water plane this view queues carries. Defaults to
+    /// <see cref="TileWaterLooks.River"/>. Null draws the planes with the scene's own water settings instead,
+    /// which is what a world whose scene look is already a river wants. Read on every frame, so a change applies
+    /// to the next <see cref="TileWorldView.Draw"/>. On the options rather than the view so a caller that never
+    /// sees the view (<see cref="TileWorldSnapshot"/>, the ke-tileedit renders) can still set it.</summary>
+    public WaterLook? WaterLook { get; set; } = TileWaterLooks.River;
+
+    /// <summary>Whether <see cref="TileWorldView.Draw"/> queues the water planes after the ground and props (the
+    /// default). A caller that submits its own water pass for the world sets it false and may still call
+    /// <see cref="TileWorldView.DrawWaterPlanes"/> itself.</summary>
+    public bool DrawWater { get; set; } = true;
+
     /// <summary>How many queued region-planes one <see cref="TileWorldView.Flush()"/> may remesh, oldest first.
     /// The rest stay queued for the next flush, so a burst spreads over frames instead of landing on one.
     /// <para>The burst is real rather than theoretical: streaming one region in marks its eight neighbours dirty
@@ -341,8 +353,8 @@ public sealed partial class TileWorldView : IDisposable
         LastDrawnProps = drawn;
         // Water rides the same frame: the planes are cached per region-plane and re-collected only when that
         // region-plane's mesh or the look changed, so this is a walk over the loaded regions and one submit per
-        // plane. A caller that runs its own water pass turns it off with DrawWater.
-        if (DrawWater) DrawWaterPlanes();
+        // plane. A caller that runs its own water pass turns it off with TileWorldViewOptions.DrawWater.
+        if (_options.DrawWater) DrawWaterPlanes();
     }
 
     /// <summary>The ground materials every region-plane mesh of this view is drawn with, which is also the slot

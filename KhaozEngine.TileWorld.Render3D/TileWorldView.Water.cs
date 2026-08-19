@@ -7,24 +7,14 @@ namespace KhaozEngine.TileWorld;
 public sealed partial class TileWorldView
 {
     // One region-plane's collected water, plus the two things it was collected against. A rebuild is detected by
-    // the MESH HANDLE rather than announced: Flush builds the new mesh before it frees the old one, so a
-    // remeshed region-plane always comes back with a fresh generation, and any edit that could move a water
-    // tile or a corner height is exactly an edit that remeshes. That keeps the cache honest without the water
-    // path having to be wired into the rebuild path itself.
+    // the MESH HANDLE rather than announced: a remeshed region-plane comes back under a handle whose generation
+    // the scene bumped when it freed the old one (the mesh slot map bumps on Free, so a reused index can never
+    // reproduce a retired index plus generation pair), and any edit that could move a water tile or a corner
+    // height is exactly an edit that remeshes. That keeps the cache honest without the water path being wired
+    // into the rebuild path itself.
     readonly record struct WaterCache(int MeshIndex, int MeshGeneration, WaterLook? Look, IReadOnlyList<WaterPlane> Planes);
 
     readonly Dictionary<(RegionCoord Region, int Plane), WaterCache> _water = new();
-
-    /// <summary>The look every water plane this view queues carries. Defaults to
-    /// <see cref="TileWaterLooks.River"/>. Null draws the planes with the scene's own water settings instead,
-    /// which is what a world whose scene look is already a river wants. Changing it re-collects on the next
-    /// <see cref="DrawWaterPlanes"/>.</summary>
-    public WaterLook? WaterLook { get; set; } = TileWaterLooks.River;
-
-    /// <summary>Whether <see cref="Draw"/> queues the water planes after the ground and props (the default). A
-    /// caller that submits its own water pass for the world sets it false and may still call
-    /// <see cref="DrawWaterPlanes"/> itself.</summary>
-    public bool DrawWater { get; set; } = true;
 
     /// <summary>How many region-planes the water cache is holding, for the tests that assert an unload drops
     /// what it collected.</summary>
@@ -32,7 +22,8 @@ public sealed partial class TileWorldView
 
     /// <summary>Queues every loaded region-plane's water surfaces for this frame, through
     /// <see cref="ITileWorldScene.DrawWater"/>.
-    /// <para><see cref="Draw"/> calls it after the ground and props unless <see cref="DrawWater"/> is false, so
+    /// <para><see cref="Draw"/> calls it after the ground and props unless
+    /// <see cref="TileWorldViewOptions.DrawWater"/> is false, so
     /// a caller only calls it directly when it opted out of that and wants the planes at another point in its
     /// frame. The planes themselves are collected once per region-plane mesh and cached, so a frame that
     /// changed nothing is a walk over the loaded regions and one submit per plane.</para></summary>
@@ -59,15 +50,15 @@ public sealed partial class TileWorldView
         int index = mesh?.Index ?? -1, generation = mesh?.Generation ?? 0;
         if (_water.TryGetValue((region, plane), out WaterCache cached)
             && cached.MeshIndex == index && cached.MeshGeneration == generation
-            && ReferenceEquals(cached.Look, WaterLook))
+            && ReferenceEquals(cached.Look, _options.WaterLook))
             return cached.Planes;
 
         // No mesh means the region-plane has no drawable tile at all, and a water tile is drawable by
         // definition (it carries an underlay), so there is nothing to scan 4096 tiles for.
         IReadOnlyList<WaterPlane> planes = mesh is null
             ? Array.Empty<WaterPlane>()
-            : TileWaterPlanes.Collect(_doc, _catalogs, region, plane, WaterLook);
-        _water[(region, plane)] = new WaterCache(index, generation, WaterLook, planes);
+            : TileWaterPlanes.Collect(_doc, _catalogs, region, plane, _options.WaterLook);
+        _water[(region, plane)] = new WaterCache(index, generation, _options.WaterLook, planes);
         return planes;
     }
 

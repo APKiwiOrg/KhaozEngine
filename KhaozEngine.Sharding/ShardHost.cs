@@ -73,8 +73,11 @@ public sealed partial class ShardHost : IDisposable
     // The netIds crossing in the CURRENT ProcessHandoffs call that were marked Transient on their source cell.
     // Transient is not in any ReplicationRegistry (that is the point of it - persistence costs no wire id), so the
     // Migrate capture cannot carry it, and an unmarked arrival would be persisted by its new owner. Collected in
-    // phase 1 and re-applied in phase 2, which is where the destination first holds the adopted entity. Cleared at
-    // the top of every call, so nothing survives into the next one.
+    // phase 1 and re-applied in phase 2, which is where the destination first holds the adopted entity. Deliberately
+    // NOT cleared per call: the in-process link completes the crossing within one pass, but a networked link delivers
+    // the Migrate on a later one, and a scratch set wiped at the top of every call would have nothing left to re-mark
+    // by then. Each entry is instead CONSUMED at the re-mark, so the set drains itself and only an undelivered
+    // crossing keeps an entry (which is the entity still being in flight, not a leak).
     private readonly HashSet<long> transientCrossings = new();
 
     /// <param name="cellSize">World-grid cell edge length in world units. Must be &gt; 0.</param>
@@ -401,7 +404,6 @@ public sealed partial class ShardHost : IDisposable
             throw new InvalidOperationException("ProcessHandoffs requires a position accessor.");
 
         // Phase 1: detect crossings with a read-only scan, then send Migrate + freeze (mutations after the scan).
-        transientCrossings.Clear();
         var crossings = new List<(CellSim source, Entity entity, long netId, CellCoord dest)>();
         foreach (CellSim owner in ordered.ToArray())
         {
@@ -439,8 +441,10 @@ public sealed partial class ShardHost : IDisposable
                 foreach (long netId in cell.AdoptFromMigrate(msg.Payload))
                 {
                     // Re-mark before the ack, so the entity is never persistable in its new cell for even one
-                    // snapshot: an interval save between adopt and re-mark is exactly the husk this prevents.
-                    if (transientCrossings.Contains(netId) && cell.TryGetOwned(netId, out Entity adopted))
+                    // snapshot: an interval save between adopt and re-mark is exactly the husk this prevents. The
+                    // entry is CONSUMED here rather than read, which is what lets the mark survive a link that
+                    // delivers the Migrate on a later call instead of within this one.
+                    if (transientCrossings.Remove(netId) && cell.TryGetOwned(netId, out Entity adopted))
                         cell.World.Set(adopted, default(Transient));
                     link.Send(new CellMessage(cell.Coord, msg.Source, CellMessageKind.MigrateAck, BitConverter.GetBytes(netId)));
                 }

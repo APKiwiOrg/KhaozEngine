@@ -11,7 +11,9 @@ namespace KhaozEngine.Tests.Sharding;
 /// <see cref="CellSim.SnapshotOwned"/>'s blob rather than present with fewer components, so no restore can bring it
 /// back as a husk. Pins the three things that make the marker safe to reach for: the blob is byte-identical to one
 /// taken with the entity never spawned at all, the mark reaches no wire, and it follows the entity across a cell
-/// handoff so a crossing does not quietly make it persistable again.
+/// handoff so a crossing does not quietly make it persistable again. The handoff coverage is per link SHAPE, not
+/// per call: a link that delivers the Migrate on a later <see cref="ShardHost.ProcessHandoffs"/> call, which is what
+/// the <see cref="ICellLink"/> network-impl contract describes, re-marks on arrival too.
 /// </summary>
 public class CellTransientTests
 {
@@ -37,6 +39,37 @@ public class CellTransientTests
         c.World.Set(e, new Blob { V = v });
         c.RegisterOwned(netId, e);
         return e;
+    }
+
+    /// <summary>
+    /// The networked link shape <see cref="ICellLink"/>'s contract describes: a Migrate is STAGED on send and only
+    /// becomes drainable after <see cref="DeliverStaged"/>, so a crossing spans <see cref="ShardHost.ProcessHandoffs"/>
+    /// calls instead of completing inside one. Everything else (acks, ghost sync) is delivered in process as usual.
+    /// </summary>
+    private sealed class DeferringMigrateLink : ICellLink
+    {
+        private readonly InProcessCellLink inner = new();
+        private readonly List<CellMessage> staged = new();
+
+        public void Send(in CellMessage message)
+        {
+            if (message.Kind == CellMessageKind.Migrate) staged.Add(message);
+            else inner.Send(message);
+        }
+
+        public IReadOnlyList<CellMessage> Drain(CellCoord target, CellMessageKind kind) => inner.Drain(target, kind);
+
+        public bool HasPending(CellCoord target) =>
+            inner.HasPending(target) || staged.Exists(m => m.Target == target);
+
+        public void Forget(CellCoord target) => inner.Forget(target);
+
+        /// <summary>Hands over everything staged so far, as a node does once the wire hop completed.</summary>
+        public void DeliverStaged()
+        {
+            foreach (CellMessage m in staged) inner.Send(m);
+            staged.Clear();
+        }
     }
 
     private static bool PosAccessor(World world, Entity e, out float x, out float y)
@@ -136,6 +169,35 @@ public class CellTransientTests
 
         source.World.Set(e, new Pos { X = 150f, Y = 50f });   // over the border into (1,0)
         host.ProcessHandoffs();
+
+        Assert.True(host.TryGetOwner(7, out CellSim dest, out Entity moved));
+        Assert.Equal(new CellCoord(1, 0), dest.Coord);
+        Assert.True(dest.World.Has<Transient>(moved));
+        Assert.Equal(new byte[] { 0, 0, 0, 0 }, dest.SnapshotOwned(new HashSet<long>()));
+    }
+
+    [Fact]
+    public void ADeferredMigrateStillArrivesMarked()
+    {
+        // The link shape the ICellLink contract documents and every cross-node implementation has: the Migrate is
+        // delivered a call after it was sent. The mark is read in phase 1 of the FIRST call and has to still be
+        // there in phase 2 of the SECOND, or the destination adopts an unmarked entity and the next interval save
+        // writes exactly the husk #326 exists to prevent.
+        var link = new DeferringMigrateLink();
+        var host = new ShardHost(cellSize: 100f, tickSeconds: 0.1f, Registry(), interestCellSize: 100f,
+            overlapMargin: 20f, positionAccessor: PosAccessor, cellLink: link);
+
+        Entity e = host.SpawnOwned(50f, 50f, netId: 7, out CellSim source);
+        source.World.Set(e, new Pos { X = 50f, Y = 50f });
+        source.World.Set(e, new Blob { V = 1 });
+        source.World.Set(e, default(Transient));
+
+        source.World.Set(e, new Pos { X = 150f, Y = 50f });   // over the border into (1,0)
+        host.ProcessHandoffs();                               // sends the Migrate, which the link holds back
+        Assert.False(host.TryGetOwner(7, out CellSim _, out Entity _));   // still in flight, nobody owns it
+
+        link.DeliverStaged();
+        host.ProcessHandoffs();                               // the destination adopts it on THIS call
 
         Assert.True(host.TryGetOwner(7, out CellSim dest, out Entity moved));
         Assert.Equal(new CellCoord(1, 0), dest.Coord);

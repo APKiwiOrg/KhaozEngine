@@ -367,12 +367,13 @@ public class WorldPersistenceReconnectTeleportTests
             $"a guest rejoin belongs on the configured spawn, whoever held the slot last ({rig.BuiltAt[1]})");
         Assert.Equal(0, rig.Persistence.ResumeHints.Count);
 
-        // What this row does NOT fix, and is pinned here so the residual is visible rather than folklore: the
-        // PERSISTENCE keying is unchanged and predates the seed, so the record saved under player:guest:0 still
-        // loads onto whoever recycles the slot, and still moves them - as a teleport, which is the honest part.
+        // And it STAYS there. This half used to be pinned the other way: the persistence keying predates the seed,
+        // so the record written under player:guest:0 loaded back onto whoever recycled the slot and moved them, as a
+        // teleport. A tokenless connection is not persisted at all now, so there is nothing to restore and nothing
+        // was ever written (#647). WorldPersistenceGuestKeyingTests carries the keying rows themselves.
         rig.Idle(40);
-        Assert.True(Vector3.Distance(rig.LocalPosition(), Parked) < 0.5f,
-            $"the stored guest record still restores, pre-existing and unchanged ({rig.LocalPosition()})");
+        Assert.True(Vector3.Distance(rig.LocalPosition(), spawn) < 0.5f,
+            $"a guest was restored onto the seat's last occupant's position ({rig.LocalPosition()})");
     }
 
     // ---- (6) the sharded twin of (1) ----

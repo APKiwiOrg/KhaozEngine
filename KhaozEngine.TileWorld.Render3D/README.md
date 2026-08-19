@@ -60,9 +60,16 @@ and the archetype's yaw offset folds in under the same sign.
 reference. Returning null means "no mesh for this archetype", which the view answers with a placeholder box and
 one log line rather than a throw. `GreyboxMeshResolver` is the shipped stand-in: one procedural vertex-coloured
 box per archetype, sized from the footprint and shaped by the collision kind (a wall hugs the west edge, a corner
-wall adds the north edge, a diagonal stands a post, a roof slab hangs above wall height), coloured from a
+wall adds the north edge, a diagonal stands a post, a roof is a slab over the whole footprint), coloured from a
 deterministic grey/brown/green palette by archetype id. Only the footprint extent scales with the tile size: every
-thickness and height is absolute metres. It caches per archetype in a plain dictionary, so resolve on one thread.
+thickness is absolute metres. It caches per archetype in a plain dictionary, so resolve on one thread.
+
+Every greybox shape is PLANE-LOCAL: y 0 is the floor of the plane the object stands on, because `AnchorPosition`
+already lifts a placement to that plane. A roof is placed on the plane ABOVE the walls it covers (that is what the
+roof rule keys on), so its slab starts at y 0 too and the PLANE supplies the height, which is why
+`GreyboxMeshResolver(float tileSize = TileWorldDocument.DefaultTileSize, float wallHeight = TileWorldDocument.DefaultPlaneHeight)`
+makes a wall exactly one plane tall. Pass `doc.PlaneHeight` for `wallHeight` whenever a document is at hand, so a
+world with a non-default plane height still has its walls meet its roofs.
 
 ## The scene seam (`ITileWorldScene`, `Scene3DTileWorldScene`)
 

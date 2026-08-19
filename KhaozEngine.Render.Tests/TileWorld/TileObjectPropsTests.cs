@@ -232,16 +232,40 @@ public class TileObjectPropsTests
         Assert.Equal(-0.35f, wall.Vertices.Max(v => v.Position.X), Tolerance);
         Assert.Equal(-0.5f, wall.Vertices.Min(v => v.Position.Z), Tolerance);
         Assert.Equal(0.5f, wall.Vertices.Max(v => v.Position.Z), Tolerance);
-        Assert.Equal(2.5f, wall.Vertices.Max(v => v.Position.Y), Tolerance);
+        Assert.Equal(TileWorldDocument.DefaultPlaneHeight, wall.Vertices.Max(v => v.Position.Y), Tolerance);
     }
 
+    // The rule the roof lift was: a mesh lives in ITS OWN plane's local space, so a roof placed on the plane
+    // above the walls it covers starts at y 0 like everything else. Building it at wall height instead put the
+    // slab a whole plane above the walls once the anchor added that plane's own lift.
     [Fact]
-    public void The_greybox_roof_slab_hangs_above_the_walls()
+    public void The_greybox_roof_slab_sits_on_its_own_plane_floor()
     {
         GltfMesh roof = new GreyboxMeshResolver().Resolve(Archetype("roof_flat"))![0].Mesh;
 
-        Assert.Equal(2.5f, roof.Vertices.Min(v => v.Position.Y), Tolerance);
-        Assert.Equal(2.7f, roof.Vertices.Max(v => v.Position.Y), Tolerance);
+        Assert.Equal(0f, roof.Vertices.Min(v => v.Position.Y), Tolerance);
+        Assert.Equal(GreyboxMeshResolver.RoofThickness, roof.Vertices.Max(v => v.Position.Y), Tolerance);
+    }
+
+    [Fact]
+    public void A_greybox_wall_is_as_tall_as_the_wall_height_it_was_given()
+    {
+        var resolver = new GreyboxMeshResolver(TileWorldDocument.DefaultTileSize, 4.25f);
+
+        Assert.Equal(4.25f, resolver.WallHeight, Tolerance);
+        foreach (string id in new[] { "wall", "wall_corner", "diag_wall" })
+        {
+            GltfMesh mesh = resolver.Resolve(Archetype(id))![0].Mesh;
+            Assert.Equal(4.25f, mesh.Vertices.Max(v => v.Position.Y), Tolerance);
+            Assert.Equal(0f, mesh.Vertices.Min(v => v.Position.Y), Tolerance);
+        }
+    }
+
+    // The default is the plane height, because a wall has to span exactly one plane to meet the roof above it.
+    [Fact]
+    public void The_default_greybox_wall_height_is_one_plane()
+    {
+        Assert.Equal(TileWorldDocument.DefaultPlaneHeight, new GreyboxMeshResolver().WallHeight, Tolerance);
     }
 
     [Fact]

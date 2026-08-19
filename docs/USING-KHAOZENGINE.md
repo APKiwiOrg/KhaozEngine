@@ -5338,7 +5338,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.37.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.37.1" />
 ```
 
 ```csharp
@@ -6602,7 +6602,7 @@ so a server or a tool never drags in `Render3D`.
 
 ```csharp
 var scene = new Scene3DTileWorldScene(scene3d);              // the shipped ITileWorldScene, tests use a fake
-var resolver = new GreyboxMeshResolver(doc.TileSize);        // a game supplies its own ITileMeshResolver
+var resolver = new GreyboxMeshResolver(doc.TileSize, doc.PlaneHeight);  // a game supplies its own ITileMeshResolver
 using var view = new TileWorldView(scene, doc, catalogs, resolver);
 var residency = new TileRegionResidency(source, view, TileResidencyConfig.Default);  // TileWorldSource
 
@@ -9154,7 +9154,7 @@ run inside the engine's process-wide device-creation gate, so a provider needs n
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.37.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.37.1" />
 ```
 
 ```csharp
@@ -9188,7 +9188,7 @@ that up front is what routes it through the reported fallback instead of a crash
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.37.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.37.1" />
 ```
 
 ```csharp
@@ -9430,7 +9430,7 @@ is no recovery path: a lost device stays lost, which is what the liveness token 
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.37.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.37.1" />
 ```
 
 ```csharp

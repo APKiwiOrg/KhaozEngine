@@ -41,7 +41,7 @@ public sealed class RenderService(TileEditSession session)
         byte[] rgba = session.Read(e =>
         {
             byte[] captured = TileWorldSnapshot.CaptureTopDown(e.Document, e.Catalogs,
-                new GreyboxMeshResolver(e.Document.TileSize), rect, plane, pxPerTile);
+                new GreyboxMeshResolver(e.Document.TileSize, e.Document.PlaneHeight), rect, plane, pxPerTile);
             TopDownOverlayPainter.Paint(captured, width, height, rect, plane, pxPerTile, e.Document, e.Collision, names);
             return captured;
         });
@@ -70,7 +70,7 @@ public sealed class RenderService(TileEditSession session)
                 nameof(target));
 
         byte[] rgba = session.Read(e => TileWorldSnapshot.CapturePerspective(e.Document, e.Catalogs,
-            new GreyboxMeshResolver(e.Document.TileSize), eye, target, width, height, observer));
+            new GreyboxMeshResolver(e.Document.TileSize, e.Document.PlaneHeight), eye, target, width, height, observer));
 
         byte[] png = PngWriter.Encode(rgba, width, height);
         string from = string.Create(CultureInfo.InvariantCulture, $"({eye.X}, {eye.Y}, {eye.Z})");

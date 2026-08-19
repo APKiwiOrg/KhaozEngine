@@ -5,6 +5,28 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.37.1
+
+A greybox roof now sits on the walls it covers instead of floating a whole plane above them.
+
+- **`GreyboxMeshResolver` builds every shape in its own PLANE's local space** (`KhaozEngine.TileWorld.Render3D`).
+  A roof archetype is placed on the plane ABOVE the walls it covers, which is exactly what `TileWorldView`'s
+  roof-hide rule keys on, and `TileObjectProps.AnchorPosition` anchors an object at `HeightAt(plane)`, so a
+  plane-1 object already starts one `PlaneHeight` up. The roof box was ALSO built with its base at local
+  y `WallHeight`, so the two lifts stacked: with the defaults the slab drew at ground + 5.5 m over walls that
+  topped out at ground + 2.5 m. The roof box now spans local y `0 .. RoofThickness` like every other shape, and
+  reaching the wall tops is the plane's job.
+- **`WallHeight` is an instance property, not a const, and defaults to one plane.** The new ctor is
+  `GreyboxMeshResolver(float tileSize = TileWorldDocument.DefaultTileSize, float wallHeight = TileWorldDocument.DefaultPlaneHeight)`,
+  so walls, corner walls and diagonal posts are exactly one plane tall and meet the roof above them. The old
+  `public const float WallHeight = 2.5f` is gone: 2.5 could never meet a 3 m plane lift, and nothing outside the
+  file referenced it. Every caller with a document at hand (`TileEdit.Tool`'s `RenderService`, the render
+  goldens) now passes `doc.PlaneHeight`, so a world with a non-default plane height stays sealed too.
+- **`tileworld_greybox` and `tileworld_topdown` goldens rebaked** on all three backends, since both shots frame
+  the walled house whose roof moved.
+
+Found by the Grimhollow adopt, where the greybox house rendered with a visibly detached roof slab.
+
 ## 17.37.0
 
 A logger taken from the ambient `Log` facade now follows the facade instead of the manager that happened to be

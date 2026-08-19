@@ -19,7 +19,7 @@ public class TileRegionResidencyTests
 
     static TileWorldView View(RecordingTileWorldScene scene, TileWorldSource source,
                               TileWorldViewOptions? options = null) =>
-        new(scene, source.Document, TileRenderTestData.Catalogs, new GreyboxMeshResolver(), options);
+        new(scene, source.Document, TileRenderTestData.Catalogs, new GreyboxMeshResolver(source.Document.TileSize, source.Document.PlaneHeight), options);
 
     static TileCoord At(int rx, int rz) => TileRenderTestData.CentreOf(new RegionCoord(rx, rz));
 

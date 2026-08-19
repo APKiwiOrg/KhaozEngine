@@ -44,7 +44,7 @@ public sealed class GoldenTileWorldTests
         byte[] rgba = TileWorldSnapshot.CapturePerspective(
             doc,
             TileRenderTestData.Catalogs,
-            new GreyboxMeshResolver(doc.TileSize),
+            new GreyboxMeshResolver(doc.TileSize, doc.PlaneHeight),
             eye: new Vector3(30f, 18f, 6f),
             target: new Vector3(12f, 0f, -11f),
             PerspectiveWidth,
@@ -64,7 +64,7 @@ public sealed class GoldenTileWorldTests
         byte[] rgba = TileWorldSnapshot.CaptureTopDown(
             doc,
             TileRenderTestData.Catalogs,
-            new GreyboxMeshResolver(doc.TileSize),
+            new GreyboxMeshResolver(doc.TileSize, doc.PlaneHeight),
             new TileRect(0, 0, TopDownTiles, TopDownTiles),
             plane: 0,
             TopDownPxPerTile,

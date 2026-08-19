@@ -21,16 +21,23 @@ public interface ITileMeshResolver
 /// object-to-prop pass produces, and a wall hugs the WEST edge of its footprint (-x) so instance rotation 0
 /// reads as a west wall, with a corner wall adding the north edge, which is -z rather than +z because world z
 /// is minus tile z (<see cref="TileWorldSpace"/>). Only the footprint extent scales with the tile size: every
-/// thickness and height here (wall, roof, tree, post, the default box) is an absolute measurement in metres, so
-/// a bigger tile makes a wider wall, never a taller one. Used by the tests and as the engine's default
-/// placeholder.</summary>
+/// thickness and height here (roof, tree, post, the default box) is an absolute measurement in metres, so a
+/// bigger tile makes a wider wall, never a taller one.
+///
+/// <para>Every mesh is PLANE-LOCAL. <see cref="TileObjectProps.AnchorPosition"/> anchors an object at the floor
+/// of its OWN plane, so y 0 in a mesh is that plane's floor rather than the ground. A roof archetype is placed
+/// on the plane ABOVE the walls it covers, which is what the view's roof rule keys on, so its slab sits at y 0
+/// like every other shape and spanning the gap is the PLANE's job, not the mesh's. That is why
+/// <see cref="WallHeight"/> defaults to <see cref="TileWorldDocument.DefaultPlaneHeight"/> and why a caller with
+/// a document at hand passes its <c>PlaneHeight</c>: a wall is exactly one plane tall, so it reaches the roof
+/// above it. A wall of any other height leaves a gap or pokes through the slab.</para>
+///
+/// <para>Used by the tests and as the engine's default placeholder.</para></summary>
 public sealed class GreyboxMeshResolver : ITileMeshResolver
 {
     /// <summary>Thickness in metres of a wall slab, across the edge it sits on.</summary>
     public const float WallThickness = 0.15f;
-    /// <summary>Height in metres of a wall, a corner wall and a diagonal post.</summary>
-    public const float WallHeight = 2.5f;
-    /// <summary>Thickness in metres of a roof slab, which hangs directly above the walls.</summary>
+    /// <summary>Thickness in metres of a roof slab, which lies on the floor of its own plane.</summary>
     public const float RoofThickness = 0.2f;
     /// <summary>Side in metres of the square post standing in for a diagonal wall.</summary>
     public const float DiagonalPostWidth = 0.3f;
@@ -46,8 +53,20 @@ public sealed class GreyboxMeshResolver : ITileMeshResolver
     readonly float _tileSize;
     readonly Dictionary<string, IReadOnlyList<GltfMeshPart>> _cache = new(StringComparer.Ordinal);
 
-    /// <summary>A resolver whose footprint-sized boxes use this tile size in metres.</summary>
-    public GreyboxMeshResolver(float tileSize = TileWorldDocument.DefaultTileSize) => _tileSize = tileSize;
+    /// <summary>Height in metres of a wall, a corner wall and a diagonal post, one plane tall so a plane's walls
+    /// meet the roof placed on the plane above them.</summary>
+    public float WallHeight { get; }
+
+    /// <summary>A resolver whose footprint-sized boxes use this tile size in metres and whose walls stand this
+    /// many metres tall. Pass the document's <c>PlaneHeight</c> as <paramref name="wallHeight"/> whenever a
+    /// document is at hand, so that world's walls reach the plane its roofs sit on.</summary>
+    public GreyboxMeshResolver(
+        float tileSize = TileWorldDocument.DefaultTileSize,
+        float wallHeight = TileWorldDocument.DefaultPlaneHeight)
+    {
+        _tileSize = tileSize;
+        WallHeight = wallHeight;
+    }
 
     /// <summary>The single-part box for this archetype, built once and handed back on every later call. Never
     /// null, because the greybox resolver has a shape for everything. The list is read-only, so a caller cannot
@@ -129,9 +148,10 @@ public sealed class GreyboxMeshResolver : ITileMeshResolver
         float halfX = a.SizeX * 0.5f * _tileSize, halfZ = a.SizeZ * 0.5f * _tileSize;
         Vector4 color = ColorOf(a.Id);
 
-        // A roof covers the whole footprint and hangs above wall height, so the roof rule has something to hide.
+        // A roof covers the whole footprint and lies on the floor of its own plane, which is the plane above the
+        // walls it covers, so the roof rule has something to hide and the slab lands on those walls.
         if (a.IsRoof)
-            return Box(new Vector3(-halfX, WallHeight, -halfZ), new Vector3(halfX, WallHeight + RoofThickness, halfZ), color);
+            return Box(new Vector3(-halfX, 0f, -halfZ), new Vector3(halfX, RoofThickness, halfZ), color);
 
         switch (a.CollisionKind)
         {
@@ -157,12 +177,12 @@ public sealed class GreyboxMeshResolver : ITileMeshResolver
         return Box(new Vector3(-halfX, 0f, -halfZ), new Vector3(halfX, DefaultHeight, halfZ), color);
     }
 
-    static GltfMesh WestSlab(float halfX, float halfZ, Vector4 color) =>
+    GltfMesh WestSlab(float halfX, float halfZ, Vector4 color) =>
         Box(new Vector3(-halfX, 0f, -halfZ), new Vector3(-halfX + WallThickness, WallHeight, halfZ), color);
 
     // North is MINUS z in world space (TileWorldSpace), so the north slab hugs the -z face of the footprint, not
     // the +z one a tile-space reading of the axis would suggest.
-    static GltfMesh NorthSlab(float halfX, float halfZ, Vector4 color) =>
+    GltfMesh NorthSlab(float halfX, float halfZ, Vector4 color) =>
         Box(new Vector3(-halfX, 0f, -halfZ), new Vector3(halfX, WallHeight, -halfZ + WallThickness), color);
 
     static GltfMesh Combine(GltfMesh first, GltfMesh second)

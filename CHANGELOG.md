@@ -49,14 +49,34 @@ Found by the Grimhollow adopt, where the greybox house rendered with a visibly d
   `wire generation N -> M`, and rewrites the blob once. And a blob stamped at a generation NEWER than the running
   build is now `SkippedTooNew` with its bytes preserved, where before an engine downgrade silently misparsed the
   bodies it could not read.
-- **Blobs written before the stamp are inferred, not guessed at blindly.**
+- **Blobs written before the stamp are validated and, when two readings disagree, refused.**
   `WireGenerationBlobMigration.NormalizeV3ToV4` (v3 -> v4) and the rewritten `PositionFrameBlobMigration.FrameV2ToV3`
-  (v2 -> v3) walk the body at every generation their schema version could have been written at and keep the parse
-  that recovers the most component frames. Picking the newest that parses is NOT safe: a movement payload read too
-  long simply swallows the frames after it, and a generation-3 movement followed by a six-character display name is
-  exactly a generation-8 movement's worth of bytes. An over-long read can only ever swallow frames, never invent
-  them, so the true generation always scores at least as high. A body that walks at no candidate throws, and the
-  driver quarantines it as before.
+  (v2 -> v3) walk the body at every generation their schema version could have been written at. Each candidate is
+  judged against what the writer is known to do, not scored: built-in ids ascend within an entity and none follows an
+  extension frame, no id repeats, a movement payload's bool bytes are 0 or 1, a display name is UTF-8, and (when
+  `CellPersistenceConfig.Registry` is supplied) an extension id the live registry never registered retires the
+  candidate that recovered it. If exactly one candidate survives, or several survive to byte-identical results, that
+  is the answer. If they disagree the migration throws `AmbiguousCellBlobGenerationException` and the driver
+  quarantines the cell under the new `CellPersistenceIssueKind.QuarantinedAmbiguous`, naming the candidates. A body
+  that walks at no candidate throws and is quarantined as before.
+  - **This replaces the most-frames rule that shipped in the first cut of this section, which was wrong in the
+    under-read direction.** Its safety argument, that an over-long read can only swallow frames and never invent
+    them, holds only for candidates NEWER than the truth. An OLDER candidate reads a built-in payload SHORT, and
+    `ReplicationRegistry.IsExtension` is a pure numeric test, so any two leftover bytes at or above 16 open a
+    length-prefixed frame the walk copies verbatim. That candidate can recover MORE frames than the truth and win,
+    and its output is a structurally valid current-generation body: it does not throw, it is not quarantined, it
+    restores with zeroed horizontal velocity, a flipped ground flag and phantom components, and is then
+    re-persisted. A 2000-body randomised sweep put it at 48 silent mis-decodes over the v2 range and 1 over v3.
+    Both are zero now, and that sweep ships as a test.
+  - **Two knobs, because a refusal costs a cell.** `CellPersistenceConfig.Registry` takes the live replication
+    registry and is what usually leaves exactly one candidate standing rather than none (it can only remove
+    candidates, never promote a wrong one). `CellPersistenceConfig.AssumedWireGeneration` states the generation a
+    save's pre-v4 blobs were written at, which replaces the inference outright: the body is walked at that generation
+    and nothing is guessed. `docs/USING-KHAOZENGINE.md` carries the engine-version to wire-generation table for
+    setting it. Blobs that carry the stamp ignore both.
+  - **The chain infers once.** Each step now records the generation it produced, so the v3 -> v4 step no longer
+    re-walks a body the v2 -> v3 step has already normalized. A v2 blob cost nine walks and two rewrites before,
+    and that second inference was a second independent chance to get it wrong.
 - **What this does to a save already on disk.** It is migrated in place on first load, ONE WAY. A v1, v2 or v3 blob is
   walked forward, restored, and rewritten once as a v4 blob stamped with this build's generation, after which later
   boots do no work at all. Payload fields that the writing generation predates restore at their defaults (a
@@ -64,6 +84,18 @@ Found by the Grimhollow adopt, where the greybox house rendered with a visibly d
   what the wire itself does for a field it never carried. Nothing is destroyed on failure: the original bytes still
   go to `quarantine:cell:{x}:{y}`. A server that has written v4 blobs should not be downgraded, since an older build
   reports `SkippedTooNew` and starts each cell fresh.
+- **What a ROLLBACK does to the save, spelled out.** A pre-17.37.1 build reading a v4 blob quarantines it as
+  `SkippedTooNew` and starts that cell fresh, which preserves the bytes under `quarantine:cell:{x}:{y}` but does NOT
+  leave the save intact: the cell is now empty and live, so the next `SaveDirtyPass` writes an EMPTY v3 blob over the
+  main key. Rolling forward again afterwards restores nothing, because the only surviving copy of that cell is the
+  quarantine key - and `CellPersistence.Quarantine` overwrites that key unconditionally, so a second rollback pass
+  over the same coordinate replaces the good copy with the empty one it just wrote. Copy the quarantine keys out
+  before restarting a rolled-back server, or set the new `CellPersistenceConfig.FailFastOnTooNew`, which throws out of
+  the load drain instead of starting the cell fresh, so the boot stops rather than hollowing the save out.
+- **Ops can see the shape of a boot.** `CellPersistence` counts its load outcomes
+  (`MigratedCellCount`, `SkippedTooOldCellCount`, `SkippedTooNewCellCount`, `QuarantinedCorruptCellCount`,
+  `QuarantinedAmbiguousCellCount`) and writes one aggregate line at the end of each flush that changed any of them,
+  so the boot flush says what the save came up as instead of leaving it to a subscriber nobody wired.
 - **The fix is a test, not a constant.** `BuiltinBlobLayoutTests` re-encodes `MovementState` field by field at every
   wire generation, pins each row of the table against it, compares the NEWEST rung byte for byte against the live
   `MoveProtocol.CreateRegistry` codec, and checks each rung is a prefix of the next. The byte comparison is the
@@ -76,10 +108,19 @@ Found by the Grimhollow adopt, where the greybox house rendered with a visibly d
 - **API:** new `BuiltinBlobLayout` and `WireGenerationBlobMigration` (`KhaozEngine.NetWorld`), new
   `NetIdBlobMigration.NetId32WireGeneration` and `PositionFrameBlobMigration.OldestAbsolutePositionWireGeneration` /
   `NewestAbsolutePositionWireGeneration`, and message-carrying overloads of `CellPersistenceIssue.Migrated` /
-  `SkippedTooNew` (the generation hop leaves both schema versions equal, so it needs somewhere to say so).
+  `SkippedTooNew` (the generation hop leaves both schema versions equal, so it needs somewhere to say so). Also new:
+  `AmbiguousCellBlobGenerationException` and `CellPersistenceIssueKind.QuarantinedAmbiguous`,
+  `CellBlobMigrationOptions` plus the options-taking overloads of `FrameV2ToV3` / `NormalizeV3ToV4`,
+  `CellPersistenceConfig.Registry` / `AssumedWireGeneration` / `FailFastOnTooNew`, the five
+  `CellPersistence.*CellCount` counters, `BuiltinBlobLayout.SwimmingWireGeneration` /
+  `MovementGroundedOffset` / `MovementSwimmingOffset`, and `ReplicationRegistry.IsRegistered`
+  (`KhaozEngine.Replication`).
 
-Closes #353 and #322: #322 asked which failure mode a generation-skewed blob actually takes, and the answer is a
-quarantine rather than world corruption, on the cell whose body the walk runs off the end of.
+Closes #353 and #322: #322 asked which failure mode a generation-skewed blob actually takes. With the generation
+stamped, validated and refused when it is ambiguous, the answer is now a quarantine rather than world corruption in
+every direction: a body from a NEWER generation is skipped on the stamp, a body whose recorded generation does not
+walk is quarantined, and a pre-stamp body that reads two ways is quarantined rather than migrated into one of the
+readings.
 
 ## 17.37.0
 

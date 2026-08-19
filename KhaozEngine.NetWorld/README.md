@@ -200,7 +200,27 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
     generation), a blob written by a NEWER generation is `SkippedTooNew` instead of misread, and an older blob whose
     generation was never recorded is brought forward by `WireGenerationBlobMigration.NormalizeV3ToV4` inferring it
     from the body. Existing blobs are migrated in place on first load, one way: a v1/v2/v3 blob is rewritten as v4
-    once and reads clean from then on, and a downgrade to an older build sees `SkippedTooNew` rather than corruption.
+    once and reads clean from then on.
+  - **Inferring a pre-v4 blob's generation never guesses.** Every candidate generation is walked and judged against
+    what the writer is known to do (built-in ids ascend within an entity and none follows an extension frame, no id
+    repeats, a movement payload's bool bytes are 0 or 1, a display name is UTF-8, and an extension id the live
+    registry never registered retires the candidate that recovered it). One survivor, or several agreeing byte for
+    byte, is the answer. Survivors that disagree are refused: the cell is quarantined as `QuarantinedAmbiguous` with
+    its bytes intact, because a scoring rule between two clean readings is wrong in the under-read direction (an
+    older candidate reads a payload short, and the leftover bytes re-sync into frames that can make it outscore the
+    truth). Two knobs move a cell from refused to migrated: `CellPersistenceConfig.Registry` (the live registry, which
+    removes candidates and can never promote a wrong one) and `CellPersistenceConfig.AssumedWireGeneration` (the
+    generation this save's pre-v4 blobs were written at, which replaces the inference outright).
+  - **Rolling BACK past v4 hollows the save out, quarantine or not.** An older build quarantines the v4 blob and
+    starts that cell fresh, so the cell is live and empty, and its next `SaveDirtyPass` writes an EMPTY v3 blob over
+    the main key. Rolling forward afterwards restores nothing: the only surviving copy is `quarantine:cell:{x}:{y}`,
+    which the quarantine write overwrites unconditionally, so a second rolled-back boot replaces that good copy with
+    the empty one. Copy the quarantine keys out before restarting a rolled-back server, or set
+    `CellPersistenceConfig.FailFastOnTooNew` so the load throws instead of starting the cell fresh.
+  - **Load outcomes are counted, not only evented.** `MigratedCellCount`, `SkippedTooOldCellCount`,
+    `SkippedTooNewCellCount`, `QuarantinedCorruptCellCount` and `QuarantinedAmbiguousCellCount` tally what the store
+    handed back, and one aggregate line is logged at the end of each flush that changed any of them, so a boot says
+    what the save came up as without a subscriber having to add the `Issue` stream up.
   - **Store-outage hygiene (since 10.4.1).** `CellPersistence.OnStoreError` (`event Action<Exception>`, mirrors
     `WorldPersistence.OnStoreError`) surfaces a faulted background cell save, meta write, or quarantine write. The
     driver prunes the faulted task every `Update` so a store outage can't grow the pending list unbounded or make the

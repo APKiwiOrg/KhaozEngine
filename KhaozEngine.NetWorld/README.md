@@ -188,7 +188,19 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
     component byte identical (only the per-entity id field grows 4 -> 8 bytes, node 0). The default `SchemaVersion`
     advanced to 2, so a server on the default config brings a 9.x cell blob forward with no wiring. A 10.0.0 blob (v2)
     is `SkippedTooNew` on a pre-10.0.0 build, so an accidental downgrade quarantines rather than corrupts (but will not
-    load): once a server has written 64-bit blobs it cannot be downgraded.
+    load): once a server has written 64-bit blobs it cannot be downgraded. `PositionFrameBlobMigration.FrameV2ToV3`
+    followed it, framing `ReplicatedPosition` for the floating-origin wire.
+  - **The header records the wire generation (schema v4, since 17.37.1).** A built-in component is unframed, so its
+    payload length in a stored body is a function of `MoveProtocol.WireProtocolVersion`, not of the schema version -
+    and the wire ran from generation 2 to 10 while the schema sat at v2 and then v3, so "a v2 blob" was seven
+    different `MovementState` layouts with nothing on disk to tell them apart. Schema v4 writes a 12-byte header
+    (`[magic][schemaVersion][wireGeneration]` against the 8-byte one below it) and `BuiltinBlobLayout` is the one
+    per-generation payload table the migrations and the driver share. Consequences: a future wire-generation bump
+    needs NO schema bump and no new migration (the driver walks the stored body forward from its recorded
+    generation), a blob written by a NEWER generation is `SkippedTooNew` instead of misread, and an older blob whose
+    generation was never recorded is brought forward by `WireGenerationBlobMigration.NormalizeV3ToV4` inferring it
+    from the body. Existing blobs are migrated in place on first load, one way: a v1/v2/v3 blob is rewritten as v4
+    once and reads clean from then on, and a downgrade to an older build sees `SkippedTooNew` rather than corruption.
   - **Store-outage hygiene (since 10.4.1).** `CellPersistence.OnStoreError` (`event Action<Exception>`, mirrors
     `WorldPersistence.OnStoreError`) surfaces a faulted background cell save, meta write, or quarantine write. The
     driver prunes the faulted task every `Update` so a store outage can't grow the pending list unbounded or make the

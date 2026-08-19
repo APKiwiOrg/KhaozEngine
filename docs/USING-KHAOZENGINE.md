@@ -12250,6 +12250,20 @@ persistence.Issue += issue => log.Info(issue.ToString());   // migrated / skippe
   `SchemaVersion`), the same rules `KhaozEngine.Persistence.MigrationChain` enforces. Engine-owned built-in layout
   changes ship engine-provided migrations; consumer extension changes ship consumer migrations. A migrated cell is
   rewritten once with the current header so a later boot does not re-migrate.
+- **The blob header records the wire generation (schema v4, since 17.37.1).** An engine built-in is unframed on the
+  wire, so how many bytes its payload occupies in a stored body depends on the `MoveProtocol.WireProtocolVersion` the
+  writing build was at, NOT on the blob's schema version. Those two drifted apart for eight generations, so v4 stamps
+  the generation into the header (`[magic][schemaVersion][wireGeneration]`, 12 bytes) and `BuiltinBlobLayout` holds
+  the per-generation payload table the driver and every engine migration read. **A wire-generation bump therefore no
+  longer needs a schema bump**: the driver reads the stored generation and brings the body forward itself, reports it
+  as a `Migrated` issue carrying `wire generation N -> M`, and rewrites the blob once. A blob stamped at a generation
+  NEWER than the running build is `SkippedTooNew` (quarantined, never misread), which is the downgrade direction that
+  used to be a silent misparse. Blobs written before the stamp existed are inferred: the migration walks the body at
+  each candidate generation and keeps the parse that recovers the most component frames.
+- **What happens to blobs already on disk.** They are migrated on first load, one way. A v1, v2 or v3 blob is walked
+  forward and rewritten once as v4, after which boots do no work. Nothing is destroyed if that fails: the original
+  bytes go to `quarantine:cell:{x}:{y}` as always. An older engine build reading a v4 blob reports `SkippedTooNew`
+  and starts the cell fresh, so once a server has written v4 blobs it should not be downgraded.
 - **Quarantine, not crash.** A blob that fails to decode (bad header, corrupt frame, a migration threw, or a blob
   older than the earliest migration / newer than this build) is copied to `quarantine:cell:{x}:{y}` and the cell
   starts fresh. Nothing is destroyed and the server keeps ticking, so a poisoned key can be recovered out of band

@@ -7,7 +7,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.37.1
 
-A greybox roof now sits on the walls it covers instead of floating a whole plane above them.
+A greybox roof now sits on the walls it covers instead of floating a whole plane above them, and a cell
+blob finally records which wire generation wrote its component payloads, so an old save boots instead of
+being quarantined as corrupt.
 
 - **`GreyboxMeshResolver` builds every shape in its own PLANE's local space** (`KhaozEngine.TileWorld.Render3D`).
   A roof archetype is placed on the plane ABOVE the walls it covers, which is exactly what `TileWorldView`'s
@@ -26,6 +28,58 @@ A greybox roof now sits on the walls it covers instead of floating a whole plane
   the walled house whose roof moved.
 
 Found by the Grimhollow adopt, where the greybox house rendered with a visibly detached roof slab.
+
+#### Cell blobs record the wire generation their built-in payloads were written at
+
+- **`BuiltinBlobLayout` is the one per-generation payload table** (`KhaozEngine.NetWorld`). A built-in replicated
+  component is UNFRAMED (no length prefix), so anything that walks a persisted snapshot body frame by frame needs each
+  built-in's payload byte count, and that count is a function of the WIRE GENERATION the body was written at rather
+  than of the blob's schema version. The two drifted apart badly: `MoveProtocol.WireProtocolVersion` ran from 2 to 10
+  while `CellPersistenceConfig.SchemaVersion` sat first at 2 and then at 3, and `MovementState` grew in six of those
+  steps, so "a v2 blob" was seven different byte layouts with nothing on disk to tell them apart. Each of the two
+  engine migrations hand-rolled its own walk with its own hard-coded table, and `NetIdBlobMigration`'s said 13 bytes
+  while `PositionFrameBlobMigration`'s said 26, neither of which is right for most of the range either had to read.
+  There is one table now, `BuiltinBlobLayout.PayloadLength(typeId, wireGeneration)`, with a row per generation, and
+  one walk behind it that every migration and the driver share.
+- **The blob header carries the wire generation (schema v4).** `CellPersistence` writes
+  `[magic][schemaVersion][wireGeneration]` (12 bytes, against the 8-byte header below v4) and
+  `CellPersistenceConfig.SchemaVersion` now defaults to `WireGenerationBlobMigration.StampedSchemaVersion` = 4. The
+  point is what it removes: **a future wire-generation bump needs no schema bump and no new migration.** The driver
+  reads the stored generation, walks the body forward to this build's layout, surfaces a `Migrated` issue carrying
+  `wire generation N -> M`, and rewrites the blob once. And a blob stamped at a generation NEWER than the running
+  build is now `SkippedTooNew` with its bytes preserved, where before an engine downgrade silently misparsed the
+  bodies it could not read.
+- **Blobs written before the stamp are inferred, not guessed at blindly.**
+  `WireGenerationBlobMigration.NormalizeV3ToV4` (v3 -> v4) and the rewritten `PositionFrameBlobMigration.FrameV2ToV3`
+  (v2 -> v3) walk the body at every generation their schema version could have been written at and keep the parse
+  that recovers the most component frames. Picking the newest that parses is NOT safe: a movement payload read too
+  long simply swallows the frames after it, and a generation-3 movement followed by a six-character display name is
+  exactly a generation-8 movement's worth of bytes. An over-long read can only ever swallow frames, never invent
+  them, so the true generation always scores at least as high. A body that walks at no candidate throws, and the
+  driver quarantines it as before.
+- **What this does to a save already on disk.** It is migrated in place on first load, ONE WAY. A v1, v2 or v3 blob is
+  walked forward, restored, and rewritten once as a v4 blob stamped with this build's generation, after which later
+  boots do no work at all. Payload fields that the writing generation predates restore at their defaults (a
+  generation-5 save has no `HorizontalVelocityXQ` bytes to read, so it restores as 0), which is the honest answer and
+  what the wire itself does for a field it never carried. Nothing is destroyed on failure: the original bytes still
+  go to `quarantine:cell:{x}:{y}`. A server that has written v4 blobs should not be downgraded, since an older build
+  reports `SkippedTooNew` and starts each cell fresh.
+- **The fix is a test, not a constant.** `BuiltinBlobLayoutTests` re-encodes `MovementState` field by field at every
+  wire generation, pins each row of the table against it, compares the NEWEST rung byte for byte against the live
+  `MoveProtocol.CreateRegistry` codec, and checks each rung is a prefix of the next. The byte comparison is the
+  staleness tripwire: a codec that grows without a table row goes red there rather than mis-walking every stored blob
+  months later, and the prefix property is what licenses bringing an old payload forward by padding it with zeros.
+  `PositionFrameBlobMigrationTests` now migrates a real body from all seven generations a v2 blob can carry, decoded
+  back through `ClientReplicationView` on the production registry. Its previous fixture seeded the CURRENT movement
+  encoder and called it v2, a schema/generation pairing no build ever wrote, which is exactly why the stale table
+  passed it.
+- **API:** new `BuiltinBlobLayout` and `WireGenerationBlobMigration` (`KhaozEngine.NetWorld`), new
+  `NetIdBlobMigration.NetId32WireGeneration` and `PositionFrameBlobMigration.OldestAbsolutePositionWireGeneration` /
+  `NewestAbsolutePositionWireGeneration`, and message-carrying overloads of `CellPersistenceIssue.Migrated` /
+  `SkippedTooNew` (the generation hop leaves both schema versions equal, so it needs somewhere to say so).
+
+Closes #353 and #322: #322 asked which failure mode a generation-skewed blob actually takes, and the answer is a
+quarantine rather than world corruption, on the cell whose body the walk runs off the end of.
 
 ## 17.37.0
 

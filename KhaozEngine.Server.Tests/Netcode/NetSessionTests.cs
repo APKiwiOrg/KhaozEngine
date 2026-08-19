@@ -92,4 +92,33 @@ public class NetSessionTests
         Assert.Equal("nope", rejected.RejectReason);
         Assert.Equal(-1, client.Slot);
     }
+
+    // Accepts everything and hands back a NULL subject, which the out parameter's type says cannot happen. It can:
+    // an authenticator compiled without nullable reference types has no such contract, and this is a public seam
+    // games and infra implement themselves.
+    private sealed class NullSubjectAuthenticator : IConnectionAuthenticator
+    {
+        public bool TryAuthenticate(ReadOnlySpan<byte> token, out string subject, out string rejectReason)
+        {
+            subject = null!;
+            rejectReason = string.Empty;
+            return true;
+        }
+    }
+
+    [Fact]
+    public void Client_AcceptedWithNullSubject_JoinsAsAnonymous()
+    {
+        // The duplicate-session gate reads the subject on every accepted Hello, and a bare Length deref there took
+        // the whole server down on a connection it had admitted without complaint before the gate existed. Null is
+        // read as the same "no subject" the empty string is: anonymous, and never a duplicate of anything.
+        var (st, ct) = LoopbackTransport.CreatePair();
+        var server = new NetServer(st, maxPlayers: 4, new NullSubjectAuthenticator());
+        var client = new NetClient(ct);
+
+        Pump(server, client);
+
+        Assert.Contains(DrainServer(server), e => e.Kind == ServerSessionEventKind.Joined && e.Slot == 0);
+        Assert.Equal(0, client.Slot);
+    }
 }

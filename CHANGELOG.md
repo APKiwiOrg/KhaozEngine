@@ -33,7 +33,15 @@ ways player persistence could file or apply a record against the wrong player: a
 one SESSION now rather than to an account, so an account that leaves and rejoins inside a single store read no
 longer applies both of its outstanding loads and no longer has the first of them clear the guard while the second
 is still in the air. And a tokenless connection is no longer persisted under the seat it happens to be sitting in,
-which is what used to load one guest's stored position onto the next guest to take that slot. And a cell blob
+which is what used to load one guest's stored position onto the next guest to take that slot. And above both of
+them, the join gate now holds one account to ONE live session: two clients on one connect token used to be two live
+sessions sharing a single record, which the session guard turned from mostly-harmless into the earlier session
+losing its restore and then overwriting the record, so the older session is now ended (or the newer one refused) with
+a reason the client can show. What that handover leaves behind is a leave-save and a join-load issued from one event
+drain, which no store orders against the other, so a join now waits for its account's outstanding writes before it
+reads. Without that, any store whose write costs more than its read restored the newcomer onto the record as it
+stood before the leave, and the next periodic save made the rollback permanent.
+And a cell blob
 finally records which wire generation wrote its component payloads, so an old save boots instead of being
 quarantined as corrupt.
 
@@ -255,14 +263,12 @@ left behind.
   nor the slot could tell the two loads apart, since both are the same account, usually on the same recycled seat,
   which is why #646's identity check did not reach this. A rejoin deliberately issues a fresh read rather than
   adopting the outstanding one: that read was issued for the previous session's seat, may already have completed,
-  and its bytes are the older of the two answers. A second CONCURRENT session for one account now supersedes the
-  first here too, and THAT configuration is a known regression rather than a fix: `NetServer` does not dedupe a join
-  by subject, so two clients presenting one token are two live sessions, the later one wins the guard, the earlier one
-  is never restored and plays from wherever its join built it, and once the winner leaves the next dirty pass can
-  write that pre-restore state over the account's record. Before this change both sessions restored the same record
-  and wrote the same state back. One account keying one record was never a shape two live players could share, and
-  the fix belongs at the join gate rather than in this layer, so it is tracked in
-  https://github.com/APKiwiOrg/KhaozEngine/issues/662. Closes #654.
+  and its bytes are the older of the two answers. This also superseded a second CONCURRENT session for one account,
+  which was a regression rather than a fix and is closed in this same version by the join gate below: two clients
+  presenting one token were two live sessions, the later one won the guard, the earlier one was never restored, and
+  once the winner left the next dirty pass wrote that pre-restore state over the account's record (before this change
+  both sessions restored the same record and wrote the same state back). One account keying one record was never a
+  shape two live players could share, so the fix went in at the join gate rather than in this layer. Closes #654.
 - **A tokenless connection is not persisted, and never under `guest:{slot}`** (`KhaozEngine.NetWorld`). Both heads
   key a connection with no verified subject `guest:{slot}`, and both hand a freed slot straight to the next
   connection, so that key named a chair rather than a player and `WorldPersistence` stored under
@@ -284,6 +290,67 @@ left behind.
   the engine still enforces nowhere: `SignedToken.Mint` accepts any subject without a `.` and `AllowAllAuthenticator`
   takes the client's raw bytes, so a game CAN mint `guest:alice` as a real account and get a player who is read as
   tokenless and silently not persisted. Tracked in https://github.com/APKiwiOrg/KhaozEngine/issues/664. Closes #647.
+- **One account is ONE live session, deduped at the join gate** (`KhaozEngine.Netcode`, `KhaozEngine.NetWorld`).
+  `NetServer.HandleData` allocated a slot for every accepted Hello and never asked whether the authenticated subject
+  already held one, so two clients presenting one account's connect token were two live sessions of one account.
+  `WorldPersistence` keys one record per account, so those two always shared a record, and with the session guard
+  above they got strictly worse: the later join superseded the earlier one, the first session was never restored and
+  played from the default spawn, and its pre-restore state overwrote the account's stored record as soon as the winner
+  left. The join gate now keys a live session by the verified SUBJECT. New
+  **`DuplicateSessionPolicy`** (`KhaozEngine.Netcode`), the `duplicateSessions:` constructor argument on `NetServer`,
+  surfaced as **`WorldServerConfig.DuplicateSessions`** / **`ShardedWorldServerConfig.DuplicateSessions`**:
+  `KickOlder` (the default) ends the older session and enqueues its `Left` BEFORE the newcomer's `Joined`, so a host
+  draining events in order runs the old session's leave, and therefore its save-on-leave, ahead of the new session's
+  join and load-on-join, and never sees the two overlap. `RefuseNewer` keeps the live session and turns the second
+  Hello away instead. `KickOlder` is the default because it is also the reconnect-over-a-half-dead-link case, where the old
+  connection is a corpse the transport has not buried yet and refusing the newcomer would lock the player out until it
+  times out. Both carry a stable wire token from new **`SessionRejectReason`** (`ke:signed-in-elsewhere` /
+  `ke:already-signed-in`, never display text) that `WorldClient` maps to new
+  **`DisconnectReason.SignedInElsewhere`** / **`DisconnectReason.AlreadySignedIn`**, so a reconnect screen can say why
+  instead of showing a generic token rejection. The client answers the two DIFFERENTLY. The kick is terminal, and has
+  to be: an auto-retry there would displace the session that just displaced this one, and the two clients would trade
+  the seat forever. The refusal is RETRIED on the normal backoff and leaves the state `Reconnecting`, because
+  retrying a refusal displaces nobody and what usually holds the seat is that same player's own half-dead
+  connection, which a `RefuseNewer` server keeps until its transport timeout expires (the engine leaves LiteNetLib's
+  `DisconnectTimeout` at its default 5 s). Terminal there was wrong by the numbers: the default `ReconnectBackoff`
+  (0.5 s, doubling, capped at 5 s) spends its first three attempts inside that window, so a one-second blip sent the
+  player to a manual sign-in while their own dead peer was still being buried, and only from attempt four (7.5 s in)
+  has the backoff outlasted it. The cost is that a seat genuinely held by someone else is now asked for every 5 s
+  instead of once, which `ReconnectBackoff.MaxAttempts` or `WorldClientConfig.AutoReconnect` caps. A
+  TOKENLESS connection authenticates to an empty subject and is never deduped under either policy, since it is
+  anonymous rather than an account and two guests are two people. **The gate is only as strong as the authenticator
+  under it**, which the Netcode README now says outright: `KickOlder` ends a live session for whoever presents its
+  subject, and the dev-default `AllowAllAuthenticator` reads the client's raw token bytes AS the subject, so on such
+  a server any client can evict any other by sending someone else's account id. That is the authenticator's standing
+  "never the only gate on an exposed server" with a sharper edge than it had, since a forged subject used to buy a
+  second session and now buys somebody else's seat. This is a BEHAVIOUR CHANGE for any game that relied on two live
+  sessions per account. Ruinborne's reconnect screen retries on every reason today, tracked at
+  https://github.com/APKiwiOrg/Ruinborne/issues/454, and will ping-pong until that lands, so the Ruinborne adopt of
+  17.37.1 must carry that change. `ShardedWorldServerConfig` moved to its own file (matching
+  `WorldClientConfig`) to make room for the knob. Closes #662.
+- **A load-on-join waits for the account's own outstanding WRITES** (`KhaozEngine.NetWorld`). The join gate made a
+  leave-save and a load-on-join out of ONE event drain the routine path rather than an edge, and store operations for
+  one key are not ordered against each other, so on any store whose write costs more than its read (a real remote
+  backend) the read won: the newcomer was restored onto the record as it stood BEFORE the leave, undoing everything
+  the displaced session had done, and the next periodic save wrote that rollback down as the truth. Measured on a
+  store with a 20 ms write and an instant read, a kick handover after a teleport landed the newcomer 564 metres from
+  where the player actually was. `WorldPersistence` now publishes every write it issues under its key
+  (`savesInFlight`, the mirror of `loadsInFlight`) and a join whose key carries one AWAITS it before reading. A write
+  that FAILS still releases the join, which then reads whatever the store still holds, so a store outage can never
+  strand a join behind a dead write. The periodic batch publishes under every account it carries and chains onto
+  whatever was already outstanding, so a join never waits behind only the newer of two overlapping writes. An
+  ordinary leave and a rejoin fast enough to beat the write gets the same guarantee. What this buys is per-key
+  ordering between this layer's own writes and its own reads, and it is not a distributed lock: a store also written
+  by something else, or by a second process running this layer, still needs that store's own ordering.
+- **`NetClient.Slot` is cleared to -1 when the session ends** (`KhaozEngine.Netcode`). It was only ever set, so a
+  client kept reporting the slot it last held after a Reject or a transport drop. `EndOlderSession` is the engine's
+  first Reject to arrive AFTER a Welcome, which turned that from cosmetic into a displaced client naming a seat the
+  session that displaced it is now sitting in. Both paths reset it now.
+- **A null subject from a third-party authenticator no longer takes the server down** (`KhaozEngine.Netcode`). The
+  `TryAuthenticate` out parameter is non-nullable, but an authenticator compiled without nullable reference types has
+  no such contract, and the new duplicate-session gate dereferenced it (`subject.Length`) on every accepted Hello.
+  Null is read as the same "no subject" the empty string is: anonymous, never deduped, and admitted exactly as it was
+  before the gate existed.
 
 #### Cell blobs record the wire generation their built-in payloads were written at
 

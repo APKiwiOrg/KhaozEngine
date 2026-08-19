@@ -22,7 +22,12 @@ public sealed class NetClient
         this.token = token ?? Array.Empty<byte>();
     }
 
-    /// <summary>The assigned slot once <see cref="ClientSessionEventKind.Joined"/> has been observed, else -1.</summary>
+    /// <summary>The assigned slot while this session holds one: set by the Welcome that admitted it, and reset to
+    /// -1 the moment the session ends, whether that is a Reject or a transport drop. It is not a high-water mark of
+    /// the last slot ever held. A displaced session is the case that made this load-bearing: the duplicate-session
+    /// gate answers a post-join Reject rather than a refused Hello
+    /// (<see cref="DuplicateSessionPolicy.KickOlder"/>), so a client that kept reporting its old slot would have gone
+    /// on naming a seat another session is now sitting in.</summary>
     public int Slot { get; private set; } = -1;
 
     /// <summary>Live transport statistics (RTT, loss, byte counters); <see cref="NetTransportStats.Unavailable"/> for loopback.</summary>
@@ -44,6 +49,7 @@ public sealed class NetClient
                     }
                     break;
                 case NetEventType.Disconnected:
+                    Slot = -1;                       // the session is over either way: stop reporting the seat it held
                     // A disconnect may carry the server's framed Reject as its reason payload (the robust path when
                     // a separately-sent reliable Reject is lost to the teardown over a real socket). Surface it as
                     // the terminal Rejected it is, not a bare drop the consumer would auto-reconnect on.
@@ -69,6 +75,9 @@ public sealed class NetClient
                 inbox.Enqueue(ClientSessionEvent.Joined(Slot));
                 break;
             case SessionOpcode.Reject:
+                // A Reject can arrive AFTER a Welcome, not only in place of one: the duplicate-session gate displaces
+                // a live session that way. Give the slot up rather than keep naming a seat this session has lost.
+                Slot = -1;
                 inbox.Enqueue(ClientSessionEvent.Rejected(Encoding.UTF8.GetString(SessionFrame.ReadBody(ev.Data))));
                 break;
             case SessionOpcode.Data:

@@ -105,7 +105,15 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   account's position, teleport and durable blob onto the new one (#646). And every join takes a monotonic token that
   the guard holds for the duration, so an account that leaves and rejoins inside one store read - two loads
   outstanding under one key - applies only the live session's, instead of applying both and letting the first of them
-  clear the guard while its sibling was still in flight (#654). A drop writes nothing (the stored record stays intact
+  clear the guard while its sibling was still in flight (#654). Two CONCURRENT sessions for one account no longer
+  reach this at all: the join gate deduplicates by verified subject (`WorldServerConfig.DuplicateSessions`, default
+  `KickOlder`) and ends the older session before admitting the newer one, so the two never share the record and the
+  displaced session cannot be left unrestored on a seat that later overwrites it (#662). What that handover leaves
+  behind is a leave-save and a join-load issued from ONE event drain, which the store orders against neither, so a
+  join now WAITS for its key's outstanding writes before it reads: without that, any store whose write costs more
+  than its read restored the newcomer onto the record as it stood before the leave, and the next periodic pass wrote
+  the rollback down as the truth. A failed write still releases the join (it reads whatever the store still holds),
+  so a store outage cannot strand one. A drop writes nothing (the stored record stays intact
   and guarded for that account's next join) and is announced through **`OnLoadApplyDropped`**
   (`event Action<string, int>`, accountId + slot) plus an `Info` log line naming the account, the slot and which of
   the two reasons it was. A tokenless connection never reaches either check, because it is not persisted at all (see

@@ -21,4 +21,17 @@ public enum DisconnectReason
     /// the detail carries the decode error). Not retried: the client must update. Show "client out of date,
     /// please update".</summary>
     IncompatibleVersion,
+    /// <summary>This account signed in somewhere else and that session took the seat: the server ended THIS one
+    /// (<see cref="Netcode.DuplicateSessionPolicy.KickOlder"/>, the default). Not retried, deliberately: reconnecting
+    /// would kick the session that just displaced this one, and the two clients would trade the seat forever. Show
+    /// "signed in elsewhere" and let the player decide whether to sign in again.</summary>
+    SignedInElsewhere,
+    /// <summary>This account already holds a live session on the server, which kept its seat
+    /// (<see cref="Netcode.DuplicateSessionPolicy.RefuseNewer"/>): the join was refused rather than the other session
+    /// displaced. RETRIED on the backoff, unlike <see cref="SignedInElsewhere"/>: a refusal displaces nobody, so
+    /// there is no seat to trade, and the usual holder of that seat is this player's own half-dead connection, which
+    /// the server drops once its transport timeout expires (5 s on LiteNetLib's default). Show "already signed in"
+    /// while the state is <c>Reconnecting</c>. Cap the asking with <see cref="ReconnectBackoff.MaxAttempts"/> if a
+    /// game would rather stop after a few.</summary>
+    AlreadySignedIn,
 }

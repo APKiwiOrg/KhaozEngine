@@ -339,6 +339,10 @@ public sealed partial class TileWorldView : IDisposable
             }
         }
         LastDrawnProps = drawn;
+        // Water rides the same frame: the planes are cached per region-plane and re-collected only when that
+        // region-plane's mesh or the look changed, so this is a walk over the loaded regions and one submit per
+        // plane. A caller that runs its own water pass turns it off with DrawWater.
+        if (DrawWater) DrawWaterPlanes();
     }
 
     /// <summary>The ground materials every region-plane mesh of this view is drawn with, which is also the slot

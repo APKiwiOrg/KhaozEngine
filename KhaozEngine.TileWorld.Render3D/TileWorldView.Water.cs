@@ -21,15 +21,20 @@ public sealed partial class TileWorldView
     /// <see cref="DrawWaterPlanes"/>.</summary>
     public WaterLook? WaterLook { get; set; } = TileWaterLooks.River;
 
+    /// <summary>Whether <see cref="Draw"/> queues the water planes after the ground and props (the default). A
+    /// caller that submits its own water pass for the world sets it false and may still call
+    /// <see cref="DrawWaterPlanes"/> itself.</summary>
+    public bool DrawWater { get; set; } = true;
+
     /// <summary>How many region-planes the water cache is holding, for the tests that assert an unload drops
     /// what it collected.</summary>
     internal int WaterCacheCount => _water.Count;
 
     /// <summary>Queues every loaded region-plane's water surfaces for this frame, through
     /// <see cref="ITileWorldScene.DrawWater"/>.
-    /// <para>Call it right after <see cref="Draw"/>, which is where the pending rebuilds are flushed. It is a
-    /// separate call rather than part of <see cref="Draw"/> so a caller that runs its own water pass can leave
-    /// it out. The planes themselves are collected once per region-plane mesh and cached, so a frame that
+    /// <para><see cref="Draw"/> calls it after the ground and props unless <see cref="DrawWater"/> is false, so
+    /// a caller only calls it directly when it opted out of that and wants the planes at another point in its
+    /// frame. The planes themselves are collected once per region-plane mesh and cached, so a frame that
     /// changed nothing is a walk over the loaded regions and one submit per plane.</para></summary>
     public void DrawWaterPlanes()
     {

@@ -39,13 +39,33 @@ public class TileWorldViewWaterTests
     static TileWorldView View(RecordingTileWorldScene scene, TileWorldDocument doc) =>
         new(scene, doc, TileRenderTestData.Catalogs, new GreyboxMeshResolver());
 
-    // One frame: the ordinary draw, then the water submit that a caller adds after it.
+    // One frame: Draw queues the ground, the props and, by default, the water planes after them.
     static void Frame(TileWorldView view, RecordingTileWorldScene scene)
     {
         scene.ClearFrame();
         scene.ClearWater();
         view.Draw(Focus);
+    }
+
+    [Fact]
+    public void Draw_queues_the_water_planes_unless_the_caller_opts_out()
+    {
+        TileWorldDocument doc = GrassWorld();
+        Paint(doc, 10, 10, 3, 6);
+        var scene = new RecordingTileWorldScene();
+        using TileWorldView view = View(scene, doc);
+        view.LoadRegion(Origin);
+
+        Frame(view, scene);
+        int queued = scene.WaterDraws.Count;
+        Assert.True(queued > 0, "Draw should queue the river's planes by default");
+
+        view.DrawWater = false;
+        Frame(view, scene);
+        Assert.Empty(scene.WaterDraws);
+
         view.DrawWaterPlanes();
+        Assert.Equal(queued, scene.WaterDraws.Count);
     }
 
     [Fact]

@@ -15,7 +15,8 @@
           "name": { "type": "string", "minLength": 1 },
           "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
           "texture": { "type": "string" },
-          "kind": { "type": "string", "enum": ["Ground", "Water"] }
+          "kind": { "type": "string", "enum": ["Ground", "Water"] },
+          "tilesPerMetre": { "type": "number", "minimum": 0.01 }
         },
         "additionalProperties": false
       }

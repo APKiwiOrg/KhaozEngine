@@ -101,4 +101,64 @@ public class TileWorldCatalogsTests
         Assert.Equal((2, 3), TileFootprint.Rotated(a, 2));
         Assert.Equal(new TileRect(10, 20, 3, 2), TileFootprint.Of(a, 10, 20, 3));
     }
+
+    const string Textured = """
+        { "materials": [ { "id": 1, "name": "grass", "color": "#4d8a3a", "texture": "grass.png", "tilesPerMetre": 0.25 },
+                         { "id": 2, "name": "dirt", "color": "#8a6a3a" } ] }
+        """;
+    const string OneMaterial = """{ "materials": [ { "id": 1, "name": "grass", "color": "#4d8a3a" } ] }""";
+    const string OtherMaterial = """{ "materials": [ { "id": 2, "name": "dirt", "color": "#8a6a3a" } ] }""";
+
+    [Fact]
+    public void TilesPerMetre_round_trips_and_is_null_when_the_material_omits_it()
+    {
+        TileWorldCatalogs c = TileWorldCatalogs.LoadJson(Textured, "t.json");
+        Assert.Equal(0.25f, c.Material(1)!.TilesPerMetre!.Value);
+        Assert.Null(c.Material(2)!.TilesPerMetre);
+    }
+
+    // The schema is what rejects these: the deserializer takes any float, so a zero repeat would reach the
+    // renderer as a divide-by-nothing UV scale.
+    [Theory]
+    [InlineData("-0.5")]
+    [InlineData("0")]
+    public void Schema_rejects_a_non_positive_tilesPerMetre(string value)
+    {
+        var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.LoadJson(
+            $$"""{ "materials": [ { "id": 1, "name": "x", "color": "#000000", "tilesPerMetre": {{value}} } ] }""", "bad.json"));
+        Assert.Contains("does not match the schema", ex.Message);
+        Assert.Contains("bad.json", ex.Message);
+    }
+
+    [Fact]
+    public void MaterialSource_is_the_file_each_material_was_loaded_from()
+    {
+        using var tmp = new TempDir();
+        File.WriteAllText(tmp.Sub("a.json"), OneMaterial);
+        File.WriteAllText(tmp.Sub("b.json"), OtherMaterial);
+        TileWorldCatalogs c = TileWorldCatalogs.Load(new[] { tmp.Sub("a.json"), tmp.Sub("b.json") });
+        Assert.Equal(tmp.Sub("a.json"), c.MaterialSource(1));
+        Assert.Equal(tmp.Sub("b.json"), c.MaterialSource(2));
+        Assert.Null(c.MaterialSource(9));
+    }
+
+    [Fact]
+    public void MaterialSource_is_null_when_the_catalog_did_not_come_from_a_file()
+    {
+        Assert.Null(TileWorldCatalogs.LoadJson(Ground, "g").MaterialSource(1));
+        Assert.Null(TileWorldCatalogs.Merge(TileWorldCatalogs.LoadJson(Ground, "g")).MaterialSource(1));
+        Assert.Null(TileWorldCatalogs.Greybox().MaterialSource(1));
+    }
+
+    [Fact]
+    public void Merge_keeps_the_material_source_of_each_part()
+    {
+        using var tmp = new TempDir();
+        File.WriteAllText(tmp.Sub("a.json"), OneMaterial);
+        TileWorldCatalogs merged = TileWorldCatalogs.Merge(
+            TileWorldCatalogs.Load(new[] { tmp.Sub("a.json") }),
+            TileWorldCatalogs.LoadJson(OtherMaterial, "label"));
+        Assert.Equal(tmp.Sub("a.json"), merged.MaterialSource(1));
+        Assert.Null(merged.MaterialSource(2));
+    }
 }

@@ -89,10 +89,16 @@ collision kind with square and non-square footprints. `Material(id)` and `Archet
 `Archetype` is null-tolerant, so a null archetype id in content is a validator finding rather than a throw.
 Malformed or duplicate content throws a `TileWorldException` naming the source file, and
 `TileWorldSchema.GetCatalogJson()` returns the embedded catalog schema. `GroundMaterial` is
-`{ Id, Name, Color, Texture, Kind }` (`Ground` or `Water`, id 0 reserved for void) and `TileObjectArchetype` is
+`{ Id, Name, Color, Texture, Kind, TilesPerMetre }` (`Ground` or `Water`, id 0 reserved for void) and
+`TileObjectArchetype` is
 `{ Id, Name, MeshRef, SizeX, SizeZ, CollisionKind, IsRoof, Interactive, YawOffsetDegrees, Tags }`, with
 `TileCollisionKind` one of `None`, `Solid`, `Wall`, `WallCorner`, `Diagonal`. `TileFootprint.Rotated` and
 `TileFootprint.Of` give the rotated footprint size and the world rect an instance covers.
+
+`TilesPerMetre` is the optional `tilesPerMetre` catalog field, the texture repeats per metre the textured ground
+path gives that material, null to take the renderer default of 0.5. `MaterialSource(id)` returns the catalog
+FILE a material was loaded from, or null when the catalog came from `LoadJson`, `Merge` or `Greybox` rather than
+`Load(paths)`, which is what lets a caller resolve a relative `Texture` against the file that declared it.
 
 `TileWorldValidator.Validate(doc, catalogs)` returns `TileWorldIssue(Code, Message, Region, Tile)` records and
 never throws on bad content, while `ValidateOrThrow` throws once quoting the first five. The codes are stable

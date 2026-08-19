@@ -31,6 +31,8 @@ public sealed class GroundMaterial
     public string? Texture { get; set; }
     /// <summary>Ordinary ground or water.</summary>
     public GroundMaterialKind Kind { get; set; } = GroundMaterialKind.Ground;
+    /// <summary>Texture repeats per metre on the textured ground path, null to take the renderer default of 0.5.</summary>
+    public float? TilesPerMetre { get; set; }
 }
 
 /// <summary>How an archetype contributes to the derived collision map (the collision baker reads this, it is
@@ -103,6 +105,14 @@ public sealed class TileWorldCatalogs
 
     /// <summary>The material with this id, or null when the catalogs do not define it.</summary>
     public GroundMaterial? Material(ushort id) => _materials.TryGetValue(id, out GroundMaterial? m) ? m : null;
+
+    /// <summary>The catalog FILE this material was loaded from, or null when it did not come from one.</summary>
+    /// <remarks>Only <see cref="Load(IEnumerable{string})"/> records a file. A catalog built in memory (through
+    /// <see cref="LoadJson(string, string)"/> with a label, <see cref="Merge"/>, or <see cref="Greybox"/>) carries a source name
+    /// for error messages that is not a path, and reports null here rather than handing a caller a name it would
+    /// go on to resolve a relative texture against.</remarks>
+    public string? MaterialSource(ushort id) =>
+        _materialSources.TryGetValue(id, out (string Name, bool IsFile) s) && s.IsFile ? s.Name : null;
     /// <summary>The archetype with this id, or null when the catalogs do not define it. A null or empty id is
     /// undefined rather than an error, because content can carry one and the validator has to be able to ask
     /// about it without a dictionary lookup throwing the whole validation pass down.</summary>
@@ -129,7 +139,9 @@ public sealed class TileWorldCatalogs
 
     /// <summary>Parses one catalog file's JSON (JSONC tolerated), schema-checked. Errors name
     /// <paramref name="sourceName"/>.</summary>
-    public static TileWorldCatalogs LoadJson(string json, string sourceName)
+    public static TileWorldCatalogs LoadJson(string json, string sourceName) => LoadJson(json, sourceName, sourceIsFile: false);
+
+    static TileWorldCatalogs LoadJson(string json, string sourceName, bool sourceIsFile)
     {
         ArgumentNullException.ThrowIfNull(json);
         // Validate parses the instance itself, so malformed JSON throws from HERE, not from the
@@ -144,7 +156,7 @@ public sealed class TileWorldCatalogs
         catch (JsonException ex) { throw new TileWorldException($"{sourceName}: {ex.Message}", ex); }
 
         var c = new TileWorldCatalogs();
-        foreach (GroundMaterial m in file.Materials ?? new()) c.AddMaterial(m, sourceName);
+        foreach (GroundMaterial m in file.Materials ?? new()) c.AddMaterial(m, sourceName, sourceIsFile);
         foreach (TileObjectArchetype a in file.Archetypes ?? new()) c.AddArchetype(a, sourceName);
         return c;
     }
@@ -162,7 +174,7 @@ public sealed class TileWorldCatalogs
             {
                 throw new TileWorldException($"{path}: cannot read catalog. {ex.Message}", ex);
             }
-            merged.MergeFrom(LoadJson(json, path), path);
+            merged.MergeFrom(LoadJson(json, path, sourceIsFile: true), path);
         }
         return merged;
     }
@@ -176,22 +188,26 @@ public sealed class TileWorldCatalogs
         return merged;
     }
 
-    readonly Dictionary<ushort, string> _materialSources = new();
+    readonly Dictionary<ushort, (string Name, bool IsFile)> _materialSources = new();
     readonly Dictionary<string, string> _archetypeSources = new(StringComparer.Ordinal);
 
     void MergeFrom(TileWorldCatalogs other, string sourceName)
     {
-        foreach (GroundMaterial m in other._materials.Values) AddMaterial(m, other._materialSources.GetValueOrDefault(m.Id, sourceName));
+        foreach (GroundMaterial m in other._materials.Values)
+        {
+            (string Name, bool IsFile) origin = other._materialSources.GetValueOrDefault(m.Id, (sourceName, false));
+            AddMaterial(m, origin.Name, origin.IsFile);
+        }
         foreach (TileObjectArchetype a in other._archetypes.Values) AddArchetype(a, other._archetypeSources.GetValueOrDefault(a.Id, sourceName));
     }
 
-    void AddMaterial(GroundMaterial m, string source)
+    void AddMaterial(GroundMaterial m, string source, bool sourceIsFile = false)
     {
         if (m.Id == 0) throw new TileWorldException($"{source}: material id 0 is reserved for void");
         if (_materials.ContainsKey(m.Id))
-            throw new TileWorldException($"{source}: material {m.Id} ('{m.Name}') is already defined in {_materialSources[m.Id]}");
+            throw new TileWorldException($"{source}: material {m.Id} ('{m.Name}') is already defined in {_materialSources[m.Id].Name}");
         _materials.Add(m.Id, m);
-        _materialSources[m.Id] = source;
+        _materialSources[m.Id] = (source, sourceIsFile);
     }
 
     void AddArchetype(TileObjectArchetype a, string source)

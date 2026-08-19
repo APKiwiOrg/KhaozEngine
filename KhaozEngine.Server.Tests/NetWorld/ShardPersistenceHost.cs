@@ -17,13 +17,20 @@ internal sealed class ShardPersistenceHost : ICellPersistenceHost
 {
     private readonly NetIdAllocator alloc = new();
 
-    internal ShardPersistenceHost(ReplicationRegistry registry)
+    /// <param name="registry">The registry the shard decodes with.</param>
+    /// <param name="exposeRegistry">Whether to also offer it as <see cref="ICellPersistenceHost.Registry"/>, the
+    /// default a <see cref="CellPersistence"/> falls back on. Off by default so a test that wants the un-filtered
+    /// inference keeps getting it.</param>
+    internal ShardPersistenceHost(ReplicationRegistry registry, bool exposeRegistry = false)
     {
         Shard = new ShardHost(64f, 1f / 30f, registry);
         Shard.CellCreated += c => CellCreated?.Invoke(c.Coord);
+        Registry = exposeRegistry ? registry : null;
     }
 
     internal ShardHost Shard { get; }
+
+    public ReplicationRegistry? Registry { get; }
 
     public event Action<CellCoord>? CellCreated;
 

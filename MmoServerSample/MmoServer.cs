@@ -95,6 +95,10 @@ public sealed class MmoServer : ICellPersistenceHost, IWorldPersistenceHost
     /// <summary>The replicated-component registry; clients must build the matching one.</summary>
     public static ReplicationRegistry CreateRegistry() => MmoProtocol.CreateRegistry();
 
+    /// <summary>This server's live registry (<see cref="ICellPersistenceHost.Registry"/>), which is what
+    /// <see cref="CellPersistence"/> infers a pre-v4 cell blob's wire generation against.</summary>
+    public ReplicationRegistry Registry => registry;
+
     /// <summary>The NetId of the player entity for a joined <paramref name="slot"/>.</summary>
     public bool TryGetPlayerNetId(int slot, out long netId) => playerNetIdBySlot.TryGetValue(slot, out netId);
 

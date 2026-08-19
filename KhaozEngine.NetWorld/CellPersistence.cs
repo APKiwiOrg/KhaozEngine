@@ -65,13 +65,15 @@ public sealed class CellPersistenceConfig
     public bool IncludeEngineMigrations { get; init; } = true;
 
     /// <summary>
-    /// The live replication registry this server restores cells with, or null (the default) to skip registry-aware
-    /// validation. It is only read by the two engine migrations that have to INFER a pre-v4 blob's wire generation:
-    /// a candidate parse that recovers an extension component id this registry has never heard of is discarded,
-    /// which is what usually leaves exactly one candidate standing and turns a would-be
-    /// <see cref="CellPersistenceIssueKind.QuarantinedAmbiguous"/> into a clean migration. Supplying it never lets a
-    /// wrong parse win - it only removes candidates - so pass
-    /// <c>MoveProtocol.CreateRegistry(...)</c>'s registry here whenever you have it.
+    /// The live replication registry this server restores cells with, or null (the default) to take the host's own
+    /// (<see cref="ICellPersistenceHost.Registry"/>, which <c>ShardedWorldServer</c> exposes), and null from both is
+    /// what skips registry-aware validation. It is only read by the two engine migrations that have to INFER a pre-v4
+    /// blob's wire generation: a candidate parse that recovers an extension component id this registry has never
+    /// heard of is discarded, which is what usually leaves exactly one candidate standing and turns a would-be
+    /// <see cref="CellPersistenceIssueKind.QuarantinedAmbiguous"/> into a clean migration. It only ever removes
+    /// candidates, and it cannot cost a blob an unsupplied registry would have migrated: a body whose only surviving
+    /// readings were retired by this rule is decided again without it, since a retained unknown extension frame is
+    /// something a real build wrote. Set this to override the host's registry with a different one.
     /// </summary>
     public ReplicationRegistry? Registry { get; init; }
 
@@ -201,7 +203,7 @@ public sealed class CellPersistence
         this.host = host ?? throw new ArgumentNullException(nameof(host));
         this.store = store ?? throw new ArgumentNullException(nameof(store));
         this.config = config ?? new CellPersistenceConfig();
-        migrations = BuildEffectiveMigrations(this.config);
+        migrations = BuildEffectiveMigrations(this.config, this.host.Registry);
         migrationStart = ValidateMigrationChain(migrations, this.config.SchemaVersion);
         host.CellCreated += OnCellCreated;
     }
@@ -211,17 +213,21 @@ public sealed class CellPersistence
     // same from-version. There are three engine steps: the 10.0.0 netId widening (v1 -> v2), the position framing
     // that followed it (v2 -> v3), and the wire-generation stamp (v3 -> v4), so a pre-10.0.0 save boots forward
     // through all three. Each is bound here to what this config knows about the save (the registry and any assumed
-    // wire generation), and to the per-blob context they use to hand each other the generation they produced. A
+    // wire generation, defaulting to the host's own registry), and to the per-blob context they use to hand each
+    // other the generation they produced. A
     // config that opts out (IncludeEngineMigrations = false) uses only its own registrations, so the raw driver can
     // be exercised in isolation.
-    private static IReadOnlyDictionary<int, ChainStep> BuildEffectiveMigrations(CellPersistenceConfig cfg)
+    private static IReadOnlyDictionary<int, ChainStep> BuildEffectiveMigrations(CellPersistenceConfig cfg,
+        ReplicationRegistry? hostRegistry)
     {
         var merged = new SortedDictionary<int, ChainStep>();
         if (cfg.IncludeEngineMigrations)
         {
             var options = new CellBlobMigrationOptions
             {
-                Registry = cfg.Registry,
+                // The host restores cells with a registry already, so taking it as the default is what stops a
+                // server getting the un-filtered inference purely because nobody wired the same object in twice.
+                Registry = cfg.Registry ?? hostRegistry,
                 AssumedWireGeneration = cfg.AssumedWireGeneration,
             };
             options.Validate();   // a typo'd generation fails here, not on every cell at boot

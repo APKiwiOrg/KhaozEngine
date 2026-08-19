@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KhaozEngine.Replication;
 using KhaozEngine.Sharding;
 
 namespace KhaozEngine.NetWorld;
@@ -22,6 +23,15 @@ public interface ICellPersistenceHost
 
     /// <summary>The coordinates of all currently instantiated cells (for the periodic dirty pass + flush).</summary>
     IReadOnlyCollection<CellCoord> LiveCellCoords { get; }
+
+    /// <summary>
+    /// The live replication registry this host restores cells with, which <see cref="CellPersistence"/> takes as the
+    /// default for <see cref="CellPersistenceConfig.Registry"/> so the inference that brings a pre-v4 blob forward is
+    /// registry-aware without the consumer wiring the same object in twice. <c>ShardedWorldServer</c> already exposes
+    /// it, so it satisfies this implicitly. The default is null (no registry-aware validation), which is what a host
+    /// that has no registry to offer keeps, and the config knob overrides it either way.
+    /// </summary>
+    ReplicationRegistry? Registry => null;
 
     /// <summary>The durable snapshot of a cell's persistable entities, or null if the cell is not instantiated.</summary>
     byte[]? SnapshotCell(CellCoord coord);

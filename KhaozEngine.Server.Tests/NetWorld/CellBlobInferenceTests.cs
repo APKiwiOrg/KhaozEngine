@@ -61,15 +61,7 @@ public class CellBlobInferenceTests
             read: br => new Bulky { Data = br.ReadBytes(BulkyBytes) }));
 
     // A length-prefixed extension frame's payload as the writer lays it down: [7-bit len][bytes].
-    private static byte[] ExtensionFrame(byte[] payload)
-    {
-        using var ms = new MemoryStream();
-        using var bw = new BinaryWriter(ms);
-        bw.Write7BitEncodedInt(payload.Length);
-        bw.Write(payload);
-        bw.Flush();
-        return ms.ToArray();
-    }
+    private static byte[] ExtensionFrame(byte[] payload) => CellBlobFixtures.Extension(payload);
 
     /// <summary>
     /// The reviewer's v2 construction, hand-built so the arithmetic is on the page: a body written at wire generation
@@ -202,6 +194,49 @@ public class CellBlobInferenceTests
 
         Assert.Contains(8, ex.CandidateGenerations);
         Assert.Contains(6, ex.CandidateGenerations);
+    }
+
+    /// <summary>
+    /// The registry the driver infers with is taken from the HOST by default, so a server does not fall back to the
+    /// un-filtered inference purely because nobody handed the same object to the config as well. The blob is the
+    /// adversarial v2 body above, which is ambiguous with no registry anywhere and a clean migration with one, so the
+    /// two halves below differ in nothing except where the registry came from.
+    /// </summary>
+    [Fact]
+    public async Task HostRegistry_IsTheDefaultTheDriverInfersWith()
+    {
+        byte[] blob = CellBlobFixtures.Wrap(PositionFrameBlobMigration.AbsolutePositionSchemaVersion, 0,
+            AdversarialV2Body(out MovementState seeded, out _));
+
+        var store = new InMemoryWorldStore();
+        await store.SaveAsync("cell:0:0", blob);
+        var host = new ShardPersistenceHost(RegistryWithTrinket(), exposeRegistry: true);
+        var cp = new CellPersistence(host, store, new CellPersistenceConfig());   // nothing in CellPersistenceConfig.Registry
+        var issues = new List<CellPersistenceIssue>();
+        cp.Issue += issues.Add;
+
+        await cp.PreloadAsync();
+        await cp.FlushAsync();
+
+        Assert.DoesNotContain(issues, i => i.Kind == CellPersistenceIssueKind.QuarantinedAmbiguous);
+        Assert.Contains(issues, i => i.Kind == CellPersistenceIssueKind.Migrated);
+        Assert.True(host.Shard.TryGetCell(C00, out CellSim cell));
+        Assert.True(cell.TryGetOwned(1, out Entity restored));
+        MovementState expected = seeded;
+        expected.FacingYawQ = 0;   // generation 8 predates the field
+        AssertMovement(expected, cell.World.Get<MovementState>(restored));
+
+        // The same host, same bytes, with nothing offering a registry: back to the inference that cannot decide.
+        var store2 = new InMemoryWorldStore();
+        await store2.SaveAsync("cell:0:0", blob);
+        var bare = new CellPersistence(new ShardPersistenceHost(RegistryWithTrinket()), store2, new CellPersistenceConfig());
+        var issues2 = new List<CellPersistenceIssue>();
+        bare.Issue += issues2.Add;
+
+        await bare.PreloadAsync();
+        await bare.FlushAsync();
+
+        Assert.Contains(issues2, i => i.Kind == CellPersistenceIssueKind.QuarantinedAmbiguous);
     }
 
     /// <summary>The 71-bytes-for-69 case: a generation-10 body is already current, so the only correct output is the
@@ -417,7 +452,7 @@ public class CellBlobInferenceTests
             if (rng.Next(4) != 0)
                 components.Add((MoveProtocol.PositionTypeId,
                     CellBlobFixtures.Position(generation, new Vector3(rng.Next(-64, 64), rng.Next(0, 32), rng.Next(-64, 64)))));
-            components.Add((MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(generation, RandomMovement(rng))));
+            components.Add((MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(generation, CellBlobFixtures.RandomMovement(rng))));
             if (rng.Next(3) == 0)
                 components.Add((MoveProtocol.IdentityTypeId, CellBlobFixtures.Identity(RandomName(rng))));
             if (rng.Next(4) == 0)
@@ -435,21 +470,6 @@ public class CellBlobInferenceTests
         }
         return builder.ToBody();
     }
-
-    private static MovementState RandomMovement(Random rng) => new()
-    {
-        VerticalVelocity = (float)(rng.NextDouble() * 20 - 10),
-        Grounded = rng.Next(2) == 0,
-        TimeSinceGrounded = (float)rng.NextDouble(),
-        JumpBufferRemaining = (float)rng.NextDouble(),
-        Swimming = rng.Next(2) == 0,
-        TeleportEpoch = (uint)rng.Next(0, 1000),
-        ClimbRateQ = (sbyte)rng.Next(-128, 128),
-        SpeedScaleQ = (sbyte)rng.Next(-128, 128),
-        HorizontalVelocityXQ = (short)rng.Next(short.MinValue, short.MaxValue + 1),
-        HorizontalVelocityZQ = (short)rng.Next(short.MinValue, short.MaxValue + 1),
-        FacingYawQ = (short)rng.Next(short.MinValue, short.MaxValue + 1),
-    };
 
     private static string RandomName(Random rng)
     {

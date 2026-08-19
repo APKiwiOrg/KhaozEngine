@@ -641,8 +641,8 @@ namespace KhaozEngine.Render3D
             // set binds the renderer's shared default sampler and nothing extra is owned here.
             IGpuSampler? ownedSampler = sampler.HasValue ? _model.CreateTerrainSampler(sampler.Value) : null;
             var set = ownedSampler is null
-                ? _model.CreateSplatMaterialSet(ubo, albedo, normal)
-                : _model.CreateSplatMaterialSet(ubo, albedo, normal, ownedSampler);
+                ? _model.CreateSplatMaterialSet(ubo.Buffer, albedo, normal)
+                : _model.CreateSplatMaterialSet(ubo.Buffer, albedo, normal, ownedSampler);
             _splatMaterials.Add(new SplatMaterialEntry(albedo, normal, ubo, set, ownedSampler));
             return new SplatMaterialHandle(_splatMaterials.Count - 1);
         }
@@ -2148,35 +2148,9 @@ namespace KhaozEngine.Render3D
             // through the pixel post like the rest of the model pass.
             DrawTrails(cl);
 
-            // Overlay meshes (collision proxies etc.): after the model pass wrote depth (meshes + textured billboards
-            // + beams), draw the queued translucent unlit proxies into the SAME model FB with the depth test on (no
-            // write), so a proxy is occluded by nearer geometry yet blends over farther geometry, then flows through
-            // the post chain with the rest of the model pass. Fully skipped when nothing is queued, so a frame with no
-            // overlay draws renders byte-identical to before this pass existed.
-            if (_overlayMeshDraws.Count > 0)
-            {
-                cl.SetFramebuffer(_res.ModelFB);
-                int on = _overlayMeshDraws.Count;
-                _overlayMeshes.EnsureCapacity(on);
-                _overlayMeshes.BeginFrame(GpuClip.Correct(vp, _gd.Capabilities));
-                // Sort the overlay proxies back-to-front by their world-origin view depth: they alpha-blend with
-                // depth-write off, so overlapping proxies must composite far-to-near (the pre-sort submission order
-                // blended wrong when a near proxy was queued before a far one behind it). Uses each draw's own UBO
-                // slot indexed by the sorted position k, so the slot assignment stays unique.
-                _sortCenters.Clear();
-                for (int i = 0; i < on; i++) _sortCenters.Add(_overlayMeshDraws[i].World.Translation);
-                TransparencySort.ComputeOrder(CollectionsMarshal.AsSpan(_sortCenters), on,
-                    ActiveCamera.Eye, ActiveCamera.Forward, ref _sortKeys, ref _sortOrder);
-                for (int k = 0; k < on; k++)
-                {
-                    var (handle, world) = _overlayMeshDraws[_sortOrder[k]];
-                    if (!_slots.IsValid(handle.Index, handle.Generation)) continue;   // stale handle: skip
-                    var m = _meshes[handle.Index];
-                    if (m is not { } mesh) continue;
-                    _overlayMeshes.Draw(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, k, ToRender(world));
-                    _frameStats.DrawCalls++;
-                }
-            }
+            // Overlay meshes (collision proxies etc.): the queued translucent unlit proxies go into the SAME model
+            // FB, packed and uploaded once before their draws. See Scene3D.OverlayMeshPass.cs.
+            DrawOverlayMeshes(cl, vp);
 
             // Under MSAA the geometry passes wrote a MULTISAMPLED MRT, so resolve the depth AND the encoded normal into
             // the single-sample DepthColorTex / NormalTex now - before the decals, which SAMPLE both (the depth to
@@ -2637,10 +2611,10 @@ namespace KhaozEngine.Render3D
         sealed class SplatMaterialEntry
         {
             public readonly IGpuTexture AlbedoArray, NormalArray;
-            public readonly IGpuBuffer Ubo;
+            public readonly SplatUniformBuffer Ubo;
             public readonly IGpuResourceSet Set;
             readonly IGpuSampler? _ownedSampler;   // non-null only when the material overrode the shared sampler
-            public SplatMaterialEntry(IGpuTexture albedo, IGpuTexture normal, IGpuBuffer ubo, IGpuResourceSet set, IGpuSampler? ownedSampler = null)
+            public SplatMaterialEntry(IGpuTexture albedo, IGpuTexture normal, SplatUniformBuffer ubo, IGpuResourceSet set, IGpuSampler? ownedSampler = null)
             { AlbedoArray = albedo; NormalArray = normal; Ubo = ubo; Set = set; _ownedSampler = ownedSampler; }
             public void Dispose() { Set.Dispose(); AlbedoArray.Dispose(); NormalArray.Dispose(); Ubo.Dispose(); _ownedSampler?.Dispose(); }
         }

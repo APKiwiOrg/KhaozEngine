@@ -1,7 +1,5 @@
 using System;
-using System.IO;
 using KhaozEngine.Primitives;
-using KhaozEngine.Replication;
 
 namespace KhaozEngine.NetWorld;
 
@@ -19,17 +17,19 @@ namespace KhaozEngine.NetWorld;
 /// </para>
 /// <para>
 /// Without this step every persisted cell would fail to decode on the first boot after the upgrade and be
-/// quarantined as corrupt: the reader would want 16 bytes where the blob has 12. Every other component frame is
-/// copied through byte-for-byte. A body that does not decode as a well-formed snapshot throws, so the
-/// <see cref="CellPersistence"/> driver quarantines it rather than crash-looping.
+/// quarantined as corrupt: the reader would want 16 bytes where the blob has 12.
 /// </para>
 /// </summary>
 /// <remarks>
-/// The built-in payload lengths below are the CURRENT layout of each built-in other than position. The cell-blob
-/// schema version was never bumped as the movement built-in grew across wire generations 3 to 10, so a blob written
-/// by one of those older builds already walks wrong here, exactly as it does in
-/// <see cref="NetIdBlobMigration"/>'s own chain. That is a pre-existing gap in the schema chain rather than one this
-/// step introduces, and it is filed rather than papered over.
+/// A v<see cref="AbsolutePositionSchemaVersion"/> blob is NOT one layout. The schema version sat at 2 while the wire
+/// generation ran from 2 to 8, and the movement built-in grew in five of those steps, so the body on disk carries
+/// whichever <see cref="MovementState"/> layout the writing build had and nothing in the header says which (#353,
+/// #322). This step therefore infers the generation - it walks the body at each candidate from
+/// <see cref="NewestAbsolutePositionWireGeneration"/> down to <see cref="OldestAbsolutePositionWireGeneration"/> and
+/// keeps the first that parses whole - and rewrites every built-in payload into THIS build's layout, not just the
+/// position frame. The private payload table this file used to carry stated a single movement length and was already
+/// wrong for six of the seven generations it had to read; there is one shared table now
+/// (<see cref="BuiltinBlobLayout"/>), pinned to the codec by test.
 /// </remarks>
 public static class PositionFrameBlobMigration
 {
@@ -41,115 +41,29 @@ public static class PositionFrameBlobMigration
     /// offset (the framed-wire layout).</summary>
     public const int FramedPositionSchemaVersion = 3;
 
+    /// <summary>The oldest wire generation a v<see cref="AbsolutePositionSchemaVersion"/> blob can carry. Generation
+    /// 1 shares this layout exactly (10.0.0 widened the entity id, not any payload), so a v1 body brought here by
+    /// <see cref="NetIdBlobMigration.WidenV1ToV2"/> is covered by this candidate too.</summary>
+    public const int OldestAbsolutePositionWireGeneration = 2;
+
+    /// <summary>The newest wire generation a v<see cref="AbsolutePositionSchemaVersion"/> blob can carry: generation
+    /// <see cref="BuiltinBlobLayout.FramedPositionWireGeneration"/> is what moved the schema to v3, so v2 stops one
+    /// short of it.</summary>
+    public const int NewestAbsolutePositionWireGeneration = BuiltinBlobLayout.FramedPositionWireGeneration - 1;
+
     /// <summary>
     /// The <see cref="CellSnapshotMigration"/> that rewrites a v2 (absolute position) snapshot body to v3 (framed).
     /// Register it with <c>CellPersistenceConfig.RegisterMigration(2, PositionFrameBlobMigration.FrameV2ToV3)</c>, or
-    /// rely on the engine default (any <see cref="CellPersistence"/> at schema &gt;= 3 folds it in). Throws on a
-    /// malformed body so the driver quarantines it.
+    /// rely on the engine default (any <see cref="CellPersistence"/> at schema &gt;= 3 folds it in). The whole body
+    /// is brought to this build's built-in layout, not only the position frames, because the stored generation
+    /// governs every unframed payload. Throws on a body that walks at no candidate generation, so the driver
+    /// quarantines it.
     /// </summary>
     public static byte[] FrameV2ToV3(byte[] body)
     {
         ArgumentNullException.ThrowIfNull(body);
-        using var input = new MemoryStream(body, writable: false);
-        using var br = new BinaryReader(input);
-        using var output = new MemoryStream(body.Length + 32);
-        using var bw = new BinaryWriter(output);
-
-        int count = ReadInt32(br, input, "entity count");
-        if (count < 0) throw new InvalidOperationException($"Snapshot entity count {count} is negative.");
-        bw.Write(count);
-
-        for (int i = 0; i < count; i++)
-        {
-            bw.Write(ReadInt64(br, input, "entity net id"));   // ids are already 64-bit at v2
-            CopyEntityComponents(br, input, bw);
-        }
-
-        if (input.Position != input.Length)
-            throw new InvalidOperationException(
-                $"Snapshot has {input.Length - input.Position} trailing byte(s) after {count} entities.");
-
-        bw.Flush();
-        return output.ToArray();
-    }
-
-    // Copies one entity's component-frame stream (up to and including the [ushort 0] terminator), rewriting only the
-    // position frame and passing every other payload through verbatim.
-    private static void CopyEntityComponents(BinaryReader br, MemoryStream input, BinaryWriter bw)
-    {
-        while (true)
-        {
-            ushort typeId = ReadUInt16(br, input, "component type id");
-            bw.Write(typeId);
-            if (typeId == 0) return;   // end-of-entity terminator
-
-            if (ReplicationRegistry.IsExtension(typeId))
-            {
-                int len = br.Read7BitEncodedInt();   // extension payloads carry their own length
-                if (len < 0) throw new InvalidOperationException($"Extension component {typeId} has a negative length {len}.");
-                bw.Write7BitEncodedInt(len);
-                CopyBytes(br, input, bw, len, typeId);
-                continue;
-            }
-
-            if (typeId == MoveProtocol.PositionTypeId)
-            {
-                // The one rewrite: stamp WorldFrame.Origin ahead of the untouched absolute triple. Origin's anchor is
-                // exactly Vector3.Zero, so {Origin, absolute} reads back the identical world position.
-                bw.Write((short)0);   // frame X
-                bw.Write((short)0);   // frame Z
-                CopyBytes(br, input, bw, 12, typeId);
-                continue;
-            }
-
-            CopyBytes(br, input, bw, BuiltinPayloadLength(typeId, br, input, bw), typeId);
-        }
-    }
-
-    // The remaining payload byte count of a non-position built-in (unframed) frame at the v2 layout. For the
-    // length-prefixed PlayerIdentity it copies its 2-byte length prefix through and returns the utf8 byte count.
-    // Throws on an unknown built-in id (an undecodable body, which the driver quarantines).
-    private static int BuiltinPayloadLength(ushort typeId, BinaryReader br, MemoryStream input, BinaryWriter bw) => typeId switch
-    {
-        MoveProtocol.MovementTypeId => 26,   // float + bool + 2 float + bool + uint + 2 sbyte + 3 short
-        MoveProtocol.IdentityTypeId => CopyIdentityLengthPrefix(br, input, bw),   // [ushort len] then len utf8 bytes
-        MoveProtocol.DynamicBodyTypeId => 40,   // quaternion + 2 * Vector3
-        MoveProtocol.PickupTypeId => 16,        // 2 * long
-        _ => throw new InvalidOperationException(
-            $"Snapshot built-in component {typeId} is unknown at the v2 layout; cannot migrate."),
-    };
-
-    private static int CopyIdentityLengthPrefix(BinaryReader br, MemoryStream input, BinaryWriter bw)
-    {
-        ushort byteLen = ReadUInt16(br, input, "display-name length");
-        bw.Write(byteLen);
-        return byteLen;
-    }
-
-    private static void CopyBytes(BinaryReader br, MemoryStream input, BinaryWriter bw, int len, ushort typeId)
-    {
-        if (len < 0 || input.Position + len > input.Length)
-            throw new InvalidOperationException($"Snapshot component {typeId} payload (len {len}) runs past the buffer.");
-        byte[] payload = br.ReadBytes(len);
-        if (payload.Length != len) throw new InvalidOperationException($"Snapshot component {typeId} payload truncated.");
-        bw.Write(payload);
-    }
-
-    private static int ReadInt32(BinaryReader br, MemoryStream ms, string what)
-    {
-        if (ms.Position + 4 > ms.Length) throw new InvalidOperationException($"Snapshot truncated reading {what}.");
-        return br.ReadInt32();
-    }
-
-    private static long ReadInt64(BinaryReader br, MemoryStream ms, string what)
-    {
-        if (ms.Position + 8 > ms.Length) throw new InvalidOperationException($"Snapshot truncated reading {what}.");
-        return br.ReadInt64();
-    }
-
-    private static ushort ReadUInt16(BinaryReader br, MemoryStream ms, string what)
-    {
-        if (ms.Position + 2 > ms.Length) throw new InvalidOperationException($"Snapshot truncated reading {what}.");
-        return br.ReadUInt16();
+        return CellBlobRewriter.RewriteInferring(body, OldestAbsolutePositionWireGeneration,
+            NewestAbsolutePositionWireGeneration, BuiltinBlobLayout.CurrentWireGeneration,
+            widenNetIds: false, "v2 (absolute position)");
     }
 }

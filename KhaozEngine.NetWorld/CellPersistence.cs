@@ -39,17 +39,22 @@ public sealed class CellPersistenceConfig
     /// and an operator can recover them out of band.</summary>
     public string QuarantineKeyPrefix { get; init; } = "quarantine:";
 
-    /// <summary>Blob schema version. Bump on a component-layout change and register a <see cref="RegisterMigration"/>
-    /// from the previous version so old saves are brought forward, not skipped or misread. Defaults to the engine's
-    /// current built-in layout version (<see cref="PositionFrameBlobMigration.FramedPositionSchemaVersion"/> = 3,
-    /// the version that put the island-frame stamp on <see cref="ReplicatedPosition"/>). Version 2 was the 10.0.0
-    /// 64-bit <see cref="KhaozEngine.Replication.NetId"/> layout, and the pre-10.0.0 32-bit layout was version 1.</summary>
-    public int SchemaVersion { get; init; } = PositionFrameBlobMigration.FramedPositionSchemaVersion;
+    /// <summary>Blob schema version. Bump on a STRUCTURAL component-layout change and register a
+    /// <see cref="RegisterMigration"/> from the previous version so old saves are brought forward, not skipped or
+    /// misread. Defaults to the engine's current version
+    /// (<see cref="WireGenerationBlobMigration.StampedSchemaVersion"/> = 4, the version whose header also records the
+    /// writing build's <see cref="MoveProtocol.WireProtocolVersion"/>). Version 3 put the island-frame stamp on
+    /// <see cref="ReplicatedPosition"/>, version 2 was the 10.0.0 64-bit
+    /// <see cref="KhaozEngine.Replication.NetId"/> layout, and the pre-10.0.0 32-bit layout was version 1. A plain
+    /// wire-generation bump needs NO schema bump from v4 on: the stamped generation drives the bring-forward walk
+    /// (<see cref="BuiltinBlobLayout"/>).</summary>
+    public int SchemaVersion { get; init; } = WireGenerationBlobMigration.StampedSchemaVersion;
 
     /// <summary>
     /// Whether to fold the engine's own built-in cell-blob migrations into this config's chain (default true). There
-    /// are two: the 10.0.0 <see cref="NetIdBlobMigration.WidenV1ToV2"/> netId widening (v1 -&gt; v2) and the
-    /// <see cref="PositionFrameBlobMigration.FrameV2ToV3"/> position framing (v2 -&gt; v3). Each is included
+    /// are three: the 10.0.0 <see cref="NetIdBlobMigration.WidenV1ToV2"/> netId widening (v1 -&gt; v2), the
+    /// <see cref="PositionFrameBlobMigration.FrameV2ToV3"/> position framing (v2 -&gt; v3), and the
+    /// <see cref="WireGenerationBlobMigration.NormalizeV3ToV4"/> wire-generation stamp (v3 -&gt; v4). Each is included
     /// automatically for any <see cref="SchemaVersion"/> above it, so a server on the default config
     /// migrates an old save forward without the consumer wiring anything. A consumer migration registered from
     /// the same from-version OVERRIDES the engine step. Set false to test / drive the raw migration machinery in
@@ -93,8 +98,15 @@ public sealed class CellPersistenceConfig
 /// </summary>
 public sealed class CellPersistence
 {
-    // Header: [int32 magic][int32 schemaVersion] then the raw Replication snapshot.
+    // Header: [int32 magic][int32 schemaVersion], then from WireGenerationBlobMigration.StampedSchemaVersion on
+    // [int32 wireGeneration], then the raw Replication snapshot. The schema version itself says which of the two
+    // header widths is on disk, so an older blob needs no probing.
     private const int Magic = 0x3150434B; // "KCP1"
+    private const int BaseHeaderBytes = 8;
+    private const int StampedHeaderBytes = 12;
+
+    // The "no wire generation on disk" marker: every schema below StampedSchemaVersion predates the stamp.
+    private const int UnstampedWireGeneration = 0;
 
     private readonly ICellPersistenceHost host;
     private readonly IWorldStore store;
@@ -140,14 +152,15 @@ public sealed class CellPersistence
     }
 
     // The engine's own built-in cell-blob migrations, keyed by from-version. Folded into a config's chain unless it
-    // opts out (CellPersistenceConfig.IncludeEngineMigrations): the 10.0.0 netId widening (v1 -> v2) and the
-    // position framing that followed it (v2 -> v3). The chain runs in order, so a pre-10.0.0 save boots forward
-    // through both.
+    // opts out (CellPersistenceConfig.IncludeEngineMigrations): the 10.0.0 netId widening (v1 -> v2), the position
+    // framing that followed it (v2 -> v3), and the wire-generation stamp (v3 -> v4). The chain runs in order, so a
+    // pre-10.0.0 save boots forward through all three.
     private static readonly IReadOnlyDictionary<int, CellSnapshotMigration> EngineMigrations =
         new Dictionary<int, CellSnapshotMigration>
         {
             [NetIdBlobMigration.NetId32SchemaVersion] = NetIdBlobMigration.WidenV1ToV2,
             [PositionFrameBlobMigration.AbsolutePositionSchemaVersion] = PositionFrameBlobMigration.FrameV2ToV3,
+            [WireGenerationBlobMigration.UnstampedSchemaVersion] = WireGenerationBlobMigration.NormalizeV3ToV4,
         };
 
     // Builds the effective migration chain: the engine built-ins (those strictly below the target schema version) with
@@ -312,20 +325,16 @@ public sealed class CellPersistence
         }
     }
 
-    // Server-thread handling of one loaded blob: read the header, bring it forward through the migration chain if it
-    // is older than the current schema, and restore it - quarantining (preserving the bytes, cell starts fresh) any
-    // undecodable case instead of throwing, so a poisoned key can never crash-loop the server. Every outcome that ops
-    // should see is surfaced through the Issue event.
+    // Server-thread handling of one loaded blob: read the header, bring it forward (through the wire-generation walk
+    // when the header records an older generation, then through the migration chain when the schema is older), and
+    // restore it - quarantining (preserving the bytes, cell starts fresh) any undecodable case instead of throwing,
+    // so a poisoned key can never crash-loop the server. Every outcome that ops should see is surfaced through the
+    // Issue event.
     private void ProcessLoadedBlob(CellCoord coord, byte[] rawBlob)
     {
-        if (!TryReadHeader(rawBlob, out int storedVersion, out byte[] body))
+        if (!TryReadHeader(rawBlob, out int storedVersion, out int storedGeneration, out byte[] body))
         {
             Quarantine(coord, rawBlob, CellPersistenceIssue.QuarantinedCorrupt(coord, "missing or invalid blob header"));
-            return;
-        }
-        if (storedVersion == config.SchemaVersion)
-        {
-            TryRestoreAndBaseline(coord, body, rawBlob, migrated: false, fromVersion: storedVersion);
             return;
         }
         if (storedVersion > config.SchemaVersion)
@@ -333,32 +342,67 @@ public sealed class CellPersistence
             Quarantine(coord, rawBlob, CellPersistenceIssue.SkippedTooNew(coord, storedVersion, config.SchemaVersion));
             return;
         }
-        if (storedVersion < migrationStart)
+        int current = BuiltinBlobLayout.CurrentWireGeneration;
+        if (storedGeneration > current)
+        {
+            // The schema fits but the BODY was written by a newer wire generation, so its built-in payloads are
+            // shapes this build has no reader for. A downgrade, and the same call as a too-new schema: skip, keep
+            // the bytes. Before the generation was stamped this was a silent misparse (#322).
+            Quarantine(coord, rawBlob, CellPersistenceIssue.SkippedTooNew(coord, storedVersion, config.SchemaVersion,
+                $"wire generation {storedGeneration} is newer than this build's {current}"));
+            return;
+        }
+        if (storedVersion < config.SchemaVersion && storedVersion < migrationStart)
         {
             Quarantine(coord, rawBlob, CellPersistenceIssue.SkippedTooOld(coord, storedVersion, config.SchemaVersion));
             return;
         }
 
-        byte[] migratedBody = body;
-        try
+        byte[] forwardBody = body;
+        bool broughtForward = false;
+        string? detail = null;
+
+        // A recorded generation older than this build's moves the body first, so a consumer step registered above v4
+        // sees payloads at this build's layout rather than at whatever the writer's generation was.
+        if (storedGeneration != UnstampedWireGeneration && storedGeneration != current)
         {
-            for (int v = storedVersion; v < config.SchemaVersion; v++)
-                migratedBody = migrations[v](migratedBody)
-                    ?? throw new InvalidOperationException($"cell-blob migration from version {v} returned null");
+            try { forwardBody = BuiltinBlobLayout.NormalizeToCurrent(forwardBody, storedGeneration); }
+            catch (Exception ex)
+            {
+                Quarantine(coord, rawBlob, CellPersistenceIssue.QuarantinedCorrupt(coord,
+                    $"wire generation {storedGeneration} -> {current} failed: {ex.Message}"));
+                return;
+            }
+            broughtForward = true;
+            detail = $"wire generation {storedGeneration} -> {current}";
         }
-        catch (Exception ex)
+
+        if (storedVersion < config.SchemaVersion)
         {
-            Quarantine(coord, rawBlob, CellPersistenceIssue.QuarantinedCorrupt(coord, $"migration from v{storedVersion} failed: {ex.Message}"));
-            return;
+            try
+            {
+                for (int v = storedVersion; v < config.SchemaVersion; v++)
+                    forwardBody = migrations[v](forwardBody)
+                        ?? throw new InvalidOperationException($"cell-blob migration from version {v} returned null");
+            }
+            catch (Exception ex)
+            {
+                Quarantine(coord, rawBlob, CellPersistenceIssue.QuarantinedCorrupt(coord, $"migration from v{storedVersion} failed: {ex.Message}"));
+                return;
+            }
+            broughtForward = true;
+            detail = null;   // the schema hop is the headline; the chain's steps carry the generation walk inside them
         }
-        TryRestoreAndBaseline(coord, migratedBody, rawBlob, migrated: true, fromVersion: storedVersion);
+
+        TryRestoreAndBaseline(coord, forwardBody, rawBlob, broughtForward, storedVersion, detail);
     }
 
     // Restores a decoded body via the non-throwing host path. On decode failure the blob is quarantined (its bytes
     // preserved, cell left fresh). On success: raises the NetId high-water, surfaces Migrated / RetainedUnknownExtensions
     // events, and seeds the dirty-baseline - except for a migrated blob, which is left unset so the upgraded form
     // (current header + migrated body) is rewritten once, advancing the on-disk schema version.
-    private void TryRestoreAndBaseline(CellCoord coord, byte[] body, byte[] rawBlob, bool migrated, int fromVersion)
+    private void TryRestoreAndBaseline(CellCoord coord, byte[] body, byte[] rawBlob, bool migrated, int fromVersion,
+        string? migrationDetail = null)
     {
         CellRestoreResult r = host.TryRestoreCell(coord, body);
         if (!r.Ok)
@@ -376,7 +420,7 @@ public sealed class CellPersistence
         foreach (long id in r.NetIds) if (id > max) max = id;
         if (max > 0) host.EnsureNextNetIdAtLeast(max + 1);
 
-        if (migrated) Issue?.Invoke(CellPersistenceIssue.Migrated(coord, fromVersion, config.SchemaVersion));
+        if (migrated) Issue?.Invoke(CellPersistenceIssue.Migrated(coord, fromVersion, config.SchemaVersion, migrationDetail));
         if (r.RetainedFrameCount > 0) Issue?.Invoke(CellPersistenceIssue.RetainedUnknownExtensions(coord, r.RetainedFrameCount));
 
         if (!migrated) lastSaved[coord] = host.SnapshotCell(coord) ?? body;
@@ -514,23 +558,38 @@ public sealed class CellPersistence
 
     private byte[] Wrap(byte[] snapshot)
     {
-        var buf = new byte[8 + snapshot.Length];
+        bool stamped = config.SchemaVersion >= WireGenerationBlobMigration.StampedSchemaVersion;
+        int headerBytes = stamped ? StampedHeaderBytes : BaseHeaderBytes;
+        var buf = new byte[headerBytes + snapshot.Length];
         BinaryPrimitives.WriteInt32LittleEndian(buf.AsSpan(0, 4), Magic);
         BinaryPrimitives.WriteInt32LittleEndian(buf.AsSpan(4, 4), config.SchemaVersion);
-        snapshot.CopyTo(buf.AsSpan(8));
+        // The body is whatever the live registry writes, so it is at THIS build's wire generation by construction.
+        if (stamped) BinaryPrimitives.WriteInt32LittleEndian(buf.AsSpan(8, 4), BuiltinBlobLayout.CurrentWireGeneration);
+        snapshot.CopyTo(buf.AsSpan(headerBytes));
         return buf;
     }
 
-    // Reads the [magic][version] header and returns the body. Version-agnostic (the caller decides migrate / skip /
-    // restore): only a bad magic or a too-short blob fails here, which the caller treats as corrupt.
-    private static bool TryReadHeader(byte[] blob, out int version, out byte[] body)
+    // Reads the [magic][version] header (plus the [wireGeneration] word from StampedSchemaVersion on) and returns the
+    // body. Version-agnostic (the caller decides migrate / skip / restore): only a bad magic or a too-short blob
+    // fails here, which the caller treats as corrupt. A pre-stamp blob reports UnstampedWireGeneration, which means
+    // "not recorded" rather than a generation number - the migration chain infers it from the body instead.
+    private static bool TryReadHeader(byte[] blob, out int version, out int wireGeneration, out byte[] body)
     {
         version = 0;
+        wireGeneration = UnstampedWireGeneration;
         body = Array.Empty<byte>();
-        if (blob.Length < 8) return false;
+        if (blob.Length < BaseHeaderBytes) return false;
         if (BinaryPrimitives.ReadInt32LittleEndian(blob.AsSpan(0, 4)) != Magic) return false;
         version = BinaryPrimitives.ReadInt32LittleEndian(blob.AsSpan(4, 4));
-        body = blob[8..];
+        if (version < WireGenerationBlobMigration.StampedSchemaVersion)
+        {
+            body = blob[BaseHeaderBytes..];
+            return true;
+        }
+        if (blob.Length < StampedHeaderBytes) return false;
+        wireGeneration = BinaryPrimitives.ReadInt32LittleEndian(blob.AsSpan(8, 4));
+        if (wireGeneration < BuiltinBlobLayout.OldestKnownWireGeneration) return false;   // 0 / negative: not a stamp
+        body = blob[StampedHeaderBytes..];
         return true;
     }
 

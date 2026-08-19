@@ -65,17 +65,30 @@ public readonly struct CellPersistenceIssue
     /// <summary>How many unknown extension frames were retained (for <see cref="CellPersistenceIssueKind.RetainedUnknownExtensions"/>); 0 otherwise.</summary>
     public int RetainedFrameCount { get; }
 
-    /// <summary>A human-readable detail (the decode error for <see cref="CellPersistenceIssueKind.QuarantinedCorrupt"/>); null otherwise.</summary>
+    /// <summary>A human-readable detail (the decode error for <see cref="CellPersistenceIssueKind.QuarantinedCorrupt"/>,
+    /// the wire-generation hop for a <see cref="CellPersistenceIssueKind.Migrated"/> or
+    /// <see cref="CellPersistenceIssueKind.SkippedTooNew"/> that was about the generation rather than the schema
+    /// version); null otherwise.</summary>
     public string? Message { get; }
 
     public static CellPersistenceIssue Migrated(CellCoord coord, int fromVersion, int toVersion)
         => new(CellPersistenceIssueKind.Migrated, coord, fromVersion, toVersion, 0, null);
+
+    /// <summary>As <see cref="Migrated(CellCoord,int,int)"/>, with a detail line for a bring-forward the schema
+    /// versions alone do not describe - a wire-generation walk leaves both versions equal.</summary>
+    public static CellPersistenceIssue Migrated(CellCoord coord, int fromVersion, int toVersion, string? message)
+        => new(CellPersistenceIssueKind.Migrated, coord, fromVersion, toVersion, 0, message);
 
     public static CellPersistenceIssue SkippedTooOld(CellCoord coord, int storedVersion, int schemaVersion)
         => new(CellPersistenceIssueKind.SkippedTooOld, coord, storedVersion, schemaVersion, 0, null);
 
     public static CellPersistenceIssue SkippedTooNew(CellCoord coord, int storedVersion, int schemaVersion)
         => new(CellPersistenceIssueKind.SkippedTooNew, coord, storedVersion, schemaVersion, 0, null);
+
+    /// <summary>As <see cref="SkippedTooNew(CellCoord,int,int)"/>, with a detail line for a skip the schema versions
+    /// alone do not describe - a blob whose stored WIRE GENERATION is newer than this build's.</summary>
+    public static CellPersistenceIssue SkippedTooNew(CellCoord coord, int storedVersion, int schemaVersion, string? message)
+        => new(CellPersistenceIssueKind.SkippedTooNew, coord, storedVersion, schemaVersion, 0, message);
 
     public static CellPersistenceIssue QuarantinedCorrupt(CellCoord coord, string message)
         => new(CellPersistenceIssueKind.QuarantinedCorrupt, coord, 0, 0, 0, message);
@@ -85,9 +98,13 @@ public readonly struct CellPersistenceIssue
 
     public override string ToString() => Kind switch
     {
-        CellPersistenceIssueKind.Migrated => $"cell {Coord.X}:{Coord.Y} migrated v{FromVersion} -> v{ToVersion}",
+        CellPersistenceIssueKind.Migrated => Message is null
+            ? $"cell {Coord.X}:{Coord.Y} migrated v{FromVersion} -> v{ToVersion}"
+            : $"cell {Coord.X}:{Coord.Y} migrated v{FromVersion} -> v{ToVersion} ({Message})",
         CellPersistenceIssueKind.SkippedTooOld => $"cell {Coord.X}:{Coord.Y} skipped: stored v{FromVersion} predates the oldest migration (schema v{ToVersion}), bytes quarantined",
-        CellPersistenceIssueKind.SkippedTooNew => $"cell {Coord.X}:{Coord.Y} skipped: stored v{FromVersion} is newer than schema v{ToVersion} (downgrade), bytes quarantined",
+        CellPersistenceIssueKind.SkippedTooNew => Message is null
+            ? $"cell {Coord.X}:{Coord.Y} skipped: stored v{FromVersion} is newer than schema v{ToVersion} (downgrade), bytes quarantined"
+            : $"cell {Coord.X}:{Coord.Y} skipped: {Message} (downgrade), bytes quarantined",
         CellPersistenceIssueKind.QuarantinedCorrupt => $"cell {Coord.X}:{Coord.Y} quarantined (corrupt): {Message}",
         CellPersistenceIssueKind.RetainedUnknownExtensions => $"cell {Coord.X}:{Coord.Y} retained {RetainedFrameCount} unknown extension frame(s)",
         _ => $"cell {Coord.X}:{Coord.Y} {Kind}",

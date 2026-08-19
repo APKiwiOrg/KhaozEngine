@@ -10,15 +10,17 @@ using Xunit;
 namespace KhaozEngine.Tests.NetWorld;
 
 /// <summary>
-/// Proves <see cref="PositionFrameBlobMigration.FrameV2ToV3"/> round-trips a REAL v2 snapshot body end to end, at
+/// Proves <see cref="PositionFrameBlobMigration.FrameV2ToV3(byte[])"/> round-trips a REAL v2 snapshot body end to end, at
 /// EVERY wire generation a v2 blob can have been written at.
 /// <para>
 /// That range is the point. The cell-blob schema sat at v2 while the wire ran from generation 2 to 8, and the
 /// movement built-in grew in five of those steps, so "a v2 blob" is seven different byte layouts and nothing in the
-/// header says which (#353, #322). The migration infers the generation by walking the body at each candidate and
-/// keeping the one that parses whole, then brings every built-in payload to this build's layout - so a gen-5 save and
-/// a gen-8 save both boot into a gen-10 server, with the fields their generation predates coming back at their
-/// defaults rather than as garbage read out of the following frame.
+/// header says which (#353, #322). The migration infers the generation by walking the body at every candidate,
+/// discarding the ones that recovered something no build writes, and brings every built-in payload to this build's
+/// layout - so a gen-5 save and a gen-8 save both boot into a gen-10 server, with the fields their generation
+/// predates coming back at their defaults rather than as garbage read out of the following frame. When two candidates
+/// survive to different results the migration refuses (see the ambiguity case below) and the operator's
+/// <see cref="CellBlobMigrationOptions.AssumedWireGeneration"/> is what brings that body in.
 /// </para>
 /// <para>
 /// The previous version of this file seeded its fixture with the CURRENT movement encoder and called it v2, which no
@@ -116,9 +118,28 @@ public class PositionFrameBlobMigrationTests
     {
         MovementState seeded = FullMovement();
         byte[] v2Body = V2BodyAt(generation, seeded);
+        var options = new CellBlobMigrationOptions { Registry = MoveProtocol.CreateRegistry() };
 
-        byte[] v3Body = PositionFrameBlobMigration.FrameV2ToV3(v2Body);
+        byte[] v3Body;
+        try
+        {
+            v3Body = PositionFrameBlobMigration.FrameV2ToV3(v2Body, options);
+        }
+        catch (AmbiguousCellBlobGenerationException ex)
+        {
+            // A body that reads cleanly at more than one generation is not migrated on a guess. The truth is always
+            // among the candidates, and stating it is what recovers the cell.
+            Assert.Contains(generation, ex.CandidateGenerations);
+            v3Body = PositionFrameBlobMigration.FrameV2ToV3(v2Body,
+                new CellBlobMigrationOptions { Registry = MoveProtocol.CreateRegistry(), AssumedWireGeneration = generation });
+        }
 
+        AssertRestoresAsWrittenAt(generation, seeded, v3Body);
+    }
+
+    // Every field of the migrated body, decoded through the production registry the server restores with.
+    private static void AssertRestoresAsWrittenAt(int generation, MovementState seeded, byte[] v3Body)
+    {
         var clientWorld = new World();
         var view = new ClientReplicationView(MoveProtocol.CreateRegistry());
         view.Apply(clientWorld, v3Body);
@@ -145,13 +166,39 @@ public class PositionFrameBlobMigrationTests
     /// <summary>
     /// The walk over an unrecorded generation is ambiguous by construction, and this is the case that proved it: a
     /// generation-3 movement payload (14 bytes) followed by an identity frame for a six-character name (2 + 2 + 6
-    /// bytes) is EXACTLY a generation-8 movement payload, so a "newest candidate that parses" walk reads the name into
-    /// the movement frame, ends on the same terminator, consumes the buffer exactly, and calls the blob generation 8.
-    /// The frame count separates them: the true walk recovers three frames on that entity, the greedy one two. An
-    /// over-long read can only ever swallow frames, so the truth always scores at least as high.
+    /// bytes) is EXACTLY a generation-8 movement payload, so a generation-8 walk reads the name into the movement
+    /// frame, ends on the same terminator and consumes the buffer exactly. Both readings are structurally perfect and
+    /// nothing in the bytes prefers either.
+    /// <para>
+    /// 17.37.1 shipped a frame count as the tie-break, on the argument that an over-long read can only ever swallow
+    /// frames so the truth always scores at least as high. That is only true of candidates NEWER than the truth: an
+    /// OLDER candidate under-reads a payload and the leftover bytes re-sync into extra frames, which can outscore the
+    /// truth (see <c>CellBlobInferenceTests</c>). So there is no tie-break any more. A body that reads two ways is
+    /// refused, and the cell is quarantined with its bytes intact rather than migrated into one of them.
+    /// </para>
     /// </summary>
     [Fact]
-    public void FrameV2ToV3_PrefersTheWalkThatRecoversMoreFrames()
+    public void FrameV2ToV3_TwoCleanWalks_AreRefusedRatherThanScored()
+    {
+        byte[] v2Body = new CellBlobFixtures.BodyBuilder()
+            .Entity(1,
+                (MoveProtocol.PositionTypeId, CellBlobFixtures.Position(3, PlayerPos)),
+                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(3, FullMovement())),
+                (MoveProtocol.IdentityTypeId, CellBlobFixtures.Identity("Runner")))
+            .ToBody();
+
+        var ex = Assert.Throws<AmbiguousCellBlobGenerationException>(() =>
+            PositionFrameBlobMigration.FrameV2ToV3(v2Body, new CellBlobMigrationOptions { Registry = MoveProtocol.CreateRegistry() }));
+
+        // 7 and 8 read this body identically (they share a movement length), so the disagreement is 3 against them,
+        // and every surviving candidate is named: an operator picking one has to see all of them.
+        Assert.Equal(new[] { 3, 7, 8 }, ex.CandidateGenerations);
+    }
+
+    /// <summary>The same body, with the save's provenance stated: one walk, no candidates, and the name that a
+    /// generation-8 reading would have eaten comes back.</summary>
+    [Fact]
+    public void FrameV2ToV3_AssumedWireGeneration_ReadsTheAmbiguousBodyExactly()
     {
         MovementState seeded = FullMovement();
         byte[] v2Body = new CellBlobFixtures.BodyBuilder()
@@ -161,7 +208,8 @@ public class PositionFrameBlobMigrationTests
                 (MoveProtocol.IdentityTypeId, CellBlobFixtures.Identity("Runner")))
             .ToBody();
 
-        byte[] v3Body = PositionFrameBlobMigration.FrameV2ToV3(v2Body);
+        byte[] v3Body = PositionFrameBlobMigration.FrameV2ToV3(v2Body,
+            new CellBlobMigrationOptions { AssumedWireGeneration = 3 });
 
         var clientWorld = new World();
         var view = new ClientReplicationView(MoveProtocol.CreateRegistry());

@@ -154,6 +154,35 @@ public class BuiltinBlobLayoutTests
         Assert.All(atCurrent[atSix.Length..], b => Assert.Equal((byte)0, b));
     }
 
+    /// <summary>
+    /// The two bool bytes the inference walk validates (a payload whose ground or swim byte is neither 0 nor 1 was
+    /// not written by the codec, so the candidate generation that read it is wrong). Their offsets are derived here
+    /// from the same field-by-field re-encode as the lengths, so a field inserted ahead of either one moves the
+    /// constant instead of quietly turning the check into noise.
+    /// </summary>
+    [Fact]
+    public void MovementBoolOffsets_AreWhereTheCodecWritesThem()
+    {
+        MovementState m = Sample();
+        m.Grounded = true;
+        m.Swimming = false;
+        byte[] payload = CellBlobFixtures.Movement(MoveProtocol.WireProtocolVersion, m);
+        Assert.Equal(1, payload[BuiltinBlobLayout.MovementGroundedOffset]);
+        Assert.Equal(0, payload[BuiltinBlobLayout.MovementSwimmingOffset]);
+
+        m.Grounded = false;
+        m.Swimming = true;
+        payload = CellBlobFixtures.Movement(BuiltinBlobLayout.SwimmingWireGeneration, m);
+        Assert.Equal(0, payload[BuiltinBlobLayout.MovementGroundedOffset]);
+        Assert.Equal(1, payload[BuiltinBlobLayout.MovementSwimmingOffset]);
+
+        // And the swim byte is the last one that generation wrote, so it exists from exactly there.
+        Assert.Equal(BuiltinBlobLayout.MovementSwimmingOffset + 1,
+            BuiltinBlobLayout.MovementPayloadLength(BuiltinBlobLayout.SwimmingWireGeneration));
+        Assert.Equal(BuiltinBlobLayout.MovementSwimmingOffset,
+            BuiltinBlobLayout.MovementPayloadLength(BuiltinBlobLayout.SwimmingWireGeneration - 1));
+    }
+
     [Fact]
     public void PayloadLength_UnknownBuiltinId_IsNotPresent()
     {

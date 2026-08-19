@@ -14,7 +14,7 @@ using Xunit;
 namespace KhaozEngine.Tests.NetWorld;
 
 /// <summary>
-/// The 10.0.0 engine cell-blob migration (<see cref="NetIdBlobMigration.WidenV1ToV2"/>): widens 32-bit entity ids to
+/// The 10.0.0 engine cell-blob migration (<see cref="NetIdBlobMigration.WidenV1ToV2(byte[])"/>): widens 32-bit entity ids to
 /// 64-bit while leaving every component byte identical, and the full <see cref="CellPersistence"/> boot path brings a
 /// committed pre-10.0.0 (9.x) save forward and restores it. The fixture <c>NetWorld/Fixtures/cell-v1-32bit.blob</c> is
 /// a real wrapped v1 blob (one ReplicatedPosition entity at (10,0,20) under 32-bit NetId 5).

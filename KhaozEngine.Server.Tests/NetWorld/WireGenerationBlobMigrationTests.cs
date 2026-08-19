@@ -81,6 +81,57 @@ public class WireGenerationBlobMigrationTests
         Assert.Throws<InvalidOperationException>(() => WireGenerationBlobMigration.NormalizeV3ToV4(corrupt));
     }
 
+    /// <summary>
+    /// The chain infers ONCE. <see cref="PositionFrameBlobMigration.FrameV2ToV3(byte[])"/> already normalizes to this
+    /// build's generation, so the v3 -&gt; v4 step behind it has nothing to establish: before the #353 fix round it
+    /// re-walked that same body at candidates 9 and 10 anyway, which cost a v2 blob nine walks and two rewrites and
+    /// gave the chain a second independent chance to mis-infer. Same reference back is the proof it did no work.
+    /// </summary>
+    [Fact]
+    public void ChainedAfterTheV2Step_DoesNotInferASecondTime()
+    {
+        var options = new CellBlobMigrationOptions { Registry = MoveProtocol.CreateRegistry() };
+        var context = new CellBlobMigrationContext();
+        byte[] v2Body = new CellBlobFixtures.BodyBuilder()
+            .Entity(11,
+                (MoveProtocol.PositionTypeId, CellBlobFixtures.Position(8, Pos)),
+                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(8, Movement())))
+            .ToBody();
+
+        byte[] framed = PositionFrameBlobMigration.FrameV2ToV3(v2Body, options, context);
+        Assert.Equal(MoveProtocol.WireProtocolVersion, context.KnownWireGeneration);
+
+        byte[] stamped = WireGenerationBlobMigration.NormalizeV3ToV4(framed, options, context);
+        Assert.Same(framed, stamped);
+    }
+
+    /// <summary>A v1 blob is generation 1 exactly, so the netId widening hands that generation to the step behind it
+    /// and nothing downstream guesses at a body whose layout is already known.</summary>
+    [Fact]
+    public void ChainedAfterTheV1Step_CarriesTheKnownGenerationForward()
+    {
+        var context = new CellBlobMigrationContext();
+        MovementState m = Movement();
+        byte[] v1Body = new CellBlobFixtures.BodyBuilder(netId32: true)
+            .Entity(11,
+                (MoveProtocol.PositionTypeId, CellBlobFixtures.Position(1, Pos)),
+                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(1, m)))
+            .ToBody();
+
+        byte[] widened = NetIdBlobMigration.WidenV1ToV2(v1Body, context);
+        Assert.Equal(BuiltinBlobLayout.OldestKnownWireGeneration, context.KnownWireGeneration);
+
+        byte[] framed = PositionFrameBlobMigration.FrameV2ToV3(widened,
+            new CellBlobMigrationOptions { Registry = MoveProtocol.CreateRegistry() }, context);
+
+        MovementState expected = default;
+        expected.VerticalVelocity = m.VerticalVelocity;
+        expected.Grounded = m.Grounded;
+        expected.TimeSinceGrounded = m.TimeSinceGrounded;
+        expected.JumpBufferRemaining = m.JumpBufferRemaining;
+        Assert.Equal(BodyAt(MoveProtocol.WireProtocolVersion, expected), framed);
+    }
+
     [Fact]
     public void NormalizeToCurrent_FromAGenerationThatBodyIsNotAt_Throws()
     {

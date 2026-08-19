@@ -12553,8 +12553,11 @@ subsystem is tracking. `ShardedWorldServer.MarkTransient(netId)` tags such an en
 `IsTransient` beside it. It excludes the ENTITY, not a component's bytes, which is why it is not a
 `ReplicationChannels` flag: a channel gates one component TYPE, and dropping bytes would still persist the entity,
 just as a stripped husk. It reaches no wire (a field-less ECS tag in no `ReplicationRegistry`, so no snapshot grows
-and no blob layout moves) and it follows the entity across a cell handoff. `WorldPickups` marks everything it spawns,
-so a game on that seam needs none of this.
+and no blob layout moves) and it follows the entity across a cell handoff **inside one `ShardHost`** for any
+`ICellLink` shape, whether the link completes the crossing in the same `ProcessHandoffs` call or delivers it a later
+one. Across NODES it does not: two `ShardHost` instances exchange a crossing as bytes and the tag has no wire id by
+design, so an infra link spanning nodes must carry the mark in its own envelope and re-apply it on arrival.
+`WorldPickups` marks everything it spawns, so a game on that seam needs none of this.
 
 Subscribe to **`CellPersistence.OnStoreError`** (`event Action<Exception>`, mirrors `WorldPersistence.OnStoreError`)
 to log/alert on a faulted background cell save, meta write, or quarantine write. The driver prunes the faulted task
@@ -13315,19 +13318,29 @@ the seam does not own (a zone that closed, one owner's whole drop, a region an a
 the owning cell, read once at spawn since a pickup never moves, and null on a single-world server, which never
 evicts anything.
 
+The subscription is a strong reference from the evictor to the seam. If you rebuild the pickup seam (per zone, per
+instance) while keeping one long-lived evictor, call `StopTrackingEvictions(evictor)` on the old seam as you drop it,
+or the old one stays alive and keeps handling every eviction beside the new one.
+
 **It is a wire break.** `PickupState` is a **built-in** replicated component (`MoveProtocol.PickupTypeId` = 5), not a
 consumer extension, so it is unframed: a client whose registry has no id 5 cannot skip those bytes and would hard-fail
 its snapshot decode the first time a pickup entered its area of interest, mid-session and far from the cause.
 `MoveProtocol.WireProtocolVersion` therefore bumps to **8**, which converts exactly that late failure into a clean
 `IncompatibleVersion` rejection at connect. **Client and server must ship together.**
 
-**A pickup is never persisted (since 17.37.1).** Every pickup `Spawn` creates is marked
-`KhaozEngine.Sharding.Transient`, so `CellPersistence` leaves it out of the cell blob and no restore can bring it
-back. There is no knob to turn that off, because the alternative has no honest meaning: the seam's state (the
-time-to-live, the clock, the offer records) lives in this process only, so a resurrected pickup is a plain entity
-carrying `PickupState` that the seam knows nothing about, offered to nobody and expiring never. A collectible meant
-to survive a restart belongs in your own content or save data, spawned again at boot, which is also the only place
-its payload still means anything.
+**A pickup is never persisted by default (since 17.37.1).** Every pickup `Spawn` creates is marked
+`KhaozEngine.Sharding.Transient`, so `CellPersistence` leaves it out of the cell blob and no restore brings it back.
+The seam's state (the time-to-live, the clock, the offer records) lives in this process only, so a resurrected pickup
+is a plain entity carrying `PickupState` that the seam knows nothing about, offered to nobody and expiring never.
+
+The mark is not a lock, and it is worth knowing what clearing it actually buys you. `server.ClearTransient(pickupNetId)`
+after `Spawn` drops the mark, and the next save writes the entity like any other. What you get back on restore is
+precisely the husk above: nothing rehydrates the seam's tracking, so the restored orb is offered to nobody, expires
+never, and `Despawn` / `DespawnAll` / `ForgetCell` all miss it. Persistent ground loot needs a
+`WorldPickups.Rehydrate(world)` that re-adopts restored `PickupState` entities into the seam, filed as
+[#660](https://github.com/APKiwiOrg/KhaozEngine/issues/660). Until that lands, a collectible meant to survive a
+restart belongs in your own content or save data, spawned again at boot, which is also the only place its payload
+still means anything.
 
 **The same opt-out is yours for any other transient server-owned entity.** A timed spawn, a wave of adds, a
 projectile, a temporary marker:
@@ -13340,7 +13353,9 @@ server.MarkTransient(netId);   // ClearTransient / IsTransient beside it
 It excludes the ENTITY rather than a component's bytes, which is the axis a `ReplicationChannels` flag cannot reach:
 a channel gates one component TYPE, and dropping bytes would still persist the entity, just as a stripped husk. It
 costs nothing on the wire (a field-less ECS tag in no `ReplicationRegistry`, so no blob layout moves) and it follows
-the entity across a cell handoff, so walking into the next cell does not make it persistable there.
+the entity across a cell handoff inside one `ShardHost`, for any `ICellLink` shape, so walking into the next cell does
+not make it persistable there. That stops at the node boundary: the tag has no wire id, so a link carrying a crossing
+between two hosts carries the mark in its own envelope or the destination adopts it unmarked.
 
 **Blobs written before 17.37.1 still hold husks**, since a save cannot be edited after the fact. That is a one-time
 boot sweep, run once against a world an older build saved and unnecessary for every save written since. Sweep before

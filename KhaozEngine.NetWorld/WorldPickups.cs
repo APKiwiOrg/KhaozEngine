@@ -48,13 +48,20 @@ namespace KhaozEngine.NetWorld;
 /// through it. A game wanting a cylinder, a cone, a facing test or a line of sight adds it in
 /// <see cref="WorldPickupsConfig.OnCollect"/> and declines, which is what the callback is for.</para>
 ///
-/// <para><b>Persistence: a pickup is never saved.</b> Every pickup <see cref="Spawn"/> creates is marked
-/// <see cref="Transient"/>, so <see cref="CellPersistence"/> leaves it out of the cell blob and no restore can bring
-/// it back. That is not a tunable, because the alternative has no honest meaning: this seam's state (the
-/// time-to-live, the clock, the offer records) lives in this process only, so a resurrected pickup would be a plain
-/// entity carrying <see cref="PickupState"/> that the seam knows nothing about, offered to nobody and expiring
-/// never. A game wanting a collectible that outlives a restart owns that decision itself: keep it in the game's own
-/// content or save data and spawn it again at boot, which is also the only way its payload can still mean anything.
+/// <para><b>Persistence: a pickup is never saved by default.</b> Every pickup <see cref="Spawn"/> creates is marked
+/// <see cref="Transient"/>, so <see cref="CellPersistence"/> leaves it out of the cell blob and no restore brings it
+/// back. This seam's state (the time-to-live, the clock, the offer records) lives in this process only, so a
+/// resurrected pickup would be a plain entity carrying <see cref="PickupState"/> that the seam knows nothing about,
+/// offered to nobody and expiring never.
+/// <para>The mark is not a lock: a game may call <c>ShardedWorldServer.ClearTransient(pickupNetId)</c> after
+/// <see cref="Spawn"/> and the next save writes the entity like any other. What it gets back is precisely the husk
+/// above, because nothing rehydrates this seam's tracking: the restored entity is in no proximity scan, expires
+/// never, and neither <see cref="Despawn"/> nor <see cref="DespawnAll"/> nor <see cref="ForgetCell"/> can reach it.
+/// Making persistent ground loot actually work needs a <c>Rehydrate(world)</c> that re-adopts restored
+/// <see cref="PickupState"/> entities into this seam, filed as
+/// https://github.com/APKiwiOrg/KhaozEngine/issues/660. Until that lands, a collectible that outlives a restart
+/// belongs in the game's own content or save data, spawned again at boot, which is also the only way its payload can
+/// still mean anything.</para>
 /// <para><b>Blobs written before this version still hold husks</b>, since a save cannot be edited after the fact.
 /// Clearing those is a one-time boot sweep, run once against a world saved by an older build, and unnecessary for
 /// every save written since:
@@ -317,6 +324,10 @@ public sealed class WorldPickups
     /// <para><see cref="WorldPickupsConfig.Evictor"/> does exactly this at construction. Use the method instead when
     /// the evictor is built after the seam, which is the usual order in a server bootstrap that reads its
     /// persistence config late.</para>
+    /// <para>The subscription is a strong reference from the evictor to this seam, so a game that rebuilds its
+    /// pickup seam (per zone, per instance) while keeping one long-lived evictor must
+    /// <see cref="StopTrackingEvictions"/> on the old seam, or the old one stays alive and keeps handling every
+    /// eviction beside the new one.</para>
     /// </summary>
     /// <exception cref="ArgumentNullException"><paramref name="evictor"/> is null.</exception>
     public bool TrackEvictions(CellEvictor evictor)

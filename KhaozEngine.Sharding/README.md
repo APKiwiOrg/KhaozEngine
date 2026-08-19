@@ -94,8 +94,12 @@ cannot reach: a channel gates one component TYPE on one channel, and dropping a 
 the entity, just as a stripped husk. Deliberately in no `ReplicationRegistry`, since persistence is a server-local
 decision no client needs to hear, so it spends no wire type id, adds no bytes to any snapshot, and moves no blob
 layout. `ShardHost.ProcessHandoffs` carries the mark across a crossing (it rides beside the Migrate capture rather
-than inside it), so a transient entity walking into the next cell does not become persistable there. What it cannot
-do is edit a blob already written: husks in older saves still need a one-time boot sweep.
+than inside it), so a transient entity walking into the next cell does not become persistable there. That holds for
+any `ICellLink` shape, since the mark is read when the Migrate is sent and re-applied when it is adopted, whether
+that is the same `ProcessHandoffs` call or a later one. It covers a handoff **within one host** only: a cross-NODE
+crossing between two `ShardHost` instances carries no mark, because the tag has no wire id by design, so an infra
+link that spans nodes must carry it in its own envelope and re-apply it on arrival. What the mark also cannot do is
+edit a blob already written: husks in older saves still need a one-time boot sweep.
 
 **Per-channel components (since 9.28.0).** The three cross-cell/persistence consumers each serve one
 `ReplicationChannels` channel, so a component only reaches the paths it declared (default `Replicate | Persist |

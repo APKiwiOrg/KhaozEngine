@@ -23,10 +23,22 @@ namespace KhaozEngine.Sharding;
 /// and changes no blob layout. Nothing on the wire moves when an entity is marked.
 /// </para>
 ///
-/// <para><b>It follows the entity across a cell handoff.</b> Unlike <see cref="Ghost"/> and <see cref="Migrating"/>,
-/// which are re-derived per cell by definition, a transient entity that walks over a cell border must stay transient
-/// or the destination cell would happily save it. <see cref="ShardHost.ProcessHandoffs"/> carries the mark across
-/// the crossing itself, which is why it survives one without any migrate-channel registration.
+/// <para><b>It follows the entity across a cell handoff within one host.</b> Unlike <see cref="Ghost"/> and
+/// <see cref="Migrating"/>, which are re-derived per cell by definition, a transient entity that walks over a cell
+/// border must stay transient or the destination cell would happily save it.
+/// <see cref="ShardHost.ProcessHandoffs"/> carries the mark across the crossing itself, which is why it survives one
+/// without any migrate-channel registration. That holds for every <see cref="ICellLink"/> shape: the mark is read on
+/// the source when the Migrate is sent and re-applied on the destination when it is adopted, whether the link
+/// completes the crossing inside one call (<see cref="InProcessCellLink"/>) or delivers the Migrate on a later one
+/// (what the link's network-impl contract describes).
+/// </para>
+///
+/// <para><b>A genuinely cross-NODE handoff is NOT covered</b>, and that is the deliberate cost of spending no wire
+/// id. Two <see cref="ShardHost"/> instances in two processes carry a crossing as bytes, and the mark is in no
+/// <see cref="KhaozEngine.Replication.ReplicationRegistry"/>, so nothing in the Migrate payload names it and the
+/// receiving host's scratch set has never heard of the entity. An infra link that spans nodes must carry the mark in
+/// its OWN envelope beside the payload and re-apply it on arrival (set the tag on the adopted entity), exactly as
+/// <see cref="ShardHost.ProcessHandoffs"/> does within one host.
 /// </para>
 ///
 /// <para><b>What it cannot fix is a blob that was already written.</b> A save taken before an entity was marked

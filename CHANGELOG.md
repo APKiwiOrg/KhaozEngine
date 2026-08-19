@@ -28,9 +28,7 @@ of leaving an orb nobody can see still being offered.
   goldens) now passes `doc.PlaneHeight`, so a world with a non-default plane height stays sealed too.
 - **`tileworld_greybox` and `tileworld_topdown` goldens rebaked** on all three backends, since both shots frame
   the walled house whose roof moved.
-
-Found by the Grimhollow adopt, where the greybox house rendered with a visibly detached roof slab.
-
+- Found by the Grimhollow adopt, where the greybox house rendered with a visibly detached roof slab.
 - **`Transient`: a per-entity persist opt-out** (`KhaozEngine.Sharding`). A field-less ECS tag, beside `Ghost` and
   `Migrating`, meaning this entity is never saved. `CellSim.SnapshotOwned` leaves it out of the cell blob entirely,
   so a server-owned thing meant to outlive nothing (a world pickup, a timed spawn, a projectile, a temporary marker)
@@ -41,15 +39,22 @@ Found by the Grimhollow adopt, where the greybox house rendered with a visibly d
   server-local decision no client needs to hear, so the marker spends no replication type id, adds no bytes to any
   snapshot, and moves no blob layout. `ShardHost.ProcessHandoffs` carries the mark across a cell crossing (beside
   the Migrate capture rather than inside it, since an unregistered tag cannot ride the capture), so a transient
-  entity walking into the next cell does not become persistable there. Closes #326.
+  entity walking into the next cell does not become persistable there. That covers a handoff **within one host**,
+  for any `ICellLink` shape: the mark is read when the Migrate is sent and consumed when it is adopted, so a link
+  that delivers the Migrate a later call (which every networked one does) still re-marks on arrival. It stops at the
+  node boundary on purpose, since the tag has no wire id: a crossing between two `ShardHost` instances carries the
+  mark in the link's own envelope or the destination adopts it unmarked. Closes #326.
 - **`ShardedWorldServer.MarkTransient(netId)` / `ClearTransient(netId)` / `IsTransient(netId)`**, the net-id
   vocabulary a game already spawns in. Each refuses a player net id, since a player persists on its own record and
   is excluded from cell snapshots anyway.
-- **A pickup is never persisted**, and that is not a tunable. Every pickup `WorldPickups.Spawn` creates is marked
-  `Transient`, because the alternative has no honest meaning: the seam's state (the time-to-live, the clock, the
-  offer records) lives in one process, so a restored pickup was a plain entity carrying `PickupState` that the seam
-  knew nothing about, offered to nobody and expiring never. A collectible meant to survive a restart belongs in the
-  game's own content or save data, which is also the only place its payload still means anything. **The
+- **A pickup is never persisted by default.** Every pickup `WorldPickups.Spawn` creates is marked `Transient`,
+  because the seam's state (the time-to-live, the clock, the offer records) lives in one process, so a restored
+  pickup is a plain entity carrying `PickupState` that the seam knows nothing about, offered to nobody and expiring
+  never. A game can still clear the mark (`ClearTransient(pickupNetId)` after `Spawn`) and the next save writes the
+  entity like any other, but what comes back is exactly that husk, because nothing rehydrates the seam's tracking:
+  a `WorldPickups.Rehydrate(world)` re-adopting restored `PickupState` entities is what persistent ground loot would
+  need, and is filed as #660. Until then a collectible meant to survive a restart belongs in the game's own content
+  or save data, which is also the only place its payload still means anything. **The
   `DespawnEntity` boot sweep the docs used to hand every game is now only for blobs saved BEFORE this version**: a
   save cannot be edited after the fact, so a world an older build wrote still holds husks and still wants the sweep
   once. Nothing written since needs it.

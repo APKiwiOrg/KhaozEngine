@@ -7,8 +7,13 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.37.1
 
-A greybox roof now sits on the walls it covers instead of floating a whole plane above them. Alongside it, a
-server-owned entity can finally opt out of cell persistence per ENTITY, so a world pickup or any other transient
+A greybox roof now sits on the walls it covers instead of floating a whole plane above them. Alongside it, the
+last four per-frame PARTIAL uniform-buffer writes in the engine are gone: water planes, overlay proxies,
+`SpriteBatch` view-projection slots and a splat material's combined block all pack into a CPU image and go up in
+one whole-buffer write, so no per-frame write on the D3D11 Veldrid leg takes the blocking staging route any
+more (the one load-time partial write a splat material still makes is once per material, not per frame).
+On the server side, a server-owned
+entity can finally opt out of cell persistence per ENTITY, so a world pickup or any other transient
 thing stops being caught in an interval save and resurrected on restart as a husk no subsystem is tracking, and the
 pickup seam gained the cell awareness it was missing, so unloading a cell takes its pickups' tracking with it instead
 of leaving an orb nobody can see still being offered.
@@ -76,6 +81,46 @@ of leaving an orb nobody can see still being offered.
   are byte-identical to the same entity unmarked, and no cell-blob migration was touched. Both are pinned by test.
 - Found closing https://github.com/APKiwiOrg/Ruinborne/issues/271, whose game-side workaround (a `ForgetCell` wired
   to `CellEvicted`, plus a boot `DespawnEntity` sweep) is what the two seams above retire.
+
+- **`CharacterMovement.cs` split into two more domain partials** (`KhaozEngine.Locomotion`): the post-sweep settle
+  pass to `CharacterMovement.Settle.cs`, and the paced step-up climb with its climb-signal export to
+  `CharacterMovement.Climb.cs`. 799 lines down to 556, a pure code move with no API and no behaviour change (#480).
+- **`VulkanPresentBoundary` and its test class split on the seam each had already marked** (`KhaozEngine.Gpu.Vulkan`,
+  `KhaozEngine.Render.Tests`): the recreation state machine to `VulkanPresentBoundary.Recreate.cs`, 799 lines down to
+  606, and the recreate half of its coverage to `VulkanPresentBoundaryTests.Recreate.cs`, 777 down to 332 (#559).
+
+- **Every per-frame uniform block now uploads WHOLE, on all four remaining sites** (`KhaozEngine.Render3D`,
+  `KhaozEngine.Render2D`). Veldrid's `D3D11CommandList.UpdateBufferCore` sends a PARTIAL write to a non-Dynamic
+  uniform buffer down its staging route: rent a staging buffer, hand it to `GraphicsDevice.UpdateBuffer`, which
+  Maps the IMMEDIATE context with `D3D11_MAP_WRITE` (not WRITE_DISCARD, no DO_NOT_WAIT) and blocks until the GPU
+  has released the buffer being recycled. Only a write covering the whole buffer from offset 0 takes the cheap
+  `UpdateSubresource` path, because Direct3D 11 forbids a partial box on a constant buffer. 17.18.0 and 17.20.0
+  packed the model frame block and the GPU-skinned main/shadow slots this way (worth 61.56 ms to 22.97 ms of
+  consumer shadow recording on a Windows client). This finishes the list. `WaterRenderer` packed one slot per
+  plane, `OverlayMeshRenderer` one per draw interleaved with the draws themselves, `SpriteBatch` one per `Begin`,
+  and a splat material's combined UBO wrote its frame head into a larger buffer. Each now mirrors its whole
+  buffer on the CPU and writes it once. Same bytes at the same offsets, so every golden is unchanged. Metal and
+  Vulkan are simply issued fewer commands, and the engine's own native D3D11 backend routes uniform writes
+  through `D3D11UniformRing` and never had the stall.
+- **A splat material retains its `SplatParamsData`.** `ModelRenderer.CreateSplatParamsUbo` returns the new
+  internal `SplatUniformBuffer` instead of a bare `IGpuBuffer`: it owns the buffer and a CPU mirror whose tail
+  already holds the params, which is what makes the whole block rebuildable from the CPU and therefore writable
+  in one command. That retention was the stated prerequisite for this site.
+- **`OverlayMeshRenderer.Draw` splits into `Enqueue` + `Flush`.** Packing a slot and recording a draw are now
+  two phases, so every slot is uploaded before the first draw binds one. The overlay pass moved out of
+  `Scene3D.cs` into `Scene3D.OverlayMeshPass.cs` with it, and the `SpriteBatch` slot bookkeeping into
+  `SpriteBatch.ViewProj.cs`. Both classes gained `partial`, and no public API moved.
+- **`SpriteBatch` still writes once per `Begin`, and that is deliberate.** A batch cannot fold its uploads into
+  one per frame the way a pass that knows every slot up front can, because a `Begin`'s draws are recorded before
+  the next `Begin` exists. Each `Begin` re-uploads the mirror whole instead, which rewrites the earlier slots
+  with bytes they already hold and costs a memcpy where it used to cost a blocking Map.
+- **The upload-shape guard covers all of it.** `FrameUniformUploadShapeGpuTests` gains a row per site, and its
+  GPU-skinned row now draws TWO casters so it really pins one slot per caster per cascade. The new device-free
+  `PackedUniformMirrorTests` asserts the other half, the BYTES: a packer that uploads the whole buffer with a
+  slot at the wrong offset satisfies the shape guard perfectly and renders garbage.
+
+Closes [#408](https://github.com/APKiwiOrg/KhaozEngine/issues/408), the residue the 17.18.0 and 17.20.0 packing
+left behind.
 
 ## 17.37.0
 

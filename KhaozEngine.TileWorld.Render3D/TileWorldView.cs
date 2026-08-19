@@ -39,7 +39,7 @@ public sealed class TileWorldViewOptions
 /// and coalesced into one rebuild per region-plane at the start of the next <see cref="Draw"/>, so a stroke that
 /// touches the same tiles a hundred times still remeshes each region-plane once. Everything goes through
 /// <see cref="ITileWorldScene"/>, so the whole class runs headless.</summary>
-public sealed class TileWorldView : IDisposable
+public sealed partial class TileWorldView : IDisposable
 {
     /// <summary>Side in metres of the box an archetype with no mesh is drawn as.</summary>
     public const float PlaceholderSize = 1f;

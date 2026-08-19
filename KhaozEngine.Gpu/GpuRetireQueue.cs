@@ -112,8 +112,11 @@ namespace KhaozEngine.Gpu
     /// the GPU.</b> A windowed frame loop blocks in its present at the backend's frames-in-flight depth (default 3,
     /// half the default cap), so the valve stays shut and the count reads zero. A loop that submits without ever
     /// presenting has nothing throttling it and runs eight or nine frames ahead even on fast hardware, so it fires:
-    /// the engine's own 400-frame offscreen churn test measures 16 firings on an M2 Max, against the 396 drains the
-    /// unfenced fallback pays over the same run. The two frame-counted policies need no valve:
+    /// the engine's own 400-frame offscreen churn test parks the peak holding exactly ON the cap and fires the
+    /// valve anywhere from once to a couple of dozen times on an M2 Max, against the 396 drains the unfenced
+    /// fallback pays over the same run. The firing COUNT does not reproduce between runs, because it tracks how
+    /// far ahead the loop happened to get on that pass. The peak sitting on the cap is the stable reading, and is
+    /// the one the test gates on. The two frame-counted policies need no valve:
     /// a batch there dies on the count alone, which caps the holding at <see cref="FrameDelay"/> batches by
     /// construction.</para>
     /// <para><b>It only frees on <see cref="BeginFrame"/>.</b> Nothing here is time-driven, so a renderer that
@@ -137,10 +140,12 @@ namespace KhaozEngine.Gpu
         /// for one drain (see the valve note on this type). Eight is comfortably above the deepest a PRESENTED frame
         /// loop reaches: the CPU is stopped at <c>KE_METAL_FRAMES_IN_FLIGHT</c> / <c>KE_VULKAN_FRAMES_IN_FLIGHT</c> /
         /// <c>KE_D3D11_FRAMES_IN_FLIGHT</c> frames ahead (default 3), and every one of those frames would have to
-        /// have retired something to seal a batch. A consumer that raises that knob past 8 raises this with it, or
-        /// it buys a drain it did not need. An UNTHROTTLED loop (an offscreen capture run, a tool that submits
-        /// without presenting) is the case that reaches it however fast the device is, which is the case the bound
-        /// exists for.</summary>
+        /// have retired something to seal a batch. A consumer that raises that knob past 8 would want this raised
+        /// with it, or it buys a drain it did not need, and cannot: the parameter is on <see cref="Create"/>, which
+        /// no public route into a scene reaches
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/661">#661</see>). An UNTHROTTLED loop (an
+        /// offscreen capture run, a tool that submits without presenting) is the case that reaches it however fast
+        /// the device is, which is the case the bound exists for.</summary>
         public const int DefaultMaxSealedBatches = 8;
 
         readonly Action _drainDevice;
@@ -327,6 +332,15 @@ namespace KhaozEngine.Gpu
             //
             // Only where the policy permits a drain on the frame path. FrameCountOnly must not (#84), and does not
             // need to: its batches die on the count, which caps the holding at FrameDelay all by itself.
+            //
+            // WHY THIS DRAIN IS NEVER INSIDE SOMEONE ELSE'S RECORDING, which is the thing FlushAll refuses outright.
+            // The count can only cross the cap on a boundary that SEALED: nothing but SealNewBatch adds a batch, and
+            // a firing frees the WHOLE holding, so every BeginFrame returns at or under the cap. Seal-before-sweep
+            // then puts that seal moments earlier in this same call, and on the fence path sealing IS the barrier's
+            // empty submission, which opens through GpuRecording and refuses by name inside another recording
+            // (#424). So by the time the valve can fire, the seam has already proved nothing was recording. Without
+            // a barrier there is no such submission, and no need for one either: those batches die on the frame
+            // count, so the holding cannot pass the cap at all unless FrameDelay is configured above it.
             bool valveOpen = _batches.Count > MaxSealedBatches && _fallback == GpuRetireFallback.DrainDevice;
             bool drained = false;
             if (valveOpen) { _drainDevice(); drained = true; ValveDrains++; }

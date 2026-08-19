@@ -12419,11 +12419,18 @@ fix: the earlier session was never restored, played from wherever its join built
 next dirty pass wrote that pre-restore state over the account's record. That configuration no longer exists. One
 account keying one record was never a shape two live players could share, so the fix went in at the join gate:
 `NetServer` deduplicates by verified subject and ends the older session before admitting the newer one
-(`WorldServerConfig.DuplicateSessions`, below), which reaches this layer as an ordinary leave-then-join (#662). One
-ordering edge remains: a save-on-leave and the rejoin's own load can be in flight at the
-same instant on an async store, and store operations for one account are not ordered against each other, so a rejoin
-can briefly apply pre-leave state, which the next periodic save reconciles. Use a stable account id, and serialize
-your own per-account store operations if a session needs strict ordering. Subscribe to
+(`WorldServerConfig.DuplicateSessions`, below), which reaches this layer as an ordinary leave-then-join (#662).
+
+A load-on-join also WAITS for the account's own outstanding WRITES, which is the other half of that. Store
+operations for one key are not ordered against each other, so the save-on-leave and the rejoin's load issued from a
+single event drain race, and on any store whose write costs more than its read (a real remote backend) the read
+wins: the newcomer was restored onto the record from BEFORE the leave, and the next periodic save wrote that
+rollback down as the truth. A kick is exactly that shape every time, so every write this layer issues is published
+under its key and a join whose key carries one awaits it before reading. A write that FAILS still releases the join,
+which then reads whatever the store still holds (the same outage semantics a failed save already had), so a dead
+store can never strand a join. That buys per-key ordering between this layer's own writes and its own reads. It is
+not a distributed lock: a store also written by something else, or by a second process running this layer, still
+needs that store's own ordering. Use a stable account id. Subscribe to
 **`WorldPersistence.OnStoreError`** to log/alert when a background load or save faults (a store outage). The failed
 save's state stays dirty and retries on the next pass.
 
@@ -12741,7 +12748,9 @@ var config = new WorldServerConfig
 
 `KickOlder` is the default because it is what a reconnect over a half-dead link needs: the old connection may be a corpse the transport has not buried yet, and refusing the newcomer would lock the player out until it times out. `RefuseNewer` is the safer answer for a server with no session-takeover story, at the cost of that case.
 
-The client is told which one happened. `DisconnectReason.SignedInElsewhere` is the kicked session, `DisconnectReason.AlreadySignedIn` the refused join, so a reconnect screen can say why instead of showing a generic rejection. Both are terminal and neither auto-retries: retrying a kick would displace the session that just displaced this one, and the two clients would trade the seat forever. Show your own localized line and offer a manual sign-in (the wire carries `SessionRejectReason`'s stable tokens, never display text). A TOKENLESS connection authenticates to an empty subject and is never deduped: it is anonymous rather than an account, and two guests are two people.
+The client is told which one happened. `DisconnectReason.SignedInElsewhere` is the kicked session, `DisconnectReason.AlreadySignedIn` the refused join, so a reconnect screen can say why instead of showing a generic rejection. The wire carries `SessionRejectReason`'s stable tokens, never display text, so show your own localized line for each. They are classified differently: the KICK is terminal (retrying it would displace the session that just displaced this one, and the two clients would trade the seat forever, so offer a manual sign-in), while the REFUSAL is retried on the normal backoff and leaves the state `Reconnecting`. Retrying a refusal displaces nobody, and the seat it is waiting on is usually the player's own half-dead connection, which a `RefuseNewer` server holds until its transport timeout expires (5 s on LiteNetLib's default) - a window the first three backoff attempts sit inside, so a terminal answer there sent a player to a manual sign-in for a one-second blip. Cap the asking with `ReconnectBackoff.MaxAttempts` if a game would rather stop after a few.
+
+A TOKENLESS connection authenticates to an empty subject and is never deduped: it is anonymous rather than an account, and two guests are two people. And the gate is only as strong as the authenticator under it: `KickOlder` ends a live session for whoever presents its subject, and the dev-default `AllowAllAuthenticator` reads the client's raw token bytes AS the subject, so any client on such a server can evict any other by sending someone else's account id. Put a real authenticator under an exposed server.
 
 **Version skew resilience.** Two opt-in backstops so a client running an older build than the server never hard-crashes on a snapshot it cannot decode (and ideally never connects on a stale build at all). They compose with the existing token/auth flow.
 

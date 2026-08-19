@@ -234,12 +234,32 @@ There is no `NetServerConfig` type: `NetServer` is configured by its constructor
   reconnect case.
 
 Both reasons are stable wire tokens, not display text: `WorldClient` maps them to `DisconnectReason.SignedInElsewhere`
-/ `DisconnectReason.AlreadySignedIn` and the game shows its own localized line. Both are terminal on the client, and
-deliberately so: an auto-retry after a kick would displace the session that just displaced this one, and the two
-clients would trade the seat forever.
+/ `DisconnectReason.AlreadySignedIn` and the game shows its own localized line. What the client DOES about them
+differs, and the split is the point:
+
+| Reject | Client answer | Why |
+| --- | --- | --- |
+| `SignedInElsewhere` (the kick) | terminal, goes to `Disconnected` | Retrying displaces the session that just displaced this one, and the two clients trade the seat forever. |
+| `AlreadySignedIn` (the refusal) | retried on the backoff, stays `Reconnecting` | Retrying a refusal displaces nobody. What holds the seat is usually this player's OWN half-dead connection, which the server keeps until its transport timeout expires. |
+
+That second row used to be terminal too, which the numbers say was wrong. The engine leaves LiteNetLib's
+`DisconnectTimeout` at its default 5 s, and the default `ReconnectBackoff` (0.5 s, doubling, capped at 5 s) spends
+its first three attempts inside that window, so on a `RefuseNewer` server a one-second blip dumped the player at a
+manual sign-in screen while their own dead peer was still being buried. From attempt four (7.5 s in) the backoff has
+outlasted the window and the seat is free. The trade is that a seat genuinely held by someone else is now asked for
+every 5 s rather than once: cap it with `ReconnectBackoff.MaxAttempts`, or turn `WorldClientConfig.AutoReconnect`
+off, and show your own line while the state is `Reconnecting`.
 
 A TOKENLESS connection authenticates to an EMPTY subject and is never deduped under either policy. It is anonymous
 rather than an account, and two guests are two people.
+
+**The gate is only as strong as the authenticator under it.** `KickOlder` ends a live session on the say-so of
+whoever presents its subject, and the dev-default `AllowAllAuthenticator` takes the client's raw token bytes AS the
+subject, so on a server running that gate any client can evict any other by sending someone else's account id. This
+is the authenticator's own "never use as the only gate on an exposed server" with a sharper edge than it had: a
+forged subject used to buy a second session, and now it buys somebody else's seat. Expose this to untrusted clients
+only behind a real authenticator (`HmacTokenAuthenticator` over `SignedToken`, or the game's own). `RefuseNewer` does
+not carry the edge, since a forged subject there only refuses the forger.
 
 ## SignedToken connect tokens
 

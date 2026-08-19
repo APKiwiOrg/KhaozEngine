@@ -326,7 +326,7 @@ left behind.
   second session and now buys somebody else's seat. This is a BEHAVIOUR CHANGE for any game that relied on two live
   sessions per account. Ruinborne's reconnect screen retries on every reason today, tracked at
   https://github.com/APKiwiOrg/Ruinborne/issues/454, and will ping-pong until that lands, so the Ruinborne adopt of
-  17.37.1 must carry that change. `ShardedWorldServerConfig` moved to its own file (matching
+  17.38.0 must carry that change. `ShardedWorldServerConfig` moved to its own file (matching
   `WorldClientConfig`) to make room for the knob. Closes #662.
 - **A load-on-join waits for the account's own outstanding WRITES** (`KhaozEngine.NetWorld`). The join gate made a
   leave-save and a load-on-join out of ONE event drain the routine path rather than an edge, and store operations for

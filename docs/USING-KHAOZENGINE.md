@@ -12875,7 +12875,7 @@ EntityRenderState[] snapshot = client.Snapshot();
 
 `ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below), `SignedInElsewhere` and `AlreadySignedIn` (the duplicate-session gate, below). The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
 
-**One account, one live session (17.37.1).** The join gate keys a live session by the SUBJECT the authenticator verified, so two clients presenting one account's connect token cannot become two live sessions. Above the session layer that shape is unrepresentable: `WorldPersistence` keys one record per account, so the two shared it and the later join left the earlier session unrestored, then let its default-spawn state overwrite the record once the winner left (#662). Set the policy on either head:
+**One account, one live session (17.38.0).** The join gate keys a live session by the SUBJECT the authenticator verified, so two clients presenting one account's connect token cannot become two live sessions. Above the session layer that shape is unrepresentable: `WorldPersistence` keys one record per account, so the two shared it and the later join left the earlier session unrestored, then let its default-spawn state overwrite the record once the winner left (#662). Set the policy on either head:
 
 ```csharp
 var config = new WorldServerConfig

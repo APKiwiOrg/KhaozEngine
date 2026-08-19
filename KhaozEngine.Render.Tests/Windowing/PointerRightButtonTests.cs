@@ -18,14 +18,19 @@ namespace KhaozEngine.Tests.Windowing
         static readonly Vector2 AlsoInside = new(200, 150);
         static readonly Vector2 Outside = new(450, 140);   // inside Other, outside Box
 
-        static InputState Frame(Vector2 pos, bool leftDown = false, bool rightDown = false)
+        // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and
+        // release edges derive from this test's own frame sequence and nothing crosses between tests.
+        readonly MouseFrames _mouse = new();
+
+        InputState Frame(Vector2 pos, bool leftDown = false, bool rightDown = false)
         {
             var down = new HashSet<MouseButton>();
             if (leftDown) down.Add(MouseButton.Left);
             if (rightDown) down.Add(MouseButton.Right);
+            var (edgePressed, edgeReleased) = _mouse.Advance(down);
             return new InputState(
                 new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                down, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540);
+                down, edgePressed, pos, Vector2.Zero, 0, 960, 540, mouseReleased: edgeReleased);
         }
 
         [Fact]

@@ -14,12 +14,17 @@ namespace KhaozEngine.Tests.Gui
 
         static ScrollablePanel Make() => new(Box) { ItemCount = 20, ItemHeight = 40, ItemSpacing = 4 };
 
-        static InputState Frame(Vector2 pos, bool down, float scroll = 0)
+        // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and
+        // release edges derive from this test's own frame sequence and nothing crosses between tests.
+        readonly MouseFrames _mouse = new();
+
+        InputState Frame(Vector2 pos, bool down, float scroll = 0)
         {
             var b = new HashSet<MouseButton>();
             if (down) b.Add(MouseButton.Left);
+            var (edgePressed, edgeReleased) = _mouse.Advance(b);
             return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                b, new HashSet<MouseButton>(), pos, Vector2.Zero, scroll, 960, 540);
+                b, edgePressed, pos, Vector2.Zero, scroll, 960, 540, mouseReleased: edgeReleased);
         }
 
         [Fact]

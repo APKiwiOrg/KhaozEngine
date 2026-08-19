@@ -10,7 +10,11 @@ namespace KhaozEngine.Tests.Render3D
     /// clamping, wheel speed scaling, and projection round-trips.</summary>
     public class FlyCameraTests
     {
-        static InputState Frame(
+        // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and
+        // release edges derive from this test's own frame sequence and nothing crosses between tests.
+        readonly MouseFrames _mouse = new();
+
+        InputState Frame(
             IEnumerable<Key>? keysDown = null,
             IEnumerable<MouseButton>? mouseDown = null,
             Vector2 mouseDelta = default,
@@ -18,9 +22,10 @@ namespace KhaozEngine.Tests.Render3D
         {
             var down = new HashSet<Key>(keysDown ?? System.Array.Empty<Key>());
             var mDown = new HashSet<MouseButton>(mouseDown ?? System.Array.Empty<MouseButton>());
+            var (edgePressed, edgeReleased) = _mouse.Advance(mDown);
             return new InputState(
                 down, new HashSet<Key>(), new HashSet<Key>(),
-                mDown, new HashSet<MouseButton>(), new Vector2(480, 270), mouseDelta, scroll, 960, 540);
+                mDown, edgePressed, new Vector2(480, 270), mouseDelta, scroll, 960, 540, mouseReleased: edgeReleased);
         }
 
         [Fact]

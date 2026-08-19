@@ -9,17 +9,22 @@ namespace KhaozEngine.Tests.Gui
 {
     public class SlotGridTests
     {
-        static InputState Frame(Vector2 pos, bool leftDown)
+        // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and
+        // release edges derive from this test's own frame sequence and nothing crosses between tests.
+        readonly MouseFrames _mouse = new();
+
+        InputState Frame(Vector2 pos, bool leftDown)
         {
             var down = new HashSet<MouseButton>();
             if (leftDown) down.Add(MouseButton.Left);
+            var (edgePressed, edgeReleased) = _mouse.Advance(down);
             return new InputState(
                 new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                down, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540);
+                down, edgePressed, pos, Vector2.Zero, 0, 960, 540, mouseReleased: edgeReleased);
         }
 
         // An "up" frame at `at` (windowFocused defaults true) so IsHoveringIn reports the hovered slot.
-        static Pointer Hovering(Vector2 at)
+        Pointer Hovering(Vector2 at)
         {
             var p = new Pointer();
             p.Update(Frame(at, false));
@@ -27,7 +32,7 @@ namespace KhaozEngine.Tests.Gui
         }
 
         // Press then release at the same point -> a valid press-origin tap (IsTapIn).
-        static Pointer Tapping(Vector2 at)
+        Pointer Tapping(Vector2 at)
         {
             var p = new Pointer();
             p.Update(Frame(at, false));   // up

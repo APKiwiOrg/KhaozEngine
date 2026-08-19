@@ -21,7 +21,7 @@ namespace KhaozEngine.Tests.MapEditor
     /// calls instead of touching a device. Covers build-once / teardown-once guards, the OnUpdate step order
     /// (camera then tools then rebuild), the save-failure path landing in the status strip without throwing, and a
     /// null-batch UI draw being a safe no-op before any font is loaded.</summary>
-    public class MapEditorSceneTests
+    public partial class MapEditorSceneTests
     {
         // Records BuildWorld / TeardownWorld, and skips every device call so OnEnter/OnExit run headless.
         sealed class SpyScene : MapEditorScene
@@ -205,7 +205,7 @@ namespace KhaozEngine.Tests.MapEditor
         };
 
         // A press-origin tap on a TreeView (press and release both at `at`), the way the pointer fires taps.
-        static void TapTree(TreeView tree, InputManager input, Vector2 at)
+        void TapTree(TreeView tree, InputManager input, Vector2 at)
         {
             input.Update(MouseFrame(at, leftDown: false)); tree.Update(input);
             input.Update(MouseFrame(at, leftDown: true)); tree.Update(input);
@@ -214,7 +214,7 @@ namespace KhaozEngine.Tests.MapEditor
 
         // A press-origin tap driven through a PropertyGrid (press and release both at `at`), the PropertyGridTests
         // idiom, so a ChoiceRow's dropdown open/pick runs exactly as it does live (block regions included).
-        static void TapGrid(PropertyGrid grid, InputManager input, Vector2 at)
+        void TapGrid(PropertyGrid grid, InputManager input, Vector2 at)
         {
             input.Update(MouseFrame(at, leftDown: false)); grid.Update(input, 0.016f);
             input.Update(MouseFrame(at, leftDown: true)); grid.Update(input, 0.016f);
@@ -225,7 +225,7 @@ namespace KhaozEngine.Tests.MapEditor
         // list item, which Dropdown.OptionBounds stacks directly below the trigger at one trigger-height per
         // option). Coordinates are derived from the grid's own RowEditorBounds rather than hand-computed pixel
         // offsets, so a test stays correct regardless of which rows or group headers precede the ChoiceRow.
-        static void OpenAndPickOption(PropertyGrid grid, InputManager ui, int rowIndex, int optionIndex)
+        void OpenAndPickOption(PropertyGrid grid, InputManager ui, int rowIndex, int optionIndex)
         {
             Rect trigger = grid.RowEditorBounds(rowIndex);
             var triggerCenter = new Vector2(trigger.X + trigger.Width * 0.5f, trigger.Y + trigger.Height * 0.5f);
@@ -251,15 +251,6 @@ namespace KhaozEngine.Tests.MapEditor
             scene.Init(null!, null!, null!, new MapEditorOptions());
             new SceneManager().Push(scene);
             return scene;
-        }
-
-        // A minimal mouse frame for driving InputManager headless (the SceneManagerTests Frame idiom).
-        static InputState MouseFrame(Vector2 pos, bool leftDown)
-        {
-            var down = new HashSet<MouseButton>();
-            if (leftDown) down.Add(MouseButton.Left);
-            return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                down, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540);
         }
 
         // A keyboard frame: the given keys fire their press edge this frame (and read as held), with an
@@ -307,7 +298,7 @@ namespace KhaozEngine.Tests.MapEditor
         // Taps a FloatRow's NumberField into typing mode (press+release at the same point inside its editor cell,
         // the TapToEdit idiom from NumberFieldTests/PropertyGridTests), so a test can put a specific inspector
         // field into an active-edit state headlessly without wiring up the grid's own scene-driven Update path.
-        static void BeginEditing(FloatRow row)
+        void BeginEditing(FloatRow row)
         {
             var cell = new Rect(0f, 0f, 200f, 28f);
             var ui = new InputManager();
@@ -355,7 +346,7 @@ namespace KhaozEngine.Tests.MapEditor
 
         // Drive one press-origin tap through a BoolRow's toggle cell (up, press, release), the way the pointer fires
         // a tap. Returns whether the toggle flipped this frame.
-        static bool TapBool(BoolRow row)
+        bool TapBool(BoolRow row)
         {
             var cell = new Rect(0f, 0f, 200f, 28f);
             var ui = new InputManager();
@@ -1187,7 +1178,7 @@ namespace KhaozEngine.Tests.MapEditor
 
         // Drive a real drag on a TreeView: press the source row's label, drag onto the target row's upper/lower
         // half, release. Mirrors the pointer's press-move-release sequence so the widget's own gesture runs.
-        static void DragTreeRow(TreeView tree, InputManager input, int fromRow, int toRow, bool afterTarget)
+        void DragTreeRow(TreeView tree, InputManager input, int fromRow, int toRow, bool afterTarget)
         {
             Rect src = tree.RowBounds(fromRow);
             var press = new Vector2(src.X + src.Width * 0.5f, src.Y + src.Height * 0.5f);

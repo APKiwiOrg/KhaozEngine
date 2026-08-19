@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Not a test project and ships nothing: excluded from the doc-version guard's packable-package
+         catalog check (it greps for this literal tag). -->
+    <IsPackable>false</IsPackable>
+    <!-- The helper keeps its KhaozEngine.Tests namespace so every test file resolves it unqualified
+         (name lookup walks out to the enclosing namespace from KhaozEngine.Tests.Gui and friends). -->
+    <RootNamespace>KhaozEngine.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
+  </ItemGroup>
+</Project>

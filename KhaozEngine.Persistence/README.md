@@ -158,10 +158,12 @@ at a time and in failure order, never concurrently. A handler may therefore safe
 drained and does not block until the `WriteFailed` handlers have run (the failure is still logged
 synchronously before `Flush()` returns).
 
-The optional `backupGenerations` constructor argument (default 0, off) keeps that many numbered backups
+The optional `backupGenerations` constructor argument (default 2) keeps that many numbered backups
 per target path, rotated once per committed payload before the write attempt - see "Backup generations"
 above for the copy-not-move rotation semantics. `GameStorage` wires this from
-`GameStorageOptions.BackupGenerations`. A bare `PersistenceQueue` used directly defaults to no rotation.
+`GameStorageOptions.BackupGenerations`. A bare `PersistenceQueue` used directly rotates `.bak1`/`.bak2`
+too, so it matches what the read side (`FileSettingsStorage.BackupGenerations`, also 2) probes on a
+corrupt primary. Pass `backupGenerations: 0` to turn rotation off.
 
 ```csharp
 using var queue = new PersistenceQueue(Log.For<PersistenceQueue>());   // logger, maxAttempts, retryDelay all optional
@@ -212,8 +214,10 @@ generation in turn, for the first one that reads and deserializes cleanly, repor
 `SaveLoadResult<T>`/`SaveLoadOutcome` (`Loaded`, `RecoveredFromBackup`, `RejectedAndDefaulted`,
 `FreshDefault` - there is no encoding at the settings layer, so `LoadedLegacyPlaintext` never applies
 here). `FileSettingsStorage.BackupGenerations` (default 2) is a SEPARATE knob from
-`GameStorageOptions.BackupGenerations` and is not auto-synced with it: set it to match the write queue's
-own backup count (when going through `GameStorage`) so a corrupt primary can actually recover.
+`GameStorageOptions.BackupGenerations` and is not auto-synced with it. All three defaults are 2 (the
+`PersistenceQueue` constructor's own `backupGenerations` included), so the out-of-the-box pairing already
+recovers, but if you change one, change the write side to match or the ladder probes generations nothing
+ever wrote.
 `SettingsManager<T>.LastLoadOutcome` records how the most recent `Load()` resolved, so a caller can
 surface "recovered from backup" or "settings reset" instead of silently swallowing it.
 

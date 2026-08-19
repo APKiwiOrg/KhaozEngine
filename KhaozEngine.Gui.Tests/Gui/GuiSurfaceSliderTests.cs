@@ -12,18 +12,23 @@ namespace KhaozEngine.Tests.Gui
         // A wide, thin track so the handle half-width is small relative to the span.
         static readonly Rect Track = new(100, 200, 200, 24);
 
-        static InputState Frame(Vector2 pos, bool down)
+        // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and
+        // release edges derive from this test's own frame sequence and nothing crosses between tests.
+        readonly MouseFrames _mouse = new();
+
+        InputState Frame(Vector2 pos, bool down)
         {
             var b = new HashSet<MouseButton>();
             if (down) b.Add(MouseButton.Left);
+            var (edgePressed, edgeReleased) = _mouse.Advance(b);
             return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                b, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540);
+                b, edgePressed, pos, Vector2.Zero, 0, 960, 540, mouseReleased: edgeReleased);
         }
 
         static GuiSurface Surface() => new(null!, null);
 
         // Press-and-hold at a position inside the track, returning the value the slider reports that frame.
-        static float DragTo(GuiSurface ui, Pointer p, float x, float y)
+        float DragTo(GuiSurface ui, Pointer p, float x, float y)
         {
             p.Update(Frame(new Vector2(x, y), true));
             ui.Begin(null, p);

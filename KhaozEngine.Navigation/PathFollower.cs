@@ -166,7 +166,12 @@ public sealed class PathFollower
     /// any multi-layer world: without it the advance is XZ-only, and the waypoint at the top of a stair link
     /// sits one cell from its lower partner in XZ, well inside <see cref="PathFollowConfig.AcceptRadius"/>, so
     /// the follower consumes it while the agent is still a floor below and skips the climb. Leaving it null
-    /// keeps exactly the old behaviour, which is what a single-layer world wants anyway.</para></summary>
+    /// keeps exactly the old behaviour, which is what a single-layer world wants anyway. The space must be able
+    /// to RESOLVE a layer from a position: grids with surface heights, or finite Y bands (every engine baker
+    /// produces one of those). A multi-layer space of default <c>NavGrid.FromWalkable</c> grids has neither, so
+    /// <see cref="NavSpace.LayerAt"/> answers 0 everywhere and the follower never advances past a layer-1
+    /// waypoint. And <paramref name="space"/> resolves from the <c>position</c> handed to <see cref="Tick"/>, so
+    /// pass the agent's GROUND position, not a capsule centre, or low overhead geometry flips the layer.</para></summary>
     public PathFollower(IPathPlanner planner, PathFollowConfig? config = null, NavSpace? space = null)
     {
         _planner = planner ?? throw new ArgumentNullException(nameof(planner));

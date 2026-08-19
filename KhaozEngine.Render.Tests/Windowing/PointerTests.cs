@@ -377,7 +377,7 @@ namespace KhaozEngine.Tests.Windowing
             Assert.True(p.IsMiddleJustReleased);
             Assert.True(p.IsRightJustReleased);
         }
-    
+
         // --- same-frame taps (#300) ---
 
         [Fact]
@@ -489,5 +489,5 @@ namespace KhaozEngine.Tests.Windowing
             Assert.True(input.IsPointerJustReleased);
             Assert.True(input.Pointer.IsTapIn(Box));
         }
-}
+    }
 }

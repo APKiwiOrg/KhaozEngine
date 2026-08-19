@@ -658,7 +658,10 @@ im.Update(input, viewport);   // once per frame, BEFORE you query
   gesture from the snapshot's `MousePressed` edge instead (press-origin at the cursor, reported as a release
   that frame). That is what keeps a tap alive across a frame hitch and at the background-throttle rates
   (15 Hz unfocused, 10 Hz minimized). A producer that never fills `MousePressed` (a replay, a synthesized
-  headless frame) is read exactly as before, it just cannot express a same-frame tap.
+  headless frame) is read exactly as before, it just cannot express a same-frame tap. The one thing a
+  same-frame tap cannot know is where the press WAS: the snapshot carries one cursor position, so the synthetic
+  press-origin is the end-of-frame cursor, and a flick that presses outside a rect and releases inside it
+  within one frame counts as a tap in that rect.
 - `IsTapFromTo(originRect, releaseRect)` - press in one rect, release in another (tap-scrim-to-dismiss).
 - `IsPressingIn(Rect)` - held, press began inside, still inside ("pressed" visual).
 - `IsHoveringIn(Rect)` - inside and not pressed (desktop hover). Also false while the window is unfocused (a

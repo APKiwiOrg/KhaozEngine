@@ -304,7 +304,10 @@ goal or a jittery corridor breach does not spam the planner every tick.
 `PathFollower(planner, config, space)` takes the `NavSpace` the planner plans over as an optional third
 argument, and it is what makes the waypoint advance layer-aware. Every `NavWaypoint` carries the layer it
 lives on, and with a space in hand the follower checks that layer against the agent's own
-(`NavSpace.LayerAt`) before counting the waypoint as reached. Pass it for any multi-layer world: a stair
+(`NavSpace.LayerAt`) before counting the waypoint as reached. Pass it for any multi-layer world whose space can
+resolve a layer from a position (grids with surface heights, or finite Y bands, which is every engine baker): a
+multi-layer space of default `NavGrid.FromWalkable` grids pins `LayerAt` to 0 and the follower never advances past
+a layer-1 waypoint, and `Tick` must be handed the agent's ground position, not a capsule centre. The case: a stair
 link's upper waypoint sits about one cell from its lower partner in XZ, inside `AcceptRadius`, so an
 XZ-only advance consumes it while the agent is still a floor below and steers at whatever comes next,
 skipping the climb outright. With the space supplied the follower keeps steering at the upper waypoint

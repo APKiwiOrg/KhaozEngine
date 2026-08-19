@@ -12413,14 +12413,14 @@ It is a session and not a flag because an account that leaves and rejoins inside
 outstanding under one key. Every join takes a monotonic token, the guard holds the current session's, and a load
 carrying any other token is dropped (below). As a plain flag the first load to land cleared the guard for both,
 which reopened the save window while its sibling was still in the air, and then let that sibling apply a record the
-live session had already moved past - a yank backwards, and past `QuietRestoreDistance` a teleport (#654). A second
-CONCURRENT session for one account supersedes the first the same way, and there it is a known REGRESSION rather than
-a fix: `NetServer` does not dedupe a join by subject, so two clients presenting one token are two live sessions, the
-LATER one wins the guard, the earlier one is never restored and plays from wherever its join built it, and once the
-winner leaves the next dirty pass can write that pre-restore state over the account's record. Before this change both
-sessions restored. One account keying one record was never a shape two live players could share, and the fix belongs
-at the join gate rather than here, so it is tracked in
-[#662](https://github.com/APKiwiOrg/KhaozEngine/issues/662). One ordering edge remains: a save-on-leave and the rejoin's own load can be in flight at the
+live session had already moved past - a yank backwards, and past `QuietRestoreDistance` a teleport (#654). Two
+CONCURRENT sessions for one account used to be superseded the same way, and there it was a REGRESSION rather than a
+fix: the earlier session was never restored, played from wherever its join built it, and once the winner left the
+next dirty pass wrote that pre-restore state over the account's record. That configuration no longer exists. One
+account keying one record was never a shape two live players could share, so the fix went in at the join gate:
+`NetServer` deduplicates by verified subject and ends the older session before admitting the newer one
+(`WorldServerConfig.DuplicateSessions`, below), which reaches this layer as an ordinary leave-then-join (#662). One
+ordering edge remains: a save-on-leave and the rejoin's own load can be in flight at the
 same instant on an async store, and store operations for one account are not ordered against each other, so a rejoin
 can briefly apply pre-leave state, which the next periodic save reconciles. Use a stable account id, and serialize
 your own per-account store operations if a session needs strict ordering. Subscribe to
@@ -12724,7 +12724,24 @@ client.AdvancePresentation(dt);
 EntityRenderState[] snapshot = client.Snapshot();
 ```
 
-`ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below). The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
+`ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below), `SignedInElsewhere` and `AlreadySignedIn` (the duplicate-session gate, below). The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
+
+**One account, one live session (17.37.1).** The join gate keys a live session by the SUBJECT the authenticator verified, so two clients presenting one account's connect token cannot become two live sessions. Above the session layer that shape is unrepresentable: `WorldPersistence` keys one record per account, so the two shared it and the later join left the earlier session unrestored, then let its default-spawn state overwrite the record once the winner left (#662). Set the policy on either head:
+
+```csharp
+var config = new WorldServerConfig
+{
+    // The default. The new session wins, the older one is disconnected, and its leave is surfaced BEFORE the new
+    // join, so persistence sees leave-then-join in order and never two live sessions on one record.
+    DuplicateSessions = DuplicateSessionPolicy.KickOlder,
+    // Or: the live session keeps the seat and the second Hello is refused.
+    // DuplicateSessions = DuplicateSessionPolicy.RefuseNewer,
+};
+```
+
+`KickOlder` is the default because it is what a reconnect over a half-dead link needs: the old connection may be a corpse the transport has not buried yet, and refusing the newcomer would lock the player out until it times out. `RefuseNewer` is the safer answer for a server with no session-takeover story, at the cost of that case.
+
+The client is told which one happened. `DisconnectReason.SignedInElsewhere` is the kicked session, `DisconnectReason.AlreadySignedIn` the refused join, so a reconnect screen can say why instead of showing a generic rejection. Both are terminal and neither auto-retries: retrying a kick would displace the session that just displaced this one, and the two clients would trade the seat forever. Show your own localized line and offer a manual sign-in (the wire carries `SessionRejectReason`'s stable tokens, never display text). A TOKENLESS connection authenticates to an empty subject and is never deduped: it is anonymous rather than an account, and two guests are two people.
 
 **Version skew resilience.** Two opt-in backstops so a client running an older build than the server never hard-crashes on a snapshot it cannot decode (and ideally never connects on a stale build at all). They compose with the existing token/auth flow.
 

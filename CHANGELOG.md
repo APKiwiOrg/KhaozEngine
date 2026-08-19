@@ -31,7 +31,11 @@ ways player persistence could file or apply a record against the wrong player: a
 one SESSION now rather than to an account, so an account that leaves and rejoins inside a single store read no
 longer applies both of its outstanding loads and no longer has the first of them clear the guard while the second
 is still in the air. And a tokenless connection is no longer persisted under the seat it happens to be sitting in,
-which is what used to load one guest's stored position onto the next guest to take that slot.
+which is what used to load one guest's stored position onto the next guest to take that slot. And above both of
+them, the join gate now holds one account to ONE live session: two clients on one connect token used to be two live
+sessions sharing a single record, which the session guard turned from mostly-harmless into the earlier session
+losing its restore and then overwriting the record, so the older session is now ended (or the newer one refused) with
+a reason the client can show.
 
 - **`GpuRetireQueue` has a safety valve, so a GPU the CPU runs away from no longer grows the holding forever**
   (`KhaozEngine.Gpu`). On the fence path a batch lived until its fence signalled, with nothing bounding how many
@@ -251,14 +255,12 @@ left behind.
   nor the slot could tell the two loads apart, since both are the same account, usually on the same recycled seat,
   which is why #646's identity check did not reach this. A rejoin deliberately issues a fresh read rather than
   adopting the outstanding one: that read was issued for the previous session's seat, may already have completed,
-  and its bytes are the older of the two answers. A second CONCURRENT session for one account now supersedes the
-  first here too, and THAT configuration is a known regression rather than a fix: `NetServer` does not dedupe a join
-  by subject, so two clients presenting one token are two live sessions, the later one wins the guard, the earlier one
-  is never restored and plays from wherever its join built it, and once the winner leaves the next dirty pass can
-  write that pre-restore state over the account's record. Before this change both sessions restored the same record
-  and wrote the same state back. One account keying one record was never a shape two live players could share, and
-  the fix belongs at the join gate rather than in this layer, so it is tracked in
-  https://github.com/APKiwiOrg/KhaozEngine/issues/662. Closes #654.
+  and its bytes are the older of the two answers. This also superseded a second CONCURRENT session for one account,
+  which was a regression rather than a fix and is closed in this same version by the join gate below: two clients
+  presenting one token were two live sessions, the later one won the guard, the earlier one was never restored, and
+  once the winner left the next dirty pass wrote that pre-restore state over the account's record (before this change
+  both sessions restored the same record and wrote the same state back). One account keying one record was never a
+  shape two live players could share, so the fix went in at the join gate rather than in this layer. Closes #654.
 - **A tokenless connection is not persisted, and never under `guest:{slot}`** (`KhaozEngine.NetWorld`). Both heads
   key a connection with no verified subject `guest:{slot}`, and both hand a freed slot straight to the next
   connection, so that key named a chair rather than a player and `WorldPersistence` stored under
@@ -280,6 +282,29 @@ left behind.
   the engine still enforces nowhere: `SignedToken.Mint` accepts any subject without a `.` and `AllowAllAuthenticator`
   takes the client's raw bytes, so a game CAN mint `guest:alice` as a real account and get a player who is read as
   tokenless and silently not persisted. Tracked in https://github.com/APKiwiOrg/KhaozEngine/issues/664. Closes #647.
+- **One account is ONE live session, deduped at the join gate** (`KhaozEngine.Netcode`, `KhaozEngine.NetWorld`).
+  `NetServer.HandleData` allocated a slot for every accepted Hello and never asked whether the authenticated subject
+  already held one, so two clients presenting one account's connect token were two live sessions of one account.
+  `WorldPersistence` keys one record per account, so those two always shared a record, and with the session guard
+  above they got strictly worse: the later join superseded the earlier one, the first session was never restored and
+  played from the default spawn, and its pre-restore state overwrote the account's stored record as soon as the winner
+  left. The join gate now keys a live session by the verified SUBJECT. New
+  **`DuplicateSessionPolicy`** (`KhaozEngine.Netcode`), the `duplicateSessions:` constructor argument on `NetServer`,
+  surfaced as **`WorldServerConfig.DuplicateSessions`** / **`ShardedWorldServerConfig.DuplicateSessions`**:
+  `KickOlder` (the default) ends the older session and enqueues its `Left` BEFORE the newcomer's `Joined`, so a host
+  draining events in order runs the old session's leave, and therefore its save-on-leave, ahead of the new session's
+  join and load-on-join, and never sees the two overlap. `RefuseNewer` keeps the live session and turns the second
+  Hello away instead. `KickOlder` is the default because it is also the reconnect-over-a-half-dead-link case, where the old
+  connection is a corpse the transport has not buried yet and refusing the newcomer would lock the player out until it
+  times out. Both carry a stable wire token from new **`SessionRejectReason`** (`ke:signed-in-elsewhere` /
+  `ke:already-signed-in`, never display text) that `WorldClient` maps to new
+  **`DisconnectReason.SignedInElsewhere`** / **`DisconnectReason.AlreadySignedIn`**, so a reconnect screen can say why
+  instead of showing a generic token rejection. Both are terminal on the client, deliberately: an auto-retry after a
+  kick would displace the session that just displaced this one, and the two clients would trade the seat forever. A
+  TOKENLESS connection authenticates to an empty subject and is never deduped under either policy, since it is
+  anonymous rather than an account and two guests are two people. This is a BEHAVIOUR CHANGE for any game that relied
+  on two live sessions per account, and none is known. `ShardedWorldServerConfig` moved to its own file (matching
+  `WorldClientConfig`) to make room for the knob. Closes #662.
 
 ## 17.37.0
 

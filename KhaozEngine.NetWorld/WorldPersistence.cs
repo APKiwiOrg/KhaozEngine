@@ -130,9 +130,11 @@ public sealed class WorldPersistenceConfig
 /// guard for both, which reopened the save window while its sibling was still in the air, and then let that sibling
 /// apply a record the live session had already moved on from - a yank backwards, and past
 /// <see cref="WorldPersistenceConfig.QuietRestoreDistance"/> a teleport (#654). Neither the account nor the slot can
-/// tell those two loads apart, since both are genuinely the same account on (usually) the same seat. Note this makes
-/// a SECOND concurrent session for one account supersede the first here too: one account keying one record was never
-/// a shape two live players could share, and the newer session is the better guess at which of them is real. A
+/// tell those two loads apart, since both are genuinely the same account on (usually) the same seat. This used to
+/// supersede a SECOND concurrent session for one account the same way, which was a regression rather than a fix: one
+/// account keying one record was never a shape two live players could share. The join gate settles that now
+/// (<see cref="Netcode.DuplicateSessionPolicy"/>, default KickOlder), ending the older session before admitting the
+/// newer one, so what reaches this layer is an ordinary leave-then-join and never two live sessions (#662). A
 /// rejoin deliberately issues a fresh read rather than adopting the one already in flight: the outstanding read may
 /// already have completed, it was issued for the seat the previous session held, and its bytes are by then the older
 /// of the two answers. The saving would have been one store read on a path that only opens during an outstanding

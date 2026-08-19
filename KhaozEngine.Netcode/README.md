@@ -212,6 +212,35 @@ shutdown handshake (LiteNetLib `NetPeer.Disconnect(byte[])` -> `DisconnectInfo.A
 carries a `Reject` frame into a `Rejected` session event, so `WorldClient` classifies a version/token reject
 terminally instead of treating the bare drop as a transient outage and auto-reconnecting forever.
 
+## One account, one live session
+
+`NetServer`'s join gate keys a live session by the SUBJECT the authenticator verified, not by the connection, so
+two clients presenting one account's connect token cannot become two live sessions. That shape is unrepresentable
+above this layer: `WorldPersistence` keys one record per account, so two sessions share it and the last one to
+write wins, which cost the earlier session its restore and then its stored position (#662).
+
+There is no `NetServerConfig` type: `NetServer` is configured by its constructor, so the knob is the
+`duplicateSessions` argument (`DuplicateSessionPolicy`, default `KickOlder`). Both server heads surface it as
+`WorldServerConfig.DuplicateSessions` / `ShardedWorldServerConfig.DuplicateSessions`.
+
+- **`KickOlder`** (default): the new session wins. The older one is disconnected with
+  `SessionRejectReason.SignedInElsewhere` and its `Left` is enqueued BEFORE the newcomer's `Joined`, so a host
+  draining events in order runs the old session's leave (and its save-on-leave) ahead of the new session's join and
+  load-on-join, and never sees the two overlap. This is what a reconnect over a half-dead link needs: the old
+  connection may be a corpse the transport has not buried yet, and refusing the newcomer would lock the player out
+  until it times out.
+- **`RefuseNewer`**: the live session keeps the seat and the second Hello is refused with
+  `SessionRejectReason.AlreadySignedIn`. Safer for a server with no session-takeover story, at the cost of that
+  reconnect case.
+
+Both reasons are stable wire tokens, not display text: `WorldClient` maps them to `DisconnectReason.SignedInElsewhere`
+/ `DisconnectReason.AlreadySignedIn` and the game shows its own localized line. Both are terminal on the client, and
+deliberately so: an auto-retry after a kick would displace the session that just displaced this one, and the two
+clients would trade the seat forever.
+
+A TOKENLESS connection authenticates to an EMPTY subject and is never deduped under either policy. It is anonymous
+rather than an account, and two guests are two people.
+
 ## SignedToken connect tokens
 
 `SignedToken` is a zero-dependency HMAC-SHA256 connect-token primitive binding a `subject` (the stable account/player

@@ -227,7 +227,7 @@ on:
       - 'KhaozEngine.Terrain/**'
       - 'KhaozEngine.Terrain.Render3D/**'
       # Render-free tile world document and its Render3D ground mesher, view and capture, watched for the same
-      # reason as the Terrain pair above. The tileworld_greybox and tileworld_topdown goldens render through
+      # reason as the Terrain pair above. The four tileworld goldens (greybox, topdown, textured, river) render through
       # both, and the document package owns TileWorldSpace and the shared triangulation the mesher reads, so a
       # change confined to it moves those images without touching anything already on this list (#629).
       - 'KhaozEngine.TileWorld/**'

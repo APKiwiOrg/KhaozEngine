@@ -54,7 +54,7 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   into the shared model pipeline so it stays one instanced draw per mesh), per-mesh albedo textures, lighting, camera-facing billboards, an
   immediate-mode debug-draw overlay (line/ray/box/grid/axes/circle) plus depth-tested debug wire volumes
   (sphere/dome/cylinder/circle), composited into the window. **No unload call drains the device any more**
-  (since 17.37.1, [#383](https://github.com/APKiwiOrg/KhaozEngine/issues/383)). `UnloadMesh`, `UnloadSkinnedMesh`,
+  (since 17.38.0, [#383](https://github.com/APKiwiOrg/KhaozEngine/issues/383)). `UnloadMesh`, `UnloadSkinnedMesh`,
   `UnloadTexture`, `UnloadSplatMaterial` and `UnloadTileGroundMaterial` all RETIRE their GPU resources through the
   seam's `GpuRetireQueue`, which destroys them a few frames later, once a fence (or the frame count on a backend
   with none) says the GPU is done. `UnloadProp` forwards to `UnloadMesh`, so it behaves the same. That is what
@@ -92,6 +92,40 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   unchanged), `None` for level 0 only, and `AtlasGrid(columns, rows, minCellTexels = 4)` to stop at the coarsest
   level where a grid cell still holds `minCellTexels` texels on its shorter side, which keeps a bilinear tap from
   reaching into the neighbouring cell. `LevelsFor(width, height)` is the pure arithmetic behind it.
+- Tile ground (`Scene3D.LoadTileGroundMaterial` / `TileGroundMaterialHandle` / `LoadMesh(mesh, material)` /
+  `UnloadTileGroundMaterial`, `TileGroundLayerImage`, `TileGroundMaterialConfig`, since 17.38.0) - the N-layer
+  sibling of the splat terrain pipeline, for a ground surface whose material palette is a CONTENT catalog rather
+  than five fixed layers. `KhaozEngine.TileWorld.Render3D` is the shipped consumer, and any mesher that follows the
+  vertex contract below can drive it. The splat pipeline could not be widened for it: its layer count is a
+  `const 5`, four weights ride in `ModelVertex.Color` and the fifth is the remainder.
+  - **The set.** `LoadTileGroundMaterial(width, height, layers, baseSpecStrength = 0.15f, sampler = null)` uploads
+    1 to `TileGroundMaterialConfig.MaxMaterials` (64) tileable albedo layers, all the same `width` x `height`
+    RGBA8, into ONE texture array with a full mip chain, plus a params UBO carrying each layer's `Tint` and
+    `TilesPerMetre`. A layer's INDEX in the list is the SLOT a mesh vertex names, so the caller owns the
+    material-to-slot mapping. A non-positive size throws naming `width` or `height`, a layer count outside 1..64
+    throws naming the count, and a layer whose bytes are not `width * height * 4` throws naming that layer's index
+    and both sizes. Albedo only by design: there is no normal array,
+    and the specular exponent is a constant 28 (what the splat pass reaches at roughness 0.5) with
+    `baseSpecStrength` as the whole set's strength, because an albedo layer carries no roughness channel.
+  - **The vertex contract, for this pipeline only.** `ModelVertex` is unchanged, so the upload path is the ordinary
+    one, but the fields are repurposed: `Color` is the vertex's four weights, `Uv.x`, `Uv.y`, `Tangent.x` and
+    `Tangent.y` are four material SLOTS as floats holding integers (constant across a triangle, so interpolation
+    cannot smear them), `Tangent.z` is a per-vertex brightness multiplier and `Tangent.w` is 0. The fragment reads
+    a slot as `int(x + 0.5)` clamped to 0..63, takes four `textureGrad` taps at
+    `worldXZ * TilesPerMetre[slot]`, renormalises the weights by their own sum (no fifth-layer remainder) and
+    multiplies by the slot tint and the jitter. **The jitter is a MULTIPLIER, not an offset, so `Tangent.z` of 0
+    renders that vertex BLACK**: write 1 for none. A mesh built for the model pipeline, where `Tangent` is a
+    tangent frame, is not a tile-ground mesh.
+  - **Constraints worth knowing.** Entries past the layer count are ZEROED rather than defaulted, so a mesh naming
+    a slot the set never filled renders black instead of borrowing another material's look. The pipeline binds one
+    uniform buffer (the shared frame block, then `vec4 TintTiling[64]` and a `Misc` vector), the albedo array, its
+    sampler, then the shadow map and its sampler LAST, which is the Metal binding-order rule the terrain pass
+    already pays. Tile ground CASTS shadows, like a model mesh and unlike the splat terrain.
+  - **Lifetime.** The material is owned by the scene, shared by every mesh drawn with it, and unloading a mesh does
+    not free it. `LoadTileGroundMaterial` builds its mip chain on a command list of its own, so it refuses
+    mid-frame with `GpuNestedRecordingException` (load once per view construction or catalog change).
+    `UnloadTileGroundMaterial` retires the whole bundle (array, UBO, resource set, any owned sampler) as ONE
+    resource through the scene's `GpuRetireQueue`, so it never drains the device.
 - `Render3DPreview(AppWindow, width, height)` - live render-to-texture: render a model into a sampleable
   `Render2D.Texture2D` on the same device and draw it inside a 2D `SpriteBatch`/Gui panel (unit inspectors, shop
   previews, item icons). Load meshes + frame the camera once via `.Scene`, then call `Capture(drawFrame)` each

@@ -7,7 +7,7 @@ namespace KhaozEngine.NetWorld;
 /// Thrown by a cell-blob migration when the stored body walks cleanly at more than one wire generation AND those
 /// walks disagree about the bytes they produce, so there is no honest way to pick one.
 /// <para>
-/// This is the case the shipped 17.37.1 heuristic used to resolve by scoring: it kept the parse that recovered the
+/// This is the case the shipped 17.38.0 heuristic used to resolve by scoring: it kept the parse that recovered the
 /// most component frames, on the argument that an over-long read can only swallow frames. That argument only covers
 /// candidates NEWER than the truth. A candidate OLDER than the truth UNDER-reads a built-in payload, and the bytes it
 /// leaves behind re-sync into extra frames, so it can outscore the truth and win - producing a structurally valid

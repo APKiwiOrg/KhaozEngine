@@ -1242,7 +1242,7 @@ write that is a heavyweight operation instead of a copy into mapped memory, pres
 CPU stalls, on Vulkan as lost GPU overlap and lost render-pass state. It presents as "still the engine's fastest
 backend" rather than as a field defect precisely because two releases of renderer-side engineering already
 hoisted most of these writes out of the frame. #408 enumerated the residue (one partial write per water plane,
-per overlay-mesh draw, per SpriteBatch slot, and one per splat material) and 17.37.1 packed it away, so what is
+per overlay-mesh draw, per SpriteBatch slot, and one per splat material) and 17.38.0 packed it away, so what is
 left on this backend is one whole-buffer write per block per frame rather than a run of them.
 
 **And the global barrier on the shipped line does not cover uniform reads at all.** Its `dstAccessMask` is

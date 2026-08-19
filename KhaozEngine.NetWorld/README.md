@@ -181,7 +181,7 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   cell-owned, non-player state only. Mirrors `WorldPersistence` but keyed by cell coordinate instead of account,
   including the batched periodic pass: every dirty cell's snapshot goes through one `IWorldStore.SaveManyAsync`
   call instead of one `SaveAsync` per cell (the meta write and quarantine writes stay single-record saves).
-  - **Per-entity opt-out (since 17.37.1).** An entity carrying `KhaozEngine.Sharding.Transient` is left out of the
+  - **Per-entity opt-out (since 17.38.0).** An entity carrying `KhaozEngine.Sharding.Transient` is left out of the
     blob entirely, so a server-owned thing meant to outlive nothing (a pickup, a timed spawn, a projectile) can no
     longer be caught in a save and resurrected as a husk. It excludes the ENTITY, which is the axis a
     `ReplicationChannels` flag cannot reach: a channel gates one component TYPE, and dropping a component's bytes
@@ -212,7 +212,7 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
     is `SkippedTooNew` on a pre-10.0.0 build, so an accidental downgrade quarantines rather than corrupts (but will not
     load): once a server has written 64-bit blobs it cannot be downgraded. `PositionFrameBlobMigration.FrameV2ToV3`
     followed it, framing `ReplicatedPosition` for the floating-origin wire.
-  - **The header records the wire generation (schema v4, since 17.37.1).** A built-in component is unframed, so its
+  - **The header records the wire generation (schema v4, since 17.38.0).** A built-in component is unframed, so its
     payload length in a stored body is a function of `MoveProtocol.WireProtocolVersion`, not of the schema version -
     and the wire ran from generation 2 to 10 while the schema sat at v2 and then v3, so "a v2 blob" was seven
     different `MovementState` layouts with nothing on disk to tell them apart. Schema v4 writes a 12-byte header
@@ -872,7 +872,7 @@ long orb = pickups.Spawn(dropPosition, payloadId: PackItem(itemIndex, quantity),
 - **`Despawn(netId)` / `DespawnAll()`** remove pickups explicitly, and a time-to-live expires one on its own. Every
   route propagates to clients as a normal AoI removal and raises `OnRemoved` with a `PickupRemovalReason` of
   `Collected` / `Expired` / `Despawned` / `CellEvicted`.
-- **Cell awareness (since 17.37.1).** A pickup's tracking record is the seam's, not the entity's, so unloading the
+- **Cell awareness (since 17.38.0).** A pickup's tracking record is the seam's, not the entity's, so unloading the
   cell that held the entity would leave the record standing: an orb nobody can see keeps being offered, a collect
   still grants it, and the expiry despawn no-ops into an unloaded cell. Hand the seam your evictor
   (**`WorldPickupsConfig.Evictor`**, or **`TrackEvictions(evictor)`** when the evictor is built after the seam) and it
@@ -891,7 +891,7 @@ long orb = pickups.Spawn(dropPosition, payloadId: PackItem(itemIndex, quantity),
   **`TryGetEntity(netId, out World, out Entity)`** and **`DespawnEntity(netId)`** on both servers, neither of which
   will ever touch a player entity.
 
-**A pickup is never persisted by default (since 17.37.1).** Every pickup `Spawn` creates is marked `Transient`
+**A pickup is never persisted by default (since 17.38.0).** Every pickup `Spawn` creates is marked `Transient`
 (`KhaozEngine.Sharding`), so `CellPersistence` leaves it out of the cell blob and no restore brings it back. The
 seam's state (the time-to-live, the clock, the offer records) lives in this process only, so a resurrected pickup is
 a plain entity carrying `PickupState` that the seam knows nothing about, offered to nobody and expiring never.
@@ -910,7 +910,7 @@ follows the entity across a cell handoff inside one `ShardHost`, whatever the `I
 one), so walking into the next cell does not make it persistable there. Two hosts on two nodes are a different
 matter: the tag has no wire id by design, so a cross-node link carries the mark in its own envelope or not at all.
 
-**Blobs written before 17.37.1 still hold husks**, since a save cannot be edited after the fact. Clearing those is a
+**Blobs written before 17.38.0 still hold husks**, since a save cannot be edited after the fact. Clearing those is a
 one-time boot sweep, run once against a world an older build saved, and unnecessary for every save written since
 (`ShardedWorldServer.DespawnEntity` resolves through the shard host's ownership index, so it finds restored entities
 the seam never saw):

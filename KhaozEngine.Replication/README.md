@@ -16,7 +16,7 @@ area-of-interest deltas.
   **`ReplicationRegistry.FirstExtensionTypeId`** (= 16, `IsExtension(id)`); ids `1..15` are reserved for engine
   built-ins. Extension components are length-prefixed on the wire, so a client whose registry never registered the
   id **skips** it (forward-compatible), while an unknown built-in id stays a hard mismatch.
-  `IsRegistered(ushort)` (since 17.37.1) asks whether this registry has a codec for an id, for a caller judging
+  `IsRegistered(ushort)` (since 17.38.0) asks whether this registry has a codec for an id, for a caller judging
   whether an id it read out of STORED bytes is one this build knows: cell-blob persistence uses it to retire a
   candidate parse of a blob whose wire generation was never recorded.
 - **`ReplicationChannels`** (since 9.28.0) - an optional `[Flags]` argument to `Register<T>` declaring which of the

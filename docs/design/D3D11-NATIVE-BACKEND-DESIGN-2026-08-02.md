@@ -424,7 +424,7 @@ staging buffer being recycled. A reporting client paid 22 of those per frame and
 on a scene that encodes in under 1 ms on Metal. Only a whole-buffer write from offset 0 takes the cheap path,
 because D3D11 forbids a partial box on a constant buffer. Two releases of renderer-side engineering (17.18.0,
 17.20.0) shrank it, and #408 listed the residue: water planes, overlay-mesh draws, SpriteBatch view-projection
-slots and the splat material's combined block. 17.37.1 packed all four, so the Veldrid leg has no per-frame
+slots and the splat material's combined block. 17.38.0 packed all four, so the Veldrid leg has no per-frame
 partial uniform write left. The numbers above are what the pathology cost while it was live.
 
 Verified: `GpuBufferUsage.Dynamic` has ZERO renderer call sites. Every per-frame UBO is created with plain
@@ -461,7 +461,7 @@ fences recycles a segment the GPU is still reading and corrupts a frame silently
 
 **#408's residue would have died here with no renderer change**, because a partial write is a sub-range of a
 mapped segment and the constant-buffer partial-box restriction never applies. The renderers packed it away in
-17.37.1 anyway, which is what the Veldrid leg needed, so this is now a property the backend keeps rather than a
+17.38.0 anyway, which is what the Veldrid leg needed, so this is now a property the backend keeps rather than a
 reason to build it. The `IsWholeBuffer` discipline becomes
 irrelevant on this backend and the guard stays, because it still describes the Veldrid leg. #407 (the
 per-cascade bone palette re-upload) becomes cheap but stays wasteful, so it is defanged rather than resolved

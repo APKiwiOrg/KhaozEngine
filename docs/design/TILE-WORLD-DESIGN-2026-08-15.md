@@ -1,9 +1,10 @@
 # OSRS-style tile world: document, collision, renderer, editor kernel, tile editor and MCP tool (2026-08-15)
 
-Status: R1 to R4 shipped (document, file form, catalogs, validator, collision, pathfinder, raycast, prefabs,
+Status: R1 to R5 shipped (document, file form, catalogs, validator, collision, pathfinder, raycast, prefabs,
 then the renderer: ground mesher, props, view, residency, snapshot, goldens, then the editing kernel
 `KhaozEngine.TileWorld.Editing` and the `ke-tileedit` MCP tool, then the Grimhollow bootstrap under the fly
-camera at Grimhollow 0.2.0), R5 in design (textured ground materials and river water, section 7.5), R6
+camera at Grimhollow 0.2.0, then R5: textured ground through a new `TileGround` pipeline and river water through
+the engine's water pass, sections 7.5 and 7.6, engine 17.38.0), R6
 pending (editor kernel extraction and the GUI tile editor). Section 13 carries the delivery-order
 reasoning. Program issue: [#629](https://github.com/APKiwiOrg/KhaozEngine/issues/629). First adopter: Grimhollow, a new low-poly 3D
 MMO on the Ruinborne shell (repo to be scaffolded, `APKiwiOrg/Grimhollow`).
@@ -519,8 +520,11 @@ The ground CASTS shadows, as it does today through the model path (the splat ter
 out), so the shadow-caster loop treats a tile-ground mesh like a model mesh, and the rebaked goldens move only
 for the texturing.
 
-**The material set: `Scene3D.LoadTileGroundMaterial(TileGroundMaterialSet) -> TileGroundMaterialHandle`,
-`LoadMesh(mesh, TileGroundMaterialHandle)`.** A set is N layers of equal size (`width`, `height`, `AlbedoRgba`,
+**The material set: `Scene3D.LoadTileGroundMaterial(...) -> TileGroundMaterialHandle`,
+`LoadMesh(mesh, TileGroundMaterialHandle)`.** (As shipped the `Scene3D` call takes the size and the layer list
+rather than a `TileGroundMaterialSet`, because that type lives in `TileWorld.Render3D`, which sits ABOVE
+`Render3D`. The set-taking overload is the `ITileWorldScene` seam member instead, and `Scene3DTileWorldScene`
+unpacks it.) A set is N layers of equal size (`width`, `height`, `AlbedoRgba`,
 `Tint`, `TilesPerMetre` per layer) plus the sampler config. `TileWorld.Render3D` builds it from the catalog:
 `TileGroundMaterials.Build(catalogs, resolveTexture)` gives every catalog material a slot in id order of the
 catalog. A material with `Texture` set is decoded through `ImageRgba` (path resolved RELATIVE TO THE CATALOG FILE
@@ -583,7 +587,7 @@ deciding WHERE the planes are:
 - **Water tiles are ground.** A `Kind = Water` material meshes like any other underlay (its texture is the
   river BED, mud or stones, and the author sinks the bed by lowering the corner heights, which is the authoring
   model: water is carved, not placed). `Settings.Blocked` on water tiles stays a content decision, as today.
-- **`TileWaterPlanes.Collect(doc, catalogs, region, plane) -> IReadOnlyList<WaterPlane>`:** the region-plane's
+- **`TileWaterPlanes.Collect(doc, catalogs, region, plane, look?) -> IReadOnlyList<WaterPlane>`:** the region-plane's
   water tiles are grouped into 4-connected components, each component gets ONE surface height (the maximum
   corner height over the component's tiles, which is the rim it shares with the bank, minus 2 cm), and the
   component's tile mask is cut into a DISJOINT set of maximal axis-aligned rectangles (row runs merged across
@@ -610,9 +614,11 @@ deciding WHERE the planes are:
   values. `TileWorldViewOptions.WaterLook` overrides it for a world that wants something else. The grid mode
   stays the scene's (camera focused by default, the clipmap mode is scene-wide and camera centred, neither is
   chosen per plane).
-- **The view submits every frame.** `TileWorldView.Draw` enqueues the planes of each loaded region-plane
-  (collected at mesh-build time, rebuilt with the region, cached on the region handle) through a new
-  `ITileWorldScene.DrawWater` seam member. Planes from neighbouring regions are disjoint because a component
+- **The view submits every frame.** `TileWorldView.Draw` enqueues the planes of each loaded region-plane through
+  a new `ITileWorldScene.DrawWater` seam member. As shipped the planes are collected lazily on the first draw
+  after a change and cached against the region-plane's MESH handle rather than at mesh-build time: a remesh always
+  returns a fresh handle generation, and every edit that can move a water tile or a corner height is exactly an
+  edit that remeshes, so the cache invalidates without the water path being wired into the rebuild. Planes from neighbouring regions are disjoint because a component
   is clipped to its region and region rects are disjoint, and planes within a region are disjoint by the
   decomposition, so the depth-write-off blend never double-darkens. A body that crosses a region border is two
   planes meeting at the border, the same surface height if the banks agree, which the authoring pass keeps
@@ -855,11 +861,15 @@ pushed and packed to `local-feed`, no tags unless the user says so:
   catalogs, the 3x3 starter world, and a client that opens that world through `TileWorld.Render3D` under the
   fly camera. Shipped as Grimhollow 0.2.0, with `GreyboxMeshResolver` boxes standing in for the Blender kit
   (the kit and a glb resolver are Grimhollow#4, their own small round). The round also found and fixed the
-  greybox roof lift (engine 17.37.1) and filed two engine fit-failure pairs (#658 prefab extract and the
+  greybox roof lift (engine 17.38.0) and filed two engine fit-failure pairs (#658 prefab extract and the
   derived plane lift, #659 no marker index in the manifest).
 - **R5**: ground materials (7.5) and water (7.6) in `Render3D` + `TileWorld.Render3D`, two new goldens and the
-  two existing ones rebaked, then the Grimhollow side: CC0 textures per catalog material with credits, the
-  hand-authored terrain pass through `ke-tileedit`, `WorldGen` retired (section 10). In design.
+  two existing ones rebaked. Shipped, riding the in-flight version, which was re-tiered from the patch it was to
+  the MINOR `17.38.0` while the round was in flight, because the round is additive API (a new pipeline, new
+  members with defaults, one new schema field). The same re-tier R2 took. Deferred minors are
+  [#665](https://github.com/APKiwiOrg/KhaozEngine/issues/665). The Grimhollow side is its own round in that repo:
+  CC0 textures per catalog material with credits, the hand-authored terrain pass through `ke-tileedit`, `WorldGen`
+  retired (section 10).
 - **R6**: the `Editor` kernel extraction with the forwarding aliases, then the `TileEditor` GUI over the
   commands R3 already shipped. Pending.
 
@@ -901,7 +911,9 @@ Each of these is filed as an issue when its round lands, not carried here.
 - Textured ground materials and water: deferred from v1, now R5 (7.5 and 7.6). What R5 in turn leaves out:
   normal maps for ground materials (a second array, four more samples), an overlay edge feather, per-vertex
   texture rotation against tiling, flowing water and sloped river surfaces (one surface height per water body
-  in R5, a descending river is authored as bodies with a drop between them).
+  in R5, a descending river is authored as bodies with a drop between them). R5 shipped, so all five are filed,
+  alongside the round's own deferred minors, as
+  [#665](https://github.com/APKiwiOrg/KhaozEngine/issues/665).
 - The over/under bridge plane trick: `Settings.Bridge` is reserved, semantics undefined until a bridge is
   authored that needs it.
 - Auto-tiling road brushes and multi-object marquee in the GUI: AI-first, the MCP verbs cover the need.

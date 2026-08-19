@@ -86,7 +86,7 @@ so a registry downgrade cannot strip data at rest. `MaxOwnedNetId()` reads the h
 useful for resuming an id allocator. See `KhaozEngine.NetWorld.CellPersistence` for the `IWorldStore` wiring
 (migration chain, quarantine, diagnostics) built on these.
 
-**`Transient`: the per-entity persist opt-out (since 17.37.1).** A field-less tag, beside `Ghost` and `Migrating`,
+**`Transient`: the per-entity persist opt-out (since 17.38.0).** A field-less tag, beside `Ghost` and `Migrating`,
 meaning this entity is never saved. `SnapshotOwned` leaves it out of the blob entirely, so a server-owned thing meant
 to outlive nothing (a world pickup, a timed spawn, a projectile) cannot be caught in an interval save and resurrected
 on restart as a husk no subsystem is tracking. It excludes the ENTITY, which is the axis a `ReplicationChannels` flag

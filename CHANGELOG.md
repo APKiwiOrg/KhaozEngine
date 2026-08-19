@@ -5,8 +5,10 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 17.37.1
+## 17.38.0
 
+A tile world draws textured ground and real river water now, over a new `TileGround` texture-array pipeline in
+`Render3D`, and no mid-life GPU free in a scene drains the device any more.
 A greybox roof now sits on the walls it covers instead of floating a whole plane above them. Alongside it, the
 last four per-frame PARTIAL uniform-buffer writes in the engine are gone: water planes, overlay proxies,
 `SpriteBatch` view-projection slots and a splat material's combined block all pack into a CPU image and go up in
@@ -364,7 +366,7 @@ left behind.
   what the wire itself does for a field it never carried. Nothing is destroyed on failure: the original bytes still
   go to `quarantine:cell:{x}:{y}`. A server that has written v4 blobs should not be downgraded, since an older build
   reports `SkippedTooNew` and starts each cell fresh.
-- **What a ROLLBACK does to the save, spelled out.** A pre-17.37.1 build reading a v4 blob quarantines it as
+- **What a ROLLBACK does to the save, spelled out.** A pre-17.38.0 build reading a v4 blob quarantines it as
   `SkippedTooNew` and starts that cell fresh, which preserves the bytes under `quarantine:cell:{x}:{y}` but does NOT
   leave the save intact: the cell is now empty and live, so the next `SaveDirtyPass` writes an EMPTY v3 blob over the
   main key. Rolling forward again afterwards restores nothing, because the only surviving copy of that cell is the
@@ -402,6 +404,156 @@ stamped, validated and refused when it is ambiguous, the answer is now a quarant
 every direction: a body from a NEWER generation is skipped on the stamp, a body whose recorded generation does not
 walk is quarantined, and a pre-stamp body that reads two ways is quarantined rather than migrated into one of the
 readings.
+
+### The tile world draws textured ground (#629)
+
+Round 5 of the tile-world program, the half the R4 fly-through asked for: a tile world's ground was flat colour
+blobs and a blue strip, and it is textured ground and real water now. This subsection is the ground, the next
+one is the water. Both ride this version rather than taking one of their own, and the version was re-tiered from
+the patch it was to this MINOR while the round was in flight, because the round is additive API.
+
+**A `TileGround` pipeline in `KhaozEngine.Render3D`, beside the splat one.** New public API:
+`Scene3D.LoadTileGroundMaterial(width, height, IReadOnlyList<TileGroundLayerImage>, baseSpecStrength = 0.15f,
+TerrainSamplerConfig? = null)` returning a `Scene3D.TileGroundMaterialHandle`, `Scene3D.UnloadTileGroundMaterial`,
+`Scene3D.LoadMesh(GltfMesh, TileGroundMaterialHandle)`, `TileGroundLayerImage` (`AlbedoRgba`, `Tint`,
+`TilesPerMetre`) and `TileGroundMaterialConfig` (`MaxMaterials` 64, `ParamsBytes`, `MiscIndex`, `MipLevelCount`,
+`BuildParams`). The splat pipeline the continuous terrain draws through could not be widened to do this: its
+layer count is a `const 5`, four weights ride in `ModelVertex.Color` and the fifth is the remainder, and a tile
+world's catalog is open ended. Folding N layers into it was weighed and rejected because it is Ruinborne's live
+terrain path with goldens of its own. What IS reused is everything around the pipeline: the shared
+`LightingCommonGlsl` block, the three MRTs, the mip policy, the terrain sampler, the `ImageRgba` decode and every
+backend constraint the terrain pass already paid for (one uniform buffer per pipeline on Metal, textures sampled
+in binding order with the shadow map LAST, fragment interpolants gap-free from location 0 for FXC). One UBO
+carries the shared frame block, then `vec4 TintTiling[64]` (tint rgb plus tiles-per-metre) and a `Misc` vector,
+and the whole thing goes up in one write per frame rather than a partial one, the shape the rest of this version
+moved every other per-frame write onto. The albedo array is one `CreateAlbedoArray` upload, deliberately the
+albedo-only sibling of the splat pass's two-array creation rather than a widened version of it, so normal maps
+land later as a new binding instead of a change to this one. The specular exponent is a constant 28, the exponent
+the splat pass reaches at roughness 0.5, because an albedo-only layer carries no roughness channel to derive one
+from.
+
+**The vertex packing, and why the slots are per TILE.** `ModelVertex` does not change, so nothing in the upload
+path moves. For this pipeline only: `Color` is the vertex's four weights, `Uv.x`/`Uv.y`/`Tangent.x`/`Tangent.y`
+are the tile's four corner material SLOTS as floats holding integers, `Tangent.z` is the per-vertex brightness
+jitter and `Tangent.w` is 0. The fragment reads a slot as `int(x + 0.5)`, clamps it to 0..63 (an out-of-range
+index into a uniform-block array is undefined behaviour rather than a wrap, so a mesher bug has to show as the
+wrong material and never as garbage), takes four `textureGrad` taps with the derivatives hoisted above the loop,
+renormalises the weights by their own sum with no fifth-layer remainder, and multiplies by the slot's tint and
+the jitter. **The jitter is a MULTIPLIER, not an offset, so a vertex carrying `Tangent.z` of 0 renders black**,
+and a mesher that wants none writes 1. Four slots fixed per tile rather than a palette per triangle is what keeps
+the ground continuous: a corner shared by four tiles is one-hot on the same material from every triangle that
+touches it, and a shared edge interpolates the same pair with the same weights from both sides, so the surface is
+C0 everywhere at four samples a fragment with no cap to fall off. Tile ground CASTS shadows, like a model mesh
+and unlike the splat terrain, which opts out.
+
+**A new shader pair joins ten registration sites here, not the four the plan named.** Source validation, the
+D3D11 program catalog and its FXC fragment-input contiguity pass, the UBO layout tripwires, the
+`Scene3D` construction-cost expectation, the three per-backend byte-equality hash tables (all three re-baked,
+each gaining exactly two rows and moving no existing hash), the two incumbent-parity stage counts, and the Vulkan
+descriptor-limit, binding-table, dynamic-offset and layout-compatibility counts. The FXC case asserts one thing
+more than the terrain one it was copied from: the fragment inputs are contiguous from 0, the vertex outputs are
+contiguous from 0, AND the two sets are equal, which is the shader's own "the fragment reads every interpolant
+the vertex declares" comment turned into a red test.
+
+**The catalog side (`KhaozEngine.TileWorld`).** `GroundMaterial.TilesPerMetre` is a new nullable float and
+`tilesPerMetre` the one field the catalog schema gains (optional, floored at 0.01, and it had to be added
+explicitly because the material object is `additionalProperties: false`). Null takes the renderer's 0.5, a 2 m
+repeat, which at 1 unit = 1 metre puts two tiles inside one texture repeat. `TileWorldCatalogs.MaterialSource(id)`
+is new public API returning the catalog FILE a material was loaded from, or null when the catalog came from
+`LoadJson`, `Merge` or `Greybox` rather than `Load(paths)`, which is what lets a relative `Texture` resolve
+against the file that declared it, the same rule `world.json` already uses for its catalog paths.
+
+**The mesher and the material set (`KhaozEngine.TileWorld.Render3D`).** `TileGroundMesher.CornerMaterial(doc, x,
+z, plane)` walks the up-to-four tiles sharing a lattice corner and takes the id most of them carry, ties broken by
+the LOWER id so every tile touching that corner picks the same one and the corner cannot seam. Void is the only
+exclusion: a `NoDraw` tile draws no ground of its own but still contributes its underlay, exactly as the colour
+path has always counted it, so the ground does not step at the edge of a hole punched for an object floor. The
+design's parenthetical said `NoDraw` was excluded, and it was corrected against the shipped colour rule rather
+than the other way round. `TileGroundMesher.CornerJitter` is the mean over the same tiles.
+`TileGroundMesherOptions.Slots` (an `ITileGroundSlotMap`, defaulting to `IdentitySlotMap.Instance`) turns a
+catalog id into a layer slot. `TileGroundMaterials.Build(catalogs, load?)` builds the `TileGroundMaterialSet` those
+slots index: one albedo layer per material in ascending id order, then one RESERVED layer last, filled with the
+dangling-id magenta, which `MissingSlot` names and every id the catalogs do not define maps to. The reserved slot
+is the LAST one rather than slot 0, so a set built in catalog id order does not burn its first layer every time.
+A material with a `Texture` is decoded and takes a white tint (the texture is the colour), a material with none
+becomes a flat layer of its catalog `Color`, so a colour-only world renders through the same textured pipeline and
+the same goldens without texture detail. Every layer is one slice of ONE texture array, so the first textured
+material fixes the size and another of a different size throws a `TileWorldException` naming both rather than
+being resampled behind your back, a relative texture on a catalog that came from memory throws too, and a catalog
+of more than 63 materials throws rather than dropping any. The set IS an `ITileGroundSlotMap`, and its
+constructor is public, so a game whose layers come from its own atlas hand-builds one.
+`TileWorldViewOptions.GroundMaterials` is the view's hook (null builds the flat set from the catalogs), the view
+uploads it once, points `Options.Mesher.Slots` at it, uploads every region-plane mesh bound to it and frees it on
+`Dispose`. `TileWorldView.GroundMaterials` reads back whichever set it ended up with.
+
+**The unload retires, and the goldens moved.** `UnloadTileGroundMaterial` hands the whole material (array, UBO,
+resource set, any owned sampler) to the scene's `GpuRetireQueue` as ONE resource, and it never shipped a drain: it
+was written against the queue rather than converted onto it, which is why it is missing from this version's
+drain-removal list above. The two existing tile-world goldens are rebaked on all three families because the
+untextured world draws through the new pipeline now, and the move is a hair rather than a redesign
+(`tileworld_greybox` was already inside tolerance, `tileworld_topdown` was 24 channels outside it). Two new ones:
+`tileworld_textured`, a generated two-colour checker set over the greybox world, which is what proves the texture
+array, its mip chain and the per-layer tiling rate are all live, and `tileworld_river` (below). Deferred minors
+and the design's own next steps are #665.
+
+### The tile world draws its rivers through the water pass (#629)
+
+Water in a tile world is now the engine's existing `Scene3D.DrawWater` pass over the ground the author carved,
+rather than a flat blue material. Nothing new is drawn: the depth tint, the shore foam band and the waterline
+feather all read the resolved scene depth, so there is no bathymetry map and no scene-wide setting involved. The
+tile world's part is deciding WHERE the planes go.
+
+**Water is authored as ground, and carved.** A tile is water when its UNDERLAY material carries
+`GroundMaterialKind.Water`, and the bed is sunk by lowering the corner heights, so a river's texture is its BED
+and the surface is computed rather than placed. Only the underlay counts: an overlay drawn in a water material is
+a puddle-shaped decoration on ordinary ground and gets no surface, because an overlay cuts a fraction of a tile
+and a fraction of a tile has no rim to take a height from. A `NoDraw` tile is not water either, since water over a
+hole has no bed for the depth read to darken against.
+
+**`TileWaterPlanes.Collect(doc, catalogs, region, plane, look?)`** is the new public API. It groups a
+region-plane's water tiles into 4-connected components (discovered from the region's south-west corner, so the
+order is a pure function of the mask), gives each component ONE surface height, and cuts the component's tile mask
+into a disjoint set of maximal rectangles, one `WaterPlane` each, converted through `TileWorldSpace` so world z is
+minus tile z. The surface is the MAXIMUM corner height over the component's tiles, which is the rim it shares with
+its bank, minus `SurfaceDropMetres` (2 cm), so a sunk bed does not move the surface and the bank sits proud of it.
+Rectangles rather than one plane per tile because the pass draws a fixed 97 by 97 grid per plane whatever it
+covers, so a straight river has to be one plane and a bend a few. Rectangles rather than one bounding box per
+component because a box over-covers at bends and the pass discards only where the ground is at or above the
+surface, so a ditch, a cave mouth or a sunk road cut inside that box would render as water. The rectangles are the
+component's own tiles and nothing else. `Collect` asserts pairwise disjointness over everything a region-plane
+emits (two overlapping planes double-darken, since the blend is depth-write off) and logs once past
+`PlaneCountWarnThreshold` (16), which is the signal that a river was drawn as a staircase of short runs where a
+few long ones would read the same. `Components` and `Rectangles` are public for a caller that wants the
+decomposition without the planes.
+
+**`TileWaterLooks.River`** is a new `static readonly WaterLook`, modelled on Ruinborne's inland lake. Four fields
+are that look unchanged, because they say "not a sea" rather than "not big": procedural waves off the shared FFT
+ocean, zero swell, a 0.05 normal strength and no surf. Every other field differs because of SCALE. A lake is a
+couple of hundred metres across and deep, a river is a few metres wide and under a metre deep, so the sea's 1.6 m
+foam band, 0.6 m waterline feather, 2.5 m ripple wavelength and 2.5 m depth blend would each consume the whole
+body. What it takes instead is a 0.35 m shore foam band with the crest whitecaps off, silty shallow and deep
+colours, a 0.8 m `ShallowDepth` so a 60 to 80 cm bed still darkens, 0.9 opacity, a 0.2 m shore fade and a 0.8 m
+wave scale. It is one shared instance of a class of public fields, so it must not be mutated: copy it, or pass a
+look of your own.
+
+**The view submits every frame.** `ITileWorldScene` grows four members, all DEFAULT interface implementations so
+an implementation written before this version keeps compiling and simply draws untextured ground and no water:
+`LoadTileGroundMaterial`, `UnloadTileGroundMaterial`, `LoadMesh(mesh, material)` and `DrawWater(in WaterPlane)`.
+`TileWorldView.Draw` calls the new public `DrawWaterPlanes()` after the ground and the props unless
+`TileWorldViewOptions.DrawWater` is false, and `TileWorldViewOptions.WaterLook` (default `TileWaterLooks.River`,
+null for the scene's own settings) is the per-view override. Both knobs are on the OPTIONS rather than on the
+view, because `TileWorldSnapshot` and the `ke-tileedit` render verbs build the view themselves and a caller never
+sees it. The planes are collected once per region-plane MESH and cached against that mesh handle, so a frame that
+changed nothing is a walk over the loaded regions and one submit per plane: a remesh always comes back under a
+fresh handle generation, and every edit that can move a water tile or a corner height is exactly an edit that
+remeshes. `tileworld_river` is the new golden, a carved channel with dirt banks running corner to corner, and it
+is the first thing in the suite that reads the tile-ground pipeline's linear depth MRT.
+
+**Deliberately not done**, each its own piece of work in #665: sloped river surfaces (one surface height per body,
+so a descending river is authored as separate bodies with a drop between them, which is how OSRS does it), flowing
+water and width-aware foam, normal maps for ground materials, a golden covering an underlay-to-underlay blend
+under textures, and folding `TileGroundUniformBuffer` and `SplatUniformBuffer` into one wrapper sized by its
+params tail.
 
 ## 17.37.0
 

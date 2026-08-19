@@ -1,7 +1,9 @@
 # KhaozEngine.TileWorld.Render3D
 
 The render arm of [KhaozEngine.TileWorld](../KhaozEngine.TileWorld): meshes a tile world's ground into
-`Render3D` meshes for the tile-ground pipeline, places its objects through the `Terrain.Render3D` prop path, and owns the
+`Render3D` meshes for the tile-ground pipeline, builds that pipeline's material set from the ground catalog,
+places its objects through the `Terrain.Render3D` prop path, puts its water bodies through the engine's water
+pass, and owns the
 per-region scene handles, region streaming and headless snapshot capture on top. Kept separate from the
 render-free document so a server or tool never drags in `Render3D`. In the `Game3D` umbrella. Design:
 [docs/design/TILE-WORLD-DESIGN-2026-08-15.md](../docs/design/TILE-WORLD-DESIGN-2026-08-15.md).
@@ -90,6 +92,67 @@ Hand-build a `TileGroundMaterialSet` directly when the layers come from somewher
 constructor takes the size, the material id of each leading slot, and one layer per id PLUS the trailing reserved
 one, and it refuses a layer that is not the size the set declares.
 
+**What a game does to get textures on the ground.** Two catalog fields and one rule about where the files live:
+
+1. Give the material a `texture` in the catalog JSON. A relative path resolves against the DIRECTORY of the
+   catalog file, so `"texture": "ground/grass.png"` beside `catalogs/ground.json` is
+   `catalogs/ground/grass.png`. That means the catalog has to have been read from disk through
+   `TileWorldCatalogs.Load(paths)`: one built by `LoadJson`, `Merge` or `Greybox` has no directory to resolve
+   against and a relative texture on it throws.
+2. Optionally give it a `tilesPerMetre` (texture repeats per world metre, floored at 0.01 by the schema). Omit it
+   for `TileGroundMaterials.DefaultTilesPerMetre`, 0.5, which is a 2 m repeat and two tiles inside one copy of
+   the texture.
+3. Make every textured file the SAME pixel size. The set is one texture array, so the first textured material
+   fixes the size for the whole catalog and any other of a different size throws rather than being resampled.
+
+**Every layer costs that size, textured or not.** A flat colour layer is a full-size fill, because a texture
+array's slices all match, so one 1024x1024 texture in a catalog makes each of its untextured materials a 4 MB
+layer. Keep the ground textures modest (256 is plenty at this grain) or expect a 13-material catalog to cost tens
+of megabytes for two real images.
+
+## Water (`TileWaterPlanes`, `TileWaterLooks`)
+
+Water is the engine's existing `Scene3D.DrawWater` pass laid over ground the author carved, so nothing new is
+drawn: the depth tint, the shore foam band and the waterline feather all read the resolved scene depth. This
+package only decides WHERE the planes go.
+
+**Water is authored as ground.** A tile is water when its UNDERLAY material carries `GroundMaterialKind.Water`,
+and the bed is sunk by lowering the corner heights, so the material's texture is the river BED and the surface is
+computed rather than placed. Only the underlay counts: an overlay drawn in a water material is a puddle-shaped
+decoration on ordinary ground and gets no surface, because an overlay cuts a fraction of a tile and a fraction of
+a tile has no rim to take a height from. A `NoDraw` tile is not water either, since water over a hole has no bed
+for the depth read to darken against. Collision, pathing, the raycast and the top-down painter are all unchanged:
+`TileRaycast.Pick` still lands on the bed, which is what an editor click wants.
+
+`TileWaterPlanes.Collect(doc, catalogs, region, plane, look?)` returns every `WaterPlane` one region-plane
+contributes, in a deterministic order.
+
+- **One surface height per body.** Water tiles are grouped into 4-connected components, discovered row by row from
+  the region's south-west corner. Each component's surface is the MAXIMUM corner height over its tiles, which is
+  the rim it shares with its bank, minus `SurfaceDropMetres` (2 cm). So a bed dug 70 cm down does not move the
+  surface, and the bank sits 2 cm proud of it and stays dry. A river that DESCENDS is authored as separate bodies
+  with a drop between them, the way OSRS does it, because one component is one height.
+- **Disjoint rectangles, not one box.** Each component's tile mask is cut into maximal axis-aligned rectangles
+  (row runs merged upward while their span is identical), one `WaterPlane` each. Rectangles rather than one plane
+  per TILE because the pass draws a fixed 97 by 97 grid per plane whatever it covers, so a straight 3-wide river
+  has to be one plane and a bend a few. Rectangles rather than one bounding BOX per component because a box
+  over-covers at a bend, and the pass discards only once the ground is at or above the surface, so a ditch, a cave
+  mouth or a sunk road cut inside that box would render as water. `Collect` asserts pairwise disjointness over
+  everything a region-plane emits (two overlapping planes double-darken, the blend is depth-write off) and logs
+  once past `PlaneCountWarnThreshold` (16), which is the signal that a river was drawn as a staircase of short
+  runs where a few long ones would read the same. `Components` and `Rectangles` are public for a caller that wants
+  the decomposition on its own, and `ToPlane` for one rectangle.
+- **Region borders are safe by construction.** A component is clipped to its region and region rects are disjoint,
+  so planes from neighbouring regions never overlap. A body crossing a border is two planes meeting at it, at the
+  same height when the banks agree, and a mismatch shows as a 2 cm lip rather than being hidden.
+
+`TileWaterLooks.River` is the shipped per-plane `WaterLook`: procedural waves off the shared FFT ocean, no swell,
+a small normal strength, no surf, foam only in a narrow shore band, silty colours and a 0.8 m `ShallowDepth` so a
+60 to 80 cm bed still darkens. It is modelled on Ruinborne's inland lake, and every value that differs from it
+differs because of SCALE (the sea's 1.6 m foam band and 2.5 m ripple wavelength would each consume a river whole).
+**It is one shared instance of a class of public fields, so do not mutate it**: copy it, or pass a look of your
+own through `TileWorldViewOptions.WaterLook`.
+
 ## Objects (`TileObjectProps`, `ITileMeshResolver`, `GreyboxMeshResolver`)
 
 `TileObjectProps.Build(doc, catalogs, region, plane)` turns a region-plane's `TileObject`s into
@@ -122,8 +185,10 @@ world with a non-default plane height still has its walls meet its roofs.
 Everything the view does to a scene goes through `ITileWorldScene`: `LoadMesh`, `UnloadMesh`, `DrawMesh`,
 `LoadPropMeshes`, `UnloadPropMeshes`, `DrawProps`, plus the ground-material trio `LoadTileGroundMaterial`,
 `UnloadTileGroundMaterial` and the `LoadMesh(mesh, material)` overload that binds a mesh to the tile-ground
-pipeline. The trio ships as DEFAULT interface implementations (an invalid handle, a no-op, and a fall-through to
-the material-free upload), so an implementation written before textured ground existed keeps compiling. It is shaped exactly on what `Scene3D` and the prop renderer
+pipeline, and `DrawWater(in WaterPlane)` for the water surfaces. Those four ship as DEFAULT interface
+implementations (an invalid handle, a no-op, a fall-through to the material-free upload, and a no-op), so an
+implementation written before textured ground and water existed keeps compiling and simply draws untextured ground
+and no water. It is shaped exactly on what `Scene3D` and the prop renderer
 already offer, because its job is to let the view's bookkeeping run without a device, not to add an abstraction of
 its own. `Scene3DTileWorldScene` is the shipped implementation and forwards straight through, and a test drives a
 recording fake, which is how every view and residency rule is covered headless.
@@ -138,6 +203,15 @@ catalog archetype up front, so a region load is placements alone.
   view points `Options.Mesher.Slots` at whichever set it ends up with, because the slots a vertex names only mean
   anything against the set the mesh is drawn with, and it reads back as `GroundMaterials`. Every region-plane mesh
   goes up bound to it, and `Dispose` frees it.
+- **Water is queued every frame, collected once per mesh.** `Draw` calls `DrawWaterPlanes()` after the ground and
+  the props unless `TileWorldViewOptions.DrawWater` is false, and
+  `TileWorldViewOptions.WaterLook` (default `TileWaterLooks.River`, null for the scene's own water settings) is
+  the look every plane carries. Both knobs are on the OPTIONS rather than on the view, so a caller that never sees
+  the view (`TileWorldSnapshot`, the `ke-tileedit` render verbs) can still set them. The planes of a region-plane
+  are collected once and cached against the MESH handle they were collected with, so a frame that changed nothing
+  is a walk over the loaded regions and one submit per plane: a remesh always comes back under a fresh handle
+  generation, and every edit that can move a water tile or a corner height is exactly an edit that remeshes. Turn
+  `DrawWater` off and call `DrawWaterPlanes()` yourself to put the surfaces at another point in your frame.
 
 - `LoadRegion` / `UnloadRegion` build and free every plane of one region. Loading a region that is already loaded
   rebuilds it, so it doubles as a whole-region refresh. `LoadedRegions` is a snapshot, safe to walk while loading
@@ -204,10 +278,14 @@ warms up over a frame is read back cold. Needs a headless GPU device.
 
 ## Tests and goldens
 
-CPU tests and the two `[GpuFact]` goldens both live in `KhaozEngine.Render.Tests/TileWorld/`, the repo norm
+CPU tests and the four `[GpuFact]` goldens both live in `KhaozEngine.Render.Tests/TileWorld/`, the repo norm
 (`GoldenCompare` is internal to that assembly). `tileworld_greybox` is the perspective shot with the observer
 INSIDE the house, so it locks the roofs-hidden half of the rule, and `tileworld_topdown` is the map shot with the
-observer above the world, so it locks the roofs-drawn half. Both pass a flat background through `configureScene`
+observer above the world, so it locks the roofs-drawn half. `tileworld_textured` is the greybox world again under
+a generated two-colour checker set, which is what holds the texture array, its mip chain and the per-layer tiling
+rate, and `tileworld_river` is a carved channel with dirt banks, which holds the water pass (with `DrawWater` off
+the same shot renders the channel as a flat blue ground strip). All four pass a flat background through
+`configureScene`
 (no starfield, no outline), so the comparison grid spends its cells on the tile renderer rather than on a
 procedural sky. Golden images live in `KhaozEngine.Render.Tests/Gpu/goldens/`, one file per backend, and a new or
 rebaked golden must be baked on D3D11 and Vulkan through the `cross-platform-gpu.yml` `bake=true` dispatch before

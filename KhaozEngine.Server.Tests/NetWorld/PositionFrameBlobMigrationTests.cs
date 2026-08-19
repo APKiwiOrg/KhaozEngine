@@ -170,7 +170,7 @@ public class PositionFrameBlobMigrationTests
     /// frame, ends on the same terminator and consumes the buffer exactly. Both readings are structurally perfect and
     /// nothing in the bytes prefers either.
     /// <para>
-    /// 17.37.1 shipped a frame count as the tie-break, on the argument that an over-long read can only ever swallow
+    /// 17.38.0 shipped a frame count as the tie-break, on the argument that an over-long read can only ever swallow
     /// frames so the truth always scores at least as high. That is only true of candidates NEWER than the truth: an
     /// OLDER candidate under-reads a payload and the leftover bytes re-sync into extra frames, which can outscore the
     /// truth (see <c>CellBlobInferenceTests</c>). So there is no tie-break any more. A body that reads two ways is

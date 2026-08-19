@@ -15,7 +15,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.NetWorld;
 
 /// <summary>
-/// The UNDER-read direction of inferring a pre-v4 cell blob's wire generation, which is the case the 17.37.1
+/// The UNDER-read direction of inferring a pre-v4 cell blob's wire generation, which is the case the 17.38.0
 /// most-frames heuristic got wrong.
 /// <para>
 /// Its safety argument was that an over-long read can only swallow frames, so the truth always scores at least as

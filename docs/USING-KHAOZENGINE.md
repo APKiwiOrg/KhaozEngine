@@ -5352,7 +5352,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.37.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.38.0" />
 ```
 
 ```csharp
@@ -6036,6 +6036,13 @@ weights baked into each vertex, with world-space triplanar tiling, normal maps, 
 filtering plus a `+1` mip LOD bias (D3D11/Vulkan) that tames distance shimmer from a high-frequency tiling albedo.
 Without a material supplied the chunk falls back to the height/slope vertex-colour ramp (byte-identical).
 
+Five layers is the whole point and also the whole limit: four weights ride in `ModelVertex.Color` and the fifth is
+the remainder, so this pipeline cannot take a material palette that is content rather than a fixed set. For that
+there is a sibling, `Scene3D.LoadTileGroundMaterial` / `LoadMesh(mesh, TileGroundMaterialHandle)`: up to 64 albedo
+layers in one texture array, four material SLOTS per triangle instead of five fixed layers, and no normal maps.
+It is what a tile world's ground draws through (see "Tile world rendering"), and the two are separate pipelines on
+purpose, since widening this one would move Ruinborne's live terrain path and its goldens.
+
 **1. Load the material.** `TerrainMaterialPresets.Procedural()` returns a ready-made `TerrainLayeredMaterial`
 built from five `TerrainMaterialLayer`s (one per biome layer). Each layer carries an albedo image, a normal map,
 a tiling scale, and a roughness scalar. Call `LoadTerrainMaterial` on the `Scene3D`-backed extension to upload
@@ -6611,7 +6618,8 @@ form. A stamp is additive per layer, so clear the rect first if you want a repla
 
 The render arm of the tile world, in the `Game3D` umbrella: a ground mesher that emits each tile's four corner
 materials as slots for the tile-ground pipeline, the material set those slots index built straight from the
-catalog, tile objects through the `Terrain.Render3D` prop path, a view
+catalog, water bodies through the engine's own water pass, tile objects through the `Terrain.Render3D` prop path,
+a view
 that owns a world's meshes and props in a `Scene3D`, region streaming, and headless capture. Kept separate from the document package
 so a server or a tool never drags in `Render3D`.
 
@@ -6646,6 +6654,55 @@ that size and another textured material of a different size throws rather than b
 one from the catalogs on its own unless `TileWorldViewOptions.GroundMaterials` hands it one, uploads it ONCE,
 points the mesher at it (the slots in a vertex only mean anything against the set the mesh is drawn with), and
 frees it on `Dispose`. So a colour-only world and a textured one take exactly the same path.
+
+**Texturing a world is two catalog fields.** Give a ground material a `texture` and, optionally, a
+`tilesPerMetre` (repeats per world metre, default 0.5, a 2 m repeat):
+
+```jsonc
+// catalogs/ground.json, so "ground/grass.png" is catalogs/ground/grass.png
+{ "materials": [
+  { "id": 1, "name": "grass", "color": "#4c7a3a", "texture": "ground/grass.png", "tilesPerMetre": 0.5 },
+  { "id": 2, "name": "dirt",  "color": "#7a5c3a", "texture": "ground/dirt.png"  },
+  { "id": 4, "name": "water", "color": "#3a5c7a", "kind": "Water" }
+] }
+```
+
+```csharp
+TileWorldCatalogs catalogs = TileWorldCatalogs.Load(new[] { "catalogs/ground.json", "catalogs/objects.json" });
+var options = new TileWorldViewOptions { GroundMaterials = TileGroundMaterials.Build(catalogs) };
+using var view = new TileWorldView(scene, doc, catalogs, resolver, options);
+```
+
+Three rules the loader enforces. A RELATIVE `texture` resolves against the directory of the catalog FILE that
+declared it, through `TileWorldCatalogs.MaterialSource(id)`, so the catalogs have to have come from
+`TileWorldCatalogs.Load(paths)`: one built by `LoadJson`, `Merge` or `Greybox` has no directory and a relative
+texture on it throws. Every textured file must be the same pixel size, because the set is one texture array, and
+the first textured material fixes it. And every layer costs that size whether it carries a texture or not (a flat
+colour layer is a full-size fill), so a 1024 texture makes each untextured material in the same catalog a 4 MB
+layer. 256 is plenty at this grain. Leave `GroundMaterials` null and the view builds the all-flat set itself,
+which is what a colour-only world wants.
+
+**Water is carved, not placed.** A tile is water when its underlay material's `kind` is `Water`, and you sink the
+bed by lowering the corner heights, so the material's texture is the river BED and the surface height is computed.
+`TileWaterPlanes.Collect(doc, catalogs, region, plane, look?)` groups a region-plane's water tiles into
+4-connected bodies, puts each at the maximum corner height over its tiles (the rim it shares with its bank) minus
+2 cm, and cuts the body into disjoint maximal rectangles, one `WaterPlane` each. Rectangles rather than a bounding
+box because the pass discards only where the ground is at or above the surface, so a box over a bend would flood
+the ditch beside it. `TileWorldView.Draw` queues them every frame through the `ITileWorldScene.DrawWater` seam
+member, so `TileWorldSnapshot` and the `ke-tileedit` renders get water for free:
+
+```csharp
+var options = new TileWorldViewOptions
+{
+    WaterLook = TileWaterLooks.River,   // the default. Null draws with the scene's own water settings
+    DrawWater = true,                   // false when you submit the world's water yourself
+};
+```
+
+`TileWaterLooks.River` is a shared instance and must not be mutated: copy it, or hand your own `WaterLook` to
+`WaterLook`. One surface height per body, so author a descending river as separate bodies with a drop between
+them. An overlay in a water material gets no surface (a fraction of a tile has no rim), and `TileRaycast.Pick`
+still lands on the bed, which is what an editor click wants.
 
 **Two conventions carry over from the document.** World z is MINUS tile z (`TileWorldSpace`), so a region-local
 ground mesh runs from 0 to minus 64 tiles on z and `TileGroundMesher.WorldMatrix` translates it into place, and
@@ -9179,7 +9236,7 @@ run inside the engine's process-wide device-creation gate, so a provider needs n
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.37.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.38.0" />
 ```
 
 ```csharp
@@ -9213,7 +9270,7 @@ that up front is what routes it through the reported fallback instead of a crash
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.37.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.38.0" />
 ```
 
 ```csharp
@@ -9455,7 +9512,7 @@ is no recovery path: a lost device stays lost, which is what the liveness token 
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.37.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.38.0" />
 ```
 
 ```csharp
@@ -11565,7 +11622,7 @@ renderer or content-streaming system built directly on `KhaozEngine.Gpu` should 
 anything it frees outside of full teardown, or hand the resource to a `GpuRetireQueue` (below) and never
 drain at all.
 
-**No `Scene3D` unload drains, since 17.37.1.** `UnloadMesh`, `UnloadSkinnedMesh`, `UnloadTexture`,
+**No `Scene3D` unload drains, since 17.38.0.** `UnloadMesh`, `UnloadSkinnedMesh`, `UnloadTexture`,
 `UnloadSplatMaterial` and `UnloadTileGroundMaterial` all hand their GPU resources to a `GpuRetireQueue` instead. At the next
 `Scene3D.Begin` the queue seals
 everything retired during the frame just ended into one batch and marks the submission stream with a
@@ -11603,7 +11660,7 @@ into lockstep with the GPU and is free to run ahead.
 `Scene3D.Dispose` flushes the pool behind the drain it already does, so nothing outlives the scene, and
 teardown keeps the drain on purpose (correctness over speed, and a poll would have to spin).
 
-**The three sibling unload paths joined it in 17.37.1**
+**The three sibling unload paths joined it in 17.38.0**
 ([#383](https://github.com/APKiwiOrg/KhaozEngine/issues/383)), each having drained the whole device once
 per call until then. `UnloadSkinnedMesh` is the one that was costing something in the field: an MMO
 client despawns avatars and corpses continuously as they leave interest range, and every despawn was a
@@ -12300,7 +12357,7 @@ persistence.Issue += issue => log.Info(issue.ToString());   // migrated / skippe
   `SchemaVersion`), the same rules `KhaozEngine.Persistence.MigrationChain` enforces. Engine-owned built-in layout
   changes ship engine-provided migrations; consumer extension changes ship consumer migrations. A migrated cell is
   rewritten once with the current header so a later boot does not re-migrate.
-- **The blob header records the wire generation (schema v4, since 17.37.1).** An engine built-in is unframed on the
+- **The blob header records the wire generation (schema v4, since 17.38.0).** An engine built-in is unframed on the
   wire, so how many bytes its payload occupies in a stored body depends on the `MoveProtocol.WireProtocolVersion` the
   writing build was at, NOT on the blob's schema version. Those two drifted apart for eight generations, so v4 stamps
   the generation into the header (`[magic][schemaVersion][wireGeneration]`, 12 bytes) and `BuiltinBlobLayout` holds
@@ -12700,7 +12757,7 @@ over `CellSim.SnapshotOwned`/`RestoreOwned` and `ShardHost.CellCreated`/`EnsureC
 `player:{accountId}` keyspace `WorldPersistence` uses, so the two coexist on the same `IWorldStore` without
 collision.
 
-**Opting one entity out (since 17.37.1).** Not everything a server owns is meant to outlive it. A world pickup, a
+**Opting one entity out (since 17.38.0).** Not everything a server owns is meant to outlive it. A world pickup, a
 timed spawn, a wave of adds, a projectile: caught in an interval save, each comes back on restart as a husk no
 subsystem is tracking. `ShardedWorldServer.MarkTransient(netId)` tags such an entity
 `KhaozEngine.Sharding.Transient` and `SnapshotOwned` leaves it out of the blob entirely, with `ClearTransient` and
@@ -13452,7 +13509,7 @@ expires one on its own. All of them propagate to clients as a normal area-of-int
 with a `PickupRemovalReason` of `Collected` / `Expired` / `Despawned` / `CellEvicted`, so a ledger row or a poof VFX
 has one place to hang off.
 
-**Cell awareness, if your server evicts cells (since 17.37.1).** A pickup's tracking record is the seam's, not the
+**Cell awareness, if your server evicts cells (since 17.38.0).** A pickup's tracking record is the seam's, not the
 entity's, so unloading the cell that held the entity used to leave the record standing: the proximity pass kept
 offering an orb nobody could see, a collect still granted it, and the expiry despawn no-opped into an unloaded cell.
 Hand the seam your evictor and it drops each evicted cell's pickups itself:
@@ -13482,7 +13539,7 @@ its snapshot decode the first time a pickup entered its area of interest, mid-se
 `MoveProtocol.WireProtocolVersion` therefore bumps to **8**, which converts exactly that late failure into a clean
 `IncompatibleVersion` rejection at connect. **Client and server must ship together.**
 
-**A pickup is never persisted by default (since 17.37.1).** Every pickup `Spawn` creates is marked
+**A pickup is never persisted by default (since 17.38.0).** Every pickup `Spawn` creates is marked
 `KhaozEngine.Sharding.Transient`, so `CellPersistence` leaves it out of the cell blob and no restore brings it back.
 The seam's state (the time-to-live, the clock, the offer records) lives in this process only, so a resurrected pickup
 is a plain entity carrying `PickupState` that the seam knows nothing about, offered to nobody and expiring never.
@@ -13511,7 +13568,7 @@ the entity across a cell handoff inside one `ShardHost`, for any `ICellLink` sha
 not make it persistable there. That stops at the node boundary: the tag has no wire id, so a link carrying a crossing
 between two hosts carries the mark in its own envelope or the destination adopts it unmarked.
 
-**Blobs written before 17.37.1 still hold husks**, since a save cannot be edited after the fact. That is a one-time
+**Blobs written before 17.38.0 still hold husks**, since a save cannot be edited after the fact. That is a one-time
 boot sweep, run once against a world an older build saved and unnecessary for every save written since. Sweep before
 spawning this run's pickups, or the sweep eats them too:
 

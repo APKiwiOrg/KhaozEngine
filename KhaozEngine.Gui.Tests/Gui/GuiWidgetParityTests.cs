@@ -12,12 +12,17 @@ namespace KhaozEngine.Tests.Gui
     // Focus / Unfocus / PlaceholderContent, and PopupPanel scroll + adaptive footer buttons + row icons.
     public class GuiWidgetParityTests
     {
-        static InputState Frame(Vector2 pos, bool leftDown)
+        // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and
+        // release edges derive from this test's own frame sequence and nothing crosses between tests.
+        readonly MouseFrames _mouse = new();
+
+        InputState Frame(Vector2 pos, bool leftDown)
         {
             var down = new HashSet<MouseButton>();
             if (leftDown) down.Add(MouseButton.Left);
+            var (edgePressed, edgeReleased) = _mouse.Advance(down);
             return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                down, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540);
+                down, edgePressed, pos, Vector2.Zero, 0, 960, 540, mouseReleased: edgeReleased);
         }
 
         static Vector2 Center(Rect r) => new(r.X + r.Width / 2f, r.Y + r.Height / 2f);
@@ -159,7 +164,7 @@ namespace KhaozEngine.Tests.Gui
             return panel;
         }
 
-        static Pointer HoveringContent(PopupPanel panel)
+        Pointer HoveringContent(PopupPanel panel)
         {
             var p = new Pointer();
             p.Update(Frame(Center(panel.ContentRect()), false));      // in content, not pressed

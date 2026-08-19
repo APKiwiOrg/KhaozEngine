@@ -53,13 +53,17 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   material, dissolve, edgeWidth, edgeColor)` - the rigid mirror of the skinned `DrawSkinned` dissolve, folded
   into the shared model pipeline so it stays one instanced draw per mesh), per-mesh albedo textures, lighting, camera-facing billboards, an
   immediate-mode debug-draw overlay (line/ray/box/grid/axes/circle) plus depth-tested debug wire volumes
-  (sphere/dome/cylinder/circle), composited into the window. The four unload calls do NOT all free the same way.
-  `UnloadMesh` RETIRES its buffers and per-mesh material set through the seam's `GpuRetireQueue` and does not
-  drain at all: the queue destroys them a few frames later, once a fence (or the frame count) says the GPU is
-  done, which is what took the per-chunk stall off the terrain streaming path. `UnloadProp` forwards to it, so it
-  behaves the same. `UnloadTexture`, `UnloadSkinnedMesh`, `UnloadSplatMaterial` and `UnloadTileGroundMaterial`
-  still drain the device (`IGpuDevice.WaitForIdle`) before disposing, since a queued upload or draw may still
-  reference them.
+  (sphere/dome/cylinder/circle), composited into the window. **No unload call drains the device any more**
+  (since 17.37.1, [#383](https://github.com/APKiwiOrg/KhaozEngine/issues/383)). `UnloadMesh`, `UnloadSkinnedMesh`,
+  `UnloadTexture`, `UnloadSplatMaterial` and `UnloadTileGroundMaterial` all RETIRE their GPU resources through the
+  seam's `GpuRetireQueue`, which destroys them a few frames later, once a fence (or the frame count on a backend
+  with none) says the GPU is done. `UnloadProp` forwards to `UnloadMesh`, so it behaves the same. That is what
+  took the per-chunk stall off the terrain streaming path and, for the skinned one, the per-despawn stall off an
+  MMO client. The rule the old
+  per-call `IGpuDevice.WaitForIdle` existed for is unchanged: a queued upload or draw may still reference the
+  resource, so nothing is destroyed in the frame it was retired in. The unload bodies live in `Scene3D.Unload.cs`,
+  and `Scene3D.RetiredResourceCount` is the observable: a healthy streaming world shows a small number that returns
+  to 0 shortly after a burst.
 - `Scene3D.PrepareFrame()` - the frame's pre-recording phase. Call it once per frame, after the frame's
   `Draw*` calls and BEFORE opening the command list the scene is recorded into. Subsystems whose per-frame GPU work
   cannot go in the frame's list (the FFT ocean's priming dispatch, which needs a submit + device wait of its own)

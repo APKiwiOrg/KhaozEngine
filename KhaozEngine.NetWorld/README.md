@@ -98,15 +98,18 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   in flight the account is guarded (the periodic pass and save-on-leave skip it) so a save landing mid-load can't
   overwrite the stored record with default-spawn state and erase the blob; `capture` returning null/empty is
   destructive (it *erases* the stored blob - "no game state", not "keep existing"), never a "not loaded yet" signal.
-  `OnStoreError` surfaces a faulted background load/save (store outage). A completed load is applied to the
-  ACCOUNT rather than to the slot it was issued for: slots are seats and both heads recycle a freed one to the next
-  connection, so the drain re-resolves the slot's occupant (`IWorldPersistenceHost.TryGetAccountId`) and DROPS a
-  record whose account no longer holds it instead of writing that account's position, teleport and durable blob
-  onto the new occupant (#646). A drop writes nothing (the stored record stays intact and guarded for that
-  account's next join) and is announced through **`OnLoadApplyDropped`** (`event Action<string, int>`,
-  accountId + slot) plus an `Info` log line naming the account, the slot and its current occupant. A tokenless
-  guest is keyed `guest:{slot}` and is covered by the same comparison, but two SUCCESSIVE guests on one slot share
-  that key and are indistinguishable here (see the keying note under the resume-hint bullet). The periodic pass batches every dirty
+  `OnStoreError` surfaces a faulted background load/save (store outage). A completed load is applied to the SESSION
+  that read it, and neither the slot number nor the account id alone identifies one, so the drain checks both and
+  DROPS a record that fails either. Slots are seats and both heads recycle a freed one to the next connection, so the
+  drain re-resolves the slot's occupant (`IWorldPersistenceHost.TryGetAccountId`) rather than writing a departed
+  account's position, teleport and durable blob onto the new one (#646). And every join takes a monotonic token that
+  the guard holds for the duration, so an account that leaves and rejoins inside one store read - two loads
+  outstanding under one key - applies only the live session's, instead of applying both and letting the first of them
+  clear the guard while its sibling was still in flight (#654). A drop writes nothing (the stored record stays intact
+  and guarded for that account's next join) and is announced through **`OnLoadApplyDropped`**
+  (`event Action<string, int>`, accountId + slot) plus an `Info` log line naming the account, the slot and which of
+  the two reasons it was. A tokenless connection never reaches either check, because it is not persisted at all (see
+  the keying note under the resume-hint bullet). The periodic pass batches every dirty
   player's record into one `IWorldStore.SaveManyAsync` call instead of one `SaveAsync` per player. A faulted batch
   leaves every player in it dirty for the next pass (save-on-leave still uses a single-record `SaveAsync`).
   - **A rejoin is SEEDED, not only restored (since 17.37.0).** Every position this layer persists is also kept as
@@ -123,9 +126,18 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
     was a teleport before), but the benefit does degrade as store latency rises. `ResumeHintCapacity` (default
     1024, least-recently-recorded evicted) bounds the cache; 0 turns the seed off. The hints are memory-only, so
     after a process restart the first rejoin of each account falls back to the configured spawn and takes the
-    restore teleport, unless the game pre-warms `ResumeHints` from its own store at boot. A TOKENLESS connection
-    (keyed `guest:{slot}`, `ResumePositionCache.GuestAccountPrefix`) gets no hint at all, recorded or read: the
-    slot is recycled to the next connection, so that key names a seat rather than a player.
+    restore teleport, unless the game pre-warms `ResumeHints` from its own store at boot.
+  - **A tokenless connection is not persisted, and gets no hint either.** Both heads key one `guest:{slot}`
+    (`ResumePositionCache.GuestAccountPrefix`, and `ResumePositionCache.IsGuestAccount` is the shared predicate), and
+    the slot is recycled to the next connection, so that key names a seat rather than a player. `ResumePositionCache`
+    holds and answers nothing under it, and since #647 `WorldPersistence` files nothing under it either: no
+    load-on-join, no save-on-leave, no periodic pass, no in-flight guard, and the host's configured spawn every
+    session. Before that the record a guest left behind loaded onto whoever took the seat next and moved them, as a
+    teleport, to a stranger's last position. A game that runs tokenless BY DESIGN opts back in with
+    **`WorldPersistenceConfig.PersistGuests`** (default false), which files each guest under a durable
+    `guest:{guid}` minted for that one session and never under the seat. Be clear about what that buys: the minted id
+    is unreachable afterwards, so it is crash-safety within a session and an audit trail, never a guest's return.
+    Give players a connect token if returning to where they left matters.
   - **Load validation and quarantine.** Two optional hooks on `WorldPersistenceConfig`, both evaluated on the
     server thread inside the load-on-join apply step: **`Bounds`** (`WorldBounds`, the same type the movement
     clamp uses) rejects a loaded position outside the play area. **`ValidateGameState`**
@@ -169,6 +181,16 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   cell-owned, non-player state only. Mirrors `WorldPersistence` but keyed by cell coordinate instead of account,
   including the batched periodic pass: every dirty cell's snapshot goes through one `IWorldStore.SaveManyAsync`
   call instead of one `SaveAsync` per cell (the meta write and quarantine writes stay single-record saves).
+  - **Per-entity opt-out (since 17.37.1).** An entity carrying `KhaozEngine.Sharding.Transient` is left out of the
+    blob entirely, so a server-owned thing meant to outlive nothing (a pickup, a timed spawn, a projectile) can no
+    longer be caught in a save and resurrected as a husk. It excludes the ENTITY, which is the axis a
+    `ReplicationChannels` flag cannot reach: a channel gates one component TYPE, and dropping a component's bytes
+    would still persist the entity, just as a stripped husk. Mark one with
+    `ShardedWorldServer.MarkTransient(netId)` (`ClearTransient` / `IsTransient` beside it), or set the tag directly
+    on the entity. It costs nothing on the wire (a field-less ECS tag, in no `ReplicationRegistry`, so no blob
+    layout moves) and follows the entity across a cell handoff **within one `ShardHost`**, for any `ICellLink`
+    shape. A cross-node crossing between two hosts does not carry it (the tag has no wire id on purpose), so an
+    infra link spanning nodes re-applies it on arrival itself.
   - **Schema evolution + restore hardening (since 9.33.0).** `CellPersistenceConfig.RegisterMigration(fromVersion,
     migrate)` registers ordered `CellSnapshotMigration` (`byte[] body -> byte[]`) steps that bring an older blob
     forward on load, before restore. The chain is validated at construction (contiguous, no gaps, none at/beyond
@@ -188,7 +210,45 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
     component byte identical (only the per-entity id field grows 4 -> 8 bytes, node 0). The default `SchemaVersion`
     advanced to 2, so a server on the default config brings a 9.x cell blob forward with no wiring. A 10.0.0 blob (v2)
     is `SkippedTooNew` on a pre-10.0.0 build, so an accidental downgrade quarantines rather than corrupts (but will not
-    load): once a server has written 64-bit blobs it cannot be downgraded.
+    load): once a server has written 64-bit blobs it cannot be downgraded. `PositionFrameBlobMigration.FrameV2ToV3`
+    followed it, framing `ReplicatedPosition` for the floating-origin wire.
+  - **The header records the wire generation (schema v4, since 17.37.1).** A built-in component is unframed, so its
+    payload length in a stored body is a function of `MoveProtocol.WireProtocolVersion`, not of the schema version -
+    and the wire ran from generation 2 to 10 while the schema sat at v2 and then v3, so "a v2 blob" was seven
+    different `MovementState` layouts with nothing on disk to tell them apart. Schema v4 writes a 12-byte header
+    (`[magic][schemaVersion][wireGeneration]` against the 8-byte one below it) and `BuiltinBlobLayout` is the one
+    per-generation payload table the migrations and the driver share. Consequences: a future wire-generation bump
+    needs NO schema bump and no new migration (the driver walks the stored body forward from its recorded
+    generation), a blob written by a NEWER generation is `SkippedTooNew` instead of misread, and an older blob whose
+    generation was never recorded is brought forward by `WireGenerationBlobMigration.NormalizeV3ToV4` inferring it
+    from the body. Existing blobs are migrated in place on first load, one way: a v1/v2/v3 blob is rewritten as v4
+    once and reads clean from then on.
+  - **Inferring a pre-v4 blob's generation never guesses.** Every candidate generation is walked and judged against
+    what the writer is known to do (built-in ids ascend within an entity and none follows an extension frame, no id
+    repeats, a movement payload's bool bytes are 0 or 1, a display name is UTF-8, and an extension id the live
+    registry never registered retires the candidate that recovered it). One survivor, or several agreeing byte for
+    byte, is the answer. Survivors that disagree are refused: the cell is quarantined as `QuarantinedAmbiguous` with
+    its bytes intact, because a scoring rule between two clean readings is wrong in the under-read direction (an
+    older candidate reads a payload short, and the leftover bytes re-sync into frames that can make it outscore the
+    truth). Two knobs move a cell from refused to migrated. `CellPersistenceConfig.Registry` is the live registry,
+    which removes candidates and can never promote a wrong one, defaults to the host's own
+    (`ICellPersistenceHost.Registry`, which `ShardedWorldServer` exposes) and cannot cost a blob an unsupplied
+    registry would have migrated: a body whose only surviving readings were retired by that one rule is a retained
+    unknown extension frame, so the inference is decided again with the rule dropped.
+    `CellPersistenceConfig.AssumedWireGeneration` is the generation this save's pre-v4 blobs were written at, which
+    replaces the inference outright. It names ONE vintage (the v2 bodies are generations 1 to 8, the v3 bodies 9 and
+    up), and a migration step whose own range does not contain it ignores it and goes on inferring, so a store
+    holding both vintages does not lose one to the knob set for the other.
+  - **Rolling BACK past v4 hollows the save out, quarantine or not.** An older build quarantines the v4 blob and
+    starts that cell fresh, so the cell is live and empty, and its next `SaveDirtyPass` writes an EMPTY v3 blob over
+    the main key. Rolling forward afterwards restores nothing: the only surviving copy is `quarantine:cell:{x}:{y}`,
+    which the quarantine write overwrites unconditionally, so a second rolled-back boot replaces that good copy with
+    the empty one. Copy the quarantine keys out before restarting a rolled-back server, or set
+    `CellPersistenceConfig.FailFastOnTooNew` so the load throws instead of starting the cell fresh.
+  - **Load outcomes are counted, not only evented.** `MigratedCellCount`, `SkippedTooOldCellCount`,
+    `SkippedTooNewCellCount`, `QuarantinedCorruptCellCount` and `QuarantinedAmbiguousCellCount` tally what the store
+    handed back, and one aggregate line is logged at the end of each flush that changed any of them, so a boot says
+    what the save came up as without a subscriber having to add the `Issue` stream up.
   - **Store-outage hygiene (since 10.4.1).** `CellPersistence.OnStoreError` (`event Action<Exception>`, mirrors
     `WorldPersistence.OnStoreError`) surfaces a faulted background cell save, meta write, or quarantine write. The
     driver prunes the faulted task every `Update` so a store outage can't grow the pending list unbounded or make the
@@ -811,7 +871,17 @@ long orb = pickups.Spawn(dropPosition, payloadId: PackItem(itemIndex, quantity),
   not reach through it. A cylinder, a cone, a facing test or a line of sight goes in `OnCollect` as a decline.
 - **`Despawn(netId)` / `DespawnAll()`** remove pickups explicitly, and a time-to-live expires one on its own. Every
   route propagates to clients as a normal AoI removal and raises `OnRemoved` with a `PickupRemovalReason` of
-  `Collected` / `Expired` / `Despawned`.
+  `Collected` / `Expired` / `Despawned` / `CellEvicted`.
+- **Cell awareness (since 17.37.1).** A pickup's tracking record is the seam's, not the entity's, so unloading the
+  cell that held the entity would leave the record standing: an orb nobody can see keeps being offered, a collect
+  still grants it, and the expiry despawn no-ops into an unloaded cell. Hand the seam your evictor
+  (**`WorldPickupsConfig.Evictor`**, or **`TrackEvictions(evictor)`** when the evictor is built after the seam) and it
+  drops each evicted cell's pickups itself, reporting `PickupRemovalReason.CellEvicted`. A host that unloads cells its
+  own way calls **`ForgetCell(coord)`** or the general **`ForgetWhere(predicate)`** directly. `PickupInfo.Cell` is the
+  owning cell (null on a single-world server, which never evicts), read once at spawn since a pickup never moves. The
+  subscription is a strong reference from the evictor to the seam, so a game that rebuilds its pickup seam per zone
+  while keeping one long-lived evictor calls **`StopTrackingEvictions(evictor)`** on the old seam, or the old one
+  stays alive and keeps handling evictions beside the new one.
 - **Client side.** `PickupState` is a **built-in** replicated component (`MoveProtocol.PickupTypeId` = 5), riding
   alongside the pickup's `ReplicatedPosition` exactly as `DynamicBodyState` does for a physics prop. Read it with
   `WorldClient.TryGetComponent<PickupState>(netId, out _)` to pick a model, a rarity tint, or an "it's yours"
@@ -821,13 +891,29 @@ long orb = pickups.Spawn(dropPosition, payloadId: PackItem(itemIndex, quantity),
   **`TryGetEntity(netId, out World, out Entity)`** and **`DespawnEntity(netId)`** on both servers, neither of which
   will ever touch a player entity.
 
-**Persistence hazard, worth knowing before you ship.** `CellPersistence` snapshots every owned non-player entity in a
-cell on an interval with **no per-entity opt-out**, so a live pickup can be caught in a save and resurrected on
-restart. A restored pickup is a plain entity carrying `PickupState` that the seam knows nothing about: no
-time-to-live, offered to nobody, standing forever. The component cannot opt out of the persist channel either, since
-built-in ids are pinned to `ReplicationChannels.Default`. A game that persists cells should sweep at boot, before
-spawning this run's pickups, which is what `ShardedWorldServer.DespawnEntity` is for (it resolves through the shard
-host's ownership index, so it finds restored entities the seam never saw):
+**A pickup is never persisted by default (since 17.37.1).** Every pickup `Spawn` creates is marked `Transient`
+(`KhaozEngine.Sharding`), so `CellPersistence` leaves it out of the cell blob and no restore brings it back. The
+seam's state (the time-to-live, the clock, the offer records) lives in this process only, so a resurrected pickup is
+a plain entity carrying `PickupState` that the seam knows nothing about, offered to nobody and expiring never.
+
+The mark is not a lock. `ClearTransient(pickupNetId)` after `Spawn` drops it and the next save writes the entity like
+any other, but what comes back is exactly that husk: nothing rehydrates the seam's tracking, so the restored orb is
+in no proximity scan, expires never, and no `Despawn` / `DespawnAll` / `ForgetCell` reaches it. Persistent ground
+loot needs a `WorldPickups.Rehydrate(world)` re-adopting restored `PickupState` entities into the seam, filed as
+[#660](https://github.com/APKiwiOrg/KhaozEngine/issues/660). Until then a collectible meant to outlive a restart
+belongs in the game's own content or save data, spawned again at boot, which is also the only place its payload still
+means anything.
+
+The same opt-out is reachable by hand for any other transient server-owned entity, a timed spawn or a wave of adds:
+**`ShardedWorldServer.MarkTransient(netId)`**, with **`ClearTransient`** and **`IsTransient`** beside it. The mark
+follows the entity across a cell handoff inside one `ShardHost`, whatever the `ICellLink` does (same call or a later
+one), so walking into the next cell does not make it persistable there. Two hosts on two nodes are a different
+matter: the tag has no wire id by design, so a cross-node link carries the mark in its own envelope or not at all.
+
+**Blobs written before 17.37.1 still hold husks**, since a save cannot be edited after the fact. Clearing those is a
+one-time boot sweep, run once against a world an older build saved, and unnecessary for every save written since
+(`ShardedWorldServer.DespawnEntity` resolves through the shard host's ownership index, so it finds restored entities
+the seam never saw):
 
 ```csharp
 var stale = new List<long>();
@@ -837,7 +923,8 @@ foreach (CellSim cell in server.Host.Cells)
 foreach (long netId in stale) server.DespawnEntity(netId);
 ```
 
-`DespawnAll()` is the same-process equivalent and clears only what the seam is currently tracking.
+Sweep before spawning this run's pickups, or the sweep eats them too. `DespawnAll()` is the same-process equivalent
+and clears only what the seam is currently tracking.
 
 ## Area-of-interest delta replication (since 9.18.0)
 

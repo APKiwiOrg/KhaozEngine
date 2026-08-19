@@ -70,10 +70,14 @@ public sealed class ResumePositionCache
     /// connection, so it identifies a seat rather than a player (see the type doc).</summary>
     public const string GuestAccountPrefix = "guest:";
 
-    // A key naming a recycled slot rather than a durable account. Checked on Record AND on TryGet: Record alone
-    // closes it today, and the read-side check is what keeps it closed if a future path ever writes an entry
-    // without going through Record.
-    private static bool IsGuest(string accountId) => accountId.StartsWith(GuestAccountPrefix, StringComparison.Ordinal);
+    /// <summary>Whether <paramref name="accountId"/> is a TOKENLESS connection's key, i.e. it carries
+    /// <see cref="GuestAccountPrefix"/>. It is the PREFIX that decides, not the word: an account genuinely named
+    /// <c>guest</c> is an account. Public because the same question is asked outside this cache:
+    /// <see cref="WorldPersistence"/> refuses to file a record under a seat-shaped key for the same reason this
+    /// cache refuses to hold a hint under one (#647), and one predicate over one prefix constant is what keeps the
+    /// two answers from drifting apart.</summary>
+    public static bool IsGuestAccount(string accountId) =>
+        !string.IsNullOrEmpty(accountId) && accountId.StartsWith(GuestAccountPrefix, StringComparison.Ordinal);
 
     /// <summary>Creates a cache holding at most <paramref name="capacity"/> accounts (default 1024). Zero or less
     /// holds nothing at all, which turns the resume-spawn seed off for a server wired to this cache.</summary>
@@ -95,7 +99,9 @@ public sealed class ResumePositionCache
     /// less.</summary>
     public void Record(string accountId, Vector3 position)
     {
-        if (Capacity <= 0 || string.IsNullOrEmpty(accountId) || IsGuest(accountId)) return;
+        // Checked on Record AND on TryGet: Record alone closes it today, and the read-side check is what keeps it
+        // closed if a future path ever writes an entry without going through Record.
+        if (Capacity <= 0 || string.IsNullOrEmpty(accountId) || IsGuestAccount(accountId)) return;
         if (byAccount.TryGetValue(accountId, out LinkedListNode<Entry>? existing))
         {
             existing.Value.Position = position;
@@ -117,7 +123,7 @@ public sealed class ResumePositionCache
     /// failed connect.</summary>
     public bool TryGet(string accountId, out Vector3 position)
     {
-        if (!string.IsNullOrEmpty(accountId) && !IsGuest(accountId)
+        if (!string.IsNullOrEmpty(accountId) && !IsGuestAccount(accountId)
             && byAccount.TryGetValue(accountId, out LinkedListNode<Entry>? node))
         {
             position = node.Value.Position;

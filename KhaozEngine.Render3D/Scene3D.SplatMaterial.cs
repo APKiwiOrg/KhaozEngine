@@ -7,10 +7,11 @@ using KhaozEngine.Render3D.Rendering;
 namespace KhaozEngine.Render3D
 {
     /// <summary>
-    /// The splat-terrain material family: the loaded-material list, the load/unload pair, the debug mip readback,
-    /// and the per-frame splat draw partition. Moved out of Scene3D.cs whole (a pure move, nothing changed) so it
-    /// sits beside its sibling in Scene3D.TileGround.cs and each ground pipeline's material handling reads in one
-    /// place instead of scattered through the main file.
+    /// The splat-terrain material family: the loaded-material list, the load, the debug mip readback, and the
+    /// per-frame splat draw partition. Moved out of Scene3D.cs so it sits beside its sibling in
+    /// Scene3D.TileGround.cs and each ground pipeline's material handling reads in one place instead of scattered
+    /// through the main file. The UNLOAD is not here: it lives in Scene3D.Unload.cs with every other mid-life
+    /// unload, because they all answer the same retire-versus-destroy question (#383).
     /// </summary>
     public sealed partial class Scene3D
     {
@@ -48,25 +49,10 @@ namespace KhaozEngine.Render3D
             // set binds the renderer's shared default sampler and nothing extra is owned here.
             IGpuSampler? ownedSampler = sampler.HasValue ? _model.CreateTerrainSampler(sampler.Value) : null;
             var set = ownedSampler is null
-                ? _model.CreateSplatMaterialSet(ubo, albedo, normal)
-                : _model.CreateSplatMaterialSet(ubo, albedo, normal, ownedSampler);
+                ? _model.CreateSplatMaterialSet(ubo.Buffer, albedo, normal)
+                : _model.CreateSplatMaterialSet(ubo.Buffer, albedo, normal, ownedSampler);
             _splatMaterials.Add(new SplatMaterialEntry(albedo, normal, ubo, set, ownedSampler));
             return new SplatMaterialHandle(_splatMaterials.Count - 1);
-        }
-
-        /// <summary>Free a splat-terrain material's GPU resources (its texture arrays, params UBO, resource set) and
-        /// release its slot. A <c>default</c>/Invalid handle is a no-op. Meshes still referencing it must be unloaded
-        /// first (they hold no reference after this). Also a no-op once <see cref="Dispose"/> has run: Dispose
-        /// already freed every splat material and cleared the backing list, so a caller that still holds a handle
-        /// (e.g. a world disposed after its owning scene) would otherwise index past the end of the now-empty list
-        /// and get an <see cref="ArgumentOutOfRangeException"/> instead of a silent no-op.</summary>
-        public void UnloadSplatMaterial(SplatMaterialHandle h)
-        {
-            if (!h.IsValid || h.ListIndex >= _splatMaterials.Count) return;
-            var m = _splatMaterials[h.ListIndex];
-            // Queued GPU work may still reference the material's arrays/UBO/set, so drain the device first.
-            if (m != null) { _gd.WaitForIdle(); m.Dispose(); }
-            _splatMaterials[h.ListIndex] = null;
         }
 
         /// <summary>Diagnostic: read one mip level (and array layer) of a splat material's ALBEDO texture array back
@@ -132,13 +118,13 @@ namespace KhaozEngine.Render3D
         /// <summary>A loaded splat-terrain material: the two 5-layer texture arrays (albedo, normal), the combined
         /// frame+params UBO (frame portion re-synced each frame), and the resource set. Owned by Scene3D; shared by
         /// every mesh that uses it.</summary>
-        sealed class SplatMaterialEntry
+        sealed class SplatMaterialEntry : IDisposable
         {
             public readonly IGpuTexture AlbedoArray, NormalArray;
-            public readonly IGpuBuffer Ubo;
+            public readonly SplatUniformBuffer Ubo;
             public readonly IGpuResourceSet Set;
             readonly IGpuSampler? _ownedSampler;   // non-null only when the material overrode the shared sampler
-            public SplatMaterialEntry(IGpuTexture albedo, IGpuTexture normal, IGpuBuffer ubo, IGpuResourceSet set, IGpuSampler? ownedSampler = null)
+            public SplatMaterialEntry(IGpuTexture albedo, IGpuTexture normal, SplatUniformBuffer ubo, IGpuResourceSet set, IGpuSampler? ownedSampler = null)
             { AlbedoArray = albedo; NormalArray = normal; Ubo = ubo; Set = set; _ownedSampler = ownedSampler; }
             public void Dispose() { Set.Dispose(); AlbedoArray.Dispose(); NormalArray.Dispose(); Ubo.Dispose(); _ownedSampler?.Dispose(); }
         }

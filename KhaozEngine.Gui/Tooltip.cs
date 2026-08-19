@@ -214,10 +214,25 @@ namespace KhaozEngine.Gui
         public static Rect ComputeBounds(ITextMeasurer titleFont, string title, string titleRight,
             ITextMeasurer titleRightFont, ITextMeasurer bodyFont,
             IReadOnlyList<TooltipLine> lines, Vector2 anchor, Vector2 viewport, TooltipMetrics m, float maxWidth,
-            float titleScale = 1f)
+            float titleScale = 1f) =>
+            ComputeBounds(titleFont, title, titleRight, titleRightFont, bodyFont, lines, anchor, viewport, m,
+                maxWidth, titleScale, out _);
+
+        /// <summary>
+        /// The one layout pass behind both the public overloads above and <see cref="Draw"/>: the bubble bounds,
+        /// plus the word-wrapped body lines those bounds were measured from, handed back through
+        /// <paramref name="visual"/>. <see cref="Draw"/> has to walk exactly the lines the bounds were measured
+        /// from, and used to call the wrap a second time with the identical font, lines and width cap to get them,
+        /// so every visible tooltip wrapped its body twice per frame and threw the first result away. Internal
+        /// rather than public: the wrapped list is layout scratch, not a contract for a consumer to hold.
+        /// </summary>
+        internal static Rect ComputeBounds(ITextMeasurer titleFont, string title, string titleRight,
+            ITextMeasurer titleRightFont, ITextMeasurer bodyFont,
+            IReadOnlyList<TooltipLine> lines, Vector2 anchor, Vector2 viewport, TooltipMetrics m, float maxWidth,
+            float titleScale, out List<TooltipLine> visual)
         {
             bool bounded = maxWidth > 0f && !float.IsInfinity(maxWidth);
-            var visual = WrapBody(bodyFont, lines, ContentWidthCap(maxWidth, m));
+            visual = WrapBody(bodyFont, lines, ContentWidthCap(maxWidth, m));
 
             bool hasTitle = !string.IsNullOrEmpty(title);
             float titleRowW = hasTitle ? titleFont.Measure(title).X * titleScale : 0f;
@@ -307,7 +322,8 @@ namespace KhaozEngine.Gui
                 throw new InvalidOperationException(
                     "Tooltip.Viewport is unset (Vector2.Zero); assign the design viewport size before draw.");
             float maxWidth = ResolveMaxWidth();
-            Rect b = ComputeBounds(_titleFont, _title, _titleRight, _bodyFont, _bodyFont, _lines, _anchor, Viewport, Metrics, maxWidth, TitleScale);
+            Rect b = ComputeBounds(_titleFont, _title, _titleRight, _bodyFont, _bodyFont, _lines, _anchor, Viewport,
+                Metrics, maxWidth, TitleScale, out List<TooltipLine> visual);
             GuiDraw.Fill(batch, white, b, Background);
             GuiDraw.Border(batch, white, b, 1f, Border);
 
@@ -332,7 +348,6 @@ namespace KhaozEngine.Gui
                     GuiDraw.Fill(batch, white, new Rect(b.X + Metrics.PadX, sepY, b.Width - Metrics.PadX * 2f, 1f), SeparatorColor);
                 }
             }
-            List<TooltipLine> visual = WrapBody(_bodyFont, _lines, ContentWidthCap(maxWidth, Metrics));
             for (int i = 0; i < visual.Count; i++)
             {
                 batch.DrawString(_bodyFont, visual[i].Text, new Vector2(MathF.Floor(x), MathF.Floor(y)), (Color)visual[i].Color, visual[i].Scale);

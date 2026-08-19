@@ -8,10 +8,11 @@ using KhaozEngine.Render3D.Rendering;
 namespace KhaozEngine.Render3D
 {
     /// <summary>
-    /// The tile-ground material family: the loaded-material list, load/unload, the mesh upload that binds a mesh to
-    /// the tile-ground pipeline, and the per-frame draw partition. The sibling of Scene3D.SplatMaterial.cs, for the
+    /// The tile-ground material family: the loaded-material list, the load, the mesh upload that binds a mesh to the
+    /// tile-ground pipeline, and the per-frame draw partition. The sibling of Scene3D.SplatMaterial.cs, for the
     /// pipeline a tile world's ground draws through (one albedo layer per catalog material, four corner slots per
-    /// triangle blended by the vertex weights, tile-world design section 7.5).
+    /// triangle blended by the vertex weights, tile-world design section 7.5). The unload sits with every other
+    /// mid-life unload in Scene3D.Unload.cs, where the retire-versus-destroy question is answered once.
     /// </summary>
     public sealed partial class Scene3D
     {
@@ -83,14 +84,14 @@ namespace KhaozEngine.Render3D
             Vector4[] tail = TileGroundMaterialConfig.BuildParams(layers, baseSpecStrength);
             // Combined UBO: frame uniforms (re-synced each frame in the tile-ground pass) + these params appended.
             // One uniform buffer for the whole pipeline, because Metal mis-binds a second one (see ModelRenderer).
-            IGpuBuffer ubo = _model.CreateTileGroundParamsUbo(tail);
+            TileGroundUniformBuffer ubo = _model.CreateTileGroundParamsUbo(tail);
 
             // A material that overrides the sampler gets its own, owned and disposed with the material. Otherwise
             // the set binds the renderer's shared default sampler and nothing extra is owned here.
             IGpuSampler? ownedSampler = sampler.HasValue ? _model.CreateTerrainSampler(sampler.Value) : null;
             IGpuResourceSet set = ownedSampler is null
-                ? _model.CreateTileGroundMaterialSet(ubo, albedo)
-                : _model.CreateTileGroundMaterialSet(ubo, albedo, ownedSampler);
+                ? _model.CreateTileGroundMaterialSet(ubo.Buffer, albedo)
+                : _model.CreateTileGroundMaterialSet(ubo.Buffer, albedo, ownedSampler);
             _tileGroundMaterials.Add(new TileGroundMaterialEntry(albedo, ubo, set, ownedSampler));
             return new TileGroundMaterialHandle(_tileGroundMaterials.Count - 1);
         }
@@ -108,19 +109,6 @@ namespace KhaozEngine.Render3D
         {
             if (!material.IsValid) return LoadMesh(mesh);
             return LoadMeshInternal(mesh, null, tileGroundMaterial: material.ListIndex);
-        }
-
-        /// <summary>Free a tile-ground material's GPU resources (its texture array, params UBO, resource set) and
-        /// release its slot. A <c>default</c>/Invalid handle is a no-op. Meshes still referencing it must be
-        /// unloaded first (they hold no reference after this). Also a no-op once <see cref="Dispose"/> has run,
-        /// mirroring <see cref="UnloadSplatMaterial"/>'s guard.</summary>
-        public void UnloadTileGroundMaterial(TileGroundMaterialHandle h)
-        {
-            if (!h.IsValid || h.ListIndex >= _tileGroundMaterials.Count) return;
-            var m = _tileGroundMaterials[h.ListIndex];
-            // Queued GPU work may still reference the material's array/UBO/set, so drain the device first.
-            if (m != null) { _gd.WaitForIdle(); m.Dispose(); }
-            _tileGroundMaterials[h.ListIndex] = null;
         }
 
         /// <summary>Number of tile-ground material slots still holding a live material. For tests.</summary>
@@ -166,13 +154,13 @@ namespace KhaozEngine.Render3D
         /// <summary>A loaded tile-ground material: the albedo texture array (one layer per catalog material), the
         /// combined frame+params UBO (frame portion re-synced each frame), and the resource set. Owned by Scene3D
         /// and shared by every mesh that uses it.</summary>
-        sealed class TileGroundMaterialEntry
+        sealed class TileGroundMaterialEntry : IDisposable
         {
             public readonly IGpuTexture AlbedoArray;
-            public readonly IGpuBuffer Ubo;
+            public readonly TileGroundUniformBuffer Ubo;
             public readonly IGpuResourceSet Set;
             readonly IGpuSampler? _ownedSampler;   // non-null only when the material overrode the shared sampler
-            public TileGroundMaterialEntry(IGpuTexture albedo, IGpuBuffer ubo, IGpuResourceSet set, IGpuSampler? ownedSampler = null)
+            public TileGroundMaterialEntry(IGpuTexture albedo, TileGroundUniformBuffer ubo, IGpuResourceSet set, IGpuSampler? ownedSampler = null)
             { AlbedoArray = albedo; Ubo = ubo; Set = set; _ownedSampler = ownedSampler; }
             public void Dispose() { Set.Dispose(); AlbedoArray.Dispose(); Ubo.Dispose(); _ownedSampler?.Dispose(); }
         }

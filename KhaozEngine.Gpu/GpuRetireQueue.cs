@@ -99,6 +99,26 @@ namespace KhaozEngine.Gpu
     /// unsynchronized lists and frame counter, so retiring from a background build thread while the frame thread is
     /// in <see cref="BeginFrame"/> corrupts it. A worker that wants a resource freed hands it to the frame thread
     /// first, the way the streamer's apply step does.</para>
+    /// <para><b>The safety valve.</b> On the fence path a batch lives until its fence signals, so a CPU that runs
+    /// away from the GPU (a software rasterizer, a weak GPU, an offscreen loop with no swapchain to throttle it)
+    /// holds more and more of them and the holding grows without bound
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/425">#425</see>). Past
+    /// <see cref="MaxSealedBatches"/> sealed batches the queue stops waiting and pays ONE
+    /// <see cref="IGpuDevice.WaitForIdle"/>, which proves every submitted batch complete, and frees the whole
+    /// holding behind it. That is a designed bound written against the fence path rather than one inherited from
+    /// whatever backpressure a backend's ring allocator happens to apply. It costs at most one drain per
+    /// <see cref="MaxSealedBatches"/> frames of sustained fall-behind, and <see cref="ValveDrains"/> counts them.
+    /// <b>What decides whether it fires is how far ahead the CPU gets, which is a property of the LOOP more than of
+    /// the GPU.</b> A windowed frame loop blocks in its present at the backend's frames-in-flight depth (default 3,
+    /// half the default cap), so the valve stays shut and the count reads zero. A loop that submits without ever
+    /// presenting has nothing throttling it and runs eight or nine frames ahead even on fast hardware, so it fires:
+    /// the engine's own 400-frame offscreen churn test parks the peak holding exactly ON the cap and fires the
+    /// valve anywhere from once to a couple of dozen times on an M2 Max, against the 396 drains the unfenced
+    /// fallback pays over the same run. The firing COUNT does not reproduce between runs, because it tracks how
+    /// far ahead the loop happened to get on that pass. The peak sitting on the cap is the stable reading, and is
+    /// the one the test gates on. The two frame-counted policies need no valve:
+    /// a batch there dies on the count alone, which caps the holding at <see cref="FrameDelay"/> batches by
+    /// construction.</para>
     /// <para><b>It only frees on <see cref="BeginFrame"/>.</b> Nothing here is time-driven, so a renderer that
     /// retires but never reaches a frame boundary holds every retired resource until <see cref="FlushAll"/> or
     /// teardown, which for a streaming world is the whole unloaded ring. A host that drives the renderer without a
@@ -115,6 +135,18 @@ namespace KhaozEngine.Gpu
         /// by the time the drain runs the referencing work has long completed. The fence path does not use it: a
         /// signaled fence is proof, where a frame count is only a bet that three frames is enough.</summary>
         public const int DefaultFrameDelay = 3;
+
+        /// <summary>Sealed batches the queue holds behind unsignaled fences before the safety valve trades the poll
+        /// for one drain (see the valve note on this type). Eight is comfortably above the deepest a PRESENTED frame
+        /// loop reaches: the CPU is stopped at <c>KE_METAL_FRAMES_IN_FLIGHT</c> / <c>KE_VULKAN_FRAMES_IN_FLIGHT</c> /
+        /// <c>KE_D3D11_FRAMES_IN_FLIGHT</c> frames ahead (default 3), and every one of those frames would have to
+        /// have retired something to seal a batch. A consumer that raises that knob past 8 would want this raised
+        /// with it, or it buys a drain it did not need, and cannot: the parameter is on <see cref="Create"/>, which
+        /// no public route into a scene reaches
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/661">#661</see>). An UNTHROTTLED loop (an
+        /// offscreen capture run, a tool that submits without presenting) is the case that reaches it however fast
+        /// the device is, which is the case the bound exists for.</summary>
+        public const int DefaultMaxSealedBatches = 8;
 
         readonly Action _drainDevice;
         readonly IRetireBarrier? _barrier;
@@ -150,11 +182,14 @@ namespace KhaozEngine.Gpu
         /// </summary>
         /// <param name="device">The device whose resources this queue frees.</param>
         /// <param name="frameDelay">Frame boundaries a batch waits on the fallback path (clamped to at least 1).</param>
-        public static GpuRetireQueue Create(IGpuDevice device, int frameDelay = DefaultFrameDelay)
+        /// <param name="maxSealedBatches">Sealed batches held behind unsignaled fences before the safety valve
+        /// falls back to one drain (clamped to at least 1). See <see cref="MaxSealedBatches"/>.</param>
+        public static GpuRetireQueue Create(IGpuDevice device, int frameDelay = DefaultFrameDelay,
+            int maxSealedBatches = DefaultMaxSealedBatches)
         {
             ArgumentNullException.ThrowIfNull(device);
             return new GpuRetireQueue(device.WaitForIdle, GpuRetireBarrier.TryCreate(device),
-                GpuRetireFallback.DrainDevice, frameDelay, device);
+                GpuRetireFallback.DrainDevice, frameDelay, device, maxSealedBatches);
         }
 
         /// <summary>
@@ -188,6 +223,8 @@ namespace KhaozEngine.Gpu
         public static GpuRetireQueue CreateFrameCounted(IGpuDevice device, int frameDelay)
         {
             ArgumentNullException.ThrowIfNull(device);
+            // No maxSealedBatches knob here on purpose: a batch dies on the frame count alone, so the holding is
+            // capped at frameDelay batches by construction and there is nothing for a valve to bound (#425).
             return new GpuRetireQueue(device.WaitForIdle, null, GpuRetireFallback.FrameCountOnly, frameDelay, device);
         }
 
@@ -202,25 +239,49 @@ namespace KhaozEngine.Gpu
         /// refusal, because there is no device for a recording to be open on.</para></summary>
         internal GpuRetireQueue(Action drainDevice, IRetireBarrier? barrier = null,
             GpuRetireFallback fallback = GpuRetireFallback.DrainDevice, int frameDelay = DefaultFrameDelay,
-            IGpuDevice? device = null)
+            IGpuDevice? device = null, int maxSealedBatches = DefaultMaxSealedBatches)
         {
             _drainDevice = drainDevice ?? throw new ArgumentNullException(nameof(drainDevice));
             _barrier = barrier;
             _fallback = fallback;
             _device = device;
             FrameDelay = frameDelay < 1 ? 1 : frameDelay;
+            MaxSealedBatches = maxSealedBatches < 1 ? 1 : maxSealedBatches;
         }
 
         /// <summary>Frame boundaries a retired resource waits on the FALLBACK path (at least 1).</summary>
         public int FrameDelay { get; }
 
+        /// <summary>Sealed batches held behind unsignaled fences before the safety valve trades the fence poll for
+        /// one <see cref="IGpuDevice.WaitForIdle"/> and frees the whole holding behind it (at least 1). This is the
+        /// bound on how far the queue lets a CPU running ahead of the GPU grow it
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/425">#425</see>): after any
+        /// <see cref="BeginFrame"/>, no more than this many batches are held.
+        /// <para>It bounds BATCHES, not resources. One batch is one frame's retirements, so a caller that retires
+        /// its whole world in a single frame still holds all of it for a frame or three, which is the caller's own
+        /// burst and not something a deferral policy can shrink.</para>
+        /// <para>Set below <see cref="FrameDelay"/> it also preempts the frame-count fallback, which costs that path
+        /// its drain a boundary or two early and nothing else, since that path was going to drain anyway.</para>
+        /// </summary>
+        public int MaxSealedBatches { get; }
+
+        /// <summary>How many times the safety valve has fired: the drains this queue paid because the GPU had not
+        /// reached <see cref="MaxSealedBatches"/> batches' worth of fences. It is the honest signal that the CPU is
+        /// running away from the GPU, not a defect reading, and a presented frame loop keeps it at zero because the
+        /// present is what stops the CPU (see the valve note on this type). Diagnostic only, never a gate: how far
+        /// ahead the loop gets decides it.</summary>
+        public int ValveDrains { get; private set; }
+
         /// <summary>Resources retired but not yet destroyed. Counts the whole holding, sealed batches and this
         /// frame's not-yet-sealed tail alike, which is what a scene's retired-resource count surfaces.</summary>
         public int PendingCount => _pending.Count;
 
-        /// <summary>Batches sealed and waiting on their fence. Diagnostic seam for the tests that pin how many
-        /// fenced submissions a churn pattern actually costs.</summary>
-        internal int SealedBatchCount => _batches.Count;
+        /// <summary>Batches sealed and waiting on their fence, one per frame boundary that had something to seal.
+        /// This is the number the safety valve bounds, so it never exceeds <see cref="MaxSealedBatches"/> once a
+        /// <see cref="BeginFrame"/> has returned. Public because the valve's contract is written in batches rather
+        /// than resources: <see cref="PendingCount"/> tells you how much is being held, this tells you how far
+        /// behind the GPU is.</summary>
+        public int SealedBatchCount => _batches.Count;
 
         /// <summary>Hand a resource over to the queue. Costs nothing at the call site: no drain, no destroy, no
         /// submission. A null resource is ignored, so an optional resource (a per-mesh material set) needs no
@@ -261,20 +322,48 @@ namespace KhaozEngine.Gpu
         // "this batch died" imply "every older batch died first".
         void FreeRipeBatches()
         {
+            // THE SAFETY VALVE (#425). Past the cap, stop asking the fences and pay one drain instead. A drain
+            // waits out everything SUBMITTED, and every batch here was sealed behind a fence submitted at an
+            // earlier boundary (or, for the batch sealed moments ago in this same call, at this one), so the drain
+            // proves the lot of them complete and the whole holding is freed behind it. Freeing all of it rather
+            // than just the oldest is what makes the cost one drain per MaxSealedBatches + 1 frames of fall-behind
+            // instead of one per frame: trimming back to the cap would put the count over it again on the very
+            // next retiring frame.
+            //
+            // Only where the policy permits a drain on the frame path. FrameCountOnly must not (#84), and does not
+            // need to: its batches die on the count, which caps the holding at FrameDelay all by itself.
+            //
+            // WHY THIS DRAIN IS NEVER INSIDE SOMEONE ELSE'S RECORDING, which is the thing FlushAll refuses outright.
+            // The count can only cross the cap on a boundary that SEALED: nothing but SealNewBatch adds a batch, and
+            // a firing frees the WHOLE holding, so every BeginFrame returns at or under the cap. Seal-before-sweep
+            // then puts that seal moments earlier in this same call, and on the fence path sealing IS the barrier's
+            // empty submission, which opens through GpuRecording and refuses by name inside another recording
+            // (#424). So by the time the valve can fire, the seam has already proved nothing was recording. Without
+            // a barrier there is no such submission, and no need for one either: those batches die on the frame
+            // count, so the holding cannot pass the cap at all unless FrameDelay is configured above it.
+            bool valveOpen = _batches.Count > MaxSealedBatches && _fallback == GpuRetireFallback.DrainDevice;
             bool drained = false;
+            if (valveOpen) { _drainDevice(); drained = true; ValveDrains++; }
+
             while (_batches.Count > 0)
             {
                 Batch b = _batches[0];
-                if (b.Fence is { } fence)
+                // Past the valve the ripeness question is already answered for every batch, so it is not asked.
+                // Re-polling the fences instead would rest on a backend surfacing its signal by the time
+                // WaitForIdle returns, which Metal signals from a completion handler and need not have run yet.
+                if (!valveOpen)
                 {
-                    if (!fence.Signaled) break;                        // the GPU has not reached the seal point yet
-                }
-                else
-                {
-                    if (_frame - b.MaxRetiredAt < FrameDelay) break;   // fallback: the pre-fence frame count
-                    // One drain covers every batch freed here, and FrameCountOnly skips it entirely: that policy's
-                    // whole point is that no WaitForIdle reaches the per-frame path (#84).
-                    if (!drained && _fallback == GpuRetireFallback.DrainDevice) { _drainDevice(); drained = true; }
+                    if (b.Fence is { } fence)
+                    {
+                        if (!fence.Signaled) break;                        // the GPU has not reached the seal point yet
+                    }
+                    else
+                    {
+                        if (_frame - b.MaxRetiredAt < FrameDelay) break;   // fallback: the pre-fence frame count
+                        // One drain covers every batch freed here, and FrameCountOnly skips it entirely: that
+                        // policy's whole point is that no WaitForIdle reaches the per-frame path (#84).
+                        if (!drained && _fallback == GpuRetireFallback.DrainDevice) { _drainDevice(); drained = true; }
+                    }
                 }
 
                 for (int i = 0; i < b.Count; i++) _pending[i].Dispose();

@@ -144,8 +144,10 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>Upload the cached frame uniforms (header + the two point-light arrays) into <paramref name="dst"/>
-        /// at offset 0. <paramref name="dst"/> must be at least <see cref="UboBytes"/> bytes; a splat material's
-        /// combined UBO is larger (params follow at <see cref="UboBytes"/>) and that tail is left untouched.</summary>
+        /// at offset 0, whole. <paramref name="dst"/> is a buffer of exactly <see cref="UboBytes"/> (the model UBO). A
+        /// ground material's combined UBO goes through the <see cref="SplatUniformBuffer"/> or
+        /// <see cref="TileGroundUniformBuffer"/> overload instead, which rewrites the whole larger buffer from its
+        /// CPU mirror so the write is never partial (#408).</summary>
         public void WriteFrameUniformsTo(IGpuCommandList cl, IGpuBuffer dst) => WriteFrameUniformsTo(cl, dst, 0);
 
         /// <summary>As <see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer)"/>, but writes the frame block at an
@@ -158,6 +160,19 @@ namespace KhaozEngine.Render3D.Rendering
         /// why this is a single write rather than five.</remarks>
         public void WriteFrameUniformsTo(IGpuCommandList cl, IGpuBuffer dst, uint baseOffset)
             => cl.UpdateBuffer(dst, baseOffset, FrameImage);
+
+        /// <summary>Re-sync this frame's block into a splat material's COMBINED UBO, as ONE whole-buffer write.
+        /// The material's own params sit past the frame block in a buffer larger than it, so writing the head alone
+        /// was a partial write and a blocking Map on D3D11 (#408). The material retains its
+        /// <see cref="SplatParamsData"/> in <see cref="SplatUniformBuffer"/>'s mirror, which is what lets the whole
+        /// buffer be rebuilt from the CPU and uploaded in one command.</summary>
+        public void WriteFrameUniformsTo(IGpuCommandList cl, SplatUniformBuffer dst) => dst.Upload(cl, FrameImage);
+
+        /// <summary>Re-sync this frame's block into a tile-ground material's COMBINED UBO, as ONE whole-buffer write.
+        /// The tile-ground sibling of the splat overload above, and for the same reason: the material's params sit
+        /// past the frame block in a larger buffer, so writing the head alone was a partial write (#408). The tail
+        /// there is 64 layer vectors plus one, so this is the larger of the two by far.</summary>
+        public void WriteFrameUniformsTo(IGpuCommandList cl, TileGroundUniformBuffer dst) => dst.Upload(cl, FrameImage);
 
         /// <summary>Pure, headless-testable packing of the host light list into the two fixed-size UBO arrays:
         /// copies up to <see cref="MaxPointLights"/> lights (extras are dropped - the host selects the N nearest),

@@ -693,31 +693,6 @@ namespace KhaozEngine.Render3D
             foreach (MeshHandle part in prop.Parts) _instances.Add(part, world, tint);
         }
 
-        /// <summary>Free every sub-mesh of <paramref name="prop"/> (each via <see cref="UnloadMesh"/>) and its
-        /// textures' owning scope. A <c>default</c>/invalid handle is a no-op.</summary>
-        public void UnloadProp(PropHandle prop)
-        {
-            if (prop.Parts == null) return;
-            foreach (MeshHandle part in prop.Parts) UnloadMesh(part);
-        }
-
-        /// <summary>
-        /// Free the GPU buffers backing <paramref name="h"/> and release its slot for reuse. A <c>default</c>
-        /// handle is a no-op. A stale or bogus handle (its generation no longer matches the slot, e.g. a
-        /// double-free) throws <see cref="ArgumentException"/>.
-        /// </summary>
-        public void UnloadMesh(MeshHandle h)
-        {
-            if (h.Generation == 0) return;          // default handle: no-op
-            _slots.Free(h.Index, h.Generation);     // throws on stale/invalid
-            // Retire rather than destroy: queued GPU work may still reference these buffers, and draining the whole
-            // device per unload stalled the frame thread on the terrain streaming path (every chunk leaving the ring
-            // and every LOD flip lands here). The pool frees them behind one drain a few frames later. The per-mesh
-            // material set goes too, but NOT the texture: that is owned in _textures and shared between meshes.
-            if (_meshes[h.Index] is { } mesh) _retired.Retire(mesh.Vb, mesh.Ib, mesh.MaterialSet);
-            _meshes[h.Index] = null;
-        }
-
         /// <summary>Diagnostic: read the key-light shadow depth map (R32F light-space depth) back to the CPU as a
         /// float array, row-major, top-left. Lets a test/tool verify the depth pass on a real device (e.g. that
         /// casters wrote near depths and the cleared background stayed 1.0). Requires a mappable device; not on the
@@ -745,34 +720,6 @@ namespace KhaozEngine.Render3D
             }
             _gd.Unmap(staging);
             return outF;
-        }
-
-        /// <summary>Free the GPU texture backing <paramref name="h"/> (and its lazily-created textured-billboard
-        /// resource set) and null its slot. A <c>default</c>/Invalid handle is a no-op; unloading an
-        /// already-unloaded slot is also a no-op. The slot is NOT recycled, so handles stay stable. Because a
-        /// texture can be shared by several meshes/materials, the scene can't know who else references it - any mesh
-        /// still bound to this texture must be unloaded first or simply not drawn afterwards (mirrors
-        /// <see cref="UnloadSplatMaterial"/>). Without this, textures only free at <see cref="Dispose"/>, so a
-        /// long-lived scene that streams or reloads textured assets leaks one native texture per load. Also a no-op
-        /// once <see cref="Dispose"/> has run: Dispose already freed every texture and cleared the backing list, so
-        /// a caller that still holds a handle (e.g. a world disposed after its owning scene) would otherwise index
-        /// past the end of the now-empty list and get an <see cref="ArgumentOutOfRangeException"/> instead of a
-        /// silent no-op (mirrors <see cref="UnloadSplatMaterial"/>'s guard).</summary>
-        public void UnloadTexture(TextureHandle h)
-        {
-            if (!h.IsValid || h.ListIndex >= _textures.Count) return;
-            int i = h.ListIndex;
-            // The 1-mip LoadTexture path returns with its UpdateTexture staging copy still queued on the
-            // device (the mips>1 path already flushes via Submit+WaitForIdle). Destroying the texture while
-            // that copy is in flight is a use-after-free the driver may survive silently (hardware) or crash
-            // on (Mesa lavapipe's async queue thread segfaults executing the stale copy). Drain, then dispose.
-            if (_textures[i] != null) _gd.WaitForIdle();
-            _textures[i]?.Dispose();
-            _textures[i] = null;
-            if (i < _texBillboardSets.Count) { _texBillboardSets[i]?.Dispose(); _texBillboardSets[i] = null; }
-            // The particle renderer caches per-atlas resource sets keyed by this list index, so drop them too. A
-            // later load reusing this freed slot would otherwise bind the stale (disposed) texture.
-            _particleRenderer.InvalidateTextureSets();
         }
 
         // Map a TextureHandle list index to its GPU texture for the particle renderer's flipbook run batching. Out
@@ -884,23 +831,6 @@ namespace KhaozEngine.Render3D
             int slot = _skinnedInstances.Items.Count;
             ComposeBonesIntoSlot(_boneMatrices, slot, boneMatrices, entry.InverseBind);
             _skinnedInstances.Add(h, model, tint, material, dissolve, edgeWidth, edgeColor);
-        }
-
-        /// <summary>Free a skinned mesh's GPU buffers and release its slot. A <c>default</c> handle is a no-op; a
-        /// stale handle throws.</summary>
-        public void UnloadSkinnedMesh(SkinnedMeshHandle h)
-        {
-            if (h.Generation == 0) return;
-            _skinnedSlots.Free(h.Index, h.Generation);
-            var m = _skinnedMeshes[h.Index];
-            // Queued GPU work may still reference these resources, so drain the device before destroying them.
-            if (m is { } e)
-            {
-                _gd.WaitForIdle();
-                e.Vb.Dispose(); e.Ib.Dispose(); e.MaterialSet?.Dispose(); e.SkinnedMaterialSet?.Dispose();
-            }
-            _skinnedMeshes[h.Index] = null;
-            _skinnedCpuVerts[h.Index] = null;
         }
 
         /// <summary>Skinned draws queued this frame. Internal: lets tests assert Begin clears the queue.</summary>
@@ -2049,35 +1979,9 @@ namespace KhaozEngine.Render3D
             // through the pixel post like the rest of the model pass.
             DrawTrails(cl);
 
-            // Overlay meshes (collision proxies etc.): after the model pass wrote depth (meshes + textured billboards
-            // + beams), draw the queued translucent unlit proxies into the SAME model FB with the depth test on (no
-            // write), so a proxy is occluded by nearer geometry yet blends over farther geometry, then flows through
-            // the post chain with the rest of the model pass. Fully skipped when nothing is queued, so a frame with no
-            // overlay draws renders byte-identical to before this pass existed.
-            if (_overlayMeshDraws.Count > 0)
-            {
-                cl.SetFramebuffer(_res.ModelFB);
-                int on = _overlayMeshDraws.Count;
-                _overlayMeshes.EnsureCapacity(on);
-                _overlayMeshes.BeginFrame(GpuClip.Correct(vp, _gd.Capabilities));
-                // Sort the overlay proxies back-to-front by their world-origin view depth: they alpha-blend with
-                // depth-write off, so overlapping proxies must composite far-to-near (the pre-sort submission order
-                // blended wrong when a near proxy was queued before a far one behind it). Uses each draw's own UBO
-                // slot indexed by the sorted position k, so the slot assignment stays unique.
-                _sortCenters.Clear();
-                for (int i = 0; i < on; i++) _sortCenters.Add(_overlayMeshDraws[i].World.Translation);
-                TransparencySort.ComputeOrder(CollectionsMarshal.AsSpan(_sortCenters), on,
-                    ActiveCamera.Eye, ActiveCamera.Forward, ref _sortKeys, ref _sortOrder);
-                for (int k = 0; k < on; k++)
-                {
-                    var (handle, world) = _overlayMeshDraws[_sortOrder[k]];
-                    if (!_slots.IsValid(handle.Index, handle.Generation)) continue;   // stale handle: skip
-                    var m = _meshes[handle.Index];
-                    if (m is not { } mesh) continue;
-                    _overlayMeshes.Draw(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, k, ToRender(world));
-                    _frameStats.DrawCalls++;
-                }
-            }
+            // Overlay meshes (collision proxies etc.): the queued translucent unlit proxies go into the SAME model
+            // FB, packed and uploaded once before their draws. See Scene3D.OverlayMeshPass.cs.
+            DrawOverlayMeshes(cl, vp);
 
             // Under MSAA the geometry passes wrote a MULTISAMPLED MRT, so resolve the depth AND the encoded normal into
             // the single-sample DepthColorTex / NormalTex now - before the decals, which SAMPLE both (the depth to
@@ -2495,7 +2399,7 @@ namespace KhaozEngine.Render3D
             foreach (var m in _meshes)
                 if (m is { } mesh) { mesh.Vb.Dispose(); mesh.Ib.Dispose(); mesh.MaterialSet?.Dispose(); }
             foreach (var m in _skinnedMeshes)
-                if (m is { } e) { e.Vb.Dispose(); e.Ib.Dispose(); e.MaterialSet?.Dispose(); }
+                if (m is { } e) { e.Vb.Dispose(); e.Ib.Dispose(); e.MaterialSet?.Dispose(); e.SkinnedMaterialSet?.Dispose(); }
             foreach (var s in _texBillboardSets) s?.Dispose();
             _texBillboardSets.Clear();
             foreach (var t in _textures) t?.Dispose();

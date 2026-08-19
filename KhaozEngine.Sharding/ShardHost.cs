@@ -70,6 +70,16 @@ public sealed partial class ShardHost : IDisposable
     // the serve epoch (rebuilt at most once per world per tick), mirroring the interest-grid's per-serve-pass cadence.
     private readonly Dictionary<World, (WorldSnapshotIndex index, long epoch)> clientIndexByWorld = new();
 
+    // The netIds crossing in the CURRENT ProcessHandoffs call that were marked Transient on their source cell.
+    // Transient is not in any ReplicationRegistry (that is the point of it - persistence costs no wire id), so the
+    // Migrate capture cannot carry it, and an unmarked arrival would be persisted by its new owner. Collected in
+    // phase 1 and re-applied in phase 2, which is where the destination first holds the adopted entity. Deliberately
+    // NOT cleared per call: the in-process link completes the crossing within one pass, but a networked link delivers
+    // the Migrate on a later one, and a scratch set wiped at the top of every call would have nothing left to re-mark
+    // by then. Each entry is instead CONSUMED at the re-mark, so the set drains itself and only an undelivered
+    // crossing keeps an entry (which is the entity still being in flight, not a leak).
+    private readonly HashSet<long> transientCrossings = new();
+
     /// <param name="cellSize">World-grid cell edge length in world units. Must be &gt; 0.</param>
     /// <param name="tickSeconds">Fixed timestep shared by every cell, seconds per tick. Must be &gt; 0.</param>
     /// <param name="registry">Shared replication registry handed to each cell's <see cref="ServerReplicator"/> and used to (de)serialize ghost snapshots.</param>
@@ -415,6 +425,9 @@ public sealed partial class ShardHost : IDisposable
             // crossing already holds the entity handle, so encode it directly - no world scan, no per-crossing set.
             byte[] capture = SnapshotWriter.WriteSingle(
                 snapshotScratch, source.World, registry, netId, entity, ReplicationChannels.Migrate, ownerNetId: null);
+            // Read the transient mark BEFORE the source lets go of the entity: it rides beside the capture rather
+            // than inside it, because a persistence-only marker never earns a replication type id (#326).
+            if (source.World.Has<Transient>(entity)) transientCrossings.Add(netId);
             link.Send(new CellMessage(source.Coord, dest, CellMessageKind.Migrate, capture));
             source.World.Set(entity, new Migrating { Destination = dest });
             source.UnregisterOwned(netId); // frozen: relinquished here, so drop it from the owned index at once
@@ -426,7 +439,15 @@ public sealed partial class ShardHost : IDisposable
             foreach (CellMessage msg in link.Drain(cell.Coord, CellMessageKind.Migrate))
             {
                 foreach (long netId in cell.AdoptFromMigrate(msg.Payload))
+                {
+                    // Re-mark before the ack, so the entity is never persistable in its new cell for even one
+                    // snapshot: an interval save between adopt and re-mark is exactly the husk this prevents. The
+                    // entry is CONSUMED here rather than read, which is what lets the mark survive a link that
+                    // delivers the Migrate on a later call instead of within this one.
+                    if (transientCrossings.Remove(netId) && cell.TryGetOwned(netId, out Entity adopted))
+                        cell.World.Set(adopted, default(Transient));
                     link.Send(new CellMessage(cell.Coord, msg.Source, CellMessageKind.MigrateAck, BitConverter.GetBytes(netId)));
+                }
             }
         }
 

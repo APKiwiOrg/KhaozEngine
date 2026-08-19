@@ -61,10 +61,12 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>Create a tile-ground material's combined UBO: <see cref="UboBytes"/> of frame uniforms (re-synced
-        /// each frame via <see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer)"/>) followed by
+        /// each frame via <see cref="WriteFrameUniformsTo(IGpuCommandList,TileGroundUniformBuffer)"/>) followed by
         /// <paramref name="paramsTail"/> at offset <see cref="UboBytes"/>. One uniform buffer holds both, so the
-        /// pipeline binds a single UBO. Owned by Scene3D and shared by every mesh using this material.</summary>
-        public IGpuBuffer CreateTileGroundParamsUbo(Vector4[] paramsTail)
+        /// pipeline binds a single UBO. The returned wrapper keeps the tail on the CPU so each frame's re-sync is a
+        /// whole-buffer write rather than a partial one (#408). Owned by Scene3D and shared by every mesh using this
+        /// material.</summary>
+        public TileGroundUniformBuffer CreateTileGroundParamsUbo(Vector4[] paramsTail)
         {
             if (paramsTail.Length * 16 != TileGroundMaterialConfig.ParamsBytes)
                 throw new ArgumentException(
@@ -73,7 +75,7 @@ namespace KhaozEngine.Render3D.Rendering
             var ubo = _gd.Factory.CreateBuffer(new GpuBufferDescription(
                 UboBytes + TileGroundMaterialConfig.ParamsBytes, GpuBufferUsage.UniformBuffer));
             _gd.UpdateBuffer(ubo, UboBytes, paramsTail);
-            return ubo;
+            return new TileGroundUniformBuffer(ubo, paramsTail, UboBytes);
         }
 
         /// <summary>Build a tile-ground material resource set: the combined frame+params UBO + the albedo texture
@@ -91,7 +93,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         /// <summary>Bind the tile-ground pipeline for the tile-ground pass (call once before its draw loop). Each
         /// material's combined UBO must already hold this frame's uniforms
-        /// (<see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer)"/>).</summary>
+        /// (<see cref="WriteFrameUniformsTo(IGpuCommandList,TileGroundUniformBuffer)"/>).</summary>
         public void BindTileGroundPass(IGpuCommandList cl) => cl.SetPipeline(_tileGroundPipeline);
 
         /// <summary>Draw one tile-ground mesh run through the tile-ground pipeline, reusing the shared instance

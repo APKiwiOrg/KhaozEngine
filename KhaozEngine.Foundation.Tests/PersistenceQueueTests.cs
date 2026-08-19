@@ -396,7 +396,7 @@ public class PersistenceQueueTests
     }
 
     [Fact]
-    public void BackupGenerationsDefaultOff_NoBakFiles()
+    public void BackupGenerationsDefault_RotatesTwoGenerations()
     {
         string root = NewTempRoot();
         try
@@ -408,11 +408,74 @@ public class PersistenceQueueTests
             queue.Flush();
             queue.Enqueue(path, "b");
             queue.Flush();
+            queue.Enqueue(path, "c");
+            queue.Flush();
+
+            // Two generations out of the box, matching what the read side probes. The default used to be 0,
+            // so a consumer holding the queue directly wrote no backups at all.
+            Assert.Equal("c", File.ReadAllText(path));
+            Assert.Equal("b", File.ReadAllText(path + ".bak1"));
+            Assert.Equal("a", File.ReadAllText(path + ".bak2"));
+        }
+        finally { Cleanup(root); }
+    }
+
+    [Fact]
+    public void BackupGenerationsExplicitlyOff_NoBakFiles()
+    {
+        string root = NewTempRoot();
+        try
+        {
+            string path = Path.Combine(root, "save.json");
+            using var queue = new PersistenceQueue(backupGenerations: 0);
+
+            queue.Enqueue(path, "a");
+            queue.Flush();
+            queue.Enqueue(path, "b");
+            queue.Flush();
 
             Assert.Equal("b", File.ReadAllText(path));
             Assert.False(File.Exists(path + ".bak1"));
         }
         finally { Cleanup(root); }
+    }
+
+    [Fact]
+    public void DefaultQueue_FeedsTheSettingsRecoveryLadderAfterACorruptPrimary()
+    {
+        // The whole point of the default: a consumer that skips GameStorage and drives a bare queue plus a
+        // bare FileSettingsStorage gets a ladder with something on it. Both sides are built with defaults
+        // here, no backup count passed anywhere.
+        string root = Path.Combine(Path.GetTempPath(), "ke-persistqueue-ladder-" + Guid.NewGuid().ToString("N"));
+        var env = new FakeAppDataEnvironment { IsMacOS = true };
+        env.Folders[Environment.SpecialFolder.ApplicationData] = root;
+        var paths = new AppDataPaths("APKiwi", "PersistenceQueueLadder", env);
+        try
+        {
+            using var queue = new PersistenceQueue();
+            var storage = new FileSettingsStorage(paths, queue);
+
+            storage.SaveSettings(new LadderSettings { Score = 1 });
+            queue.Flush();
+            storage.SaveSettings(new LadderSettings { Score = 2 });
+            queue.Flush();
+
+            string primary = paths.GetFilePath("settings.json");
+            Assert.True(File.Exists(primary + ".bak1"));
+            File.WriteAllText(primary, "{ this is not json");
+
+            SaveLoadResult<LadderSettings> result = storage.LoadSettingsDetailed<LadderSettings>();
+
+            Assert.Equal(SaveLoadOutcome.RecoveredFromBackup, result.Outcome);
+            Assert.Equal(1, result.RecoveredGeneration);
+            Assert.Equal(1, result.Value.Score);
+        }
+        finally { Cleanup(root); }
+    }
+
+    private sealed class LadderSettings
+    {
+        public int Score { get; set; }
     }
 
     internal static string NewTempRoot()

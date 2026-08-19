@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using KhaozEngine.Sharding;
 
 namespace KhaozEngine.NetWorld;
@@ -23,6 +25,13 @@ public enum CellPersistenceIssueKind
     /// it). The original bytes are preserved under the quarantine key and the cell starts fresh, so the server never
     /// crash-loops on a poisoned key.</summary>
     QuarantinedCorrupt,
+
+    /// <summary>The stored blob predates the wire-generation stamp and its body walks cleanly at MORE THAN ONE
+    /// candidate generation, to different results, so which layout wrote it cannot be established. Nothing is
+    /// guessed: the bytes are preserved under the quarantine key and the cell starts fresh.
+    /// <see cref="CellPersistenceIssue.Message"/> names the candidates, and
+    /// <see cref="CellPersistenceConfig.AssumedWireGeneration"/> resolves it for a save whose provenance is known.</summary>
+    QuarantinedAmbiguous,
 
     /// <summary>The restored blob carried extension component ids this build's registry does not know. They were
     /// retained and will be re-persisted verbatim (retain-and-rewrite), so a registry regression did not strip data
@@ -93,6 +102,13 @@ public readonly struct CellPersistenceIssue
     public static CellPersistenceIssue QuarantinedCorrupt(CellCoord coord, string message)
         => new(CellPersistenceIssueKind.QuarantinedCorrupt, coord, 0, 0, 0, message);
 
+    /// <summary>The blob's wire generation could not be inferred: <paramref name="candidateGenerations"/> all walk
+    /// the body cleanly and disagree about the result.</summary>
+    public static CellPersistenceIssue QuarantinedAmbiguous(CellCoord coord, int storedVersion,
+        IReadOnlyList<int> candidateGenerations)
+        => new(CellPersistenceIssueKind.QuarantinedAmbiguous, coord, storedVersion, 0, 0,
+            $"wire generation is one of {string.Join(", ", candidateGenerations ?? Array.Empty<int>())}");
+
     public static CellPersistenceIssue RetainedUnknownExtensions(CellCoord coord, int count)
         => new(CellPersistenceIssueKind.RetainedUnknownExtensions, coord, 0, 0, count, null);
 
@@ -106,6 +122,7 @@ public readonly struct CellPersistenceIssue
             ? $"cell {Coord.X}:{Coord.Y} skipped: stored v{FromVersion} is newer than schema v{ToVersion} (downgrade), bytes quarantined"
             : $"cell {Coord.X}:{Coord.Y} skipped: {Message} (downgrade), bytes quarantined",
         CellPersistenceIssueKind.QuarantinedCorrupt => $"cell {Coord.X}:{Coord.Y} quarantined (corrupt): {Message}",
+        CellPersistenceIssueKind.QuarantinedAmbiguous => $"cell {Coord.X}:{Coord.Y} quarantined (ambiguous v{FromVersion} blob): {Message}, and they disagree; set CellPersistenceConfig.AssumedWireGeneration to migrate it",
         CellPersistenceIssueKind.RetainedUnknownExtensions => $"cell {Coord.X}:{Coord.Y} retained {RetainedFrameCount} unknown extension frame(s)",
         _ => $"cell {Coord.X}:{Coord.Y} {Kind}",
     };

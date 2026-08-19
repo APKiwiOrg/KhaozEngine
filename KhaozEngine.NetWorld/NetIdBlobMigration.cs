@@ -41,12 +41,22 @@ public static class NetIdBlobMigration
     /// engine default (any <see cref="CellPersistence"/> at schema &gt;= 2 folds it in). Component payloads are left
     /// exactly as stored - bringing them forward across the wire generations is the later steps' job - so the output
     /// is a v2 body at generation <see cref="NetId32WireGeneration"/>'s layout, which is byte-identical to a
-    /// generation-2 one. Throws on a malformed body so the driver quarantines it.
+    /// generation-2 one. Throws on a malformed body so the driver quarantines it. There is no inference here and
+    /// therefore no ambiguity: the pre-10.0.0 line is one generation, and a v1 blob that reaches the v2 -> v3 step
+    /// through this one carries that generation with it rather than being guessed at again.
     /// </summary>
-    public static byte[] WidenV1ToV2(byte[] body)
+    public static byte[] WidenV1ToV2(byte[] body) => WidenV1ToV2(body, new CellBlobMigrationContext());
+
+    // The chain-aware form. Nothing is inferred here (a v1 blob is generation 1 exactly), so its only extra job is to
+    // tell the steps behind it which generation the body it produced is at, sparing them an inference.
+    internal static byte[] WidenV1ToV2(byte[] body, CellBlobMigrationContext context)
     {
         ArgumentNullException.ThrowIfNull(body);
-        return CellBlobRewriter.RewriteInferring(body, NetId32WireGeneration, NetId32WireGeneration,
-            CellBlobRewriter.KeepSourceGeneration, widenNetIds: true, "v1 (32-bit netId)");
+        ArgumentNullException.ThrowIfNull(context);
+        byte[] result = CellBlobRewriter.RewriteInferring(body, NetId32WireGeneration, NetId32WireGeneration,
+            CellBlobRewriter.KeepSourceGeneration, widenNetIds: true, "v1 (32-bit netId)",
+            CellBlobWalkPolicy.Structural);
+        context.KnownWireGeneration = NetId32WireGeneration;
+        return result;
     }
 }

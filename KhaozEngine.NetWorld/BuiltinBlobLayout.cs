@@ -41,6 +41,19 @@ public static class BuiltinBlobLayout
     /// started encoding <c>[frameX:short][frameZ:short][local:3 float]</c> (the floating-origin wire).</summary>
     public const int FramedPositionWireGeneration = 9;
 
+    /// <summary>The generation that added <see cref="MovementState.Swimming"/>, the second bool in the movement
+    /// payload. Below it a movement payload has one bool byte, from it two.</summary>
+    public const int SwimmingWireGeneration = 3;
+
+    /// <summary>Byte offset of <see cref="MovementState.Grounded"/> in a movement payload, at every generation: it
+    /// follows <see cref="MovementState.VerticalVelocity"/>, which has always been the first field.</summary>
+    public const int MovementGroundedOffset = 4;
+
+    /// <summary>Byte offset of <see cref="MovementState.Swimming"/> in a movement payload written at
+    /// <see cref="SwimmingWireGeneration"/> or later: it was appended after <c>JumpBufferRemaining</c> and nothing
+    /// has been inserted before it since.</summary>
+    public const int MovementSwimmingOffset = 13;
+
     /// <summary>The generation that introduced <see cref="PickupState"/> as a built-in id. A body carrying id
     /// <see cref="MoveProtocol.PickupTypeId"/> cannot have been written before it.</summary>
     public const int PickupWireGeneration = 8;

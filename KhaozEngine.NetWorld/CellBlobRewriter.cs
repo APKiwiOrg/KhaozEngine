@@ -1,5 +1,6 @@
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.IO;
 using KhaozEngine.Replication;
 
@@ -16,9 +17,10 @@ namespace KhaozEngine.NetWorld;
 /// </para>
 /// <para>
 /// The walk is a strong check on whether the stated generation is the right one: it re-reads every type id, every
-/// length prefix and the per-entity terminator, and it insists the last entity ends exactly at the last byte. That
-/// check plus the frame-count tie-break is what lets <see cref="RewriteInferring"/> recover a blob whose generation
-/// was never recorded.
+/// length prefix and the per-entity terminator, and it insists the last entity ends exactly at the last byte. On top
+/// of that, <see cref="RewriteInferring"/> judges each candidate against everything the WRITER is known to do
+/// (<see cref="CellBlobWalkPolicy"/>) and refuses to choose between two candidates that both survive, because there
+/// is no scoring rule that is safe in both directions - see <see cref="AmbiguousCellBlobGenerationException"/>.
 /// </para>
 /// </summary>
 internal static class CellBlobRewriter
@@ -29,58 +31,75 @@ internal static class CellBlobRewriter
 
     /// <summary>
     /// Rewrites <paramref name="body"/> after inferring which wire generation in
-    /// <paramref name="oldestGeneration"/>..<paramref name="newestGeneration"/> it was written at. Throws when no
-    /// candidate walks the whole body, so the driver quarantines the bytes.
+    /// <paramref name="oldestGeneration"/>..<paramref name="newestGeneration"/> it was written at.
     /// <para>
-    /// More than one candidate can walk a body cleanly, and picking the newest is NOT safe: a movement payload read
-    /// too long simply swallows the frames that follow it, and the sizes involved are small enough that it lands back
-    /// on a boundary quite easily (a generation-3 movement followed by a six-character display name is exactly a
-    /// generation-8 movement's worth of bytes, which is how this was found). So every candidate is tried and the one
-    /// that recovers the MOST component frames wins, newest first on a tie. An over-long read can only ever swallow
-    /// frames, never produce extra ones, so the true generation always scores at least as high as any candidate above
-    /// it. This is still a heuristic on a body whose generation nobody recorded, which is precisely why schema
-    /// v<see cref="WireGenerationBlobMigration.StampedSchemaVersion"/> stamps the generation into the header and
-    /// stops anything written from now on needing to be guessed at.
+    /// Every candidate is walked under <paramref name="policy"/>, which discards the ones that recover something no
+    /// build writes (an unregistered extension id, a built-in out of registration order or repeated, a movement bool
+    /// byte that is not 0 or 1, a display name that is not UTF-8). Then exactly one of three things happens: no
+    /// candidate survives and this throws <see cref="InvalidOperationException"/>, every survivor produces the same
+    /// bytes and those are returned, or the survivors disagree and this throws
+    /// <see cref="AmbiguousCellBlobGenerationException"/>. It never picks.
+    /// </para>
+    /// <para>
+    /// The scoring rule this replaced (keep the parse that recovers the MOST frames) was unsafe in the under-read
+    /// direction. A candidate OLDER than the truth reads a built-in payload short, and the bytes it leaves behind
+    /// re-sync into frames the walk happily copies, so it can outscore the truth and produce a structurally valid
+    /// body that decodes into wrong movement fields and phantom components. Schema
+    /// v<see cref="WireGenerationBlobMigration.StampedSchemaVersion"/> stamps the generation into the header, so
+    /// nothing written from now on is inferred at all.
     /// </para>
     /// </summary>
     internal static byte[] RewriteInferring(byte[] body, int oldestGeneration, int newestGeneration,
-        int toGeneration, bool widenNetIds, string schemaLabel)
+        int toGeneration, bool widenNetIds, string schemaLabel, CellBlobWalkPolicy policy)
     {
         ArgumentNullException.ThrowIfNull(body);
-        byte[]? best = null;
-        int bestFrames = -1;
-        for (int from = newestGeneration; from >= oldestGeneration; from--)
+        // A single-candidate range is not an inference at all (the v1 netId widening): judging it on the evidence
+        // rules could only ever turn a blob that decodes into a quarantine, with nothing to choose instead.
+        CellBlobWalkPolicy effective = newestGeneration > oldestGeneration ? policy : CellBlobWalkPolicy.Structural;
+
+        byte[]? survivor = null;
+        List<int>? survivingGenerations = null;
+        bool disagree = false;
+        for (int from = oldestGeneration; from <= newestGeneration; from++)
         {
             int to = toGeneration == KeepSourceGeneration ? from : toGeneration;
-            if (!TryRewrite(body, from, to, widenNetIds, out byte[]? rewritten, out int frames)) continue;
-            if (frames > bestFrames) { best = rewritten; bestFrames = frames; }   // strict >, so a tie keeps the newer
+            if (!TryRewrite(body, from, to, widenNetIds, effective, out byte[]? rewritten)) continue;
+            (survivingGenerations ??= new List<int>(2)).Add(from);
+            if (survivor is null) { survivor = rewritten; continue; }
+            // Two candidates that produce the SAME bytes are not a choice: the generations differ only in a field
+            // this body does not carry (a gen-7 and a gen-8 body without a pickup frame are byte-identical).
+            if (!rewritten.AsSpan().SequenceEqual(survivor)) disagree = true;
         }
-        if (best is not null) return best;
+
+        if (disagree) throw new AmbiguousCellBlobGenerationException(schemaLabel, survivingGenerations!);
+        if (survivor is not null) return survivor;
 
         throw new InvalidOperationException(
             $"Snapshot body does not walk as a {schemaLabel} blob at any wire generation " +
             $"{oldestGeneration}..{newestGeneration}; cannot migrate.");
     }
 
-    /// <summary>Rewrites <paramref name="body"/> from a KNOWN wire generation, throwing when it does not walk.</summary>
+    /// <summary>Rewrites <paramref name="body"/> from a KNOWN wire generation, throwing when it does not walk. The
+    /// walk is structural only: a recorded generation is not evidence to be weighed, and a body carrying an extension
+    /// id this build's registry has dropped must still come forward (retain-and-rewrite).</summary>
     internal static byte[] Rewrite(byte[] body, int fromGeneration, int toGeneration, bool widenNetIds)
     {
         ArgumentNullException.ThrowIfNull(body);
-        if (TryRewrite(body, fromGeneration, toGeneration, widenNetIds, out byte[]? rewritten, out _)) return rewritten!;
+        if (TryRewrite(body, fromGeneration, toGeneration, widenNetIds, CellBlobWalkPolicy.Structural,
+            out byte[]? rewritten)) return rewritten!;
         throw new InvalidOperationException(
             $"Snapshot body does not walk at wire generation {fromGeneration}; cannot bring it to {toGeneration}.");
     }
 
     /// <summary>
-    /// The walk. Returns false (and a null <paramref name="result"/>) on ANY malformed read rather than throwing, so
-    /// a caller can try one candidate generation after another cheaply. <paramref name="frameCount"/> reports how many
-    /// component frames the walk recovered, which is how <see cref="RewriteInferring"/> tells two clean walks apart.
+    /// The walk. Returns false (and a null <paramref name="result"/>) on ANY malformed read, or on anything
+    /// <paramref name="policy"/> rejects, rather than throwing - so a caller can try one candidate generation after
+    /// another cheaply.
     /// </summary>
     internal static bool TryRewrite(byte[] body, int fromGeneration, int toGeneration, bool widenNetIds,
-        out byte[]? result, out int frameCount)
+        CellBlobWalkPolicy policy, out byte[]? result)
     {
         result = null;
-        frameCount = 0;
         if (toGeneration < fromGeneration) return false;   // a body is never walked backwards onto an older layout
 
         int pos = 0;
@@ -108,7 +127,7 @@ internal static class CellBlobRewriter
                 if (!TryReadInt64(body, ref pos, out long netId)) return false;
                 bw.Write(netId);
             }
-            if (!TryRewriteComponents(body, ref pos, bw, fromGeneration, toGeneration, ref frameCount)) return false;
+            if (!TryRewriteComponents(body, ref pos, bw, fromGeneration, toGeneration, policy)) return false;
         }
 
         if (pos != body.Length) return false;   // trailing bytes: this candidate walked the body wrong
@@ -120,14 +139,15 @@ internal static class CellBlobRewriter
 
     // One entity's component-frame stream, up to and including the [ushort 0] terminator.
     private static bool TryRewriteComponents(byte[] body, ref int pos, BinaryWriter bw, int fromGeneration,
-        int toGeneration, ref int frameCount)
+        int toGeneration, in CellBlobWalkPolicy policy)
     {
+        var frames = new CellBlobEntityFrames();
         while (true)
         {
             if (!TryReadUInt16(body, ref pos, out ushort typeId)) return false;
+            if (typeId == 0) { bw.Write(typeId); return true; }   // end-of-entity terminator
+            if (!frames.Accept(typeId, policy)) return false;
             bw.Write(typeId);
-            if (typeId == 0) return true;   // end-of-entity terminator
-            frameCount++;
 
             if (ReplicationRegistry.IsExtension(typeId))
             {
@@ -144,6 +164,7 @@ internal static class CellBlobRewriter
                 // write, so a longer prefix means this candidate generation walked the body wrong (or the bytes are
                 // not a snapshot at all) rather than being a name to copy.
                 if (!TryReadUInt16(body, ref pos, out ushort nameLen) || nameLen > MoveProtocol.MaxDisplayNameBytes) return false;
+                if ((long)pos + nameLen > body.Length || !policy.AcceptsDisplayName(body, pos, nameLen)) return false;
                 bw.Write(nameLen);
                 if (!TryCopy(body, ref pos, bw, nameLen)) return false;
                 continue;
@@ -153,6 +174,10 @@ internal static class CellBlobRewriter
             if (fromLen < 0) return false;   // absent at this generation, or an id the engine does not own
             int toLen = BuiltinBlobLayout.PayloadLength(typeId, toGeneration);
             if (toLen < fromLen) return false;
+            if ((long)pos + fromLen > body.Length) return false;
+
+            if (typeId == MoveProtocol.MovementTypeId && !policy.AcceptsMovementPayload(body, pos, fromGeneration))
+                return false;
 
             if (typeId == MoveProtocol.PositionTypeId && toLen != fromLen)
             {

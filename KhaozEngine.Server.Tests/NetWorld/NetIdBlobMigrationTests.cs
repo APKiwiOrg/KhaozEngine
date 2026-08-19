@@ -90,8 +90,8 @@ public class NetIdBlobMigrationTests
         await store.SaveAsync("cell:0:0", FixtureBlob());   // the committed 9.x (v1) blob on disk
 
         ReplicationRegistry reg = MoveProtocol.CreateRegistry();
-        var host = new Host(reg);
-        var cp = new CellPersistence(host, store);          // default schema 2 + the engine v1->v2 widening
+        var host = new ShardPersistenceHost(reg);
+        var cp = new CellPersistence(host, store);          // default schema + the engine migration chain
         var issues = new List<CellPersistenceIssue>();
         cp.Issue += issues.Add;
 
@@ -100,7 +100,7 @@ public class NetIdBlobMigrationTests
         await cp.FlushAsync();     // migrate + restore applied on the server thread
 
         Assert.Contains(issues, i => i.Kind == CellPersistenceIssueKind.Migrated && i.FromVersion == 1
-            && i.ToVersion == PositionFrameBlobMigration.FramedPositionSchemaVersion);   // v1 -> v2 -> v3, both engine steps
+            && i.ToVersion == WireGenerationBlobMigration.StampedSchemaVersion);   // v1 -> v2 -> v3 -> v4, all three engine steps
         Assert.DoesNotContain(issues, i => i.Kind == CellPersistenceIssueKind.QuarantinedCorrupt);
 
         Assert.True(host.Shard.TryGetCell(new CellCoord(0, 0), out CellSim cell));
@@ -109,36 +109,57 @@ public class NetIdBlobMigrationTests
         Assert.True(host.NextNetId >= 6);   // high-water resumed above the restored id, so a fresh spawn can't collide
     }
 
-    // A minimal real-ShardHost persistence host over the movement registry, so a restore reconstructs a real entity.
-    private sealed class Host : ICellPersistenceHost
+    /// <summary>
+    /// The #353 headline, end to end. A v1 blob carrying a <see cref="MovementState"/> used to be QUARANTINED on the
+    /// first boot after the upgrade: the v1 walk read its 13-byte payload correctly, and then the v2 -&gt; v3 step
+    /// walked the same frame at the CURRENT 26-byte layout, ran off the end of it, and read the following bytes as a
+    /// component type id. Nothing about the blob was corrupt - the chain simply described a payload that had grown six
+    /// times since the version it was reading.
+    /// </summary>
+    [Fact]
+    public async Task CellPersistence_bootsAV1SaveCarryingAMovementFrame_withoutQuarantine()
     {
-        public readonly ShardHost Shard;
-        private readonly NetIdAllocator alloc = new();
-
-        public Host(ReplicationRegistry r)
+        var movement = new MovementState
         {
-            Shard = new ShardHost(64f, 1f / 30f, r);
-            Shard.CellCreated += c => CellCreated?.Invoke(c.Coord);
-        }
+            VerticalVelocity = -3.25f,
+            Grounded = true,
+            TimeSinceGrounded = 1.5f,
+            JumpBufferRemaining = 0.25f,
+        };
+        byte[] body = new CellBlobFixtures.BodyBuilder(netId32: true)
+            .Entity(5,
+                (MoveProtocol.PositionTypeId, CellBlobFixtures.Position(NetIdBlobMigration.NetId32WireGeneration, FixturePos)),
+                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(NetIdBlobMigration.NetId32WireGeneration, movement)),
+                (MoveProtocol.IdentityTypeId, CellBlobFixtures.Identity("Runner")))
+            .ToBody();
 
-        public event Action<CellCoord>? CellCreated;
+        var store = new InMemoryWorldStore();
+        await store.SaveAsync("cell:0:0", CellBlobFixtures.Wrap(NetIdBlobMigration.NetId32SchemaVersion, 0, body));
 
-        public IReadOnlyCollection<CellCoord> LiveCellCoords
-        {
-            get { var l = new List<CellCoord>(); foreach (CellSim c in Shard.Cells) l.Add(c.Coord); return l; }
-        }
+        var host = new ShardPersistenceHost(MoveProtocol.CreateRegistry());
+        var cp = new CellPersistence(host, store);
+        var issues = new List<CellPersistenceIssue>();
+        cp.Issue += issues.Add;
 
-        public byte[]? SnapshotCell(CellCoord c) =>
-            Shard.TryGetCell(c, out CellSim cell) ? cell.SnapshotOwned(new HashSet<long>()) : null;
+        await cp.PreloadAsync();
+        await cp.FlushAsync();
 
-        public IReadOnlyList<long> RestoreCell(CellCoord c, byte[] s) =>
-            Shard.TryGetCell(c, out CellSim cell) ? cell.RestoreOwned(s) : Array.Empty<long>();
+        Assert.DoesNotContain(issues, i => i.Kind == CellPersistenceIssueKind.QuarantinedCorrupt);
+        Assert.Contains(issues, i => i.Kind == CellPersistenceIssueKind.Migrated && i.FromVersion == 1);
 
-        public CellRestoreResult TryRestoreCell(CellCoord c, byte[] s) =>
-            Shard.TryGetCell(c, out CellSim cell) ? cell.TryRestoreOwned(s) : new CellRestoreResult(true, Array.Empty<long>(), 0, null);
-
-        public void EnsureCell(CellCoord c) => Shard.EnsureCell(c);
-        public long NextNetId => alloc.NextValue;
-        public void EnsureNextNetIdAtLeast(long atLeast) => alloc.EnsureNextAtLeast(atLeast);
+        Assert.True(host.Shard.TryGetCell(new CellCoord(0, 0), out CellSim cell));
+        Assert.True(cell.TryGetOwned(5, out Entity e));
+        Assert.Equal(FixturePos, cell.World.Get<ReplicatedPosition>(e).Value);
+        MovementState restored = cell.World.Get<MovementState>(e);
+        Assert.Equal(movement.VerticalVelocity, restored.VerticalVelocity);
+        Assert.True(restored.Grounded);
+        Assert.Equal(movement.TimeSinceGrounded, restored.TimeSinceGrounded);
+        Assert.Equal(movement.JumpBufferRemaining, restored.JumpBufferRemaining);
+        // Every field the codec appended after generation 1 was never on disk, so it restores at its default.
+        Assert.False(restored.Swimming);
+        Assert.Equal(0u, restored.TeleportEpoch);
+        Assert.Equal((sbyte)0, restored.ClimbRateQ);
+        Assert.Equal((short)0, restored.FacingYawQ);
+        Assert.Equal("Runner", cell.World.Get<PlayerIdentity>(e).DisplayName);
     }
 }

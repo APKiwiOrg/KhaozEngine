@@ -10,7 +10,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 A greybox roof now sits on the walls it covers instead of floating a whole plane above them. Alongside it, the
 last four per-frame PARTIAL uniform-buffer writes in the engine are gone: water planes, overlay proxies,
 `SpriteBatch` view-projection slots and a splat material's combined block all pack into a CPU image and go up in
-one whole-buffer write, so nothing on the D3D11 Veldrid leg takes the blocking staging route any more.
+one whole-buffer write, so no per-frame write on the D3D11 Veldrid leg takes the blocking staging route any
+more (the one load-time partial write a splat material still makes is once per material, not per frame).
 
 - **`GreyboxMeshResolver` builds every shape in its own PLANE's local space** (`KhaozEngine.TileWorld.Render3D`).
   A roof archetype is placed on the plane ABOVE the walls it covers, which is exactly what `TileWorldView`'s
@@ -27,14 +28,15 @@ one whole-buffer write, so nothing on the D3D11 Veldrid leg takes the blocking s
   goldens) now passes `doc.PlaneHeight`, so a world with a non-default plane height stays sealed too.
 - **`tileworld_greybox` and `tileworld_topdown` goldens rebaked** on all three backends, since both shots frame
   the walled house whose roof moved.
+
+Found by the Grimhollow adopt, where the greybox house rendered with a visibly detached roof slab.
+
 - **`CharacterMovement.cs` split into two more domain partials** (`KhaozEngine.Locomotion`): the post-sweep settle
   pass to `CharacterMovement.Settle.cs`, and the paced step-up climb with its climb-signal export to
   `CharacterMovement.Climb.cs`. 799 lines down to 556, a pure code move with no API and no behaviour change (#480).
 - **`VulkanPresentBoundary` and its test class split on the seam each had already marked** (`KhaozEngine.Gpu.Vulkan`,
   `KhaozEngine.Render.Tests`): the recreation state machine to `VulkanPresentBoundary.Recreate.cs`, 799 lines down to
   606, and the recreate half of its coverage to `VulkanPresentBoundaryTests.Recreate.cs`, 777 down to 332 (#559).
-
-Found by the Grimhollow adopt, where the greybox house rendered with a visibly detached roof slab.
 
 - **Every per-frame uniform block now uploads WHOLE, on all four remaining sites** (`KhaozEngine.Render3D`,
   `KhaozEngine.Render2D`). Veldrid's `D3D11CommandList.UpdateBufferCore` sends a PARTIAL write to a non-Dynamic

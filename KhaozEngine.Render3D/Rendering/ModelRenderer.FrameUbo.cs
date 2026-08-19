@@ -144,8 +144,9 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>Upload the cached frame uniforms (header + the two point-light arrays) into <paramref name="dst"/>
-        /// at offset 0. <paramref name="dst"/> must be at least <see cref="UboBytes"/> bytes; a splat material's
-        /// combined UBO is larger (params follow at <see cref="UboBytes"/>) and that tail is left untouched.</summary>
+        /// at offset 0, whole. <paramref name="dst"/> is a buffer of exactly <see cref="UboBytes"/> (the model UBO). A
+        /// splat material's combined UBO goes through the <see cref="SplatUniformBuffer"/> overload instead, which
+        /// rewrites the whole larger buffer from its CPU mirror so the write is never partial (#408).</summary>
         public void WriteFrameUniformsTo(IGpuCommandList cl, IGpuBuffer dst) => WriteFrameUniformsTo(cl, dst, 0);
 
         /// <summary>As <see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer)"/>, but writes the frame block at an

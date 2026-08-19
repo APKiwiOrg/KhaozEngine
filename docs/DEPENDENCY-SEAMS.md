@@ -1003,6 +1003,16 @@ use-after-free the drain appears to justify. It reads the same register (`GpuRec
 `GpuDrainDuringRecordingException`, which is why the queue holds its `IGpuDevice` at all rather than only the drain
 delegate it used to take.
 
+**The seam owns the BOUND as well as the mechanism (17.37.1,
+[#425](https://github.com/APKiwiOrg/KhaozEngine/issues/425)).** Fence-polled ripeness means a batch lives until the
+GPU reaches it, and nothing in the original shape said how many could pile up first, so the queue inherited its
+ceiling from whatever happened to throttle the caller. That is the difference between a designed bound and an
+emergent one, and it is why `MaxSealedBatches` (a `Create` parameter, default 8) sits on the queue rather than
+being left to the backend's ring backpressure to imply: past it the queue drains once and frees the whole holding,
+so the bound holds identically on a Veldrid backend with no ring at all and on an offscreen loop that never
+presents. `ValveDrains` and the now-public `SealedBatchCount` are the two members that let a caller see it working.
+The frame-counted factory needed none of this, since a frame count is already a bound.
+
 ## GPU-backend invariant: ONE uniform buffer per pipeline (Metal via Veldrid/SPIRV-Cross)
 
 **MEASURED 2026-08-11: this is the INCUMBENT'S BUFFER NUMBERING, not a property of Metal.** The rule below is

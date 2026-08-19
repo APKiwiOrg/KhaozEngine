@@ -11531,14 +11531,15 @@ no-op (device destruction already freed all child objects), so a wrapper that ou
 teardown can neither drain nor destroy against a dead device. Veldrid's deferred-disposal path was
 evaluated as a non-stalling alternative and rejected:
 under Mesa's threaded queue its disposal flush can lose a wakeup and hang the process, so the engine
-drains instead. The engine's own renderers follow this rule for texture unload (`Scene3D.UnloadTexture`)
-and resize-driven render target replacement (`RenderResources`, `Render3DPreview.Resize`). A custom
+drains instead. The engine's own renderers follow this rule for resize-driven render target replacement
+(`RenderResources`, `Render3DPreview.Resize`), which has no frame boundary left to reach. A custom
 renderer or content-streaming system built directly on `KhaozEngine.Gpu` should follow the same rule for
 anything it frees outside of full teardown, or hand the resource to a `GpuRetireQueue` (below) and never
 drain at all.
 
-**Streamed MESH unload does not drain at all.** `Scene3D.UnloadMesh` hands the mesh's vertex buffer,
-index buffer and material set to a `GpuRetireQueue` instead. At the next `Scene3D.Begin` the queue seals
+**No `Scene3D` unload drains, since 17.37.1.** `UnloadMesh`, `UnloadSkinnedMesh`, `UnloadTexture` and
+`UnloadSplatMaterial` all hand their GPU resources to a `GpuRetireQueue` instead. At the next
+`Scene3D.Begin` the queue seals
 everything retired during the frame just ended into one batch and marks the submission stream with a
 fence, and it destroys that batch on the first later `Begin` whose fence polls signaled. Nothing blocks:
 retirement is event-driven, and the frame boundary costs one empty fenced submission on frames that
@@ -11572,10 +11573,28 @@ Expect it to sit HIGHER on the fence path than it used to, because the CPU is no
 into lockstep with the GPU and is free to run ahead.
 
 `Scene3D.Dispose` flushes the pool behind the drain it already does, so nothing outlives the scene, and
-teardown keeps the drain on purpose (correctness over speed, and a poll would have to spin). The sibling
-unload paths (texture, skinned mesh, splat material) still drain per call, none of them being on the
-streaming path, and moving them over is
-[#383](https://github.com/APKiwiOrg/KhaozEngine/issues/383).
+teardown keeps the drain on purpose (correctness over speed, and a poll would have to spin).
+
+**The three sibling unload paths joined it in 17.37.1**
+([#383](https://github.com/APKiwiOrg/KhaozEngine/issues/383)), each having drained the whole device once
+per call until then. `UnloadSkinnedMesh` is the one that was costing something in the field: an MMO
+client despawns avatars and corpses continuously as they leave interest range, and every despawn was a
+pipeline flush on the frame thread. `UnloadTexture` covers an atlas swap or a nameplate texture streaming
+out, and it drops the particle renderer's cached atlas resource sets through the same queue, which is
+where the drain would otherwise have survived for any scene that draws particles. `UnloadSplatMaterial`
+retires the whole material as one resource, so its two texture arrays, its params UBO, its set and any
+sampler it owns die together. In every case the slot is released exactly when it always was, and only the
+destruction of the GPU object behind it moved.
+
+**The holding has a bound, and it is the only thing that drains on the fence path.** A batch lives until
+its fence signals, so a CPU that outruns its GPU used to grow the queue with no limit
+([#425](https://github.com/APKiwiOrg/KhaozEngine/issues/425)). Past `GpuRetireQueue.MaxSealedBatches`
+sealed batches (default 8) the queue pays one `WaitForIdle` and frees the whole holding behind it, which
+costs at most one drain per nine frames of sustained fall-behind. Whether it fires is a property of the
+LOOP rather than of the GPU: a windowed loop blocks in its present at the backend's frames-in-flight
+depth and never comes near the cap, while an offscreen loop that submits without presenting runs eight or
+nine frames ahead even on fast hardware. `GpuRetireQueue.ValveDrains` counts the firings and
+`SealedBatchCount` is the batch-level view of the holding, next to `Scene3D.RetiredResourceCount`.
 
 **2D set eviction does not drain either, since 17.37.0.** `SpriteBatch` keeps one resource set per
 `(texture, sampler)` and evicts the ones unused for `600` frames, and that sweep used to take a full

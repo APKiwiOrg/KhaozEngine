@@ -64,8 +64,8 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>Free the GPU texture backing <paramref name="h"/> (and its lazily-created textured-billboard
-        /// resource set) and null its slot. A <c>default</c>/Invalid handle is a no-op; unloading an
-        /// already-unloaded slot is also a no-op. The slot is NOT recycled, so handles stay stable. Because a
+        /// resource set) and null its slot. A <c>default</c>/Invalid handle is a no-op, and unloading an
+        /// already-unloaded slot is one too. The slot is NOT recycled, so handles stay stable. Because a
         /// texture can be shared by several meshes/materials, the scene can't know who else references it - any mesh
         /// still bound to this texture must be unloaded first or simply not drawn afterwards (mirrors
         /// <see cref="UnloadSplatMaterial"/>). Without this, textures only free at <see cref="Dispose"/>, so a
@@ -94,7 +94,7 @@ namespace KhaozEngine.Render3D
             _particleRenderer.InvalidateTextureSets(_retired);
         }
 
-        /// <summary>Free a skinned mesh's GPU buffers and release its slot. A <c>default</c> handle is a no-op; a
+        /// <summary>Free a skinned mesh's GPU buffers and release its slot. A <c>default</c> handle is a no-op. A
         /// stale handle throws.
         /// <para>Does not drain. This is the unload an MMO client runs constantly, one per avatar or corpse leaving
         /// interest range, so the buffers and both material sets are retired and destroyed at a later frame

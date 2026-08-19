@@ -7,8 +7,57 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.37.1
 
-A greybox roof now sits on the walls it covers instead of floating a whole plane above them.
+A greybox roof now sits on the walls it covers instead of floating a whole plane above them. On the GPU seam, the
+deferred-retirement queue behind every mid-life resource free stops growing without bound on a device the CPU
+outruns, and the three `Scene3D` unload paths that still drained the whole device once per call moved onto it, which
+takes the pipeline stall off an MMO client's avatar despawn.
 
+- **`GpuRetireQueue` has a safety valve, so a GPU the CPU runs away from no longer grows the holding forever**
+  (`KhaozEngine.Gpu`). On the fence path a batch lived until its fence signalled, with nothing bounding how many
+  could pile up, so a software rasterizer, a weak card or an offscreen loop with no swapchain throttling it grew the
+  pending list, the batch list and the barrier's fence pool monotonically. Past `MaxSealedBatches` sealed batches
+  (new knob, `DefaultMaxSealedBatches` is 8, a `Create` parameter) the queue stops polling and pays one
+  `WaitForIdle`, which proves every submitted batch complete, then frees the whole holding behind it. Freeing all of
+  it rather than trimming back to the cap is what makes the cost one drain per `MaxSealedBatches + 1` frames of
+  sustained fall-behind instead of one per frame. New `ValveDrains` counts them, and `SealedBatchCount` is public
+  now, because the bound is written in batches rather than resources. What decides whether it fires is how far
+  ahead the LOOP gets rather than how fast the GPU is: a windowed loop blocks in its present at the backend's
+  frames-in-flight depth and never reaches the cap, while an offscreen loop that submits without presenting runs
+  eight or nine frames ahead on an M2 Max, which is where the engine's own 400-frame churn test measures 16
+  firings against the 396 drains the unfenced fallback pays over the same run. The
+  two frame-counted policies (`CreateFrameCounted`, and `Create`'s fallback on a backend with no completion fence)
+  get no valve and need none: a batch there dies on the frame count alone, which caps the holding at `FrameDelay`
+  batches by construction, and `CreateFrameCounted` must not drain on the frame path at all (#84). Eight is above
+  the deepest a healthy loop reaches, since the CPU runs at most `KE_METAL_FRAMES_IN_FLIGHT` /
+  `KE_VULKAN_FRAMES_IN_FLIGHT` / `KE_D3D11_FRAMES_IN_FLIGHT` frames ahead (default 3) and every one of those frames
+  has to have retired something to seal a batch, so a consumer raising that knob past 8 raises this with it.
+  Closes #425.
+- **`RetireFenceGpuTests` asserts the bound instead of a flat zero.** Its gate was `fencedDrains == 0`, which the
+  valve makes a property of how far ahead the loop runs, and that test's own churn runs through an offscreen
+  capture that never presents, so a flat zero would have failed it for doing its job. What is asserted now holds on
+  any device: every drain on the fence path came from the valve, the cap held at every frame boundary of the
+  400-frame churn, and the valve fired no more often than its own period allows. The headless rows drive the
+  fall-behind deliberately, with a barrier whose fences never signal, and pin the exact batch the valve fires on.
+- **`Scene3D.UnloadSkinnedMesh`, `UnloadTexture` and `UnloadSplatMaterial` retire instead of draining**
+  (`KhaozEngine.Render3D`). Each one used to call `IGpuDevice.WaitForIdle` inside the unload call and destroy its
+  resources behind it, which is correct and is a full pipeline flush on the frame thread, once per call. They hand
+  everything to the scene's `GpuRetireQueue` now, the way `UnloadMesh` has since 17.10.x, so a burst of unloads
+  costs one drain between all of them on an unfenced backend and none at all on a fenced one. The skinned path is
+  the one that was costing something in the field: an MMO client despawns avatars and corpses continuously as they
+  leave interest range and paid a device-wide stall for each. The texture path drops the particle renderer's cached
+  atlas resource sets through the queue too, which is where the drain would otherwise have survived for any scene
+  that draws particles at all. Nothing about WHEN a slot is released changed, only when the GPU object behind it is
+  destroyed, and the rule the drains existed for is unchanged: nothing is destroyed in the frame it was retired in.
+  Closes #383.
+- **`ParticleRenderer.InvalidateTextureSets` takes the retire queue** (`KhaozEngine.Render3D`, breaking for a caller
+  outside the engine, though `Scene3D` is its only one). The parameterless overload drained the device itself. Its
+  two other call sites, a render-target rebind and teardown, keep the drain: neither has a frame boundary left to
+  reach.
+- **A skinned mesh's GPU-skinning material set is freed at scene teardown.** `Scene3D.Dispose` freed the set-0
+  CPU-path material set and not the set-1 GPU-skinning one, which `LoadSkinnedMesh` builds alongside it whenever the
+  mesh is textured, so a textured skinned mesh still loaded at teardown leaked one resource set. `UnloadSkinnedMesh`
+  always freed both. The native Vulkan backend reports that class of leak at device teardown as a
+  `VUID-vkDestroyDevice-device-05137` object leak.
 - **`GreyboxMeshResolver` builds every shape in its own PLANE's local space** (`KhaozEngine.TileWorld.Render3D`).
   A roof archetype is placed on the plane ABOVE the walls it covers, which is exactly what `TileWorldView`'s
   roof-hide rule keys on, and `TileObjectProps.AnchorPosition` anchors an object at `HeightAt(plane)`, so a

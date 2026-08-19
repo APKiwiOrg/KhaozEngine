@@ -107,8 +107,13 @@ namespace KhaozEngine.Gpu
     /// <see cref="IGpuDevice.WaitForIdle"/>, which proves every submitted batch complete, and frees the whole
     /// holding behind it. That is a designed bound written against the fence path rather than one inherited from
     /// whatever backpressure a backend's ring allocator happens to apply. It costs at most one drain per
-    /// <see cref="MaxSealedBatches"/> frames of sustained fall-behind, and <see cref="ValveDrains"/> counts them,
-    /// so a device that keeps up never reaches it and reports zero. The two frame-counted policies need no valve:
+    /// <see cref="MaxSealedBatches"/> frames of sustained fall-behind, and <see cref="ValveDrains"/> counts them.
+    /// <b>What decides whether it fires is how far ahead the CPU gets, which is a property of the LOOP more than of
+    /// the GPU.</b> A windowed frame loop blocks in its present at the backend's frames-in-flight depth (default 3,
+    /// half the default cap), so the valve stays shut and the count reads zero. A loop that submits without ever
+    /// presenting has nothing throttling it and runs eight or nine frames ahead even on fast hardware, so it fires:
+    /// the engine's own 400-frame offscreen churn test measures 16 firings on an M2 Max, against the 396 drains the
+    /// unfenced fallback pays over the same run. The two frame-counted policies need no valve:
     /// a batch there dies on the count alone, which caps the holding at <see cref="FrameDelay"/> batches by
     /// construction.</para>
     /// <para><b>It only frees on <see cref="BeginFrame"/>.</b> Nothing here is time-driven, so a renderer that
@@ -129,11 +134,13 @@ namespace KhaozEngine.Gpu
         public const int DefaultFrameDelay = 3;
 
         /// <summary>Sealed batches the queue holds behind unsignaled fences before the safety valve trades the poll
-        /// for one drain (see the valve note on this type). Eight is comfortably above the deepest a healthy frame
-        /// loop reaches: the CPU runs at most <c>KE_METAL_FRAMES_IN_FLIGHT</c> / <c>KE_VULKAN_FRAMES_IN_FLIGHT</c> /
+        /// for one drain (see the valve note on this type). Eight is comfortably above the deepest a PRESENTED frame
+        /// loop reaches: the CPU is stopped at <c>KE_METAL_FRAMES_IN_FLIGHT</c> / <c>KE_VULKAN_FRAMES_IN_FLIGHT</c> /
         /// <c>KE_D3D11_FRAMES_IN_FLIGHT</c> frames ahead (default 3), and every one of those frames would have to
-        /// have retired something to seal a batch, so a device that keeps up never comes near it. A consumer that
-        /// raises that knob past 8 raises this with it, or it buys a drain it did not need.</summary>
+        /// have retired something to seal a batch. A consumer that raises that knob past 8 raises this with it, or
+        /// it buys a drain it did not need. An UNTHROTTLED loop (an offscreen capture run, a tool that submits
+        /// without presenting) is the case that reaches it however fast the device is, which is the case the bound
+        /// exists for.</summary>
         public const int DefaultMaxSealedBatches = 8;
 
         readonly Action _drainDevice;
@@ -254,10 +261,10 @@ namespace KhaozEngine.Gpu
         public int MaxSealedBatches { get; }
 
         /// <summary>How many times the safety valve has fired: the drains this queue paid because the GPU had not
-        /// reached <see cref="MaxSealedBatches"/> batches' worth of fences. Zero on a device that keeps up, which
-        /// is the whole claim the fence path makes, so a non-zero reading is the honest signal that the CPU is
-        /// running away from the GPU rather than a defect in the queue. Diagnostic only, never a gate on a shared
-        /// machine: which device you are on decides it.</summary>
+        /// reached <see cref="MaxSealedBatches"/> batches' worth of fences. It is the honest signal that the CPU is
+        /// running away from the GPU, not a defect reading, and a presented frame loop keeps it at zero because the
+        /// present is what stops the CPU (see the valve note on this type). Diagnostic only, never a gate: how far
+        /// ahead the loop gets decides it.</summary>
         public int ValveDrains { get; private set; }
 
         /// <summary>Resources retired but not yet destroyed. Counts the whole holding, sealed batches and this

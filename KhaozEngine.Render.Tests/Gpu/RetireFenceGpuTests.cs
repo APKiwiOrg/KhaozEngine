@@ -32,8 +32,11 @@ namespace KhaozEngine.Tests.Gpu
     /// <para><b>And the valve fires HERE, on an M2 Max, which is worth knowing before reading the number.</b> The
     /// churn below runs through <c>Render3DPreview.Capture</c>, which submits a frame and returns: there is no
     /// swapchain and no present, so nothing throttles the CPU at all and it runs eight or nine frames ahead of the
-    /// GPU on hardware that is in no way struggling. The measured run is 16 valve drains over 400 frames against
-    /// the fallback's 396, and a peak holding that sits exactly on the cap. A windowed game does not look like
+    /// GPU on hardware that is in no way struggling. What reproduces across runs is the peak holding, which sits
+    /// exactly on the cap, and the fallback's 396 drains over the same 400 frames. The valve count does NOT: it has
+    /// been measured at 1, at 14 and at 22 on the same M2 Max, because it tracks how far ahead that particular pass
+    /// got. That is why the gate below is written against the cap and a ceiling rather than against a figure.
+    /// A windowed game does not look like
     /// this: its present blocks at the backend's frames-in-flight depth (default 3), which is half the cap, so the
     /// valve stays shut and the drain count really is zero. So a non-zero reading here is the instrument working,
     /// and the shape to be alarmed by is a peak holding ABOVE the cap, which is what the gate checks.</para>
@@ -167,6 +170,11 @@ namespace KhaozEngine.Tests.Gpu
             {
                 var a = Churn(gd, suppressFences: false);
                 var b = Churn(gd, suppressFences: true);
+                // CLAIM 1 of the gate below, asserted per round because it is the one claim that does not survive
+                // being folded across them. The peak is a max and the ceiling is an upper bound, so both stay true
+                // read at the end. This pair is overwritten every round, so a middle round that drained outside the
+                // valve would have been erased by the next one.
+                Assert.Equal(a.ValveDrains, a.Drains);
                 fenced.Add(a.Ms); fallback.Add(b.Ms);
                 fencedDrains = a.Drains; fallbackDrains = b.Drains; fencedSubmits = a.FencedSubmits;
                 fencedValveDrains = a.ValveDrains;
@@ -197,15 +205,16 @@ namespace KhaozEngine.Tests.Gpu
             // holding with no limit at all. Bounding it means the queue trades the poll for one drain past
             // MaxSealedBatches batches, which makes the drain count a property of how far ahead the CPU gets, and
             // this loop gets a long way ahead on any device because nothing here presents (see the class remark:
-            // 16 drains over 400 frames on an M2 Max). Asserting zero would fail the test for doing its job.
+            // single figures to a couple of dozen over 400 frames on an M2 Max, varying run to run). Asserting zero
+            // would fail the test for doing its job.
             //
             // So three claims that hold on any device, and together say what zero used to say:
             //
             // 1. Every drain on this path came from the valve. Nothing else on the fence path stalls the CPU, which
             //    is the whole claim the fence path makes, and it is the half of the original assertion that was
-            //    actually about the code rather than about the machine. The printed line above records the count
-            //    for whichever device ran it.
-            Assert.Equal(fencedValveDrains, fencedDrains);
+            //    actually about the code rather than about the machine. Asserted per round up in the loop, since
+            //    only the last round's pair survives to here. The printed line above records the count for
+            //    whichever device ran it.
             // 2. The bound held at every frame boundary of the churn. This is the assertion that goes red if the
             //    valve stops working, on the exact device where it matters.
             Assert.True(fencedPeakBatches <= GpuRetireQueue.DefaultMaxSealedBatches,

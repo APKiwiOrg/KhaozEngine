@@ -21,6 +21,10 @@ namespace KhaozEngine.Tests.Render3D
     /// out from under it (8c2a6c6b).
     /// </para>
     /// <para>
+    /// The scene's own teardown rides along at the bottom, because it frees the same skinned pair through the same
+    /// two lists and was freeing only half of it.
+    /// </para>
+    /// <para>
     /// This runs headless on <see cref="FakeGpuDevice"/>, so it is an ordinary <c>[Fact]</c> rather than a
     /// <c>[GpuFact]</c> that skips without <c>KE_GPU_TESTS</c>. The fake reports no completion fences, so the queue
     /// takes its frame-count-plus-one-drain fallback, which is the policy where the batching is OBSERVABLE: a batch
@@ -241,6 +245,27 @@ namespace KhaozEngine.Tests.Render3D
 
             Assert.Equal(0, h.Scene.RetiredResourceCount);
             Assert.Equal(before + 1, h.Spy.WaitForIdleCalls);   // and one drain to free the lot of them
+        }
+
+        [Fact]
+        public void Dispose_frees_both_of_a_skinned_mesh_s_material_sets()
+        {
+            // Teardown rather than an unload, and the same pair of sets. Dispose freed the set-0 CPU-path set and
+            // walked past the set-1 GPU-skinning one that LoadSkinnedMesh builds alongside it whenever the mesh is
+            // textured, so a textured skinned mesh still loaded at teardown leaked one resource set. The native
+            // Vulkan backend reports that class of leak as a VUID-vkDestroyDevice-device-05137 object leak.
+            Harness h = NewHarness();
+            Scene3D.TextureHandle albedo = h.Scene.LoadTexture(Pixel, 1, 1);
+            int setFrom = h.Factory.ResourceSets.Count;
+            SkinnedGltfMesh tube = SkinnedMeshBuilder.BuildTube(0.5f, 4f, 6, 6, 4, Axis.Z);
+            h.Scene.LoadSkinnedMesh(tube, albedo);
+
+            List<FakeResourceSet> sets = SetsSince(h.Factory, setFrom);
+            Assert.Equal(2, sets.Count);   // set 0 (CPU path) and set 1 (GPU skinning), the leak was the second
+
+            h.Scene.Dispose();
+
+            foreach (FakeResourceSet s in sets) Assert.True(s.Disposed);
         }
     }
 }

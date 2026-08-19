@@ -72,4 +72,68 @@ public sealed class GoldenTileWorldTests
 
         GoldenCompare.AssertOrUpdate("tileworld_topdown", rgba, TopDownSize, TopDownSize);
     }
+
+    // The greybox golden's eye pulled in to 55% of its distance along the same ray, so the framing is that shot's
+    // and the ground is close enough for an 8x8 checker at half a repeat per metre to read as a board rather than
+    // as its own average. The target is the greybox shot's, unmoved.
+    static readonly Vector3 TexturedEye = new(21.9f, 9.9f, -1.65f);
+    static readonly Vector3 TexturedTarget = new(12f, 0f, -11f);
+
+    /// <summary>The greybox world through the same pipeline with a GENERATED texture set: an eight texel checker
+    /// per material instead of the flat colour fill a catalog with no textures falls back to. Nothing else moves,
+    /// so this golden and <see cref="Golden3D_TileWorld_Greybox"/> differ by the material set alone, and a
+    /// regression in the texture array upload, the mip chain, the per-layer tiling rate or the slot a vertex names
+    /// changes this image while leaving the flat one alone. The greybox world has ONE underlay, so the corner blend
+    /// this exercises is the overlay path: the road carries its own brown checker and the house floor a flat wood,
+    /// both against checkered grass.</summary>
+    [GpuFact]
+    public void Golden3D_TileWorld_Textured()
+    {
+        TileWorldDocument doc = TileRenderTestData.GreyboxWorld();
+        TileWorldCatalogs catalogs = TileRenderTestData.Catalogs;
+        var options = new TileWorldViewOptions { GroundMaterials = TileRenderTestData.CheckerMaterials(catalogs) };
+
+        byte[] rgba = TileWorldSnapshot.CapturePerspective(
+            doc,
+            catalogs,
+            new GreyboxMeshResolver(doc.TileSize, doc.PlaneHeight),
+            eye: TexturedEye,
+            target: TexturedTarget,
+            PerspectiveWidth,
+            PerspectiveHeight,
+            options: options,
+            configureScene: FlatBackground);
+
+        GoldenCompare.AssertOrUpdate("tileworld_textured", rgba, PerspectiveWidth, PerspectiveHeight);
+    }
+
+    // An eye on the grass east of the river's dirt bank, looking north-west along the channel and down into it at
+    // about forty degrees. Close enough that the water runs corner to corner across the lower half of the frame
+    // rather than as a thread at the horizon, which is what puts it in enough comparison cells to be worth
+    // holding, and steep enough to see the depth grade over the carved bed rather than a grazing sheet of glint.
+    static readonly Vector3 RiverEye = new(35f, 9f, -2f);
+    static readonly Vector3 RiverTarget = new(31.5f, -0.4f, -10f);
+
+    /// <summary>The river world, which is the greybox one with a three-tile water strip carved 70 cm into it. The
+    /// water is drawn by the engine's water pass, one plane per body at the body's rim height less two
+    /// centimetres, with <c>TileWaterLooks.River</c>. This is the only golden where the ground pipeline's linear
+    /// depth output is READ rather than merely written: the pass grades the surface by how far the bed sits under
+    /// it and discards where the ground is above it, so a regression in that MRT turns the river into a flat slab,
+    /// floods the banks, or deletes it outright.</summary>
+    [GpuFact]
+    public void Golden3D_TileWorld_River()
+    {
+        TileWorldDocument doc = TileRenderTestData.RiverWorld();
+        byte[] rgba = TileWorldSnapshot.CapturePerspective(
+            doc,
+            TileRenderTestData.Catalogs,
+            new GreyboxMeshResolver(doc.TileSize, doc.PlaneHeight),
+            eye: RiverEye,
+            target: RiverTarget,
+            PerspectiveWidth,
+            PerspectiveHeight,
+            configureScene: FlatBackground);
+
+        GoldenCompare.AssertOrUpdate("tileworld_river", rgba, PerspectiveWidth, PerspectiveHeight);
+    }
 }

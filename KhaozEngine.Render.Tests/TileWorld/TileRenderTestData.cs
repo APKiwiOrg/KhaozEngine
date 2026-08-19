@@ -18,6 +18,11 @@ public static class TileRenderTestData
 
     /// <summary>Greybox ground material id for grass.</summary>
     public const ushort Grass = 1;
+    /// <summary>Greybox ground material id for the dirt the river banks are painted with.</summary>
+    public const ushort Dirt = 2;
+    /// <summary>Greybox ground material id for water, the only one of the greybox six whose kind is
+    /// <see cref="GroundMaterialKind.Water"/>.</summary>
+    public const ushort Water = 4;
     /// <summary>Greybox ground material id for the wood floor the house stands on.</summary>
     public const ushort WoodFloor = 5;
     /// <summary>Greybox ground material id for the road.</summary>
@@ -51,6 +56,15 @@ public static class TileRenderTestData
     public const int HouseDoorX = 11;
     /// <summary>Plane the house roof sits on.</summary>
     public const int RoofPlane = 1;
+
+    /// <summary>Lowest tile x of the river's three-tile water strip.</summary>
+    public const int RiverMinX = 30;
+    /// <summary>Highest tile x of the river's three-tile water strip, inclusive.</summary>
+    public const int RiverMaxX = 32;
+    /// <summary>Height in centimetres the river's two interior corner columns are carved down to. The rim columns
+    /// the water shares with its banks stay at 0, so the body's rim is 0 and its surface lands two centimetres
+    /// under that: 68 cm of water over the bed, and a bank 2 cm proud of the surface rather than under it.</summary>
+    public const short RiverBedCm = -70;
 
     /// <summary>A fresh copy of the engine's greybox catalogs, which every world here is authored against.
     /// Fresh per call because the catalogs are mutable and test classes run in parallel.</summary>
@@ -147,6 +161,19 @@ public static class TileRenderTestData
         return doc;
     }
 
+    /// <summary>The greybox world with a river cut through it: a three-tile water strip running the region's whole
+    /// north-south span at x <see cref="RiverMinX"/>..<see cref="RiverMaxX"/>, its bed carved to
+    /// <see cref="RiverBedCm"/>, a dirt bank one tile either side, and every water tile blocked. The strip is
+    /// eight tiles east of the hill and eighteen east of the house on purpose: a water body takes the MAXIMUM
+    /// corner height over its own tiles as its rim, so a river that touched the 200 cm hill would surface at
+    /// 1.98 m and flood everything around it.</summary>
+    public static TileWorldDocument RiverWorld()
+    {
+        TileWorldDocument doc = GreyboxWorld();
+        AddRiver(doc);
+        return doc;
+    }
+
     // One region of flat grass on plane 0, the base every world above decorates. The three features occupy
     // disjoint tiles, so GreyboxWorld can apply all of them to one base.
     static TileWorldDocument GrassWorld()
@@ -204,6 +231,97 @@ public static class TileRenderTestData
             doc.AddObject("wall", HouseMaxX, z, 0, 2);
         }
     }
+
+    static void AddRiver(TileWorldDocument doc)
+    {
+        for (int z = 0; z < TileRegion.Size; z++)
+        {
+            for (int x = RiverMinX; x <= RiverMaxX; x++)
+            {
+                doc.SetUnderlay(x, z, 0, Water);
+                doc.SetSettings(x, z, 0, TileSettings.Blocked);
+            }
+
+            doc.SetUnderlay(RiverMinX - 1, z, 0, Dirt);
+            doc.SetUnderlay(RiverMaxX + 1, z, 0, Dirt);
+
+            // Only the two INTERIOR corner columns are carved. The rim columns (RiverMinX and RiverMaxX + 1) are
+            // shared with the bank tiles either side, so leaving them at 0 keeps the bank dry, turns the outer
+            // two water tiles into the sloped sides of the channel, and pins the body's rim at 0. The row of
+            // corners at z = TileRegion.Size belongs to the region north of this one, which the world does not
+            // have, so the northernmost tile ramps back up to 0 at the far edge of a 64 tile run.
+            doc.SetCornerHeightCm(RiverMinX + 1, z, 0, RiverBedCm);
+            doc.SetCornerHeightCm(RiverMaxX, z, 0, RiverBedCm);
+        }
+    }
+
+    /// <summary>Texels on a side of every layer <see cref="CheckerMaterials"/> builds.</summary>
+    public const int CheckerLayerSize = 8;
+
+    /// <summary>Texels on a side of one checker square, so a layer is a four by four board. One texel a square
+    /// would be gone by the first mip level and read as a flat average from a couple of metres out, which is a
+    /// texture set that cannot show whether it was sampled at all.</summary>
+    public const int CheckerSquareTexels = 2;
+
+    /// <summary>A generated ground material set for these catalogs, so a textured world can be rendered with no
+    /// files on disk: one <see cref="CheckerLayerSize"/> square layer per material in ascending id order and the
+    /// reserved magenta layer last, which is exactly the slot map <see cref="TileGroundMaterials.Build"/> hands
+    /// out for the same catalogs. Grass is a green checker, dirt and road are a brown and tan one, and every
+    /// other material is a flat fill of its catalog colour. Built through the set's own constructor rather than
+    /// through <c>Build</c> with an injected loader, because these pixels come from nowhere: there is no path to
+    /// hand a loader, and the constructor is the API a game's own atlas comes through.</summary>
+    public static TileGroundMaterialSet CheckerMaterials(TileWorldCatalogs catalogs)
+    {
+        ArgumentNullException.ThrowIfNull(catalogs);
+
+        var ids = new List<ushort>(catalogs.Materials.Keys);
+        ids.Sort();
+        var layers = new TileGroundLayerImage[ids.Count + 1];
+        for (int slot = 0; slot < ids.Count; slot++)
+        {
+            ushort id = ids[slot];
+            layers[slot] = id switch
+            {
+                Grass => Checker(GrassLight, GrassDark),
+                Dirt or Road => Checker(BankTan, BankBrown),
+                _ => Checker(TileColors.Parse(catalogs.Materials[id]), TileColors.Parse(catalogs.Materials[id])),
+            };
+        }
+
+        layers[^1] = Checker(TileGroundMesher.MissingMaterialColor, TileGroundMesher.MissingMaterialColor);
+        return new TileGroundMaterialSet(CheckerLayerSize, CheckerLayerSize, ids, layers);
+    }
+
+    static readonly Vector4 GrassLight = new(0.36f, 0.60f, 0.26f, 1f);
+    static readonly Vector4 GrassDark = new(0.17f, 0.34f, 0.14f, 1f);
+    static readonly Vector4 BankTan = new(0.72f, 0.60f, 0.40f, 1f);
+    static readonly Vector4 BankBrown = new(0.42f, 0.31f, 0.17f, 1f);
+
+    // One layer of a two-colour checker, CheckerSquareTexels texels to a square, row major RGBA8. Alpha is forced
+    // opaque for the same reason the flat fill in TileGroundMaterials forces it: the ground is the thing
+    // everything else is drawn against. The two colours being equal is how this builds a flat layer.
+    static TileGroundLayerImage Checker(Vector4 light, Vector4 dark)
+    {
+        var pixels = new byte[CheckerLayerSize * CheckerLayerSize * 4];
+        for (int y = 0; y < CheckerLayerSize; y++)
+            for (int x = 0; x < CheckerLayerSize; x++)
+            {
+                Vector4 c = ((x / CheckerSquareTexels + y / CheckerSquareTexels) & 1) == 0 ? light : dark;
+                int at = (y * CheckerLayerSize + x) * 4;
+                pixels[at] = Channel(c.X);
+                pixels[at + 1] = Channel(c.Y);
+                pixels[at + 2] = Channel(c.Z);
+                pixels[at + 3] = 0xff;
+            }
+
+        return new TileGroundLayerImage
+        {
+            AlbedoRgba = pixels,
+            TilesPerMetre = TileGroundMaterials.DefaultTilesPerMetre,
+        };
+    }
+
+    static byte Channel(float value) => (byte)Math.Clamp(MathF.Round(value * 255f), 0f, 255f);
 }
 
 /// <summary>A throwaway directory under the OS temp root, deleted on dispose. A copy of the one in

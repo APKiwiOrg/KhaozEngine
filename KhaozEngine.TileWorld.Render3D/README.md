@@ -64,6 +64,32 @@ nothing in the upload path moves.
   can carry different slots and weights (an overlay paints some of them and not others), so the mesher emits
   per-triangle vertices.
 
+## Ground materials (`TileGroundMaterials`, `TileGroundMaterialSet`)
+
+`TileGroundMaterials.Build(catalogs, load?)` turns a ground catalog into the `TileGroundMaterialSet` the meshes
+are drawn with: one albedo layer per material in ASCENDING id order, then one reserved layer LAST filled with
+`TileGroundMesher.MissingMaterialColor`. The set IS the `ITileGroundSlotMap` the mesher wants, so `SlotOf` answers
+a catalog id with its layer and `MissingSlot` is that trailing layer, which is where a dangling id goes.
+
+- **Textured or flat, one pipeline either way.** A material with a `Texture` is decoded (`load`, defaulting to
+  `ImageRgba.Load`) and takes a WHITE tint, because the texture is the colour. A material with none becomes a flat
+  layer of its catalog `Color` at the same size, so a colour-only world renders through the same textured pipeline
+  and the same goldens, just without texture detail. The catalog colour stays what the headless readers use.
+- **Paths resolve against the catalog FILE.** A relative `Texture` is combined with the directory of the catalog
+  the material was declared in (`TileWorldCatalogs.MaterialSource`), the same rule `world.json` uses for its
+  catalog paths. An absolute path is taken as written. A catalog built in memory has no directory to resolve
+  against, so a relative texture on one throws a `TileWorldException` naming the material.
+- **One size for the whole set.** Every layer is one slice of ONE texture array, so the first textured material
+  decides the size and any other textured material of a different size throws, naming the material and both sizes,
+  rather than being resampled behind your back. With nothing textured the flat fills are 1x1.
+- `TilesPerMetre` is the material's own value or `TileGroundMaterials.DefaultTilesPerMetre` (0.5, a 2 m repeat).
+  A catalog larger than `TileGroundMaterialConfig.MaxMaterials - 1` materials throws: the set is one uniform
+  buffer, and splitting a catalog across several sets is not built.
+
+Hand-build a `TileGroundMaterialSet` directly when the layers come from somewhere other than a catalog. The
+constructor takes the size, the material id of each leading slot, and one layer per id PLUS the trailing reserved
+one, and it refuses a layer that is not the size the set declares.
+
 ## Objects (`TileObjectProps`, `ITileMeshResolver`, `GreyboxMeshResolver`)
 
 `TileObjectProps.Build(doc, catalogs, region, plane)` turns a region-plane's `TileObject`s into
@@ -94,15 +120,24 @@ world with a non-default plane height still has its walls meet its roofs.
 ## The scene seam (`ITileWorldScene`, `Scene3DTileWorldScene`)
 
 Everything the view does to a scene goes through `ITileWorldScene`: `LoadMesh`, `UnloadMesh`, `DrawMesh`,
-`LoadPropMeshes`, `UnloadPropMeshes`, `DrawProps`. It is shaped exactly on what `Scene3D` and the prop renderer
+`LoadPropMeshes`, `UnloadPropMeshes`, `DrawProps`, plus the ground-material trio `LoadTileGroundMaterial`,
+`UnloadTileGroundMaterial` and the `LoadMesh(mesh, material)` overload that binds a mesh to the tile-ground
+pipeline. The trio ships as DEFAULT interface implementations (an invalid handle, a no-op, and a fall-through to
+the material-free upload), so an implementation written before textured ground existed keeps compiling. It is shaped exactly on what `Scene3D` and the prop renderer
 already offer, because its job is to let the view's bookkeeping run without a device, not to add an abstraction of
 its own. `Scene3DTileWorldScene` is the shipped implementation and forwards straight through, and a test drives a
 recording fake, which is how every view and residency rule is covered headless.
 
 ## The view (`TileWorldView`, `TileWorldViewOptions`)
 
-`new TileWorldView(scene, doc, catalogs, resolver, options)` uploads one mesh set per catalog archetype up front,
-so a region load is placements alone.
+`new TileWorldView(scene, doc, catalogs, resolver, options)` uploads the ground material set and one mesh set per
+catalog archetype up front, so a region load is placements alone.
+
+- **The ground material set is uploaded once and shared.** `TileWorldViewOptions.GroundMaterials` is the hook, and
+  null builds one from the catalogs with no texture loader, which is every material as a flat colour layer. The
+  view points `Options.Mesher.Slots` at whichever set it ends up with, because the slots a vertex names only mean
+  anything against the set the mesh is drawn with, and it reads back as `GroundMaterials`. Every region-plane mesh
+  goes up bound to it, and `Dispose` frees it.
 
 - `LoadRegion` / `UnloadRegion` build and free every plane of one region. Loading a region that is already loaded
   rebuilds it, so it doubles as a whole-region refresh. `LoadedRegions` is a snapshot, safe to walk while loading

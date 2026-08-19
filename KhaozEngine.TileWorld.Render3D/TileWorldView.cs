@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Render3D;
+using TileGroundMaterialHandle = KhaozEngine.Render3D.Scene3D.TileGroundMaterialHandle;
 
 namespace KhaozEngine.TileWorld;
 
@@ -11,8 +12,16 @@ public sealed class TileWorldViewOptions
     /// <summary>Horizontal radius in metres around the draw focus inside which a prop is drawn.</summary>
     public float PropDrawRadius { get; set; } = 96f;
 
-    /// <summary>The settings every region-plane ground mesh is built with.</summary>
+    /// <summary>The settings every region-plane ground mesh is built with. The view SETS
+    /// <see cref="TileGroundMesherOptions.Slots"/> on this object when it is constructed, to the material set it
+    /// is about to upload, because the slots a vertex names only mean anything against that set.</summary>
     public TileGroundMesherOptions Mesher { get; set; } = new();
+
+    /// <summary>The ground materials every region-plane mesh is drawn with. Null builds one from the catalogs
+    /// with no texture loader, which gives every material a flat layer of its catalog colour: a colour-only world
+    /// renders through the textured pipeline, without texture detail. Pass a set to texture the ground, or to
+    /// share one across several views of the same catalog.</summary>
+    public TileGroundMaterialSet? GroundMaterials { get; set; }
 
     /// <summary>How many queued region-planes one <see cref="TileWorldView.Flush()"/> may remesh, oldest first.
     /// The rest stay queued for the next flush, so a burst spreads over frames instead of landing on one.
@@ -75,12 +84,17 @@ public sealed partial class TileWorldView : IDisposable
     readonly HashSet<(RegionCoord Region, int Plane)> _dirty = new();
     readonly List<(RegionCoord Region, int Plane)> _dirtyOrder = new();
     readonly int _planes;
+    readonly TileGroundMaterialSet _materials;
+    readonly TileGroundMaterialHandle _material;
     TileCoord _observer;
     bool _disposed;
 
-    /// <summary>Binds a world to a scene and uploads one mesh set per catalog archetype up front, so a region
-    /// load is placements alone. An archetype the resolver has no mesh for gets the placeholder box and one log
-    /// line, because a half-authored catalog has to keep rendering.</summary>
+    /// <summary>Binds a world to a scene and uploads the ground material set plus one mesh set per catalog
+    /// archetype up front, so a region load is placements alone. An archetype the resolver has no mesh for gets
+    /// the placeholder box and one log line, because a half-authored catalog has to keep rendering.
+    /// <para>The ground material set is uploaded ONCE here and shared by every region-plane mesh, and the mesher
+    /// is pointed at it, so the slots the vertices name are slots of the set the mesh is drawn with. Neither is a
+    /// mid-frame call: the upload builds a mip chain on a command list of its own (#424).</para></summary>
     public TileWorldView(ITileWorldScene scene, TileWorldDocument doc, TileWorldCatalogs catalogs,
                          ITileMeshResolver resolver, TileWorldViewOptions? options = null)
     {
@@ -101,6 +115,13 @@ public sealed partial class TileWorldView : IDisposable
         // stranded on the device with nothing left holding their handles.
         try
         {
+            _materials = _options.GroundMaterials ?? TileGroundMaterials.Build(catalogs);
+            // Written into the caller's mesher settings rather than a private copy, so a caller who reads them
+            // back sees the slot map the meshes are actually built against, and so a field added to those
+            // settings later cannot be silently dropped by a copy nobody remembered to widen.
+            _options.Mesher.Slots = _materials;
+            _material = scene.LoadTileGroundMaterial(_materials);
+
             foreach (KeyValuePair<string, TileObjectArchetype> entry in catalogs.Archetypes)
             {
                 IReadOnlyList<GltfMeshPart>? parts = resolver.Resolve(entry.Value);
@@ -116,6 +137,9 @@ public sealed partial class TileWorldView : IDisposable
         {
             foreach (IReadOnlyList<MeshHandle> uploaded in _propMeshes.Values) _scene.UnloadPropMeshes(uploaded);
             _propMeshes.Clear();
+            // The material is uploaded before the archetypes, so it is the one thing already on the device when
+            // the ninth archetype of twelve throws.
+            if (_material.IsValid) _scene.UnloadTileGroundMaterial(_material);
             throw;
         }
 
@@ -317,8 +341,12 @@ public sealed partial class TileWorldView : IDisposable
         LastDrawnProps = drawn;
     }
 
-    /// <summary>Frees every region and every archetype mesh set this view uploaded. The scene itself is not
-    /// owned, so it outlives the view. Safe to call twice.</summary>
+    /// <summary>The ground materials every region-plane mesh of this view is drawn with, which is also the slot
+    /// map its meshes were built against.</summary>
+    public TileGroundMaterialSet GroundMaterials => _materials;
+
+    /// <summary>Frees every region, the ground material set and every archetype mesh set this view uploaded. The
+    /// scene itself is not owned, so it outlives the view. Safe to call twice.</summary>
     public void Dispose()
     {
         if (_disposed) return;
@@ -331,6 +359,8 @@ public sealed partial class TileWorldView : IDisposable
 
         foreach (IReadOnlyList<MeshHandle> parts in _propMeshes.Values) _scene.UnloadPropMeshes(parts);
         _propMeshes.Clear();
+
+        if (_material.IsValid) _scene.UnloadTileGroundMaterial(_material);
     }
 
     // The roof rule: standing indoors hides the roofs of every plane ABOVE the observer's own, so the storey the
@@ -348,7 +378,7 @@ public sealed partial class TileWorldView : IDisposable
     MeshHandle? BuildMesh(RegionCoord region, int plane)
     {
         GltfMesh? mesh = TileGroundMesher.Build(_doc, _catalogs, region, plane, _options.Mesher);
-        return mesh is null ? null : _scene.LoadMesh(mesh);
+        return mesh is null ? null : _scene.LoadMesh(mesh, _material);
     }
 
     void FreeMeshes(RegionHandles handles) => FreeMeshes(handles.Meshes);

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
+using TileGroundMaterialHandle = KhaozEngine.Render3D.Scene3D.TileGroundMaterialHandle;
 
 namespace KhaozEngine.TileWorld;
 
@@ -21,6 +22,20 @@ public interface ITileWorldScene
 
     /// <summary>Queues one ground mesh at its world transform for this frame.</summary>
     void DrawMesh(MeshHandle handle, Matrix4x4 world);
+
+    /// <summary>Uploads the ground material set every region-plane mesh of this world is drawn with, once per
+    /// view, and returns its handle. Defaults to an invalid handle so an implementation written before textured
+    /// ground existed keeps compiling and keeps drawing through the untextured upload below.</summary>
+    TileGroundMaterialHandle LoadTileGroundMaterial(TileGroundMaterialSet set) => TileGroundMaterialHandle.Invalid;
+
+    /// <summary>Frees a ground material set. Defaults to a no-op, which is right for an implementation whose
+    /// <see cref="LoadTileGroundMaterial"/> never uploaded one.</summary>
+    void UnloadTileGroundMaterial(TileGroundMaterialHandle handle) { }
+
+    /// <summary>Uploads one region-plane's ground mesh bound to a ground material, so it draws through the
+    /// tile-ground pipeline. Defaults to the material-free upload, which renders the same geometry through the
+    /// model path.</summary>
+    MeshHandle LoadMesh(GltfMesh mesh, TileGroundMaterialHandle material) => LoadMesh(mesh);
 
     /// <summary>Uploads one archetype's mesh parts and returns the per-part handles, one textured sub-mesh per
     /// source material.</summary>
@@ -64,6 +79,19 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene
 
     /// <inheritdoc />
     public void DrawMesh(MeshHandle handle, Matrix4x4 world) => _scene.Draw(handle, world);
+
+    /// <inheritdoc />
+    public TileGroundMaterialHandle LoadTileGroundMaterial(TileGroundMaterialSet set)
+    {
+        ArgumentNullException.ThrowIfNull(set);
+        return _scene.LoadTileGroundMaterial(set.Width, set.Height, set.Layers);
+    }
+
+    /// <inheritdoc />
+    public void UnloadTileGroundMaterial(TileGroundMaterialHandle handle) => _scene.UnloadTileGroundMaterial(handle);
+
+    /// <inheritdoc />
+    public MeshHandle LoadMesh(GltfMesh mesh, TileGroundMaterialHandle material) => _scene.LoadMesh(mesh, material);
 
     /// <inheritdoc />
     public IReadOnlyList<MeshHandle> LoadPropMeshes(IReadOnlyList<GltfMeshPart> parts) => _scene.LoadPropMeshes(parts);

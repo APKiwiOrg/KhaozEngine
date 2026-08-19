@@ -6596,7 +6596,8 @@ form. A stamp is additive per layer, so clear the rect first if you want a repla
 ## Tile world rendering (`KhaozEngine.TileWorld.Render3D`)
 
 The render arm of the tile world, in the `Game3D` umbrella: a ground mesher that emits each tile's four corner
-materials as slots for the tile-ground pipeline, tile objects through the `Terrain.Render3D` prop path, a view
+materials as slots for the tile-ground pipeline, the material set those slots index built straight from the
+catalog, tile objects through the `Terrain.Render3D` prop path, a view
 that owns a world's meshes and props in a `Scene3D`, region streaming, and headless capture. Kept separate from the document package
 so a server or a tool never drags in `Render3D`.
 
@@ -6621,6 +6622,16 @@ byte[] rgba = TileWorldSnapshot.CaptureTopDown(doc, catalogs, resolver,
     new TileRect(0, 0, 32, 32), plane: 0, pxPerTile: 4);
 PngWriter.Save("map.png", rgba, 32 * 4, 32 * 4);
 ```
+
+**The ground materials are one set per view.** `TileGroundMaterials.Build(catalogs, load?)` gives every catalog
+material a layer of the `TileGroundMaterialSet`, in ascending id order, with one reserved magenta layer last for
+an id the catalogs do not define. A material with a `Texture` is decoded (`ImageRgba` by default, and a relative
+path resolves against the catalog FILE that declared it), a material with none becomes a flat layer of its catalog
+colour, and every layer is the same size because the set is one texture array: the first textured material decides
+that size and another textured material of a different size throws rather than being resampled. The view builds
+one from the catalogs on its own unless `TileWorldViewOptions.GroundMaterials` hands it one, uploads it ONCE,
+points the mesher at it (the slots in a vertex only mean anything against the set the mesh is drawn with), and
+frees it on `Dispose`. So a colour-only world and a textured one take exactly the same path.
 
 **Two conventions carry over from the document.** World z is MINUS tile z (`TileWorldSpace`), so a region-local
 ground mesh runs from 0 to minus 64 tiles on z and `TileGroundMesher.WorldMatrix` translates it into place, and

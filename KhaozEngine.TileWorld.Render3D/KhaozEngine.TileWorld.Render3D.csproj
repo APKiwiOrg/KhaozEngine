@@ -8,6 +8,7 @@
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.TileWorld/KhaozEngine.TileWorld.csproj" />
     <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
+    <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
     <ProjectReference Include="../KhaozEngine.Terrain.Render3D/KhaozEngine.Terrain.Render3D.csproj" />
   </ItemGroup>
   <ItemGroup>

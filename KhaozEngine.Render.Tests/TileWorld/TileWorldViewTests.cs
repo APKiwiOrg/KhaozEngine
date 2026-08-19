@@ -422,6 +422,89 @@ public class TileWorldViewTests
         Assert.Equal(scene.PropMeshLoads.Sum(parts => parts.Count), scene.MeshUnloads.Count);
     }
 
+    [Fact]
+    public void The_view_uploads_one_ground_material_and_every_mesh_goes_up_bound_to_it()
+    {
+        var scene = new RecordingTileWorldScene();
+        using TileWorldView view = View(scene, TwoPlaneHouse());
+        view.LoadRegion(TileRenderTestData.Region);
+
+        // One upload for the whole view rather than one per region-plane: the set is 64 layers of texture and the
+        // upload is not a mid-frame call.
+        Assert.Single(scene.MaterialLoads);
+        Assert.Same(view.GroundMaterials, scene.MaterialLoads[0]);
+        Assert.Equal(2, scene.MeshLoads.Count);
+        Assert.Equal(scene.MeshLoads.Count, scene.MeshMaterials.Count);
+        Assert.All(scene.MeshMaterials, handle => Assert.Equal(GroundMaterial(0), handle));
+    }
+
+    [Fact]
+    public void The_default_material_set_is_built_from_the_catalogs_and_meshes_are_built_against_it()
+    {
+        var scene = new RecordingTileWorldScene();
+        var options = new TileWorldViewOptions();
+        using TileWorldView view = View(scene, TwoPlaneHouse(), options: options);
+
+        Assert.Equal(new ushort[] { 1, 2, 3, 4, 5, 6 }, view.GroundMaterials.MaterialIds.ToArray());
+        // The vertices name slots, and a slot only means anything against the set the mesh is drawn with, so the
+        // mesher has to be pointed at that set and not at the identity stand-in it starts on.
+        Assert.Same(view.GroundMaterials, options.Mesher.Slots);
+    }
+
+    [Fact]
+    public void A_caller_provided_material_set_is_uploaded_as_it_stands()
+    {
+        var scene = new RecordingTileWorldScene();
+        // A set that carries none of the greybox ids, so a view that quietly rebuilt one from the catalogs would
+        // come back with six materials instead of this one.
+        var set = new TileGroundMaterialSet(1, 1, new ushort[] { 42 }, new[]
+        {
+            new TileGroundLayerImage { AlbedoRgba = new byte[4] },
+            new TileGroundLayerImage { AlbedoRgba = new byte[4] },
+        });
+        var options = new TileWorldViewOptions { GroundMaterials = set };
+
+        using TileWorldView view = View(scene, TwoPlaneHouse(), options: options);
+
+        Assert.Same(set, scene.MaterialLoads.Single());
+        Assert.Same(set, view.GroundMaterials);
+        Assert.Same(set, options.Mesher.Slots);
+    }
+
+    [Fact]
+    public void Dispose_frees_the_ground_material()
+    {
+        var scene = new RecordingTileWorldScene();
+        var view = View(scene, TwoPlaneHouse());
+        view.LoadRegion(TileRenderTestData.Region);
+        Assert.Empty(scene.MaterialUnloads);
+
+        view.Dispose();
+        Assert.Equal(GroundMaterial(0), scene.MaterialUnloads.Single());
+
+        // The fake throws on a double free, so this is the assertion that a second dispose stays a no-op.
+        view.Dispose();
+        Assert.Single(scene.MaterialUnloads);
+    }
+
+    [Fact]
+    public void Constructor_frees_the_ground_material_when_an_archetype_upload_throws()
+    {
+        var scene = new RecordingTileWorldScene();
+        // The material goes up before the archetypes, so it is on the device with nothing holding it once the
+        // constructor throws and no Dispose is ever reached.
+        scene.ThrowOnPropMeshLoad = 3;
+
+        Assert.Throws<InvalidOperationException>(() => new TileWorldView(
+            scene, TileRenderTestData.HouseWorld(), TileRenderTestData.Catalogs, new GreyboxMeshResolver()));
+
+        Assert.Single(scene.MaterialLoads);
+        Assert.Equal(GroundMaterial(0), scene.MaterialUnloads.Single());
+    }
+
+    // The Nth material handle the fake hands out, 0-based, which is what a test compares a recorded one against.
+    static Scene3D.TileGroundMaterialHandle GroundMaterial(int index) => new(index);
+
     // Greybox everywhere except "wall", which resolves to nothing so the view has to fall back.
     sealed class WallLessResolver : ITileMeshResolver
     {

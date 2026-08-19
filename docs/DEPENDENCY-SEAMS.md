@@ -416,11 +416,12 @@ the document package stays GPU-free for a server or a tool:
 ```
 KhaozEngine.TileWorld.Render3D -> KhaozEngine.TileWorld          (the document it meshes, plus TileWorldSpace and TileTriangulation)
 KhaozEngine.TileWorld.Render3D -> KhaozEngine.Render3D           (Scene3D, GltfMesh/GltfMeshPart, ModelVertex, MeshHandle, the cameras, Render3DSnapshot)
+KhaozEngine.TileWorld.Render3D -> KhaozEngine.Render2D           (ImageRgba, to decode a catalog material's texture into a ground material layer)
 KhaozEngine.TileWorld.Render3D -> KhaozEngine.Terrain.Render3D   (PropPlacement and the Scene3D.DrawProps/LoadPropMeshes prop path)
 KhaozEngine.Game3D -> KhaozEngine.TileWorld.Render3D             (umbrella ProjectReference, like every other Game3D package)
 ```
 
-All four are forward edges onto packages that already sit below it, and nothing references back. The
+All five are forward edges onto packages that already sit below it, and nothing references back. The
 `Terrain.Render3D` edge is the one worth naming: the tile world reuses the prop renderer outright (LOD, instancing,
 distance dissolve) rather than growing a second placement path, which is why an edge to the terrain render arm
 exists at all when there is none between `TileWorld` and `Terrain` themselves. `TileWorldView` reaches the scene

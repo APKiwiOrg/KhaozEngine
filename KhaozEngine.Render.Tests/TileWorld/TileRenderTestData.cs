@@ -5,6 +5,7 @@ using System.Numerics;
 using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
 using KhaozEngine.TileWorld;
+using TileGroundMaterialHandle = KhaozEngine.Render3D.Scene3D.TileGroundMaterialHandle;
 
 namespace KhaozEngine.Tests.TileWorld;
 
@@ -258,6 +259,16 @@ public sealed partial class RecordingTileWorldScene : ITileWorldScene
     /// <summary>Every prop part-list handed out, in upload order, one entry per archetype uploaded.</summary>
     public List<IReadOnlyList<MeshHandle>> PropMeshLoads { get; } = new();
 
+    /// <summary>Every ground material set uploaded, in upload order. A view uploads exactly one.</summary>
+    public List<TileGroundMaterialSet> MaterialLoads { get; } = new();
+
+    /// <summary>Every ground material handle freed, in unload order.</summary>
+    public List<TileGroundMaterialHandle> MaterialUnloads { get; } = new();
+
+    /// <summary>The ground material each <see cref="MeshLoads"/> entry was uploaded with, same order and same
+    /// length, so a test can assert that every region-plane mesh went up bound to the set.</summary>
+    public List<TileGroundMaterialHandle> MeshMaterials { get; } = new();
+
     /// <summary>The ground mesh behind each handle index, so a test can read the vertices a rebuild produced
     /// rather than only see that the handle changed.</summary>
     public Dictionary<int, GltfMesh> GroundMeshes { get; } = new();
@@ -271,7 +282,7 @@ public sealed partial class RecordingTileWorldScene : ITileWorldScene
     /// <summary>How many handles are live right now, uploaded and not yet freed.</summary>
     public int AliveMeshCount => _alive.Count;
 
-    /// <summary>Makes the Nth <see cref="LoadMesh"/> of this scene's life throw instead of uploading, 1-based,
+    /// <summary>Makes the Nth <see cref="LoadMesh(GltfMesh)"/> of this scene's life throw instead of uploading, 1-based,
     /// with 0 meaning never. Stands in for a device that runs out of memory or a mesher that trips over one
     /// plane, which is the only way to reach the half-uploaded paths a real device reaches at 3am.</summary>
     public int ThrowOnMeshLoad { get; set; }
@@ -297,6 +308,33 @@ public sealed partial class RecordingTileWorldScene : ITileWorldScene
         MeshLoads.Add(handle);
         GroundMeshes[handle.Index] = mesh;
         return handle;
+    }
+
+    /// <summary>Records the material a ground mesh is uploaded with, then uploads it as usual.</summary>
+    public MeshHandle LoadMesh(GltfMesh mesh, TileGroundMaterialHandle material)
+    {
+        MeshMaterials.Add(material);
+        try { return LoadMesh(mesh); }
+        // The refusal is recorded as an attempt either way, so the two lists stay the same length and a test that
+        // walks them in step is not thrown off by the plane the fake refused.
+        catch { MeshMaterials.RemoveAt(MeshMaterials.Count - 1); throw; }
+    }
+
+    /// <summary>Hands out a live material handle and records the set it was built from.</summary>
+    public TileGroundMaterialHandle LoadTileGroundMaterial(TileGroundMaterialSet set)
+    {
+        ArgumentNullException.ThrowIfNull(set);
+        MaterialLoads.Add(set);
+        return new TileGroundMaterialHandle(MaterialLoads.Count - 1);
+    }
+
+    /// <summary>Frees a live material handle. An invalid handle is a no-op, a double free throws.</summary>
+    public void UnloadTileGroundMaterial(TileGroundMaterialHandle handle)
+    {
+        if (!handle.IsValid) return;
+        if (MaterialUnloads.Contains(handle))
+            throw new InvalidOperationException("the ground material was already unloaded.");
+        MaterialUnloads.Add(handle);
     }
 
     /// <summary>Frees a live handle. A default handle is a no-op, a stale one throws.</summary>

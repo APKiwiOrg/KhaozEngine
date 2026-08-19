@@ -24,6 +24,9 @@ A greybox roof now sits on the walls it covers instead of floating a whole plane
   goldens) now passes `doc.PlaneHeight`, so a world with a non-default plane height stays sealed too.
 - **`tileworld_greybox` and `tileworld_topdown` goldens rebaked** on all three backends, since both shots frame
   the walled house whose roof moved.
+- **`CharacterMovement.cs` split into two more domain partials** (`KhaozEngine.Locomotion`): the post-sweep settle
+  pass to `CharacterMovement.Settle.cs`, and the paced step-up climb with its climb-signal export to
+  `CharacterMovement.Climb.cs`. 799 lines down to 556, a pure code move with no API and no behaviour change (#480).
 
 Found by the Grimhollow adopt, where the greybox house rendered with a visibly detached roof slab.
 

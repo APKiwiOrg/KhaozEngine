@@ -8,7 +8,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 ## 17.38.0
 
 A tile world draws textured ground and real river water now, over a new `TileGround` texture-array pipeline in
-`Render3D`, and no mid-life GPU free in a scene drains the device any more.
+`Render3D`, and no mid-life unload in a scene drains the device any more.
 A greybox roof now sits on the walls it covers instead of floating a whole plane above them. Alongside it, the
 last four per-frame PARTIAL uniform-buffer writes in the engine are gone: water planes, overlay proxies,
 `SpriteBatch` view-projection slots and a splat material's combined block all pack into a CPU image and go up in

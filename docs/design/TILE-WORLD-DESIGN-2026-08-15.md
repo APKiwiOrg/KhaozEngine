@@ -408,7 +408,8 @@ of `ViewportWorld`.
 
 - **`ITileWorldScene` is the seam, not `Scene3D`.** The view talks to a small interface (six members in R2: `LoadMesh`,
   `UnloadMesh`, `DrawMesh`, `LoadPropMeshes`, `UnloadPropMeshes`, `DrawProps`, plus R5's `LoadTileGroundMaterial`,
-  the material `LoadMesh` overload and `DrawWater` as default implementations, 7.5 and 7.6) shaped exactly on
+  `UnloadTileGroundMaterial`, the material `LoadMesh` overload and `DrawWater` as default implementations, 7.5
+  and 7.6) shaped exactly on
   what `Scene3D` and the prop renderer already offer. `Scene3DTileWorldScene` ships and forwards straight through, and the tests
   drive a recording fake, so every view and residency rule (dirty coalescing, the flush budget, the roof rule,
   ring hysteresis, neighbour marking) is covered headless with no device. This was not in the sketch and is the
@@ -487,7 +488,8 @@ The fields are repurposed for this pipeline only:
   two end corners, a tile-centre point 0.25 on each. An overlay triangle holds its overlay material in ALL FOUR
   slots with weights (1, 0, 0, 0), so the painted part reads that one material flat however the tile under it
   blends, and no lane can leak the ground's palette into it.
-- Every material set keeps its LAST slot (index `MaxMaterials - 1`, so 63) as the missing-material layer, filled
+- Every material set keeps its LAST slot (`Layers.Count - 1`, which is 63 only for a full set or for the
+  set-less `IdentitySlotMap`) as the missing-material layer, filled
   with the magenta of the dangling-id rule (7.1). `ITileGroundSlotMap.MissingSlot` names it and a dangling id maps
   there, which is what carries that rule through texturing: slot 0 stays an ordinary material, because a set built
   in catalog id order would otherwise burn its first layer in every set.
@@ -526,7 +528,7 @@ rather than a `TileGroundMaterialSet`, because that type lives in `TileWorld.Ren
 `Render3D`. The set-taking overload is the `ITileWorldScene` seam member instead, and `Scene3DTileWorldScene`
 unpacks it.) A set is N layers of equal size (`width`, `height`, `AlbedoRgba`,
 `Tint`, `TilesPerMetre` per layer) plus the sampler config. `TileWorld.Render3D` builds it from the catalog:
-`TileGroundMaterials.Build(catalogs, resolveTexture)` gives every catalog material a slot in id order of the
+`TileGroundMaterials.Build(catalogs, load)` gives every catalog material a slot in id order of the
 catalog. A material with `Texture` set is decoded through `ImageRgba` (path resolved RELATIVE TO THE CATALOG FILE
 that declared it, through a new public `TileWorldCatalogs.MaterialSource(id)`, the same rule `world.json` uses
 for its catalog paths, and a material whose catalog came from memory rather than a file cannot carry a relative
@@ -622,7 +624,8 @@ deciding WHERE the planes are:
   is clipped to its region and region rects are disjoint, and planes within a region are disjoint by the
   decomposition, so the depth-write-off blend never double-darkens. A body that crosses a region border is two
   planes meeting at the border, the same surface height if the banks agree, which the authoring pass keeps
-  true (and a mismatch shows as a 2 cm lip at the border, visible on purpose rather than hidden).
+  true (a bank that differs by N cm across the border shows as an N cm step in the surface there, visible on
+  purpose rather than hidden).
 - **Collision, pathing, raycast, the top-down painter: unchanged.** Water is a ground material with a pass on
   top. `TileRaycast.Pick` still lands on the bed, which is what an editor click wants.
 

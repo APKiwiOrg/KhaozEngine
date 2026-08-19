@@ -21,9 +21,16 @@ namespace KhaozEngine.Tests.NetWorld;
 ///
 /// <para>The rows drive the real loopback stack (an <see cref="InMemoryHub"/>, a <see cref="WorldServer"/> or
 /// <see cref="ShardedWorldServer"/>, and a <see cref="WorldPersistence"/> over a <see cref="GatedWorldStore"/> that
-/// holds every load open across both joins), which is the reproduction from the issue. The last row leaves
-/// persistence out and asks the CLIENT what it was told, because a kick a player cannot be shown a reason for is
+/// holds every load open across both joins), which is the reproduction from the issue. The last rows leave
+/// persistence out and ask the CLIENT what it was told, because a kick a player cannot be shown a reason for is
 /// half a fix.</para>
+///
+/// <para>What that stack does NOT prove: <see cref="InMemoryHub"/>'s <c>Disconnect</c> is a no-op on both
+/// endpoints, so a row here shows the server sending the framed <c>Reject</c> and the client classifying it, never
+/// the transport teardown that follows it over a real socket. The reason riding the DISCONNECT (the path that
+/// survives a teardown outrunning the reliable flush) is a LiteNetLib behaviour, and it is covered where the real
+/// binding is. Read a green row as "the Reject frame says the right thing", not as "the kick tore the peer
+/// down".</para>
 /// </summary>
 public class DuplicateSessionTests
 {
@@ -347,5 +354,91 @@ public class DuplicateSessionTests
 
         Assert.Equal(DisconnectReason.SignedInElsewhere, client.DisconnectReason);
         Assert.Equal(WorldConnectionState.Disconnected, client.ConnectionState);   // terminal, not Reconnecting
+    }
+
+    // ---- (6) the refusal is the one duplicate-session answer that IS retried ----
+
+    [Fact]
+    public void An_already_signed_in_refusal_keeps_reconnecting_until_the_seat_is_free()
+    {
+        // Terminal is wrong here, and expensively so. Under RefuseNewer the thing usually holding the seat is this
+        // player's OWN half-dead connection, which the server keeps until its transport timeout expires (LiteNetLib
+        // leaves DisconnectTimeout at 5 s), and the default backoff spends its first three attempts inside that
+        // window. So a one-second blip used to dump the player at a manual sign-in screen. Retrying a refusal
+        // displaces nobody, so it cannot start the ping-pong the KICK has to stay terminal to avoid.
+        var hub = new InMemoryHub();
+        var config = new WorldServerConfig
+        {
+            TickSeconds = Dt,
+            MaxPlayers = 4,
+            SpawnPosition = _ => Vector3.Zero,
+            DuplicateSessions = DuplicateSessionPolicy.RefuseNewer,
+        };
+        var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
+
+        // The account's existing session: under RefuseNewer it keeps the seat until its peer goes.
+        INetTransport held = hub.CreateClient();
+        var incumbent = new NetClient(held, TestHandshake.Wire(Alpha));
+        for (int i = 0; i < 20 && incumbent.Slot < 0; i++)
+        {
+            incumbent.Poll();
+            server.Poll();
+            server.Tick(Dt);
+        }
+        Assert.True(incumbent.Slot >= 0, "the incumbent never got a slot");
+
+        using var client = new WorldClient(() => hub.CreateClient(), Flat, MoveTuning.Default,
+            new WorldClientConfig(), Encoding.UTF8.GetBytes(Alpha));
+        for (int i = 0; i < 20 && client.DisconnectReason == DisconnectReason.None; i++)
+        {
+            client.Poll(Dt);
+            incumbent.Poll();
+            server.Poll();
+            server.Tick(Dt);
+        }
+
+        Assert.Equal(DisconnectReason.AlreadySignedIn, client.DisconnectReason);
+        Assert.Equal(WorldConnectionState.Reconnecting, client.ConnectionState);   // waiting, not given up
+
+        // The old link dies and the server frees the seat. The backoff outlasts that wait, so the player gets in
+        // with no manual step at all.
+        hub.DisconnectClient(held);
+        for (int i = 0; i < 400 && client.ConnectionState != WorldConnectionState.Connected; i++)
+        {
+            client.Poll(Dt);
+            incumbent.Poll();
+            server.Poll();
+            server.Tick(Dt);
+        }
+
+        Assert.Equal(WorldConnectionState.Connected, client.ConnectionState);
+        Assert.Equal(DisconnectReason.None, client.DisconnectReason);
+    }
+
+    // ---- (7) a displaced raw client stops naming a seat it no longer holds ----
+
+    [Fact]
+    public async Task A_displaced_raw_client_gives_up_the_slot_it_reports()
+    {
+        // NetClient.Slot is what a bare-session consumer addresses itself by. The duplicate-session gate is the
+        // engine's first Reject AFTER a Welcome, so a client that kept reporting its slot went on naming a seat the
+        // session that displaced it is now sitting in.
+        Rig rig = await SingleAsync();
+
+        Peer first = rig.Connect(Alpha);
+        rig.Pump(() => first.Joined && rig.Host.JoinedSlots.Count == 1);
+        Assert.Equal(0, first.Client.Slot);
+
+        Peer second = rig.Connect(Alpha);
+        rig.Pump(() => second.Joined);
+
+        Assert.Equal(new[] { SessionRejectReason.SignedInElsewhere }, first.Rejects);
+        Assert.Equal(-1, first.Client.Slot);
+        Assert.Equal(rig.OnlySlot(), second.Client.Slot);      // the seat the displaced client used to name
+
+        // A plain transport drop gives it up too, which is the same guarantee by the other route.
+        rig.Drop(second);
+        rig.Pump(() => rig.Host.JoinedSlots.Count == 0);
+        Assert.Equal(-1, second.Client.Slot);
     }
 }

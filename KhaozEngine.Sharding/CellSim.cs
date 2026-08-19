@@ -380,11 +380,16 @@ public sealed class CellSim
 
     /// <summary>
     /// A durable Replication snapshot of this cell's <b>persistable</b> entities: those it owns (present, not a
-    /// <see cref="Ghost"/>, not <see cref="Migrating"/>) whose <see cref="NetId"/> is not in
-    /// <paramref name="excludedNetIds"/> (the caller passes the player NetIds, which persist separately). Reuses the
-    /// same <see cref="SnapshotWriter"/> codec cells use for ghosting/migrate, but captures the
+    /// <see cref="Ghost"/>, not <see cref="Migrating"/>, not <see cref="Transient"/>) whose <see cref="NetId"/> is
+    /// not in <paramref name="excludedNetIds"/> (the caller passes the player NetIds, which persist separately).
+    /// Reuses the same <see cref="SnapshotWriter"/> codec cells use for ghosting/migrate, but captures the
     /// <see cref="ReplicationChannels.Persist"/> channel, so a component is written to the blob only if it declared
     /// <see cref="ReplicationChannels.Persist"/> (a Replicate-only or Migrate-only component is not persisted).
+    /// <para>The two exclusions answer different questions and neither substitutes for the other.
+    /// <see cref="ReplicationChannels.Persist"/> decides which COMPONENTS of a persisted entity reach the blob;
+    /// <see cref="Transient"/> decides whether the ENTITY reaches it at all. An entity marked
+    /// <see cref="Transient"/> is absent from the bytes rather than present with fewer components, so a restore
+    /// cannot bring it back as a husk (#326).</para>
     /// </summary>
     public byte[] SnapshotOwned(IReadOnlySet<long> excludedNetIds)
     {
@@ -393,6 +398,7 @@ public sealed class CellSim
         World.ForEach<NetId>((Entity e, ref NetId id) =>
         {
             if (World.Has<Ghost>(e) || World.Has<Migrating>(e)) return;
+            if (World.Has<Transient>(e)) return;   // never persisted: it must not outlive the process that spawned it
             if (excludedNetIds.Contains(id.Value)) return;
             ids.Add(id.Value);
         });

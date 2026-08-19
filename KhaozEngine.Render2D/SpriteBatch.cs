@@ -13,7 +13,7 @@ namespace KhaozEngine.Render2D
     /// <c>Vector4.Transform</c>). Quads are coalesced into submission-ordered runs (consecutive same-texture draws
     /// share a run) so painter's order is preserved across textures.
     /// </summary>
-    public sealed class SpriteBatch : IDisposable
+    public sealed partial class SpriteBatch : IDisposable
     {
         // internal (not private) so the engine's device-free ShaderValidation tests can validate this 2D pair
         // without a GraphicsDevice, via the existing InternalsVisibleTo into KhaozEngine.Tests. Not public.
@@ -144,22 +144,7 @@ void main() {
         readonly List<uint>[] _vbCapRing;
         int _flushIndex;
 
-        // Per-Begin view-projection uniform buffer. The clip-corrected view-projection is no longer baked into every
-        // vertex on the CPU. It rides in this UBO and the vertex shader multiplies it. Each Begin claims its OWN
-        // 256-byte slot (VpSlotBytes) and writes its matrix there via cl.UpdateBuffer, so no slot is overwritten
-        // within a frame's command list - the same distinct-slot + dynamic-offset pattern the 3D dynamic-offset
-        // renderers use (OverlayMeshRenderer / GroundDecalRenderer), which is safe regardless of how a backend
-        // orders mid-command-list buffer copies (overwriting one shared slot mid-list mis-binds on Metal/Veldrid).
-        // cl.UpdateBuffer records the write into the command stream, so cross-frame reuse of the same slots is safe
-        // too (each frame's list runs to completion before the next) - no ring is needed here, unlike the vertex
-        // buffers (gd.UpdateBuffer, an off-timeline write). _beginIndex resets each NewFrame, _vpUbo grows on demand.
-        const uint VpPayloadBytes = 64;   // one Matrix4x4
-        const int VpSlotBytes = 256;      // Metal/D3D11/Vulkan-safe dynamic-offset alignment (one matrix per slot)
-        IGpuBuffer _vpUbo;
-        IGpuResourceSet _vpSet;           // binds the VpPayloadBytes window of _vpUbo at offset 0, per-Begin offset supplied at draw time
-        int _vpCapacity;                  // slots in _vpUbo
-        int _beginIndex;                  // Begins claimed this frame (reset by NewFrame). The current one's slot is _beginIndex-1
-        uint _vpDynamicOffset;            // byte offset of the current Begin's slot, bound with set 1 on every draw
+        // The per-Begin view-projection UBO, its slots and its single upload live in SpriteBatch.ViewProj.cs.
         // Deferred disposal for what this batch frees mid-life (evicted sets, the buffers a grow replaced). FRAME
         // COUNTED, not fenced: NewFrame runs inside the frame's own recording, so neither a fence nor a drain can be
         // taken there (#424, #84). RingDepth + 1 holds while KE_*_FRAMES_IN_FLIGHT is 4 or less (default 3).
@@ -197,6 +182,7 @@ void main() {
             _vpLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("Vp", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex, dynamic: true)));
             _vpCapacity = 8;
+            _vpImage = new byte[_vpCapacity * VpSlotBytes];
             _vpUbo = f.CreateBuffer(new GpuBufferDescription((uint)(_vpCapacity * VpSlotBytes), GpuBufferUsage.UniformBuffer));
             _vpSet = f.CreateResourceSet(new GpuResourceSetDescription(_vpLayout, new GpuBufferRange(_vpUbo, 0, VpPayloadBytes)));
             _shaders = f.CreateShadersFromSpirv(VertSrc, FragSrc);
@@ -791,18 +777,6 @@ void main() {
         /// <summary>The number of frame slots the per-flush vertex buffers rotate through (triple-buffered).</summary>
         internal int VertexBufferRingDepth => RingDepth;
 
-        /// <summary>The byte offset into the view-projection UBO bound (via set 1's dynamic offset) for the CURRENT
-        /// Begin. Advances by <see cref="ViewProjSlotBytes"/> per Begin within a frame and resets to 0 each NewFrame.
-        /// For tests of the per-Begin slot bookkeeping.</summary>
-        internal uint CurrentViewProjOffset => _vpDynamicOffset;
-
-        /// <summary>The per-Begin slot stride of the view-projection UBO (the dynamic-offset alignment). For tests.</summary>
-        internal int ViewProjSlotBytes => VpSlotBytes;
-
-        /// <summary>The number of 256-byte slots the view-projection UBO currently holds, growing when a frame runs more
-        /// Begins than it had capacity for. For tests of the grow-with-retire path.</summary>
-        internal int ViewProjSlotCapacity => _vpCapacity;
-
         /// <summary>The vertex buffer backing flush <paramref name="flushIndex"/> of the CURRENT frame's ring slot
         /// (null before it has been allocated). Lets a test assert the cross-frame ring rotation.</summary>
         internal IGpuBuffer? CurrentFlushBuffer(int flushIndex)
@@ -815,29 +789,6 @@ void main() {
         // covers all Begins from one place: a fresh batch always claims and writes its own UBO slot. _cl is live
         // (set by NewFrame before the user's draw callback runs any Begin).
         void ResetBatches() { _runs.Reset(); _blend = BlendMode.Alpha; _groupByTexture = false; _deviceScale = Vector2.Zero; _deviceOffset = Vector2.Zero; UploadViewProj(); }
-
-        // Claim this Begin's own view-projection UBO slot and record its matrix into it. A distinct slot per Begin
-        // means no slot is overwritten within the frame's command list (see the _vpUbo field note). The slot's byte
-        // offset is bound with set 1 on every draw of this batch. _vp is already clip-corrected by Begin's Clip().
-        void UploadViewProj()
-        {
-            int slot = _beginIndex++;
-            EnsureVpCapacity(slot + 1);
-            _vpDynamicOffset = (uint)(slot * VpSlotBytes);
-            _cl.UpdateBuffer(_vpUbo, _vpDynamicOffset, in _vp);
-        }
-
-        // Grow _vpUbo to hold at least this many 256-byte slots. A grow RETIRES the old buffer and set: earlier
-        // Begins this frame already recorded draws and slot writes against them, and a prior frame's list may still
-        // read them. Their slots go unused in the new buffer, and this Begin and later ones write into it.
-        void EnsureVpCapacity(int slots)
-        {
-            if (_vpCapacity >= slots) return;
-            _retire.Retire(_vpUbo, _vpSet, null);
-            _vpCapacity = Math.Max(slots, _vpCapacity * 2);
-            _vpUbo = _gd.Factory.CreateBuffer(new GpuBufferDescription((uint)(_vpCapacity * VpSlotBytes), GpuBufferUsage.UniformBuffer));
-            _vpSet = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_vpLayout, new GpuBufferRange(_vpUbo, 0, VpPayloadBytes)));
-        }
 
         // Arm device-pixel snapping for this pass iff the viewport is a point-space one (UiViewport). A fractional
         // design viewport, or any other Begin, leaves the frame cleared (Vector2.Zero) so snapping is a no-op.

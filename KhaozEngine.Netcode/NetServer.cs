@@ -99,8 +99,11 @@ public sealed class NetServer
             return;
         }
         // One live session per account. A tokenless connection carries no subject, so it is never a duplicate of
-        // anything and two guests are two people, not one account twice.
-        if (subject.Length > 0 && slotBySubject.TryGetValue(subject, out int heldSlot))
+        // anything and two guests are two people, not one account twice. Null is read as the same "no subject" the
+        // empty string is: the out parameter is non-nullable, but a third-party authenticator compiled without
+        // nullable reference types can hand back null on an ACCEPT, and dereferencing it here would take the server
+        // down on a connection it used to admit.
+        if (!string.IsNullOrEmpty(subject) && slotBySubject.TryGetValue(subject, out int heldSlot))
         {
             if (duplicateSessions == DuplicateSessionPolicy.RefuseNewer)
             {
@@ -116,7 +119,7 @@ public sealed class NetServer
         }
         connectionBySlot[newSlot] = ev.Connection;
         slotByConnection[ev.Connection] = newSlot;
-        if (subject.Length > 0) { slotBySubject[subject] = newSlot; subjectBySlot[newSlot] = subject; }
+        if (!string.IsNullOrEmpty(subject)) { slotBySubject[subject] = newSlot; subjectBySlot[newSlot] = subject; }
         var slotBytes = new byte[4];
         BitConverter.TryWriteBytes(slotBytes, newSlot);
         transport.Send(ev.Connection, SessionFrame.Write(SessionOpcode.Welcome, slotBytes), NetChannelReliability.ReliableOrdered);

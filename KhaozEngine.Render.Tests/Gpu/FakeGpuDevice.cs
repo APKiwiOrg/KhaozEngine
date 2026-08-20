@@ -109,7 +109,7 @@ namespace KhaozEngine.Tests.Gpu
 
         public IGpuTexture CreateTexture(in GpuTextureDescription d)
         {
-            var t = new FakeTexture(d.Width, d.Height, d.MipLevels, d.SampleCount, d.Format);
+            var t = new FakeTexture(d.Width, d.Height, d.MipLevels, d.SampleCount, d.Format, d.Usage);
             Textures.Add(t);
             return t;
         }
@@ -135,7 +135,16 @@ namespace KhaozEngine.Tests.Gpu
         }
         public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl) => new FakeShaderSet();
         public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d) => new FakePipeline();
-        public IGpuCommandList CreateCommandList() => new NullGpuCommandList();
+        public IGpuCommandList CreateCommandList()
+        {
+            var cl = new NullGpuCommandList();
+            CommandLists.Add(cl);
+            return cl;
+        }
+
+        /// <summary>Every command list this factory handed out, so a test can walk their recorded mip
+        /// generations.</summary>
+        internal List<NullGpuCommandList> CommandLists { get; } = new();
 
         // The three the fake device reports it cannot do. Each throws the same way the real factory does, so a
         // renderer that forgot to gate on the capability fails here rather than silently taking a path the
@@ -162,11 +171,16 @@ namespace KhaozEngine.Tests.Gpu
 
     internal sealed class FakeTexture : IGpuTexture
     {
-        internal FakeTexture(uint w, uint h, uint mips, uint samples, GpuPixelFormat format)
+        internal FakeTexture(uint w, uint h, uint mips, uint samples, GpuPixelFormat format,
+            GpuTextureUsage usage = GpuTextureUsage.Sampled)
         {
             Width = w; Height = h; MipLevels = mips < 1 ? 1 : mips; SampleCount = samples < 1 ? 1 : samples;
-            Format = format;
+            Format = format; Usage = usage;
         }
+
+        /// <summary>The usage flags the texture was created with, so a test can pin that a single-level texture
+        /// never declares GenerateMipmaps (the native Vulkan backend refuses generation with nothing to generate).</summary>
+        internal GpuTextureUsage Usage { get; }
 
         public uint Width { get; }
         public uint Height { get; }
@@ -237,7 +251,11 @@ namespace KhaozEngine.Tests.Gpu
         public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer, IGpuTexture dst, uint width, uint height) { }
         public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer,
             IGpuTexture dst, uint dstMipLevel, uint dstArrayLayer, uint width, uint height) { }
-        public void GenerateMipmaps(IGpuTexture texture) { }
+        public void GenerateMipmaps(IGpuTexture texture) => MipGenerations.Add(texture);
+
+        /// <summary>Every texture a GenerateMipmaps call named, so a test can pin that a single-level upload
+        /// never asks for a generation pass.</summary>
+        internal List<IGpuTexture> MipGenerations { get; } = new();
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst) { }
         public void SetComputePipeline(IGpuComputePipeline p) { }
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set) { }

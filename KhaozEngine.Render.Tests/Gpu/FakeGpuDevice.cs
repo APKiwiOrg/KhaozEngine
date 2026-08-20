@@ -109,7 +109,7 @@ namespace KhaozEngine.Tests.Gpu
 
         public IGpuTexture CreateTexture(in GpuTextureDescription d)
         {
-            var t = new FakeTexture(d.Width, d.Height, d.MipLevels, d.SampleCount, d.Format, d.Usage);
+            var t = new FakeTexture(d.Width, d.Height, d.MipLevels, d.SampleCount, d.Format, d.Usage, d.ArrayLayers);
             Textures.Add(t);
             return t;
         }
@@ -172,11 +172,15 @@ namespace KhaozEngine.Tests.Gpu
     internal sealed class FakeTexture : IGpuTexture
     {
         internal FakeTexture(uint w, uint h, uint mips, uint samples, GpuPixelFormat format,
-            GpuTextureUsage usage = GpuTextureUsage.Sampled)
+            GpuTextureUsage usage = GpuTextureUsage.Sampled, uint arrayLayers = 1)
         {
             Width = w; Height = h; MipLevels = mips < 1 ? 1 : mips; SampleCount = samples < 1 ? 1 : samples;
-            Format = format; Usage = usage;
+            Format = format; Usage = usage; ArrayLayers = arrayLayers < 1 ? 1 : arrayLayers;
         }
+
+        /// <summary>The layer count the texture was created with, so a test can pin that a one-layer set is
+        /// padded before it reaches the device (array-ness is derived from the layer count on every backend).</summary>
+        internal uint ArrayLayers { get; }
 
         /// <summary>The usage flags the texture was created with, so a test can pin that a single-level texture
         /// never declares GenerateMipmaps (the native Vulkan backend refuses generation with nothing to generate).</summary>

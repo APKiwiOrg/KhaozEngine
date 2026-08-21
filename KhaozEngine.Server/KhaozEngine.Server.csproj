@@ -3,7 +3,7 @@
     <PackageId>KhaozEngine.Server</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Description>Umbrella metapackage for a headless / server-side build on the KhaozEngine 5.x stack: the MonoGame-free, GPU-free Foundation (Primitives/Ecs/Serialization/Content/Persistence/Diagnostics/App/Collision/Platform/Updates and friends), the networking layer (Netcode/Netcode.Abstractions/Netcode.LiteNetLib), and the MMO server stack (Simulation fixed-tick host, Replication snapshot/delta sync, the WorldStore durable-state seam (IWorldStore + InMemoryWorldStore only; the SQLite / SQL Server backends are opt-in sibling packages, not bundled), Sharding cell-grid topology / ShardHost, and NetWorld single-World authoritative movement server + client glue). Pulls in NO graphics, windowing, audio, or GPU, so an authoritative sim server or tool stays lean. (A contracts-only project that just needs the wire types should reference KhaozEngine.Netcode.Abstractions directly instead.) Contains no code; just dependencies.</Description>
+    <Description>Umbrella metapackage for a headless / server-side build on the KhaozEngine 5.x stack: the MonoGame-free, GPU-free Foundation (Primitives/Ecs/Serialization/Content/Persistence/Diagnostics/App/Collision/Platform/Updates and friends), the networking layer (Netcode/Netcode.Abstractions/Netcode.LiteNetLib), and the MMO server stack (Simulation fixed-tick host, Replication snapshot/delta sync, the WorldStore durable-state seam (IWorldStore + InMemoryWorldStore only; the SQLite / SQL Server backends are opt-in sibling packages, not bundled), Sharding cell-grid topology / ShardHost, NetWorld single-World authoritative movement server + client glue, and TileWorld.Netcode discrete tile-world movement (server, client and prediction)). Pulls in NO graphics, windowing, audio, or GPU, so an authoritative sim server or tool stays lean. (A contracts-only project that just needs the wire types should reference KhaozEngine.Netcode.Abstractions directly instead.) Contains no code; just dependencies.</Description>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>
@@ -36,6 +36,10 @@
     <ProjectReference Include="../KhaozEngine.Sharding/KhaozEngine.Sharding.csproj" />
     <!-- networked-world movement layer (server sim + client glue, render-free) -->
     <ProjectReference Include="../KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
+    <!-- the tile-world movement layer: a SIBLING of NetWorld over the same generic layers, never a dependent
+         of it. Server-side here; a client head references the package by id, exactly as a client head already
+         references NetWorld (Game3D carries no networking). -->
+    <ProjectReference Include="../KhaozEngine.TileWorld.Netcode/KhaozEngine.TileWorld.Netcode.csproj" />
     <!-- physics seam only; the BepuPhysics backend (KhaozEngine.Physics.Bepu) is an opt-in sibling
          package, not bundled here - matching the WorldStore.Sqlite/.SqlServer pattern above -->
     <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />

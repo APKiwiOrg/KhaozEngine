@@ -323,7 +323,8 @@ public class ArchitectureTests
             new[]
             {
                 "Foundation", "Netcode", "Netcode.Abstractions", "Netcode.LiteNetLib", "Simulation",
-                "Replication", "WorldStore", "Sharding", "NetWorld", "Physics", "CodeHealth.Analyzers",
+                "Replication", "WorldStore", "Sharding", "NetWorld", "TileWorld.Netcode", "Physics",
+                "CodeHealth.Analyzers",
             }
         },
     };
@@ -393,6 +394,21 @@ public class ArchitectureTests
         Assert.True(clean,
             "KhaozEngine.Terrain carries the render/physics-free streamer core (TerrainStreamer and friends) so a " +
             "headless server can reference it, but its ProjectReference closure pulls in: " + string.Join(", ", hits));
+    }
+
+    [Fact]
+    public void TileWorldNetcode_NeverReferencesNetWorld()
+    {
+        IReadOnlyDictionary<string, Project> graph = LoadGraph();
+        HashSet<string> closure = TransitiveClosure("KhaozEngine.TileWorld.Netcode", graph)
+            .Select(Short).ToHashSet(StringComparer.Ordinal);
+        string[] hits = new[] { "NetWorld", "Locomotion" }.Where(closure.Contains).ToArray();
+
+        bool clean = hits.Length == 0;
+        Assert.True(clean,
+            "KhaozEngine.TileWorld.Netcode is a SIBLING of NetWorld over the same generic layers, not a dependent " +
+            "of it: pulling NetWorld in would drag the float locomotion stack into every tile server. Its " +
+            "ProjectReference closure pulls in: " + string.Join(", ", hits));
     }
 
     [Fact]

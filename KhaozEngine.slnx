@@ -68,6 +68,7 @@
   <Project Path="KhaozEngine.TileWorld/KhaozEngine.TileWorld.csproj" />
   <Project Path="KhaozEngine.TileWorld.Editing/KhaozEngine.TileWorld.Editing.csproj" />
   <Project Path="KhaozEngine.TileWorld.Render3D/KhaozEngine.TileWorld.Render3D.csproj" />
+  <Project Path="KhaozEngine.TileWorld.Netcode/KhaozEngine.TileWorld.Netcode.csproj" />
   <Project Path="KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
   <Project Path="KhaozEngine.Http/KhaozEngine.Http.csproj" />
   <Project Path="KhaozEngine.ServerStatus/KhaozEngine.ServerStatus.csproj" />
@@ -93,6 +94,7 @@
   <Project Path="KhaozEngine.Gui.Tests/KhaozEngine.Gui.Tests.csproj" />
   <Project Path="KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj" />
   <Project Path="KhaozEngine.TileWorld.Tests/KhaozEngine.TileWorld.Tests.csproj" />
+  <Project Path="KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj" />
   <Project Path="KhaozEngine.TileEdit.Tests/KhaozEngine.TileEdit.Tests.csproj" />
   <Project Path="KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj" />
   <Project Path="KhaozEngine.Showcase.Tests/KhaozEngine.Showcase.Tests.csproj" />

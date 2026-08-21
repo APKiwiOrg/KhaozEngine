@@ -37,12 +37,91 @@ namespace KhaozEngine.Render3D
     }
 
     /// <summary>
+    /// The weld identity of a <see cref="MeshCorner"/>: the quantized lanes two corners must agree on to merge
+    /// into one vertex. A hand-written struct rather than a <c>ValueTuple</c> because a tuple past seven
+    /// elements hashes only its seventh element and its <c>Rest</c>, which left the three position lanes out
+    /// of the hash entirely and drove the weld toward O(n squared) on a mesh whose surviving lanes are
+    /// constant (an unmapped, palette-painted kit piece). Equality here is over every lane, position first,
+    /// and so is the hash.
+    /// </summary>
+    internal readonly struct MeshWeldKey : IEquatable<MeshWeldKey>
+    {
+        // Quantization scales: positions to 1e-4, normals (unit) to 1e-3, uvs to 1e-4, vertex colors to 1e-3
+        // (a 0..1 channel, so the same resolution a unit normal gets).
+        const float PosScale = 1e4f, NormalScale = 1e3f, UvScale = 1e4f, ColorScale = 1e3f;
+
+        readonly long _px, _py, _pz;
+        readonly long _nx, _ny, _nz;
+        readonly long _ux, _uy;
+        readonly long _cx, _cy, _cz, _cw;
+        readonly bool _hasNormal, _hasVertexColor;
+
+        static long Q(float v, float scale) => (long)MathF.Round(v * scale);
+
+        MeshWeldKey(in MeshCorner c)
+        {
+            _px = Q(c.Position.X, PosScale);
+            _py = Q(c.Position.Y, PosScale);
+            _pz = Q(c.Position.Z, PosScale);
+            _hasNormal = c.HasNormal;
+            _nx = c.HasNormal ? Q(c.Normal.X, NormalScale) : 0L;
+            _ny = c.HasNormal ? Q(c.Normal.Y, NormalScale) : 0L;
+            _nz = c.HasNormal ? Q(c.Normal.Z, NormalScale) : 0L;
+            _ux = Q(c.Uv.X, UvScale);
+            _uy = Q(c.Uv.Y, UvScale);
+            // Zeroed when the color is flat, so a non-COLOR_0 asset welds byte-for-byte as before.
+            _hasVertexColor = c.HasVertexColor;
+            _cx = c.HasVertexColor ? Q(c.Color.X, ColorScale) : 0L;
+            _cy = c.HasVertexColor ? Q(c.Color.Y, ColorScale) : 0L;
+            _cz = c.HasVertexColor ? Q(c.Color.Z, ColorScale) : 0L;
+            _cw = c.HasVertexColor ? Q(c.Color.W, ColorScale) : 0L;
+        }
+
+        public static MeshWeldKey From(in MeshCorner c) => new MeshWeldKey(c);
+
+        public bool Equals(MeshWeldKey other) =>
+            _px == other._px && _py == other._py && _pz == other._pz &&
+            _hasNormal == other._hasNormal &&
+            _nx == other._nx && _ny == other._ny && _nz == other._nz &&
+            _ux == other._ux && _uy == other._uy &&
+            _hasVertexColor == other._hasVertexColor &&
+            _cx == other._cx && _cy == other._cy && _cz == other._cz && _cw == other._cw;
+
+        public override bool Equals(object? obj) => obj is MeshWeldKey other && Equals(other);
+
+        public static bool operator ==(MeshWeldKey a, MeshWeldKey b) => a.Equals(b);
+
+        public static bool operator !=(MeshWeldKey a, MeshWeldKey b) => !a.Equals(b);
+
+        /// <summary>Mixes EVERY lane, position included. A key shape that drops a lane here still welds
+        /// correctly (equality is unchanged) but collapses buckets, which is a load-time cliff, not a
+        /// visible one, so <c>MeshAssemblerTests</c> pins the spread deterministically.</summary>
+        public override int GetHashCode()
+        {
+            var h = new HashCode();
+            h.Add(_px); h.Add(_py); h.Add(_pz);
+            h.Add(_hasNormal);
+            h.Add(_nx); h.Add(_ny); h.Add(_nz);
+            h.Add(_ux); h.Add(_uy);
+            h.Add(_hasVertexColor);
+            h.Add(_cx); h.Add(_cy); h.Add(_cz); h.Add(_cw);
+            return h.ToHashCode();
+        }
+    }
+
+    /// <summary>
     /// Welds a triangle-soup of <see cref="MeshCorner"/>s into an indexed <see cref="GltfMesh"/>. Two corners
     /// merge only when their position, normal, uv AND per-vertex color all match (quantized) - so hard edges
     /// (distinct normals), UV seams (distinct uvs) and authored COLOR_0 seams (distinct vertex colors) are all
     /// preserved, unlike a position-only weld. The color only enters the key for corners flagged
     /// <see cref="MeshCorner.HasVertexColor"/>, because a FLAT per-material color is uniform over a primitive
     /// and adding it unconditionally would split coincident corners across materials in the whole-scene weld.
+    /// <para>The flag is itself part of the key, so a flagged corner never merges with an unflagged one even
+    /// when every other lane matches. A COLOR_0 primitive sharing a coincident corner with a non-COLOR_0
+    /// primitive inside the same weld (the whole-scene weld, or one material's weld in
+    /// <c>LoadPartsWithMaterials</c>) therefore keeps both corners instead of the first one's color winning.
+    /// That is deliberate: the two corners carry colors from different sources, and keeping both is the answer
+    /// that loses no authored data.</para>
     /// When a corner has no source
     /// normal, an area-weighted face normal is accumulated across the faces that share it (a smooth default),
     /// and such corners weld on position+uv only. Also computes per-vertex tangents via the Lengyel UV+position
@@ -53,10 +132,6 @@ namespace KhaozEngine.Render3D
     /// </summary>
     internal static class MeshAssembler
     {
-        // Quantization scales: positions to 1e-4, normals (unit) to 1e-3, uvs to 1e-4, vertex colors to 1e-3
-        // (a 0..1 channel, so the same resolution a unit normal gets).
-        static long Q(float v, float scale) => (long)MathF.Round(v * scale);
-
         public static GltfMesh Build(IReadOnlyList<MeshCorner> corners)
         {
             if (corners == null) throw new ArgumentNullException(nameof(corners));
@@ -71,25 +146,15 @@ namespace KhaozEngine.Render3D
             var tan1 = new List<Vector3>();       // accumulated UV-space s-direction per welded vertex
             var tan2 = new List<Vector3>();       // accumulated UV-space t-direction per welded vertex
             var srcTangent = new List<Vector4?>();// source tangent if the corner supplied one
-            var weld = new Dictionary<(long, long, long, bool, long, long, long, long, long,
-                                       bool, long, long, long, long), int>();
+            var weld = new Dictionary<MeshWeldKey, int>();
             var indices = new List<int>(corners.Count);
 
             int Resolve(in MeshCorner c, Vector3 faceN, Vector3 sdir, Vector3 tdir)
             {
-                var key = (Q(c.Position.X, 1e4f), Q(c.Position.Y, 1e4f), Q(c.Position.Z, 1e4f),
-                           c.HasNormal,
-                           c.HasNormal ? Q(c.Normal.X, 1e3f) : 0L,
-                           c.HasNormal ? Q(c.Normal.Y, 1e3f) : 0L,
-                           c.HasNormal ? Q(c.Normal.Z, 1e3f) : 0L,
-                           Q(c.Uv.X, 1e4f), Q(c.Uv.Y, 1e4f),
-                           // Zeroed when the color is flat, so a non-COLOR_0 asset welds byte-for-byte as before.
-                           c.HasVertexColor,
-                           c.HasVertexColor ? Q(c.Color.X, 1e3f) : 0L,
-                           c.HasVertexColor ? Q(c.Color.Y, 1e3f) : 0L,
-                           c.HasVertexColor ? Q(c.Color.Z, 1e3f) : 0L,
-                           c.HasVertexColor ? Q(c.Color.W, 1e3f) : 0L);
+                var key = MeshWeldKey.From(c);
 
+                // Corners that do NOT share a key do not share the accumulators below, so a color seam splits
+                // the smooth normal and the tangent the same way a UV seam always has.
                 if (weld.TryGetValue(key, out int existing))
                 {
                     if (!c.HasNormal) normals[existing] += faceN; // keep smoothing across shared faces

@@ -156,5 +156,32 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(4, mesh.Vertices.Length);
             Assert.Equal(6, mesh.Indices.Length);
         }
+
+        // Hash quality, pinned without timing anything. A ValueTuple past seven elements hashes only its
+        // seventh element and its Rest, so the 14-lane key the weld briefly used dropped all three position
+        // lanes out of the hash: an unmapped mesh piled every vertex into one bucket and the weld went
+        // quadratic (bell_tower.glb took 672 ms instead of 12). Distinct positions, everything else identical,
+        // which is exactly a palette-painted kit piece with no UVs.
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        [InlineData(2)]
+        public void The_Weld_Key_Hashes_Every_Position_Lane(int axis)
+        {
+            const int n = 4096;
+            var hashes = new HashSet<int>();
+            for (int i = 0; i < n; i++)
+            {
+                var p = Vector3.Zero;
+                if (axis == 0) p.X = i * 0.25f;
+                else if (axis == 1) p.Y = i * 0.25f;
+                else p.Z = i * 0.25f;
+                var corner = new MeshCorner(p, Vector3.UnitY, Vector4.One, Vector2.Zero);
+                hashes.Add(MeshWeldKey.From(corner).GetHashCode());
+            }
+
+            Assert.True(hashes.Count >= n / 2,
+                $"position lane {axis} is out of the hash: only {hashes.Count} distinct hash codes for {n} distinct positions");
+        }
     }
 }

@@ -38,6 +38,12 @@ A tile world can draw a real glb kit per archetype now, and the glTF loader hono
   same zero UV, so before this the second face's shared corners welded into the first face's vertices and came
   back in the first shade, rendering as a gradient. The flag is what keeps the change byte-neutral: a flat
   per-material colour is uniform over a primitive, so it stays out of the key and no existing asset's weld moves.
+  Two consequences worth knowing: the flag is part of the key, so a COLOR_0 primitive no longer merges with a
+  coincident corner of a non-COLOR_0 primitive in the same weld, and a colour seam splits the smooth-normal and
+  tangent accumulation the way a UV seam always has, so a mesh with no source NORMAL creases at a palette
+  boundary. The key itself is a `MeshWeldKey` struct rather than a 14-element `ValueTuple`, because such a tuple
+  hashes only its seventh element and its `Rest`, which would leave position out of the hash and make the weld
+  quadratic on an unmapped mesh.
 
 ## 17.38.0
 

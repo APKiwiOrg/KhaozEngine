@@ -659,7 +659,9 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   texture and no material per shade, and a white `COLOR_0` changes nothing. A per-vertex colour also enters the
   rigid weld key, so two coplanar faces in different shades stay two vertices at their shared edge instead of the
   first shade winning. That gating is on the attribute being present, not on the colour: an asset without
-  `COLOR_0` loads and welds byte-for-byte as before, so existing goldens hold.
+  `COLOR_0` loads and welds byte-for-byte as before, so existing goldens hold. A colour seam splits the
+  smooth-normal and tangent accumulation too, so a mesh with no source `NORMAL` gains a shading crease where two
+  shades meet, exactly as a UV seam has always done.
 - Alpha cutout (foliage / leaf cards): `GltfLoader` reads each material's glTF `alphaMode` into
   `GltfMaterialMaps.AlphaCutoff` - `0` for OPAQUE (the default when absent, no clip), else the material's
   `alphaCutoff` (default 0.5 per spec) for MASK. glTF BLEND is out of scope for the mesh pass and treated as

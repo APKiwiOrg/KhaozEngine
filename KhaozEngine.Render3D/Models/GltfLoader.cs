@@ -79,7 +79,10 @@ namespace KhaozEngine.Render3D
     /// paths alike, normalized ubyte/ushort/float, vec3 or vec4), so a palette-painted kit piece keeps its
     /// authored colours with no texture, and an asset without the attribute loads byte-for-byte as before. On the
     /// rigid path a per-vertex colour also enters the weld key, so two coplanar faces in different palette shades
-    /// stay two vertices at their shared edge instead of the first shade winning. By
+    /// stay two vertices at their shared edge instead of the first shade winning. A colour seam also splits the
+    /// smooth-normal and tangent accumulation, exactly as a UV seam always has, so a mesh with no source NORMAL
+    /// picks up a shading crease where two shades meet (glTF exporters almost always write NORMAL, which wins
+    /// over the computed one). By
     /// default material textures (normal/roughness) are NOT auto-read - bind them explicitly via
     /// <see cref="Scene3D.SurfaceMaps"/>. Opt into auto-read with <see cref="LoadWithMaterial"/> /
     /// <see cref="LoadSkinnedWithMaterial"/>, which also return the material's decoded

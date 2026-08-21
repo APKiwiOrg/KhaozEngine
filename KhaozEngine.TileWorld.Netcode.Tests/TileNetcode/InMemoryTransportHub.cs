@@ -9,9 +9,13 @@ namespace KhaozEngine.Tests.TileNetcode;
 /// endpoint fans out to N client endpoints, each a distinct <see cref="NetConnectionId"/>. Mirrors
 /// LoopbackTransport's poll/drain model (a Send is surfaced on the peer's next Poll). No sockets, no threads.
 /// <para>Deliberately a COPY of KhaozEngine.Server.Tests/NetWorld/InMemoryHub.cs rather than a reference to it.
-/// Both are test helpers in test projects, and referencing that one would pull NetWorld, Locomotion and Physics
-/// into this suite's reference graph, which is what push CI selects affected test projects by. If a third suite
-/// ever needs it, promote it into KhaozEngine.Netcode beside LoopbackTransport instead of copying it again.</para>
+/// Both are test helpers in test projects, and the only way to reach that one is a ProjectReference to
+/// KhaozEngine.Server.Tests, which drags its whole closure in: 37 projects, 24 of them ones this suite does not
+/// already carry, NetWorld among them. Push CI selects affected test projects by the reference graph, and
+/// ArchitectureTests.TileWorldNetcode_NeverReferencesNetWorld holds this suite to the tile package's own narrow
+/// graph (16 projects), so the copy is what keeps both true. Physics is NOT one of the projects such a reference
+/// would add, because it already arrives here through Sharding. If a third suite ever needs this hub, promote it
+/// into KhaozEngine.Netcode beside LoopbackTransport instead of copying it again.</para>
 /// </summary>
 public sealed class InMemoryTransportHub
 {
@@ -92,6 +96,8 @@ public sealed class InMemoryTransportHub
         public void Send(NetConnectionId target, ReadOnlySpan<byte> payload, NetChannelReliability reliability) =>
             hub.ServerSend(target.Value, payload.ToArray(), reliability);
 
+        // A no-op, unlike LoopbackTransport.Disconnect. A server-initiated kick has to go through
+        // InMemoryTransportHub.DisconnectClient for the client endpoint to observe it.
         public void Disconnect(NetConnectionId connection) { }
         public void Dispose() { }
     }
@@ -142,6 +148,7 @@ public sealed class InMemoryTransportHub
             if (!disconnected) hub.ClientSend(connId, payload.ToArray(), reliability);
         }
 
+        // Also a no-op. A client-initiated leave goes through InMemoryTransportHub.DisconnectClient too.
         public void Disconnect(NetConnectionId connection) { }
         public void Dispose() { }
     }

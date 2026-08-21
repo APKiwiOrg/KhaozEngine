@@ -400,15 +400,25 @@ public class ArchitectureTests
     public void TileWorldNetcode_NeverReferencesNetWorld()
     {
         IReadOnlyDictionary<string, Project> graph = LoadGraph();
-        HashSet<string> closure = TransitiveClosure("KhaozEngine.TileWorld.Netcode", graph)
-            .Select(Short).ToHashSet(StringComparer.Ordinal);
-        string[] hits = new[] { "NetWorld", "Locomotion" }.Where(closure.Contains).ToArray();
+        var violations = new List<string>();
 
-        bool clean = hits.Length == 0;
+        // The TEST project is held to the same rule as the package. Its InMemoryTransportHub is a deliberate
+        // copy of the KhaozEngine.Server.Tests helper rather than a reference to it, and the whole price of that
+        // duplication buys nothing unless this suite's own reference graph stays narrow.
+        foreach (string node in new[] { "KhaozEngine.TileWorld.Netcode", "KhaozEngine.TileWorld.Netcode.Tests" })
+        {
+            HashSet<string> closure = TransitiveClosure(node, graph).Select(Short).ToHashSet(StringComparer.Ordinal);
+            string[] hits = new[] { "NetWorld", "Locomotion" }.Where(closure.Contains).ToArray();
+            if (hits.Length > 0)
+                violations.Add(Short(node) + " pulls in: " + string.Join(", ", hits));
+        }
+
+        bool clean = violations.Count == 0;
         Assert.True(clean,
             "KhaozEngine.TileWorld.Netcode is a SIBLING of NetWorld over the same generic layers, not a dependent " +
-            "of it: pulling NetWorld in would drag the float locomotion stack into every tile server. Its " +
-            "ProjectReference closure pulls in: " + string.Join(", ", hits));
+            "of it: pulling NetWorld in would drag the float locomotion stack into every tile server. The test " +
+            "project is covered too, because its InMemoryTransportHub is a copy rather than a reference precisely " +
+            "so this suite's graph stays narrow. ProjectReference closures: " + string.Join(" | ", violations));
     }
 
     [Fact]

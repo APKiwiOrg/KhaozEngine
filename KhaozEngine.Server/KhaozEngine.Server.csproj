@@ -37,7 +37,7 @@
     <!-- networked-world movement layer (server sim + client glue, render-free) -->
     <ProjectReference Include="../KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
     <!-- the tile-world movement layer: a SIBLING of NetWorld over the same generic layers, never a dependent
-         of it. Server-side here; a client head references the package by id, exactly as a client head already
+         of it. Server-side here. A client head references the package by id, exactly as a client head already
          references NetWorld (Game3D carries no networking). -->
     <ProjectReference Include="../KhaozEngine.TileWorld.Netcode/KhaozEngine.TileWorld.Netcode.csproj" />
     <!-- physics seam only; the BepuPhysics backend (KhaozEngine.Physics.Bepu) is an opt-in sibling

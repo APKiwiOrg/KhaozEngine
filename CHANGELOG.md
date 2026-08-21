@@ -5,6 +5,32 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.39.0
+
+A tile world can draw a real glb kit per archetype now, and the glTF loader honours per-vertex COLOR_0.
+
+- **`GltfMeshResolver` (`KhaozEngine.TileWorld.Render3D`) loads an archetype's glb by its `MeshRef`.**
+  `new GltfMeshResolver(string rootDirectory, ITileMeshResolver? fallback = null, Action<string>? log = null)`
+  is an `ITileMeshResolver` that maps `archetype.MeshRef` (authored relative with forward slashes, e.g.
+  `kit/wall.glb`) to `Path.GetFullPath(Path.Combine(rootDirectory, meshRef))`, loads it once through
+  `GltfLoader.LoadPartsWithMaterials`, and caches the parts per archetype id. An absolute `MeshRef` is used as it
+  stands, and the public `PathFor(string meshRef)` exposes the same mapping for a caller that wants to check a
+  kit before building a world. Until now the only shipped resolver was `GreyboxMeshResolver`, so a tile world
+  drew boxes and nothing else.
+- **A missing or unreadable glb falls back and logs ONE line per archetype.** A file that is not there, or a
+  loader throw of any kind, logs the archetype, the resolved path and the reason through `log`, then answers with
+  `fallback?.Resolve(archetype)`. With a `GreyboxMeshResolver` as the fallback a half-authored kit renders as
+  boxes where the glb is missing and as the real mesh everywhere else. With no fallback the answer is null, which
+  `TileWorldView` already draws as its placeholder box. The failure is cached like any other result, so a later
+  call for the same archetype re-logs nothing and does not touch the disk again. An EMPTY `MeshRef` is not a
+  failure at all: it goes straight to the fallback, silently, without building or probing a path.
+- **`GltfLoader` reads per-vertex `COLOR_0` and multiplies it into the vertex colour.** Both the rigid path
+  (`Load`, `LoadGroups`, `LoadWithMaterial`, `LoadFlattenedAlbedo`, `LoadPartsWithMaterials`) and the skinned one
+  (`LoadSkinned`, `LoadSkinnedWithMaterial`) now read the attribute, in every component type the spec allows
+  (normalized ubyte or ushort, or float, vec3 or vec4), and multiply it into the material's base colour as the
+  spec defines it. A palette-painted kit piece keeps its authored colours with no texture and no material per
+  shade. An asset WITHOUT the attribute loads byte-for-byte as it did before, so every existing golden holds.
+
 ## 17.38.0
 
 A tile world draws textured ground and real river water now, over a new `TileGround` texture-array pipeline in

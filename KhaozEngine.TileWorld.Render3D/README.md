@@ -153,7 +153,7 @@ differs because of SCALE (the sea's 1.6 m foam band and 2.5 m ripple wavelength 
 **It is one shared instance of a class of public fields, so do not mutate it**: copy it, or pass a look of your
 own through `TileWorldViewOptions.WaterLook`.
 
-## Objects (`TileObjectProps`, `ITileMeshResolver`, `GreyboxMeshResolver`)
+## Objects (`TileObjectProps`, `ITileMeshResolver`, `GreyboxMeshResolver`, `GltfMeshResolver`)
 
 `TileObjectProps.Build(doc, catalogs, region, plane)` turns a region-plane's `TileObject`s into
 `TileRegionProps(Ground, Roofs)`, two `PropPlacement` lists for the existing prop path, split so the roof rule can
@@ -179,6 +179,49 @@ roof rule keys on), so its slab starts at y 0 too and the PLANE supplies the hei
 `GreyboxMeshResolver(float tileSize = TileWorldDocument.DefaultTileSize, float wallHeight = TileWorldDocument.DefaultPlaneHeight)`
 makes a wall exactly one plane tall. Pass `doc.PlaneHeight` for `wallHeight` whenever a document is at hand, so a
 world with a non-default plane height still has its walls meet its roofs.
+
+### Real meshes (`GltfMeshResolver`)
+
+`GltfMeshResolver(string rootDirectory, ITileMeshResolver? fallback = null, Action<string>? log = null)` is the
+content-backed resolver. It maps an archetype's `MeshRef` to `Path.GetFullPath(Path.Combine(rootDirectory,
+meshRef))`, loads that glb once through `GltfLoader.LoadPartsWithMaterials`, and caches the parts per archetype
+id. A `MeshRef` is authored RELATIVE with forward slashes (`kit/wall.glb`), normalized to the platform separator
+here, and an already-absolute one is used as it stands. `PathFor(meshRef)` is public, for a tool that wants to
+check a kit before a world is built. The cache is a plain dictionary, so resolve on one thread, as with the
+greybox resolver.
+
+Chain it over the greybox one and a half-authored kit still renders:
+
+```csharp
+var resolver = new GltfMeshResolver(kitRoot, new GreyboxMeshResolver(doc.TileSize, doc.PlaneHeight), log);
+```
+
+- **A missing file or a loader throw falls back and logs ONCE.** The line names the archetype, the resolved path
+  and the reason, and then the answer is `fallback?.Resolve(archetype)`: the greybox box where the glb is not
+  there yet, the real mesh everywhere else. With no fallback the answer is null, which the view already draws as
+  its placeholder box with a line of its own.
+- **The failure is cached like any other result**, so the second call for that archetype re-logs nothing and does
+  not go near the disk again. One line per archetype id is the whole budget, however many times a world reloads
+  the region it stands in.
+- **An empty `MeshRef` is not a failure.** It goes straight to the fallback, silently, without building or
+  probing a path, because an archetype nobody has modelled yet is an ordinary authoring state.
+
+**A glb is drawn exactly as authored: nothing here scales, rotates or re-centres it.** So a kit piece has to meet
+the same local-space contract `GreyboxMeshResolver.BuildMesh` builds to:
+
+- **The origin sits at the footprint CENTRE, on the piece's own floor.** `AnchorPosition` puts the placement at
+  the centre of the rotated footprint at ground height, so a mesh is centred in x and z with its base at y 0. A
+  piece modelled with its origin at a corner lands half a tile off.
+- **x is east, minus z is north, and 1 unit is 1 metre.** World z is minus tile z (`TileWorldSpace`), which is
+  why the north face of a footprint is at `-z`.
+- **y 0 is the floor of the piece's OWN plane, not the ground.** A wall is one plane tall (`doc.PlaneHeight`) so
+  it meets the roof above it, and a roof sits at y 0 on its own plane, which is the plane above the walls it
+  covers.
+- **A wall hugs the `-x` face of its footprint at rotation 0**, and a corner wall adds the `-z` face, matching
+  the greybox shapes, so a kit and the greybox stand-in read as the same world.
+
+Colours come from the glb's own materials, or from per-vertex `COLOR_0`, which `GltfLoader` multiplies into the
+material base colour. So a palette-painted kit needs neither textures nor a material per shade.
 
 ## The scene seam (`ITileWorldScene`, `Scene3DTileWorldScene`)
 

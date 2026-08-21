@@ -395,6 +395,10 @@ YawOffsetDegrees`, mesh from the archetype's glTF ref through the existing model
 region so an unload is a drop. A missing mesh ref draws a placeholder box and logs once per archetype: a
 bad ref never faults the view.
 
+The resolver that reads the archetype's glTF ref shipped in 17.39.0 as `GltfMeshResolver`, chained over
+`GreyboxMeshResolver` as its fallback, with the log-once rule above applying to a missing file and a loader throw
+alike.
+
 ### 7.3 Runtime
 
 `TileWorldView` owns loaded region meshes and prop batches in a `Scene3D`, driven by `TileRegionResidency`
@@ -769,8 +773,11 @@ server, auth and persistence come in sub-project 2 by cloning Ruinborne's shell 
   two rocks (1x1, 2x2), flat and gable roof pieces + ridge (`IsRoof`), stairs, well, crate, barrel, table,
   chair, bank booth, anvil, furnace, altar, signpost, lamp post, ladder.
 - Meshes are generated, not modelled: `tools/kitgen/` is a Blender Python script (driven through the Blender
-  MCP) that builds each piece from primitives with palette vertex colours at 1 u = 1 m with exact footprints
-  and exports glb. The kit is regenerable code, and the archetype indirection means the later art pass swaps
+  MCP) that builds each piece from primitives at 1 u = 1 m with exact footprints and exports glb. Each piece is
+  authored to the resolver's local-space contract: the ORIGIN sits at the footprint CENTRE on the piece's own
+  floor (not at a corner), x east, minus z north, with a wall on the `-x` face at rotation 0. Palette colours
+  ride either as one material per shade or as per-vertex `COLOR_0`, both of which `GltfLoader` reads, so a piece
+  needs no textures. The kit is regenerable code, and the archetype indirection means the later art pass swaps
   meshes per id without touching a world file.
 - The world: `assets/worlds/hollowmere/` (working name, the directory name is the world `Id`), about 3x3
   regions, authored through `ke-tileedit`: a starter town

@@ -5352,7 +5352,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.38.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.39.0" />
 ```
 
 ```csharp
@@ -6644,6 +6644,27 @@ byte[] rgba = TileWorldSnapshot.CaptureTopDown(doc, catalogs, resolver,
     new TileRect(0, 0, 32, 32), plane: 0, pxPerTile: 4);
 PngWriter.Save("map.png", rgba, 32 * 4, 32 * 4);
 ```
+
+**Real meshes.** `GreyboxMeshResolver` draws boxes. `GltfMeshResolver` draws a kit: it maps an archetype's
+`MeshRef` (relative, forward slashes, `kit/wall.glb`) to a glb under a root directory, loads it once through
+`GltfLoader.LoadPartsWithMaterials`, and caches it per archetype id. Chain it over the greybox one so a
+half-authored kit still renders:
+
+```csharp
+var resolver = new GltfMeshResolver(kitRoot, new GreyboxMeshResolver(doc.TileSize, doc.PlaneHeight), log);
+```
+
+A missing file or a loader throw logs ONE line naming the archetype, the resolved path and the reason, then
+answers with the fallback, so the boxes stand in exactly where a glb is not there yet. That failure is cached like
+any other result, so the same archetype never logs twice or touches the disk twice. An empty `MeshRef` skips
+straight to the fallback with no log line at all, and an absolute `MeshRef` is used as it stands.
+
+Nothing scales, rotates or re-centres a glb, so a kit piece has to be authored to the same contract the greybox
+shapes are built to: the origin at the footprint CENTRE on the piece's own floor, x east, minus z north, 1 unit
+1 metre, a wall hugging the `-x` face at rotation 0 (a corner wall adding `-z`), and a roof at y 0 on its own
+plane. Colours come from the glb's materials or from per-vertex `COLOR_0`, which `GltfLoader` multiplies into the
+material base colour, so a palette-painted kit needs no textures. The full contract is in the
+`KhaozEngine.TileWorld.Render3D` package README.
 
 **The ground materials are one set per view.** `TileGroundMaterials.Build(catalogs, load?)` gives every catalog
 material a layer of the `TileGroundMaterialSet`, in ascending id order, with one reserved magenta layer last for
@@ -9236,7 +9257,7 @@ run inside the engine's process-wide device-creation gate, so a provider needs n
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.38.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.39.0" />
 ```
 
 ```csharp
@@ -9270,7 +9291,7 @@ that up front is what routes it through the reported fallback instead of a crash
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.38.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.39.0" />
 ```
 
 ```csharp
@@ -9512,7 +9533,7 @@ is no recovery path: a lost device stays lost, which is what the liveness token 
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.38.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.39.0" />
 ```
 
 ```csharp

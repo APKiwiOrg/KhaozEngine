@@ -1,0 +1,48 @@
+namespace KhaozEngine.TileWorld.Netcode;
+
+/// <summary>What one tick's command asks for. Three values, and the wire form is one byte, because a tile world's
+/// entire input vocabulary is where to go and what to touch.</summary>
+public enum TileCommandKind : byte
+{
+    /// <summary>Keep doing what you are doing. The command a client sends while a route plays out, and what makes
+    /// the one-command-per-tick sequence model fit with no "walking" flag on the wire. A tick with nothing to say
+    /// still sends one, because the sequence numbers are what the queue drains and reconciliation replays.</summary>
+    None = 0,
+
+    /// <summary>Path to <see cref="TileCommand.Goal"/> and walk it at <see cref="TileCommand.Mode"/>. Replaces any
+    /// route already in progress, which is what makes a second click feel immediate.</summary>
+    WalkTo = 1,
+
+    /// <summary>Route to a reach tile of <see cref="TileCommand.Target"/>, face it, and raise the action on
+    /// arrival. The target rather than a tile is sent because a thing can move between the click and the
+    /// arrival.</summary>
+    Interact = 2,
+}
+
+/// <summary>
+/// One tick of player intent, sent once per client tick and drained one per player per server tick by
+/// <see cref="KhaozEngine.Netcode.RemoteCommandQueue{TCommand}"/>. Integer-only by construction: a tile world has
+/// no analogue axis to quantize and no non-finite value to reject, so the whole class of float validation the
+/// continuous protocol needs simply has no surface here.
+/// <para>A fixed 24 byte frame regardless of kind. Every field is carried on every command so the decoder has no
+/// branches over layout, which is one fewer way for an attacker-shaped frame to reach code that assumed a
+/// kind.</para>
+/// </summary>
+/// <param name="Kind">What this command asks for.</param>
+/// <param name="Goal">The destination tile for <see cref="TileCommandKind.WalkTo"/>, otherwise ignored.</param>
+/// <param name="Mode">Walk or run. Carried on every kind so a run toggle takes effect on the next command.</param>
+/// <param name="Target">The interaction target id for <see cref="TileCommandKind.Interact"/>, otherwise 0.</param>
+public readonly record struct TileCommand(TileCommandKind Kind, TileCoord Goal, TileMoveMode Mode, long Target)
+{
+    /// <summary>The neutral command: keep walking the current route, or keep standing. What a client sends on
+    /// every tick the player did nothing, and what a decoder hands back when it rejects a frame.</summary>
+    public static TileCommand None => new(TileCommandKind.None, default, TileMoveMode.Walk, 0);
+
+    /// <summary>Path to <paramref name="goal"/> and walk it.</summary>
+    public static TileCommand WalkTo(TileCoord goal, TileMoveMode mode) =>
+        new(TileCommandKind.WalkTo, goal, mode, 0);
+
+    /// <summary>Route to a reach tile of <paramref name="target"/> and interact on arrival.</summary>
+    public static TileCommand Interact(long target, TileMoveMode mode) =>
+        new(TileCommandKind.Interact, default, mode, target);
+}

@@ -23,13 +23,21 @@ A tile world can draw a real glb kit per archetype now, and the glTF loader hono
   boxes where the glb is missing and as the real mesh everywhere else. With no fallback the answer is null, which
   `TileWorldView` already draws as its placeholder box. The failure is cached like any other result, so a later
   call for the same archetype re-logs nothing and does not touch the disk again. An EMPTY `MeshRef` is not a
-  failure at all: it goes straight to the fallback, silently, without building or probing a path.
+  failure at all: it goes straight to the fallback, silently, without building or probing a path. A `MeshRef` no
+  path API will accept (an embedded NUL out of a corrupt catalog) falls back the same way rather than faulting
+  the view, and the parts handed out are read-only, so a caller cannot write through them into the cache.
 - **`GltfLoader` reads per-vertex `COLOR_0` and multiplies it into the vertex colour.** Both the rigid path
   (`Load`, `LoadGroups`, `LoadWithMaterial`, `LoadFlattenedAlbedo`, `LoadPartsWithMaterials`) and the skinned one
   (`LoadSkinned`, `LoadSkinnedWithMaterial`) now read the attribute, in every component type the spec allows
   (normalized ubyte or ushort, or float, vec3 or vec4), and multiply it into the material's base colour as the
   spec defines it. A palette-painted kit piece keeps its authored colours with no texture and no material per
   shade. An asset WITHOUT the attribute loads byte-for-byte as it did before, so every existing golden holds.
+- **The weld keeps an authored COLOR_0 seam apart.** `MeshCorner` gained a `HasVertexColor` flag, set only where
+  a COLOR_0 accessor was actually read, and the rigid weld key carries the quantized colour when it is set. Two
+  coplanar faces in different palette shades share an edge with a common normal and (on an unmapped piece) the
+  same zero UV, so before this the second face's shared corners welded into the first face's vertices and came
+  back in the first shade, rendering as a gradient. The flag is what keeps the change byte-neutral: a flat
+  per-material colour is uniform over a primitive, so it stays out of the key and no existing asset's weld moves.
 
 ## 17.38.0
 

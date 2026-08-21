@@ -8,6 +8,10 @@ namespace KhaozEngine.Render3D
     /// One corner of a triangle fed to <see cref="MeshAssembler"/>: a position, an optional source normal
     /// (null = "compute a smooth normal from face winding"), a base color, a UV, and an optional source tangent
     /// (xyz = model-space direction, w = +/-1 handedness; null = compute from UV+position gradient).
+    /// <para><c>hasVertexColor</c> marks a corner whose color came from a PER-VERTEX source (a glTF COLOR_0
+    /// accessor) rather than from the flat per-material factor. It is what puts the color in the weld key, so an
+    /// authored color seam survives. Leave it false for a flat color, which is what every non-COLOR_0 caller
+    /// does, and the weld is exactly the position/normal/uv one it has always been.</para>
     /// </summary>
     internal readonly struct MeshCorner
     {
@@ -15,15 +19,18 @@ namespace KhaozEngine.Render3D
         public readonly Vector3 Normal;   // meaningful only when HasNormal
         public readonly bool HasNormal;
         public readonly Vector4 Color;
+        public readonly bool HasVertexColor;   // color is per-vertex (COLOR_0), so it belongs in the weld key
         public readonly Vector2 Uv;
         public readonly Vector4? Tangent;  // source tangent (xyz dir, w handedness); null => compute from UV+pos
 
-        public MeshCorner(Vector3 position, Vector3? normal, Vector4 color, Vector2 uv, Vector4? tangent = null)
+        public MeshCorner(Vector3 position, Vector3? normal, Vector4 color, Vector2 uv, Vector4? tangent = null,
+                          bool hasVertexColor = false)
         {
             Position = position;
             HasNormal = normal.HasValue;
             Normal = normal ?? default;
             Color = color;
+            HasVertexColor = hasVertexColor;
             Uv = uv;
             Tangent = tangent;
         }
@@ -31,8 +38,12 @@ namespace KhaozEngine.Render3D
 
     /// <summary>
     /// Welds a triangle-soup of <see cref="MeshCorner"/>s into an indexed <see cref="GltfMesh"/>. Two corners
-    /// merge only when their position, normal, AND uv all match (quantized) - so hard edges (distinct normals)
-    /// and UV seams (distinct uvs) are preserved, unlike a position-only weld. When a corner has no source
+    /// merge only when their position, normal, uv AND per-vertex color all match (quantized) - so hard edges
+    /// (distinct normals), UV seams (distinct uvs) and authored COLOR_0 seams (distinct vertex colors) are all
+    /// preserved, unlike a position-only weld. The color only enters the key for corners flagged
+    /// <see cref="MeshCorner.HasVertexColor"/>, because a FLAT per-material color is uniform over a primitive
+    /// and adding it unconditionally would split coincident corners across materials in the whole-scene weld.
+    /// When a corner has no source
     /// normal, an area-weighted face normal is accumulated across the faces that share it (a smooth default),
     /// and such corners weld on position+uv only. Also computes per-vertex tangents via the Lengyel UV+position
     /// method, accumulated and Gram-Schmidt orthogonalized against the finalized normal. A supplied source
@@ -42,7 +53,8 @@ namespace KhaozEngine.Render3D
     /// </summary>
     internal static class MeshAssembler
     {
-        // Quantization scales: positions to 1e-4, normals (unit) to 1e-3, uvs to 1e-4.
+        // Quantization scales: positions to 1e-4, normals (unit) to 1e-3, uvs to 1e-4, vertex colors to 1e-3
+        // (a 0..1 channel, so the same resolution a unit normal gets).
         static long Q(float v, float scale) => (long)MathF.Round(v * scale);
 
         public static GltfMesh Build(IReadOnlyList<MeshCorner> corners)
@@ -59,7 +71,8 @@ namespace KhaozEngine.Render3D
             var tan1 = new List<Vector3>();       // accumulated UV-space s-direction per welded vertex
             var tan2 = new List<Vector3>();       // accumulated UV-space t-direction per welded vertex
             var srcTangent = new List<Vector4?>();// source tangent if the corner supplied one
-            var weld = new Dictionary<(long, long, long, bool, long, long, long, long, long), int>();
+            var weld = new Dictionary<(long, long, long, bool, long, long, long, long, long,
+                                       bool, long, long, long, long), int>();
             var indices = new List<int>(corners.Count);
 
             int Resolve(in MeshCorner c, Vector3 faceN, Vector3 sdir, Vector3 tdir)
@@ -69,7 +82,13 @@ namespace KhaozEngine.Render3D
                            c.HasNormal ? Q(c.Normal.X, 1e3f) : 0L,
                            c.HasNormal ? Q(c.Normal.Y, 1e3f) : 0L,
                            c.HasNormal ? Q(c.Normal.Z, 1e3f) : 0L,
-                           Q(c.Uv.X, 1e4f), Q(c.Uv.Y, 1e4f));
+                           Q(c.Uv.X, 1e4f), Q(c.Uv.Y, 1e4f),
+                           // Zeroed when the color is flat, so a non-COLOR_0 asset welds byte-for-byte as before.
+                           c.HasVertexColor,
+                           c.HasVertexColor ? Q(c.Color.X, 1e3f) : 0L,
+                           c.HasVertexColor ? Q(c.Color.Y, 1e3f) : 0L,
+                           c.HasVertexColor ? Q(c.Color.Z, 1e3f) : 0L,
+                           c.HasVertexColor ? Q(c.Color.W, 1e3f) : 0L);
 
                 if (weld.TryGetValue(key, out int existing))
                 {

@@ -205,6 +205,14 @@ var resolver = new GltfMeshResolver(kitRoot, new GreyboxMeshResolver(doc.TileSiz
   the region it stands in.
 - **An empty `MeshRef` is not a failure.** It goes straight to the fallback, silently, without building or
   probing a path, because an archetype nobody has modelled yet is an ordinary authoring state.
+- **A `MeshRef` no path API will accept falls back too.** `Path.GetFullPath` throws on an embedded NUL, which a
+  JSON catalog can carry, so the path mapping runs inside the same guard as the load. Nothing about bad content
+  throws out of `Resolve`. `PathFor` is the unguarded form, for a tool that wants the exception.
+- **The cache is keyed by archetype id, not by resolved path.** Two archetypes sharing one `MeshRef` parse that
+  glb twice and hold two copies of it, and one missing file logs once per archetype rather than once per file.
+- **There is no eviction.** Every cached part holds its decoded RGBA8 `GltfMaterialMaps` pixels for the
+  resolver's lifetime, still resident after the view has uploaded them to the GPU, and a glb regenerated while
+  the app is running is never picked up.
 
 **A glb is drawn exactly as authored: nothing here scales, rotates or re-centres it.** So a kit piece has to meet
 the same local-space contract `GreyboxMeshResolver.BuildMesh` builds to:

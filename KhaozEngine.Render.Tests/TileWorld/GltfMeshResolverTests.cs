@@ -147,6 +147,54 @@ public class GltfMeshResolverTests : IDisposable
         Assert.Equal(Greybox().Resolve(archetype)!.Count, parts.Count);
         string line = Assert.Single(_log);
         Assert.Contains(ExpectedLoaderMessage(path), line, StringComparison.Ordinal);
+
+        // A cached failure, same as the missing-file one: no second line, no second parse.
+        Assert.Same(parts, resolver.Resolve(archetype));
+        Assert.Single(_log);
+    }
+
+    // A MeshRef out of a corrupt catalog can carry a character no path API will take. Path.GetFullPath throws
+    // ArgumentException on an embedded NUL, and before the fix that throw escaped Resolve and took the whole
+    // TileWorldView constructor down with it.
+    [Fact]
+    public void A_mesh_ref_no_path_api_accepts_falls_back_instead_of_throwing()
+    {
+        var resolver = new GltfMeshResolver(_root, Greybox(), _log.Add);
+        TileObjectArchetype archetype = Archetype("wall", "kit/wa\0ll.glb");
+
+        IReadOnlyList<GltfMeshPart>? parts = resolver.Resolve(archetype);
+
+        Assert.NotNull(parts);
+        Assert.Equal(Greybox().Resolve(archetype)!.Count, parts.Count);
+        Assert.Single(_log);
+        Assert.Same(parts, resolver.Resolve(archetype));
+        Assert.Single(_log);
+    }
+
+    // The forward-slash to platform-separator mapping is a no-op on macOS and Linux, so assert it against
+    // Path.Combine rather than against a literal, and the expectation holds on every leg.
+    [Fact]
+    public void PathFor_combines_a_relative_ref_with_the_root()
+    {
+        var resolver = new GltfMeshResolver(_root, Greybox(), _log.Add);
+
+        Assert.Equal(Path.Combine(_root, "kit", "wall.glb"), resolver.PathFor("kit/wall.glb"));
+
+        string absolute = Path.Combine(_root, "kit", "elsewhere.glb");
+        Assert.Equal(absolute, resolver.PathFor(absolute));
+    }
+
+    [Fact]
+    public void The_parts_handed_out_are_read_only()
+    {
+        CopyKitPiece("wall");
+        var resolver = new GltfMeshResolver(_root, Greybox(), _log.Add);
+
+        IReadOnlyList<GltfMeshPart>? parts = resolver.Resolve(Archetype("wall", "kit/wall.glb"));
+
+        Assert.NotNull(parts);
+        Assert.IsNotType<List<GltfMeshPart>>(parts);
+        Assert.True(parts is System.Collections.IList { IsReadOnly: true }, "the cached list is writable");
     }
 
     // The loader's own message for this file, read from the loader rather than hard-coded, so the assertion pins

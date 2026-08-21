@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using KhaozEngine.Render3D;
 
 namespace KhaozEngine.TileWorld;
@@ -11,8 +13,9 @@ namespace KhaozEngine.TileWorld;
 /// authored with forward slashes and relative to the root (<c>kit/wall.glb</c>), normalized to the platform
 /// separator here, and an already-absolute reference is used as it stands.
 ///
-/// <para>Content outlives a kit edit, so a missing file or a loader throw is NOT fatal: it logs ONE line naming
-/// the archetype, the resolved path and the reason, then answers with the fallback resolver's mesh. Pass a
+/// <para>Content outlives a kit edit, so a missing file, a loader throw, or a mesh reference no path API will
+/// even accept is NOT fatal: it logs ONE line naming the archetype, the path and the reason, then answers with
+/// the fallback resolver's mesh. NOTHING here throws out of <see cref="Resolve"/> for bad content. Pass a
 /// <see cref="GreyboxMeshResolver"/> as the fallback and a half-authored kit renders as boxes where the glb is
 /// missing and as the real mesh everywhere else. With no fallback the answer is null, which the view draws as its
 /// placeholder box plus a line of its own. An archetype with an EMPTY mesh reference is not a failure at all (it
@@ -21,7 +24,13 @@ namespace KhaozEngine.TileWorld;
 ///
 /// <para>Every result is cached per archetype id, failures included, so a later call for a failed id hands back
 /// the same answer without re-logging or probing the disk again. The cache is a plain dictionary, so resolve on
-/// one thread, exactly as <see cref="GreyboxMeshResolver"/> documents.</para>
+/// one thread, exactly as <see cref="GreyboxMeshResolver"/> documents, and the list handed out is read-only, so a
+/// caller cannot write through it into the shared cache. Two things follow from keying on the ARCHETYPE ID rather
+/// than the resolved path: two archetypes sharing one <c>MeshRef</c> parse that glb twice and hold two copies,
+/// and one missing file logs once per archetype rather than once per file. There is no eviction either, so the
+/// parts, including each part's decoded RGBA8 <see cref="GltfMaterialMaps"/> pixels, stay live for the resolver's
+/// lifetime even after a view has uploaded them, and a glb regenerated while the app runs is never picked
+/// up.</para>
 ///
 /// <para>A glb is PLANE-LOCAL and drawn exactly as authored: nothing here scales, rotates or re-centres it. The
 /// contract it has to meet is the one <see cref="GreyboxMeshResolver"/> builds to, and it is spelled out in this
@@ -49,7 +58,8 @@ public sealed class GltfMeshResolver : ITileMeshResolver
     }
 
     /// <summary>The parts that draw this archetype, loaded once and handed back on every later call, or the
-    /// fallback's answer (null when there is no fallback) when the glb is missing or unreadable.</summary>
+    /// fallback's answer (null when there is no fallback) when the glb is missing or unreadable. The list is
+    /// read-only, so a caller cannot write through it into the shared cache. Never throws over bad content.</summary>
     public IReadOnlyList<GltfMeshPart>? Resolve(TileObjectArchetype archetype)
     {
         ArgumentNullException.ThrowIfNull(archetype);
@@ -61,7 +71,9 @@ public sealed class GltfMeshResolver : ITileMeshResolver
     }
 
     /// <summary>The absolute path an archetype's mesh reference names under this resolver's root. An absolute
-    /// reference is returned as it stands, and forward slashes become the platform separator either way.</summary>
+    /// reference is returned as it stands, and forward slashes become the platform separator either way. Throws
+    /// whatever <see cref="Path.GetFullPath(string)"/> throws for a reference no path API will accept, so a
+    /// pre-flight caller catches it. <see cref="Resolve"/> catches it for you and falls back.</summary>
     public string PathFor(string meshRef)
     {
         ArgumentNullException.ThrowIfNull(meshRef);
@@ -73,19 +85,24 @@ public sealed class GltfMeshResolver : ITileMeshResolver
     {
         if (string.IsNullOrWhiteSpace(archetype.MeshRef)) return _fallback?.Resolve(archetype);
 
-        string path = PathFor(archetype.MeshRef);
-        // Probed rather than caught, because a missing kit piece is the ordinary half-authored case and deserves
-        // a reason a reader can act on, not whatever wording the loader happens to throw for an absent file.
-        if (!File.Exists(path)) return FallBack(archetype, path, "file not found");
-
+        // PathFor is INSIDE the try on purpose: a MeshRef out of a corrupt catalog can carry a character
+        // Path.GetFullPath rejects (an embedded NUL throws ArgumentException), and a bad ref must never fault the
+        // view. The ref itself goes in the line then, because there is no resolved path to name.
+        string path = archetype.MeshRef;
         try
         {
-            return GltfLoader.LoadPartsWithMaterials(path);
+            path = PathFor(archetype.MeshRef);
+            // Probed rather than caught, because a missing kit piece is the ordinary half-authored case and
+            // deserves a reason a reader can act on, not whatever the loader throws for an absent file.
+            if (!File.Exists(path)) return FallBack(archetype, path, "file not found");
+            // Wrapped before it leaves, so a caller cannot write through the handed-out list into the cache.
+            return new ReadOnlyCollection<GltfMeshPart>(GltfLoader.LoadPartsWithMaterials(path).ToArray());
         }
         catch (Exception ex)
         {
-            // Deliberately broad: a corrupt or unsupported glb surfaces as anything from a format exception to an
-            // IO one, and none of them is worth taking the whole world down for when a greybox box will do.
+            // Deliberately broad: a corrupt or unsupported glb, or a ref no path API will accept, surfaces as
+            // anything from a format exception to an IO one, and none of them is worth taking the whole world
+            // down for when a greybox box will do.
             return FallBack(archetype, path, ex.Message);
         }
     }

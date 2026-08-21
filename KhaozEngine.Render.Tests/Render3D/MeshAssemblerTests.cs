@@ -108,5 +108,53 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Throws<ArgumentException>(() =>
                 MeshAssembler.Build(new List<MeshCorner> { C(A, null, Vector2.Zero), C(B, null, Vector2.Zero) }));
         }
+
+        // Two coplanar triangles sharing the edge B-Cv, no normals and no UVs: the shape a flat-shaded kit piece
+        // makes wherever two palette shades meet. The colour has to be in the weld key or the second triangle's
+        // two shared corners come back in the first triangle's colour.
+        static readonly Vector3 D = new(1, 1, 0);
+
+        static MeshCorner Painted(Vector3 p, Vector4 color) =>
+            new MeshCorner(p, null, color, Vector2.Zero, null, hasVertexColor: true);
+
+        static MeshCorner Flat(Vector3 p, Vector4 color) => new MeshCorner(p, null, color, Vector2.Zero);
+
+        static List<MeshCorner> Seam(Func<Vector3, Vector4, MeshCorner> make)
+        {
+            Vector4 red = new(1, 0, 0, 1), blue = new(0, 0, 1, 1);
+            return new List<MeshCorner>
+            {
+                make(A, red), make(B, red), make(Cv, red),
+                make(B, blue), make(D, blue), make(Cv, blue),
+            };
+        }
+
+        [Fact]
+        public void Per_Vertex_Colour_Seam_Stays_Split()
+        {
+            var mesh = MeshAssembler.Build(Seam(Painted));
+
+            // Four distinct positions, but B and Cv each carry two colours, so six vertices.
+            Assert.Equal(6, mesh.Vertices.Length);
+            for (int t = 0; t < 2; t++)
+            {
+                Vector4 expected = mesh.Vertices[mesh.Indices[t * 3]].Color;
+                for (int i = 1; i < 3; i++)
+                    Assert.Equal(expected, mesh.Vertices[mesh.Indices[t * 3 + i]].Color);
+            }
+            Assert.NotEqual(mesh.Vertices[mesh.Indices[0]].Color, mesh.Vertices[mesh.Indices[3]].Color);
+        }
+
+        [Fact]
+        public void A_Flat_Colour_Difference_Does_Not_Split_The_Weld()
+        {
+            // The same six corners with the flag off, which is every non-COLOR_0 caller: the colour stays out of
+            // the key, the shared edge welds, and the first corner to claim a vertex keeps its colour, exactly as
+            // before per-vertex colour existed. This is the guarantee the goldens rest on.
+            var mesh = MeshAssembler.Build(Seam(Flat));
+
+            Assert.Equal(4, mesh.Vertices.Length);
+            Assert.Equal(6, mesh.Indices.Length);
+        }
     }
 }

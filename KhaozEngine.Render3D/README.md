@@ -656,8 +656,10 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
 - Per-vertex colour: `GltfLoader` reads the glTF `COLOR_0` attribute (rigid and skinned paths alike, normalized
   ubyte/ushort or float, vec3 or vec4) and MULTIPLIES it into the vertex's material base colour, which is what
   the spec says it is. So a kit piece painted from a palette in Blender keeps its authored colours with no
-  texture and no material per shade, and a white `COLOR_0` changes nothing. An asset without the attribute loads
-  byte-for-byte as before, so existing goldens hold.
+  texture and no material per shade, and a white `COLOR_0` changes nothing. A per-vertex colour also enters the
+  rigid weld key, so two coplanar faces in different shades stay two vertices at their shared edge instead of the
+  first shade winning. That gating is on the attribute being present, not on the colour: an asset without
+  `COLOR_0` loads and welds byte-for-byte as before, so existing goldens hold.
 - Alpha cutout (foliage / leaf cards): `GltfLoader` reads each material's glTF `alphaMode` into
   `GltfMaterialMaps.AlphaCutoff` - `0` for OPAQUE (the default when absent, no clip), else the material's
   `alphaCutoff` (default 0.5 per spec) for MASK. glTF BLEND is out of scope for the mesh pass and treated as

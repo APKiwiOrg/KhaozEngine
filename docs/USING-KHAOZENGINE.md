@@ -6657,7 +6657,11 @@ var resolver = new GltfMeshResolver(kitRoot, new GreyboxMeshResolver(doc.TileSiz
 A missing file or a loader throw logs ONE line naming the archetype, the resolved path and the reason, then
 answers with the fallback, so the boxes stand in exactly where a glb is not there yet. That failure is cached like
 any other result, so the same archetype never logs twice or touches the disk twice. An empty `MeshRef` skips
-straight to the fallback with no log line at all, and an absolute `MeshRef` is used as it stands.
+straight to the fallback with no log line at all, an absolute `MeshRef` is used as it stands, and a `MeshRef` no
+path API will accept falls back like any other bad ref rather than faulting the view. Nothing about bad content
+throws out of `Resolve`, and the parts it hands out are read-only. The cache is keyed by archetype id and has no
+eviction, so two archetypes sharing a `MeshRef` parse that glb twice and every cached part's decoded pixels stay
+resident for the resolver's life.
 
 Nothing scales, rotates or re-centres a glb, so a kit piece has to be authored to the same contract the greybox
 shapes are built to: the origin at the footprint CENTRE on the piece's own floor, x east, minus z north, 1 unit

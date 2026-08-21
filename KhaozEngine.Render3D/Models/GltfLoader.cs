@@ -74,10 +74,12 @@ namespace KhaozEngine.Render3D
     }
 
     /// <summary>Loads a glTF/GLB at runtime via SharpGLTF into a flat-shaded <see cref="GltfMesh"/>.
-    /// Reads POSITION/NORMAL/TEXCOORD_0/TANGENT/COLOR_0; a missing TANGENT is computed from UV+position by
+    /// Reads POSITION/NORMAL/TEXCOORD_0/TANGENT/COLOR_0. A missing TANGENT is computed from UV+position by
     /// MeshAssembler. COLOR_0 is a MULTIPLIER on the material's base colour per the glTF spec (rigid and skinned
     /// paths alike, normalized ubyte/ushort/float, vec3 or vec4), so a palette-painted kit piece keeps its
-    /// authored colours with no texture, and an asset without the attribute loads byte-for-byte as before. By
+    /// authored colours with no texture, and an asset without the attribute loads byte-for-byte as before. On the
+    /// rigid path a per-vertex colour also enters the weld key, so two coplanar faces in different palette shades
+    /// stay two vertices at their shared edge instead of the first shade winning. By
     /// default material textures (normal/roughness) are NOT auto-read - bind them explicitly via
     /// <see cref="Scene3D.SurfaceMaps"/>. Opt into auto-read with <see cref="LoadWithMaterial"/> /
     /// <see cref="LoadSkinnedWithMaterial"/>, which also return the material's decoded
@@ -312,6 +314,7 @@ namespace KhaozEngine.Render3D
             // COLOR_0 is a MULTIPLIER on the material colour per the glTF spec, not a replacement, so a white
             // COLOR_0 changes nothing and an asset without the attribute keeps the flat factor byte-for-byte.
             Vector4 Color(int i) => srcColors != null && i < srcColors.Count ? baseColor * srcColors[i] : baseColor;
+            bool perVertexColor = srcColors != null;
             Vector4? Tan(int i)
             {
                 if (srcTangents == null || i >= srcTangents.Count) return null;
@@ -325,9 +328,11 @@ namespace KhaozEngine.Render3D
 
             foreach (var (a, b, c) in prim.GetTriangleIndices())
             {
-                corners.Add(new MeshCorner(Pos(a), Norm(a), Color(a), Uv(a), Tan(a)));
-                corners.Add(new MeshCorner(Pos(b), Norm(b), Color(b), Uv(b), Tan(b)));
-                corners.Add(new MeshCorner(Pos(c), Norm(c), Color(c), Uv(c), Tan(c)));
+                // hasVertexColor is set ONLY when this primitive actually carried a COLOR_0 accessor, which is
+                // what keeps an authored colour seam out of the weld without touching any other asset's weld.
+                corners.Add(new MeshCorner(Pos(a), Norm(a), Color(a), Uv(a), Tan(a), perVertexColor));
+                corners.Add(new MeshCorner(Pos(b), Norm(b), Color(b), Uv(b), Tan(b), perVertexColor));
+                corners.Add(new MeshCorner(Pos(c), Norm(c), Color(c), Uv(c), Tan(c), perVertexColor));
             }
         }
 

@@ -239,8 +239,9 @@ SIGTERM, heartbeat, into the existing Dockerfile. `Grimhollow.Auth`: Ruinborne's
 or SqlServer choice. Client: a login screen (Discord sign-in through `IdentitySession`, every string through the
 catalog), the fly rig replaced by a player with an OSRS-style orbit camera, left click on the ground through
 `TileRaycast.Pick` sends `WalkTo`, on an `Interactive` archetype sends `Interact`, a run toggle, remote players as a
-placeholder kit piece with name plates, and the cannot-reach line. Dev loop: the fly camera stays reachable behind a
-dev toggle so world authoring does not lose its viewer.
+placeholder kit piece with name plates, and the cannot-reach line. Presence ("in Hollowmere") is the existing `KhaozEngine.Social`
+`SocialPresenceController` over `Social.Discord`'s `DiscordSocialProvider`, wired in R2 with no new engine code. Dev
+loop: the fly camera stays reachable behind a dev toggle so world authoring does not lose its viewer.
 
 ## 12. Failure handling
 

@@ -653,6 +653,11 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   Scene3D.PropHandle`, draw as a unit with `Scene3D.Draw(PropHandle, world[, tint])` (each part is a normal
   instanced mesh sharing the transform, so drawing a prop at several transforms batches as instances), and free
   with `Scene3D.UnloadProp`.
+- Per-vertex colour: `GltfLoader` reads the glTF `COLOR_0` attribute (rigid and skinned paths alike, normalized
+  ubyte/ushort or float, vec3 or vec4) and MULTIPLIES it into the vertex's material base colour, which is what
+  the spec says it is. So a kit piece painted from a palette in Blender keeps its authored colours with no
+  texture and no material per shade, and a white `COLOR_0` changes nothing. An asset without the attribute loads
+  byte-for-byte as before, so existing goldens hold.
 - Alpha cutout (foliage / leaf cards): `GltfLoader` reads each material's glTF `alphaMode` into
   `GltfMaterialMaps.AlphaCutoff` - `0` for OPAQUE (the default when absent, no clip), else the material's
   `alphaCutoff` (default 0.5 per spec) for MASK. glTF BLEND is out of scope for the mesh pass and treated as

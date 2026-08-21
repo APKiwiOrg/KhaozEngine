@@ -74,8 +74,11 @@ namespace KhaozEngine.Render3D
     }
 
     /// <summary>Loads a glTF/GLB at runtime via SharpGLTF into a flat-shaded <see cref="GltfMesh"/>.
-    /// Reads POSITION/NORMAL/TEXCOORD_0/TANGENT; a missing TANGENT is computed from UV+position by
-    /// MeshAssembler. By default material textures (normal/roughness) are NOT auto-read - bind them explicitly via
+    /// Reads POSITION/NORMAL/TEXCOORD_0/TANGENT/COLOR_0; a missing TANGENT is computed from UV+position by
+    /// MeshAssembler. COLOR_0 is a MULTIPLIER on the material's base colour per the glTF spec (rigid and skinned
+    /// paths alike, normalized ubyte/ushort/float, vec3 or vec4), so a palette-painted kit piece keeps its
+    /// authored colours with no texture, and an asset without the attribute loads byte-for-byte as before. By
+    /// default material textures (normal/roughness) are NOT auto-read - bind them explicitly via
     /// <see cref="Scene3D.SurfaceMaps"/>. Opt into auto-read with <see cref="LoadWithMaterial"/> /
     /// <see cref="LoadSkinnedWithMaterial"/>, which also return the material's decoded
     /// <see cref="GltfMaterialMaps"/>.</summary>
@@ -288,6 +291,9 @@ namespace KhaozEngine.Render3D
             var srcNormals = prim.GetVertexAccessor("NORMAL")?.AsVector3Array();
             var texcoords = prim.GetVertexAccessor("TEXCOORD_0")?.AsVector2Array();
             var srcTangents = prim.GetVertexAccessor("TANGENT")?.AsVector4Array();
+            // Per-vertex COLOR_0, absent on most assets. AsColorArray normalizes the spec's ubyte/ushort/float
+            // component types and widens a vec3 to vec4 with alpha 1, so the multiply below is uniform.
+            var srcColors = prim.GetVertexAccessor("COLOR_0")?.AsColorArray();
             // Default: the material's flat base-color factor. LoadFlattenedAlbedo passes a resolver that multiplies
             // the averaged albedo in. A null resolver keeps the historical per-material factor byte-for-byte.
             Vector4 baseColor = baseColorFor != null ? baseColorFor(prim.Material) : ReadBaseColor(prim.Material);
@@ -303,6 +309,9 @@ namespace KhaozEngine.Render3D
                 return len2 > 1e-12f ? t / MathF.Sqrt(len2) : n;   // degenerate transform => keep source dir
             }
             Vector2 Uv(int i) => texcoords != null && i < texcoords.Count ? texcoords[i] : Vector2.Zero;
+            // COLOR_0 is a MULTIPLIER on the material colour per the glTF spec, not a replacement, so a white
+            // COLOR_0 changes nothing and an asset without the attribute keeps the flat factor byte-for-byte.
+            Vector4 Color(int i) => srcColors != null && i < srcColors.Count ? baseColor * srcColors[i] : baseColor;
             Vector4? Tan(int i)
             {
                 if (srcTangents == null || i >= srcTangents.Count) return null;
@@ -316,9 +325,9 @@ namespace KhaozEngine.Render3D
 
             foreach (var (a, b, c) in prim.GetTriangleIndices())
             {
-                corners.Add(new MeshCorner(Pos(a), Norm(a), baseColor, Uv(a), Tan(a)));
-                corners.Add(new MeshCorner(Pos(b), Norm(b), baseColor, Uv(b), Tan(b)));
-                corners.Add(new MeshCorner(Pos(c), Norm(c), baseColor, Uv(c), Tan(c)));
+                corners.Add(new MeshCorner(Pos(a), Norm(a), Color(a), Uv(a), Tan(a)));
+                corners.Add(new MeshCorner(Pos(b), Norm(b), Color(b), Uv(b), Tan(b)));
+                corners.Add(new MeshCorner(Pos(c), Norm(c), Color(c), Uv(c), Tan(c)));
             }
         }
 
@@ -373,6 +382,9 @@ namespace KhaozEngine.Render3D
                 // TANGENT is a vec4 (xyz = tangent direction, w = bitangent sign per glTF spec); when absent,
                 // it is computed below from UV+position.
                 var tangents = prim.GetVertexAccessor("TANGENT")?.AsVector4Array();
+                // Per-vertex COLOR_0 multiplies the material colour exactly as the rigid path does, so a rigged
+                // asset painted with vertex colours reads the same as the prop kit it was authored beside.
+                var colors = prim.GetVertexAccessor("COLOR_0")?.AsColorArray();
                 Vector4 baseColor = ReadBaseColor(prim.Material);
 
                 int baseIndex = verts.Count;
@@ -383,7 +395,7 @@ namespace KhaozEngine.Render3D
                     {
                         Position = pos[i],
                         Normal = normals != null && i < normals.Count ? normals[i] : Vector3.UnitY,
-                        Color = baseColor,
+                        Color = colors != null && i < colors.Count ? baseColor * colors[i] : baseColor,
                         Uv = texcoords != null && i < texcoords.Count ? texcoords[i] : Vector2.Zero,
                         BoneIndices = joints[i],
                         BoneWeights = w,

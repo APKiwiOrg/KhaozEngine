@@ -64,6 +64,11 @@ public class TileMoveStateTests
         Assert.Equal(new Vector2(3.4f, 7.1f), r.RenderPosition);
         Assert.Equal(0.5f, r.RenderVertical);
         Assert.False(s.HasRenderOverride);
+
+        // The claim the whole type doc rests on: a render stamp is invisible to equality, so a smoothed frame can
+        // never read as a misprediction and the presentation fields cannot perturb determinism.
+        Assert.Equal(s, r);
+        Assert.Equal(s.GetHashCode(), r.GetHashCode());
     }
 
     [Fact]
@@ -99,6 +104,46 @@ public class TileMoveStateTests
         TileRoute b = new(new[] { new TileCoord(9, 9, 0), new TileCoord(2, 0, 0) }, 1);
         Assert.Equal(a, b);
         Assert.Equal(a.GetHashCode(), b.GetHashCode());
+    }
+
+    [Fact]
+    public void Routes_that_differ_in_their_remaining_walk_are_not_equal()
+    {
+        // Every other equality assertion in this file is positive, so an Equals that returned true unconditionally
+        // would pass them all. These are the other side of it.
+        Assert.NotEqual(RouteOf((1, 0), (2, 0)), RouteOf((1, 0), (3, 0)));
+        Assert.NotEqual(RouteOf((1, 0)), RouteOf((1, 0), (2, 0)));
+
+        var tiles = new[] { new TileCoord(1, 0, 0), new TileCoord(2, 0, 0) };
+        Assert.NotEqual(new TileRoute(tiles, 0), new TileRoute(tiles, 1));
+    }
+
+    [Fact]
+    public void A_defaulted_route_reads_as_an_empty_one_rather_than_a_null_list()
+    {
+        // Tiles is annotated non-null, so nullable analysis will not warn a consumer off Route.Tiles.Count. A
+        // zero-filled ECS column and a missed lookup both hand out a defaulted struct, so the annotation has to be
+        // true rather than documented around.
+        Assert.Empty(default(TileRoute).Tiles);
+        Assert.True(default(TileRoute).IsIdle);
+        Assert.Empty(default(TileMoveState).Route.Tiles);
+    }
+
+    [Fact]
+    public void The_epoch_surfaces_as_the_teleport_epoch_and_survives_the_withers()
+    {
+        // The tile twin of KhaozEngine.Server.Tests/NetWorld/TeleportEpochTests.cs. The epoch is what makes
+        // reconciliation cut instead of glide, so a wither that dropped it would show up as an avatar sliding
+        // through a teleport in an integration run rather than as a red unit test here.
+        TileMoveState s = TileMoveState.At(new TileCoord(1, 1, 0), TileDirection.N);
+        s.Epoch = 11u;
+        Assert.Equal(11u, s.TeleportEpoch);
+        Assert.Equal(11u, s.WithRenderState(new Vector2(1.5f, 1f), 0f).TeleportEpoch);
+        Assert.Equal(11u, s.WithPosition(new Vector2(1.5f, 1f)).TeleportEpoch);
+
+        TileMoveState bumped = s;
+        bumped.Epoch = 12u;
+        Assert.NotEqual(s, bumped);
     }
 
     [Fact]

@@ -19,6 +19,12 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// units. <see cref="Vertical"/> is the PLANE INDEX as a float rather than a height in metres, so the state stays
 /// document-free and the simulator can produce it without loading a world. <c>TilePresenter</c> multiplies by the
 /// document's plane height on the way to the view.</para>
+/// <para>Those units are the LATTICE's, not the world's, which matters one level out. Reconciliation measures its
+/// position error as a single magnitude over both, so a one-plane difference reads as exactly one tile of error,
+/// while <see cref="PredictionSettings.HardSnapDistance"/> defaults to 100 (documented in WORLD units). A tile
+/// client therefore hands prediction its own <see cref="PredictionSettings"/> with a tile-scaled snap distance:
+/// <see cref="PredictionSettings.Default"/> would need a hundred tiles of misprediction before it ever snapped,
+/// which is the same as never snapping at all.</para>
 /// <para><see cref="RenderPosition"/> / <see cref="RenderVertical"/> / <see cref="HasRenderOverride"/> are
 /// PRESENTATION-only, written by <see cref="WithRenderState"/> on the way out of
 /// <c>ClientPrediction.RenderedState</c> and read by nothing else. The simulator never reads them, the codecs
@@ -86,6 +92,10 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
         Route.IsIdle || StepTotal == 0 ? 0f : (float)StepTicks / StepTotal;
 
     /// <inheritdoc/>
+    /// <remarks>A diagonal step covers sqrt(2) tiles in the same tick count as a cardinal one, which is the tile
+    /// rule rather than a defect, so anything differencing this over a tick (<c>ClientPrediction</c> exposes exactly
+    /// that as its predicted horizontal speed) reads 1.41x on a diagonal. A HUD or a locomotion blend must not
+    /// threshold walk against run on that number.</remarks>
     public readonly Vector2 Position
     {
         get
@@ -103,7 +113,13 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
     /// <inheritdoc/>
     public readonly uint TeleportEpoch => Epoch;
 
-    /// <inheritdoc/>
+    /// <summary>NOT a position setter, whatever the interface says. <see cref="Position"/> is DERIVED from
+    /// <see cref="Tile"/> and <see cref="Route"/>, so <paramref name="position"/> is never applied to it and the
+    /// returned state stands exactly where this one does. What the call does do is stamp the PRESENTATION override:
+    /// it sets <see cref="RenderVertical"/> to the raw plane index and <see cref="HasRenderOverride"/> to true, so
+    /// calling it on a state that already carried a smoothed vertical discards that smoothing. It exists because
+    /// <see cref="IPredictedState{TSelf}"/> requires it, and it is dead on the prediction path:
+    /// <c>ClientPrediction</c> only ever calls <see cref="WithRenderState"/>, which is the member to use.</summary>
     public readonly TileMoveState WithPosition(Vector2 position) => WithRenderState(position, Vertical);
 
     /// <inheritdoc/>

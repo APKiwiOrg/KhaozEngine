@@ -24,7 +24,9 @@ public static partial class TileProtocol
     /// <summary>Encodes one sequenced command into a fixed size frame. <paramref name="seq"/> must be non-negative
     /// (the queue rejects a negative seq on the far side, so encoding one would be a frame that can never be
     /// accepted). The size is fixed rather than kind-dependent so both ends do the same arithmetic on every
-    /// frame.</summary>
+    /// frame. The plane rides in ONE byte, so a goal plane outside 0..255 truncates here rather than throwing (the
+    /// encoder validates nothing, matching its acceptance of a negative seq), and the truncated plane is caught at
+    /// apply, where the server knows which plane the player is actually standing on.</summary>
     public static byte[] EncodeCommand(int seq, in TileCommand command)
     {
         var b = new byte[CommandFrameSize];

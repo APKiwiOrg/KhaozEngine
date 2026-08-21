@@ -19,6 +19,8 @@ public readonly struct TileRoute : IEquatable<TileRoute>
 {
     static readonly TileCoord[] Empty = Array.Empty<TileCoord>();
 
+    readonly IReadOnlyList<TileCoord>? _tiles;
+
     /// <summary>The idle route: no tiles, nothing to step into. What a standing player carries, and what a route
     /// becomes once its last step commits.</summary>
     public static TileRoute None => new(Empty, 0);
@@ -32,20 +34,23 @@ public readonly struct TileRoute : IEquatable<TileRoute>
     {
         ArgumentNullException.ThrowIfNull(tiles);
         if (index < 0) throw new ArgumentOutOfRangeException(nameof(index), index, "Route index must be >= 0.");
-        Tiles = tiles;
+        _tiles = tiles;
         Index = Math.Min(index, tiles.Count);
     }
 
-    /// <summary>The walk order after the start tile, the shape <see cref="TilePath.Tiles"/> already has. Never null
-    /// on a route built through the constructor, though a defaulted struct carries null and reads as idle.</summary>
-    public IReadOnlyList<TileCoord> Tiles { get; }
+    /// <summary>The walk order after the start tile, the shape <see cref="TilePath.Tiles"/> already has. Never null,
+    /// including on a defaulted struct: the backing field is nullable and a null one answers the empty list, so the
+    /// non-null annotation is TRUE rather than documented around. A <c>default(TileRoute)</c> is reachable in normal
+    /// use (an ECS column is zero filled, a failed lookup hands back a defaulted struct, a component decode populates
+    /// one after the fact), and every one of those reads as an empty route instead of throwing.</summary>
+    public IReadOnlyList<TileCoord> Tiles => _tiles ?? Empty;
 
     /// <summary>Index of the next tile to step into. Equal to <c>Tiles.Count</c> when the walk is done.</summary>
     public int Index { get; }
 
     /// <summary>True when there is nothing left to step into. The one check every caller makes before
     /// <see cref="Next"/>, and the reason a defaulted <see cref="TileRoute"/> is safe to hold.</summary>
-    public bool IsIdle => Tiles is null || Index >= Tiles.Count;
+    public bool IsIdle => Index >= Tiles.Count;
 
     /// <summary>Number of steps still to take. The length of the wire form, and the length equality compares.</summary>
     public int Remaining => IsIdle ? 0 : Tiles.Count - Index;
@@ -60,7 +65,7 @@ public readonly struct TileRoute : IEquatable<TileRoute>
     /// <summary>The last tile of the walk, whatever progress has been made down it. This is the DESTINATION, so it
     /// keeps answering after the walk is finished and is what an arrival check compares against.</summary>
     /// <exception cref="InvalidOperationException">The route has no tiles at all.</exception>
-    public TileCoord End => Tiles is { Count: > 0 }
+    public TileCoord End => Tiles.Count > 0
         ? Tiles[Tiles.Count - 1]
         : throw new InvalidOperationException("An empty TileRoute has no end tile.");
 

@@ -28,6 +28,9 @@ public class TileCommandCodecTests
     {
         byte[] frame = TileProtocol.EncodeCommand(0, TileCommand.None);
         Assert.Equal(TileProtocol.ClientFrameCommand, frame[0]);
+        // The tag is 0 and the buffer starts zero-filled, so the byte check alone would survive deleting the write.
+        // Pinning the frame size is what this test can actually hold on its own.
+        Assert.Equal(24, frame.Length);
     }
 
     [Fact]

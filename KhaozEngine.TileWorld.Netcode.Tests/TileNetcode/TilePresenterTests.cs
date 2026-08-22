@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using KhaozEngine.Netcode;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Netcode;
@@ -15,16 +16,43 @@ public class TilePresenterTests
     {
         TilePose pose = P.Pose(TileMoveState.At(new TileCoord(4, 7, 2), TileDirection.N));
         Assert.Equal(TileWorldSpace.ToWorld(4f, 6f, 7f, 1f), pose.Position);
-        Assert.Equal(0f, pose.Yaw, 5);
+        Assert.Equal(MathF.PI, pose.Yaw, 5);
     }
 
+    // The four cardinals, spelled out, so a reader can see the convention without deriving it. Tile SOUTH is the
+    // zero, because a model authored facing +z is facing world +z, and world +z is tile south.
     [Fact]
-    public void Yaw_turns_east_a_quarter_turn_from_north()
+    public void Yaw_reads_zero_at_tile_south_and_a_quarter_turn_at_east()
     {
-        Assert.Equal(0f, TilePresenter.Yaw(TileDirection.N), 5);
+        Assert.Equal(0f, TilePresenter.Yaw(TileDirection.S), 5);
         Assert.Equal(MathF.PI / 2f, TilePresenter.Yaw(TileDirection.E), 5);
-        Assert.Equal(MathF.PI, MathF.Abs(TilePresenter.Yaw(TileDirection.S)), 5);
+        Assert.Equal(MathF.PI, MathF.Abs(TilePresenter.Yaw(TileDirection.N)), 5);
         Assert.Equal(-MathF.PI / 2f, TilePresenter.Yaw(TileDirection.W), 5);
+    }
+
+    // The convention pin, and it is the one that matters: the four numbers above are only correct if they are the
+    // ENGINE's model yaw, the value CharacterFacing.YawOf hands a Matrix4x4.CreateRotationY for a world direction
+    // and the hand TileObjectProps.YawRadians turns tile objects by. Get it backwards and an avatar walking north
+    // is drawn facing south, next to a tile object that is not.
+    //
+    // Pinned against the TRANSFORM the convention feeds rather than against literals: for all eight directions,
+    // CreateRotationY at the presenter's yaw must carry a +z-forward mesh onto the world-space delta of that step,
+    // taken through TileWorldSpace so the tile-z negation is the engine's own rather than a copy of it. Any change
+    // to either hand fails here. YawOf itself is not called because it lives in KhaozEngine.Game.Render3D, and a
+    // reference to it would drag the whole 3D renderer into this package's test graph, which is what CI selects
+    // test projects by.
+    [Fact]
+    public void Yaw_points_a_forward_facing_mesh_along_the_world_delta_of_every_direction()
+    {
+        foreach (TileDirection d in TileDirections.All)
+        {
+            (int dx, int dz) = TileDirections.Delta(d);
+            Vector3 expected = Vector3.Normalize(TileWorldSpace.ToWorld(dx, 0f, dz, 1f));
+            Vector3 drawn = Vector3.Transform(Vector3.UnitZ,
+                Matrix4x4.CreateRotationY(TilePresenter.Yaw(d)));
+            Assert.Equal(expected.X, drawn.X, 5);
+            Assert.Equal(expected.Z, drawn.Z, 5);
+        }
     }
 
     [Fact]

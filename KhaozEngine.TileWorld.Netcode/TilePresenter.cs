@@ -6,7 +6,11 @@ namespace KhaozEngine.TileWorld.Netcode;
 
 /// <summary>Where to draw something, and which way it faces.</summary>
 /// <param name="Position">World position in metres.</param>
-/// <param name="Yaw">Rotation about +Y in radians, 0 facing tile north.</param>
+/// <param name="Yaw">Facing as a rotation about +Y in radians, ready for a <c>Matrix4x4.CreateRotationY(yaw)</c>
+/// model transform on a +z-forward mesh: tile SOUTH is 0, east +pi/2, north pi and west -pi/2. That is the engine's
+/// one model-yaw convention, the same <c>CharacterFacing.YawOf</c> produces and the same hand
+/// <c>TileObjectProps.YawRadians</c> places tile objects with, so an avatar and the object it stands next to face
+/// the same way. See <see cref="TilePresenter.Yaw"/>.</param>
 public readonly record struct TilePose(Vector3 Position, float Yaw);
 
 /// <summary>
@@ -97,14 +101,24 @@ public sealed class TilePresenter
             Yaw(r.Facing));
     }
 
-    /// <summary>The yaw a facing draws at: 0 is tile north, and a quarter turn east is +pi/2. Derived from the step
-    /// delta through the same z negation the position goes through, so a facing and a position can never disagree
-    /// about which way north is.</summary>
+    /// <summary>
+    /// The yaw a facing draws at, in the ENGINE's model-yaw convention: the value a head hands straight to
+    /// <c>Matrix4x4.CreateRotationY</c> to point a +z-forward mesh along <paramref name="facing"/>. Tile south is
+    /// 0, east +pi/2, north pi, west -pi/2.
+    /// <para>The delta is taken in WORLD space, so the yaw goes through the same z negation the position does (tile
+    /// north is world -z, see <see cref="TileWorldSpace"/>) and a facing and a position can never disagree about
+    /// which way north is. It is the formula <c>CharacterFacing.YawOf</c> applies to a world direction, in the hand
+    /// <c>TileObjectProps.YawRadians</c> rotates tile objects by: a clockwise quarter turn seen from above is a
+    /// NEGATIVE yaw, because a row-vector <c>CreateRotationY(t)</c> carries the west point of a tile onto its north
+    /// point only at t of -90 degrees. A compass bearing here instead (north 0, increasing clockwise) is the same
+    /// numbers reflected, which agrees on east and west and draws every avatar facing south while it walks
+    /// north.</para>
+    /// </summary>
     /// <param name="facing">The direction the state faces.</param>
     /// <returns>Rotation about +Y in radians, in the range (-pi, pi].</returns>
     public static float Yaw(TileDirection facing)
     {
         (int dx, int dz) = TileDirections.Delta(facing);
-        return MathF.Atan2(dx, dz);
+        return MathF.Atan2(dx, -dz);
     }
 }

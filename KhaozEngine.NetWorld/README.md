@@ -330,6 +330,12 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
   `DisconnectReasonDetail`, and never proceeds to snapshots. A legacy/version-less client decodes as version
   `""`, so the rule can reject it; a compatible version delegates the inner token to `inner` unchanged
   (subject + display-name resolution identical).
+  - **The layer codec itself moved to `KhaozEngine.Netcode.HandshakeToken` in 17.39.0.** `ProtocolHandshake` is now
+    a delegation, so the bytes on the wire and every member on it are unchanged, and `MaxVersionBytes` is
+    `HandshakeToken.MaxLabelBytes`. The move is what lets a server that does not reference this package (a tile
+    server) speak the same handshake, and `KhaozEngine.Netcode.ConnectionGate` composes the version gate with a
+    world-identity and a ban gate over the same layers. Prefer the `Netcode` types in new code. Nothing here needs
+    changing.
   - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 10)
     labels
     the incompatible on-the-wire generations. 1 was the pre-10.0.0 32-bit line, and 2 was 10.0.0 widening `NetId` to

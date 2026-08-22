@@ -279,3 +279,62 @@ wraps `TryVerify` as an `IConnectionAuthenticator`.
   version prefix; a `NumberStyles.None` numeric expiry), so a consumer deferring to it cannot drift from the format if
   a v3 is ever added. `displayName` is `null` for a v1 token, the empty string for a v2 empty-name claim, else the
   decoded name.
+
+## Connect-time gate: ConnectionGate + HandshakeToken (17.39.0)
+
+Promoted out of Ruinborne, because two games need the identical door and a tile server cannot reference
+`KhaozEngine.NetWorld`, where the codec used to live.
+
+**`HandshakeToken`** is the connect-token LAYER codec. A connect token is a nest of labelled layers, outermost
+first, each `[magic][labelLen:byte][label utf8][inner]`, so a gate peels one layer, decides, and hands the rest to
+the gate inside it. `Wrap(label, innerToken)` adds a layer, `TryUnwrap(token, out label, out innerToken)` peels
+one. An unlabelled or corrupt token unwraps to label `""` with the whole token as the inner and returns `false`,
+so a legacy peer that never opted in is handled as "unknown" rather than throwing. `MaxLabelBytes` (255) is the
+label cap, one length byte. These are byte-for-byte the layers `KhaozEngine.NetWorld.ProtocolHandshake` has always
+put on the wire: that type now delegates here, so the engine has one implementation of the format and nothing on
+the wire moved.
+
+It also owns the engine's refusal REASON tokens. Those are stable WIRE tokens, not display text: a client matches
+the token and shows its own localized string.
+
+- `IncompatibleVersionReason(requiredVersion)` / `TryParseIncompatibleVersion` build and read
+  `ke:incompatible-version:<version>`, carrying the version the server requires.
+- `WorldMismatchReason(serverHash, clientHash)` / `TryParseWorldMismatch` build and read
+  `ke:world-mismatch:<server>|<client>`, carrying BOTH hashes so the client can say which world it built against
+  (a hex hash never contains a pipe).
+- `BannedReason` is the flat `ke:banned`. It carries no detail, because a ban reason is an operator concern rather
+  than something to hand the banned client.
+
+**`ConnectionGate.Wrap(tokenAuth, protocolVersion, worldHash, log?, isBanned?)`** composes the door and returns
+the `IConnectionAuthenticator` the server takes. Order is load-bearing:
+
+1. `VersionGateAuthenticator` is outermost, so a version-skewed client gets the ordinary out-of-date refusal and,
+   having sent no world layer, never reaches the world check.
+2. `WorldIdentityGateAuthenticator` sits just inside it, refusing a client built against a different world so it
+   can never join and render its own map while the server simulates another. Distinct from the version gate on
+   purpose: a patch that leaves the world alone still interoperates. `log` receives both hashes on every refusal.
+3. The real token authenticator (`HmacTokenAuthenticator`, or `AllowAllAuthenticator` for dev) is next, reached
+   only once version and world both match.
+4. `BanGateAuthenticator` is innermost when `isBanned` is supplied, because a ban keys on the VERIFIED subject and
+   only the token check produces one. The predicate is called synchronously on the host thread, so keep it an
+   in-memory view over whatever store the head owns.
+
+The three decorators are public and compose on their own when a head wants a different order, or only one of them.
+
+`ConnectionGate.BuildToken(protocolVersion, worldHash, innerToken)` builds the token a client presents to that
+door: the version layer wrapping the world layer wrapping the real auth token.
+
+```csharp
+IConnectionAuthenticator auth = ConnectionGate.Wrap(
+    new HmacTokenAuthenticator(secret, () => DateTimeOffset.UtcNow),
+    protocolVersion: "grimhollow-1",
+    worldHash: worldHash,
+    log: Console.WriteLine,
+    isBanned: bans.IsBanned);
+
+byte[] token = ConnectionGate.BuildToken("grimhollow-1", worldHash, Encoding.UTF8.GetBytes(sessionToken));
+```
+
+Ruinborne still emits its own `rb:world-mismatch:` reason token (`Ruinborne.Shared.RuinborneWorldIdentity`), so its
+gate is NOT yet an alias of this one. Swapping it over changes a wire reason token its shipped clients already
+match on, which needs a Ruinborne protocol-version bump plus a client-side reason mapping.

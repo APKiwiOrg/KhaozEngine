@@ -11,11 +11,18 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// <para>The step is tested OUTWARD, from the footprint tile to the candidate, and that direction is
 /// load-bearing rather than cosmetic. <see cref="TileCollision.CanStep"/> refuses to ENTER a Blocked tile, and
 /// anything worth reaching (a booth, a rock, a bench) is Blocked by definition, so testing the step inward
-/// would deny every reach tile of every real target. It never inspects the tile it leaves, which is the same
-/// egress rule <see cref="TilePathfinder"/> leans on for a start that got built over. Outward therefore asks
-/// exactly the three questions reach is about: no wall on the footprint's edge, the candidate is somewhere an
-/// agent can stand, and no wall on the candidate's edge facing back. The baker mirrors every wall bit onto both
-/// sides of the edge it blocks, so this stays symmetric with what a walk into the tile would find.</para>
+/// would deny every reach tile of every real target. Inward is wrong in the other direction too: it would ADMIT
+/// a Blocked candidate, because a step never inspects the BLOCKED flag of the tile it LEAVES, so a candidate
+/// nobody can stand on is never questioned when the step starts there. What the leaving tile is read for is its
+/// wall bit on the edge being crossed, and treating egress from a blocked tile as legal is the same rule
+/// <see cref="TilePathfinder"/> leans on for a start that got built over. Outward therefore asks exactly the
+/// three questions reach is about: no wall on the footprint's edge, the candidate is somewhere an agent can
+/// stand, and no wall on the candidate's edge facing back. The baker mirrors every wall bit onto both sides of
+/// the edge it blocks, so the two wall questions are the same pair either way round and only the blocked one
+/// moves, which is exactly the asymmetry reach needs.</para>
+/// <para>Every tile in the set is an ANCHOR tile for a ONE TILE actor, since the outward step is tested at agent
+/// size one. An actor with a larger footprint acts from any tile it covers, which this does not model, so the
+/// set under-reports for one rather than describing it.</para>
 /// <para>The scan order is fixed (footprint tiles by z ascending then x ascending, and the four cardinals in
 /// W, E, S, N order), because a server and a client agree on which reach tile a click meant only if they
 /// enumerate the candidates in the same order. Nothing here iterates a dictionary or a set, so the order is the
@@ -31,7 +38,13 @@ public static class TileReach
 
     /// <summary>Every tile the footprint can be reached from, in the fixed scan order, which is the order
     /// <see cref="TryNearest"/> breaks a tie by. Empty for a footprint walled in on all sides, and for an empty
-    /// rect, both of which callers have to handle rather than assume a reach tile exists.</summary>
+    /// rect, both of which callers have to handle rather than assume a reach tile exists.
+    /// <para>The tiles are anchor tiles for a ONE TILE actor, so a caller with a larger agent gets fewer reach
+    /// tiles than that agent really has rather than a set shaped to its footprint.</para>
+    /// <para>The footprint is assumed to lie in BAKED storage. A footprint in a region this map does not hold
+    /// reads Blocked, which the outward test never consults, so reach is still reported from the loaded side.
+    /// That can only arise on a shard whose neighbouring region is not baked into its map, never from a footprint
+    /// taken off an object the map already holds.</para></summary>
     /// <param name="map">The baked collision map to read walls and blocked tiles from.</param>
     /// <param name="footprint">The tiles the target covers, from <c>TileFootprint.Of</c> for a world object.</param>
     /// <param name="plane">The plane the target stands on. Reach never crosses planes.</param>
@@ -65,7 +78,10 @@ public static class TileReach
 
     /// <summary>True when <paramref name="from"/> is one of the footprint's reach tiles, which is the test for
     /// "close enough to act on it" and the reason an interaction that arrives already in range costs no walk at
-    /// all. A tile on another plane is never in reach, however close it looks in x and z.</summary>
+    /// all. A tile on another plane is never in reach, however close it looks in x and z.
+    /// <para>The question is whether a ONE TILE actor anchored on <paramref name="from"/> is in reach, matching
+    /// <see cref="Set"/>. A larger agent that covers a reach tile without being anchored on one answers false, so
+    /// a caller giving an actor a footprint bigger than a tile needs a rule this member does not have.</para></summary>
     /// <param name="map">The baked collision map to read walls and blocked tiles from.</param>
     /// <param name="footprint">The tiles the target covers.</param>
     /// <param name="plane">The plane the target stands on.</param>
@@ -73,6 +89,7 @@ public static class TileReach
     /// <exception cref="ArgumentNullException"><paramref name="map"/> is null.</exception>
     public static bool Contains(TileCollisionMap map, TileRect footprint, int plane, TileCoord from)
     {
+        ArgumentNullException.ThrowIfNull(map);
         if (from.Plane != plane) return false;
         foreach (TileCoord c in Set(map, footprint, plane)) if (c.Equals(from)) return true;
         return false;
@@ -84,10 +101,14 @@ public static class TileReach
     /// a straight-line guess, so a tile one wall away from the target does not beat one a short walk away. Ties
     /// fall to scan order, which makes the choice total: both heads pick the same tile for the same map, and a
     /// prediction of an interaction walk reconciles instead of snapping.
-    /// <para>Returns false when the footprint has no reach tile at all, and when none of them can be reached
-    /// from <paramref name="from"/> inside <paramref name="maxRadius"/>. A caller treats that as "cannot get
-    /// there", not as "walk as close as you can": <c>FindPath</c>'s nearest-reachable fallback is deliberately
-    /// discarded here, because stopping short of a target you cannot act on is worse than not moving.</para>
+    /// <para>Returns false when the footprint has no reach tile at all, when <paramref name="from"/> stands on
+    /// another plane, and when none of the reach tiles can be reached from <paramref name="from"/> inside
+    /// <paramref name="maxRadius"/>. Reach never crosses planes, which is the refusal <see cref="Contains"/>
+    /// already makes and the one the two members have to agree on: an actor a plane above a booth is not standing
+    /// on a reach tile, so it must not be handed a zero step walk to one either. A caller treats a false as
+    /// "cannot get there", not as "walk as close as you can": <c>FindPath</c>'s nearest-reachable fallback is
+    /// deliberately discarded here, because stopping short of a target you cannot act on is worse than not
+    /// moving.</para>
     /// <para>One <c>FindPath</c> per candidate (at most eight) is deliberate. The pathfinder does not expose its
     /// distance field, and at one interaction per click that cost is invisible next to the tick it lands in. If
     /// it ever shows in a profile, the answer is a pooled multi-goal search on <c>TilePathfinder</c>, so both
@@ -95,9 +116,11 @@ public static class TileReach
     /// </summary>
     /// <param name="map">The baked collision map to path over.</param>
     /// <param name="footprint">The tiles the target covers.</param>
-    /// <param name="plane">The plane the target stands on, which overrides the plane on <paramref name="from"/>.</param>
+    /// <param name="plane">The plane the target stands on. A <paramref name="from"/> on any other plane is
+    /// refused rather than coerced onto this one, the way the rest of the package refuses a cross-plane goal.</param>
     /// <param name="from">The tile the actor stands on.</param>
-    /// <param name="agentSize">The actor's NxN footprint in tiles, passed straight to the pathfinder.</param>
+    /// <param name="agentSize">The actor's NxN footprint in tiles, passed straight to the pathfinder. It shapes
+    /// the WALK only. The reach tiles it walks to are anchor tiles for a one tile actor either way.</param>
     /// <param name="maxRadius">Half width of the search window, in tiles.</param>
     /// <param name="reachTile">The chosen reach tile, default when the call returns false.</param>
     /// <param name="path">The walk to <paramref name="reachTile"/>, empty when the actor already stands on it.</param>
@@ -110,6 +133,7 @@ public static class TileReach
         ArgumentNullException.ThrowIfNull(map);
         reachTile = default;
         path = TilePath.Empty(from);
+        if (from.Plane != plane) return false;               // reach never crosses planes, same as Contains
         int best = int.MaxValue;
         bool any = false;
 
@@ -132,9 +156,10 @@ public static class TileReach
     }
 
     /// <summary>The direction from a reach tile into the footprint tile beside it, so an actor that arrives
-    /// faces what it came to interact with instead of keeping the facing its last step left it with. Scanning
-    /// in <see cref="Cardinals"/> order makes the answer total for a corner tile touching the footprint on two
-    /// sides, the same way the reach set is.
+    /// faces what it came to interact with instead of keeping the facing its last step left it with. A rect is
+    /// contiguous, so a tile outside it is cardinally adjacent to at most one of its tiles and there is never a
+    /// second side to choose between. The fixed <see cref="Cardinals"/> order is here so the fallback below is
+    /// reached deterministically rather than to settle a tie that cannot happen.
     /// <para>Falls back to <see cref="TileDirection.W"/> for a tile that touches no footprint tile at all, which
     /// is a caller passing something <see cref="TryNearest"/> never returns. A fallback rather than a throw
     /// because this is called as an arrival lands, and an odd facing is a far better outcome inside a server

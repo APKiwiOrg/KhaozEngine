@@ -163,11 +163,22 @@ seen stepping every second snapshot with motion in between.
 ## 6. Reach and the action seam
 
 `TileReach` is a pure function over the collision map and a footprint. The reach set of an N x M footprint on a
-plane is every tile cardinally adjacent to a footprint tile for which `CanStep` from that tile INTO the footprint
-tile is legal. That one rule encodes OSRS's behaviour: a wall between you and the booth denies reach, a diagonal
-never counts, and a 2x2 object has up to eight reach tiles minus the walled ones. `Nearest` orders them by BFS
-distance from the player (the pathfinder's own distance field), then by the same scan order `FindPath` uses, so both
-heads choose the same tile.
+plane is every tile cardinally adjacent to a footprint tile for which `CanStep` FROM the footprint tile OUT onto
+that tile is legal, which asks three things: no wall on the footprint tile's edge, the candidate is not blocked,
+and no mirrored wall on the candidate's own edge facing back. That one rule encodes OSRS's behaviour: a wall
+between you and the booth denies reach, a diagonal never counts, a candidate nobody could stand on is not offered,
+and a 2x2 object has up to eight reach tiles minus the denied ones. `Nearest` orders them by BFS distance from the
+player (the pathfinder's own distance field), then by the same scan order `FindPath` uses, so both heads choose the
+same tile.
+
+This was written INWARD in an earlier draft (`CanStep` from the candidate into the footprint tile) and inward is
+wrong twice over, because a step never inspects the BLOCKED flag of the tile it leaves. Starting on the candidate
+puts the blocked test on the TARGET, and every real target is blocked, being a booth or a rock, so the reach set of
+anything worth clicking comes out empty. It also never tests the candidate for being blocked at all, so a solid
+tile beside an unblocked target (a doorway, a ladder) is offered as somewhere to stand. Outward asks the same two
+wall questions, the same pair either way round, and puts the blocked test on the candidate where reach needs it,
+which is the form that stays correct when the target itself is solid. `TileReach`'s class doc carries the same
+reasoning, so the direction is not flipped back later.
 
 Server side, `TileActionQueue` holds at most one pending action per player: `(target, kind, issuedTick)`. On each
 tick after movement, a pending action whose player stands on a reach tile of the target, on its plane, is

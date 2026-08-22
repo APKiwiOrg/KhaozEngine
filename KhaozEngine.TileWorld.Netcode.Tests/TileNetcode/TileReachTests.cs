@@ -134,4 +134,19 @@ public class TileReachTests
         Assert.Empty(path.Tiles);
         Assert.Equal(TileDirection.E, TileReach.FacingToward(map, new TileRect(10, 10, 1, 1), 0, from));
     }
+
+    [Fact]
+    public void An_actor_on_another_plane_is_neither_in_reach_nor_a_zero_step_arrival()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        doc.AddObject("bank_booth", 10, 10, 0, 0);
+        TileCollisionMap map = Bake(doc);
+        var footprint = new TileRect(10, 10, 1, 1);
+        var upstairs = new TileCoord(9, 10, 1);                 // the reach tile in x and z, one plane up
+
+        Assert.False(TileReach.Contains(map, footprint, 0, upstairs));
+        Assert.False(TileReach.TryNearest(map, footprint, 0, upstairs, 1, 64, out TileCoord tile, out TilePath path));
+        Assert.Equal(default(TileCoord), tile);               // no tile offered, so nothing to walk to
+        Assert.Empty(path.Tiles);
+    }
 }

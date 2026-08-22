@@ -2213,6 +2213,31 @@ install is scoped to the legs that USE it rather than to the OS. The incumbent V
 indefinitely-selectable escape hatch, and giving it a new apt package would let a package rename on a future
 runner image redden the leg the native backend escapes to.
 
+**2026-08-22: gate 2 took a regression at 17.39.0 and is clean again at 17.40.0.** The full-tier matrix dispatch
+on `v17.39.0` main (run 32562349878) put both software native legs red on one row and only that row,
+`TextureArrayGpuTests.ThePhantomLayerOfAOneLayerArrayCannotBeUploadedTo`, which 17.39.0 had just added.
+Everything else on that run was green, both incumbent legs, metal-native and the `sync` validation job included.
+The mechanism: the device-level `UpdateTexture` passed the caller's array layer into
+`VulkanSetupCommands.Upload`, which builds a barrier range and a copy region from it and knows nothing about the
+image's own layer count. A recorded `vkCmdCopyBufferToImage` carries no result code, so a `baseArrayLayer` past
+the end of the image is undefined rather than refused, lavapipe executed it without a word, and the call
+returned normally while native Metal refused the same one by name. The staging arm already threw, through
+`VulkanStagingLayout.For`, which is why only the image arm was affected. `VulkanUploadBounds` now checks the
+layer above the branch, so both arms answer the same way, and `VulkanUploadBoundsTests` pins the count the check
+reads (`VulkanViewPolicy.ForTexture(...).ActualArrayLayers(...)`) device-free, since this backend does not run
+on the machine it is written on. The branch dispatch (run 32564422767) came back with
+`KhaozEngine.Render.Tests` at 6648 total, 6648 passed, 0 failed, 0 skipped on `vulkan-native` under
+`KE_VULKAN_VALIDATION=strict`, which is the no-new-skips criterion met.
+https://github.com/APKiwiOrg/KhaozEngine/issues/695
+
+**Note what the validation tiers did and did not see.** `strict` was armed on that leg for both the red run and
+the green one, and it said nothing either time. That is correct rather than a hole: the layers validate what a
+command means against the objects it names, and the copy named a real image and a layer index the API permits
+the caller to pass. A seam-level contract about which layer a caller is ALLOWED to ask for is not a Vulkan rule
+at all, so no validation tier could ever have caught this. The instrument that caught it was a cross-backend
+parity `[GpuFact]` on the expensive tier, which is the argument for keeping that tier pointed at rows outside
+the golden family.
+
 ---
 
 ## 18. Work breakdown

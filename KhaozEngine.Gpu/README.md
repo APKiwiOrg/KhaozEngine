@@ -255,7 +255,9 @@ What it owns today:
   keeps the seam's logical layer count at one. Nothing samples that slice, but Veldrid counts it, so the two
   paths that name subresources handle it: `CopyTexture` (and with it `GpuReadback.ToRgba`) narrows to the logical
   subresources when a side pads, and an `UpdateTexture` aimed at the phantom layer is refused rather than
-  accepted silently. A `GpuTextureUsage.Staging` texture is never padded, having no view to fix.
+  accepted silently. That refusal is uniform across all four backends only since 17.40.0: native Direct3D 11 and
+  native Vulkan took the call in silence until then, because neither API rejects a subresource index past the end
+  of the resource (#695). A `GpuTextureUsage.Staging` texture is never padded, having no view to fix.
 - **`GpuWindowHandle`** - a native window handle (kind + handle/display) the windowing layer hands over, so
   this package needs no reference to the windowing library.
 - **`GpuDeviceContext`** - `CreateForWindow(in GpuWindowHandle, width, height, syncToVerticalBlank = true)` (device

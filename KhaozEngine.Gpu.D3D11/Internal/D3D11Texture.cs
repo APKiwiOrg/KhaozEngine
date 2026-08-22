@@ -50,6 +50,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             Usage = description.Usage;
             Views = D3D11ViewPolicy.ForTexture(description.Usage);
             IsCubemap = (description.Usage & GpuTextureUsage.Cubemap) != 0;
+            ArraySlices = D3D11UploadBounds.ArraySlices(description);
 
             if (Views.UnorderedAccess && IsCubemap)
             {
@@ -82,6 +83,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>Array-layer count. For a cubemap this counts CUBES, and the resource carries six subresource
         /// slices per cube.</summary>
         internal uint ArrayLayers { get; }
+
+        /// <summary>The REAL subresource slice count, six per logical layer on a cubemap. This is the
+        /// <c>ArraySize</c> the resource is created with and the bound a subresource index is valid against, which
+        /// is why the device-level upload checks the caller's array layer against it (#695).</summary>
+        internal uint ArraySlices { get; }
 
         /// <summary>Whether the seam asked for an ARRAY, which the layer count alone cannot say at one layer
         /// (#666). It decides the SHADER-VISIBLE view dimensions only, so a one-layer array reaches an HLSL
@@ -177,7 +183,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 Width = (int)t.Width,
                 Height = (int)t.Height,
                 MipLevels = (int)t.MipLevels,
-                ArraySize = (int)(t.IsCubemap ? t.ArrayLayers * 6 : t.ArrayLayers),
+                ArraySize = (int)t.ArraySlices,
                 Format = t.TypelessFormat,
                 BindFlags = D3D11Formats.ToBindFlags(t.Views.Bind),
                 CPUAccessFlags = t.Views.Staging ? CpuAccessFlags.Read | CpuAccessFlags.Write : CpuAccessFlags.None,

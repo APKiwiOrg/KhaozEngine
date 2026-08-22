@@ -27,6 +27,17 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   come back, so rounding one up would quietly return a different slice than the caller asked for. The SIZE is
   unconstrained as before, since only Metal needs it aligned and it pads rather than refusing. An unaligned
   start is still legal to read: map the buffer, or reach it through the device-level `UpdateBuffer`.
+- **`IGpuDevice.UpdateTexture` refuses an array layer the texture does not have on native Direct3D 11 and native
+  Vulkan (#695).** Both backends built a subresource out of the caller's `arrayLayer` and handed it straight to
+  the API, and neither API objects: `UpdateSubresource` drops an index past the end of the resource without an
+  `HRESULT`, and a recorded `vkCmdCopyBufferToImage` carries no result code at all. So
+  `UpdateTexture(oneLayerArray, ..., arrayLayer: 1)` returned normally and wrote nowhere, while native Metal and
+  the incumbent both raised `ArgumentOutOfRangeException`, which is the develop-on-one-backend-and-ship-on-another
+  promise the seam exists for. Both natives now throw at the call, named for the `arrayLayer` parameter, before
+  anything native runs. The bound is the REAL slice count with cubemap faces expanded (`D3D11UploadBounds`,
+  `VulkanUploadBounds`), so every face of a cube is still addressable, and the Vulkan check sits above the
+  staging-versus-image branch so both arms of the entry point answer the same way. An in-range upload is
+  unchanged.
 
 ## 17.39.0
 

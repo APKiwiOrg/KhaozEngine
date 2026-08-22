@@ -10283,8 +10283,10 @@ it, though, so the two seam paths that name SUBRESOURCES rather than texels have
   Textures are not compatible to be copied`) and to succeed on the natives. The copy narrows to the LOGICAL
   subresources whenever a side pads, so the readback is backend-independent again.
 - `UpdateTexture(..., arrayLayer: 1)` on a one-layer array raises `ArgumentOutOfRangeException`, on the
-  incumbent as well as on the natives. Writing to the phantom writes to memory nothing reads, and it used to be
-  accepted silently on exactly one backend.
+  incumbent as well as on all three natives. Writing to the phantom writes to memory nothing reads. 17.39.0
+  closed the incumbent's silent accept, and 17.40.0 closed the same hole on native Direct3D 11 and native
+  Vulkan, where the API itself never objects: `UpdateSubresource` drops an out-of-range subresource index
+  without an `HRESULT` and a recorded `vkCmdCopyBufferToImage` carries no result code at all (#695).
 
 What is left is one slice of memory. A STAGING texture is never padded at all, since it has no view and nothing
 binds it to a shader.

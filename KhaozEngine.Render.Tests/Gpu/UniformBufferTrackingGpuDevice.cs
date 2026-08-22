@@ -21,6 +21,11 @@ namespace KhaozEngine.Tests.Gpu
     /// than a wrapper, so the native backends' ownership and liveness checks still recognise it, and the audit's
     /// reference comparison between an upload's destination and a tracked buffer is comparing the same object.
     /// </para>
+    ///
+    /// <para><b>IT ALSO REMEMBERS WHAT EACH RESOURCE SET READS</b> (<see cref="UniformWindowIndex"/>), because the
+    /// audit's rule is about the bytes an intervening draw actually bound and neither the layout's dynamic flags
+    /// nor a set's bound resources can be read back off the handles. <see cref="WindowsOf"/> is what a
+    /// <see cref="RecordingGpuCommandList"/> is given so its draws can stamp the windows they bind.</para>
     /// </summary>
     internal sealed class UniformBufferTrackingGpuDevice : IGpuDevice
     {
@@ -43,6 +48,15 @@ namespace KhaozEngine.Tests.Gpu
         /// non-zero before believing an empty hazard list, because a scan that recognised nothing as a uniform
         /// buffer would also come back empty.</summary>
         public int UniformBufferCount => _factory.UniformBufferCount;
+
+        /// <summary>The uniform windows a resource set binds, unrebased. Hand this to
+        /// <see cref="RecordingGpuCommandList.UniformWindowsOfSet"/> before recording the frame.</summary>
+        public IReadOnlyList<UniformWindow> WindowsOf(IGpuResourceSet set) => _factory.Windows.WindowsOf(set);
+
+        /// <summary>How many resource sets were built against a layout created outside this device, whose windows
+        /// are therefore over-reported. A guard asserts this is zero, because an over-reported window can turn a
+        /// safe rewrite into a reported hazard.</summary>
+        public int UnresolvedResourceSets => _factory.Windows.SetsWithUnknownLayout;
 
         public GpuBackendKind Backend => _inner.Backend;
         public GpuCapabilities Capabilities => _inner.Capabilities;
@@ -105,6 +119,8 @@ namespace KhaozEngine.Tests.Gpu
 
             internal int UniformBufferCount => _uniformCount;
 
+            internal UniformWindowIndex Windows { get; } = new();
+
             public IGpuBuffer CreateBuffer(in GpuBufferDescription d)
             {
                 IGpuBuffer buffer = _inner.CreateBuffer(in d);
@@ -122,8 +138,18 @@ namespace KhaozEngine.Tests.Gpu
                 => _inner.CreateFramebuffer(depth, colour);
             public IGpuSampler CreateSampler(in GpuSamplerDescription d) => _inner.CreateSampler(in d);
             public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d)
-                => _inner.CreateResourceLayout(in d);
-            public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d) => _inner.CreateResourceSet(in d);
+            {
+                IGpuResourceLayout layout = _inner.CreateResourceLayout(in d);
+                Windows.NoteLayout(layout, in d);
+                return layout;
+            }
+
+            public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d)
+            {
+                IGpuResourceSet set = _inner.CreateResourceSet(in d);
+                Windows.NoteSet(set, in d, IsUniform);
+                return set;
+            }
             public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl)
                 => _inner.CreateShadersFromSpirv(vertGlsl, fragGlsl);
             public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl)

@@ -12,6 +12,10 @@ namespace KhaozEngine.Tests.Gpu
     /// which buffer, covering what extent, and which multisampled source lands in which single-sample destination)
     /// rather than on pixels. Everything else forwards untouched, so the frame renders exactly as it would have.
     /// <para>Give <see cref="Inner"/> to <c>IGpuDevice.Submit</c>: the device needs the real list, not this.</para>
+    /// <para>The READ half (which uniform windows each draw bound) is opt-in and lives in
+    /// <c>RecordingGpuCommandList.Reads.cs</c>: set <see cref="UniformWindowsOfSet"/> before recording and the
+    /// draws stamp <see cref="Reads"/>, which is what turns a write timeline into an answer about what any draw
+    /// could actually have observed.</para>
     /// <para>
     /// THE RESOLVE HALF IS DEVICE-FREE ON PURPOSE. Wrapped around a <see cref="NullGpuCommandList"/> over a
     /// <see cref="FakeGpuDevice"/> it answers "which resolves did this pass ask for", which is the wiring half of
@@ -19,7 +23,7 @@ namespace KhaozEngine.Tests.Gpu
     /// the wrong texture is a source-code fault that no GPU is needed to see, and catching it on the ordinary
     /// push-path suite is far cheaper than waiting for a leg with a device.
     /// </para></summary>
-    internal sealed class RecordingGpuCommandList : IGpuCommandList
+    internal sealed partial class RecordingGpuCommandList : IGpuCommandList
     {
         /// <summary>One recorded upload: which buffer, at what byte offset, how many bytes, (only when
         /// <see cref="CapturePayloads"/> is on) the bytes themselves, and how many draws or dispatches had already
@@ -67,6 +71,7 @@ namespace KhaozEngine.Tests.Gpu
             _uploads.Clear();
             _resolves.Clear();
             _draws = 0;
+            ClearReads();
         }
 
         /// <summary>Draws and dispatches recorded since the last <see cref="Clear"/>. A dispatch counts because a
@@ -102,9 +107,16 @@ namespace KhaozEngine.Tests.Gpu
         public void ClearColorTarget(uint index, Color rgba) => Inner.ClearColorTarget(index, rgba);
         public void ClearDepthStencil(float depth) => Inner.ClearDepthStencil(depth);
         public void SetPipeline(IGpuPipeline p) => Inner.SetPipeline(p);
-        public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set) => Inner.SetGraphicsResourceSet(slot, set);
+        public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set)
+        {
+            NoteGraphicsSet(slot, set, 0);
+            Inner.SetGraphicsResourceSet(slot, set);
+        }
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
-            => Inner.SetGraphicsResourceSet(slot, set, dynamicOffset);
+        {
+            NoteGraphicsSet(slot, set, dynamicOffset);
+            Inner.SetGraphicsResourceSet(slot, set, dynamicOffset);
+        }
         public void SetVertexBuffer(uint slot, IGpuBuffer b) => Inner.SetVertexBuffer(slot, b);
         public void SetVertexBuffer(uint slot, IGpuBuffer b, uint offsetBytes) => Inner.SetVertexBuffer(slot, b, offsetBytes);
         public void SetIndexBuffer(IGpuBuffer b, GpuIndexFormat fmt) => Inner.SetIndexBuffer(b, fmt);
@@ -112,16 +124,19 @@ namespace KhaozEngine.Tests.Gpu
         public void SetFullScissorRects() => Inner.SetFullScissorRects();
         public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart)
         {
+            NoteGraphicsReads();
             _draws++;
             Inner.Draw(vertexCount, instanceCount, vertexStart, instanceStart);
         }
         public void Draw(uint vertexCount)
         {
+            NoteGraphicsReads();
             _draws++;
             Inner.Draw(vertexCount);
         }
         public void DrawIndexed(uint indexCount, uint instanceCount, uint indexStart, int vertexOffset, uint instanceStart)
         {
+            NoteGraphicsReads();
             _draws++;
             Inner.DrawIndexed(indexCount, instanceCount, indexStart, vertexOffset, instanceStart);
         }
@@ -140,11 +155,19 @@ namespace KhaozEngine.Tests.Gpu
             Inner.ResolveTexture(src, dst);
         }
         public void SetComputePipeline(IGpuComputePipeline p) => Inner.SetComputePipeline(p);
-        public void SetComputeResourceSet(uint slot, IGpuResourceSet set) => Inner.SetComputeResourceSet(slot, set);
+        public void SetComputeResourceSet(uint slot, IGpuResourceSet set)
+        {
+            NoteComputeSet(slot, set, 0);
+            Inner.SetComputeResourceSet(slot, set);
+        }
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
-            => Inner.SetComputeResourceSet(slot, set, dynamicOffset);
+        {
+            NoteComputeSet(slot, set, dynamicOffset);
+            Inner.SetComputeResourceSet(slot, set, dynamicOffset);
+        }
         public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)
         {
+            NoteComputeReads();
             _draws++;
             Inner.Dispatch(groupCountX, groupCountY, groupCountZ);
         }

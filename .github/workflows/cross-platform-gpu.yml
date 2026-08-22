@@ -574,14 +574,7 @@ jobs:
       # with itself while disagreeing with the run it is guarding. The predicate itself is unchanged: tier one is
       # the native Metal leg's on every trigger, because it is an environment variable with no install and no
       # measurable cost at this scale. The whole reasoning is on MTL_DEBUG_LAYER at the test step.
-      # BRANCH-LOCAL INSTRUMENT EDIT, EXPERIMENT 2 FOR https://github.com/APKiwiOrg/KhaozEngine/issues/598.
-      # DO NOT MERGE THIS LINE. The tier is forced OFF on this branch so the native leg runs with no
-      # MTLDebugDevice at all, which is the one difference left between the failing native run and the
-      # incumbent's passing one that is not in the engine's own call stream. The real predicate is the
-      # commented line below and it goes back the moment the answer is in. The mutual-exclusion guard
-      # below asserts nothing on a workflow_dispatch, so nothing else has to move for this.
-      METAL_DEBUG_LAYER_TIER: ''
-      # METAL_DEBUG_LAYER_TIER: ${{ (matrix.backend == 'metal-native') && '1' || '' }}
+      METAL_DEBUG_LAYER_TIER: ${{ (matrix.backend == 'metal-native') && '1' || '' }}
       # WHETHER THIS RUN ARMS METAL'S DEEP TIER, as ONE expression with three readers, for the reason the Vulkan
       # variable above is one expression with three: the shader-validation variable, the capture variable and the
       # artifact NAME all have to agree, and a copy per site is how they stop agreeing.

@@ -5,6 +5,50 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.41.0
+
+17.41.0 gives the three native backends their own golden families, rows 2 and 3 of the Veldrid removal program
+([#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)), ahead of the incumbent delete. The bare local
+bake refusal that 17.40.0 introduced lasted one release: a bare local run now reads and may bake
+`metal-native`.
+
+- **The three native backends OWN their own golden families, and the three new families are byte-identical
+  copies of the incumbent ones** ([#685](https://github.com/APKiwiOrg/KhaozEngine/issues/685),
+  [#686](https://github.com/APKiwiOrg/KhaozEngine/issues/686), rows 2 and 3 of
+  [#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)). `GoldenCompare.GoldenBackendToken` mapped seven
+  `GpuBackendKind` members onto four families until now, each native kind a GUEST in its incumbent's, which was
+  the strongest free proof each port had: it was held to already-committed references, unmodified, on the same
+  rasterizer at the same tolerance. It maps every kind to the family named after it now, spelled the way
+  `KE_GRAPHICS_BACKEND` accepts it: `metal`, `metal-native`, `vulkan`, `vulkan-native`, `direct3d11`,
+  `direct3d11-native`, `opengl`. The reason is that the incumbents owning the first three are being deleted, and
+  a family whose owner is gone is a set of references nothing may ever re-bake. **120 new grids were COPIED
+  rather than baked**, and `GoldenFamilyCopyGoldenTests` asserts the copy byte for byte over all of them, so
+  every guest-era green run survives as committed bytes. A self-baked golden always passes itself, and the copy
+  is the one moment in this program where that trap was avoidable for free. From here on a native family is a
+  reference only its own producer has ever agreed with, and its value is regression detection rather than
+  correctness evidence.
+- **`KE_UPDATE_GOLDENS` now bakes on every CI leg, and `BakeRefusal` guards a rule rather than a live pairing.**
+  The refusal still fires when a backend's token is not its own name, but no live `GpuBackendKind` is in that
+  shape today, so what it guards is the next append that decides to share a family rather than own one: a shared
+  bake is undetectable after the fact, because the file it writes is exactly the file it would then have compared
+  against. It is exercised through an internal overload taking the token, so a guest pairing stays under test
+  without a fake enum member. `cross-platform-gpu.yml` loses its `goldenGuest` leg column with the three sites
+  that read it: every leg bakes its own family on a `bake=true` dispatch, and the sync-validation job still sits
+  one out because it is an instrument over a subset rather than a producer of references. **Until row 4 deletes
+  the incumbent families, do not commit a native leg's bake output**: the pairs are byte-identical and the copy
+  row reds on a fork.
+- **A bare local `KE_UPDATE_GOLDENS=1` is ALLOWED again**, which reverses the one ergonomic cost 17.40.0's
+  default flip carried. That refusal was correct for exactly one release: the flip put a developer Mac on
+  `MetalNative` while `MetalNative` was still a guest of the `metal` family, so a bare bake would have
+  overwritten the references it was itself being checked against, and baking meant naming
+  `KE_GRAPHICS_BACKEND=metal`. The default owns `metal-native` now, so `GoldenCompare.BakeRefusal` returns null
+  for it. What a bare local bake may be COMMITTED as is still constrained until row 4 deletes the incumbent
+  families: the pairs are byte-identical and `GoldenFamilyCopyGoldenTests` reds if one half is committed alone.
+- **A bare local run reads the family named after the RESOLVED kind**, so on a developer Mac that is
+  `metal-native` rather than `metal`. It is a different family holding the same bytes, so the grids a local
+  golden run compares against are unchanged, and what `BareLocalGpuRunTests` pins is the property that survives
+  row 4: the family a bare run reads is one its own backend owns.
+
 ## 17.40.0
 
 17.40.0 makes the native backends the default (the rollout bullets) and ships the tile netcode package,
@@ -303,31 +347,6 @@ one is an APPEND at ordinal 5), the golden family mapping, and both software fra
   the spawn rather than throwing out of `Update(dt)`, and the server constructor refuses a config whose
   `PlaneCount` disagrees with the map's so the two doors stay one door. `PersistenceBinding<TState>` is four
   delegates: the unused `WithPosition` was removed before the tag.
-- **The three native backends OWN their own golden families, and the three new families are byte-identical
-  copies of the incumbent ones** ([#685](https://github.com/APKiwiOrg/KhaozEngine/issues/685),
-  [#686](https://github.com/APKiwiOrg/KhaozEngine/issues/686), rows 2 and 3 of
-  [#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)). `GoldenCompare.GoldenBackendToken` mapped seven
-  `GpuBackendKind` members onto four families until now, each native kind a GUEST in its incumbent's, which was
-  the strongest free proof each port had: it was held to already-committed references, unmodified, on the same
-  rasterizer at the same tolerance. It maps every kind to the family named after it now, spelled the way
-  `KE_GRAPHICS_BACKEND` accepts it: `metal`, `metal-native`, `vulkan`, `vulkan-native`, `direct3d11`,
-  `direct3d11-native`, `opengl`. The reason is that the incumbents owning the first three are being deleted, and
-  a family whose owner is gone is a set of references nothing may ever re-bake. **120 new grids were COPIED
-  rather than baked**, and `GoldenFamilyCopyGoldenTests` asserts the copy byte for byte over all of them, so
-  every guest-era green run survives as committed bytes. A self-baked golden always passes itself, and the copy
-  is the one moment in this program where that trap was avoidable for free. From here on a native family is a
-  reference only its own producer has ever agreed with, and its value is regression detection rather than
-  correctness evidence.
-- **`KE_UPDATE_GOLDENS` now bakes on every CI leg, and `BakeRefusal` guards a rule rather than a live pairing.**
-  The refusal still fires when a backend's token is not its own name, but no live `GpuBackendKind` is in that
-  shape today, so what it guards is the next append that decides to share a family rather than own one: a shared
-  bake is undetectable after the fact, because the file it writes is exactly the file it would then have compared
-  against. It is exercised through an internal overload taking the token, so a guest pairing stays under test
-  without a fake enum member. `cross-platform-gpu.yml` loses its `goldenGuest` leg column with the three sites
-  that read it: every leg bakes its own family on a `bake=true` dispatch, and the sync-validation job still sits
-  one out because it is an instrument over a subset rather than a producer of references. **Until row 4 deletes
-  the incumbent families, do not commit a native leg's bake output**: the pairs are byte-identical and the copy
-  row reds on a fork.
 
 ## 17.39.0
 

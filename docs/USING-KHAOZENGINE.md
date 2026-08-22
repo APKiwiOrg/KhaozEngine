@@ -5353,7 +5353,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.40.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.41.0" />
 ```
 
 ```csharp
@@ -9235,10 +9235,13 @@ Four things a game has to know:
   kinds will render the default as an unknown or blank row.
 - **The boot line says `(default)`.** It said `(OS probe)`, which was fine while a native backend could only be
   reached by naming it and every native session therefore read as an override.
-- **Golden families did not move.** Each native kind is a guest in its incumbent's family, so a run on the new
-  default compares against the same committed grids. The one consequence on a developer Mac is that a bare
-  `KE_UPDATE_GOLDENS=1` is refused, because the default is a guest of the family it would overwrite. Bake with
-  `KE_GRAPHICS_BACKEND=metal`.
+- **Golden families did not move in 17.40.0, and moved in 17.41.0 without moving a byte.** The flip shipped
+  with each native kind still a guest in its incumbent's family, so a run on the new default compared against
+  the same committed grids, and the one consequence on a developer Mac was that a bare `KE_UPDATE_GOLDENS=1`
+  was refused: the default was a guest of the family it would have overwritten, and a bake had to name
+  `KE_GRAPHICS_BACKEND=metal`. Row 2 of the Veldrid removal ended that in 17.41.0. Each native kind now owns
+  the family named after itself, seeded as a byte-identical copy of the incumbent's, so a bare local run reads
+  `metal-native` rather than `metal` and may bake it. The bytes it compares against are the same bytes.
 
 `GpuBackendSelector.IncumbentFor(OSPlatformKind)` is the frozen map of what the probe used to answer (macOS to
 `Metal`, Windows to `Direct3D11`, else `Vulkan`). It is the fallback target, and it is deleted whole with the
@@ -9523,7 +9526,7 @@ run inside the engine's process-wide device-creation gate, so a provider needs n
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.40.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.41.0" />
 ```
 
 ```csharp
@@ -9558,7 +9561,7 @@ that up front is what routes it through the reported fallback instead of a crash
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.40.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.41.0" />
 ```
 
 ```csharp
@@ -9799,7 +9802,7 @@ is no recovery path: a lost device stays lost, which is what the liveness token 
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.40.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.41.0" />
 ```
 
 ```csharp

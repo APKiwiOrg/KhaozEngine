@@ -2213,6 +2213,31 @@ install is scoped to the legs that USE it rather than to the OS. The incumbent V
 indefinitely-selectable escape hatch, and giving it a new apt package would let a package rename on a future
 runner image redden the leg the native backend escapes to.
 
+#### Addendum, 2026-08-22: the default was flipped ahead of these gates
+
+**The default flipped at 17.40.0 by DECISION on 2026-08-22, ahead of gates 1 through 5, every one of which this record left PENDING.** Section 17 of this document
+opens "Five gates, all green before any flip", and that condition was overridden rather than met. This paragraph is
+the record of the override, written here because a reader who finds the gate table above and the shipped
+`ProbeOS` disagreeing must not have to reconstruct which one is current.
+
+**What the flip does NOT do is close a gate.** Every gate that still carries a live instrument stays OPEN as an
+issue and is still owed: Vulkan gate 3's `sync` validation job and Vulkan gate 5's windowed pass
+([#510](https://github.com/APKiwiOrg/KhaozEngine/issues/510)), Metal's MM1
+([#566](https://github.com/APKiwiOrg/KhaozEngine/issues/566)) and Direct3D 11's M1
+([#460](https://github.com/APKiwiOrg/KhaozEngine/issues/460)). The one gate RETIRED is the streak gate MV7
+([#564](https://github.com/APKiwiOrg/KhaozEngine/issues/564), closed as not planned): a gate whose criterion is
+four consecutive green weekly runs cannot be read after the thing it was gating has shipped, and the weekly
+evidence review ([#609](https://github.com/APKiwiOrg/KhaozEngine/issues/609)) now judges on ANY RED ON A NATIVE
+LEG rather than on a streak.
+
+**The escape hatch this document leans on now has an expiry.** `Vulkan` through Veldrid (V-RO2) stays selectable by
+`KE_GRAPHICS_BACKEND` for ONE release, not indefinitely, and is removed in the next one by the Veldrid removal
+program (MF1, tracked from [#540](https://github.com/APKiwiOrg/KhaozEngine/issues/540)). Anywhere above that
+says "indefinitely" is history rather than the current plan. A field regression found in that window is still
+one environment variable away from an A/B on the same build, which is the property the gates were protecting,
+and after the window it is a revert instead.
+
+
 ---
 
 ## 18. Work breakdown

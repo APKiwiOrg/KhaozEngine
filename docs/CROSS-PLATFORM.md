@@ -1,35 +1,40 @@
 # Cross-platform desktop GPU
 
-KhaozEngine's custom stack (Render2D / Render3D) runs on Veldrid. Each desktop OS gets a native graphics
-backend; the GPU golden-snapshot net verifies rendering on each one through a CI matrix.
+KhaozEngine's custom stack (Render2D / Render3D) runs on the engine's own graphics backends, with Veldrid still
+present for one release as the opt-out behind each of them. Each desktop OS gets a native graphics backend, and
+the GPU golden-snapshot net verifies rendering on each one through a CI matrix.
 
 ## Platform → backend (desktop scope)
 
-| OS      | Backend the OS probe picks | `GpuBackendKind` | golden file suffix | engine-owned native backend (opt-in, same family) | software rasterizer (CI) |
-| ------- | -------------------------- | ---------------- | ------------------ | ------------------------------------------------- | ------------------------ |
-| macOS   | Metal                      | `Metal`          | `.metal.txt`       | `MetalNative` (`KhaozEngine.Gpu.Metal`)           | none, a real Apple GPU   |
-| Windows | Direct3D11                 | `Direct3D11`     | `.direct3d11.txt`  | `Direct3D11Native` (`KhaozEngine.Gpu.D3D11`)      | WARP (auto fallback)     |
-| Linux   | Vulkan                     | `Vulkan`         | `.vulkan.txt`      | `VulkanNative` (`KhaozEngine.Gpu.Vulkan`)         | Mesa lavapipe            |
+| OS      | Backend the OS probe picks | `GpuBackendKind`   | golden file suffix | Veldrid incumbent (opt-out for one release, same family) | software rasterizer (CI) |
+| ------- | -------------------------- | ------------------ | ------------------ | -------------------------------------------------------- | ------------------------ |
+| macOS   | Metal (`KhaozEngine.Gpu.Metal`)   | `MetalNative`      | `.metal.txt`       | `Metal`, named by `KE_GRAPHICS_BACKEND=metal`             | none, a real Apple GPU   |
+| Windows | Direct3D 11 (`KhaozEngine.Gpu.D3D11`) | `Direct3D11Native` | `.direct3d11.txt`  | `Direct3D11`, named by `KE_GRAPHICS_BACKEND=d3d11`        | WARP (auto fallback)     |
+| Linux   | Vulkan (`KhaozEngine.Gpu.Vulkan`) | `VulkanNative`     | `.vulkan.txt`      | `Vulkan`, named by `KE_GRAPHICS_BACKEND=vulkan`           | Mesa lavapipe            |
 
-Every API in that table has TWO implementations behind it now, and the right-hand column is the engine's own.
-Each native backend is opt-in (its package is in no umbrella and registers explicitly), is selected by nothing
-by default, and shares the incumbent's golden family rather than owning one, which is what makes its CI leg a
-verification of the incumbent's committed references on the incumbent's own rasterizer. The macOS row is the
-one whose rasterizer column reads "none": it is the only family baked on real hardware, and the only leg in
-this matrix where a golden disagreement is about a GPU rather than about a software rasterizer.
+**The columns swapped at 17.40.0.** Every API in that table has TWO implementations behind it, and the one the
+OS probe picks is now the engine's own. Each native backend is still opt-in as a PACKAGE (in no umbrella,
+registered explicitly), so a game that has not referenced it gets the incumbent with a warning rather than a
+failure to boot. Each shares the incumbent's golden family rather than owning one, which is what makes its CI
+leg a verification of the incumbent's committed references on the incumbent's own rasterizer, and that is
+unchanged by the flip: a default run reads exactly the grids it read before. The macOS row is the one whose
+rasterizer column reads "none": it is the only family baked on real hardware, and the only leg in this matrix
+where a golden disagreement is about a GPU rather than about a software rasterizer.
 
 Backend selection is centralized in `KhaozEngine.Gpu.GpuBackendSelector`:
 
 - `Select()` reads the `KE_GRAPHICS_BACKEND` env override (`metal` / `metal-native` / `vulkan` /
   `vulkan-native` / `d3d11` / `d3d11-native` / `gl`, case-insensitive, with `mtl-native`, `vk-native`,
   `direct3d11` and `direct3d11-native` as aliases),
-  otherwise probes the OS (macOS → Metal, Windows → Direct3D11, Linux/other → Vulkan). **The OS probe still
-  names the three Veldrid backends**: no native backend is a default anywhere, and on Linux the flip to
-  `VulkanNative` is the last step of that backend's rollout rather than a consequence of the token existing
-  ([#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529)). On macOS the flip to `MetalNative` is the same
-  last step of the phase-4 rollout ([#566](https://github.com/APKiwiOrg/KhaozEngine/issues/566)), and it is the
-  one with the largest blast radius of the three: macOS is the fleet's development platform, so it would move
-  every windowed playtest, capture, editor session and local golden bake on the day it landed.
+  otherwise probes the OS (macOS → `MetalNative`, Windows → `Direct3D11Native`, Linux/other → `VulkanNative`).
+  **The OS probe names the three ENGINE-OWNED backends since 17.40.0.** That flip was taken by decision on
+  2026-08-22, ahead of the field-evidence gates each rollout still had open, and the dated addendum in each
+  design's rollout record says which of them remain open as issues. `GpuBackendSelector.IncumbentFor(os)` is
+  the frozen map of what the probe used to answer, and is the backend a failed creation falls back to. The
+  macOS arm is the one with the largest blast radius of the three: macOS is the fleet's development platform,
+  so it moved every windowed playtest, capture, editor session and local golden bake on the day it landed. A
+  local BAKE is the sharp edge, since the default is now a guest of the `metal` family and
+  `KE_UPDATE_GOLDENS=1` is refused unless `KE_GRAPHICS_BACKEND=metal` names the owner.
 - `Resolve()` (17.21.0) answers the same question but also reports WHERE the answer came from, as a
   `GpuBackendSelection` carrying `Source` (`OsProbe` / `EnvironmentOverride` / `UnrecognizedOverride` /
   `UserPreference` / `FallbackAfterFailure`) and the raw override value. `GpuDeviceContext` logs it once per device, and WARNs on an unrecognized override naming
@@ -56,17 +61,24 @@ caused it lives inside the client that then will not start. Two mechanisms, and 
   windowed GL device path.
 - **Creation fallback.** A probe pass is necessary but not sufficient: a broken or partial driver can report
   support and still fail at device creation. So `GpuDeviceContext.CreateForWindow` also catches a failed
-  creation and falls back to the OS-probe backend, WARNing with the requested backend, the failure, and what it
-  fell back to. The retry reuses the same `GpuWindowHandle` (a readonly struct of native pointers, no device
-  state), so no second window is created.
+  creation and falls back to the platform's Veldrid incumbent (`GpuBackendSelector.IncumbentFor`, which is what
+  the OS probe answered before 17.40.0), WARNing with the requested backend, the failure, and what it fell back
+  to. The retry reuses the same `GpuWindowHandle` (a readonly struct of native pointers, no device state), so
+  no second window is created.
+- **A native default with no registered provider** takes that same fallback, added at 17.40.0 with the flip.
+  The native packages are in no umbrella, so a game repinning the engine without adding one would otherwise
+  have an OS default its own process cannot build. Naming a native backend and not registering it still THROWS
+  `GpuBackendProviderMissingException`, which is the half that stops a soak session measuring the incumbent and
+  filing the number under the native name.
 
 The fallback is REPORTED, never repaired: `Source` becomes `FallbackAfterFailure`, `Backend` is what actually
 runs, and `RequestedBackend` is what failed. **A game storing a backend preference must clear it on seeing that
 source**, or the player retries the same broken choice every launch. The engine cannot, since writing a setting
 is file IO and `KhaozEngine.Gpu` does none.
 
-macOS and Linux default behaviour is unchanged. The fallback is skipped entirely when the requested backend
-already IS the OS-probe default, which is every call with no override and no preference.
+The fallback is skipped entirely when the requested backend already IS the incumbent it would fall back to,
+which is every call that names the incumbent outright. A DEFAULT boot is no longer such a call, so the native
+default has a fallback where the incumbent default never needed one.
 
 On Direct3D11 there is a second line worth reading before anything else, added in 17.22.0. `GpuDeviceContext`
 logs the driver's `D3D11_FEATURE_DATA_THREADING` (`GpuThreadingCaps`, also on `GpuDeviceContext.ThreadingCaps` /

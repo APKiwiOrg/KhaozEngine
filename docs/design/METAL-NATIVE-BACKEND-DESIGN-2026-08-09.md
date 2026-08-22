@@ -4223,6 +4223,31 @@ UNREPRODUCED one-off with the managed exception lost, and it does not block a ga
 windowed surface: it did not recur in five subsequent boots on the same build, and the issue names the next
 actionable step. Holding a green gate on an unreproduced one-off would make the gate unfalsifiable.
 
+#### Addendum, 2026-08-22: the default was flipped ahead of these gates
+
+**The default flipped at 17.40.0 by DECISION on 2026-08-22, ahead of gate 4, whose week-long soak and MM1 were the only things left outstanding.** Section 17 of this document
+opens "Five gates, all green before any flip", and that condition was overridden rather than met. This paragraph is
+the record of the override, written here because a reader who finds the gate table above and the shipped
+`ProbeOS` disagreeing must not have to reconstruct which one is current.
+
+**What the flip does NOT do is close a gate.** Every gate that still carries a live instrument stays OPEN as an
+issue and is still owed: Vulkan gate 3's `sync` validation job and Vulkan gate 5's windowed pass
+([#510](https://github.com/APKiwiOrg/KhaozEngine/issues/510)), Metal's MM1
+([#566](https://github.com/APKiwiOrg/KhaozEngine/issues/566)) and Direct3D 11's M1
+([#460](https://github.com/APKiwiOrg/KhaozEngine/issues/460)). The one gate RETIRED is the streak gate MV7
+([#564](https://github.com/APKiwiOrg/KhaozEngine/issues/564), closed as not planned): a gate whose criterion is
+four consecutive green weekly runs cannot be read after the thing it was gating has shipped, and the weekly
+evidence review ([#609](https://github.com/APKiwiOrg/KhaozEngine/issues/609)) now judges on ANY RED ON A NATIVE
+LEG rather than on a streak.
+
+**The escape hatch this document leans on now has an expiry.** `Metal` through Veldrid (M-RO2) stays selectable by
+`KE_GRAPHICS_BACKEND` for ONE release, not indefinitely, and is removed in the next one by the Veldrid removal
+program (MF1, tracked from [#540](https://github.com/APKiwiOrg/KhaozEngine/issues/540)). Anywhere above that
+says "indefinitely" is history rather than the current plan. A field regression found in that window is still
+one environment variable away from an A/B on the same build, which is the property the gates were protecting,
+and after the window it is a revert instead.
+
+
 ---
 
 ## 18. Work breakdown
@@ -4368,6 +4393,13 @@ Phase 2's RO2 says `Direct3D11` stays selectable by token INDEFINITELY. Phase 3'
 `Vulkan`. **Taken together those two sentences plus a third would mean Veldrid never leaves the graph and
 #420's endpoint is unreachable by construction**, and nobody had written that down. The Metal-idiomatic draft
 found it and M-RO3 resolves it.
+
+**Addendum, 2026-08-22: the closing act is NOW, and the condition on it was overridden.** The default flipped
+on all three platforms at 17.40.0 by decision, with gate 4 not passed on any of them, and the incumbents are
+kept for exactly ONE release as the opt-out before the Veldrid removal program (MF1, tracked from
+[#540](https://github.com/APKiwiOrg/KhaozEngine/issues/540)) takes them out. So the paragraph below stands as
+written on the SHAPE, which is what it was for (all three together, its own release, its own risk budget), and
+is superseded on the TRIGGER. "Indefinitely" is history everywhere it appears in these three documents.
 
 **The three incumbent legs retire TOGETHER**, as a closing act, after all three native backends have passed
 their own gate 4 field soak. Not one at a time, because retiring one leg at a time removes the A/B instrument

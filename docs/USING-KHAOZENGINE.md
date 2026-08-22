@@ -5352,7 +5352,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.39.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.40.0" />
 ```
 
 ```csharp
@@ -9022,6 +9022,38 @@ Scene3D render-path GPU tests.
 
 ---
 
+## The engine's own backends are the default (17.40.0)
+
+macOS boots on `MetalNative`, Windows on `Direct3D11Native`, Linux and everything else on `VulkanNative`. The
+three Veldrid incumbents remain as an explicit OPT-OUT for ONE release and are removed in the next one, so a
+game that wants an incumbent back sets `KE_GRAPHICS_BACKEND=metal`, `=d3d11` or `=vulkan`, or stores that
+`GpuBackendKind` as its graphics-settings preference. Both still outrank the default exactly as they did.
+
+The flip was taken by DECISION on 2026-08-22, ahead of the field-evidence gates the three native rollouts still
+had open. Each design's rollout record in `docs/design/` carries a dated addendum naming what remains open.
+
+Four things a game has to know:
+
+- **Repinning without taking a native backend package still boots.** The native packages are in no umbrella and
+  the engine cannot reference them, so a backend NOBODY NAMED with no registered provider falls back to that
+  platform's incumbent with a WARN. Naming one and not registering it still throws, unchanged.
+- **A settings picker needs native rows.** `GpuBackendSelector.SupportedBackends()` now returns up to six
+  kinds, each API's native implementation ahead of its incumbent, and a picker that maps only the three Veldrid
+  kinds will render the default as an unknown or blank row.
+- **The boot line says `(default)`.** It said `(OS probe)`, which was fine while a native backend could only be
+  reached by naming it and every native session therefore read as an override.
+- **Golden families did not move.** Each native kind is a guest in its incumbent's family, so a run on the new
+  default compares against the same committed grids. The one consequence on a developer Mac is that a bare
+  `KE_UPDATE_GOLDENS=1` is refused, because the default is a guest of the family it would overwrite. Bake with
+  `KE_GRAPHICS_BACKEND=metal`.
+
+`GpuBackendSelector.IncumbentFor(OSPlatformKind)` is the frozen map of what the probe used to answer (macOS to
+`Metal`, Windows to `Direct3D11`, else `Vulkan`). It is the fallback target, and it is deleted whole with the
+incumbents next release. `GpuBackendSelection.WasNamed` says whether an override or a preference chose the
+backend, which is what decides throw-versus-fall-back above.
+
+---
+
 ## Which graphics backend actually ran (`GpuBackendSelection`, 17.21.0)
 
 `KE_GRAPHICS_BACKEND` overrides the OS probe (`metal` / `metal-native` / `vulkan` / `vulkan-native` / `d3d11` /
@@ -9029,12 +9061,14 @@ Scene3D render-path GPU tests.
 and `opengl`). `d3d11-native`, `vulkan-native` (17.32.0) and `metal-native` (17.35.0) name the engine's own
 implementations of those three APIs rather than the Veldrid ones,
 and each is a separate value precisely so a session log, a telemetry header and a frame time say which of the
-two ran. The unsuffixed `d3d11`, `vulkan` and `metal` keep pointing at the Veldrid implementations indefinitely,
-which is what makes an A/B between the two implementations of any of the three one environment variable away.
-The Metal one is mid-build ([#566](https://github.com/APKiwiOrg/KhaozEngine/issues/566)) and has no usage
-section here yet, so the kind and its tokens exist ahead of the backend behind them. Naming any of the three
-without referencing its package and calling its `Register()` throws saying so, and never falls back, because a
-run that quietly used a different implementation would report its measurements under the wrong name.
+two ran. The unsuffixed `d3d11`, `vulkan` and `metal` keep pointing at the Veldrid implementations, which is what makes
+an A/B between the two implementations of any of the three one environment variable away. **Since 17.40.0 that
+is also the OPT-OUT, and it lasts one release**: the suffixed kinds are what the OS probe answers now, and the
+unsuffixed ones are removed with the Veldrid backends in the next release. NAMING any of the three without
+referencing its package and calling its `Register()` throws saying so and never falls back, because a run that
+quietly used a different implementation would report its measurements under the wrong name. DEFAULTING to one
+without the package is a different case and falls back to the incumbent with a WARN, because a game that never
+asked for the package has made no wiring mistake.
 
 Because each pair is two separate values, code that cares about the API rather than the implementation asks
 `kind.IsDirect3D11()`, `kind.IsVulkan()` or `kind.IsMetal()` (the `GpuBackendKinds` extensions, 17.30.0, 17.32.0
@@ -9063,9 +9097,9 @@ per created device, plus a WARN when the override was set but is not a recognize
 
 ```
 GPU backend: Vulkan (KE_GRAPHICS_BACKEND override)
-GPU backend: Direct3D11 (OS probe)
+GPU backend: Direct3D11Native (default)
 GPU backend: Vulkan (stored user preference)
-GPU backend: Direct3D11 (fallback, Vulkan failed)
+GPU backend: Direct3D11 (fallback, Direct3D11Native failed)
 KE_GRAPHICS_BACKEND='vulcan' is not a recognized backend (metal/metal-native/vulkan/vulkan-native/d3d11/d3d11-native/gl). Using Direct3D11 instead.
 ```
 
@@ -9077,7 +9111,7 @@ GpuBackendSelection sel = Window.BackendSelection;
 
 string line = sel.Source switch
 {
-    GpuBackendSource.OsProbe              => $"{sel.Backend} (OS probe)",
+    GpuBackendSource.OsProbe              => $"{sel.Backend} (default)",
     GpuBackendSource.EnvironmentOverride  => $"{sel.Backend} (KE_GRAPHICS_BACKEND={sel.RequestedOverride})",
     GpuBackendSource.UnrecognizedOverride => $"{sel.Backend} (bad override '{sel.RequestedOverride}')",
     GpuBackendSource.UserPreference       => $"{sel.Backend} (your graphics setting)",
@@ -9139,7 +9173,7 @@ picked. A custom `WindowFactory` must forward the preference itself, exactly lik
 
 ```csharp
 foreach (GpuBackendKind kind in GpuBackendSelector.SupportedBackends())
-    dropdown.Add(kind);        // Metal / Vulkan / Direct3D11, whichever this machine can really run
+    dropdown.Add(kind);        // up to six kinds, whichever this machine can really run
 ```
 
 `SupportedBackends()` is a FUNCTIONAL probe, not a platform guess: it loads each backend's library, creates an
@@ -9147,12 +9181,19 @@ instance, enumerates physical devices, and for Vulkan checks the required surfac
 for the process lifetime, so a settings screen may call it freely. `IsBackendSupported(kind)` asks about one.
 `OpenGL` is never offered, because there is no windowed GL device path.
 
+**Since 17.40.0 the list carries each API's NATIVE implementation ahead of its incumbent**, in the order
+`MetalNative`, `Metal`, `VulkanNative`, `Vulkan`, `Direct3D11Native`, `Direct3D11`. A native kind appears only
+where its provider is registered, so a game that has not referenced the native package sees exactly the three
+rows it saw before. **Map every kind you can be handed.** A picker written against the three Veldrid kinds will
+render the machine's DEFAULT as an unknown or blank row, which reads to a player as a broken settings screen.
+
 ### The fallback contract (this is the whole safety story)
 
 Probing is necessary but NOT sufficient. A broken or partial driver can report support and still fail at device
-creation. So creation is also wrapped: if the requested backend fails, the engine falls back to the OS-probe
-backend, WARNs, and boots anyway rather than leaving the player with a client that will not start and a setting
-they cannot reach to fix.
+creation. So creation is also wrapped: if the requested backend fails, the engine falls back to the platform's
+Veldrid incumbent (`GpuBackendSelector.IncumbentFor`, which is what the OS probe answered before 17.40.0),
+WARNs, and boots anyway rather than leaving the player with a client that will not start and a setting they
+cannot reach to fix.
 
 **The engine reports the fallback. It never clears your setting.** Writing a setting is file IO, which
 `KhaozEngine.Gpu` does not do. Two obligations on the consuming game, and skipping the first one means the
@@ -9177,8 +9218,12 @@ consumer driving its own retry through `GpuDeviceContext.CreateForWindow(handle,
 explicit-backend overload: exactly that backend, no resolution and no fallback). Retrying needs no new window,
 since `GpuWindowHandle` is a readonly struct of native pointers carrying no device state.
 
-None of this changes an existing game. The fallback is skipped when the requested backend already IS the
-OS-probe default, which is every call with no override and no preference, and `CreateHeadless` never falls back.
+The fallback is skipped when the requested backend already IS the incumbent it would fall back to, which is
+every call that names the incumbent outright. A default boot is no longer such a call, so the native default
+has a fallback where the incumbent default never needed one. `CreateHeadless` still never falls back, with the
+one 17.40.0 exception above: a native backend the OS probe DEFAULTED to, with no registered provider, falls
+back to the incumbent there too, so an offscreen capture in a game that never took the native package keeps
+working.
 
 `GpuDeviceContext.CreateHeadless(backend)` (17.32.0) is the headless twin of that explicit-backend overload:
 
@@ -9261,7 +9306,7 @@ run inside the engine's process-wide device-creation gate, so a provider needs n
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.40.0" />
 ```
 
 ```csharp
@@ -9295,7 +9340,7 @@ that up front is what routes it through the reported fallback instead of a crash
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.40.0" />
 ```
 
 ```csharp
@@ -9537,7 +9582,7 @@ is no recovery path: a lost device stays lost, which is what the liveness token 
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.40.0" />
 ```
 
 ```csharp
@@ -10349,7 +10394,7 @@ D3D11_CREATE_DEVICE_PREVENT_INTERNAL_THREADING_OPTIMIZATIONS is ACTIVE for this 
 KE_D3D11_PREVENT_THREADING_OPTIMIZATIONS). The Direct3D11 runtime will not apply its internal threading
 optimizations. This is a diagnostic lever and it can cost performance, so unset the variable to go back to the
 default.
-GPU backend: Direct3D11 (OS probe)
+GPU backend: Direct3D11Native (default)
 GPU adapter: NVIDIA GeForce RTX 4070
 D3D11 driver threading: DriverCommandLists=TRUE, DriverConcurrentCreates=TRUE (the driver builds command lists)
 Graphics overlay software: RTSSHooks64.dll (RivaTuner Statistics Server, as used by MSI Afterburner)

@@ -4,7 +4,7 @@ The engine's own native Vulkan backend for the [KhaozEngine.Gpu](../KhaozEngine.
 umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or `WorldStore.Sqlite`,
 and nothing that does not want the Vulkan binding ever carries it.
 
-> **Status: BUILT AND CONTINUOUSLY EXERCISED, NOT YET DEFAULT ANYWHERE. Registration, probe, headless and
+> **Status: BUILT, CONTINUOUSLY EXERCISED, AND THE DEFAULT ON LINUX SINCE 17.40.0. Registration, probe, headless and
 > windowed devices, the completion timeline, the memory allocator, the command list's lifecycle, the uniform
 > ring, the resource factory, the descriptors, the bind flush, dynamic rendering, the shader path, the
 > pipelines, the swapchain, the barrier tracker, the capability, counter and diagnostics reads, the draw,
@@ -81,10 +81,16 @@ and nothing that does not want the Vulkan binding ever carries it.
 > goldens on lavapipe as a guest in that family, with `KE_VULKAN_REQUIRED=1` so a row that needs a native device
 > cannot go quietly dormant, and both tiers of the validation gate ride it, `strict` on the scheduled full suite
 > and `sync` on a separate golden-and-compute job.
-> Nothing selects it by default.
-> `KhaozEngine.Gpu`'s `Vulkan` backend, which goes through Veldrid, remains the working Vulkan path and stays
-> selectable indefinitely, and the FLIP of the Linux default waits on five rollout gates, two of which are a
-> field session and a human windowed pass that no CI leg can stand in for.
+> **THE DEFAULT ON LINUX SINCE 17.40.0.** The OS probe answers `GpuBackendKind.VulkanNative` there now, so a game that
+> references this package and calls `Register()` gets it without naming anything. The flip was taken by
+> DECISION on 2026-08-22, ahead of the field-evidence gates the rollout still had open, and the dated addendum
+> in section 17 of the design records which of them remain open as issues. This package stays OPT-IN as a
+> package, in no umbrella: a game that does not reference it falls back to `GpuBackendKind.Vulkan` with a WARN naming the
+> missing registration rather than failing to boot. `GpuBackendKind.Vulkan`, which goes through Veldrid, stays selectable
+> by `KE_GRAPHICS_BACKEND=vulkan` for ONE release and is removed in the next one.
+>
+> Two of the five rollout gates are still open and still carry an instrument: gate 3's `sync` validation job and
+> gate 5's human windowed pass, which no CI leg can stand in for. The flip did not close them.
 
 ## The spec
 

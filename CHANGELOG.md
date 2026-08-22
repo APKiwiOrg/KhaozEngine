@@ -5,6 +5,68 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.40.0
+
+**The engine's own graphics backends are the DEFAULT on every platform from this release.** macOS boots on
+`MetalNative`, Windows on `Direct3D11Native`, Linux and everything else on `VulkanNative`. The three Veldrid
+incumbents remain as an explicit OPT-OUT for ONE release, and are REMOVED in the next one by the Veldrid removal
+program (the roadmap issue MF1/#540). A game that wants an incumbent back sets
+`KE_GRAPHICS_BACKEND=metal`, `=d3d11` (or `=direct3d11`) or `=vulkan`, or stores that
+`GpuBackendKind` as its graphics-settings preference, both of which still outrank the default exactly as they
+did. Nothing else changes about how a backend is chosen.
+
+**This flip was taken by DECISION on 2026-08-22, ahead of the field-evidence gates that were still open**, and
+it overrides the "five gates, all green before any flip" condition each of the three native rollout designs
+sets. The three rollout records carry a dated addendum saying so and naming what is still open: Vulkan gate 3's
+`sync` validation job, Vulkan gate 5's windowed pass, Metal MM1 and Direct3D 11 M1 all still carry a live
+instrument and stay open as issues. The streak gate MV7 is retired ([#564](https://github.com/APKiwiOrg/KhaozEngine/issues/564),
+closed as not planned). Read those addenda before taking a green run here as evidence that every gate was met.
+
+### The flip itself
+
+- `GpuBackendSelector.ProbeOS` answers `MetalNative` / `Direct3D11Native` / `VulkanNative`, where each arm
+  answered its API's Veldrid implementation before.
+- **`GpuBackendSelector.IncumbentFor(OSPlatformKind)` is new** and carries the map `ProbeOS` used to have
+  (macOS to `Metal`, Windows to `Direct3D11`, else `Vulkan`). It is what a failed device creation falls back
+  TO, and it is deleted whole with the incumbents next release.
+- The three native kinds join the windowed candidate list, so `GpuBackendSelector.SupportedBackends()` offers
+  each API's native implementation ahead of its incumbent. A native kind appears **only where its provider is
+  registered**, so a game that has not referenced the native package still sees exactly the list it saw before.
+- **`GpuBackendSelection.WasNamed` is new**: true when a recognized `KE_GRAPHICS_BACKEND` value or a stored
+  preference chose the backend, false when the OS probe did.
+
+### What a game has to know
+
+- **A game that repins WITHOUT taking a native backend package still boots.** The native packages are in no
+  umbrella and the engine cannot reference them, so a provider-backed backend NOBODY NAMED with no registered
+  provider now falls back to the platform's incumbent with a WARN naming the missing registration, instead of
+  throwing `GpuBackendProviderMissingException`. Naming a native backend and not registering it still THROWS,
+  unchanged: that is the half of decision I2 that stops a soak session measuring the incumbent and filing the
+  number under the native name.
+- **The boot line says `(default)` where it said `(OS probe)`.** Before the flip a native backend was reachable
+  only by naming it, so every native session read as `MetalNative (KE_GRAPHICS_BACKEND override)`. After it,
+  `GPU backend: MetalNative (default)` is what an unconfigured session prints, and an override still prints as
+  an override. A game rendering `GpuBackendSource` on its own debug overlay should say the same.
+- **A game settings picker needs native rows.** `SupportedBackends()` now returns up to six kinds, and a picker
+  that maps only the three incumbents will render a native default as an unknown or blank row.
+  [Ruinborne#451](https://github.com/APKiwiOrg/Ruinborne/issues/451) is exactly that: no native rows, and its
+  fallback label reads "Unknown" for a native kind. Its adopt of this release has to fix both. The other games
+  pin 15.0.0 and are unaffected until they repin.
+- Golden families are UNCHANGED. Each native kind is a guest in its incumbent's family, so a run on the new
+  default compares against the same committed grids. One consequence for a developer Mac: a bare
+  `KE_UPDATE_GOLDENS=1` is now REFUSED, because the default is a guest of the family it would overwrite. Bake
+  with `KE_GRAPHICS_BACKEND=metal`, which the refusal message says.
+- **A bare local `KE_GPU_TESTS=1 dotnet test` runs on the platform's NATIVE backend now**, because the test
+  harness resolves through the same `GpuBackendSelector.Select()` everything else does. That is deliberate: the
+  engine's suite should exercise what ships by default. The five cross-platform GPU legs are unaffected, since
+  each names its backend in `KE_GRAPHICS_BACKEND`.
+
+### Unchanged
+
+The precedence chain (`KE_GRAPHICS_BACKEND` > stored preference > OS probe), every token including the
+`-native` suffixed ones, the `GpuBackendSource` numeric contract, the golden family mapping, and both software
+frame-cap sites, which gate on `GpuBackendKind.Metal` and were settled by Metal rollout gate 5 in 17.35.0.
+
 ## 17.39.0
 
 A tile world can draw a real glb kit per archetype now, the glTF loader honours per-vertex COLOR_0, and a

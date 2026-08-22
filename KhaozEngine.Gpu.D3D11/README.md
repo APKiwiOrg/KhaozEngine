@@ -10,14 +10,22 @@ NO umbrella: a consumer adds this package explicitly, the same pattern as `Physi
 > capability read, the device-loss latch and the debug-layer pump. Everything the sixteen rows before it built is
 > joined up and reachable.
 >
-> **Nothing selects it by default.** It is reached by naming it: `KE_GRAPHICS_BACKEND=direct3d11-native`, or an
+> **THE DEFAULT ON WINDOWS SINCE 17.40.0.** The OS probe answers `GpuBackendKind.Direct3D11Native` there now, so a game that
+> references this package and calls `Register()` gets it without naming anything. The flip was taken by
+> DECISION on 2026-08-22, ahead of the field-evidence gates the rollout still had open, and the dated addendum
+> in section 17 of the design records which of them remain open as issues. This package stays OPT-IN as a
+> package, in no umbrella: a game that does not reference it falls back to `GpuBackendKind.Direct3D11` with a WARN naming the
+> missing registration rather than failing to boot. `GpuBackendKind.Direct3D11`, which goes through Veldrid, stays selectable
+> by `KE_GRAPHICS_BACKEND=d3d11` for ONE release and is removed in the next one.
+>
+> It is also still reachable by naming it anywhere: `KE_GRAPHICS_BACKEND=direct3d11-native`, or an
 > explicit `GpuBackendKind.Direct3D11Native`. The `direct3d11-native` CI leg exists now and is blocking: it
 > verifies the 36 shared `direct3d11` goldens on a pinned WARP adapter and runs the WARP parity `[GpuFact]` on
 > its full-suite triggers. Its first recorded evidence, and the five rollout gates that decide the default flip,
-> are https://github.com/APKiwiOrg/KhaozEngine/issues/460. What was checked before that leg existed still holds
+> are https://github.com/APKiwiOrg/KhaozEngine/issues/460, where gate M1 is still open. What was checked before that leg existed still holds
 > and is the whole of the device-free story: this compiles under CA1416, the construction and teardown ORDER are
 > what they claim, and every subsystem below is green against its own device-free tests.
-> `GpuBackendKind.Direct3D11` remains the working Direct3D 11 backend and stays selectable indefinitely.
+> `GpuBackendKind.Direct3D11` remains a working Direct3D 11 backend for one more release.
 
 ## Opting in
 

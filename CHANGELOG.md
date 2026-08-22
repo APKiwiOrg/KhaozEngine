@@ -190,6 +190,31 @@ be satisfied out of the bytes of the components behind it.
   the spawn rather than throwing out of `Update(dt)`, and the server constructor refuses a config whose
   `PlaneCount` disagrees with the map's so the two doors stay one door. `PersistenceBinding<TState>` is four
   delegates: the unused `WithPosition` was removed before the tag.
+- **The three native backends OWN their own golden families, and the three new families are byte-identical
+  copies of the incumbent ones** ([#685](https://github.com/APKiwiOrg/KhaozEngine/issues/685),
+  [#686](https://github.com/APKiwiOrg/KhaozEngine/issues/686), rows 2 and 3 of
+  [#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)). `GoldenCompare.GoldenBackendToken` mapped seven
+  `GpuBackendKind` members onto four families until now, each native kind a GUEST in its incumbent's, which was
+  the strongest free proof each port had: it was held to already-committed references, unmodified, on the same
+  rasterizer at the same tolerance. It maps every kind to the family named after it now, spelled the way
+  `KE_GRAPHICS_BACKEND` accepts it: `metal`, `metal-native`, `vulkan`, `vulkan-native`, `direct3d11`,
+  `direct3d11-native`, `opengl`. The reason is that the incumbents owning the first three are being deleted, and
+  a family whose owner is gone is a set of references nothing may ever re-bake. **120 new grids were COPIED
+  rather than baked**, and `GoldenFamilyCopyGoldenTests` asserts the copy byte for byte over all of them, so
+  every guest-era green run survives as committed bytes. A self-baked golden always passes itself, and the copy
+  is the one moment in this program where that trap was avoidable for free. From here on a native family is a
+  reference only its own producer has ever agreed with, and its value is regression detection rather than
+  correctness evidence.
+- **`KE_UPDATE_GOLDENS` now bakes on every CI leg, and `BakeRefusal` guards a rule rather than a live pairing.**
+  The refusal still fires when a backend's token is not its own name, but no live `GpuBackendKind` is in that
+  shape today, so what it guards is the next append that decides to share a family rather than own one: a shared
+  bake is undetectable after the fact, because the file it writes is exactly the file it would then have compared
+  against. It is exercised through an internal overload taking the token, so a guest pairing stays under test
+  without a fake enum member. `cross-platform-gpu.yml` loses its `goldenGuest` leg column with the three sites
+  that read it: every leg bakes its own family on a `bake=true` dispatch, and the sync-validation job still sits
+  one out because it is an instrument over a subset rather than a producer of references. **Until row 4 deletes
+  the incumbent families, do not commit a native leg's bake output**: the pairs are byte-identical and the copy
+  row reds on a fork.
 
 ## 17.39.0
 

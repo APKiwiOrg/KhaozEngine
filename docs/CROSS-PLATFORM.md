@@ -5,18 +5,23 @@ backend; the GPU golden-snapshot net verifies rendering on each one through a CI
 
 ## Platform → backend (desktop scope)
 
-| OS      | Backend the OS probe picks | `GpuBackendKind` | golden file suffix | engine-owned native backend (opt-in, same family) | software rasterizer (CI) |
-| ------- | -------------------------- | ---------------- | ------------------ | ------------------------------------------------- | ------------------------ |
-| macOS   | Metal                      | `Metal`          | `.metal.txt`       | `MetalNative` (`KhaozEngine.Gpu.Metal`)           | none, a real Apple GPU   |
-| Windows | Direct3D11                 | `Direct3D11`     | `.direct3d11.txt`  | `Direct3D11Native` (`KhaozEngine.Gpu.D3D11`)      | WARP (auto fallback)     |
-| Linux   | Vulkan                     | `Vulkan`         | `.vulkan.txt`      | `VulkanNative` (`KhaozEngine.Gpu.Vulkan`)         | Mesa lavapipe            |
+| OS      | Backend the OS probe picks | `GpuBackendKind` | golden file suffix | engine-owned native backend (opt-in) | its golden file suffix   | software rasterizer (CI) |
+| ------- | -------------------------- | ---------------- | ------------------ | ------------------------------------ | ------------------------ | ------------------------ |
+| macOS   | Metal                      | `Metal`          | `.metal.txt`       | `MetalNative` (`KhaozEngine.Gpu.Metal`)      | `.metal-native.txt`      | none, a real Apple GPU   |
+| Windows | Direct3D11                 | `Direct3D11`     | `.direct3d11.txt`  | `Direct3D11Native` (`KhaozEngine.Gpu.D3D11`) | `.direct3d11-native.txt` | WARP (auto fallback)     |
+| Linux   | Vulkan                     | `Vulkan`         | `.vulkan.txt`      | `VulkanNative` (`KhaozEngine.Gpu.Vulkan`)    | `.vulkan-native.txt`     | Mesa lavapipe            |
 
-Every API in that table has TWO implementations behind it now, and the right-hand column is the engine's own.
-Each native backend is opt-in (its package is in no umbrella and registers explicitly), is selected by nothing
-by default, and shares the incumbent's golden family rather than owning one, which is what makes its CI leg a
-verification of the incumbent's committed references on the incumbent's own rasterizer. The macOS row is the
-one whose rasterizer column reads "none": it is the only family baked on real hardware, and the only leg in
-this matrix where a golden disagreement is about a GPU rather than about a software rasterizer.
+Every API in that table has TWO implementations behind it, and the two right-hand implementation columns are
+the engine's own. Each native backend is opt-in (its package is in no umbrella and registers explicitly) and
+is selected by nothing by default. **Each has OWNED its own golden family since `17.40.0`**: it was a guest in
+the incumbent's family until then, which made its CI leg a verification of the incumbent's committed references
+on the incumbent's own rasterizer, and row 2 of the Veldrid removal
+([#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)) promoted all three because the incumbents that
+own the left-hand families are being deleted. The three new families were seeded as byte-identical COPIES of
+the incumbent ones rather than baked, so the guest-era agreement between two implementations survives as
+committed bytes. The macOS row is the one whose rasterizer column reads "none": those are the only families
+baked on real hardware, and the only legs in this matrix where a golden disagreement is about a GPU rather than
+about a software rasterizer.
 
 Backend selection is centralized in `KhaozEngine.Gpu.GpuBackendSelector`:
 
@@ -97,32 +102,46 @@ reference grid because a software rasterizer (lavapipe, WARP) does not match App
 Per-backend goldens absorb that while still catching real shader / UBO / blend / winding / orientation
 regressions (coarse 32×18 grid, per-channel tolerance).
 
-The token is a mapping rather than the enum name, because two IMPLEMENTATIONS of one API share a family.
-`GpuBackendKind.Direct3D11Native` resolves to `direct3d11`, `GpuBackendKind.VulkanNative` to `vulkan` and
-`GpuBackendKind.MetalNative` to `metal`, so each native backend is held to the incumbent's already-committed
-references, unmodified, on the same rasterizer at the same tolerance. The Metal pair is the one that is not
-symmetric with the other two: `metal` is the only family baked on real hardware rather than on a software
-rasterizer, and it is the fleet's cross-backend reference, so a guest disagreeing there is a fleet event
-rather than a leg event. That sharing is the
-strongest free proof a native port has, so it is guarded in the other direction too: `KE_UPDATE_GOLDENS`
-REFUSES to write when the running backend does not OWN its family, unless `KE_GOLDEN_FAMILY_OVERRIDE=1` says the
-shared family is being moved on purpose. Without that guard a bake on the native leg would overwrite both the
-reference it is being checked against and the incumbent's, and the file it wrote would be exactly the file it
-would then have compared against, so nothing downstream could notice.
+**SIX FAMILIES SINCE `17.40.0`, and it was four before.** The token is a mapping rather than the enum name, and
+until `17.40.0` it mapped seven kinds onto four families: `GpuBackendKind.Direct3D11Native` resolved to
+`direct3d11`, `VulkanNative` to `vulkan` and `MetalNative` to `metal`, so each native backend was held to the
+incumbent's already-committed references, unmodified, on the same rasterizer at the same tolerance. That was
+the strongest free proof a native port had. Row 2 of the Veldrid removal
+([#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)) ended it, because the incumbents that own those
+families are being deleted and a family whose owner is gone is a set of references nothing may ever re-bake.
+Every kind now resolves to the family named after it, spelled the way `KE_GRAPHICS_BACKEND` accepts it, hyphen
+included: `metal`, `metal-native`, `vulkan`, `vulkan-native`, `direct3d11`, `direct3d11-native` (and `opengl`,
+which nothing has ever baked).
 
-**A shared family also means a seam repair on ONE Metal path is a broken leg, so both move together.** The two
-Metal backends are held to the same grids, so a behavioural change to either one is a change to the other's
-reference. `17.39.0` is the worked example: `GpuRasterizerState.DepthClipEnabled` was read by Direct3D 11 and
+**What is lost is what happens NEXT, not what is committed.** The three native families were seeded as
+byte-identical COPIES of the incumbent ones rather than baked, and `GoldenFamilyCopyGoldenTests` asserts the
+copy cell for cell over all 120 grids, so every guest-era green run is still exactly what the committed bytes
+record. From `17.40.0` on, though, a native family is a reference only its own producer has ever agreed with,
+and its value is regression detection rather than correctness evidence. That test is deleted in row 4 together
+with the incumbent families it reads.
+
+`KE_UPDATE_GOLDENS` still REFUSES to write when the running backend does not OWN its family, unless
+`KE_GOLDEN_FAMILY_OVERRIDE=1` says the shared family is being moved on purpose. **No live backend trips that
+refusal today**, because no backend is a guest any more. What it guards is the RULE, for the next append that
+decides to share rather than own: that decision was taken three times in a row and the whole failure mode is
+that a shared bake is undetectable after the fact, since the file it writes is exactly the file it would then
+have compared against.
+
+**Two Metal paths still move together, and now for a different reason.** They were held to the same grids
+until `17.40.0`, so a behavioural change to either was a change to the other's reference. They are now held to
+two families holding identical bytes, which has the same consequence for as long as the copy invariant stands.
+`17.39.0` is the worked example: `GpuRasterizerState.DepthClipEnabled` was read by Direct3D 11 and
 Vulkan and by neither Metal path, both of which derived the clip mode from the depth test instead
 ([#598](https://github.com/APKiwiOrg/KhaozEngine/issues/598)), and the repair shipped as the vendored Veldrid
 fork's `4.9.104` plus the matching `KhaozEngine.Gpu.Metal` change in one release. Fixing only the native one
-would have reddened the guest leg against grids the incumbent baked. `DepthClipModeGpuTests` is the row that now
-holds the contract, and it is backend-agnostic on purpose so all six legs assert it rather than one.
+would have reddened the native leg against grids the incumbent baked. `DepthClipModeGpuTests` is the row that
+now holds the contract, and it is backend-agnostic on purpose so all six legs assert it rather than one.
 
 The Metal goldens (`scene2d.metal.txt`, `scene3d.metal.txt`), the Direct3D11 goldens
 (`scene2d.direct3d11.txt`, `scene3d.direct3d11.txt`, baked on WARP), and the Vulkan goldens
 (`scene2d.vulkan.txt`, `scene3d.vulkan.txt`, baked on lavapipe) are all committed and verified on every macOS /
-Windows / Linux run respectively.
+Windows / Linux run respectively, and since `17.40.0` each has a `-native` twin holding the same bytes,
+verified on the matching native leg.
 
 The 2D golden loads a libre font bundled in the test project (`KhaozEngine.Render.Tests/Assets/Roboto-Regular.ttf`,
 Apache-2.0) rather than an OS system-font path, so its glyph input is identical on every runner.
@@ -147,9 +166,9 @@ The suite each leg runs is split by trigger, from measured hosted-runner cost
   move the GPU under a golden gate.
 - **GitHub-hosted Metal NATIVE leg (`macos-26`)**: the engine's own `KhaozEngine.Gpu.Metal` backend
   (`KE_GRAPHICS_BACKEND=metal-native`) on exactly the incumbent Metal leg's tier, which is the whole suite on
-  every trigger. It is a GUEST in the incumbent's `metal` golden family exactly as the other two native legs are
-  guests in theirs, so `KE_UPDATE_GOLDENS` stays empty on it for every trigger and it sits a bake dispatch out
-  entirely. **This is the strongest regression net in the program**: the other two native legs run golden-only
+  every trigger. It OWNS the `metal-native` golden family since `17.40.0`, exactly as the other two native legs
+  own theirs, so it verifies the committed `.metal-native.txt` grids on the same real GPU and bakes them on a
+  bake dispatch like any other owning leg. **This is the strongest regression net in the program**: the other two native legs run golden-only
   on push, on software rasterizers, and this one runs everything on a real GPU every time. Three things are its
   own rather than the incumbent Metal leg's. It sets `KE_METAL_REQUIRED=1`, for the reason the Vulkan native leg
   sets its own equivalent below. It arms `MTL_DEBUG_LAYER=1` on every run and `MTL_SHADER_VALIDATION=1` on the
@@ -270,11 +289,11 @@ The suite each leg runs is split by trigger, from measured hosted-runner cost
 - **GitHub-hosted D3D11 native leg (2x billing)**: the engine's own `KhaozEngine.Gpu.D3D11` backend
   (`KE_GRAPHICS_BACKEND=direct3d11-native`) on exactly the incumbent leg's tier, golden tests only on
   `push`/`pull_request` and the WHOLE suite on the weekly `schedule` and on `workflow_dispatch`, for the same
-  measured cost reason at the same 2x rate. It is a GUEST in the incumbent's golden family: it verifies the
-  committed `.direct3d11.txt` grids on the same WARP rasterizer and never bakes them, so `KE_UPDATE_GOLDENS`
-  stays empty on it for every trigger and it sits out bake dispatches entirely. Both Windows legs pin
+  measured cost reason at the same 2x rate. It OWNS the `direct3d11-native` golden family since `17.40.0`: it
+  verifies the committed `.direct3d11-native.txt` grids on the same WARP rasterizer and bakes them on a bake
+  dispatch. Both Windows legs pin
   `KE_D3D11_ADAPTER=warp` instead of inheriting the implicit fallback, so a runner image that grows a
-  paravirtual adapter cannot quietly change the rasterizer under the shared goldens. The incumbent leg needs
+  paravirtual adapter cannot quietly change the rasterizer under either family. The incumbent leg needs
   the pin because it creates native devices too, through the parity tests, and the variable is read only by the
   native backend's adapter selection, so the Veldrid device that leg also creates is unaffected.
 - **GitHub-hosted Vulkan leg (1x)**: golden tests only (`FullyQualifiedName~Golden`) on
@@ -295,9 +314,9 @@ The suite each leg runs is split by trigger, from measured hosted-runner cost
 - **GitHub-hosted Vulkan native leg (1x)**: the engine's own `KhaozEngine.Gpu.Vulkan` backend
   (`KE_GRAPHICS_BACKEND=vulkan-native`) on exactly the incumbent Vulkan leg's tier, golden tests only on
   `push`/`pull_request` and the WHOLE suite on the weekly `schedule` and on `workflow_dispatch`, serialized
-  the same way and for the same reason. It is a GUEST in the incumbent's golden family, verifying the
-  committed `.vulkan.txt` grids on the same lavapipe rasterizer and never baking them, so `KE_UPDATE_GOLDENS`
-  stays empty on it for every trigger and it sits out bake dispatches entirely. Two things are its own. It
+  the same way and for the same reason. It OWNS the `vulkan-native` golden family since `17.40.0`, verifying
+  the committed `.vulkan-native.txt` grids on the same lavapipe rasterizer and baking them on a bake dispatch.
+  Two things are its own. It
   sets **`KE_VULKAN_REQUIRED=1`**, because the rows that need a real native device go DORMANT when the
   backend's functional probe refuses the machine, and a dormant row is not a skip, so on the one leg built to
   run them a loader regression would empty them into passes that assert nothing and the zero-skipped gate
@@ -418,7 +437,7 @@ INTERMEDIATE target, ask what in the final image would have to move before assum
 | `push` / `pull_request` on main  | **verify**: both Metal legs run the full suite. Both D3D11 legs and both Vulkan legs run the golden tests only. The only validation tier that runs is Metal's debug layer, which the native Metal leg arms on every trigger, and it arms it ALONE: `MTL_CAPTURE_ENABLED` would displace the `MTLDebugDevice` that does the validating ([#614](https://github.com/APKiwiOrg/KhaozEngine/issues/614)) |
 | `schedule` (weekly, Sun 18:00 UTC) | **full sweep**: both Metal legs + both D3D11 legs + both Vulkan legs all run the full suite (both Vulkan legs serialized, the native one under `strict` validation), plus the `sync` validation job. The native Metal leg keeps its debug layer here, alone for the same #614 reason, and does NOT arm `MTL_SHADER_VALIDATION` ([#617](https://github.com/APKiwiOrg/KhaozEngine/issues/617)) |
 | `workflow_dispatch` `bake=false` | same as `schedule` (all six legs full suite, both Vulkan legs serialized, plus the `sync` job), plus the two things no other trigger can do. `tier` picks the native Metal leg's shape: `deep` (the default) adds `MTL_SHADER_VALIDATION=1`, `capture` adds `MTL_CAPTURE_ENABLED=1` instead, and `push` is the unattended debug-device shape. And `incumbentShaderValidation=true` arms `MTL_SHADER_VALIDATION=1` on the INCUMBENT Metal leg, which is #617's control |
-| `workflow_dispatch` `bake=true`  | **re-bake** (`KE_UPDATE_GOLDENS=1`) on Metal, D3D11 and Vulkan, uploaded as per-backend goldens. All three guest legs skip their test step and the `sync` job does not run at all: a guest owns no family to bake, and verifying against references being replaced mid-run would only red it |
+| `workflow_dispatch` `bake=true`  | **re-bake** (`KE_UPDATE_GOLDENS=1`) on all six legs, each writing its own family, uploaded as per-backend goldens. Every leg has been a bake leg since `17.40.0`, when the three native legs became owners. The `sync` job still does not run: it is a validation instrument over a subset rather than a producer of references, and the `vulkan-native` matrix leg bakes that family. **Do not commit a native leg's bake output before row 4 of [#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)**: the native families are byte-identical copies and `GoldenFamilyCopyGoldenTests` reds on a fork |
 
 Software rasterizers on the runners (no real GPU):
 
@@ -438,18 +457,17 @@ Software rasterizers on the runners (no real GPU):
   variable has exactly one reader, the native backend's physical-device selection, so no Veldrid device sees it.
 - Windows D3D11 → **WARP** software adapter (automatic fallback when no hardware adapter is present) for the
   incumbent's Veldrid device. Verified. Neither Windows leg rides that fallback for the NATIVE devices it
-  creates: both pin `KE_D3D11_ADAPTER=warp`, so the rasterizer under the shared goldens is stated rather than
-  inherited from the runner image.
+  creates: both pin `KE_D3D11_ADAPTER=warp`, so the rasterizer under both Windows families is stated rather
+  than inherited from the runner image.
 
 Net result: **all six legs are blocking, none of them informational** - Metal (macOS), Metal native (macOS),
 Direct3D11 (Windows/WARP), Direct3D11 native (Windows/WARP), Vulkan (Linux/lavapipe) and Vulkan native
-(Linux/lavapipe). Three of them are long validated. The three guest legs block by design rather than by record:
+(Linux/lavapipe). Three of them are long validated. The three native legs block by design rather than by record:
 a native backend's CI leg is its continuous exercise, so it gates from its first run, and their first recorded
 evidence is rollout gate 1 on [#460](https://github.com/APKiwiOrg/KhaozEngine/issues/460),
 [#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529) and
 [#566](https://github.com/APKiwiOrg/KhaozEngine/issues/566). The overall workflow is green only when all six
-verify, with the one exception in the table above: on a `bake=true` dispatch all three guest legs skip their
-test step, so that run is green on the three baking legs alone.
+verify, and since `17.40.0` that holds on a `bake=true` dispatch too: no leg sits one out any more.
 
 **Neither incumbent leg is coupled to its native sibling's health, and that is the same decision made twice.**
 The incumbent Vulkan leg installs no validation layer and sets no `KE_VULKAN_REQUIRED`. The incumbent Metal leg
@@ -460,15 +478,17 @@ one.
 
 ### Per-backend golden flow
 
-1. **Push / PR = verify.** Each leg verifies the committed goldens of its FAMILY (`.metal.txt`,
-   `.direct3d11.txt`, `.vulkan.txt`). Three legs own the family they verify. The three native legs own none:
-   each is a guest in its incumbent's family, so it checks the incumbent's files on the same rasterizer (the
-   same real GPU, on macOS) and never writes them. A family with no committed goldens **fails with
+1. **Push / PR = verify.** Each leg verifies the committed goldens of its own FAMILY (`.metal.txt`,
+   `.metal-native.txt`, `.direct3d11.txt`, `.direct3d11-native.txt`, `.vulkan.txt`, `.vulkan-native.txt`).
+   Since `17.40.0` every leg owns the family it verifies. A family with no committed goldens **fails with
    "golden ... missing ... bake it"**.
-2. **Generate a new backend's goldens:** run the workflow manually with `bake = true`. The bake legs render
-   with `KE_UPDATE_GOLDENS=1` and upload artifacts named `goldens-<backend>`
+2. **Generate a new backend's goldens:** run the workflow manually with `bake = true`. Every leg renders
+   with `KE_UPDATE_GOLDENS=1` and uploads artifacts named `goldens-<backend>`
    (`scene2d.<backend>.txt`, `scene3d.<backend>.txt`).
 3. **Commit them:** download the artifacts, drop the files into `KhaozEngine.Render.Tests/Gpu/goldens/`, commit.
+   Until row 4 of [#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683) deletes the incumbent families,
+   commit the three INCUMBENT artifacts and copy them onto the native families rather than committing the
+   native artifacts: the pairs are byte-identical copies and `GoldenFamilyCopyGoldenTests` reds on a fork.
    (Metal and D3D11 goldens are already committed this way; the D3D11 set was baked on the WARP runner.)
 4. After that, the push/PR legs verify those backends instead of failing.
 
@@ -490,16 +510,14 @@ CI uploads these as artifacts on the `cross-platform-gpu` matrix: `golden-eviden
 uploads `golden-deltas-<backend>` on `always()`, a few kilobytes of text rather than pixels: each compare
 appends its worst-cell delta (via `GoldenDeltaLog`) to `golden-deltas.<backend>.txt` in the same evidence dir on
 a PASS as well as a fail, and a failure-only upload could only ever show that number after something had already
-broken. The two `<backend>` slots are not the same token, which matters when you go looking for the native leg's
-numbers: the ARTIFACT is named for the leg (`golden-deltas-direct3d11-native`) and the FILE inside it is named
-for the golden family the leg verified (`golden-deltas.direct3d11.txt`). So the guest leg's deltas arrive under
-its own artifact carrying the shared family's filename, and downloading both Windows artifacts gives you two
-same-named files that are two implementations measured against one set of references. The Linux pair works the
-same way (`golden-deltas-vulkan-native` contains `golden-deltas.vulkan.txt`) and so does the macOS pair
-(`golden-deltas-metal-native` contains `golden-deltas.metal.txt`). **The macOS pair is the one where that trap
-costs the most**, because `metal` is the fleet's cross-backend reference family: two same-named files there are
-two implementations measured against the references every other family is read against, so mixing them up
-misattributes a fleet event to a leg or the reverse.
+broken. The two `<backend>` slots are the same token since `17.40.0`: the ARTIFACT is named for the leg and the
+FILE inside it is named for the golden family the leg verified, and every leg now owns the family named after
+it, so `golden-deltas-direct3d11-native` contains `golden-deltas.direct3d11-native.txt`. **THAT WAS NOT TRUE
+BEFORE, and old artifacts still carry the old shape**: while the native backends were guests, a native leg's
+artifact carried the SHARED family's filename, so downloading both Windows artifacts of a pre-`17.40.0` run
+gives two same-named `golden-deltas.direct3d11.txt` files that are two implementations measured against one set
+of references. The macOS pair is the one where mixing those up costs the most, because `metal` is the fleet's
+cross-backend reference family.
 
 Five artifacts carry no pixels at all and upload on `always()`, because each of them is read off a run that
 PASSED:

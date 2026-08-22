@@ -215,6 +215,13 @@ more than a paragraph.
 **This is the part that changes what the test suite MEANS, and it has to happen before the incumbent legs come
 out rather than with them.**
 
+> **Landed 2026-08-22 in `17.40.0`: steps 1 and 2 below are done** (rows 2 and 3, #685 and #686). Six tokens
+> resolve, the three native families exist as byte-identical copies, and `GoldenFamilyCopyGoldenTests` asserts
+> the copy over all 120 grids. Step 3's `bake=true` dispatch was deliberately NOT run: while the copy invariant
+> stands, committing a native leg's bake output would fork each pair, so the bake confirmation belongs with row
+> 4's deletion rather than ahead of it. The CI mechanism is in place either way, and every leg bakes its own
+> family on a bake dispatch.
+
 Today `GoldenCompare.GoldenBackendToken` maps seven kinds onto four families, `metal`, `vulkan`, `direct3d11`
 and an `opengl` nothing has ever baked. 120 grids are committed, 40 per live family. Each family is OWNED by an
 incumbent backend and each native backend is a GUEST in it, which is why a native leg going green today is

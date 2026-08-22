@@ -4223,6 +4223,30 @@ UNREPRODUCED one-off with the managed exception lost, and it does not block a ga
 windowed surface: it did not recur in five subsequent boots on the same build, and the issue names the next
 actionable step. Holding a green gate on an unreproduced one-off would make the gate unfalsifiable.
 
+#### Addendum, 2026-08-22: `MetalNative` owns its own golden family from 17.40.0
+
+Decision M-I3 of this document made `MetalNative` a GUEST in the incumbent's `metal` golden family, and rows 2 and 3
+of the Veldrid removal ([#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683),
+[#685](https://github.com/APKiwiOrg/KhaozEngine/issues/685),
+[#686](https://github.com/APKiwiOrg/KhaozEngine/issues/686)) promoted it to OWNER of `metal-native` at `17.40.0`.
+The reason is not that M-I3 was wrong. It is that the incumbent which owns `metal` is being deleted, and a
+family whose owner is gone is a set of references nothing may ever re-bake, with a `BakeRefusal` message naming
+a backend that no longer exists.
+
+M-I3 carried one objection the other two did not, and it is answered rather than overruled: `metal`
+is the FLEET's cross-backend reference, so forking it would leave the fleet with two references and no way to
+say which is the one. `metal-native` holds `metal`'s bytes, so it INHERITS that standing rather than competing
+with it, and when row 4 deletes `metal` the fleet is back to one reference holding the same bytes it holds
+today.
+
+**The new family was seeded as a byte-identical COPY of `metal` rather than baked**, and
+`GoldenFamilyCopyGoldenTests` asserts the copy cell for cell over all 120 grids, so every guest-era green run
+this rollout record reads is still exactly what the committed bytes say. What changes from `17.40.0` on is what
+happens NEXT: `metal-native` is a reference only its own producer has ever agreed with, and its value is regression
+detection rather than correctness evidence. The `metal-native` CI leg verifies `metal-native` and may bake it, exactly as
+the incumbent legs do theirs. `docs/design/VELDRID-REMOVAL-DESIGN-2026-08-22.md` section 3 is the transition,
+and `docs/CROSS-PLATFORM.md` is the living record of what the six families are.
+
 ---
 
 ## 18. Work breakdown

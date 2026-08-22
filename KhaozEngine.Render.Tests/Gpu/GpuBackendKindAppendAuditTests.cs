@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Internal;
@@ -365,33 +366,56 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(DisplaySettings.RequiresFrameCapWarning(GpuBackendKind.Direct3D11Native, present, 0));
         }
 
-        // --- row 11: GoldenCompare, at BOTH filename sites (decision I3) ---
+        // --- row 11: GoldenCompare, at BOTH filename sites (decision I3, superseded at 17.40.0) ---
 
         /// <summary>
-        /// The strongest free proof in the whole port: the native backend is held to the incumbent's 36
-        /// already-committed reference grids, unmodified, on the same WARP rasterizer, at the same tolerance.
-        /// Deriving the filename from the enum name would have thrown it away by orphaning every one of them
-        /// behind a token nothing had ever baked, with a red that reads as "golden missing" rather than "you
-        /// renamed the family".
+        /// OWNED FROM 17.40.0. Decision I3 made this kind a GUEST in the incumbent's <c>direct3d11</c> family,
+        /// which was the strongest free proof the port had: the native backend was held to 36 already-committed
+        /// reference grids, unmodified, on the same WARP rasterizer, at the same tolerance. Row 2 of the Veldrid
+        /// removal (<c>docs/design/VELDRID-REMOVAL-DESIGN-2026-08-22.md</c> section 3,
+        /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/685">#685</see>) promoted it to owner of
+        /// <c>direct3d11-native</c>, because the incumbent that owns <c>direct3d11</c> is being deleted and a
+        /// family whose owner is gone is a set of references nothing may ever re-bake. The guest-era agreement is
+        /// not thrown away: the new family was seeded as a byte-identical COPY, asserted cell for cell by
+        /// <c>GoldenFamilyCopyGoldenTests</c>.
         /// </summary>
         [Fact]
-        public void BothDirect3D11Implementations_ShareOneGoldenFamily()
+        public void EachDirect3D11Implementation_OwnsItsOwnGoldenFamily()
         {
             Assert.Equal("direct3d11", GoldenCompare.GoldenBackendToken(GpuBackendKind.Direct3D11));
-            Assert.Equal("direct3d11", GoldenCompare.GoldenBackendToken(GpuBackendKind.Direct3D11Native));
+            Assert.Equal("direct3d11-native", GoldenCompare.GoldenBackendToken(GpuBackendKind.Direct3D11Native));
         }
 
         [Theory]
         [InlineData(GpuBackendKind.Metal, "metal")]
+        [InlineData(GpuBackendKind.MetalNative, "metal-native")]
         [InlineData(GpuBackendKind.Vulkan, "vulkan")]
+        [InlineData(GpuBackendKind.VulkanNative, "vulkan-native")]
         [InlineData(GpuBackendKind.OpenGL, "opengl")]
         public void EveryOtherBackend_KeepsItsOwnGoldenFamily(GpuBackendKind kind, string expected)
             => Assert.Equal(expected, GoldenCompare.GoldenBackendToken(kind));
 
         /// <summary>
+        /// SIX LIVE TOKENS AND SEVEN DISTINCT ONES, which is the whole of row 2 stated as one claim. Asserted as
+        /// a set rather than arm by arm because the failure this catches is two arms returning the same string,
+        /// which every per-arm equality above passes right over: a duplicate token silently merges two families
+        /// and the run compares against grids another implementation baked.
+        /// </summary>
+        [Fact]
+        public void NoTwoBackendKinds_ShareAGoldenFamily()
+        {
+            var tokens = Enum.GetValues<GpuBackendKind>()
+                .Select(GoldenCompare.GoldenBackendToken)
+                .ToList();
+
+            Assert.Equal(tokens.Count, tokens.Distinct(StringComparer.Ordinal).Count());
+        }
+
+        /// <summary>
         /// No member may be left without a decided family. The mapping throws rather than guessing, and this is
         /// what turns that throw into a device-free red instead of a golden-missing failure on a GPU leg nobody
-        /// runs locally.
+        /// runs locally. Since 17.40.0 it also pins that every token is the kind's OWN name, which is the rule
+        /// <c>GoldenCompare.OwnsFamily</c> derives ownership from rather than from a second list.
         /// </summary>
         [Fact]
         public void EveryBackendKind_HasADecidedGoldenFamily()
@@ -401,6 +425,7 @@ namespace KhaozEngine.Tests.Gpu
                 string token = GoldenCompare.GoldenBackendToken(kind);
                 Assert.False(string.IsNullOrWhiteSpace(token));
                 Assert.Equal(token.ToLowerInvariant(), token);
+                Assert.True(GoldenCompare.OwnsFamily(kind, token));
             }
         }
 
@@ -409,33 +434,50 @@ namespace KhaozEngine.Tests.Gpu
             => Assert.Throws<NotSupportedException>(() => GoldenCompare.GoldenBackendToken((GpuBackendKind)9001));
 
         /// <summary>
-        /// The bake refusal (I3). A backend that is a GUEST in another's family must not write into it: the file
-        /// it would produce is exactly the file it would then have compared against, so the overwrite proves
-        /// nothing and destroys both the reference under test AND the owning implementation's, with nothing left
-        /// to notice it by.
+        /// The bake, which this kind is now ALLOWED to take. It owns <c>direct3d11-native</c>, so
+        /// <c>KE_UPDATE_GOLDENS</c> writes the family it is itself checked against and nothing else, which is
+        /// what owning a family means.
         /// </summary>
         [Fact]
-        public void Baking_IsRefusedOnTheNativeKind_UnlessTheFamilyOverrideIsSet()
+        public void Baking_IsAllowedOnTheNativeKind_BecauseItOwnsItsFamily()
+            => Assert.Null(GoldenCompare.BakeRefusal(GpuBackendKind.Direct3D11Native, familyOverride: false));
+
+        /// <summary>A backend that OWNS its family bakes as it always did, and since 17.40.0 that is every live
+        /// member of the enum. The guard must not cost the ordinary rebake anything, or it gets worked around
+        /// instead of respected.</summary>
+        [Theory]
+        [InlineData(GpuBackendKind.Metal)]
+        [InlineData(GpuBackendKind.MetalNative)]
+        [InlineData(GpuBackendKind.Vulkan)]
+        [InlineData(GpuBackendKind.VulkanNative)]
+        [InlineData(GpuBackendKind.Direct3D11)]
+        [InlineData(GpuBackendKind.Direct3D11Native)]
+        [InlineData(GpuBackendKind.OpenGL)]
+        public void Baking_IsAllowedOnEveryBackendThatOwnsItsFamily(GpuBackendKind kind)
+            => Assert.Null(GoldenCompare.BakeRefusal(kind, familyOverride: false));
+
+        /// <summary>
+        /// THE GUEST RULE OUTLIVES THE LAST GUEST, and this is where it stays under test. No live kind trips
+        /// <c>BakeRefusal</c> any more, so the only way to keep the rule honest is to hand it a token the kind
+        /// does not own, which the internal overload exists for: it takes the token rather than deriving it, so
+        /// a guest pairing can be pinned without a fake enum member existing. The rule is what the NEXT append
+        /// that decides to share rather than own will be judged by, and the failure mode it guards is that a
+        /// shared bake is undetectable after the fact.
+        /// </summary>
+        [Fact]
+        public void AGuestPairing_IsStillRefused_EvenThoughNoLiveKindIsAGuest()
         {
-            string? refusal = GoldenCompare.BakeRefusal(GpuBackendKind.Direct3D11Native, familyOverride: false);
+            string? refusal = GoldenCompare.BakeRefusal(
+                GpuBackendKind.Direct3D11Native, "direct3d11", familyOverride: false);
 
             Assert.NotNull(refusal);
             Assert.Contains("KE_UPDATE_GOLDENS", refusal);
             // Actionable on its own: the reader is looking at a red bake they expected to be a write.
             Assert.Contains(GoldenCompare.FamilyOverrideEnvVar, refusal);
 
-            Assert.Null(GoldenCompare.BakeRefusal(GpuBackendKind.Direct3D11Native, familyOverride: true));
+            Assert.Null(GoldenCompare.BakeRefusal(
+                GpuBackendKind.Direct3D11Native, "direct3d11", familyOverride: true));
         }
-
-        /// <summary>A backend that OWNS its family bakes as it always did. The guard must not cost the ordinary
-        /// rebake anything, or it gets worked around instead of respected.</summary>
-        [Theory]
-        [InlineData(GpuBackendKind.Metal)]
-        [InlineData(GpuBackendKind.Vulkan)]
-        [InlineData(GpuBackendKind.Direct3D11)]
-        [InlineData(GpuBackendKind.OpenGL)]
-        public void Baking_IsAllowedOnEveryBackendThatOwnsItsFamily(GpuBackendKind kind)
-            => Assert.Null(GoldenCompare.BakeRefusal(kind, familyOverride: false));
 
         // --- row 13: GpuDeviceContext.CreateOrFallBack's requested-versus-fallback comparison ---
 

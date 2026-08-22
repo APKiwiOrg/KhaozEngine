@@ -24,8 +24,8 @@ namespace KhaozEngine.Tests.Gpu
     /// NOTHING TO BAKE.</b> At <see cref="AntiAliasing.Off"/> the same two textures ARE the MRT attachments and no
     /// resolve happens at all. So the same scene rendered both ways has to put the same depth and the same normals
     /// in the same two textures, and the MSAA run is checked against a reference the run itself produced, on the
-    /// same device, in the same session. That is one path checking the other, the trick the guest-backend golden
-    /// families are built on, and it costs no per-backend bake, no new committed reference and no re-bake when a
+    /// same device, in the same session. That is one path checking the other, the trick the native backends' golden
+    /// families were seeded by, and it costs no per-backend bake, no new committed reference and no re-bake when a
     /// shader changes.</para>
     ///
     /// <para><b>IT IS NAMED "Golden" TO RUN EVERYWHERE.</b> The cross-platform matrix selects

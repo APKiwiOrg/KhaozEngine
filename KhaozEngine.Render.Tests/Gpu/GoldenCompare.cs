@@ -60,35 +60,36 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// The golden FAMILY a backend's references live in: the <c>&lt;backend&gt;</c> token in
-        /// <c>&lt;name&gt;.&lt;backend&gt;.txt</c>. Usually just the kind's own lower-cased name, which is what the
-        /// two filename sites used to derive inline, one each.
+        /// <c>&lt;name&gt;.&lt;backend&gt;.txt</c>. Every kind now OWNS the family named after it, and the token is
+        /// the kind's own name in the spelling <c>KE_GRAPHICS_BACKEND</c> accepts, hyphen included
+        /// (<c>metal-native</c>, not <c>metalnative</c>), so a reader who set the variable can find the grids the
+        /// run compared against without a lookup table.
         /// <para>
-        /// The exceptions are the whole point (decision I3 of
-        /// <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c>, and V-I3 of
-        /// <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c>).
-        /// <see cref="KhaozEngine.Gpu.GpuBackendKind.Direct3D11Native"/> is a second IMPLEMENTATION of Direct3D 11,
-        /// not a second API, so it renders the same images on the same rasterizer and SHARES the
-        /// <c>direct3d11</c> family. That sharing is not a convenience: holding the native backend to the
-        /// incumbent's already-committed references, unmodified, at the existing tolerance, is the strongest free
-        /// proof the whole port has, and deriving the token from the enum name would have thrown it away by
-        /// orphaning 36 goldens behind a name nothing had ever baked.
+        /// IT WAS NOT ALWAYS SIX FAMILIES, and the history is the reason the three native ones are trustworthy.
+        /// Until <c>17.40.0</c> each native kind was a GUEST in its incumbent's family (decision I3 of
+        /// <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c>, V-I3 of
+        /// <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c>, M-I3 of
+        /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>): a second IMPLEMENTATION of one API
+        /// renders the same images on the same rasterizer, so holding it to the incumbent's already-committed
+        /// references, unmodified, at the existing tolerance, was the strongest free proof each port had.
         /// </para>
         /// <para>
-        /// <see cref="KhaozEngine.Gpu.GpuBackendKind.VulkanNative"/> is the same shape a second time, into the
-        /// <c>vulkan</c> family. Owning a <c>vulkan-native</c> family of its own was rejected outright: a guest
-        /// verifies the incumbent's committed references on the same rasterizer, which is one implementation
-        /// checking the other, while a family of its own would be a backend checking a reference it baked itself
-        /// and would check nothing at all.
+        /// Rows 2 and 3 of the Veldrid removal
+        /// (<c>docs/design/VELDRID-REMOVAL-DESIGN-2026-08-22.md</c> section 3,
+        /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/683">#683</see>) promoted all three to
+        /// owners, because the incumbents that own the other three families are being deleted and a family whose
+        /// owner is gone is a set of references nothing may ever re-bake. <b>The three new families were created
+        /// as byte-identical COPIES of the incumbent ones rather than baked</b>, so every guest-era green run is
+        /// still the thing the committed bytes record, and <c>GoldenFamilyCopyGoldenTests</c> asserts the copy
+        /// cell for cell. What is genuinely lost is what happens NEXT: from this commit on, a native family is a
+        /// reference only its own producer has ever agreed with, and its value is regression detection rather
+        /// than correctness evidence.
         /// </para>
         /// <para>
-        /// <see cref="KhaozEngine.Gpu.GpuBackendKind.MetalNative"/> is the shape a third time, into the
-        /// <c>metal</c> family (decision M-I3 of
-        /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>), and this one is NOT symmetric with the
-        /// other two. The other two families are each one leg's own reference. The <c>metal</c> family is the
+        /// The <c>metal</c> pair is still the one that is not symmetric with the other two. That family is the
         /// FLEET's cross-backend reference, baked on real Apple hardware rather than on a software rasterizer,
-        /// and every other family is read in relation to it. So a guest disagreeing here is a fleet event rather
-        /// than a leg event, which cuts both ways: it makes a green run on this family the strongest evidence
-        /// this program produces, and it makes a bake into it the most expensive mistake available.
+        /// and every other family is read in relation to it. <c>metal-native</c> inherits that standing with its
+        /// bytes, which is what makes a bake into either of them the most expensive mistake available here.
         /// </para>
         /// <para>
         /// No discard that guesses. An appended kind lands on the throwing arm rather than silently inventing a
@@ -101,15 +102,24 @@ namespace KhaozEngine.Tests.Gpu
             KhaozEngine.Gpu.GpuBackendKind.Metal => "metal",
             KhaozEngine.Gpu.GpuBackendKind.Vulkan => "vulkan",
             KhaozEngine.Gpu.GpuBackendKind.Direct3D11 => "direct3d11",
-            KhaozEngine.Gpu.GpuBackendKind.Direct3D11Native => "direct3d11",
-            KhaozEngine.Gpu.GpuBackendKind.VulkanNative => "vulkan",
-            KhaozEngine.Gpu.GpuBackendKind.MetalNative => "metal",
+            KhaozEngine.Gpu.GpuBackendKind.Direct3D11Native => "direct3d11-native",
+            KhaozEngine.Gpu.GpuBackendKind.VulkanNative => "vulkan-native",
+            KhaozEngine.Gpu.GpuBackendKind.MetalNative => "metal-native",
             KhaozEngine.Gpu.GpuBackendKind.OpenGL => "opengl",
             _ => throw new NotSupportedException(
                 $"No golden family is decided for {kind}. Appending a GpuBackendKind member means deciding "
                 + "whether it owns a family or shares one, because the filename is derived from this and nothing "
                 + "else fails when it is wrong: the run just compares against a golden that does not exist."),
         };
+
+        /// <summary>
+        /// Whether <paramref name="kind"/> OWNS the family <paramref name="token"/> names, which is true exactly
+        /// when the token is the kind's own name. The hyphen a multi-word token carries is not part of the
+        /// comparison, so <c>metal-native</c> owns for <c>MetalNative</c> while <c>metal</c> does not, under one
+        /// rule rather than a second list somebody has to append to.
+        /// </summary>
+        internal static bool OwnsFamily(KhaozEngine.Gpu.GpuBackendKind kind, string token)
+            => string.Equals(token.Replace("-", string.Empty), kind.ToString(), StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
         /// Why <c>KE_UPDATE_GOLDENS</c> must NOT write on <paramref name="kind"/>, or null when baking is allowed.
@@ -121,13 +131,28 @@ namespace KhaozEngine.Tests.Gpu
         /// <see cref="FamilyOverrideEnvVar"/> is the deliberate way past it for the one case that is legitimate,
         /// moving the shared family on purpose.
         /// </para>
+        /// <para>
+        /// NO LIVE BACKEND IS A GUEST AS OF <c>17.40.0</c>, so this returns null for every member of the enum
+        /// today, and saying that plainly is the point of keeping it. What it still guards is the RULE, for the
+        /// next append that decides to share rather than own. That decision was taken three times in a row
+        /// (I3, V-I3, M-I3) and would be taken again the moment a fourth implementation of an API already in the
+        /// table arrives, and the whole failure mode is that a shared bake is undetectable after the fact. The
+        /// rule costs one comparison and is exercised through <see cref="BakeRefusal(KhaozEngine.Gpu.GpuBackendKind,string,bool)"/>,
+        /// which takes the token rather than deriving it, so a guest pairing can be pinned by a test without a
+        /// fake enum member existing.
+        /// </para>
         /// </summary>
         public static string? BakeRefusal(KhaozEngine.Gpu.GpuBackendKind kind, bool familyOverride)
+            => BakeRefusal(kind, GoldenBackendToken(kind), familyOverride);
+
+        /// <summary>
+        /// <see cref="BakeRefusal(KhaozEngine.Gpu.GpuBackendKind,bool)"/> against a token supplied by the caller,
+        /// which is how the guest rule stays under test now that no live pairing trips it.
+        /// </summary>
+        internal static string? BakeRefusal(KhaozEngine.Gpu.GpuBackendKind kind, string token, bool familyOverride)
         {
             if (familyOverride) return null;
-
-            string token = GoldenBackendToken(kind);
-            if (string.Equals(token, kind.ToString(), StringComparison.OrdinalIgnoreCase)) return null;
+            if (OwnsFamily(kind, token)) return null;
 
             return $"KE_UPDATE_GOLDENS refused on {kind}: it does not own the '{token}' golden family, it shares "
                 + "it. Baking here would overwrite the very references this backend is being CHECKED against, and "
@@ -247,9 +272,10 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// Resolve <c>Gpu/goldens/&lt;name&gt;.&lt;backend&gt;.txt</c> next to this source file, where
         /// <c>&lt;backend&gt;</c> is the active <see cref="KhaozEngine.Gpu.GpuBackendSelector.Select()"/> result
-        /// mapped through <see cref="GoldenBackendToken"/> (metal / vulkan / direct3d11 / opengl). Each rendering
-        /// API gets its own reference grid because a software rasterizer (lavapipe, WARP) won't match Metal
-        /// pixel-for-pixel, and two implementations of ONE api share a grid for the opposite reason. Using
+        /// mapped through <see cref="GoldenBackendToken"/> (metal / metal-native / vulkan / vulkan-native /
+        /// direct3d11 / direct3d11-native / opengl). Each rendering API gets its own reference grid because a
+        /// software rasterizer (lavapipe, WARP) won't match Metal pixel-for-pixel, and since <c>17.40.0</c> each
+        /// IMPLEMENTATION of an API gets one too, seeded as a byte-identical copy of the incumbent's. Using
         /// <see cref="CallerFilePathAttribute"/> makes the path independent of <c>dotnet test</c>'s working
         /// directory and the build output layout, so generated references and checks always hit the committed
         /// source tree.

@@ -339,61 +339,70 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
-        // --- row 11: GoldenCompare, at BOTH filename sites (decision M-I3) ---
+        // --- row 11: GoldenCompare, at BOTH filename sites (decision M-I3, superseded at 17.40.0) ---
 
         /// <summary>
-        /// The guest mapping, a third time, and the one that is not symmetric with the other two. The native
-        /// backend is held to the incumbent's already-committed reference grids, unmodified, on the same real
-        /// Apple hardware, at the same tolerance. Owning a <c>metal-native</c> family was rejected for the reason
-        /// it was rejected twice before, plus one this family alone carries: the <c>metal</c> family is the
-        /// FLEET's cross-backend reference, so forking it in two would leave the fleet with two references and no
-        /// way to say which is the one.
+        /// OWNED FROM 17.40.0, and this is the pair the reversal costs the most. M-I3 made the native backend a
+        /// guest, held to the incumbent's already-committed reference grids, unmodified, on the same real Apple
+        /// hardware, at the same tolerance, and owning a <c>metal-native</c> family was rejected for the reason
+        /// it was rejected twice before plus one this family alone carries: <c>metal</c> is the FLEET's
+        /// cross-backend reference, so forking it in two would leave the fleet with two references and no way to
+        /// say which is the one. Row 2 of the Veldrid removal
+        /// (<c>docs/design/VELDRID-REMOVAL-DESIGN-2026-08-22.md</c> section 3,
+        /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/685">#685</see>) forked it anyway, because
+        /// the incumbent that owns <c>metal</c> is being deleted and the alternative is a fleet reference nothing
+        /// may ever re-bake. The fork is not a second opinion: <c>metal-native</c> was seeded as a byte-identical
+        /// COPY of <c>metal</c> (<c>GoldenFamilyCopyGoldenTests</c>), so it INHERITS the standing rather than
+        /// competing with it, and when row 4 deletes <c>metal</c> the fleet is back to one reference holding the
+        /// same bytes it holds today.
         /// </summary>
         [Fact]
-        public void BothMetalImplementations_ShareOneGoldenFamily()
+        public void EachMetalImplementation_OwnsItsOwnGoldenFamily()
         {
             Assert.Equal("metal", GoldenCompare.GoldenBackendToken(GpuBackendKind.Metal));
-            Assert.Equal("metal", GoldenCompare.GoldenBackendToken(GpuBackendKind.MetalNative));
+            Assert.Equal("metal-native", GoldenCompare.GoldenBackendToken(GpuBackendKind.MetalNative));
         }
 
         /// <summary>
-        /// And it does not disturb the other two shared families. Asserted because all three guest mappings are
+        /// And it does not disturb the other two native families. Asserted because all three native mappings are
         /// arms of one switch, so the cheapest way to get this wrong is an edit that points the new arm at the
         /// wrong string and moves nothing else, which no golden run on any backend would notice until a filename
         /// is built.
         /// </summary>
         [Fact]
-        public void TheThreeGuestMappings_DoNotCrossOver()
+        public void TheThreeNativeMappings_DoNotCrossOver()
         {
-            Assert.Equal("metal", GoldenCompare.GoldenBackendToken(GpuBackendKind.MetalNative));
-            Assert.Equal("vulkan", GoldenCompare.GoldenBackendToken(GpuBackendKind.VulkanNative));
-            Assert.Equal("direct3d11", GoldenCompare.GoldenBackendToken(GpuBackendKind.Direct3D11Native));
+            Assert.Equal("metal-native", GoldenCompare.GoldenBackendToken(GpuBackendKind.MetalNative));
+            Assert.Equal("vulkan-native", GoldenCompare.GoldenBackendToken(GpuBackendKind.VulkanNative));
+            Assert.Equal("direct3d11-native", GoldenCompare.GoldenBackendToken(GpuBackendKind.Direct3D11Native));
         }
 
         /// <summary>
-        /// The bake refusal, which needed no edit again because it derives guest-ness GENERICALLY: the token does
-        /// not match the kind's own name under the <c>OrdinalIgnoreCase</c> compare <c>BakeRefusal</c> already
-        /// used. Asserted precisely because "no edit needed" is indistinguishable from "nobody checked", and on
-        /// THIS family the cost of being wrong is the highest in the repo: a bake here overwrites the references
-        /// every other backend's family is read in relation to.
+        /// The bake, which needed no edit to the refusal again because ownership is derived GENERICALLY: the
+        /// token matches the kind's own name under the <c>OrdinalIgnoreCase</c> compare <c>BakeRefusal</c>
+        /// already used, hyphen removed. Asserted precisely because "no edit needed" is indistinguishable from
+        /// "nobody checked", and on THIS family the cost of being wrong is still the highest in the repo: a bake
+        /// into <c>metal</c> overwrites the references every other family is read in relation to, and a bake into
+        /// <c>metal-native</c> ends the copy invariant that carries the guest-era agreement forward.
         /// </summary>
         [Fact]
-        public void Baking_IsRefusedOnTheNativeKind_UnlessTheFamilyOverrideIsSet()
+        public void Baking_IsAllowedOnTheNativeKind_BecauseItOwnsItsFamily()
         {
-            string? refusal = GoldenCompare.BakeRefusal(GpuBackendKind.MetalNative, familyOverride: false);
+            Assert.Null(GoldenCompare.BakeRefusal(GpuBackendKind.MetalNative, familyOverride: false));
 
+            // The rule that used to fire here still fires, against a token this kind does not own. The owning
+            // backend is nameable from the message alone, which is the action the reader has to take.
+            string? refusal = GoldenCompare.BakeRefusal(
+                GpuBackendKind.MetalNative, "metal", familyOverride: false);
             Assert.NotNull(refusal);
-            Assert.Contains("KE_UPDATE_GOLDENS", refusal);
-            Assert.Contains(GoldenCompare.FamilyOverrideEnvVar, refusal);
-            // The owning backend is nameable from the message alone, which is the action the reader has to take.
             Assert.Contains("metal", refusal);
-
-            Assert.Null(GoldenCompare.BakeRefusal(GpuBackendKind.MetalNative, familyOverride: true));
+            Assert.Contains(GoldenCompare.FamilyOverrideEnvVar, refusal);
         }
 
         // That the incumbent still bakes as it always did is the other half of this row, and it is not asserted
         // here: GpuBackendKindAppendAuditTests.Baking_IsAllowedOnEveryBackendThatOwnsItsFamily already walks all
-        // four owning backends, Metal among them, which is the stronger form of the same claim.
+        // SEVEN owning backends since 17.40.0, Metal and MetalNative among them, which is the stronger form of
+        // the same claim.
 
         // --- row 12: VeldridMap.SupportsCompletionFences, and the VeldridGpuDevice frame-capture gate, which is
         // THE THIRD SILENT SITE. The first is not an append site at all: it switches on Veldrid's own

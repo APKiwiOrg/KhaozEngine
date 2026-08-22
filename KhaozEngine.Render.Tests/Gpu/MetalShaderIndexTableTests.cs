@@ -44,7 +44,7 @@ namespace KhaozEngine.Tests.Gpu
     /// THE SIXTH ASSERTION IS THE INCUMBENT COMPARISON, and 2.2b keeps it through the rollout window on purpose.
     /// Over the shipped set the table and <c>MTLResourceLayout</c>'s per-kind declaration-order arithmetic agree
     /// on every argument, so "this backend changes no binding" is a checked fact rather than a claim, and the
-    /// guest golden family sees exactly one variable move on the day the backend lands. It is the one assertion a
+    /// golden family sees exactly one variable move on the day the backend lands. It is the one assertion a
     /// legitimate future divergence retires, and retiring it is a deliberate act with a recorded reason rather
     /// than a number to update.
     /// </para>

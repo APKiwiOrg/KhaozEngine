@@ -736,8 +736,9 @@ drain. That is the quorum [#461](https://github.com/APKiwiOrg/KhaozEngine/issues
 it is evidence rather than a contract change. It registers under `GpuBackendKind.VulkanNative`, which landed in
 `17.32.0`, so the backend is selectable by name (`KE_GRAPHICS_BACKEND=vulkan-native`) and a machine that cannot
 run it arrives through the reported fallback. Nothing selects it by default, and the `vulkan-native` CI leg
-verifies the incumbent's committed goldens on lavapipe as a guest in that family, which is the continuous
-exercise the rollout is measured against.
+verifies the committed `vulkan-native` goldens on lavapipe, a byte-identical copy of the incumbent family it
+was a guest in until `17.40.0` ([#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)), which is the
+continuous exercise the rollout is measured against.
 
 ```
 KhaozEngine.Gpu.Vulkan -> KhaozEngine.Gpu      (the only direction, again)

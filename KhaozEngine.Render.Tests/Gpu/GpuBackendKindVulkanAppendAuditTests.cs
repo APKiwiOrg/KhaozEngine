@@ -219,60 +219,68 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(DisplaySettings.RequiresFrameCapWarning(GpuBackendKind.VulkanNative, present, 0));
         }
 
-        // --- row 11: GoldenCompare, at BOTH filename sites (decision V-I3) ---
+        // --- row 11: GoldenCompare, at BOTH filename sites (decision V-I3, superseded at 17.40.0) ---
 
         /// <summary>
-        /// The guest mapping. The native backend is held to the incumbent's already-committed reference grids,
-        /// unmodified, on the same rasterizer, at the same tolerance, which is one implementation checking the
-        /// other. Owning a <c>vulkan-native</c> family instead was rejected outright, because a family of its own
-        /// is a backend comparing against a reference it baked itself and checks nothing at all.
+        /// OWNED FROM 17.40.0. V-I3 made this kind a guest: the native backend was held to the incumbent's
+        /// already-committed reference grids, unmodified, on the same rasterizer, at the same tolerance, which is
+        /// one implementation checking the other, and owning a <c>vulkan-native</c> family was rejected outright
+        /// because a family of its own is a backend comparing against a reference it baked itself. Row 2 of the
+        /// Veldrid removal (<c>docs/design/VELDRID-REMOVAL-DESIGN-2026-08-22.md</c> section 3,
+        /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/685">#685</see>) reversed it, and the
+        /// reason is not that V-I3 was wrong: the incumbent that owns <c>vulkan</c> is being deleted, so the
+        /// alternative to a self-owned family is a family nothing may ever re-bake. The objection V-I3 raised is
+        /// answered as far as it can be, by seeding the new family as a byte-identical COPY rather than a bake
+        /// (<c>GoldenFamilyCopyGoldenTests</c>), which preserves the guest-era agreement as committed bytes.
         /// </summary>
         [Fact]
-        public void BothVulkanImplementations_ShareOneGoldenFamily()
+        public void EachVulkanImplementation_OwnsItsOwnGoldenFamily()
         {
             Assert.Equal("vulkan", GoldenCompare.GoldenBackendToken(GpuBackendKind.Vulkan));
-            Assert.Equal("vulkan", GoldenCompare.GoldenBackendToken(GpuBackendKind.VulkanNative));
+            Assert.Equal("vulkan-native", GoldenCompare.GoldenBackendToken(GpuBackendKind.VulkanNative));
         }
 
         /// <summary>
-        /// And it does not disturb the OTHER shared family. Asserted because both guest mappings are arms of one
-        /// switch, so the cheapest way to get this wrong is an edit that points the new arm at the wrong string
-        /// and moves nothing else, which no golden run on either backend would notice until a filename is built.
+        /// And it does not disturb the OTHER native family. Asserted because all three native mappings are arms
+        /// of one switch, so the cheapest way to get this wrong is an edit that points the new arm at the wrong
+        /// string and moves nothing else, which no golden run on either backend would notice until a filename is
+        /// built. Under the guest mapping a crossed pair read another API's grids. Under the owner mapping it
+        /// reads grids nobody has baked, and both are silent at the switch.
         /// </summary>
         [Fact]
-        public void TheTwoGuestMappings_DoNotCrossOver()
+        public void TheTwoNativeMappings_DoNotCrossOver()
         {
             Assert.NotEqual(GoldenCompare.GoldenBackendToken(GpuBackendKind.VulkanNative),
                 GoldenCompare.GoldenBackendToken(GpuBackendKind.Direct3D11Native));
-            Assert.Equal("direct3d11", GoldenCompare.GoldenBackendToken(GpuBackendKind.Direct3D11Native));
+            Assert.Equal("direct3d11-native", GoldenCompare.GoldenBackendToken(GpuBackendKind.Direct3D11Native));
         }
 
         /// <summary>
-        /// The bake refusal, and the thing worth pinning is that it derives guest-ness GENERICALLY (V-I3): the
-        /// token does not match the kind's own name under the <c>OrdinalIgnoreCase</c> compare
-        /// <c>BakeRefusal</c> already used, which is what makes <c>vulkan</c> an OWNER token for
-        /// <see cref="GpuBackendKind.Vulkan"/> and a GUEST token for <see cref="GpuBackendKind.VulkanNative"/>
-        /// under one rule rather than a list somebody has to append to. So this row went green with no edit to
-        /// the refusal at all, and it is asserted precisely because "no edit needed" is indistinguishable from
-        /// "nobody checked".
+        /// The bake, and the thing worth pinning is that ownership is derived GENERICALLY (V-I3's one surviving
+        /// mechanic): the token matches the kind's own name under the <c>OrdinalIgnoreCase</c> compare
+        /// <c>BakeRefusal</c> already used, hyphen removed, which is what makes <c>vulkan-native</c> an OWNER
+        /// token for <see cref="GpuBackendKind.VulkanNative"/> under one rule rather than a list somebody has to
+        /// append to. So row 2 went green here with no edit to the refusal at all, and it is asserted precisely
+        /// because "no edit needed" is indistinguishable from "nobody checked".
         /// </summary>
         [Fact]
-        public void Baking_IsRefusedOnTheNativeKind_UnlessTheFamilyOverrideIsSet()
+        public void Baking_IsAllowedOnTheNativeKind_BecauseItOwnsItsFamily()
         {
-            string? refusal = GoldenCompare.BakeRefusal(GpuBackendKind.VulkanNative, familyOverride: false);
+            Assert.Null(GoldenCompare.BakeRefusal(GpuBackendKind.VulkanNative, familyOverride: false));
 
+            // The rule that used to fire here still fires, against a token this kind does not own. The owning
+            // backend is nameable from the message alone, which is the action the reader has to take.
+            string? refusal = GoldenCompare.BakeRefusal(
+                GpuBackendKind.VulkanNative, "vulkan", familyOverride: false);
             Assert.NotNull(refusal);
-            Assert.Contains("KE_UPDATE_GOLDENS", refusal);
-            Assert.Contains(GoldenCompare.FamilyOverrideEnvVar, refusal);
-            // The owning backend is nameable from the message alone, which is the action the reader has to take.
             Assert.Contains("vulkan", refusal);
-
-            Assert.Null(GoldenCompare.BakeRefusal(GpuBackendKind.VulkanNative, familyOverride: true));
+            Assert.Contains(GoldenCompare.FamilyOverrideEnvVar, refusal);
         }
 
         // That the incumbent still bakes as it always did is the other half of this row, and it is not asserted
         // here: GpuBackendKindAppendAuditTests.Baking_IsAllowedOnEveryBackendThatOwnsItsFamily already walks all
-        // four owning backends, Vulkan among them, which is the stronger form of the same claim.
+        // SEVEN owning backends since 17.40.0, Vulkan and VulkanNative among them, which is the stronger form of
+        // the same claim.
 
         // --- row 12: VeldridMap.SupportsCompletionFences and VeldridGpuDevice's Metal frame capture, neither an
         // append site. The first switches on Veldrid's own GraphicsBackend rather than on GpuBackendKind, and it
@@ -462,7 +470,7 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.Equal(0, provider.WindowedCreations);
                 // Headless never probes and never falls back, on any backend: it propagates its failure, so a
                 // headless run cannot quietly change backend and file its golden images under one that never
-                // rendered them. That guarantee is what the shared golden family rests on.
+                // rendered them. That guarantee is what every golden family rests on.
                 Assert.Equal(0, provider.SupportProbes);
             }
         }

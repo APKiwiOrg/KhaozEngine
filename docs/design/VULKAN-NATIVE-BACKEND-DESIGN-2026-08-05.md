@@ -2238,6 +2238,24 @@ at all, so no validation tier could ever have caught this. The instrument that c
 parity `[GpuFact]` on the expensive tier, which is the argument for keeping that tier pointed at rows outside
 the golden family.
 
+#### Addendum, 2026-08-22: `VulkanNative` owns its own golden family from 17.40.0
+
+Decision V-I3 of this document made `VulkanNative` a GUEST in the incumbent's `vulkan` golden family, and rows 2 and 3
+of the Veldrid removal ([#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683),
+[#685](https://github.com/APKiwiOrg/KhaozEngine/issues/685),
+[#686](https://github.com/APKiwiOrg/KhaozEngine/issues/686)) promoted it to OWNER of `vulkan-native` at `17.40.0`.
+The reason is not that V-I3 was wrong. It is that the incumbent which owns `vulkan` is being deleted, and a
+family whose owner is gone is a set of references nothing may ever re-bake, with a `BakeRefusal` message naming
+a backend that no longer exists.
+
+**The new family was seeded as a byte-identical COPY of `vulkan` rather than baked**, and
+`GoldenFamilyCopyGoldenTests` asserts the copy cell for cell over all 120 grids, so every guest-era green run
+this rollout record reads is still exactly what the committed bytes say. What changes from `17.40.0` on is what
+happens NEXT: `vulkan-native` is a reference only its own producer has ever agreed with, and its value is regression
+detection rather than correctness evidence. The `vulkan-native` CI leg verifies `vulkan-native` and may bake it, exactly as
+the incumbent legs do theirs. `docs/design/VELDRID-REMOVAL-DESIGN-2026-08-22.md` section 3 is the transition,
+and `docs/CROSS-PLATFORM.md` is the living record of what the six families are.
+
 ---
 
 ## 18. Work breakdown

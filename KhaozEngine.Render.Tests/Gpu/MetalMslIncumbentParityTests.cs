@@ -17,7 +17,8 @@ namespace KhaozEngine.Tests.Gpu
     ///
     /// <para>
     /// THIS IS THE FACT THAT LICENSES "NO REBAKE". The 36 committed <c>*.metal.txt</c> goldens were baked on the
-    /// incumbent's emission, and the native backend is going into that same golden family as a guest. If the two
+    /// incumbent's emission, and the <c>metal-native</c> family the native backend owns since <c>17.40.0</c> is a
+    /// byte-identical copy of them, so both are the incumbent's emission. If the two
     /// paths emit the same MSL then the goldens are testing the BACKEND, which is the point. If they do not, every
     /// one of them is testing the compiler instead, silently, and a diff nobody can explain shows up in whichever
     /// pass happens to be most sensitive.
@@ -98,7 +99,8 @@ namespace KhaozEngine.Tests.Gpu
                 $"{problems.Count} of {compared} shipped stages no longer emit the same MSL under "
                 + $"{nameof(MslCrossCompilePin)} as under the incumbent Veldrid Metal device's own defaults, so "
                 + "the two have DIVERGED. The committed *.metal.txt goldens were baked on the incumbent's "
-                + "emission and the native backend is a guest in that family, so from this moment they are baked "
+                + "emission, and the metal-native family the native backend is asserted against is a "
+                + "byte-identical copy of them, so from this moment they are baked "
                 + "against one emission and asserted against another and each of them tests the compiler rather "
                 + "than the backend. Decide which side moved and whether it moved on purpose. Re-baking the hash "
                 + $"table in {nameof(MetalMslByteEqualityTests)} is not the fix here: it turns this green and "

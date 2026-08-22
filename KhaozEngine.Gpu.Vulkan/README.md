@@ -77,8 +77,8 @@ and nothing that does not want the Vulkan binding ever carries it.
 > backend IS nameable: `GpuBackendKind.VulkanNative` and the `vulkan-native` / `vk-native` tokens
 > landed with [#513](https://github.com/APKiwiOrg/KhaozEngine/issues/513). And since
 > [#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529) it has a BLOCKING CI LEG, which is what turns all
-> of the above from a claim into a continuous exercise: the `vulkan-native` leg verifies the committed `vulkan`
-> goldens on lavapipe as a guest in that family, with `KE_VULKAN_REQUIRED=1` so a row that needs a native device
+> of the above from a claim into a continuous exercise: the `vulkan-native` leg verifies the committed
+> `vulkan-native` goldens on lavapipe, with `KE_VULKAN_REQUIRED=1` so a row that needs a native device
 > cannot go quietly dormant, and both tiers of the validation gate ride it, `strict` on the scheduled full suite
 > and `sync` on a separate golden-and-compute job.
 > Nothing selects it by default.
@@ -164,13 +164,16 @@ creation path catches, WARNs with the message and boots on the incumbent, report
 `GpuBackendSelector.SupportedBackends()` does not offer the native kind to a player at all, because a settings
 screen offers an API rather than an implementation of one.
 
-`VulkanNative` renders the same images as `Vulkan`, so it is a GUEST in the committed `vulkan` golden family
-rather than owning one (decision V-I3). That is what holds it to the incumbent's already-committed
-reference grids, unmodified, on the same rasterizer at the same tolerance. `KE_UPDATE_GOLDENS` is REFUSED on it
-for the same reason: a bake would overwrite the very references it is being checked against, and the file it
-wrote would be exactly the file it would then have compared against.
+`VulkanNative` OWNS the committed `vulkan-native` golden family from `17.40.0`. It was a GUEST in the
+incumbent's `vulkan` family until then (decision V-I3), held to the incumbent's already-committed reference
+grids, unmodified, on the same rasterizer at the same tolerance, with `KE_UPDATE_GOLDENS` refused on it. Row 2
+of the Veldrid removal ([#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)) promoted it, because the
+incumbent that owns `vulkan` is being deleted and a family whose owner is gone is a set of references nothing
+may ever re-bake. The new family was seeded as a byte-identical COPY of `vulkan` rather than baked, so the
+guest-era agreement between the two implementations survives as committed bytes, and `KE_UPDATE_GOLDENS` writes
+`vulkan-native` and nothing else.
 
-**The `vulkan-native` CI leg is where that guest sits, and it is blocking from its first run**
+**The `vulkan-native` CI leg is where that family is verified, and it is blocking from its first run**
 ([#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529)). It runs the golden subset on every push and the
 serialized full suite on the weekly schedule and on a dispatch, on lavapipe, with `KE_VULKAN_DEVICE=llvmpipe`
 pinned at the device level as the belt to the loader-level ICD pin. Two of its settings are its own rather than

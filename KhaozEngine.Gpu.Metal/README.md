@@ -656,7 +656,7 @@ no rasterizer depth-clip enable, so the seam's `false` becomes `-setDepthClipMod
 reproducing the incumbent's rule instead, which derived the mode from the DEPTH TEST and read the seam's flag
 nowhere at all, and `17.39.0` corrected both Metal paths together
 ([#598](https://github.com/APKiwiOrg/KhaozEngine/issues/598)): the vendored Veldrid fork carries the identical
-change as `4.9.104`. Fixing only this one would have left the guest leg disagreeing with the `metal` grids the
+change as `4.9.104`. Fixing only this one would have left the native leg disagreeing with the `metal` grids the
 incumbent baked. Neither moved a committed golden.
 
 **A compute pipeline is created from the function alone**, with no `MTLComputePipelineDescriptor`. The

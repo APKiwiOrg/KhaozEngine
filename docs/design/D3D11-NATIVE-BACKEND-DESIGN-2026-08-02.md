@@ -1083,6 +1083,24 @@ could see it. That is the gap the expensive tier exists to cover, and it covered
 a defect confined to the software legs has a whole week of latency by default, so a change to a seam contract
 that all four backends implement is worth a branch dispatch before it merges rather than after.
 
+#### Addendum, 2026-08-22: `Direct3D11Native` owns its own golden family from 17.40.0
+
+Decision I3 of this document made `Direct3D11Native` a GUEST in the incumbent's `direct3d11` golden family, and rows 2 and 3
+of the Veldrid removal ([#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683),
+[#685](https://github.com/APKiwiOrg/KhaozEngine/issues/685),
+[#686](https://github.com/APKiwiOrg/KhaozEngine/issues/686)) promoted it to OWNER of `direct3d11-native` at `17.40.0`.
+The reason is not that I3 was wrong. It is that the incumbent which owns `direct3d11` is being deleted, and a
+family whose owner is gone is a set of references nothing may ever re-bake, with a `BakeRefusal` message naming
+a backend that no longer exists.
+
+**The new family was seeded as a byte-identical COPY of `direct3d11` rather than baked**, and
+`GoldenFamilyCopyGoldenTests` asserts the copy cell for cell over all 120 grids, so every guest-era green run
+this rollout record reads is still exactly what the committed bytes say. What changes from `17.40.0` on is what
+happens NEXT: `direct3d11-native` is a reference only its own producer has ever agreed with, and its value is regression
+detection rather than correctness evidence. The `direct3d11-native` CI leg verifies `direct3d11-native` and may bake it, exactly as
+the incumbent legs do theirs. `docs/design/VELDRID-REMOVAL-DESIGN-2026-08-22.md` section 3 is the transition,
+and `docs/CROSS-PLATFORM.md` is the living record of what the six families are.
+
 ---
 
 ## 15. Work breakdown

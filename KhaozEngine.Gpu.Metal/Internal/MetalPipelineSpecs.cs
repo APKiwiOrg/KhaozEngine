@@ -87,8 +87,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <see cref="GpuRasterizerState.DepthClipEnabled"/> nowhere at all, so the flag Direct3D 11 and Vulkan both
     /// honour reached nothing on macOS. 17.39.0 fixes both Metal paths together
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/598): the vendored fork carries the same one-line change,
-    /// so the two backends still agree and the shared <c>metal</c> golden family still has one answer. Fixing
-    /// only this one would have left the guest leg disagreeing with the grids the incumbent baked.</para>
+    /// so the two backends still agree, and the <c>metal</c> family together with the byte-identical
+    /// <c>metal-native</c> copy taken from it at 17.40.0 still holds one answer. Fixing only this one would have
+    /// left the native leg disagreeing with the grids the incumbent baked.</para>
     /// </summary>
     internal static class MetalPipelineSpecs
     {

@@ -145,7 +145,8 @@ exception is the trivial-change case below.
   FIVE blocking golden legs: Metal on hosted `macos-26` (pinned to the number, not to `macos-latest`,
   so an image promotion cannot move the GPU under a golden gate), two Windows/WARP D3D11 legs and two
   Linux/lavapipe Vulkan legs, each pair being the Veldrid incumbent plus the engine's own native
-  backend as a GUEST in the incumbent's golden family. That matrix also carries the engine's only
+  backend, which OWNS its own golden family from 17.40.0 (it was a guest in the incumbent's until then,
+  and the new family is a byte-identical copy). That matrix also carries the engine's only
   Vulkan validation gate, in two tiers: `strict` on the native leg's scheduled full suite, and `sync`
   in a separate golden-and-compute job, which is the one instrument in CI that can see a missing
   barrier a software rasterizer orders correctly anyway. `docs/CROSS-PLATFORM.md` is the living doc for

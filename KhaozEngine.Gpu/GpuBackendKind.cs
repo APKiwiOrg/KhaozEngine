@@ -52,8 +52,14 @@ namespace KhaozEngine.Gpu
         /// Veldrid. Selected by name (<c>KE_GRAPHICS_BACKEND=d3d11-native</c>) and created by the
         /// <see cref="IGpuBackendProvider"/> that package registers, never by this one: it is a separate member
         /// precisely so a session log, a telemetry header and a frame time are attributed to the implementation
-        /// that actually ran. It renders the SAME images as <see cref="Direct3D11"/>, so it shares that backend's
-        /// golden family rather than owning one.
+        /// that actually ran. It renders the SAME images as <see cref="Direct3D11"/>, and from <c>17.40.0</c> it
+        /// OWNS the <c>direct3d11-native</c> golden family. It was a GUEST in the incumbent's <c>direct3d11</c>
+        /// family until then (decision I3), which was the strongest free proof the port had, and row 2 of the
+        /// Veldrid removal promoted it because the incumbent that owns <c>direct3d11</c> is being deleted and a
+        /// family whose owner is gone is a set of references nothing may ever re-bake
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/685">#685</see>). The new family was
+        /// seeded as a byte-identical COPY of the incumbent's, so the guest-era agreement survives as committed
+        /// bytes.
         /// </summary>
         Direct3D11Native = 4,
 
@@ -63,8 +69,9 @@ namespace KhaozEngine.Gpu
         /// <c>vk-native</c>) and created by the <see cref="IGpuBackendProvider"/> that package registers, never
         /// by this one, for the same attribution reason <see cref="Direct3D11Native"/> is a separate member: a
         /// session log, a telemetry header and a frame time have to name the implementation that actually ran.
-        /// It renders the SAME images as <see cref="Vulkan"/>, so it shares that backend's golden family rather
-        /// than owning one.
+        /// It renders the SAME images as <see cref="Vulkan"/>, and from <c>17.40.0</c> it OWNS the
+        /// <c>vulkan-native</c> golden family, promoted out of the incumbent's for the reason and in the way
+        /// <see cref="Direct3D11Native"/> was.
         /// <para>
         /// The one place this differs from its Direct3D 11 sibling is what a default flip would MEAN. Windows
         /// probes to <see cref="Direct3D11"/>, so flipping there changes the Windows default. Linux probes to
@@ -80,13 +87,16 @@ namespace KhaozEngine.Gpu
         /// and created by the <see cref="IGpuBackendProvider"/> that package registers, never by this one, for the
         /// same attribution reason its two siblings are separate members: a session log, a telemetry header and a
         /// frame time have to name the implementation that actually ran. It renders the SAME images as
-        /// <see cref="Metal"/>, so it is a guest in that backend's golden family rather than owning one.
+        /// <see cref="Metal"/>, and from <c>17.40.0</c> it OWNS the <c>metal-native</c> golden family, promoted
+        /// out of the incumbent's for the reason and in the way <see cref="Direct3D11Native"/> was.
         /// <para>
         /// Two things about this member differ from both siblings, and both are consequences of WHICH backend it
-        /// is a second implementation of. The <c>metal</c> golden family it is a guest in is the FLEET's
-        /// cross-backend reference, the family every other leg's references are read against, so a disagreement
-        /// there is a fleet event rather than a leg event (decision M-I3 of
-        /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>).
+        /// is a second implementation of. The <c>metal-native</c> family it owns is a byte-identical copy
+        /// of <c>metal</c>, the FLEET's cross-backend reference that every other leg's references are read
+        /// against, so it INHERITS that standing rather than competing with it and a disagreement here is a fleet
+        /// event rather than a leg event (decision M-I3 of
+        /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>, whose guest ruling row 2 of the Veldrid
+        /// removal superseded while keeping its bytes).
         /// </para>
         /// <para>
         /// And a default flip would change the macOS default, which is not a player population but the fleet's

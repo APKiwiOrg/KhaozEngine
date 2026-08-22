@@ -9,8 +9,8 @@ namespace KhaozEngine.WorldStore;
 /// Returns false when nothing is known about that account, which leaves the join on
 /// <c>WorldServerConfig.SpawnPosition</c> (or the sharded equivalent) exactly as before.
 /// <para>Installed on a server head through <see cref="IPersistenceHost{TState}.SetPositionHintProvider"/>.
-/// <see cref="StatePersistence{TState}"/> installs one backed by its own <see cref="StatePersistence{TState}.Hints"/> cache;
-/// a game with its own account store can install its own instead (after constructing the persistence layer, which
+/// <see cref="StatePersistence{TState}"/> installs one backed by its own <see cref="StatePersistence{TState}.Hints"/> cache,
+/// and a game with its own account store can install its own instead (after constructing the persistence layer, which
 /// installs at construction time).</para>
 /// <para>Invoked on the server thread inside the join, so it must be a fast in-memory lookup. It is a HINT, never
 /// the authority: a persistence layer's asynchronous load-on-join still runs and still corrects the position when

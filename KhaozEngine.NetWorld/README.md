@@ -183,8 +183,8 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
     `WorldPersistence` category. What this package supplies is the four `PlayerMoveState`-shaped answers (a position
     is a `Vector3` of world metres, a record is a `PlayerRecord`, and `WorldPersistenceConfig.Bounds` is what makes a
     loaded one unacceptable). `IWorldPersistenceHost` now derives from `IPersistenceHost<PlayerMoveState>` and
-    inherits every member it used to declare, with identical signatures, so an existing implementer is untouched;
-    it keeps `SetResumePositionProvider` under its own name and bridges it onto the generic
+    inherits every member it used to declare, with identical signatures, so an existing implementer is untouched.
+    It keeps `SetResumePositionProvider` under its own name and bridges it onto the generic
     `SetPositionHintProvider`. `ResumePositionCache` is a forwarder over `PositionHintCache` with the same surface,
     and `WorldPersistence.ResumeHints` wraps the one cache the core itself reads and writes.
 - **`CellPersistence`** (+ `CellPersistenceConfig`, `WorldMetaRecord`) wires an

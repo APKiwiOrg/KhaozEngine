@@ -104,6 +104,15 @@ public sealed partial class TileWorldServer : IDisposable
             throw new ArgumentException(
                 $"InterestRadius {config.InterestRadius} exceeds OverlapMargin {config.OverlapMargin}: the home cell "
               + "cannot hold the full area of interest as ghosts.", nameof(config));
+        // The same reasoning for the plane count: TileWorldPersistence refuses a stored plane against the MAP's
+        // count while SetPlayerState refuses against the CONFIG's, and a head that bakes more planes than it
+        // configures would have the binding admit a record the door still throws on, out of Update(dt) on a
+        // live server. Refusing the mismatch here keeps the two doors one door.
+        if (config.PlaneCount != map.PlaneCount)
+            throw new ArgumentException(
+                $"PlaneCount {config.PlaneCount} does not match the collision map's {map.PlaneCount} planes: the "
+              + "persistence binding validates against the map and SetPlayerState against the config, so they must agree.",
+                nameof(config));
 
         this.config = config;
         this.registry = registry ?? TileProtocol.CreateRegistry();

@@ -27,13 +27,20 @@ public static partial class TileProtocol
     /// <see cref="ReplicationRegistry.FirstExtensionTypeId"/> up to here belongs to the tile netcode.</summary>
     public const ushort FirstGameTypeId = ReplicationRegistry.FirstExtensionTypeId + 8;
 
-    /// <summary>Cap on a replicated route, in steps. A longer route is TRUNCATED on the wire rather than refused,
-    /// which costs the owner only the tail of what it can predict ahead: the next snapshot carries the rest, and
-    /// by then the walk has moved into it.</summary>
+    /// <summary>Cap on a replicated route, in steps, and the ONE definition of that number: it is also the ceiling
+    /// on <see cref="TileMoveOptions.MaxRouteSteps"/>, which is where the cap is actually enforced. The SIMULATOR
+    /// truncates a longer pathfinder result, identically on both heads, so a route that reaches this encoder is
+    /// already within the cap and the walk ends at the truncated route's last tile (as far as one click carries).
+    /// <para>The encoder therefore REFUSES a longer route rather than truncating one. Truncating on the wire loses
+    /// more than the tail: <see cref="TileRoute.End"/> is the DESTINATION, so a route shortened here would tell the
+    /// owner it is walking somewhere it was never routed to, and it would keep saying so, with a different wrong
+    /// answer, on every snapshot. A stack trace on the head that built an over-long route is the cheaper failure.
+    /// </para></summary>
     public const int MaxRouteSteps = 256;
 
-    /// <summary>Cap on a display name's UTF-8 encoding, in bytes. Clamped on write AND on read, because the write
-    /// side protects the wire from this head and the read side protects this head from the wire.</summary>
+    /// <summary>Cap on a display name's UTF-8 encoding, in bytes. Enforced on write, where the name is truncated at
+    /// a codepoint boundary, and on read, where a longer declared length is a malformed frame rather than something
+    /// to clamp: no encoder on this wire emits one.</summary>
     public const int MaxDisplayNameBytes = 64;
 
     /// <summary>
@@ -51,6 +58,11 @@ public static partial class TileProtocol
     /// <para>The route is NOT part of <see cref="TileMoveState"/>'s encoding. It rides
     /// <see cref="TileRouteState"/> on the owner-only channel, so an observer's snapshot carries a tile plus step
     /// progress and nothing else. The presentation fields are never written at all, on either component.</para>
+    /// <para>Every reader here is hostile-safe in one of two ways. A field whose whole byte range is meaningful is
+    /// CLAMPED, because there is no such thing as a malformed one. A field with a declared length is CHECKED, and a
+    /// frame that lies about it throws, which <c>ClientReplicationView.TryApply</c> turns into a false and the
+    /// caller turns into a disconnect. Reading a lying frame as a short one would rebuild a route out of bytes that
+    /// belong to another component, which is a plausible-looking answer to a question nobody asked.</para>
     /// </summary>
     public static ReplicationRegistry CreateRegistry(Action<ReplicationRegistry>? registerExtensions = null)
     {
@@ -96,53 +108,71 @@ public static partial class TileProtocol
         s.Epoch = r.ReadUInt32();
         s.InteractTarget = r.ReadInt64();
         if (s.StepTotal == 0) s.StepTotal = 1;   // a hostile 0 would divide by zero in StepFraction
+        // The step counter is the OTHER half of that division, and TileMoveState documents it as always below the
+        // total. Left unclamped, a 250 against a total of 2 rides the wire intact and reads as a step fraction of
+        // 125 the moment the owner merges its route back in to build a reconcile basis: a position 125 tiles out,
+        // fed straight to the reconcile error and the hard-snap gate. It is harmless only while the route is idle.
+        if (s.StepTicks >= s.StepTotal) s.StepTicks = (byte)(s.StepTotal - 1);
         return s;
     }
 
+    // Refuses rather than truncates, for the reason in MaxRouteSteps' doc. A route over the cap cannot come from
+    // TileMoveSimulator, which truncates at TileMoveOptions.MaxRouteSteps on both heads, so one here was built by
+    // hand and is a local bug: worth the stack, exactly as an over-long game-message payload is.
     static void WriteRoute(TileRouteState v, BinaryWriter w)
     {
         TileDirection[] steps = v.Remaining ?? Array.Empty<TileDirection>();
-        int count = Math.Min(steps.Length, MaxRouteSteps);
-        w.Write((ushort)count);
-        for (int i = 0; i < count; i++) w.Write((byte)steps[i]);
+        if (steps.Length > MaxRouteSteps)
+            throw new ArgumentException(
+                $"A replicated route is capped at {MaxRouteSteps} steps and this one carries {steps.Length}. " +
+                "TileMoveSimulator truncates at TileMoveOptions.MaxRouteSteps, so this route was built elsewhere.",
+                nameof(v));
+        w.Write((ushort)steps.Length);
+        for (int i = 0; i < steps.Length; i++) w.Write((byte)steps[i]);
     }
 
-    // ReadBytes is what makes this total: it returns SHORT at the end of the stream instead of throwing, so a
-    // declared count that outruns the frame yields a shorter route rather than an exception out of the apply. The
-    // declared count is capped before it is allocated against, so it can neither over-allocate nor be trusted.
+    // A declared count over the cap, or one the stream cannot satisfy, is a MALFORMED frame: the encoder above
+    // refuses to emit either. Throwing is what turns it into a false out of ClientReplicationView.TryApply (and a
+    // disconnect) instead of a route silently rebuilt from whatever bytes followed. The count is checked BEFORE it
+    // is allocated against, so a hostile ushort can neither over-allocate nor reach the stack allocation below.
     static TileRouteState ReadRoute(BinaryReader r)
     {
         int declared = r.ReadUInt16();
-        byte[] raw = r.ReadBytes(Math.Min(declared, MaxRouteSteps));
-        var steps = new TileDirection[raw.Length];
-        for (int i = 0; i < raw.Length; i++)
+        if (declared > MaxRouteSteps)
+            throw new InvalidDataException($"A replicated route declares {declared} steps, over the {MaxRouteSteps} cap.");
+        Span<byte> raw = stackalloc byte[declared];
+        if (r.Read(raw) != declared)
+            throw new InvalidDataException($"A replicated route declares {declared} steps the frame does not hold.");
+        var steps = new TileDirection[declared];
+        for (int i = 0; i < declared; i++)
             steps[i] = raw[i] <= (byte)TileDirection.NE ? (TileDirection)raw[i] : TileDirection.W;
-        Skip(r, declared - raw.Length);
         return new TileRouteState { Remaining = steps };
     }
 
+    // Truncated at a UTF-8 CODEPOINT boundary, never at the byte cap: cutting inside a multi-byte sequence ships
+    // half a codepoint and the receiver decodes U+FFFD, so a name whose 64th byte lands mid-glyph would arrive
+    // visibly broken. Backing off the continuation bytes costs at most three bytes of a name already at the cap.
     static void WriteIdentity(TileIdentity v, BinaryWriter w)
     {
         byte[] text = Encoding.UTF8.GetBytes(v.DisplayName ?? string.Empty);
         int take = Math.Min(text.Length, MaxDisplayNameBytes);
+        while (take > 0 && take < text.Length && (text[take] & 0xC0) == 0x80) take--;
         w.Write((ushort)take);
         w.Write(text, 0, take);
     }
 
+    // Checked on the same rule as the route, and for the same reason. The bytes themselves are decoded LENIENTLY:
+    // Encoding.UTF8.GetString substitutes U+FFFD for an invalid sequence rather than throwing, which is what keeps
+    // this reader total. A strict decoder here would hand a remote peer an exception in the apply loop.
     static TileIdentity ReadIdentity(BinaryReader r)
     {
         int declared = r.ReadUInt16();
-        byte[] text = r.ReadBytes(Math.Min(declared, MaxDisplayNameBytes));
-        Skip(r, declared - text.Length);
+        if (declared > MaxDisplayNameBytes)
+            throw new InvalidDataException(
+                $"A replicated display name declares {declared} bytes, over the {MaxDisplayNameBytes} cap.");
+        Span<byte> text = stackalloc byte[declared];
+        if (r.Read(text) != declared)
+            throw new InvalidDataException($"A replicated display name declares {declared} bytes the frame does not hold.");
         return new TileIdentity { DisplayName = Encoding.UTF8.GetString(text) };
-    }
-
-    // Steps over the bytes a clamp declined to read, so a codec that read less than the frame declared leaves the
-    // stream where the next component starts. The extension framing re-aligns after every component anyway, so
-    // this is belt and braces for the capture paths that read a payload without that framing around it. The count
-    // is bounded by a ushort, so the transient buffer is at most 64 KB and only ever on a malformed frame.
-    static void Skip(BinaryReader r, int count)
-    {
-        if (count > 0) r.ReadBytes(count);
     }
 }

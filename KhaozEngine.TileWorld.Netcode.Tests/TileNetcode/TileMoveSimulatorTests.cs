@@ -183,6 +183,98 @@ public class TileMoveSimulatorTests
         Assert.Equal(TileDirection.S, s.Facing);
     }
 
+    // A serpentine corridor inside ONE 64x64 region: every odd row is walled off except a single gap tile at
+    // alternating ends. A walk from one corner to the other is over two thousand steps with every tile of it inside
+    // the pathfinder's DEFAULT search radius, which is the point: the cap is reached on an ordinary click, not on
+    // some pathological one.
+    internal static TileCollisionMap Serpentine()
+    {
+        TileCollisionMap map = Bake(FlatWorld(planeCount: 1));
+        for (int z = 1; z < TileRegion.Size; z += 2)
+        {
+            int gap = z / 2 % 2 == 0 ? TileRegion.Size - 1 : 0;
+            for (int x = 0; x < TileRegion.Size; x++)
+                if (x != gap) map.Or(x, z, 0, TileCollisionFlags.Blocked);
+        }
+        return map;
+    }
+
+    [Fact]
+    public void A_route_over_the_cap_is_truncated_to_the_same_tiles_on_both_heads()
+    {
+        // The cap lives HERE rather than at the encoder because both heads have to walk the same route. Applied on
+        // the wire instead, the server would keep walking the full path while the owner's basis named the tile the
+        // truncation happened to end on, a destination nobody routed it to, refreshed with a new wrong one every
+        // snapshot. Truncated in the simulator, the walk simply ends there, on both heads, byte for byte.
+        TileCollisionMap map = Serpentine();
+        var start = new TileCoord(0, 0, 0);
+        var goal = new TileCoord(0, 62, 0);
+        TilePath full = TilePathfinder.FindPath(map, 0, start, goal);
+        Assert.True(full.Tiles.Count > TileProtocol.MaxRouteSteps * 4, $"path was {full.Tiles.Count} steps");
+
+        TileMoveSimulator a = Sim(map), b = Sim(map);
+        TileCommand click = TileCommand.WalkTo(goal, TileMoveMode.Run);
+        TileMoveState sa = a.Step(TileMoveState.At(start, TileDirection.N), click, Dt);
+        TileMoveState sb = b.Step(TileMoveState.At(start, TileDirection.N), click, Dt);
+
+        Assert.Equal(TileProtocol.MaxRouteSteps, sa.Route.Tiles.Count);
+        Assert.Equal(sa, sb);
+        Assert.Equal(sa.Route.End, sb.Route.End);
+        // The truncation is the pathfinder's own first MaxRouteSteps tiles, so it needs no second deterministic
+        // decision of its own, and the destination is the tile the walk really ends on rather than the click.
+        Assert.Equal(full.Tiles[TileProtocol.MaxRouteSteps - 1], sa.Route.End);
+        Assert.NotEqual(goal, sa.Route.End);
+    }
+
+    [Fact]
+    public void The_truncated_route_is_where_the_walk_actually_ends()
+    {
+        // Run with a tiny cap so the whole walk fits in a test. A click past the cap carries the player as far as
+        // one click allows and stops, which is the same answer a click past the search radius already gives.
+        var sim = new TileMoveSimulator(Bake(FlatWorld()), Ticks, null, new TileMoveOptions { MaxRouteSteps = 3 });
+        Assert.Equal(3, sim.MaxRouteSteps);
+
+        TileMoveState s = TileMoveState.At(new TileCoord(0, 0, 0), TileDirection.N);
+        s = Run(sim, s, TileCommand.WalkTo(new TileCoord(0, 20, 0), TileMoveMode.Run), 40);
+        Assert.True(s.Route.IsIdle);
+        Assert.Equal(new TileCoord(0, 3, 0), s.Tile);
+    }
+
+    [Fact]
+    public void An_interact_route_is_truncated_by_the_same_cap()
+    {
+        // The interact path builds its route through the same helper, so a booth further away than the cap is
+        // walked toward and no further. The pending target is still remembered: the arrival turn is guarded by
+        // TileReach.Contains, which declines for a player who stopped short of the reach set.
+        TileWorldDocument doc = FlatWorld();
+        TileObject booth = doc.AddObject("bank_booth", 10, 10, 0, 0);
+        var sim = new TileMoveSimulator(Bake(doc), Ticks, new TileDocumentTargets(doc, Catalogs),
+            new TileMoveOptions { MaxRouteSteps = 3 });
+
+        TileMoveState s = sim.Step(TileMoveState.At(new TileCoord(0, 10, 0), TileDirection.N),
+            TileCommand.Interact(booth.Id, TileMoveMode.Run), Dt);
+        Assert.Equal(3, s.Route.Tiles.Count);
+        Assert.Equal(new TileCoord(3, 10, 0), s.Route.End);
+        Assert.Equal(booth.Id, s.InteractTarget);
+
+        s = Run(sim, s, TileCommand.Continue(TileMoveMode.Run), 20);
+        Assert.Equal(new TileCoord(3, 10, 0), s.Tile);
+        Assert.Equal(booth.Id, s.InteractTarget);
+    }
+
+    [Fact]
+    public void A_route_cap_outside_the_wires_own_throws_from_the_constructor()
+    {
+        TileCollisionMap map = Bake(FlatWorld());
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new TileMoveSimulator(map, Ticks, null, new TileMoveOptions { MaxRouteSteps = 0 }));
+        // Above the wire's own cap the encoder refuses the route, and that refusal would otherwise land inside a
+        // server tick on the first long click instead of here at construction.
+        Assert.Throws<ArgumentOutOfRangeException>(() => new TileMoveSimulator(
+            map, Ticks, null, new TileMoveOptions { MaxRouteSteps = TileProtocol.MaxRouteSteps + 1 }));
+        Assert.Equal(TileProtocol.MaxRouteSteps, new TileMoveSimulator(map, Ticks).MaxRouteSteps);
+    }
+
     [Fact]
     public void A_path_radius_the_pathfinder_would_reject_throws_from_the_constructor()
     {

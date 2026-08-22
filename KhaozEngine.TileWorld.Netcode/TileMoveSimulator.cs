@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KhaozEngine.Netcode;
 
 namespace KhaozEngine.TileWorld.Netcode;
@@ -38,7 +39,8 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     /// <param name="options">Pathfinder knobs, null for the defaults.</param>
     /// <exception cref="ArgumentNullException"><paramref name="map"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="options"/> asks for an agent smaller than
-    /// one tile, or for a path radius outside the range <see cref="TilePathfinder.FindPath"/> accepts.</exception>
+    /// one tile, for a path radius outside the range <see cref="TilePathfinder.FindPath"/> accepts, or for a route
+    /// cap outside 1..<see cref="TileProtocol.MaxRouteSteps"/>.</exception>
     public TileMoveSimulator(TileCollisionMap map, TileStepTicks stepTicks, ITileTargets? targets = null,
         TileMoveOptions? options = null)
     {
@@ -50,6 +52,11 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         if (o.MaxPathRadius < 1 || o.MaxPathRadius > TilePathfinder.MaxSearchRadius)
             throw new ArgumentOutOfRangeException(nameof(options),
                 $"MaxPathRadius must be 1..{TilePathfinder.MaxSearchRadius}.");
+        // Same reasoning, one step further: a cap above the wire's would build routes the encoder refuses, and that
+        // refusal would land in a server tick on the first long click rather than here at construction.
+        if (o.MaxRouteSteps < 1 || o.MaxRouteSteps > TileProtocol.MaxRouteSteps)
+            throw new ArgumentOutOfRangeException(nameof(options),
+                $"MaxRouteSteps must be 1..{TileProtocol.MaxRouteSteps}.");
         Map = map;
         // Either count zero is a blank cadence, and a zero RUN is the dangerous half: it survives a Walk-only
         // check as a StepTotal of zero, which commits a tile every tick.
@@ -57,6 +64,7 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         this.targets = targets;
         AgentSize = o.AgentSize;
         MaxPathRadius = o.MaxPathRadius;
+        MaxRouteSteps = o.MaxRouteSteps;
     }
 
     /// <summary>The collision map both heads bake from the same world files. Held rather than copied, so an edit
@@ -71,6 +79,9 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
 
     /// <summary>Half width of the pathfinder's search window.</summary>
     public int MaxPathRadius { get; }
+
+    /// <summary>Longest route one click may produce, in steps. See <see cref="TileMoveOptions.MaxRouteSteps"/>.</summary>
+    public int MaxRouteSteps { get; }
 
     /// <summary>Advances one tick. <paramref name="dt"/> is unused: a tile step is counted in TICKS, not seconds,
     /// which is what keeps two heads on slightly different frame times byte-identical.</summary>
@@ -126,7 +137,7 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         s.StepTicks = 0;
         s.StepTotal = StepTicks.For(mode);
         TilePath path = TilePathfinder.FindPath(Map, s.Tile.Plane, s.Tile, goal, AgentSize, MaxPathRadius);
-        s.Route = TileRoute.FromPath(path);
+        s.Route = RouteFor(path);
         return s;
     }
 
@@ -163,7 +174,7 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         // The target is remembered on a WALK, so the arrival tick can act on it, and a zero step interaction faces
         // the target here because no step will ever run to set the facing for it.
         s.InteractTarget = target;
-        s.Route = TileRoute.FromPath(path);
+        s.Route = RouteFor(path);
         if (s.Route.IsIdle) s.Facing = TileReach.FacingToward(Map, footprint, plane, reachTile);
         return s;
     }
@@ -227,8 +238,24 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         TileCoord end = s.Route.End;
         s.StepTicks = 0;
         TilePath path = TilePathfinder.FindPath(Map, s.Tile.Plane, s.Tile, end, AgentSize, MaxPathRadius);
-        s.Route = TileRoute.FromPath(path);
+        s.Route = RouteFor(path);
         if (s.Route.IsIdle) s.InteractTarget = 0;
         return s;
+    }
+
+    // EVERY route this class builds comes through here, which is what makes the cap a property of the simulation
+    // rather than of the wire. Both heads truncate the same deterministic FindPath result to the same tiles, so the
+    // walk ends at the truncated route's last tile on both of them and the owner is told where it is actually
+    // going. A player who clicked further away walks as far as one click carries and clicks again.
+    //
+    // The interaction case truncates too, and is safe: an interact route cut short leaves the player standing off
+    // the target's reach set, where FaceTarget's TileReach.Contains guard already declines to turn them.
+    TileRoute RouteFor(TilePath path)
+    {
+        IReadOnlyList<TileCoord> tiles = path.Tiles;
+        if (tiles.Count <= MaxRouteSteps) return TileRoute.FromPath(path);
+        var cut = new TileCoord[MaxRouteSteps];
+        for (int i = 0; i < MaxRouteSteps; i++) cut[i] = tiles[i];
+        return new TileRoute(cut, 0);
     }
 }

@@ -13,7 +13,10 @@ incumbents remain as an explicit OPT-OUT for ONE release, and are REMOVED in the
 program (the roadmap issue MF1/#540). A game that wants an incumbent back sets
 `KE_GRAPHICS_BACKEND=metal`, `=d3d11` (or `=direct3d11`) or `=vulkan`, or stores that
 `GpuBackendKind` as its graphics-settings preference, both of which still outrank the default exactly as they
-did. Nothing else changes about how a backend is chosen.
+did. Nothing else changes about how a backend is chosen. What the removal takes out is the IMPLEMENTATIONS and
+their CI legs: the four Veldrid `GpuBackendKind` members stay in the enum forever, because the enum is
+append-only and a game persists a player's choice into it, so they become tokens that resolve to a named
+exception rather than values that disappear (section 5.2 of the removal design).
 
 **This flip was taken by DECISION on 2026-08-22, ahead of the field-evidence gates that were still open**, and
 it overrides the "five gates, all green before any flip" condition each of the three native rollout designs

@@ -25,6 +25,12 @@ public delegate void TileGameMessageHandler(int slot, ushort kind, ReadOnlySpan<
 /// </summary>
 public sealed partial class TileWorldServer
 {
+    // The drain countdown, in seconds of wall clock, and the token it was started with. Negative means no drain
+    // has been asked for, which is what keeps IsDraining answerable from the one field: a grace of zero is a
+    // legitimate drain that completes on the next Tick, and a zero-initialised field could not tell the two apart.
+    float drainRemaining = -1f;
+    string drainReason = string.Empty;
+
     /// <summary>Raised as (slot, accountId) once a connection has a player entity, which is the point a game may
     /// start reading and writing that player. Raised from <see cref="SpawnPlayer"/>, so it fires for a headless
     /// spawn as well as for a real join.</summary>
@@ -53,6 +59,15 @@ public sealed partial class TileWorldServer
     /// <summary>The slots with a live player, which is what a persistence pass iterates. The player index's own
     /// key collection, so it reflects a join or a leave immediately and must not be enumerated across one.</summary>
     public IReadOnlyCollection<int> JoinedSlots => netIdBySlot.Keys;
+
+    /// <summary>True from the moment <see cref="BeginDrain"/> runs until the server is disposed. A drain is
+    /// one way: there is no resume, because the announcement has already gone out to every client.</summary>
+    public bool IsDraining => drainRemaining >= 0f;
+
+    /// <summary>True once a drain's grace has elapsed, so the host may flush persistence and exit. Polled by the
+    /// head's own loop rather than raised as an event, because what happens next (a save pass, a process exit) is
+    /// the head's decision and its timing is the head's to own.</summary>
+    public bool IsDrainComplete => IsDraining && drainRemaining <= 0f;
 
     /// <summary>
     /// Pumps the transport and turns session events into joins, leaves and buffered commands. Call once per host
@@ -96,6 +111,12 @@ public sealed partial class TileWorldServer
             ? $"{PositionHintCache.GuestAccountPrefix}{slot}"
             : subject;
         SpawnPlayer(slot, accountId, displayName);
+        // A connection that arrives DURING a drain is admitted and told, rather than refused: the grace is what a
+        // player needs to finish what they are doing, and a rejoin inside it (a reconnect after a drop) is exactly
+        // the case that needs the announcement it missed. The broadcast in BeginDrain went out before this session
+        // existed, so without this the one client that cannot see the shutdown coming is the one that just
+        // reconnected into it.
+        if (IsDraining) SendNotice(slot, drainReason);
     }
 
     // Everything an inbound frame is allowed to do, and the three ways it is refused. The order is deliberate: an
@@ -197,4 +218,30 @@ public sealed partial class TileWorldServer
     void SendNotice(int slot, string reasonToken) =>
         net.SendTo(slot, TileProtocol.EncodeNotice(reasonToken), NetChannelReliability.ReliableOrdered);
 
+
+    /// <summary>
+    /// Tells every client the server is going away, then counts <paramref name="graceSeconds"/> down on
+    /// <see cref="Tick"/> so a head can flush persistence and exit once <see cref="IsDrainComplete"/>. The world
+    /// keeps ticking throughout: a drain is a deadline, not a freeze, so a player mid walk finishes it.
+    /// <para>The countdown is WALL CLOCK rather than tick count, so it runs down on frames that stepped nothing.
+    /// A head asked to shut down has a real-time deadline whatever the simulation is doing, and a server that had
+    /// fallen behind would otherwise take longer to drain the further behind it was.</para>
+    /// <para>Deliberately a small local state machine rather than <c>NetWorld.DrainController</c>: that type sits
+    /// in a package this one must never reference, and duplicating three lines of countdown is cheaper than the
+    /// dependency. When the controller moves down to <c>KhaozEngine.Simulation</c>, this is the call site that
+    /// adopts it.</para>
+    /// <para>Idempotent: a second call while a drain is running is ignored rather than restarting the clock, so an
+    /// operator who runs the command twice does not hand everyone a second grace period.</para>
+    /// </summary>
+    /// <param name="reasonToken">A <see cref="TileServerReason"/> token, normally
+    /// <see cref="TileServerReason.Draining"/>. Kept, and sent again to anyone who joins inside the grace.</param>
+    /// <param name="graceSeconds">Seconds before <see cref="IsDrainComplete"/> turns true. Negative is treated as
+    /// zero, which completes on the next tick.</param>
+    public void BeginDrain(string reasonToken, float graceSeconds)
+    {
+        if (IsDraining) return;
+        drainReason = reasonToken;
+        drainRemaining = Math.Max(0f, graceSeconds);
+        BroadcastNotice(reasonToken);
+    }
 }

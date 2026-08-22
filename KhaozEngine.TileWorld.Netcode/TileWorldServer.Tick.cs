@@ -31,8 +31,6 @@ public sealed partial class TileWorldServer
     World? filterWorld;
     HashSet<long>? filterInterest;
     int filterPlane;
-    // The graceful-drain countdown, until the session half takes ownership of it.
-    float drainRemaining;
 
     /// <summary>Buffers one command for a slot exactly as an inbound frame would, so a head or a test can drive the
     /// server with no transport. Ignored for an unknown slot, which is what a command arriving one tick after a
@@ -80,7 +78,8 @@ public sealed partial class TileWorldServer
         if (ran >= MaxCatchUpTicks) tickAccumulator = MathF.Min(tickAccumulator, config.TickSeconds);
 
         // The graceful-drain countdown is WALL CLOCK rather than tick count, so it runs down on every frame
-        // including the ones that stepped nothing.
+        // including the ones that stepped nothing. See BeginDrain in TileWorldServer.Sessions.cs, which owns the
+        // field and the reason.
         if (drainRemaining > 0f) drainRemaining = MathF.Max(0f, drainRemaining - MathF.Max(0f, dt));
     }
 

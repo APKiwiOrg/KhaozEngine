@@ -205,6 +205,23 @@ public class TileWorldServerSessionTests
         Assert.Equal(booth.Id, refused[0]);
     }
 
+    [Fact]
+    public void A_drain_notices_everyone_then_completes_after_its_grace()
+    {
+        (TileWorldServer s, _, _) = Up(new TileCoord(4, 4, 0));
+        using (s)
+        {
+            s.SpawnPlayer(0, "a", "Ari");
+            Assert.False(s.IsDraining);
+            s.BeginDrain(TileServerReason.Draining, graceSeconds: 0.5f);
+            Assert.True(s.IsDraining);
+            Assert.False(s.IsDrainComplete);
+            s.Tick(Dt);
+            s.Tick(Dt);
+            Assert.True(s.IsDrainComplete);
+        }
+    }
+
 
 
     [Fact]

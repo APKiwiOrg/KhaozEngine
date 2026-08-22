@@ -18,7 +18,7 @@ public static class TileServerReason
     public const string CannotReach = "ke:cannot-reach";
 
     /// <summary>The server is draining and will close the session when its grace expires. Broadcast the moment
-    /// <c>TileWorldServer.BeginDrain</c> runs, so a client has the whole grace to show a countdown and log
+    /// <see cref="TileWorldServer.BeginDrain"/> runs, so a client has the whole grace to show a countdown and log
     /// out cleanly rather than discovering the shutdown as a dropped connection.</summary>
     public const string Draining = "ke:draining";
 

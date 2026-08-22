@@ -5,6 +5,32 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.41.0
+
+17.41.0 gives the three native backends their own golden families, rows 2 and 3 of the Veldrid removal program
+(#683), ahead of the incumbent delete.
+
+**`SqliteWorldStore.Dispose` now releases the OS handle on its database file instead of parking it in the
+provider's connection pool.** `Microsoft.Data.Sqlite` pools connections by default, so `connection.Dispose()`
+handed the native handle back to the pool and the file stayed open for the life of the process. `Dispose` calls
+`SqliteConnection.ClearPool(connection)` first, so the connection is never parked. The leak read differently on
+each platform and was a defect on all of them. Windows refuses to delete or exclusively open a file something
+still holds open, which is what took both Windows GPU legs of `cross-platform-gpu.yml` down on an unrelated
+branch (#713). POSIX unlinks the file happily and then hands the same live handle to the next store opened on
+that path, so a server that rotates or drops a store file kept reading the deleted database with no error at
+all. Clearing the pool cannot close a connection out from under a second live store on the same file, because an
+in-use connection is not idle in the pool and is disposed only when its own owner releases it.
+
+- New `SqliteWorldStoreFileLifetimeTests` pins the property on every platform, which takes two assertions
+  because neither covers both: an exclusive `FileShare.None` open is what bites on Windows and is vacuous on
+  POSIX (.NET implements `FileShare` with `flock`, SQLite locks with `fcntl`, and the two never collide), and a
+  delete followed by a reopen is what bites on POSIX.
+- The three suites that keep a temp SQLite file now delete it strictly rather than best effort
+  (`SqliteWorldStoreConformanceTests`, `WorldPersistenceTests.SurvivesServerRestart_OnSqliteFile`,
+  `TileWorldPersistenceTests`). The swallowed `IOException` in the first two is why this shipped: it hid the
+  same leak on the Windows legs for as long as it lived, and only the one suite that deleted strictly ever went
+  red.
+
 ## 17.40.0
 
 17.40.0 makes the native backends the default (the rollout bullets) and ships the tile netcode package,

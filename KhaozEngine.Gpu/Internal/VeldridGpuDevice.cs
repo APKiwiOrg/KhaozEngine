@@ -218,7 +218,7 @@ namespace KhaozEngine.Gpu.Internal
         /// <c>byte</c>-backed flags enum) carried into <c>MTLTexture</c>, <c>VkTextureView</c> and
         /// <c>D3D11TextureView</c> beside each <c>ArrayLayers &gt; 1</c> test. The three NATIVE backends already
         /// carry the seam's flag with no fork at all, so the incumbent is the only place a one-layer array is
-        /// emulated rather than created.</para>
+        /// emulated rather than created. Filed as #673, with the line numbers it would touch.</para>
         /// </summary>
         static uint VeldridArrayLayers(in GpuTextureDescription d)
             => d.IsArray && d.ArrayLayers <= 1

@@ -7,7 +7,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.39.0
 
-A tile world can draw a real glb kit per archetype now, and the glTF loader honours per-vertex COLOR_0.
+A tile world can draw a real glb kit per archetype now, the glTF loader honours per-vertex COLOR_0, and the GPU
+seam can express a texture array with a single layer.
 
 - **`GltfMeshResolver` (`KhaozEngine.TileWorld.Render3D`) loads an archetype's glb by its `MeshRef`.**
   `new GltfMeshResolver(string rootDirectory, ITileMeshResolver? fallback = null, Action<string>? log = null)`
@@ -44,6 +45,34 @@ A tile world can draw a real glb kit per archetype now, and the glTF loader hono
   boundary. The key itself is a `MeshWeldKey` struct rather than a 14-element `ValueTuple`, because such a tuple
   hashes only its seventh element and its `Rest`, which would leave position out of the hash and make the weld
   quadratic on an unmapped mesh.
+- **`GpuTextureDescription.IsArray` (`KhaozEngine.Gpu`) says a texture is a 2D ARRAY, so a ONE-layer array is
+  expressible (#666).** Every backend derived array-ness from `ArrayLayers > 1` alone, so
+  `GpuTextureDescription.Texture2DArray(..., arrayLayers: 1, ...)` created a plain 2D texture and any pipeline
+  whose fragment declares `texture2DArray` bound the wrong type. Metal aborts the process under armed validation
+  (`incorrect type of texture (MTLTextureType2D) bound at Texture binding at index 0 (expect
+  MTLTextureType2DArray)`), lavapipe reads through it silently, and Direct3D 11's shader resource view dimension
+  is likewise scalar-derived. `Texture2DArray` now sets the flag, and the constructor takes an `isArray`
+  argument. **Additive:** the layer-count inference is kept as the default, so `IsArray` is true whenever
+  `ArrayLayers > 1` and a caller that passes only a layer count creates exactly the texture it created before.
+  The flag names the 2D-array case only: a cubemap (`GpuTextureUsage.Cubemap`) and a multisampled texture keep
+  their own type rules, which is the precedence each backend already had.
+- **All four backends honour it, three of them natively.** `KhaozEngine.Gpu.Metal` picks `MTLTextureType2DArray`
+  in `MetalFormats.TextureTypeFor`, `KhaozEngine.Gpu.Vulkan` picks `VK_IMAGE_VIEW_TYPE_2D_ARRAY` in
+  `VulkanFormats.ToViewType` and carries the flag on its sampled and storage view specs, and
+  `KhaozEngine.Gpu.D3D11` picks `Texture2DArray` for its shader resource and unordered access views (the
+  render-target and depth-stencil views keep the layer-count rule, since no shader declares their dimension and
+  their array arm already pins `ArraySize` 1). The incumbent Veldrid backend CANNOT express a one-layer array:
+  `MTLTexture`, `VkTextureView` and `D3D11TextureView` each test `ArrayLayers` against 1, there is no
+  `TextureType` value and no `TextureUsage` bit for it, and a `TextureView` cannot widen it either because its
+  own `ArrayLayers` feeds the same comparison. So it creates a second slice that is never uploaded to, never
+  sampled and never named by a slot, and the seam's logical layer count stays one. That is invisible through the
+  seam and costs one slice of memory.
+- **The tile-ground pad is gone.** `Scene3D.LoadTileGroundMaterial` duplicated a one-layer set into two layers
+  for exactly this reason since 17.38.0. A one-layer set is now a real one-layer array.
+  `TileGroundMaterialGpuTests.Single_flat_layer_reproduces_a_vertex_colour_look` is the conformance draw: with
+  the pad gone and the flag reverted it aborts the metal-native test host with the message above, and it passes
+  with the flag in, on the incumbent and on metal-native alike under armed Metal validation. No golden moves,
+  because the padded slice was never sampled and layer 0 carries the same texels either way.
 
 ## 17.38.0
 

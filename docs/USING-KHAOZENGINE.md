@@ -10230,6 +10230,41 @@ writes are being queued for a segment nothing ever acquires, which on a running 
 
 ---
 
+## A texture array with ONE layer (`GpuTextureDescription.IsArray`, 17.39.0)
+
+`GpuTextureDescription.Texture2DArray(width, height, format, usage, arrayLayers, mipLevels)` builds a 2D texture
+array, and since 17.39.0 it works at `arrayLayers: 1`:
+
+```csharp
+// One layer, and still an ARRAY: this binds under a fragment that declares texture2DArray.
+IGpuTexture albedo = gd.Factory.CreateTexture(GpuTextureDescription.Texture2DArray(
+    w, h, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled, arrayLayers: 1, mipLevels: 1));
+gd.UpdateTexture(albedo, pixels, 0, 0, w, h, mipLevel: 0, arrayLayer: 0);
+```
+
+Before 17.39.0 every backend read array-ness off the layer count alone, so that call produced a plain 2D
+texture. Bind one under a shader that declares an array sampler and Metal aborts the process when validation is
+armed (`incorrect type of texture (MTLTextureType2D) bound ... (expect MTLTextureType2DArray)`), while lavapipe
+renders through it silently, which is the harder failure to find. The engine's own tile-ground pipeline worked
+around it by duplicating a single layer into a second slice.
+
+**What to do about it: nothing, if you build arrays through `Texture2DArray`.** That factory sets the new
+`GpuTextureDescription.IsArray` for you, and every backend honours it. The old inference is kept as the default,
+so `IsArray` is true whenever `ArrayLayers > 1` and code that passes only a layer count behaves exactly as it
+did. The raw constructor takes an `isArray` argument for the same purpose.
+
+**Two shapes it deliberately does not claim.** A cubemap (`GpuTextureUsage.Cubemap`) keeps its own rule, since a
+cube is already six faces and one cube is a `TypeCube` rather than a one-cube cube array. A multisampled texture
+keeps its multisample type, which has no array form on this seam.
+
+**One backend emulates it.** The three native backends (`KhaozEngine.Gpu.Metal`, `.Vulkan`, `.D3D11`) create the
+array type directly. The incumbent Veldrid backend has no way to express a one-layer array at all, so it creates
+a second slice that is never uploaded to, never sampled and never named by a slot. That costs one slice of
+memory and is invisible through the seam: the description's layer count is still one, and every read and write
+addresses layer 0.
+
+---
+
 ## Is the D3D11 driver emulating command lists (`GpuThreadingCaps`, 17.22.0)
 
 A Direct3D11 driver reports whether it can build deferred-context command lists itself. When it cannot

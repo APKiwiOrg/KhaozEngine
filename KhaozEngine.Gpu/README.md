@@ -241,6 +241,17 @@ What it owns today:
   framebuffer (read a live multisampled framebuffer's count off `IGpuFramebuffer.Outputs`); and
   `IGpuCommandList.ResolveTexture(src, dst)` resolves a multisampled target into a single-sample texture. Default
   sample count 1 (single-sample) everywhere, so existing render paths are unchanged.
+- **Texture arrays, including one-layer ones** - `GpuTextureDescription.Texture2DArray(w, h, format, usage,
+  arrayLayers, mipLevels)` builds a 2D texture array and sets the new `GpuTextureDescription.IsArray`, so a set
+  with exactly ONE layer is still created as an array and binds under a shader that declares `texture2DArray` /
+  `Texture2DArray`. Array-ness was derived from `ArrayLayers > 1` alone before 17.39.0, which made a one-layer
+  array indistinguishable from a plain 2D texture and bound the wrong type (Metal aborts the process under armed
+  validation, lavapipe reads through it silently). That inference is kept as the default, so `IsArray` is true
+  whenever `ArrayLayers > 1` and a caller that only passes a layer count is unchanged. The flag names the
+  2D-array case only: a cubemap (`GpuTextureUsage.Cubemap`) and a multisampled texture keep their own type rules.
+  The three native backends create the array type directly. The incumbent Veldrid backend cannot express a
+  one-layer array at all, so it creates a second, never-addressed slice and keeps the seam's logical layer count
+  at one.
 - **`GpuWindowHandle`** - a native window handle (kind + handle/display) the windowing layer hands over, so
   this package needs no reference to the windowing library.
 - **`GpuDeviceContext`** - `CreateForWindow(in GpuWindowHandle, width, height, syncToVerticalBlank = true)` (device

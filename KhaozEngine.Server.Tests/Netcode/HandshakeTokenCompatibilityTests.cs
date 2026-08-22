@@ -32,4 +32,20 @@ public class HandshakeTokenCompatibilityTests
     {
         Assert.Equal(ProtocolHandshake.IncompatibleReason("v9"), HandshakeToken.IncompatibleVersionReason("v9"));
     }
+
+    // The tests above compare two entry points that share one implementation since the promotion, so they can no
+    // longer see the magic bytes MOVING. This pins the literal layer a shipped client already speaks.
+    [Fact]
+    public void The_layer_is_still_the_bytes_shipped_clients_speak()
+    {
+        byte[] expected =
+        {
+            0x00, 0x4B, 0x45, 0x56, 0x31,   // magic: NUL "KEV1"
+            0x02,                           // label length
+            0x76, 0x39,                     // label "v9"
+            0x73, 0x75, 0x62,               // inner "sub"
+        };
+        Assert.Equal(expected, ProtocolHandshake.WrapToken("v9", Encoding.UTF8.GetBytes("sub")));
+        Assert.Equal(expected, HandshakeToken.Wrap("v9", Encoding.UTF8.GetBytes("sub")));
+    }
 }

@@ -340,7 +340,7 @@ namespace KhaozEngine.Render3D.Rendering
             LastMipCopies = 0;
             if (_mipMap == null) return;
             uint n = (uint)resolution;
-            uint layers = (uint)Math.Max(2 * cascades, 2);
+            uint layers = (uint)(2 * cascades);   // exactly the layer count Rebake built both maps with
             for (uint layer = 0; layer < layers; layer++)
                 sceneList.CopyTextureSubresource(_map!, 0, layer, _mipMap, 0, layer, n, n);
             sceneList.GenerateMipmaps(_mipMap);
@@ -445,16 +445,13 @@ namespace KhaozEngine.Render3D.Rendering
                     (uint)(texels * cascades * 4), GpuBufferUsage.StructuredBufferReadWrite, 4)));
                 _gd.UpdateBuffer(_foam, 0, new float[texels * cascades]);
 
-                // At least TWO array layers, always, even for a single cascade. A one-layer texture is created as
-                // a plain 2D texture one layer down, and binding that to a shader's texture2DArray slot writes
-                // nothing and reads zero, silently: a single-cascade ocean produced a perfectly correct foam
-                // BUFFER and an entirely blank map. The spare layer costs one texel grid and is never sampled,
-                // because the shader only reads up to the cascade count.
-                // 2 * cascades layers: displacement then derivatives. Never fewer than two, even for a single
-                // cascade - a one-layer texture is created as a plain 2D texture one layer down, and binding that
-                // to a shader's texture2DArray slot writes nothing and reads zero, silently. A single-cascade
-                // ocean produced a perfectly correct foam BUFFER and an entirely blank map because of it.
-                uint layers = (uint)Math.Max(2 * cascades, 2);
+                // 2 * cascades layers: displacement then derivatives, and nothing beyond what the shader reads.
+                // The cascade count is clamped to at least one above, so this is never fewer than two and the
+                // floor the old Math.Max carried was already dead. The floor existed for a different reason:
+                // before #666 a one-layer set was created as a plain 2D texture one layer down, and binding that
+                // to a shader's texture2DArray slot wrote nothing and read zero, silently. That is fixed on the
+                // seam now (GpuTextureDescription.IsArray), so no producer pads for it any more.
+                uint layers = (uint)(2 * cascades);
                 _map = Own(f.CreateTexture(GpuTextureDescription.Texture2DArray((uint)n, (uint)n,
                     GpuPixelFormat.R16G16B16A16Float, GpuTextureUsage.Storage | GpuTextureUsage.Sampled,
                     layers, 1)));
@@ -534,10 +531,12 @@ namespace KhaozEngine.Render3D.Rendering
             IGpuResourceFactory f = _gd.Factory;
             _sampler = Own(f.CreateSampler(new GpuSamplerDescription(GpuSamplerFilter.MinLinearMagLinearMipLinear,
                 GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap)));
-            // Two layers for the same reason the live map has at least two (see Rebake): a one-layer array is not
-            // an array texture on every backend, and this one is bound to a texture2DArray slot.
+            // ONE layer, which is all the idle placeholder ever needed. It used to carry a second because a
+            // one-layer set was not an array texture on every backend before #666, and this one is bound to the
+            // water fragment's texture2DArray slot on every water draw that has no bake behind it. The seam says
+            // "array of one" outright now, so the spare layer came out.
             _idleMap = Own(f.CreateTexture(GpuTextureDescription.Texture2DArray(1, 1,
-                GpuPixelFormat.R16G16B16A16Float, GpuTextureUsage.Sampled, 2, 1)));
+                GpuPixelFormat.R16G16B16A16Float, GpuTextureUsage.Sampled, 1, 1)));
         }
 
         T Own<T>(T resource) where T : IDisposable

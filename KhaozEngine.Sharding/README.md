@@ -76,7 +76,10 @@ exactly-once handoff oracle that can observe a duplicate (2) or loss (0) the sin
 Per-cell persistence primitives on `CellSim`, storage-agnostic (no new dependency): `SnapshotOwned(excludedNetIds)`
 returns a durable Replication snapshot of the cell's owned (not `Ghost`, not `Migrating`, not `Transient`) entities
 whose NetId is not in the excluded set, so a caller can persist non-player state while player entities persist
-separately.
+separately. `SnapshotOwned(excludedNetIds, SnapshotPurpose)` (since 17.39.0) is the same capture for a stated
+consumer, and the two differ in one thing only: `SnapshotPurpose.Durable` (what the one-argument overload takes)
+leaves out every `Transient` entity, while `SnapshotPurpose.Eviction` leaves out only the
+`TransientScope.Always` ones, so an unload freeze keeps what a save must not.
 `RestoreOwned(snapshot)` adopts a snapshot's entities back into the cell as freshly owned, keeping their NetIds,
 and returns the restored NetId list. `TryRestoreOwned(snapshot)` (since 9.33.0) is the non-throwing form returning
 a `CellRestoreResult`: a blob that fails to decode is rolled back (the partial apply is despawned, so the cell is
@@ -86,14 +89,29 @@ so a registry downgrade cannot strip data at rest. `MaxOwnedNetId()` reads the h
 useful for resuming an id allocator. See `KhaozEngine.NetWorld.CellPersistence` for the `IWorldStore` wiring
 (migration chain, quarantine, diagnostics) built on these.
 
-**`Transient`: the per-entity persist opt-out (since 17.38.0).** A field-less tag, beside `Ghost` and `Migrating`,
-meaning this entity is never saved. `SnapshotOwned` leaves it out of the blob entirely, so a server-owned thing meant
+**`Transient`: the per-entity persist opt-out (since 17.38.0, scoped since 17.39.0).** A tag beside `Ghost` and
+`Migrating` meaning this entity is never saved. `SnapshotOwned` leaves it out of the blob entirely, so a server-owned thing meant
 to outlive nothing (a world pickup, a timed spawn, a projectile) cannot be caught in an interval save and resurrected
 on restart as a husk no subsystem is tracking. It excludes the ENTITY, which is the axis a `ReplicationChannels` flag
 cannot reach: a channel gates one component TYPE on one channel, and dropping a component's bytes would still persist
 the entity, just as a stripped husk. Deliberately in no `ReplicationRegistry`, since persistence is a server-local
 decision no client needs to hear, so it spends no wire type id, adds no bytes to any snapshot, and moves no blob
-layout. `ShardHost.ProcessHandoffs` carries the mark across a crossing (it rides beside the Migrate capture rather
+layout.
+
+Its one field, `Transient.Scope`, says which captures leave it out (#668). `TransientScope.Always` (the default, so
+`default(Transient)` is what 17.38.0 shipped) is out of both the durable save and the evictor's freeze, so the entity
+evaporates on an unload as surely as on a restart: right for something whose meaning lives in per-process bookkeeping
+a restore cannot rebuild, which is why a world pickup takes it. `TransientScope.DurableOnly` is out of the save
+alone, so a restart brings back no husk and an in-process unload plus a route back hands the SAME entity under the
+same `NetId`: right for authored whole-zone agent state whose spawner goes dormant while the cell is unloaded. The
+route back reaches only as far as the evictor's snapshot cache (`CellEvictionConfig.MaxCachedSnapshots`), because
+past it the coordinate falls back to the store-backed load and the store never held the entity.
+
+Because the marker is in no registry, no capture can encode it, so `ReadTransientMarks(purpose)` and
+`ApplyTransientMarks(marks)` on `CellSim` let a caller carry the marks BESIDE the bytes and re-apply them on the far
+side. That is what stops an entity restored from an eviction freeze from coming back unmarked and being written by
+the next interval save. `KhaozEngine.NetWorld.CellEvictor` does exactly this, and the same pair is on
+`ICellPersistenceHost`. `ShardHost.ProcessHandoffs` carries the mark across a crossing (it rides beside the Migrate capture rather
 than inside it), so a transient entity walking into the next cell does not become persistable there. That holds for
 any `ICellLink` shape, since the mark is read when the Migrate is sent and re-applied when it is adopted, whether
 that is the same `ProcessHandoffs` call or a later one. It covers a handoff **within one host** only: a cross-NODE

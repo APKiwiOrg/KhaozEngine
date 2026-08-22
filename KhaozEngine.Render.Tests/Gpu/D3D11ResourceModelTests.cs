@@ -408,7 +408,8 @@ namespace KhaozEngine.Tests.Gpu
                 ("DepthLineRenderer UBO", 64u),                    // literal, DepthLineRenderer.cs:35
                 ("OverlayRenderer UBO", 64u),                      // literal, OverlayRenderer.cs:45
                 ("BeamRenderer UBO", 80u),                         // literal, BeamRenderer.cs:53
-                ("GroundDecalRenderer frame UBO", 80u),            // literal, GroundDecalRenderer.cs:131
+                ("GroundDecalRenderer frame payload", GroundDecalRenderer.FramePayloadBytes),
+                ("GroundDecalRenderer frame slot", GroundDecalRenderer.FrameSlotBytes),
                 ("ParticleRenderer frame UBO", 192u),              // literal, ParticleRenderer.cs:100
                 ("TransitionRenderer solid fill UBO", 16u),        // literal, TransitionRenderer.cs:60
                 ("TransitionRenderer crossfade params UBO", 16u),  // literal, TransitionRenderer.cs:61

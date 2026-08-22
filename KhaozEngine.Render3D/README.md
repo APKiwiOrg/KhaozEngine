@@ -106,7 +106,10 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     throws naming the count, and a layer whose bytes are not `width * height * 4` throws naming that layer's index
     and both sizes. Albedo only by design: there is no normal array,
     and the specular exponent is a constant 28 (what the splat pass reaches at roughness 0.5) with
-    `baseSpecStrength` as the whole set's strength, because an albedo layer carries no roughness channel.
+    `baseSpecStrength` as the whole set's strength, because an albedo layer carries no roughness channel. A set of
+    exactly ONE layer is a one-layer array, not a padded two-layer one: between 17.38.0 and 17.39.0 it was
+    duplicated into a second slice, because the GPU seam could not express a one-layer array and the fragment
+    declares `texture2DArray` (#666, fixed by `GpuTextureDescription.IsArray`).
   - **The vertex contract, for this pipeline only.** `ModelVertex` is unchanged, so the upload path is the ordinary
     one, but the fields are repurposed: `Color` is the vertex's four weights, `Uv.x`, `Uv.y`, `Tangent.x` and
     `Tangent.y` are four material SLOTS as floats holding integers (constant across a triangle, so interpolation

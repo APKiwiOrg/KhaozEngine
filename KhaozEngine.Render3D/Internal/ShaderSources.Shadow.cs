@@ -34,12 +34,14 @@ namespace KhaozEngine.Render3D.Internal
         //      for a DIRECTIONAL light: a caster up-light of the near plane shadows the whole depth range below it,
         //      so recording it at the near plane with its silhouette intact is exactly correct.
         //
-        //      It is done HERE, in the vertex, not by flipping the pipeline's depthClipEnabled, because the rasterizer
-        //      flag is not portable across the three backends this engine ships on: Veldrid's Metal backend derives
-        //      MTLDepthClipMode from DepthStencilState.DepthTestEnabled and IGNORES RasterizerState.DepthClipEnabled
-        //      entirely (so the flip is a NO-OP on Metal, the primary golden leg), and its Vulkan backend maps it to
-        //      depthClampEnable, a DEVICE FEATURE that may be absent. Clamping clip-space z at the vertex needs no
-        //      device feature and behaves identically everywhere. The light projection is ORTHOGRAPHIC, so w == 1 and
+        //      It is done HERE, in the vertex, rather than by flipping the pipeline's depthClipEnabled, and the reason
+        //      that still holds is the FAR plane: the rasterizer flag turns off BOTH clip planes at once, and this
+        //      pass wants the near one clamped and the far one still clipping. Two supporting reasons are gone as of
+        //      17.39.0 and are recorded here so nobody re-derives them: the flag used to be a silent NO-OP on Metal
+        //      (both backends derived MTLDepthClipMode from DepthStencilState.DepthTestEnabled and read the flag
+        //      nowhere), fixed under issue #598, and Vulkan's depthClampEnable is a DEVICE FEATURE that may be absent,
+        //      which VulkanFeatureChain now enables by name where it is present. Clamping clip-space z at the vertex
+        //      still needs nothing from the device. The light projection is ORTHOGRAPHIC, so w == 1 and
         //      clamping clip z is exactly "clamp NDC depth to >= 0". Every vertex of a triangle ends up at z >= 0 and
         //      the clipper interpolates linearly, so no interior point can fall in front of the near plane either.
         //      The FAR plane still clips, deliberately: geometry past it is down-light of every receiver in the

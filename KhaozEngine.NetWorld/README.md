@@ -201,16 +201,27 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   cell-owned, non-player state only. Mirrors `WorldPersistence` but keyed by cell coordinate instead of account,
   including the batched periodic pass: every dirty cell's snapshot goes through one `IWorldStore.SaveManyAsync`
   call instead of one `SaveAsync` per cell (the meta write and quarantine writes stay single-record saves).
-  - **Per-entity opt-out (since 17.38.0).** An entity carrying `KhaozEngine.Sharding.Transient` is left out of the
-    blob entirely, so a server-owned thing meant to outlive nothing (a pickup, a timed spawn, a projectile) can no
-    longer be caught in a save and resurrected as a husk. It excludes the ENTITY, which is the axis a
-    `ReplicationChannels` flag cannot reach: a channel gates one component TYPE, and dropping a component's bytes
-    would still persist the entity, just as a stripped husk. Mark one with
-    `ShardedWorldServer.MarkTransient(netId)` (`ClearTransient` / `IsTransient` beside it), or set the tag directly
-    on the entity. It costs nothing on the wire (a field-less ECS tag, in no `ReplicationRegistry`, so no blob
-    layout moves) and follows the entity across a cell handoff **within one `ShardHost`**, for any `ICellLink`
-    shape. A cross-node crossing between two hosts does not carry it (the tag has no wire id on purpose), so an
-    infra link spanning nodes re-applies it on arrival itself.
+  - **Per-entity opt-out (since 17.38.0, scoped since 17.39.0).** An entity carrying
+    `KhaozEngine.Sharding.Transient` is left out of the blob entirely, so a server-owned thing meant to outlive
+    nothing (a pickup, a timed spawn, a projectile) can no longer be caught in a save and resurrected as a husk. It
+    excludes the ENTITY, which is the axis a `ReplicationChannels` flag cannot reach: a channel gates one component
+    TYPE, and dropping a component's bytes would still persist the entity, just as a stripped husk. Mark one with
+    `ShardedWorldServer.MarkTransient(netId)` (`ClearTransient` / `IsTransient` beside it), or set the component
+    directly on the entity. It costs nothing on the wire (in no `ReplicationRegistry`, so no blob layout moves) and
+    follows the entity across a cell handoff **within one `ShardHost`**, for any `ICellLink` shape. A cross-node
+    crossing between two hosts does not carry it (the marker has no wire id on purpose), so an infra link spanning
+    nodes re-applies it on arrival itself.
+  - **`MarkTransient(netId, TransientScope)` says whether an UNLOAD also destroys it (since 17.39.0, #668).** A
+    cell is captured for two reasons, and until 17.39.0 one mark decided both: the durable save, and the in-memory
+    freeze `CellEvictor` keeps while a cell is unloaded. `TransientScope.Always` (what the one-argument overload
+    means, unchanged) is out of both. `TransientScope.DurableOnly` is out of the save alone, so a restart brings
+    back no husk and an in-process unload plus a route back hands the SAME entity under the same `NetId` to
+    whatever was tracking it. Read it back with `TryGetTransientScope(netId, out scope)`, while `IsTransient` stays
+    true for either. The route back reaches only as far as `CellEvictionConfig.MaxCachedSnapshots`, since past the
+    cache the coordinate falls back to the store-backed load and the store never held the entity. The seam under it
+    is `ICellPersistenceHost.SnapshotCell(coord, SnapshotPurpose)` plus `ReadTransientMarks` /
+    `ApplyTransientMarks`, all default interface methods, so an existing host implementation is unaffected and
+    keeps the 17.38.0 behaviour until it overrides them.
   - **Schema evolution + restore hardening (since 9.33.0).** `CellPersistenceConfig.RegisterMigration(fromVersion,
     migrate)` registers ordered `CellSnapshotMigration` (`byte[] body -> byte[]`) steps that bring an older blob
     forward on load, before restore. The chain is validated at construction (contiguous, no gaps, none at/beyond
@@ -935,7 +946,10 @@ long orb = pickups.Spawn(dropPosition, payloadId: PackItem(itemIndex, quantity),
   will ever touch a player entity.
 
 **A pickup is never persisted by default (since 17.38.0).** Every pickup `Spawn` creates is marked `Transient`
-(`KhaozEngine.Sharding`), so `CellPersistence` leaves it out of the cell blob and no restore brings it back. The
+(`KhaozEngine.Sharding`) at `TransientScope.Always`, so `CellPersistence` leaves it out of the cell blob, the
+evictor's unload freeze leaves it out too, and no restore of either brings it back. `Always` rather than
+`DurableOnly` because this seam's tracking is dropped on eviction anyway (#374), so for an orb both questions have
+the same answer. The
 seam's state (the time-to-live, the clock, the offer records) lives in this process only, so a resurrected pickup is
 a plain entity carrying `PickupState` that the seam knows nothing about, offered to nobody and expiring never.
 
@@ -948,7 +962,9 @@ belongs in the game's own content or save data, spawned again at boot, which is 
 means anything.
 
 The same opt-out is reachable by hand for any other transient server-owned entity, a timed spawn or a wave of adds:
-**`ShardedWorldServer.MarkTransient(netId)`**, with **`ClearTransient`** and **`IsTransient`** beside it. The mark
+**`ShardedWorldServer.MarkTransient(netId)`**, with **`ClearTransient`**, **`IsTransient`** and (since 17.39.0)
+**`MarkTransient(netId, TransientScope)`** / **`TryGetTransientScope(netId, out scope)`** beside it. Reach for
+`TransientScope.DurableOnly` when the entity must survive an in-process unload and still never be saved. The mark
 follows the entity across a cell handoff inside one `ShardHost`, whatever the `ICellLink` does (same call or a later
 one), so walking into the next cell does not make it persistable there. Two hosts on two nodes are a different
 matter: the tag has no wire id by design, so a cross-node link carries the mark in its own envelope or not at all.

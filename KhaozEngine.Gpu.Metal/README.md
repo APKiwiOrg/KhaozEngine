@@ -373,6 +373,14 @@ renames nothing, so that is a plain data race with a submitted command buffer, a
 removes it. Automatic hazard tracking does not help: it orders GPU work against GPU work and says nothing about
 a CPU write racing a GPU read.
 
+**A record-time uniform write LANDS THE MOMENT IT IS MADE, which is the ring's one consequence for a
+renderer.** It records no command, so it is not ordered against the draws in the same list: two writes to the
+same range inside one frame leave the second value for every draw of that frame, including the draws recorded
+between them. The Veldrid Metal backend orders the same write against the draws, so this is a real difference
+between the two Metal backends, and it is measured on both in one process by the engine's
+`RecordTimeUniformRewriteGpuTests`. Per-draw and per-pass uniforms are addressed by dynamic offset rather than by
+rewriting one range, which is what the engine's renderers do and what makes the ring possible at all.
+
 **A device-level `UpdateBuffer` on a uniform buffer reaches EVERY segment**, gated on the same completion read,
 with a segment an earlier recording is still reading queued as a pending patch applied at its next claim rather
 than waited for. So the call never blocks, from any thread, and a value written once
@@ -640,6 +648,16 @@ destination. The depth-stencil state is its own object, created only when the pi
 attachment, because setting one on a pass with no depth attachment is a validation error. Everything else the
 seam calls pipeline state (cull mode, winding, fill mode, depth clip, the blend colour) is ENCODER state, so it
 is resolved once at creation and emitted when the pipeline changes.
+
+**`DepthClipEnabled` is the one rasterizer member Metal has no field for, and it is honoured anyway.** Metal has
+no rasterizer depth-clip enable, so the seam's `false` becomes `-setDepthClipMode:MTLDepthClipModeClamp` and its
+`true` becomes `MTLDepthClipModeClip`, which is the same behaviour Direct3D 11 gets from
+`RasterizerDescription.DepthClipEnable` and Vulkan from the inverse of `depthClampEnable`. This backend shipped
+reproducing the incumbent's rule instead, which derived the mode from the DEPTH TEST and read the seam's flag
+nowhere at all, and `17.39.0` corrected both Metal paths together
+([#598](https://github.com/APKiwiOrg/KhaozEngine/issues/598)): the vendored Veldrid fork carries the identical
+change as `4.9.104`. Fixing only this one would have left the guest leg disagreeing with the `metal` grids the
+incumbent baked. Neither moved a committed golden.
 
 **A compute pipeline is created from the function alone**, with no `MTLComputePipelineDescriptor`. The
 descriptor exists to carry per-buffer mutability, the incumbent fills it by counting buffer-kind elements in

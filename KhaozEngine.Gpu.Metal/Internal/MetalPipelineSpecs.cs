@@ -42,10 +42,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <param name="CullMode">Which faces the rasterizer discards.</param>
     /// <param name="FrontFace">Which winding is front.</param>
     /// <param name="FillMode">Solid or wireframe.</param>
-    /// <param name="DepthClipMode">Clip or clamp against the near and far planes. Derived from the DEPTH TEST and
-    /// not from the seam's own <see cref="GpuRasterizerState.DepthClipEnabled"/>, which is the incumbent's
-    /// derivation reproduced and which https://github.com/APKiwiOrg/KhaozEngine/issues/598 records as a seam
-    /// question rather than a backend one.</param>
+    /// <param name="DepthClipMode">Clip or clamp against the near and far planes, straight off the seam's own
+    /// <see cref="GpuRasterizerState.DepthClipEnabled"/>, the same flag Direct3D 11 and Vulkan read
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/598). Until 17.39.0 it was derived from the DEPTH TEST
+    /// instead, reproducing the incumbent, which made four shipped pipelines clip on macOS and clamp
+    /// everywhere else.</param>
     /// <param name="PrimitiveType">The topology, which is a DRAW argument on this API.</param>
     /// <param name="BlendColour">The constant blend colour, emitted with <c>-setBlendColor:</c> and read by the
     /// two constant blend factors.</param>
@@ -80,12 +81,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// here rather than at the descriptor keeps the seam's whole depth state resolved in one place a test can
     /// read.</para>
     ///
-    /// <para><b>THE SEAM'S DEPTH TEST FLAG IS READ TWICE, and the second read is the odd one.</b> It decides the
-    /// comparison above, and it decides
-    /// <see cref="MetalPipelineState.DepthClipMode"/>, because that is what the incumbent does with it. The
-    /// second is not a rule anyone would invent from the seam, and it is reproduced rather than corrected for the
-    /// golden reason. https://github.com/APKiwiOrg/KhaozEngine/issues/598 carries the correction as a seam
-    /// decision.</para>
+    /// <para><b>THE ONE PLACE THIS BACKEND NO LONGER REPRODUCES THE INCUMBENT'S ANSWER IS THE DEPTH CLIP MODE,
+    /// and it is a correction rather than a departure.</b> <c>Veldrid.MTL.MTLPipeline</c> derived
+    /// <see cref="MetalPipelineState.DepthClipMode"/> from the DEPTH TEST and read
+    /// <see cref="GpuRasterizerState.DepthClipEnabled"/> nowhere at all, so the flag Direct3D 11 and Vulkan both
+    /// honour reached nothing on macOS. 17.39.0 fixes both Metal paths together
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/598): the vendored fork carries the same one-line change,
+    /// so the two backends still agree and the shared <c>metal</c> golden family still has one answer. Fixing
+    /// only this one would have left the guest leg disagreeing with the grids the incumbent baked.</para>
     /// </summary>
     internal static class MetalPipelineSpecs
     {
@@ -103,7 +106,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 MetalFormats.ToCullMode(rasterizer.CullMode),
                 MetalFormats.ToWinding(rasterizer.FrontFace),
                 MetalFormats.ToFillMode(rasterizer.FillMode),
-                depth.DepthTestEnabled ? MTLDepthClipMode.Clip : MTLDepthClipMode.Clamp,
+                // THE SEAM'S OWN FLAG, which is the whole of issue 598. Metal has no rasterizer depth-clip
+                // enable, so clamping IS how it expresses "do not clip against the near and far planes", and
+                // that is what DepthClipEnabled = false asks for on every other backend.
+                rasterizer.DepthClipEnabled ? MTLDepthClipMode.Clip : MTLDepthClipMode.Clamp,
                 MetalFormats.ToPrimitiveType(description.Topology),
                 description.BlendFactor,
                 rasterizer.ScissorTestEnabled,

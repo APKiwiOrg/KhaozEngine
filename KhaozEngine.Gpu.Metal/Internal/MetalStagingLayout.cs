@@ -43,7 +43,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// checked fact BEFORE a single golden runs.</para>
     ///
     /// <para><b>EVERY FORMULA CITES ITS SOURCE BY MEMBER NAME</b> (V-I6). The incumbent is the vendored Veldrid
-    /// fork this engine pins (<c>4.9.103</c>), and the six functions this reproduces are
+    /// fork this engine pins (<c>4.9.104</c>), and the six functions this reproduces are
     /// <c>FormatSizeHelpers.GetSizeInBytes</c>, <c>FormatHelpers.GetRowPitch</c>, <c>FormatHelpers.GetNumRows</c>,
     /// <c>FormatHelpers.GetDepthPitch</c>, <c>FormatHelpers.GetRegionSize</c> and <c>Util.GetDimension</c>, plus
     /// the three that compose them: <c>Util.ComputeMipOffset</c>, <c>Util.ComputeArrayLayerOffset</c> and

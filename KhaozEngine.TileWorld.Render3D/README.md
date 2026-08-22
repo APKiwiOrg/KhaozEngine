@@ -92,6 +92,14 @@ Hand-build a `TileGroundMaterialSet` directly when the layers come from somewher
 constructor takes the size, the material id of each leading slot, and one layer per id PLUS the trailing reserved
 one, and it refuses a layer that is not the size the set declares.
 
+**A slot past the last layer is not clamped to the last layer.** The tile-ground fragment clamps a corner slot to
+`0..63`, which is the uniform block's `TintTiling[64]` bound rather than the set's layer count, so a hand-built
+mesh naming a slot the set does not carry samples a layer that is not there. The three native backends
+hardware-clamp the layer index and read layer 0, and the incumbent Veldrid backend reads whatever the slice
+holds. A set built by `Build` cannot reach it (every set carries at least the reserved trailing layer, and the
+mesher only ever emits a slot `SlotOf` gave it), so this is about hand-built sets and hand-built meshes:
+[#675](https://github.com/APKiwiOrg/KhaozEngine/issues/675).
+
 **What a game does to get textures on the ground.** Two catalog fields and one rule about where the files live:
 
 1. Give the material a `texture` in the catalog JSON. A relative path resolves against the DIRECTORY of the

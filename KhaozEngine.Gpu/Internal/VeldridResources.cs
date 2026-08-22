@@ -13,7 +13,9 @@ namespace KhaozEngine.Gpu.Internal
         public void Dispose() { if (_liveness.IsAlive) Buffer.Dispose(); }
     }
 
-    /// <summary>Wraps a Veldrid <see cref="Texture"/>.</summary>
+    /// <summary>Wraps a Veldrid <see cref="Texture"/>, and remembers the LOGICAL array layer count the seam was
+    /// asked for, which is the only place the emulated one-layer array of #666 can be told from a real two-layer
+    /// one after creation. Every other property reads straight off the Veldrid texture.</summary>
     internal sealed class VeldridGpuTexture : IGpuTexture
     {
         internal Texture Texture { get; }
@@ -23,7 +25,22 @@ namespace KhaozEngine.Gpu.Internal
         public uint MipLevels => Texture.MipLevels;
         public uint SampleCount => VeldridMap.SampleCountToInt(Texture.SampleCount);
         public GpuPixelFormat Format => VeldridMap.FromVeldrid(Texture.Format);
-        public VeldridGpuTexture(DeviceLiveness liveness, Texture texture) { _liveness = liveness; Texture = texture; }
+
+        /// <summary>The array layer count the <see cref="GpuTextureDescription"/> asked for. One FEWER than
+        /// <c>Texture.ArrayLayers</c> exactly when the incumbent padded a one-layer array into a two-slice
+        /// resource to make it an array at all (see <c>VeldridGpuDevice.VeldridArrayLayers</c>).</summary>
+        internal uint ArrayLayers { get; }
+
+        /// <summary>True when a slice exists on the GPU that the seam never promised. Every path that names
+        /// SUBRESOURCES rather than texels has to ask, because Veldrid counts the phantom: a whole-resource copy
+        /// names it on both sides, and an upload addressed at it is accepted silently.</summary>
+        internal bool HasPhantomLayer => Texture.ArrayLayers > ArrayLayers;
+
+        public VeldridGpuTexture(DeviceLiveness liveness, Texture texture, uint logicalArrayLayers)
+        {
+            _liveness = liveness; Texture = texture; ArrayLayers = logicalArrayLayers;
+        }
+
         public void Dispose() { if (_liveness.IsAlive) Texture.Dispose(); }
     }
 

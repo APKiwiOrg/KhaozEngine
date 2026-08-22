@@ -62,7 +62,7 @@ this doc cannot silently drift apart.
 | Server ban list | `KhaozEngine.NetWorld` (`IBanStore`, `InMemoryBanStore`) | `WorldStoreBanStore` (persists over any `IWorldStore` keyspace `ban:{accountId}`) | (no extra dep; sync `IsBanned` via in-memory cache, `LoadAsync()` at startup) |
 | Player persistence, the record-agnostic core | `KhaozEngine.WorldStore` (`IPersistenceHost<TState>`, the head's side: `PlayerJoined` / `PlayerLeaving` / `SetPlayerState` / `JoinedSlots` / `TryGetAccountId` / `TryGetPlayerState`, plus the join-seed pair `SetPositionHintProvider` + `TryGetConfiguredSpawn` as default interface methods. Plus `PersistenceBinding<TState>` - `PositionOf` / `Encode` / `Decode` (`RecordDecoder<TState>`) / `Validate` / `WithPosition` - which is the whole of what a movement model contributes) | `StatePersistence<TState>` (+ `PersistenceCoreConfig` and `PositionHintCache` / `PositionHintProvider` behind the join seed) owns the interval, the dirty pass, the per-session load guard, the per-key write ordering, quarantine, the guest policy and the rejoin hints for every head in the fleet | (no extra dep. `KhaozEngine.WorldStore` stays zero-dependency: the core's own log lines leave through `PersistenceCoreConfig.Diagnostic`, an `Action<string, Exception?>` a head wires to its own logging) |
 | Player persistence, the float binding | `KhaozEngine.NetWorld` (`IWorldPersistenceHost`, the surface `WorldPersistence` drives, implemented by BOTH `WorldServer` and `ShardedWorldServer`, which since 17.39.0 DERIVES from `IPersistenceHost<PlayerMoveState>` and inherits every member below verbatim rather than declaring it: `PlayerJoined` / `PlayerLeaving` / `SetPlayerState` / `JoinedSlots` / `TryGetAccountId` / `TryGetPlayerState`, and since 17.37.0 the join-seed pair `SetResumePositionProvider` + `TryGetConfiguredSpawn`, both default interface methods so an existing implementer keeps compiling and simply keeps spawning every join at its configured spawn. `SetResumePositionProvider` keeps its NetWorld name and is bridged onto the generic `SetPositionHintProvider` by a re-implementation on this interface, so no implementer ever sees the generic one) | `WorldPersistence` (+ `WorldPersistenceConfig`, `PlayerRecord`, and the `ResumePositionCache` behind the join seed) is the FLOAT binding of `StatePersistence<PlayerMoveState>` (the row above) and wires it to any `IWorldStore`, keyed `player:{accountId}` (a TOKENLESS connection, which both heads hand over as `guest:{slot}`, is not persisted at all unless `WorldPersistenceConfig.PersistGuests` is set, and then under a durable per-session key rather than the seat) | (no extra dep, it rides whichever `IWorldStore` backend the game chose) |
-| Per-cell world persistence | `KhaozEngine.NetWorld` (`ICellPersistenceHost`, the surface `CellPersistence` drives, `ShardedWorldServer` implements it. Since 9.33.0 the host also carries `TryRestoreCell` for a non-throwing quarantining restore, a default interface method so existing implementers are unaffected. Since 10.0.0 the NetId high-water it carries - `NextNetId` / `EnsureNextNetIdAtLeast` - and the restored-id list are 64-bit `long`, and since 17.38.0 `SnapshotCell` skips any entity tagged `KhaozEngine.Sharding.Transient`, the per-entity persist opt-out, which needs nothing of the host, and the host also offers `Registry`, another default interface method, which `CellPersistence` takes as the default for `CellPersistenceConfig.Registry`, so a pre-v4 blob's generation is inferred against the host's live registry without the consumer wiring the same object in twice) | `CellPersistence` (+ `CellPersistenceConfig` with `RegisterMigration` + engine-provided migrations via `IncludeEngineMigrations`, `WorldMetaRecord`) wires it to any `IWorldStore`, migrating / quarantining / retaining on load and surfacing `CellPersistence.Issue` | Microsoft.Data.Sqlite / SqlClient (via the `IWorldStore` backend already chosen) |
+| Per-cell world persistence | `KhaozEngine.NetWorld` (`ICellPersistenceHost`, the surface `CellPersistence` drives, `ShardedWorldServer` implements it. Since 9.33.0 the host also carries `TryRestoreCell` for a non-throwing quarantining restore, a default interface method so existing implementers are unaffected. Since 10.0.0 the NetId high-water it carries - `NextNetId` / `EnsureNextNetIdAtLeast` - and the restored-id list are 64-bit `long`, and since 17.38.0 `SnapshotCell` skips any entity marked `KhaozEngine.Sharding.Transient`, the per-entity persist opt-out, which needs nothing of the host. Since 17.39.0 that mark carries a `TransientScope`, and the host also carries `SnapshotCell(coord, SnapshotPurpose)` plus `ReadTransientMarks` / `ApplyTransientMarks`, three more default interface methods, so `CellEvictor` can ask for an eviction-purpose freeze that keeps a `TransientScope.DurableOnly` entity and carry its mark beside the bytes, while an existing implementer keeps the durable-only-everywhere behaviour untouched, and the host also offers `Registry`, another default interface method, which `CellPersistence` takes as the default for `CellPersistenceConfig.Registry`, so a pre-v4 blob's generation is inferred against the host's live registry without the consumer wiring the same object in twice) | `CellPersistence` (+ `CellPersistenceConfig` with `RegisterMigration` + engine-provided migrations via `IncludeEngineMigrations`, `WorldMetaRecord`) wires it to any `IWorldStore`, migrating / quarantining / retaining on load and surfacing `CellPersistence.Issue` | Microsoft.Data.Sqlite / SqlClient (via the `IWorldStore` backend already chosen) |
 | Cell eviction (unloading idle cells) | `KhaozEngine.NetWorld` (`ICellEvictionHost`, which EXTENDS `ICellPersistenceHost` with `CanEvictCell` / `EvictCell` / `TryReadEvictionSignals`, implemented by `ShardedWorldServer`), plus the policy seam `KhaozEngine.Sharding.ICellEvictionPolicy` over `CellEvictionSignals`, which is the game's to replace | `CellEvictor` (+ `CellEvictionConfig`) persists each candidate through `CellPersistence` and removes it from the `ShardHost` only once the write lands, restoring an evicted coordinate on recreation. The shipped policy is `IdleCellEvictionPolicy` | (no extra dep, it rides whichever `IWorldStore` backend `CellPersistence` already has) |
 | World pickups (walk-over collectibles) | `KhaozEngine.NetWorld` (`IWorldPickupHost`, the surface `WorldPickups` drives, implemented by BOTH `WorldServer` and `ShardedWorldServer` - `JoinedSlots` / `TryGetPlayerNetId` / `TryGetPlayerState` / `SpawnEntity` are their pre-existing API verbatim, plus `TryGetEntity` / `DespawnEntity`, the resolve-and-remove halves `SpawnEntity` had been missing, neither of which ever touches a player entity, and since 17.38.0 `TryGetCellCoord`, a default interface method answering false so a host with no cell grid is unaffected) | `WorldPickups` (+ `WorldPickupsConfig` carrying the `OnCollect` decision hook and `OnRemoved`, the replicated `PickupState` built-in at `MoveProtocol.PickupTypeId`) owns spawn, the owner tag, the time-to-live, the linear proximity scan and the despawn, marks every pickup `Transient` so none is ever persisted, and follows a `CellEvictor` (`WorldPickupsConfig.Evictor` / `TrackEvictions`, with `ForgetCell` / `ForgetWhere` for a host that unloads its own way) so an evicted cell takes its pickups' tracking with it | (no extra dep. The payload is an opaque game-defined `long` the engine never interprets, and the ownership RULE lives in the consumer's `OnCollect`) |
 | Audio | `KhaozEngine.Audio` (`IMusicBackend`, `ISfxBackend`, `Null*` no-op defaults) | (in-package) `OpenAlMusicBackend` / `OpenAlSfxBackend` | Silk.NET.OpenAL (+ NLayer mp3 / NVorbis ogg decode, contained) |
@@ -1117,6 +1117,57 @@ second-UBO tell - and is the reason this note now says "per pipeline", not "per 
 frame is the shape the 2026-08-11 measurement reproduces on the incumbent and the mechanism above explains
 exactly**: the fragment referenced only the second buffer, so it was emitted at `buffer(0)` and written at
 `buffer(1)`.
+
+## GPU seam contract: `DepthClipEnabled` binds on every backend, Metal included (17.39.0)
+
+**The question this settles.** `GpuRasterizerState` is the engine's mirror of Veldrid's
+`RasterizerStateDescription`, and four of its five members map one-to-one onto a field every backend has.
+`DepthClipEnabled` is the exception: Metal has no rasterizer depth-clip enable at all. So the seam had to say
+whether the flag is a CONTRACT a backend must honour by whatever means its API offers, or a hint a backend may
+drop where the concept is missing. It is a contract, and the answer lives on the member's XML doc as well as
+here.
+
+**What each backend does with it.** Direct3D 11 passes it straight to `RasterizerDescription.DepthClipEnable`.
+Vulkan passes its INVERSE to `depthClampEnable` (the two flags are opposites, and it needs the `depthClamp`
+device feature, which `VulkanFeatureChain` enables by name). Metal expresses `false` as
+`-setDepthClipMode:MTLDepthClipModeClamp` on the render encoder, which is its equivalent, available since
+macOS 10.11. Clamping keeps geometry outside the depth range and rasterizes it with its depth pinned to the
+limit, rather than discarding it.
+
+**One carve-out, and it is Metal's alone: a render pass with NO depth attachment drops the flag.** Both Metal
+paths emit `-setDepthClipMode:` inside the same guard as the depth-stencil state, and that guard is the bound
+FRAMEBUFFER having a depth attachment, because a depth-stencil state on a depth-less pass is a validation
+failure (`../KhaozEngine.Gpu.Metal/Internal/MetalRenderApi.cs:134-138` returns early on `!block.DepthTrio`,
+and the vendored fork's `MTLCommandList.cs:181-186` gates the same three calls on a non-null
+`_framebuffer.DepthTarget`). A colour-only target therefore rasterizes at the encoder default, `MTLDepthClipModeClip`, whatever the
+bound pipeline asked for, and `false` cannot be expressed there at all. Direct3D 11 and Vulkan keep the flag in
+rasterizer state that exists with or without a depth attachment, so they honour it there. No pixel differs
+today: the engine's colour-only passes are the fullscreen post ones, whose vertex stage emits z = 0 exactly,
+and `SpriteBatch` takes its z from a 2D ortho, both inside the depth range where the two modes agree.
+[#674](https://github.com/APKiwiOrg/KhaozEngine/issues/674) decides whether Metal honours it on a depth-less
+pass or the seam declares it undefined there.
+
+**Why it needed writing down.** Until 17.39.0 BOTH Metal paths derived the clip mode from
+`DepthStencilState.DepthTestEnabled` and read `DepthClipEnabled` nowhere at all
+([#598](https://github.com/APKiwiOrg/KhaozEngine/issues/598)). `Veldrid.MTL.MTLPipeline` did it first and the
+engine's own `KhaozEngine.Gpu.Metal` reproduced it deliberately, because the committed `metal` goldens were
+baked through the incumbent's answer. The derivation agrees with the flag wherever the two happen to agree, and
+four shipped Render3D pipelines are exactly where they do not: sky, starfield, ground decal and particles all
+run the depth test with `depthClipEnabled: false`, so they clamped on Windows and Linux and clipped on macOS.
+
+**The repair had to land on both Metal paths in one release, and that is a general rule rather than a detail
+of this fix.** `GoldenCompare` maps `GpuBackendKind.MetalNative` onto the `metal` family, so the native backend
+verifies grids the incumbent baked. Any behavioural change to one of them is a change to the other's reference,
+so a seam repair on one Metal path alone turns the guest leg red by construction. This one shipped as the
+vendored fork's `4.9.104` plus the matching native change together.
+
+**Nothing rebaked, and the reason is worth keeping.** Three of the four pipelines are background passes whose
+vertex stage emits `gl_Position = vec4(xy, 1.0, 1.0)`, so `z == w` exactly, and the far-plane boundary is
+inclusive under clipping: clip and clamp rasterize those identically. The fourth draws projected billboards,
+where the modes differ for a sprite crossing EITHER plane: clipping drops the outside fragments, clamping keeps
+them and pins their depth to the limit, and at the FAR plane those clamped-to-1 fragments then pass the pass's
+LessEqual test against a background depth of 1. No golden scene has a billboard crossing either plane. Both
+Metal legs ran the full suite green on the committed grids.
 
 ## Adding a new backend
 

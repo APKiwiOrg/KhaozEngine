@@ -56,7 +56,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// without a device.</para>
     ///
     /// <para><b>EVERY FORMULA BELOW CITES ITS SOURCE.</b> The incumbent is the vendored Veldrid fork this engine
-    /// ships against (<c>4.9.103</c>, Vulkan tree <c>v4.9.0</c>), and the six functions this reproduces are
+    /// ships against (<c>4.9.104</c>, Vulkan tree <c>v4.9.0</c>), and the six functions this reproduces are
     /// <c>FormatSizeHelpers.GetSizeInBytes</c>, <c>FormatHelpers.GetRowPitch</c>, <c>FormatHelpers.GetNumRows</c>,
     /// <c>FormatHelpers.GetDepthPitch</c>, <c>FormatHelpers.GetRegionSize</c> and <c>Util.GetDimension</c>, plus the
     /// three that compose them: <c>Util.ComputeMipOffset</c>, <c>Util.ComputeArrayLayerOffset</c> and

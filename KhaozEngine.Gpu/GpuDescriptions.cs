@@ -44,12 +44,55 @@ namespace KhaozEngine.Gpu
         /// request to <see cref="GpuCapabilities.MaxMsaaSampleCount"/>. Must be a power of two.</summary>
         public uint SampleCount { get; }
 
+        /// <summary>Whether the texture is a 2D texture ARRAY rather than a plain 2D texture, which is what
+        /// decides the type a shader binds it as (<c>texture2DArray</c> / <c>Texture2DArray</c> against
+        /// <c>texture2D</c> / <c>Texture2D</c>).
+        /// <para>
+        /// TRUE WHENEVER <see cref="ArrayLayers"/> IS ABOVE ONE, so every caller written before this property
+        /// existed keeps the behaviour it had. The <c>isArray</c> constructor parameter is what a ONE-layer array
+        /// needs, because the layer count alone cannot tell one apart from a plain 2D texture, and
+        /// <see cref="Texture2DArray"/> sets it for you. Before #666 a one-layer set therefore created a plain 2D
+        /// texture, and a pipeline whose fragment declares an array sampler bound the wrong type: Metal kills the
+        /// process when validation is armed, lavapipe tolerates it silently.
+        /// </para>
+        /// <para>
+        /// IT NAMES THE 2D-ARRAY CASE AND NOTHING ELSE. A cubemap (<see cref="GpuTextureUsage.Cubemap"/>) keeps
+        /// its own layer-count rule in every backend, since a cube is already six faces and the seam has no
+        /// one-cube cube-array caller. A MULTISAMPLED ARRAY is not a shape this seam carries at all, and the
+        /// constructor refuses one rather than letting each backend decide: Metal and Vulkan would take the
+        /// multisample type, and Direct3D 11's shader resource view nests its multisample test INSIDE the
+        /// non-array arm, so the same description would take a plain (non-multisampled)
+        /// <c>Texture2DArray</c> view over a multisampled resource there. No backend agreeing on it is the
+        /// reason it is refused rather than documented.
+        /// </para></summary>
+        public bool IsArray { get; }
+
         public GpuTextureDescription(uint width, uint height, GpuPixelFormat format, GpuTextureUsage usage,
-            uint mipLevels = 1, uint arrayLayers = 1, uint sampleCount = 1)
+            uint mipLevels = 1, uint arrayLayers = 1, uint sampleCount = 1, bool isArray = false)
         {
             Width = width; Height = height; Format = format; Usage = usage;
             MipLevels = mipLevels; ArrayLayers = arrayLayers;
             SampleCount = sampleCount < 1 ? 1 : sampleCount;
+            IsArray = isArray || arrayLayers > 1;
+            RequireNoMultisampledArray(IsArray, SampleCount);
+        }
+
+        /// <summary>A MULTISAMPLED TEXTURE ARRAY IS NOT EXPRESSIBLE ON THIS SEAM, and saying so here is what stops
+        /// it from becoming a per-backend surprise. The three natives derive a multisampled type before they
+        /// derive an array type, Direct3D 11 derives the array type first and loses the multisample one, and no
+        /// engine path asks for the shape either way (every array the engine builds goes through
+        /// <see cref="Texture2DArray"/>, which is single-sample). Refusing at description time costs one
+        /// comparison and turns a silently wrong view into a message at the call that asked for it.</summary>
+        static void RequireNoMultisampledArray(bool isArray, uint sampleCount)
+        {
+            if (!isArray || sampleCount <= 1) return;
+
+            throw new ArgumentOutOfRangeException(nameof(sampleCount), sampleCount,
+                "A texture cannot be both a 2D ARRAY and MULTISAMPLED on this seam. The backends do not agree on "
+                + "which type wins: Metal, Vulkan and Direct3D 11's own render-target views take the multisample "
+                + "type, while Direct3D 11's shader resource view takes a plain Texture2DArray and drops the "
+                + "multisampling. Build the multisampled render target as a single-layer texture and resolve it "
+                + "(IGpuCommandList.ResolveTexture) into an array layer, or drop the sample count to 1.");
         }
 
         /// <summary>Convenience for a single-mip, single-layer 2D texture (mirrors <c>TextureDescription.Texture2D</c>).</summary>
@@ -58,10 +101,12 @@ namespace KhaozEngine.Gpu
 
         /// <summary>Convenience for a 2D texture ARRAY with explicit layer + mip counts (the splat-terrain layer
         /// stacks). The ctor already carries <see cref="MipLevels"/>/<see cref="ArrayLayers"/>; this names the
-        /// array case.</summary>
+        /// array case, and it is the only thing that can name a ONE-layer array, because it sets
+        /// <see cref="IsArray"/> rather than leaving the backends to infer array-ness from the layer count
+        /// (#666).</summary>
         public static GpuTextureDescription Texture2DArray(uint width, uint height, GpuPixelFormat format,
             GpuTextureUsage usage, uint arrayLayers, uint mipLevels)
-            => new(width, height, format, usage, mipLevels, arrayLayers);
+            => new(width, height, format, usage, mipLevels, arrayLayers, isArray: true);
     }
 
     /// <summary>Describes a GPU sampler. Engine mirror of Veldrid <c>SamplerDescription</c> (the subset used).</summary>
@@ -295,6 +340,40 @@ namespace KhaozEngine.Gpu
         public GpuFaceCull CullMode { get; }
         public GpuPolygonFill FillMode { get; }
         public GpuFrontFace FrontFace { get; }
+
+        /// <summary>
+        /// Whether primitives are CLIPPED against the near and far planes (<c>true</c>) or CLAMPED to them
+        /// (<c>false</c>).
+        /// <para>
+        /// THIS IS A BINDING CONTRACT ON EVERY BACKEND, not a hint one may ignore. Clamping keeps geometry that
+        /// falls outside the depth range: it still rasterizes, with its depth pinned to the nearer or farther
+        /// limit. It is what a far-plane background pass wants, and it is the classic directional-shadow
+        /// pancaking trick, where casters behind the light's near plane must still write depth.
+        /// </para>
+        /// <para>
+        /// It is the ONLY member here with no direct Metal equivalent, and that is why the contract is spelled
+        /// out. Metal has no rasterizer depth-clip enable, so both Metal backends express <c>false</c> as
+        /// <c>MTLDepthClipModeClamp</c> on the render encoder. Direct3D 11 passes it to
+        /// <c>RasterizerDescription.DepthClipEnable</c> and Vulkan passes its INVERSE to
+        /// <c>depthClampEnable</c>. Until 17.39.0 both Metal paths derived the mode from
+        /// <see cref="GpuDepthStencilState.DepthTestEnabled"/> and read this flag nowhere, which made four
+        /// shipped pipelines rasterize differently on macOS
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/598).
+        /// </para>
+        /// <para>
+        /// ONE CARVE-OUT, AND IT IS METAL'S ALONE: a render pass whose framebuffer has NO depth attachment
+        /// drops this flag. Both Metal paths emit <c>-setDepthClipMode:</c> inside the same guard as the
+        /// depth-stencil state, and that guard is the bound framebuffer having a depth attachment, because a
+        /// depth-stencil state on a depth-less pass is a validation failure. So a colour-only target rasterizes
+        /// at the encoder default (clip) whatever this says, and <c>false</c> cannot be expressed there at all.
+        /// Direct3D 11 and Vulkan keep it in rasterizer state that exists either way, so they honour it there.
+        /// No shipped pipeline can see the difference: the engine's colour-only passes are the fullscreen post
+        /// ones, whose vertex stage emits z = 0 exactly, and <c>SpriteBatch</c> takes its z from a 2D ortho,
+        /// both inside the depth range where the two modes agree.
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/674 decides whether Metal honours it on a depth-less
+        /// pass or the seam declares it undefined there.
+        /// </para>
+        /// </summary>
         public bool DepthClipEnabled { get; }
         public bool ScissorTestEnabled { get; }
 

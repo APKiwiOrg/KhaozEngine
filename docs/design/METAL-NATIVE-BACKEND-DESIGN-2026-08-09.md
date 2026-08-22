@@ -4569,7 +4569,7 @@ Filed as issues when this spec lands, not discovered later.
   (`Veldrid.MTL` never reads it and derives `MTLDepthClipMode` from the depth TEST instead), so four shipped
   renderers ask for clamping and get clipping on macOS alone, invisibly, because goldens are baked per backend
   family. This row reproduces the incumbent deliberately, since the committed `metal` goldens were baked through
-  it, and honouring the flag would need a rebake.
+  it, and honouring the flag would need a rebake. (Resolved in 17.39.0 without a rebake: see the changelog.)
   [#599](https://github.com/APKiwiOrg/KhaozEngine/issues/599) records that a shader referencing no resources at
   all still reflects one EMPTY set, so a pipeline declaring no layouts against it is refused by 2.2b's shape
   check. No shipped program is in that shape (all 34 reference at least one resource), so nothing depends on it

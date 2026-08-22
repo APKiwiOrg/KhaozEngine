@@ -39,7 +39,7 @@ namespace KhaozEngine.Render3D.Rendering
     /// is never clipped. Coalescing preserves submission order (a blend change starts a new run), and instances within
     /// a run rasterize in index order, so overlapping decals still composite in the order they were queued.
     /// </remarks>
-    internal sealed class GroundDecalRenderer : IDisposable
+    internal sealed partial class GroundDecalRenderer : IDisposable
     {
         /// <summary>Per-instance decal attributes, matching the <c>I*</c> inputs of <see cref="ShaderSources.DecalVert"/>
         /// (12 x vec4 = 192 bytes, every member 16-byte aligned). One entry per queued decal, streamed into the
@@ -96,7 +96,7 @@ namespace KhaozEngine.Render3D.Rendering
         // Equal at z=1: the exact complement, on BACKGROUND pixels. Bound only when a flagged decal is in the frame.
         IGpuPipeline _voidAlphaPipe, _voidAdditivePipe;
         readonly List<IDisposable> _retired = new();
-        readonly IGpuBuffer _frameUbo;            // 80 bytes: RAW inverse view-projection + time/quality, shared by every decal
+        readonly IGpuBuffer _frameUbo;            // FrameSlotCount 256-byte slots, one per pass (see GroundDecalRenderer.FrameSlots.cs)
         IGpuBuffer? _instances;                   // per-instance attribute stream, grown geometrically (old one retired)
         int _capacity;
         DecalInstance[] _packed = Array.Empty<DecalInstance>();   // reused CPU scratch, sized with the buffer
@@ -126,9 +126,9 @@ namespace KhaozEngine.Render3D.Rendering
             _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("DepthTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("Frame", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("Frame", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment, dynamic: true),
                 new GpuResourceLayoutElement("NormalTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment)));
-            _frameUbo = f.CreateBuffer(new GpuBufferDescription(80, GpuBufferUsage.UniformBuffer));
+            _frameUbo = f.CreateBuffer(new GpuBufferDescription(FrameUboBytes, GpuBufferUsage.UniformBuffer));
             BuildPipelines(f, colorOutput);
         }
 
@@ -201,7 +201,8 @@ namespace KhaozEngine.Render3D.Rendering
             // does not churn on instance-buffer regrowth the way the old dynamic-offset set did).
             if (_set != null && ReferenceEquals(_bound, res) && res.Generation == _boundGen) return;
             _set?.Dispose();
-            _set = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout, res.DepthColorTex, _gd.PointSampler, _frameUbo, res.NormalTex));
+            _set = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout, res.DepthColorTex,
+                _gd.PointSampler, new GpuBufferRange(_frameUbo, 0, FramePayloadBytes), res.NormalTex));
             _bound = res; _boundGen = res.Generation;
         }
 
@@ -389,17 +390,22 @@ namespace KhaozEngine.Render3D.Rendering
         /// number of GPU draw calls issued (= blend-run count), so the caller keeps its frame stats honest. No-op
         /// (returns 0) when empty.
         /// <para>
-        /// <paramref name="rejectDynamicGeometry"/> makes the GEOMETRY path discard pixels the model pass tagged as
-        /// dynamic/skinned (normal-target alpha ~0), so a ground decal never paints onto a character standing in its
-        /// Y-band (issue #235). The MAIN decal pass passes <c>true</c> - it runs after the normal target is resolved.
-        /// The early blob-shadow pass passes <c>false</c>: it runs before the skinned draws and resolves only depth,
-        /// so the normal alpha it would read is not yet valid under MSAA (and blob shadows want no such reject anyway).
+        /// <paramref name="pass"/> says WHICH of the frame's two decal passes this is, and decides two things
+        /// together. It selects the frame UBO slot this pass's draws bind (see
+        /// <c>GroundDecalRenderer.FrameSlots.cs</c>: the two passes used to share one range, which the native
+        /// backends' uniform ring collapses onto the last write, issue #483). And it decides the GEOMETRY path's
+        /// dynamic reject, which discards pixels the model pass tagged as dynamic/skinned (normal-target alpha ~0)
+        /// so a ground decal never paints onto a character standing in its Y-band (issue #235).
+        /// <see cref="FramePass.Main"/> rejects: it runs after the normal target is resolved.
+        /// <see cref="FramePass.BlobShadow"/> does not: it runs before the skinned draws and resolves only depth, so
+        /// the normal alpha it would read is not yet valid under MSAA (and blob shadows want no such reject anyway).
         /// With no dynamic geometry every geometry pixel keeps alpha 1, so the reject never fires and the render is
         /// byte-identical.
         /// </para></summary>
-        public int Draw(IGpuCommandList cl, RenderResources res, Matrix4x4 viewProj, float timeSeconds, GroundDecalQuality quality, bool hdr, bool rejectDynamicGeometry, ReadOnlySpan<GroundDecal> decals)
+        public int Draw(IGpuCommandList cl, RenderResources res, Matrix4x4 viewProj, float timeSeconds, GroundDecalQuality quality, bool hdr, FramePass pass, ReadOnlySpan<GroundDecal> decals)
         {
             if (decals.Length == 0) return 0;
+            bool rejectDynamicGeometry = pass == FramePass.Main;
             int voidCount = CountVoidDecals(decals);
             EnsureCapacity(decals.Length + voidCount);
             BindTargets(res);
@@ -415,7 +421,12 @@ namespace KhaozEngine.Render3D.Rendering
                 InvViewProj = inv,
                 TimeQ = new Vector4(timeSeconds, quality == GroundDecalQuality.Full ? 1f : 0f, maxRgb, rejectDynamicGeometry ? 1f : 0f),
             };
-            cl.UpdateBuffer(_frameUbo, 0, in frame);
+            // This pass's own slot, then the WHOLE mirror in one write, ahead of every draw that binds a slot of
+            // it. The other pass's slot goes up again carrying the bytes it already held, so the upload is a no-op
+            // for anything already recorded (see GroundDecalRenderer.FrameSlots.cs).
+            PackFrameSlot(pass, in frame);
+            UploadFrameSlots(cl);
+            uint frameSlot = FrameSlotOffset(pass);
             Matrix4x4 clipVp = GpuClip.Correct(viewProj, _gd.Capabilities);
 
             for (int i = 0; i < decals.Length; i++)
@@ -443,7 +454,7 @@ namespace KhaozEngine.Render3D.Rendering
             foreach (var run in _runs)
             {
                 cl.SetPipeline(run.Blend == DecalBlend.Additive ? _additivePipe : _alphaPipe);
-                cl.SetGraphicsResourceSet(0, _set!);
+                cl.SetGraphicsResourceSet(0, _set!, frameSlot);
                 // 6 vertices (two-triangle quad) x run.Count instances. Base instance = run.Start selects this run's
                 // slice of the shared instance buffer (the same base-instance path the model/shadow instanced draws use).
                 cl.Draw(6, (uint)run.Count, 0, (uint)run.Start);
@@ -454,7 +465,7 @@ namespace KhaozEngine.Render3D.Rendering
             foreach (var run in _voidRuns)
             {
                 cl.SetPipeline(run.Blend == DecalBlend.Additive ? _voidAdditivePipe : _voidAlphaPipe);
-                cl.SetGraphicsResourceSet(0, _set!);
+                cl.SetGraphicsResourceSet(0, _set!, frameSlot);
                 cl.Draw(6, (uint)run.Count, 0, (uint)run.Start);
             }
             return _runs.Count + _voidRuns.Count;

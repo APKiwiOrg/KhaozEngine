@@ -7,7 +7,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.39.0
 
-A tile world can draw a real glb kit per archetype now, and the glTF loader honours per-vertex COLOR_0.
+A tile world can draw a real glb kit per archetype now, the glTF loader honours per-vertex COLOR_0, and a
+server-owned entity can be transient across a restart without also being destroyed by a cell unload. Alongside
+it, the GPU seam can express a texture array with a single layer. The ground-decal pass no longer hands both of
+a frame's passes one shared uniform block. And `DepthClipEnabled` finally means the same thing on macOS as it
+does everywhere else.
 
 - **`GltfMeshResolver` (`KhaozEngine.TileWorld.Render3D`) loads an archetype's glb by its `MeshRef`.**
   `new GltfMeshResolver(string rootDirectory, ITileMeshResolver? fallback = null, Action<string>? log = null)`
@@ -44,6 +48,192 @@ A tile world can draw a real glb kit per archetype now, and the glTF loader hono
   boundary. The key itself is a `MeshWeldKey` struct rather than a 14-element `ValueTuple`, because such a tuple
   hashes only its seventh element and its `Rest`, which would leave position out of the hash and make the weld
   quadratic on an unmapped mesh.
+- **The ritual's pack into `local-feed` is guarded, so a finish after a release cannot overwrite the released
+  bytes.** No package content changes here, only the repo's own tooling. `scripts/pack-local-feed.sh` is the
+  ritual's pack step now (`AGENTS.md` names it instead of the bare `dotnet pack -c Release -o ./local-feed`): it
+  packs a STAGED version, packs when HEAD is the tag with a clean tree, and refuses when `<KhaozEngineVersion>`
+  names a version that is already tagged and HEAD has moved past it, which was the window in which `local-feed`
+  came to hold a `17.30.0` bigger than what `v17.30.0` describes (#492). `PACK_RELEASED_OK=1` is the deliberate
+  exception. `scripts/hooks/pack-release-guard.sh` denies the bare `dotnet pack` into `local-feed` under the same
+  rule from both settings files, `scripts/check-local-feed.sh` reports a feed that already drifted (it finds 8
+  such versions in the current dev feed), and `scripts/pack-standard.sh` holds the one copy of the rule the three
+  share. Tested by `scripts/tests/pack-local-feed.test.sh`.
+- **`Transient` carries a `TransientScope`, so "never saved" and "gone on an unload" stopped being one answer**
+  (`KhaozEngine.Sharding`, #668). A cell is captured for two reasons: the durable save that outlives the process,
+  and the in-memory freeze `CellEvictor` holds while a cell is unloaded so a re-entered coordinate restores inside
+  the create call. 17.38.0's mark excluded an entity from `CellSim.SnapshotOwned`, which BOTH consumers called, so
+  marking an entity also made a cell unload destroy it, which an unload is not supposed to do. `Transient` now
+  carries one field. `TransientScope.Always` (the default, so `default(Transient)` and every existing mark mean
+  exactly what they meant) is out of both captures. `TransientScope.DurableOnly` is out of the save alone, so a
+  restart brings back no husk and an unload plus a route back hands the SAME entity under the same `NetId` to
+  whatever was tracking it. The cost of the split is that `Transient` is no longer a zero-field ECS tag, so a
+  marked archetype now carries a one-field column instead of only an archetype bit.
+- **`ShardedWorldServer.MarkTransient(netId, TransientScope)` and `TryGetTransientScope(netId, out scope)`.** The
+  one-argument `MarkTransient` is kept as an overload meaning `TransientScope.Always`, and `IsTransient` stays true
+  for either scope (every scope is out of the durable save, which is what it asks). Re-marking at a different scope
+  moves the entity to that scope rather than adding a second mark, and `ClearTransient` clears either.
+- **`CellSim.SnapshotOwned(excludedNetIds, SnapshotPurpose)`**, with the one-argument overload unchanged as
+  `SnapshotPurpose.Durable`. `SnapshotPurpose.Eviction` leaves out only the `Always` entities, so an unload freeze
+  is a faithful in-memory copy of the cell rather than a second persistence decision.
+- **`CellEvictor` caches a freeze that is not the bytes it saved.** The store still gets the durable capture, and
+  the cache now gets an `Eviction`-purpose one taken at the last moment before the cell is removed, so the freeze
+  holds the cell as it stopped rather than as it stood when the write was queued. That second capture is taken only
+  when the cell actually holds a `DurableOnly` entity: the marks name exactly what the two captures differ by, so
+  an empty mark set means the durable bytes (which the finalize pass has just re-verified current) ARE the freeze,
+  and a game that never uses the scope keeps the 17.38.0 eviction cost of one capture. The eviction path is
+  unchanged in every other respect (the write, the re-verify against the durable bytes and the refusals all behave
+  as before), and a `MaxCachedSnapshots` of 0 skips the extra capture entirely.
+- **The marks ride BESIDE the freeze, because no capture can encode them.** `Transient` is in no
+  `ReplicationRegistry` by design, so an entity restored from a capture comes back unmarked, which would have made
+  a `DurableOnly` entity persistable the moment its cell was re-entered. `CellSim.ReadTransientMarks(purpose)` and
+  `ApplyTransientMarks(marks)` are the pair that carries them, the same shape `ShardHost.ProcessHandoffs` already
+  used across a handoff, and the evictor drops them with the cached bytes so the pair is never half-live.
+  `ShardHost.ProcessHandoffs` now carries the SCOPE across a crossing too, for every `ICellLink` shape, so a
+  `DurableOnly` entity that walks over a border does not arrive as an `Always` one.
+- **`ICellPersistenceHost` gained three DEFAULT interface methods**: `SnapshotCell(coord, SnapshotPurpose)`,
+  `ReadTransientMarks(coord, purpose)` and `ApplyTransientMarks(coord, marks)`. The defaults are the pre-17.39.0
+  behaviour (ignore the purpose, carry nothing, apply nothing), so an existing host implementation is unaffected
+  and reads `DurableOnly` as `Always` until it overrides them. `ShardedWorldServer` overrides all three.
+- **A pickup is still `Always`, deliberately.** `WorldPickups` marks every pickup it spawns at
+  `TransientScope.Always` rather than `DurableOnly`, because the seam's tracking is dropped on eviction anyway
+  (#374), so an orb that came back on the route into an unloaded cell would be exactly the untracked husk the mark
+  exists to prevent. Nothing about pickup behaviour moved.
+- **What `DurableOnly` does NOT promise:** the route back reaches only as far as the evictor's snapshot cache
+  (`CellEvictionConfig.MaxCachedSnapshots`, 1024 coordinates by default, oldest dropped first). Past it the
+  coordinate falls back to the store-backed load, and the store never held the entity, so it is gone exactly as
+  `Always` would have left it. A spawner using this scope must still be able to notice a net id it no longer owns.
+  `CellEvictionConfig.MaxCachedSnapshots` now documents what a dropped entry costs and how to size the cache for a
+  world that uses the scope.
+- **`GpuTextureDescription.IsArray` (`KhaozEngine.Gpu`) says a texture is a 2D ARRAY, so a ONE-layer array is
+  expressible (#666).** Every backend derived array-ness from `ArrayLayers > 1` alone, so
+  `GpuTextureDescription.Texture2DArray(..., arrayLayers: 1, ...)` created a plain 2D texture and any pipeline
+  whose fragment declares `texture2DArray` bound the wrong type. Metal aborts the process under armed validation
+  (`incorrect type of texture (MTLTextureType2D) bound at Texture binding at index 0 (expect
+  MTLTextureType2DArray)`), lavapipe reads through it silently, and Direct3D 11's shader resource view dimension
+  is likewise scalar-derived. `Texture2DArray` now sets the flag, and the constructor takes an `isArray`
+  argument. **Additive:** the layer-count inference is kept as the default, so `IsArray` is true whenever
+  `ArrayLayers > 1` and a caller that passes only a layer count creates exactly the texture it created before.
+  The flag names the 2D-array case only: a cubemap (`GpuTextureUsage.Cubemap`) keeps its own layer-count rule,
+  which is the precedence each backend already had, and a multisampled array is refused outright (below).
+- **All four backends honour it, three of them natively.** `KhaozEngine.Gpu.Metal` picks `MTLTextureType2DArray`
+  in `MetalFormats.TextureTypeFor`, `KhaozEngine.Gpu.Vulkan` picks `VK_IMAGE_VIEW_TYPE_2D_ARRAY` in
+  `VulkanFormats.ToViewType` and carries the flag on its sampled and storage view specs, and
+  `KhaozEngine.Gpu.D3D11` picks `Texture2DArray` for its shader resource and unordered access views (the
+  render-target and depth-stencil views keep the layer-count rule, since no shader declares their dimension and
+  their array arm already pins `ArraySize` 1). The incumbent Veldrid backend CANNOT express a one-layer array:
+  `MTLTexture`, `VkTextureView` and `D3D11TextureView` each test `ArrayLayers` against 1, there is no
+  `TextureType` value and no `TextureUsage` bit for it, and a `TextureView` cannot widen it either because its
+  own `ArrayLayers` feeds the same comparison. So it creates a second slice that is never uploaded to, never
+  sampled and never named by a slot, and the seam's logical layer count stays one.
+- **The emulated slice is CONTAINED rather than invisible, which is two behaviour changes on the incumbent.**
+  Nothing samples the phantom, so it cannot reach a picture. But Veldrid COUNTS it, so both seam paths that name
+  subresources rather than texels could see it. A whole-resource `CopyTexture` names every subresource on both
+  sides, so `GpuReadback.ToRgba` on a one-layer array threw `Source and destination Textures are not compatible
+  to be copied` against the one-slice staging texture it allocates, while the same call succeeded on all three
+  natives. `VeldridGpuCommandList.CopyTexture` now narrows to the LOGICAL subresources whenever either side pads,
+  which is the same set of texels the natives copy, and the whole-resource call is unchanged for every texture
+  that does not pad. And `UpdateTexture(..., arrayLayer: 1)` on a one-layer array was accepted silently here and
+  refused by name on the natives: it now raises `ArgumentOutOfRangeException` naming the emulation. Both are
+  pinned by `[GpuFact]`s that run on every backend.
+- **A STAGING texture is never padded.** It is CPU-visible memory with no view and nothing that binds it to a
+  shader, so array-ness cannot be observed on one and the pad only doubled the buffer a readback maps.
+- **A texture cannot be both an ARRAY and MULTISAMPLED, and the description says so.** The backends did not
+  agree on which type such a texture takes: Metal, Vulkan and Direct3D 11's render-target views derive the
+  multisample type, while Direct3D 11's SHADER RESOURCE view nests its multisample test inside the non-array arm
+  (`D3D11Texture.CreateSrvWindows`), so `IsArray && SampleCount > 1` took a plain `Texture2DArray` view over a
+  multisampled resource there. Nothing in the engine builds that shape, so `GpuTextureDescription`'s constructor
+  now throws `ArgumentOutOfRangeException` for it rather than leaving three answers in place. Every multisampled
+  render target the engine makes is single-layer and is unaffected.
+- **The tile-ground pad is gone.** `Scene3D.LoadTileGroundMaterial` duplicated a one-layer set into two layers
+  for exactly this reason since 17.38.0. A one-layer set is now a real one-layer array.
+  `TileGroundMaterialGpuTests.Single_flat_layer_reproduces_a_vertex_colour_look` is the conformance draw: with
+  the pad gone and the flag reverted it aborts the metal-native test host with the message above, and it passes
+  with the flag in, on the incumbent and on metal-native alike under armed Metal validation. No golden moves,
+  because the padded slice was never sampled and layer 0 carries the same texels either way.
+- **The FFT ocean's placeholder map dropped its pad too.** `OceanFftProducer` built the idle 1x1 map (the one
+  every water draw with no bake behind it binds to the water fragment's `texture2DArray` slot) with two layers
+  for the same reason, and it is a real one-layer array now. The live map's own `Math.Max(2 * cascades, 2)` floor
+  went with it: the cascade count is clamped to at least one, so `2 * cascades` was never below two and the floor
+  had been dead since it was written. Reverting the seam flag with the pad gone aborts the `scene3d_water` golden
+  on metal-native under armed validation (`incorrect type of texture (MTLTextureType2D) bound at Texture binding
+  at index 1`), and it passes with the flag in. No golden moves.
+- **`GroundDecalRenderer` gives each of a frame's two decal passes its OWN frame-UBO slot
+  ([#483](https://github.com/APKiwiOrg/KhaozEngine/issues/483)).** A frame runs that renderer twice: the
+  blob-shadow pass draws before the skinned draws and must not reject dynamic-tagged pixels, and the main pass
+  draws after the depth+normal resolve and must. Both wrote the same 80 bytes at offset 0 of one uniform buffer,
+  with the blob pass's draws recorded between the two writes. On `Direct3D11Native`, `VulkanNative` and
+  `MetalNative` a record-time `UpdateBuffer` to a uniform buffer is a memcpy into that frame's ring segment and
+  is not ordered against the draws, so the second write decided BOTH passes and the blob pass rendered with the
+  main pass's reject on, against a normal target that is not yet valid there. The buffer is now two 256-byte
+  slots, each pass packs its own and uploads the whole mirror, and the draws bind their slot with a dynamic
+  offset. `Draw` takes a `GroundDecalRenderer.FramePass` in place of the old `bool rejectDynamicGeometry`, so the
+  slot and the reject are one decision. Pixel-identical on the Veldrid backends, which order the write and were
+  always correct, so no golden moves.
+- **The collapse is measured rather than asserted from a doc comment.**
+  `RecordTimeUniformRewriteGpuTests` writes a uniform, draws into one target, rewrites the same range and draws
+  into a second, then reads a texel out of each: native Metal reads the LAST value for both draws and Veldrid
+  Metal reads each draw's own value, on one machine in one process. `docs/USING-KHAOZENGINE.md`'s Metal section
+  now carries the same "a uniform write lands when you make it" paragraph its Direct3D 11 and Vulkan siblings
+  already had.
+- **A standing guard replaces the sweep, and it judges bytes a draw could actually have read.**
+  `RecordingGpuCommandList` stamps each upload with how many draws preceded it AND each draw with the uniform
+  windows its bound sets cover, `UniformBufferTrackingGpuDevice` plus `UniformWindowIndex` supply the two facts
+  the handles do not carry (whether a buffer is a uniform buffer, and which range of it each resource set binds
+  and with what dynamic offset), and `UniformRewriteAudit` reports a pair only when a draw recorded BETWEEN the
+  two writes bound a window the two writes disagree inside. That last part is the whole rule: the engine's
+  sanctioned pattern packs one slot and uploads the WHOLE mirror, so two passes legitimately differ in the slot
+  the other one owns, and a comparison over the whole overlapping range calls `GroundDecalRenderer` and
+  `SpriteBatch.ViewProj.cs` collapses on shipped, correct code. `UniformRewriteGuardGpuTests` renders TWO
+  greedy frames (blob shadows over a sky, then the shadow-map tier over a starfield with GPU skinning on, which
+  is the only way to reach the cascade light UBO, both skinned slot buffers and the starfield UBO), each with a
+  skinned mesh queued and an advancing `EffectTimeSeconds`, and asserts the finding list is empty. It checks
+  that bound windows were recorded and that a rewritten buffer was among them, so the window rule cannot pass
+  vacuously. `UniformRewriteAuditTests` pins both verdicts with no device at all. Reverting the decal fix turns
+  the guard red naming the window. The full site table, with a verdict for every uniform buffer in `Render2D`
+  and `Render3D`, is `docs/design/RECORD-TIME-UNIFORM-REWRITE-AUDIT-2026-08-22.md`.
+- **And one row looks at the render.** `BlobDecalGhostHoleGoldenTests` draws a character standing in a blob,
+  then a second frame with the character gone, and asserts the floor it HID is blob-covered rather than punched
+  out. Under the collapse the blob pass takes the main pass's dynamic reject and applies it to a normal target
+  it has not resolved this frame, so last frame's character leaves a one-frame ghost hole. MSAA has to be on
+  (without it the normal target is the model pass's own attachment, already written this frame), the sample has
+  to be floor BEHIND the character rather than under it, and the frame has to be the one AFTER the character
+  moved rather than the first (an unresolved target reads opaque on Metal and rejects nothing). All three were
+  established by probing and are written down in section 4 of the design doc.
+- **`GpuRasterizerState.DepthClipEnabled` is honoured on Metal, on BOTH Metal paths, and is now a stated seam
+  contract** ([#598](https://github.com/APKiwiOrg/KhaozEngine/issues/598)). Direct3D 11 passed the flag to
+  `RasterizerDescription.DepthClipEnable` and Vulkan passed its inverse to `depthClampEnable`, while both Metal
+  backends derived `MTLDepthClipMode` from `DepthStencilState.DepthTestEnabled` and read the flag nowhere at all.
+  Metal has no rasterizer depth-clip enable, so `MTLDepthClipModeClamp` is its equivalent of
+  `DepthClipEnable = FALSE`, and both paths map the flag onto it directly now:
+  `KhaozEngine.Gpu.Metal`'s `MetalPipelineSpecs.ResolveState` and, in the vendored Veldrid fork, `MTLPipeline`'s
+  graphics constructor. Four shipped `KhaozEngine.Render3D` pipelines run the depth test with
+  `depthClipEnabled: false` (`SkyRenderer`, `StarfieldRenderer`, `GroundDecalRenderer`, `ParticleRenderer`), and
+  those four asked for depth CLAMPING and got clipping on macOS only. The member's XML doc and a new
+  `docs/DEPENDENCY-SEAMS.md` section now say what a backend is allowed to do with the flag: it is a contract, not
+  a hint, and a backend without the field expresses it by whatever means its API has.
+- **The two Metal paths had to be repaired in the same release, and that is a general rule.** `GoldenCompare`
+  maps `GpuBackendKind.MetalNative` onto the `metal` golden family, so the native backend verifies grids the
+  incumbent baked: a behavioural repair to one alone reddens the guest leg by construction. **No committed golden
+  moved.** Three of the four pipelines are background passes whose vertex stage emits `z == w` exactly, where the
+  inclusive far-plane test makes clipping and clamping identical, and the fourth draws billboards, whose modes
+  differ for a sprite crossing EITHER plane (clamping keeps the outside fragments and pins their depth to the
+  limit, and at the far plane those clamped-to-1 fragments then pass LessEqual against a background depth of 1),
+  which no golden scene has. Both Metal legs ran the full `KhaozEngine.Render.Tests` GPU suite green on the
+  committed grids, so there is no rebake.
+- **Vendored Veldrid fork bumped to `4.9.104`** (commit `d60cdd2392ba1c5ace12697bc1acf45f1879db14`, tag
+  `v4.9.104`, branch `fix/d3d11-immediate-4.9.0`, all three pushed to `APKiwiOrg/veldrid`, so the vendored
+  binaries' stated source is fetchable). Its only change over `4.9.103` is the Metal one above, which is
+  the fork's third deliberate difference from upstream and the first that is not opt-in.
+- **`DepthClipModeGpuTests` is the row that holds the contract, and it is backend-agnostic on purpose.** It
+  creates its device through `GpuDeviceContext.CreateHeadless()`, so the one class runs on all five golden legs
+  plus the incumbent Metal one and asserts both directions of the flag on each. The geometry is a quad whose
+  clip-space z runs from -0.5 to +0.5 across x, so one half sits in front of the near plane and the other inside
+  the frustum, with a pixel read from each: that separates "the flag was honoured" from "the draw did not happen".
+  Nothing in the suite could see this class of bug before, because the goldens are baked per backend family and
+  never compared across one. On the hosted runner's paravirtual Metal device, and only while the API validation
+  layer is holding it, the CLAMP row alone is skipped by name, because that device drops `setDepthClipMode` Clamp
+  under `MTLDebugDevice` while real Metal honours it with the same layer armed
+  ([#682](https://github.com/APKiwiOrg/KhaozEngine/issues/682)).
 
 ## 17.38.0
 

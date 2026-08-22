@@ -110,6 +110,15 @@ shared family is being moved on purpose. Without that guard a bake on the native
 reference it is being checked against and the incumbent's, and the file it wrote would be exactly the file it
 would then have compared against, so nothing downstream could notice.
 
+**A shared family also means a seam repair on ONE Metal path is a broken leg, so both move together.** The two
+Metal backends are held to the same grids, so a behavioural change to either one is a change to the other's
+reference. `17.39.0` is the worked example: `GpuRasterizerState.DepthClipEnabled` was read by Direct3D 11 and
+Vulkan and by neither Metal path, both of which derived the clip mode from the depth test instead
+([#598](https://github.com/APKiwiOrg/KhaozEngine/issues/598)), and the repair shipped as the vendored Veldrid
+fork's `4.9.104` plus the matching `KhaozEngine.Gpu.Metal` change in one release. Fixing only the native one
+would have reddened the guest leg against grids the incumbent baked. `DepthClipModeGpuTests` is the row that now
+holds the contract, and it is backend-agnostic on purpose so all six legs assert it rather than one.
+
 The Metal goldens (`scene2d.metal.txt`, `scene3d.metal.txt`), the Direct3D11 goldens
 (`scene2d.direct3d11.txt`, `scene3d.direct3d11.txt`, baked on WARP), and the Vulkan goldens
 (`scene2d.vulkan.txt`, `scene3d.vulkan.txt`, baked on lavapipe) are all committed and verified on every macOS /
@@ -228,6 +237,18 @@ The suite each leg runs is split by trigger, from measured hosted-runner cost
   attributed by [#621](https://github.com/APKiwiOrg/KhaozEngine/issues/621) to one row that stands down under
   the layer on the incumbent now, and arming it on a blocking golden leg is still the wrong place to discover
   the next provoking row.
+  **The same runner drops `setDepthClipMode` Clamp, and only under the API validation layer**
+  ([#682](https://github.com/APKiwiOrg/KhaozEngine/issues/682)). This is #617's shape rather than #614's:
+  deterministic, and it flips cleanly with the instrument.
+  `DepthClipModeGpuTests.DepthClipDisabled_KeepsTheHalfInFrontOfTheNearPlane` fails on this leg with the debug
+  device armed and passes on the same image and the same device with it off (run `32559601885`, 6595 passed, 0
+  failed), while real Apple silicon passes it WITH the layer armed. The clamp is derived and sent correctly on
+  the failing leg itself, and forking the draw to the incumbent's own four-argument selector did not move it
+  (run `32559296816`), so the engine is not the variable. The layer stays armed here, because it is the only
+  Metal API-validation gate the engine has, so that ONE row is skipped by name on a virtualised adapter while
+  the layer holds the device (`GpuFactAttribute.RequiresRealGpuUnderMetalApiValidation`, which reads
+  `MTL_CAPTURE_ENABLED` too, since a capture displaces the layer and leaves nothing validating). The clip row
+  and the derivation row stay unconditional, so a real regression in either direction still reddens this leg.
   **Neither Metal tier sets an error MODE, and the default is assert.** A validation error there aborts the test
   host rather than failing a row, so the rows that provoke the layer on purpose stand down in-process instead
   ([#591](https://github.com/APKiwiOrg/KhaozEngine/issues/591)). `MTL_DEBUG_LAYER_ERROR_MODE=nslog` stops the
@@ -359,6 +380,14 @@ Vulkan and Metal capability today, so the D3D11 leg skips those two retire-fence
 an assertion it can never satisfy - issue #423). This is the only skip strict mode allows, and it is not a
 hole in it: if no device can be created at all, the capability probe reports nothing and the test still
 errors, so a leg with a broken device can never go quiet.
+
+Two further declarations gate on the ADAPTER rather than on a capability.
+`[GpuFact(RequiresRealGpu = true)]` skips on a virtualised adapter, for a row asserting that an effect is
+visible at all rather than comparing a golden. `[GpuFact(RequiresRealGpuUnderMetalApiValidation = true)]`
+skips only where a virtualised adapter and an armed Metal API validation layer MEET, which is the pairing
+[#682](https://github.com/APKiwiOrg/KhaozEngine/issues/682) measured, so the row keeps running on real Metal
+under the same layer and on the same adapter without it. Both name the adapter in the skip reason, and both
+RUN when no device could be created, so a broken device stays an error.
 
 ### Golden test flavors
 

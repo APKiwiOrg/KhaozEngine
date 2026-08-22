@@ -70,7 +70,7 @@ namespace KhaozEngine.Tests.Gpu
                 // Render3D/Rendering/DistortionRenderer.cs:84
                 ["Distortion"] = L(U("Frame", VF), T("DepthTex"), S("Samp")),
                 // Render3D/Rendering/GroundDecalRenderer.cs:126
-                ["GroundDecal"] = L(T("DepthTex"), S("Samp"), U("Frame", F), T("NormalTex")),
+                ["GroundDecal"] = L(T("DepthTex"), S("Samp"), U("Frame", F, dynamic: true), T("NormalTex")),
 
                 // Render3D/Rendering/ModelRenderer.cs:215, :258, :260 and :279
                 ["Model"] = L(U("U", VF), T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"),

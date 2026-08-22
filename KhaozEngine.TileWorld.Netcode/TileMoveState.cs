@@ -43,7 +43,9 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
     public TileDirection Facing;
 
     /// <summary>Walk or run: which entry of <see cref="TileStepTicks"/> the current route steps at. Held on the
-    /// state so a mode change mid route takes effect on the next step rather than restarting the walk.</summary>
+    /// state, and re-read from every command, so a run toggled mid route takes effect at the START of the next step
+    /// rather than restarting the walk: <see cref="StepTotal"/> is not re-stamped until the step under way commits,
+    /// so a toggle can neither shorten nor stretch a step already in progress.</summary>
     public TileMoveMode Mode;
 
     /// <summary>Ticks already spent in the current step. Always below <see cref="StepTotal"/>, because the tick that

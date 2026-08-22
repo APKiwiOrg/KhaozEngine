@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Netcode;
 using Xunit;
@@ -30,10 +29,12 @@ public class TileMoveSimulatorTests
 
     static TileMoveSimulator Sim(TileCollisionMap map) => new(map, Ticks);
 
+    // Ticks a command through and then HOLDS its mode, which is what a client does: the run toggle rides on every
+    // command, so a plain TileCommand.None after a run walk would drop the player back to a walking cadence.
     static TileMoveState Run(TileMoveSimulator sim, TileMoveState s, TileCommand first, int ticks)
     {
         s = sim.Step(s, first, Dt);
-        for (int i = 1; i < ticks; i++) s = sim.Step(s, TileCommand.None, Dt);
+        for (int i = 1; i < ticks; i++) s = sim.Step(s, TileCommand.Continue(first.Mode), Dt);
         return s;
     }
 
@@ -44,10 +45,17 @@ public class TileMoveSimulatorTests
         TileMoveSimulator a = Sim(Bake(doc)), b = Sim(Bake(doc));
         TileMoveState sa = TileMoveState.At(new TileCoord(5, 5, 0), TileDirection.N);
         TileMoveState sb = sa;
-        var cmd = TileCommand.WalkTo(new TileCoord(11, 9, 0), TileMoveMode.Run);
         for (int i = 0; i < 40; i++)
         {
-            TileCommand c = i == 0 ? cmd : TileCommand.None;
+            // Run, drop to a walk mid step, then pick run back up mid step. The mode rides on every command, so a
+            // toggle is part of the input stream a replay has to reproduce, not a property of the first click.
+            TileCommand c = i switch
+            {
+                0 => TileCommand.WalkTo(new TileCoord(11, 9, 0), TileMoveMode.Run),
+                < 4 => TileCommand.Continue(TileMoveMode.Run),
+                < 16 => TileCommand.Continue(TileMoveMode.Walk),
+                _ => TileCommand.Continue(TileMoveMode.Run),
+            };
             sa = a.Step(sa, c, Dt);
             sb = b.Step(sb, c, Dt);
             Assert.Equal(sa, sb);
@@ -62,7 +70,7 @@ public class TileMoveSimulatorTests
         TileMoveState s = TileMoveState.At(new TileCoord(0, 0, 0), TileDirection.N);
         s = Run(sim, s, TileCommand.WalkTo(new TileCoord(0, 4, 0), TileMoveMode.Run), 1);
         Assert.Equal(new TileCoord(0, 0, 0), s.Tile);
-        s = sim.Step(s, TileCommand.None, Dt);
+        s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
         Assert.Equal(new TileCoord(0, 1, 0), s.Tile);
         Assert.Equal(0, s.StepTicks);
 
@@ -107,9 +115,16 @@ public class TileMoveSimulatorTests
         TileMoveState s = TileMoveState.At(new TileCoord(2, 5, 0), TileDirection.N);
         s = Run(sim, s, TileCommand.WalkTo(new TileCoord(8, 5, 0), TileMoveMode.Run), 60);
         Assert.True(s.Route.IsIdle);
-        Assert.True(s.Tile.X < 5);
+        // The tile the rule PICKS, not just any tile short of the wall: reachable tiles are x <= 4, and (4, 5) is
+        // the unique nearest to the goal (8, 5) at a squared distance of 16, against 17 for (4, 4) and (4, 6).
+        // Asserting "west of the wall" instead passes for a simulator that never moves off (2, 5) at all.
+        Assert.Equal(new TileCoord(4, 5, 0), s.Tile);
     }
 
+    // The re-path ATTEMPT is pinned by the sibling below, A_blocker_with_a_way_round_re_paths_and_still_arrives,
+    // which fails outright without one. This test cannot tell "re-pathed and found nothing" from "never re-pathed",
+    // because the re-path returns an empty path in this setup either way, so do not delete the sibling believing
+    // this one covers it.
     [Fact]
     public void A_blocker_that_appears_mid_route_re_paths_once_and_then_stands()
     {
@@ -124,7 +139,7 @@ public class TileMoveSimulatorTests
         // the region because the world either side of it is open, so a few tiles would only make the walk longer.
         for (int x = 0; x < TileRegion.Size; x++) doc.AddObject("tree", x, 3, 0, 0);
         TileCollisionBaker.Rebake(map, doc, Catalogs, new TileRect(0, 2, TileRegion.Size, 3), 0);
-        for (int i = 0; i < 6; i++) s = sim.Step(s, TileCommand.None, Dt);
+        for (int i = 0; i < 6; i++) s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
         Assert.True(s.Route.IsIdle);
         Assert.Equal(new TileCoord(0, 2, 0), s.Tile);
     }
@@ -139,7 +154,7 @@ public class TileMoveSimulatorTests
         s = Run(sim, s, TileCommand.WalkTo(new TileCoord(0, 6, 0), TileMoveMode.Run), 4);
         doc.AddObject("tree", 0, 3, 0, 0);
         TileCollisionBaker.Rebake(map, doc, Catalogs, new TileRect(-1, 2, 3, 3), 0);
-        for (int i = 0; i < 30; i++) s = sim.Step(s, TileCommand.None, Dt);
+        for (int i = 0; i < 30; i++) s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
         Assert.Equal(new TileCoord(0, 6, 0), s.Tile);
     }
 
@@ -168,6 +183,86 @@ public class TileMoveSimulatorTests
         Assert.Equal(TileDirection.S, s.Facing);
     }
 
+    [Fact]
+    public void A_path_radius_the_pathfinder_would_reject_throws_from_the_constructor()
+    {
+        TileCollisionMap map = Bake(FlatWorld());
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new TileMoveSimulator(map, Ticks, null, new TileMoveOptions { MaxPathRadius = 0 }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new TileMoveSimulator(
+            map, Ticks, null, new TileMoveOptions { MaxPathRadius = TilePathfinder.MaxSearchRadius + 1 }));
+
+        // The whole point of the guard is WHERE it throws. Unchecked, a zero radius builds a simulator that looks
+        // fine and throws out of TilePathfinder on the first WalkTo, which on a server is inside a tick.
+        var ok = new TileMoveSimulator(map, Ticks, null, new TileMoveOptions { MaxPathRadius = 1 });
+        Assert.Equal(1, ok.MaxPathRadius);
+        TileMoveState s = ok.Step(TileMoveState.At(new TileCoord(0, 0, 0), TileDirection.N),
+            TileCommand.WalkTo(new TileCoord(0, 1, 0), TileMoveMode.Walk), Dt);
+        Assert.Equal(new TileCoord(0, 1, 0), s.Route.End);
+    }
+
+    [Fact]
+    public void A_walk_to_another_plane_is_dropped_whole_and_never_coerced_onto_this_one()
+    {
+        TileMoveSimulator sim = Sim(Bake(FlatWorld()));
+        TileMoveState s = TileMoveState.At(new TileCoord(0, 0, 0), TileDirection.N);
+        s = Run(sim, s, TileCommand.WalkTo(new TileCoord(0, 6, 0), TileMoveMode.Run), 3);
+
+        TileMoveState dropped = sim.Step(s, TileCommand.WalkTo(new TileCoord(4, 2, 1), TileMoveMode.Walk), Dt);
+
+        // Ignored means ignored: the tick is indistinguishable from one that carried no command at all, mode
+        // included. The route is still the old one, not a fresh path to (4, 2) on the plane the player is on.
+        Assert.Equal(sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt), dropped);
+        Assert.Equal(new TileCoord(0, 6, 0), dropped.Route.End);
+        Assert.Equal(TileMoveMode.Run, dropped.Mode);
+        Assert.Equal(s.StepTotal, dropped.StepTotal);
+    }
+
+    [Fact]
+    public void Holding_run_mid_walk_leaves_that_step_alone_and_runs_the_next_one()
+    {
+        TileMoveSimulator sim = Sim(Bake(FlatWorld()));
+        TileMoveState s = TileMoveState.At(new TileCoord(0, 0, 0), TileDirection.N);
+        s = sim.Step(s, TileCommand.WalkTo(new TileCoord(0, 6, 0), TileMoveMode.Walk), Dt);
+
+        s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+        Assert.Equal(TileMoveMode.Run, s.Mode);
+        Assert.Equal(4, s.StepTotal);
+
+        // The step under way keeps the walk cadence it started with: four ticks, not two.
+        s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+        Assert.Equal(new TileCoord(0, 0, 0), s.Tile);
+        s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+        Assert.Equal(new TileCoord(0, 1, 0), s.Tile);
+        Assert.Equal(2, s.StepTotal);
+
+        // The next one is a run.
+        s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+        Assert.Equal(new TileCoord(0, 1, 0), s.Tile);
+        s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+        Assert.Equal(new TileCoord(0, 2, 0), s.Tile);
+    }
+
+    [Fact]
+    public void Dropping_run_mid_step_still_finishes_that_step_at_the_run_cadence()
+    {
+        TileMoveSimulator sim = Sim(Bake(FlatWorld()));
+        TileMoveState s = TileMoveState.At(new TileCoord(0, 0, 0), TileDirection.N);
+        s = sim.Step(s, TileCommand.WalkTo(new TileCoord(0, 6, 0), TileMoveMode.Run), Dt);
+
+        // Two ticks a step, one already spent, so this step commits on THIS tick even though the toggle is off.
+        s = sim.Step(s, TileCommand.Continue(TileMoveMode.Walk), Dt);
+        Assert.Equal(new TileCoord(0, 1, 0), s.Tile);
+        Assert.Equal(TileMoveMode.Walk, s.Mode);
+        Assert.Equal(4, s.StepTotal);
+
+        for (int i = 0; i < 3; i++) s = sim.Step(s, TileCommand.None, Dt);
+        Assert.Equal(new TileCoord(0, 1, 0), s.Tile);
+        s = sim.Step(s, TileCommand.None, Dt);
+        Assert.Equal(new TileCoord(0, 2, 0), s.Tile);
+    }
+
     // Carried over from the task 2 review: StepFraction is what the presenter glides on, so a value outside 0 to 1
     // would put a remote past the tile it is walking into. The tick a step COMMITS is the one that could do it,
     // because that is the tick the count reaches the total, so the walk below covers several commits in both modes.
@@ -182,7 +277,9 @@ public class TileMoveSimulatorTests
         int commits = 0;
         for (int tick = 0; tick < 40; tick++)
         {
-            TileCommand c = tick == 0 ? TileCommand.WalkTo(new TileCoord(6, 6, 0), mode) : TileCommand.None;
+            TileCommand c = tick == 0
+                ? TileCommand.WalkTo(new TileCoord(6, 6, 0), mode)
+                : TileCommand.Continue(mode);
             s = sim.Step(s, c, Dt);
             if (!s.Tile.Equals(previous)) { commits++; previous = s.Tile; }
             Assert.InRange(s.StepFraction, 0f, 1f);

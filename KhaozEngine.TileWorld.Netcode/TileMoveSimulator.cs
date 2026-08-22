@@ -15,6 +15,11 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// <para>The tick that carries a command is a FULL tick: it starts the walk and advances step progress by one, so
 /// a click never costs a tick of standing still. That is the rule the step-cadence tests pin, and it is why a
 /// freshly issued route reads one tick into its first step rather than zero.</para>
+/// <para>Mode rides on EVERY command, <see cref="TileCommandKind.None"/> included, because the wire frame is a
+/// fixed size and carries <see cref="TileCommand.Mode"/> whatever the kind. A toggle takes effect at the START of
+/// the next step: the step already under way keeps the total it was stamped with, so holding run halfway through a
+/// walking step never shortens that step, it only makes the one after it a run. A client sends
+/// <see cref="TileCommand.Continue"/> carrying the run state it is holding, on every tick.</para>
 /// <para>Nothing here is stateful. Every answer comes from the state handed in plus the map, so one instance is
 /// shared by every player on a server and by the prediction and reconcile paths on a client, and replaying a tick
 /// twice gives the same state twice.</para>
@@ -23,24 +28,31 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
 {
     readonly ITileTargets? targets;
 
-    /// <summary>Builds a stepper over a baked collision map and a step cadence. A defaulted
-    /// <see cref="TileStepTicks"/> (every count zero, which is what an unset field or a decoded blank gives)
-    /// falls back to <see cref="TileStepTicks.Default"/> rather than stepping every tick forever.</summary>
+    /// <summary>Builds a stepper over a baked collision map and a step cadence. A <see cref="TileStepTicks"/>
+    /// with EITHER count zero (which is what an unset field or a decoded blank gives) falls back to
+    /// <see cref="TileStepTicks.Default"/> rather than stepping every tick forever.</summary>
     /// <param name="map">The baked collision map to step and path over.</param>
     /// <param name="stepTicks">Ticks per step, per mode.</param>
     /// <param name="targets">Resolves interaction targets, null on a head that has no interactions wired.</param>
     /// <param name="options">Pathfinder knobs, null for the defaults.</param>
     /// <exception cref="ArgumentNullException"><paramref name="map"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="options"/> asks for an agent smaller than
-    /// one tile.</exception>
+    /// one tile, or for a path radius outside the range <see cref="TilePathfinder.FindPath"/> accepts.</exception>
     public TileMoveSimulator(TileCollisionMap map, TileStepTicks stepTicks, ITileTargets? targets = null,
         TileMoveOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(map);
         TileMoveOptions o = options ?? new TileMoveOptions();
         if (o.AgentSize < 1) throw new ArgumentOutOfRangeException(nameof(options), "AgentSize must be >= 1.");
+        // Checked HERE rather than on the first click. TilePathfinder.FindPath throws for a radius outside its own
+        // range, and that throw would otherwise land inside a server tick, on the first move by the first player.
+        if (o.MaxPathRadius < 1 || o.MaxPathRadius > TilePathfinder.MaxSearchRadius)
+            throw new ArgumentOutOfRangeException(nameof(options),
+                $"MaxPathRadius must be 1..{TilePathfinder.MaxSearchRadius}.");
         Map = map;
-        StepTicks = stepTicks.Walk == 0 ? TileStepTicks.Default : stepTicks;
+        // Either count zero is a blank cadence, and a zero RUN is the dangerous half: it survives a Walk-only
+        // check as a StepTotal of zero, which commits a tile every tick.
+        StepTicks = stepTicks.Walk == 0 || stepTicks.Run == 0 ? TileStepTicks.Default : stepTicks;
         this.targets = targets;
         AgentSize = o.AgentSize;
         MaxPathRadius = o.MaxPathRadius;
@@ -72,12 +84,21 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
 
         switch (command.Kind)
         {
-            case TileCommandKind.WalkTo:
+            // A goal on another plane is DROPPED whole rather than coerced onto the player's own (see BeginWalk),
+            // which is why the guard sits on the case label: an unmatched WalkTo falls past every case here and
+            // the tick runs as though no command arrived at all, its mode included.
+            case TileCommandKind.WalkTo when command.Goal.Plane == s.Tile.Plane:
                 s = BeginWalk(s, command.Goal, command.Mode);
                 s.InteractTarget = 0;
                 break;
             case TileCommandKind.Interact:
                 s = BeginInteract(s, command.Target, command.Mode);
+                break;
+            // The run toggle rides on every command, so holding run is a property of the TICK rather than of the
+            // click that started the route. StepTotal is deliberately not re-stamped: the step already under way
+            // keeps the cadence it began with, and the commit that ends it stamps the new one.
+            case TileCommandKind.None:
+                s.Mode = command.Mode;
                 break;
         }
 
@@ -86,14 +107,20 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
 
     /// <summary>Paths from where the player stands to <paramref name="goal"/> and starts walking it. An
     /// unreachable goal walks to the nearest reachable tile, the rule <see cref="TilePathfinder"/> already
-    /// implements. A goal the player already stands on just stands.</summary>
+    /// implements. A goal the player already stands on just stands.
+    /// <para>A goal on ANOTHER PLANE is refused, the same answer <see cref="TileCommandKind.Interact"/> gives a
+    /// target on another plane: the state comes back untouched, route, step progress and mode all as they were.
+    /// Planes are separate walkable surfaces with no step between them, so pathing the goal on the player's plane
+    /// instead would walk them to an X and Z they never clicked.</para></summary>
     /// <param name="state">The state to re-route.</param>
     /// <param name="goal">The tile clicked.</param>
     /// <param name="mode">Walk or run, which decides how many ticks each step of the new route takes.</param>
-    /// <returns>The state carrying the new route, with step progress reset to the start of a step.</returns>
+    /// <returns>The state carrying the new route, with step progress reset to the start of a step, or the state
+    /// unchanged when <paramref name="goal"/> is on another plane.</returns>
     public TileMoveState BeginWalk(in TileMoveState state, TileCoord goal, TileMoveMode mode)
     {
         TileMoveState s = state;
+        if (goal.Plane != s.Tile.Plane) return s;
         s.Mode = mode;
         s.StepTicks = 0;
         s.StepTotal = StepTicks.For(mode);
@@ -144,9 +171,14 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         return s;
     }
 
-    // A dynamic blocker landed on the next tile. Re-path ONCE toward the same end from where we stand; if that
+    // A dynamic blocker landed on the next tile. Re-path ONCE toward the same end from where we stand. If that
     // path cannot move either, drop the route and stand. Both heads run this identically, so it only diverges
     // when the two heads saw different blockers, which is exactly what the reconcile snap is for.
+    //
+    // Progress goes to zero and this tick does NOT advance the new step, unlike the tick that carries a command.
+    // That is deliberate: the tick was already spent filling the step that just failed its collision re-check, so
+    // charging it to the replacement step would pay for it twice. The player hesitates for one step when the way
+    // closes in front of them, which is the one place the class doc's "a click never costs a tick" does not hold.
     TileMoveState Repath(in TileMoveState state)
     {
         TileMoveState s = state;

@@ -142,11 +142,15 @@ Interact), `TileCoord Goal`, `TileMoveMode Mode`, `long Target` (net id or objec
 `TileMoveSimulator : ITickSimulator<TileMoveState, TileCommand>` owns the shared inputs (the collision map, the
 document for footprints, the tick counts) and is the ONE stepper both heads run:
 
-- `WalkTo`: `FindPath(map, plane, state.Tile, goal)` into a new `Route`, `StepTicks` to zero, mode taken from the
-  command. An unreachable goal walks to the nearest reachable tile, the OSRS rule `FindPath` already implements.
+- `WalkTo`: `FindPath(map, plane, state.Tile, goal)` into a new `Route`, mode taken from the command, and the tick
+  that carries the command COUNTS as the first tick of the first step, so a click never costs a tick of standing
+  still. An unreachable goal walks to the nearest reachable tile, the OSRS rule `FindPath` already implements. A
+  goal on another plane is dropped whole rather than pathed on the player's own plane.
 - `Interact`: `TileReach.Nearest(map, plane, state.Tile, targetFootprint)` picks the reach tile, routes to it, and
   records the target so arrival faces it and raises the action.
-- `None`: advance `StepTicks`. When it reaches `TicksPerStep(Mode)` (2 run, 4 walk), re-check `CanStep` from the
+- `None`: take the mode from the command (it rides on every kind, and a change lands at the START of the next step
+  rather than re-cutting the one under way), then advance `StepTicks`, which EVERY tick does, a tick carrying a
+  command included. When it reaches `TicksPerStep(Mode)` (2 run, 4 walk), re-check `CanStep` from the
   current tile into the next route tile. Legal: move, face the step direction, reset `StepTicks`, advance the
   index. Blocked (a dynamic blocker appeared): re-path once from the current tile to the route's end, and if that
   also fails, drop the route and stand. Both heads run this identically, so a blocker only causes a mismatch when

@@ -13,15 +13,18 @@ namespace KhaozEngine.Tests.TileNetcode;
 
 /// <summary>
 /// The tile binding over the shared persistence core, driven through a minimal host rather than a real server: a
-/// tile survives a restart, a record that will not decode is quarantined instead of applied, and a tokenless
-/// connection is never written under its seat. The core's own behaviour is pinned by the NetWorld suite, so what
-/// these cover is that the TILE side of the seam is wired up right.
+/// tile survives a restart, a record that will not decode is quarantined instead of applied and its player reset to
+/// the head's configured spawn (or left standing where the head built them, when the head configures none), and a
+/// tokenless connection is never written under its seat. The core's own behaviour is pinned by the NetWorld suite,
+/// so what these cover is that the TILE side of the seam is wired up right.
 /// </summary>
 public class TileWorldPersistenceTests
 {
     // The smallest thing the core can drive: raise join and leave synchronously, record every placement. No
-    // transport, no simulator, no server. SetPositionHintProvider and TryGetConfiguredSpawn are left to their
-    // default interface implementations, which is the shape of a head that spawns joins its own way.
+    // transport, no simulator, no server. SetPositionHintProvider is left to its default interface implementation,
+    // which is the shape of a head that spawns joins its own way. Spawn is the head's configured spawn, and a null
+    // one answers false exactly as the default TryGetConfiguredSpawn does, so one fake drives both quarantine
+    // branches.
     sealed class FakeHost : IPersistenceHost<TileMoveState>
     {
         public readonly Dictionary<int, string> Accounts = new();
@@ -36,6 +39,13 @@ public class TileWorldPersistenceTests
         {
             States[slot] = state;
             Placed.Add((slot, state, teleport));
+        }
+        public TileMoveState? Spawn;
+        public bool TryGetConfiguredSpawn(int slot, out TileMoveState spawn)
+        {
+            if (Spawn is { } configured && Accounts.ContainsKey(slot)) { spawn = configured; return true; }
+            spawn = default;
+            return false;
         }
         public void Join(int slot, string account, TileMoveState at)
         {
@@ -73,7 +83,9 @@ public class TileWorldPersistenceTests
             var host2 = new FakeHost();
             var p2 = new TileWorldPersistence(host2, store);
             host2.Join(1, "acct-1", TileMoveState.At(new TileCoord(0, 0, 0), TileDirection.N));
-            for (int i = 0; i < 50 && host2.Placed.Count == 0; i++) { p2.Update(0.25f); await Task.Delay(10); }
+            // FlushAsync drains the apply queue as well as awaiting the read, so the restore has landed when it
+            // returns. A poll loop here would be a wall-clock budget against a real sqlite file on a shared runner.
+            await p2.FlushAsync();
             Assert.Single(host2.Placed);
             Assert.Equal(new TileCoord(30, 40, 1), host2.Placed[0].state.Tile);
             Assert.Equal(TileDirection.SE, host2.Placed[0].state.Facing);
@@ -86,15 +98,38 @@ public class TileWorldPersistenceTests
     {
         var store = new InMemoryWorldStore();
         await store.SaveAsync("player:acct-2", Encoding.UTF8.GetBytes("not json at all"));
-        var host = new FakeHost();
+        var host = new FakeHost { Spawn = TileMoveState.At(new TileCoord(7, 8, 0), TileDirection.S) };
         string? quarantinedKey = null;
         var p = new TileWorldPersistence(host, store);
         p.OnRecordQuarantined += (key, _) => quarantinedKey = key;
         host.Join(2, "acct-2", TileMoveState.At(new TileCoord(1, 1, 0), TileDirection.N));
         for (int i = 0; i < 50 && quarantinedKey is null; i++) { p.Update(0.25f); await Task.Delay(10); }
         Assert.Equal("acct-2", quarantinedKey);
+        // Reset to the configured spawn, and as a genuine teleport. Declining to place would leave a rejoiner
+        // standing on the resume hint the rejected record seeded, which nothing here ever validated (#642).
+        (int slot, TileMoveState state, bool teleport) = Assert.Single(host.Placed);
+        Assert.Equal(2, slot);
+        Assert.Equal(new TileCoord(7, 8, 0), state.Tile);
+        Assert.Equal(TileDirection.S, state.Facing);
+        Assert.True(teleport);
         await p.FlushAsync();                          // the quarantine copy is a tracked write, awaited here
         Assert.NotNull(await store.LoadAsync("quarantine:player:acct-2"));
+    }
+
+    [Fact]
+    public async Task A_quarantine_places_nobody_when_the_host_has_no_configured_spawn()
+    {
+        var store = new InMemoryWorldStore();
+        await store.SaveAsync("player:acct-4", Encoding.UTF8.GetBytes("not json at all"));
+        var host = new FakeHost();                     // no Spawn, so the host answers false like the default no-op
+        string? quarantinedKey = null;
+        var p = new TileWorldPersistence(host, store);
+        p.OnRecordQuarantined += (key, _) => quarantinedKey = key;
+        host.Join(4, "acct-4", TileMoveState.At(new TileCoord(1, 1, 0), TileDirection.N));
+        for (int i = 0; i < 50 && quarantinedKey is null; i++) { p.Update(0.25f); await Task.Delay(10); }
+        Assert.Equal("acct-4", quarantinedKey);
+        // A head that seeds no join has nothing to undo, so the player keeps whatever spawn it was built at.
+        Assert.Empty(host.Placed);
     }
 
     [Fact]
@@ -108,5 +143,10 @@ public class TileWorldPersistenceTests
         await p.FlushAsync();
         Assert.Null(await store.LoadAsync("player:guest:3"));
         Assert.False(await store.ExistsAsync("player:3"));
+        // Not just those two keys: nothing was written under ANY key, so a future PersistGuests default flipping to
+        // true (which files a minted player:guest:{guid}) cannot leave this test green.
+        var keys = new List<string>();
+        await foreach (WorldStoreEntry entry in store.EnumerateAsync()) keys.Add(entry.Key);
+        Assert.Empty(keys);
     }
 }

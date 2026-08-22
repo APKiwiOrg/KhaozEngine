@@ -41,10 +41,30 @@ public class TilePlayerRecordTests
     }
 
     [Fact]
+    public void A_missing_member_takes_its_default()
+    {
+        // The other half of forward tolerance, and the half a live account depends on: a record written before a
+        // member existed still reads. Version's property initializer is what makes a pre-Version record decode as 1
+        // rather than 0, and nothing else pins that.
+        TilePlayerRecord r = TilePlayerRecord.Decode(Encoding.UTF8.GetBytes("{\"tileX\":4}"));
+        Assert.Equal(4, r.TileX);
+        Assert.Equal(0, r.TileZ);
+        Assert.Equal(0, r.Plane);
+        Assert.Equal(0, r.Facing);
+        Assert.Equal(1, r.Version);
+        Assert.Null(r.Game);
+    }
+
+    [Fact]
     public void The_encoding_is_canonical_lf_indented_json()
     {
-        string json = Encoding.UTF8.GetString(TilePlayerRecord.From(TileMoveState.At(default, TileDirection.N)).Encode());
-        Assert.Contains("\n", json);
+        // Pinned literally, member names included: these bytes are a durable on-disk format, so a rename or a
+        // reorder here is a save-losing change and has to show up as a red test rather than as a silent migration.
+        string json = Encoding.UTF8.GetString(
+            TilePlayerRecord.From(TileMoveState.At(new TileCoord(-12, 340, 2), TileDirection.SW)).Encode());
+        Assert.Equal(
+            "{\n  \"Version\": 1,\n  \"TileX\": -12,\n  \"TileZ\": 340,\n  \"Plane\": 2,\n  \"Facing\": 4,\n  \"Game\": null\n}",
+            json);
         Assert.DoesNotContain("\r", json);
     }
 }

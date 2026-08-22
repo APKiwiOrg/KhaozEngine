@@ -107,7 +107,7 @@ namespace KhaozEngine.WorldStore;
 /// <para>A game attaches durable per-player state (XP, inventory, quests) through
 /// <see cref="PersistenceCoreConfig.CaptureGameState"/> / <see cref="PersistenceCoreConfig.ApplyGameState"/>: an
 /// opaque blob that rides the SAME record, dirty comparison, interval save, flush-on-drain and load-on-join
-/// thread-marshalling as position. The engine never interprets the blob; the game owns its format and migration.
+/// thread-marshalling as position. The engine never interprets the blob. The game owns its format and migration.
 /// Because the record is account-keyed (<c>player:{accountId}</c>), the blob is unaffected by cell handoff.</para>
 /// </summary>
 /// <typeparam name="TState">The head's authoritative per-player movement state, opaque to everything here except
@@ -295,7 +295,7 @@ public sealed partial class StatePersistence<TState>
 
     // Drops every finished task from the pending list. Previously only RanToCompletion was pruned, so on a store
     // outage the faulted/canceled tasks accumulated until FlushAsync surfaced them - the list grew unbounded. Faults
-    // are observed (reading Task.Exception) and surfaced via OnStoreError; the failed save's state stays dirty and is
+    // are observed (reading Task.Exception) and surfaced via OnStoreError. The failed save's state stays dirty and is
     // retried on the next pass. Collect the exceptions inside the lock but raise the event outside it (never run a
     // game callback while holding pendingLock).
     private void PrunePending()

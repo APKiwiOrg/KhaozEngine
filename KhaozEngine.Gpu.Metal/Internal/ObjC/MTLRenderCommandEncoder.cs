@@ -17,16 +17,19 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// row-11 addendum is why the state block is NOT row 11's: it goes into a render encoder, and under M-A1's
     /// deferred begin no encoder exists at the moment <c>SetPipeline</c> is called.</para>
     ///
-    /// <para><b>EIGHTEEN SELECTORS LIVE HERE AND ALL EIGHTEEN HAVE BEEN SENT TO A REAL ENCODER</b>, which is a
+    /// <para><b>TWENTY SELECTORS LIVE HERE AND ALL TWENTY HAVE BEEN SENT TO A REAL ENCODER</b>, which is a
     /// stronger statement than it looks and was not true of the first eight when they landed. The four
     /// argument-table members are four PAIRS, and <c>MetalBindFlushGpuTests</c>'s original fixture had a vertex
     /// function reading one buffer, so the vertex halves of the texture and sampler setters were never executed
     /// by anything. That is exactly the class of gap the rule above exists to close, since an unrecognised
     /// selector aborts the process rather than producing a wrong pixel, so a second fixture whose vertex stage
     /// samples now drives them and the test reads the executed set off the sink's own log rather than inferring
-    /// it from a run that did not throw. The ten added by row 14 are driven by
+    /// it from a run that did not throw. The twelve in the draw family are driven by
     /// <c>MetalDrawPathGpuTests</c>, which reads a PIXEL rather than an outcome, because the draws are the one
-    /// family here whose wrong answer is a wrong colour rather than a refusal.</para>
+    /// family here whose wrong answer is a wrong colour rather than a refusal. TWO of that twelve are the SHORT
+    /// draw forms, and keeping the invariant true of the LONG ones is why that file carries a row drawing at a
+    /// non-zero base instance in each of the two shapes: without it, adding the fork would have retired two
+    /// selectors from every run while leaving them declared.</para>
     ///
     /// <para><b>THE FOUR ARGUMENT-TABLE SETTERS TAKE THE STAGE AS AN ARGUMENT, because on this protocol the stage
     /// is spelled INSIDE the selector.</b> <c>setVertexBuffers:offsets:withRange:</c> and
@@ -236,26 +239,52 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
             => ObjCMsgSend.SendVoidUInt(Handle, ObjCRuntime.Sel("setStencilReferenceValue:"), reference);
 
         /// <summary>
-        /// <c>-drawPrimitives:vertexStart:vertexCount:instanceCount:baseInstance:</c>, the LONG form
-        /// unconditionally.
+        /// <c>-drawPrimitives:vertexStart:vertexCount:instanceCount:baseInstance:</c> at a NON-ZERO base
+        /// instance, and the four-argument <c>-drawPrimitives:vertexStart:vertexCount:instanceCount:</c> at zero.
         /// <para>
-        /// THE INCUMBENT PICKS BETWEEN THIS AND THE SHORTER SELECTOR ON <c>instanceStart == 0</c> and this
-        /// backend does not, for M-A7's reason applied to a different pair: at a base instance of zero the two
-        /// calls are the same draw, so the branch buys nothing and one code path is one thing to be right about.
+        /// <b>ROW 14 SENT THE LONG FORM UNCONDITIONALLY AND THIS IS THE ADDENDUM THAT TOOK IT BACK
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/598).</b> The original reading was M-A7's applied to
+        /// a different pair: at a base instance of zero the two calls are the same draw, so the branch buys
+        /// nothing and one code path is one thing to be right about. That reasoning holds on every device this
+        /// engine has ever measured and it does not hold on the one CI runs on. On hosted <c>macos-26</c>, whose
+        /// device is Apple Paravirtual rather than a real GPU,
+        /// <c>DepthClipModeGpuTests.DepthClipDisabled_KeepsTheHalfInFrontOfTheNearPlane</c> fails on this backend
+        /// deterministically (runs 32543081557 and 32544949857) while the Veldrid incumbent passes the same row
+        /// on the same device in the same job, and the incumbent's difference in the call stream is exactly this
+        /// selector: its <c>DrawCore</c> takes the SHORT form when the base instance is zero. The clamp is
+        /// derived correctly and <c>-setDepthClipMode:</c> is sent, pinned by <c>MetalPipelinePlanTests</c> on
+        /// the failing leg itself, so the encoder state is right and the DRAW is where the two legs part.
+        /// </para>
+        /// <para>
+        /// M-A7 IS NOT WEAKENED BY THIS, because M-A7 is about not reading a deprecated feature set on the hot
+        /// path to choose between two calls. There is no feature-set read here and no device query: the fork is
+        /// on an argument the caller already has in a register. What DOES change is the standing of "one code
+        /// path" as a reason on its own. It is a tie-breaker between two calls a driver treats alike, and a guest
+        /// driver is entitled not to.
         /// </para>
         /// </summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal void DrawPrimitives(MTLPrimitiveType type, uint vertexStart, uint vertexCount,
             uint instanceCount, uint baseInstance)
-            => ObjCMsgSend.SendVoidDrawPrimitives(Handle,
+        {
+            if (baseInstance == 0)
+            {
+                ObjCMsgSend.SendVoidDrawPrimitivesShort(Handle,
+                    ObjCRuntime.Sel("drawPrimitives:vertexStart:vertexCount:instanceCount:"),
+                    (nuint)(ulong)type, vertexStart, vertexCount, instanceCount);
+                return;
+            }
+
+            ObjCMsgSend.SendVoidDrawPrimitives(Handle,
                 ObjCRuntime.Sel("drawPrimitives:vertexStart:vertexCount:instanceCount:baseInstance:"),
                 (nuint)(ulong)type, vertexStart, vertexCount, instanceCount, baseInstance);
+        }
 
         /// <summary>
-        /// <c>-drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:instanceCount:baseVertex:baseInstance:</c>,
-        /// the long form for the same reason, and <b>the one call in this row whose ARGUMENT PLACEMENT is not
-        /// covered by row 1's spike</b>.
+        /// <c>-drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:instanceCount:baseVertex:baseInstance:</c>
+        /// when either base is non-zero, the six-argument form when both are zero, and <b>the one call in this
+        /// row whose ARGUMENT PLACEMENT is not covered by row 1's spike</b>.
         /// <para>
         /// TEN ARGUMENTS AGAINST EIGHT REGISTERS, so <paramref name="baseVertex"/> and
         /// <paramref name="baseInstance"/> cross ON THE STACK. <see cref="ObjCMsgSend.SendVoidDrawIndexedPrimitives"/>
@@ -266,16 +295,35 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         /// THE INDEX BUFFER TRAVELS IN THE CALL rather than being bound beforehand, which is Metal's shape and not
         /// an engine choice, and it is why this backend keeps no index-buffer bind record at all.
         /// </para>
+        /// <para>
+        /// THE SHORT ARM IS SYMMETRY RATHER THAN EVIDENCE. The failing row named on
+        /// <see cref="DrawPrimitives"/> is a NON-INDEXED draw, so nothing observed says the guest driver treats
+        /// the indexed pair the same way. It is forked anyway, on the reading that a backend answering "which
+        /// selector" one way in one draw and the other way in the other is a difference a later reader has to
+        /// re-derive, and that the two are the same draw wherever the long form was ever fine.
+        /// </para>
         /// </summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal void DrawIndexedPrimitives(MTLPrimitiveType type, uint indexCount, MTLIndexType indexType,
             MTLBuffer indexBuffer, nuint indexBufferOffset, uint instanceCount, int baseVertex, uint baseInstance)
-            => ObjCMsgSend.SendVoidDrawIndexedPrimitives(Handle,
+        {
+            if (baseVertex == 0 && baseInstance == 0)
+            {
+                ObjCMsgSend.SendVoidDrawIndexedPrimitivesShort(Handle,
+                    ObjCRuntime.Sel("drawIndexedPrimitives:indexCount:indexType:indexBuffer:"
+                        + "indexBufferOffset:instanceCount:"),
+                    (nuint)(ulong)type, indexCount, (nuint)(ulong)indexType, indexBuffer.Handle,
+                    indexBufferOffset, instanceCount);
+                return;
+            }
+
+            ObjCMsgSend.SendVoidDrawIndexedPrimitives(Handle,
                 ObjCRuntime.Sel("drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:"
                     + "instanceCount:baseVertex:baseInstance:"),
                 (nuint)(ulong)type, indexCount, (nuint)(ulong)indexType, indexBuffer.Handle, indexBufferOffset,
                 instanceCount, baseVertex, baseInstance);
+        }
 
         // THE ONE PLACE THE STAGE BECOMES A SELECTOR, so a new setter added later cannot spell the fork a second
         // way. Compute is refused rather than folded into the vertex arm: a compute encoder is a different

@@ -15,7 +15,7 @@ namespace KhaozEngine.NetWorld;
 /// an empty string and can reject unknown-version clients. On accept, the unwrapped inner token is delegated to
 /// the wrapped inner authenticator unchanged, so subject/display-name resolution is exactly as without the decorator.
 /// Compose it like any authenticator: <c>new WorldServer(..., authenticator: new VersionCheckingAuthenticator(...))</c>.
-/// <para>Since 17.39.0 the gate itself lives in <see cref="VersionGateAuthenticator"/> and this type forwards to
+/// <para>Since 17.40.0 the gate itself lives in <see cref="VersionGateAuthenticator"/> and this type forwards to
 /// one, so the engine has a single version-gate body rather than two that can drift. Name, surface and behaviour
 /// are unchanged, and a consumer that does not reference this package composes the
 /// <see cref="VersionGateAuthenticator"/> directly.</para>

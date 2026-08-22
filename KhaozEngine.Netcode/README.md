@@ -280,7 +280,7 @@ wraps `TryVerify` as an `IConnectionAuthenticator`.
   a v3 is ever added. `displayName` is `null` for a v1 token, the empty string for a v2 empty-name claim, else the
   decoded name.
 
-## Connect-time gate: ConnectionGate + HandshakeToken (17.39.0)
+## Connect-time gate: ConnectionGate + HandshakeToken (17.40.0)
 
 Promoted out of Ruinborne, because two games need the identical door and a tile server cannot reference
 `KhaozEngine.NetWorld`, where the codec used to live.

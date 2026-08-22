@@ -226,7 +226,15 @@ public sealed partial class TileWorldServer : IDisposable
 
     /// <summary>Builds a player entity and binds the slot to it, at the configured spawn or, for an account a
     /// rejoin hint is on file for, on the tile that account left. Returns its net id. Raises
-    /// <see cref="PlayerJoined"/> once the entity exists, so a persistence layer loads from there.</summary>
+    /// <see cref="PlayerJoined"/> once the entity exists, so a persistence layer loads from there.
+    /// <para>A slot that STILL HOLDS a player is vacated through the ordinary leave path first, never rebound
+    /// underneath its occupant: <see cref="PlayerLeaving"/> is raised for the old account, its final state is
+    /// filed, and its entity is despawned before the new one is built. That is what files the outgoing player's
+    /// record, clears persistence's in-flight guard for their account, and keeps an orphaned entity out of every
+    /// interest snapshot around it. Released rather than refused, because it is reachable without any caller doing
+    /// anything wrong: <c>NetServer</c> drops the OLDEST event when a host stops keeping up, so a lost Left
+    /// followed by a recycled seat lands here, and a throw out of <see cref="Poll"/> would take the session pump
+    /// down for every other player on the server.</para></summary>
     /// <param name="slot">The connection slot to bind. Binding is by slot rather than by entity, because a slot is
     /// what survives the entity being handed between cells mid walk.</param>
     /// <param name="accountId">The verified account id, which is what persistence keys a record on, and what the

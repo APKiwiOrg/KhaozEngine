@@ -177,7 +177,7 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
     that player's persistence for the rest of the session.
   - **Where the machinery actually lives.** Everything described above is
     `KhaozEngine.WorldStore.StatePersistence<TState>`, generic over a head's state and over its record shape, and
-    `WorldPersistence` is the FLOAT binding of it (17.39.0). The public surface here is unchanged, byte for byte and line for
+    `WorldPersistence` is the FLOAT binding of it (17.40.0). The public surface here is unchanged, byte for byte and line for
     line: the same config type and defaults, the same `player:{accountId}` and `quarantine:` keys, the same
     `PlayerRecord` JSON, the same cadence, the same events in the same order, the same log lines under the same
     `WorldPersistence` category. What this package supplies is the four `PlayerMoveState`-shaped answers (a position
@@ -353,7 +353,7 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
   `DisconnectReasonDetail`, and never proceeds to snapshots. A legacy/version-less client decodes as version
   `""`, so the rule can reject it; a compatible version delegates the inner token to `inner` unchanged
   (subject + display-name resolution identical).
-  - **The layer codec itself moved to `KhaozEngine.Netcode.HandshakeToken` in 17.39.0.** `ProtocolHandshake` is now
+  - **The layer codec itself moved to `KhaozEngine.Netcode.HandshakeToken` in 17.40.0.** `ProtocolHandshake` is now
     a delegation, so the bytes on the wire and every member on it are unchanged, and `MaxVersionBytes` is
     `HandshakeToken.MaxLabelBytes`. `VersionCheckingAuthenticator` forwards to
     `KhaozEngine.Netcode.VersionGateAuthenticator` the same way, so the engine has one version-gate body rather

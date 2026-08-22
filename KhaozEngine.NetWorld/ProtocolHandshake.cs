@@ -12,7 +12,7 @@ namespace KhaozEngine.NetWorld;
 /// <see cref="DisconnectReason.IncompatibleVersion"/> (rather than a generic token rejection). All purely
 /// additive: an unwrapped token (a legacy client, or a client that did not opt in) decodes back as
 /// version <c>""</c> with the original token bytes, so existing setups are byte-identical on the wire.
-/// The layer bytes themselves live in <see cref="HandshakeToken"/> since 17.39.0, so the engine has one
+/// The layer bytes themselves live in <see cref="HandshakeToken"/> since 17.40.0, so the engine has one
 /// implementation of them and a tile server can reach the codec without referencing this package.
 /// </summary>
 public static class ProtocolHandshake

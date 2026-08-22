@@ -1,6 +1,10 @@
 # Tile-world netcode: click-to-walk on a 250 ms tick, server-authoritative, sharded by region (2026-08-22)
 
-Status: designed, unbuilt. Program issue: [#670](https://github.com/APKiwiOrg/KhaozEngine/issues/670). Sub-project 2
+Status: R1 SHIPPED in engine 17.40.0, R2 next. The package is `KhaozEngine.TileWorld.Netcode`. Where this
+document and the shipped code disagree, the code's own type docs win: the tick that carries a command is a FULL
+step tick, the run mode rides every command and applies at the next step start, a cross-plane command is dropped
+whole, `TileReach` tests the step OUTWARD from the footprint, and the arrival turn happens in the simulator so both
+heads predict it. Program issue: [#670](https://github.com/APKiwiOrg/KhaozEngine/issues/670). Sub-project 2
 of the Grimhollow program, following sub-project 1 ([TILE-WORLD-DESIGN-2026-08-15.md](TILE-WORLD-DESIGN-2026-08-15.md),
 [#629](https://github.com/APKiwiOrg/KhaozEngine/issues/629)), whose tile world, collision map, pathfinder and
 renderer this design moves players across. Game-side issue:

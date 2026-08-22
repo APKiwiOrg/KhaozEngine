@@ -60,11 +60,11 @@ namespace KhaozEngine.Gpu.Vulkan
         /// provider EXISTS, which is a fact about the app's wiring, while whether the machine can run it is a
         /// separate question answered by <see cref="GpuBackendSelector.IsBackendSupported"/> through the
         /// provider's own functional probe. Decision V-I4 keeps those two apart on purpose, and here the reason
-        /// bites harder than it did on Direct3D 11: on Linux the OS probe already returns
-        /// <see cref="GpuBackendKind.Vulkan"/>, so a native request that fails falls back to the incumbent Vulkan
-        /// backend and reports <see cref="GpuBackendSource.FallbackAfterFailure"/>, which in a log line looks a
-        /// great deal like a forgotten registration. A forgotten registration THROWS instead, and telling those
-        /// two apart is what the whole soak measurement rests on.
+        /// bites harder than it did on Direct3D 11: a native request that fails falls back to the incumbent
+        /// Vulkan backend (<see cref="GpuBackendSelector.IncumbentFor"/>) and reports
+        /// <see cref="GpuBackendSource.FallbackAfterFailure"/>, which in a log line looks a great deal like a
+        /// forgotten registration. A forgotten registration for a backend the caller NAMED throws instead, and since 17.40.0 a forgotten one for the DEFAULT falls back like an incapable machine, because the probe answers a provider-backed kind everywhere now and a game that never referenced the package made no wiring mistake. Telling the two apart is what the
+        /// whole soak measurement rests on, and NAMING the backend is what keeps them apart.
         /// </para>
         /// </summary>
         public static void Register() => GpuBackendProviders.Register(GpuBackendKind.VulkanNative, _provider);

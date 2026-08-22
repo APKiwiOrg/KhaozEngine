@@ -142,11 +142,13 @@ consults the probe FIRST, so all three states behave: no loader and no driver bo
 `InvalidOperationException` is therefore what it says it is, a failure on a machine whose probe really did
 answer yes.
 
-Keeping those two questions apart is decision V-I4, and here it bites harder than it did on Direct3D 11. On
-Linux the OS probe already returns `GpuBackendKind.Vulkan`, so a native request that fails falls back to the
-incumbent Vulkan backend and reports `FallbackAfterFailure`, which in a log line looks a great deal like a
-forgotten registration. A forgotten registration THROWS instead, and telling those two apart is what the whole
-soak measurement rests on.
+Keeping those two questions apart is decision V-I4, and here it bites harder than it did on Direct3D 11. A
+native request that fails falls back to the incumbent Vulkan backend (`GpuBackendSelector.IncumbentFor`) and
+reports `FallbackAfterFailure`, which in a log line looks a great deal like a forgotten registration. A
+forgotten registration for a backend the caller NAMED throws instead, and since 17.40.0 a forgotten one for
+the DEFAULT falls back like an incapable machine, because the probe answers a provider-backed kind everywhere
+now and a game that never referenced the package made no wiring mistake. Telling the two apart is what the
+whole soak measurement rests on, and NAMING the backend is what keeps them apart.
 
 ## Naming it
 

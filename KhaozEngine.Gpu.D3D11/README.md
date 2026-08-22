@@ -46,10 +46,14 @@ failure is silent and machine-dependent. Reflection probing by assembly name is 
 a missing reference into a runtime string mismatch. A package reference plus one line is compile-time visible,
 trim-safe and testable.
 
-Forgetting the call is loud rather than quiet: asking for `Direct3D11Native` with nothing registered throws
-`GpuBackendProviderMissingException` naming the line that fixes it, and never falls back to another backend. A
-run that quietly used a backend other than the one it was asked for would report its frame times, its telemetry
-session header and its golden images under the wrong name.
+Forgetting the call is loud rather than quiet where it matters: NAMING `Direct3D11Native` with nothing
+registered throws `GpuBackendProviderMissingException` naming the line that fixes it, and never falls back to
+another backend. A run that quietly used a backend other than the one it was ASKED for would report its frame
+times, its telemetry session header and its golden images under the wrong name.
+
+Since 17.40.0 the case where nobody named it is different, because the OS probe answers `Direct3D11Native` on
+Windows. A game that has not referenced this package has not asked for anything, so it falls back to
+`GpuBackendKind.Direct3D11` with a WARN naming the missing registration rather than failing to boot.
 
 ## What the machine probe checks
 

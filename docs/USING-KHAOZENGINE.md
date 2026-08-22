@@ -9317,12 +9317,13 @@ KhaozEngineD3D11.Register();   // unconditionally, on every OS
 
 **Device creation is real, and nothing selects this backend for you.** Both creation entry points build a device
 on Windows, and off Windows they refuse with a `PlatformNotSupportedException` naming the operating system, which
-the fallback path turns into a WARN and a boot on `Direct3D11`. Reaching the native backend takes naming it:
-`KE_GRAPHICS_BACKEND=direct3d11-native`, or an explicit `GpuBackendKind.Direct3D11Native`. The
-`direct3d11-native` CI leg exists now and is blocking, verifying the shared `direct3d11` goldens on a pinned
-WARP adapter. Its first recorded evidence, and the rollout gates that decide the default flip, are
-https://github.com/APKiwiOrg/KhaozEngine/issues/460, so treat it as opt-in until those gates are green.
-`GpuBackendKind.Direct3D11` is the working Direct3D 11 backend and stays selectable indefinitely.
+the fallback path turns into a WARN and a boot on `Direct3D11`. **Since 17.40.0 the OS probe selects this
+backend on Windows**, so referencing the package and calling `Register()` is all it takes, and naming it
+(`KE_GRAPHICS_BACKEND=direct3d11-native`, or an explicit `GpuBackendKind.Direct3D11Native`) is still how you
+reach it from anywhere else. The `direct3d11-native` CI leg is blocking and verifies the shared `direct3d11`
+goldens on a pinned WARP adapter. Its recorded evidence, and gate M1, which the flip did not close, are
+https://github.com/APKiwiOrg/KhaozEngine/issues/460. `GpuBackendKind.Direct3D11` stays selectable by
+`KE_GRAPHICS_BACKEND=d3d11` for ONE release and is removed in the next.
 
 Call `Register()` unconditionally. It is safe on macOS and Linux and names no Direct3D type: the package targets
 `net10.0` rather than `net10.0-windows`, and every body that touches the interop sits behind
@@ -9381,11 +9382,10 @@ bind**, so a storage texture a dispatch wrote and a later draw samples needs no 
 rule already says (both in one list, the texture created `Storage | Sampled`). **Compute rule 2 is unchanged and
 you must still honour it**: this backend additionally orders a dependent-dispatch chain inside one list, which is
 a backend property and not a contract change, and code that drops the `End` plus `Submit` plus `WaitForIdle`
-because it works here breaks on Metal. Nothing SELECTS
-it for you either: the Linux default is still `GpuBackendKind.Vulkan`, and flipping that is the last step of the
-rollout rather than a side effect of the member existing. `GpuBackendKind.Vulkan`, which goes through Veldrid,
-is the working Vulkan backend and stays selectable indefinitely. Calling `Register()` today costs one dictionary
-entry and changes nothing about how your game boots.
+because it works here breaks on Metal. **Since 17.40.0 the Linux default IS `GpuBackendKind.VulkanNative`**, so
+referencing the package and calling `Register()` is what a Linux head boots on, and a head that does not gets
+`GpuBackendKind.Vulkan` through Veldrid with a WARN. That incumbent stays selectable by
+`KE_GRAPHICS_BACKEND=vulkan` for ONE release and is removed in the next.
 
 **The `vulkan-native` CI leg exists now and is blocking**, verifying the shared `vulkan` goldens on lavapipe with
 `KE_VULKAN_DEVICE=llvmpipe` pinned, and its scheduled full suite runs under `KE_VULKAN_VALIDATION=strict` with a
@@ -9759,11 +9759,11 @@ WINDOWED creation is real
 the world rather than the package: this operating system, this machine, or a handle that is not a Cocoa
 `NSWindow` with a content view. `GpuBackendKind.MetalNative` and its `metal-native`
 and `mtl-native` tokens exist, so the kind is nameable via `KE_GRAPHICS_BACKEND=metal-native`: a registered
-process answers the machine probe for it, an unregistered one throws the provider-missing exception rather than
-falling back, and nothing selects it by default (`ProbeOS` still answers `Metal` on macOS).
-`GpuBackendKind.Metal`, which goes through Veldrid, is the working Metal backend and stays selectable
-indefinitely. Calling `Register()` today costs one dictionary entry and changes nothing about how your game
-boots.
+process answers the machine probe for it, and an unregistered one that NAMED it throws the provider-missing
+exception rather than falling back. **Since 17.40.0 `ProbeOS` answers `MetalNative` on macOS**, so a game that
+calls `Register()` boots on this backend without naming anything, and one that does not gets
+`GpuBackendKind.Metal` through Veldrid with a WARN. That incumbent stays selectable by
+`KE_GRAPHICS_BACKEND=metal` for one release and is removed in the next.
 
 **Four environment variables steer it, and none is on by default.** `KE_METAL_DEVICE` picks which GPU: a
 zero-based index into `MTLCopyAllDevices()`, a case-insensitive substring of a device name, or `discrete`,
@@ -10178,8 +10178,9 @@ ever run. Only the default location is swept, never a directory you named yourse
 
 Capabilities, adapter selection, the debug layer and device-loss reporting. Every lever below is live on a device
 created in 17.32.0 or later, and reaching any of it means naming the backend
-(`KE_GRAPHICS_BACKEND=direct3d11-native`, or an explicit `GpuBackendKind.Direct3D11Native`), because nothing
-selects it by default.
+(`KE_GRAPHICS_BACKEND=direct3d11-native`, or an explicit `GpuBackendKind.Direct3D11Native`) or, since 17.40.0,
+simply booting on Windows with the package referenced and registered, because the OS probe selects it there
+now.
 
 **Capabilities are at parity with the incumbent, with exactly one deliberate difference.** Field for field,
 `GpuCapabilities` reads the same on `GpuBackendKind.Direct3D11Native` as on `GpuBackendKind.Direct3D11`, except

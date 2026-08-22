@@ -427,7 +427,7 @@ namespace KhaozEngine.Gpu
         }
 
         /// <summary>
-        /// Creates the requested device, falling back to the OS-probe backend rather than propagating when the
+        /// Creates the requested device, falling back to the platform's Veldrid incumbent rather than propagating when the
         /// requested one cannot be had. This is what stops a player from choosing a backend their machine cannot
         /// run and ending up with a client that will not start and cannot be fixed from inside the game.
         /// </summary>

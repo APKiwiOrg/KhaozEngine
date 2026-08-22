@@ -467,8 +467,8 @@ test step, so that run is green on the three baking legs alone.
 The incumbent Vulkan leg installs no validation layer and sets no `KE_VULKAN_REQUIRED`. The incumbent Metal leg
 arms neither Metal validation tier and sets no `KE_METAL_REQUIRED`. On both, the rows that touch a native device
 stay dormant if the probe ever refuses the runner. Those legs are the escape hatches the rollouts keep
-selectable indefinitely, and an escape hatch that goes red whenever the thing it escapes from goes red is not
-one.
+selectable, which since 17.40.0 means for ONE release rather than indefinitely, and an escape hatch that goes
+red whenever the thing it escapes from goes red is not one.
 
 ### Per-backend golden flow
 

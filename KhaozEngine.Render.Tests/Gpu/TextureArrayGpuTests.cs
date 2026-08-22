@@ -1,3 +1,4 @@
+using System;
 using KhaozEngine.Gpu;
 using Xunit;
 
@@ -69,6 +70,58 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(W, tex.Width);
             Assert.Equal(mips, tex.MipLevels);
+        }
+
+        /// <summary>
+        /// A ONE-LAYER ARRAY READS BACK THROUGH <see cref="GpuReadback.ToRgba"/> (#666). The incumbent's phantom
+        /// slice is emulation, not decoration: a whole-resource copy names EVERY subresource on both sides, so a
+        /// two-slice source against a one-slice staging destination is a shape mismatch Veldrid refuses outright
+        /// ("Source and destination Textures are not compatible to be copied"). That made the readback of a
+        /// one-layer array a regression against the plain 2D texture the same call produced before #666, on the
+        /// one backend that pads. The copy path narrows to the LOGICAL subresources for a padded texture, so this
+        /// runs the same on every backend.
+        /// </summary>
+        [GpuFact]
+        public void AOneLayerArrayReadsBackThroughToRgba()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice dev = gpu.GpuDevice;
+            const uint W = 4, H = 4;
+            using var tex = dev.Factory.CreateTexture(GpuTextureDescription.Texture2DArray(
+                W, H, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled, arrayLayers: 1, mipLevels: 1));
+
+            var px = new byte[W * H * 4];
+            for (int p = 0; p < px.Length; p += 4)
+            {
+                px[p] = 10; px[p + 1] = 200; px[p + 2] = 30; px[p + 3] = 255;
+            }
+            dev.UpdateTexture(tex, px, 0, 0, W, H, mipLevel: 0, arrayLayer: 0);
+            dev.WaitForIdle();
+
+            byte[] back = GpuReadback.ToRgba(dev, tex, (int)W, (int)H);
+
+            Assert.Equal(px, back);
+        }
+
+        /// <summary>
+        /// THE PHANTOM SLICE IS NOT ADDRESSABLE, ON ANY BACKEND (#666). The incumbent pads a one-layer array to
+        /// two slices, and Veldrid counts the pad, so an upload aimed at layer 1 used to be accepted here and
+        /// land in memory the seam never promised, while the three natives refused the same call by name. Both
+        /// answers are now the refusal, which is what lets a caller develop against one backend and ship on
+        /// another.
+        /// </summary>
+        [GpuFact]
+        public void ThePhantomLayerOfAOneLayerArrayCannotBeUploadedTo()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice dev = gpu.GpuDevice;
+            const uint W = 4, H = 4;
+            using var tex = dev.Factory.CreateTexture(GpuTextureDescription.Texture2DArray(
+                W, H, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled, arrayLayers: 1, mipLevels: 1));
+            var px = new byte[W * H * 4];
+
+            Assert.ThrowsAny<ArgumentOutOfRangeException>(
+                () => dev.UpdateTexture(tex, px, 0, 0, W, H, mipLevel: 0, arrayLayer: 1));
         }
     }
 }

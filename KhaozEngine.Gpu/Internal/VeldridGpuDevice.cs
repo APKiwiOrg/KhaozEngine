@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Text;
 using Veldrid;
 using Veldrid.SPIRV;
@@ -81,7 +82,28 @@ namespace KhaozEngine.Gpu.Internal
             => GraphicsDevice.UpdateTexture(((VeldridGpuTexture)texture).Texture, data, x, y, 0, width, height, 1, 0, 0);
 
         public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height, uint mipLevel, uint arrayLayer)
-            => GraphicsDevice.UpdateTexture(((VeldridGpuTexture)texture).Texture, data, x, y, 0, width, height, 1, mipLevel, arrayLayer);
+        {
+            var t = (VeldridGpuTexture)texture;
+            RequireLogicalLayer(t, arrayLayer);
+            GraphicsDevice.UpdateTexture(t.Texture, data, x, y, 0, width, height, 1, mipLevel, arrayLayer);
+        }
+
+        /// <summary>THE PHANTOM SLICE IS NOT ADDRESSABLE (#666). Veldrid counts it, so an upload aimed at layer 1
+        /// of a one-layer array would be accepted here and would land in memory the seam never promised, while
+        /// the three native backends refuse the same call by name. Refusing it keeps the four backends saying the
+        /// same thing about the same description, which is the only way a caller can develop against one of them.
+        /// Costs a comparison per upload and fires on nothing a real caller does.</summary>
+        static void RequireLogicalLayer(VeldridGpuTexture t, uint arrayLayer)
+        {
+            if (!t.HasPhantomLayer || arrayLayer < t.ArrayLayers) return;
+
+            throw new ArgumentOutOfRangeException(nameof(arrayLayer), arrayLayer,
+                "Array layer " + arrayLayer.ToString(CultureInfo.InvariantCulture) + " is outside a texture with "
+                + t.ArrayLayers.ToString(CultureInfo.InvariantCulture) + " array layer(s). The incumbent Veldrid "
+                + "backend cannot create a one-layer array, so it pads to a second slice that the seam does not "
+                + "have (#666). Writing to that slice writes to memory nothing samples, and the same call on the "
+                + "native Metal, Vulkan and Direct3D 11 backends is refused rather than silently accepted.");
+        }
 
         public MappedData Map(IGpuTexture staging, GpuMapMode mode)
         {
@@ -191,7 +213,7 @@ namespace KhaozEngine.Gpu.Internal
             => new VeldridGpuTexture(_liveness, GraphicsDevice.ResourceFactory.CreateTexture(new TextureDescription(
                 d.Width, d.Height, 1, d.MipLevels, VeldridArrayLayers(d),
                 VeldridMap.ToVeldrid(d.Format), VeldridMap.ToVeldrid(d.Usage), TextureType.Texture2D,
-                VeldridMap.ToVeldrid(d.SampleCount))));
+                VeldridMap.ToVeldrid(d.SampleCount))), d.ArrayLayers);
 
         /// <summary>
         /// THE ONE BACKEND THAT CANNOT SAY "ARRAY OF ONE", so it says "array of two" and never addresses the
@@ -205,13 +227,30 @@ namespace KhaozEngine.Gpu.Internal
         /// it either, because its own <c>ArrayLayers</c> feeds the same comparison. So a one-layer array is
         /// UNREPRESENTABLE in the incumbent, and this padding is the whole of the workaround.</para>
         ///
-        /// <para><b>The phantom slice is created and nothing else.</b> It is never uploaded to, never sampled and
-        /// never named by a slot, so it costs one slice of memory and cannot reach a picture: the description's
-        /// LOGICAL layer count is still one, every caller addresses layer 0, and the goldens see the same texel
-        /// they saw when <c>Scene3D.LoadTileGroundMaterial</c> did this padding for itself. It is deliberately not
-        /// applied to a cubemap (Veldrid counts CUBES there, so a second one would be six real faces and
-        /// <see cref="GpuTextureDescription.IsArray"/> does not claim the cube case anyway) nor to a multisampled
-        /// texture (which has no array type on this seam).</para>
+        /// <para><b>THE PHANTOM SLICE IS NOT INVISIBLE, and the two places it shows are handled rather than
+        /// documented away.</b> Nothing SAMPLES it (the logical layer count stays one, every caller addresses
+        /// layer 0, and no slot names a second layer), so it cannot reach a picture. But Veldrid counts it, so
+        /// every path that names SUBRESOURCES rather than texels sees a two-slice resource:
+        /// <list type="number">
+        ///   <item><description>A whole-resource copy names every subresource on BOTH sides, so
+        ///   <c>GpuReadback.ToRgba</c> into a one-slice staging texture used to throw
+        ///   <c>Source and destination Textures are not compatible to be copied</c> here and succeed on the
+        ///   natives, which is a regression against the plain 2D texture the same description produced before
+        ///   #666. <c>VeldridGpuCommandList.CopyTexture</c> narrows to the LOGICAL subresources whenever a side
+        ///   pads, which is what makes the readback backend-independent again.</description></item>
+        ///   <item><description>An upload aimed at the phantom (<c>UpdateTexture(..., arrayLayer: 1)</c> on a
+        ///   one-layer array) was accepted silently here and refused by name on the natives.
+        ///   <see cref="RequireLogicalLayer"/> refuses it too.</description></item>
+        /// </list>
+        /// What is left is one slice of memory.</para>
+        ///
+        /// <para><b>Two shapes it deliberately skips.</b> A CUBEMAP, because Veldrid counts cubes there and a
+        /// second one would be six real faces (and <see cref="GpuTextureDescription.IsArray"/> does not claim the
+        /// cube case anyway). And a STAGING texture, which is CPU-visible memory with no view and nothing that
+        /// binds it to a shader, so array-ness cannot be observed on one and a pad would only make its mapped
+        /// buffer twice the size it needs. A MULTISAMPLED array is not tested for, because it cannot arrive: the
+        /// description constructor refuses that combination outright, since no backend agrees on which type such
+        /// a texture takes.</para>
         ///
         /// <para><b>The fork change that would remove this</b> is a <c>bool</c> on Veldrid's own
         /// <c>TextureDescription</c> (or <c>TextureUsage</c> bit 7, the single free bit in that
@@ -220,9 +259,9 @@ namespace KhaozEngine.Gpu.Internal
         /// carry the seam's flag with no fork at all, so the incumbent is the only place a one-layer array is
         /// emulated rather than created. Filed as #673, with the line numbers it would touch.</para>
         /// </summary>
-        static uint VeldridArrayLayers(in GpuTextureDescription d)
+        internal static uint VeldridArrayLayers(in GpuTextureDescription d)
             => d.IsArray && d.ArrayLayers <= 1
-                && (d.Usage & GpuTextureUsage.Cubemap) == 0 && d.SampleCount <= 1
+                && (d.Usage & (GpuTextureUsage.Cubemap | GpuTextureUsage.Staging)) == 0
                 ? 2
                 : d.ArrayLayers;
 

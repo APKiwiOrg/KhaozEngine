@@ -23,6 +23,25 @@ public class TileCellsTests
         Assert.Equal(CellCoord.FromWorld(x, z, TileCells.CellSize), cell);
     }
 
+    // The identity the type doc claims, asserted as a ROUND TRIP rather than as two coincidentally equal answers:
+    // the cell a tile falls in, named as a region, is the tile's own region. Both grids floor, so it holds across
+    // the origin, which is the case a truncating division would get wrong. The 63/64 pair is the boundary itself:
+    // the last tile of region 0 and the first of region 1, where an off-by-one in either grid shows up.
+    [Theory]
+    [InlineData(63, 63)]
+    [InlineData(64, 64)]
+    [InlineData(63, 64)]
+    [InlineData(64, 63)]
+    [InlineData(-1, -1)]
+    [InlineData(-64, -64)]
+    [InlineData(-65, -65)]
+    [InlineData(-1000, -1)]
+    public void The_cell_a_tile_falls_in_IS_that_tiles_region(int x, int z)
+    {
+        var tile = new TileCoord(x, z, 0);
+        Assert.Equal(tile.Region, TileCells.RegionOf(TileCells.CoordOf(tile)));
+    }
+
     // The plane rides along untouched. Planes do not shard: one cell holds every plane of its region, so two tiles
     // that differ only in plane are the same cell and the serve is what filters them apart.
     [Fact]

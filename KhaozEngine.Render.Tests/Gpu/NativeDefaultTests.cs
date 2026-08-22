@@ -288,38 +288,50 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// And the property that makes the line above safe to take: the golden FAMILY does not move with it. A
-        /// native kind is a guest in its incumbent's family, so a bare local run compares against exactly the
-        /// same committed grids it compared against before the flip. If this ever stopped holding, every local
-        /// golden run would silently be reading a family nobody has baked.
+        /// And what row 2 of the Veldrid removal did to the line above: the golden FAMILY moves with the flip
+        /// now. A bare local run reads the family named after the RESOLVED kind (<c>metal-native</c> on the
+        /// fleet's development platform), not the incumbent's, because from 17.41.0 every kind owns the family
+        /// named after itself and there are no guests left to borrow one. That is a DIFFERENT family holding the
+        /// SAME bytes, seeded as a byte-identical copy of the incumbent's, which is what makes the move free:
+        /// <see cref="GoldenFamilyCopyGoldenTests"/> asserts that copy cell for cell over all 120 grids, so a
+        /// bare local run still compares against the bytes it compared against before the flip. What is pinned
+        /// here is the property that survives row 4, when the incumbent families are deleted and the copy claim
+        /// goes with them: the family a bare run reads is one its own backend OWNS. If that ever stopped
+        /// holding, every local golden run would silently be reading a family nobody has baked.
         /// </summary>
         [Fact]
-        public void TheGoldenFamily_IsUnchangedByTheFlip()
+        public void TheGoldenFamily_MovesWithTheFlip_ToTheFamilyTheResolvedKindOwns()
         {
             using (new EnvScope(GpuBackendSelector.EnvVarName, null))
             {
                 OSPlatformKind os = GpuBackendSelector.DetectOS();
+                GpuBackendKind resolved = GpuBackendSelector.Select();
+                string token = GoldenCompare.GoldenBackendToken(resolved);
 
-                Assert.Equal(
-                    GoldenCompare.GoldenBackendToken(GpuBackendSelector.IncumbentFor(os)),
-                    GoldenCompare.GoldenBackendToken(GpuBackendSelector.Select()));
+                Assert.True(GoldenCompare.OwnsFamily(resolved, token));
+                Assert.NotEqual(GoldenCompare.GoldenBackendToken(GpuBackendSelector.IncumbentFor(os)), token);
             }
         }
 
         /// <summary>
-        /// The one ergonomic cost of the decision, pinned so it is a documented consequence rather than a
-        /// surprise: a bare local <c>KE_UPDATE_GOLDENS=1</c> is now REFUSED, because the run is on a guest of
-        /// the family it would overwrite. Baking locally means naming the incumbent, and the refusal says so.
+        /// The one ergonomic cost of the flip, and it lasted exactly one release. 17.40.0 REFUSED a bare local
+        /// <c>KE_UPDATE_GOLDENS=1</c>, because the run was on a guest of the family it would have overwritten,
+        /// so baking on a Mac meant naming <c>KE_GRAPHICS_BACKEND=metal</c>. Row 2 gave the native kinds their
+        /// own families in 17.41.0, so the default now owns what it would write and the refusal is gone. The
+        /// row is kept rather than deleted because the cost was documented out loud and a reader who met it
+        /// needs to find where it ended.
+        /// <para>
+        /// What a bare local bake WRITES is still constrained until row 4, by the operator rather than by this
+        /// guard: while the native families are byte-identical copies,
+        /// <see cref="GoldenFamilyCopyGoldenTests"/> reds if one half of a pair is committed on its own.
+        /// </para>
         /// </summary>
         [Fact]
-        public void ABareLocalBake_IsRefused_BecauseTheDefaultIsNowAGuestOfItsFamily()
+        public void ABareLocalBake_IsAllowed_BecauseTheDefaultOwnsItsFamily()
         {
             using (new EnvScope(GpuBackendSelector.EnvVarName, null))
             {
-                string? refusal = GoldenCompare.BakeRefusal(GpuBackendSelector.Select(), familyOverride: false);
-
-                Assert.NotNull(refusal);
-                Assert.Contains("Re-bake on the backend that owns", refusal);
+                Assert.Null(GoldenCompare.BakeRefusal(GpuBackendSelector.Select(), familyOverride: false));
             }
         }
 

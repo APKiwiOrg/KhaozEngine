@@ -77,7 +77,7 @@ namespace KhaozEngine.Gpu
         /// (<c>KE_GRAPHICS_BACKEND=d3d11-native</c>), and created by the
         /// <see cref="IGpuBackendProvider"/> that package registers, never by this one: it is a separate member
         /// precisely so a session log, a telemetry header and a frame time are attributed to the implementation
-        /// that actually ran. It renders the SAME images as <see cref="Direct3D11"/>, and from <c>17.40.0</c> it
+        /// that actually ran. It renders the SAME images as <see cref="Direct3D11"/>, and from <c>17.41.0</c> it
         /// OWNS the <c>direct3d11-native</c> golden family. It was a GUEST in the incumbent's <c>direct3d11</c>
         /// family until then (decision I3), which was the strongest free proof the port had, and row 2 of the
         /// Veldrid removal promoted it because the incumbent that owns <c>direct3d11</c> is being deleted and a
@@ -95,7 +95,7 @@ namespace KhaozEngine.Gpu
         /// <c>vk-native</c>) and created by the <see cref="IGpuBackendProvider"/> that package registers, never
         /// by this one, for the same attribution reason <see cref="Direct3D11Native"/> is a separate member: a
         /// session log, a telemetry header and a frame time have to name the implementation that actually ran.
-        /// It renders the SAME images as <see cref="Vulkan"/>, and from <c>17.40.0</c> it OWNS the
+        /// It renders the SAME images as <see cref="Vulkan"/>, and from <c>17.41.0</c> it OWNS the
         /// <c>vulkan-native</c> golden family, promoted out of the incumbent's for the reason and in the way
         /// <see cref="Direct3D11Native"/> was.
         /// <para>
@@ -115,7 +115,7 @@ namespace KhaozEngine.Gpu
         /// and created by the <see cref="IGpuBackendProvider"/> that package registers, never by this one, for the
         /// same attribution reason its two siblings are separate members: a session log, a telemetry header and a
         /// frame time have to name the implementation that actually ran. It renders the SAME images as
-        /// <see cref="Metal"/>, and from <c>17.40.0</c> it OWNS the <c>metal-native</c> golden family, promoted
+        /// <see cref="Metal"/>, and from <c>17.41.0</c> it OWNS the <c>metal-native</c> golden family, promoted
         /// out of the incumbent's for the reason and in the way <see cref="Direct3D11Native"/> was.
         /// <para>
         /// Two things about this member differ from both siblings, and both are consequences of WHICH backend it
@@ -129,9 +129,10 @@ namespace KhaozEngine.Gpu
         /// <para>
         /// And the flip changed the macOS default, which is not a player population but the fleet's
         /// DEVELOPMENT platform: every windowed playtest, every capture, every editor session and every local
-        /// golden bake on a Mac has run on this backend since 17.40.0. A local bake is the one visible cost,
-        /// since a guest of a family may not overwrite it, so baking on a Mac means naming
-        /// <c>KE_GRAPHICS_BACKEND=metal</c>. The flip was taken by decision on 2026-08-22 ahead of the rollout
+        /// golden bake on a Mac has run on this backend since 17.40.0. A local bake was the one visible cost,
+        /// and it lasted one release: a guest of a family may not overwrite it, so baking on a Mac meant naming
+        /// <c>KE_GRAPHICS_BACKEND=metal</c> until <c>17.41.0</c> gave this member the <c>metal-native</c> family
+        /// of its own. The flip was taken by decision on 2026-08-22 ahead of the rollout
         /// gate that is still open, which is named in the dated addendum to section 17 of that document.
         /// </para>
         /// </summary>

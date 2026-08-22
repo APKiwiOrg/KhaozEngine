@@ -25,8 +25,10 @@ and nothing that does not want the Objective-C interop ever carries it.
 > by `KE_GRAPHICS_BACKEND=metal` for ONE release and is removed in the next one.
 > The macOS flip is the one with the largest blast radius of the three, because macOS is the fleet's
 > DEVELOPMENT platform: every windowed playtest, capture, editor session and local golden run moved with it.
-> A local BAKE is the sharp edge. This backend is a GUEST in the `metal` golden family, so a bare
-> `KE_UPDATE_GOLDENS=1` is now REFUSED and a bake has to name the owner with `KE_GRAPHICS_BACKEND=metal`.
+> A local BAKE was the sharp edge, and it stayed sharp for one release. This backend was a GUEST in the
+> `metal` golden family, so a bare `KE_UPDATE_GOLDENS=1` was REFUSED and a bake had to name the owner with
+> `KE_GRAPHICS_BACKEND=metal`. Since 17.41.0 it OWNS `metal-native`, a byte-identical copy of `metal`, so a
+> bare local run reads and may bake that family instead.
 > Gate 4's MM1 is still open.
 > Row 5 added the timeline: one `MTLSharedEvent` per device, a real `IGpuFence`, a counted
 > `WaitForIdle` in 250 ms slices so a device loss can release it, and a completion handler that reads every

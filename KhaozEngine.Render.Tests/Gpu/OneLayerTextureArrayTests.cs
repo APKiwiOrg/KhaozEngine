@@ -1,4 +1,6 @@
+using System;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Xunit;
 
@@ -119,6 +121,72 @@ namespace KhaozEngine.Tests.Gpu
 
             VulkanImageViewSpec view = Assert.Single(fixture.Views);
             Assert.False(view.ArrayView);
+        }
+
+        /// <summary>
+        /// THE INCUMBENT'S PADDING RULE, AS ROWS, with no device anywhere near it. <c>VeldridArrayLayers</c> is
+        /// the whole of the one-layer-array emulation: it is the only place in the engine that hands a backend a
+        /// layer count the caller did not ask for, and every consequence of the phantom slice (the narrowed copy
+        /// path, the refused upload) exists because of what this returns. It ran untested until now.
+        /// <para>
+        /// STAGING IS EXCLUDED, deliberately. A staging texture is CPU-visible memory with no view and nothing
+        /// that binds it to a shader, so there is no type for a pad to fix and array-ness cannot be observed on
+        /// one at all. Padding it would only double the buffer a readback maps.
+        /// </para>
+        /// <para>
+        /// There is no MULTISAMPLED row because there is no multisampled array to describe:
+        /// <see cref="AMultisampledArrayIsRefused"/> is where that shape is pinned, at the description
+        /// constructor that refuses it.
+        /// </para>
+        /// </summary>
+        [Theory]
+        // A one-layer ARRAY is the only thing that pads, and 2 is the whole workaround.
+        [InlineData(GpuTextureUsage.Sampled, 1u, 1u, true, 2u)]
+        // A plain 2D texture is left alone: the flag is what asks for the pad, not the layer count.
+        [InlineData(GpuTextureUsage.Sampled, 1u, 1u, false, 1u)]
+        // Above one layer Veldrid already infers the array type, so there is nothing to emulate.
+        [InlineData(GpuTextureUsage.Sampled, 2u, 1u, true, 2u)]
+        [InlineData(GpuTextureUsage.Sampled, 5u, 1u, true, 5u)]
+        // A cubemap counts CUBES, so a second one would be six real faces, and IsArray does not claim the case.
+        [InlineData(GpuTextureUsage.Sampled | GpuTextureUsage.Cubemap, 1u, 1u, true, 1u)]
+        // A staging texture is never sampled and has no view, so it gets no pad.
+        [InlineData(GpuTextureUsage.Staging, 1u, 1u, true, 1u)]
+        public void TheIncumbentPadsAOneLayerArrayAndNothingElse(
+            GpuTextureUsage usage, uint arrayLayers, uint sampleCount, bool isArray, uint expected)
+        {
+            var d = new GpuTextureDescription(8, 8, GpuPixelFormat.R8G8B8A8UNorm, usage,
+                mipLevels: 1, arrayLayers: arrayLayers, sampleCount: sampleCount, isArray: isArray);
+
+            Assert.Equal(expected, VeldridGpuDevice.VeldridArrayLayers(d));
+        }
+
+        /// <summary>
+        /// A MULTISAMPLED ARRAY IS REFUSED AT DESCRIPTION TIME. No backend agrees on which type such a texture
+        /// takes: Metal and Vulkan derive the multisample type first, and Direct3D 11's shader resource view
+        /// nests its multisample test INSIDE the non-array arm, so the same description would take a plain
+        /// <c>Texture2DArray</c> view over a multisampled resource there. Nothing in the engine asks for the
+        /// shape, so the seam says so once rather than leaving three answers in place.
+        /// </summary>
+        [Theory]
+        [InlineData(2u)]
+        [InlineData(4u)]
+        public void AMultisampledArrayIsRefused(uint sampleCount)
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() => new GpuTextureDescription(
+                8, 8, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget,
+                mipLevels: 1, arrayLayers: 2, sampleCount: sampleCount));
+        }
+
+        /// <summary>And a multisampled texture that is NOT an array still builds, which is every MSAA render
+        /// target the engine makes. Without this the refusal above would read as "no MSAA".</summary>
+        [Fact]
+        public void AMultisampledPlain2DTextureIsStillFine()
+        {
+            var d = new GpuTextureDescription(8, 8, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget,
+                mipLevels: 1, arrayLayers: 1, sampleCount: 4);
+
+            Assert.Equal(4u, d.SampleCount);
+            Assert.False(d.IsArray);
         }
     }
 }

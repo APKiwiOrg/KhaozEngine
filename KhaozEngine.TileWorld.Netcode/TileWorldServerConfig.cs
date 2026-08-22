@@ -1,0 +1,77 @@
+using System;
+using KhaozEngine.Netcode;
+
+namespace KhaozEngine.TileWorld.Netcode;
+
+/// <summary>
+/// Everything a tile server is handed rather than assumes. <see cref="TickSeconds"/>, <see cref="StepTicks"/> and
+/// <see cref="Spawn"/> are <c>required</c> on purpose: a tick length is the game's decision, and an engine default
+/// for it would be exactly the constant this design refuses to have. The rest carry defaults that are either a
+/// property of the tile grid itself (the cell edge) or a starting point a game is expected to tune.
+/// <para>The knobs that reach <see cref="TileMoveSimulator"/> (<see cref="StepTicks"/> and <see cref="Move"/>) are
+/// part of the DETERMINISM CONTRACT: the client builds its predicting simulator from the same pair, so a server
+/// that changes either without telling the client turns every step into a misprediction. The rest are server-side
+/// only and a client neither needs nor is told them.</para>
+/// </summary>
+public sealed record TileWorldServerConfig
+{
+    /// <summary>Seconds per simulation tick. The snapshot cadence is welded to it: one serve per tick, so this is
+    /// also how often a client hears from the server.</summary>
+    public required float TickSeconds { get; init; }
+
+    /// <summary>Ticks per step, per mode. Half of the determinism contract with the client, see the type doc.</summary>
+    public required TileStepTicks StepTicks { get; init; }
+
+    /// <summary>Where a player with no saved record is built. A returning player is placed by the persistence layer
+    /// instead, which is why this is a single tile rather than a spawn area.</summary>
+    public required TileCoord Spawn { get; init; }
+
+    /// <summary>Shard cell edge in tiles. One region by default, which is the only value that makes a cell a
+    /// region, and a value that is not <see cref="TileCells.CellSize"/> gives up the alignment every other tile
+    /// system (streaming, persistence, the file layout) already runs on.</summary>
+    public float CellSize { get; init; } = TileCells.CellSize;
+
+    /// <summary>Area-of-interest radius in tiles: how far a player sees other players. 15 is the tile stack's
+    /// traditional view distance, and a bigger one costs a bigger snapshot on every tick for every player.</summary>
+    public float InterestRadius { get; init; } = 15f;
+
+    /// <summary>Border overlap in tiles. Must be at least <see cref="InterestRadius"/> or the home cell cannot hold
+    /// the whole interest as ghosts, which is checked at construction rather than left to the first serve after a
+    /// player walks near an edge.</summary>
+    public float OverlapMargin { get; init; } = 16f;
+
+    /// <summary>Session slot capacity, and the ceiling on how many players the command queue tracks.</summary>
+    public int MaxPlayers { get; init; } = 200;
+
+    /// <summary>Planes the world has, used to refuse a command naming one it does not. It is the world's number
+    /// rather than the protocol's: the wire carries a plane in one byte, so a document with more planes than this
+    /// would be refused at the decoder long before it got here.</summary>
+    public int PlaneCount { get; init; } = TileWorldDocument.DefaultPlaneCount;
+
+    /// <summary>Largest Chebyshev distance from the player a walk goal may name. A farther goal is dropped rather
+    /// than pathed, because the pathfinder's search window is (2r+1)^2 scratch entries and an unbounded goal is an
+    /// unbounded allocation a client chooses. Dropped rather than clamped, so the two heads never end up walking to
+    /// two different tiles.</summary>
+    public int MaxGoalRadius { get; init; } = TilePathfinder.DefaultMaxRadius;
+
+    /// <summary>Inbound message budget per connection per second.</summary>
+    public int MaxCommandsPerSecond { get; init; } = 40;
+
+    /// <summary>Inbound burst allowance per connection, so a client that batches a frame's worth of input is not
+    /// throttled for being bursty rather than loud.</summary>
+    public double CommandBurst { get; init; } = 20;
+
+    /// <summary>Simulator knobs both heads must agree on, the other half of the determinism contract. The route cap
+    /// lives here (<see cref="TileMoveOptions.MaxRouteSteps"/>), so a server never holds a route the wire cannot
+    /// carry and a client predicts the same truncation.</summary>
+    public TileMoveOptions Move { get; init; } = new();
+
+    /// <summary>Synchronous ban check over a verified account id, consulted at the door. Null admits everyone the
+    /// authenticator admits. A head backs this with whatever store it keeps, which is why it is a delegate rather
+    /// than an interface the engine would then have to define a schema for.</summary>
+    public Func<string, bool>? IsBanned { get; init; }
+
+    /// <summary>What a second live session for one account does. Kicking the older one is the default because the
+    /// alternative refuses the player who is actually at the keyboard.</summary>
+    public DuplicateSessionPolicy DuplicateSessions { get; init; } = DuplicateSessionPolicy.KickOlder;
+}

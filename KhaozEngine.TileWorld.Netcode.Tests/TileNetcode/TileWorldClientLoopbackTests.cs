@@ -572,7 +572,7 @@ public class TileWorldClientLoopbackTests
     }
 
     // A game's OWN replicated component, the seam #700 was about. The server constructor has always taken a
-    // registry; the client built one internally and had no way to be handed the matching one, so a game component
+    // registry. The client built one internally and had no way to be handed the matching one, so a game component
     // was skipped on the way in by the unknown-extension forward-compat path, silently, with no workaround (View is
     // get-only). The pair is symmetric now, and this test is what says the components actually arrive.
     struct Bounty : IComponent

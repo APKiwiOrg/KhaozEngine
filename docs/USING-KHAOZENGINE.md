@@ -5352,7 +5352,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.39.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.40.0" />
 ```
 
 ```csharp
@@ -9261,7 +9261,7 @@ run inside the engine's process-wide device-creation gate, so a provider needs n
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.40.0" />
 ```
 
 ```csharp
@@ -9295,7 +9295,7 @@ that up front is what routes it through the reported fallback instead of a crash
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.40.0" />
 ```
 
 ```csharp
@@ -9537,7 +9537,7 @@ is no recovery path: a lost device stays lost, which is what the liveness token 
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.40.0" />
 ```
 
 ```csharp
@@ -10283,8 +10283,10 @@ it, though, so the two seam paths that name SUBRESOURCES rather than texels have
   Textures are not compatible to be copied`) and to succeed on the natives. The copy narrows to the LOGICAL
   subresources whenever a side pads, so the readback is backend-independent again.
 - `UpdateTexture(..., arrayLayer: 1)` on a one-layer array raises `ArgumentOutOfRangeException`, on the
-  incumbent as well as on the natives. Writing to the phantom writes to memory nothing reads, and it used to be
-  accepted silently on exactly one backend.
+  incumbent as well as on all three natives. Writing to the phantom writes to memory nothing reads. 17.39.0
+  closed the incumbent's silent accept, and 17.40.0 closed the same hole on native Direct3D 11 and native
+  Vulkan, where the API itself never objects: `UpdateSubresource` drops an out-of-range subresource index
+  without an `HRESULT` and a recorded `vkCmdCopyBufferToImage` carries no result code at all (#695).
 
 What is left is one slice of memory. A STAGING texture is never padded at all, since it has no view and nothing
 binds it to a shader.

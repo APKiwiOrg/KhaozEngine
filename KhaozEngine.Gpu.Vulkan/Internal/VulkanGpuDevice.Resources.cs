@@ -63,6 +63,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// subresource layout, because it has no image to copy into and its memory is host-visible by construction.
         /// That is what the incumbent does too, and refusing it here would be a divergence bought for nothing.
         /// </para>
+        /// <para>
+        /// AN ARRAY LAYER THE TEXTURE DOES NOT HAVE IS REFUSED HERE, by name, on both arms and before anything is
+        /// recorded. See <see cref="VulkanUploadBounds"/> for why Vulkan itself will not do it (#695).
+        /// </para>
         /// </remarks>
         public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height,
             uint mipLevel, uint arrayLayer)
@@ -71,6 +75,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             ArgumentNullException.ThrowIfNull(data);
 
             VulkanTexture target = Require(texture, "uploaded to");
+
+            // THE PHANTOM LAYER IS REFUSED HERE AND NOT BY VULKAN (#695). A recorded copy carries no result code,
+            // so a baseArrayLayer past the image's own layer count is undefined rather than rejected and the
+            // image arm accepted it in silence. Above the branch so both arms answer the same way.
+            VulkanUploadBounds.RequireArrayLayer(arrayLayer, target.ActualArrayLayers);
 
             if (target.IsStaging)
             {

@@ -5,6 +5,22 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.40.0
+
+17.40.0 makes the native backends the default, see the rollout bullets.
+
+- **`IGpuDevice.UpdateTexture` refuses an array layer the texture does not have on native Direct3D 11 and native
+  Vulkan (#695).** Both backends built a subresource out of the caller's `arrayLayer` and handed it straight to
+  the API, and neither API objects: `UpdateSubresource` drops an index past the end of the resource without an
+  `HRESULT`, and a recorded `vkCmdCopyBufferToImage` carries no result code at all. So
+  `UpdateTexture(oneLayerArray, ..., arrayLayer: 1)` returned normally and wrote nowhere, while native Metal and
+  the incumbent both raised `ArgumentOutOfRangeException`, which is the develop-on-one-backend-and-ship-on-another
+  promise the seam exists for. Both natives now throw at the call, named for the `arrayLayer` parameter, before
+  anything native runs. The bound is the REAL slice count with cubemap faces expanded (`D3D11UploadBounds`,
+  `VulkanUploadBounds`), so every face of a cube is still addressable, and the Vulkan check sits above the
+  staging-versus-image branch so both arms of the entry point answer the same way. An in-range upload is
+  unchanged.
+
 ## 17.39.0
 
 A tile world can draw a real glb kit per archetype now, the glTF loader honours per-vertex COLOR_0, and a

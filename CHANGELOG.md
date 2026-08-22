@@ -63,13 +63,30 @@ the ground-decal pass no longer hands both of a frame's passes one shared unifor
   Metal reads each draw's own value, on one machine in one process. `docs/USING-KHAOZENGINE.md`'s Metal section
   now carries the same "a uniform write lands when you make it" paragraph its Direct3D 11 and Vulkan siblings
   already had.
-- **A standing guard replaces the sweep.** `RecordingGpuCommandList` stamps each upload with how many draws
-  preceded it, `UniformRewriteAudit` scans a frame for the hazard shape (same uniform buffer, overlapping range,
-  a draw between the two writes, and different bytes), `UniformBufferTrackingGpuDevice` supplies the usage
-  `IGpuBuffer` does not carry, and `UniformRewriteGuardGpuTests` renders a frame that fills every pass's queue
-  and asserts the finding list is empty. Reverting the decal fix turns it red. The full site table, with a
-  verdict for every uniform buffer in `Render2D` and `Render3D`, is
-  `docs/design/RECORD-TIME-UNIFORM-REWRITE-AUDIT-2026-08-22.md`.
+- **A standing guard replaces the sweep, and it judges bytes a draw could actually have read.**
+  `RecordingGpuCommandList` stamps each upload with how many draws preceded it AND each draw with the uniform
+  windows its bound sets cover, `UniformBufferTrackingGpuDevice` plus `UniformWindowIndex` supply the two facts
+  the handles do not carry (whether a buffer is a uniform buffer, and which range of it each resource set binds
+  and with what dynamic offset), and `UniformRewriteAudit` reports a pair only when a draw recorded BETWEEN the
+  two writes bound a window the two writes disagree inside. That last part is the whole rule: the engine's
+  sanctioned pattern packs one slot and uploads the WHOLE mirror, so two passes legitimately differ in the slot
+  the other one owns, and a comparison over the whole overlapping range calls `GroundDecalRenderer` and
+  `SpriteBatch.ViewProj.cs` collapses on shipped, correct code. `UniformRewriteGuardGpuTests` renders TWO
+  greedy frames (blob shadows over a sky, then the shadow-map tier over a starfield with GPU skinning on, which
+  is the only way to reach the cascade light UBO, both skinned slot buffers and the starfield UBO), each with a
+  skinned mesh queued and an advancing `EffectTimeSeconds`, and asserts the finding list is empty. It checks
+  that bound windows were recorded and that a rewritten buffer was among them, so the window rule cannot pass
+  vacuously. `UniformRewriteAuditTests` pins both verdicts with no device at all. Reverting the decal fix turns
+  the guard red naming the window. The full site table, with a verdict for every uniform buffer in `Render2D`
+  and `Render3D`, is `docs/design/RECORD-TIME-UNIFORM-REWRITE-AUDIT-2026-08-22.md`.
+- **And one row looks at the render.** `BlobDecalGhostHoleGoldenTests` draws a character standing in a blob,
+  then a second frame with the character gone, and asserts the floor it HID is blob-covered rather than punched
+  out. Under the collapse the blob pass takes the main pass's dynamic reject and applies it to a normal target
+  it has not resolved this frame, so last frame's character leaves a one-frame ghost hole. MSAA has to be on
+  (without it the normal target is the model pass's own attachment, already written this frame), the sample has
+  to be floor BEHIND the character rather than under it, and the frame has to be the one AFTER the character
+  moved rather than the first (an unresolved target reads opaque on Metal and rejects nothing). All three were
+  established by probing and are written down in section 4 of the design doc.
 
 ## 17.38.0
 

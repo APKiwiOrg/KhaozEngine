@@ -292,6 +292,200 @@ public class TileWorldClientLoopbackTests
         Assert.Equal(0, h.Client.CorrectionCount);
     }
 
+    // A remote that turns on the spot has to turn on screen. TileMoveSimulator.BeginInteract sets Facing with no
+    // tile change and no step progress for a ZERO-STEP interact, which is the ordinary click on the thing you are
+    // already standing next to, so a receiver that only resampled a remote on movement would draw that player
+    // facing their last step until they next walked.
+    [Fact]
+    public void A_remote_that_turns_on_the_spot_is_redrawn_facing_the_new_way()
+    {
+        TileWorldDocument serverDoc = TileMoveSimulatorTests.FlatWorld();
+        TileObject booth = serverDoc.AddObject("bank_booth", 13, 10, 0, 0);
+        TileWorldDocument clientDoc = TileMoveSimulatorTests.FlatWorld();
+        clientDoc.AddObject("bank_booth", 13, 10, 0, 0);
+        using var h = new Harness(serverDoc, clientDoc, new TileCoord(10, 10, 0), 0.13f);
+        h.Frames(4);
+        long remote = h.Server.SpawnPlayer(slot: 1, "remote", "Rem");
+        h.Server.SetPlayerState(1, TileMoveState.At(new TileCoord(12, 10, 0), TileDirection.S));
+        h.Frames(24);
+
+        Assert.True(h.Client.TryGetRemotePose(remote, out TilePose before));
+        Assert.Equal(TilePresenter.Yaw(TileDirection.S), before.Yaw, 5);
+
+        h.Server.Enqueue(1, 0, TileCommand.Interact(booth.Id, TileMoveMode.Run));
+        h.Frames(24);
+
+        Assert.True(h.Server.TryGetPlayerState(1, out TileMoveState turned));
+        Assert.Equal(new TileCoord(12, 10, 0), turned.Tile);        // it never stepped
+        Assert.NotEqual(TileDirection.S, turned.Facing);            // and it did turn
+        Assert.True(h.Client.TryGetRemotePose(remote, out TilePose after));
+        Assert.Equal(TilePresenter.Yaw(turned.Facing), after.Yaw, 5);
+        Assert.Equal(before.Position, after.Position);              // without moving on screen
+    }
+
+    // A server teleport and a mispredicted step both CUT, and a head has to tell them apart: one means "you are
+    // somewhere else now" (snap the camera, re-centre everything keyed to the player), the other means "you
+    // guessed a step wrong". Both halves are pinned here, in one session, so neither can quietly start reporting
+    // the other.
+    [Fact]
+    public void A_server_teleport_raises_its_own_event_and_a_mispredicted_step_does_not()
+    {
+        TileWorldDocument serverDoc = TileMoveSimulatorTests.FlatWorld();
+        serverDoc.AddObject("tree", 10, 11, 0, 0);                  // only the SERVER knows about this
+        using var h = new Harness(serverDoc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
+        int teleports = 0;
+        h.Client.Teleported += () => teleports++;
+
+        h.Frames(12);
+        Assert.True(h.Client.IsJoined);
+        Assert.Equal(1, teleports);                                 // the seed, which has no prior position
+
+        h.Client.Queue(TileCommand.WalkTo(new TileCoord(10, 18, 0), TileMoveMode.Run));
+        h.Frames(160);
+        Assert.Equal(1, h.Client.SnapCount);                        // the hidden tree cut the walk exactly once
+        Assert.Equal(1, teleports);                                 // and a cut step is not a teleport
+
+        h.Server.SetPlayerState(0, TileMoveState.At(new TileCoord(20, 20, 0), TileDirection.S), teleport: true);
+        h.Frames(12);
+        Assert.Equal(2, teleports);
+        Assert.Equal(new TileCoord(20, 20, 0), h.Client.Prediction.PredictedState.Tile);
+    }
+
+    // The remote presentation is deliberately ONE STEP BEHIND, and this is what says so. The everyone channel
+    // carries the tile a remote is on and how far through a step it is, never where the step is GOING (the route
+    // is owner-only), so the only non-guessing glide runs from the tile the remote was seen to leave to the tile
+    // it is on now. The tempting alternative, extrapolating forward along Facing, fails here twice over: Facing
+    // names the step already TAKEN, so during this one step it would drag the remote south out of the tile it is
+    // standing on, and it would never draw the honest in-between position at all.
+    [Fact]
+    public void A_remote_is_drawn_between_the_tile_it_left_and_the_tile_it_stands_on()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
+        h.Frames(4);
+        long remote = h.Server.SpawnPlayer(slot: 1, "remote", "Rem");
+        h.Server.SetPlayerState(1, TileMoveState.At(new TileCoord(12, 10, 0), TileDirection.S));
+        h.Frames(24);
+
+        h.Server.Enqueue(1, 0, TileCommand.WalkTo(new TileCoord(12, 11, 0), TileMoveMode.Run));
+        var drawn = new List<float>();
+        bool sawTheGlide = false;
+        for (int i = 0; i < 60; i++)
+        {
+            h.Frames(1);
+            if (!h.Client.TryGetRemotePose(remote, out TilePose pose)) continue;
+            float tileZ = TileWorldSpace.TileZ(pose.Position.Z, 1f);
+            drawn.Add(tileZ);
+            if (tileZ <= 10.001f || tileZ >= 10.999f) continue;
+            sawTheGlide = true;
+            // Mid glide, and the remote is being drawn on ground it has ALREADY walked: the server committed the
+            // step that ends this glide before the client ever started drawing it.
+            Assert.True(h.Server.TryGetPlayerState(1, out TileMoveState live));
+            Assert.Equal(new TileCoord(12, 11, 0), live.Tile);
+        }
+
+        Assert.True(sawTheGlide, "a remote must be drawn between the two tiles, not snapped from one to the other");
+        Assert.All(drawn, z => Assert.InRange(z, 9.999f, 11.001f));
+        Assert.Equal(11f, drawn[^1], 3);                            // and it parks on the tile it is standing on
+    }
+
+    // The corner is where a forward guess gives itself away. Facing is written at COMMIT, so on the first tick of
+    // the north leg it still names the east step just taken, and a receiver extrapolating along it would draw the
+    // remote past x = 16, out of the corridor it walked, and then snatch it back. The honest glide only ever runs
+    // between two tiles the remote was seen on, so every drawn point lies on the walked path.
+    [Fact]
+    public void At_a_corner_the_glide_follows_the_step_actually_taken()
+    {
+        const float Eps = 0.001f;
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
+        h.Frames(4);
+        long remote = h.Server.SpawnPlayer(slot: 1, "remote", "Rem");
+        // Facing EAST from the start, which is the direction of the first leg. A forward guess is therefore still
+        // inside the corridor while the remote stands and while it walks east, and gives itself away at the corner
+        // and nowhere else, which is the case this test is here for.
+        h.Server.SetPlayerState(1, TileMoveState.At(new TileCoord(12, 10, 0), TileDirection.E));
+        h.Frames(24);
+
+        var drawn = new List<(float X, float Z)>();
+        void Walk(int seq, TileCoord goal, int frames)
+        {
+            h.Server.Enqueue(1, seq, TileCommand.WalkTo(goal, TileMoveMode.Run));
+            for (int i = 0; i < frames; i++)
+            {
+                h.Frames(1);
+                if (h.Client.TryGetRemotePose(remote, out TilePose pose))
+                    drawn.Add((TileWorldSpace.TileX(pose.Position.X, 1f), TileWorldSpace.TileZ(pose.Position.Z, 1f)));
+            }
+        }
+
+        Walk(0, new TileCoord(16, 10, 0), 60);
+        Assert.True(h.Server.TryGetPlayerState(1, out TileMoveState east));
+        Assert.Equal(new TileCoord(16, 10, 0), east.Tile);          // the first leg finished before the second one
+        Walk(1, new TileCoord(16, 13, 0), 80);
+
+        foreach ((float x, float z) in drawn)
+        {
+            Assert.InRange(x, 12f - Eps, 16f + Eps);
+            Assert.InRange(z, 10f - Eps, 13f + Eps);
+            Assert.True(MathF.Abs(z - 10f) < Eps || MathF.Abs(x - 16f) < Eps,
+                $"drawn at ({x}, {z}), which is off the L the remote actually walked");
+        }
+        Assert.Equal(16f, drawn[^1].X, 3);
+        Assert.Equal(13f, drawn[^1].Z, 3);
+    }
+
+    // Two tiles that are not one step apart are not a step: a teleport, a plane change, or a remote that left the
+    // interest set and came back somewhere else. Sliding between them would draw the avatar walking over every
+    // tile in the gap, so the glide CUTS and the remote appears on its tile.
+    [Fact]
+    public void A_remote_that_reappears_more_than_one_step_away_cuts_to_its_tile()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
+        h.Frames(4);
+        long remote = h.Server.SpawnPlayer(slot: 1, "remote", "Rem");
+        h.Server.SetPlayerState(1, TileMoveState.At(new TileCoord(12, 10, 0), TileDirection.S));
+        h.Frames(24);
+
+        h.Server.SetPlayerState(1, TileMoveState.At(new TileCoord(12, 20, 0), TileDirection.S), teleport: true);
+        var drawn = new List<float>();
+        for (int i = 0; i < 40; i++)
+        {
+            h.Frames(1);
+            if (h.Client.TryGetRemotePose(remote, out TilePose pose))
+                drawn.Add(TileWorldSpace.TileZ(pose.Position.Z, 1f));
+        }
+
+        // Every frame drew it on one tile or the other, never on the ten tiles between them.
+        Assert.All(drawn, z => Assert.True(MathF.Abs(z - 10f) < 0.001f || MathF.Abs(z - 20f) < 0.001f,
+            $"drawn at tile z {z}, which is between the two tiles rather than on either"));
+        Assert.Equal(20f, drawn[^1], 3);
+    }
+
+    // A remote that walks out of the area of interest stops being served, and the client's own per-remote
+    // bookkeeping has to let go of it too: a sample nothing refreshes would keep the departed player on screen,
+    // frozen on the last tile anybody saw them on, for the rest of the session.
+    [Fact]
+    public void A_remote_that_leaves_the_interest_set_stops_being_presented()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
+        h.Frames(4);
+        long remote = h.Server.SpawnPlayer(slot: 1, "remote", "Rem");
+        h.Server.SetPlayerState(1, TileMoveState.At(new TileCoord(12, 10, 0), TileDirection.S));
+        h.Frames(24);
+        Assert.Contains(remote, h.Client.RemoteNetIds);
+        Assert.True(h.Client.TryGetRemotePose(remote, out _));
+
+        // Well past the 15 tile interest radius, still inside the one region this world has.
+        h.Server.SetPlayerState(1, TileMoveState.At(new TileCoord(60, 60, 0), TileDirection.S), teleport: true);
+        h.Frames(24);
+
+        Assert.DoesNotContain(remote, h.Client.RemoteNetIds);
+        Assert.False(h.Client.TryGetRemotePose(remote, out _));
+    }
+
     [Fact]
     public void A_click_off_the_loaded_map_is_dropped_before_it_is_ever_sent()
     {

@@ -153,8 +153,13 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     }
 
     /// <inheritdoc />
-    public byte[]? SnapshotCell(CellCoord coord) =>
-        host.TryGetCell(coord, out CellSim cell) ? cell.SnapshotOwned(new HashSet<long>(netIdBySlot.Values)) : null;
+    public byte[]? SnapshotCell(CellCoord coord) => SnapshotCell(coord, SnapshotPurpose.Durable);
+
+    /// <inheritdoc />
+    public byte[]? SnapshotCell(CellCoord coord, SnapshotPurpose purpose) =>
+        host.TryGetCell(coord, out CellSim cell)
+            ? cell.SnapshotOwned(new HashSet<long>(netIdBySlot.Values), purpose)
+            : null;
 
     /// <inheritdoc />
     public IReadOnlyList<long> RestoreCell(CellCoord coord, byte[] snapshot) =>

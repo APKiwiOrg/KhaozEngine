@@ -198,10 +198,12 @@ public sealed class WorldPickups
             // World and an Entity and nothing else, which is precisely why the frame is published on the world.
             world.Set(entity, ReplicatedPosition.FromWorld(position, world.GetIslandFrame()));
             world.Set(entity, state);
-            // Never persisted (#326). Marked here rather than by the host, so it holds on the sharded server, on a
-            // consumer host, and from the very first snapshot the entity could appear in. Inert on a host with no
-            // cell persistence: an unregistered field-less tag costs an archetype bit and reaches no wire.
-            world.Set(entity, default(Transient));
+            // Never captured, by ANY purpose (#326, scope #668). Marked here rather than by the host, so it holds on
+            // the sharded server, on a consumer host, and from the very first snapshot the entity could appear in.
+            // Always rather than DurableOnly because this seam's tracking is dropped on eviction too (#374), so an
+            // orb that came back on the route into an unloaded cell would be exactly the untracked husk the mark
+            // exists to prevent. Inert on a host with no cell persistence: an unregistered marker reaches no wire.
+            world.Set(entity, new Transient { Scope = TransientScope.Always });
         });
 
         live[netId] = new Pickup

@@ -7,7 +7,7 @@ namespace KhaozEngine.NetWorld;
 
 /// <summary>
 /// The server-side surface <see cref="CellPersistence"/> drives, so the same per-cell persistence wiring serves
-/// any <see cref="ShardHost"/>-based server. Cell-keyed and player-agnostic: <see cref="SnapshotCell"/> returns a
+/// any <see cref="ShardHost"/>-based server. Cell-keyed and player-agnostic: <see cref="SnapshotCell(CellCoord)"/> returns a
 /// cell's persistable (owned, non-player, non-ghost, non-migrating) entities, and <see cref="RestoreCell"/> puts
 /// them back. The host owns the <see cref="KhaozEngine.Replication.NetId"/> allocator so restored entities can never collide with fresh
 /// spawns after a restart (see <see cref="EnsureNextNetIdAtLeast"/>).
@@ -35,6 +35,19 @@ public interface ICellPersistenceHost
 
     /// <summary>The durable snapshot of a cell's persistable entities, or null if the cell is not instantiated.</summary>
     byte[]? SnapshotCell(CellCoord coord);
+
+    /// <summary>
+    /// The snapshot of a cell's owned entities for <paramref name="purpose"/>, or null if the cell is not
+    /// instantiated. The two purposes differ in exactly one thing: how far a
+    /// <see cref="KhaozEngine.Sharding.Transient"/> mark reaches, so an
+    /// <see cref="SnapshotPurpose.Eviction"/> capture keeps a
+    /// <see cref="KhaozEngine.Sharding.TransientScope.DurableOnly"/> entity that the durable one leaves out (#668).
+    /// <para>The default ignores the purpose and returns <see cref="SnapshotCell(CellCoord)"/>, which is the
+    /// behaviour every host had before 17.39.0, so an existing implementer is unaffected and keeps destroying a
+    /// marked entity on an unload. A <see cref="KhaozEngine.Sharding.CellSim"/>-backed host (like
+    /// <c>ShardedWorldServer</c>) overrides it to honour the scope. Call on the server thread.</para>
+    /// </summary>
+    byte[]? SnapshotCell(CellCoord coord, SnapshotPurpose purpose) => SnapshotCell(coord);
 
     /// <summary>Restores entities into a cell (call on the server thread). Returns the restored NetId values.</summary>
     IReadOnlyList<long> RestoreCell(CellCoord coord, byte[] snapshot);

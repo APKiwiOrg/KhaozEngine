@@ -13,7 +13,20 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// </summary>
 public sealed partial class TileWorldServer
 {
+    // The most whole ticks one Tick call runs before it sheds the rest, the rule and the reason FixedTickHost
+    // already has (KhaozEngine.Simulation/FixedTickHost.cs, Advance): a host that fell a long way behind (a stall, a
+    // debugger break, a long GC) would otherwise try to run every tick it missed, take longer than real time doing
+    // it, and be further behind on the frame after. Eight is two seconds at a 250 ms tick, which no healthy head
+    // ever reaches.
+    const int MaxCatchUpTicks = 8;
+
     readonly List<int> tickSlots = new();
+    // Slots with a pending action this tick, paired with the tick it was issued on, so the resolution order is
+    // (IssuedTick, slot) rather than the player index's hash order. Reused, so the sort costs no allocation.
+    readonly List<(long issuedTick, int slot)> actionOrder = new();
+    static readonly Comparison<(long issuedTick, int slot)> OldestFirst = (a, b) =>
+        a.issuedTick != b.issuedTick ? a.issuedTick.CompareTo(b.issuedTick) : a.slot.CompareTo(b.slot);
+    float tickAccumulator;
     // task 10: the graceful-drain countdown. Advanced here so the tick order is already the one the session half
     // fills in around, rather than something that has to be threaded through it later.
     float drainRemaining;
@@ -31,19 +44,49 @@ public sealed partial class TileWorldServer
     }
 
     /// <summary>
-    /// One server tick, in the order the design fixes: the head's own systems, then drain ONE command per player
-    /// into its owning cell, then step every cell (which is where movement and the arrival facing happen), then
-    /// authority handoff and border ghosting, then the action queue, then serve every client its area of interest.
-    /// <para>The order is not arbitrary. Commands are routed BEFORE the step so a click takes effect on the tick it
-    /// arrived rather than the one after. Handoff runs after the step, because a step is what carries a player over
-    /// a region boundary, and ghosting after handoff so the border mirrors reflect the new owners. Actions resolve
-    /// after both, so an arrival and its action land on the same tick. The serve is last, so a client sees the
-    /// whole tick and never half of it.</para>
+    /// Advances the world by <paramref name="dt"/> seconds of elapsed time, running the whole tick body once per
+    /// whole <see cref="TileWorldServerConfig.TickSeconds"/> through the server's own accumulator. A caller may
+    /// drive this on any frame clock: a frame shorter than a tick only accumulates and steps nothing, and a longer
+    /// one runs the ticks it covers, up to eight, past which the backlog is SHED rather than caught up.
+    /// <para>The accumulator is the server's rather than the cells' on purpose. Each cell has a fixed-tick
+    /// accumulator of its own, so a body that ran per CALL would drain a command into a cell on a frame the cell
+    /// did not step, and the next call would overwrite it with the starvation neutral before any simulator saw it.
+    /// Running the whole body per tick is what keeps a drain welded to the step it feeds.</para>
+    /// <para>The order inside one tick is the head's own systems, then drain ONE command per player into its owning
+    /// cell, then step every cell (which is where movement and the arrival facing happen), then authority handoff
+    /// and border ghosting, then the action queue, then serve every client its area of interest. It is not
+    /// arbitrary. Commands are routed BEFORE the step so a click takes effect on the tick it arrived rather than
+    /// the one after. Handoff runs after the step, because a step is what carries a player over a region boundary,
+    /// and ghosting after handoff so the border mirrors reflect the new owners. Actions resolve after both, so an
+    /// arrival and its action land on the same tick. The serve is last, so a client sees the whole tick and never
+    /// half of it.</para>
     /// </summary>
-    /// <param name="dt">Seconds elapsed. Fed to the host's fixed-tick accumulator, which steps each cell at
-    /// <see cref="TileWorldServerConfig.TickSeconds"/> whatever the caller's frame length.</param>
+    /// <param name="dt">Seconds elapsed since the last call. Negative is treated as zero.</param>
     public void Tick(float dt)
     {
+        tickAccumulator += MathF.Max(0f, dt);
+        int ran = 0;
+        while (tickAccumulator >= config.TickSeconds && ran < MaxCatchUpTicks)
+        {
+            tickAccumulator -= config.TickSeconds;
+            RunOneTick();
+            ran++;
+        }
+        // Shed, exactly as FixedTickHost does: keep at most one tick's worth so the very next frame still steps
+        // promptly, and throw the rest away rather than owing it forever.
+        if (ran >= MaxCatchUpTicks) tickAccumulator = MathF.Min(tickAccumulator, config.TickSeconds);
+
+        // task 10: the graceful-drain countdown is WALL CLOCK rather than tick count, so it runs down on every
+        // frame including the ones that stepped nothing. A head asked to drain has a real-time deadline whatever
+        // the simulation is doing.
+        if (drainRemaining > 0f) drainRemaining = MathF.Max(0f, drainRemaining - MathF.Max(0f, dt));
+    }
+
+    // ONE whole tick, always at exactly TickSeconds. Every cell is fed the same one tick's worth, so the cell
+    // accumulators stay in phase with this one and the tick stamped on the wire counts what actually stepped.
+    void RunOneTick()
+    {
+        float dt = config.TickSeconds;
         OnBeforeTick?.Invoke(dt);
 
         // Snapshotted, because everything below may add or drop a player and a dictionary cannot be enumerated
@@ -60,13 +103,16 @@ public sealed partial class TileWorldServer
             // Continue(Walk), which is a deliberate run-off, apart from the queue's neutral of the same value.
             bool arrived = ack != lastAckBySlot.GetValueOrDefault(slot, -1);
             lastAckBySlot[slot] = ack;
-            if (!host.TryGetOwner(netIdBySlot[slot], out CellSim cell, out Entity e)) continue;
+            // Guarded rather than indexed: task 10 lets a slot leave mid tick (a kick, a duplicate session, a
+            // rate-limit drop), and the first one raised out of OnBeforeTick or out of this loop would otherwise
+            // be a KeyNotFoundException that kills the tick for every other player.
+            if (!netIdBySlot.TryGetValue(slot, out long netId)) continue;
+            if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) continue;
             if (!cell.World.TryGet(e, out TileMoveState state)) continue;
             cell.World.Set(e, new PendingTileCommand { Command = Admit(cmd, arrived, state, slot) });
         }
 
-        // 2. Every (possibly newly created) cell runs the movement system, then one fixed sub-tick per frame.
-        foreach (CellSim cell in host.Cells) EnsureWired(cell);
+        // 2. Every cell runs the movement system (wired the moment the host creates one), then one fixed sub-tick.
         host.Tick(dt, maxTicksPerFrame: 1);
 
         // 3. Authority follows a step across a region boundary (exactly once), then refresh the border ghosts.
@@ -92,10 +138,11 @@ public sealed partial class TileWorldServer
                 NetChannelReliability.ReliableOrdered);
         }
 
-        // 6. Clear each cell's per-tick change tracking, so it does not accumulate on a long-running server. One
-        //    fixed sub-tick ran per cell this frame, so one advance per cell matches.
-        foreach (CellSim cell in host.Cells) cell.World.AdvanceTick();
-        if (drainRemaining > 0f) drainRemaining = Math.Max(0f, drainRemaining - dt);
+        // 6. Clear each cell's per-tick change tracking, so it does not accumulate on a long-running server. Exactly
+        //    one fixed sub-tick ran per cell, so one advance per cell matches. Indexed over the server's own live
+        //    cell list rather than foreach over host.Cells, which is an IReadOnlyCollection and boxes its enumerator
+        //    once per tick for nothing.
+        for (int i = 0; i < liveCells.Count; i++) liveCells[i].World.AdvanceTick();
         TickCount++;
     }
 

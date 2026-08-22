@@ -47,6 +47,9 @@ public sealed partial class TileWorldServer : IDisposable
     // that is what an eviction hands back, and the CellRemoved subscription below drops the entry so a cell
     // recreated at the same coordinate is wired again rather than ticking without a mover.
     readonly HashSet<CellCoord> wiredCells = new();
+    // The same set as a list, so the tick can walk it by index. host.Cells is an IReadOnlyCollection whose
+    // enumerator boxes on every foreach, and the tick reads it once per tick for the change-tracking advance.
+    readonly List<CellSim> liveCells = new();
     long interestServeEpoch;
 
     /// <summary>Builds a tile server over a transport and a baked collision map.</summary>
@@ -92,7 +95,15 @@ public sealed partial class TileWorldServer : IDisposable
             duplicateSessions: config.DuplicateSessions);
         host = new ShardHost(config.CellSize, config.TickSeconds, this.registry, config.InterestRadius,
             config.OverlapMargin, PositionOf);
-        host.CellRemoved += cell => wiredCells.Remove(cell.Coord);
+        // Both halves are event driven, and CellCreated is documented to fire synchronously before the new cell can
+        // tick or receive a migrated entity, which is exactly the guarantee wiring the mover needs. A per-tick sweep
+        // over host.Cells would wire a cell created by a handoff one tick LATE, and cost an enumerator every tick to
+        // do it.
+        host.CellCreated += EnsureWired;
+        host.CellRemoved += cell =>
+        {
+            if (wiredCells.Remove(cell.Coord)) liveCells.Remove(cell);
+        };
     }
 
     /// <summary>The cell grid, for tests, tooling and a head that persists cells.</summary>
@@ -196,7 +207,6 @@ public sealed partial class TileWorldServer : IDisposable
         lastAckBySlot[slot] = -1;
         rateBySlot[slot] = new RateLimiter(config.CommandBurst, config.MaxCommandsPerSecond * config.TickSeconds);
         host.BindClient(slot, netId);
-        EnsureWired(cell);
         PlayerJoined?.Invoke(slot, accountId);
         return netId;
     }
@@ -211,11 +221,13 @@ public sealed partial class TileWorldServer : IDisposable
         return false;
     }
 
-    // A cell created by a spawn, by a handoff, or by the host on demand needs the mover before it ticks. Adding the
-    // system twice would step every player in it twice, so the set is the guard rather than a convenience.
+    // A cell created by a spawn, by a handoff, or by the host on demand needs the mover before it ticks. Subscribed
+    // to host.CellCreated, so this runs on the creating thread ahead of the cell's first tick. Adding the system
+    // twice would step every player in it twice, so the set stays as the guard rather than as a convenience.
     void EnsureWired(CellSim cell)
     {
         if (!wiredCells.Add(cell.Coord)) return;
+        liveCells.Add(cell);
         cell.World.AddSystem(new TileMovementSystem(simulator));
     }
 

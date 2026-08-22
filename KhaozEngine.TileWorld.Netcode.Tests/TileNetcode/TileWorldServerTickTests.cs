@@ -69,6 +69,74 @@ public class TileWorldServerTickTests
         Assert.Equal(new TileCoord(1, 2, 0), tilesSeen[2]);
     }
 
+    // The whole tick body runs once per WHOLE TickSeconds, through the server's own accumulator, so a caller on a
+    // frame clock can never separate a drained command from the step it feeds. Sixty frames of a 60 Hz caller is one
+    // second, which is four whole ticks at a 250 ms tick, and it has to land byte-identically on what four whole-tick
+    // calls produce. Driven per call instead, the walk is drained on frame one and overwritten by the starvation
+    // neutral on frame two, before any simulator ever sees it, and the player never leaves the spawn tile.
+    [Fact]
+    public void Sixty_short_frames_step_the_whole_ticks_they_add_up_to()
+    {
+        var hubA = new InMemoryTransportHub();
+        var hubB = new InMemoryTransportHub();
+        using TileWorldServer frames =
+            Server(TileMoveSimulatorTests.FlatWorld(), hubA.Server, new TileCoord(10, 10, 0));
+        using TileWorldServer whole =
+            Server(TileMoveSimulatorTests.FlatWorld(), hubB.Server, new TileCoord(10, 10, 0));
+        foreach (TileWorldServer s in new[] { frames, whole })
+        {
+            s.SpawnPlayer(0, "a", "Ari");
+            s.Enqueue(0, 0, TileCommand.WalkTo(new TileCoord(10, 20, 0), TileMoveMode.Run));
+        }
+
+        for (int i = 0; i < 60; i++) frames.Tick(1f / 60f);
+        for (int i = 0; i < 4; i++) whole.Tick(Dt);
+
+        Assert.Equal(4, frames.TickCount);
+        Assert.Equal(whole.TickCount, frames.TickCount);
+        Assert.True(frames.TryGetPlayerState(0, out TileMoveState a));
+        Assert.True(whole.TryGetPlayerState(0, out TileMoveState b));
+        Assert.Equal(b, a);
+        Assert.Equal(new TileCoord(10, 12, 0), a.Tile);
+    }
+
+    // The same rule at the sub-tick end, on a frame length that is exact in binary so nothing here turns on float
+    // accumulation: a quarter of a tick four times is one tick, and three of them are not a tick at all.
+    [Fact]
+    public void Four_quarter_frames_move_the_player_exactly_as_one_whole_tick()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(10, 10, 0));
+        s.SpawnPlayer(0, "a", "Ari");
+        s.Enqueue(0, 0, TileCommand.WalkTo(new TileCoord(10, 20, 0), TileMoveMode.Run));
+
+        for (int i = 0; i < 3; i++) s.Tick(Dt / 4f);
+        Assert.Equal(0, s.TickCount);
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState pending));
+        Assert.True(pending.Route.IsIdle);   // nothing drained, so nothing to overwrite
+
+        s.Tick(Dt / 4f);
+        Assert.Equal(1, s.TickCount);
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState stepped));
+        Assert.Equal(new TileCoord(10, 20, 0), stepped.Route.End);
+        Assert.Equal(1, stepped.StepTicks);
+    }
+
+    // A host that fell far behind (a stall, a debugger break, a long GC) sheds the backlog rather than trying to run
+    // every tick it missed, which is the rule FixedTickHost uses and the reason it has one: catching up 400 ticks
+    // takes longer than real time and leaves the next frame further behind still.
+    [Fact]
+    public void A_long_stall_sheds_its_backlog_past_the_catch_up_cap()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(10, 10, 0));
+        s.SpawnPlayer(0, "a", "Ari");
+
+        s.Tick(100f);   // 400 ticks' worth of elapsed time
+
+        Assert.Equal(8, s.TickCount);   // MaxCatchUpTicks, not 400
+    }
+
     // The tick order's first step, pinned on its own: ONE command per player per tick, oldest first. Both commands
     // are buffered before the first tick, so a drain that emptied the queue would apply the second one immediately
     // and the route would already point east on tick one.

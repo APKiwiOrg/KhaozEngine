@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using KhaozEngine.Netcode;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Netcode;
+using KhaozEngine.WorldStore;
 using Xunit;
 
 namespace KhaozEngine.Tests.TileNetcode;
@@ -144,6 +146,36 @@ public class TileWorldServerSessionTests
         Assert.Equal(1, s.PlayerCount);
     }
 
+    [Fact]
+    public async Task A_rejoin_is_built_on_the_tile_the_player_left_rather_than_at_the_spawn()
+    {
+        var store = new InMemoryWorldStore();
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = TileWorldServerTickTests.Server(
+            TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(4, 4, 0));
+        var persistence = new TileWorldPersistence(s, store);
+
+        INetTransport first = hub.CreateClient();
+        var firstNet = new NetClient(first, System.Text.Encoding.UTF8.GetBytes("acct-p"));
+        firstNet.Poll();
+        s.Poll();
+        // The leave-save is skipped while the account is still guarded by an in-flight load, so let the
+        // load-on-join land before walking the player somewhere and dropping them.
+        await persistence.FlushAsync();
+        s.SetPlayerState(s.JoinedSlots.Single(), TileMoveState.At(new TileCoord(9, 12, 0), TileDirection.N));
+        hub.DisconnectClient(first);
+        s.Poll();
+        await persistence.FlushAsync();
+
+        INetTransport second = hub.CreateClient();
+        var secondNet = new NetClient(second, System.Text.Encoding.UTF8.GetBytes("acct-p"));
+        secondNet.Poll();
+        s.Poll();
+        // Read straight after the join, with no tick and no restore applied: the entity was BUILT on the saved
+        // tile off the hint, which is what keeps a quiet rejoin from reading to the client as a teleport.
+        Assert.True(s.TryGetPlayerState(s.JoinedSlots.Single(), out TileMoveState st));
+        Assert.Equal(new TileCoord(9, 12, 0), st.Tile);
+    }
 
     [Fact]
     public void An_arrival_on_a_reach_tile_raises_the_interaction_exactly_once()
@@ -221,8 +253,6 @@ public class TileWorldServerSessionTests
             Assert.True(s.IsDrainComplete);
         }
     }
-
-
 
     [Fact]
     public void A_leaving_player_raises_its_final_state_and_frees_the_slot()

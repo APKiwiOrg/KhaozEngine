@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using KhaozEngine.Ecs;
 using KhaozEngine.Netcode;
 using KhaozEngine.Replication;
@@ -23,8 +24,8 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// <para>Partial across four files, because "the world ticks", "connections come and go" and "a click resolves"
 /// are three separate seams and one file for all of them would grow past the size ratchet as each filled in. This
 /// file is construction, the host, the player index and state access. <c>TileWorldServer.Tick.cs</c> is the tick
-/// order and the serve, <c>TileWorldServer.Sessions.cs</c> the session lifecycle, and
-/// <c>TileWorldServer.Actions.cs</c> the pending-action resolution.</para>
+/// order and the serve, <c>TileWorldServer.Sessions.cs</c> the session lifecycle and the persistence-host surface,
+/// and <c>TileWorldServer.Actions.cs</c> the pending-action resolution.</para>
 /// </summary>
 public sealed partial class TileWorldServer : IDisposable
 {
@@ -241,11 +242,13 @@ public sealed partial class TileWorldServer : IDisposable
         cell.World.Set(e, new TileRouteState { Remaining = steps });
     }
 
-    /// <summary>Builds a player entity at the configured spawn and binds the slot to it. Returns its net id, and
-    /// raises <see cref="PlayerJoined"/> once the entity exists.</summary>
+    /// <summary>Builds a player entity and binds the slot to it, at the configured spawn or, for an account a
+    /// rejoin hint is on file for, on the tile that account left. Returns its net id. Raises
+    /// <see cref="PlayerJoined"/> once the entity exists, so a persistence layer loads from there.</summary>
     /// <param name="slot">The connection slot to bind. Binding is by slot rather than by entity, because a slot is
     /// what survives the entity being handed between cells mid walk.</param>
-    /// <param name="accountId">The verified account id, which is what persistence keys a record on.</param>
+    /// <param name="accountId">The verified account id, which is what persistence keys a record on, and what the
+    /// rejoin hint is looked up by.</param>
     /// <param name="displayName">The cosmetic name observers see. Never a rules input.</param>
     public long SpawnPlayer(int slot, string accountId, string displayName)
     {
@@ -257,9 +260,26 @@ public sealed partial class TileWorldServer : IDisposable
         commands.Forget(slot);
         actions.Forget(slot);
 
+        // A rejoining player is BUILT where they left, so the first snapshot their client sees is already the
+        // truth. Built at the configured spawn and moved afterwards, the same rejoin reads to the client as a
+        // teleport across the map, and the restore that follows tells it so a second time. The hint is (tileX,
+        // plane, tileZ) in the Vector3 the persistence core carries positions in, which TileWorldPersistence's
+        // binding writes and reads with the same packing.
+        TileCoord at = config.Spawn;
+        if (hintProvider is not null && hintProvider(accountId, out Vector3 hint))
+        {
+            var hinted = new TileCoord((int)hint.X, (int)hint.Z, (int)hint.Y);
+            // Checked against the same two rules SetPlayerState refuses a loaded record for. A hint comes from a
+            // stored record, and a record naming a plane this world does not have, or a region the map never
+            // loaded, would otherwise build a player nobody can see and who can never step. Falling back to the
+            // spawn puts them somewhere real, and the load that follows quarantines the record properly.
+            if (hinted.Plane >= 0 && hinted.Plane < config.PlaneCount && simulator.Map.HasRegion(hinted.Region))
+                at = hinted;
+        }
+
         long netId = allocator.Next().Value;
-        Entity e = host.SpawnOwned(config.Spawn.X, config.Spawn.Z, netId, out CellSim cell);
-        TileMoveState state = TileMoveState.At(config.Spawn, TileDirection.S);
+        Entity e = host.SpawnOwned(at.X, at.Z, netId, out CellSim cell);
+        TileMoveState state = TileMoveState.At(at, TileDirection.S);
         cell.World.Set(e, state);
         cell.World.Set(e, new TileRouteState { Remaining = Array.Empty<TileDirection>() });
         cell.World.Set(e, new PendingTileCommand { Command = TileCommand.Continue(state.Mode) });

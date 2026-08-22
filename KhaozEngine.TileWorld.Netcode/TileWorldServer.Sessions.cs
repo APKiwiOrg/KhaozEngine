@@ -22,9 +22,15 @@ public delegate void TileGameMessageHandler(int slot, ushort kind, ReadOnlySpan<
 /// (<c>TileWorldServer.Tick.cs</c>).
 /// <para>The split is the natural seam: everything here runs on the POLL, driven by the transport, and everything
 /// in the tick half runs on the CLOCK. Nothing here steps the world, and nothing there touches a connection.</para>
+/// <para>This is also where the server becomes the PERSISTENCE HOST. <see cref="IPersistenceHost{TState}"/> is a
+/// join, a leave, a state accessor and a spawn seed, which is exactly the set of things a session lifecycle owns,
+/// so <see cref="TileWorldPersistence"/> drives the server through the members already declared here and needs no
+/// adapter of its own.</para>
 /// </summary>
-public sealed partial class TileWorldServer
+public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
 {
+    PositionHintProvider? hintProvider;
+
     // The drain countdown, in seconds of wall clock, and the token it was started with. Negative means no drain
     // has been asked for, which is what keeps IsDraining answerable from the one field: a grace of zero is a
     // legitimate drain that completes on the next Tick, and a zero-initialised field could not tell the two apart.
@@ -188,6 +194,34 @@ public sealed partial class TileWorldServer
         actions.Forget(slot);
     }
 
+    /// <summary>
+    /// Installs the hint a join consults BEFORE the player entity exists, so a rejoining player is BUILT on the
+    /// tile they left rather than at the spawn and then moved onto their record. Null clears it, which returns
+    /// every join to the configured spawn.
+    /// <para>This is the server half of the reconnect contract, and it is what keeps a quiet rejoin quiet. A head
+    /// that spawned at the configured spawn and applied the stored tile afterwards has already served one snapshot
+    /// saying the player is somewhere they are not, and the client reads that as a teleport.
+    /// <see cref="TileWorldPersistence"/> installs one at construction, so a persistence-backed head needs no
+    /// wiring.</para>
+    /// </summary>
+    /// <param name="provider">The hint source, or null to clear it.</param>
+    public void SetPositionHintProvider(PositionHintProvider? provider) => hintProvider = provider;
+
+    /// <summary>
+    /// Where this slot WOULD have been built with no hint at all: the configured spawn, facing south. Deliberately
+    /// hint-free, which is the whole point of it. Seeding a join from a hint means a QUARANTINED record can no
+    /// longer just decline to place the player, because they are already standing on a position nothing validated,
+    /// so this is the tile policy moves them back to.
+    /// </summary>
+    /// <param name="slot">The player's connection slot.</param>
+    /// <param name="spawn">The configured spawn state. Always written, whether or not the slot is known.</param>
+    /// <returns>False for a slot with no player, which is a slot nothing needs resetting.</returns>
+    public bool TryGetConfiguredSpawn(int slot, out TileMoveState spawn)
+    {
+        spawn = TileMoveState.At(config.Spawn, TileDirection.S);
+        return netIdBySlot.ContainsKey(slot) || accountIdBySlot.ContainsKey(slot);
+    }
+
     /// <summary>Closes one session with a reason token and despawns its player. The notice goes out BEFORE the
     /// disconnect, so the client learns why rather than seeing an unexplained drop, and the player is released
     /// synchronously rather than on the poll that observes the transport catching up.</summary>
@@ -217,7 +251,6 @@ public sealed partial class TileWorldServer
 
     void SendNotice(int slot, string reasonToken) =>
         net.SendTo(slot, TileProtocol.EncodeNotice(reasonToken), NetChannelReliability.ReliableOrdered);
-
 
     /// <summary>
     /// Tells every client the server is going away, then counts <paramref name="graceSeconds"/> down on

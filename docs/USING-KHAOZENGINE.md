@@ -13907,6 +13907,6 @@ and execute the published binary; it prints one `AOT PROBE:` line and returns ex
   and this doc match `<KhaozEngineVersion>`, and that the newest `CHANGELOG.md` heading is for that version.
 - SemVer: additive = minor, fixes = patch, breaking = major. Local file-feed for inner-loop dev; GitHub Packages
   on `v*` tags.
-- To change the library: edit, add a headless test, `dotnet pack -c Release -o ./local-feed`, consume locally;
-  when stable, bump the version + add a `CHANGELOG.md` entry + tag for a published release. Each game adopts on
+- To change the library: edit, add a headless test, `scripts/pack-local-feed.sh`, consume locally. When
+  stable, bump the version + add a `CHANGELOG.md` entry + tag for a published release. Each game adopts on
   its own schedule by bumping its pinned version (or its umbrella metapackage version).

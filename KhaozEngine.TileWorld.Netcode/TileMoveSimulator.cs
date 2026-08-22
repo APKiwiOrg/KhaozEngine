@@ -242,12 +242,29 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     // W for a tile that touches no footprint tile at all. Unguarded, that pair turns a player who never got there
     // to face west for no reason. Contains also refuses a target on another plane, so the plane needs no second
     // check here.
+    //
+    // BOTH doors also DROP the target, and that is the load-bearing half: a walk that ended anywhere but on a reach
+    // tile is not an arrival, and the pending target is the one record of that. The server's action resolution
+    // reads exactly this pair of fields (an idle route still naming the target IS the arrival), so a target left
+    // set here raises the interaction for a player standing arbitrarily far away, which a client aims by clicking
+    // the target with the longest reach path and letting MaxRouteSteps cut the walk short. Cleared, both cases fall
+    // through to the server's CannotReach, which is the correct answer for a click that could not be walked. Both
+    // heads run this, so the client predicts the same drop and no second copy of the reach rule appears anywhere.
     TileMoveState FaceTarget(in TileMoveState state)
     {
         TileMoveState s = state;
         if (targets is null || !targets.TryGetFootprint(s.InteractTarget, out TileRect footprint, out int plane))
+        {
+            // The target stopped resolving part way through the walk (deleted, despawned, no longer interactive).
+            s.InteractTarget = 0;
             return s;
-        if (!TileReach.Contains(Map, footprint, plane, s.Tile)) return s;
+        }
+        if (!TileReach.Contains(Map, footprint, plane, s.Tile))
+        {
+            // The walk ended off the reach set, which is what a route truncated at MaxRouteSteps leaves behind.
+            s.InteractTarget = 0;
+            return s;
+        }
         s.Facing = TileReach.FacingToward(Map, footprint, plane, s.Tile);
         return s;
     }
@@ -276,8 +293,9 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     // walk ends at the truncated route's last tile on both of them and the owner is told where it is actually
     // going. A player who clicked further away walks as far as one click carries and clicks again.
     //
-    // The interaction case truncates too, and is safe: an interact route cut short leaves the player standing off
-    // the target's reach set, where FaceTarget's TileReach.Contains guard already declines to turn them.
+    // The interaction case truncates too, and it is FaceTarget that makes a cut-short interact safe: the walk ends
+    // off the target's reach set, where that method declines to turn the player AND drops the pending target, so
+    // the click is answered as a CannotReach rather than as an arrival from wherever the route ran out.
     TileRoute RouteFor(TilePath path)
     {
         IReadOnlyList<TileCoord> tiles = path.Tiles;

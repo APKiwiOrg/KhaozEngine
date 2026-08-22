@@ -83,9 +83,10 @@ public class TileInteractTests
 
     // The guard on the arrival turn, which is the half of the rule that looks like dead code. A re-path around a
     // blocker goes through FindPath, whose nearest-reachable fallback can leave a LIVE route that stops short of the
-    // reach tile, and FacingToward answers W for a tile touching no footprint tile. So the route empties with the
-    // target still pending, several tiles from the booth, and the player must keep the facing their last step gave
-    // them rather than snapping west at nothing.
+    // reach tile, and FacingToward answers W for a tile touching no footprint tile. So the route empties several
+    // tiles from the booth, and the player must keep the facing their last step gave them rather than snapping west
+    // at nothing. The same guard drops the pending target, so the click is answered as a refusal rather than as an
+    // arrival four tiles out.
     [Fact]
     public void A_re_path_that_stops_short_of_the_reach_tile_does_not_turn()
     {
@@ -111,7 +112,9 @@ public class TileInteractTests
 
         for (int i = 0; i < 20 && !s.Route.IsIdle; i++) s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
         Assert.Equal(new TileCoord(4, 10, 0), s.Tile);
-        Assert.Equal(booth.Id, s.InteractTarget);
+        // Dropped by the same guard that declines the turn: a walk that ended off the reach set is not an arrival,
+        // and the server reads this field to tell the two apart.
+        Assert.Equal(0, s.InteractTarget);
         Assert.False(TileReach.Contains(map, TileFootprint.Of(TileMoveSimulatorTests.Catalogs.Archetype("bank_booth")!,
             10, 10, 0), 0, s.Tile));
         // The last step of the re-path, which came up onto (4, 10) from (4, 9) because the tree at (3, 10) denies the

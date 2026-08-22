@@ -244,8 +244,9 @@ public class TileMoveSimulatorTests
     public void An_interact_route_is_truncated_by_the_same_cap()
     {
         // The interact path builds its route through the same helper, so a booth further away than the cap is
-        // walked toward and no further. The pending target is still remembered: the arrival turn is guarded by
-        // TileReach.Contains, which declines for a player who stopped short of the reach set.
+        // walked toward and no further. The pending target rides the walk and is DROPPED when it ends short of the
+        // reach set, which is what makes the server answer the click with a CannotReach instead of raising the
+        // interaction from wherever the truncated route ran out.
         TileWorldDocument doc = FlatWorld();
         TileObject booth = doc.AddObject("bank_booth", 10, 10, 0, 0);
         var sim = new TileMoveSimulator(Bake(doc), Ticks, new TileDocumentTargets(doc, Catalogs),
@@ -259,7 +260,7 @@ public class TileMoveSimulatorTests
 
         s = Run(sim, s, TileCommand.Continue(TileMoveMode.Run), 20);
         Assert.Equal(new TileCoord(3, 10, 0), s.Tile);
-        Assert.Equal(booth.Id, s.InteractTarget);
+        Assert.Equal(0, s.InteractTarget);
     }
 
     [Fact]

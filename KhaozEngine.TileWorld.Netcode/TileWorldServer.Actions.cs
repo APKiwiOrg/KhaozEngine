@@ -21,11 +21,12 @@ public sealed partial class TileWorldServer
 
     // Resolves every pending action whose walk has ENDED. The arrival test is the state's own, not a second reach
     // computation: TileMoveSimulator routes an interact to a reach tile and keeps InteractTarget for exactly as long
-    // as that walk is alive, dropping it the moment the route is replaced or cannot be rebuilt. So a route that has
-    // emptied with the target still on it IS the arrival, and the same pair of fields answers the abandonment and
-    // the failure without the server re-deriving anything the simulator already decided. Re-deriving it here would
-    // put a SECOND copy of the reach rule on the server, and the one that disagreed would be invisible until a
-    // player stood one tile off the thing they clicked.
+    // as that walk is alive, dropping it the moment the route is replaced, cannot be rebuilt, or ends anywhere but
+    // ON a reach tile of a target that still resolves (TileMoveSimulator.FaceTarget, both doors). So a route that
+    // has emptied with the target still on it IS the arrival, and the same pair of fields answers the abandonment
+    // and the failure without the server re-deriving anything the simulator already decided. Re-deriving it here
+    // would put a SECOND copy of the reach rule on the server, and the one that disagreed would be invisible until
+    // a player stood one tile off the thing they clicked, or a whole map away from it.
     //
     // The arrival TURN is the simulator's too, on the tick the route empties with a target pending, so nothing here
     // writes state.Facing. A write here would be idempotent at best and a second definition of the facing rule at

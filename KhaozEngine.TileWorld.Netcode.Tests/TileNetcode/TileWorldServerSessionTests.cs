@@ -238,6 +238,60 @@ public class TileWorldServerSessionTests
     }
 
     [Fact]
+    public void A_truncated_interact_route_is_refused_rather_than_raised_from_across_the_map()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        TileObject booth = doc.AddObject("bank_booth", 30, 10, 0, 0);
+        var hub = new InMemoryTransportHub();
+        using var s = new TileWorldServer(hub.Server,
+            TileWorldServerTickTests.Config(new TileCoord(4, 10, 0)) with
+                { Move = new TileMoveOptions { MaxRouteSteps = 3 } },
+            TileMoveSimulatorTests.Bake(doc), new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs),
+            new AllowAllAuthenticator());
+        var raised = new List<long>();
+        var refused = new List<long>();
+        s.OnInteract += (_, _, target) => raised.Add(target);
+        s.OnCannotReach += (_, target) => refused.Add(target);
+        s.SpawnPlayer(0, "a", "Ari");
+        s.Enqueue(0, 0, TileCommand.Interact(booth.Id, TileMoveMode.Run));
+        for (int i = 0; i < 20; i++) s.Tick(Dt);
+
+        // The route to the booth's reach tile is 25 steps and the cap cuts it at 3, so the walk ends 22 tiles
+        // short of it. Raising the interaction there is a reach check a client aims by picking the target with the
+        // longest path, so the answer has to be the refusal instead.
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState st));
+        Assert.Equal(new TileCoord(7, 10, 0), st.Tile);
+        Assert.Empty(raised);
+        Assert.Equal(new[] { booth.Id }, refused.ToArray());
+    }
+
+    [Fact]
+    public void A_target_that_stops_resolving_mid_walk_is_refused_rather_than_raised()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        TileObject booth = doc.AddObject("bank_booth", 10, 10, 0, 0);
+        var targets = new RevocableTargets(new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs));
+        var hub = new InMemoryTransportHub();
+        using var s = new TileWorldServer(hub.Server, TileWorldServerTickTests.Config(new TileCoord(5, 10, 0)),
+            TileMoveSimulatorTests.Bake(doc), targets, new AllowAllAuthenticator());
+        var raised = new List<long>();
+        var refused = new List<long>();
+        s.OnInteract += (_, _, target) => raised.Add(target);
+        s.OnCannotReach += (_, target) => refused.Add(target);
+        s.SpawnPlayer(0, "a", "Ari");
+        s.Enqueue(0, 0, TileCommand.Interact(booth.Id, TileMoveMode.Run));
+        s.Tick(Dt);
+        s.Tick(Dt);
+        // Deleted while the player is still walking to it, which is the other door out of FaceTarget: the walk
+        // ends on what WAS a reach tile, of an object that no longer exists.
+        targets.Resolves = false;
+        for (int i = 0; i < 20; i++) s.Tick(Dt);
+
+        Assert.Empty(raised);
+        Assert.Equal(new[] { booth.Id }, refused.ToArray());
+    }
+
+    [Fact]
     public void A_drain_notices_everyone_then_completes_after_its_grace()
     {
         (TileWorldServer s, _, _) = Up(new TileCoord(4, 4, 0));
@@ -299,6 +353,25 @@ public class TileWorldServerSessionTests
             Assert.Equal(new TileCoord(4, 4, 0), final!.Value.Tile);
             Assert.Equal(0, s.PlayerCount);
             Assert.Empty(s.JoinedSlots);
+        }
+    }
+
+    // An ITileTargets whose answers can be switched off part way through a walk, which is what deleting or
+    // despawning an object does to every id it had. Wraps the real seam rather than replacing it, so the resolving
+    // case is still the shipped answer.
+    sealed class RevocableTargets : ITileTargets
+    {
+        readonly ITileTargets inner;
+
+        internal RevocableTargets(ITileTargets inner) => this.inner = inner;
+
+        internal bool Resolves { get; set; } = true;
+
+        public bool TryGetFootprint(long target, out TileRect footprint, out int plane)
+        {
+            footprint = default;
+            plane = 0;
+            return Resolves && inner.TryGetFootprint(target, out footprint, out plane);
         }
     }
 }

@@ -244,8 +244,13 @@ public sealed partial class TileWorldClient
     // distance between them would draw it walking over every tile in between.
     static TileMoveState GlideFrom(TileCoord from, in TileMoveState now)
     {
-        if (from.Plane != now.Tile.Plane
-            || Math.Max(Math.Abs(now.Tile.X - from.X), Math.Abs(now.Tile.Z - from.Z)) != 1)
+        // The step measurement is in LONG for the reason TileWorldServer.GoalInRange is: ReadMove bounds every
+        // replicated field except a tile's X and Z, so two snapshots placing one remote int.MinValue apart would
+        // make this subtraction int.MinValue and Math.Abs would throw out of SampleRemote, out of
+        // RefreshRemoteSamples, and out of the CLIENT'S RENDER LOOP. That is exactly the failure the reader's own
+        // doc promises a corrupt frame can never cause.
+        long dx = (long)now.Tile.X - from.X, dz = (long)now.Tile.Z - from.Z;
+        if (from.Plane != now.Tile.Plane || Math.Max(Math.Abs(dx), Math.Abs(dz)) != 1)
             return Standing(now);
         TileMoveState s = now;
         s.Tile = from;

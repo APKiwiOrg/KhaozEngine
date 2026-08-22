@@ -531,4 +531,43 @@ public class TileWorldServerTickTests
         Assert.False(east.TryGetGhost(walker, out _));   // adopted, never a ghost and a resident at once
         Assert.Contains(walker, s.ServeInterest(1));
     }
+
+    // A frame whose bytes a CLIENT chooses, driven through the real encoder, the real decoder, the real transport
+    // and the real server. The goal's X and Z are the only decoded fields with no wire bound, deliberately: the
+    // radius is measured from where the player currently stands, so only the server can judge it, and
+    // TryDecodeCommand says so in its own doc. That leaves the subtraction inside GoalInRange as the one place a
+    // remote peer picks both operands. A goal of int.MinValue + tileX makes it exactly int.MinValue, which is the
+    // one value Math.Abs cannot negate, and the throw comes out of Admit in step 1 of the tick body and takes the
+    // WHOLE tick down, for every other player on the server, not only the one who sent it.
+    [Fact]
+    public void A_crafted_goal_no_int_can_measure_is_refused_instead_of_killing_the_tick()
+    {
+        (LoopbackTransport serverEnd, LoopbackTransport clientEnd) = LoopbackTransport.CreatePair();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), serverEnd, new TileCoord(10, 10, 0));
+        var client = new NetClient(clientEnd);
+        for (int i = 0; i < 2; i++) { client.Poll(); s.Poll(); }   // Hello, seat, Welcome
+        Assert.Equal(1, s.PlayerCount);
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState before));
+        Assert.Equal(new TileCoord(10, 10, 0), before.Tile);
+
+        var crafted = TileCommand.WalkTo(
+            new TileCoord(int.MinValue + before.Tile.X, before.Tile.Z, 0), TileMoveMode.Run);
+        byte[] frame = TileProtocol.EncodeCommand(0, crafted);
+        // Well formed all the way to the tick: the decoder admits it, so nothing before Admit ever sees it as odd.
+        Assert.True(TileProtocol.TryDecodeCommand(frame, planeCount: 4, out int seq, out TileCommand decoded));
+        Assert.Equal(0, seq);
+        Assert.Equal(int.MinValue + before.Tile.X, decoded.Goal.X);
+
+        client.Send(frame, NetChannelReliability.ReliableOrdered);
+        s.Poll();
+        s.Tick(Dt);
+
+        Assert.Equal(1, s.TickCount);
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState after));
+        Assert.Equal(new TileCoord(10, 10, 0), after.Tile);
+        Assert.True(after.Route.IsIdle);
+        // Rewritten to Continue(cmd.Mode) exactly as any other out-of-range goal is, so the run toggle the refused
+        // walk carried still applies and the client predicting the same rewrite stays in step.
+        Assert.Equal(TileMoveMode.Run, after.Mode);
+    }
 }

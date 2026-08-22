@@ -218,7 +218,14 @@ public sealed partial class TileWorldServer
     bool GoalInRange(in TileMoveState state, TileCoord goal)
     {
         if (goal.Plane >= config.PlaneCount) return false;
-        return Math.Max(Math.Abs(goal.X - state.Tile.X), Math.Abs(goal.Z - state.Tile.Z)) <= config.MaxGoalRadius;
+        // In LONG, because both operands are attacker-chosen. TryDecodeCommand deliberately leaves the goal's X and
+        // Z unbounded (the radius is measured from where the player stands, so only this side can judge it), so a
+        // goal of int.MinValue + tileX makes the subtraction exactly int.MinValue in int, and Math.Abs cannot
+        // negate that: the OverflowException comes out of Admit in step 1 of the tick body and takes the whole
+        // tick down for every player on the server. A long cannot overflow for int operands, and Math.Abs(long)
+        // only refuses long.MinValue, which no pair of ints can reach.
+        long dx = (long)goal.X - state.Tile.X, dz = (long)goal.Z - state.Tile.Z;
+        return Math.Max(Math.Abs(dx), Math.Abs(dz)) <= config.MaxGoalRadius;
     }
 
     // Planes do not shard: a cell holds every plane of its region, so the plane filter happens here, on the

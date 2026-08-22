@@ -463,6 +463,47 @@ public class TileWorldClientLoopbackTests
         Assert.Equal(20f, drawn[^1], 3);
     }
 
+    // The OTHER half of the cut rule, and the half nothing reached: a pair of tiles that IS one step apart in x and
+    // z but sits on two different planes. Gliding between those would draw the avatar walking one tile sideways and
+    // one storey down through the floor it is standing on, so the plane clause cuts it exactly as a teleport is
+    // cut. The VIEWER moves with the remote on purpose: the serve is plane filtered, so a remote that changed floor
+    // on its own would leave the viewer's interest set and be resampled as a first sighting rather than reach
+    // GlideFrom at all.
+    [Fact]
+    public void A_remote_that_changes_plane_one_step_away_cuts_rather_than_gliding_between_floors()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
+        h.Frames(4);
+        long remote = h.Server.SpawnPlayer(slot: 1, "remote", "Rem");
+        h.Server.SetPlayerState(1, TileMoveState.At(new TileCoord(12, 10, 0), TileDirection.S));
+        h.Frames(24);
+        Assert.True(h.Client.TryGetRemotePose(remote, out TilePose onTheGroundFloor));
+        Assert.Equal(0f, onTheGroundFloor.Position.Y, 3);
+
+        // Both written in the same gap between ticks, so no serve ever sees the two on different planes and the
+        // remote stays in the viewer's interest across the change. That is what puts the pair in front of GlideFrom.
+        h.Server.SetPlayerState(0, TileMoveState.At(new TileCoord(10, 10, 1), TileDirection.S), teleport: true);
+        h.Server.SetPlayerState(1, TileMoveState.At(new TileCoord(12, 11, 1), TileDirection.S), teleport: true);
+
+        float planeHeight = h.Client.Presenter.PlaneHeight;
+        var drawn = new List<(float Y, float Z)>();
+        for (int i = 0; i < 40; i++)
+        {
+            h.Frames(1);
+            if (h.Client.TryGetRemotePose(remote, out TilePose pose))
+                drawn.Add((pose.Position.Y, TileWorldSpace.TileZ(pose.Position.Z, 1f)));
+        }
+
+        Assert.NotEmpty(drawn);
+        Assert.All(drawn, p => Assert.True(
+            (MathF.Abs(p.Y) < 0.001f && MathF.Abs(p.Z - 10f) < 0.001f)
+            || (MathF.Abs(p.Y - planeHeight) < 0.001f && MathF.Abs(p.Z - 11f) < 0.001f),
+            $"drawn at height {p.Y}, tile z {p.Z}, which is between the two floors rather than on either"));
+        Assert.Equal(planeHeight, drawn[^1].Y, 3);
+        Assert.Equal(11f, drawn[^1].Z, 3);
+    }
+
     // A remote that walks out of the area of interest stops being served, and the client's own per-remote
     // bookkeeping has to let go of it too: a sample nothing refreshes would keep the departed player on screen,
     // frozen on the last tile anybody saw them on, for the rest of the session.

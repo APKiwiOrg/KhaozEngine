@@ -270,7 +270,11 @@ public sealed partial class TileWorldClient : IDisposable
     bool GoalInRange(in TileMoveState state, TileCoord goal)
     {
         if (goal.Plane >= config.PlaneCount) return false;
-        return Math.Max(Math.Abs(goal.X - state.Tile.X), Math.Abs(goal.Z - state.Tile.Z)) <= config.MaxGoalRadius;
+        // In LONG, matching the server line for line. Nothing a client builds locally reaches int.MinValue apart,
+        // but the two predicates ARE the determinism contract and a difference here is a difference nobody would
+        // find until it mispredicted. See TileWorldServer.GoalInRange for why the long is load-bearing there.
+        long dx = (long)goal.X - state.Tile.X, dz = (long)goal.Z - state.Tile.Z;
+        return Math.Max(Math.Abs(dx), Math.Abs(dz)) <= config.MaxGoalRadius;
     }
 
     /// <summary>

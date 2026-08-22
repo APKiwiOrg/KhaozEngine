@@ -120,8 +120,11 @@ public sealed partial class TileWorldServer : IDisposable
     /// <see cref="TileProtocol.CreateRegistry"/> with the same extension registrations.</summary>
     public ReplicationRegistry Registry => registry;
 
-    /// <summary>Ticks stepped since construction. Stamped on every snapshot, so a client can name the
-    /// authoritative tick a reconciliation basis belongs to.</summary>
+    /// <summary>Ticks stepped since construction, so this is 1 once the first tick has returned. The snapshot
+    /// stamp is the other half of the same convention and is ZERO BASED: a frame carries the INDEX of the tick its
+    /// state is the result of, which is this value minus one, so the frame describing the world after the first
+    /// tick is stamped 0. <c>TilePendingAction.IssuedTick</c> uses the same index. A client reading a stamp of
+    /// <c>n</c> is looking at the world after <c>n + 1</c> ticks.</summary>
     public long TickCount { get; private set; }
 
     /// <summary>Players currently joined.</summary>

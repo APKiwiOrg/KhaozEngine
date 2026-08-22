@@ -27,6 +27,15 @@ public sealed partial class TileWorldServer
     static readonly Comparison<(long issuedTick, int slot)> OldestFirst = (a, b) =>
         a.issuedTick != b.issuedTick ? a.issuedTick.CompareTo(b.issuedTick) : a.slot.CompareTo(b.slot);
     float tickAccumulator;
+    // The serve's plane filter, reused across every client in a pass. planeByNetId is the map; the three fields
+    // under it are what the two delegates would otherwise capture, hoisted so the delegates can be cached instead
+    // of rebuilt per client per tick. See FilterToPlane.
+    readonly Dictionary<long, int> planeByNetId = new();
+    RefAction<NetId>? collectPlanes;
+    Predicate<long>? offViewerPlane;
+    World? filterWorld;
+    HashSet<long>? filterInterest;
+    int filterPlane;
     // task 10: the graceful-drain countdown. Advanced here so the tick order is already the one the session half
     // fills in around, rather than something that has to be threaded through it later.
     float drainRemaining;
@@ -250,6 +259,12 @@ public sealed partial class TileWorldServer
     // so an unbounded goal is an unbounded allocation a client chooses. Dropped, not clamped, so the client and the
     // server never silently walk to two different tiles. The plane bound is a second, cheaper refusal for a goal
     // naming a plane the world does not have, which the decoder already rejects on a real frame.
+    //
+    // The two refusals are one predicate but NOT one behaviour, and task 11 has to reproduce the pair exactly or
+    // the client mispredicts the run toggle. A goal over PlaneCount is refused here and rewritten to
+    // Continue(cmd.Mode), so the toggle it carried still applies. A goal naming a plane the world DOES have but the
+    // player is not on passes here, reaches the simulator verbatim, and is dropped whole by Accepts, applying no
+    // mode at all. So a client needs BOTH PlaneCount and MaxGoalRadius to predict what the server will do.
     bool GoalInRange(in TileMoveState state, TileCoord goal)
     {
         if (goal.Plane >= config.PlaneCount) return false;
@@ -274,19 +289,36 @@ public sealed partial class TileWorldServer
     }
 
     // One pass over the home cell's world per client, which is the simple form: the interest set is small but the
-    // plane of each member is not in it, so the plane has to come off the entity. An entity with no tile state
-    // (anything a game replicates that is not on the lattice) has no plane and is kept.
+    // plane of each member is not in it, so the plane has to come off the entity.
+    //
+    // Nothing here allocates. A fresh dictionary and three fresh closures per client per tick is what the naive
+    // form costs, and at a couple of hundred players homed in one cell that is the whole serve's allocation
+    // profile. The map and both delegates are reused, and the three fields below are the captures the delegates
+    // would otherwise have closed over: they are live only for the duration of one call, which nothing re-enters.
     void FilterToPlane(World world, HashSet<long> interest, long viewerNetId)
     {
-        var planeByNetId = new Dictionary<long, int>();
-        world.ForEach<NetId>((Entity e, ref NetId id) =>
-        {
-            if (!interest.Contains(id.Value)) return;
-            if (world.TryGet(e, out TileMoveState s)) planeByNetId[id.Value] = s.Tile.Plane;
-        });
-        // A viewer whose own entity carries no tile state cannot be placed on a plane, so nothing is filtered for
-        // it rather than everything above plane 0 being hidden from it.
-        if (!planeByNetId.TryGetValue(viewerNetId, out int plane)) return;
-        interest.RemoveWhere(id => planeByNetId.TryGetValue(id, out int p) && p != plane);
+        collectPlanes ??= CollectPlane;
+        offViewerPlane ??= IsOffViewerPlane;
+        planeByNetId.Clear();
+        filterWorld = world;
+        filterInterest = interest;
+        world.ForEach(collectPlanes);
+        // Defensive, not a case the system produces: ShardHost.HomeInterest throws for a player with no position
+        // before this is ever reached, and a viewer is always in its own interest set. Kept so that a head which
+        // one day serves an unpositioned viewer sees everything rather than only the ground floor.
+        if (!planeByNetId.TryGetValue(viewerNetId, out filterPlane)) return;
+        interest.RemoveWhere(offViewerPlane);
     }
+
+    // An entity with no tile state (anything a game replicates that is not on the lattice) gets no entry, and an
+    // entry is what the filter refuses on, so it is kept. Defensive in the same way as the guard above: nothing
+    // without a position reaches the interest grid in the first place, since CellSim's rebuild skips whatever the
+    // position accessor refuses.
+    void CollectPlane(Entity e, ref NetId id)
+    {
+        if (!filterInterest!.Contains(id.Value)) return;
+        if (filterWorld!.TryGet(e, out TileMoveState s)) planeByNetId[id.Value] = s.Tile.Plane;
+    }
+
+    bool IsOffViewerPlane(long netId) => planeByNetId.TryGetValue(netId, out int plane) && plane != filterPlane;
 }

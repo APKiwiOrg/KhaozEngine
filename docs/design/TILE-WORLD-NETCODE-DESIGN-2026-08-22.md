@@ -146,8 +146,11 @@ document for footprints, the tick counts) and is the ONE stepper both heads run:
   that carries the command COUNTS as the first tick of the first step, so a click never costs a tick of standing
   still. An unreachable goal walks to the nearest reachable tile, the OSRS rule `FindPath` already implements. A
   goal on another plane is dropped whole rather than pathed on the player's own plane.
-- `Interact`: `TileReach.Nearest(map, plane, state.Tile, targetFootprint)` picks the reach tile, routes to it, and
-  records the target so arrival faces it and raises the action.
+- `Interact`: `TileReach.TryNearest(map, footprint, plane, state.Tile, ...)` picks the reach tile, routes to it, and
+  records the target so arrival faces it and raises the action. A target on ANOTHER plane is dropped whole, the same
+  answer `WalkTo` gives a cross-plane goal, and the target is resolved BEFORE anything is written so the tick reads
+  exactly as if no command had arrived. A target on the player's OWN plane with no reachable reach tile is the other
+  answer: the route is dropped and the pending target cleared, which is the state a `CannotReach` accompanies.
 - `None`: take the mode from the command (it rides on every kind, and a change lands at the START of the next step
   rather than re-cutting the one under way), then advance `StepTicks`, which EVERY tick does, a tick carrying a
   command included. When it reaches `TicksPerStep(Mode)` (2 run, 4 walk), re-check `CanStep` from the
@@ -167,9 +170,9 @@ plane is every tile cardinally adjacent to a footprint tile for which `CanStep` 
 that tile is legal, which asks three things: no wall on the footprint tile's edge, the candidate is not blocked,
 and no mirrored wall on the candidate's own edge facing back. That one rule encodes OSRS's behaviour: a wall
 between you and the booth denies reach, a diagonal never counts, a candidate nobody could stand on is not offered,
-and a 2x2 object has up to eight reach tiles minus the denied ones. `Nearest` orders them by BFS distance from the
-player (the pathfinder's own distance field), then by the same scan order `FindPath` uses, so both heads choose the
-same tile.
+and a 2x2 object has up to eight reach tiles minus the denied ones. `TryNearest` scores them by the LENGTH of the
+path that actually reaches each one, one `FindPath` per candidate because the pathfinder does not expose its
+distance field, and breaks a tie by the same scan order, so both heads choose the same tile.
 
 This was written INWARD in an earlier draft (`CanStep` from the candidate into the footprint tile) and inward is
 wrong twice over, because a step never inspects the BLOCKED flag of the tile it leaves. Starting on the candidate

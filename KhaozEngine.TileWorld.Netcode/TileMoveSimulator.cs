@@ -130,21 +130,40 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     }
 
     // Routes to a reach tile of the target and remembers it, so the arrival tick faces the target and raises the
-    // action. An unknown target, or one with no reachable tile at all, drops the route and clears the target: the
-    // server answers that case with a CannotReach game message, and the client pre-checks the same map on click.
+    // action. An unknown target, or a same-plane one with no reachable tile at all, drops the route and clears the
+    // target: the server answers that case with a CannotReach game message, and the client pre-checks the same map
+    // on click.
+    //
+    // A target on ANOTHER PLANE is not that case. It is refused the way BeginWalk refuses a cross-plane goal, with
+    // the state untouched, and that is why the target is resolved BEFORE the first write. Mode, cadence, route and
+    // pending target all have to survive a click the player cannot even see, so the tick reads exactly as a
+    // Continue at the mode already held. Reserving the cleared-route answer for a target on the player's OWN plane
+    // is what keeps it meaningful: CannotReach then says "I know what you clicked and you cannot get to it", never
+    // "that was on another floor".
     TileMoveState BeginInteract(in TileMoveState state, long target, TileMoveMode mode)
     {
         TileMoveState s = state;
+        TileRect footprint = default;
+        int plane = 0;
+        bool resolved = targets is not null && targets.TryGetFootprint(target, out footprint, out plane);
+        if (resolved && plane != s.Tile.Plane) return s;
+
         s.Mode = mode;
         s.StepTicks = 0;
         s.StepTotal = StepTicks.For(mode);
         s.InteractTarget = 0;
         s.Route = TileRoute.None;
 
-        // task 4 wires the reach call. TileReach does not exist yet, so a target's footprint cannot become a reach
-        // tile and every Interact stands where it is, clearing its target. That is the same answer an unknown or
-        // unreachable target keeps once the call is wired in, so this seam is a missing capability rather than a
-        // half-applied branch, and the targets field is read for the first time when task 4 fills the hole in.
+        if (!resolved) return s;
+        if (!TileReach.TryNearest(Map, footprint, plane, s.Tile, AgentSize, MaxPathRadius,
+                out TileCoord reachTile, out TilePath path))
+            return s;
+
+        // The target is remembered on a WALK, so the arrival tick can act on it, and a zero step interaction faces
+        // the target here because no step will ever run to set the facing for it.
+        s.InteractTarget = target;
+        s.Route = TileRoute.FromPath(path);
+        if (s.Route.IsIdle) s.Facing = TileReach.FacingToward(Map, footprint, plane, reachTile);
         return s;
     }
 

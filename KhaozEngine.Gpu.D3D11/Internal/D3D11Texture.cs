@@ -227,6 +227,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             }
             else
             {
+                // NO MULTISAMPLE ARM HERE, and none is needed: the multisample test sits inside the non-array arm
+                // above, so an array that was also multisampled would take a plain Texture2DArray view over a
+                // multisampled resource. GpuTextureDescription refuses that combination at description time
+                // (RequireNoMultisampledArray), which is why this arm can assume single-sample.
                 d.ViewDimension = ShaderResourceViewDimension.Texture2DArray;
                 d.Texture2DArray.MostDetailedMip = 0;
                 d.Texture2DArray.MipLevels = (int)t.MipLevels;

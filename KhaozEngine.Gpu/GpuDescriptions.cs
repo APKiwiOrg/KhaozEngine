@@ -58,8 +58,12 @@ namespace KhaozEngine.Gpu
         /// <para>
         /// IT NAMES THE 2D-ARRAY CASE AND NOTHING ELSE. A cubemap (<see cref="GpuTextureUsage.Cubemap"/>) keeps
         /// its own layer-count rule in every backend, since a cube is already six faces and the seam has no
-        /// one-cube cube-array caller, and a multisampled texture keeps its multisample type, which is the
-        /// precedence each backend's type derivation already had.
+        /// one-cube cube-array caller. A MULTISAMPLED ARRAY is not a shape this seam carries at all, and the
+        /// constructor refuses one rather than letting each backend decide: Metal and Vulkan would take the
+        /// multisample type, and Direct3D 11's shader resource view nests its multisample test INSIDE the
+        /// non-array arm, so the same description would take a plain (non-multisampled)
+        /// <c>Texture2DArray</c> view over a multisampled resource there. No backend agreeing on it is the
+        /// reason it is refused rather than documented.
         /// </para></summary>
         public bool IsArray { get; }
 
@@ -70,6 +74,25 @@ namespace KhaozEngine.Gpu
             MipLevels = mipLevels; ArrayLayers = arrayLayers;
             SampleCount = sampleCount < 1 ? 1 : sampleCount;
             IsArray = isArray || arrayLayers > 1;
+            RequireNoMultisampledArray(IsArray, SampleCount);
+        }
+
+        /// <summary>A MULTISAMPLED TEXTURE ARRAY IS NOT EXPRESSIBLE ON THIS SEAM, and saying so here is what stops
+        /// it from becoming a per-backend surprise. The three natives derive a multisampled type before they
+        /// derive an array type, Direct3D 11 derives the array type first and loses the multisample one, and no
+        /// engine path asks for the shape either way (every array the engine builds goes through
+        /// <see cref="Texture2DArray"/>, which is single-sample). Refusing at description time costs one
+        /// comparison and turns a silently wrong view into a message at the call that asked for it.</summary>
+        static void RequireNoMultisampledArray(bool isArray, uint sampleCount)
+        {
+            if (!isArray || sampleCount <= 1) return;
+
+            throw new ArgumentOutOfRangeException(nameof(sampleCount), sampleCount,
+                "A texture cannot be both a 2D ARRAY and MULTISAMPLED on this seam. The backends do not agree on "
+                + "which type wins: Metal, Vulkan and Direct3D 11's own render-target views take the multisample "
+                + "type, while Direct3D 11's shader resource view takes a plain Texture2DArray and drops the "
+                + "multisampling. Build the multisampled render target as a single-layer texture and resolve it "
+                + "(IGpuCommandList.ResolveTexture) into an array layer, or drop the sample count to 1.");
         }
 
         /// <summary>Convenience for a single-mip, single-layer 2D texture (mirrors <c>TextureDescription.Texture2D</c>).</summary>

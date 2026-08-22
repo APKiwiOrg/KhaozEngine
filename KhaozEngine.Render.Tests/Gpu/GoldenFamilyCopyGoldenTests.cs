@@ -28,7 +28,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// UNTIL THEN IT IS LOAD-BEARING, AND IT CONSTRAINS THE BAKE. Row 2 gave the native legs the right to bake,
     /// because a family's owner is the thing that may re-bake it and row 4 leaves no other owner alive. The
-    /// mechanism is therefore correct from <c>17.40.0</c>, and what is constrained in this window is the
+    /// mechanism is therefore correct from <c>17.41.0</c>, and what is constrained in this window is the
     /// OPERATOR: a new scene added before row 4 is baked on the three incumbent legs and COPIED across, and a
     /// native leg's bake artifacts are not committed. Baking all six and committing both halves would fork each
     /// pair on its first grid and end the copy invariant, which is the guest-era agreement between two

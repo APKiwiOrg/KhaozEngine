@@ -344,10 +344,10 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
-        // --- row 11: GoldenCompare, at BOTH filename sites (decision M-I3, superseded at 17.40.0) ---
+        // --- row 11: GoldenCompare, at BOTH filename sites (decision M-I3, superseded at 17.41.0) ---
 
         /// <summary>
-        /// OWNED FROM 17.40.0, and this is the pair the reversal costs the most. M-I3 made the native backend a
+        /// OWNED FROM 17.41.0, and this is the pair the reversal costs the most. M-I3 made the native backend a
         /// guest, held to the incumbent's already-committed reference grids, unmodified, on the same real Apple
         /// hardware, at the same tolerance, and owning a <c>metal-native</c> family was rejected for the reason
         /// it was rejected twice before plus one this family alone carries: <c>metal</c> is the FLEET's
@@ -406,7 +406,7 @@ namespace KhaozEngine.Tests.Gpu
 
         // That the incumbent still bakes as it always did is the other half of this row, and it is not asserted
         // here: GpuBackendKindAppendAuditTests.Baking_IsAllowedOnEveryBackendThatOwnsItsFamily already walks all
-        // SEVEN owning backends since 17.40.0, Metal and MetalNative among them, which is the stronger form of
+        // SEVEN owning backends since 17.41.0, Metal and MetalNative among them, which is the stronger form of
         // the same claim.
 
         // --- row 12: VeldridMap.SupportsCompletionFences, and the VeldridGpuDevice frame-capture gate, which is

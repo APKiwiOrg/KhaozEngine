@@ -222,10 +222,10 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(DisplaySettings.RequiresFrameCapWarning(GpuBackendKind.VulkanNative, present, 0));
         }
 
-        // --- row 11: GoldenCompare, at BOTH filename sites (decision V-I3, superseded at 17.40.0) ---
+        // --- row 11: GoldenCompare, at BOTH filename sites (decision V-I3, superseded at 17.41.0) ---
 
         /// <summary>
-        /// OWNED FROM 17.40.0. V-I3 made this kind a guest: the native backend was held to the incumbent's
+        /// OWNED FROM 17.41.0. V-I3 made this kind a guest: the native backend was held to the incumbent's
         /// already-committed reference grids, unmodified, on the same rasterizer, at the same tolerance, which is
         /// one implementation checking the other, and owning a <c>vulkan-native</c> family was rejected outright
         /// because a family of its own is a backend comparing against a reference it baked itself. Row 2 of the
@@ -282,7 +282,7 @@ namespace KhaozEngine.Tests.Gpu
 
         // That the incumbent still bakes as it always did is the other half of this row, and it is not asserted
         // here: GpuBackendKindAppendAuditTests.Baking_IsAllowedOnEveryBackendThatOwnsItsFamily already walks all
-        // SEVEN owning backends since 17.40.0, Vulkan and VulkanNative among them, which is the stronger form of
+        // SEVEN owning backends since 17.41.0, Vulkan and VulkanNative among them, which is the stronger form of
         // the same claim.
 
         // --- row 12: VeldridMap.SupportsCompletionFences and VeldridGpuDevice's Metal frame capture, neither an

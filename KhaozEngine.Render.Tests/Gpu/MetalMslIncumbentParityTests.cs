@@ -17,7 +17,7 @@ namespace KhaozEngine.Tests.Gpu
     ///
     /// <para>
     /// THIS IS THE FACT THAT LICENSES "NO REBAKE". The 36 committed <c>*.metal.txt</c> goldens were baked on the
-    /// incumbent's emission, and the <c>metal-native</c> family the native backend owns since <c>17.40.0</c> is a
+    /// incumbent's emission, and the <c>metal-native</c> family the native backend owns since <c>17.41.0</c> is a
     /// byte-identical copy of them, so both are the incumbent's emission. If the two
     /// paths emit the same MSL then the goldens are testing the BACKEND, which is the point. If they do not, every
     /// one of them is testing the compiler instead, silently, and a diff nobody can explain shows up in whichever

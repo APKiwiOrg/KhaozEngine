@@ -175,7 +175,7 @@ naming it is no longer how most sessions reach it, and `GpuBackendSelector.Suppo
 native kind to a player wherever this package is registered, ahead of the incumbent row it is the one-release
 opt-out from.
 
-`VulkanNative` OWNS the committed `vulkan-native` golden family from `17.40.0`. It was a GUEST in the
+`VulkanNative` OWNS the committed `vulkan-native` golden family from `17.41.0`. It was a GUEST in the
 incumbent's `vulkan` family until then (decision V-I3), held to the incumbent's already-committed reference
 grids, unmodified, on the same rasterizer at the same tolerance, with `KE_UPDATE_GOLDENS` refused on it. Row 2
 of the Veldrid removal ([#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)) promoted it, because the

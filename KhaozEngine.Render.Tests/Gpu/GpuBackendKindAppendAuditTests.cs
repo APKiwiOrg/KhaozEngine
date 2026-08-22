@@ -370,10 +370,10 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(DisplaySettings.RequiresFrameCapWarning(GpuBackendKind.Direct3D11Native, present, 0));
         }
 
-        // --- row 11: GoldenCompare, at BOTH filename sites (decision I3, superseded at 17.40.0) ---
+        // --- row 11: GoldenCompare, at BOTH filename sites (decision I3, superseded at 17.41.0) ---
 
         /// <summary>
-        /// OWNED FROM 17.40.0. Decision I3 made this kind a GUEST in the incumbent's <c>direct3d11</c> family,
+        /// OWNED FROM 17.41.0. Decision I3 made this kind a GUEST in the incumbent's <c>direct3d11</c> family,
         /// which was the strongest free proof the port had: the native backend was held to 36 already-committed
         /// reference grids, unmodified, on the same WARP rasterizer, at the same tolerance. Row 2 of the Veldrid
         /// removal (<c>docs/design/VELDRID-REMOVAL-DESIGN-2026-08-22.md</c> section 3,
@@ -418,7 +418,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// No member may be left without a decided family. The mapping throws rather than guessing, and this is
         /// what turns that throw into a device-free red instead of a golden-missing failure on a GPU leg nobody
-        /// runs locally. Since 17.40.0 it also pins that every token is the kind's OWN name, which is the rule
+        /// runs locally. Since 17.41.0 it also pins that every token is the kind's OWN name, which is the rule
         /// <c>GoldenCompare.OwnsFamily</c> derives ownership from rather than from a second list.
         /// </summary>
         [Fact]
@@ -446,7 +446,7 @@ namespace KhaozEngine.Tests.Gpu
         public void Baking_IsAllowedOnTheNativeKind_BecauseItOwnsItsFamily()
             => Assert.Null(GoldenCompare.BakeRefusal(GpuBackendKind.Direct3D11Native, familyOverride: false));
 
-        /// <summary>A backend that OWNS its family bakes as it always did, and since 17.40.0 that is every live
+        /// <summary>A backend that OWNS its family bakes as it always did, and since 17.41.0 that is every live
         /// member of the enum. The guard must not cost the ordinary rebake anything, or it gets worked around
         /// instead of respected.</summary>
         [Theory]

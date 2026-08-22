@@ -23,7 +23,7 @@
 #   * The GitHub-hosted Metal NATIVE leg runs the engine's own KhaozEngine.Gpu.Metal backend
 #     (KE_GRAPHICS_BACKEND=metal-native) on exactly the incumbent Metal leg's tier, which is the FULL suite on
 #     every trigger, on the same hosted macos-26 image (decision M-T6). It OWNS the metal-native golden family
-#     FROM 17.40.0, exactly as direct3d11-native and vulkan-native own theirs (row 2 of #683, which supersedes
+#     FROM 17.41.0, exactly as direct3d11-native and vulkan-native own theirs (row 2 of #683, which supersedes
 #     the guest ruling of decision M-I3): it verifies the committed metal-native grids on the same real GPU, and
 #     it bakes them on a bake dispatch exactly as the incumbent legs bake theirs.
 #     THIS IS THE STRONGEST REGRESSION NET IN THE PROGRAM, and that is why it takes the expensive tier. The
@@ -86,7 +86,7 @@
 #   * The GitHub-hosted D3D11 NATIVE leg (2x billing) runs the engine's own KhaozEngine.Gpu.D3D11
 #     backend (KE_GRAPHICS_BACKEND=direct3d11-native) on exactly the incumbent leg's tier: golden
 #     tests only on push / pull_request, the FULL suite on the weekly schedule and on
-#     workflow_dispatch (decision T5). It OWNS the direct3d11-native golden family from 17.40.0
+#     workflow_dispatch (decision T5). It OWNS the direct3d11-native golden family from 17.41.0
 #     (row 2 of #683, superseding decision I3's guest ruling): it verifies the committed direct3d11-native
 #     goldens on the same WARP rasterizer, and it bakes them on a bake dispatch like any other owning
 #     leg (see the test step). Its golden-only
@@ -96,7 +96,7 @@
 #   * The GitHub-hosted Vulkan NATIVE leg (1x) runs the engine's own KhaozEngine.Gpu.Vulkan backend
 #     (KE_GRAPHICS_BACKEND=vulkan-native) on the incumbent Vulkan leg's tier: golden tests only on
 #     push / pull_request, the FULL suite on the weekly schedule and on workflow_dispatch (decision
-#     V-T8). It OWNS the vulkan-native golden family from 17.40.0, exactly as direct3d11-native owns
+#     V-T8). It OWNS the vulkan-native golden family from 17.41.0, exactly as direct3d11-native owns
 #     direct3d11-native's (row 2 of #683, superseding decision V-T1's guest ruling): it verifies the
 #     committed vulkan-native goldens on the same lavapipe rasterizer and bakes them on a bake
 #     dispatch. Two things are its own rather than the D3D11
@@ -124,7 +124,7 @@
 #     KE_TEST_EXTRA_ARGS, one live device at a time (~22 min serialized in the validation container
 #     vs minutes parallel). Golden-only runs keep their months-green parallel configuration.
 #   * Committed per-backend goldens live at KhaozEngine.Render.Tests/Gpu/goldens/<name>.<backend>.txt.
-#     The family in that filename is the GoldenBackendToken, not the leg name. Since 17.40.0 the two
+#     The family in that filename is the GoldenBackendToken, not the leg name. Since 17.41.0 the two
 #     coincide on every live leg, because every kind owns the family named after it: direct3d11-native
 #     reads the direct3d11-native files. That is a property of the mapping rather than of the name, and
 #     it is the mapping the goldens follow.
@@ -144,7 +144,7 @@
 # Generating goldens for a NEW scene or backend:
 #   1. Run this workflow manually (Actions -> cross-platform-gpu -> Run workflow) with bake = true.
 #   2. ALL SIX legs render with KE_UPDATE_GOLDENS=1 and upload their own family's grids as artifacts
-#      named goldens-<backend> (e.g. scene2d.<backend>.txt). Every leg is a bake leg since 17.40.0,
+#      named goldens-<backend> (e.g. scene2d.<backend>.txt). Every leg is a bake leg since 17.41.0,
 #      because every leg owns the family it verifies. The sync-validation job still sits a bake dispatch
 #      out: it is a validation instrument over a subset, not a producer of references, and the
 #      vulkan-native matrix leg bakes that family.
@@ -464,7 +464,7 @@ jobs:
           #
           # direct3d11-native is the engine's own native D3D11 backend (decision T5). Same OS, same runner
           # and the same suite tier as the incumbent leg, which is the point: two implementations of one API
-          # on one rasterizer. They were checked against a single shared set of goldens until 17.40.0
+          # on one rasterizer. They were checked against a single shared set of goldens until 17.41.0
           # (decision I3). Each owns its own family now (row 2 of #683), seeded byte-identical from the
           # shared set, so the two legs still compare the same bytes on the same rasterizer.
           # METAL RUNS ON HOSTED macos-26, which is `macos-latest` and GA. Pinned to the number, not to
@@ -486,7 +486,7 @@ jobs:
           # THERE IS NO `goldenGuest` COLUMN ANY MORE, and its removal is the CI half of row 2. It marked a
           # leg that VERIFIES a golden family it does not OWN (decisions I3 and V-T1), and three places acted
           # on it: KE_UPDATE_GOLDENS was held empty, the test step sat a bake dispatch out, and the baked-
-          # goldens upload was skipped. From 17.40.0 no leg is a guest, so the column would have been `''` on
+          # goldens upload was skipped. From 17.41.0 no leg is a guest, so the column would have been `''` on
           # all six rows with nothing reading a true value, which is a flag that cannot go wrong because it
           # cannot do anything. It is gone rather than emptied: the RULE it enforced lives in
           # GoldenCompare.BakeRefusal, which is under test, and a dead matrix column is not.
@@ -501,7 +501,7 @@ jobs:
           # different trigger, so it is the separate gpu-vulkan-sync job rather than a third Linux leg.
           # `metal-native` is the engine's own native Metal backend (decision M-T6). Same OS, same runner image
           # and the same `always` tier as the incumbent Metal leg, which is the point for the third time: two
-          # implementations of one API on one GPU. They shared one set of goldens until 17.40.0 (M-I3) and each
+          # implementations of one API on one GPU. They shared one set of goldens until 17.41.0 (M-I3) and each
           # owns its own now (row 2 of #683), metal-native seeded byte-identical from metal. It takes the
           # expensive tier for the reason in the header: it is the only leg in the program that runs everything
           # on real hardware, and the family it verifies carries the fleet's reference bytes.
@@ -538,7 +538,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     # All five legs are blocking, with no continue-on-error on any of them. Three are long validated: Metal
     # (macOS), Direct3D11 (Windows/WARP) and Vulkan (Linux/Mesa lavapipe). The three native legs each verify
-    # their OWN family since 17.40.0, holding the incumbent's bytes on the incumbent's own rasterizer, and each
+    # their OWN family since 17.41.0, holding the incumbent's bytes on the incumbent's own rasterizer, and each
     # blocks by design rather than by record: a native
     # backend's CI leg is its continuous exercise (decisions RO3 and V-RO1), so it gates from its first run.
     # Their first recorded evidence is rollout gate 1 on issues #460 and #529 respectively.
@@ -595,7 +595,7 @@ jobs:
       # that can only ever be started by the cron takes its first run unattended at 18:00 on a Sunday and cannot
       # be re-run against a fix without waiting a week, and an instrument nobody can aim is not one. That is the
       # same departure the Vulkan sync job already documents and takes. A bake dispatch reaches the test step on
-      # this leg since 17.40.0, and it wants the ordinary push-tier arms rather than the deep ones: a bake
+      # this leg since 17.41.0, and it wants the ordinary push-tier arms rather than the deep ones: a bake
       # renders to produce references, so the instrument tiers have nothing to add to it.
       #
       # AND THE SAME PRINCIPLE POINTED AT THE OTHER TWO VARIABLES, which is what the `tier` input is for. It was
@@ -944,7 +944,7 @@ jobs:
       #
       # NO LEG SITS A BAKE DISPATCH OUT ANY MORE. This step used to carry a condition skipping it on either
       # guest leg, because a guest owned no family and could only have verified references being replaced
-      # mid-run. From 17.40.0 every leg owns the family it reads (row 2 of #683), so every leg is a bake leg
+      # mid-run. From 17.41.0 every leg owns the family it reads (row 2 of #683), so every leg is a bake leg
       # and the condition is gone with the goldenGuest column it read.
       - name: Run test suite
         env:
@@ -1123,7 +1123,7 @@ jobs:
           # a run described as cacheless that still memoized would be describing itself falsely. It takes the same
           # five disable words, so the one value drives all four.
           KE_SPIRV_CACHE: ${{ env.GPU_DISK_CACHE }}
-          # ARMED ON EVERY LEG ON A BAKE DISPATCH since 17.40.0. It used to be held empty on the two guest legs
+          # ARMED ON EVERY LEG ON A BAKE DISPATCH since 17.41.0. It used to be held empty on the two guest legs
           # for every trigger (decisions I3 and V-T1), because GoldenCompare.BakeRefusal turns KE_UPDATE_GOLDENS=1
           # under a family the backend does not own into a hard failure BY DESIGN, and a routine bake for some
           # unrelated new scene would have reddened a guest leg with 36 refusals. Every leg owns its family now
@@ -1432,7 +1432,7 @@ jobs:
       # wrote some goldens before erroring still surfaces them; ignore = no spurious failure on a leg that wrote
       # none.
       - name: Upload baked goldens
-        # Every leg since 17.40.0, the three native ones included: each owns the family it just wrote. The
+        # Every leg since 17.41.0, the three native ones included: each owns the family it just wrote. The
         # guest-leg exclusion that used to sit here went with the goldenGuest column.
         if: always() && github.event_name == 'workflow_dispatch' && inputs.bake
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -1566,7 +1566,7 @@ jobs:
       # live, and those two are the exact shapes synchronisation validation was installed to judge.
       #
       # NO KE_UPDATE_GOLDENS on any trigger. It used to be refused by design, because this job's backend was a
-      # guest in the vulkan family. Since 17.40.0 vulkan-native owns its family and a bake here WOULD write, so
+      # guest in the vulkan family. Since 17.41.0 vulkan-native owns its family and a bake here WOULD write, so
       # the exclusion above is what keeps this job off a bake dispatch and this variable is not set at all
       # rather than set empty, because there is no trigger on which this job wants it.
       - name: Run the golden and compute suite under synchronisation validation

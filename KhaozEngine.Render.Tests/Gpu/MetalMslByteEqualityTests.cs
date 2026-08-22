@@ -56,7 +56,7 @@ namespace KhaozEngine.Tests.Gpu
     /// passes. Do that ONLY when a shader source or the pinned options changed ON PURPOSE, and read the diff: a
     /// one-line GLSL edit moving one program's two hashes is expected, and the same edit moving thirty programs
     /// means the options moved instead, which invalidates BOTH Metal golden families: the incumbent's <c>metal</c>
-    /// and the byte-identical <c>metal-native</c> copy of it the native backend has owned since <c>17.40.0</c>.
+    /// and the byte-identical <c>metal-native</c> copy of it the native backend has owned since <c>17.41.0</c>.
     /// </para>
     /// </summary>
     public sealed class MetalMslByteEqualityTests
@@ -108,7 +108,7 @@ namespace KhaozEngine.Tests.Gpu
                 + $"{nameof(MslCrossCompilePin)}). ONE program moving is a shader edit. MANY programs moving at "
                 + "once is the options, and that is the drift this test exists to catch, because it silently "
                 + "invalidates both Metal golden families, the incumbent's and the byte-identical metal-native "
-                + "copy of it the native backend has owned since 17.40.0. It also "
+                + "copy of it the native backend has owned since 17.41.0. It also "
                 + "moves the BINDING TABLE: the native backend reads its indices out of this exact text, so an "
                 + "emission change is a binding change as well as a pixel one. The emitted MSL for each mismatch "
                 + $"was written to Gpu/msl-evidence/ so the change can be read rather than guessed. Re-bake with "

@@ -66,7 +66,7 @@ namespace KhaozEngine.Tests.Gpu
         /// run compared against without a lookup table.
         /// <para>
         /// IT WAS NOT ALWAYS SIX FAMILIES, and the history is the reason the three native ones are trustworthy.
-        /// Until <c>17.40.0</c> each native kind was a GUEST in its incumbent's family (decision I3 of
+        /// Until <c>17.41.0</c> each native kind was a GUEST in its incumbent's family (decision I3 of
         /// <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c>, V-I3 of
         /// <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c>, M-I3 of
         /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>): a second IMPLEMENTATION of one API
@@ -132,7 +132,7 @@ namespace KhaozEngine.Tests.Gpu
         /// moving the shared family on purpose.
         /// </para>
         /// <para>
-        /// NO LIVE BACKEND IS A GUEST AS OF <c>17.40.0</c>, so this returns null for every member of the enum
+        /// NO LIVE BACKEND IS A GUEST AS OF <c>17.41.0</c>, so this returns null for every member of the enum
         /// today, and saying that plainly is the point of keeping it. What it still guards is the RULE, for the
         /// next append that decides to share rather than own. That decision was taken three times in a row
         /// (I3, V-I3, M-I3) and would be taken again the moment a fourth implementation of an API already in the
@@ -274,7 +274,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <c>&lt;backend&gt;</c> is the active <see cref="KhaozEngine.Gpu.GpuBackendSelector.Select()"/> result
         /// mapped through <see cref="GoldenBackendToken"/> (metal / metal-native / vulkan / vulkan-native /
         /// direct3d11 / direct3d11-native / opengl). Each rendering API gets its own reference grid because a
-        /// software rasterizer (lavapipe, WARP) won't match Metal pixel-for-pixel, and since <c>17.40.0</c> each
+        /// software rasterizer (lavapipe, WARP) won't match Metal pixel-for-pixel, and since <c>17.41.0</c> each
         /// IMPLEMENTATION of an API gets one too, seeded as a byte-identical copy of the incumbent's. Using
         /// <see cref="CallerFilePathAttribute"/> makes the path independent of <c>dotnet test</c>'s working
         /// directory and the build output layout, so generated references and checks always hit the committed

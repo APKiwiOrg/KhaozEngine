@@ -88,7 +88,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// honour reached nothing on macOS. 17.39.0 fixes both Metal paths together
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/598): the vendored fork carries the same one-line change,
     /// so the two backends still agree, and the <c>metal</c> family together with the byte-identical
-    /// <c>metal-native</c> copy taken from it at 17.40.0 still holds one answer. Fixing only this one would have
+    /// <c>metal-native</c> copy taken from it at 17.41.0 still holds one answer. Fixing only this one would have
     /// left the native leg disagreeing with the grids the incumbent baked.</para>
     /// </summary>
     internal static class MetalPipelineSpecs

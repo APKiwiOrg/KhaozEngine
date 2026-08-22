@@ -19,6 +19,9 @@ Pulls in:
 - `KhaozEngine.WorldStore` - ONLY the durable-state seam: `IWorldStore` + `InMemoryWorldStore`.
 - `KhaozEngine.Sharding` - the cell-grid world topology (`ShardHost`, ghosting, handoff).
 - `KhaozEngine.NetWorld` - the authoritative movement server + client glue + `WorldPersistence`.
+- `KhaozEngine.TileWorld.Netcode` - the tile movement stack (`TileWorldServer` / `TileWorldClient`,
+  `TileMoveSimulator`, `TileWorldPersistence`), a SIBLING of `NetWorld` rather than a dependent, so a
+  tile server carries none of the float locomotion stack and a float server carries none of this.
 - `KhaozEngine.Physics` - the dependency-free physics seam (backend opt-in, see below).
 
 ```xml

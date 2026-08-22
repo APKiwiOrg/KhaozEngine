@@ -118,7 +118,7 @@ public sealed partial class TileWorldClient
         // still, so every reconciliation would cancel a walk the player never cancelled, and the replay of the
         // pending commands would have nothing to walk along.
         World.TryGet(local, out TileRouteState route);
-        basis = TileWorldServer.WithAssembledRoute(basis, route);
+        basis = TileProtocol.AssembleMoveState(basis, route);
 
         if (!seeded)
         {

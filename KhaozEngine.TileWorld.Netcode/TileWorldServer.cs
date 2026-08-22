@@ -181,8 +181,8 @@ public sealed partial class TileWorldServer : IDisposable
         accountIdBySlot.TryGetValue(slot, out accountId!);
 
     /// <summary>
-    /// The player's authoritative state, route included, through <see cref="WithAssembledRoute"/>. NEVER read
-    /// <c>TileMoveState.Route</c> off the raw component instead: see that method for what goes wrong.
+    /// The player's authoritative state, route included, through <see cref="TileProtocol.AssembleMoveState"/>.
+    /// NEVER read <c>TileMoveState.Route</c> off the raw component instead: see that method for what goes wrong.
     /// </summary>
     /// <param name="slot">The player's connection slot.</param>
     /// <param name="state">The authoritative state, default when no cell owns the slot's player.</param>
@@ -193,32 +193,8 @@ public sealed partial class TileWorldServer : IDisposable
         if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) return false;
         if (!cell.World.TryGet(e, out state)) return false;
         cell.World.TryGet(e, out TileRouteState route);
-        state = WithAssembledRoute(state, route);
+        state = TileProtocol.AssembleMoveState(state, route);
         return true;
-    }
-
-    /// <summary>
-    /// THE accessor for a player's state, and the one place the route is put back onto it. Every read of
-    /// <c>TileMoveState.Route</c> on this server goes through here, because a raw read is WRONG on the tick after a
-    /// cell handoff: the destination rebuilds the entity from its Migrate capture, that capture carries the route in
-    /// <see cref="TileRouteState"/> (<c>TileMoveState</c>'s own codec deliberately omits it, so an observer is not
-    /// shipped every other player's destination), and the rebuilt state therefore reads as IDLE with its
-    /// <c>InteractTarget</c> still set. An arrival test on that raw state fires a player's action a whole region
-    /// short of the thing they clicked.
-    /// <para>The two halves are written together on every step, so this changes nothing for an entity that never
-    /// crossed, which is exactly why the bug is invisible until a player walks over a region boundary mid click.
-    /// A live route on the state is left alone rather than rebuilt, so a walking player costs no allocation here.
-    /// </para>
-    /// </summary>
-    /// <param name="state">The state as the component holds it.</param>
-    /// <param name="route">The entity's <see cref="TileRouteState"/>, default when it has none.</param>
-    /// <returns><paramref name="state"/> with its route assembled.</returns>
-    internal static TileMoveState WithAssembledRoute(in TileMoveState state, in TileRouteState route)
-    {
-        TileMoveState s = state;
-        if (s.Route.IsIdle && route.Remaining is { Length: > 0 })
-            s.Route = TileRoute.FromSteps(s.Tile, route.Remaining);
-        return s;
     }
 
     /// <summary>Overrides a player's authoritative state (a persistence restore, an admin move). With

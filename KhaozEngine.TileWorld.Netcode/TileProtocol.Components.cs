@@ -78,6 +78,36 @@ public static partial class TileProtocol
         return reg;
     }
 
+    /// <summary>
+    /// Puts a route back onto a move state: the INVERSE of the component split above, and the one definition of
+    /// that rule. <see cref="CreateRegistry"/> splits a walking player across two components on purpose, so every
+    /// reader that needs the whole state has to put them back together, and two copies of how is how the heads
+    /// drift apart.
+    /// <para>The CLIENT's reason is the codec: <c>TileMoveState</c>'s encoding never writes a route
+    /// (<see cref="WriteMove"/>), so a decoded state is ALWAYS idle and always needs assembling. A reconciliation
+    /// basis without its route stands the player still, and the replay of the pending commands has nothing to walk
+    /// along, so every snapshot cancels a walk the player never cancelled.</para>
+    /// <para>The SERVER's reason is a cell handoff, and it is the harder one. A raw read is WRONG on the tick
+    /// after one: the destination cell rebuilds the entity from its Migrate capture, that capture carries the
+    /// route in <see cref="TileRouteState"/>, and the rebuilt state therefore reads as IDLE with its
+    /// <c>InteractTarget</c> still set. An arrival test on that raw state fires a player's action a whole region
+    /// short of the thing they clicked. The two halves are written together on every step, so it changes nothing
+    /// for an entity that never crossed, which is exactly why the bug is invisible until a player walks over a
+    /// region boundary mid click.</para>
+    /// <para>A live route on the state is left alone rather than rebuilt, so a walking player costs no allocation
+    /// here.</para>
+    /// </summary>
+    /// <param name="state">The state as the component holds it, or as the codec decoded it.</param>
+    /// <param name="route">The entity's <see cref="TileRouteState"/>, default when it has none.</param>
+    /// <returns><paramref name="state"/> with its route assembled.</returns>
+    public static TileMoveState AssembleMoveState(in TileMoveState state, in TileRouteState route)
+    {
+        TileMoveState s = state;
+        if (s.Route.IsIdle && route.Remaining is { Length: > 0 })
+            s.Route = TileRoute.FromSteps(s.Tile, route.Remaining);
+        return s;
+    }
+
     // 25 fixed bytes. The plane rides in one byte, matching the command frame, so the two agree about what a plane
     // index can be and a world deeper than 256 planes fails in one place rather than two.
     static void WriteMove(TileMoveState v, BinaryWriter w)

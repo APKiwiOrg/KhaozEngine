@@ -11,7 +11,7 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// <para>A <see cref="Ghost"/> is a read-only mirror of an entity another cell simulates, and a
 /// <see cref="Migrating"/> entity has already been captured and sent to its destination. Stepping either would
 /// simulate one player twice in one tick, in two cells, from two copies of its state, so both are skipped.</para>
-/// <para>The state is read through <see cref="TileWorldServer.WithAssembledRoute"/>, which is the ONE place the
+/// <para>The state is read through <see cref="TileProtocol.AssembleMoveState"/>, which is the ONE place the
 /// route is put back onto it and the only sanctioned way to read <c>TileMoveState.Route</c> on this server. Never
 /// take the route off the raw component here: that method's doc has the failure. Writing the route back out every
 /// tick allocates one small array per walking player per tick, which at a tile world's tick rate is not worth a
@@ -37,7 +37,7 @@ public sealed class TileMovementSystem : ISystem
             if (world.Has<Ghost>(e) || world.Has<Migrating>(e)) return;
 
             TileMoveState s = simulator.Step(
-                TileWorldServer.WithAssembledRoute(state, route), pending.Command, dt);
+                TileProtocol.AssembleMoveState(state, route), pending.Command, dt);
 
             state = s;
             route.Remaining = s.Route.RemainingSteps(s.Tile);

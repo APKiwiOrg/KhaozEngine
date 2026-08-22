@@ -9699,6 +9699,16 @@ backends accept the combination and nothing in this engine creates it: a uniform
 rebased per frame by the uniform ring, and a structured binding of the same buffer would read whichever frame
 segment it landed on. Create two buffers.
 
+**And the ring's other consequence holds here exactly as it does on the two native siblings (17.39.0): a uniform
+write lands when you make it, not when the list is submitted.** A record-time `IGpuCommandList.UpdateBuffer` to a
+uniform buffer on `MetalNative` is a memcpy into that frame's own segment, so two writes to the SAME range inside
+one frame leave the second value for every draw of that frame, including the draws you recorded between them.
+`GpuBackendKind.Metal`, through Veldrid, orders the write against the draws instead, so this is a real difference
+between the two Metal backends rather than a note about Metal. It is measured on both, one machine and one
+process, by `RecordTimeUniformRewriteGpuTests`. Address per-draw or per-pass uniforms by dynamic offset
+(`GpuBufferRange` plus the offset overload of `SetGraphicsResourceSet`), which is what the engine's own renderers
+do, or re-upload a whole CPU mirror whose already-recorded slots keep the bytes they had.
+
 WINDOWED creation is real
 (https://github.com/APKiwiOrg/KhaozEngine/issues/581), and what a windowed request can still be refused for is
 the world rather than the package: this operating system, this machine, or a handle that is not a Cocoa

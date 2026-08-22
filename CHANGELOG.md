@@ -7,7 +7,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.39.0
 
-A tile world can draw a real glb kit per archetype now, and the glTF loader honours per-vertex COLOR_0.
+A tile world can draw a real glb kit per archetype now, the glTF loader honours per-vertex COLOR_0, and
+the ground-decal pass no longer hands both of a frame's passes one shared uniform block.
 
 - **`GltfMeshResolver` (`KhaozEngine.TileWorld.Render3D`) loads an archetype's glb by its `MeshRef`.**
   `new GltfMeshResolver(string rootDirectory, ITileMeshResolver? fallback = null, Action<string>? log = null)`
@@ -44,6 +45,31 @@ A tile world can draw a real glb kit per archetype now, and the glTF loader hono
   boundary. The key itself is a `MeshWeldKey` struct rather than a 14-element `ValueTuple`, because such a tuple
   hashes only its seventh element and its `Rest`, which would leave position out of the hash and make the weld
   quadratic on an unmapped mesh.
+- **`GroundDecalRenderer` gives each of a frame's two decal passes its OWN frame-UBO slot
+  ([#483](https://github.com/APKiwiOrg/KhaozEngine/issues/483)).** A frame runs that renderer twice: the
+  blob-shadow pass draws before the skinned draws and must not reject dynamic-tagged pixels, and the main pass
+  draws after the depth+normal resolve and must. Both wrote the same 80 bytes at offset 0 of one uniform buffer,
+  with the blob pass's draws recorded between the two writes. On `Direct3D11Native`, `VulkanNative` and
+  `MetalNative` a record-time `UpdateBuffer` to a uniform buffer is a memcpy into that frame's ring segment and
+  is not ordered against the draws, so the second write decided BOTH passes and the blob pass rendered with the
+  main pass's reject on, against a normal target that is not yet valid there. The buffer is now two 256-byte
+  slots, each pass packs its own and uploads the whole mirror, and the draws bind their slot with a dynamic
+  offset. `Draw` takes a `GroundDecalRenderer.FramePass` in place of the old `bool rejectDynamicGeometry`, so the
+  slot and the reject are one decision. Pixel-identical on the Veldrid backends, which order the write and were
+  always correct, so no golden moves.
+- **The collapse is measured rather than asserted from a doc comment.**
+  `RecordTimeUniformRewriteGpuTests` writes a uniform, draws into one target, rewrites the same range and draws
+  into a second, then reads a texel out of each: native Metal reads the LAST value for both draws and Veldrid
+  Metal reads each draw's own value, on one machine in one process. `docs/USING-KHAOZENGINE.md`'s Metal section
+  now carries the same "a uniform write lands when you make it" paragraph its Direct3D 11 and Vulkan siblings
+  already had.
+- **A standing guard replaces the sweep.** `RecordingGpuCommandList` stamps each upload with how many draws
+  preceded it, `UniformRewriteAudit` scans a frame for the hazard shape (same uniform buffer, overlapping range,
+  a draw between the two writes, and different bytes), `UniformBufferTrackingGpuDevice` supplies the usage
+  `IGpuBuffer` does not carry, and `UniformRewriteGuardGpuTests` renders a frame that fills every pass's queue
+  and asserts the finding list is empty. Reverting the decal fix turns it red. The full site table, with a
+  verdict for every uniform buffer in `Render2D` and `Render3D`, is
+  `docs/design/RECORD-TIME-UNIFORM-REWRITE-AUDIT-2026-08-22.md`.
 
 ## 17.38.0
 

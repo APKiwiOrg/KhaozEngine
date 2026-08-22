@@ -27,10 +27,14 @@ public class HandshakeTokenCompatibilityTests
         Assert.Equal("v9", v2);
     }
 
+    // The two sides are one implementation since the promotion, so comparing them is x == x. The literal is what
+    // pins the token a shipped client parses to raise DisconnectReason.IncompatibleVersion. The gate's other two
+    // reason tokens are pinned the same way, through their refusals, in ConnectionGateTests.
     [Fact]
     public void The_incompatible_version_reason_token_is_the_same_string()
     {
         Assert.Equal(ProtocolHandshake.IncompatibleReason("v9"), HandshakeToken.IncompatibleVersionReason("v9"));
+        Assert.Equal("ke:incompatible-version:v9", ProtocolHandshake.IncompatibleReason("v9"));
     }
 
     // The tests above compare two entry points that share one implementation since the promotion, so they can no

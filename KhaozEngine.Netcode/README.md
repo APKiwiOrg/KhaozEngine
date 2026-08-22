@@ -309,15 +309,27 @@ the token and shows its own localized string.
 the `IConnectionAuthenticator` the server takes. Order is load-bearing:
 
 1. `VersionGateAuthenticator` is outermost, so a version-skewed client gets the ordinary out-of-date refusal and,
-   having sent no world layer, never reaches the world check.
+   having sent no world layer, never reaches the world check. `Wrap` gates on EXACT equality with
+   `protocolVersion`. A head wanting a range or a compatibility window composes `VersionGateAuthenticator` itself
+   with its own rule and nests the rest by hand.
 2. `WorldIdentityGateAuthenticator` sits just inside it, refusing a client built against a different world so it
    can never join and render its own map while the server simulates another. Distinct from the version gate on
    purpose: a patch that leaves the world alone still interoperates. `log` receives both hashes on every refusal.
 3. The real token authenticator (`HmacTokenAuthenticator`, or `AllowAllAuthenticator` for dev) is next, reached
    only once version and world both match.
-4. `BanGateAuthenticator` is innermost when `isBanned` is supplied, because a ban keys on the VERIFIED subject and
-   only the token check produces one. The predicate is called synchronously on the host thread, so keep it an
-   in-memory view over whatever store the head owns.
+4. `BanGateAuthenticator` WRAPS the token authenticator when `isBanned` is supplied, so its check runs last, after
+   the token produced a subject (a ban keys on the VERIFIED subject and only the token check produces one). The
+   predicate is called synchronously on the host thread, so keep it an in-memory view over whatever store the head
+   owns. An empty subject is not ban checked, because an anonymous admit produces no account id to key a ban on.
+
+**There are two ban paths, and a `WorldServer` game has both.** `BanGateAuthenticator` is the AT-THE-DOOR one: it
+refuses a subject the head ALREADY knows is banned during authentication, with `ke:banned`, before any join, so the
+client reads a refused connect. `KhaozEngine.NetWorld.IBanStore` is the LIVE one: a `WorldServer` consults it at
+JOIN and kicks with a typed `ServerNotice(ServerNoticeKind.Banned)`, which is the route a ban applied mid-session
+takes and the one a game banned-player banner renders. The check here is a `Func<string,bool>` rather than an
+`IBanStore` because `IBanStore` lives in `KhaozEngine.NetWorld`, which this package cannot reference. A
+`WorldServer` game wiring both puts the SAME store behind both, as the `banStore:` ctor arg and as
+`isBanned: store.IsBanned`, so the two can never disagree about who is banned.
 
 The three decorators are public and compose on their own when a head wants a different order, or only one of them.
 
@@ -335,6 +347,19 @@ IConnectionAuthenticator auth = ConnectionGate.Wrap(
 byte[] token = ConnectionGate.BuildToken("grimhollow-1", worldHash, Encoding.UTF8.GetBytes(sessionToken));
 ```
 
+That example is a plain `NetServer` / `NetClient` pair, which is the tile server's shape. **A
+`KhaozEngine.NetWorld` game needs one layer more.** `WorldServer` installs a `WireGenerationAuthenticator` around
+whatever authenticator it is handed, and `WorldClient` always stamps the matching `ke-wire:<generation>` label
+outermost through `ProtocolHandshake.BuildClientToken`, so `BuildToken` output presented as-is is refused by the
+wire gate before the version gate ever sees it. In other words `BuildToken` produces the INNER token and
+`ProtocolHandshake` wraps it. There, pass `ConnectionGate.Wrap(...)` as the `authenticator:` arg, leave
+`WorldClientConfig.ProtocolVersion` to carry the version layer, and set the connect token to
+`HandshakeToken.Wrap(worldHash, authToken)` alone, so the layers arrive as
+`[ke-wire:N][ProtocolVersion][worldHash][auth]`.
+
 Ruinborne still emits its own `rb:world-mismatch:` reason token (`Ruinborne.Shared.RuinborneWorldIdentity`), so its
 gate is NOT yet an alias of this one. Swapping it over changes a wire reason token its shipped clients already
-match on, which needs a Ruinborne protocol-version bump plus a client-side reason mapping.
+match on, which needs a Ruinborne protocol-version bump plus a client-side reason mapping. The promoted parser is
+also the stricter of the two: `RuinborneWorldIdentity` reads a body with no pipe as all-server-hash, where
+`TryParseWorldMismatch` returns false. The engine's own producer always writes the pipe, so nothing breaks today,
+but the swap has to account for the dropped tolerance.

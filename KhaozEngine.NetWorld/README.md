@@ -332,10 +332,19 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
   (subject + display-name resolution identical).
   - **The layer codec itself moved to `KhaozEngine.Netcode.HandshakeToken` in 17.39.0.** `ProtocolHandshake` is now
     a delegation, so the bytes on the wire and every member on it are unchanged, and `MaxVersionBytes` is
-    `HandshakeToken.MaxLabelBytes`. The move is what lets a server that does not reference this package (a tile
-    server) speak the same handshake, and `KhaozEngine.Netcode.ConnectionGate` composes the version gate with a
-    world-identity and a ban gate over the same layers. Prefer the `Netcode` types in new code. Nothing here needs
-    changing.
+    `HandshakeToken.MaxLabelBytes`. `VersionCheckingAuthenticator` forwards to
+    `KhaozEngine.Netcode.VersionGateAuthenticator` the same way, so the engine has one version-gate body rather
+    than two that can drift, with this type's name, surface and behaviour unchanged. The move is what lets a server
+    that does not reference this package (a tile server) speak the same handshake, and
+    `KhaozEngine.Netcode.ConnectionGate` composes the version gate with a world-identity and a ban gate over the
+    same layers. Prefer the `Netcode` types in new code. Nothing here needs changing.
+  - **Reaching for `ConnectionGate` from a `WorldServer` game: do NOT send `ConnectionGate.BuildToken`'s bytes as
+    the connect token.** They carry no `ke-wire:` layer, so the always-on `WireGenerationAuthenticator` refuses
+    them before the version gate is reached. `BuildToken` builds the INNER token and `ProtocolHandshake` wraps it.
+    Pass `ConnectionGate.Wrap(...)` as the `authenticator:` arg, leave `WorldClientConfig.ProtocolVersion` to carry
+    the version layer, and set the client's connect token to `HandshakeToken.Wrap(worldHash, authToken)` alone.
+    `WorldClient` stamps the wire layer over it, so the layers arrive as
+    `[ke-wire:N][ProtocolVersion][worldHash][auth]`.
   - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 10)
     labels
     the incompatible on-the-wire generations. 1 was the pre-10.0.0 32-bit line, and 2 was 10.0.0 widening `NetId` to
@@ -381,6 +390,14 @@ See "Per-entity speed scale" below.
 the in-memory default; `WorldStoreBanStore` persists over any `IWorldStore` keyspace (`ban:{accountId}`) with a
 synchronous in-memory cache (call `LoadAsync()` once at startup). Pass either as the trailing `banStore:` ctor
 arg on `WorldServer` or `ShardedWorldServer`. Bans key on the verified account id; guests are not bannable.
+
+That is the LIVE ban path: the check runs at JOIN, after the authenticator admitted the peer, and the kick is a
+typed `ServerNotice(ServerNoticeKind.Banned)`, so a ban applied mid-session lands on the next join and a game
+banned-player banner has a typed notice to render. `KhaozEngine.Netcode.BanGateAuthenticator` is the other path,
+refusing a subject the head ALREADY knows is banned during AUTHENTICATION with the `ke:banned` wire reason, before
+any join happens. It takes a `Func<string,bool>` rather than this interface because `KhaozEngine.Netcode` cannot
+reference this package. A game that wants both puts the SAME store behind both, here as `banStore:` and there as
+`isBanned: store.IsBanned`, so the two can never disagree about who is banned.
 
 **NativeAOT.** The durable persistence DTOs (`PlayerRecord`, `WorldMetaRecord`, and the `WorldStoreBanStore` ban
 record) encode and decode through a source-generated `System.Text.Json` context, so they round-trip under

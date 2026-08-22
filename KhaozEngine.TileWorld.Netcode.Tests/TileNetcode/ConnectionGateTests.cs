@@ -68,4 +68,30 @@ public class ConnectionGateTests
         Assert.False(Gate().TryAuthenticate(Encoding.UTF8.GetBytes("bare"), out _, out string reason));
         Assert.True(HandshakeToken.TryParseIncompatibleVersion(reason, out _));
     }
+
+    // The three ke: reason tokens are STABLE WIRE STRINGS a shipped client matches on, so each is pinned LITERALLY
+    // here, through the refusal that emits it. Round-tripping a builder through its own parser pins nothing: rename
+    // the prefix and the builder and the parser move together, green the whole way, while an old client facing a new
+    // server quietly downgrades to a generic token rejection.
+    [Fact]
+    public void The_version_refusal_carries_the_literal_incompatible_version_token()
+    {
+        Assert.False(Gate().TryAuthenticate(Token("tile-0", Hash, "acct"), out _, out string reason));
+        Assert.Equal("ke:incompatible-version:tile-1", reason);
+    }
+
+    [Fact]
+    public void The_world_refusal_carries_the_literal_world_mismatch_token()
+    {
+        Assert.False(Gate().TryAuthenticate(Token(Version, "otherworld", "acct"), out _, out string reason));
+        Assert.Equal("ke:world-mismatch:abc123def456|otherworld", reason);
+    }
+
+    [Fact]
+    public void The_ban_refusal_carries_the_literal_banned_token()
+    {
+        IConnectionAuthenticator gate = Gate(banned: s => s == "acct-banned");
+        Assert.False(gate.TryAuthenticate(Token(Version, Hash, "acct-banned"), out _, out string reason));
+        Assert.Equal("ke:banned", reason);
+    }
 }

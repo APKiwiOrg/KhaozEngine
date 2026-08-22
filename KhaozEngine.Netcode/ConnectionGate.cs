@@ -82,7 +82,17 @@ public sealed class WorldIdentityGateAuthenticator : IConnectionAuthenticator, I
 
 /// <summary>Refuses a banned account. Runs OUTSIDE-IN last, because a ban keys on the VERIFIED subject and only
 /// the token check produces one. The predicate is synchronous and called on the host thread, so it must be cheap
-/// (an in-memory view over whatever store the head keeps).</summary>
+/// (an in-memory view over whatever store the head keeps). An empty subject is never ban checked, because an
+/// authenticator that admits anonymously produces no account id to key a ban on.
+/// <para>This is the AT-THE-DOOR ban path, and it is one of two. It refuses a subject the head ALREADY knows is
+/// banned, during authentication, with the <see cref="HandshakeToken.BannedReason"/> wire token
+/// (<c>ke:banned</c>), before the peer joins at all, so a client sees a refused connect rather than a kick.
+/// <c>KhaozEngine.NetWorld.IBanStore</c> is the other path: a <c>WorldServer</c> consults it at JOIN and kicks
+/// with a typed <c>ServerNotice(ServerNoticeKind.Banned)</c>, which is the route a ban applied MID-SESSION takes
+/// and the one a game banned-player banner renders. The check here is a <c>Func&lt;string,bool&gt;</c> rather than
+/// an <c>IBanStore</c> because <c>IBanStore</c> lives in <c>KhaozEngine.NetWorld</c>, which this package cannot
+/// reference. A <c>WorldServer</c> game that wants both wires the SAME store behind both, passing it as
+/// <c>banStore:</c> and handing its <c>IsBanned</c> in here, so the two can never disagree about who is banned.</para></summary>
 public sealed class BanGateAuthenticator : IConnectionAuthenticator, IConnectionDisplayName
 {
     readonly IConnectionAuthenticator inner;
@@ -127,7 +137,9 @@ public sealed class BanGateAuthenticator : IConnectionAuthenticator, IConnection
 /// </summary>
 public static class ConnectionGate
 {
-    /// <summary>Composes the four-layer door around <paramref name="tokenAuth"/>.</summary>
+    /// <summary>Composes the four-layer door around <paramref name="tokenAuth"/>. The version rule is EXACT
+    /// equality with <paramref name="protocolVersion"/>: a head that wants a range or a compatibility window
+    /// composes <see cref="VersionGateAuthenticator"/> itself with its own rule and nests the rest by hand.</summary>
     public static IConnectionAuthenticator Wrap(IConnectionAuthenticator tokenAuth, string protocolVersion,
         string worldHash, Action<string>? log = null, Func<string, bool>? isBanned = null)
     {

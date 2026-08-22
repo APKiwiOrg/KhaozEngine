@@ -81,6 +81,13 @@ public sealed partial class TileWorldServer
         // including the ones that stepped nothing. See BeginDrain in TileWorldServer.Sessions.cs, which owns the
         // field and the reason.
         if (drainRemaining > 0f) drainRemaining = MathF.Max(0f, drainRemaining - MathF.Max(0f, dt));
+        // Once, on the first frame the grace is spent. Never inside RunOneTick: closing a session mutates the
+        // player index the tick body is iterating, and the serve above has already gone out for this tick.
+        if (IsDrainComplete && !drainClosed)
+        {
+            drainClosed = true;
+            CloseDrainedSessions();
+        }
     }
 
     // ONE whole tick, always at exactly TickSeconds. Every cell is fed the same one tick's worth, so the cell

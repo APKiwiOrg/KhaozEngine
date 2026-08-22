@@ -255,6 +255,34 @@ public class TileWorldServerSessionTests
     }
 
     [Fact]
+    public void A_completed_drain_releases_every_player_and_forgets_their_pending_actions()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        TileObject booth = doc.AddObject("bank_booth", 20, 10, 0, 0);
+        var hub = new InMemoryTransportHub();
+        using var s = new TileWorldServer(hub.Server, TileWorldServerTickTests.Config(new TileCoord(5, 10, 0)),
+            TileMoveSimulatorTests.Bake(doc), new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs),
+            new AllowAllAuthenticator());
+        var left = new List<string>();
+        s.SpawnPlayer(0, "a", "Ari");
+        s.SpawnPlayer(1, "b", "Bex");
+        s.PlayerLeaving += (_, account, _) => left.Add(account);
+        s.Enqueue(0, 0, TileCommand.Interact(booth.Id, TileMoveMode.Walk));
+        s.Tick(Dt);
+        Assert.Equal(1, s.Actions.PendingCount);        // still walking to the booth when the drain starts
+
+        s.BeginDrain(TileServerReason.Draining, graceSeconds: 0.25f);
+        s.Tick(Dt);
+        Assert.True(s.IsDrainComplete);
+        // Every player leaves by the ordinary path, so a persistence layer files their final state, and the seat
+        // they vacate keeps nothing: an action left behind would fire against whoever recycles the slot.
+        Assert.Equal(new[] { "a", "b" }, left.OrderBy(a => a).ToArray());
+        Assert.Equal(0, s.PlayerCount);
+        Assert.Empty(s.JoinedSlots);
+        Assert.Equal(0, s.Actions.PendingCount);
+    }
+
+    [Fact]
     public void A_leaving_player_raises_its_final_state_and_frees_the_slot()
     {
         (TileWorldServer s, InMemoryTransportHub hub, INetTransport c) = Up(new TileCoord(4, 4, 0));

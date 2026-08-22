@@ -36,6 +36,10 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
     // legitimate drain that completes on the next Tick, and a zero-initialised field could not tell the two apart.
     float drainRemaining = -1f;
     string drainReason = string.Empty;
+    bool drainClosed;
+    // The slots to close when a drain completes. Snapshotted, because closing one removes it from the player index
+    // and a dictionary cannot be enumerated while it changes.
+    readonly List<int> drainScratch = new();
 
     /// <summary>Raised as (slot, accountId) once a connection has a player entity, which is the point a game may
     /// start reading and writing that player. Raised from <see cref="SpawnPlayer"/>, so it fires for a headless
@@ -222,6 +226,17 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
         return netIdBySlot.ContainsKey(slot) || accountIdBySlot.ContainsKey(slot);
     }
 
+    // The end of a drain, run once from Tick the first time the grace is spent. Closing the sessions is what a
+    // grace is FOR: the players were told, they had their time, and now every one of them leaves through the
+    // ordinary path, so PlayerLeaving is raised for each and a persistence layer files the final state it would
+    // otherwise never see. A head that exits without this saves nothing newer than its last periodic pass.
+    void CloseDrainedSessions()
+    {
+        drainScratch.Clear();
+        drainScratch.AddRange(netIdBySlot.Keys);
+        for (int i = 0; i < drainScratch.Count; i++) Kick(drainScratch[i], drainReason);
+    }
+
     /// <summary>Closes one session with a reason token and despawns its player. The notice goes out BEFORE the
     /// disconnect, so the client learns why rather than seeing an unexplained drop, and the player is released
     /// synchronously rather than on the poll that observes the transport catching up.</summary>
@@ -265,6 +280,9 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
     /// adopts it.</para>
     /// <para>Idempotent: a second call while a drain is running is ignored rather than restarting the clock, so an
     /// operator who runs the command twice does not hand everyone a second grace period.</para>
+    /// <para>When the grace is spent, the next <see cref="Tick"/> closes every remaining session through
+    /// <see cref="Kick"/>, so each player leaves by the ordinary path and a persistence layer gets the
+    /// <see cref="PlayerLeaving"/> it needs to file their final state.</para>
     /// </summary>
     /// <param name="reasonToken">A <see cref="TileServerReason"/> token, normally
     /// <see cref="TileServerReason.Draining"/>. Kept, and sent again to anyone who joins inside the grace.</param>

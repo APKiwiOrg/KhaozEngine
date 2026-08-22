@@ -77,14 +77,6 @@ namespace KhaozEngine.Render3D
                         $"tile-ground layer {i} is {layers[i].AlbedoRgba.Length} bytes, expected {expected} for {width}x{height} RGBA8.",
                         nameof(layers));
 
-            // A ONE-layer set is padded to two by duplicating its layer, because every backend here (the
-            // incumbent included) derives a texture's ARRAY-ness from its layer count: one layer creates a plain
-            // 2D texture, the fragment declares texture2DArray, and Metal's validation layer kills the process at
-            // the first draw (the metal-native leg found it on the flat single-layer test). The duplicate slice is
-            // unreachable through slots (every vertex of a one-material world names slot 0) and costs one slice of
-            // memory. The seam-level fix, an explicit array flag on GpuTextureDescription, is #666.
-            if (layers.Count == 1) layers = new[] { layers[0], layers[0] };
-
             uint w = (uint)width, h = (uint)height, mips = TileGroundMaterialConfig.MipLevelCount(width, height);
             // Created, uploaded and mipped in one transient list, and freed if that list is refused mid-frame (#424).
             IGpuTexture albedo = TextureUploads.CreateAlbedoArray(_gd, w, h, mips, layers, "Scene3D.LoadTileGroundMaterial");

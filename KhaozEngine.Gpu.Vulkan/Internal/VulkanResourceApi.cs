@@ -173,7 +173,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             var createInfo = new ImageViewCreateInfo(
                 sType: StructureType.ImageViewCreateInfo,
                 image: new Image(spec.Image),
-                viewType: VulkanFormats.ToViewType(spec.Cubemap, spec.ArrayLayers),
+                viewType: VulkanFormats.ToViewType(spec.Cubemap, spec.ArrayLayers, spec.ArrayView),
                 format: VulkanFormats.ToVkFormat(spec.Format, spec.DepthStencil),
                 // IDENTITY SWIZZLE, which is what the incumbent leaves the components at by never touching them.
                 // A swizzle here would silently reorder every channel of every sampled read.

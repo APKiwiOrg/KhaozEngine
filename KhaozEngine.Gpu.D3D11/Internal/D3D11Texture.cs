@@ -44,6 +44,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             Height = description.Height;
             MipLevels = description.MipLevels == 0 ? 1 : description.MipLevels;
             ArrayLayers = description.ArrayLayers == 0 ? 1 : description.ArrayLayers;
+            IsArray = description.IsArray;
             SampleCount = description.SampleCount;
             Format = description.Format;
             Usage = description.Usage;
@@ -81,6 +82,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>Array-layer count. For a cubemap this counts CUBES, and the resource carries six subresource
         /// slices per cube.</summary>
         internal uint ArrayLayers { get; }
+
+        /// <summary>Whether the seam asked for an ARRAY, which the layer count alone cannot say at one layer
+        /// (#666). It decides the SHADER-VISIBLE view dimensions only, so a one-layer array reaches an HLSL
+        /// <c>Texture2DArray</c> / <c>RWTexture2DArray</c> as one. The render-target and depth-stencil views keep
+        /// the layer-count rule: nothing declares their dimension in a shader, and their array arm already pins
+        /// <c>ArraySize = 1</c>, so both arms name the same slice.</summary>
+        internal bool IsArray { get; }
+
         /// <summary>The declared usage.</summary>
         internal GpuTextureUsage Usage { get; }
         /// <summary>Whether the texture is a cubemap.</summary>
@@ -208,7 +217,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 d.TextureCubeArray.First2DArrayFace = 0;
                 d.TextureCubeArray.NumCubes = (int)t.ArrayLayers;
             }
-            else if (t.ArrayLayers == 1)
+            else if (!t.IsArray)
             {
                 d.ViewDimension = t.SampleCount > 1
                     ? ShaderResourceViewDimension.Texture2DMultisampled
@@ -218,6 +227,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             }
             else
             {
+                // NO MULTISAMPLE ARM HERE, and none is needed: the multisample test sits inside the non-array arm
+                // above, so an array that was also multisampled would take a plain Texture2DArray view over a
+                // multisampled resource. GpuTextureDescription refuses that combination at description time
+                // (RequireNoMultisampledArray), which is why this arm can assume single-sample.
                 d.ViewDimension = ShaderResourceViewDimension.Texture2DArray;
                 d.Texture2DArray.MostDetailedMip = 0;
                 d.Texture2DArray.MipLevels = (int)t.MipLevels;
@@ -304,7 +317,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             var d = new UnorderedAccessViewDescription { Format = D3D11Formats.ToViewFormat(t.DxgiFormat) };
 
-            if (t.ArrayLayers == 1)
+            if (!t.IsArray)
             {
                 d.ViewDimension = UnorderedAccessViewDimension.Texture2D;
                 d.Texture2D.MipSlice = 0;

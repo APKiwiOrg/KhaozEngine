@@ -37,9 +37,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <param name="BaseArrayLayer">First LOGICAL array layer.</param>
     /// <param name="ArrayLayers">How many LOGICAL array layers, multiplied by six for a cubemap exactly as the
     /// incumbent's <c>VkTextureView</c> does.</param>
+    /// <param name="ArrayView"><see cref="GpuTextureDescription.IsArray"/>: the view takes
+    /// <c>VK_IMAGE_VIEW_TYPE_2D_ARRAY</c> even over a single layer, which is the only way a one-layer array can
+    /// reach a fragment that declares <c>texture2DArray</c> (#666). Defaulted to false so a view that is a 2D
+    /// plane by nature (the mip 0, layer 0 attachment view) says nothing and gets the count rule.</param>
     internal readonly record struct VulkanImageViewSpec(
         ulong Image, GpuPixelFormat Format, bool DepthStencil, bool Cubemap, uint BaseMipLevel, uint MipLevels,
-        uint BaseArrayLayer, uint ArrayLayers);
+        uint BaseArrayLayer, uint ArrayLayers, bool ArrayView = false);
 
     /// <summary>
     /// THE TWELVE REAL DRIVER CALLS RESOURCE CREATION IS, behind an interface for the same reason

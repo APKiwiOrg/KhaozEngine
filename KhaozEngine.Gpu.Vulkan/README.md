@@ -328,6 +328,13 @@ incumbent is a render-pass split plus a pipeline flush plus a global barrier, no
 destination is `VertexAttributeRead` at `VertexInput`, so it does not cover a uniform read at all: the write is
 both expensive AND under-synchronised for the usage every per-frame uniform buffer in the engine has.
 
+**And it LANDS THE MOMENT IT IS MADE, which is the ring's one consequence for a renderer.** Recording no
+command means it is not ordered against the draws in the same list, so two writes to the same range inside one
+frame leave the second value for every draw of that frame, including the draws recorded between them. The
+incumbent's render-pass split orders it instead, so this is a real difference between the two Vulkan backends.
+Per-draw and per-pass uniforms are addressed by dynamic offset rather than by rewriting one range, which is what
+the engine's renderers do and what makes the ring possible at all.
+
 **On Vulkan the segments are a REQUIREMENT rather than an optimisation.** Direct3D 11's `MAP_WRITE_DISCARD`
 gives the driver licence to rename the buffer under a write. Vulkan renames nothing, so writing bytes the GPU
 may still be reading from a previous frame's submission is a plain data race with no diagnostic. Nothing needs

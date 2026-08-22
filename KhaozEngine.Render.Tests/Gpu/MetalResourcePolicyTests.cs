@@ -77,6 +77,38 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// THE ONE DEPARTURE FROM THE INCUMBENT (#666): a texture the seam asked for AS an array takes
+        /// <c>Type2DArray</c> at one layer, which the layer count on its own cannot say. The cube and multisample
+        /// arms keep the incumbent's rule, so the flag widens exactly one row of the ladder.
+        /// </summary>
+        [Fact]
+        public void AnExplicitArray_TakesTheArrayTypeAtOneLayer()
+        {
+            Assert.Equal(MTLTextureType.Type2DArray, MetalFormats.TextureTypeFor(1, false, false, true));
+            Assert.Equal(MTLTextureType.Type2D, MetalFormats.TextureTypeFor(1, false, false, false));
+
+            // Above one layer the count already said it, so the flag changes nothing either way.
+            Assert.Equal(MTLTextureType.Type2DArray, MetalFormats.TextureTypeFor(4, false, false, false));
+
+            // A cube is already six faces and the seam has no one-cube cube-array caller, and a multisampled
+            // texture has no array type here. Both keep their own arm.
+            Assert.Equal(MTLTextureType.TypeCube, MetalFormats.TextureTypeFor(1, false, true, true));
+            Assert.Equal(MTLTextureType.Type2DMultisample, MetalFormats.TextureTypeFor(1, true, false, true));
+        }
+
+        /// <summary>The plan carries the flag through, so a one-layer array reaches
+        /// <c>-newTextureWithDescriptor:</c> as a <c>Type2DArray</c> rather than the <c>Type2D</c> that made
+        /// Metal validation kill the test host at the first tile-ground draw (#666).</summary>
+        [Fact]
+        public void TheCreationPlan_TakesTheArrayTypeForAOneLayerArray()
+        {
+            Assert.Equal(MTLTextureType.Type2DArray,
+                MetalViewPolicy.ForTexture(GpuTextureUsage.Sampled, 1, 1, arrayView: true).Type);
+            Assert.Equal(MTLTextureType.Type2D,
+                MetalViewPolicy.ForTexture(GpuTextureUsage.Sampled, 1, 1).Type);
+        }
+
+        /// <summary>
         /// ONE METAL BIT SERVES BOTH ATTACHMENT USAGES, and three seam usages set no bit at all. Both halves are
         /// reproduction rather than omission: Metal takes the aspect from the pixel format, a staging texture is
         /// not a texture here, a cubemap is a texture TYPE, and

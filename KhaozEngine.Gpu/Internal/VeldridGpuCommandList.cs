@@ -66,8 +66,33 @@ namespace KhaozEngine.Gpu.Internal
             => CommandList.CopyBuffer(((VeldridGpuBuffer)src).Buffer, srcOffsetBytes,
                 ((VeldridGpuBuffer)dst).Buffer, dstOffsetBytes, sizeInBytes);
 
+        /// <summary>
+        /// A WHOLE-RESOURCE COPY, EXCEPT WHERE A SIDE CARRIES A PHANTOM SLICE (#666). Veldrid's own
+        /// <c>CopyTexture(src, dst)</c> names every subresource on both sides and refuses a shape mismatch
+        /// outright, so an emulated one-layer array (two slices on the GPU, one on the seam) could not be copied
+        /// into the one-slice staging texture <c>GpuReadback.ToRgba</c> allocates: it threw here and succeeded on
+        /// the three native backends. When either side pads, this walks the LOGICAL subresources instead, which
+        /// is the same set of texels the natives copy and leaves the phantom out of it. Where neither pads, which
+        /// is every texture in the engine bar a one-layer array, the call is Veldrid's own, unchanged.
+        /// </summary>
         public void CopyTexture(IGpuTexture src, IGpuTexture dst)
-            => CommandList.CopyTexture(((VeldridGpuTexture)src).Texture, ((VeldridGpuTexture)dst).Texture);
+        {
+            var s = (VeldridGpuTexture)src;
+            var d = (VeldridGpuTexture)dst;
+            if (!s.HasPhantomLayer && !d.HasPhantomLayer)
+            {
+                CommandList.CopyTexture(s.Texture, d.Texture);
+                return;
+            }
+
+            for (uint layer = 0; layer < s.ArrayLayers; layer++)
+                for (uint mip = 0; mip < s.Texture.MipLevels; mip++)
+                    CommandList.CopyTexture(
+                        s.Texture, 0, 0, 0, mip, layer,
+                        d.Texture, 0, 0, 0, mip, layer,
+                        Math.Max(1u, s.Texture.Width >> (int)mip),
+                        Math.Max(1u, s.Texture.Height >> (int)mip), 1, 1);
+        }
 
         public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer, IGpuTexture dst, uint width, uint height)
             => CopyTextureSubresource(src, srcMipLevel, srcArrayLayer, dst, 0, 0, width, height);

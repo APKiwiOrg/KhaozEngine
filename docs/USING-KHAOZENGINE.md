@@ -9699,6 +9699,16 @@ backends accept the combination and nothing in this engine creates it: a uniform
 rebased per frame by the uniform ring, and a structured binding of the same buffer would read whichever frame
 segment it landed on. Create two buffers.
 
+**And the ring's other consequence holds here exactly as it does on the two native siblings (17.39.0): a uniform
+write lands when you make it, not when the list is submitted.** A record-time `IGpuCommandList.UpdateBuffer` to a
+uniform buffer on `MetalNative` is a memcpy into that frame's own segment, so two writes to the SAME range inside
+one frame leave the second value for every draw of that frame, including the draws you recorded between them.
+`GpuBackendKind.Metal`, through Veldrid, orders the write against the draws instead, so this is a real difference
+between the two Metal backends rather than a note about Metal. It is measured on both, one machine and one
+process, by `RecordTimeUniformRewriteGpuTests`. Address per-draw or per-pass uniforms by dynamic offset
+(`GpuBufferRange` plus the offset overload of `SetGraphicsResourceSet`), which is what the engine's own renderers
+do, or re-upload a whole CPU mirror whose already-recorded slots keep the bytes they had.
+
 WINDOWED creation is real
 (https://github.com/APKiwiOrg/KhaozEngine/issues/581), and what a windowed request can still be refused for is
 the world rather than the package: this operating system, this machine, or a handle that is not a Cocoa
@@ -10227,6 +10237,57 @@ segment's next reopen. That blocks nobody, it usually happens at load time befor
 non-zero reading beside a zero stall count is a specific diagnosis: the segment count is fine and something is
 writing off-timeline against work still in flight. `OffTimelineOutstanding` climbing rather than settling means
 writes are being queued for a segment nothing ever acquires, which on a running device means frames stopped.
+
+---
+
+## A texture array with ONE layer (`GpuTextureDescription.IsArray`, 17.39.0)
+
+`GpuTextureDescription.Texture2DArray(width, height, format, usage, arrayLayers, mipLevels)` builds a 2D texture
+array, and since 17.39.0 it works at `arrayLayers: 1`:
+
+```csharp
+// One layer, and still an ARRAY: this binds under a fragment that declares texture2DArray.
+IGpuTexture albedo = gd.Factory.CreateTexture(GpuTextureDescription.Texture2DArray(
+    w, h, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled, arrayLayers: 1, mipLevels: 1));
+gd.UpdateTexture(albedo, pixels, 0, 0, w, h, mipLevel: 0, arrayLayer: 0);
+```
+
+Before 17.39.0 every backend read array-ness off the layer count alone, so that call produced a plain 2D
+texture. Bind one under a shader that declares an array sampler and Metal aborts the process when validation is
+armed (`incorrect type of texture (MTLTextureType2D) bound ... (expect MTLTextureType2DArray)`), while lavapipe
+renders through it silently, which is the harder failure to find. The engine's own tile-ground pipeline worked
+around it by duplicating a single layer into a second slice.
+
+**What to do about it: nothing, if you build arrays through `Texture2DArray`.** That factory sets the new
+`GpuTextureDescription.IsArray` for you, and every backend honours it. The old inference is kept as the default,
+so `IsArray` is true whenever `ArrayLayers > 1` and code that passes only a layer count behaves exactly as it
+did. The raw constructor takes an `isArray` argument for the same purpose.
+
+**One shape it deliberately does not claim, and one it refuses.** A cubemap (`GpuTextureUsage.Cubemap`) keeps
+its own rule, since a cube is already six faces and one cube is a `TypeCube` rather than a one-cube cube array.
+A MULTISAMPLED ARRAY is refused outright: the constructor throws `ArgumentOutOfRangeException` for
+`IsArray && SampleCount > 1`, because no backend agrees on which type such a texture takes (Metal, Vulkan and
+Direct3D 11's render-target views derive the multisample type, while Direct3D 11's shader resource view derives
+the array type and drops the multisampling). Build the multisampled target as a single-layer texture and resolve
+it into an array layer instead. Every multisampled render target the engine makes is already single-layer, so
+this refuses a shape nothing was building.
+
+**One backend emulates it, and the emulation is contained rather than invisible.** The three native backends
+(`KhaozEngine.Gpu.Metal`, `.Vulkan`, `.D3D11`) create the array type directly. The incumbent Veldrid backend has
+no way to express a one-layer array at all, so it creates a second slice that is never uploaded to, never
+sampled and never named by a slot. Nothing samples the phantom, so it cannot reach a picture. Veldrid does COUNT
+it, though, so the two seam paths that name SUBRESOURCES rather than texels have to know about it, and both do:
+
+- `GpuReadback.ToRgba` works. A whole-resource copy names every subresource on both sides, so a two-slice source
+  against the one-slice staging texture the readback allocates used to be refused here (`Source and destination
+  Textures are not compatible to be copied`) and to succeed on the natives. The copy narrows to the LOGICAL
+  subresources whenever a side pads, so the readback is backend-independent again.
+- `UpdateTexture(..., arrayLayer: 1)` on a one-layer array raises `ArgumentOutOfRangeException`, on the
+  incumbent as well as on the natives. Writing to the phantom writes to memory nothing reads, and it used to be
+  accepted silently on exactly one backend.
+
+What is left is one slice of memory. A STAGING texture is never padded at all, since it has no view and nothing
+binds it to a shader.
 
 ---
 
@@ -12802,6 +12863,36 @@ one. Across NODES it does not: two `ShardHost` instances exchange a crossing as 
 design, so an infra link spanning nodes must carry the mark in its own envelope and re-apply it on arrival.
 `WorldPickups` marks everything it spawns, so a game on that seam needs none of this.
 
+**Saying "not across a restart, but yes across an unload" (since 17.39.0, #668).** A cell is captured for two
+reasons, and until 17.39.0 one mark decided both: the durable save that outlives the process, and the in-memory
+freeze `CellEvictor` holds while a cell is unloaded so a re-entered coordinate restores inside the create call. That
+made marking an entity destroy it on an unload too, which an unload is not supposed to do. `Transient` now carries a
+`TransientScope`:
+
+```csharp
+server.MarkTransient(netId);                                  // TransientScope.Always, exactly as 17.38.0
+server.MarkTransient(netId, TransientScope.Always);           // the same thing, spelled out
+server.MarkTransient(netId, TransientScope.DurableOnly);      // never saved, kept across an unload
+
+server.TryGetTransientScope(netId, out TransientScope scope); // false = not marked at all
+server.IsTransient(netId);                                    // true for either scope
+```
+
+`Always` is out of both captures, so the entity evaporates on an unload as surely as on a restart. Reach for it when
+the entity's meaning lives in per-process bookkeeping a restore cannot rebuild, which is why `WorldPickups` uses it.
+`DurableOnly` is out of the save alone: a restart brings back no husk, and an unload plus a route back hands the SAME
+entity under the same `NetId` to whatever was tracking it. Reach for it for authored, whole-zone agent state, a
+spawner holding one record per authored creature keyed to a net id, dormant while its cell is unloaded and expecting
+its entity back on the restore, but re-spawned from the authored content after a restart.
+
+Two caveats. The route back only reaches as far as the evictor's cache
+(`CellEvictionConfig.MaxCachedSnapshots`, 1024 coordinates by default, oldest dropped first): past it the coordinate
+falls back to the store-backed load, and the store never held the entity, so keep your spawner able to notice a net
+id it no longer owns. And the seam under all this,
+`ICellPersistenceHost.SnapshotCell(coord, SnapshotPurpose)` with `ReadTransientMarks` / `ApplyTransientMarks` beside
+it, is three default interface methods: a custom host that has not overridden them keeps the 17.38.0 behaviour, so
+`DurableOnly` reads as `Always` there until it does. `ShardedWorldServer` overrides all three.
+
 Subscribe to **`CellPersistence.OnStoreError`** (`event Action<Exception>`, mirrors `WorldPersistence.OnStoreError`)
 to log/alert on a faulted background cell save, meta write, or quarantine write. The driver prunes the faulted task
 each `Update` (so a store outage can't grow the pending list unbounded or make the boot sequence
@@ -13591,7 +13682,10 @@ its snapshot decode the first time a pickup entered its area of interest, mid-se
 `IncompatibleVersion` rejection at connect. **Client and server must ship together.**
 
 **A pickup is never persisted by default (since 17.38.0).** Every pickup `Spawn` creates is marked
-`KhaozEngine.Sharding.Transient`, so `CellPersistence` leaves it out of the cell blob and no restore brings it back.
+`KhaozEngine.Sharding.Transient` at `TransientScope.Always`, so `CellPersistence` leaves it out of the cell blob, the
+evictor's unload freeze leaves it out too, and no restore of either brings it back (`Always` rather than
+`DurableOnly` because this seam's tracking is dropped on eviction anyway, so for an orb both questions have the same
+answer).
 The seam's state (the time-to-live, the clock, the offer records) lives in this process only, so a resurrected pickup
 is a plain entity carrying `PickupState` that the seam knows nothing about, offered to nobody and expiring never.
 
@@ -13602,20 +13696,26 @@ never, and `Despawn` / `DespawnAll` / `ForgetCell` all miss it. Persistent groun
 `WorldPickups.Rehydrate(world)` that re-adopts restored `PickupState` entities into the seam, filed as
 [#660](https://github.com/APKiwiOrg/KhaozEngine/issues/660). Until that lands, a collectible meant to survive a
 restart belongs in your own content or save data, spawned again at boot, which is also the only place its payload
-still means anything.
+still means anything. Clearing the mark is not the only route to that husk either: re-marking a pickup
+`TransientScope.DurableOnly` keeps it in the evictor's unload freeze while `ForgetCell` has already dropped the
+seam's record for it, so re-entering that coordinate hands back an untracked, never-expiring pickup entity
+mid-session, with no restart involved. Leave a pickup on the `Always` scope `Spawn` gives it.
 
 **The same opt-out is yours for any other transient server-owned entity.** A timed spawn, a wave of adds, a
 projectile, a temporary marker:
 
 ```csharp
-long netId = server.SpawnEntity(x, z, (world, entity) => world.Set(entity, new EnemyKind { … }));
-server.MarkTransient(netId);   // ClearTransient / IsTransient beside it
+long shell = server.SpawnEntity(x, z, (world, entity) => world.Set(entity, new EnemyKind { … }));
+server.MarkTransient(shell);                              // ClearTransient / IsTransient beside it
+
+long wolf = server.SpawnEntity(x, z, (world, entity) => world.Set(entity, new EnemyKind { … }));
+server.MarkTransient(wolf, TransientScope.DurableOnly);   // never saved, but survives a cell unload
 ```
 
 It excludes the ENTITY rather than a component's bytes, which is the axis a `ReplicationChannels` flag cannot reach:
 a channel gates one component TYPE, and dropping bytes would still persist the entity, just as a stripped husk. It
-costs nothing on the wire (a field-less ECS tag in no `ReplicationRegistry`, so no blob layout moves) and it follows
-the entity across a cell handoff inside one `ShardHost`, for any `ICellLink` shape, so walking into the next cell does
+costs nothing on the wire (in no `ReplicationRegistry`, so no blob layout moves) and it follows the entity, scope and
+all, across a cell handoff inside one `ShardHost`, for any `ICellLink` shape, so walking into the next cell does
 not make it persistable there. That stops at the node boundary: the tag has no wire id, so a link carrying a crossing
 between two hosts carries the mark in its own envelope or the destination adopts it unmarked.
 

@@ -1898,9 +1898,9 @@ namespace KhaozEngine.Render3D
                     _res.ResolveDepth(cl);
                     // Batched decal pass: one instanced draw per blend run, so count the runs it issued (not a flat 1).
                     // Blob-shadow decals are legacy Solid fills (no pattern/energy/feather), so time+quality are inert here.
-                    // rejectDynamicGeometry: false. This pass runs BEFORE the skinned draws and resolves only depth
-                    // (not the normal target the reject reads), and a blob shadow wants no dynamic reject anyway.
-                    _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, vp, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, false, RelativeDecals(_shadowDecals));
+                    // FramePass.BlobShadow: runs BEFORE the skinned draws and resolves only depth (not the normal
+                    // target the reject reads), and it reads its OWN frame-UBO slot rather than a shared range (#483).
+                    _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, vp, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, Rendering.GroundDecalRenderer.FramePass.BlobShadow, RelativeDecals(_shadowDecals));
                     cl.SetFramebuffer(_res.ModelFB);
                     _model.BindPass(cl);
                 }
@@ -2015,9 +2015,9 @@ namespace KhaozEngine.Render3D
             // ground, are occluded by geometry (Y-band), and flow through the pixel post like the meshes.
             if (_decals.Count > 0)
                 // Batched decal pass: one instanced draw per blend run (see GroundDecalRenderer), so add the run count.
-                // rejectDynamicGeometry: true. This is the main pass, after ResolveDepthNormal, so the normal target
-                // carries the model pass's dynamic tags - reject skinned-tagged pixels so decals stay off characters (#235).
-                _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, vp, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, true, RelativeDecals(_decals));
+                // FramePass.Main: after ResolveDepthNormal, so the normal target carries the model pass's dynamic tags -
+                // reject skinned pixels so decals stay off characters (#235) - and it reads its OWN UBO slot (#483).
+                _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, vp, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, Rendering.GroundDecalRenderer.FramePass.Main, RelativeDecals(_decals));
 
             // Animated water (Rendering gap #5): after the sky + ground decals, sampling the resolved scene depth
             // (already valid via the ResolveDepthNormal call above the sky pass) for the shore fade. Depth test ON (so

@@ -63,7 +63,7 @@ namespace KhaozEngine.Tests.Gpu
             ("DepthLineRenderer._layout", new[] { U("U") }, "b0"),
             ("DistortionRenderer._layout", new[] { U("Frame"), T("DepthTex"), S("Samp") }, "b0 t0 s0"),
             ("GroundDecalRenderer._layout",
-                new[] { T("DepthTex"), S("Samp"), U("Frame"), T("NormalTex") }, "t0 s0 b0 t1"),
+                new[] { T("DepthTex"), S("Samp"), U("Frame", dynamic: true), T("NormalTex") }, "t0 s0 b0 t1"),
 
             ("ModelRenderer._layout",
                 new[] { U("U"), T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"),

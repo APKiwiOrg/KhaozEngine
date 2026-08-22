@@ -150,7 +150,12 @@ document for footprints, the tick counts) and is the ONE stepper both heads run:
   records the target so arrival faces it and raises the action. A target on ANOTHER plane is dropped whole, the same
   answer `WalkTo` gives a cross-plane goal, and the target is resolved BEFORE anything is written so the tick reads
   exactly as if no command had arrived. A target on the player's OWN plane with no reachable reach tile is the other
-  answer: the route is dropped and the pending target cleared, which is the state a `CannotReach` accompanies.
+  answer: the route is dropped and the pending target cleared, which is the state a `CannotReach` accompanies. The
+  arrival TURN is the simulator's too: on the tick the route empties with a target still pending, the player faces
+  `TileReach.FacingToward` for the tile they landed on, guarded by `TileReach.Contains` because a re-path can leave a
+  route that stops short of one, so a walk arriving from the side ends facing the booth rather than keeping the
+  diagonal its last step left, and the whole outcome of a click is predicted instead of one attribute of it landing a
+  snapshot late.
 - `None`: take the mode from the command (it rides on every kind, and a change lands at the START of the next step
   rather than re-cutting the one under way), then advance `StepTicks`, which EVERY tick does, a tick carrying a
   command included. When it reaches `TicksPerStep(Mode)` (2 run, 4 walk), re-check `CanStep` from the
@@ -185,8 +190,10 @@ reasoning, so the direction is not flipped back later.
 
 Server side, `TileActionQueue` holds at most one pending action per player: `(target, kind, issuedTick)`. On each
 tick after movement, a pending action whose player stands on a reach tile of the target, on its plane, is
-validated and raised through `TileWorldServer.OnInteract(playerNetId, target)`, then cleared. Reissuing a command
-(another click) replaces the pending action, OSRS style. In SP2 the only consumer of `OnInteract` is a log line,
+validated and raised through `TileWorldServer.OnInteract(playerNetId, target)`, then cleared. The facing is already
+correct by then, written by the simulator on the arrival tick, so the server never owns the turn. Reissuing a command
+(another click) replaces the pending action, OSRS style, and an applied `WalkTo` CLEARS it, because the simulator
+clears the state's own pending target on a walk and the queue and the state are two records of one intent. In SP2 the only consumer of `OnInteract` is a log line,
 and the Grimhollow client shows a localized "nothing interesting happens". When `TileReach` returns no reachable
 tile, the server sends a `CannotReach` game message, and the client, which has the same map, pre-checks on click
 and shows it immediately without waiting.

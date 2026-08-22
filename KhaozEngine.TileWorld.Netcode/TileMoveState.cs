@@ -38,8 +38,10 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
     /// alone answers every rules question (reach, region, occupancy) with no rounding.</summary>
     public TileCoord Tile;
 
-    /// <summary>The direction the player faces. Set by the step taken, or by an interaction's target when standing
-    /// still, which is why it is its own field rather than read back off the route.</summary>
+    /// <summary>The direction the player faces. Set by the step taken, or by an interaction's target on the tick the
+    /// walk to it ends, a zero step walk included, which is why it is its own field rather than read back off the
+    /// route. The simulator owns both writes, so the turn at the end of a click is predicted with the rest of it.
+    /// </summary>
     public TileDirection Facing;
 
     /// <summary>Walk or run: which entry of <see cref="TileStepTicks"/> the current route steps at. Held on the

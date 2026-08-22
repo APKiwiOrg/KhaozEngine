@@ -9,6 +9,14 @@ public class TileInteractTests
     const float Dt = 0.25f;
     static readonly TileStepTicks Ticks = new(walk: 4, run: 2);
 
+    // A 2x1 interactive archetype, which the greybox catalog does not have: its two interactive archetypes are both
+    // 1x1, and rotating a square rect gives the same rect back, so nothing else in the suite can tell a rotated
+    // footprint from an unrotated one.
+    const string WideBooth = """
+        { "archetypes": [ { "id": "long_booth", "name": "Long booth", "meshRef": "kit/long_booth.glb",
+                            "sizeX": 2, "sizeZ": 1, "collisionKind": "Solid", "interactive": true } ] }
+        """;
+
     static (TileMoveSimulator sim, long boothId) World(params (int x, int z)[] walls)
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
@@ -19,17 +27,97 @@ public class TileInteractTests
         return (new TileMoveSimulator(map, Ticks, targets), booth.Id);
     }
 
+    // The approach is the whole test. From due west the last step of the walk ALREADY points at the booth, so a
+    // simulator that never turns on arrival passes by accident. Coming in from (9, 14) the walk arrives on the reach
+    // tile at (10, 11) with a DIAGONAL last step, and no reach direction is ever diagonal, so this is the case that
+    // holds the rule up.
     [Fact]
     public void An_interact_routes_to_a_reach_tile_and_faces_the_target_on_arrival()
     {
         (TileMoveSimulator sim, long booth) = World();
-        TileMoveState s = TileMoveState.At(new TileCoord(5, 10, 0), TileDirection.N);
+        TileMoveState s = TileMoveState.At(new TileCoord(9, 14, 0), TileDirection.N);
         s = sim.Step(s, TileCommand.Interact(booth, TileMoveMode.Run), Dt);
         Assert.Equal(booth, s.InteractTarget);
-        Assert.Equal(new TileCoord(9, 10, 0), s.Route.End);
-        for (int i = 0; i < 20 && !s.Route.IsIdle; i++) s = sim.Step(s, TileCommand.None, Dt);
-        Assert.Equal(new TileCoord(9, 10, 0), s.Tile);
+        Assert.False(s.Route.IsIdle);
+        Assert.Equal(new TileCoord(10, 11, 0), s.Route.End);
+        // Continue rather than None: the mode rides on every command, so a None here would quietly finish the run at
+        // a walking cadence.
+        for (int i = 0; i < 20 && !s.Route.IsIdle; i++) s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+        Assert.Equal(new TileCoord(10, 11, 0), s.Tile);
         Assert.Equal(booth, s.InteractTarget);
+        Assert.Equal(TileDirection.S, s.Facing);
+    }
+
+    // The due-west approach, kept for what it pins that the case above cannot: TryNearest's scoring reaches the
+    // simulator, so a click from five tiles west routes to the WEST reach tile rather than one of the other three.
+    [Fact]
+    public void The_nearest_reach_tile_is_the_one_the_player_comes_from()
+    {
+        (TileMoveSimulator sim, long booth) = World();
+        TileMoveState s = TileMoveState.At(new TileCoord(5, 10, 0), TileDirection.N);
+        s = sim.Step(s, TileCommand.Interact(booth, TileMoveMode.Run), Dt);
+        Assert.Equal(new TileCoord(9, 10, 0), s.Route.End);
+    }
+
+    // The arrival turn is a SECOND document read inside the simulator, so pin that it stays a pure function of the
+    // inputs: two instances over one command stream have to agree byte for byte through the arrival tick, or an
+    // interaction walk snaps on reconcile instead of reconciling.
+    [Fact]
+    public void Two_instances_over_one_interact_stream_stay_byte_identical()
+    {
+        (TileMoveSimulator a, long booth) = World();
+        (TileMoveSimulator b, long other) = World();
+        Assert.Equal(booth, other);
+        TileMoveState sa = TileMoveState.At(new TileCoord(9, 14, 0), TileDirection.N), sb = sa;
+        for (int i = 0; i < 20; i++)
+        {
+            TileCommand c = i == 0
+                ? TileCommand.Interact(booth, TileMoveMode.Run)
+                : TileCommand.Continue(TileMoveMode.Run);
+            sa = a.Step(sa, c, Dt);
+            sb = b.Step(sb, c, Dt);
+            Assert.Equal(sa, sb);
+        }
+        Assert.Equal(TileDirection.S, sa.Facing);
+    }
+
+    // The guard on the arrival turn, which is the half of the rule that looks like dead code. A re-path around a
+    // blocker goes through FindPath, whose nearest-reachable fallback can leave a LIVE route that stops short of the
+    // reach tile, and FacingToward answers W for a tile touching no footprint tile. So the route empties with the
+    // target still pending, several tiles from the booth, and the player must keep the facing their last step gave
+    // them rather than snapping west at nothing.
+    [Fact]
+    public void A_re_path_that_stops_short_of_the_reach_tile_does_not_turn()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        TileObject booth = doc.AddObject("bank_booth", 10, 10, 0, 0);
+        TileCollisionMap map = TileMoveSimulatorTests.Bake(doc);
+        var sim = new TileMoveSimulator(map, Ticks,
+            new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs));
+
+        TileMoveState s = TileMoveState.At(new TileCoord(0, 10, 0), TileDirection.N);
+        s = sim.Step(s, TileCommand.Interact(booth.Id, TileMoveMode.Run), Dt);
+        Assert.Equal(new TileCoord(9, 10, 0), s.Route.End);
+        for (int i = 0; i < 3; i++) s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+        Assert.Equal(new TileCoord(2, 10, 0), s.Tile);
+
+        // One tree in the way so the next step fails and a re-path runs, and a sealed column so the re-path cannot
+        // reach the booth at all. What is left reachable nearest the reach tile is (4, 10), so the re-path returns a
+        // live two step route that ends four tiles short of anywhere the booth can be acted on.
+        doc.AddObject("tree", 3, 10, 0, 0);
+        for (int z = 0; z < TileRegion.Size; z++) doc.AddObject("tree", 5, z, 0, 0);
+        TileCollisionBaker.Rebake(map, doc, TileMoveSimulatorTests.Catalogs,
+            new TileRect(2, 0, 5, TileRegion.Size), 0);
+
+        for (int i = 0; i < 20 && !s.Route.IsIdle; i++) s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+        Assert.Equal(new TileCoord(4, 10, 0), s.Tile);
+        Assert.Equal(booth.Id, s.InteractTarget);
+        Assert.False(TileReach.Contains(map, TileFootprint.Of(TileMoveSimulatorTests.Catalogs.Archetype("bank_booth")!,
+            10, 10, 0), 0, s.Tile));
+        // The last step of the re-path, which came up onto (4, 10) from (4, 9) because the tree at (3, 10) denies the
+        // diagonal into it. Unguarded, FacingToward would have written W here: no footprint tile touches (4, 10), so
+        // it takes its fallback.
+        Assert.Equal(TileDirection.N, s.Facing);
     }
 
     [Fact]
@@ -48,6 +136,10 @@ public class TileInteractTests
     {
         (TileMoveSimulator sim, long booth) = World((9, 10), (11, 10), (10, 9), (10, 11));
         TileMoveState s = TileMoveState.At(new TileCoord(5, 10, 0), TileDirection.N);
+        // Walk first, so the assertions below are a state the interact had to PRODUCE rather than the state it
+        // started from. Without this, a BeginInteract that returned its input unchanged passes the case.
+        s = sim.Step(s, TileCommand.WalkTo(new TileCoord(5, 14, 0), TileMoveMode.Run), Dt);
+        Assert.False(s.Route.IsIdle);
         s = sim.Step(s, TileCommand.Interact(booth, TileMoveMode.Run), Dt);
         Assert.True(s.Route.IsIdle);
         Assert.Equal(0, s.InteractTarget);
@@ -63,12 +155,34 @@ public class TileInteractTests
         Assert.False(targets.TryGetFootprint(999999, out _, out _));
     }
 
+    // The rotation the class doc promises. A quarter turn swaps the footprint's width and height around the same SW
+    // anchor, and reach is read off that rect, so an unrotated read would offer reach tiles beside a tile the object
+    // does not stand on.
+    [Fact]
+    public void A_rotated_target_reports_the_rotated_footprint()
+    {
+        TileWorldCatalogs catalogs =
+            TileWorldCatalogs.Merge(TileWorldCatalogs.Greybox(), TileWorldCatalogs.LoadJson(WideBooth, "wide"));
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        TileObject flat = doc.AddObject("long_booth", 10, 10, 0, 0);
+        TileObject turned = doc.AddObject("long_booth", 20, 20, 1, 1);
+        var targets = new TileDocumentTargets(doc, catalogs);
+
+        Assert.True(targets.TryGetFootprint(flat.Id, out TileRect flatRect, out int flatPlane));
+        Assert.Equal(new TileRect(10, 10, 2, 1), flatRect);
+        Assert.Equal(0, flatPlane);
+        Assert.True(targets.TryGetFootprint(turned.Id, out TileRect turnedRect, out int turnedPlane));
+        Assert.Equal(new TileRect(20, 20, 1, 2), turnedRect);
+        Assert.Equal(1, turnedPlane);
+    }
+
     [Fact]
     public void A_walk_command_clears_a_pending_interaction()
     {
         (TileMoveSimulator sim, long booth) = World();
         TileMoveState s = TileMoveState.At(new TileCoord(5, 10, 0), TileDirection.N);
         s = sim.Step(s, TileCommand.Interact(booth, TileMoveMode.Run), Dt);
+        Assert.Equal(booth, s.InteractTarget);              // there IS a target for the walk to clear
         s = sim.Step(s, TileCommand.WalkTo(new TileCoord(2, 2, 0), TileMoveMode.Run), Dt);
         Assert.Equal(0, s.InteractTarget);
     }

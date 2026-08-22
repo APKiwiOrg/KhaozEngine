@@ -11,7 +11,8 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// step progress advances, and a step COMMITS when it fills. A commit re-checks <see cref="TileCollision.CanStep"/>
 /// against the live map, so a blocker that appeared mid-route is caught at the moment the foot lands: the route is
 /// re-pathed ONCE from the current tile to the same end, and if that also fails the route is dropped and the player
-/// stands.</para>
+/// stands. The tick a route with a pending interaction empties ALSO turns the player toward the target, so the whole
+/// outcome of a click is written by the one stepper both heads run.</para>
 /// <para>The tick that carries a command is a FULL tick: it starts the walk and advances step progress by one, so
 /// a click never costs a tick of standing still. That is the rule the step-cadence tests pin, and it is why a
 /// freshly issued route reads one tick into its first step rather than zero.</para>
@@ -187,6 +188,28 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         s.StepTicks = 0;
         s.Route = s.Route.Advanced();
         s.StepTotal = StepTicks.For(s.Mode);
+        return s.Route.IsIdle && s.InteractTarget != 0 ? FaceTarget(s) : s;
+    }
+
+    // The tick a walked interaction's route empties, the player turns to face what the walk was for. This lives in
+    // the SIMULATOR rather than in the server's action resolution because facing is simulation state: it is compared
+    // by TileMoveState.Equals and it rides the wire, so a facing only the server writes reaches the client one
+    // snapshot after the arrival it belongs to, and the player watches the avatar stand wrong at the booth for a
+    // round trip and then rotate. Both heads run this, so the turn is predicted with the rest of the click and the
+    // server's own write of the same value becomes an idempotent backstop.
+    //
+    // TileReach.Contains is a real guard, not a formality. Repath rebuilds a route through FindPath, whose
+    // nearest-reachable fallback can leave a live route that stops SHORT of a reach tile, and FacingToward answers
+    // W for a tile that touches no footprint tile at all. Unguarded, that pair turns a player who never got there
+    // to face west for no reason. Contains also refuses a target on another plane, so the plane needs no second
+    // check here.
+    TileMoveState FaceTarget(in TileMoveState state)
+    {
+        TileMoveState s = state;
+        if (targets is null || !targets.TryGetFootprint(s.InteractTarget, out TileRect footprint, out int plane))
+            return s;
+        if (!TileReach.Contains(Map, footprint, plane, s.Tile)) return s;
+        s.Facing = TileReach.FacingToward(Map, footprint, plane, s.Tile);
         return s;
     }
 

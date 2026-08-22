@@ -57,6 +57,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Map editor (`KhaozEngine.MapEditor`)](#map-editor-khaozenginemapeditor)
 - [ke-mapedit (`KhaozEngine.MapEdit.Tool`)](#ke-mapedit-khaozenginemapedittool)
 - [Networked overworld (`KhaozEngine.Locomotion` + `KhaozEngine.NetWorld`)](#networked-overworld-khaozenginelocomotion-khaozenginenetworld)
+- [Tile-world netcode (`KhaozEngine.TileWorld.Netcode`)](#tile-world-netcode-khaozenginetileworldnetcode)
 - [Server status (`KhaozEngine.ServerStatus`)](#server-status-khaozengineserverstatus)
 - [HTTP retry (`KhaozEngine.Http`)](#http-retry-khaozenginehttp)
 - [ECS (`KhaozEngine.Ecs`)](#ecs-khaozengineecs)
@@ -5352,7 +5353,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.39.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.40.0" />
 ```
 
 ```csharp
@@ -8181,6 +8182,195 @@ direction).
 
 ---
 
+## Tile-world netcode (`KhaozEngine.TileWorld.Netcode`)
+
+The SIBLING of the section above, for a world made of tiles rather than of metres. A player IS a `TileCoord`, a
+`TileDirection` facing and a `TileMoveMode`, and a step COMMITS every N ticks along a deterministic `TileRoute`.
+Click, walk at once, the server is right when the two disagree.
+
+It is a sibling and not a layer: `KhaozEngine.TileWorld.Netcode` has no path to `KhaozEngine.NetWorld` at all (an
+architecture test proves it), so a tile server carries none of the float locomotion stack. What the two share is
+the generic middle: `Netcode` (transport, prediction, the connect gate), `Replication`, `Sharding`, `Simulation`
+and `WorldStore`.
+
+**Two rules a consumer gets wrong first**, both of them the same rule seen from two sides:
+
+1. **The client's `TickSeconds` and `StepTicks` must equal the server's.** Both heads replay the same commands
+   through the same `TileMoveSimulator`, so a step that fills on tick 4 for one and tick 5 for the other commits
+   its tile a tick apart and EVERY step of every walk arrives as a correction. `TileMoveOptions` (agent size, path
+   radius, `MaxRouteSteps`) is the same contract, and so are `PlaneCount` and `MaxGoalRadius`, which are the
+   server's two refusals of a walk goal.
+2. **The client must bake its collision map from the SAME world files.** `TileCollisionBaker.Bake` over a
+   different document is a different map, which means different steps, and the disagreement shows up as a snap the
+   moment a player walks near whatever differs. The connect gate's world hash exists to refuse that client at the
+   door rather than let it play and desync.
+
+### The shared pieces
+
+Both heads build the same three things out of the world on disk. On a real deployment the server does this at
+boot and the client does it after its download, from the same content.
+
+```csharp
+using KhaozEngine.TileWorld;
+using KhaozEngine.TileWorld.Netcode;
+
+// 1. Load the world headless. No GPU, no window: this is the document, not the view.
+TileWorldCatalogs catalogs = TileWorldCatalogs.Load(catalogPaths);
+TileWorldDocument document = TileWorldFile.Load(worldDirectory);
+
+// 2. Bake collision. The DERIVED per-edge map both the pathfinder and the stepper read.
+TileCollisionMap map = TileCollisionBaker.Bake(document, catalogs);
+
+// 3. Build the replication registry. ONE factory, so the two heads cannot register different ids.
+//    A game's own components register at or above TileProtocol.FirstGameTypeId.
+ReplicationRegistry registry = TileProtocol.CreateRegistry(
+    r => r.Register<MyComponent>(TileProtocol.FirstGameTypeId, WriteMine, ReadMine));
+
+string worldHash = TileWorldHash.OfWorld(document);        // what the connect gate refuses a mismatch on
+```
+
+`TileDocumentTargets(document, catalogs)` is the interaction seam over the same pair: a target id is a
+`TileObject.Id`, and only an object whose archetype carries `Interactive` resolves at all. `TileReach` is the rule
+over what it resolves: the reach set of a footprint is every tile CARDINALLY adjacent to a footprint tile that the
+footprint tile could step OUT onto, so a wall between you and the booth denies reach, a diagonal never counts, and
+the target itself being solid is not a problem. It reads the document
+THROUGH on every call, so an object deleted between the click and the arrival stops resolving, which is the
+contract the reach rules need.
+
+### Standing a server up
+
+```csharp
+var config = new TileWorldServerConfig
+{
+    TickSeconds = 0.25f,                                   // the GAME's number. There is no engine default.
+    StepTicks   = new TileStepTicks(walk: 4, run: 2),      // ticks per step, per mode
+    Spawn       = new TileCoord(64, 64, plane: 0),
+    InterestRadius = 15f,                                  // tiles a player sees other players
+    MaxGoalRadius  = 64,                                   // farthest a single click may name
+    IsBanned    = bans.IsBanned,
+};
+
+var server = new TileWorldServer(
+    transport,
+    config,
+    map,
+    new TileDocumentTargets(document, catalogs),
+    ConnectionGate.Wrap(tokenAuth, protocolVersion: "grimhollow-1", worldHash: worldHash,
+                        log: log.Info, isBanned: bans.IsBanned),
+    registry);
+
+var persistence = new TileWorldPersistence(server, store, new TileWorldPersistenceConfig
+{
+    SaveIntervalSeconds = 30f,
+    CaptureGameState = (slot, key) => game.Capture(slot),
+    ApplyGameState   = (slot, account, blob) => game.Apply(slot, blob),
+});
+
+server.OnBeforeTick += dt => game.StepNpcs(dt);            // runs BEFORE movement, ships in the same snapshot
+server.OnInteract   += (slot, netId, target) => game.Interact(slot, target);
+server.OnGameMessage += (slot, kind, payload) => game.Receive(slot, kind, payload);
+
+while (running)
+{
+    server.Poll();          // ALWAYS before Tick: a command that arrived this frame is routed by the next tick
+    server.Tick(dt);        // the server owns its own accumulator, so any frame clock works
+    persistence.Update(dt);
+}
+```
+
+**The order inside one tick** is fixed and worth knowing, because a game's own systems have to fit into it: the
+`OnBeforeTick` hook, then drain ONE command per player into its owning cell, then step every cell (movement and
+the arrival facing), then authority handoff and border ghosting, then the action queue, then serve every client
+its plane-filtered area of interest. Commands route before the step so a click lands on the tick it arrived on,
+handoff after it because a step is what carries a player over a region boundary, and the serve last so a client
+sees a whole tick and never half of one.
+
+**Shutdown is a drain, not a kill.** `BeginDrain(graceSeconds)` broadcasts the `ke:draining` notice at once, so
+every client has the whole grace to show a countdown, and the world keeps ticking through it so a player mid walk
+finishes it. The countdown is wall clock rather than tick count, so a head that has fallen behind still drains on
+time.
+
+```csharp
+Console.CancelKeyPress += (_, e) =>
+{
+    e.Cancel = true;
+    server.BeginDrain(TileServerReason.Draining, graceSeconds: 15f);   // or a game's own token
+};
+
+// ... in the loop, after Tick:
+if (server.IsDrainComplete)                                // grace spent AND every session closed
+{
+    persistence.SaveDirtyPass();
+    await persistence.FlushAsync();
+    running = false;
+}
+```
+
+### Standing a client up
+
+The client owns three clocks and they are not the same clock. `Tick` is the COMMAND clock, one command predicted
+and sent per whole `TickSeconds`. `Poll` is the RECEIVE path, once per frame. `AdvancePresentation` is the RENDER
+clock, which eases the local player between command ticks and carries the delayed remote timeline. A head calls
+all three every frame and the accumulators sort out the rest.
+
+```csharp
+var client = new TileWorldClient(
+    transport,
+    new TileWorldClientConfig
+    {
+        TickSeconds = 0.25f,                               // the server's value
+        StepTicks   = new TileStepTicks(walk: 4, run: 2),  // the server's value
+        PlaneCount  = document.PlaneCount,
+        MaxGoalRadius = 64,                                // the server's value
+    },
+    map,                                                   // baked from the SAME world files
+    new TileDocumentTargets(document, catalogs),
+    TileProtocol.BuildConnectToken("grimhollow-1", worldHash, authToken));
+
+client.RefusedAtDoor += reason => ShowRefusal(reason);     // a TOKEN, localized by the client
+client.NoticeReceived += reason => ShowNotice(reason);
+client.Teleported += camera.SnapToPlayer;                  // discontinuous placement, not a mispredicted step
+
+// per frame
+client.RunMode = runToggle ? TileMoveMode.Run : TileMoveMode.Walk;
+if (clickedTile is TileCoord goal) client.Queue(TileCommand.WalkTo(goal, client.RunMode));
+if (clickedObject is long id)      client.Queue(TileCommand.Interact(id, client.RunMode));
+
+client.Poll();
+client.Tick(dt);
+client.AdvancePresentation(dt);
+
+TilePose me = client.Presenter.LocalPose(client.Prediction);
+Draw(playerMesh, me.Position, me.Yaw);
+foreach (long netId in client.RemoteNetIds)
+    if (client.TryGetRemotePose(netId, out TilePose pose)) Draw(remoteMesh, pose.Position, pose.Yaw);
+```
+
+**In R1 the client builds its registry itself**, from a bare `TileProtocol.CreateRegistry()` with no extension
+hook, so a game's OWN replicated components reach the server's registry and not the client's. Extension ids are
+length-prefixed, so the client skips what it cannot decode rather than failing, and movement, the owner route and
+the display name all work. Game components on a tile client are
+[#700](https://github.com/APKiwiOrg/KhaozEngine/issues/700).
+
+`Presenter` starts as a placeholder and is REPLACED once the document is loaded
+(`client.Presenter = new TilePresenter(document)`), so it carries the world's real tile size and plane height.
+`TilePose.Yaw` is the engine's model-yaw convention, the value `Matrix4x4.CreateRotationY` wants for a
++z-forward mesh, the same one `CharacterFacing.YawOf` and `TileObjectProps.YawRadians` produce.
+
+**Run rides the tick stream, not the click.** `RunMode` is carried on EVERY command, `TileCommand.Continue`
+included, and the simulator applies it at the START of the next step. Holding run halfway through a walking step
+never shortens that step, it makes the one after it a run. A client that sent `TileCommand.None` while a route
+played out would hold run for exactly one tick and then quietly drop back to a walk, because `None` is `Continue`
+at walk.
+
+**`CorrectionCount` and `SnapCount` are the health readout.** A clean session over a map both heads baked
+identically costs ZERO corrections, because both replay the same commands over the same tiles. `SnapCount` counts
+the reconciliations that CUT rather than glided, which means the two heads were on different SQUARES.
+`DroppedClickCount` counts clicks refused before they were ever sent (another plane, an unloaded region), and
+`DroppedSnapshotCount` counts snapshots the decoder refused whole.
+
+---
+
 ## Server status (`KhaozEngine.ServerStatus`)
 
 An **out-of-band** health + version channel for a live game, separate from the game connection itself. A small
@@ -9261,7 +9451,7 @@ run inside the engine's process-wide device-creation gate, so a provider needs n
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.40.0" />
 ```
 
 ```csharp
@@ -9295,7 +9485,7 @@ that up front is what routes it through the reported fallback instead of a crash
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.40.0" />
 ```
 
 ```csharp
@@ -9537,7 +9727,7 @@ is no recovery path: a lost device stays lost, which is what the liveness token 
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.40.0" />
 ```
 
 ```csharp
@@ -12570,6 +12760,18 @@ the `accountId` is the **verified subject** the `IConnectionAuthenticator` bound
 `AllowAllAuthenticator` that is the connect token decoded UTF-8; with `HmacTokenAuthenticator` it is the
 `SignedToken` subject, stable across token re-issue), or `guest:{slot}` when the subject is empty. The
 record is a forward-tolerant JSON `PlayerRecord` (adding fields later never breaks an old save).
+
+**Since 17.40.0 the machinery is `KhaozEngine.WorldStore.StatePersistence<TState>` and `WorldPersistence` is the
+FLOAT binding of it.** Nothing below changed: the same config type and defaults, the same keys, the same
+`PlayerRecord` JSON, the same cadence, the same events in the same order. What moved down is everything that was
+never about a float position (the interval, the dirty pass, the per-session load guard, the per-key write
+ordering, quarantine, the guest policy, the rejoin hints), so a second movement model can bind the same core.
+`TileWorld.Netcode.TileWorldPersistence` is the second binding. `IWorldPersistenceHost` now derives from
+`IPersistenceHost<PlayerMoveState>` and inherits every member it used to declare with identical signatures, so an
+ordinary implementer is untouched. The ONE caveat is a host that implemented those members EXPLICITLY
+(`void IWorldPersistenceHost.SetPlayerState(...)`), since the member now belongs to the base interface: move that
+implementation to the base interface's name. `SetResumePositionProvider` keeps its name and is bridged onto the
+generic `SetPositionHintProvider`, and `ResumePositionCache` forwards to `PositionHintCache`.
 
 ```csharp
 using KhaozEngine.NetWorld;

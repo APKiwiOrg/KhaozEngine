@@ -91,7 +91,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 |---|---|---|
 | **KhaozEngine.Game2D** | 2D runtime (Windowing/Render2D/Gui/Audio/Particles/Telegraphs) + `Game` + `Foundation` + the `Localization.Analyzers` analyzer + the `CodeHealth.Analyzers` file-size ratchet (both applied in the consumer's build) | a desktop 2D game |
 | **KhaozEngine.Game3D** | `Game2D` (so it also carries the `Localization.Analyzers` and `CodeHealth.Analyzers` analyzers) + `Render3D` + `Game.Render3D` (the 3D scene bridge) + `Particles.Render3D` (modern particle VFX glue + presets) + `Telegraphs.Render3D` + `Terrain.Render3D` (chunked-LOD terrain mesh + world streaming) + `TileWorld.Render3D` (tile-world ground mesher and textured ground materials, prop path, water planes, region streaming and snapshot capture) | a desktop 3D game |
-| **KhaozEngine.Server** | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) + `Simulation` (fixed-tick host) + `Replication` + `WorldStore` (the `IWorldStore` seam + `InMemoryWorldStore` only; the `.Sqlite` / `.SqlServer` durable backends are opt-in siblings, added explicitly, not bundled) + `Sharding` (cell grid) + `NetWorld` (authoritative movement server + client glue + `WorldPersistence`) + the `CodeHealth.Analyzers` file-size ratchet | a headless sim server (no GPU) |
+| **KhaozEngine.Server** | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) + `Simulation` (fixed-tick host) + `Replication` + `WorldStore` (the `IWorldStore` seam + `InMemoryWorldStore` only, the `.Sqlite` / `.SqlServer` durable backends being opt-in siblings, added explicitly, not bundled) + `Sharding` (cell grid) + `NetWorld` (authoritative movement server + client glue + `WorldPersistence`) + `TileWorld.Netcode` (the SIBLING tile movement stack: discrete click-to-walk, its own server, client, presenter and persistence binding, and no path to `NetWorld`) + the `CodeHealth.Analyzers` file-size ratchet | a headless sim server (no GPU) |
 | **KhaozEngine.Foundation** | the GPU-free foundation (Primitives/App/Content/Diagnostics/Ecs/Http/Identity/Locomotion/MapDoc/TileWorld/TileWorld.Editing/Dungeon/Navigation/Objectives/Persistence/Progression/Stats/Serialization/ServerStatus/Social/Collision/Physics/Terrain/Determinism/Platform/Updates) + the `CodeHealth.Analyzers` file-size ratchet | a gameplay-logic library (no renderer) |
 
 `KhaozEngine.Commerce` is not in any umbrella; a game or server that wants the wallet adds it explicitly. Same as `WorldStore`, its `.Sqlite` / `.SqlServer` durable backends are opt-in siblings, not bundled anywhere (including `Server`).
@@ -165,10 +165,10 @@ The repo is public, so the Packages feed needs no authentication to restore from
 ```
 ```xml
 <!-- One reference per project via an umbrella metapackage. Pick the bundle that fits: -->
-<PackageReference Include="KhaozEngine.Game2D"     Version="17.39.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
-<PackageReference Include="KhaozEngine.Game3D"     Version="17.39.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
-<PackageReference Include="KhaozEngine.Server"     Version="17.39.0" />  <!-- headless: foundation + netcode, no graphics -->
-<PackageReference Include="KhaozEngine.Foundation" Version="17.39.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
+<PackageReference Include="KhaozEngine.Game2D"     Version="17.40.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
+<PackageReference Include="KhaozEngine.Game3D"     Version="17.40.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
+<PackageReference Include="KhaozEngine.Server"     Version="17.40.0" />  <!-- headless: foundation + netcode, no graphics -->
+<PackageReference Include="KhaozEngine.Foundation" Version="17.40.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
 ```
 
 The metapackages have no code; they just pull in the granular packages. You can still reference those

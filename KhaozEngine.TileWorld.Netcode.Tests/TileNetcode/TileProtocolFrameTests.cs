@@ -26,6 +26,47 @@ public class TileProtocolFrameTests
     }
 
     [Fact]
+    public void A_snapshot_whose_natural_length_is_a_command_frame_is_padded_and_still_round_trips()
+    {
+        // The one body length that lands on the command frame's size, and the reason the snapshot frame carries a
+        // flags byte at all. The pad has to survive the round trip invisibly: a padded two-byte body and a genuine
+        // three-byte body are both 25 bytes on the wire, and only the flag tells them apart.
+        int commandSize = CommandFrameSize;
+        byte[] padded = TileProtocol.EncodeSnapshotFrame(1, 2, 3, new byte[] { 7, 7 });
+        Assert.Equal(commandSize + 1, padded.Length);
+        Assert.True(TileProtocol.TryDecodeSnapshotFrame(padded, out _, out _, out _, out byte[] two));
+        Assert.Equal(new byte[] { 7, 7 }, two);
+
+        byte[] plain = TileProtocol.EncodeSnapshotFrame(1, 2, 3, new byte[] { 7, 7, 7 });
+        Assert.Equal(padded.Length, plain.Length);
+        Assert.True(TileProtocol.TryDecodeSnapshotFrame(plain, out _, out _, out _, out byte[] three));
+        Assert.Equal(new byte[] { 7, 7, 7 }, three);
+
+        // And a frame that IS the command size in this direction is not a snapshot this encoder ever emitted.
+        Assert.False(TileProtocol.TryDecodeSnapshotFrame(new byte[commandSize], out _, out _, out _, out _));
+    }
+
+    [Fact]
+    public void No_snapshot_of_any_body_length_lands_on_the_command_frame_size()
+    {
+        // The property the cross-family test used to assert by fixture. Held for EVERY body length rather than for
+        // the one the fixture happened to pick: a 3-byte body was the length that broke it before the snapshot
+        // frame joined the pad rule (21 header bytes plus 3 is exactly a command frame).
+        int commandSize = CommandFrameSize;
+        for (int len = 0; len <= commandSize + 16; len++)
+        {
+            var body = new byte[len];
+            for (int i = 0; i < len; i++) body[i] = (byte)(i + 1);
+            byte[] frame = TileProtocol.EncodeSnapshotFrame(1, 2, 3, body);
+
+            Assert.NotEqual(commandSize, frame.Length);
+            Assert.False(TileProtocol.TryDecodeCommand(frame, Planes, out _, out _));
+            Assert.True(TileProtocol.TryDecodeSnapshotFrame(frame, out _, out _, out _, out byte[] back));
+            Assert.Equal(body, back);
+        }
+    }
+
+    [Fact]
     public void An_empty_frame_answers_the_no_tag_sentinel_in_both_directions()
     {
         Assert.Equal((byte)0xFF, TileProtocol.ClientFrameTag(ReadOnlySpan<byte>.Empty));
@@ -67,6 +108,28 @@ public class TileProtocolFrameTests
     public void A_notice_over_the_token_cap_is_refused_by_the_encoder()
     {
         Assert.Throws<ArgumentException>(() => TileProtocol.EncodeNotice(new string('x', TileProtocol.MaxNoticeBytes + 1)));
+    }
+
+    [Fact]
+    public void A_game_message_on_a_tag_this_wire_does_not_own_is_refused_by_the_encoder()
+    {
+        // Encoding one produces a frame the matching decoder refuses, so the message would be dropped in silence.
+        // The command tag is the case that matters: it builds something command SHAPED that is not a command.
+        Assert.Throws<ArgumentException>(() =>
+            TileProtocol.EncodeGameMessage(TileProtocol.ClientFrameCommand, 1, new byte[] { 1 }));
+        Assert.Throws<ArgumentException>(() =>
+            TileProtocol.EncodeGameMessage(TileProtocol.ServerFrameNotice, 1, new byte[] { 1 }));
+    }
+
+    [Fact]
+    public void An_invalid_utf8_reason_token_substitutes_rather_than_throwing()
+    {
+        // The lenient decoder is the RIGHT one here: a strict Encoding.UTF8 would throw inside the receive loop on
+        // a byte string a remote peer chose. This pins that, so a later switch to a throwing decoder goes red here
+        // rather than on the wire.
+        byte[] frame = { TileProtocol.ServerFrameNotice, 3, 0xFF, 0xFE, 0xFD };
+        Assert.True(TileProtocol.TryDecodeNotice(frame, out string token));
+        Assert.Equal("\uFFFD\uFFFD\uFFFD", token);
     }
 
     [Fact]
@@ -130,12 +193,18 @@ public class TileProtocolFrameTests
         Assert.False(TileProtocol.TryDecodeNotice(snapshot, out _));
         Assert.False(TileProtocol.TryDecodeNotice(message, out _));
         Assert.False(TileProtocol.TryDecodeNotice(command, out _));
+
+        // The command and the snapshot share tag 0, one per direction, so this pair is the one the pad rule has to
+        // separate rather than the tag. It now holds in BOTH directions and for every snapshot body length, see
+        // No_snapshot_of_any_body_length_lands_on_the_command_frame_size.
         Assert.False(TileProtocol.TryDecodeCommand(snapshot, Planes, out _, out _));
+        Assert.False(TileProtocol.TryDecodeSnapshotFrame(command, out _, out _, out _, out _));
     }
 
     [Fact]
     public void Every_truncation_of_every_frame_is_refused_and_never_throws()
     {
+        int commandSize = CommandFrameSize;
         byte[] command = TileProtocol.EncodeCommand(1, TileCommand.None);
         byte[] snapshot = TileProtocol.EncodeSnapshotFrame(1, 2, 3, new byte[] { 4, 5 });
         byte[] clientMessage = TileProtocol.EncodeGameMessage(TileProtocol.ClientFrameGameMessage, 1, new byte[] { 6 });
@@ -143,12 +212,15 @@ public class TileProtocolFrameTests
         byte[] notice = TileProtocol.EncodeNotice("ke:draining");
 
         // Totality: every decoder answers for every prefix of every frame, and none of them throws. The command
-        // decoder is the one that can be asserted across all of them, because its frame size is fixed.
+        // decoder is the one that can be asserted across all of them, because its frame size is fixed. A CUT of
+        // exactly the command size is the documented exception: the pad rule bounds whole frames, and any tag-0
+        // frame long enough to be cut at 24 bytes is command shaped by construction. A transport that hands a
+        // decoder a cut frame has already failed, which is why the rule is written about frames and not prefixes.
         foreach (byte[] f in new[] { command, snapshot, clientMessage, serverMessage, notice })
             for (int len = 0; len < f.Length; len++)
             {
                 ReadOnlySpan<byte> cut = f.AsSpan(0, len);
-                Assert.False(TileProtocol.TryDecodeCommand(cut, Planes, out _, out _));
+                if (len != commandSize) Assert.False(TileProtocol.TryDecodeCommand(cut, Planes, out _, out _));
                 TileProtocol.TryDecodeSnapshotFrame(cut, out _, out _, out _, out _);
                 TileProtocol.TryDecodeGameMessage(cut, TileProtocol.ClientFrameGameMessage, out _, out _);
                 TileProtocol.TryDecodeGameMessage(cut, TileProtocol.ServerFrameGameMessage, out _, out _);
@@ -162,10 +234,11 @@ public class TileProtocolFrameTests
             Assert.False(TileProtocol.TryDecodeNotice(notice.AsSpan(0, len), out _));
 
         int snapshotHeader = TileProtocol.EncodeSnapshotFrame(0, 0, 0, Array.Empty<byte>()).Length;
-        for (int len = 0; len < snapshot.Length; len++)
+        byte[] unpadded = TileProtocol.EncodeSnapshotFrame(1, 2, 3, new byte[] { 4, 5, 6, 7, 8, 9 });
+        for (int len = 0; len <= unpadded.Length; len++)
         {
-            bool ok = TileProtocol.TryDecodeSnapshotFrame(snapshot.AsSpan(0, len), out _, out _, out _, out byte[] body);
-            Assert.Equal(len >= snapshotHeader, ok);
+            bool ok = TileProtocol.TryDecodeSnapshotFrame(unpadded.AsSpan(0, len), out _, out _, out _, out byte[] body);
+            Assert.Equal(len >= snapshotHeader && len != commandSize, ok);
             if (ok) Assert.Equal(len - snapshotHeader, body.Length);
         }
     }

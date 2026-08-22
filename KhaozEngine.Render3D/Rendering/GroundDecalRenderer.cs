@@ -404,8 +404,8 @@ namespace KhaozEngine.Render3D.Rendering
         /// </para></summary>
         public int Draw(IGpuCommandList cl, RenderResources res, Matrix4x4 viewProj, float timeSeconds, GroundDecalQuality quality, bool hdr, FramePass pass, ReadOnlySpan<GroundDecal> decals)
         {
-            bool rejectDynamicGeometry = pass == FramePass.Main;
             if (decals.Length == 0) return 0;
+            bool rejectDynamicGeometry = pass == FramePass.Main;
             int voidCount = CountVoidDecals(decals);
             EnsureCapacity(decals.Length + voidCount);
             BindTargets(res);

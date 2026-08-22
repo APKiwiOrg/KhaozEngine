@@ -81,9 +81,11 @@ layout(set=0, binding=1) uniform sampler Samp;
 // and the time/quality value share this single Frame block, grown from 64 to 80 bytes.
 layout(set=0, binding=2) uniform Frame {
     mat4 InvViewProj;   // RAW (un-clip-corrected) inverse view-projection, shared by every decal this frame
-    vec4 TimeQ;         // x = effect time seconds, y = quality (1 full / 0 reduced), z = maxRgb ceiling, w reserved
+    vec4 TimeQ;         // x = effect time seconds, y = quality (1 full / 0 reduced), z = maxRgb ceiling,
+                        // w = dynamic-geometry reject (1 on, read on the GEOMETRY path below, issue #235)
 };
-// GEOMETRIC world normal, encoded *0.5+0.5 by the model pass. Read ONLY by the void-fallback path (see below).
+// GEOMETRIC world normal, encoded *0.5+0.5 by the model pass, ALPHA 0 on dynamic/skinned surfaces. Read on two
+// paths below: the void fallback (is this the decal's ground or a cliff face) and the TimeQ.w dynamic reject.
 layout(set=0, binding=3) uniform texture2D NormalTex;
 
 // Minimum world-up component for a surface to count as a decal's GROUND rather than a wall. n.y is cos(angle from

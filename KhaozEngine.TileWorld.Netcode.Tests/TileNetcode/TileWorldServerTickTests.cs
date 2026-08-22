@@ -136,6 +136,13 @@ public class TileWorldServerTickTests
         s.Tick(100f);   // 400 ticks' worth of elapsed time
 
         Assert.Equal(8, s.TickCount);   // MaxCatchUpTicks, not 400
+
+        // And the 392 ticks it did NOT run are GONE rather than owed, which is the half the cap does not give you.
+        // The accumulator kept at most one tick's worth, so the very next frame steps promptly and then stops.
+        // Without the shed it carries 98 seconds forward and runs another full eight ticks on this frame, and on
+        // the four hundred frames after it, which is the spiral.
+        s.Tick(Dt);
+        Assert.InRange(s.TickCount, 9L, 10L);   // this frame's tick, plus at most the one tick the shed kept
     }
 
     // The tick order's first step, pinned on its own: ONE command per player per tick, oldest first. Both commands
@@ -318,6 +325,44 @@ public class TileWorldServerTickTests
         Assert.True(s.TryGetPlayerState(0, out TileMoveState refused));
         Assert.Equal(new TileCoord(10, 10, 0), refused.Tile);
         Assert.True(refused.Route.IsIdle);
+    }
+
+    // The fourth refusal, the one delegated to TileRoute.RemainingSteps, is the one that has to happen before the
+    // first write rather than between the two. It runs on the ROUTE rather than the tile, and taken after the state
+    // was written it left the entity holding a route the simulator cannot walk: TileMoveSimulator.Advance asks
+    // TileRoute.Direction for the step between two tiles that are not adjacent on the very next tick, and that throw
+    // comes out of host.Tick and takes the tick down for every player on the server. The reachable form is a
+    // persistence restore or an admin move that sets the tile without rebuilding the route from it.
+    [Fact]
+    public void SetPlayerState_refuses_a_route_that_does_not_walk_from_the_state_tile()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(10, 10, 0));
+        s.SpawnPlayer(0, "a", "Ari");
+        s.SpawnPlayer(1, "b", "Bo");
+
+        // Passes all three of the checks above (plane 0, a loaded region, one step against a cap of 256) and fails
+        // only on the gap: ten tiles of it, spelled as a single step.
+        TileMoveState detached = TileMoveState.At(new TileCoord(10, 10, 0), TileDirection.S);
+        detached.Route = new TileRoute(new[] { new TileCoord(20, 20, 0) }, 0);
+        ArgumentException gap = Assert.Throws<ArgumentException>(() => s.SetPlayerState(0, detached));
+        Assert.Contains("not adjacent", gap.Message);
+
+        // The previous state is intact, which is what the refusal promises: still on the spawn tile, still idle.
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState refusedRoute));
+        Assert.Equal(new TileCoord(10, 10, 0), refusedRoute.Tile);
+        Assert.True(refusedRoute.Route.IsIdle);
+
+        // And the tick runs, for the refused player and for everybody else.
+        s.Enqueue(1, 0, TileCommand.WalkTo(new TileCoord(10, 14, 0), TileMoveMode.Run));
+        s.Tick(Dt);
+        s.Tick(Dt);
+        Assert.Equal(2, s.TickCount);
+        Assert.True(s.TryGetPlayerState(1, out TileMoveState walker));
+        Assert.Equal(new TileCoord(10, 11, 0), walker.Tile);
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState standing));
+        Assert.Equal(new TileCoord(10, 10, 0), standing.Tile);
+        Assert.True(standing.Route.IsIdle);
     }
 
     // Two actions coming ready on the SAME tick resolve oldest CLICK first, which is what TilePendingAction's

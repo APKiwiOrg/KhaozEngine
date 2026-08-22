@@ -27,9 +27,9 @@ public sealed partial class TileWorldServer
     static readonly Comparison<(long issuedTick, int slot)> OldestFirst = (a, b) =>
         a.issuedTick != b.issuedTick ? a.issuedTick.CompareTo(b.issuedTick) : a.slot.CompareTo(b.slot);
     float tickAccumulator;
-    // The serve's plane filter, reused across every client in a pass. planeByNetId is the map; the three fields
-    // under it are what the two delegates would otherwise capture, hoisted so the delegates can be cached instead
-    // of rebuilt per client per tick. See FilterToPlane.
+    // The serve's plane filter, reused across every client in a pass. planeByNetId is the map, and the three
+    // fields under it are what the two delegates would otherwise capture, hoisted so the delegates can be cached
+    // instead of rebuilt per client per tick. See FilterToPlane.
     readonly Dictionary<long, int> planeByNetId = new();
     RefAction<NetId>? collectPlanes;
     Predicate<long>? offViewerPlane;

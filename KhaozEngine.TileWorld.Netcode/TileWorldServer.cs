@@ -220,13 +220,13 @@ public sealed partial class TileWorldServer : IDisposable
     /// other is refused too, by <see cref="TileRoute.RemainingSteps"/>, with its own message.</exception>
     public void SetPlayerState(int slot, in TileMoveState state, bool teleport = false)
     {
-        ValidatePlayerState(state);
+        TileDirection[] steps = ValidatePlayerState(state);
         if (!netIdBySlot.TryGetValue(slot, out long netId)) return;
         if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) return;
         TileMoveState next = state;
         if (teleport) next.Epoch = (cell.World.TryGet(e, out TileMoveState old) ? old.Epoch : 0u) + 1u;
         cell.World.Set(e, next);
-        cell.World.Set(e, new TileRouteState { Remaining = next.Route.RemainingSteps(next.Tile) });
+        cell.World.Set(e, new TileRouteState { Remaining = steps });
     }
 
     /// <summary>Builds a player entity at the configured spawn and binds the slot to it. Returns its net id.</summary>
@@ -257,7 +257,15 @@ public sealed partial class TileWorldServer : IDisposable
     // and this server checks InterestRadius against OverlapMargin in its constructor rather than on the tick a
     // player first walks near a cell edge. A public setter documented for persistence restores and admin tooling is
     // the same kind of door.
-    void ValidatePlayerState(in TileMoveState state)
+    //
+    // The fourth refusal is the RETURN VALUE. RemainingSteps throws when the route's tiles are not adjacent, so
+    // computing it here is what takes that refusal at the door alongside the other three, and handing the array
+    // back is what stops SetPlayerState recomputing it between its two writes. Left where it was, on the second
+    // write, it threw AFTER the first one had landed and left the entity holding a route the simulator cannot
+    // walk: TileMoveSimulator.Advance asks TileRoute.Direction for the missing step on the very next tick, and
+    // that throw comes out of host.Tick and takes the tick down for every player on the server. Every refusal is
+    // ahead of every write now, on every path, which is what the XML doc above promises.
+    TileDirection[] ValidatePlayerState(in TileMoveState state)
     {
         if (state.Tile.Plane < 0 || state.Tile.Plane >= config.PlaneCount)
             throw new ArgumentException(
@@ -271,6 +279,7 @@ public sealed partial class TileWorldServer : IDisposable
                 $"A route is capped at {config.Move.MaxRouteSteps} steps and this one carries {state.Route.Remaining}."
               + " TileMoveSimulator truncates at TileMoveOptions.MaxRouteSteps, so this route was built elsewhere.",
                 nameof(state));
+        return state.Route.RemainingSteps(state.Tile);
     }
 
     // Tile coordinates ARE the plane the shard grid runs on, so the accessor hands the host the tile itself. The

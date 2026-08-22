@@ -112,8 +112,8 @@ public sealed partial class TileWorldServer : IDisposable
         // The ban predicate is consulted at the DOOR, wrapped around whatever authenticator the head supplied,
         // because a ban has to be answered before a player entity exists. Checked after the join instead, it would
         // spawn the banned account into a cell, serve it to everyone in interest, and despawn it a tick later. The
-        // refusal it produces is HandshakeToken.BannedReason, the same token the composed ConnectionGate sends, so
-        // a client tells the two paths apart from neither and needs one branch rather than two.
+        // refusal it produces is HandshakeToken.BannedReason, the same token a composed ConnectionGate sends, so a
+        // client cannot tell the two paths apart and needs one branch rather than two.
         IConnectionAuthenticator door = authenticator ?? new AllowAllAuthenticator();
         if (config.IsBanned is not null) door = new BanGateAuthenticator(door, config.IsBanned);
         net = new NetServer(transport, config.MaxPlayers, door, duplicateSessions: config.DuplicateSessions);

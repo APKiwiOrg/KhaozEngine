@@ -17,9 +17,9 @@ public delegate void TileGameMessageHandler(int slot, ushort kind, ReadOnlySpan<
 
 /// <summary>
 /// The session half of <see cref="TileWorldServer"/>: connections arriving and leaving, what an inbound frame is
-/// allowed to do, and the operator controls over a live session. See the other two partials for construction and
-/// the player index (<c>TileWorldServer.cs</c>) and for the tick order and the serve
-/// (<c>TileWorldServer.Tick.cs</c>).
+/// allowed to do, and the operator controls over a live session. The other three partials are construction and the
+/// player index (<c>TileWorldServer.cs</c>), the tick order and the serve (<c>TileWorldServer.Tick.cs</c>), and the
+/// pending-action resolution (<c>TileWorldServer.Actions.cs</c>).
 /// <para>The split is the natural seam: everything here runs on the POLL, driven by the transport, and everything
 /// in the tick half runs on the CLOCK. Nothing here steps the world, and nothing there touches a connection.</para>
 /// <para>This is also where the server becomes the PERSISTENCE HOST. <see cref="IPersistenceHost{TState}"/> is a
@@ -83,8 +83,9 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
     /// Pumps the transport and turns session events into joins, leaves and buffered commands. Call once per host
     /// frame, BEFORE <see cref="Tick"/>: a command that arrived this frame is then routed by the very next tick
     /// rather than waiting a whole one, which is the difference between a click landing in 250 ms and in 500 ms.
-    /// <para>Draining to empty is a contract rather than a courtesy. <c>NetServer</c> caps its undrained inbox and
-    /// drops the OLDEST event when a host stops draining, so a poll that left events behind would lose joins.</para>
+    /// <para>Emptying the event inbox on every poll is a contract rather than a courtesy. <c>NetServer</c> caps
+    /// its undrained inbox and drops the OLDEST event once a host stops keeping up, so a poll that left events
+    /// behind would lose joins first.</para>
     /// </summary>
     public void Poll()
     {
@@ -129,9 +130,9 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
         if (IsDraining) SendNotice(slot, drainReason);
     }
 
-    // Everything an inbound frame is allowed to do, and the three ways it is refused. The order is deliberate: an
+    // Everything an inbound frame is allowed to do, and every way it is refused. The order is deliberate: an
     // unknown slot costs a dictionary probe, the rate budget costs a subtraction, and only a frame that passed both
-    // is decoded. A decoder is the most expensive of the three and the only one an attacker chooses the size of.
+    // is decoded. Decoding is the most expensive of the three and the only one an attacker chooses the size of.
     void HandleData(int slot, byte[] data)
     {
         // A frame for a slot with no player is not necessarily hostile: a command sent one frame before a

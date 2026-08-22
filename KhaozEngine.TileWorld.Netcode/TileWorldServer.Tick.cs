@@ -21,11 +21,6 @@ public sealed partial class TileWorldServer
     const int MaxCatchUpTicks = 8;
 
     readonly List<int> tickSlots = new();
-    // Slots with a pending action this tick, paired with the tick it was issued on, so the resolution order is
-    // (IssuedTick, slot) rather than the player index's hash order. Reused, so the sort costs no allocation.
-    readonly List<(long issuedTick, int slot)> actionOrder = new();
-    static readonly Comparison<(long issuedTick, int slot)> OldestFirst = (a, b) =>
-        a.issuedTick != b.issuedTick ? a.issuedTick.CompareTo(b.issuedTick) : a.slot.CompareTo(b.slot);
     float tickAccumulator;
     // The serve's plane filter, reused across every client in a pass. planeByNetId is the map, and the three
     // fields under it are what the two delegates would otherwise capture, hoisted so the delegates can be cached
@@ -36,8 +31,7 @@ public sealed partial class TileWorldServer
     World? filterWorld;
     HashSet<long>? filterInterest;
     int filterPlane;
-    // task 10: the graceful-drain countdown. Advanced here so the tick order is already the one the session half
-    // fills in around, rather than something that has to be threaded through it later.
+    // The graceful-drain countdown, until the session half takes ownership of it.
     float drainRemaining;
 
     /// <summary>Buffers one command for a slot exactly as an inbound frame would, so a head or a test can drive the
@@ -85,9 +79,8 @@ public sealed partial class TileWorldServer
         // promptly, and throw the rest away rather than owing it forever.
         if (ran >= MaxCatchUpTicks) tickAccumulator = MathF.Min(tickAccumulator, config.TickSeconds);
 
-        // task 10: the graceful-drain countdown is WALL CLOCK rather than tick count, so it runs down on every
-        // frame including the ones that stepped nothing. A head asked to drain has a real-time deadline whatever
-        // the simulation is doing.
+        // The graceful-drain countdown is WALL CLOCK rather than tick count, so it runs down on every frame
+        // including the ones that stepped nothing.
         if (drainRemaining > 0f) drainRemaining = MathF.Max(0f, drainRemaining - MathF.Max(0f, dt));
     }
 
@@ -128,7 +121,8 @@ public sealed partial class TileWorldServer
         host.ProcessHandoffs();
         host.SyncGhosts();
 
-        // 4. Resolve any pending action whose player now stands on a reach tile.
+        // 4. Resolve any pending action whose player now stands on a reach tile, and refuse any that cannot get
+        //    there. See TileWorldServer.Actions.cs.
         ResolveActions();
 
         // 5. Serve each client its home-cell area of interest, filtered to its own plane.
@@ -153,57 +147,6 @@ public sealed partial class TileWorldServer
         //    once per tick for nothing.
         for (int i = 0; i < liveCells.Count; i++) liveCells[i].World.AdvanceTick();
         TickCount++;
-    }
-
-    // Resolves every pending action whose walk has ENDED. The arrival test is the state's own, not a second reach
-    // computation: TileMoveSimulator routes an interact to a reach tile and keeps InteractTarget for exactly as long
-    // as that walk is alive, dropping it the moment the route is replaced or cannot be rebuilt. So a route that has
-    // emptied with the target still on it IS the arrival, and the same pair of fields answers the abandonment and
-    // the failure without the server re-deriving anything the simulator already decided.
-    //
-    // Resolution order is (IssuedTick, slot), which is what TilePendingAction.IssuedTick exists for: two players
-    // whose actions come ready on the same tick resolve oldest CLICK first, and the slot breaks a tie between two
-    // clicks on the one tick. tickSlots is netIdBySlot's enumeration order, which is neither, and which becomes
-    // history dependent the moment task 10 adds disconnects and the dictionary starts recycling free-list entries.
-    // Two players clicking the same object on the same tick is a gameplay decision, not a detail.
-    //
-    // task 10 adds the other half: the CannotReach notice for the refused case below, and a stale-action cap over
-    // TilePendingAction.IssuedTick. What is here is the raise, which is what the tick order needs to be final.
-    void ResolveActions()
-    {
-        if (actions.PendingCount == 0) return;
-        actionOrder.Clear();
-        for (int i = 0; i < tickSlots.Count; i++)
-            if (actions.TryPeek(tickSlots[i], out TilePendingAction queued))
-                actionOrder.Add((queued.IssuedTick, tickSlots[i]));
-        if (actionOrder.Count == 0) return;
-        actionOrder.Sort(OldestFirst);
-
-        for (int i = 0; i < actionOrder.Count; i++)
-        {
-            int slot = actionOrder[i].slot;
-            if (!actions.TryPeek(slot, out TilePendingAction pending)) continue;
-            if (!netIdBySlot.TryGetValue(slot, out long netId)) continue;
-            // Read through TryGetPlayerState, never off the raw component, because the route is what the idle test
-            // turns on. WithAssembledRoute is the one place that rule lives and its doc has the failure: a player
-            // who crossed a region boundary mid walk reads as ARRIVED on the crossing tick and fires the action a
-            // region early.
-            if (!TryGetPlayerState(slot, out TileMoveState state)) continue;
-            if (!state.Route.IsIdle) continue;   // still walking to it
-
-            actions.Clear(slot);
-            // The target went with the route: an unreachable click, or a re-path that could not get there. Refused
-            // rather than raised, and task 10 is what tells the player so.
-            if (state.InteractTarget != pending.Target) continue;
-            if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) continue;
-            if (!cell.World.TryGet(e, out TileMoveState live)) continue;
-
-            // Cleared as the action is raised, which is the contract TileMoveState states for the field. Left set,
-            // it would re-face the player at the end of every later walk that happened to end on a reach tile.
-            live.InteractTarget = 0;
-            cell.World.Set(e, live);
-            if (pending.Kind == TileActionKind.Interact) OnInteract?.Invoke(slot, netId, pending.Target);
-        }
     }
 
     /// <summary>

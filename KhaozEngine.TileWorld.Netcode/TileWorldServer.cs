@@ -20,10 +20,11 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// it. The connection lifecycle, residency and rate-limiting plumbing here is therefore a re-implementation rather
 /// than an extraction, which is a known and accepted cost. When the two servers are seen to converge, the generic
 /// core comes out of BOTH of them rather than out of the shipping one alone.</para>
-/// <para>Partial across three files, because "the world ticks" and "connections come and go" are separate seams
-/// and one file for both would grow past the size ratchet as each half filled in. This file is construction, the
-/// host, the player index and state access. <c>TileWorldServer.Tick.cs</c> is the tick order and the serve, and
-/// <c>TileWorldServer.Sessions.cs</c> is the session lifecycle.</para>
+/// <para>Partial across four files, because "the world ticks", "connections come and go" and "a click resolves"
+/// are three separate seams and one file for all of them would grow past the size ratchet as each filled in. This
+/// file is construction, the host, the player index and state access. <c>TileWorldServer.Tick.cs</c> is the tick
+/// order and the serve, <c>TileWorldServer.Sessions.cs</c> the session lifecycle, and
+/// <c>TileWorldServer.Actions.cs</c> the pending-action resolution.</para>
 /// </summary>
 public sealed partial class TileWorldServer : IDisposable
 {
@@ -57,6 +58,14 @@ public sealed partial class TileWorldServer : IDisposable
     // The same set as a list, so the tick can walk it by index. host.Cells is an IReadOnlyCollection whose
     // enumerator boxes on every foreach, and the tick reads it once per tick for the change-tracking advance.
     readonly List<CellSim> liveCells = new();
+    // How many ticks a pending action may spend WALKING before it is refused. Derived rather than configured,
+    // because there is exactly one legitimate ceiling and it is already in the config: one click produces at most
+    // TileMoveOptions.MaxRouteSteps steps, and the slowest mode spends StepTicks ticks on each of them, so a walk
+    // still running past that product is not converging on anything. The case is a target that MOVES, which the
+    // simulator re-paths toward every tick, so the route never empties and the arrival test is never reached. See
+    // ResolveActions in TileWorldServer.Actions.cs. A cap this generous never fires on ordinary play, which is the
+    // point: it is a ceiling on a stuck action, not a gameplay timer.
+    readonly long maxActionAgeTicks;
     long interestServeEpoch;
 
     /// <summary>Builds a tile server over a transport and a baked collision map.</summary>
@@ -92,6 +101,7 @@ public sealed partial class TileWorldServer : IDisposable
 
         this.config = config;
         this.registry = registry ?? TileProtocol.CreateRegistry();
+        maxActionAgeTicks = (long)config.Move.MaxRouteSteps * Math.Max(config.StepTicks.Walk, config.StepTicks.Run);
         simulator = new TileMoveSimulator(map, config.StepTicks, targets, config.Move);
         // The queue's own neutral is never what a starved player is stepped with: Admit replaces it with a Continue
         // at the player's CURRENT mode, because TileCommand.None is a run toggled off. It is supplied because the

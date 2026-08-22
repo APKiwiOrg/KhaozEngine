@@ -39,6 +39,12 @@ public sealed partial class TileWorldServer
     /// about the body, so this is where a game's own protocol takes over.</summary>
     public event TileGameMessageHandler? OnGameMessage;
 
+    /// <summary>Raised as (slot, target) when a pending interaction is refused because the player could not reach
+    /// the thing they clicked. The matching <see cref="TileServerReason.CannotReach"/> notice goes to that client
+    /// on the same tick, so this event is for the SERVER's own reaction (a log line, a game-side cleanup) rather
+    /// than for telling the player.</summary>
+    public event Action<int, long>? OnCannotReach;
+
     /// <summary>Inbound frames refused: malformed, over the rate budget, or for a slot with no player. A healthy
     /// server climbs this slowly or not at all, so it is a flood and version-skew signal rather than a
     /// statistic.</summary>

@@ -186,6 +186,25 @@ public class TileWorldServerSessionTests
         Assert.Equal(far.Id, raised[0]);
     }
 
+    [Fact]
+    public void A_walled_target_answers_with_cannot_reach_and_clears_the_action()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        TileObject booth = doc.AddObject("bank_booth", 10, 10, 0, 0);
+        foreach ((int x, int z) in new[] { (9, 10), (11, 10), (10, 9), (10, 11) }) doc.AddObject("tree", x, z, 0, 0);
+        var hub = new InMemoryTransportHub();
+        using var s = new TileWorldServer(hub.Server, TileWorldServerTickTests.Config(new TileCoord(5, 10, 0)),
+            TileMoveSimulatorTests.Bake(doc), new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs),
+            new AllowAllAuthenticator());
+        var refused = new List<long>();
+        s.OnCannotReach += (_, target) => refused.Add(target);
+        s.SpawnPlayer(0, "a", "Ari");
+        s.Enqueue(0, 0, TileCommand.Interact(booth.Id, TileMoveMode.Run));
+        s.Tick(Dt);
+        Assert.Single(refused);
+        Assert.Equal(booth.Id, refused[0]);
+    }
+
 
 
     [Fact]

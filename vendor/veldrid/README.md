@@ -1,7 +1,14 @@
 # Veldrid Immediate-Context Fork
 
 These packages come from `APKiwiOrg/veldrid` commit `d60cdd2392ba1c5ace12697bc1acf45f1879db14`, branch
-`fix/d3d11-immediate-4.9.0`, tag `v4.9.104`.
+`fix/d3d11-immediate-4.9.0`, tag `v4.9.104`. Commit, branch and annotated tag are all on that remote, so the
+provenance above is fetchable rather than a claim about one machine.
+
+Pushing them is part of the vendoring ritual, and it happens BEFORE the engine commit that vendors the bytes
+lands on `main`. Nothing mechanical enforces it: a restore reads the committed nupkg out of this directory and
+never builds the fork, so CI stays green over shipped binaries whose stated source cannot be fetched, with this
+paragraph as the only witness. That gap is what
+[KhaozEngine issue 672](https://github.com/APKiwiOrg/KhaozEngine/issues/672) recorded for `4.9.104`.
 
 They are based on upstream Veldrid `v4.9.0` and retain Vortice `2.3.0`. The fork adds the opt-in
 `D3D11DeviceOptions.UseImmediateContext` mode used by `KhaozEngine.Gpu` for Direct3D11 only, and, as of

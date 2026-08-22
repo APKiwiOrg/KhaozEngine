@@ -61,11 +61,14 @@ A tile world can draw a real glb kit per archetype now, the glTF loader honours 
   maps `GpuBackendKind.MetalNative` onto the `metal` golden family, so the native backend verifies grids the
   incumbent baked: a behavioural repair to one alone reddens the guest leg by construction. **No committed golden
   moved.** Three of the four pipelines are background passes whose vertex stage emits `z == w` exactly, where the
-  inclusive far-plane test makes clipping and clamping identical, and the fourth draws billboards, which differ
-  only for a sprite crossing the near plane, and no golden scene has one. Both Metal legs ran the full
-  `KhaozEngine.Render.Tests` GPU suite green on the committed grids, so there is no rebake.
+  inclusive far-plane test makes clipping and clamping identical, and the fourth draws billboards, whose modes
+  differ for a sprite crossing EITHER plane (clamping keeps the outside fragments and pins their depth to the
+  limit, and at the far plane those clamped-to-1 fragments then pass LessEqual against a background depth of 1),
+  which no golden scene has. Both Metal legs ran the full `KhaozEngine.Render.Tests` GPU suite green on the
+  committed grids, so there is no rebake.
 - **Vendored Veldrid fork bumped to `4.9.104`** (commit `d60cdd2392ba1c5ace12697bc1acf45f1879db14`, tag
-  `v4.9.104`, branch `fix/d3d11-immediate-4.9.0`). Its only change over `4.9.103` is the Metal one above, which is
+  `v4.9.104`, branch `fix/d3d11-immediate-4.9.0`, all three pushed to `APKiwiOrg/veldrid`, so the vendored
+  binaries' stated source is fetchable). Its only change over `4.9.103` is the Metal one above, which is
   the fork's third deliberate difference from upstream and the first that is not opt-in.
 - **`DepthClipModeGpuTests` is the row that holds the contract, and it is backend-agnostic on purpose.** It
   creates its device through `GpuDeviceContext.CreateHeadless()`, so the one class runs on all five golden legs

@@ -315,6 +315,19 @@ namespace KhaozEngine.Gpu
         /// shipped pipelines rasterize differently on macOS
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/598).
         /// </para>
+        /// <para>
+        /// ONE CARVE-OUT, AND IT IS METAL'S ALONE: a render pass whose framebuffer has NO depth attachment
+        /// drops this flag. Both Metal paths emit <c>-setDepthClipMode:</c> inside the same guard as the
+        /// depth-stencil state, and that guard is the bound framebuffer having a depth attachment, because a
+        /// depth-stencil state on a depth-less pass is a validation failure. So a colour-only target rasterizes
+        /// at the encoder default (clip) whatever this says, and <c>false</c> cannot be expressed there at all.
+        /// Direct3D 11 and Vulkan keep it in rasterizer state that exists either way, so they honour it there.
+        /// No shipped pipeline can see the difference: the engine's colour-only passes are the fullscreen post
+        /// ones, whose vertex stage emits z = 0 exactly, and <c>SpriteBatch</c> takes its z from a 2D ortho,
+        /// both inside the depth range where the two modes agree.
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/674 decides whether Metal honours it on a depth-less
+        /// pass or the seam declares it undefined there.
+        /// </para>
         /// </summary>
         public bool DepthClipEnabled { get; }
         public bool ScissorTestEnabled { get; }

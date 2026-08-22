@@ -53,12 +53,16 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// <c>MTLDepthClipMode</c>, an <c>NSUInteger</c>. Whether geometry outside the near and far planes is clipped
     /// or clamped against them.
     /// <para>
-    /// THE SEAM HAS NO MEMBER FOR IT AND THE INCUMBENT DERIVES IT FROM THE DEPTH TEST, which is worth naming
-    /// because the derivation looks arbitrary until you see where it comes from.
-    /// <c>Veldrid.MTL.MTLPipeline</c> ends its graphics constructor with
-    /// <c>DepthClipMode = description.DepthStencilState.DepthTestEnabled ? Clip : Clamp</c>, so a pass with the
-    /// depth test off gets clamping. <c>MetalPipelineState</c> reproduces exactly that, because the committed
-    /// <c>metal</c> goldens were baked through it.
+    /// IT IS THE METAL SPELLING OF THE SEAM'S <c>GpuRasterizerState.DepthClipEnabled</c>, which is a contract
+    /// every backend honours rather than a hint the API without the field may drop: <c>true</c> resolves to
+    /// <c>Clip</c> and <c>false</c> to <c>Clamp</c>, the same behaviour Direct3D 11 takes from
+    /// <c>RasterizerDescription.DepthClipEnable</c> and Vulkan from the inverse of <c>depthClampEnable</c>.
+    /// Until 17.39.0 BOTH Metal paths derived the mode from the DEPTH TEST and read the flag nowhere:
+    /// <c>Veldrid.MTL.MTLPipeline</c> ended its graphics constructor with
+    /// <c>DepthClipMode = description.DepthStencilState.DepthTestEnabled ? Clip : Clamp</c> and
+    /// <c>MetalPipelineState</c> reproduced it deliberately. Both were corrected in the same release
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/598) and no committed <c>metal</c> golden moved, so the
+    /// grids the incumbent baked still verify this backend. <c>MetalPipelineSpecs</c> carries the argument.
     /// </para>
     /// </summary>
     internal enum MTLDepthClipMode : ulong

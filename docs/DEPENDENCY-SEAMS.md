@@ -1133,6 +1133,19 @@ device feature, which `VulkanFeatureChain` enables by name). Metal expresses `fa
 macOS 10.11. Clamping keeps geometry outside the depth range and rasterizes it with its depth pinned to the
 limit, rather than discarding it.
 
+**One carve-out, and it is Metal's alone: a render pass with NO depth attachment drops the flag.** Both Metal
+paths emit `-setDepthClipMode:` inside the same guard as the depth-stencil state, and that guard is the bound
+FRAMEBUFFER having a depth attachment, because a depth-stencil state on a depth-less pass is a validation
+failure (`../KhaozEngine.Gpu.Metal/Internal/MetalRenderApi.cs:134-138` returns early on `!block.DepthTrio`,
+and the vendored fork's `MTLCommandList.cs:181-186` gates the same three calls on a non-null
+`_framebuffer.DepthTarget`). A colour-only target therefore rasterizes at the encoder default, `MTLDepthClipModeClip`, whatever the
+bound pipeline asked for, and `false` cannot be expressed there at all. Direct3D 11 and Vulkan keep the flag in
+rasterizer state that exists with or without a depth attachment, so they honour it there. No pixel differs
+today: the engine's colour-only passes are the fullscreen post ones, whose vertex stage emits z = 0 exactly,
+and `SpriteBatch` takes its z from a 2D ortho, both inside the depth range where the two modes agree.
+[#674](https://github.com/APKiwiOrg/KhaozEngine/issues/674) decides whether Metal honours it on a depth-less
+pass or the seam declares it undefined there.
+
 **Why it needed writing down.** Until 17.39.0 BOTH Metal paths derived the clip mode from
 `DepthStencilState.DepthTestEnabled` and read `DepthClipEnabled` nowhere at all
 ([#598](https://github.com/APKiwiOrg/KhaozEngine/issues/598)). `Veldrid.MTL.MTLPipeline` did it first and the
@@ -1150,8 +1163,10 @@ vendored fork's `4.9.104` plus the matching native change together.
 **Nothing rebaked, and the reason is worth keeping.** Three of the four pipelines are background passes whose
 vertex stage emits `gl_Position = vec4(xy, 1.0, 1.0)`, so `z == w` exactly, and the far-plane boundary is
 inclusive under clipping: clip and clamp rasterize those identically. The fourth draws projected billboards,
-where the modes differ only for a sprite crossing the near plane, and no golden scene has one. Both Metal legs
-ran the full suite green on the committed grids.
+where the modes differ for a sprite crossing EITHER plane: clipping drops the outside fragments, clamping keeps
+them and pins their depth to the limit, and at the FAR plane those clamped-to-1 fragments then pass the pass's
+LessEqual test against a background depth of 1. No golden scene has a billboard crossing either plane. Both
+Metal legs ran the full suite green on the committed grids.
 
 ## Adding a new backend
 

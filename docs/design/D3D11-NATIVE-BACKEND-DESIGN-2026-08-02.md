@@ -1062,6 +1062,27 @@ whose size fell strictly between two multiples of 256 was dropped silently by th
 initializer lived only in `KhaozEngine.Render.Tests`, so `KhaozEngine.MapEditor.Tests` carried `[GpuFact]`
 without ever registering the backend it needed. Both are fixed in-branch.
 
+**2026-08-22: gate 2 regressed at 17.39.0 and is met again at 17.40.0.** The full-tier matrix dispatch on
+`v17.39.0` main (run 32562349878) put both software native legs red on one row and only that row,
+`TextureArrayGpuTests.ThePhantomLayerOfAOneLayerArrayCannotBeUploadedTo`, which 17.39.0 had just added.
+Everything else on that run was green, both incumbent legs and metal-native included. The mechanism: the
+device-level `UpdateTexture` computed a flat subresource index and handed it to `UpdateSubresource` with no
+bound at all, and D3D11 drops an index past the end of the resource without an `HRESULT`, so a layer the texture
+does not have was taken in silence here while native Metal refused it by name. One red row counts as a gate 2
+regression rather than a flaky leg, because that divergence is the develop-on-one-backend-and-ship-on-another
+promise the seam exists for. `D3D11UploadBounds` checks the layer at the call now and
+`D3D11UploadBoundsTests` pins the arithmetic device-free, since neither software backend runs on the machine
+this code is written on. The branch dispatch (run 32564422767) came back with `KhaozEngine.Render.Tests` at 6648
+passed, 0 failed, 0 skipped on `direct3d11-native`, against the incumbent leg's 6646 passed, 0 failed, 2 skipped
+on the same commit in the same run. The two incumbent skips are the `RequiresCompletionFences` pair, which is
+the same shape gate 2 was first met in. https://github.com/APKiwiOrg/KhaozEngine/issues/695
+
+**What let it through is the push tier, working as designed.** A non-golden row runs only on the Metal legs on
+push and pull request, so this one was green on every push after it landed, and only the schedule or a dispatch
+could see it. That is the gap the expensive tier exists to cover, and it covered it. What it also means is that
+a defect confined to the software legs has a whole week of latency by default, so a change to a seam contract
+that all four backends implement is worth a branch dispatch before it merges rather than after.
+
 ---
 
 ## 15. Work breakdown

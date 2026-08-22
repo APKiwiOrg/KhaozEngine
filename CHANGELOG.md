@@ -7,10 +7,42 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.40.0
 
-Tile worlds get server-authoritative, client-predicted movement in one new package, and the two pieces it needed
-out of `NetWorld` come down the stack so a server that does not reference `NetWorld` can still use them: the
-connect-time door and the player-persistence core. `Replication` gains a bounded per-component reader, so an
-extension codec can no longer be satisfied out of the bytes of the components behind it.
+17.40.0 makes the native backends the default (the rollout bullets) and ships the tile netcode package,
+sub-project 2 R1 of the Grimhollow program (the tile bullets). Tile worlds get server-authoritative,
+client-predicted movement in one new package, and the two pieces it needed out of `NetWorld` come down the stack
+so a server that does not reference `NetWorld` can still use them: the connect-time door and the
+player-persistence core. `Replication` gains a bounded per-component reader, so an extension codec can no longer
+be satisfied out of the bytes of the components behind it.
+
+- **`IGpuCommandList.CopyBuffer` refuses an offset that is not a multiple of four, on every backend, and
+  `GpuReadback.ReadBuffer<T>` refuses one before it allocates anything
+  ([#602](https://github.com/APKiwiOrg/KhaozEngine/issues/602),
+  [#684](https://github.com/APKiwiOrg/KhaozEngine/issues/684)).** macOS requires both offsets of
+  `copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:` to be multiples of four, so native Metal
+  refused an unaligned offset from the day it shipped while Veldrid, native Vulkan and native Direct3D 11 all
+  took one. The same public call therefore succeeded on three backends and threw on the fourth, which a
+  consumer would only have found on a user's Mac. The strictest backend's requirement is now the seam's
+  contract: one rule, one wording, four implementations
+  (`KhaozEngine.Gpu/Internal/GpuCopyAlignment.cs`), with the side of the copy named in the message and
+  `srcOffsetBytes` / `dstOffsetBytes` as the `ArgumentOutOfRangeException.ParamName`. **This is a behaviour
+  change for a consumer that passes an unaligned offset on Veldrid, Vulkan or Direct3D 11**, where the call
+  used to be taken. Nothing in the engine does: all five in-repo `ReadBuffer` callers leave the offset at its
+  default of 0, and the full suite is green with the incumbent still present, which is what says the tolerant
+  behaviour was never load-bearing. Refusing rather than rounding is deliberate: an offset selects WHICH bytes
+  come back, so rounding one up would quietly return a different slice than the caller asked for. The SIZE is
+  unconstrained as before, since only Metal needs it aligned and it pads rather than refusing. An unaligned
+  start is still legal to read: map the buffer, or reach it through the device-level `UpdateBuffer`.
+- **`IGpuDevice.UpdateTexture` refuses an array layer the texture does not have on native Direct3D 11 and native
+  Vulkan (#695).** Both backends built a subresource out of the caller's `arrayLayer` and handed it straight to
+  the API, and neither API objects: `UpdateSubresource` drops an index past the end of the resource without an
+  `HRESULT`, and a recorded `vkCmdCopyBufferToImage` carries no result code at all. So
+  `UpdateTexture(oneLayerArray, ..., arrayLayer: 1)` returned normally and wrote nowhere, while native Metal and
+  the incumbent both raised `ArgumentOutOfRangeException`, which is the develop-on-one-backend-and-ship-on-another
+  promise the seam exists for. Both natives now throw at the call, named for the `arrayLayer` parameter, before
+  anything native runs. The bound is the REAL slice count with cubemap faces expanded (`D3D11UploadBounds`,
+  `VulkanUploadBounds`), so every face of a cube is still addressable, and the Vulkan check sits above the
+  staging-versus-image branch so both arms of the entry point answer the same way. An in-range upload is
+  unchanged.
 
 - **`KhaozEngine.TileWorld.Netcode`: server-authoritative, client-predicted movement for a tile world.** A player
   IS a `TileCoord`, a `TileDirection` facing and a `TileMoveMode`, and a step COMMITS every N ticks along a
@@ -149,6 +181,15 @@ extension codec can no longer be satisfied out of the bytes of the components be
   and refuse. One instance is reused for a whole apply, so framing a payload allocates nothing. Built-in frames are
   unframed and have no such bound, so they still read through the stream itself.
 - **The `Server` umbrella carries `TileWorld.Netcode`.** A headless tile server needs no extra reference.
+- **Three public shapes moved in the final review's fix round.** `TileWorldClient`'s constructor takes the same
+  optional `ReplicationRegistry` the server's does, defaulting to `TileProtocol.CreateRegistry()`, so a game
+  registering its own components at or above `TileProtocol.FirstGameTypeId` hands one registry to both heads
+  ([#700](https://github.com/APKiwiOrg/KhaozEngine/issues/700)). `TileWorldPersistence` takes the head's own baked
+  `TileCollisionMap`, and its validation step refuses exactly what `TileWorldServer.SetPlayerState` refuses, so a
+  stored record naming a plane or a region an edited world no longer has is quarantined and its player placed at
+  the spawn rather than throwing out of `Update(dt)`, and the server constructor refuses a config whose
+  `PlaneCount` disagrees with the map's so the two doors stay one door. `PersistenceBinding<TState>` is four
+  delegates: the unused `WithPosition` was removed before the tag.
 
 ## 17.39.0
 

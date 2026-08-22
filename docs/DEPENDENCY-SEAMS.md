@@ -1171,6 +1171,49 @@ them and pins their depth to the limit, and at the FAR plane those clamped-to-1 
 LessEqual test against a background depth of 1. No golden scene has a billboard crossing either plane. Both
 Metal legs ran the full suite green on the committed grids.
 
+## GPU seam contract: a `CopyBuffer` offset is a multiple of four on every backend (17.40.0)
+
+**The question this settles.** `IGpuCommandList.CopyBuffer(src, srcOffsetBytes, dst, dstOffsetBytes, sizeInBytes)`
+had no stated constraint on either offset, and the four backends did not agree about one. macOS requires both
+offsets of `copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:` to be multiples of four, so
+`KhaozEngine.Gpu.Metal` refused an unaligned offset by name from the day it shipped, while Veldrid, native
+Vulkan and native Direct3D 11 all took it. The same public call therefore succeeded on three backends and threw
+on the fourth ([#602](https://github.com/APKiwiOrg/KhaozEngine/issues/602)). The seam now carries the strictest
+backend's requirement as its own contract, and all four refuse identically.
+
+**Where the rule lives.** `KhaozEngine.Gpu/Internal/GpuCopyAlignment.cs`, internal, reached by the three native
+backend packages across the `InternalsVisibleTo` seam they already sit on and by the incumbent wrapper inside
+`KhaozEngine.Gpu` itself. One helper means one wording: the exception is an `ArgumentOutOfRangeException` whose
+`ParamName` is the seam's own `srcOffsetBytes` or `dstOffsetBytes` and whose message names the side the bad
+offset came from, whichever backend answered. `MetalCopyAlignment` keeps its name and its SIZE half, which is
+Metal's alone (only Metal needs the size aligned, and it pads the size up rather than refusing it), and forwards
+its offset half here.
+
+**Why the seam tightened instead of Metal loosening.** The other direction exists: the incumbent routes an
+unaligned copy through an embedded compute shader and a dedicated compute pipeline, and native Metal could have
+reproduced that. It was declined for the same reason section 9.3 declined it originally, and rounding at the
+helper was declined for a stronger one. An offset selects WHICH bytes come back, so rounding one UP hands the
+caller a different slice than they asked for, and rounding it DOWN turns the copy into a read of a wider window
+that can run off the end of the source. A refusal is the only answer that is wrong in no case. An unaligned
+start is still legal to READ, just not to copy from, so a caller who genuinely needs one maps the buffer.
+
+**What it cost in this repository: nothing, and that is measured rather than assumed.** All five in-repo
+`GpuReadback.ReadBuffer<T>` callers leave `srcOffsetBytes` at its default of 0, and
+`MetalCopyBufferCallSiteTests` sweeps every `CopyBuffer` call site in shipped source mechanically and finds no
+unaligned offset anywhere. It is a behaviour change for a CONSUMER that passed one on Veldrid, Vulkan or
+Direct3D 11, where the call used to be taken.
+
+**Why it landed before the Veldrid removal rather than after.** Deleting the incumbent would have narrowed the
+divergence from three-versus-one to two-versus-one and resolved nothing. Taking it while the incumbent is still
+present is what makes a green suite evidence that nothing ever leaned on the tolerant behaviour, because the
+incumbent enforces the new rule too and every golden still passes through it
+(`docs/design/VELDRID-REMOVAL-DESIGN-2026-08-22.md` section 6, row 1 of section 7).
+
+**Where it is pinned.** `KhaozEngine.Render.Tests/Gpu/CopyBufferOffsetContractTests.cs` drives all four
+implementations side by side with no device, which is the only place the agreement itself can be asserted, and
+`CopyBufferOffsetGpuTests.cs` runs the same contract on whatever device the host resolves, so the five-leg
+matrix checks it on four real drivers rather than on four fakes.
+
 ## Adding a new backend
 
 To swap or add a backend for a seam that already has the separate-package split:

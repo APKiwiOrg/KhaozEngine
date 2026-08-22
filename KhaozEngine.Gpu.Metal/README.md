@@ -864,6 +864,12 @@ shader the way the Veldrid backend does, because no shipped call site in the eng
 device-free test over every call site is what keeps that true. Align the offset, or use the device-level
 `UpdateBuffer`, which is a plain copy with no blit behind it.
 
+Since 17.40.0 that refusal is **not this backend's alone**. The offset half of the rule moved up to the seam, so
+Veldrid, `KhaozEngine.Gpu.Vulkan` and `KhaozEngine.Gpu.D3D11` refuse the same offsets in the same words, and a
+call that works on a developer's Windows machine no longer fails on a player's Mac
+([#602](https://github.com/APKiwiOrg/KhaozEngine/issues/602)). The SIZE padding stays local, because Metal is the
+only backend that needs it.
+
 **Mip generation is one call.** `-generateMipmapsForTexture:` fills the whole chain, so unlike the Vulkan
 backend there is no per-level blit, no per-level barrier and no filter to choose. The texture needs more than
 one mip level and must not be a staging texture, which on this backend is an `MTLBuffer` with a software

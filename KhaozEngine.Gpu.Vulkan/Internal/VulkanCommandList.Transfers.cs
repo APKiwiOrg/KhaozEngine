@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using KhaozEngine.Gpu.Internal;
 using Silk.NET.Vulkan;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
@@ -31,6 +32,16 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// A buffer has no layout, so nothing the tracker does orders this copy against the dispatch that wrote
         /// its source or the draw that reads its destination: see <see cref="VulkanTransferBarrier"/> for the
         /// masks and for why the incumbent's single one-directional barrier is not reproduced.
+        /// <para>
+        /// BOTH OFFSETS ARE REFUSED UNLESS THEY ARE MULTIPLES OF FOUR (17.40.0,
+        /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/684">#684</see>). Vulkan itself asks for no
+        /// such thing, and this backend took an unaligned offset happily. It is the SEAM's rule
+        /// (<see cref="GpuCopyAlignment"/>): macOS requires it, so a seam member that took the call here and
+        /// threw on Metal was a portability trap a consumer only found on a user's Mac
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/602">#602</see>). It is checked AFTER the
+        /// window check, so a copy that is both out of range and misaligned reports the range, which is the more
+        /// fundamental mistake and the ordering native Metal already had.
+        /// </para>
         /// </remarks>
         public void CopyBuffer(IGpuBuffer src, uint srcOffsetBytes, IGpuBuffer dst, uint dstOffsetBytes,
             uint sizeInBytes)
@@ -41,6 +52,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             RequireBufferWindow(source, srcOffsetBytes, sizeInBytes, "source");
             RequireBufferWindow(destination, dstOffsetBytes, sizeInBytes, "destination");
+
+            const string What = "A native Vulkan buffer copy";
+            GpuCopyAlignment.RequireAlignedOffset(srcOffsetBytes, nameof(srcOffsetBytes), What, "source");
+            GpuCopyAlignment.RequireAlignedOffset(dstOffsetBytes, nameof(dstOffsetBytes), What, "destination");
 
             ulong buffer = CurrentBuffer;
             EndRenderingBeforeIllegalCommand();

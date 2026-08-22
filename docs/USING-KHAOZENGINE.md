@@ -10475,8 +10475,10 @@ it, though, so the two seam paths that name SUBRESOURCES rather than texels have
   Textures are not compatible to be copied`) and to succeed on the natives. The copy narrows to the LOGICAL
   subresources whenever a side pads, so the readback is backend-independent again.
 - `UpdateTexture(..., arrayLayer: 1)` on a one-layer array raises `ArgumentOutOfRangeException`, on the
-  incumbent as well as on the natives. Writing to the phantom writes to memory nothing reads, and it used to be
-  accepted silently on exactly one backend.
+  incumbent as well as on all three natives. Writing to the phantom writes to memory nothing reads. 17.39.0
+  closed the incumbent's silent accept, and 17.40.0 closed the same hole on native Direct3D 11 and native
+  Vulkan, where the API itself never objects: `UpdateSubresource` drops an out-of-range subresource index
+  without an `HRESULT` and a recorded `vkCmdCopyBufferToImage` carries no result code at all (#695).
 
 What is left is one slice of memory. A STAGING texture is never padded at all, since it has no view and nothing
 binds it to a shader.
@@ -11800,6 +11802,20 @@ samples needs `Sampled` as well. A storage buffer is `GpuBufferUsage.StructuredB
 `...ReadOnly`) bound through the matching `GpuResourceKind`. Read a buffer back with
 `GpuReadback.ReadBuffer<T>(gd, buffer, elementCount)`, which wraps the whole staging-copy-map-unmap sequence.
 `T`'s layout must match the shader's, so watch the std430 padding rules (a `vec3` member occupies 16 bytes).
+
+**A copy offset is a multiple of four, on every backend (since 17.40.0).** `ReadBuffer<T>`'s optional
+`srcOffsetBytes` and both offsets of `IGpuCommandList.CopyBuffer` are refused with an
+`ArgumentOutOfRangeException` when they are not, naming the side the bad one came from. macOS requires it of
+`copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:`, so before 17.40.0 the same call was taken on
+Veldrid, Vulkan and Direct3D 11 and threw on Metal, which is a difference a game would only meet on a player's
+Mac ([#602](https://github.com/APKiwiOrg/KhaozEngine/issues/602)). The seam takes the strictest backend's rule
+rather than papering over it, because rounding an offset would hand back a different slice than the one asked
+for. The SIZE is unconstrained. If you genuinely need an unaligned start, map the buffer and read from there:
+
+```csharp
+uint[] tail = GpuReadback.ReadBuffer<uint>(gd, buffer, 4, srcOffsetBytes: 16);   // fine, 16 % 4 == 0
+uint[] bad  = GpuReadback.ReadBuffer<uint>(gd, buffer, 4, srcOffsetBytes: 3);    // throws on every backend
+```
 
 ### Ordering: two rules, because there is no barrier call
 

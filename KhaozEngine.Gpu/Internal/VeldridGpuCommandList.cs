@@ -62,9 +62,24 @@ namespace KhaozEngine.Gpu.Internal
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged
             => CommandList.UpdateBuffer(((VeldridGpuBuffer)b).Buffer, offsetBytes, data);
 
+        /// <summary>
+        /// THE SEAM'S OFFSET RULE IS ENFORCED HERE TOO, AHEAD OF THE FORWARD, EVEN THOUGH VELDRID WOULD TAKE THE
+        /// CALL (17.40.0, <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/684">#684</see>). Its Metal
+        /// path routes an unaligned copy through an embedded compute shader, so the incumbent tolerated what
+        /// native Metal refuses, and that tolerance is exactly the divergence
+        /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/602">#602</see> is about. Refusing here as
+        /// well is what makes all four backends answer the same call the same way, and it is deliberately done
+        /// while the incumbent is still present, so the full suite passing is evidence that nothing in the engine
+        /// ever depended on the tolerant behaviour.
+        /// </summary>
         public void CopyBuffer(IGpuBuffer src, uint srcOffsetBytes, IGpuBuffer dst, uint dstOffsetBytes, uint sizeInBytes)
-            => CommandList.CopyBuffer(((VeldridGpuBuffer)src).Buffer, srcOffsetBytes,
+        {
+            const string What = "A Veldrid buffer copy";
+            GpuCopyAlignment.RequireAlignedOffset(srcOffsetBytes, nameof(srcOffsetBytes), What, "source");
+            GpuCopyAlignment.RequireAlignedOffset(dstOffsetBytes, nameof(dstOffsetBytes), What, "destination");
+            CommandList.CopyBuffer(((VeldridGpuBuffer)src).Buffer, srcOffsetBytes,
                 ((VeldridGpuBuffer)dst).Buffer, dstOffsetBytes, sizeInBytes);
+        }
 
         /// <summary>
         /// A WHOLE-RESOURCE COPY, EXCEPT WHERE A SIDE CARRIES A PHANTOM SLICE (#666). Veldrid's own

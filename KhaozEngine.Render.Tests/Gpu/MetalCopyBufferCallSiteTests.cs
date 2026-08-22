@@ -51,9 +51,12 @@ namespace KhaozEngine.Tests.Gpu
     /// looking for a declaration of that identifier in the same FILE, and the caller sweep for a forwarded
     /// parameter matches DOTTED invocations, so a same-class unqualified call would not be seen (there is none:
     /// <c>GpuReadback</c> is a static utility class that calls none of its own members). The test projects are
-    /// excluded from the call-site sweep on purpose, because they deliberately drive the refusals. And the
+    /// excluded from the call-site sweep on purpose, because they deliberately drive the refusals. They are NOT
+    /// excluded from the forwarded-CALLER pass, because every <c>GpuReadback.ReadBuffer</c> caller in this
+    /// repository lives in one, so dropping them would leave that pass with nothing to check: the two files that
+    /// drive the refusal deliberately are named in <c>DrivesTheRefusalOnPurpose</c> instead. And the
     /// repository is not the world: <c>GpuReadback.ReadBuffer</c> is PUBLIC API, so a consumer outside this
-    /// repository can still reach the throw by passing an unaligned offset of its own.</para>
+    /// repository can still reach the refusal by passing an unaligned offset of its own.</para>
     ///
     /// <para><b>WHAT A RED RUN MEANS.</b> Either a new call site computes an offset (in which case section 9.3's
     /// follow-up is now live and the unaligned path has to be built or the call site changed), or the sweep found
@@ -338,6 +341,8 @@ namespace KhaozEngine.Tests.Gpu
 
             foreach ((string path, string caller) in all)
             {
+                if (DrivesTheRefusalOnPurpose(path)) continue;
+
                 foreach (Match call in Regex.Matches(caller, pattern))
                 {
                     List<string>? arguments = Arguments(caller, call.Index + call.Length - 1);
@@ -424,6 +429,17 @@ namespace KhaozEngine.Tests.Gpu
             => Segments(root, path).Any(segment =>
                 segment is "obj" or "bin" or "local-feed" or ".git" or ".claude" or ".buildhome" or "vendor"
                     or "artifacts");
+
+        // THE FILES WHOSE WHOLE JOB IS TO PASS AN OFFSET THE SEAM REFUSES, so the caller pass reads them as
+        // intent rather than as a violation (17.40.0, https://github.com/APKiwiOrg/KhaozEngine/issues/684).
+        // They are named one by one rather than excluded as a class, because every other ReadBuffer caller in
+        // the repository is also in a test project and those are exactly what this pass exists to check. Since
+        // #684 the refusal is the SEAM's contract on all four backends rather than the Metal backend's alone,
+        // and a contract with no test that trips it is a contract nobody has run.
+        // A pattern match rather than a static array, because the sweep itself runs from a static field
+        // initializer declared further up this file and would read an array that has not been assigned yet.
+        static bool DrivesTheRefusalOnPurpose(string path)
+            => Path.GetFileName(path) is "CopyBufferOffsetContractTests.cs" or "CopyBufferOffsetGpuTests.cs";
 
         static bool IsTestProject(string root, string path)
             => Segments(root, path).Any(segment => segment.EndsWith("Tests", StringComparison.Ordinal));

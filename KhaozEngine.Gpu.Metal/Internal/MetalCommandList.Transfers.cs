@@ -46,6 +46,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// case no shipped call site produces is the unreachable-code reproduction G1 declined once already.
         /// <c>MetalCopyBufferCallSiteTests</c> is what says no call site produces one.
         /// </para>
+        /// <para>
+        /// AND SINCE 17.40.0 THE REFUSAL IS NO LONGER THIS BACKEND'S ALONE
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/684">#684</see>). The offset rule moved up
+        /// to the seam, so Veldrid, native Vulkan and native Direct3D 11 refuse the same offsets with the same
+        /// words out of <c>GpuCopyAlignment</c>, and the incumbent no longer reaches the compute path above from
+        /// this engine at all.
+        /// </para>
         /// </remarks>
         public void CopyBuffer(IGpuBuffer src, uint srcOffsetBytes, IGpuBuffer dst, uint dstOffsetBytes,
             uint sizeInBytes)

@@ -309,6 +309,31 @@ public class TileWorldServerSessionTests
     }
 
     [Fact]
+    public void A_zero_grace_drain_is_not_complete_until_the_tick_that_closes_its_sessions()
+    {
+        (TileWorldServer s, _, _) = Up(new TileCoord(4, 4, 0));
+        using (s)
+        {
+            var left = new List<string>();
+            s.SpawnPlayer(0, "a", "Ari");
+            s.PlayerLeaving += (_, account, _) => left.Add(account);
+
+            s.BeginDrain(TileServerReason.Draining, graceSeconds: 0f);
+            // The grace is spent the moment it was asked for, but nothing has been released yet. A head that read
+            // completion here would flush and exit having saved nothing anyone did this session.
+            Assert.True(s.IsDraining);
+            Assert.False(s.IsDrainComplete);
+            Assert.Empty(left);
+            Assert.Equal(1, s.PlayerCount);
+
+            s.Tick(Dt);
+            Assert.True(s.IsDrainComplete);
+            Assert.Equal(new[] { "a" }, left.ToArray());
+            Assert.Equal(0, s.PlayerCount);
+        }
+    }
+
+    [Fact]
     public void A_completed_drain_releases_every_player_and_forgets_their_pending_actions()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();

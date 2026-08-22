@@ -82,8 +82,9 @@ public sealed partial class TileWorldServer
         // field and the reason.
         if (drainRemaining > 0f) drainRemaining = MathF.Max(0f, drainRemaining - MathF.Max(0f, dt));
         // Once, on the first frame the grace is spent. Never inside RunOneTick: closing a session mutates the
-        // player index the tick body is iterating, and the serve above has already gone out for this tick.
-        if (IsDrainComplete && !drainClosed)
+        // player index the tick body is iterating, and the serve above has already gone out for this tick. Gated on
+        // the grace rather than on IsDrainComplete, which now waits for this close to have happened.
+        if (IsDrainGraceSpent && !drainClosed)
         {
             drainClosed = true;
             CloseDrainedSessions();

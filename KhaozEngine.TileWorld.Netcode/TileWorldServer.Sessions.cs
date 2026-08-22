@@ -74,10 +74,20 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
     /// one way: there is no resume, because the announcement has already gone out to every client.</summary>
     public bool IsDraining => drainRemaining >= 0f;
 
-    /// <summary>True once a drain's grace has elapsed, so the host may flush persistence and exit. Polled by the
-    /// head's own loop rather than raised as an event, because what happens next (a save pass, a process exit) is
-    /// the head's decision and its timing is the head's to own.</summary>
-    public bool IsDrainComplete => IsDraining && drainRemaining <= 0f;
+    /// <summary>True once a drain's grace has elapsed AND the sessions it was counting down for have been closed,
+    /// so the host may flush persistence and exit. Polled by the head's own loop rather than raised as an event,
+    /// because what happens next (a save pass, a process exit) is the head's decision and its timing is the head's
+    /// to own.
+    /// <para>The close is part of the answer rather than a consequence of it. A spent grace on its own is true the
+    /// instant <see cref="BeginDrain"/> returns with a grace of zero, with every session still open and no
+    /// <see cref="PlayerLeaving"/> raised for any of them, so a head that exited on it would file nothing newer than
+    /// its last periodic pass. The close runs on the next <see cref="Tick"/>, which is what this waits for.</para>
+    /// </summary>
+    public bool IsDrainComplete => IsDrainGraceSpent && drainClosed;
+
+    // The grace half of IsDrainComplete, and the trigger the tick uses. Separate from the property so the close can
+    // depend on it without the property depending on the close, which would be circular.
+    bool IsDrainGraceSpent => IsDraining && drainRemaining <= 0f;
 
     /// <summary>
     /// Pumps the transport and turns session events into joins, leaves and buffered commands. Call once per host
@@ -287,8 +297,9 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
     /// </summary>
     /// <param name="reasonToken">A <see cref="TileServerReason"/> token, normally
     /// <see cref="TileServerReason.Draining"/>. Kept, and sent again to anyone who joins inside the grace.</param>
-    /// <param name="graceSeconds">Seconds before <see cref="IsDrainComplete"/> turns true. Negative is treated as
-    /// zero, which completes on the next tick.</param>
+    /// <param name="graceSeconds">Seconds counted down before the sessions are closed. Zero or negative closes them
+    /// on the very next <see cref="Tick"/>, which is also when <see cref="IsDrainComplete"/> can first turn
+    /// true.</param>
     public void BeginDrain(string reasonToken, float graceSeconds)
     {
         if (IsDraining) return;

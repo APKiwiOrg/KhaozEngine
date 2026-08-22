@@ -45,7 +45,7 @@ public class TilePresenterTests
         var sim = new TileMoveSimulator(
             TileMoveSimulatorTests.Bake(TileMoveSimulatorTests.FlatWorld()), new TileStepTicks(4, 2));
         var pred = new ClientPrediction<TileMoveState, TileCommand>(
-            sim, new PredictionSettings(0.25f, 64, 1f, 8f, 0.01f));
+            sim, new PredictionSettings(0.25f, 64, 0.5f, 8f, 0.01f));
         pred.Reset(TileMoveState.At(new TileCoord(2, 2, 0), TileDirection.E));
         pred.Predict(TileCommand.WalkTo(new TileCoord(2, 6, 0), TileMoveMode.Run));
         pred.AdvancePresentation(0.125f);

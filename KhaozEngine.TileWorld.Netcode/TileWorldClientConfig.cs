@@ -50,16 +50,23 @@ public sealed record TileWorldClientConfig
 
     /// <summary>
     /// Prediction tunables. Null derives them from <see cref="TickSeconds"/>: a 64-command window (16 seconds at a
-    /// 4 Hz tick), a ONE-TILE hard-snap distance and a small dead zone.
+    /// 4 Hz tick), a HALF-TILE hard-snap distance and a small dead zone.
     /// <para>The distance is in TILES rather than metres, because a <see cref="TileMoveState"/>'s position is a
     /// tile-lattice quantity and its vertical is a plane INDEX (see that type's doc).
     /// <see cref="PredictionSettings.Default"/> carries 100, documented in world units, which on this lattice means
     /// a hundred tiles of misprediction before anything ever cut: the same as never snapping at all.</para>
-    /// <para>One tile is the threshold with a meaning rather than a feel. Below it the two heads are on the SAME
-    /// square and disagree only about how far through a step they are, which is timing and glides. At or above it
-    /// they are on DIFFERENT squares, which is a disagreement about the world (a blocker one head cannot see), and
-    /// gliding that would walk the avatar across ground it was never routed over before arriving somewhere it had
-    /// already been told it was not.</para>
+    /// <para>Half a tile rather than a whole one, and the reason is worth reading before anybody raises it. On a
+    /// lattice a CORRECT prediction reconciles to exactly zero error, not to a small one: the replay re-applies the
+    /// pending commands on top of the authoritative basis, and the basis carries the authoritative route, so a
+    /// client running any number of ticks ahead still lands on the server's own state. Latency therefore
+    /// contributes NO error at all here, which is the opposite of the continuous case the engine default was tuned
+    /// for. Any error that does appear is the two heads having stepped different ways.</para>
+    /// <para>Half a tile is the smallest such disagreement that can show up: one tick of a running step. Below it
+    /// there is only float noise in the replay, so it glides. At or above it the heads' last steps went different
+    /// ways, which is a fact about the world (a blocker one head cannot see) rather than about timing, and gliding
+    /// it would slide the avatar across ground it was never routed over on its way to a square it had already been
+    /// told it was not on. A WALKING step is a quarter tile per tick, so a walk cuts one tick later than a run
+    /// does, which is the right way round: the slower the movement, the smaller the artifact.</para>
     /// </summary>
     public PredictionSettings? Prediction { get; init; }
 }

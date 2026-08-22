@@ -69,7 +69,7 @@ public sealed partial class TileWorldClient : IDisposable
         Simulator = new TileMoveSimulator(map, config.StepTicks, targets, config.Move);
         Prediction = new ClientPrediction<TileMoveState, TileCommand>(Simulator,
             config.Prediction ?? new PredictionSettings(config.TickSeconds, MaxPendingCommands: 64,
-                HardSnapDistance: 1f, CorrectionRate: 8f, CorrectionDeadZone: 0.01f));
+                HardSnapDistance: 0.5f, CorrectionRate: 8f, CorrectionDeadZone: 0.01f));
         View = new ClientReplicationView(TileProtocol.CreateRegistry());
         World = new World();
         // A placeholder until the head has the world file. One metre tiles and the document default plane height

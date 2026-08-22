@@ -21,9 +21,13 @@ namespace KhaozEngine.Tests.Gpu
     /// </para></summary>
     internal sealed class RecordingGpuCommandList : IGpuCommandList
     {
-        /// <summary>One recorded upload: which buffer, at what byte offset, how many bytes, and (only when
-        /// <see cref="CapturePayloads"/> is on) the bytes themselves.</summary>
-        internal readonly record struct Upload(IGpuBuffer Buffer, uint Offset, uint Bytes, byte[]? Data = null)
+        /// <summary>One recorded upload: which buffer, at what byte offset, how many bytes, (only when
+        /// <see cref="CapturePayloads"/> is on) the bytes themselves, and how many draws or dispatches had already
+        /// been recorded when it went in. That last number is what turns a pair of uploads into an ORDERING fact:
+        /// two writes to one range with no draw between them are a redundant write, and two with a draw between
+        /// them are the ring-collapse hazard <see cref="UniformRewriteAudit"/> looks for (#483).</summary>
+        internal readonly record struct Upload(IGpuBuffer Buffer, uint Offset, uint Bytes, byte[]? Data = null,
+            int DrawsBefore = 0)
         {
             /// <summary>Whether this write covers the destination from offset 0 to its end. That is the only shape
             /// Veldrid's D3D11 backend sends down the cheap <c>UpdateSubresource</c> path for a uniform buffer;
@@ -36,6 +40,7 @@ namespace KhaozEngine.Tests.Gpu
 
         readonly List<Upload> _uploads = new();
         readonly List<Resolve> _resolves = new();
+        int _draws;
 
         public RecordingGpuCommandList(IGpuCommandList inner) => Inner = inner;
 
@@ -61,7 +66,13 @@ namespace KhaozEngine.Tests.Gpu
         {
             _uploads.Clear();
             _resolves.Clear();
+            _draws = 0;
         }
+
+        /// <summary>Draws and dispatches recorded since the last <see cref="Clear"/>. A dispatch counts because a
+        /// compute pass reads a uniform buffer exactly as a draw does, and the ocean's FFT is the engine's one
+        /// record-time uniform write feeding one.</summary>
+        public int DrawCount => _draws;
 
         /// <summary>Every recorded upload whose destination is <paramref name="sizeInBytes"/> bytes.</summary>
         public List<Upload> ToBuffersOfSize(uint sizeInBytes)
@@ -74,14 +85,14 @@ namespace KhaozEngine.Tests.Gpu
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged
         {
             _uploads.Add(new Upload(b, offsetBytes, (uint)Unsafe.SizeOf<T>(),
-                CapturePayloads ? MemoryMarshal.AsBytes(new ReadOnlySpan<T>(in data)).ToArray() : null));
+                CapturePayloads ? MemoryMarshal.AsBytes(new ReadOnlySpan<T>(in data)).ToArray() : null, _draws));
             Inner.UpdateBuffer(b, offsetBytes, in data);
         }
 
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged
         {
             _uploads.Add(new Upload(b, offsetBytes, (uint)(data.Length * Unsafe.SizeOf<T>()),
-                CapturePayloads ? MemoryMarshal.AsBytes(data).ToArray() : null));
+                CapturePayloads ? MemoryMarshal.AsBytes(data).ToArray() : null, _draws));
             Inner.UpdateBuffer(b, offsetBytes, data);
         }
 
@@ -100,10 +111,20 @@ namespace KhaozEngine.Tests.Gpu
         public void SetScissorRect(uint index, uint x, uint y, uint w, uint h) => Inner.SetScissorRect(index, x, y, w, h);
         public void SetFullScissorRects() => Inner.SetFullScissorRects();
         public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart)
-            => Inner.Draw(vertexCount, instanceCount, vertexStart, instanceStart);
-        public void Draw(uint vertexCount) => Inner.Draw(vertexCount);
+        {
+            _draws++;
+            Inner.Draw(vertexCount, instanceCount, vertexStart, instanceStart);
+        }
+        public void Draw(uint vertexCount)
+        {
+            _draws++;
+            Inner.Draw(vertexCount);
+        }
         public void DrawIndexed(uint indexCount, uint instanceCount, uint indexStart, int vertexOffset, uint instanceStart)
-            => Inner.DrawIndexed(indexCount, instanceCount, indexStart, vertexOffset, instanceStart);
+        {
+            _draws++;
+            Inner.DrawIndexed(indexCount, instanceCount, indexStart, vertexOffset, instanceStart);
+        }
         public void CopyBuffer(IGpuBuffer src, uint srcOffsetBytes, IGpuBuffer dst, uint dstOffsetBytes, uint sizeInBytes)
             => Inner.CopyBuffer(src, srcOffsetBytes, dst, dstOffsetBytes, sizeInBytes);
         public void CopyTexture(IGpuTexture src, IGpuTexture dst) => Inner.CopyTexture(src, dst);
@@ -122,7 +143,11 @@ namespace KhaozEngine.Tests.Gpu
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set) => Inner.SetComputeResourceSet(slot, set);
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
             => Inner.SetComputeResourceSet(slot, set, dynamicOffset);
-        public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ) => Inner.Dispatch(groupCountX, groupCountY, groupCountZ);
+        public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)
+        {
+            _draws++;
+            Inner.Dispatch(groupCountX, groupCountY, groupCountZ);
+        }
         public void Dispose() => Inner.Dispose();
     }
 }

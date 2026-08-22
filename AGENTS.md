@@ -174,8 +174,9 @@ exception is the trivial-change case below.
   engine-version declarations the guard checks (EVERY `README.md` `<PackageReference>` example line,
   one per umbrella) → close any issue this work resolves (`gh issue close`, or `Closes #123` in the
   commit) if it is somehow still open, a backstop only: that should already have happened when the
-  work landed, per the Discovered work section → `dotnet pack -c Release -o ./local-feed` (cumulative,
-  and happens on every finish whether or not a tag follows) → commit → push `main` right away, don't
+  work landed, per the Discovered work section → `scripts/pack-local-feed.sh` (the guarded pack, see the
+  bullet below: cumulative, and happens on every finish whether or not a tag follows) → commit → push
+  `main` right away, don't
   hold or ask. Stop there: a `vX.Y.Z` tag is a separate, deliberate act, never automatic (the user
   starts one, with the single pinned-and-waiting exception below). When a release IS due, cut it with
   `scripts/tag-release.sh` (creates the annotated tag `vX.Y.Z` with the canonical
@@ -185,6 +186,23 @@ exception is the trivial-change case below.
   `local-feed/` is a gitignored dev convenience; GitHub Packages (every published `v*`) is the durable store, so
   `local-feed` may be pruned up to the lowest version any consumer still pins (each consumer's `Directory.Build.props`
   `<KhaozEngineVersion>`; do not prune below it) without losing anything recoverable.
+- **The pack REFUSES to overwrite an already-released version, which is why the ritual names a script.** The pack
+  step packs whatever `<KhaozEngineVersion>` currently says, and that version does not move until someone bumps
+  it, so every finish in the window between a tag and the next bump used to re-pack a released number. The feed's
+  `17.30.0` then held a bigger build than `v17.30.0` describes, a consumer vendoring in that window shipped an
+  engine build no tag names, and its tag-to-tag adopt sweep read the capability in the wrong release (#492).
+  `scripts/pack-local-feed.sh` runs the guard and then the same `dotnet pack -c Release -o ./local-feed`. It packs
+  a STAGED version (the ordinary case, and it says so rather than staying silent), packs when HEAD is the tag with
+  a clean tree (a re-pack then reproduces the released bytes, which is how a pruned feed is rebuilt), and refuses
+  anything else. The deliberate exception is `PACK_RELEASED_OK=1`, in the same spirit as `FILESIZE_OK`. Note the
+  guard is silent through a normal release: `tag-release.sh` tags AFTER the pack, so at pack time the version is
+  still staged. `scripts/hooks/pack-release-guard.sh` is the agent-side half, denying a bare `dotnet pack` into
+  `local-feed` under the same rule (both settings files invoke it, as they do the tag-collision guard), because
+  the raw command is what an agent types from memory. `scripts/check-local-feed.sh` is the DETECTION for a feed
+  that already drifted: it reports every version whose newest package was written after its tag, and it is what to
+  run before vendoring the feed into a consumer. The rule itself lives once, in `scripts/pack-standard.sh`, sourced
+  by all three, the same anti-drift shape as `scripts/tag-standard.sh`. Exercised by
+  `scripts/tests/pack-local-feed.test.sh` (`sh scripts/tests/pack-local-feed.test.sh`).
 - **Full doc sweep on EVERY feature / bug / change - not just the guard-checked declarations.**
   `check-doc-versions.sh` verifies the engine-version declarations, the newest `CHANGELOG.md` heading, AND the
   package inventory (every packable package has a README catalog row and ships its own `<Package>/README.md`).

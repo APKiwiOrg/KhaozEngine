@@ -79,10 +79,13 @@ public class TileWorldServerSessionTests
             s.Poll();
             Assert.Equal(1, s.DroppedCommandCount);
 
+            // A full bucket at the burst allowance admits exactly CommandBurst of the 200 and drops the rest, on
+            // top of the malformed frame already counted. Pinned exactly, because a "> 1" also passes on a limiter
+            // that dropped one frame, and the count is what says a burst is SHED rather than the client dropped.
             for (int i = 0; i < 200; i++)
                 net.Send(TileProtocol.EncodeCommand(i + 1, TileCommand.None), NetChannelReliability.ReliableOrdered);
             s.Poll();
-            Assert.True(s.DroppedCommandCount > 1);
+            Assert.Equal(181, s.DroppedCommandCount);
         }
     }
 
@@ -391,6 +394,27 @@ public class TileWorldServerSessionTests
     }
 
     [Fact]
+    public void A_connection_arriving_after_a_completed_drain_is_dropped_rather_than_seated()
+    {
+        (TileWorldServer s, InMemoryTransportHub hub, _) = Up(new TileCoord(4, 4, 0));
+        using (s)
+        {
+            s.BeginDrain(TileServerReason.Draining, graceSeconds: 0f);
+            s.Tick(Dt);
+            Assert.True(s.IsDrainComplete);
+
+            var joined = new List<int>();
+            s.PlayerJoined += (slot, _) => joined.Add(slot);
+            Hello(hub.CreateClient(), "late");
+            s.Poll();
+
+            // The close latches, so a seat handed out now would never be released by anything.
+            Assert.Empty(joined);
+            Assert.Equal(0, s.PlayerCount);
+        }
+    }
+
+    [Fact]
     public void A_completed_drain_releases_every_player_and_forgets_their_pending_actions()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
@@ -454,10 +478,13 @@ public class TileWorldServerSessionTests
             s.Poll();
             TileMoveState? final = null;
             s.PlayerLeaving += (_, _, state) => final = state;
+            // Moved off the spawn first, or the assertion below passes just as well on a leave that handed back
+            // TileMoveState.At(config.Spawn) instead of the state the player was actually standing on.
+            s.SetPlayerState(s.JoinedSlots.Single(), TileMoveState.At(new TileCoord(9, 12, 0), TileDirection.N));
             hub.DisconnectClient(c);
             s.Poll();
             Assert.NotNull(final);
-            Assert.Equal(new TileCoord(4, 4, 0), final!.Value.Tile);
+            Assert.Equal(new TileCoord(9, 12, 0), final!.Value.Tile);
             Assert.Equal(0, s.PlayerCount);
             Assert.Empty(s.JoinedSlots);
         }

@@ -54,13 +54,21 @@ public sealed record TileWorldServerConfig
     /// two different tiles.</summary>
     public int MaxGoalRadius { get; init; } = TilePathfinder.DefaultMaxRadius;
 
-    /// <summary>Inbound message budget per connection per second. Deliberately well ABOVE the drain rate, which is
+    /// <summary>Inbound message budget per connection, spent per POLL rather than per wall-clock second. The token
+    /// bucket is topped up once per <see cref="TileWorldServer.Poll"/> with <c>MaxCommandsPerSecond * TickSeconds</c>
+    /// tokens, so a head admits that many messages per poll and its sustained ceiling is
+    /// <c>pollRate * MaxCommandsPerSecond * TickSeconds</c> messages per second. That is the name's own number only
+    /// on a head that polls exactly once per tick, and proportionally more on one polling faster, which is every
+    /// real one. Deliberate rather than a slip: it is the <c>RateLimiter</c> contract <c>ShardedWorldServer</c> and
+    /// <c>WorldServer</c> also run on, and a budget topped up on the TICK would throttle a 60 Hz client that sent
+    /// nothing unusual, because a client sends on its frame cadence.
+    /// <para>Deliberately well ABOVE the drain rate, which is
     /// one command per player per tick (four per second at a 250 ms tick): the budget is a flood gate, not a
     /// cadence, and a client whose packets bunch after a lag spike or a reconnect is delivering real input late
     /// rather than cheating. What stops a burst turning into a server that walks stale input for the next minute is
     /// the queue's own catch-up threshold, which sheds a backlog deeper than a couple of seconds and jumps to the
     /// newest command, movement being latest wins. Lower this toward <c>1 / TickSeconds</c> only if a head wants
-    /// bursts REFUSED at the door instead of shed at the drain.</summary>
+    /// bursts REFUSED at the door instead of shed at the drain.</para></summary>
     public int MaxCommandsPerSecond { get; init; } = 40;
 
     /// <summary>Inbound burst allowance per connection, so a client that batches a frame's worth of input is not

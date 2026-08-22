@@ -128,6 +128,16 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
     // a record stored against one would load onto a stranger.
     void OnJoin(int slot, string subject, string displayName)
     {
+        // A connection that arrives after the drain already closed everything is told and dropped rather than
+        // seated. The head has flushed by this point, so seating one would raise PlayerJoined for an account
+        // nothing will file again, and leaving it seated would keep a client connected to a server that considers
+        // itself gone. This is the ONE join that is refused: one arriving inside the grace is admitted, see below.
+        if (drainClosed)
+        {
+            SendNotice(slot, drainReason);
+            net.Disconnect(slot);
+            return;
+        }
         string accountId = string.IsNullOrEmpty(subject)
             ? $"{PositionHintCache.GuestAccountPrefix}{slot}"
             : subject;
@@ -234,7 +244,10 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
     public bool TryGetConfiguredSpawn(int slot, out TileMoveState spawn)
     {
         spawn = TileMoveState.At(config.Spawn, TileDirection.S);
-        return netIdBySlot.ContainsKey(slot) || accountIdBySlot.ContainsKey(slot);
+        // The player index alone, which is the same table JoinedSlots and TryGetPlayerState answer from. The
+        // account table is written and removed with it on every path, so a second probe cannot change the answer
+        // and would only read as though there were a state where the two disagree.
+        return netIdBySlot.ContainsKey(slot);
     }
 
     // The end of a drain, run once from Tick the first time the grace is spent. Closing the sessions is what a
@@ -293,7 +306,9 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
     /// operator who runs the command twice does not hand everyone a second grace period.</para>
     /// <para>When the grace is spent, the next <see cref="Tick"/> closes every remaining session through
     /// <see cref="Kick"/>, so each player leaves by the ordinary path and a persistence layer gets the
-    /// <see cref="PlayerLeaving"/> it needs to file their final state.</para>
+    /// <see cref="PlayerLeaving"/> it needs to file their final state. That close is the point
+    /// <see cref="IsDrainComplete"/> turns true, and after it a new connection is told the reason and dropped
+    /// rather than seated.</para>
     /// </summary>
     /// <param name="reasonToken">A <see cref="TileServerReason"/> token, normally
     /// <see cref="TileServerReason.Draining"/>. Kept, and sent again to anyone who joins inside the grace.</param>

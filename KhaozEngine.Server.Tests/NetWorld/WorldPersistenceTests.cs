@@ -175,8 +175,8 @@ public class WorldPersistenceTests
         }
         finally
         {
-            foreach (string p in new[] { path, path + "-wal", path + "-shm" })
-                try { File.Delete(p); } catch { /* best effort */ }
+            // Strict, not best-effort: the stores above are disposed, so nothing holds the file open (#713).
+            foreach (string p in new[] { path, path + "-wal", path + "-shm" }) File.Delete(p);
         }
     }
 }

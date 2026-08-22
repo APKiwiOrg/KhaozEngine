@@ -56,8 +56,9 @@ public sealed class SqliteWorldStoreConformanceTests : IDisposable
     public void Dispose()
     {
         store.Dispose();
-        foreach (string p in new[] { path, path + "-wal", path + "-shm" })
-            try { File.Delete(p); } catch { /* best effort */ }
+        // Deliberately strict: a disposed store holds no handle on its file, so this cannot fail. Swallowing the
+        // IOException here is what hid #713 on the Windows legs for as long as it lived.
+        foreach (string p in new[] { path, path + "-wal", path + "-shm" }) File.Delete(p);
     }
 
     [Fact] public Task SaveLoad_RoundTrips() => WorldStoreConformance.SaveLoad_RoundTrips(store, "");

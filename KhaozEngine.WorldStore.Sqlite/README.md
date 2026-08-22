@@ -13,8 +13,10 @@ byte[]? loaded = await store.LoadAsync("player:42");
 
 One `world_store(key, data, updated_at)` table, bootstrapped on construction; upsert via
 `INSERT ... ON CONFLICT(key) DO UPDATE`; raw parameterized async ADO.NET (no EF/ORM). Dispose the store to
-close the connection. For production / Azure SQL use `KhaozEngine.WorldStore.SqlServer` against the same
-`IWorldStore` contract.
+close the connection. Disposing also clears the provider's connection pool for that connection, so the OS handle
+on the database file is genuinely released rather than parked in the pool, and the file can be deleted, rotated
+or exclusively opened straight after (since 17.41.0). For production / Azure SQL use
+`KhaozEngine.WorldStore.SqlServer` against the same `IWorldStore` contract.
 
 `SqliteWorldStore` implements **`IEnumerableWorldStore`** (since 8.4.2): `EnumerateAsync(keyPrefix?)` streams
 `WorldStoreEntry { Key, UpdatedAt, Size? }` records via a streaming SQLite cursor, optionally filtered by key

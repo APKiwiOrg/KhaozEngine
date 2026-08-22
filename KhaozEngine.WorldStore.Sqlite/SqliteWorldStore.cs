@@ -9,7 +9,8 @@ using KhaozEngine.WorldStore;
 namespace KhaozEngine.WorldStore.Sqlite;
 
 /// <summary>Connection config for <see cref="SqliteWorldStore"/>. Inject the ADO.NET connection string
-/// (for example <c>Data Source=world.db</c>); no other knobs, pooling stays at the provider default.</summary>
+/// (for example <c>Data Source=world.db</c>); no other knobs. Pooling stays at the provider default while the
+/// store is alive, and <see cref="SqliteWorldStore.Dispose"/> clears it so the file is not left open.</summary>
 public sealed record SqliteWorldStoreOptions(string ConnectionString);
 
 /// <summary>
@@ -17,7 +18,8 @@ public sealed record SqliteWorldStoreOptions(string ConnectionString);
 /// table, bootstrapped on construction; upsert via <c>INSERT ... ON CONFLICT(key) DO UPDATE</c>; raw parameterized
 /// async ADO.NET, no EF/ORM. Holds one open connection (so an in-memory <c>Data Source=:memory:</c> string keeps its
 /// data) and serializes operations with a semaphore, so SQLite never sees concurrent commands on the shared
-/// connection. The embedded dev/test and single-node backend.
+/// connection. Disposing closes that connection AND clears the provider's connection pool for it, so the file is
+/// genuinely released rather than held open by a pooled handle. The embedded dev/test and single-node backend.
 /// </summary>
 public sealed class SqliteWorldStore : IWorldStore, IEnumerableWorldStore, IDisposable
 {
@@ -174,8 +176,16 @@ public sealed class SqliteWorldStore : IWorldStore, IEnumerableWorldStore, IDisp
     internal static string LikeEscape(string s) =>
         s.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
 
+    /// <summary>Closes the database, releasing the OS handle on the file rather than parking it in the provider's
+    /// connection pool. <c>SqliteConnection.Dispose()</c> alone returns the native handle to that pool, which keeps
+    /// the file open indefinitely: Windows then refuses to delete or exclusively open it, and POSIX unlinks it and
+    /// hands the same live handle to the next store opened on that path, which serves the deleted database
+    /// (#713). Clearing the pool first means this connection is never parked, and a pool clear cannot close a
+    /// connection out from under a second live store on the same file, because an in-use connection is not idle in
+    /// the pool and is only disposed when its own owner releases it.</summary>
     public void Dispose()
     {
+        SqliteConnection.ClearPool(connection);
         connection.Dispose();
         gate.Dispose();
     }

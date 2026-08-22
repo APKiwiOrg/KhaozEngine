@@ -12818,7 +12818,9 @@ provider; the dep-free `KhaozEngine.WorldStore` core stays clean). The `KhaozEng
 server using one backend or none never pulls the other's provider:
 
 - **`KhaozEngine.WorldStore.Sqlite`** - `SqliteWorldStore` over `Microsoft.Data.Sqlite`. Embedded, zero-infra;
-  the dev/test + single-node backend (and what keeps persistence headless-testable).
+  the dev/test + single-node backend (and what keeps persistence headless-testable). Disposing it releases the OS
+  handle on the database file, not just the ADO.NET connection, so a server that rotates or deletes a store file
+  can do so straight after the dispose (since 17.41.0).
 - **`KhaozEngine.WorldStore.SqlServer`** - `SqlServerWorldStore` over `Microsoft.Data.SqlClient`. The production
   backend (Azure SQL).
 

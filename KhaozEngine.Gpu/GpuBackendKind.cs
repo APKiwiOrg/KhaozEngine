@@ -29,6 +29,18 @@ namespace KhaozEngine.Gpu
     /// decision already written down and pinned.
     /// </para>
     /// <para>
+    /// SINCE 17.40.0 THE THREE NATIVE MEMBERS ARE THE DEFAULTS and the four Veldrid members are not. The OS
+    /// probe answers <see cref="MetalNative"/> on macOS, <see cref="Direct3D11Native"/> on Windows and
+    /// <see cref="VulkanNative"/> on Linux and everything else, so a session that configures nothing runs on
+    /// the engine's own implementation. Each API's Veldrid member stays reachable for ONE release, as the
+    /// opt-out a game sets through <c>KE_GRAPHICS_BACKEND</c> or a stored preference, and as the backend
+    /// <see cref="GpuBackendSelector.IncumbentFor"/> names for a failed native creation to fall back to. The
+    /// Veldrid IMPLEMENTATIONS are removed by the removal program
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/683) in the release after that. The MEMBERS never are:
+    /// the enum is append-only, a game has persisted them as a player's saved choice, and they become tokens
+    /// that resolve to a named exception rather than values that vanish.
+    /// </para>
+    /// <para>
     /// WHICH sites degrade silently is not a fixed list, and the third append is where that stopped being a
     /// formality. <see cref="MetalNative"/> is the first appended member for which the two software frame-cap
     /// sites are NOT correct by default: they apply a real cap only on Metal, so an append that left them alone
@@ -38,18 +50,31 @@ namespace KhaozEngine.Gpu
     /// </remarks>
     public enum GpuBackendKind
     {
-        /// <summary>Apple Metal, through Veldrid (the default on macOS).</summary>
+        /// <summary>
+        /// Apple Metal, through Veldrid. The macOS default until 17.40.0, and since then the one-release
+        /// opt-out from <see cref="MetalNative"/> plus what <see cref="GpuBackendSelector.IncumbentFor"/>
+        /// answers for macOS. See the remarks above.
+        /// </summary>
         Metal = 0,
-        /// <summary>Vulkan, through Veldrid (the default on Linux).</summary>
+        /// <summary>
+        /// Vulkan, through Veldrid. The Linux (and catch-all) default until 17.40.0, and since then the
+        /// one-release opt-out from <see cref="VulkanNative"/> plus what
+        /// <see cref="GpuBackendSelector.IncumbentFor"/> answers for Linux. See the remarks above.
+        /// </summary>
         Vulkan = 1,
-        /// <summary>Direct3D 11, through Veldrid (the default on Windows).</summary>
+        /// <summary>
+        /// Direct3D 11, through Veldrid. The Windows default until 17.40.0, and since then the one-release
+        /// opt-out from <see cref="Direct3D11Native"/> plus what
+        /// <see cref="GpuBackendSelector.IncumbentFor"/> answers for Windows. See the remarks above.
+        /// </summary>
         Direct3D11 = 2,
         /// <summary>OpenGL, through Veldrid.</summary>
         OpenGL = 3,
 
         /// <summary>
         /// Direct3D 11 through the engine's OWN native backend (<c>KhaozEngine.Gpu.D3D11</c>) rather than through
-        /// Veldrid. Selected by name (<c>KE_GRAPHICS_BACKEND=d3d11-native</c>) and created by the
+        /// Veldrid. THE WINDOWS DEFAULT since 17.40.0, still selectable by name
+        /// (<c>KE_GRAPHICS_BACKEND=d3d11-native</c>), and created by the
         /// <see cref="IGpuBackendProvider"/> that package registers, never by this one: it is a separate member
         /// precisely so a session log, a telemetry header and a frame time are attributed to the implementation
         /// that actually ran. It renders the SAME images as <see cref="Direct3D11"/>, so it shares that backend's
@@ -59,17 +84,20 @@ namespace KhaozEngine.Gpu
 
         /// <summary>
         /// Vulkan through the engine's OWN native backend (<c>KhaozEngine.Gpu.Vulkan</c>) rather than through
-        /// Veldrid. Selected by name (<c>KE_GRAPHICS_BACKEND=vulkan-native</c>, or the shorter
+        /// Veldrid. THE LINUX DEFAULT since 17.40.0, and the catch-all for an OS the probe does not recognize,
+        /// still selectable by name (<c>KE_GRAPHICS_BACKEND=vulkan-native</c>, or the shorter
         /// <c>vk-native</c>) and created by the <see cref="IGpuBackendProvider"/> that package registers, never
         /// by this one, for the same attribution reason <see cref="Direct3D11Native"/> is a separate member: a
         /// session log, a telemetry header and a frame time have to name the implementation that actually ran.
         /// It renders the SAME images as <see cref="Vulkan"/>, so it shares that backend's golden family rather
         /// than owning one.
         /// <para>
-        /// The one place this differs from its Direct3D 11 sibling is what a default flip would MEAN. Windows
-        /// probes to <see cref="Direct3D11"/>, so flipping there changes the Windows default. Linux probes to
-        /// <see cref="Vulkan"/>, so flipping here changes the LINUX default, and it stays unflipped until every
-        /// rollout gate is green (decision V-RO3). Until then this member is reached only by naming it.
+        /// The one place this differs from its Direct3D 11 sibling is what the default flip MEANT. The Windows
+        /// flip moved that platform onto <see cref="Direct3D11Native"/>. This one moved LINUX, and with it the
+        /// catch-all arm, so a machine the probe does not recognize lands here too. The flip was taken by
+        /// decision on 2026-08-22 ahead of two of decision V-RO3's rollout gates, which stay open as issues and
+        /// are named in the dated addendum to section 17 of
+        /// <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c>.
         /// </para>
         /// </summary>
         VulkanNative = 5,
@@ -89,11 +117,12 @@ namespace KhaozEngine.Gpu
         /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>).
         /// </para>
         /// <para>
-        /// And a default flip would change the macOS default, which is not a player population but the fleet's
+        /// And the flip changed the macOS default, which is not a player population but the fleet's
         /// DEVELOPMENT platform: every windowed playtest, every capture, every editor session and every local
-        /// golden bake on a Mac would run on this backend the day it landed. It stays unflipped until every
-        /// rollout gate is green (section 17 of that document), so until then this member is reached only by
-        /// naming it.
+        /// golden bake on a Mac has run on this backend since 17.40.0. A local bake is the one visible cost,
+        /// since a guest of a family may not overwrite it, so baking on a Mac means naming
+        /// <c>KE_GRAPHICS_BACKEND=metal</c>. The flip was taken by decision on 2026-08-22 ahead of the rollout
+        /// gate that is still open, which is named in the dated addendum to section 17 of that document.
         /// </para>
         /// </summary>
         MetalNative = 6,

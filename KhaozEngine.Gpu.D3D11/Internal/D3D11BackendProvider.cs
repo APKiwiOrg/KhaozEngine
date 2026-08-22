@@ -12,9 +12,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// CREATION IS REAL, and this is where it starts. Both entry points build a <see cref="D3D11GpuDevice"/>,
     /// which is the whole backend joined up: the adapter choice, the device and its versioned context, the one
     /// state and emitter context, the fences, the ring, the factory, the swapchain, the capability read and the
-    /// debug-layer pump. Nothing in the engine SELECTS this backend by default: it is reached by
-    /// <c>KE_GRAPHICS_BACKEND</c> or by an explicit request, and the default flip is gated by the five rollout
-    /// gates of https://github.com/APKiwiOrg/KhaozEngine/issues/460.
+    /// debug-layer pump. The engine SELECTS this backend by default on Windows since 17.40.0, and it is still
+    /// reached by <c>KE_GRAPHICS_BACKEND</c> or an explicit request from anywhere else. The flip was taken by
+    /// decision on 2026-08-22 ahead of gate M1, which stays open at
+    /// https://github.com/APKiwiOrg/KhaozEngine/issues/460.
     /// </para>
     /// <para>
     /// THE PLATFORM GUARD IS THE FIRST THING BOTH ENTRY POINTS DO, and it is what keeps the Vortice assembly off

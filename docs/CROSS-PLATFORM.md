@@ -67,14 +67,21 @@ caused it lives inside the client that then will not start. Two mechanisms, and 
   no second window is created.
 - **A native default with no registered provider** takes that same fallback, added at 17.40.0 with the flip.
   The native packages are in no umbrella, so a game repinning the engine without adding one would otherwise
-  have an OS default its own process cannot build. Naming a native backend and not registering it still THROWS
-  `GpuBackendProviderMissingException`, which is the half that stops a soak session measuring the incumbent and
-  filing the number under the native name.
+  have an OS default its own process cannot build. Pinning a native backend in `KE_GRAPHICS_BACKEND` and not
+  registering it still THROWS `GpuBackendProviderMissingException`, which is the half that stops a soak session
+  measuring the incumbent and filing the number under the native name.
+- **`CreateHeadless()` falls back as well since 17.40.0**, in both of the ways a default can fail: the
+  unregistered provider above, and a REGISTERED provider that refuses this machine. A pinned backend still
+  propagates everything there, which is what keeps each of the five legs below capturing goldens under the name
+  it pinned.
 
 The fallback is REPORTED, never repaired: `Source` becomes `FallbackAfterFailure`, `Backend` is what actually
 runs, and `RequestedBackend` is what failed. **A game storing a backend preference must clear it on seeing that
 source**, or the player retries the same broken choice every launch. The engine cannot, since writing a setting
-is file IO and `KhaozEngine.Gpu` does none.
+is file IO and `KhaozEngine.Gpu` does none. The unregistered-provider case above reports the appended
+`DefaultProviderMissing` instead, which a game must NOT clear a preference for: nothing failed and the player
+chose nothing, the gap is a missing `Register()` call in the app. And when the fallback fails too there is no
+device at all, which `GpuNoUsableBackendException` reports naming both backends and both reasons.
 
 The fallback is skipped entirely when the requested backend already IS the incumbent it would fall back to,
 which is every call that names the incumbent outright. A DEFAULT boot is no longer such a call, so the native

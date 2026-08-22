@@ -9035,8 +9035,9 @@ had open. Each design's rollout record in `docs/design/` carries a dated addendu
 Four things a game has to know:
 
 - **Repinning without taking a native backend package still boots.** The native packages are in no umbrella and
-  the engine cannot reference them, so a backend NOBODY NAMED with no registered provider falls back to that
-  platform's incumbent with a WARN. Naming one and not registering it still throws, unchanged.
+  the engine cannot reference them, so a backend nobody PINNED with no registered provider falls back to that
+  platform's incumbent with a WARN and reports the new `GpuBackendSource.DefaultProviderMissing`. Pinning one in
+  `KE_GRAPHICS_BACKEND` and not registering it still throws, unchanged.
 - **A settings picker needs native rows.** `GpuBackendSelector.SupportedBackends()` now returns up to six
   kinds, each API's native implementation ahead of its incumbent, and a picker that maps only the three Veldrid
   kinds will render the default as an unknown or blank row.
@@ -9049,8 +9050,10 @@ Four things a game has to know:
 
 `GpuBackendSelector.IncumbentFor(OSPlatformKind)` is the frozen map of what the probe used to answer (macOS to
 `Metal`, Windows to `Direct3D11`, else `Vulkan`). It is the fallback target, and it is deleted whole with the
-incumbents next release. `GpuBackendSelection.WasNamed` says whether an override or a preference chose the
-backend, which is what decides throw-versus-fall-back above.
+incumbents next release. `GpuBackendSelection.WasPinnedByEnvironment` says whether `KE_GRAPHICS_BACKEND` pinned
+the backend, which is what decides throw-versus-fall-back above. A stored preference is deliberately not pinned:
+a player can store a native kind now, and a later build that dropped the package would otherwise throw at boot
+with the setting that caused it unreachable from inside the game.
 
 ---
 
@@ -9067,8 +9070,9 @@ is also the OPT-OUT, and it lasts one release**: the suffixed kinds are what the
 unsuffixed ones are removed with the Veldrid backends in the next release. NAMING any of the three without
 referencing its package and calling its `Register()` throws saying so and never falls back, because a run that
 quietly used a different implementation would report its measurements under the wrong name. DEFAULTING to one
-without the package is a different case and falls back to the incumbent with a WARN, because a game that never
-asked for the package has made no wiring mistake.
+without the package is a different case and falls back to the incumbent with a WARN reporting
+`GpuBackendSource.DefaultProviderMissing`, because a game that never asked for the package has made no wiring
+mistake and has no stored choice to clear.
 
 Because each pair is two separate values, code that cares about the API rather than the implementation asks
 `kind.IsDirect3D11()`, `kind.IsVulkan()` or `kind.IsMetal()` (the `GpuBackendKinds` extensions, 17.30.0, 17.32.0
@@ -9213,6 +9217,24 @@ if (sel.Source == GpuBackendSource.FallbackAfterFailure)
 1. **Clear the stored preference** when you see `FallbackAfterFailure`, and tell the player what happened.
 2. **Only ever offer `SupportedBackends()`** in the UI, so the common case is prevented rather than recovered.
 
+**`GpuBackendSource.DefaultProviderMissing` (17.40.0) is the one fallback you must NOT clear a preference for.**
+It means the backend the OS probe DEFAULTED to is provider-backed and its provider is not registered in this
+process, so the incumbent was created instead. Nothing failed, no machine is incapable, and the player chose
+nothing: the fix is a package reference plus a `Register()` call in the app, and the WARN names both. The boot
+line reads `GPU backend: Vulkan (default, VulkanNative has no registered provider)` rather than a failure line,
+and the telemetry header carries `"backendSource": "DefaultProviderMissing"` with the default that could not be
+built on `requestedBackend`. Handling it as `FallbackAfterFailure` would make every un-wired session in a fleet
+read as device-creation failure and would put a "your graphics choice failed" notice in front of a player who
+made no choice. `GpuBackendSelector.AfterMissingDefaultProvider(selection, incumbent)` is its pure builder, the
+twin of `AfterFallback` below.
+
+**When the fallback fails too, `GpuNoUsableBackendException` (17.40.0) names BOTH attempts.** There is no device
+at that point and the app cannot render, and the exception carries `RequestedBackend`, `FallbackBackend`, the
+first failure as its `InnerException` and the fallback's own on `FallbackFailure`, with both reasons in the
+message in the order they were tried. The first failure is the inner one deliberately: on a native backend and
+its Veldrid twin the two usually share one underlying cause, and the one worth reading is the first. A backend
+named outright never reaches it, because naming one turns fallback off.
+
 `GpuBackendSelector.AfterFallback(selection, fallbackBackend)` is the pure helper that builds that report, for a
 consumer driving its own retry through `GpuDeviceContext.CreateForWindow(handle, w, h, sync, backend)` (the
 explicit-backend overload: exactly that backend, no resolution and no fallback). Retrying needs no new window,
@@ -9220,10 +9242,13 @@ since `GpuWindowHandle` is a readonly struct of native pointers carrying no devi
 
 The fallback is skipped when the requested backend already IS the incumbent it would fall back to, which is
 every call that names the incumbent outright. A default boot is no longer such a call, so the native default
-has a fallback where the incumbent default never needed one. `CreateHeadless` still never falls back, with the
-one 17.40.0 exception above: a native backend the OS probe DEFAULTED to, with no registered provider, falls
-back to the incumbent there too, so an offscreen capture in a game that never took the native package keeps
-working.
+has a fallback where the incumbent default never needed one. **`CreateHeadless()` falls back too since
+17.40.0**, on the same two guards and with the same WARN, in both of the ways a default can fail: an
+unregistered provider, and a REGISTERED provider that refuses this machine. Without the second one a
+`Render2DSnapshot.Capture` or `Render3DSnapshot.Capture` that worked before a repin would throw after it. A
+backend pinned in `KE_GRAPHICS_BACKEND` still propagates everything on that path, and so does the
+explicitly named `CreateHeadless(GpuBackendKind)` overload below, because a headless run that quietly changed
+backend would file its golden images under a backend that never rendered them.
 
 `GpuDeviceContext.CreateHeadless(backend)` (17.32.0) is the headless twin of that explicit-backend overload:
 
@@ -9315,10 +9340,10 @@ using KhaozEngine.Gpu.D3D11;
 KhaozEngineD3D11.Register();   // unconditionally, on every OS
 ```
 
-**Device creation is real, and nothing selects this backend for you.** Both creation entry points build a device
-on Windows, and off Windows they refuse with a `PlatformNotSupportedException` naming the operating system, which
-the fallback path turns into a WARN and a boot on `Direct3D11`. **Since 17.40.0 the OS probe selects this
-backend on Windows**, so referencing the package and calling `Register()` is all it takes, and naming it
+**Device creation is real, and since 17.40.0 the OS probe selects this backend on Windows.** Both creation
+entry points build a device on Windows, and off Windows they refuse with a `PlatformNotSupportedException`
+naming the operating system, which the fallback path turns into a WARN and a boot on `Direct3D11`.
+Referencing the package and calling `Register()` is all it takes on Windows, and naming it
 (`KE_GRAPHICS_BACKEND=direct3d11-native`, or an explicit `GpuBackendKind.Direct3D11Native`) is still how you
 reach it from anywhere else. The `direct3d11-native` CI leg is blocking and verifies the shared `direct3d11`
 goldens on a pinned WARP adapter. Its recorded evidence, and gate M1, which the flip did not close, are

@@ -160,17 +160,20 @@ KE_GRAPHICS_BACKEND=vulkan-native   # or the shorter vk-native
 ```
 
 The whole token is matched, so a typo'd suffix is an unrecognized override with its own loud diagnostic rather
-than a silent run on the incumbent implementation under the new name. **`vulkan` still means Veldrid's Vulkan
-and keeps meaning it indefinitely**, which is not a transitional state: it is the kill switch every structural
-decision in the design leans on, so an A/B between the two implementations is one environment variable away.
+than a silent run on the incumbent implementation under the new name. **`vulkan` still means Veldrid's Vulkan,
+and since the 17.40.0 flip it is the OPT-OUT rather than the default**: it is the kill switch every structural
+decision in the design leans on, so an A/B between the two implementations is one environment variable away. It
+lasts ONE release. The Veldrid implementations are removed by the removal program
+([#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)) in the release after that, and the token then
+parses to a member whose implementation is gone, because the enum is append-only.
 
 Naming the backend today reaches a real device on both paths, headless and windowed, on any machine whose probe
 answers yes. A machine whose probe answers no arrives through the reported fallback rather than as a crash: the
 creation path catches, WARNs with the message and boots on the incumbent, reporting
-`GpuBackendSource.FallbackAfterFailure`. Nothing selects it for you. The Linux default is still
-`GpuBackendKind.Vulkan` and stays there until every rollout gate is green (decision V-RO3), and
-`GpuBackendSelector.SupportedBackends()` does not offer the native kind to a player at all, because a settings
-screen offers an API rather than an implementation of one.
+`GpuBackendSource.FallbackAfterFailure`. Since 17.40.0 the Linux default IS `GpuBackendKind.VulkanNative`, so
+naming it is no longer how most sessions reach it, and `GpuBackendSelector.SupportedBackends()` offers the
+native kind to a player wherever this package is registered, ahead of the incumbent row it is the one-release
+opt-out from.
 
 `VulkanNative` renders the same images as `Vulkan`, so it is a GUEST in the committed `vulkan` golden family
 rather than owning one (decision V-I3). That is what holds it to the incumbent's already-committed
@@ -1329,11 +1332,18 @@ to escape, since the format ladder's last arm takes the surface's first format w
 All three bind the orphan target and say so once. The device CONSTRUCTOR still refuses on all three, because a
 windowed device that cannot describe its own surface has nothing to hand back.
 
-**One process cannot hold a headless device and a windowed one at the same time.** A live `VkInstance`'s
-extension list is fixed at creation and Vulkan offers no way to add one afterwards, so the second configuration
-is refused by name. Create the WINDOWED device first, or run them in separate processes. Serving the case would
-mean either a second instance, which abandons the single-instance decision quietly, or creating every instance
-with the surface extensions, which takes the golden leg down on a machine with no display server.
+**One process holds a headless device and a windowed one only in that ORDER: windowed first.** A live
+`VkInstance`'s extension list is fixed at creation and Vulkan offers no way to add one afterwards, and a
+windowed list is the headless one plus `VK_KHR_surface` and one platform surface extension. So a headless
+device asked for while a windowed one is live is served by that instance, which is what makes a client that
+opens a window and then takes a `Render3DSnapshot.Capture` work on Linux. The other order is a real shortfall
+and is refused by name, as is a windowed device on a DIFFERENT platform surface, and so is any change of
+validation rung, since the layer is a `vkCreateInstance` argument. Run the refused shapes in separate
+processes. Serving them would mean either a second instance, which abandons the single-instance decision
+quietly, or creating every instance with the surface extensions, which takes the golden leg down on a machine
+with no display server. Widened from a strict key match in 17.40.0
+([#543](https://github.com/APKiwiOrg/KhaozEngine/issues/543)), which had refused the very ordering this
+paragraph prescribes.
 
 ## `KE_VULKAN_DEVICE`, `KE_VULKAN_VALIDATION`, `KE_VULKAN_FRAMES_IN_FLIGHT` and `KE_VULKAN_ACQUIRE`
 

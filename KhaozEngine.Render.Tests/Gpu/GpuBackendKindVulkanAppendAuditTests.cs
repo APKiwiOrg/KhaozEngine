@@ -120,10 +120,12 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// The suffix must not bleed either way, and the incumbent token keeps pointing at the incumbent
-        /// INDEFINITELY, which is decision V-RO2 rather than a transitional state: <c>vulkan</c> is the kill
-        /// switch every structural bet in the Vulkan design leans on, so an A/B against the native backend is one
-        /// environment variable away.
+        /// The suffix must not bleed either way, and the incumbent token keeps pointing at the incumbent for the
+        /// ONE release it survives. Decision V-RO2 read INDEFINITELY and the dated addendum to the design
+        /// supersedes it on the trigger rather than on the shape: <c>vulkan</c> is still the kill switch every
+        /// structural bet in the Vulkan design leans on, and since the 17.40.0 flip it is the opt-out from the
+        /// Linux default rather than the default itself, so an A/B against the native backend is one environment
+        /// variable away for as long as there are two implementations to compare.
         /// </summary>
         [Fact]
         public void TryParseBackend_KeepsTheIncumbentTokenPointingAtTheIncumbent()

@@ -28,8 +28,8 @@ What it owns today:
   `RequestedOverride` is the RAW env value as read (untrimmed, original case) or null when none was present.
   `Select` is implemented on top of `Resolve`, so there is one decision path and the two cannot drift. A blank
   or whitespace-only value counts as no override at all. Only a non-blank unparseable value is
-  `UnrecognizedOverride`, and the OS probe still decides the backend in that case, so `WasNamed` (17.40.0) is
-  false for it: a value that decided nothing did not name a backend. This exists because a typo'd
+  `UnrecognizedOverride`, and the OS probe still decides the backend in that case, so
+  `WasPinnedByEnvironment` (17.40.0) is false for it: a value that decided nothing pinned nothing. This exists because a typo'd
   override is otherwise indistinguishable from the OS default: the run silently uses the default and reads as
   "the requested backend did not help" when it never ran.
 - **Stored user preference** (17.23.0) - `Resolve(string?, OSPlatformKind, GpuBackendKind?)` (and the matching
@@ -56,10 +56,14 @@ What it owns today:
   reference, so a package reference alone would not guarantee self-registration ever runs, and that failure is
   silent and machine-dependent. **A missing registration for a backend the caller NAMED throws
   `GpuBackendProviderMissingException` and never falls back**, because a run that quietly used a different
-  backend would file its measurements under the wrong name. Since 17.40.0 that is narrowed to a NAMED backend
-  (`GpuBackendSelection.WasNamed`, an env override or a stored preference): a backend the OS probe DEFAULTED to
-  falls back to `IncumbentFor` with a WARN instead, because the probe answers a provider-backed kind on every
-  platform now and a game that never referenced the native package has made no wiring mistake. An incapable MACHINE is the other case entirely: the provider's own `IsSupported()` functional probe
+  backend would file its measurements under the wrong name. Since 17.40.0 that is narrowed to a backend
+  `KE_GRAPHICS_BACKEND` PINNED (`GpuBackendSelection.WasPinnedByEnvironment`, which is the property `WasNamed`
+  became): everything else falls back to `IncumbentFor` with a WARN instead, because the probe answers a
+  provider-backed kind on every platform now and a game that never referenced the native package has made no
+  wiring mistake. A stored `UserPreference` falls back too and reports `FallbackAfterFailure`, the signal a game
+  clears the preference on, since a settings screen may offer a native row and a later build that dropped the
+  package would otherwise throw at boot with the setting that caused it unreachable from inside the game. A
+  DEFAULTED one reports `DefaultProviderMissing` instead, which no game should clear anything for. An incapable MACHINE is the other case entirely: the provider's own `IsSupported()` functional probe
   answers `IsBackendSupported`, and it reports through the ordinary `FallbackAfterFailure` path. A provider that
   CREATES successfully and then hands back nothing, or hands back a device whose own `Backend` disagrees with the
   selection, **throws too and never falls back**: that is a bug in the provider, and the fallback shape says
@@ -70,6 +74,24 @@ What it owns today:
 - **`AfterFallback(selection, fallbackBackend)`** (17.23.0) - the pure helper building the post-fallback report
   (backend becomes what ran, source becomes `FallbackAfterFailure`, `RequestedBackend` keeps what was asked
   for). Used by `GpuDeviceContext`, and by a consumer driving its own retry so both report identically.
+- **`GpuBackendSource.DefaultProviderMissing` / `AfterMissingDefaultProvider(selection, incumbent)`** (17.40.0) -
+  the same shape for the case the flip created: the backend the OS probe DEFAULTED to is provider-backed and its
+  provider is not registered in this process, so the incumbent was created instead and `RequestedBackend` carries
+  the default that could not be built. **A member of its own rather than `FallbackAfterFailure`**, because the
+  two say opposite things to the readers that act on them. This one means the app has not referenced a native
+  backend package or has not called its `Register()`, which is a wiring gap in the APP: nothing failed, no
+  machine is incapable, and a game that stores a graphics preference must NOT clear it. Reported as
+  `FallbackAfterFailure` it would make every repinned game that has not taken a native package read as
+  device-creation failure in telemetry, and would put a "your graphics choice failed" notice in front of a player
+  who chose nothing. The boot line says `default, {RequestedBackend} has no registered provider` and the WARN
+  names the package and the one `Register()` call that fixes it.
+- **`GpuNoUsableBackendException`** (17.40.0) - the DOUBLE FALL: the requested backend failed, the engine fell
+  back, and the fallback failed too, so there is no device. It carries `RequestedBackend`, `FallbackBackend` and
+  both failures, and its message names both backends and both reasons in the order they were tried. The FIRST
+  failure is `InnerException`, because on a native backend and its Veldrid twin the two usually share one
+  underlying cause and the one worth reading is the first, and the fallback's own exception is on
+  `FallbackFailure` so neither stack has to be reconstructed from a log. A backend NAMED outright never reaches
+  it: naming one turns fallback off, so its failure propagates alone.
 - **`GpuThreadingCaps` / `GpuThreadingDiagnostics`** (17.22.0) - the graphics driver's multi-threading
   capabilities, on **Direct3D11 only**: `DriverCommandLists` and `DriverConcurrentCreates`, read straight off the
   live device with `ID3D11Device::CheckFeatureSupport` (`D3D11_FEATURE_THREADING`) and surfaced on
@@ -277,13 +299,18 @@ What it owns today:
   that backend, no resolution and no fallback, throwing `GpuBackendProviderMissingException` for a
   provider-backed backend nobody registered. It is how a caller brings up TWO backends in one process (a parity
   comparison, or replacing one implementation with another under the same measurements) without reaching around
-  this class to `GpuBackendProviders` and creating a device outside the process-wide creation gate below. **Creation falls back** to the OS-probe backend when the requested backend fails, rather
+  this class to `GpuBackendProviders` and creating a device outside the process-wide creation gate below.
+  **Creation falls back** to the platform's Veldrid incumbent (`GpuBackendSelector.IncumbentFor`) when the
+  requested backend fails, rather
   than propagating, so a stored preference the machine cannot run cannot leave a player with a client that will
   not start. It WARNs, reports `GpuBackendSource.FallbackAfterFailure` with `Selection.RequestedBackend`, and
   **never clears the game's stored setting, which the game must do itself** (file IO is not this package's job).
   The retry reuses the same `GpuWindowHandle`, so no second window is created. Skipped entirely when the request
-  already is the OS-probe default, which is every call with no override and no preference, so default macOS and
-  Linux paths are unchanged, as is `CreateHeadless`. Exposes `Backend`, `Selection` (the
+  already IS that incumbent. **`CreateHeadless()` falls back too since 17.40.0**, on the same two guards and with
+  the same WARN, because the probe answers a provider-backed kind everywhere now and a `Render2DSnapshot.Capture`
+  that worked before a repin must not throw after it. The one thing that never falls back on either path is a
+  backend `KE_GRAPHICS_BACKEND` PINNED, which is how every soak session and each of the five cross-platform GPU
+  legs selects, and a fallback that fails as well throws `GpuNoUsableBackendException` naming both attempts. Exposes `Backend`, `Selection` (the
   full `GpuBackendSelection`, since 17.21.0), `ThreadingCaps` (the D3D11 driver threading caps, since 17.22.0),
   `AdapterDescription` (the adapter the device runs on, empty when the backend reports none, since 17.24.0 - the
   same value as `Capabilities.DeviceName`, which stays the single source, and on Direct3D11 it is exactly the

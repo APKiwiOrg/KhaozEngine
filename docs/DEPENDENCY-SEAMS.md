@@ -661,9 +661,14 @@ Two properties are load-bearing, and both are decisions rather than conveniences
 `[ModuleInitializer]` and not reflection by assembly name: the CLR loads an assembly lazily on first type
 reference, so a package reference with no static type use does not guarantee an initializer runs, and a silent,
 machine-dependent failure is the worst shape for a switch whose purpose is attributing measurements to a backend.
-And a MISSING registration throws rather than falling back, which keeps it distinguishable from the genuinely
-different fact that a machine cannot run the backend (that one is answered by the provider's own functional probe
-and reported through the existing `FallbackAfterFailure` path). Full reasoning in
+And a MISSING registration for a backend `KE_GRAPHICS_BACKEND` PINNED throws rather than falling back, which
+keeps it distinguishable from the genuinely different fact that a machine cannot run the backend (that one is
+answered by the provider's own functional probe and reported through the existing `FallbackAfterFailure` path).
+Since the 17.40.0 default flip every other provenance falls back instead, because the OS probe answers a
+provider-backed kind on every platform and a game that never referenced the native package has made no wiring
+mistake. That fallback reports the appended `GpuBackendSource.DefaultProviderMissing`, deliberately not
+`FallbackAfterFailure`, so a consuming game can tell "your stored choice cannot run here, clear it" from "this
+build has no provider for its own default, add the package reference". Full reasoning in
 [design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md](design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md), section 4.1
 and decisions P4 and I2.
 

@@ -20,14 +20,15 @@ namespace KhaozEngine.Gpu.Vulkan
     /// transfer paths.
     /// </para>
     /// <para>
-    /// WHAT IS NOT DONE IS THE ROLLOUT, WHICH IS A DIFFERENT SENTENCE FROM "NOT BUILT". Nothing selects this
-    /// backend for anyone: <c>ProbeOS</c> still maps Linux to <see cref="GpuBackendKind.Vulkan"/>, the headless
-    /// default is unchanged, and this backend is reached only by an explicit kind or the
-    /// <c>KE_GRAPHICS_BACKEND=vulkan-native</c> token. The default flip waits on the five rollout gates of
-    /// section 17 (https://github.com/APKiwiOrg/KhaozEngine/issues/529), two of which are a field session and a
-    /// human windowed pass that no CI leg can stand in for. The Veldrid Vulkan backend stays selectable
-    /// indefinitely either way (decision V-RO2), so a regression here is one environment variable away from an
-    /// A/B on the same build.
+    /// THIS BACKEND IS THE LINUX DEFAULT SINCE 17.40.0. <c>GpuBackendSelector.ProbeOS</c> maps Linux, and the
+    /// unrecognized-OS catch-all, to <see cref="GpuBackendKind.VulkanNative"/>, so a game that references this
+    /// package and calls <see cref="Register"/> runs on it without naming anything, and a game that does
+    /// neither falls back to <see cref="GpuBackendKind.Vulkan"/> with a WARN naming the missing registration
+    /// rather than failing to boot. The flip was taken by DECISION on 2026-08-22, ahead of two of the five
+    /// rollout gates of section 17 (https://github.com/APKiwiOrg/KhaozEngine/issues/529): gate 3's <c>sync</c>
+    /// validation job and gate 5's human windowed pass are still open and still carry an instrument. The
+    /// Veldrid Vulkan backend stays selectable by <c>KE_GRAPHICS_BACKEND=vulkan</c> for ONE release (decision
+    /// V-RO2), so a regression here is one environment variable away from an A/B on the same build.
     /// </para>
     /// <para>
     /// THIS PARAGRAPH IS A LEDGER, AND A STALE ONE IS WORSE THAN NONE, because it is the first thing a consumer

@@ -130,9 +130,11 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// The suffix must not bleed either way, and the incumbent token keeps pointing at the incumbent until
-        /// the program's closing act (decision M-RO2). That is the kill switch this design leans on hardest,
-        /// because it is the only way to A/B a suspected difference on a Mac against the very references the
-        /// fleet's goldens are baked from, on one build, with no re-bake.
+        /// the program's closing act (decision M-RO2), which since the 17.40.0 flip is ONE release away. That is
+        /// the kill switch this design leans on hardest, because it is the only way to A/B a suspected
+        /// difference on a Mac against the very references the fleet's goldens are baked from, on one build,
+        /// with no re-bake. It is also how a Mac BAKES now, since the default is a guest of the family it would
+        /// overwrite.
         /// </summary>
         [Fact]
         public void TryParseBackend_KeepsTheIncumbentTokenPointingAtTheIncumbent()

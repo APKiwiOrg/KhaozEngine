@@ -47,8 +47,10 @@ public sealed class TelemetrySessionInfo
 
     /// <summary>
     /// Where that backend choice came from, as a name (<c>"OsProbe"</c>, <c>"EnvironmentOverride"</c>,
-    /// <c>"UserPreference"</c>, <c>"FallbackAfterFailure"</c>, ...). The provenance is what separates a
-    /// deliberate backend from one the engine fell back to, so a capture is readable without guessing.
+    /// <c>"UserPreference"</c>, <c>"FallbackAfterFailure"</c>, <c>"DefaultProviderMissing"</c>, ...). The
+    /// provenance is what separates a deliberate backend from one the engine fell back to, so a capture is
+    /// readable without guessing, and it separates the two FALLBACKS as well: one is a device creation that
+    /// failed, the other is a build with no provider registered for its own platform default.
     /// </summary>
     public string? GpuBackendSource { get; set; }
 

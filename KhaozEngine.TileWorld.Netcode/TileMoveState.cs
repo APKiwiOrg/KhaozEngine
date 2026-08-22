@@ -42,8 +42,8 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
     /// still, which is why it is its own field rather than read back off the route.</summary>
     public TileDirection Facing;
 
-    /// <summary>Walk or run: which entry of <c>TileStepTicks</c> the current route steps at. Held on the state so a
-    /// mode change mid route takes effect on the next step rather than restarting the walk.</summary>
+    /// <summary>Walk or run: which entry of <see cref="TileStepTicks"/> the current route steps at. Held on the
+    /// state so a mode change mid route takes effect on the next step rather than restarting the walk.</summary>
     public TileMoveMode Mode;
 
     /// <summary>Ticks already spent in the current step. Always below <see cref="StepTotal"/>, because the tick that

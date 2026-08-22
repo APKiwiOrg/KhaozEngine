@@ -5,6 +5,29 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.40.0
+
+17.40.0 makes the native backends the default, see the rollout bullets.
+
+- **`IGpuCommandList.CopyBuffer` refuses an offset that is not a multiple of four, on every backend, and
+  `GpuReadback.ReadBuffer<T>` refuses one before it allocates anything
+  ([#602](https://github.com/APKiwiOrg/KhaozEngine/issues/602),
+  [#684](https://github.com/APKiwiOrg/KhaozEngine/issues/684)).** macOS requires both offsets of
+  `copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:` to be multiples of four, so native Metal
+  refused an unaligned offset from the day it shipped while Veldrid, native Vulkan and native Direct3D 11 all
+  took one. The same public call therefore succeeded on three backends and threw on the fourth, which a
+  consumer would only have found on a user's Mac. The strictest backend's requirement is now the seam's
+  contract: one rule, one wording, four implementations
+  (`KhaozEngine.Gpu/Internal/GpuCopyAlignment.cs`), with the side of the copy named in the message and
+  `srcOffsetBytes` / `dstOffsetBytes` as the `ArgumentOutOfRangeException.ParamName`. **This is a behaviour
+  change for a consumer that passes an unaligned offset on Veldrid, Vulkan or Direct3D 11**, where the call
+  used to be taken. Nothing in the engine does: all five in-repo `ReadBuffer` callers leave the offset at its
+  default of 0, and the full suite is green with the incumbent still present, which is what says the tolerant
+  behaviour was never load-bearing. Refusing rather than rounding is deliberate: an offset selects WHICH bytes
+  come back, so rounding one up would quietly return a different slice than the caller asked for. The SIZE is
+  unconstrained as before, since only Metal needs it aligned and it pads rather than refusing. An unaligned
+  start is still legal to read: map the buffer, or reach it through the device-level `UpdateBuffer`.
+
 ## 17.39.0
 
 A tile world can draw a real glb kit per archetype now, the glTF loader honours per-vertex COLOR_0, and a

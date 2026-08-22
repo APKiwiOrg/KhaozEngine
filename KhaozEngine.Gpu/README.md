@@ -371,6 +371,11 @@ What it owns today:
   storage buffers. Readback: `IGpuDevice.Map`/`Unmap` take a buffer as well as a texture, and
   `GpuReadback.ReadBuffer<T>` wraps the staging-copy-map-unmap sequence. Gate on `GpuCapabilities.SupportsCompute`;
   creating a compute shader or pipeline on a device without it throws.
+  - **Both `CopyBuffer` offsets, and `ReadBuffer<T>`'s `srcOffsetBytes`, must be multiples of four** (since
+    17.40.0). macOS requires it of the Metal copy selector, so the seam requires it of every backend rather than
+    letting the same call succeed on three and throw on the fourth
+    ([#602](https://github.com/APKiwiOrg/KhaozEngine/issues/602)). An offset that is not is an
+    `ArgumentOutOfRangeException` naming the side it came from. The size is unconstrained.
   - **The workgroup size comes from the shader, not from you.** `IGpuComputeShader.ThreadGroupSizeX/Y/Z` is read
     out of the compiled SPIR-V module's `LocalSize` execution mode and is what the pipeline is built with, so there
     is no second copy of `layout(local_size_x = ...)` to drift (which would be invisible on Vulkan/D3D11 and

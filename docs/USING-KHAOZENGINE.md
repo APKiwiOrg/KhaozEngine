@@ -5352,7 +5352,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.39.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.40.0" />
 ```
 
 ```csharp
@@ -9261,7 +9261,7 @@ run inside the engine's process-wide device-creation gate, so a provider needs n
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.40.0" />
 ```
 
 ```csharp
@@ -9295,7 +9295,7 @@ that up front is what routes it through the reported fallback instead of a crash
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.40.0" />
 ```
 
 ```csharp
@@ -9537,7 +9537,7 @@ is no recovery path: a lost device stays lost, which is what the liveness token 
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.40.0" />
 ```
 
 ```csharp
@@ -11608,6 +11608,20 @@ samples needs `Sampled` as well. A storage buffer is `GpuBufferUsage.StructuredB
 `...ReadOnly`) bound through the matching `GpuResourceKind`. Read a buffer back with
 `GpuReadback.ReadBuffer<T>(gd, buffer, elementCount)`, which wraps the whole staging-copy-map-unmap sequence.
 `T`'s layout must match the shader's, so watch the std430 padding rules (a `vec3` member occupies 16 bytes).
+
+**A copy offset is a multiple of four, on every backend (since 17.40.0).** `ReadBuffer<T>`'s optional
+`srcOffsetBytes` and both offsets of `IGpuCommandList.CopyBuffer` are refused with an
+`ArgumentOutOfRangeException` when they are not, naming the side the bad one came from. macOS requires it of
+`copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:`, so before 17.40.0 the same call was taken on
+Veldrid, Vulkan and Direct3D 11 and threw on Metal, which is a difference a game would only meet on a player's
+Mac ([#602](https://github.com/APKiwiOrg/KhaozEngine/issues/602)). The seam takes the strictest backend's rule
+rather than papering over it, because rounding an offset would hand back a different slice than the one asked
+for. The SIZE is unconstrained. If you genuinely need an unaligned start, map the buffer and read from there:
+
+```csharp
+uint[] tail = GpuReadback.ReadBuffer<uint>(gd, buffer, 4, srcOffsetBytes: 16);   // fine, 16 % 4 == 0
+uint[] bad  = GpuReadback.ReadBuffer<uint>(gd, buffer, 4, srcOffsetBytes: 3);    // throws on every backend
+```
 
 ### Ordering: two rules, because there is no barrier call
 

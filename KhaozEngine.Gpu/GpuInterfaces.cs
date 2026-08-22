@@ -268,8 +268,19 @@ namespace KhaozEngine.Gpu
         void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged;
         /// <summary>Copy <paramref name="sizeInBytes"/> bytes between two buffers (e.g. a compute-written storage
         /// buffer -> a <see cref="GpuBufferUsage.Staging"/> buffer for readback). The counterpart of
-        /// <see cref="CopyTexture"/> for buffers; <see cref="GpuReadback.ReadBuffer{T}"/> wraps the whole
-        /// staging-copy-map-unmap dance.</summary>
+        /// <see cref="CopyTexture"/> for buffers, and <see cref="GpuReadback.ReadBuffer{T}"/> wraps the whole
+        /// staging-copy-map-unmap dance.
+        /// <para>
+        /// <b>BOTH OFFSETS MUST BE MULTIPLES OF FOUR, ON EVERY BACKEND, AND ONE THAT IS NOT IS REFUSED WITH AN
+        /// <see cref="ArgumentOutOfRangeException"/> NAMING THE SIDE IT CAME FROM.</b> macOS requires it of
+        /// <c>copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:</c>, so until 17.40.0 the same call
+        /// succeeded on three backends and threw on Metal
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/602">#602</see>). The strictest backend's
+        /// requirement is the seam's contract rather than one implementation's quirk, because the alternative is
+        /// a portability trap a consumer only finds on a user's Mac. The SIZE is not constrained: only Metal
+        /// needs it aligned and it pads the size up, which moves no data the caller asked for.
+        /// </para>
+        /// </summary>
         void CopyBuffer(IGpuBuffer src, uint srcOffsetBytes, IGpuBuffer dst, uint dstOffsetBytes, uint sizeInBytes);
 
         /// <summary>Copy a whole texture (e.g. render target -> staging) for readback.</summary>

@@ -287,7 +287,9 @@ What it owns today:
   keeps the seam's logical layer count at one. Nothing samples that slice, but Veldrid counts it, so the two
   paths that name subresources handle it: `CopyTexture` (and with it `GpuReadback.ToRgba`) narrows to the logical
   subresources when a side pads, and an `UpdateTexture` aimed at the phantom layer is refused rather than
-  accepted silently. A `GpuTextureUsage.Staging` texture is never padded, having no view to fix.
+  accepted silently. That refusal is uniform across all four backends only since 17.40.0: native Direct3D 11 and
+  native Vulkan took the call in silence until then, because neither API rejects a subresource index past the end
+  of the resource (#695). A `GpuTextureUsage.Staging` texture is never padded, having no view to fix.
 - **`GpuWindowHandle`** - a native window handle (kind + handle/display) the windowing layer hands over, so
   this package needs no reference to the windowing library.
 - **`GpuDeviceContext`** - `CreateForWindow(in GpuWindowHandle, width, height, syncToVerticalBlank = true)` (device
@@ -408,6 +410,11 @@ What it owns today:
   storage buffers. Readback: `IGpuDevice.Map`/`Unmap` take a buffer as well as a texture, and
   `GpuReadback.ReadBuffer<T>` wraps the staging-copy-map-unmap sequence. Gate on `GpuCapabilities.SupportsCompute`;
   creating a compute shader or pipeline on a device without it throws.
+  - **Both `CopyBuffer` offsets, and `ReadBuffer<T>`'s `srcOffsetBytes`, must be multiples of four** (since
+    17.40.0). macOS requires it of the Metal copy selector, so the seam requires it of every backend rather than
+    letting the same call succeed on three and throw on the fourth
+    ([#602](https://github.com/APKiwiOrg/KhaozEngine/issues/602)). An offset that is not is an
+    `ArgumentOutOfRangeException` naming the side it came from. The size is unconstrained.
   - **The workgroup size comes from the shader, not from you.** `IGpuComputeShader.ThreadGroupSizeX/Y/Z` is read
     out of the compiled SPIR-V module's `LocalSize` execution mode and is what the pipeline is built with, so there
     is no second copy of `layout(local_size_x = ...)` to drift (which would be invisible on Vulkan/D3D11 and

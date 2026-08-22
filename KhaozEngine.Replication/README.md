@@ -15,7 +15,12 @@ area-of-interest deltas.
   lerp) closures, keyed by a stable `ushort` type id. **Consumer extension components** register at ids at/above
   **`ReplicationRegistry.FirstExtensionTypeId`** (= 16, `IsExtension(id)`); ids `1..15` are reserved for engine
   built-ins. Extension components are length-prefixed on the wire, so a client whose registry never registered the
-  id **skips** it (forward-compatible), while an unknown built-in id stays a hard mismatch.
+  id **skips** it (forward-compatible), while an unknown built-in id stays a hard mismatch. Since 17.40.0 an
+  extension `deserialize` closure reads through a reader bounded to EXACTLY that component's own framed payload
+  (`FramedPayloadStream`, re-pointed per component and reused for a whole apply, so framing allocates nothing), so
+  a codec that carries a declared length of its own can check it against `BaseStream.Length - Position` and a lying
+  length cannot be satisfied out of the bytes of the components behind it. A built-in frame is unframed and has no
+  such bound, so it still reads through the stream itself.
   `IsRegistered(ushort)` (since 17.38.0) asks whether this registry has a codec for an id, for a caller judging
   whether an id it read out of STORED bytes is one this build knows: cell-blob persistence uses it to retire a
   candidate parse of a blob whose wire generation was never recorded.

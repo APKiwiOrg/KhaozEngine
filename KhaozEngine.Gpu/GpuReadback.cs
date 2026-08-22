@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu
 {
@@ -99,11 +100,26 @@ namespace KhaozEngine.Gpu
         /// <see cref="GpuBufferUsage.Staging"/> buffer, copies into it, drains, maps, and copies out - the buffer
         /// counterpart of <see cref="ToRgba"/>, so a compute consumer does not re-derive the sequence.
         /// <typeparamref name="T"/>'s layout must match the shader's, which for a std430 buffer means watching the
-        /// usual scalar/vec3 padding rules (a <c>vec3</c> member occupies 16 bytes).</summary>
+        /// usual scalar/vec3 padding rules (a <c>vec3</c> member occupies 16 bytes).
+        /// <para>
+        /// <b><paramref name="srcOffsetBytes"/> MUST BE A MULTIPLE OF FOUR</b>, which is what
+        /// <see cref="IGpuCommandList.CopyBuffer"/> requires of an offset on every backend, and one that is not
+        /// is refused here with an <see cref="ArgumentOutOfRangeException"/> before anything is allocated,
+        /// recorded or submitted. Until 17.40.0 this offset went into the copy unfiltered, so the same call
+        /// succeeded on three backends and threw on native Metal, whose copy selector requires the alignment on
+        /// macOS (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/602">#602</see>). Refusing rather
+        /// than rounding is the half of that choice worth stating: an offset selects WHICH bytes come back, so
+        /// rounding it up would quietly hand the caller a different slice than the one they asked for. An
+        /// unaligned start is legal to READ, just not to copy from, so map the buffer or reach it through the
+        /// device-level API instead.
+        /// </para>
+        /// </summary>
         public static T[] ReadBuffer<T>(IGpuDevice gd, IGpuBuffer src, int elementCount, uint srcOffsetBytes = 0)
             where T : unmanaged
         {
             if (elementCount < 0) throw new ArgumentOutOfRangeException(nameof(elementCount));
+            GpuCopyAlignment.RequireAlignedOffset(srcOffsetBytes, nameof(srcOffsetBytes),
+                "A buffer readback (GpuReadback.ReadBuffer)", "source");
             var result = new T[elementCount];
             if (elementCount == 0) return result;
 

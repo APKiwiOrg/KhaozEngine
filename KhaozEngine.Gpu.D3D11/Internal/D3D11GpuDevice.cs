@@ -303,6 +303,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// definition. A format table here would be a second source for the same number, and it is the one that
         /// would drift, because the seam admits a caller that packs its own rows.
         /// </para>
+        /// <para>
+        /// AN ARRAY LAYER THE TEXTURE DOES NOT HAVE IS REFUSED HERE, by name, before anything native runs. See
+        /// <see cref="D3D11UploadBounds"/> for why D3D11 itself will not do it (#695).
+        /// </para>
         /// </summary>
         public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height,
             uint mipLevel, uint arrayLayer)
@@ -316,6 +320,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     $"A {texture.GetType().Name} was handed to the native Direct3D 11 device as an upload target. "
                     + "A texture this backend created carries the ID3D11Texture2D an update names, and a texture "
                     + "from another backend carries another backend's.", nameof(texture));
+
+            // THE PHANTOM LAYER IS REFUSED HERE AND NOT BY D3D11 (#695). UpdateSubresource drops a subresource
+            // index past the end of the resource without an HRESULT, so nothing downstream of this line would
+            // ever notice, and the seam's contract is the refusal at the call site that native Metal already
+            // gives. The bound is slices rather than logical layers, which is what a cubemap makes different.
+            D3D11UploadBounds.RequireArrayLayer(arrayLayer, destination.ArraySlices);
 
             lock (_submitLock)
             {

@@ -323,7 +323,8 @@ public class ArchitectureTests
             new[]
             {
                 "Foundation", "Netcode", "Netcode.Abstractions", "Netcode.LiteNetLib", "Simulation",
-                "Replication", "WorldStore", "Sharding", "NetWorld", "Physics", "CodeHealth.Analyzers",
+                "Replication", "WorldStore", "Sharding", "NetWorld", "TileWorld.Netcode", "Physics",
+                "CodeHealth.Analyzers",
             }
         },
     };
@@ -393,6 +394,31 @@ public class ArchitectureTests
         Assert.True(clean,
             "KhaozEngine.Terrain carries the render/physics-free streamer core (TerrainStreamer and friends) so a " +
             "headless server can reference it, but its ProjectReference closure pulls in: " + string.Join(", ", hits));
+    }
+
+    [Fact]
+    public void TileWorldNetcode_NeverReferencesNetWorld()
+    {
+        IReadOnlyDictionary<string, Project> graph = LoadGraph();
+        var violations = new List<string>();
+
+        // The TEST project is held to the same rule as the package. Its InMemoryTransportHub is a deliberate
+        // copy of the KhaozEngine.Server.Tests helper rather than a reference to it, and the whole price of that
+        // duplication buys nothing unless this suite's own reference graph stays narrow.
+        foreach (string node in new[] { "KhaozEngine.TileWorld.Netcode", "KhaozEngine.TileWorld.Netcode.Tests" })
+        {
+            HashSet<string> closure = TransitiveClosure(node, graph).Select(Short).ToHashSet(StringComparer.Ordinal);
+            string[] hits = new[] { "NetWorld", "Locomotion" }.Where(closure.Contains).ToArray();
+            if (hits.Length > 0)
+                violations.Add(Short(node) + " pulls in: " + string.Join(", ", hits));
+        }
+
+        bool clean = violations.Count == 0;
+        Assert.True(clean,
+            "KhaozEngine.TileWorld.Netcode is a SIBLING of NetWorld over the same generic layers, not a dependent " +
+            "of it: pulling NetWorld in would drag the float locomotion stack into every tile server. The test " +
+            "project is covered too, because its InMemoryTransportHub is a copy rather than a reference precisely " +
+            "so this suite's graph stays narrow. ProjectReference closures: " + string.Join(" | ", violations));
     }
 
     [Fact]

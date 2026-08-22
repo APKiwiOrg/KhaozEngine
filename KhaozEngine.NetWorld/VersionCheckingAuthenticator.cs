@@ -15,12 +15,14 @@ namespace KhaozEngine.NetWorld;
 /// an empty string and can reject unknown-version clients. On accept, the unwrapped inner token is delegated to
 /// the wrapped inner authenticator unchanged, so subject/display-name resolution is exactly as without the decorator.
 /// Compose it like any authenticator: <c>new WorldServer(..., authenticator: new VersionCheckingAuthenticator(...))</c>.
+/// <para>Since 17.40.0 the gate itself lives in <see cref="VersionGateAuthenticator"/> and this type forwards to
+/// one, so the engine has a single version-gate body rather than two that can drift. Name, surface and behaviour
+/// are unchanged, and a consumer that does not reference this package composes the
+/// <see cref="VersionGateAuthenticator"/> directly.</para>
 /// </summary>
 public sealed class VersionCheckingAuthenticator : IConnectionAuthenticator, IConnectionDisplayName
 {
-    private readonly string serverVersion;
-    private readonly Func<string, bool> isCompatible;
-    private readonly IConnectionAuthenticator inner;
+    private readonly VersionGateAuthenticator gate;
 
     /// <param name="serverVersion">The server's protocol version, sent to a rejected client as the required version.</param>
     /// <param name="isCompatible">Consumer rule: given the client's presented version (empty for a legacy/non-opting
@@ -28,28 +30,11 @@ public sealed class VersionCheckingAuthenticator : IConnectionAuthenticator, ICo
     /// <param name="inner">The real auth gate to delegate to on a compatible version. Defaults to
     /// <see cref="AllowAllAuthenticator"/> (dev/local).</param>
     public VersionCheckingAuthenticator(string serverVersion, Func<string, bool> isCompatible,
-        IConnectionAuthenticator? inner = null)
-    {
-        this.serverVersion = serverVersion ?? throw new ArgumentNullException(nameof(serverVersion));
-        this.isCompatible = isCompatible ?? throw new ArgumentNullException(nameof(isCompatible));
-        this.inner = inner ?? new AllowAllAuthenticator();
-    }
+        IConnectionAuthenticator? inner = null) =>
+        gate = new VersionGateAuthenticator(serverVersion, isCompatible, inner);
 
-    public bool TryAuthenticate(ReadOnlySpan<byte> token, out string subject, out string rejectReason)
-    {
-        ProtocolHandshake.TryUnwrapToken(token, out string clientVersion, out byte[] innerToken);
-        if (!isCompatible(clientVersion))
-        {
-            subject = string.Empty;
-            rejectReason = ProtocolHandshake.IncompatibleReason(serverVersion);
-            return false;
-        }
-        return inner.TryAuthenticate(innerToken, out subject, out rejectReason);
-    }
+    public bool TryAuthenticate(ReadOnlySpan<byte> token, out string subject, out string rejectReason) =>
+        gate.TryAuthenticate(token, out subject, out rejectReason);
 
-    public string ReadDisplayName(ReadOnlySpan<byte> token)
-    {
-        ProtocolHandshake.TryUnwrapToken(token, out _, out byte[] innerToken);
-        return inner is IConnectionDisplayName named ? named.ReadDisplayName(innerToken) : string.Empty;
-    }
+    public string ReadDisplayName(ReadOnlySpan<byte> token) => gate.ReadDisplayName(token);
 }

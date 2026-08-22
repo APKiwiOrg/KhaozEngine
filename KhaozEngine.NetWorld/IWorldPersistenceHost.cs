@@ -1,5 +1,5 @@
-using System;
-using System.Collections.Generic;
+using System.Numerics;
+using KhaozEngine.WorldStore;
 
 namespace KhaozEngine.NetWorld;
 
@@ -7,42 +7,15 @@ namespace KhaozEngine.NetWorld;
 /// The server-side surface <see cref="WorldPersistence"/> drives, so the same persistence wiring (load-on-join,
 /// save-on-leave, periodic dirty snapshot, keyed <c>player:{accountId}</c>) serves both the single-<see cref="KhaozEngine.Ecs.World"/>
 /// <see cref="WorldServer"/> and the multi-cell <see cref="ShardedWorldServer"/>. Player-keyed and cell-agnostic:
-/// <see cref="SetPlayerState"/> places a loaded player at its saved position wherever that falls (a sharded host
-/// relocates it to the containing cell on its next handoff pass).
+/// <see cref="IPersistenceHost{TState}.SetPlayerState"/> places a loaded player at its saved position wherever that
+/// falls (a sharded host relocates it to the containing cell on its next handoff pass).
+/// <para>Every member except <see cref="SetResumePositionProvider"/> is inherited verbatim from
+/// <see cref="IPersistenceHost{TState}"/> over <see cref="PlayerMoveState"/>, which is what lets one persistence
+/// core serve this package and the tile stack alike. The signatures did not change when it moved, so an existing
+/// implementer compiles untouched.</para>
 /// </summary>
-public interface IWorldPersistenceHost
+public interface IWorldPersistenceHost : IPersistenceHost<PlayerMoveState>
 {
-    /// <summary>Raised after a player entity has spawned: (slot, accountId). Persistence loads the saved record here.</summary>
-    event Action<int, string>? PlayerJoined;
-
-    /// <summary>Raised just before a player despawns: (slot, accountId, final state). Persistence saves the final state here.</summary>
-    event Action<int, string, PlayerMoveState>? PlayerLeaving;
-
-    /// <summary>Overrides a joined player's authoritative state (load-on-join placement). No-op for an unknown slot.
-    /// When <paramref name="teleport"/> is true the host advances the player's monotonic teleport epoch
-    /// (<see cref="MovementState.TeleportEpoch"/>) so the client cuts to the placed position rather than gliding.
-    /// Load-on-join passes true only when the placement actually MOVES the player: a rejoiner whose join was seeded
-    /// from <see cref="SetResumePositionProvider"/> is already standing on the loaded position, and reporting a
-    /// teleport for a move of nothing is exactly what makes a quiet reconnect loud
-    /// (<see cref="WorldPersistenceConfig.QuietRestoreDistance"/>). Normal per-tick movement never advances it.</summary>
-    void SetPlayerState(int slot, in PlayerMoveState state, bool teleport = false);
-
-    /// <summary>The slots of all currently joined players.</summary>
-    IReadOnlyCollection<int> JoinedSlots { get; }
-
-    /// <summary>
-    /// The account id for a joined slot (connect token, or the <see cref="ResumePositionCache.GuestAccountPrefix"/>
-    /// fallback for a tokenless connection). Load-bearing, not informational: the periodic save skips a slot this
-    /// answers <c>false</c> for, and since #646 the load-on-join apply DROPS a record whose account no longer holds
-    /// the slot, so a host that does not answer for its joined slots gets neither saves nor restores. Answer it from
-    /// the same table the join wrote, before <c>PlayerJoined</c> is raised. A guest fallback is answered here as
-    /// usual, but <see cref="WorldPersistence"/> never files a record under it (#647).
-    /// </summary>
-    bool TryGetAccountId(int slot, out string accountId);
-
-    /// <summary>The current authoritative movement state for a joined slot.</summary>
-    bool TryGetPlayerState(int slot, out PlayerMoveState state);
-
     /// <summary>
     /// Installs the hint a join consults to decide where a REJOINING player's entity is built, before the entity
     /// exists and therefore before the first snapshot carrying it goes out. Null clears it, which returns the head
@@ -59,17 +32,10 @@ public interface IWorldPersistenceHost
     /// </summary>
     void SetResumePositionProvider(ResumePositionProvider? provider) { }
 
-    /// <summary>
-    /// Where the host WOULD have built this slot with no resume hint at all: the configured spawn, ground-clamped
-    /// the same way a join clamps it, in ABSOLUTE world metres. Deliberately hint-free, which is the whole point of
-    /// it: it is the position a rejected record has to be reset to.
-    /// <para>This is the other half of <see cref="SetResumePositionProvider"/>. Seeding the join means a REJECTED
-    /// load can no longer just decline to place the player: they are already standing on the hint, which nothing
-    /// validated. <see cref="WorldPersistence"/> calls this on quarantine and places the player here as a genuine
-    /// teleport, because policy moved them (see <see cref="WorldPersistence"/>).</para>
-    /// <para>Returns false for an unknown slot, and from the default implementation, which is what a host that
-    /// installs no resume provider wants: with no seed there is nothing to undo, so the player is already on
-    /// whatever spawn that host built them at.</para>
-    /// </summary>
-    bool TryGetConfiguredSpawn(int slot, out PlayerMoveState spawn) { spawn = default; return false; }
+    // Bridges the generic seam onto this package's named delegate, so every existing implementer (WorldServer,
+    // ShardedWorldServer, the sample, the test fakes) is unchanged: they still implement the ResumePositionProvider
+    // overload and never see the generic one. Re-implementing a base interface member in a derived interface is
+    // what makes this the most specific implementation, so the core's call through IPersistenceHost lands here.
+    void IPersistenceHost<PlayerMoveState>.SetPositionHintProvider(PositionHintProvider? provider) =>
+        SetResumePositionProvider(provider is null ? null : (string accountId, out Vector3 position) => provider(accountId, out position));
 }

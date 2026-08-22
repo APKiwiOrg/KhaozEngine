@@ -1,6 +1,10 @@
 # Tile-world netcode: click-to-walk on a 250 ms tick, server-authoritative, sharded by region (2026-08-22)
 
-Status: designed, unbuilt. Program issue: [#670](https://github.com/APKiwiOrg/KhaozEngine/issues/670). Sub-project 2
+Status: R1 SHIPPED in engine 17.40.0, R2 next. The package is `KhaozEngine.TileWorld.Netcode`. Where this
+document and the shipped code disagree, the code's own type docs win: the tick that carries a command is a FULL
+step tick, the run mode rides every command and applies at the next step start, a cross-plane command is dropped
+whole, `TileReach` tests the step OUTWARD from the footprint, and the arrival turn happens in the simulator so both
+heads predict it. Program issue: [#670](https://github.com/APKiwiOrg/KhaozEngine/issues/670). Sub-project 2
 of the Grimhollow program, following sub-project 1 ([TILE-WORLD-DESIGN-2026-08-15.md](TILE-WORLD-DESIGN-2026-08-15.md),
 [#629](https://github.com/APKiwiOrg/KhaozEngine/issues/629)), whose tile world, collision map, pathfinder and
 renderer this design moves players across. Game-side issue:
@@ -142,11 +146,23 @@ Interact), `TileCoord Goal`, `TileMoveMode Mode`, `long Target` (net id or objec
 `TileMoveSimulator : ITickSimulator<TileMoveState, TileCommand>` owns the shared inputs (the collision map, the
 document for footprints, the tick counts) and is the ONE stepper both heads run:
 
-- `WalkTo`: `FindPath(map, plane, state.Tile, goal)` into a new `Route`, `StepTicks` to zero, mode taken from the
-  command. An unreachable goal walks to the nearest reachable tile, the OSRS rule `FindPath` already implements.
-- `Interact`: `TileReach.Nearest(map, plane, state.Tile, targetFootprint)` picks the reach tile, routes to it, and
-  records the target so arrival faces it and raises the action.
-- `None`: advance `StepTicks`. When it reaches `TicksPerStep(Mode)` (2 run, 4 walk), re-check `CanStep` from the
+- `WalkTo`: `FindPath(map, plane, state.Tile, goal)` into a new `Route`, mode taken from the command, and the tick
+  that carries the command COUNTS as the first tick of the first step, so a click never costs a tick of standing
+  still. An unreachable goal walks to the nearest reachable tile, the OSRS rule `FindPath` already implements. A
+  goal on another plane is dropped whole rather than pathed on the player's own plane.
+- `Interact`: `TileReach.TryNearest(map, footprint, plane, state.Tile, ...)` picks the reach tile, routes to it, and
+  records the target so arrival faces it and raises the action. A target on ANOTHER plane is dropped whole, the same
+  answer `WalkTo` gives a cross-plane goal, and the target is resolved BEFORE anything is written so the tick reads
+  exactly as if no command had arrived. A target on the player's OWN plane with no reachable reach tile is the other
+  answer: the route is dropped and the pending target cleared, which is the state a `CannotReach` accompanies. The
+  arrival TURN is the simulator's too: on the tick the route empties with a target still pending, the player faces
+  `TileReach.FacingToward` for the tile they landed on, guarded by `TileReach.Contains` because a re-path can leave a
+  route that stops short of one, so a walk arriving from the side ends facing the booth rather than keeping the
+  diagonal its last step left, and the whole outcome of a click is predicted instead of one attribute of it landing a
+  snapshot late.
+- `None`: take the mode from the command (it rides on every kind, and a change lands at the START of the next step
+  rather than re-cutting the one under way), then advance `StepTicks`, which EVERY tick does, a tick carrying a
+  command included. When it reaches `TicksPerStep(Mode)` (2 run, 4 walk), re-check `CanStep` from the
   current tile into the next route tile. Legal: move, face the step direction, reset `StepTicks`, advance the
   index. Blocked (a dynamic blocker appeared): re-path once from the current tile to the route's end, and if that
   also fails, drop the route and stand. Both heads run this identically, so a blocker only causes a mismatch when
@@ -159,16 +175,29 @@ seen stepping every second snapshot with motion in between.
 ## 6. Reach and the action seam
 
 `TileReach` is a pure function over the collision map and a footprint. The reach set of an N x M footprint on a
-plane is every tile cardinally adjacent to a footprint tile for which `CanStep` from that tile INTO the footprint
-tile is legal. That one rule encodes OSRS's behaviour: a wall between you and the booth denies reach, a diagonal
-never counts, and a 2x2 object has up to eight reach tiles minus the walled ones. `Nearest` orders them by BFS
-distance from the player (the pathfinder's own distance field), then by the same scan order `FindPath` uses, so both
-heads choose the same tile.
+plane is every tile cardinally adjacent to a footprint tile for which `CanStep` FROM the footprint tile OUT onto
+that tile is legal, which asks three things: no wall on the footprint tile's edge, the candidate is not blocked,
+and no mirrored wall on the candidate's own edge facing back. That one rule encodes OSRS's behaviour: a wall
+between you and the booth denies reach, a diagonal never counts, a candidate nobody could stand on is not offered,
+and a 2x2 object has up to eight reach tiles minus the denied ones. `TryNearest` scores them by the LENGTH of the
+path that actually reaches each one, one `FindPath` per candidate because the pathfinder does not expose its
+distance field, and breaks a tie by the same scan order, so both heads choose the same tile.
+
+This was written INWARD in an earlier draft (`CanStep` from the candidate into the footprint tile) and inward is
+wrong twice over, because a step never inspects the BLOCKED flag of the tile it leaves. Starting on the candidate
+puts the blocked test on the TARGET, and every real target is blocked, being a booth or a rock, so the reach set of
+anything worth clicking comes out empty. It also never tests the candidate for being blocked at all, so a solid
+tile beside an unblocked target (a doorway, a ladder) is offered as somewhere to stand. Outward asks the same two
+wall questions, the same pair either way round, and puts the blocked test on the candidate where reach needs it,
+which is the form that stays correct when the target itself is solid. `TileReach`'s class doc carries the same
+reasoning, so the direction is not flipped back later.
 
 Server side, `TileActionQueue` holds at most one pending action per player: `(target, kind, issuedTick)`. On each
 tick after movement, a pending action whose player stands on a reach tile of the target, on its plane, is
-validated and raised through `TileWorldServer.OnInteract(playerNetId, target)`, then cleared. Reissuing a command
-(another click) replaces the pending action, OSRS style. In SP2 the only consumer of `OnInteract` is a log line,
+validated and raised through `TileWorldServer.OnInteract(playerNetId, target)`, then cleared. The facing is already
+correct by then, written by the simulator on the arrival tick, so the server never owns the turn. Reissuing a command
+(another click) replaces the pending action, OSRS style, and an applied `WalkTo` CLEARS it, because the simulator
+clears the state's own pending target on a walk and the queue and the state are two records of one intent. In SP2 the only consumer of `OnInteract` is a log line,
 and the Grimhollow client shows a localized "nothing interesting happens". When `TileReach` returns no reachable
 tile, the server sends a `CannotReach` game message, and the client, which has the same map, pre-checks on click
 and shows it immediately without waiting.

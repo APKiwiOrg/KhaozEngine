@@ -7,6 +7,13 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.40.0
 
+17.40.0 makes the native backends the default (the rollout bullets) and ships the tile netcode package,
+sub-project 2 R1 of the Grimhollow program (the tile bullets). Tile worlds get server-authoritative,
+client-predicted movement in one new package, and the two pieces it needed out of `NetWorld` come down the stack
+so a server that does not reference `NetWorld` can still use them: the connect-time door and the
+player-persistence core. `Replication` gains a bounded per-component reader, so an extension codec can no longer
+be satisfied out of the bytes of the components behind it.
+
 **The engine's own graphics backends are the DEFAULT on every platform from this release.** macOS boots on
 `MetalNative`, Windows on `Direct3D11Native`, Linux and everything else on `VulkanNative`. The three Veldrid
 incumbents remain as an explicit OPT-OUT for ONE release, and are REMOVED in the next one by the Veldrid removal
@@ -120,6 +127,182 @@ The precedence chain (`KE_GRAPHICS_BACKEND` > stored preference > OS probe), eve
 `-native` suffixed ones, the numeric values of every `GpuBackendSource` member that already existed (the new
 one is an APPEND at ordinal 5), the golden family mapping, and both software frame-cap sites, which gate on
 `GpuBackendKind.Metal` and were settled by Metal rollout gate 5 in 17.35.0.
+- **`IGpuCommandList.CopyBuffer` refuses an offset that is not a multiple of four, on every backend, and
+  `GpuReadback.ReadBuffer<T>` refuses one before it allocates anything
+  ([#602](https://github.com/APKiwiOrg/KhaozEngine/issues/602),
+  [#684](https://github.com/APKiwiOrg/KhaozEngine/issues/684)).** macOS requires both offsets of
+  `copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:` to be multiples of four, so native Metal
+  refused an unaligned offset from the day it shipped while Veldrid, native Vulkan and native Direct3D 11 all
+  took one. The same public call therefore succeeded on three backends and threw on the fourth, which a
+  consumer would only have found on a user's Mac. The strictest backend's requirement is now the seam's
+  contract: one rule, one wording, four implementations
+  (`KhaozEngine.Gpu/Internal/GpuCopyAlignment.cs`), with the side of the copy named in the message and
+  `srcOffsetBytes` / `dstOffsetBytes` as the `ArgumentOutOfRangeException.ParamName`. **This is a behaviour
+  change for a consumer that passes an unaligned offset on Veldrid, Vulkan or Direct3D 11**, where the call
+  used to be taken. Nothing in the engine does: all five in-repo `ReadBuffer` callers leave the offset at its
+  default of 0, and the full suite is green with the incumbent still present, which is what says the tolerant
+  behaviour was never load-bearing. Refusing rather than rounding is deliberate: an offset selects WHICH bytes
+  come back, so rounding one up would quietly return a different slice than the caller asked for. The SIZE is
+  unconstrained as before, since only Metal needs it aligned and it pads rather than refusing. An unaligned
+  start is still legal to read: map the buffer, or reach it through the device-level `UpdateBuffer`.
+- **`IGpuDevice.UpdateTexture` refuses an array layer the texture does not have on native Direct3D 11 and native
+  Vulkan (#695).** Both backends built a subresource out of the caller's `arrayLayer` and handed it straight to
+  the API, and neither API objects: `UpdateSubresource` drops an index past the end of the resource without an
+  `HRESULT`, and a recorded `vkCmdCopyBufferToImage` carries no result code at all. So
+  `UpdateTexture(oneLayerArray, ..., arrayLayer: 1)` returned normally and wrote nowhere, while native Metal and
+  the incumbent both raised `ArgumentOutOfRangeException`, which is the develop-on-one-backend-and-ship-on-another
+  promise the seam exists for. Both natives now throw at the call, named for the `arrayLayer` parameter, before
+  anything native runs. The bound is the REAL slice count with cubemap faces expanded (`D3D11UploadBounds`,
+  `VulkanUploadBounds`), so every face of a cube is still addressable, and the Vulkan check sits above the
+  staging-versus-image branch so both arms of the entry point answer the same way. An in-range upload is
+  unchanged.
+
+- **`KhaozEngine.TileWorld.Netcode`: server-authoritative, client-predicted movement for a tile world.** A player
+  IS a `TileCoord`, a `TileDirection` facing and a `TileMoveMode`, and a step COMMITS every N ticks along a
+  deterministic `TileRoute`. `TileMoveState` is both an `IPredictedState` and an ECS `IComponent`, so
+  `ClientPrediction` and `ReplicationRegistry` carry it verbatim, and `TileMoveSimulator` is the one
+  `ITickSimulator` both heads run over the same baked `TileCollisionMap`. `TileWorldServer` sits on a `ShardHost`
+  whose cell grid IS the tile region grid (`cellSize = TileRegion.Size`, so a cell is exactly a `RegionCoord`),
+  with a per-cell tick order of drain, step, hand off, act and serve, exactly-once region handoff, plane-filtered
+  area-of-interest snapshots, per-connection rate limiting, a ban predicate, drain-on-shutdown, and the
+  `OnBeforeTick` / `OnGameMessage` / `OnInteract` seams. `TileReach` is the OSRS reach rule and `TileActionQueue`
+  holds one pending action per player. `TileWorldClient` owns the prediction, the remote view and its own command
+  tick, and `TilePresenter` turns a tile state plus a step fraction into a world position and yaw. Tick length and
+  step ticks are configuration, never constants. In the `Server` umbrella. A SIBLING of `KhaozEngine.NetWorld` and
+  never a dependent of it, proven by `ArchitectureTests.TileWorldNetcode_NeverReferencesNetWorld` rather than by
+  the csproj. Design: `docs/design/TILE-WORLD-NETCODE-DESIGN-2026-08-22.md`.
+  - **The tick that carries a command is a FULL step tick.** It starts the walk AND advances step progress by one,
+    so a click never costs a tick of standing still, and a freshly issued route reads one tick into its first step
+    rather than zero.
+  - **The run mode rides EVERY command**, `TileCommandKind.None` included, and applies at the START of the next
+    step. The step already under way keeps the total it was stamped with, so holding run halfway through a walking
+    step never shortens that step. A client sends `TileCommand.Continue(mode)` on every tick, never
+    `TileCommand.None`, which is `Continue` at walk and would drop a running player to a walk on the first tick its
+    packets did not arrive.
+  - **A cross-plane command is dropped WHOLE**, its mode included, so a rejected tick reads exactly as though no
+    command arrived. `TileMoveSimulator.Accepts` is the ONE definition of whether `Step` would apply a command, and
+    the server's command path asks it rather than holding a second copy of the rule: after the step a dropped
+    command and an applied one that achieved nothing leave identical state.
+  - **`TileReach` tests the step OUTWARD**, from the footprint tile to the candidate. Inward denies every reach
+    tile of every real target, because anything worth reaching is Blocked and `TileCollision.CanStep` refuses to
+    ENTER a Blocked tile, and inward also ADMITS a Blocked candidate, because a step never inspects the blocked
+    flag of the tile it LEAVES. `TileReach.TryNearest` scores candidates by the length of the path that actually
+    reaches them, with the fixed scan order as the tie-break, so both heads pick the same tile.
+  - **The arrival turn happens in the simulator**, on the tick a route with a pending interaction empties, a zero
+    step walk included, so the whole outcome of a click is written by the one stepper both heads run and the turn
+    is predicted with the rest of it.
+  - **`TileMoveOptions.MaxRouteSteps` is enforced in the SIMULATOR**, not on the wire. Both heads truncate the same
+    pathfinder result identically, so a long click ends on the same tile on both and `TileRoute.End` names the tile
+    the walk really ends on. The component encoder REFUSES an over-long route rather than truncating one, because
+    a route shortened there would tell the owner it is walking somewhere it was never routed to.
+  - **`TileProtocol.AssembleMoveState` is the one sanctioned way to put a route back onto a move state**, and the
+    inverse of the component split. The client needs it because the `TileMoveState` codec never writes a route, so
+    a decoded state is always idle and a reconciliation basis without its route stands the player still. The server
+    needs it on the tick after a cell handoff, where the destination cell rebuilds the entity from its Migrate
+    capture and the raw component reads as idle with its `InteractTarget` still set.
+  - **Every frame carries a leading TAG byte**, so the demux is by tag and never by length, and every frame family
+    also obeys the PAD RULE: an encoding whose natural length would land exactly on the 24-byte command frame gains
+    one pad byte so it cannot. The snapshot frame's 22-byte header (tag, the receiver's own net id, the last
+    consumed command sequence, the server tick, flags) pays a flags byte per frame for that rule rather than taking
+    the exemption its direction would have allowed.
+  - **Every FRAME decoder is total** and returns false for anything malformed, truncated or mis-tagged. The
+    COMPONENT readers deliberately are not: a payload that lies about a declared length throws
+    `InvalidDataException`, which `ClientReplicationView.TryApply` turns into a false the caller treats as terminal
+    for the session, because reading a lying frame as a short one would rebuild a value out of bytes belonging to
+    another component.
+  - **The server owns its own accumulator.** `Tick(dt)` runs the whole tick body once per whole `TickSeconds`, up
+    to eight ticks per call, past which the backlog is shed. Running the body per CALL would drain a command into a
+    cell on a frame the cell did not step, and the next call would overwrite it before any simulator saw it.
+  - **Pending actions resolve in `(IssuedTick, slot)` order**, so two actions that come ready on the same tick
+    resolve oldest first and the order never depends on a dictionary's hash layout.
+  - **`SpawnPlayer` onto an occupied slot vacates it through the ordinary leave path first** (`PlayerLeaving`, the
+    save, the despawn), rather than rebinding underneath its occupant. Reachable without any caller doing anything
+    wrong, since `NetServer` drops the oldest event when a host stops keeping up.
+  - **The client's hard-snap distance is tile-scaled: half a tile.** `PredictionSettings.Default` carries 100,
+    documented in WORLD units, which on a tile lattice means a hundred tiles of misprediction before anything ever
+    cut. Half a tile is the smallest real disagreement that can show up, one tick of a running step, and below it
+    there is only float noise in the replay.
+  - **`TilePresenter.Yaw` is the engine's model-yaw convention**, the value `Matrix4x4.CreateRotationY` wants for a
+    +z-forward mesh (tile south 0, east +pi/2, north pi, west -pi/2), the same hand `CharacterFacing.YawOf` and
+    `TileObjectProps.YawRadians` use, so an avatar and the object it stands beside face the same way.
+  - **Known limits, all filed.** A remote is drawn one step behind, because its route is owner-only and the client
+    glides it from the tile it LEFT ([#696](https://github.com/APKiwiOrg/KhaozEngine/issues/696)).
+    `MaxCommandsPerSecond` is spent per POLL rather than per wall-clock second, the fleet-wide `RateLimiter` unit
+    defect ([#681](https://github.com/APKiwiOrg/KhaozEngine/issues/681)). Snapshots are full rather than per-client
+    deltas ([#699](https://github.com/APKiwiOrg/KhaozEngine/issues/699)), and the serve walks the whole cell world
+    once per client per tick ([#680](https://github.com/APKiwiOrg/KhaozEngine/issues/680)). The identity component
+    rides every snapshot ([#679](https://github.com/APKiwiOrg/KhaozEngine/issues/679)). `BeginDrain` re-implements
+    `NetWorld`'s `DrainController` because it cannot reference it
+    ([#698](https://github.com/APKiwiOrg/KhaozEngine/issues/698)).
+    Two allocation leads found on the way through: `TilePathfinder.FindPath`
+    ([#669](https://github.com/APKiwiOrg/KhaozEngine/issues/669)) and `TileWorldDocument.FindObject`
+    ([#676](https://github.com/APKiwiOrg/KhaozEngine/issues/676)).
+- **`ConnectionGate` is engine API now (`KhaozEngine.Netcode`).** `ConnectionGate.Wrap(tokenAuth, protocolVersion,
+  worldHash, log, isBanned)` composes the four-layer connect door (version, then world, then token, then ban) and
+  `ConnectionGate.BuildToken` builds the token a client presents to it. The three decorators are public and compose
+  on their own: `VersionGateAuthenticator`, `WorldIdentityGateAuthenticator` and `BanGateAuthenticator`. The layer
+  codec and the refusal tokens are `HandshakeToken` (`Wrap` / `TryUnwrap`, `MaxLabelBytes`, plus
+  `IncompatibleVersionReason` / `WorldMismatchReason` / `BannedReason` and their parsers), which
+  `KhaozEngine.NetWorld.ProtocolHandshake` now DELEGATES to, so the engine has one implementation of those bytes
+  and a server that does not reference `NetWorld` can still gate its door. Promoted from Ruinborne, because two
+  games need the identical gate.
+  - Nothing on the wire moved, and no `NetWorld` surface changed. One observable difference:
+    `ProtocolHandshake.WrapToken`'s argument exception now reports the paramName `label`, the forwarded member's
+    own parameter, rather than the name it used to raise. `MaxVersionBytes` is `HandshakeToken.MaxLabelBytes`.
+  - `VersionCheckingAuthenticator` forwards to `VersionGateAuthenticator` the same way, so the engine has one
+    version-gate body rather than two that can drift, with its name, surface and behaviour unchanged.
+  - `BanGateAuthenticator` takes a `Func<string,bool>` rather than `NetWorld`'s `IBanStore`, which it cannot
+    reference. That leaves the engine with two ban seams that name each other, filed as
+    [#678](https://github.com/APKiwiOrg/KhaozEngine/issues/678). Ruinborne's own gate cannot become an alias until
+    its `rb:world-mismatch:` wire token can move, filed as
+    [#677](https://github.com/APKiwiOrg/KhaozEngine/issues/677). That is not "no action at the repin": with both
+    namespaces imported, `Netcode.ConnectionGate` collides by simple name with `Ruinborne.Server.Auth.ConnectionGate`,
+    so `Ruinborne.Server/Program.cs`, `Ruinborne.Tests/WorldIdentityHandshakeTests.cs` and
+    `Ruinborne.Tests/LoopbackSessionHandshake.cs` each need an alias or a qualified name (CS0104) to build against
+    17.40.0.
+  - A `NetWorld` game reaching for `ConnectionGate` must NOT send `BuildToken`'s bytes as the connect token: they
+    carry no `ke-wire:` layer, so the always-on `WireGenerationAuthenticator` refuses them before the version gate
+    is reached. Pass `ConnectionGate.Wrap(...)` as the `authenticator:` arg and let `ProtocolHandshake` wrap. The
+    `NetWorld` README carries the full recipe.
+- **The player-persistence core is generic (`KhaozEngine.WorldStore`).** `StatePersistence<TState>` over
+  `IPersistenceHost<TState>` and a `PersistenceBinding<TState>` owns the save interval, the dirty pass, the
+  per-session load guard, the per-key write ordering a rejoin waits behind, quarantine, the guest policy and the
+  rejoin hints (`PositionHintCache`, `PositionHintProvider`), with its knobs in `PersistenceCoreConfig`. The
+  package stays ZERO-DEPENDENCY on purpose: the core's own log lines leave through
+  `PersistenceCoreConfig.Diagnostic`, an `Action<string, Exception?>` a head wires to its own logging.
+  - `NetWorld.WorldPersistence` keeps its name, its public surface, its config type, its `player:{accountId}` and
+    `quarantine:` keys, its `PlayerRecord` JSON, its cadence, its events and its log category, as the FLOAT binding
+    over that core. Behaviour is byte-preserved and its whole existing test suite passes with no edits to any of
+    those files.
+  - `IWorldPersistenceHost` now DERIVES from `IPersistenceHost<PlayerMoveState>` and inherits every member it used
+    to declare, with identical signatures, so an ordinary implementer is untouched. The one caveat is a host that
+    implemented those members EXPLICITLY (`void IWorldPersistenceHost.SetPlayerState(...)`), since the member now
+    belongs to the base interface: such an implementation moves to the base interface's name.
+    `SetResumePositionProvider` keeps its `NetWorld` name and is bridged onto the generic
+    `SetPositionHintProvider`, so no implementer ever sees the generic one.
+  - `ResumePositionCache` forwards to `PositionHintCache` with the same surface, and `WorldPersistence.ResumeHints`
+    wraps the one cache the core itself reads and writes.
+  - `TileWorld.Netcode.TileWorldPersistence` is the second binding, persisting a `TilePlayerRecord` of tile, plane,
+    facing and the game's opaque blob. Everything integer, so a record round-trips exactly and the dirty comparison
+    is a byte compare.
+- **`KhaozEngine.Replication`: an extension codec now reads through a BOUNDED reader.** `FramedPayloadStream` is
+  re-pointed per component, so an extension `deserialize` closure sees exactly that component's own
+  length-prefixed payload and nothing behind it. Without the bound, a payload that lies about an internal declared
+  length is satisfied out of the FOLLOWING components' bytes whenever anything rides behind it, and the apply
+  succeeds carrying a value rebuilt from someone else's bytes, with the lie caught only when it happened to run off
+  the end of the whole snapshot. A codec can now check its declared length against `BaseStream.Length - Position`
+  and refuse. One instance is reused for a whole apply, so framing a payload allocates nothing. Built-in frames are
+  unframed and have no such bound, so they still read through the stream itself.
+- **The `Server` umbrella carries `TileWorld.Netcode`.** A headless tile server needs no extra reference.
+- **Three public shapes moved in the final review's fix round.** `TileWorldClient`'s constructor takes the same
+  optional `ReplicationRegistry` the server's does, defaulting to `TileProtocol.CreateRegistry()`, so a game
+  registering its own components at or above `TileProtocol.FirstGameTypeId` hands one registry to both heads
+  ([#700](https://github.com/APKiwiOrg/KhaozEngine/issues/700)). `TileWorldPersistence` takes the head's own baked
+  `TileCollisionMap`, and its validation step refuses exactly what `TileWorldServer.SetPlayerState` refuses, so a
+  stored record naming a plane or a region an edited world no longer has is quarantined and its player placed at
+  the spawn rather than throwing out of `Update(dt)`, and the server constructor refuses a config whose
+  `PlaneCount` disagrees with the map's so the two doors stay one door. `PersistenceBinding<TState>` is four
+  delegates: the unused `WithPosition` was removed before the tag.
 
 ## 17.39.0
 

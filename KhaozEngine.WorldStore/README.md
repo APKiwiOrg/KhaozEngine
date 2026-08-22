@@ -25,8 +25,25 @@ packages, each pulling its own DB driver so this core stays clean:
 - **`KhaozEngine.WorldStore.Sqlite`** (`SqliteWorldStore`, Microsoft.Data.Sqlite) - embedded dev/test + single-node.
 - **`KhaozEngine.WorldStore.SqlServer`** (`SqlServerWorldStore`, Microsoft.Data.SqlClient) - production / Azure SQL.
 
-The save/load orchestration that wires an `IWorldStore` into the server lifecycle (load-on-join / save-on-leave /
-periodic snapshot) is `WorldPersistence` in `KhaozEngine.NetWorld`.
+**The player-persistence core.** `StatePersistence<TState>` is the save/load orchestration that wires an
+`IWorldStore` into a server head's lifecycle: load-on-join, save-on-leave, the periodic dirty pass, the per-session
+load guard, the per-key write ordering a rejoin waits behind, quarantine of a record that fails validation, the
+guest policy, and the bounded rejoin hints (`PositionHintCache`, plus the `PositionHintProvider` a head installs).
+It is generic over the head's own state and knows nothing about a record:
+
+- **`IPersistenceHost<TState>`** - the head's side of the seam (`PlayerJoined` / `PlayerLeaving` / `SetPlayerState` /
+  `JoinedSlots` / `TryGetAccountId` / `TryGetPlayerState`, plus the join-seed pair `SetPositionHintProvider` +
+  `TryGetConfiguredSpawn` as default interface methods).
+- **`PersistenceBinding<TState>`** - the four delegates that ARE the movement model: `PositionOf`, `Encode`,
+  `Decode` (a `RecordDecoder<TState>`), `Validate`.
+- **`PersistenceCoreConfig`** - the machinery's tunables (interval, key prefixes, guest policy, hint capacity, the
+  quiet-restore distance), the three game-state hooks keyed by slot and resolved key, and `Diagnostic`, the sink the
+  core's own log lines go out through. That sink is why this package can carry the core and stay dependency-free: a
+  head wires it to its own logging.
+
+The two bindings that ship are `WorldPersistence` in `KhaozEngine.NetWorld` (float, over `PlayerRecord`) and
+`TileWorldPersistence` in `KhaozEngine.TileWorld.Netcode` (tile, over `TilePlayerRecord`). Both keep their own
+config type and public surface, so a game pinned to either is unaffected.
 
 **Account enumeration (since 8.4.2).** Stores can opt into **`IEnumerableWorldStore`**: `EnumerateAsync(keyPrefix?)`
 streams `WorldStoreEntry { Key, UpdatedAt, Size? }` records. `InMemoryWorldStore`, `SqliteWorldStore`, and

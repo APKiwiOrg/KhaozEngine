@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.TileWorld.Netcode</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Server-authoritative, client-predicted movement for a KhaozEngine.TileWorld tile world: a player IS a tile, a plane and a facing, and a step commits every N ticks along a deterministic route. TileMoveState (IPredictedState + IComponent) and TileCommand run through one TileMoveSimulator on both heads, so ClientPrediction reconciles the local player and Replication carries remotes as a discretely-sampled extension component. TileWorldServer runs on a Sharding ShardHost whose cell grid IS the tile region grid, with per-cell tick order, exactly-once region handoff, area-of-interest snapshots, a one-deep action queue and the reach rules over TileCollision. TileWorldClient owns the prediction, the remote view and its own command tick, TilePresenter turns a tile state plus a step fraction into a world position and yaw. GPU-free and headless. A SIBLING of KhaozEngine.NetWorld over the same generic layers, never a dependent of it: the two movement stacks share Netcode, Replication, Sharding, Simulation, WorldStore and Diagnostics and nothing else.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.TileWorld/KhaozEngine.TileWorld.csproj" />
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
+    <ProjectReference Include="../KhaozEngine.Replication/KhaozEngine.Replication.csproj" />
+    <ProjectReference Include="../KhaozEngine.Sharding/KhaozEngine.Sharding.csproj" />
+    <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
+    <ProjectReference Include="../KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />
+    <InternalsVisibleTo Include="KhaozEngine.TileWorld.Netcode.Tests" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

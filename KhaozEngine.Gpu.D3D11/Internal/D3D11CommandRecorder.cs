@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Gpu.D3D11.Internal
@@ -232,9 +233,22 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _emitter.UpdateBuffer(b, offsetBytes, MemoryMarshal.AsBytes(data));
         }
 
+        /// <summary>
+        /// BOTH OFFSETS ARE REFUSED UNLESS THEY ARE MULTIPLES OF FOUR (17.40.0,
+        /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/684">#684</see>). Direct3D 11 asks for no
+        /// such thing of a buffer copy box, and this backend took an unaligned offset happily. It is the SEAM's
+        /// rule (<see cref="GpuCopyAlignment"/>): macOS requires it of Metal's copy selector, so a seam member
+        /// that took the call here and threw there was a portability trap a consumer only found on a user's Mac
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/602">#602</see>). It is checked at the
+        /// RECORDER rather than in an emitter, because that is the seam boundary and there are four emitters
+        /// behind it.
+        /// </summary>
         public void CopyBuffer(IGpuBuffer src, uint srcOffsetBytes, IGpuBuffer dst, uint dstOffsetBytes, uint sizeInBytes)
         {
             RequireRecording();
+            const string What = "A native Direct3D 11 buffer copy";
+            GpuCopyAlignment.RequireAlignedOffset(srcOffsetBytes, nameof(srcOffsetBytes), What, "source");
+            GpuCopyAlignment.RequireAlignedOffset(dstOffsetBytes, nameof(dstOffsetBytes), What, "destination");
             _emitter.CopyBuffer(src, srcOffsetBytes, dst, dstOffsetBytes, sizeInBytes);
         }
 

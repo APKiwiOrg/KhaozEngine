@@ -489,6 +489,12 @@ writing THROUGH such a view. The copies are the region forms the seam asks for: 
 `CopyResource`, a buffer copy is `CopySubresourceRegion` with a box built from both offsets, and the shorter
 `CopyTextureSubresource` overload arrives at the emitter with a destination mip and layer of zero.
 
+**Both buffer-copy offsets must be multiples of four, and Direct3D 11 is not what asks for it (17.40.0).** The
+box takes any byte offsets and this backend took them, while native Metal could not, because macOS requires the
+alignment of its copy selector ([#602](https://github.com/APKiwiOrg/KhaozEngine/issues/602)). The rule is the
+seam's now. It is checked in `D3D11CommandRecorder` rather than in an emitter, because that is the seam boundary
+and there are four emitters behind it, so all four record the same refusal.
+
 **Staging `Map` and `Unmap` take the submit lock for the duration of the map call and nothing longer.** The lock
 is NOT held across the caller's read: a readback that held it from `Map` to `Unmap` would block every submit for
 as long as a consumer walked the pixels, which is the frame-long hold this design exists to delete. Everything

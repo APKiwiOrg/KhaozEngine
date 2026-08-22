@@ -1220,6 +1220,13 @@ over the engine's three MRT targets of the highest sample count each supports, r
 citation pinned in a constant so the two sources can be diffed. That is what makes the capability parity test's
 asserted identical satisfiable by construction rather than by luck.
 
+**Both buffer-copy offsets must be multiples of four, and Vulkan is not what asks for it (17.40.0).** This
+backend took an unaligned offset happily and native Metal could not, because macOS requires the alignment of its
+copy selector, so the same seam call succeeded here and threw there
+([#602](https://github.com/APKiwiOrg/KhaozEngine/issues/602)). The rule is the seam's now and this backend
+enforces it too, after its window check, so a copy that is both out of range and misaligned still reports the
+range. The size is unconstrained.
+
 **A buffer copy gets a global memory barrier on EITHER side**, which is a deliberate departure. A `VkBuffer` has
 no layout, so nothing the tracker does orders a copy out of a buffer a dispatch just wrote or into one a draw is
 about to read. The incumbent emits one barrier, after the copy, naming `VERTEX_INPUT` and

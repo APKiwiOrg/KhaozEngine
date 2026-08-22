@@ -20,10 +20,10 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// it. The connection lifecycle, residency and rate-limiting plumbing here is therefore a re-implementation rather
 /// than an extraction, which is a known and accepted cost. When the two servers are seen to converge, the generic
 /// core comes out of BOTH of them rather than out of the shipping one alone.</para>
-/// <para>Partial across two files up front, because the split between "the world ticks" and "connections come and
-/// go" is the natural seam and one file for both would grow past the size ratchet as each half filled in. This
-/// file is construction, the host, the player index and state access. <c>TileWorldServer.Tick.cs</c> is the tick
-/// order and the serve.</para>
+/// <para>Partial across three files, because "the world ticks" and "connections come and go" are separate seams
+/// and one file for both would grow past the size ratchet as each half filled in. This file is construction, the
+/// host, the player index and state access. <c>TileWorldServer.Tick.cs</c> is the tick order and the serve, and
+/// <c>TileWorldServer.Sessions.cs</c> is the session lifecycle.</para>
 /// </summary>
 public sealed partial class TileWorldServer : IDisposable
 {
@@ -98,8 +98,14 @@ public sealed partial class TileWorldServer : IDisposable
         // queue requires one, and it is the right value for a slot with no player behind it.
         commands = new RemoteCommandQueue<TileCommand>(TileCommand.None, maxSlots: Math.Max(1, config.MaxPlayers),
             catchUpThreshold: MaxInputBacklog);
-        net = new NetServer(transport, config.MaxPlayers, authenticator ?? new AllowAllAuthenticator(),
-            duplicateSessions: config.DuplicateSessions);
+        // The ban predicate is consulted at the DOOR, wrapped around whatever authenticator the head supplied,
+        // because a ban has to be answered before a player entity exists. Checked after the join instead, it would
+        // spawn the banned account into a cell, serve it to everyone in interest, and despawn it a tick later. The
+        // refusal it produces is HandshakeToken.BannedReason, the same token the composed ConnectionGate sends, so
+        // a client tells the two paths apart from neither and needs one branch rather than two.
+        IConnectionAuthenticator door = authenticator ?? new AllowAllAuthenticator();
+        if (config.IsBanned is not null) door = new BanGateAuthenticator(door, config.IsBanned);
+        net = new NetServer(transport, config.MaxPlayers, door, duplicateSessions: config.DuplicateSessions);
         host = new ShardHost(config.CellSize, config.TickSeconds, this.registry, config.InterestRadius,
             config.OverlapMargin, PositionOf);
         // Both halves are event driven, and CellCreated is documented to fire synchronously before the new cell can
@@ -139,10 +145,6 @@ public sealed partial class TileWorldServer : IDisposable
     /// player is standing on a reach tile of the thing they clicked. The engine knows nothing about what an
     /// interaction DOES, so this is where a game takes over.</summary>
     public event Action<int, long, long>? OnInteract;
-
-    /// <summary>Raised as (slot, accountId) when a player entity has been built and bound to a slot.</summary>
-    // task 10: the session half raises this from the join path as well, once a connection can produce a player.
-    public event Action<int, string>? PlayerJoined;
 
     /// <summary>The one-deep pending action per player. The test seam for the abandonment rule, which is a
     /// property of the COMMAND PATH rather than of the queue: the queue cannot see a walk, so nothing inside it can
@@ -229,13 +231,22 @@ public sealed partial class TileWorldServer : IDisposable
         cell.World.Set(e, new TileRouteState { Remaining = steps });
     }
 
-    /// <summary>Builds a player entity at the configured spawn and binds the slot to it. Returns its net id.</summary>
+    /// <summary>Builds a player entity at the configured spawn and binds the slot to it. Returns its net id, and
+    /// raises <see cref="PlayerJoined"/> once the entity exists.</summary>
     /// <param name="slot">The connection slot to bind. Binding is by slot rather than by entity, because a slot is
     /// what survives the entity being handed between cells mid walk.</param>
     /// <param name="accountId">The verified account id, which is what persistence keys a record on.</param>
     /// <param name="displayName">The cosmetic name observers see. Never a rules input.</param>
     public long SpawnPlayer(int slot, string accountId, string displayName)
     {
+        // A slot is a seat the next connection recycles, and OnLeave forgets both per-slot queues on the way out.
+        // Cleared again here for the seat whose previous occupant's Left was never observed (a transport that
+        // dropped it, a head that stopped polling mid session): a stale command high-water mark rejects every
+        // sequence number the new player sends and freezes them, and a stale action fires against a player who
+        // clicked nothing.
+        commands.Forget(slot);
+        actions.Forget(slot);
+
         long netId = allocator.Next().Value;
         Entity e = host.SpawnOwned(config.Spawn.X, config.Spawn.Z, netId, out CellSim cell);
         TileMoveState state = TileMoveState.At(config.Spawn, TileDirection.S);

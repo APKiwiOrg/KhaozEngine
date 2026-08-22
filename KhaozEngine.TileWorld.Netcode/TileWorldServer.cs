@@ -62,10 +62,15 @@ public sealed partial class TileWorldServer : IDisposable
     // How many ticks a pending action may spend WALKING before it is refused. Derived rather than configured,
     // because there is exactly one legitimate ceiling and it is already in the config: one click produces at most
     // TileMoveOptions.MaxRouteSteps steps, and the slowest mode spends StepTicks ticks on each of them, so a walk
-    // still running past that product is not converging on anything. The case is a target that MOVES, which the
-    // simulator re-paths toward every tick, so the route never empties and the arrival test is never reached. See
-    // ResolveActions in TileWorldServer.Actions.cs. A cap this generous never fires on ordinary play, which is the
-    // point: it is a ceiling on a stuck action, not a gameplay timer.
+    // still running past that product is not converging on anything. The case is a dynamic blocker that keeps
+    // moving into the player's way: every failed commit re-paths toward the SAME route end, so the route is rebuilt
+    // rather than emptied and the arrival test is never reached. See ResolveActions in TileWorldServer.Actions.cs.
+    //
+    // The extra MaxRouteSteps of slack is the re-path HESITATION. A route of exactly MaxRouteSteps commits its last
+    // step one tick inside the bare product, and each re-path costs one tick that advances nothing
+    // (TileMoveSimulator.Repath), so with no slack two blockers on a maximum-length interact walk would refuse a
+    // walk that was still converging. A cap this generous never fires on ordinary play, which is the point: it is a
+    // ceiling on a stuck action, not a gameplay timer.
     readonly long maxActionAgeTicks;
     long interestServeEpoch;
 
@@ -102,7 +107,8 @@ public sealed partial class TileWorldServer : IDisposable
 
         this.config = config;
         this.registry = registry ?? TileProtocol.CreateRegistry();
-        maxActionAgeTicks = (long)config.Move.MaxRouteSteps * Math.Max(config.StepTicks.Walk, config.StepTicks.Run);
+        maxActionAgeTicks =
+            (long)config.Move.MaxRouteSteps * (Math.Max(config.StepTicks.Walk, config.StepTicks.Run) + 1);
         simulator = new TileMoveSimulator(map, config.StepTicks, targets, config.Move);
         // The queue's own neutral is never what a starved player is stepped with: Admit replaces it with a Continue
         // at the player's CURRENT mode, because TileCommand.None is a run toggled off. It is supplied because the

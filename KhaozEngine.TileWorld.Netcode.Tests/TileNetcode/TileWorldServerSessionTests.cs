@@ -238,6 +238,63 @@ public class TileWorldServerSessionTests
     }
 
     [Fact]
+    public void A_pending_action_that_never_converges_is_refused_once_it_outlives_its_cap()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        TileObject booth = doc.AddObject("bank_booth", 12, 10, 0, 0);
+        // Kept, because this IS the map the simulator steps: an edit made into it is seen by the next step, which
+        // is the only way to put a blocker in front of a walking player.
+        TileCollisionMap map = TileMoveSimulatorTests.Bake(doc);
+        var hub = new InMemoryTransportHub();
+        // Both knobs shrunk on purpose. The cap is MaxRouteSteps * (slowest step + 1), so at the defaults it is
+        // 1024 ticks and a test would have to walk all of them.
+        using var s = new TileWorldServer(hub.Server,
+            TileWorldServerTickTests.Config(new TileCoord(4, 10, 0)) with
+            {
+                StepTicks = new TileStepTicks(walk: 1, run: 1),
+                Move = new TileMoveOptions { MaxRouteSteps = 8 },
+            },
+            map, new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs), new AllowAllAuthenticator());
+        var raised = new List<long>();
+        var refused = new List<long>();
+        s.OnInteract += (_, _, target) => raised.Add(target);
+        s.OnCannotReach += (_, target) => refused.Add(target);
+        s.SpawnPlayer(0, "a", "Ari");
+        s.Enqueue(0, 0, TileCommand.Interact(booth.Id, TileMoveMode.Walk));
+        s.Tick(Dt);
+
+        // ONE blocker at a time, moved each tick onto the tile the player is about to step into. Leaving them all
+        // blocked walls the player in within a few ticks, the re-path then finds nothing and drops the target, and
+        // the run lands on the SIBLING branch instead of on the cap. Cleared and moved, the detour is always open,
+        // the route is rebuilt rather than emptied, and the action's age climbs past the ceiling.
+        TileCoord? previous = null;
+        TileMoveState walking = default;
+        for (int i = 0; i < 60 && refused.Count == 0; i++)
+        {
+            Assert.True(s.TryGetPlayerState(0, out walking));
+            if (!walking.Route.IsIdle)
+            {
+                if (previous is TileCoord p) map.Clear(new TileRect(p.X, p.Z, 1, 1), 0);
+                map.Or(walking.Route.Next.X, walking.Route.Next.Z, 0, TileCollisionFlags.Blocked);
+                previous = walking.Route.Next;
+            }
+            s.Tick(Dt);
+        }
+
+        // The CAP branch rather than its sibling: on the tick before the refusal the route was still alive AND the
+        // state still named the target, which is exactly the state the target-dropped branch cannot be in.
+        Assert.False(walking.Route.IsIdle);
+        Assert.Equal(booth.Id, walking.InteractTarget);
+        Assert.Equal(new[] { booth.Id }, refused.ToArray());
+        Assert.Empty(raised);
+        Assert.Equal(0, s.Actions.PendingCount);
+        // The refusal takes the state's own record of the target with it, so the walk it refused cannot turn the
+        // player toward the booth if it later happens to end on a reach tile.
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState after));
+        Assert.Equal(0, after.InteractTarget);
+    }
+
+    [Fact]
     public void A_truncated_interact_route_is_refused_rather_than_raised_from_across_the_map()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();

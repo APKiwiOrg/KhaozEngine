@@ -61,9 +61,16 @@ public sealed partial class TileWorldServer
             {
                 // Still walking to it, which is the ordinary answer and the one this loop gives most of the time.
                 if (TickCount - pending.IssuedTick <= maxActionAgeTicks) continue;
-                // Past the cap: a walk this old is not converging. The case is a target that MOVES, which the
-                // simulator re-paths toward on every tick it can still see, so the route never empties and the
-                // arrival test is never reached. Without the cap that action outlives the session.
+                // Past the cap: a walk this old is not converging. The case is a dynamic blocker that keeps moving
+                // into the player's way, because a failed commit re-paths toward the SAME route end and pays a tick
+                // that advances nothing, so the route is rebuilt rather than emptied and the arrival test is never
+                // reached. Without the cap that action outlives the session.
+                //
+                // The state's own record of the target goes with the queue entry, or the player would still be
+                // turned toward the thing they were just refused if the walk later ended on a reach tile of it. The
+                // ROUTE is deliberately left running: it is what the client is predicting, and dropping it here
+                // would stop the player on the server while their own head walked on.
+                ClearInteractTarget(netId);
                 Refuse(slot, pending.Target);
                 continue;
             }
@@ -78,15 +85,25 @@ public sealed partial class TileWorldServer
             }
 
             actions.Clear(slot);
-            if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) continue;
-            if (!cell.World.TryGet(e, out TileMoveState live)) continue;
-
             // Cleared as the action is raised, which is the contract TileMoveState states for the field. Left set,
-            // it would re-face the player at the end of every later walk that happened to end on a reach tile.
-            live.InteractTarget = 0;
-            cell.World.Set(e, live);
+            // it would re-face the player at the end of every later walk that happened to end on a reach tile. A
+            // player no cell owns is also a player there is nothing to raise the action against, so the write
+            // doubles as that guard.
+            if (!ClearInteractTarget(netId)) continue;
             if (pending.Kind == TileActionKind.Interact) OnInteract?.Invoke(slot, netId, pending.Target);
         }
+    }
+
+    // Drops the state's own record of a pending target, the other half of clearing the queue entry: the two are one
+    // intent, and the simulator reads this field on every tick a route empties. False when no cell owns the player,
+    // which is the one case with nothing to write to.
+    bool ClearInteractTarget(long netId)
+    {
+        if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) return false;
+        if (!cell.World.TryGet(e, out TileMoveState live)) return false;
+        live.InteractTarget = 0;
+        cell.World.Set(e, live);
+        return true;
     }
 
     // One refusal path for both cases, because a client cannot act on the difference: either way the action it is

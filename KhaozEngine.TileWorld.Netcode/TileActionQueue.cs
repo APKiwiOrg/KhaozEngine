@@ -15,8 +15,10 @@ public enum TileActionKind : byte
 /// between the click and the arrival and the walk is chasing the OBJECT.</param>
 /// <param name="Kind">What to do on arrival.</param>
 /// <param name="IssuedTick">The server tick the command arrived on, which is what makes the action ORDERABLE: two
-/// actions that come ready on the same tick resolve oldest first, and a stale-action cap has the age it would need.
-/// No cap exists yet, so this says what the field is for rather than what the queue does with it.</param>
+/// actions that come ready on the same tick resolve oldest first. It is also the age the STALE-ACTION CAP is
+/// measured against: <c>TileWorldServer.ResolveActions</c> refuses an action still walking more ticks after this
+/// than the ceiling the server derives from <see cref="TileMoveOptions.MaxRouteSteps"/> and its step
+/// cadence.</param>
 public readonly record struct TilePendingAction(long Target, TileActionKind Kind, long IssuedTick);
 
 /// <summary>

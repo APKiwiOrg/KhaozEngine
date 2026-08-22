@@ -95,6 +95,17 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("vWeights = Color;", ShaderSources.TileGroundVert);
         }
 
+        /// <summary>
+        /// AND THIS ONE IS THE ONE-LAYER ARRAY CONFORMANCE DRAW (#666). The set has exactly one layer, so the
+        /// albedo texture is a texture ARRAY with a single slice, bound under a fragment that declares
+        /// <c>texture2DArray</c>. Until the seam could say "array of one" this test only passed because
+        /// <c>Scene3D.LoadTileGroundMaterial</c> padded the set to two layers by duplicating it: one layer created
+        /// a plain 2D texture, and Metal validation killed the test host at this very draw
+        /// (<c>incorrect type of texture (MTLTextureType2D) bound ... (expect MTLTextureType2DArray)</c>) while
+        /// lavapipe rendered through it silently. The pad is gone, so what runs here now is the real thing, on
+        /// every backend the golden matrix covers: Metal and metal-native, WARP and d3d11-native, lavapipe and
+        /// vulkan-native.
+        /// </summary>
         [GpuFact]
         public void Single_flat_layer_reproduces_a_vertex_colour_look()
         {

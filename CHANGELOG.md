@@ -62,11 +62,14 @@ server-owned entity can be transient across a restart without also being destroy
 - **`CellSim.SnapshotOwned(excludedNetIds, SnapshotPurpose)`**, with the one-argument overload unchanged as
   `SnapshotPurpose.Durable`. `SnapshotPurpose.Eviction` leaves out only the `Always` entities, so an unload freeze
   is a faithful in-memory copy of the cell rather than a second persistence decision.
-- **`CellEvictor` takes a SECOND capture for its cache, and it is not the bytes it saved.** The store still gets
-  the durable capture, and the cache now gets an `Eviction`-purpose one taken at the last moment before the cell is
-  removed, so the freeze holds the cell as it stopped rather than as it stood when the write was queued. The
-  eviction path is unchanged in every other respect (the write, the re-verify against the durable bytes and the
-  refusals all behave as before), and a `MaxCachedSnapshots` of 0 skips the second capture entirely.
+- **`CellEvictor` caches a freeze that is not the bytes it saved.** The store still gets the durable capture, and
+  the cache now gets an `Eviction`-purpose one taken at the last moment before the cell is removed, so the freeze
+  holds the cell as it stopped rather than as it stood when the write was queued. That second capture is taken only
+  when the cell actually holds a `DurableOnly` entity: the marks name exactly what the two captures differ by, so
+  an empty mark set means the durable bytes (which the finalize pass has just re-verified current) ARE the freeze,
+  and a game that never uses the scope keeps the 17.38.0 eviction cost of one capture. The eviction path is
+  unchanged in every other respect (the write, the re-verify against the durable bytes and the refusals all behave
+  as before), and a `MaxCachedSnapshots` of 0 skips the extra capture entirely.
 - **The marks ride BESIDE the freeze, because no capture can encode them.** `Transient` is in no
   `ReplicationRegistry` by design, so an entity restored from a capture comes back unmarked, which would have made
   a `DurableOnly` entity persistable the moment its cell was re-entered. `CellSim.ReadTransientMarks(purpose)` and
@@ -86,6 +89,8 @@ server-owned entity can be transient across a restart without also being destroy
   (`CellEvictionConfig.MaxCachedSnapshots`, 1024 coordinates by default, oldest dropped first). Past it the
   coordinate falls back to the store-backed load, and the store never held the entity, so it is gone exactly as
   `Always` would have left it. A spawner using this scope must still be able to notice a net id it no longer owns.
+  `CellEvictionConfig.MaxCachedSnapshots` now documents what a dropped entry costs and how to size the cache for a
+  world that uses the scope.
 
 ## 17.38.0
 

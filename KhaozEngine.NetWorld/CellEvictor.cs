@@ -37,9 +37,10 @@ namespace KhaozEngine.NetWorld;
 /// unload, handed back under the same <see cref="KhaozEngine.Replication.NetId"/> on the route in (#668). An
 /// unload is not a persistence decision, so a game can say "not across a restart, but yes across an unload". The
 /// freeze is taken at the last moment before the cell is removed, so it holds the cell as it stopped rather than as
-/// it stood when the write was queued. It only reaches as far as the cache does: past
-/// <see cref="CellEvictionConfig.MaxCachedSnapshots"/> the coordinate falls back to the store-backed load, whose
-/// bytes never held those entities.</para>
+/// it stood when the write was queued. A cell holding no such entity has nothing to differ by, and the driver
+/// notices that and reuses the durable bytes it already verified rather than capturing the same picture twice. It
+/// only reaches as far as the cache does: past <see cref="CellEvictionConfig.MaxCachedSnapshots"/> the coordinate
+/// falls back to the store-backed load, whose bytes never held those entities.</para>
 ///
 /// <para>Call <see cref="Update"/> once per server frame on the server thread, alongside
 /// <see cref="CellPersistence.Update"/>.</para>
@@ -213,18 +214,28 @@ public sealed class CellEvictor
         byte[]? now = host.SnapshotCell(p.Coord);
         if (now is null || !now.AsSpan().SequenceEqual(p.Snapshot)) return;
 
-        // What is CACHED is a second capture, taken here rather than reused from the durable one, because the two
-        // answer different questions (#668): the store gets the persistable entities, the cache gets a faithful
-        // freeze of the cell, which additionally holds every TransientScope.DurableOnly entity. Taken at the last
-        // possible moment (the cell is still live and has kept simulating since the write was queued) so what comes
-        // back on the route in is the cell as it stood when it stopped, not as it stood when the save began. A host
-        // that has not overridden the purpose overload returns the durable bytes and behaves exactly as before.
+        // What is CACHED can be a second capture, because the two answer different questions (#668): the store gets
+        // the persistable entities, the cache gets a faithful freeze of the cell, which additionally holds every
+        // TransientScope.DurableOnly entity. The marks name exactly those entities, so an EMPTY mark set is the
+        // proof the two captures would be the same picture, and the durable bytes just cleared the SequenceEqual
+        // gate above, which is what "current" means here. So read the marks first and re-capture only when there is
+        // something to re-capture, which keeps a game with no DurableOnly entity on its 17.38.0 eviction cost.
+        // ReadTransientMarks ignores the excluded (player) net ids, so an empty result is the stricter condition:
+        // it can only err toward taking a capture that was not needed, never toward skipping one that was.
+        // The capture, when it is taken, is taken at the last possible moment (the cell is still live and has kept
+        // simulating since the write was queued) so what comes back on the route in is the cell as it stood when it
+        // stopped, not as it stood when the save began. A host that has not overridden the purpose overload reports
+        // no marks and returns the durable bytes, so it behaves exactly as before.
         var freeze = new CachedFreeze(p.Snapshot, ReadOnlyDictionary<long, TransientScope>.Empty);
         if (config.MaxCachedSnapshots > 0)
         {
-            byte[]? unload = host.SnapshotCell(p.Coord, SnapshotPurpose.Eviction);
-            if (unload is null) return;   // the cell went away under us: nothing to evict and nothing to cache
-            freeze = new CachedFreeze(unload, host.ReadTransientMarks(p.Coord, SnapshotPurpose.Eviction));
+            IReadOnlyDictionary<long, TransientScope> marks = host.ReadTransientMarks(p.Coord, SnapshotPurpose.Eviction);
+            if (marks.Count > 0)
+            {
+                byte[]? unload = host.SnapshotCell(p.Coord, SnapshotPurpose.Eviction);
+                if (unload is null) return;   // the cell went away under us: nothing to evict and nothing to cache
+                freeze = new CachedFreeze(unload, marks);
+            }
         }
         if (!host.CanEvictCell(p.Coord) || !host.EvictCell(p.Coord)) return;
 

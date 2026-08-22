@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
@@ -45,14 +47,15 @@ public class TransientScopeTests
     /// <summary>A server with a joined player, persistence and eviction wired exactly as a game wires them.</summary>
     private sealed class Rig
     {
-        public Rig()
+        public Rig(bool countCaptures = false)
         {
             (INetTransport serverTransport, INetTransport clientTransport) = LoopbackTransport.CreatePair();
             Config = Cfg();
             Store = new InMemoryWorldStore();
             Server = new ShardedWorldServer(serverTransport, Config, Flat, MoveTuning.Default);
             Persistence = new CellPersistence(Server, Store);
-            Evictor = new CellEvictor(Server, Persistence);
+            Captures = countCaptures ? new CountingEvictionHost(Server) : null;
+            Evictor = new CellEvictor((ICellEvictionHost?)Captures ?? Server, Persistence);
             Client = new NetClient(clientTransport, TestHandshake.Wire(Encoding.UTF8.GetBytes("acct-1")));
             Pump(60);
             Assert.True(Server.TryGetPlayerNetId(Client.Slot, out _));
@@ -64,6 +67,9 @@ public class TransientScopeTests
         public CellPersistence Persistence { get; }
         public CellEvictor Evictor { get; }
         public NetClient Client { get; }
+
+        /// <summary>The capture counter the evictor was built on, or null when this rig did not ask for one.</summary>
+        public CountingEvictionHost? Captures { get; }
 
         public void Pump(int frames)
         {
@@ -249,6 +255,98 @@ public class TransientScopeTests
         Assert.Equal(2, host.DurableCalls);   // both asks landed on the one durable implementation
         Assert.Empty(seam.ReadTransientMarks(Home, SnapshotPurpose.Eviction));
         seam.ApplyTransientMarks(Home, new System.Collections.Generic.Dictionary<long, TransientScope> { [1L] = TransientScope.DurableOnly });
+    }
+
+    [Fact]
+    public async Task TheEvictionCaptureIsTakenOnlyWhenTheCellHoldsADurableOnlyEntity()
+    {
+        // Cost, not behaviour. The freeze and the durable bytes are the same picture unless a DurableOnly entity is
+        // in the cell, and those bytes were just re-verified current by the finalize pass, so an empty mark set
+        // means there is nothing to capture a second time. A world that never marks one pays the 17.38.0 eviction
+        // cost, one capture rather than two.
+        var plain = new Rig(countCaptures: true);
+        long ordinary = plain.Server.SpawnEntity(15f, 5f);
+        plain.Pump(4);
+
+        await plain.EvictAsync(Next);
+        Assert.Equal(1, plain.Evictor.EvictedCount);
+        Assert.Equal(0, plain.Captures!.EvictionCaptures);
+
+        // And the skipped capture is still a faithful freeze: the coordinate hands the entity straight back.
+        plain.Server.Host.EnsureCell(Next);
+        Assert.Equal(1, plain.Evictor.RestoredFromCacheCount);
+        Assert.True(plain.Server.TryGetEntity(ordinary, out World _, out Entity _));
+
+        // One DurableOnly entity is the whole trigger: the two captures now differ, so the evictor takes its own.
+        var marked = new Rig(countCaptures: true);
+        long wolf = marked.Server.SpawnEntity(15f, 5f);
+        marked.Pump(4);
+        Assert.True(marked.Server.MarkTransient(wolf, TransientScope.DurableOnly));
+
+        await marked.EvictAsync(Next);
+        Assert.Equal(1, marked.Evictor.EvictedCount);
+        Assert.Equal(1, marked.Captures!.EvictionCaptures);
+
+        marked.Server.Host.EnsureCell(Next);
+        Assert.True(marked.Server.TryGetEntity(wolf, out World _, out Entity _));
+        Assert.True(marked.Server.TryGetTransientScope(wolf, out TransientScope scope));
+        Assert.Equal(TransientScope.DurableOnly, scope);
+    }
+
+    /// <summary>
+    /// A pass-through <see cref="ICellEvictionHost"/> over the real server that counts eviction-purpose captures,
+    /// so a test can pin whether the evictor asked for a second capture or reused the durable bytes it already had.
+    /// </summary>
+    private sealed class CountingEvictionHost : ICellEvictionHost
+    {
+        private readonly ShardedWorldServer inner;
+
+        public CountingEvictionHost(ShardedWorldServer inner)
+        {
+            this.inner = inner;
+            inner.CellCreated += coord => CellCreated?.Invoke(coord);
+        }
+
+        /// <summary>Calls to <c>SnapshotCell</c> at <see cref="SnapshotPurpose.Eviction"/>: the extra world walk.</summary>
+        public int EvictionCaptures { get; private set; }
+
+        public event Action<CellCoord>? CellCreated;
+
+        public KhaozEngine.Replication.ReplicationRegistry? Registry => inner.Registry;
+
+        public IReadOnlyCollection<CellCoord> LiveCellCoords => inner.LiveCellCoords;
+
+        public byte[]? SnapshotCell(CellCoord coord) => inner.SnapshotCell(coord);
+
+        public byte[]? SnapshotCell(CellCoord coord, SnapshotPurpose purpose)
+        {
+            if (purpose == SnapshotPurpose.Eviction) EvictionCaptures++;
+            return inner.SnapshotCell(coord, purpose);
+        }
+
+        public IReadOnlyDictionary<long, TransientScope> ReadTransientMarks(CellCoord coord, SnapshotPurpose purpose) =>
+            inner.ReadTransientMarks(coord, purpose);
+
+        public void ApplyTransientMarks(CellCoord coord, IReadOnlyDictionary<long, TransientScope> marks) =>
+            inner.ApplyTransientMarks(coord, marks);
+
+        public IReadOnlyList<long> RestoreCell(CellCoord coord, byte[] snapshot) => inner.RestoreCell(coord, snapshot);
+
+        public CellRestoreResult TryRestoreCell(CellCoord coord, byte[] snapshot) =>
+            inner.TryRestoreCell(coord, snapshot);
+
+        public void EnsureCell(CellCoord coord) => inner.EnsureCell(coord);
+
+        public long NextNetId => inner.NextNetId;
+
+        public void EnsureNextNetIdAtLeast(long atLeast) => inner.EnsureNextNetIdAtLeast(atLeast);
+
+        public bool CanEvictCell(CellCoord coord) => inner.CanEvictCell(coord);
+
+        public bool EvictCell(CellCoord coord) => inner.EvictCell(coord);
+
+        public bool TryReadEvictionSignals(CellCoord coord, out CellEvictionSignals signals) =>
+            inner.TryReadEvictionSignals(coord, out signals);
     }
 
     /// <summary>A host written before the purpose overload existed: it implements the one-argument member only.</summary>

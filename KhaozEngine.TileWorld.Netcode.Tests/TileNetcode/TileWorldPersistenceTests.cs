@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
+using KhaozEngine.Netcode;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Netcode;
 using KhaozEngine.WorldStore;
@@ -63,6 +64,10 @@ public class TileWorldPersistenceTests
 
     static string TempDb() => Path.Combine(Path.GetTempPath(), "ke-tilenet-" + Guid.NewGuid().ToString("N") + ".db");
 
+    // One region, (0, 0), and four planes: the world every test here validates a loaded record against.
+    static readonly TileWorldDocument World = TileMoveSimulatorTests.FlatWorld();
+    static readonly TileCollisionMap Map = TileMoveSimulatorTests.Bake(World);
+
     [Fact]
     public async Task A_players_tile_round_trips_through_a_temp_sqlite_store()
     {
@@ -71,7 +76,7 @@ public class TileWorldPersistenceTests
         {
             using var store = new SqliteWorldStore($"Data Source={db}");
             var host = new FakeHost();
-            var p = new TileWorldPersistence(host, store);
+            var p = new TileWorldPersistence(host, store, Map);
             host.Join(1, "acct-1", TileMoveState.At(new TileCoord(3, 4, 0), TileDirection.N));
             // Let the load-on-join land before the leave. Until it does the account is guarded and the leave-save is
             // skipped on purpose, so a test that walks straight from join to leave saves nothing at all.
@@ -81,7 +86,7 @@ public class TileWorldPersistenceTests
             await p.FlushAsync();
 
             var host2 = new FakeHost();
-            var p2 = new TileWorldPersistence(host2, store);
+            var p2 = new TileWorldPersistence(host2, store, Map);
             host2.Join(1, "acct-1", TileMoveState.At(new TileCoord(0, 0, 0), TileDirection.N));
             // FlushAsync drains the apply queue as well as awaiting the read, so the restore has landed when it
             // returns. A poll loop here would be a wall-clock budget against a real sqlite file on a shared runner.
@@ -100,7 +105,7 @@ public class TileWorldPersistenceTests
         await store.SaveAsync("player:acct-2", Encoding.UTF8.GetBytes("not json at all"));
         var host = new FakeHost { Spawn = TileMoveState.At(new TileCoord(7, 8, 0), TileDirection.S) };
         string? quarantinedKey = null;
-        var p = new TileWorldPersistence(host, store);
+        var p = new TileWorldPersistence(host, store, Map);
         p.OnRecordQuarantined += (key, _) => quarantinedKey = key;
         host.Join(2, "acct-2", TileMoveState.At(new TileCoord(1, 1, 0), TileDirection.N));
         for (int i = 0; i < 50 && quarantinedKey is null; i++) { p.Update(0.25f); await Task.Delay(10); }
@@ -123,7 +128,7 @@ public class TileWorldPersistenceTests
         await store.SaveAsync("player:acct-4", Encoding.UTF8.GetBytes("not json at all"));
         var host = new FakeHost();                     // no Spawn, so the host answers false like the default no-op
         string? quarantinedKey = null;
-        var p = new TileWorldPersistence(host, store);
+        var p = new TileWorldPersistence(host, store, Map);
         p.OnRecordQuarantined += (key, _) => quarantinedKey = key;
         host.Join(4, "acct-4", TileMoveState.At(new TileCoord(1, 1, 0), TileDirection.N));
         for (int i = 0; i < 50 && quarantinedKey is null; i++) { p.Update(0.25f); await Task.Delay(10); }
@@ -137,7 +142,7 @@ public class TileWorldPersistenceTests
     {
         var store = new InMemoryWorldStore();
         var host = new FakeHost();
-        var p = new TileWorldPersistence(host, store);
+        var p = new TileWorldPersistence(host, store, Map);
         host.Join(3, "guest:3", TileMoveState.At(new TileCoord(5, 5, 0), TileDirection.N));
         host.Leave(3);
         await p.FlushAsync();
@@ -148,5 +153,48 @@ public class TileWorldPersistenceTests
         var keys = new List<string>();
         await foreach (WorldStoreEntry entry in store.EnumerateAsync()) keys.Add(entry.Key);
         Assert.Empty(keys);
+    }
+
+    // A record can outlive the world it was written against: an authored-world edit drops or moves a region, or
+    // lowers the plane count, and a player who logged out there is now stored somewhere the running build has no
+    // ground for. TileWorldServer.SetPlayerState refuses both, by design and with a throw, because it is a door for
+    // admin tooling. The persistence core calls that door with no try, from inside Update(dt), so before this the
+    // one thing the whole quarantine mechanism exists to prevent, a bad record taking the head down, was exactly
+    // what a stale one did. Driven through a REAL server rather than the fake host above, because the fake cannot
+    // refuse anything and is why no test saw this.
+    [Theory]
+    [InlineData(10, 10, 9, "plane")]        // a plane the world does not have
+    [InlineData(200, 200, 0, "region")]     // a tile in a region this build never loaded
+    public async Task A_record_the_running_world_has_no_ground_for_is_quarantined_and_the_head_keeps_ticking(
+        int tileX, int tileZ, int plane, string because)
+    {
+        var store = new InMemoryWorldStore();
+        await store.SaveAsync("player:acct-stale",
+            TilePlayerRecord.From(TileMoveState.At(new TileCoord(tileX, tileZ, plane), TileDirection.S)).Encode());
+
+        var hub = new InMemoryTransportHub();
+        using var server = new TileWorldServer(hub.Server,
+            TileWorldServerTickTests.Config(new TileCoord(10, 10, 0)), Map,
+            new TileDocumentTargets(World, TileMoveSimulatorTests.Catalogs), new AllowAllAuthenticator());
+        var p = new TileWorldPersistence(server, store, Map);
+        string? key = null, reason = null;
+        p.OnRecordQuarantined += (k, r) => { key = k; reason = r; };
+
+        server.SpawnPlayer(slot: 0, accountId: "acct-stale", displayName: "Ari");
+        await p.FlushAsync();
+
+        Assert.Equal("acct-stale", key);
+        Assert.Contains(because, reason);
+        // Placed at the head's configured spawn, which is the core's contract for a rejected record, and the bad
+        // record is copied aside intact for offline repair rather than overwritten.
+        Assert.True(server.TryGetPlayerState(0, out TileMoveState placed));
+        Assert.Equal(new TileCoord(10, 10, 0), placed.Tile);
+        Assert.NotNull(await store.LoadAsync("quarantine:player:acct-stale"));
+
+        // The whole point: the head is still running. Both of these threw out of Update before the binding
+        // measured a record against the world.
+        p.Update(0.25f);
+        server.Tick(0.25f);
+        Assert.Equal(1, server.TickCount);
     }
 }

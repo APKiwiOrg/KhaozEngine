@@ -154,9 +154,11 @@ public class TileWorldServerSessionTests
     {
         var store = new InMemoryWorldStore();
         var hub = new InMemoryTransportHub();
-        using TileWorldServer s = TileWorldServerTickTests.Server(
-            TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(4, 4, 0));
-        var persistence = new TileWorldPersistence(s, store);
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        using TileWorldServer s = TileWorldServerTickTests.Server(doc, hub.Server, new TileCoord(4, 4, 0));
+        // The same world the head runs on, which is what lets the binding refuse a record this build has no ground
+        // for instead of handing it to a door that throws.
+        var persistence = new TileWorldPersistence(s, store, TileMoveSimulatorTests.Bake(doc));
 
         INetTransport first = hub.CreateClient();
         var firstNet = new NetClient(first, System.Text.Encoding.UTF8.GetBytes("acct-p"));

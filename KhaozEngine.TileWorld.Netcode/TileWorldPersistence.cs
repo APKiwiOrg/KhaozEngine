@@ -64,6 +64,11 @@ public sealed record TileWorldPersistenceConfig
 /// <para>The position hint is carried as <c>(tileX, plane, tileZ)</c> in a <see cref="Vector3"/>, which is the
 /// core's currency. Tile coordinates are small integers, so that is exact: no rounding enters the round trip, and
 /// the quiet-restore distance is measured in whole tiles.</para>
+/// <para>The map it is built with is the one the head runs on, and the validation step measures a loaded record
+/// against it: a record naming a plane or a region the running world no longer has is quarantined and its player
+/// placed at the configured spawn, rather than reaching the host's door and throwing out of <see cref="Update"/>.
+/// The refusals mirror <see cref="TileWorldServer.SetPlayerState"/>'s own, which is the point: the binding refuses
+/// exactly what the door would.</para>
 /// <para>The route is not persisted, deliberately. A player who logs out mid-walk logs back in standing on the tile
 /// they had reached, which is where the server had already committed them. Persisting a route would restore a walk
 /// nobody asked for, against a world that may have changed under it.</para>
@@ -78,10 +83,19 @@ public sealed class TileWorldPersistence
 
     /// <summary>Subscribes to the host's join/leave events and installs the rejoin seed, so the layer is live the
     /// moment it is constructed. Build it before the head can admit anyone.</summary>
-    public TileWorldPersistence(IPersistenceHost<TileMoveState> host, IWorldStore store,
+    /// <param name="host">The head persistence drives, usually the <see cref="TileWorldServer"/> itself.</param>
+    /// <param name="store">Where records are kept.</param>
+    /// <param name="world">The SAME baked collision map the head runs on. Required rather than optional because
+    /// it is what lets a loaded record be measured against the world this build actually has: a record naming a
+    /// plane or a region an edited world dropped is quarantined here instead of being applied through a door that
+    /// throws. See the Validate step in <c>Binding</c>.</param>
+    /// <param name="config">Tunables and game-state hooks. Null takes every default.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="host"/> or <paramref name="world"/> is null.</exception>
+    public TileWorldPersistence(IPersistenceHost<TileMoveState> host, IWorldStore store, TileCollisionMap world,
         TileWorldPersistenceConfig? config = null)
     {
         ArgumentNullException.ThrowIfNull(host);
+        ArgumentNullException.ThrowIfNull(world);
         TileWorldPersistenceConfig c = config ?? new TileWorldPersistenceConfig();
 
         // The blob's verdict goes to the core rather than into the binding, so it is raised only for a record that
@@ -90,7 +104,7 @@ public sealed class TileWorldPersistence
         if (c.ValidateGameState is { } validateHook)
             validate = (_, _, blob) => validateHook(blob);
 
-        core = new StatePersistence<TileMoveState>(host, store, Binding(c), new PersistenceCoreConfig
+        core = new StatePersistence<TileMoveState>(host, store, Binding(c, world), new PersistenceCoreConfig
         {
             SaveIntervalSeconds = c.SaveIntervalSeconds,
             KeyPrefix = c.KeyPrefix,
@@ -108,7 +122,7 @@ public sealed class TileWorldPersistence
 
     // What the core cannot know about a tile player. The plane rides the Vector3's Y so one hint carries a full
     // lattice address, and a record from another plane reads as a whole tile of distance rather than as no move.
-    static PersistenceBinding<TileMoveState> Binding(TileWorldPersistenceConfig c) => new(
+    static PersistenceBinding<TileMoveState> Binding(TileWorldPersistenceConfig c, TileCollisionMap world) => new(
         PositionOf: s => new Vector3(s.Tile.X, s.Tile.Plane, s.Tile.Z),
         Encode: (s, game) => TilePlayerRecord.From(s, game).Encode(),
         Decode: (byte[] data, out TileMoveState state, out byte[]? game) =>
@@ -122,6 +136,17 @@ public sealed class TileWorldPersistence
         },
         Validate: (s, _) =>
         {
+            // The plane and the region are measured against the world THIS BUILD ACTUALLY HAS, and they are the
+            // whole reason the binding is handed the map. TileWorldServer.SetPlayerState is a door and THROWS for
+            // both (a player on a plane the world does not have can never step, and one in a region the map never
+            // loaded is invisible to everyone and to itself), while the core applies a record that passed
+            // validation with no try around it. So a record that outlived a world edit, a dropped region or a
+            // lowered plane count, used to come out of Update(dt) as an ArgumentException in the head's frame
+            // loop. Refused here it QUARANTINES instead: the bad record is copied aside intact and the player is
+            // placed at the head's configured spawn, which is what the core's contract promises for every other
+            // rejection on this list.
+            if (s.Tile.Plane < 0 || s.Tile.Plane >= world.PlaneCount) return "plane the world does not have";
+            if (!world.HasRegion(s.Tile.Region)) return "tile in a region the world has not loaded";
             if (c.Bounds is { } b && !b.Contains(s.Tile.X, s.Tile.Z)) return "tile out of bounds";
             // The facing is stored as a raw byte, so a hand-edited or corrupted record can carry one no direction
             // maps to. Rejecting it here is what keeps an illegal enum value out of the simulator.

@@ -8259,7 +8259,7 @@ var server = new TileWorldServer(
                         log: log.Info, isBanned: bans.IsBanned),
     registry);
 
-var persistence = new TileWorldPersistence(server, store, new TileWorldPersistenceConfig
+var persistence = new TileWorldPersistence(server, store, map, new TileWorldPersistenceConfig
 {
     SaveIntervalSeconds = 30f,
     CaptureGameState = (slot, key) => game.Capture(slot),

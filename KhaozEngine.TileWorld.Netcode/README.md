@@ -108,6 +108,9 @@ SERVE, which filters a viewer's area of interest to the viewer's own plane.
 - **`TileWorldPersistence`** (+ **`TileWorldPersistenceConfig`**) - the TILE binding of
   `KhaozEngine.WorldStore.StatePersistence<TState>`. The save interval, the dirty pass, the load guard, quarantine,
   the guest policy and the rejoin hints are the shared core, and this type supplies the four tile-shaped answers.
+  Built with the same baked `TileCollisionMap` the head runs on, so a stored record naming a plane or a region an
+  edited world no longer has is quarantined and its player placed at the spawn, rather than reaching
+  `TileWorldServer.SetPlayerState` and throwing out of the head's frame loop.
 
 ## A server, in ten lines
 

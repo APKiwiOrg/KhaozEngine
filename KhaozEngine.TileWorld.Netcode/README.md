@@ -117,6 +117,8 @@ SERVE, which filters a viewer's area of interest to the viewer's own plane.
 ```csharp
 var document = TileWorldFile.Load(worldDirectory);
 var map = TileCollisionBaker.Bake(document, catalogs);
+// ONE registry, handed to BOTH heads. A game's own components register at or above TileProtocol.FirstGameTypeId.
+var registry = TileProtocol.CreateRegistry(RegisterGameComponents);
 
 var server = new TileWorldServer(
     transport,
@@ -130,7 +132,8 @@ var server = new TileWorldServer(
     map,
     new TileDocumentTargets(document, catalogs),
     ConnectionGate.Wrap(tokenAuth, protocolVersion: "grimhollow-1", worldHash: TileWorldHash.OfWorld(document),
-                        log: Console.WriteLine, isBanned: bans.IsBanned));
+                        log: Console.WriteLine, isBanned: bans.IsBanned),
+    registry);
 
 server.OnInteract += (slot, netId, target) => game.Interact(slot, target);
 
@@ -160,7 +163,8 @@ var client = new TileWorldClient(
     },
     map,
     targets,
-    TileProtocol.BuildConnectToken("grimhollow-1", worldHash, authToken));   // the client builds its own registry
+    TileProtocol.BuildConnectToken("grimhollow-1", worldHash, authToken),
+    registry);                                 // the SAME one the server got, or its components never arrive
 
 client.RunMode = runButtonHeld ? TileMoveMode.Run : TileMoveMode.Walk;
 if (clicked) client.Queue(TileCommand.WalkTo(clickedTile, client.RunMode));
@@ -232,11 +236,6 @@ so a game's own tokens can never collide with them.
   Per-client deltas need an ack channel and a capability handshake the tile wire does not have, which is
   [#699](https://github.com/APKiwiOrg/KhaozEngine/issues/699). The cost of BUILDING each full snapshot is
   [#680](https://github.com/APKiwiOrg/KhaozEngine/issues/680).
-- **`TileWorldClient` builds its own registry.** The server's ctor takes a `ReplicationRegistry` so a game
-  can register its own components at or above `TileProtocol.FirstGameTypeId`, and the client's does not, so
-  those components are skipped on the way in rather than applied. Movement, the owner-only route and the
-  display name are unaffected. Giving the client the same seam is
-  [#700](https://github.com/APKiwiOrg/KhaozEngine/issues/700).
 - **The ban check is a `Func<string,bool>` predicate, not a store.** `IBanStore` lives in `KhaozEngine.NetWorld`,
   which this package must never reference. Unifying the two ban seams is
   [#678](https://github.com/APKiwiOrg/KhaozEngine/issues/678).

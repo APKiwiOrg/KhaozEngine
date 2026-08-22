@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using KhaozEngine.Ecs;
 using KhaozEngine.Netcode;
+using KhaozEngine.Replication;
+using KhaozEngine.Sharding;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Netcode;
 using Xunit;
@@ -24,21 +27,24 @@ public class TileWorldClientLoopbackTests
 
         // goalRadius is handed to BOTH heads, because that is the contract: the client mirrors the server's own
         // refusal of an out-of-range goal, and a test that set it on one head would be testing the mismatch.
+        // gameComponents is handed to BOTH registries for the same reason goalRadius goes to both heads: a game
+        // component registered on one side only is skipped on the way in, silently, which is the whole of #700.
         public Harness(TileWorldDocument serverDoc, TileWorldDocument clientDoc, TileCoord spawn, float clientPhase,
-            int goalRadius = TilePathfinder.DefaultMaxRadius)
+            int goalRadius = TilePathfinder.DefaultMaxRadius, Action<ReplicationRegistry>? gameComponents = null)
         {
             hub = new InMemoryTransportHub();
             Server = new TileWorldServer(hub.Server,
                 TileWorldServerTickTests.Config(spawn) with { MaxGoalRadius = goalRadius },
                 TileMoveSimulatorTests.Bake(serverDoc),
-                new TileDocumentTargets(serverDoc, TileMoveSimulatorTests.Catalogs), new AllowAllAuthenticator());
+                new TileDocumentTargets(serverDoc, TileMoveSimulatorTests.Catalogs), new AllowAllAuthenticator(),
+                TileProtocol.CreateRegistry(gameComponents));
             clientTransport = hub.CreateClient();
             Client = new TileWorldClient(clientTransport, new TileWorldClientConfig
             {
                 TickSeconds = Tick,
                 StepTicks = Ticks,
                 MaxGoalRadius = goalRadius,
-            }, TileMoveSimulatorTests.Bake(clientDoc));
+            }, TileMoveSimulatorTests.Bake(clientDoc), registry: TileProtocol.CreateRegistry(gameComponents));
             // Phase the client's command tick off the server's, which is the loopback lesson: two hosts stepping
             // in lockstep hide every ordering bug a real client's independent clock exposes.
             Client.Tick(clientPhase);
@@ -563,5 +569,61 @@ public class TileWorldClientLoopbackTests
         Assert.False(client.IsJoined);
         Assert.True(HandshakeToken.TryParseIncompatibleVersion(refused, out string required));
         Assert.Equal("tile-2", required);
+    }
+
+    // A game's OWN replicated component, the seam #700 was about. The server constructor has always taken a
+    // registry; the client built one internally and had no way to be handed the matching one, so a game component
+    // was skipped on the way in by the unknown-extension forward-compat path, silently, with no workaround (View is
+    // get-only). The pair is symmetric now, and this test is what says the components actually arrive.
+    struct Bounty : IComponent
+    {
+        public int Gold;
+    }
+
+    const ushort BountyTypeId = TileProtocol.FirstGameTypeId;
+
+    static void RegisterBounty(ReplicationRegistry reg) =>
+        reg.Register<Bounty>(BountyTypeId, (v, w) => w.Write(v.Gold), r => new Bounty { Gold = r.ReadInt32() });
+
+    [Fact]
+    public void A_game_component_registered_on_both_heads_arrives_on_the_client()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f,
+            gameComponents: RegisterBounty);
+        h.Frames(4);
+        long remote = h.Server.SpawnPlayer(slot: 1, "remote", "Rem");
+        h.Server.SetPlayerState(1, TileMoveState.At(new TileCoord(12, 10, 0), TileDirection.S));
+        Assert.True(h.Server.Host.TryGetOwner(remote, out CellSim cell, out Entity owned));
+        cell.World.Set(owned, new Bounty { Gold = 4242 });
+        h.Frames(24);
+
+        Assert.True(h.Client.View.TryGetEntity(remote, out Entity mirrored));
+        Assert.True(h.Client.World.TryGet(mirrored, out Bounty bounty));
+        Assert.Equal(4242, bounty.Gold);
+    }
+
+    // The other half of the same seam, and the reason the parameter had to exist rather than the registry being
+    // guessed: a client built with the DEFAULT registry skips the component instead of failing, so a game that
+    // forgot to pass its own sees empty entities and no error anywhere.
+    [Fact]
+    public void A_game_component_the_client_never_registered_is_skipped_rather_than_breaking_the_snapshot()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
+        h.Frames(4);
+        long remote = h.Server.SpawnPlayer(slot: 1, "remote", "Rem");
+        h.Server.SetPlayerState(1, TileMoveState.At(new TileCoord(12, 10, 0), TileDirection.S));
+        Assert.True(h.Server.Host.TryGetOwner(remote, out CellSim cell, out Entity owned));
+        // Registered on the SERVER only, which is what the client ctor's registry parameter exists to prevent.
+        h.Server.Registry.Register<Bounty>(BountyTypeId, (v, w) => w.Write(v.Gold), r => new Bounty { Gold = r.ReadInt32() });
+        cell.World.Set(owned, new Bounty { Gold = 4242 });
+        h.Frames(24);
+
+        Assert.True(h.Client.View.TryGetEntity(remote, out Entity mirrored));
+        Assert.False(h.Client.World.TryGet(mirrored, out Bounty _));
+        // The rest of the snapshot still lands, so nothing about this is loud.
+        Assert.True(h.Client.World.TryGet(mirrored, out TileMoveState mirroredState));
+        Assert.Equal(new TileCoord(12, 10, 0), mirroredState.Tile);
     }
 }

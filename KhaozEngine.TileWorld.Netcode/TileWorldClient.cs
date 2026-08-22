@@ -51,12 +51,18 @@ public sealed partial class TileWorldClient : IDisposable
     /// not predicted, which reads as the click taking one round trip to land.</param>
     /// <param name="connectToken">The token the door reads, from <see cref="TileProtocol.BuildConnectToken"/>.
     /// Null presents an empty token, which only a server with no gate admits.</param>
+    /// <param name="registry">The replication registry both heads share, the mirror of
+    /// <see cref="TileWorldServer"/>'s own parameter and the same rules. Null builds
+    /// <see cref="TileProtocol.CreateRegistry"/>, which is the one a client with no game components needs. A game
+    /// that registered its own at or above <see cref="TileProtocol.FirstGameTypeId"/> on the server MUST pass the
+    /// matching registry here: an unregistered extension is SKIPPED on the way in, forward compatibility being the
+    /// reason, so the components simply never arrive and nothing says so.</param>
     /// <exception cref="ArgumentNullException"><paramref name="transport"/>, <paramref name="config"/> or
     /// <paramref name="map"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="config"/> asks for a tick of zero seconds or
     /// less.</exception>
     public TileWorldClient(INetTransport transport, TileWorldClientConfig config, TileCollisionMap map,
-        ITileTargets? targets = null, byte[]? connectToken = null)
+        ITileTargets? targets = null, byte[]? connectToken = null, ReplicationRegistry? registry = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
         ArgumentNullException.ThrowIfNull(config);
@@ -70,7 +76,7 @@ public sealed partial class TileWorldClient : IDisposable
         Prediction = new ClientPrediction<TileMoveState, TileCommand>(Simulator,
             config.Prediction ?? new PredictionSettings(config.TickSeconds, MaxPendingCommands: 64,
                 HardSnapDistance: 0.5f, CorrectionRate: 8f, CorrectionDeadZone: 0.01f));
-        View = new ClientReplicationView(TileProtocol.CreateRegistry());
+        View = new ClientReplicationView(registry ?? TileProtocol.CreateRegistry());
         World = new World();
         // A placeholder until the head has the world file. One metre tiles and the document default plane height
         // are the only honest guess available before a document is loaded, and Presenter is settable for exactly
@@ -86,8 +92,9 @@ public sealed partial class TileWorldClient : IDisposable
     /// <see cref="ClientPrediction{TState,TCommand}.PredictedState"/> is what the rules see.</summary>
     public ClientPrediction<TileMoveState, TileCommand> Prediction { get; }
 
-    /// <summary>The remote view. Its entities live in <see cref="World"/> and its components are the ones
-    /// <see cref="TileProtocol.CreateRegistry"/> registered.</summary>
+    /// <summary>The remote view. Its entities live in <see cref="World"/> and its components are the ones the
+    /// registry this client was built with registered, which is <see cref="TileProtocol.CreateRegistry"/> plus
+    /// whatever the game added to it.</summary>
     public ClientReplicationView View { get; }
 
     /// <summary>The client-side ECS world remotes are applied into. A game adds its own components to these

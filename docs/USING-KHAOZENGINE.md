@@ -8325,7 +8325,8 @@ var client = new TileWorldClient(
     },
     map,                                                   // baked from the SAME world files
     new TileDocumentTargets(document, catalogs),
-    TileProtocol.BuildConnectToken("grimhollow-1", worldHash, authToken));
+    TileProtocol.BuildConnectToken("grimhollow-1", worldHash, authToken),
+    registry);                                             // the SAME registry the server was given
 
 client.RefusedAtDoor += reason => ShowRefusal(reason);     // a TOKEN, localized by the client
 client.NoticeReceived += reason => ShowNotice(reason);
@@ -8346,11 +8347,12 @@ foreach (long netId in client.RemoteNetIds)
     if (client.TryGetRemotePose(netId, out TilePose pose)) Draw(remoteMesh, pose.Position, pose.Yaw);
 ```
 
-**In R1 the client builds its registry itself**, from a bare `TileProtocol.CreateRegistry()` with no extension
-hook, so a game's OWN replicated components reach the server's registry and not the client's. Extension ids are
-length-prefixed, so the client skips what it cannot decode rather than failing, and movement, the owner route and
-the display name all work. Game components on a tile client are
-[#700](https://github.com/APKiwiOrg/KhaozEngine/issues/700).
+**Both heads take the same `ReplicationRegistry`.** Each constructor takes one and each defaults to
+`TileProtocol.CreateRegistry()`, so a game registering its own components at or above
+`TileProtocol.FirstGameTypeId` builds ONE registry and passes it to both. It has to pass it to both: extension
+ids are length-prefixed, so a client whose registry never heard of a component SKIPS it rather than failing,
+which is the forward compatibility the wire wants and also the trap. The components never arrive, movement and
+the owner route and the display name all keep working, and nothing anywhere says a thing.
 
 `Presenter` starts as a placeholder and is REPLACED once the document is loaded
 (`client.Presenter = new TilePresenter(document)`), so it carries the world's real tile size and plane height.

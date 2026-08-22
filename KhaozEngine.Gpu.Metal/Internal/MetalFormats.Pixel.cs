@@ -89,11 +89,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <param name="arrayLayers">The seam's array layer count, before any cubemap expansion.</param>
         /// <param name="multisampled">Whether the sample count is above 1.</param>
         /// <param name="cube">Whether the texture declares <see cref="GpuTextureUsage.Cubemap"/>.</param>
-        internal static MTLTextureType TextureTypeFor(uint arrayLayers, bool multisampled, bool cube)
+        /// <param name="arrayView"><see cref="GpuTextureDescription.IsArray"/>: the texture was asked for as an
+        /// ARRAY even though its layer count cannot say so. It is ORed with the layer-count test rather than
+        /// replacing it, so a caller that passes only the count gets exactly the type it got before (#666). The
+        /// cube and multisample arms above it keep their own rule, which is the precedence the incumbent has.
+        /// </param>
+        internal static MTLTextureType TextureTypeFor(uint arrayLayers, bool multisampled, bool cube,
+            bool arrayView = false)
         {
             if (cube) return arrayLayers > 1 ? MTLTextureType.TypeCubeArray : MTLTextureType.TypeCube;
             if (multisampled) return MTLTextureType.Type2DMultisample;
-            return arrayLayers > 1 ? MTLTextureType.Type2DArray : MTLTextureType.Type2D;
+            return arrayLayers > 1 || arrayView ? MTLTextureType.Type2DArray : MTLTextureType.Type2D;
         }
 
         /// <summary>

@@ -62,7 +62,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// staging texture here is an <c>MTLBuffer</c> with a software subresource layout rather than a texture
         /// (M-C5), so there is no texture for the other bits to describe, and every staging texture the engine
         /// creates passes the bit alone.</exception>
-        internal static MetalTextureViewPlan ForTexture(GpuTextureUsage usage, uint arrayLayers, uint sampleCount)
+        /// <param name="usage">The seam's usage bits.</param>
+        /// <param name="arrayLayers">The seam's array layer count.</param>
+        /// <param name="sampleCount">The seam's sample count.</param>
+        /// <param name="arrayView"><see cref="GpuTextureDescription.IsArray"/>, which is what makes a ONE-layer
+        /// array a <c>Type2DArray</c> rather than a <c>Type2D</c> (#666). Defaulted so a caller that only has a
+        /// layer count keeps the derived behaviour.</param>
+        internal static MetalTextureViewPlan ForTexture(GpuTextureUsage usage, uint arrayLayers, uint sampleCount,
+            bool arrayView = false)
         {
             bool staging = (usage & GpuTextureUsage.Staging) != 0;
             if (staging && usage != GpuTextureUsage.Staging)
@@ -84,7 +91,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             return new MetalTextureViewPlan(
                 Staging: false,
                 MetalFormats.TextureTypeFor(arrayLayers, sampleCount > 1,
-                    (usage & GpuTextureUsage.Cubemap) != 0),
+                    (usage & GpuTextureUsage.Cubemap) != 0, arrayView),
                 MetalFormats.ToTextureUsage(usage),
                 // PRIVATE for every real texture (M-M2), reproducing the incumbent. Not a performance choice on
                 // unified memory, where Private and Shared cost the same to read: it is what the goldens were

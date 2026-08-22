@@ -7,8 +7,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.39.0
 
-A tile world can draw a real glb kit per archetype now, the glTF loader honours per-vertex COLOR_0, and
-the ground-decal pass no longer hands both of a frame's passes one shared uniform block.
+A tile world can draw a real glb kit per archetype now, the glTF loader honours per-vertex COLOR_0, and a
+server-owned entity can be transient across a restart without also being destroyed by a cell unload. Alongside
+it, the GPU seam can express a texture array with a single layer. The ground-decal pass no longer hands both of
+a frame's passes one shared uniform block.
 
 - **`GltfMeshResolver` (`KhaozEngine.TileWorld.Render3D`) loads an archetype's glb by its `MeshRef`.**
   `new GltfMeshResolver(string rootDirectory, ITileMeshResolver? fallback = null, Action<string>? log = null)`
@@ -45,6 +47,115 @@ the ground-decal pass no longer hands both of a frame's passes one shared unifor
   boundary. The key itself is a `MeshWeldKey` struct rather than a 14-element `ValueTuple`, because such a tuple
   hashes only its seventh element and its `Rest`, which would leave position out of the hash and make the weld
   quadratic on an unmapped mesh.
+- **The ritual's pack into `local-feed` is guarded, so a finish after a release cannot overwrite the released
+  bytes.** No package content changes here, only the repo's own tooling. `scripts/pack-local-feed.sh` is the
+  ritual's pack step now (`AGENTS.md` names it instead of the bare `dotnet pack -c Release -o ./local-feed`): it
+  packs a STAGED version, packs when HEAD is the tag with a clean tree, and refuses when `<KhaozEngineVersion>`
+  names a version that is already tagged and HEAD has moved past it, which was the window in which `local-feed`
+  came to hold a `17.30.0` bigger than what `v17.30.0` describes (#492). `PACK_RELEASED_OK=1` is the deliberate
+  exception. `scripts/hooks/pack-release-guard.sh` denies the bare `dotnet pack` into `local-feed` under the same
+  rule from both settings files, `scripts/check-local-feed.sh` reports a feed that already drifted (it finds 8
+  such versions in the current dev feed), and `scripts/pack-standard.sh` holds the one copy of the rule the three
+  share. Tested by `scripts/tests/pack-local-feed.test.sh`.
+- **`Transient` carries a `TransientScope`, so "never saved" and "gone on an unload" stopped being one answer**
+  (`KhaozEngine.Sharding`, #668). A cell is captured for two reasons: the durable save that outlives the process,
+  and the in-memory freeze `CellEvictor` holds while a cell is unloaded so a re-entered coordinate restores inside
+  the create call. 17.38.0's mark excluded an entity from `CellSim.SnapshotOwned`, which BOTH consumers called, so
+  marking an entity also made a cell unload destroy it, which an unload is not supposed to do. `Transient` now
+  carries one field. `TransientScope.Always` (the default, so `default(Transient)` and every existing mark mean
+  exactly what they meant) is out of both captures. `TransientScope.DurableOnly` is out of the save alone, so a
+  restart brings back no husk and an unload plus a route back hands the SAME entity under the same `NetId` to
+  whatever was tracking it. The cost of the split is that `Transient` is no longer a zero-field ECS tag, so a
+  marked archetype now carries a one-field column instead of only an archetype bit.
+- **`ShardedWorldServer.MarkTransient(netId, TransientScope)` and `TryGetTransientScope(netId, out scope)`.** The
+  one-argument `MarkTransient` is kept as an overload meaning `TransientScope.Always`, and `IsTransient` stays true
+  for either scope (every scope is out of the durable save, which is what it asks). Re-marking at a different scope
+  moves the entity to that scope rather than adding a second mark, and `ClearTransient` clears either.
+- **`CellSim.SnapshotOwned(excludedNetIds, SnapshotPurpose)`**, with the one-argument overload unchanged as
+  `SnapshotPurpose.Durable`. `SnapshotPurpose.Eviction` leaves out only the `Always` entities, so an unload freeze
+  is a faithful in-memory copy of the cell rather than a second persistence decision.
+- **`CellEvictor` caches a freeze that is not the bytes it saved.** The store still gets the durable capture, and
+  the cache now gets an `Eviction`-purpose one taken at the last moment before the cell is removed, so the freeze
+  holds the cell as it stopped rather than as it stood when the write was queued. That second capture is taken only
+  when the cell actually holds a `DurableOnly` entity: the marks name exactly what the two captures differ by, so
+  an empty mark set means the durable bytes (which the finalize pass has just re-verified current) ARE the freeze,
+  and a game that never uses the scope keeps the 17.38.0 eviction cost of one capture. The eviction path is
+  unchanged in every other respect (the write, the re-verify against the durable bytes and the refusals all behave
+  as before), and a `MaxCachedSnapshots` of 0 skips the extra capture entirely.
+- **The marks ride BESIDE the freeze, because no capture can encode them.** `Transient` is in no
+  `ReplicationRegistry` by design, so an entity restored from a capture comes back unmarked, which would have made
+  a `DurableOnly` entity persistable the moment its cell was re-entered. `CellSim.ReadTransientMarks(purpose)` and
+  `ApplyTransientMarks(marks)` are the pair that carries them, the same shape `ShardHost.ProcessHandoffs` already
+  used across a handoff, and the evictor drops them with the cached bytes so the pair is never half-live.
+  `ShardHost.ProcessHandoffs` now carries the SCOPE across a crossing too, for every `ICellLink` shape, so a
+  `DurableOnly` entity that walks over a border does not arrive as an `Always` one.
+- **`ICellPersistenceHost` gained three DEFAULT interface methods**: `SnapshotCell(coord, SnapshotPurpose)`,
+  `ReadTransientMarks(coord, purpose)` and `ApplyTransientMarks(coord, marks)`. The defaults are the pre-17.39.0
+  behaviour (ignore the purpose, carry nothing, apply nothing), so an existing host implementation is unaffected
+  and reads `DurableOnly` as `Always` until it overrides them. `ShardedWorldServer` overrides all three.
+- **A pickup is still `Always`, deliberately.** `WorldPickups` marks every pickup it spawns at
+  `TransientScope.Always` rather than `DurableOnly`, because the seam's tracking is dropped on eviction anyway
+  (#374), so an orb that came back on the route into an unloaded cell would be exactly the untracked husk the mark
+  exists to prevent. Nothing about pickup behaviour moved.
+- **What `DurableOnly` does NOT promise:** the route back reaches only as far as the evictor's snapshot cache
+  (`CellEvictionConfig.MaxCachedSnapshots`, 1024 coordinates by default, oldest dropped first). Past it the
+  coordinate falls back to the store-backed load, and the store never held the entity, so it is gone exactly as
+  `Always` would have left it. A spawner using this scope must still be able to notice a net id it no longer owns.
+  `CellEvictionConfig.MaxCachedSnapshots` now documents what a dropped entry costs and how to size the cache for a
+  world that uses the scope.
+- **`GpuTextureDescription.IsArray` (`KhaozEngine.Gpu`) says a texture is a 2D ARRAY, so a ONE-layer array is
+  expressible (#666).** Every backend derived array-ness from `ArrayLayers > 1` alone, so
+  `GpuTextureDescription.Texture2DArray(..., arrayLayers: 1, ...)` created a plain 2D texture and any pipeline
+  whose fragment declares `texture2DArray` bound the wrong type. Metal aborts the process under armed validation
+  (`incorrect type of texture (MTLTextureType2D) bound at Texture binding at index 0 (expect
+  MTLTextureType2DArray)`), lavapipe reads through it silently, and Direct3D 11's shader resource view dimension
+  is likewise scalar-derived. `Texture2DArray` now sets the flag, and the constructor takes an `isArray`
+  argument. **Additive:** the layer-count inference is kept as the default, so `IsArray` is true whenever
+  `ArrayLayers > 1` and a caller that passes only a layer count creates exactly the texture it created before.
+  The flag names the 2D-array case only: a cubemap (`GpuTextureUsage.Cubemap`) keeps its own layer-count rule,
+  which is the precedence each backend already had, and a multisampled array is refused outright (below).
+- **All four backends honour it, three of them natively.** `KhaozEngine.Gpu.Metal` picks `MTLTextureType2DArray`
+  in `MetalFormats.TextureTypeFor`, `KhaozEngine.Gpu.Vulkan` picks `VK_IMAGE_VIEW_TYPE_2D_ARRAY` in
+  `VulkanFormats.ToViewType` and carries the flag on its sampled and storage view specs, and
+  `KhaozEngine.Gpu.D3D11` picks `Texture2DArray` for its shader resource and unordered access views (the
+  render-target and depth-stencil views keep the layer-count rule, since no shader declares their dimension and
+  their array arm already pins `ArraySize` 1). The incumbent Veldrid backend CANNOT express a one-layer array:
+  `MTLTexture`, `VkTextureView` and `D3D11TextureView` each test `ArrayLayers` against 1, there is no
+  `TextureType` value and no `TextureUsage` bit for it, and a `TextureView` cannot widen it either because its
+  own `ArrayLayers` feeds the same comparison. So it creates a second slice that is never uploaded to, never
+  sampled and never named by a slot, and the seam's logical layer count stays one.
+- **The emulated slice is CONTAINED rather than invisible, which is two behaviour changes on the incumbent.**
+  Nothing samples the phantom, so it cannot reach a picture. But Veldrid COUNTS it, so both seam paths that name
+  subresources rather than texels could see it. A whole-resource `CopyTexture` names every subresource on both
+  sides, so `GpuReadback.ToRgba` on a one-layer array threw `Source and destination Textures are not compatible
+  to be copied` against the one-slice staging texture it allocates, while the same call succeeded on all three
+  natives. `VeldridGpuCommandList.CopyTexture` now narrows to the LOGICAL subresources whenever either side pads,
+  which is the same set of texels the natives copy, and the whole-resource call is unchanged for every texture
+  that does not pad. And `UpdateTexture(..., arrayLayer: 1)` on a one-layer array was accepted silently here and
+  refused by name on the natives: it now raises `ArgumentOutOfRangeException` naming the emulation. Both are
+  pinned by `[GpuFact]`s that run on every backend.
+- **A STAGING texture is never padded.** It is CPU-visible memory with no view and nothing that binds it to a
+  shader, so array-ness cannot be observed on one and the pad only doubled the buffer a readback maps.
+- **A texture cannot be both an ARRAY and MULTISAMPLED, and the description says so.** The backends did not
+  agree on which type such a texture takes: Metal, Vulkan and Direct3D 11's render-target views derive the
+  multisample type, while Direct3D 11's SHADER RESOURCE view nests its multisample test inside the non-array arm
+  (`D3D11Texture.CreateSrvWindows`), so `IsArray && SampleCount > 1` took a plain `Texture2DArray` view over a
+  multisampled resource there. Nothing in the engine builds that shape, so `GpuTextureDescription`'s constructor
+  now throws `ArgumentOutOfRangeException` for it rather than leaving three answers in place. Every multisampled
+  render target the engine makes is single-layer and is unaffected.
+- **The tile-ground pad is gone.** `Scene3D.LoadTileGroundMaterial` duplicated a one-layer set into two layers
+  for exactly this reason since 17.38.0. A one-layer set is now a real one-layer array.
+  `TileGroundMaterialGpuTests.Single_flat_layer_reproduces_a_vertex_colour_look` is the conformance draw: with
+  the pad gone and the flag reverted it aborts the metal-native test host with the message above, and it passes
+  with the flag in, on the incumbent and on metal-native alike under armed Metal validation. No golden moves,
+  because the padded slice was never sampled and layer 0 carries the same texels either way.
+- **The FFT ocean's placeholder map dropped its pad too.** `OceanFftProducer` built the idle 1x1 map (the one
+  every water draw with no bake behind it binds to the water fragment's `texture2DArray` slot) with two layers
+  for the same reason, and it is a real one-layer array now. The live map's own `Math.Max(2 * cascades, 2)` floor
+  went with it: the cascade count is clamped to at least one, so `2 * cascades` was never below two and the floor
+  had been dead since it was written. Reverting the seam flag with the pad gone aborts the `scene3d_water` golden
+  on metal-native under armed validation (`incorrect type of texture (MTLTextureType2D) bound at Texture binding
+  at index 1`), and it passes with the flag in. No golden moves.
 - **`GroundDecalRenderer` gives each of a frame's two decal passes its OWN frame-UBO slot
   ([#483](https://github.com/APKiwiOrg/KhaozEngine/issues/483)).** A frame runs that renderer twice: the
   blob-shadow pass draws before the skinned draws and must not reject dynamic-tagged pixels, and the main pass

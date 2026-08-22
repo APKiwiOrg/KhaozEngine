@@ -52,17 +52,20 @@ public sealed class TileGroundMaterialMipTests
     }
 
     [Fact]
-    public void A_one_layer_set_is_padded_to_two_so_the_texture_stays_an_array()
+    public void A_one_layer_set_creates_a_true_one_layer_array_with_no_padding_slice()
     {
-        // Every backend derives array-ness from the layer count, so a one-layer texture would bind as plain 2D
-        // under a fragment that declares texture2DArray, which Metal validation kills at the first draw.
+        // Until #666 the seam could not say "array of one", so this set was padded to two layers by duplicating
+        // the layer: one layer would otherwise have created a plain 2D texture under a fragment that declares
+        // texture2DArray, which Metal validation kills at the first draw. GpuTextureDescription.IsArray says it
+        // outright now, so the pad is gone and the second slice with it.
         Harness h = NewHarness();
         int from = h.Factory.Textures.Count;
 
         h.Scene.LoadTileGroundMaterial(1, 1, Layers(1, 1));
 
         FakeTexture array = ArrayOf(h, from);
-        Assert.Equal(2u, array.ArrayLayers);
+        Assert.Equal(1u, array.ArrayLayers);
+        Assert.True(array.IsArray, "a one-layer tile-ground set must still reach the device AS an array");
     }
 
     [Fact]

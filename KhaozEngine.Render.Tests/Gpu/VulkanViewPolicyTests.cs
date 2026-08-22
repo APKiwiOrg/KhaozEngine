@@ -347,6 +347,20 @@ namespace KhaozEngine.Tests.Gpu
             => Assert.Equal(expected, VulkanFormats.ToViewType(cubemap, layers));
 
         /// <summary>
+        /// AND AN EXPLICIT ARRAY WIDENS THE 2D ARM AT ONE LAYER (#666), which is the only way a texture whose
+        /// fragment declares <c>texture2DArray</c> can carry a single layer. A 2D-array view over an image with
+        /// one layer is legal, the range just covers that one. The cube arm keeps the count rule.
+        /// </summary>
+        [Theory]
+        [InlineData(false, 1u, true, ImageViewType.Type2DArray)]
+        [InlineData(false, 1u, false, ImageViewType.Type2D)]
+        [InlineData(false, 4u, false, ImageViewType.Type2DArray)]
+        [InlineData(true, 1u, true, ImageViewType.TypeCube)]
+        public void AnExplicitArray_TakesTheArrayViewTypeAtOneLayer(bool cubemap, uint layers, bool arrayView,
+            ImageViewType expected)
+            => Assert.Equal(expected, VulkanFormats.ToViewType(cubemap, layers, arrayView));
+
+        /// <summary>
         /// A STAGING TEXTURE HAS NO LAYOUT AT ALL, so asking for one is a caller that lost track of which kind of
         /// resource it is holding. It is a <c>VkBuffer</c> here (V-C7), and there is no image to be in a layout.
         /// </summary>

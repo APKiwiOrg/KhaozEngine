@@ -62,6 +62,11 @@ namespace KhaozEngine.NetWorld;
 /// https://github.com/APKiwiOrg/KhaozEngine/issues/660. Until that lands, a collectible that outlives a restart
 /// belongs in the game's own content or save data, spawned again at boot, which is also the only way its payload can
 /// still mean anything.</para>
+/// <para>The save is not the only route to that husk. Re-marking a pickup
+/// <see cref="TransientScope.DurableOnly"/> keeps it in the evictor's unload freeze while
+/// <see cref="ForgetCell"/> has already dropped this seam's record for it, so re-entering that coordinate hands
+/// back an untracked, never-expiring pickup entity mid-session, with no restart involved. Leave a pickup on the
+/// <see cref="TransientScope.Always"/> scope <see cref="Spawn"/> gives it.</para>
 /// <para><b>Blobs written before this version still hold husks</b>, since a save cannot be edited after the fact.
 /// Clearing those is a one-time boot sweep, run once against a world saved by an older build, and unnecessary for
 /// every save written since:
@@ -198,10 +203,12 @@ public sealed class WorldPickups
             // World and an Entity and nothing else, which is precisely why the frame is published on the world.
             world.Set(entity, ReplicatedPosition.FromWorld(position, world.GetIslandFrame()));
             world.Set(entity, state);
-            // Never persisted (#326). Marked here rather than by the host, so it holds on the sharded server, on a
-            // consumer host, and from the very first snapshot the entity could appear in. Inert on a host with no
-            // cell persistence: an unregistered field-less tag costs an archetype bit and reaches no wire.
-            world.Set(entity, default(Transient));
+            // Never captured, by ANY purpose (#326, scope #668). Marked here rather than by the host, so it holds on
+            // the sharded server, on a consumer host, and from the very first snapshot the entity could appear in.
+            // Always rather than DurableOnly because this seam's tracking is dropped on eviction too (#374), so an
+            // orb that came back on the route into an unloaded cell would be exactly the untracked husk the mark
+            // exists to prevent. Inert on a host with no cell persistence: an unregistered marker reaches no wire.
+            world.Set(entity, new Transient { Scope = TransientScope.Always });
         });
 
         live[netId] = new Pickup

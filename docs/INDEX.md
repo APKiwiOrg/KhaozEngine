@@ -93,5 +93,11 @@ backlog here: a follow-up recorded only in a design doc is invisible to the ledg
 - [../AGENTS.md](../AGENTS.md) - concurrent-dev rule (worktree per change), the release ritual, build/test commands.
 - Release ritual, short form: bump `Directory.Build.props` `<KhaozEngineVersion>` -> add the `CHANGELOG.md` entry
   (its newest `## X.Y.Z` heading must be the new version) -> update every `<PackageReference>` example in `README.md`
-  and `USING-KHAOZENGINE.md` -> `dotnet pack -c Release -o ./local-feed` -> commit -> `scripts/tag-release.sh` (annotated `vX.Y.Z`) ->
+  and `USING-KHAOZENGINE.md` -> `scripts/pack-local-feed.sh` -> commit -> `scripts/tag-release.sh` (annotated `vX.Y.Z`) ->
   push `main` + tag. (Don't hand-type `git tag vX.Y.Z`: a lightweight tag is rejected by the `pre-push` hook.)
+- The pack step is a script because it is guarded. `scripts/pack-local-feed.sh` refuses to pack a version that is
+  already tagged unless HEAD is that tag with a clean tree, so a finish landing after a release cannot overwrite
+  the released bytes in the feed with a bigger build of the same number ([#492](https://github.com/APKiwiOrg/KhaozEngine/issues/492)).
+  `PACK_RELEASED_OK=1` is the deliberate exception, `scripts/hooks/pack-release-guard.sh` catches the bare
+  `dotnet pack` an agent types from memory, and `scripts/check-local-feed.sh` reports a feed that already
+  carries a re-packed release, which is the thing to run before vendoring the feed into a game.

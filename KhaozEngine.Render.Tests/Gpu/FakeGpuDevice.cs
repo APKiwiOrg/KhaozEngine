@@ -109,7 +109,8 @@ namespace KhaozEngine.Tests.Gpu
 
         public IGpuTexture CreateTexture(in GpuTextureDescription d)
         {
-            var t = new FakeTexture(d.Width, d.Height, d.MipLevels, d.SampleCount, d.Format, d.Usage, d.ArrayLayers);
+            var t = new FakeTexture(d.Width, d.Height, d.MipLevels, d.SampleCount, d.Format, d.Usage, d.ArrayLayers,
+                d.IsArray);
             Textures.Add(t);
             return t;
         }
@@ -172,15 +173,21 @@ namespace KhaozEngine.Tests.Gpu
     internal sealed class FakeTexture : IGpuTexture
     {
         internal FakeTexture(uint w, uint h, uint mips, uint samples, GpuPixelFormat format,
-            GpuTextureUsage usage = GpuTextureUsage.Sampled, uint arrayLayers = 1)
+            GpuTextureUsage usage = GpuTextureUsage.Sampled, uint arrayLayers = 1, bool isArray = false)
         {
             Width = w; Height = h; MipLevels = mips < 1 ? 1 : mips; SampleCount = samples < 1 ? 1 : samples;
             Format = format; Usage = usage; ArrayLayers = arrayLayers < 1 ? 1 : arrayLayers;
+            IsArray = isArray || ArrayLayers > 1;
         }
 
-        /// <summary>The layer count the texture was created with, so a test can pin that a one-layer set is
-        /// padded before it reaches the device (array-ness is derived from the layer count on every backend).</summary>
+        /// <summary>The layer count the texture was created with, so a test can pin what actually reached the
+        /// device rather than what the caller meant.</summary>
         internal uint ArrayLayers { get; }
+
+        /// <summary>The description's <see cref="GpuTextureDescription.IsArray"/>, so a test can pin that a
+        /// ONE-layer set reaches the device as a one-layer ARRAY rather than as a padded two-layer one or as a
+        /// plain 2D texture (#666).</summary>
+        internal bool IsArray { get; }
 
         /// <summary>The usage flags the texture was created with, so a test can pin that a single-level texture
         /// never declares GenerateMipmaps (the native Vulkan backend refuses generation with nothing to generate).</summary>

@@ -8,8 +8,8 @@ namespace KhaozEngine.Tests.Sharding;
 
 /// <summary>
 /// The per-entity persist opt-out (#326): a <see cref="Transient"/> entity is absent from
-/// <see cref="CellSim.SnapshotOwned"/>'s blob rather than present with fewer components, so no restore can bring it
-/// back as a husk. Pins the three things that make the marker safe to reach for: the blob is byte-identical to one
+/// <see cref="CellSim.SnapshotOwned(System.Collections.Generic.IReadOnlySet{long})"/>'s blob rather than
+/// present with fewer components, so no restore can bring it back as a husk. Pins the three things that make the marker safe to reach for: the blob is byte-identical to one
 /// taken with the entity never spawned at all, the mark reaches no wire, and it follows the entity across a cell
 /// handoff so a crossing does not quietly make it persistable again. The handoff coverage is per link SHAPE, not
 /// per call: a link that delivers the Migrate on a later <see cref="ShardHost.ProcessHandoffs"/> call, which is what
@@ -203,6 +203,150 @@ public class CellTransientTests
         Assert.Equal(new CellCoord(1, 0), dest.Coord);
         Assert.True(dest.World.Has<Transient>(moved));
         Assert.Equal(new byte[] { 0, 0, 0, 0 }, dest.SnapshotOwned(new HashSet<long>()));
+    }
+
+    // ---- #668: the mark carries a scope, and both captures ask for their own ----
+
+    [Fact]
+    public void AnEvictionCaptureKeepsADurableOnlyEntityAndStillDropsAnAlwaysOne()
+    {
+        // The split itself, at the seam that decides it. The durable capture is unchanged (both marks are out of
+        // it), and the eviction capture keeps the DurableOnly one, so an unload is a freeze rather than a second
+        // persistence decision.
+        ReplicationRegistry r = Registry();
+        CellSim c = Cell(r);
+        Owned(c, 5, 50);                                             // plain
+        Entity always = Owned(c, 8, 80);
+        Entity durableOnly = Owned(c, 9, 90);
+        c.World.Set(always, new Transient { Scope = TransientScope.Always });
+        c.World.Set(durableOnly, new Transient { Scope = TransientScope.DurableOnly });
+
+        CellSim fromSave = Cell(r);
+        Assert.Equal(new long[] { 5 },
+            fromSave.RestoreOwned(c.SnapshotOwned(new HashSet<long>(), SnapshotPurpose.Durable)));
+
+        CellSim fromUnload = Cell(r);
+        IReadOnlyList<long> back = fromUnload.RestoreOwned(c.SnapshotOwned(new HashSet<long>(), SnapshotPurpose.Eviction));
+        Assert.Equal(2, back.Count);
+        Assert.Contains(5L, back);
+        Assert.Contains(9L, back);
+        Assert.DoesNotContain(8L, back);
+        Assert.True(fromUnload.TryGetOwned(9, out Entity restored));
+        Assert.True(fromUnload.World.TryGet(restored, out Blob b));
+        Assert.Equal(90, b.V);                                       // the same entity, components and all
+    }
+
+    [Fact]
+    public void TheMarksRideBesideAnEvictionCaptureAndReApplyOnTheFarSide()
+    {
+        // The marker is in no registry (#326), so an eviction capture carries the ENTITY and not its mark. Without
+        // the carry the far side owns an unmarked entity, which the next durable capture would happily write. The
+        // same shape as ProcessHandoffs carrying a mark beside a Migrate.
+        ReplicationRegistry r = Registry();
+        CellSim c = Cell(r);
+        Owned(c, 5, 50);
+        Entity always = Owned(c, 8, 80);
+        Entity durableOnly = Owned(c, 9, 90);
+        c.World.Set(always, new Transient { Scope = TransientScope.Always });
+        c.World.Set(durableOnly, new Transient { Scope = TransientScope.DurableOnly });
+
+        Assert.Empty(c.ReadTransientMarks(SnapshotPurpose.Durable));   // nothing kept, so nothing to carry
+        IReadOnlyDictionary<long, TransientScope> marks = c.ReadTransientMarks(SnapshotPurpose.Eviction);
+        Assert.Equal(TransientScope.DurableOnly, Assert.Contains(9L, marks));
+        Assert.DoesNotContain(8L, marks);
+        Assert.DoesNotContain(5L, marks);
+
+        CellSim back = Cell(r);
+        back.RestoreOwned(c.SnapshotOwned(new HashSet<long>(), SnapshotPurpose.Eviction));
+        Assert.True(back.TryGetOwned(9, out Entity restored));
+        Assert.False(back.World.Has<Transient>(restored));             // the bytes could not carry it
+
+        Assert.Equal(1, back.ApplyTransientMarks(marks));
+        Assert.True(back.World.TryGet(restored, out Transient mark));
+        Assert.Equal(TransientScope.DurableOnly, mark.Scope);
+        // And with the mark back on it, the far side's own durable capture leaves it out again.
+        CellSim saved = Cell(r);
+        Assert.Equal(new long[] { 5 }, saved.RestoreOwned(back.SnapshotOwned(new HashSet<long>())));
+    }
+
+    [Fact]
+    public void ApplyingAMarkForANetIdTheCellDoesNotOwnIsSkipped()
+    {
+        // The cache-dropped case: a coordinate that fell back to the store-backed load holds none of the entities
+        // the freeze did, so the carried marks must land on nothing rather than throw or invent an entity.
+        ReplicationRegistry r = Registry();
+        CellSim c = Cell(r);
+        Owned(c, 5, 50);
+
+        var marks = new Dictionary<long, TransientScope> { [9L] = TransientScope.DurableOnly };
+        Assert.Equal(0, c.ApplyTransientMarks(marks));
+        Assert.False(c.TryGetOwned(9, out Entity _));
+    }
+
+    [Fact]
+    public void TheDefaultMarkIsTheAlwaysScope()
+    {
+        // The additive contract at the component level: default(Transient) is what 17.38.0 shipped, so every mark
+        // written before the scope existed still means "out of every capture".
+        ReplicationRegistry r = Registry();
+        CellSim c = Cell(r);
+        Entity e = Owned(c, 9, 90);
+        c.World.Set(e, default(Transient));
+
+        Assert.True(c.World.TryGet(e, out Transient mark));
+        Assert.Equal(TransientScope.Always, mark.Scope);
+        Assert.Equal(new byte[] { 0, 0, 0, 0 }, c.SnapshotOwned(new HashSet<long>()));
+        Assert.Equal(new byte[] { 0, 0, 0, 0 }, c.SnapshotOwned(new HashSet<long>(), SnapshotPurpose.Eviction));
+    }
+
+    [Fact]
+    public void AHandoffCarriesTheSCOPE_NotJustTheMark()
+    {
+        // A DurableOnly entity that walks over a border must arrive DurableOnly. Arriving as the default Always
+        // would leave it persistable-never AND destroyed by the destination cell's next unload, which is precisely
+        // the bug #668 fixes, reintroduced one cell over.
+        var host = new ShardHost(cellSize: 100f, tickSeconds: 0.1f, Registry(), interestCellSize: 100f,
+            overlapMargin: 20f, positionAccessor: PosAccessor);
+
+        Entity e = host.SpawnOwned(50f, 50f, netId: 7, out CellSim source);
+        source.World.Set(e, new Pos { X = 50f, Y = 50f });
+        source.World.Set(e, new Blob { V = 1 });
+        source.World.Set(e, new Transient { Scope = TransientScope.DurableOnly });
+
+        source.World.Set(e, new Pos { X = 150f, Y = 50f });   // over the border into (1,0)
+        host.ProcessHandoffs();
+
+        Assert.True(host.TryGetOwner(7, out CellSim dest, out Entity moved));
+        Assert.Equal(new CellCoord(1, 0), dest.Coord);
+        Assert.True(dest.World.TryGet(moved, out Transient mark));
+        Assert.Equal(TransientScope.DurableOnly, mark.Scope);
+        Assert.Equal(new byte[] { 0, 0, 0, 0 }, dest.SnapshotOwned(new HashSet<long>()));                       // never saved
+        Assert.NotEqual(new byte[] { 0, 0, 0, 0 }, dest.SnapshotOwned(new HashSet<long>(), SnapshotPurpose.Eviction));
+    }
+
+    [Fact]
+    public void ADeferredMigrateCarriesTheScopeToo()
+    {
+        // The same carry over the link shape every cross-node implementation has: the scope is read in phase 1 of
+        // one ProcessHandoffs call and re-applied in phase 2 of a later one, so it rides in the scratch map rather
+        // than in the Migrate payload (which could not name an unregistered marker anyway).
+        var link = new DeferringMigrateLink();
+        var host = new ShardHost(cellSize: 100f, tickSeconds: 0.1f, Registry(), interestCellSize: 100f,
+            overlapMargin: 20f, positionAccessor: PosAccessor, cellLink: link);
+
+        Entity e = host.SpawnOwned(50f, 50f, netId: 7, out CellSim source);
+        source.World.Set(e, new Pos { X = 50f, Y = 50f });
+        source.World.Set(e, new Blob { V = 1 });
+        source.World.Set(e, new Transient { Scope = TransientScope.DurableOnly });
+
+        source.World.Set(e, new Pos { X = 150f, Y = 50f });
+        host.ProcessHandoffs();                               // sends the Migrate, which the link holds back
+        link.DeliverStaged();
+        host.ProcessHandoffs();                               // the destination adopts it on THIS call
+
+        Assert.True(host.TryGetOwner(7, out CellSim dest, out Entity moved));
+        Assert.True(dest.World.TryGet(moved, out Transient mark));
+        Assert.Equal(TransientScope.DurableOnly, mark.Scope);
     }
 
     [Fact]

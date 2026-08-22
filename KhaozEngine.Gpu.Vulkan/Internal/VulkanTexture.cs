@@ -60,6 +60,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             Height = description.Height;
             MipLevels = description.MipLevels;
             ArrayLayers = description.ArrayLayers;
+            IsArray = description.IsArray;
             SampleCount = description.SampleCount;
             Format = description.Format;
             Usage = description.Usage;
@@ -106,6 +107,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <summary>The LOGICAL array layer count, before the cubemap expansion.</summary>
         internal uint ArrayLayers { get; }
+
+        /// <summary>Whether the seam asked for an ARRAY, which the layer count alone cannot say at one layer
+        /// (#666). Carried onto the sampled and storage views so a one-layer array reaches an array-declaring
+        /// shader as <c>VK_IMAGE_VIEW_TYPE_2D_ARRAY</c>.</summary>
+        internal bool IsArray { get; }
 
         /// <summary>The usage the seam asked for.</summary>
         internal GpuTextureUsage Usage { get; }
@@ -316,7 +322,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             if (Plan.SampledView)
             {
                 SampledView = owner.Api.CreateImageView(new VulkanImageViewSpec(
-                    Image, Format, Plan.DepthStencil, Plan.Cubemap, 0, MipLevels, 0, ArrayLayers));
+                    Image, Format, Plan.DepthStencil, Plan.Cubemap, 0, MipLevels, 0, ArrayLayers, IsArray));
             }
 
             if (Plan.AttachmentView)
@@ -333,7 +339,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 // ONE MIP LEVEL, which is what a storage-image binding must cover, and every layer so an
                 // image2DArray binding works. Not a cube view either, for the same reason as the attachment.
                 StorageView = owner.Api.CreateImageView(new VulkanImageViewSpec(
-                    Image, Format, Plan.DepthStencil, Cubemap: false, 0, 1, 0, ActualArrayLayers));
+                    Image, Format, Plan.DepthStencil, Cubemap: false, 0, 1, 0, ActualArrayLayers, IsArray));
             }
         }
 

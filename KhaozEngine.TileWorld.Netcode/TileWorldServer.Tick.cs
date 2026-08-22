@@ -176,9 +176,9 @@ public sealed partial class TileWorldServer
             if (!actions.TryPeek(slot, out TilePendingAction pending)) continue;
             if (!netIdBySlot.TryGetValue(slot, out long netId)) continue;
             // Read through TryGetPlayerState, never off the raw component, because the route is what the idle test
-            // turns on and a cell handoff leaves the raw state carrying none: the Migrate capture puts the route in
-            // TileRouteState, so a player who crossed a region boundary mid walk reads as ARRIVED on the crossing
-            // tick and fires the action a region early.
+            // turns on. WithAssembledRoute is the one place that rule lives and its doc has the failure: a player
+            // who crossed a region boundary mid walk reads as ARRIVED on the crossing tick and fires the action a
+            // region early.
             if (!TryGetPlayerState(slot, out TileMoveState state)) continue;
             if (!state.Route.IsIdle) continue;   // still walking to it
 

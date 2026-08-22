@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using KhaozEngine.Netcode;
 using KhaozEngine.Sharding;
@@ -254,6 +255,42 @@ public class TileWorldServerTickTests
         Assert.True(s.TryGetPlayerState(0, out TileMoveState st));
         Assert.Equal(new TileCoord(9, 10, 0), st.Tile);
         Assert.Equal(0, st.InteractTarget);
+    }
+
+    // SetPlayerState is a door, so what it cannot accept is refused THERE. A route over the cap would otherwise be
+    // written happily and then throw out of the snapshot encoder on the next serve, killing that tick for every
+    // other player on the server, which is the thing this codebase keeps refusing on purpose.
+    [Fact]
+    public void SetPlayerState_refuses_a_state_the_tick_could_not_survive()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(10, 10, 0));
+        s.SpawnPlayer(0, "a", "Ari");
+        s.SpawnPlayer(1, "b", "Bo");
+
+        var steps = new TileDirection[300];   // the cap is TileProtocol.MaxRouteSteps, 256
+        Array.Fill(steps, TileDirection.N);
+        TileMoveState tooLong = TileMoveState.At(new TileCoord(10, 10, 0), TileDirection.S);
+        tooLong.Route = TileRoute.FromSteps(tooLong.Tile, steps);
+        ArgumentException route = Assert.Throws<ArgumentException>(() => s.SetPlayerState(0, tooLong));
+        Assert.Contains("300", route.Message);
+
+        // The other two doors, refused for the same reason: a player nobody can see and who can never step.
+        Assert.Throws<ArgumentException>(() =>
+            s.SetPlayerState(0, TileMoveState.At(new TileCoord(10, 10, 9), TileDirection.S)));
+        Assert.Throws<ArgumentException>(() =>
+            s.SetPlayerState(0, TileMoveState.At(new TileCoord(9000, 10, 0), TileDirection.S)));
+
+        // Nothing was written and the tick runs on, for the refused player and for everybody else.
+        s.Enqueue(1, 0, TileCommand.WalkTo(new TileCoord(10, 14, 0), TileMoveMode.Run));
+        s.Tick(Dt);
+        s.Tick(Dt);
+        Assert.Equal(2, s.TickCount);
+        Assert.True(s.TryGetPlayerState(1, out TileMoveState other));
+        Assert.Equal(new TileCoord(10, 11, 0), other.Tile);
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState refused));
+        Assert.Equal(new TileCoord(10, 10, 0), refused.Tile);
+        Assert.True(refused.Route.IsIdle);
     }
 
     // Two actions coming ready on the SAME tick resolve oldest CLICK first, which is what TilePendingAction's

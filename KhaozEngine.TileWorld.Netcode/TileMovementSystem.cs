@@ -11,11 +11,11 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// <para>A <see cref="Ghost"/> is a read-only mirror of an entity another cell simulates, and a
 /// <see cref="Migrating"/> entity has already been captured and sent to its destination. Stepping either would
 /// simulate one player twice in one tick, in two cells, from two copies of its state, so both are skipped.</para>
-/// <para>The route is reassembled from <see cref="TileRouteState"/> when the state carries none: a cell handoff
-/// rebuilds the entity from its Migrate capture, and the capture carries the route in that component rather than
-/// inside <see cref="TileMoveState"/> (whose codec deliberately omits it). Writing the route back out every tick
-/// allocates one small array per walking player per tick, which at a tile world's tick rate is not worth a pool.
-/// </para>
+/// <para>The state is read through <see cref="TileWorldServer.WithAssembledRoute"/>, which is the ONE place the
+/// route is put back onto it and the only sanctioned way to read <c>TileMoveState.Route</c> on this server. Never
+/// take the route off the raw component here: that method's doc has the failure. Writing the route back out every
+/// tick allocates one small array per walking player per tick, which at a tile world's tick rate is not worth a
+/// pool.</para>
 /// <para>The command is reset to <see cref="TileCommand.Continue"/> at the mode the step LEFT the player in,
 /// never to <see cref="TileCommand.None"/>. The reset is what a second application of the same component would
 /// see (a tick that could not route a command, a cell stepped twice), and None is a run toggled off, so the reset
@@ -36,11 +36,8 @@ public sealed class TileMovementSystem : ISystem
         {
             if (world.Has<Ghost>(e) || world.Has<Migrating>(e)) return;
 
-            TileMoveState s = state;
-            if (s.Route.IsIdle && route.Remaining is { Length: > 0 })
-                s.Route = TileRoute.FromSteps(s.Tile, route.Remaining);
-
-            s = simulator.Step(s, pending.Command, dt);
+            TileMoveState s = simulator.Step(
+                TileWorldServer.WithAssembledRoute(state, route), pending.Command, dt);
 
             state = s;
             route.Remaining = s.Route.RemainingSteps(s.Tile);

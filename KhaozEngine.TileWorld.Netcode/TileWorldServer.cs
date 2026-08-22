@@ -148,11 +148,8 @@ public sealed partial class TileWorldServer : IDisposable
         accountIdBySlot.TryGetValue(slot, out accountId!);
 
     /// <summary>
-    /// The player's authoritative state, route included. The route is REASSEMBLED from
-    /// <see cref="TileRouteState"/> rather than read off the state, because a cell handoff rebuilds the entity from
-    /// its Migrate capture and that capture carries the route in the component (the move state's own codec omits
-    /// it). The two are written together on every step, so the answer is the same either way for an entity that
-    /// never crossed.
+    /// The player's authoritative state, route included, through <see cref="WithAssembledRoute"/>. NEVER read
+    /// <c>TileMoveState.Route</c> off the raw component instead: see that method for what goes wrong.
     /// </summary>
     /// <param name="slot">The player's connection slot.</param>
     /// <param name="state">The authoritative state, default when no cell owns the slot's player.</param>
@@ -162,20 +159,54 @@ public sealed partial class TileWorldServer : IDisposable
         if (!netIdBySlot.TryGetValue(slot, out long netId)) return false;
         if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) return false;
         if (!cell.World.TryGet(e, out state)) return false;
-        state.Route = TileRoute.FromSteps(state.Tile,
-            cell.World.TryGet(e, out TileRouteState r) ? r.Remaining : Array.Empty<TileDirection>());
+        cell.World.TryGet(e, out TileRouteState route);
+        state = WithAssembledRoute(state, route);
         return true;
+    }
+
+    /// <summary>
+    /// THE accessor for a player's state, and the one place the route is put back onto it. Every read of
+    /// <c>TileMoveState.Route</c> on this server goes through here, because a raw read is WRONG on the tick after a
+    /// cell handoff: the destination rebuilds the entity from its Migrate capture, that capture carries the route in
+    /// <see cref="TileRouteState"/> (<c>TileMoveState</c>'s own codec deliberately omits it, so an observer is not
+    /// shipped every other player's destination), and the rebuilt state therefore reads as IDLE with its
+    /// <c>InteractTarget</c> still set. An arrival test on that raw state fires a player's action a whole region
+    /// short of the thing they clicked.
+    /// <para>The two halves are written together on every step, so this changes nothing for an entity that never
+    /// crossed, which is exactly why the bug is invisible until a player walks over a region boundary mid click.
+    /// A live route on the state is left alone rather than rebuilt, so a walking player costs no allocation here.
+    /// </para>
+    /// </summary>
+    /// <param name="state">The state as the component holds it.</param>
+    /// <param name="route">The entity's <see cref="TileRouteState"/>, default when it has none.</param>
+    /// <returns><paramref name="state"/> with its route assembled.</returns>
+    internal static TileMoveState WithAssembledRoute(in TileMoveState state, in TileRouteState route)
+    {
+        TileMoveState s = state;
+        if (s.Route.IsIdle && route.Remaining is { Length: > 0 })
+            s.Route = TileRoute.FromSteps(s.Tile, route.Remaining);
+        return s;
     }
 
     /// <summary>Overrides a player's authoritative state (a persistence restore, an admin move). With
     /// <paramref name="teleport"/> the monotonic epoch advances, so the client CUTS instead of gliding: a player
-    /// moved across the map without one would be smoothed through every tile in between.</summary>
-    /// <param name="slot">The player's connection slot. An unknown slot is ignored.</param>
+    /// moved across the map without one would be smoothed through every tile in between.
+    /// <para>This is a DOOR, so it is checked here rather than on a later tick. Every refusal below would otherwise
+    /// surface inside <see cref="Tick"/> and take that tick down for every other player on the server: a route over
+    /// the cap throws out of the snapshot encoder on the next serve, and a tile on a plane the world does not have,
+    /// or in a region the map never loaded, leaves a player nobody can see and who can never step.</para></summary>
+    /// <param name="slot">The player's connection slot. An unknown slot is ignored, but the state is validated
+    /// first, so a bad one is refused whether or not the slot is live.</param>
     /// <param name="state">The state to write. Its route is written out to <see cref="TileRouteState"/> as well,
     /// so the two halves stay the one answer.</param>
     /// <param name="teleport">Advance the teleport epoch, for a placement the client must not interpolate.</param>
+    /// <exception cref="ArgumentException"><paramref name="state"/> stands on a plane at or above
+    /// <see cref="TileWorldServerConfig.PlaneCount"/>, on a region the collision map has not loaded, or carries a
+    /// route longer than <see cref="TileMoveOptions.MaxRouteSteps"/>. A route whose tiles are not adjacent to each
+    /// other is refused too, by <see cref="TileRoute.RemainingSteps"/>, with its own message.</exception>
     public void SetPlayerState(int slot, in TileMoveState state, bool teleport = false)
     {
+        ValidatePlayerState(state);
         if (!netIdBySlot.TryGetValue(slot, out long netId)) return;
         if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) return;
         TileMoveState next = state;
@@ -205,6 +236,27 @@ public sealed partial class TileWorldServer : IDisposable
         host.BindClient(slot, netId);
         PlayerJoined?.Invoke(slot, accountId);
         return netId;
+    }
+
+    // Everything a written state can be refused for, taken at the door. This is the pattern the rest of the stack
+    // already follows: TileMoveSimulator validates its options at construction "rather than on the first click",
+    // and this server checks InterestRadius against OverlapMargin in its constructor rather than on the tick a
+    // player first walks near a cell edge. A public setter documented for persistence restores and admin tooling is
+    // the same kind of door.
+    void ValidatePlayerState(in TileMoveState state)
+    {
+        if (state.Tile.Plane < 0 || state.Tile.Plane >= config.PlaneCount)
+            throw new ArgumentException(
+                $"Plane {state.Tile.Plane} is outside the world's {config.PlaneCount} planes.", nameof(state));
+        if (!simulator.Map.HasRegion(state.Tile.Region))
+            throw new ArgumentException(
+                $"Tile {state.Tile} is in region {state.Tile.Region}, which the collision map has not loaded.",
+                nameof(state));
+        if (state.Route.Remaining > config.Move.MaxRouteSteps)
+            throw new ArgumentException(
+                $"A route is capped at {config.Move.MaxRouteSteps} steps and this one carries {state.Route.Remaining}."
+              + " TileMoveSimulator truncates at TileMoveOptions.MaxRouteSteps, so this route was built elsewhere.",
+                nameof(state));
     }
 
     // Tile coordinates ARE the plane the shard grid runs on, so the accessor hands the host the tile itself. The

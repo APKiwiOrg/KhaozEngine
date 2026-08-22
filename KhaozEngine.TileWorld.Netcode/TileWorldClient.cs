@@ -211,9 +211,13 @@ public sealed partial class TileWorldClient : IDisposable
     /// predict-and-send itself, because a command sent before the seed burns a sequence number that
     /// <see cref="ClientPrediction{TState,TCommand}.Reset"/> then rewinds, and the server refuses the re-used
     /// number as stale.</para>
+    /// <para>A frame that covers many ticks (a stall, a breakpoint, a long GC) runs at most eight of them and SHEDS
+    /// the rest, which is <see cref="FixedTickHost"/>'s own rule. Catching the whole backlog up would fire a burst
+    /// of commands describing intent the player no longer has, and movement is latest-wins on both heads anyway.
+    /// </para>
     /// </summary>
     /// <param name="elapsedSeconds">Seconds since the last call. Negative is treated as zero.</param>
-    /// <returns>The number of whole command ticks this call produced.</returns>
+    /// <returns>The number of whole command ticks this call produced, at most eight.</returns>
     public int Tick(float elapsedSeconds) => clock.Advance(elapsedSeconds, onCommandTick);
 
     void OnCommandTick(long tick)
@@ -284,5 +288,6 @@ public sealed partial class TileWorldClient : IDisposable
     {
         remoteSamples.Clear();
         goneRemotes.Clear();
+        liveRemotes.Clear();
     }
 }

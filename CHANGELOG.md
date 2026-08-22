@@ -14,6 +14,119 @@ so a server that does not reference `NetWorld` can still use them: the connect-t
 player-persistence core. `Replication` gains a bounded per-component reader, so an extension codec can no longer
 be satisfied out of the bytes of the components behind it.
 
+**The engine's own graphics backends are the DEFAULT on every platform from this release.** macOS boots on
+`MetalNative`, Windows on `Direct3D11Native`, Linux and everything else on `VulkanNative`. The three Veldrid
+incumbents remain as an explicit OPT-OUT for ONE release, and are REMOVED in the next one by the Veldrid removal
+program (the roadmap issue MF1/#540). A game that wants an incumbent back sets
+`KE_GRAPHICS_BACKEND=metal`, `=d3d11` (or `=direct3d11`) or `=vulkan`, or stores that
+`GpuBackendKind` as its graphics-settings preference, both of which still outrank the default exactly as they
+did. Nothing else changes about how a backend is chosen. What the removal takes out is the IMPLEMENTATIONS and
+their CI legs: the four Veldrid `GpuBackendKind` members stay in the enum forever, because the enum is
+append-only and a game persists a player's choice into it, so they become tokens that resolve to a named
+exception rather than values that disappear (section 5.2 of the removal design).
+
+**This flip was taken by DECISION on 2026-08-22, ahead of the field-evidence gates that were still open**, and
+it overrides the "five gates, all green before any flip" condition each of the three native rollout designs
+sets. The three rollout records carry a dated addendum saying so and naming what is still open: Vulkan gate 3's
+`sync` validation job, Vulkan gate 5's windowed pass, Metal MM1 and Direct3D 11 M1 all still carry a live
+instrument and stay open as issues. The streak gate MV7 is retired ([#564](https://github.com/APKiwiOrg/KhaozEngine/issues/564),
+closed as not planned). Read those addenda before taking a green run here as evidence that every gate was met.
+
+### The flip itself
+
+- `GpuBackendSelector.ProbeOS` answers `MetalNative` / `Direct3D11Native` / `VulkanNative`, where each arm
+  answered its API's Veldrid implementation before.
+- **`GpuBackendSelector.IncumbentFor(OSPlatformKind)` is new** and carries the map `ProbeOS` used to have
+  (macOS to `Metal`, Windows to `Direct3D11`, else `Vulkan`). It is what a failed device creation falls back
+  TO, and it is deleted whole with the incumbents next release.
+- The three native kinds join the windowed candidate list, so `GpuBackendSelector.SupportedBackends()` offers
+  each API's native implementation ahead of its incumbent. A native kind appears **only where its provider is
+  registered**, so a game that has not referenced the native package still sees exactly the list it saw before.
+- **`GpuBackendSelection.WasPinnedByEnvironment` is new**: true only when `KE_GRAPHICS_BACKEND` pinned the
+  backend. That is the ONE provenance for which a missing provider is a hard error rather than something to
+  route around, because a soak session and each of the five cross-platform GPU legs pin their backend that way
+  and then measure or capture under its name. A stored preference is deliberately NOT pinned: `SupportedBackends()`
+  offers native rows now, so a player can store `MetalNative`, and a later build that dropped the package would
+  otherwise throw at boot with the setting that caused it unreachable from inside the game.
+
+### What a game has to know
+
+- **A game that repins WITHOUT taking a native backend package still boots.** The native packages are in no
+  umbrella and the engine cannot reference them, so a provider-backed backend nobody PINNED with no registered
+  provider now falls back to the platform's incumbent with a WARN naming the missing registration, instead of
+  throwing `GpuBackendProviderMissingException`. Pinning a native backend in `KE_GRAPHICS_BACKEND` and not
+  registering it still THROWS, unchanged: that is the half of decision I2 that stops a soak session measuring
+  the incumbent and filing the number under the native name.
+- **`GpuBackendSource.DefaultProviderMissing` is appended (ordinal 5) for exactly that case**, and it is a
+  member of its own rather than `FallbackAfterFailure`, because the two say opposite things to the readers that
+  act on them. This one means the app has not referenced a native backend package or has not called its
+  `Register()`, which is a wiring gap in the APP: nothing failed, no machine is incapable, and a game that
+  stores a graphics preference must NOT clear it. Reported as `FallbackAfterFailure` it would make every
+  repinned game that has not taken a native package read as device-creation failure in telemetry, and would put
+  a "your graphics choice failed" notice in front of a player who chose nothing. The pure
+  `GpuBackendSelector.AfterMissingDefaultProvider(selection, incumbent)` builds the report the way
+  `AfterFallback` builds the other one, the boot line reads
+  `GPU backend: Vulkan (default, VulkanNative has no registered provider)`, the WARN names the package and the
+  one `Register()` call that fixes it, and the telemetry header carries `"backendSource": "DefaultProviderMissing"`
+  with the default that could not be built on `requestedBackend`. A stored `UserPreference` for an unregistered
+  native kind falls back too and reports `FallbackAfterFailure` instead, which is the signal a game clears the
+  preference on.
+- **`CreateHeadless()` falls back now, where it used to propagate.** A DEFAULTED provider-backed backend whose
+  registered provider refuses this machine (`MetalSupportProbe.MissingRequirement` on a Mac below the feature
+  floor, a machine with no Vulkan loader) lands on the platform's Veldrid incumbent with the same WARN the
+  windowed path prints, instead of taking the process down. Without this a `Render2DSnapshot.Capture` or
+  `Render3DSnapshot.Capture` that worked before a repin would throw after it, on a path that never asked for a
+  backend at all. A backend pinned in `KE_GRAPHICS_BACKEND` still propagates everything, and so does the
+  explicitly named `CreateHeadless(GpuBackendKind)` overload, because a headless run that quietly changed
+  backend would file its golden images under a backend that never rendered them.
+- **`GpuNoUsableBackendException` is new, for the DOUBLE FALL.** The requested backend failed, the engine fell
+  back, and the fallback failed too, so there is no device and the app cannot render. Until now the fallback's
+  own exception propagated raw, so a crash report named the incumbent, carried the incumbent's reason, and said
+  nothing about what was actually asked for. The new exception carries `RequestedBackend`, `FallbackBackend` and
+  both failures, and its message names both backends and both reasons in the order they were tried. The FIRST
+  failure is `InnerException`, because on a native backend and its Veldrid twin the two usually share one
+  underlying cause and the one worth reading is the first, and the fallback's own exception is on
+  `FallbackFailure` so neither stack has to be reconstructed from a log. A backend named outright never reaches
+  it: naming one turns fallback off.
+- **The boot line says `(default)` where it said `(OS probe)`.** Before the flip a native backend was reachable
+  only by naming it, so every native session read as `MetalNative (KE_GRAPHICS_BACKEND override)`. After it,
+  `GPU backend: MetalNative (default)` is what an unconfigured session prints, and an override still prints as
+  an override. A game rendering `GpuBackendSource` on its own debug overlay should say the same.
+- **A game settings picker needs native rows.** `SupportedBackends()` now returns up to six kinds, and a picker
+  that maps only the three incumbents will render a native default as an unknown or blank row.
+  [Ruinborne#451](https://github.com/APKiwiOrg/Ruinborne/issues/451) is exactly that: no native rows, and its
+  fallback label reads "Unknown" for a native kind. Its adopt of this release has to fix both. The other games
+  pin 15.0.0 and are unaffected until they repin.
+- Golden families are UNCHANGED. Each native kind is a guest in its incumbent's family, so a run on the new
+  default compares against the same committed grids. One consequence for a developer Mac: a bare
+  `KE_UPDATE_GOLDENS=1` is now REFUSED, because the default is a guest of the family it would overwrite. Bake
+  with `KE_GRAPHICS_BACKEND=metal`, which the refusal message says.
+- **A bare local `KE_GPU_TESTS=1 dotnet test` runs on the platform's NATIVE backend now**, because the test
+  harness resolves through the same `GpuBackendSelector.Select()` everything else does. That is deliberate: the
+  engine's suite should exercise what ships by default. The five cross-platform GPU legs are unaffected, since
+  each names its backend in `KE_GRAPHICS_BACKEND`.
+
+### `KhaozEngine.Gpu.Vulkan`: a live windowed `VkInstance` serves a headless request
+
+**One process holds a headless device and a windowed one, in that order.** Decision V-N1 gives the native
+Vulkan backend one refcounted process-wide `VkInstance`, and the second claim used to be matched against the
+live one by strict key equality. A windowed instance's extension list is the headless one PLUS `VK_KHR_surface`
+and one platform surface extension, so a headless device asked for while a windowed one is live already has
+everything it needs, and equality refused it anyway. That made the ordering rule the refusal message itself
+prescribes ("create the windowed device first") resolve nothing, and it refused a Linux client that opens a
+window and then takes a `Render3DSnapshot.Capture`, which the default flip makes an ordinary shape rather than
+a tool-only one. `VulkanInstanceRefCount.Satisfies` replaces the equality with a satisfaction test that is
+wider in exactly that one direction. The reverse (headless live, windowed asked) is a real shortfall and still
+refuses by name, as does a windowed request for a DIFFERENT platform surface, and so does any change of
+validation rung, since the layer is a `vkCreateInstance` argument a live instance cannot gain. The decision not
+to create a second instance is unchanged ([#543](https://github.com/APKiwiOrg/KhaozEngine/issues/543)).
+
+### Unchanged
+
+The precedence chain (`KE_GRAPHICS_BACKEND` > stored preference > OS probe), every token including the
+`-native` suffixed ones, the numeric values of every `GpuBackendSource` member that already existed (the new
+one is an APPEND at ordinal 5), the golden family mapping, and both software frame-cap sites, which gate on
+`GpuBackendKind.Metal` and were settled by Metal rollout gate 5 in 17.35.0.
 - **`IGpuCommandList.CopyBuffer` refuses an offset that is not a multiple of four, on every backend, and
   `GpuReadback.ReadBuffer<T>` refuses one before it allocates anything
   ([#602](https://github.com/APKiwiOrg/KhaozEngine/issues/602),

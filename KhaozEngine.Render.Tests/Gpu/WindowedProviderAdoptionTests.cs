@@ -22,13 +22,13 @@ namespace KhaozEngine.Tests.Gpu
     /// Device-free, so they run under a plain <c>dotnet test</c> on any OS. The window handle is never read: on
     /// every path here the throw lands before a swapchain source is built. The opposite leg, a genuine provider
     /// creation failure actually FALLING BACK, is deliberately not pinned here, because it ends in a real device
-    /// creation on whichever backend the host OS probes to.
+    /// creation on the platform's Veldrid incumbent.
     /// </para>
     /// <para>
     /// Registry and environment are both process-wide, hence the non-parallel collection: the backend is named
-    /// through <c>KE_GRAPHICS_BACKEND</c> (the only way to reach the provider path WITH fallback still allowed,
-    /// since naming a backend in the call signature turns fallback off) and the fake is registered under the REAL
-    /// appended kind.
+    /// through <c>KE_GRAPHICS_BACKEND</c> (which reaches the provider path with fallback still allowed on every
+    /// OS, unlike naming a backend in the call signature, which turns fallback off) and the fake is registered
+    /// under the REAL appended kind.
     /// </para>
     /// </summary>
     [Collection("GraphicsBackendGlobalState")]
@@ -93,9 +93,9 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// The setup both tests above depend on, asserted separately so a red there cannot be read as "the
         /// fallback was never reachable anyway". Fallback IS allowed on this call: the backend arrives from the
-        /// environment rather than from the call signature, the OS never probes to the native kind, and the
-        /// provider answers the support probe with yes, so creation is attempted and its failure would have had
-        /// somewhere to fall back to.
+        /// environment rather than from the call signature, the kind differs from the one a failure falls back
+        /// TO, and the provider answers the support probe with yes, so creation is attempted and its failure
+        /// would have had somewhere to fall back to.
         /// </summary>
         [Fact]
         public void CreateForWindow_ThroughTheEnvironment_LeavesTheFallbackArmed()
@@ -107,7 +107,11 @@ namespace KhaozEngine.Tests.Gpu
             {
                 GpuBackendSelection selection = GpuBackendSelector.Resolve();
                 Assert.Equal(NativeKind, selection.Backend);
-                Assert.NotEqual(NativeKind, GpuBackendSelector.ProbeOS(GpuBackendSelector.DetectOS()));
+                // IncumbentFor rather than ProbeOS, which is what this row asserted until the 17.40.0 flip. The
+                // Windows probe ANSWERS Direct3D11Native now, so the old assertion was false on Windows while
+                // saying nothing about the property it was written for: the fallback is armed when the requested
+                // kind differs from the backend a failure falls back TO, and that backend is the incumbent.
+                Assert.NotEqual(NativeKind, GpuBackendSelector.IncumbentFor(GpuBackendSelector.DetectOS()));
 
                 using GpuDeviceContext ctx =
                     GpuDeviceContext.CreateForWindow(default, 640, 480, syncToVerticalBlank: true);

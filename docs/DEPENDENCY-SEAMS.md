@@ -664,9 +664,14 @@ Two properties are load-bearing, and both are decisions rather than conveniences
 `[ModuleInitializer]` and not reflection by assembly name: the CLR loads an assembly lazily on first type
 reference, so a package reference with no static type use does not guarantee an initializer runs, and a silent,
 machine-dependent failure is the worst shape for a switch whose purpose is attributing measurements to a backend.
-And a MISSING registration throws rather than falling back, which keeps it distinguishable from the genuinely
-different fact that a machine cannot run the backend (that one is answered by the provider's own functional probe
-and reported through the existing `FallbackAfterFailure` path). Full reasoning in
+And a MISSING registration for a backend `KE_GRAPHICS_BACKEND` PINNED throws rather than falling back, which
+keeps it distinguishable from the genuinely different fact that a machine cannot run the backend (that one is
+answered by the provider's own functional probe and reported through the existing `FallbackAfterFailure` path).
+Since the 17.40.0 default flip every other provenance falls back instead, because the OS probe answers a
+provider-backed kind on every platform and a game that never referenced the native package has made no wiring
+mistake. That fallback reports the appended `GpuBackendSource.DefaultProviderMissing`, deliberately not
+`FallbackAfterFailure`, so a consuming game can tell "your stored choice cannot run here, clear it" from "this
+build has no provider for its own default, add the package reference". Full reasoning in
 [design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md](design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md), section 4.1
 and decisions P4 and I2.
 
@@ -735,10 +740,12 @@ three engine-owned backends honour rule 2 natively
 drain. That is the quorum [#461](https://github.com/APKiwiOrg/KhaozEngine/issues/461) has been waiting for, and
 it is evidence rather than a contract change. It registers under `GpuBackendKind.VulkanNative`, which landed in
 `17.32.0`, so the backend is selectable by name (`KE_GRAPHICS_BACKEND=vulkan-native`) and a machine that cannot
-run it arrives through the reported fallback. Nothing selects it by default, and the `vulkan-native` CI leg
-verifies the committed `vulkan-native` goldens on lavapipe, a byte-identical copy of the incumbent family it
-was a guest in until `17.40.0` ([#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)), which is the
-continuous exercise the rollout is measured against.
+run it arrives through the reported fallback. **Since 17.40.0 the OS probe selects it on Linux**, and a
+process that has not referenced the package arrives at the incumbent through that same reported fallback. The
+`vulkan-native` CI leg verifies the committed `vulkan-native` goldens on lavapipe, a byte-identical copy of the
+incumbent family it was a guest in until `17.41.0`
+([#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)), which is the continuous exercise the rollout is
+measured against.
 
 ```
 KhaozEngine.Gpu.Vulkan -> KhaozEngine.Gpu      (the only direction, again)
@@ -790,9 +797,10 @@ through `KhaozEngineMetal.Register()` under `GpuBackendKind.MetalNative`, which 
 Neither `IGpuDevice` nor `IGpuCommandList` has an unbuilt member left: it creates devices headless and windowed,
 compiles GLSL through SPIR-V to MSL, builds pipelines from a per-program binding table read out of the emitted
 MSL, records and submits against an `MTLSharedEvent` timeline, draws, dispatches, and presents through a
-`CAMetalLayer`. Nothing selects it by default, and the `metal-native` CI leg verifies the incumbent's committed
-`metal` goldens on the same real GPU as a guest in that family, which is the continuous exercise the rollout is
-measured against.
+`CAMetalLayer`. **Since 17.40.0 the OS probe selects it on macOS**, and a process that has not referenced the
+package arrives at the incumbent through the reported fallback. The `metal-native` CI leg verifies the
+incumbent's committed `metal` goldens on the same real GPU as a guest in that family, which is the continuous
+exercise the rollout is measured against.
 
 ```
 KhaozEngine.Gpu.Metal -> KhaozEngine.Gpu           (the only direction, for the third time)

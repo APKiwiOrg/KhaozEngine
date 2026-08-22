@@ -45,22 +45,62 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData("directx")]
         public void Select_BadOrMissingEnv_FallsThroughToProbe(string? env)
         {
-            // Bad/empty/null override is ignored; the OS probe decides (Windows -> D3D11).
-            Assert.Equal(GpuBackendKind.Direct3D11, GpuBackendSelector.Select(env, OSPlatformKind.Windows));
+            // Bad/empty/null override is ignored; the OS probe decides (Windows -> Direct3D11Native since
+            // 17.40.0).
+            Assert.Equal(GpuBackendKind.Direct3D11Native, GpuBackendSelector.Select(env, OSPlatformKind.Windows));
         }
 
-        // --- OS probe mapping ---
+        // --- OS probe mapping. Every arm answers the ENGINE'S OWN backend since 17.40.0; each used to answer
+        // that API's Veldrid incumbent, which is now what IncumbentFor answers. ---
 
         [Theory]
-        [InlineData(OSPlatformKind.MacOS, GpuBackendKind.Metal)]
-        [InlineData(OSPlatformKind.Windows, GpuBackendKind.Direct3D11)]
-        [InlineData(OSPlatformKind.Linux, GpuBackendKind.Vulkan)]
-        [InlineData(OSPlatformKind.Unknown, GpuBackendKind.Vulkan)]
+        [InlineData(OSPlatformKind.MacOS, GpuBackendKind.MetalNative)]
+        [InlineData(OSPlatformKind.Windows, GpuBackendKind.Direct3D11Native)]
+        [InlineData(OSPlatformKind.Linux, GpuBackendKind.VulkanNative)]
+        [InlineData(OSPlatformKind.Unknown, GpuBackendKind.VulkanNative)]
         public void Probe_MapsOsToDefaultBackend(OSPlatformKind os, GpuBackendKind expected)
         {
             Assert.Equal(expected, GpuBackendSelector.ProbeOS(os));
             // Same result via Select with no override.
             Assert.Equal(expected, GpuBackendSelector.Select(null, os));
+        }
+
+        /// <summary>
+        /// The frozen incumbent map beside it, which is what the probe answered before 17.40.0 and what a failed
+        /// device creation falls back TO now. Pinned as a pair with the probe above, because the two arms have to
+        /// stay DIFFERENT on every OS: a fallback that equalled the default would aim the retry at the backend
+        /// that just refused.
+        /// </summary>
+        [Theory]
+        [InlineData(OSPlatformKind.MacOS, GpuBackendKind.Metal)]
+        [InlineData(OSPlatformKind.Windows, GpuBackendKind.Direct3D11)]
+        [InlineData(OSPlatformKind.Linux, GpuBackendKind.Vulkan)]
+        [InlineData(OSPlatformKind.Unknown, GpuBackendKind.Vulkan)]
+        public void IncumbentFor_MapsOsToTheVeldridBackend(OSPlatformKind os, GpuBackendKind expected)
+        {
+            Assert.Equal(expected, GpuBackendSelector.IncumbentFor(os));
+            Assert.NotEqual(GpuBackendSelector.ProbeOS(os), GpuBackendSelector.IncumbentFor(os));
+        }
+
+        /// <summary>
+        /// The opt-out, stated as the thing a game is told to set. Each incumbent token still pins its Veldrid
+        /// backend on the OS whose default is now that API's native implementation, which is the whole content
+        /// of "the incumbents remain selectable for one release".
+        /// </summary>
+        [Theory]
+        [InlineData("metal", OSPlatformKind.MacOS, GpuBackendKind.Metal)]
+        [InlineData("d3d11", OSPlatformKind.Windows, GpuBackendKind.Direct3D11)]
+        [InlineData("direct3d11", OSPlatformKind.Windows, GpuBackendKind.Direct3D11)]
+        [InlineData("vulkan", OSPlatformKind.Linux, GpuBackendKind.Vulkan)]
+        public void AnIncumbentToken_StillPinsTheIncumbent_OverTheNativeDefault(
+            string env, OSPlatformKind os, GpuBackendKind expected)
+        {
+            GpuBackendSelection selection = GpuBackendSelector.Resolve(env, os);
+
+            Assert.Equal(expected, selection.Backend);
+            Assert.Equal(GpuBackendSource.EnvironmentOverride, selection.Source);
+            Assert.True(selection.WasPinnedByEnvironment);
+            Assert.NotEqual(GpuBackendSelector.ProbeOS(os), selection.Backend);
         }
 
         [Theory]
@@ -109,10 +149,10 @@ namespace KhaozEngine.Tests.Gpu
         // so a backend A/B looks like "the requested backend did not help" when it never ran. ---
 
         [Theory]
-        [InlineData(OSPlatformKind.MacOS, GpuBackendKind.Metal)]
-        [InlineData(OSPlatformKind.Windows, GpuBackendKind.Direct3D11)]
-        [InlineData(OSPlatformKind.Linux, GpuBackendKind.Vulkan)]
-        [InlineData(OSPlatformKind.Unknown, GpuBackendKind.Vulkan)]
+        [InlineData(OSPlatformKind.MacOS, GpuBackendKind.MetalNative)]
+        [InlineData(OSPlatformKind.Windows, GpuBackendKind.Direct3D11Native)]
+        [InlineData(OSPlatformKind.Linux, GpuBackendKind.VulkanNative)]
+        [InlineData(OSPlatformKind.Unknown, GpuBackendKind.VulkanNative)]
         public void Resolve_NoOverride_IsOsProbeWithNoRawValue(OSPlatformKind os, GpuBackendKind expected)
         {
             GpuBackendSelection selection = GpuBackendSelector.Resolve(null, os);
@@ -120,6 +160,9 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(expected, selection.Backend);
             Assert.Equal(GpuBackendSource.OsProbe, selection.Source);
             Assert.Null(selection.RequestedOverride);
+            // The environment pinned nothing, which is what decides whether a missing native provider throws
+            // or falls back.
+            Assert.False(selection.WasPinnedByEnvironment);
         }
 
         [Theory]
@@ -153,10 +196,10 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Theory]
-        [InlineData(OSPlatformKind.MacOS, GpuBackendKind.Metal)]
-        [InlineData(OSPlatformKind.Windows, GpuBackendKind.Direct3D11)]
-        [InlineData(OSPlatformKind.Linux, GpuBackendKind.Vulkan)]
-        [InlineData(OSPlatformKind.Unknown, GpuBackendKind.Vulkan)]
+        [InlineData(OSPlatformKind.MacOS, GpuBackendKind.MetalNative)]
+        [InlineData(OSPlatformKind.Windows, GpuBackendKind.Direct3D11Native)]
+        [InlineData(OSPlatformKind.Linux, GpuBackendKind.VulkanNative)]
+        [InlineData(OSPlatformKind.Unknown, GpuBackendKind.VulkanNative)]
         public void Resolve_UnparseableOverride_FallsBackToProbeButKeepsWhatWasAsked(OSPlatformKind os, GpuBackendKind expected)
         {
             // "vulcan" is the realistic typo: close enough to look right in a launcher, silently not a backend.
@@ -165,6 +208,8 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(expected, selection.Backend);
             Assert.Equal(GpuBackendSource.UnrecognizedOverride, selection.Source);
             Assert.Equal("vulcan", selection.RequestedOverride);
+            // A value that decided nothing pinned nothing: the probe picked, so this is a default.
+            Assert.False(selection.WasPinnedByEnvironment);
         }
 
         [Theory]
@@ -176,7 +221,7 @@ namespace KhaozEngine.Tests.Gpu
             // A launcher that exports the var empty has not asked for anything, so it is not a misconfiguration.
             GpuBackendSelection selection = GpuBackendSelector.Resolve(env, OSPlatformKind.Windows);
 
-            Assert.Equal(GpuBackendKind.Direct3D11, selection.Backend);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, selection.Backend);
             Assert.Equal(GpuBackendSource.OsProbe, selection.Source);
             Assert.Null(selection.RequestedOverride);
         }
@@ -248,10 +293,10 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Theory]
-        [InlineData(OSPlatformKind.MacOS, GpuBackendKind.Metal)]
-        [InlineData(OSPlatformKind.Windows, GpuBackendKind.Direct3D11)]
-        [InlineData(OSPlatformKind.Linux, GpuBackendKind.Vulkan)]
-        [InlineData(OSPlatformKind.Unknown, GpuBackendKind.Vulkan)]
+        [InlineData(OSPlatformKind.MacOS, GpuBackendKind.MetalNative)]
+        [InlineData(OSPlatformKind.Windows, GpuBackendKind.Direct3D11Native)]
+        [InlineData(OSPlatformKind.Linux, GpuBackendKind.VulkanNative)]
+        [InlineData(OSPlatformKind.Unknown, GpuBackendKind.VulkanNative)]
         public void Resolve_NullPreference_IsIdenticalToTheTwoArgumentOverload(OSPlatformKind os, GpuBackendKind expected)
         {
             // The compatibility guarantee that keeps every pre-17.23.0 call site behaving exactly as it did.
@@ -315,8 +360,14 @@ namespace KhaozEngine.Tests.Gpu
             Assert.All(supported, k => Assert.True(GpuBackendSelector.IsBackendSupported(k)));
             Assert.Equal(supported.Distinct().Count(), supported.Count);
 
-            // Stable presentation order: a settings dropdown must not reshuffle itself between openings.
-            var order = new[] { GpuBackendKind.Metal, GpuBackendKind.Vulkan, GpuBackendKind.Direct3D11 };
+            // Stable presentation order: a settings dropdown must not reshuffle itself between openings. Each
+            // API's native implementation leads its incumbent since 17.40.0.
+            var order = new[]
+            {
+                GpuBackendKind.MetalNative, GpuBackendKind.Metal,
+                GpuBackendKind.VulkanNative, GpuBackendKind.Vulkan,
+                GpuBackendKind.Direct3D11Native, GpuBackendKind.Direct3D11,
+            };
             Assert.Equal(supported.OrderBy(k => Array.IndexOf(order, k)).ToArray(), supported.ToArray());
             Assert.Equal(supported, GpuBackendSelector.SupportedBackends());
         }
@@ -357,6 +408,28 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(2, (int)GpuBackendSource.UnrecognizedOverride);
             Assert.Equal(3, (int)GpuBackendSource.UserPreference);
             Assert.Equal(4, (int)GpuBackendSource.FallbackAfterFailure);
+            Assert.Equal(5, (int)GpuBackendSource.DefaultProviderMissing);
+        }
+
+        /// <summary>
+        /// The 17.40.0 append's own pure helper, beside <see cref="AfterFallback_ReportsWhatRanAndWhatWasAskedFor"/>
+        /// and deliberately shaped the same: what ran, what could not be built, and a source that says which of
+        /// the two things went wrong. The difference is the source, and it is the whole content of the append.
+        /// </summary>
+        [Fact]
+        public void AfterMissingDefaultProvider_ReportsTheIncumbentAndKeepsTheDefaultItCouldNotBuild()
+        {
+            var defaulted = new GpuBackendSelection(
+                GpuBackendKind.VulkanNative, GpuBackendSource.OsProbe, null);
+
+            GpuBackendSelection fell =
+                GpuBackendSelector.AfterMissingDefaultProvider(defaulted, GpuBackendKind.Vulkan);
+
+            Assert.Equal(GpuBackendKind.Vulkan, fell.Backend);
+            Assert.Equal(GpuBackendKind.VulkanNative, fell.RequestedBackend);
+            Assert.Equal(GpuBackendSource.DefaultProviderMissing, fell.Source);
+            // Not the member a game clears a stored preference on: nothing is stored and nothing failed.
+            Assert.NotEqual(GpuBackendSource.FallbackAfterFailure, fell.Source);
         }
     }
 }

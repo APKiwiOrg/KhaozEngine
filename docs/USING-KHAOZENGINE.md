@@ -9214,6 +9214,41 @@ Scene3D render-path GPU tests.
 
 ---
 
+## The engine's own backends are the default (17.40.0)
+
+macOS boots on `MetalNative`, Windows on `Direct3D11Native`, Linux and everything else on `VulkanNative`. The
+three Veldrid incumbents remain as an explicit OPT-OUT for ONE release and are removed in the next one, so a
+game that wants an incumbent back sets `KE_GRAPHICS_BACKEND=metal`, `=d3d11` or `=vulkan`, or stores that
+`GpuBackendKind` as its graphics-settings preference. Both still outrank the default exactly as they did.
+
+The flip was taken by DECISION on 2026-08-22, ahead of the field-evidence gates the three native rollouts still
+had open. Each design's rollout record in `docs/design/` carries a dated addendum naming what remains open.
+
+Four things a game has to know:
+
+- **Repinning without taking a native backend package still boots.** The native packages are in no umbrella and
+  the engine cannot reference them, so a backend nobody PINNED with no registered provider falls back to that
+  platform's incumbent with a WARN and reports the new `GpuBackendSource.DefaultProviderMissing`. Pinning one in
+  `KE_GRAPHICS_BACKEND` and not registering it still throws, unchanged.
+- **A settings picker needs native rows.** `GpuBackendSelector.SupportedBackends()` now returns up to six
+  kinds, each API's native implementation ahead of its incumbent, and a picker that maps only the three Veldrid
+  kinds will render the default as an unknown or blank row.
+- **The boot line says `(default)`.** It said `(OS probe)`, which was fine while a native backend could only be
+  reached by naming it and every native session therefore read as an override.
+- **Golden families did not move.** Each native kind is a guest in its incumbent's family, so a run on the new
+  default compares against the same committed grids. The one consequence on a developer Mac is that a bare
+  `KE_UPDATE_GOLDENS=1` is refused, because the default is a guest of the family it would overwrite. Bake with
+  `KE_GRAPHICS_BACKEND=metal`.
+
+`GpuBackendSelector.IncumbentFor(OSPlatformKind)` is the frozen map of what the probe used to answer (macOS to
+`Metal`, Windows to `Direct3D11`, else `Vulkan`). It is the fallback target, and it is deleted whole with the
+incumbents next release. `GpuBackendSelection.WasPinnedByEnvironment` says whether `KE_GRAPHICS_BACKEND` pinned
+the backend, which is what decides throw-versus-fall-back above. A stored preference is deliberately not pinned:
+a player can store a native kind now, and a later build that dropped the package would otherwise throw at boot
+with the setting that caused it unreachable from inside the game.
+
+---
+
 ## Which graphics backend actually ran (`GpuBackendSelection`, 17.21.0)
 
 `KE_GRAPHICS_BACKEND` overrides the OS probe (`metal` / `metal-native` / `vulkan` / `vulkan-native` / `d3d11` /
@@ -9221,12 +9256,15 @@ Scene3D render-path GPU tests.
 and `opengl`). `d3d11-native`, `vulkan-native` (17.32.0) and `metal-native` (17.35.0) name the engine's own
 implementations of those three APIs rather than the Veldrid ones,
 and each is a separate value precisely so a session log, a telemetry header and a frame time say which of the
-two ran. The unsuffixed `d3d11`, `vulkan` and `metal` keep pointing at the Veldrid implementations indefinitely,
-which is what makes an A/B between the two implementations of any of the three one environment variable away.
-The Metal one is mid-build ([#566](https://github.com/APKiwiOrg/KhaozEngine/issues/566)) and has no usage
-section here yet, so the kind and its tokens exist ahead of the backend behind them. Naming any of the three
-without referencing its package and calling its `Register()` throws saying so, and never falls back, because a
-run that quietly used a different implementation would report its measurements under the wrong name.
+two ran. The unsuffixed `d3d11`, `vulkan` and `metal` keep pointing at the Veldrid implementations, which is what makes
+an A/B between the two implementations of any of the three one environment variable away. **Since 17.40.0 that
+is also the OPT-OUT, and it lasts one release**: the suffixed kinds are what the OS probe answers now, and the
+unsuffixed ones are removed with the Veldrid backends in the next release. NAMING any of the three without
+referencing its package and calling its `Register()` throws saying so and never falls back, because a run that
+quietly used a different implementation would report its measurements under the wrong name. DEFAULTING to one
+without the package is a different case and falls back to the incumbent with a WARN reporting
+`GpuBackendSource.DefaultProviderMissing`, because a game that never asked for the package has made no wiring
+mistake and has no stored choice to clear.
 
 Because each pair is two separate values, code that cares about the API rather than the implementation asks
 `kind.IsDirect3D11()`, `kind.IsVulkan()` or `kind.IsMetal()` (the `GpuBackendKinds` extensions, 17.30.0, 17.32.0
@@ -9255,9 +9293,9 @@ per created device, plus a WARN when the override was set but is not a recognize
 
 ```
 GPU backend: Vulkan (KE_GRAPHICS_BACKEND override)
-GPU backend: Direct3D11 (OS probe)
+GPU backend: Direct3D11Native (default)
 GPU backend: Vulkan (stored user preference)
-GPU backend: Direct3D11 (fallback, Vulkan failed)
+GPU backend: Direct3D11 (fallback, Direct3D11Native failed)
 KE_GRAPHICS_BACKEND='vulcan' is not a recognized backend (metal/metal-native/vulkan/vulkan-native/d3d11/d3d11-native/gl). Using Direct3D11 instead.
 ```
 
@@ -9269,7 +9307,7 @@ GpuBackendSelection sel = Window.BackendSelection;
 
 string line = sel.Source switch
 {
-    GpuBackendSource.OsProbe              => $"{sel.Backend} (OS probe)",
+    GpuBackendSource.OsProbe              => $"{sel.Backend} (default)",
     GpuBackendSource.EnvironmentOverride  => $"{sel.Backend} (KE_GRAPHICS_BACKEND={sel.RequestedOverride})",
     GpuBackendSource.UnrecognizedOverride => $"{sel.Backend} (bad override '{sel.RequestedOverride}')",
     GpuBackendSource.UserPreference       => $"{sel.Backend} (your graphics setting)",
@@ -9331,7 +9369,7 @@ picked. A custom `WindowFactory` must forward the preference itself, exactly lik
 
 ```csharp
 foreach (GpuBackendKind kind in GpuBackendSelector.SupportedBackends())
-    dropdown.Add(kind);        // Metal / Vulkan / Direct3D11, whichever this machine can really run
+    dropdown.Add(kind);        // up to six kinds, whichever this machine can really run
 ```
 
 `SupportedBackends()` is a FUNCTIONAL probe, not a platform guess: it loads each backend's library, creates an
@@ -9339,12 +9377,19 @@ instance, enumerates physical devices, and for Vulkan checks the required surfac
 for the process lifetime, so a settings screen may call it freely. `IsBackendSupported(kind)` asks about one.
 `OpenGL` is never offered, because there is no windowed GL device path.
 
+**Since 17.40.0 the list carries each API's NATIVE implementation ahead of its incumbent**, in the order
+`MetalNative`, `Metal`, `VulkanNative`, `Vulkan`, `Direct3D11Native`, `Direct3D11`. A native kind appears only
+where its provider is registered, so a game that has not referenced the native package sees exactly the three
+rows it saw before. **Map every kind you can be handed.** A picker written against the three Veldrid kinds will
+render the machine's DEFAULT as an unknown or blank row, which reads to a player as a broken settings screen.
+
 ### The fallback contract (this is the whole safety story)
 
 Probing is necessary but NOT sufficient. A broken or partial driver can report support and still fail at device
-creation. So creation is also wrapped: if the requested backend fails, the engine falls back to the OS-probe
-backend, WARNs, and boots anyway rather than leaving the player with a client that will not start and a setting
-they cannot reach to fix.
+creation. So creation is also wrapped: if the requested backend fails, the engine falls back to the platform's
+Veldrid incumbent (`GpuBackendSelector.IncumbentFor`, which is what the OS probe answered before 17.40.0),
+WARNs, and boots anyway rather than leaving the player with a client that will not start and a setting they
+cannot reach to fix.
 
 **The engine reports the fallback. It never clears your setting.** Writing a setting is file IO, which
 `KhaozEngine.Gpu` does not do. Two obligations on the consuming game, and skipping the first one means the
@@ -9364,13 +9409,38 @@ if (sel.Source == GpuBackendSource.FallbackAfterFailure)
 1. **Clear the stored preference** when you see `FallbackAfterFailure`, and tell the player what happened.
 2. **Only ever offer `SupportedBackends()`** in the UI, so the common case is prevented rather than recovered.
 
+**`GpuBackendSource.DefaultProviderMissing` (17.40.0) is the one fallback you must NOT clear a preference for.**
+It means the backend the OS probe DEFAULTED to is provider-backed and its provider is not registered in this
+process, so the incumbent was created instead. Nothing failed, no machine is incapable, and the player chose
+nothing: the fix is a package reference plus a `Register()` call in the app, and the WARN names both. The boot
+line reads `GPU backend: Vulkan (default, VulkanNative has no registered provider)` rather than a failure line,
+and the telemetry header carries `"backendSource": "DefaultProviderMissing"` with the default that could not be
+built on `requestedBackend`. Handling it as `FallbackAfterFailure` would make every un-wired session in a fleet
+read as device-creation failure and would put a "your graphics choice failed" notice in front of a player who
+made no choice. `GpuBackendSelector.AfterMissingDefaultProvider(selection, incumbent)` is its pure builder, the
+twin of `AfterFallback` below.
+
+**When the fallback fails too, `GpuNoUsableBackendException` (17.40.0) names BOTH attempts.** There is no device
+at that point and the app cannot render, and the exception carries `RequestedBackend`, `FallbackBackend`, the
+first failure as its `InnerException` and the fallback's own on `FallbackFailure`, with both reasons in the
+message in the order they were tried. The first failure is the inner one deliberately: on a native backend and
+its Veldrid twin the two usually share one underlying cause, and the one worth reading is the first. A backend
+named outright never reaches it, because naming one turns fallback off.
+
 `GpuBackendSelector.AfterFallback(selection, fallbackBackend)` is the pure helper that builds that report, for a
 consumer driving its own retry through `GpuDeviceContext.CreateForWindow(handle, w, h, sync, backend)` (the
 explicit-backend overload: exactly that backend, no resolution and no fallback). Retrying needs no new window,
 since `GpuWindowHandle` is a readonly struct of native pointers carrying no device state.
 
-None of this changes an existing game. The fallback is skipped when the requested backend already IS the
-OS-probe default, which is every call with no override and no preference, and `CreateHeadless` never falls back.
+The fallback is skipped when the requested backend already IS the incumbent it would fall back to, which is
+every call that names the incumbent outright. A default boot is no longer such a call, so the native default
+has a fallback where the incumbent default never needed one. **`CreateHeadless()` falls back too since
+17.40.0**, on the same two guards and with the same WARN, in both of the ways a default can fail: an
+unregistered provider, and a REGISTERED provider that refuses this machine. Without the second one a
+`Render2DSnapshot.Capture` or `Render3DSnapshot.Capture` that worked before a repin would throw after it. A
+backend pinned in `KE_GRAPHICS_BACKEND` still propagates everything on that path, and so does the
+explicitly named `CreateHeadless(GpuBackendKind)` overload below, because a headless run that quietly changed
+backend would file its golden images under a backend that never rendered them.
 
 `GpuDeviceContext.CreateHeadless(backend)` (17.32.0) is the headless twin of that explicit-backend overload:
 
@@ -9462,14 +9532,15 @@ using KhaozEngine.Gpu.D3D11;
 KhaozEngineD3D11.Register();   // unconditionally, on every OS
 ```
 
-**Device creation is real, and nothing selects this backend for you.** Both creation entry points build a device
-on Windows, and off Windows they refuse with a `PlatformNotSupportedException` naming the operating system, which
-the fallback path turns into a WARN and a boot on `Direct3D11`. Reaching the native backend takes naming it:
-`KE_GRAPHICS_BACKEND=direct3d11-native`, or an explicit `GpuBackendKind.Direct3D11Native`. The
-`direct3d11-native` CI leg exists now and is blocking, verifying the shared `direct3d11` goldens on a pinned
-WARP adapter. Its first recorded evidence, and the rollout gates that decide the default flip, are
-https://github.com/APKiwiOrg/KhaozEngine/issues/460, so treat it as opt-in until those gates are green.
-`GpuBackendKind.Direct3D11` is the working Direct3D 11 backend and stays selectable indefinitely.
+**Device creation is real, and since 17.40.0 the OS probe selects this backend on Windows.** Both creation
+entry points build a device on Windows, and off Windows they refuse with a `PlatformNotSupportedException`
+naming the operating system, which the fallback path turns into a WARN and a boot on `Direct3D11`.
+Referencing the package and calling `Register()` is all it takes on Windows, and naming it
+(`KE_GRAPHICS_BACKEND=direct3d11-native`, or an explicit `GpuBackendKind.Direct3D11Native`) is still how you
+reach it from anywhere else. The `direct3d11-native` CI leg is blocking and verifies the shared `direct3d11`
+goldens on a pinned WARP adapter. Its recorded evidence, and gate M1, which the flip did not close, are
+https://github.com/APKiwiOrg/KhaozEngine/issues/460. `GpuBackendKind.Direct3D11` stays selectable by
+`KE_GRAPHICS_BACKEND=d3d11` for ONE release and is removed in the next.
 
 Call `Register()` unconditionally. It is safe on macOS and Linux and names no Direct3D type: the package targets
 `net10.0` rather than `net10.0-windows`, and every body that touches the interop sits behind
@@ -9528,11 +9599,10 @@ bind**, so a storage texture a dispatch wrote and a later draw samples needs no 
 rule already says (both in one list, the texture created `Storage | Sampled`). **Compute rule 2 is unchanged and
 you must still honour it**: this backend additionally orders a dependent-dispatch chain inside one list, which is
 a backend property and not a contract change, and code that drops the `End` plus `Submit` plus `WaitForIdle`
-because it works here breaks on Metal. Nothing SELECTS
-it for you either: the Linux default is still `GpuBackendKind.Vulkan`, and flipping that is the last step of the
-rollout rather than a side effect of the member existing. `GpuBackendKind.Vulkan`, which goes through Veldrid,
-is the working Vulkan backend and stays selectable indefinitely. Calling `Register()` today costs one dictionary
-entry and changes nothing about how your game boots.
+because it works here breaks on Metal. **Since 17.40.0 the Linux default IS `GpuBackendKind.VulkanNative`**, so
+referencing the package and calling `Register()` is what a Linux head boots on, and a head that does not gets
+`GpuBackendKind.Vulkan` through Veldrid with a WARN. That incumbent stays selectable by
+`KE_GRAPHICS_BACKEND=vulkan` for ONE release and is removed in the next.
 
 **The `vulkan-native` CI leg exists now and is blocking**, verifying the shared `vulkan` goldens on lavapipe with
 `KE_VULKAN_DEVICE=llvmpipe` pinned, and its scheduled full suite runs under `KE_VULKAN_VALIDATION=strict` with a
@@ -9906,11 +9976,11 @@ WINDOWED creation is real
 the world rather than the package: this operating system, this machine, or a handle that is not a Cocoa
 `NSWindow` with a content view. `GpuBackendKind.MetalNative` and its `metal-native`
 and `mtl-native` tokens exist, so the kind is nameable via `KE_GRAPHICS_BACKEND=metal-native`: a registered
-process answers the machine probe for it, an unregistered one throws the provider-missing exception rather than
-falling back, and nothing selects it by default (`ProbeOS` still answers `Metal` on macOS).
-`GpuBackendKind.Metal`, which goes through Veldrid, is the working Metal backend and stays selectable
-indefinitely. Calling `Register()` today costs one dictionary entry and changes nothing about how your game
-boots.
+process answers the machine probe for it, and an unregistered one that NAMED it throws the provider-missing
+exception rather than falling back. **Since 17.40.0 `ProbeOS` answers `MetalNative` on macOS**, so a game that
+calls `Register()` boots on this backend without naming anything, and one that does not gets
+`GpuBackendKind.Metal` through Veldrid with a WARN. That incumbent stays selectable by
+`KE_GRAPHICS_BACKEND=metal` for one release and is removed in the next.
 
 **Four environment variables steer it, and none is on by default.** `KE_METAL_DEVICE` picks which GPU: a
 zero-based index into `MTLCopyAllDevices()`, a case-insensitive substring of a device name, or `discrete`,
@@ -10325,8 +10395,9 @@ ever run. Only the default location is swept, never a directory you named yourse
 
 Capabilities, adapter selection, the debug layer and device-loss reporting. Every lever below is live on a device
 created in 17.32.0 or later, and reaching any of it means naming the backend
-(`KE_GRAPHICS_BACKEND=direct3d11-native`, or an explicit `GpuBackendKind.Direct3D11Native`), because nothing
-selects it by default.
+(`KE_GRAPHICS_BACKEND=direct3d11-native`, or an explicit `GpuBackendKind.Direct3D11Native`) or, since 17.40.0,
+simply booting on Windows with the package referenced and registered, because the OS probe selects it there
+now.
 
 **Capabilities are at parity with the incumbent, with exactly one deliberate difference.** Field for field,
 `GpuCapabilities` reads the same on `GpuBackendKind.Direct3D11Native` as on `GpuBackendKind.Direct3D11`, except
@@ -10543,7 +10614,7 @@ D3D11_CREATE_DEVICE_PREVENT_INTERNAL_THREADING_OPTIMIZATIONS is ACTIVE for this 
 KE_D3D11_PREVENT_THREADING_OPTIMIZATIONS). The Direct3D11 runtime will not apply its internal threading
 optimizations. This is a diagnostic lever and it can cost performance, so unset the variable to go back to the
 default.
-GPU backend: Direct3D11 (OS probe)
+GPU backend: Direct3D11Native (default)
 GPU adapter: NVIDIA GeForce RTX 4070
 D3D11 driver threading: DriverCommandLists=TRUE, DriverConcurrentCreates=TRUE (the driver builds command lists)
 Graphics overlay software: RTSSHooks64.dll (RivaTuner Statistics Server, as used by MSI Afterburner)

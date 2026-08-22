@@ -163,6 +163,67 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// THE OTHER ORDER, WHICH IS THE ONE THE REFUSAL MESSAGE PRESCRIBES AND WHICH USED TO BE REFUSED TOO. A
+        /// windowed instance's extension list is the headless one plus <c>VK_KHR_surface</c> and one platform
+        /// surface extension, so a headless device asked for while a windowed one is live already has everything
+        /// it needs. It shares the live instance rather than creating a second one, which is what makes a Linux
+        /// client that opens a window and then takes a headless capture work at all.
+        /// <para>
+        /// The strict key match this replaces refused both directions, so "create the windowed device first"
+        /// resolved nothing (https://github.com/APKiwiOrg/KhaozEngine/issues/543). Pure and device-free, over
+        /// the key rather than over a driver.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void AHeadlessRequest_WhileAWindowedInstanceIsLive_SharesIt()
+        {
+            var created = new List<FakeInstance>();
+            var refCount = new VulkanInstanceRefCount<FakeInstance>(
+                key => { var made = new FakeInstance(key); created.Add(made); return made; }, _ => { });
+
+            var windowed = new VulkanInstanceKey(Windowed: true, Window: GpuWindowKind.X11,
+                Validation: VulkanValidationMode.Off);
+
+            using VulkanInstanceLease<FakeInstance> window = refCount.Acquire(windowed);
+            using VulkanInstanceLease<FakeInstance> headless = refCount.Acquire(Headless);
+
+            Assert.Same(window.Value, headless.Value);
+            Assert.Single(created);
+            Assert.Equal(2, refCount.Count);
+            // The instance stays what it was CREATED as, so a later windowed device on the same surface still
+            // matches and a Wayland one still does not.
+            Assert.Equal(windowed, window.Value.Key);
+        }
+
+        /// <summary>
+        /// The rule itself, stated once over the key, because it is the input to every acquire above and it is
+        /// asymmetric in a way equality is not. A headless request is served by ANY live instance on the same
+        /// validation rung. A windowed one is served only by a windowed instance on the SAME platform surface,
+        /// and the validation rung is a hard match in both directions because the layer is a
+        /// <c>vkCreateInstance</c> argument a live instance cannot gain.
+        /// </summary>
+        [Theory]
+        // live windowed X11: serves headless, serves X11, not Wayland.
+        [InlineData(true, GpuWindowKind.X11, false, default(GpuWindowKind), true)]
+        [InlineData(true, GpuWindowKind.X11, true, GpuWindowKind.X11, true)]
+        [InlineData(true, GpuWindowKind.X11, true, GpuWindowKind.Wayland, false)]
+        // live headless: serves headless only.
+        [InlineData(false, default(GpuWindowKind), false, default(GpuWindowKind), true)]
+        [InlineData(false, default(GpuWindowKind), true, GpuWindowKind.X11, false)]
+        public void Satisfies_IsWiderThanEquality_InExactlyOneDirection(
+            bool liveWindowed, GpuWindowKind liveWindow,
+            bool askedWindowed, GpuWindowKind askedWindow, bool expected)
+        {
+            var live = new VulkanInstanceKey(liveWindowed, liveWindow, VulkanValidationMode.Off);
+            var asked = new VulkanInstanceKey(askedWindowed, askedWindow, VulkanValidationMode.Off);
+
+            Assert.Equal(expected, VulkanInstanceRefCount<FakeInstance>.Satisfies(live, asked));
+            // And the rung is a hard match whatever the surfaces say.
+            Assert.False(VulkanInstanceRefCount<FakeInstance>.Satisfies(
+                live, asked with { Validation = VulkanValidationMode.Strict }));
+        }
+
+        /// <summary>
         /// The validation rung is part of the key, so a device asking for a different one while an instance is
         /// live is refused too. Not pedantry: the layer is a <c>vkCreateInstance</c> argument, so a session cannot
         /// turn validation on for its second device, and silently handing back the unvalidated instance would

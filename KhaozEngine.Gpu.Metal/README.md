@@ -14,8 +14,20 @@ and nothing that does not want the Objective-C interop ever carries it.
 > `CAMetalLayer` swapchain over the Cocoa `NSWindow` as of
 > [row 15](https://github.com/APKiwiOrg/KhaozEngine/issues/581), and what a windowed request can still be
 > refused for is the world rather than the package: this operating system, this machine, or a handle that is not
-> an `NSWindow` with a content view. `GpuBackendKind.Metal`, which goes through Veldrid, is the
-> working Metal backend and stays selectable indefinitely.
+> an `NSWindow` with a content view.
+>
+> **THE DEFAULT ON MACOS SINCE 17.40.0.** The OS probe answers `GpuBackendKind.MetalNative` there now, so a game that
+> references this package and calls `Register()` gets it without naming anything. The flip was taken by
+> DECISION on 2026-08-22, ahead of the field-evidence gates the rollout still had open, and the dated addendum
+> in section 17 of the design records which of them remain open as issues. This package stays OPT-IN as a
+> package, in no umbrella: a game that does not reference it falls back to `GpuBackendKind.Metal` with a WARN naming the
+> missing registration rather than failing to boot. `GpuBackendKind.Metal`, which goes through Veldrid, stays selectable
+> by `KE_GRAPHICS_BACKEND=metal` for ONE release and is removed in the next one.
+> The macOS flip is the one with the largest blast radius of the three, because macOS is the fleet's
+> DEVELOPMENT platform: every windowed playtest, capture, editor session and local golden run moved with it.
+> A local BAKE is the sharp edge. This backend is a GUEST in the `metal` golden family, so a bare
+> `KE_UPDATE_GOLDENS=1` is now REFUSED and a bake has to name the owner with `KE_GRAPHICS_BACKEND=metal`.
+> Gate 4's MM1 is still open.
 > Row 5 added the timeline: one `MTLSharedEvent` per device, a real `IGpuFence`, a counted
 > `WaitForIdle` in 250 ms slices so a device loss can release it, and a completion handler that reads every
 > command buffer's outcome and latches only failures, keyed on the command queue.

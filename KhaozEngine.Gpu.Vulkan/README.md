@@ -4,7 +4,7 @@ The engine's own native Vulkan backend for the [KhaozEngine.Gpu](../KhaozEngine.
 umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or `WorldStore.Sqlite`,
 and nothing that does not want the Vulkan binding ever carries it.
 
-> **Status: BUILT AND CONTINUOUSLY EXERCISED, NOT YET DEFAULT ANYWHERE. Registration, probe, headless and
+> **Status: BUILT, CONTINUOUSLY EXERCISED, AND THE DEFAULT ON LINUX SINCE 17.40.0. Registration, probe, headless and
 > windowed devices, the completion timeline, the memory allocator, the command list's lifecycle, the uniform
 > ring, the resource factory, the descriptors, the bind flush, dynamic rendering, the shader path, the
 > pipelines, the swapchain, the barrier tracker, the capability, counter and diagnostics reads, the draw,
@@ -81,10 +81,16 @@ and nothing that does not want the Vulkan binding ever carries it.
 > `vulkan-native` goldens on lavapipe, with `KE_VULKAN_REQUIRED=1` so a row that needs a native device
 > cannot go quietly dormant, and both tiers of the validation gate ride it, `strict` on the scheduled full suite
 > and `sync` on a separate golden-and-compute job.
-> Nothing selects it by default.
-> `KhaozEngine.Gpu`'s `Vulkan` backend, which goes through Veldrid, remains the working Vulkan path and stays
-> selectable indefinitely, and the FLIP of the Linux default waits on five rollout gates, two of which are a
-> field session and a human windowed pass that no CI leg can stand in for.
+> **THE DEFAULT ON LINUX SINCE 17.40.0.** The OS probe answers `GpuBackendKind.VulkanNative` there now, so a game that
+> references this package and calls `Register()` gets it without naming anything. The flip was taken by
+> DECISION on 2026-08-22, ahead of the field-evidence gates the rollout still had open, and the dated addendum
+> in section 17 of the design records which of them remain open as issues. This package stays OPT-IN as a
+> package, in no umbrella: a game that does not reference it falls back to `GpuBackendKind.Vulkan` with a WARN naming the
+> missing registration rather than failing to boot. `GpuBackendKind.Vulkan`, which goes through Veldrid, stays selectable
+> by `KE_GRAPHICS_BACKEND=vulkan` for ONE release and is removed in the next one.
+>
+> Two of the five rollout gates are still open and still carry an instrument: gate 3's `sync` validation job and
+> gate 5's human windowed pass, which no CI leg can stand in for. The flip did not close them.
 
 ## The spec
 
@@ -136,11 +142,13 @@ consults the probe FIRST, so all three states behave: no loader and no driver bo
 `InvalidOperationException` is therefore what it says it is, a failure on a machine whose probe really did
 answer yes.
 
-Keeping those two questions apart is decision V-I4, and here it bites harder than it did on Direct3D 11. On
-Linux the OS probe already returns `GpuBackendKind.Vulkan`, so a native request that fails falls back to the
-incumbent Vulkan backend and reports `FallbackAfterFailure`, which in a log line looks a great deal like a
-forgotten registration. A forgotten registration THROWS instead, and telling those two apart is what the whole
-soak measurement rests on.
+Keeping those two questions apart is decision V-I4, and here it bites harder than it did on Direct3D 11. A
+native request that fails falls back to the incumbent Vulkan backend (`GpuBackendSelector.IncumbentFor`) and
+reports `FallbackAfterFailure`, which in a log line looks a great deal like a forgotten registration. A
+forgotten registration for a backend the caller NAMED throws instead, and since 17.40.0 a forgotten one for
+the DEFAULT falls back like an incapable machine, because the probe answers a provider-backed kind everywhere
+now and a game that never referenced the package made no wiring mistake. Telling the two apart is what the
+whole soak measurement rests on, and NAMING the backend is what keeps them apart.
 
 ## Naming it
 
@@ -152,17 +160,20 @@ KE_GRAPHICS_BACKEND=vulkan-native   # or the shorter vk-native
 ```
 
 The whole token is matched, so a typo'd suffix is an unrecognized override with its own loud diagnostic rather
-than a silent run on the incumbent implementation under the new name. **`vulkan` still means Veldrid's Vulkan
-and keeps meaning it indefinitely**, which is not a transitional state: it is the kill switch every structural
-decision in the design leans on, so an A/B between the two implementations is one environment variable away.
+than a silent run on the incumbent implementation under the new name. **`vulkan` still means Veldrid's Vulkan,
+and since the 17.40.0 flip it is the OPT-OUT rather than the default**: it is the kill switch every structural
+decision in the design leans on, so an A/B between the two implementations is one environment variable away. It
+lasts ONE release. The Veldrid implementations are removed by the removal program
+([#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)) in the release after that, and the token then
+parses to a member whose implementation is gone, because the enum is append-only.
 
 Naming the backend today reaches a real device on both paths, headless and windowed, on any machine whose probe
 answers yes. A machine whose probe answers no arrives through the reported fallback rather than as a crash: the
 creation path catches, WARNs with the message and boots on the incumbent, reporting
-`GpuBackendSource.FallbackAfterFailure`. Nothing selects it for you. The Linux default is still
-`GpuBackendKind.Vulkan` and stays there until every rollout gate is green (decision V-RO3), and
-`GpuBackendSelector.SupportedBackends()` does not offer the native kind to a player at all, because a settings
-screen offers an API rather than an implementation of one.
+`GpuBackendSource.FallbackAfterFailure`. Since 17.40.0 the Linux default IS `GpuBackendKind.VulkanNative`, so
+naming it is no longer how most sessions reach it, and `GpuBackendSelector.SupportedBackends()` offers the
+native kind to a player wherever this package is registered, ahead of the incumbent row it is the one-release
+opt-out from.
 
 `VulkanNative` OWNS the committed `vulkan-native` golden family from `17.40.0`. It was a GUEST in the
 incumbent's `vulkan` family until then (decision V-I3), held to the incumbent's already-committed reference
@@ -1331,11 +1342,18 @@ to escape, since the format ladder's last arm takes the surface's first format w
 All three bind the orphan target and say so once. The device CONSTRUCTOR still refuses on all three, because a
 windowed device that cannot describe its own surface has nothing to hand back.
 
-**One process cannot hold a headless device and a windowed one at the same time.** A live `VkInstance`'s
-extension list is fixed at creation and Vulkan offers no way to add one afterwards, so the second configuration
-is refused by name. Create the WINDOWED device first, or run them in separate processes. Serving the case would
-mean either a second instance, which abandons the single-instance decision quietly, or creating every instance
-with the surface extensions, which takes the golden leg down on a machine with no display server.
+**One process holds a headless device and a windowed one only in that ORDER: windowed first.** A live
+`VkInstance`'s extension list is fixed at creation and Vulkan offers no way to add one afterwards, and a
+windowed list is the headless one plus `VK_KHR_surface` and one platform surface extension. So a headless
+device asked for while a windowed one is live is served by that instance, which is what makes a client that
+opens a window and then takes a `Render3DSnapshot.Capture` work on Linux. The other order is a real shortfall
+and is refused by name, as is a windowed device on a DIFFERENT platform surface, and so is any change of
+validation rung, since the layer is a `vkCreateInstance` argument. Run the refused shapes in separate
+processes. Serving them would mean either a second instance, which abandons the single-instance decision
+quietly, or creating every instance with the surface extensions, which takes the golden leg down on a machine
+with no display server. Widened from a strict key match in 17.40.0
+([#543](https://github.com/APKiwiOrg/KhaozEngine/issues/543)), which had refused the very ordering this
+paragraph prescribes.
 
 ## `KE_VULKAN_DEVICE`, `KE_VULKAN_VALIDATION`, `KE_VULKAN_FRAMES_IN_FLIGHT` and `KE_VULKAN_ACQUIRE`
 

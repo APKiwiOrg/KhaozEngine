@@ -33,12 +33,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <c>VK_KHR_swapchain</c> on the device, and the first swapchain plus the first acquire inside the
         /// present boundary's own constructor.
         /// <para>
-        /// THE INSTANCE IS A DIFFERENT ONE FROM THE HEADLESS PATH'S AND THE TWO CANNOT COEXIST, which is the one
-        /// case decision V-N1's single-instance model cannot serve. A live instance's extension list is fixed at
-        /// creation and Vulkan offers no way to add one afterwards, so a process holding a headless device open
-        /// and then asking for a windowed one is refused by name. See <c>VulkanInstanceRefCount.Acquire</c>
-        /// for why refusing beats the two silent alternatives, and the package README for the ordering rule that
-        /// resolves it: create the windowed device first, or run them in separate processes.
+        /// THE INSTANCE IS A WIDER ONE THAN THE HEADLESS PATH'S, AND THE ORDER THE TWO ARE ASKED FOR IN DECIDES
+        /// whether decision V-N1's single-instance model can serve both. A live instance's extension list is
+        /// fixed at creation and Vulkan offers no way to add one afterwards, but a WINDOWED list is the headless
+        /// one plus <c>VK_KHR_surface</c> and one platform surface extension, so a headless device asked for
+        /// while this one is live is served by it. The reverse is a real shortfall and is refused by name. See
+        /// <c>VulkanInstanceRefCount.Satisfies</c> for the rule and <c>Acquire</c> for why refusing beats the two
+        /// silent alternatives, and the package README for the ordering that resolves it: create the windowed
+        /// device first, or run them in separate processes.
         /// </para>
         /// </summary>
         internal static GpuProviderDevice CreateForWindow(in GpuWindowedDeviceRequest request)

@@ -20,14 +20,15 @@ namespace KhaozEngine.Gpu.Vulkan
     /// transfer paths.
     /// </para>
     /// <para>
-    /// WHAT IS NOT DONE IS THE ROLLOUT, WHICH IS A DIFFERENT SENTENCE FROM "NOT BUILT". Nothing selects this
-    /// backend for anyone: <c>ProbeOS</c> still maps Linux to <see cref="GpuBackendKind.Vulkan"/>, the headless
-    /// default is unchanged, and this backend is reached only by an explicit kind or the
-    /// <c>KE_GRAPHICS_BACKEND=vulkan-native</c> token. The default flip waits on the five rollout gates of
-    /// section 17 (https://github.com/APKiwiOrg/KhaozEngine/issues/529), two of which are a field session and a
-    /// human windowed pass that no CI leg can stand in for. The Veldrid Vulkan backend stays selectable
-    /// indefinitely either way (decision V-RO2), so a regression here is one environment variable away from an
-    /// A/B on the same build.
+    /// THIS BACKEND IS THE LINUX DEFAULT SINCE 17.40.0. <c>GpuBackendSelector.ProbeOS</c> maps Linux, and the
+    /// unrecognized-OS catch-all, to <see cref="GpuBackendKind.VulkanNative"/>, so a game that references this
+    /// package and calls <see cref="Register"/> runs on it without naming anything, and a game that does
+    /// neither falls back to <see cref="GpuBackendKind.Vulkan"/> with a WARN naming the missing registration
+    /// rather than failing to boot. The flip was taken by DECISION on 2026-08-22, ahead of two of the five
+    /// rollout gates of section 17 (https://github.com/APKiwiOrg/KhaozEngine/issues/529): gate 3's <c>sync</c>
+    /// validation job and gate 5's human windowed pass are still open and still carry an instrument. The
+    /// Veldrid Vulkan backend stays selectable by <c>KE_GRAPHICS_BACKEND=vulkan</c> for ONE release (decision
+    /// V-RO2), so a regression here is one environment variable away from an A/B on the same build.
     /// </para>
     /// <para>
     /// THIS PARAGRAPH IS A LEDGER, AND A STALE ONE IS WORSE THAN NONE, because it is the first thing a consumer
@@ -60,11 +61,11 @@ namespace KhaozEngine.Gpu.Vulkan
         /// provider EXISTS, which is a fact about the app's wiring, while whether the machine can run it is a
         /// separate question answered by <see cref="GpuBackendSelector.IsBackendSupported"/> through the
         /// provider's own functional probe. Decision V-I4 keeps those two apart on purpose, and here the reason
-        /// bites harder than it did on Direct3D 11: on Linux the OS probe already returns
-        /// <see cref="GpuBackendKind.Vulkan"/>, so a native request that fails falls back to the incumbent Vulkan
-        /// backend and reports <see cref="GpuBackendSource.FallbackAfterFailure"/>, which in a log line looks a
-        /// great deal like a forgotten registration. A forgotten registration THROWS instead, and telling those
-        /// two apart is what the whole soak measurement rests on.
+        /// bites harder than it did on Direct3D 11: a native request that fails falls back to the incumbent
+        /// Vulkan backend (<see cref="GpuBackendSelector.IncumbentFor"/>) and reports
+        /// <see cref="GpuBackendSource.FallbackAfterFailure"/>, which in a log line looks a great deal like a
+        /// forgotten registration. A forgotten registration for a backend the caller NAMED throws instead, and since 17.40.0 a forgotten one for the DEFAULT falls back like an incapable machine, because the probe answers a provider-backed kind everywhere now and a game that never referenced the package made no wiring mistake. Telling the two apart is what the
+        /// whole soak measurement rests on, and NAMING the backend is what keeps them apart.
         /// </para>
         /// </summary>
         public static void Register() => GpuBackendProviders.Register(GpuBackendKind.VulkanNative, _provider);

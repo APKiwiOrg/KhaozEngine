@@ -209,7 +209,8 @@ namespace KhaozEngine.Tests.Gpu
             var provider = new FakeBackendProvider(SentinelKind) { Supported = false };
             using (Registered(SentinelKind, provider))
             {
-                string? reason = GpuDeviceContext.PreflightProvider(SentinelKind, allowFallback: true, out _);
+                string? reason = GpuDeviceContext.PreflightProvider(
+                    SentinelKind, allowFallback: true, pinnedByEnvironment: true, out _, out _);
                 Assert.NotNull(reason);
                 Assert.Contains("no support", reason);
             }
@@ -217,7 +218,8 @@ namespace KhaozEngine.Tests.Gpu
             // Same call, same false answer available from the probe, entirely different outcome.
             Assert.False(GpuBackendSelector.IsBackendSupported(SentinelKind));
             Assert.Throws<GpuBackendProviderMissingException>(
-                () => GpuDeviceContext.PreflightProvider(SentinelKind, allowFallback: true, out _));
+                () => GpuDeviceContext.PreflightProvider(
+                    SentinelKind, allowFallback: true, pinnedByEnvironment: true, out _, out _));
         }
 
         /// <summary>
@@ -230,7 +232,8 @@ namespace KhaozEngine.Tests.Gpu
             var provider = new FakeBackendProvider(SentinelKind) { Supported = true };
             using (Registered(SentinelKind, provider))
             {
-                Assert.Null(GpuDeviceContext.PreflightProvider(SentinelKind, allowFallback: true, out IGpuBackendProvider found));
+                Assert.Null(GpuDeviceContext.PreflightProvider(
+                    SentinelKind, allowFallback: true, pinnedByEnvironment: true, out IGpuBackendProvider? found, out _));
                 Assert.Same(provider, found);
             }
         }
@@ -247,17 +250,20 @@ namespace KhaozEngine.Tests.Gpu
             var provider = new FakeBackendProvider(SentinelKind) { Supported = false };
             using (Registered(SentinelKind, provider))
             {
-                Assert.Null(GpuDeviceContext.PreflightProvider(SentinelKind, allowFallback: false, out _));
+                Assert.Null(GpuDeviceContext.PreflightProvider(
+                    SentinelKind, allowFallback: false, pinnedByEnvironment: true, out _, out _));
                 Assert.Equal(0, provider.SupportProbes);
             }
         }
 
-        /// <summary>A missing provider throws even where a fallback WOULD have been allowed. That is the half a
-        /// silent fallback would have eaten.</summary>
+        /// <summary>A missing provider throws even where a fallback WOULD have been allowed, for a backend the
+        /// caller NAMED. That is the half a silent fallback would have eaten, and 17.40.0 narrowed the rule to
+        /// exactly this case: see <c>NativeDefaultTests</c> for the defaulted one, which falls back.</summary>
         [Fact]
-        public void Preflight_ThrowsForAMissingProvider_EvenWhenFallbackIsAllowed()
+        public void Preflight_ThrowsForAMissingNamedProvider_EvenWhenFallbackIsAllowed()
             => Assert.Throws<GpuBackendProviderMissingException>(
-                () => GpuDeviceContext.PreflightProvider(SentinelKind, allowFallback: true, out _));
+                () => GpuDeviceContext.PreflightProvider(
+                    SentinelKind, allowFallback: true, pinnedByEnvironment: true, out _, out _));
 
         // --- the creation path itself, end to end and still device-free ---
 

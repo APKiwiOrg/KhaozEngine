@@ -130,9 +130,11 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// The suffix must not bleed either way, and the incumbent token keeps pointing at the incumbent until
-        /// the program's closing act (decision M-RO2). That is the kill switch this design leans on hardest,
-        /// because it is the only way to A/B a suspected difference on a Mac against the very references the
-        /// fleet's goldens are baked from, on one build, with no re-bake.
+        /// the program's closing act (decision M-RO2), which since the 17.40.0 flip is ONE release away. That is
+        /// the kill switch this design leans on hardest, because it is the only way to A/B a suspected
+        /// difference on a Mac against the very references the fleet's goldens are baked from, on one build,
+        /// with no re-bake. It is also how a Mac BAKES now, since the default is a guest of the family it would
+        /// overwrite.
         /// </summary>
         [Fact]
         public void TryParseBackend_KeepsTheIncumbentTokenPointingAtTheIncumbent()
@@ -199,27 +201,30 @@ namespace KhaozEngine.Tests.Gpu
 
         // --- row 6: GpuBackendSelector.IsBackendSupported. In the registry class below. ---
 
-        // --- row 7: GpuBackendSelector.ProbeOS, unchanged until the flip (M-RO5), and the row whose flip has the
-        // largest blast radius of the three ---
+        // --- row 7: GpuBackendSelector.ProbeOS, FLIPPED at 17.40.0, and the arm with the largest blast radius
+        // of the three ---
 
         /// <summary>
-        /// macOS still probes to the incumbent, and macOS is the operating system this member's default flip
-        /// would change. That is the difference from both earlier versions of this row: Windows and Linux are
-        /// player platforms, macOS is the fleet's DEVELOPMENT platform, so the flip would move every windowed
-        /// playtest, every capture, every editor session and every local golden bake onto the native backend on
-        /// the day it landed.
+        /// macOS probes to the native backend since 17.40.0, and macOS is the operating system this member's
+        /// flip changed hardest. That is the difference from both earlier versions of this row: Windows and
+        /// Linux are player platforms, macOS is the fleet's DEVELOPMENT platform, so this arm moved every
+        /// windowed playtest, every capture, every editor session and every local golden bake onto the native
+        /// backend on the day it landed. A local bake is the sharp one: the native kind is a GUEST in the
+        /// <c>metal</c> golden family, so a bare local <c>KE_UPDATE_GOLDENS=1</c> is now REFUSED and a bake has
+        /// to name the incumbent.
         /// <para>
         /// Only the macOS row is here. The full four-OS mapping is the same assertion for all three appends, so
-        /// it is pinned once in <c>GpuBackendKindAppendAuditTests.ProbeOS_StillAnswersTheIncumbent_OnEveryOs</c>,
-        /// and "this kind is never what the probe answers" is walked over every OS by
+        /// it is pinned once in <c>GpuBackendKindAppendAuditTests.ProbeOS_AnswersTheNativeBackend_OnEveryOs</c>,
+        /// and "this kind is never what the fallback answers" is walked over every OS by
         /// <see cref="ANativeRequest_IsNeverItsOwnFallback_OnAnyOs"/> below.
         /// </para>
         /// </summary>
         [Fact]
-        public void ProbeOS_StillAnswersTheIncumbent_OnMacOs()
+        public void ProbeOS_AnswersTheNativeBackend_OnMacOs()
         {
-            Assert.Equal(GpuBackendKind.Metal, GpuBackendSelector.ProbeOS(OSPlatformKind.MacOS));
-            Assert.NotEqual(GpuBackendKind.MetalNative, GpuBackendSelector.ProbeOS(OSPlatformKind.MacOS));
+            Assert.Equal(GpuBackendKind.MetalNative, GpuBackendSelector.ProbeOS(OSPlatformKind.MacOS));
+            // The incumbent is still one token away, and is what a failed native creation falls back to.
+            Assert.Equal(GpuBackendKind.Metal, GpuBackendSelector.IncumbentFor(OSPlatformKind.MacOS));
         }
 
         // --- row 8: GpuBackendSelector._windowCandidates. In the registry class below. ---
@@ -448,7 +453,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <see cref="GpuBackendSelector.ProbeOS"/> returns on any OS, so a native request never short-circuits
         /// the "nothing to fall back TO" guard and always routes through the functional probe.
         /// <para>
-        /// On macOS the probe answers <see cref="GpuBackendKind.Metal"/> while the request is
+        /// On macOS the fallback is <see cref="GpuBackendKind.Metal"/> while the request is
         /// <see cref="GpuBackendKind.MetalNative"/>, so a Mac whose native creation fails falls back to the
         /// incumbent Metal backend and reports <see cref="GpuBackendSource.FallbackAfterFailure"/>, while a
         /// missing REGISTRATION still throws. Those two look alike in a log line, and telling them apart is
@@ -461,7 +466,7 @@ namespace KhaozEngine.Tests.Gpu
         public void ANativeRequest_IsNeverItsOwnFallback_OnAnyOs()
         {
             foreach (OSPlatformKind os in Enum.GetValues<OSPlatformKind>())
-                Assert.NotEqual(GpuBackendKind.MetalNative, GpuBackendSelector.ProbeOS(os));
+                Assert.NotEqual(GpuBackendKind.MetalNative, GpuBackendSelector.IncumbentFor(os));
         }
 
         // --- decision M-I1's other half: no new telemetry field ---
@@ -582,21 +587,20 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
-        // --- row 8: GpuBackendSelector._windowCandidates, unchanged until default-ready (M-RO5) ---
+        // --- row 8: GpuBackendSelector._windowCandidates, FLIPPED at 17.40.0 with the default ---
 
         /// <summary>
-        /// A settings screen offers an API, not an implementation of one, so the native kind stays off the
-        /// offered list until it becomes what "Metal" means on macOS. Asserted with the provider registered and
-        /// reporting SUPPORTED, because the interesting failure is the list quietly gaining an entry on the one
-        /// machine class that could run it.
+        /// The native kind is OFFERED now, because it is what "Metal" means on macOS from this release.
+        /// Asserted with the provider registered and reporting SUPPORTED, since the offered list is probed and
+        /// an unregistered kind answers no on any machine.
         /// </summary>
         [Fact]
-        public void SupportedBackends_NeverOffersTheNativeKind_ToAPlayer()
+        public void SupportedBackends_OffersTheNativeKind_ToAPlayer()
         {
             using (Registered(GpuBackendKind.MetalNative,
                 new FakeBackendProvider(GpuBackendKind.MetalNative) { Supported = true }))
             {
-                Assert.DoesNotContain(GpuBackendKind.MetalNative, GpuBackendSelector.SupportedBackends());
+                Assert.Contains(GpuBackendKind.MetalNative, GpuBackendSelector.SupportedBackends());
             }
         }
 

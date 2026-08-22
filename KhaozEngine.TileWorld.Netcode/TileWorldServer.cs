@@ -252,11 +252,18 @@ public sealed partial class TileWorldServer : IDisposable
     /// <param name="displayName">The cosmetic name observers see. Never a rules input.</param>
     public long SpawnPlayer(int slot, string accountId, string displayName)
     {
-        // A slot is a seat the next connection recycles, and OnLeave forgets both per-slot queues on the way out.
-        // Cleared again here for the seat whose previous occupant's Left was never observed (a transport that
-        // dropped it, a head that stopped polling mid session): a stale command high-water mark rejects every
-        // sequence number the new player sends and freezes them, and a stale action fires against a player who
-        // clicked nothing.
+        // A seat that still holds a player is VACATED through the ordinary leave path first, never rebound
+        // underneath its occupant. PlayerLeaving is what files that account's final state and clears persistence's
+        // in-flight guard for it, and the entity has to be despawned rather than orphaned in the cell that owns it:
+        // nothing would point at it afterwards, and it would keep being written into every interest snapshot around
+        // it forever. Released rather than refused, because this is reachable without any caller doing anything
+        // wrong: NetServer drops the OLDEST event when a host stops keeping up, so a lost Left followed by a
+        // recycled seat lands here, and a throw out of Poll would take the session pump down for every player on
+        // the server.
+        if (netIdBySlot.ContainsKey(slot)) OnLeave(slot);
+        // Belt and braces for the same seat, since OnLeave forgets both per-slot queues on the way out and the
+        // branch above is the only path that runs it: a stale command high-water mark rejects every sequence number
+        // the new player sends and freezes them, and a stale action fires against a player who clicked nothing.
         commands.Forget(slot);
         actions.Forget(slot);
 

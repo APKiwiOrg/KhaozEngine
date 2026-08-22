@@ -362,6 +362,31 @@ public class TileWorldServerSessionTests
     }
 
     [Fact]
+    public void Spawning_onto_an_occupied_slot_releases_the_account_that_held_it()
+    {
+        (TileWorldServer s, _, _) = Up(new TileCoord(4, 4, 0));
+        using (s)
+        {
+            var left = new List<(string Account, TileCoord Tile)>();
+            long first = s.SpawnPlayer(0, "acct-old", "Old");
+            s.SetPlayerState(0, TileMoveState.At(new TileCoord(9, 12, 0), TileDirection.N));
+            s.PlayerLeaving += (_, account, state) => left.Add((account, state.Tile));
+
+            // The seat recycled without its Left ever being observed, which is what a dropped session event leaves
+            // behind. The account that held it still has to leave by the ordinary path.
+            long second = s.SpawnPlayer(0, "acct-new", "New");
+
+            Assert.Equal(new[] { ("acct-old", new TileCoord(9, 12, 0)) }, left.ToArray());
+            Assert.NotEqual(first, second);
+            // And its entity is gone rather than orphaned in the cell that owned it, where nothing would point at
+            // it and every player in interest would keep being served it.
+            Assert.False(s.Host.TryGetOwner(first, out _, out _));
+            Assert.True(s.Host.TryGetOwner(second, out _, out _));
+            Assert.Equal(1, s.PlayerCount);
+        }
+    }
+
+    [Fact]
     public void A_leaving_player_raises_its_final_state_and_frees_the_slot()
     {
         (TileWorldServer s, InMemoryTransportHub hub, INetTransport c) = Up(new TileCoord(4, 4, 0));

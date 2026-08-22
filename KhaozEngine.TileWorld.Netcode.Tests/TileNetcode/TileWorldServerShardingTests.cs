@@ -47,9 +47,11 @@ public class TileWorldServerShardingTests
         var hub = new InMemoryTransportHub();
         using TileWorldServer s = TileWorldServerTickTests.Server(
             TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(10, 10, 0));
-        long ground = s.SpawnPlayer(0, "ground", "G");
-        long upstairs = s.SpawnPlayer(1, "upstairs", "U");
-        s.SetPlayerState(1, TileMoveState.At(new TileCoord(11, 10, 1), TileDirection.W));
+        // Slots the joining connection cannot take: NetServer seats it at the lowest free one, and a manual spawn
+        // on that seat would be released by the join rather than observed by it.
+        long ground = s.SpawnPlayer(4, "ground", "G");
+        long upstairs = s.SpawnPlayer(5, "upstairs", "U");
+        s.SetPlayerState(5, TileMoveState.At(new TileCoord(11, 10, 1), TileDirection.W));
 
         INetTransport c = hub.CreateClient();
         var net = new NetClient(c, System.Text.Encoding.UTF8.GetBytes("ground"));

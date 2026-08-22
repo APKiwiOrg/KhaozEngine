@@ -169,26 +169,27 @@ namespace KhaozEngine.Tests.Gpu
 
         // --- row 6: GpuBackendSelector.IsBackendSupported. In the registry class below. ---
 
-        // --- row 7: GpuBackendSelector.ProbeOS, unchanged until the flip (V-RO3), and the third row that means
+        // --- row 7: GpuBackendSelector.ProbeOS, FLIPPED at 17.40.0, and the third row that means
         // something different here ---
 
         /// <summary>
-        /// LINUX still probes to the incumbent, and Linux is the operating system this member's default flip
-        /// would change. That is the whole difference from the Direct3D 11 audit's version of this row, where the
-        /// flip is a Windows one: the two programs reach their gates independently, and a reader who assumes one
-        /// enum append flips one default would have the wrong OS in mind.
+        /// LINUX probes to the native backend since 17.40.0, and Linux is the operating system this member's
+        /// flip changed. That is the whole difference from the Direct3D 11 audit's version of this row, where the
+        /// flip is a Windows one: all three arms moved in one release, but they are three different defaults and
+        /// a reader who assumes one enum append flips one default would have the wrong OS in mind.
         /// <para>
-        /// Only the Linux row is here. The full four-OS mapping is the same assertion for both appends, so it is
-        /// pinned once in <c>GpuBackendKindAppendAuditTests.ProbeOS_StillAnswersTheIncumbent_OnEveryOs</c>, and
-        /// "this kind is never what the probe answers" is walked over every OS by
+        /// Only the Linux row is here. The full four-OS mapping is the same assertion for all three appends, so
+        /// it is pinned once in <c>GpuBackendKindAppendAuditTests.ProbeOS_AnswersTheNativeBackend_OnEveryOs</c>,
+        /// and "this kind is never what the fallback answers" is walked over every OS by
         /// <see cref="ANativeRequest_IsNeverItsOwnFallback_OnAnyOs"/> below.
         /// </para>
         /// </summary>
         [Fact]
-        public void ProbeOS_StillAnswersTheIncumbent_OnLinux()
+        public void ProbeOS_AnswersTheNativeBackend_OnLinux()
         {
-            Assert.Equal(GpuBackendKind.Vulkan, GpuBackendSelector.ProbeOS(OSPlatformKind.Linux));
-            Assert.NotEqual(GpuBackendKind.VulkanNative, GpuBackendSelector.ProbeOS(OSPlatformKind.Linux));
+            Assert.Equal(GpuBackendKind.VulkanNative, GpuBackendSelector.ProbeOS(OSPlatformKind.Linux));
+            // The incumbent is still one token away, and is what a failed native creation falls back to.
+            Assert.Equal(GpuBackendKind.Vulkan, GpuBackendSelector.IncumbentFor(OSPlatformKind.Linux));
         }
 
         // --- row 8: GpuBackendSelector._windowCandidates. In the registry class below. ---
@@ -289,7 +290,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <see cref="GpuBackendSelector.ProbeOS"/> returns on any OS, so a native request never short-circuits
         /// the "nothing to fall back TO" guard and always routes through the functional probe.
         /// <para>
-        /// The consequence differs from Direct3D 11's, and the soak depends on it. On Linux the probe answers
+        /// The consequence differs from Direct3D 11's, and the soak depends on it. On Linux the fallback is
         /// <see cref="GpuBackendKind.Vulkan"/> while the request is <see cref="GpuBackendKind.VulkanNative"/>, so
         /// a machine whose native creation fails falls back to the INCUMBENT Vulkan backend and reports
         /// <see cref="GpuBackendSource.FallbackAfterFailure"/>, while a missing REGISTRATION still throws. Those
@@ -300,7 +301,7 @@ namespace KhaozEngine.Tests.Gpu
         public void ANativeRequest_IsNeverItsOwnFallback_OnAnyOs()
         {
             foreach (OSPlatformKind os in Enum.GetValues<OSPlatformKind>())
-                Assert.NotEqual(GpuBackendKind.VulkanNative, GpuBackendSelector.ProbeOS(os));
+                Assert.NotEqual(GpuBackendKind.VulkanNative, GpuBackendSelector.IncumbentFor(os));
         }
 
         // --- decision V-I1's other half: no new telemetry field ---
@@ -419,23 +420,22 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
-        // --- row 8: GpuBackendSelector._windowCandidates, unchanged until default-ready (V-RO3) ---
+        // --- row 8: GpuBackendSelector._windowCandidates, FLIPPED at 17.40.0 with the default ---
 
         /// <summary>
-        /// A settings screen offers an API, not an implementation of one, so the native kind stays off the
-        /// offered list until it becomes what "Vulkan" means on Linux. Asserted with the provider registered and
-        /// reporting SUPPORTED, because the interesting failure is the list quietly gaining an entry on the one
-        /// machine that could run it. What is NOT asserted is that the incumbent is present: whether Veldrid
-        /// Vulkan is offered is a fact about the machine (a developer Mac has no loader and answers no), and
-        /// pinning it here would be pinning the runner rather than the candidate list.
+        /// The native kind is OFFERED now, because it is what "Vulkan" means on Linux from this release.
+        /// Asserted with the provider registered and reporting SUPPORTED, since the offered list is probed and
+        /// an unregistered kind answers no. What is still NOT asserted is that the incumbent is present:
+        /// whether Veldrid Vulkan is offered is a fact about the machine (a developer Mac has no loader and
+        /// answers no), and pinning it here would be pinning the runner rather than the candidate list.
         /// </summary>
         [Fact]
-        public void SupportedBackends_NeverOffersTheNativeKind_ToAPlayer()
+        public void SupportedBackends_OffersTheNativeKind_ToAPlayer()
         {
             using (Registered(GpuBackendKind.VulkanNative,
                 new FakeBackendProvider(GpuBackendKind.VulkanNative) { Supported = true }))
             {
-                Assert.DoesNotContain(GpuBackendKind.VulkanNative, GpuBackendSelector.SupportedBackends());
+                Assert.Contains(GpuBackendKind.VulkanNative, GpuBackendSelector.SupportedBackends());
             }
         }
 

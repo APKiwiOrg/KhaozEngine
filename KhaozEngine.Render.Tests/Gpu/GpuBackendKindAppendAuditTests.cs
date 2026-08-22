@@ -318,22 +318,26 @@ namespace KhaozEngine.Tests.Gpu
         // --- row 6: GpuBackendSelector.IsBackendSupported, asserted in GpuBackendKindAppendAuditRegistryTests
         // below. It registers a provider under the real kind, so it belongs off the parallel pool. ---
 
-        // --- row 7: GpuBackendSelector.ProbeOS, unchanged until the flip (I4) ---
+        // --- row 7: GpuBackendSelector.ProbeOS, FLIPPED at 17.40.0 (the decision of 2026-08-22, ahead of I4's
+        // remaining gates) ---
 
         /// <summary>
-        /// Windows still probes to the INCUMBENT. Flipping the default is the last step of the rollout, after all
-        /// five gates, not a side effect of the member existing. Until then the native leg is exercised by being
-        /// named.
+        /// Every OS probes to the ENGINE'S OWN backend. This row read "still answers the incumbent" for three
+        /// appends and was the single line each program's rollout was pointed at, so it is the row whose flip
+        /// IS the release: the assertion is inverted rather than deleted, and the incumbent map it used to pin
+        /// lives on beside it as <see cref="GpuBackendSelector.IncumbentFor"/>, which is what a failed native
+        /// creation falls back to for one more release.
         /// </summary>
         [Theory]
-        [InlineData(OSPlatformKind.MacOS, GpuBackendKind.Metal)]
-        [InlineData(OSPlatformKind.Windows, GpuBackendKind.Direct3D11)]
-        [InlineData(OSPlatformKind.Linux, GpuBackendKind.Vulkan)]
-        [InlineData(OSPlatformKind.Unknown, GpuBackendKind.Vulkan)]
-        public void ProbeOS_StillAnswersTheIncumbent_OnEveryOs(OSPlatformKind os, GpuBackendKind expected)
+        [InlineData(OSPlatformKind.MacOS, GpuBackendKind.MetalNative, GpuBackendKind.Metal)]
+        [InlineData(OSPlatformKind.Windows, GpuBackendKind.Direct3D11Native, GpuBackendKind.Direct3D11)]
+        [InlineData(OSPlatformKind.Linux, GpuBackendKind.VulkanNative, GpuBackendKind.Vulkan)]
+        [InlineData(OSPlatformKind.Unknown, GpuBackendKind.VulkanNative, GpuBackendKind.Vulkan)]
+        public void ProbeOS_AnswersTheNativeBackend_OnEveryOs(
+            OSPlatformKind os, GpuBackendKind expected, GpuBackendKind incumbent)
         {
             Assert.Equal(expected, GpuBackendSelector.ProbeOS(os));
-            Assert.NotEqual(GpuBackendKind.Direct3D11Native, GpuBackendSelector.ProbeOS(os));
+            Assert.Equal(incumbent, GpuBackendSelector.IncumbentFor(os));
         }
 
         // --- row 8: GpuBackendSelector._windowCandidates, likewise asserted in
@@ -441,15 +445,21 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// A value comparison, not a switch, so it is invisible to any arm sweep. It is correct by default for
-        /// exactly one reason, and the reason is worth pinning: the native kind is never EQUAL to what
-        /// <see cref="GpuBackendSelector.ProbeOS"/> returns on any OS, so a native request never short-circuits
-        /// the "nothing to fall back TO" guard and always routes through the functional probe instead.
+        /// exactly one reason, and the reason is worth pinning: the native kind is never EQUAL to the backend
+        /// the guard falls back to on any OS, so a native request never short-circuits the "nothing to fall
+        /// back TO" guard and always routes through the functional probe instead.
+        /// <para>
+        /// The fallback target moved at 17.40.0 from <see cref="GpuBackendSelector.ProbeOS"/> to
+        /// <see cref="GpuBackendSelector.IncumbentFor"/>, and that edit is what keeps this invariant true: once
+        /// the probe answers the native kind, a fallback still aimed at it would send the retry straight back to
+        /// the backend that just refused.
+        /// </para>
         /// </summary>
         [Fact]
         public void ANativeRequest_IsNeverItsOwnFallback_OnAnyOs()
         {
             foreach (OSPlatformKind os in Enum.GetValues<OSPlatformKind>())
-                Assert.NotEqual(GpuBackendKind.Direct3D11Native, GpuBackendSelector.ProbeOS(os));
+                Assert.NotEqual(GpuBackendKind.Direct3D11Native, GpuBackendSelector.IncumbentFor(os));
         }
 
         // --- decision I4: no new telemetry field ---
@@ -557,18 +567,36 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
-        // --- row 8: GpuBackendSelector._windowCandidates, unchanged until default-ready (I4) ---
+        // --- row 8: GpuBackendSelector._windowCandidates, FLIPPED at 17.40.0 with the default ---
 
         /// <summary>
-        /// A settings screen offers an API, not an implementation of one. Two entries both reading "Direct3D 11"
-        /// is a choice nobody outside this repo can make, so the native kind stays off the offered list until it
-        /// becomes what "Direct3D 11" means.
+        /// The native kind is OFFERED now, and the objection that kept it off the list is answered rather than
+        /// waived: a settings screen offers an API and not an implementation of one, and the native row is what
+        /// "Direct3D 11" MEANS from this release. The incumbent row beside it is the one-release opt-out.
+        /// <para>
+        /// Asserted with the provider registered and reporting SUPPORTED, because the offered list is probed:
+        /// with no provider the kind answers unsupported and a game that never took the package still sees the
+        /// list it always saw. That half is pinned below.
+        /// </para>
         /// </summary>
         [Fact]
-        public void SupportedBackends_NeverOffersTheNativeKind_ToAPlayer()
+        public void SupportedBackends_OffersTheNativeKind_ToAPlayer()
         {
             using (Registered(GpuBackendKind.Direct3D11Native,
                 new FakeBackendProvider(GpuBackendKind.Direct3D11Native) { Supported = true }))
+            {
+                Assert.Contains(GpuBackendKind.Direct3D11Native, GpuBackendSelector.SupportedBackends());
+            }
+        }
+
+        /// <summary>
+        /// The other half: with NO provider registered the native kind is not offered, so repinning the engine
+        /// cannot put a row in a game's graphics dropdown that its own process could never create.
+        /// </summary>
+        [Fact]
+        public void SupportedBackends_OmitsTheNativeKind_WhenNoProviderIsRegistered()
+        {
+            using (Unregistered(GpuBackendKind.Direct3D11Native))
             {
                 Assert.DoesNotContain(GpuBackendKind.Direct3D11Native, GpuBackendSelector.SupportedBackends());
             }

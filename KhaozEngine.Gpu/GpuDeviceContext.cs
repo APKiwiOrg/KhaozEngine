@@ -232,19 +232,41 @@ namespace KhaozEngine.Gpu
             if (selection.RequestedOverride != null && selection.Source != GpuBackendSource.EnvironmentOverride)
                 log.Warn(UnrecognizedOverrideWarning(selection.RequestedOverride, selection.Backend));
 
-            // Every member is spelled out rather than leaning on a discard arm: an appended member must show up
-            // here as a compile-time gap to fill, not silently render as "OS probe" in a tester's log.
-            string origin = selection.Source switch
-            {
-                GpuBackendSource.OsProbe => "OS probe",
-                GpuBackendSource.EnvironmentOverride => $"{GpuBackendSelector.EnvVarName} override",
-                GpuBackendSource.UnrecognizedOverride => "OS probe, override not recognized",
-                GpuBackendSource.UserPreference => "stored user preference",
-                GpuBackendSource.FallbackAfterFailure => $"fallback, {selection.RequestedBackend} failed",
-                _ => $"unknown source {(int)selection.Source}",
-            };
-            log.Info($"GPU backend: {selection.Backend} ({origin})");
+            log.Info(SelectionLine(selection));
         }
+
+        // Where the backend came from, as a reader sees it in the parentheses. Every member is spelled out
+        // rather than leaning on a discard arm: an appended member must show up here as a compile-time gap to
+        // fill, not silently render as the default in a tester's log.
+        static string OriginOf(GpuBackendSelection selection) => selection.Source switch
+        {
+            GpuBackendSource.OsProbe => DefaultOrigin,
+            GpuBackendSource.EnvironmentOverride => $"{GpuBackendSelector.EnvVarName} override",
+            GpuBackendSource.UnrecognizedOverride => $"{DefaultOrigin}, override not recognized",
+            GpuBackendSource.UserPreference => "stored user preference",
+            GpuBackendSource.FallbackAfterFailure => $"fallback, {selection.RequestedBackend} failed",
+            _ => $"unknown source {(int)selection.Source}",
+        };
+
+        /// <summary>
+        /// The word the boot line uses for a backend nothing asked for: <c>default</c>. It read <c>OS probe</c>
+        /// until 17.40.0, and the flip is what made that wrong rather than merely wordy. A native backend was
+        /// unreachable without naming it, so every native session printed
+        /// <c>(KE_GRAPHICS_BACKEND override)</c>, and a reader triaging a capture learned which backend ran AND
+        /// that somebody had chosen it. After the flip the native backend is what a session gets by DEFAULT,
+        /// and the line has to say the difference: an override still reads as an override, and the default
+        /// reads as the default.
+        /// </summary>
+        internal const string DefaultOrigin = "default";
+
+        /// <summary>
+        /// The boot line exactly as it reaches the log, built here rather than inline so a test reads the same
+        /// string a tester does. The same reason <see cref="UnrecognizedOverrideWarning"/> is factored out, and
+        /// the same failure it prevents: a test asserting on a reconstruction of this line passes while the
+        /// line itself says something else.
+        /// </summary>
+        internal static string SelectionLine(GpuBackendSelection selection)
+            => $"GPU backend: {selection.Backend} ({OriginOf(selection)})";
 
         /// <summary>
         /// The unrecognized-override WARN as a tester reads it, built here rather than inline so a test can read
@@ -423,11 +445,13 @@ namespace KhaozEngine.Gpu
             GraphicsDeviceOptions opts, SwapchainDescription scDesc, GpuBackendSelection selection, bool allowFallback)
         {
             GpuBackendKind requested = selection.Backend;
-            GpuBackendKind fallback = GpuBackendSelector.ProbeOS(GpuBackendSelector.DetectOS());
+            GpuBackendKind fallback = GpuBackendSelector.IncumbentFor(GpuBackendSelector.DetectOS());
 
-            // Nothing to fall back TO when the request already IS the OS-probe default. That covers every call
-            // with no override and no preference, i.e. every pre-17.23.0 call site and the whole macOS/Linux
-            // default path, which therefore behaves exactly as it always did: create, and let a failure throw.
+            // Nothing to fall back TO when the request already IS the fallback. That is the platform's Veldrid
+            // INCUMBENT since 17.40.0, where it used to be the OS-probe default and the two were the same
+            // backend. Naming the incumbent keeps this arm's behaviour byte-for-byte what it was for every
+            // Veldrid request, and it is also what the fallback has to be now: the OS probe answers a
+            // provider-backed kind, which this Veldrid-only path cannot create.
             if (!allowFallback || requested == fallback)
                 return (CreateWindowed(requested, opts, scDesc), selection);
 
@@ -488,9 +512,18 @@ namespace KhaozEngine.Gpu
         /// outright.
         /// </para>
         /// </summary>
-        internal static string? PreflightProvider(GpuBackendKind backend, bool allowFallback,
-            out IGpuBackendProvider provider)
+        internal static string? PreflightProvider(GpuBackendKind backend, bool allowFallback, bool wasNamed,
+            out IGpuBackendProvider? provider)
         {
+            // The 17.40.0 split of decision I2, whose whole reasoning lives on the type that decides it: a
+            // provider-backed backend NOBODY NAMED, with no provider registered, falls back rather than
+            // throwing, because the OS probe answers one on every platform now.
+            if (allowFallback && Internal.UnregisteredNativeDefault.Applies(backend, wasNamed))
+            {
+                provider = null;
+                return Internal.UnregisteredNativeDefault.Reason;
+            }
+
             provider = GpuBackendProviders.Require(backend);
             if (!allowFallback) return null;
             return GpuBackendSelector.IsBackendSupported(backend) ? null : NoMachineSupport;
@@ -502,13 +535,15 @@ namespace KhaozEngine.Gpu
         static GpuDeviceContext CreateFromProvider(in GpuWindowHandle window, uint width, uint height,
             bool syncToVerticalBlank, GpuBackendSelection selection, bool allowFallback)
         {
-            GpuBackendKind fallback = GpuBackendSelector.ProbeOS(GpuBackendSelector.DetectOS());
-            // The same "nothing to fall back TO" guard the Veldrid path carries, and it matters here from the day
-            // the OS probe starts answering with a provider-backed kind: falling back onto the backend that just
-            // refused would warn about a change that is not one, then fail again for the same reason.
+            GpuBackendKind fallback = GpuBackendSelector.IncumbentFor(GpuBackendSelector.DetectOS());
+            // The same "nothing to fall back TO" guard the Veldrid path carries. It reads IncumbentFor rather
+            // than ProbeOS since 17.40.0, and that is the edit that keeps this whole path alive: the probe now
+            // answers a provider-backed kind, so a fallback aimed at it would land on the backend that just
+            // refused, warn about a change that is not one, then fail again for the same reason.
             bool canFallBack = allowFallback && selection.Backend != fallback;
 
-            string? failure = PreflightProvider(selection.Backend, canFallBack, out IGpuBackendProvider provider);
+            string? failure = PreflightProvider(selection.Backend, canFallBack, selection.WasNamed,
+                out IGpuBackendProvider? provider);
             var request = new GpuWindowedDeviceRequest(window, width, height, syncToVerticalBlank);
 
             if (failure is null)
@@ -523,7 +558,7 @@ namespace KhaozEngine.Gpu
                     // every backend, so a provider needs no lifecycle lock of its own and cannot race one.
                     lock (_lifecycleGate)
                     {
-                        created = provider.CreateForWindow(request);
+                        created = provider!.CreateForWindow(request);
                     }
                 }
                 catch (Exception ex) when (canFallBack)
@@ -683,10 +718,21 @@ namespace KhaozEngine.Gpu
         // branch, the lifecycle gate and the adoption step rather than each routing its own way to a device.
         static GpuDeviceContext CreateHeadless(GraphicsDeviceOptions options, GpuBackendSelection selection)
         {
-            // No probe and no fallback here, which is exactly what the Veldrid headless path has always done:
-            // headless creation propagates its failure. A headless run that quietly changed backend would file its
-            // golden images under a backend that never rendered them, and a missing registration throws with a
-            // message naming the one line that fixes it.
+            // The one exception to "no probe and no fallback here", and it is the 17.40.0 rule the windowed path
+            // takes for the same reason: the OS probe answers a provider-backed kind now, so a headless capture
+            // in a game that never took the native package would throw where it used to create a device. A NAMED
+            // backend still throws, so a deliberate A/B cannot be silently answered by the other implementation.
+            if (Internal.UnregisteredNativeDefault.Applies(selection.Backend, selection.WasNamed))
+            {
+                GpuBackendKind incumbent = GpuBackendSelector.IncumbentFor(GpuBackendSelector.DetectOS());
+                WarnFallback(selection.Backend, Internal.UnregisteredNativeDefault.Reason, incumbent);
+                selection = GpuBackendSelector.AfterFallback(selection, incumbent);
+            }
+
+            // Otherwise no probe and no fallback, which is exactly what the Veldrid headless path has always
+            // done: headless creation propagates its failure. A headless run that quietly changed backend would
+            // file its golden images under a backend that never rendered them, and a missing registration throws
+            // with a message naming the one line that fixes it.
             if (GpuBackendProviders.RequiresProvider(selection.Backend))
             {
                 IGpuBackendProvider provider = GpuBackendProviders.Require(selection.Backend);

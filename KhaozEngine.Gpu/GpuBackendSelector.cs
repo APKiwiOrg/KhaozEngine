@@ -70,15 +70,39 @@ namespace KhaozEngine.Gpu
         GpuBackendKind Backend,
         GpuBackendSource Source,
         string? RequestedOverride,
-        GpuBackendKind? RequestedBackend = null);
+        GpuBackendKind? RequestedBackend = null)
+    {
+        /// <summary>
+        /// True when the backend was NAMED by the caller (a recognized <c>KE_GRAPHICS_BACKEND</c> value, or the
+        /// stored user preference a game handed in) rather than DEFAULTED to by the OS probe. Added in 17.40.0,
+        /// when the probe started answering a provider-backed backend on every platform.
+        /// <para>
+        /// It exists to split decision I2 along the line it was actually aimed at. A NAMED provider-backed kind
+        /// with no registered provider still throws, because a soak session that asked for the native backend
+        /// must never quietly measure the incumbent and report it as the native one. A DEFAULTED one falls back
+        /// to <see cref="GpuBackendSelector.IncumbentFor"/> instead, because a game that never asked for the
+        /// native package has made no wiring mistake, and throwing at it would mean repinning the engine stops
+        /// the client booting at all.
+        /// </para>
+        /// <para>
+        /// <see cref="GpuBackendSource.UnrecognizedOverride"/> is deliberately NOT named: the raw value was
+        /// present but decided nothing, so the OS probe picked the backend and this is a default like any
+        /// other. <see cref="GpuBackendSource.FallbackAfterFailure"/> is not named either, since by then the
+        /// backend is what the engine chose after the request failed.
+        /// </para>
+        /// </summary>
+        public bool WasNamed
+            => Source is GpuBackendSource.EnvironmentOverride or GpuBackendSource.UserPreference;
+    }
 
     /// <summary>
     /// Centralizes graphics-backend selection. <see cref="Select()"/> reads the <c>KE_GRAPHICS_BACKEND</c>
     /// environment variable as an override (case-insensitive, one of
     /// <c>metal</c>/<c>metal-native</c>/<c>vulkan</c>/<c>vulkan-native</c>/<c>d3d11</c>/<c>d3d11-native</c>/<c>gl</c>)
     /// and otherwise probes the OS
-    /// (macOS -> Metal, Windows -> Direct3D11, Linux -> Vulkan,
-    /// with Vulkan as the catch-all default). <see cref="Resolve()"/> answers the same question but also reports
+    /// (macOS -> MetalNative, Windows -> Direct3D11Native, Linux -> VulkanNative,
+    /// with VulkanNative as the catch-all default, all three flipped from their Veldrid incumbents in
+    /// 17.40.0). <see cref="Resolve()"/> answers the same question but also reports
     /// WHERE the answer came from, via <see cref="GpuBackendSelection"/>. The pure overloads
     /// <see cref="Select(string?, OSPlatformKind)"/> / <see cref="Resolve(string?, OSPlatformKind)"/> make the
     /// logic headless-testable without touching the real environment.
@@ -228,31 +252,52 @@ namespace KhaozEngine.Gpu
         internal const string RecognizedTokens = "metal/metal-native/vulkan/vulkan-native/d3d11/d3d11-native/gl";
 
         /// <summary>
-        /// The default backend for an OS family (macOS -> Metal, Windows -> D3D11, else Vulkan).
+        /// The default backend for an OS family: macOS -> <see cref="GpuBackendKind.MetalNative"/>,
+        /// Windows -> <see cref="GpuBackendKind.Direct3D11Native"/>, Linux and everything else ->
+        /// <see cref="GpuBackendKind.VulkanNative"/>.
         /// <para>
-        /// Windows deliberately still answers <see cref="GpuBackendKind.Direct3D11"/>, the Veldrid implementation,
-        /// and keeps answering it until the native backend has passed all five rollout gates (decision I4 and
-        /// section 14 of <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c>). Flipping the default is the
-        /// LAST step of that program, not a side effect of the member existing: until then the native leg is
-        /// exercised by naming it, through <c>KE_GRAPHICS_BACKEND</c> and its own CI matrix leg.
+        /// FLIPPED IN 17.40.0. Every arm used to answer the API's Veldrid incumbent and to say, at length, that
+        /// it was waiting on the last gate of that backend's rollout (decisions I4, V-RO3 and M-RO5). The flip
+        /// was taken by decision on 2026-08-22 ahead of the gates that were still open, and each of the three
+        /// designs carries a dated addendum in its rollout record saying so, naming which gates remain open as
+        /// issues. Read those before concluding from a green run that every gate was met.
         /// </para>
         /// <para>
-        /// Linux answers <see cref="GpuBackendKind.Vulkan"/> on exactly the same terms and for exactly the same
-        /// reason (decision V-RO3). Worth stating separately because the two flips are not the same edit: this
-        /// line is where a native Vulkan default would land, so flipping it changes the LINUX default while the
-        /// Windows one stays where it is, and the two programs reach their gates independently.
+        /// The incumbent of each API stays reachable for ONE release: by <c>KE_GRAPHICS_BACKEND</c>
+        /// (<c>metal</c> / <c>vulkan</c> / <c>d3d11</c>), by a stored user preference, and as the backend a
+        /// failed native device creation falls back TO (<see cref="IncumbentFor"/>). The Veldrid removal
+        /// program takes them out in the next release.
         /// </para>
         /// <para>
-        /// macOS answers <see cref="GpuBackendKind.Metal"/> on the same terms again, and its flip is the one with
-        /// the largest blast radius of the three despite naming the smallest player population. macOS is the
-        /// fleet's DEVELOPMENT platform, so flipping this arm moves every windowed playtest, every capture, every
-        /// editor session and every local golden bake onto <see cref="GpuBackendKind.MetalNative"/> on the day it
-        /// lands (decision M-RO5). Section 17 of
-        /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c> weighs both halves of that and holds
-        /// gate 5 strictly because of it.
+        /// This stays PURE, and answers the same whether or not the platform's native provider is registered in
+        /// this process. A consumer that has not taken the native package is handled at CREATION instead, where
+        /// a provider-backed backend NOBODY NAMED falls back to <see cref="IncumbentFor"/> with a warning.
+        /// Making the probe read the provider registry would have made an OS default depend on process-wide
+        /// mutable state, so the same call would answer differently before and after a registration line.
         /// </para>
         /// </summary>
         public static GpuBackendKind ProbeOS(OSPlatformKind os) => os switch
+        {
+            OSPlatformKind.MacOS => GpuBackendKind.MetalNative,
+            OSPlatformKind.Windows => GpuBackendKind.Direct3D11Native,
+            OSPlatformKind.Linux => GpuBackendKind.VulkanNative,
+            _ => GpuBackendKind.VulkanNative,
+        };
+
+        /// <summary>
+        /// The VELDRID INCUMBENT for an OS family (macOS -> <see cref="GpuBackendKind.Metal"/>, Windows ->
+        /// <see cref="GpuBackendKind.Direct3D11"/>, else <see cref="GpuBackendKind.Vulkan"/>): exactly what
+        /// <see cref="ProbeOS"/> answered before 17.40.0, and the backend a failed device creation falls back
+        /// TO now that the probe answers a native one.
+        /// <para>
+        /// A member of its own rather than a second reading of <see cref="ProbeOS"/>, because the two questions
+        /// came apart at the flip and only one of them can move again. This map is FROZEN and is deleted whole
+        /// with the incumbents in the next release. Until then it is the escape hatch all three rollout designs
+        /// call their primary field-diagnostic instrument, and it is what a game gets when it repins without
+        /// taking a native backend package.
+        /// </para>
+        /// </summary>
+        public static GpuBackendKind IncumbentFor(OSPlatformKind os) => os switch
         {
             OSPlatformKind.MacOS => GpuBackendKind.Metal,
             OSPlatformKind.Windows => GpuBackendKind.Direct3D11,
@@ -260,19 +305,27 @@ namespace KhaozEngine.Gpu
             _ => GpuBackendKind.Vulkan,
         };
 
-        // The backends the engine can create a WINDOWED device on, in a stable presentation order. OpenGL is
-        // deliberately absent: CreateForWindow has no windowed GL path (Silk would have to own the GL context),
-        // so offering it to a player would be offering a choice that cannot boot.
+        // The backends the engine can create a WINDOWED device on, in a stable presentation order: each API's
+        // NATIVE implementation followed by that API's Veldrid incumbent. OpenGL is deliberately absent:
+        // CreateForWindow has no windowed GL path (Silk would have to own the GL context), so offering it to a
+        // player would be offering a choice that cannot boot.
         //
-        // Direct3D11Native, VulkanNative and MetalNative are absent for a different reason, and stay absent until
-        // their respective default flips (decisions I4, V-RO3 and M-RO5).
-        // This list is what a game's graphics settings screen OFFERS, and a player picks an API, not an
-        // implementation of one: two entries both reading "Direct3D 11" is a choice nobody outside this repo can
-        // make, two both reading "Vulkan" is the same choice again, and two both reading "Metal" is the third.
-        // The native legs are named explicitly instead, through KE_GRAPHICS_BACKEND, until each becomes what its
-        // API's name means.
+        // The three native kinds joined this list at 17.40.0, when each became what its API's NAME means. The
+        // objection that kept them off it until then was that a settings screen offers an API and not an
+        // implementation of one, so two rows both reading "Direct3D 11" is a choice nobody outside this repo can
+        // make. The flip ANSWERS that objection rather than waiving it: the native row is what "Direct3D 11"
+        // means now, and the incumbent row beside it is the one-release opt-out, which a game labels as such.
+        // The pair collapses back to one row when the incumbents are removed.
+        //
+        // A native kind is only ever OFFERED where its provider is registered, because SupportedBackends()
+        // probes through IsBackendSupported and a provider-backed kind with no registered provider answers
+        // false. So a game that has not taken the native package sees exactly the list it saw before.
         static readonly GpuBackendKind[] _windowCandidates =
-            { GpuBackendKind.Metal, GpuBackendKind.Vulkan, GpuBackendKind.Direct3D11 };
+        {
+            GpuBackendKind.MetalNative, GpuBackendKind.Metal,
+            GpuBackendKind.VulkanNative, GpuBackendKind.Vulkan,
+            GpuBackendKind.Direct3D11Native, GpuBackendKind.Direct3D11,
+        };
 
         // Machine capability does not change while the process runs, and the Vulkan probe is genuinely
         // expensive (it loads the loader, creates an instance, and enumerates physical devices). A settings
@@ -352,8 +405,11 @@ namespace KhaozEngine.Gpu
             => _supportCache.TryRemove(backend, out _);
 
         /// <summary>
-        /// Every backend this machine can actually run a windowed device on, in a stable order
-        /// (Metal, Vulkan, Direct3D11). This is the list a game's graphics settings screen must offer: presenting
+        /// Every backend this machine can actually run a windowed device on, in a stable order (each API's
+        /// native implementation followed by its Veldrid incumbent: MetalNative, Metal, VulkanNative, Vulkan,
+        /// Direct3D11Native, Direct3D11). A native kind appears only where its provider is registered, so a
+        /// game that has not referenced the native package still sees only the three incumbents. This is the
+        /// list a game's graphics settings screen must offer: presenting
         /// a backend that is not on it hands the player a choice that cannot start, which is precisely the
         /// lock-out the fallback exists to catch after the fact. Probed via <see cref="IsBackendSupported"/>, so
         /// the first call pays the probe cost and later ones are cached.

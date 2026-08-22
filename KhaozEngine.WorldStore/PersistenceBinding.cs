@@ -20,14 +20,14 @@ public delegate bool RecordDecoder<TState>(byte[] data, out TState state, out by
 /// <summary>
 /// Everything <see cref="StatePersistence{TState}"/> needs to know about a head's state that is not generic: how a
 /// state becomes stored bytes, how stored bytes become a state, where a state sits in space, and what makes a
-/// loaded record unacceptable. Five delegates, no inheritance, so a head supplies its record shape without the core
+/// loaded record unacceptable. Four delegates, no inheritance, so a head supplies its record shape without the core
 /// ever naming a record type.
 /// <para>This is the whole seam between the shared machinery and a movement model. The save interval, the dirty
 /// comparison, the load guard, quarantine, the guest policy and the rejoin hints are the same code for a continuous
-/// world and a tile lattice, and the four or five lines here are what actually differ.</para>
-/// <para><see cref="PositionOf"/> and <see cref="WithPosition"/> are the core's spatial currency, a
-/// <see cref="Vector3"/>. A continuous head hands over its metres. A tile head packs its lattice address into one,
-/// which is exact because tile coordinates are small integers.</para>
+/// world and a tile lattice, and the four lines here are what actually differ.</para>
+/// <para><see cref="PositionOf"/> is the core's spatial currency, a <see cref="Vector3"/>. A continuous head hands
+/// over its metres. A tile head packs its lattice address into one, which is exact because tile coordinates are
+/// small integers.</para>
 /// </summary>
 /// <typeparam name="TState">The head's authoritative per-player movement state.</typeparam>
 /// <param name="PositionOf">Where a state sits, for the rejoin hint and for the quiet-restore distance test.</param>
@@ -40,11 +40,8 @@ public delegate bool RecordDecoder<TState>(byte[] data, out TState state, out by
 /// This is the STATE-shaped half of validation (play-area bounds, a facing out of range). The opaque blob's own
 /// verdict is <see cref="PersistenceCoreConfig.ValidateGameState"/>, which runs after this one and gets the slot and
 /// account the blob belongs to.</param>
-/// <param name="WithPosition">Rebuilds a state standing at a given position, keeping everything else. The inverse of
-/// <see cref="PositionOf"/>, for a caller that seeds a state from a hint.</param>
 public sealed record PersistenceBinding<TState>(
     Func<TState, Vector3> PositionOf,
     Func<TState, byte[]?, byte[]> Encode,
     RecordDecoder<TState> Decode,
-    Func<TState, byte[]?, string?> Validate,
-    Func<Vector3, TState, TState> WithPosition);
+    Func<TState, byte[]?, string?> Validate);

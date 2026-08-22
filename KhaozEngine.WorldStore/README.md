@@ -34,8 +34,8 @@ It is generic over the head's own state and knows nothing about a record:
 - **`IPersistenceHost<TState>`** - the head's side of the seam (`PlayerJoined` / `PlayerLeaving` / `SetPlayerState` /
   `JoinedSlots` / `TryGetAccountId` / `TryGetPlayerState`, plus the join-seed pair `SetPositionHintProvider` +
   `TryGetConfiguredSpawn` as default interface methods).
-- **`PersistenceBinding<TState>`** - the five delegates that ARE the movement model: `PositionOf`, `Encode`,
-  `Decode` (a `RecordDecoder<TState>`), `Validate`, `WithPosition`.
+- **`PersistenceBinding<TState>`** - the four delegates that ARE the movement model: `PositionOf`, `Encode`,
+  `Decode` (a `RecordDecoder<TState>`), `Validate`.
 - **`PersistenceCoreConfig`** - the machinery's tunables (interval, key prefixes, guest policy, hint capacity, the
   quiet-restore distance), the three game-state hooks keyed by slot and resolved key, and `Diagnostic`, the sink the
   core's own log lines go out through. That sink is why this package can carry the core and stay dependency-free: a

@@ -236,6 +236,10 @@ so a game's own tokens can never collide with them.
   Per-client deltas need an ack channel and a capability handshake the tile wire does not have, which is
   [#699](https://github.com/APKiwiOrg/KhaozEngine/issues/699). The cost of BUILDING each full snapshot is
   [#680](https://github.com/APKiwiOrg/KhaozEngine/issues/680).
+- **`TileIdentity` rides every snapshot.** The display name is a replicated component like any other, so every
+  full serve re-sends it for every entity in the viewer's area of interest rather than once on first sight.
+  Sending it once needs a per-client already-told set the tile wire does not have, which is
+  [#679](https://github.com/APKiwiOrg/KhaozEngine/issues/679).
 - **The ban check is a `Func<string,bool>` predicate, not a store.** `IBanStore` lives in `KhaozEngine.NetWorld`,
   which this package must never reference. Unifying the two ban seams is
   [#678](https://github.com/APKiwiOrg/KhaozEngine/issues/678).

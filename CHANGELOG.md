@@ -86,10 +86,9 @@ extension codec can no longer be satisfied out of the bytes of the components be
     defect ([#681](https://github.com/APKiwiOrg/KhaozEngine/issues/681)). Snapshots are full rather than per-client
     deltas ([#699](https://github.com/APKiwiOrg/KhaozEngine/issues/699)), and the serve walks the whole cell world
     once per client per tick ([#680](https://github.com/APKiwiOrg/KhaozEngine/issues/680)). The identity component
-    rides every snapshot ([#679](https://github.com/APKiwiOrg/KhaozEngine/issues/679)). `TileWorldClient` builds
-    its own registry, so a game's own components reach the server and are skipped on the client
-    ([#700](https://github.com/APKiwiOrg/KhaozEngine/issues/700)). `BeginDrain` re-implements `NetWorld`'s
-    `DrainController` because it cannot reference it ([#698](https://github.com/APKiwiOrg/KhaozEngine/issues/698)).
+    rides every snapshot ([#679](https://github.com/APKiwiOrg/KhaozEngine/issues/679)). `BeginDrain` re-implements
+    `NetWorld`'s `DrainController` because it cannot reference it
+    ([#698](https://github.com/APKiwiOrg/KhaozEngine/issues/698)).
     Two allocation leads found on the way through: `TilePathfinder.FindPath`
     ([#669](https://github.com/APKiwiOrg/KhaozEngine/issues/669)) and `TileWorldDocument.FindObject`
     ([#676](https://github.com/APKiwiOrg/KhaozEngine/issues/676)).
@@ -111,7 +110,11 @@ extension codec can no longer be satisfied out of the bytes of the components be
     reference. That leaves the engine with two ban seams that name each other, filed as
     [#678](https://github.com/APKiwiOrg/KhaozEngine/issues/678). Ruinborne's own gate cannot become an alias until
     its `rb:world-mismatch:` wire token can move, filed as
-    [#677](https://github.com/APKiwiOrg/KhaozEngine/issues/677).
+    [#677](https://github.com/APKiwiOrg/KhaozEngine/issues/677). That is not "no action at the repin": with both
+    namespaces imported, `Netcode.ConnectionGate` collides by simple name with `Ruinborne.Server.Auth.ConnectionGate`,
+    so `Ruinborne.Server/Program.cs`, `Ruinborne.Tests/WorldIdentityHandshakeTests.cs` and
+    `Ruinborne.Tests/LoopbackSessionHandshake.cs` each need an alias or a qualified name (CS0104) to build against
+    17.40.0.
   - A `NetWorld` game reaching for `ConnectionGate` must NOT send `BuildToken`'s bytes as the connect token: they
     carry no `ke-wire:` layer, so the always-on `WireGenerationAuthenticator` refuses them before the version gate
     is reached. Pass `ConnectionGate.Wrap(...)` as the `authenticator:` arg and let `ProtocolHandshake` wrap. The

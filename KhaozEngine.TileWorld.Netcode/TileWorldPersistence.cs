@@ -152,12 +152,6 @@ public sealed class TileWorldPersistence
             // maps to. Rejecting it here is what keeps an illegal enum value out of the simulator.
             if ((byte)s.Facing > (byte)TileDirection.NE) return "facing out of range";
             return null;
-        },
-        WithPosition: (p, s) =>
-        {
-            TileMoveState copy = s;
-            copy.Tile = new TileCoord((int)p.X, (int)p.Z, (int)p.Y);
-            return copy;
         });
 
     /// <summary>The rejoin hints, so a head can seed a join before the record loads. Pre-warm it from the game's own

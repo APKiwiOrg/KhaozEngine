@@ -180,8 +180,7 @@ public sealed class WorldPersistence
         },
         Validate: (s, _) => c.Bounds is { } b && !b.Contains(s.Position.X, s.Position.Z)
             ? $"position ({s.Position.X}, {s.Position.Z}) outside world bounds"
-            : null,
-        WithPosition: (p, s) => s with { Position = p });
+            : null);
 
     /// <summary>Where each account was last seen, in ABSOLUTE world metres: the hint the host's join reads to build
     /// a rejoining player's entity where they left rather than at the configured spawn (see the class doc, and

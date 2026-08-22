@@ -7,7 +7,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.39.0
 
-A tile world can draw a real glb kit per archetype now, and the glTF loader honours per-vertex COLOR_0.
+A tile world can draw a real glb kit per archetype now, the glTF loader honours per-vertex COLOR_0, and a
+server-owned entity can be transient across a restart without also being destroyed by a cell unload.
 
 - **`GltfMeshResolver` (`KhaozEngine.TileWorld.Render3D`) loads an archetype's glb by its `MeshRef`.**
   `new GltfMeshResolver(string rootDirectory, ITileMeshResolver? fallback = null, Action<string>? log = null)`
@@ -44,6 +45,47 @@ A tile world can draw a real glb kit per archetype now, and the glTF loader hono
   boundary. The key itself is a `MeshWeldKey` struct rather than a 14-element `ValueTuple`, because such a tuple
   hashes only its seventh element and its `Rest`, which would leave position out of the hash and make the weld
   quadratic on an unmapped mesh.
+- **`Transient` carries a `TransientScope`, so "never saved" and "gone on an unload" stopped being one answer**
+  (`KhaozEngine.Sharding`, #668). A cell is captured for two reasons: the durable save that outlives the process,
+  and the in-memory freeze `CellEvictor` holds while a cell is unloaded so a re-entered coordinate restores inside
+  the create call. 17.38.0's mark excluded an entity from `CellSim.SnapshotOwned`, which BOTH consumers called, so
+  marking an entity also made a cell unload destroy it, which an unload is not supposed to do. `Transient` now
+  carries one field. `TransientScope.Always` (the default, so `default(Transient)` and every existing mark mean
+  exactly what they meant) is out of both captures. `TransientScope.DurableOnly` is out of the save alone, so a
+  restart brings back no husk and an unload plus a route back hands the SAME entity under the same `NetId` to
+  whatever was tracking it. The cost of the split is that `Transient` is no longer a zero-field ECS tag, so a
+  marked archetype now carries a one-field column instead of only an archetype bit.
+- **`ShardedWorldServer.MarkTransient(netId, TransientScope)` and `TryGetTransientScope(netId, out scope)`.** The
+  one-argument `MarkTransient` is kept as an overload meaning `TransientScope.Always`, and `IsTransient` stays true
+  for either scope (every scope is out of the durable save, which is what it asks). Re-marking at a different scope
+  moves the entity to that scope rather than adding a second mark, and `ClearTransient` clears either.
+- **`CellSim.SnapshotOwned(excludedNetIds, SnapshotPurpose)`**, with the one-argument overload unchanged as
+  `SnapshotPurpose.Durable`. `SnapshotPurpose.Eviction` leaves out only the `Always` entities, so an unload freeze
+  is a faithful in-memory copy of the cell rather than a second persistence decision.
+- **`CellEvictor` takes a SECOND capture for its cache, and it is not the bytes it saved.** The store still gets
+  the durable capture, and the cache now gets an `Eviction`-purpose one taken at the last moment before the cell is
+  removed, so the freeze holds the cell as it stopped rather than as it stood when the write was queued. The
+  eviction path is unchanged in every other respect (the write, the re-verify against the durable bytes and the
+  refusals all behave as before), and a `MaxCachedSnapshots` of 0 skips the second capture entirely.
+- **The marks ride BESIDE the freeze, because no capture can encode them.** `Transient` is in no
+  `ReplicationRegistry` by design, so an entity restored from a capture comes back unmarked, which would have made
+  a `DurableOnly` entity persistable the moment its cell was re-entered. `CellSim.ReadTransientMarks(purpose)` and
+  `ApplyTransientMarks(marks)` are the pair that carries them, the same shape `ShardHost.ProcessHandoffs` already
+  used across a handoff, and the evictor drops them with the cached bytes so the pair is never half-live.
+  `ShardHost.ProcessHandoffs` now carries the SCOPE across a crossing too, for every `ICellLink` shape, so a
+  `DurableOnly` entity that walks over a border does not arrive as an `Always` one.
+- **`ICellPersistenceHost` gained three DEFAULT interface methods**: `SnapshotCell(coord, SnapshotPurpose)`,
+  `ReadTransientMarks(coord, purpose)` and `ApplyTransientMarks(coord, marks)`. The defaults are the pre-17.39.0
+  behaviour (ignore the purpose, carry nothing, apply nothing), so an existing host implementation is unaffected
+  and reads `DurableOnly` as `Always` until it overrides them. `ShardedWorldServer` overrides all three.
+- **A pickup is still `Always`, deliberately.** `WorldPickups` marks every pickup it spawns at
+  `TransientScope.Always` rather than `DurableOnly`, because the seam's tracking is dropped on eviction anyway
+  (#374), so an orb that came back on the route into an unloaded cell would be exactly the untracked husk the mark
+  exists to prevent. Nothing about pickup behaviour moved.
+- **What `DurableOnly` does NOT promise:** the route back reaches only as far as the evictor's snapshot cache
+  (`CellEvictionConfig.MaxCachedSnapshots`, 1024 coordinates by default, oldest dropped first). Past it the
+  coordinate falls back to the store-backed load, and the store never held the entity, so it is gone exactly as
+  `Always` would have left it. A spawner using this scope must still be able to notice a net id it no longer owns.
 
 ## 17.38.0
 

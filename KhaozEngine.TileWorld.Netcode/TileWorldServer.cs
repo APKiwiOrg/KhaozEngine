@@ -27,6 +27,16 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// </summary>
 public sealed partial class TileWorldServer : IDisposable
 {
+    // How many buffered commands a slot may hold before the queue sheds the stale ones and jumps to the newest.
+    // The same value ShardedWorldServer takes as its default (its MaxInputBacklog, 8), and here for a sharper
+    // reason: the drain is ONE command per player per tick while TileWorldServerConfig.MaxCommandsPerSecond admits
+    // ten per tick at 4 Hz, so any sustained excess (a reconnect flush, a delivery burst behind a lag spike, a
+    // client ticking faster than the server) buffers up to the queue's per-slot cap and is then replayed one per
+    // tick, leaving the server permanently minutes behind live input with no way back. Movement is latest wins, so
+    // the skip is correct rather than merely cheap. Eight is two seconds of play, which ordinary one-per-tick input
+    // never reaches.
+    const int MaxInputBacklog = 8;
+
     readonly TileWorldServerConfig config;
     readonly NetServer net;
     readonly ShardHost host;
@@ -86,7 +96,8 @@ public sealed partial class TileWorldServer : IDisposable
         // The queue's own neutral is never what a starved player is stepped with: Admit replaces it with a Continue
         // at the player's CURRENT mode, because TileCommand.None is a run toggled off. It is supplied because the
         // queue requires one, and it is the right value for a slot with no player behind it.
-        commands = new RemoteCommandQueue<TileCommand>(TileCommand.None, maxSlots: Math.Max(1, config.MaxPlayers));
+        commands = new RemoteCommandQueue<TileCommand>(TileCommand.None, maxSlots: Math.Max(1, config.MaxPlayers),
+            catchUpThreshold: MaxInputBacklog);
         net = new NetServer(transport, config.MaxPlayers, authenticator ?? new AllowAllAuthenticator(),
             duplicateSessions: config.DuplicateSessions);
         host = new ShardHost(config.CellSize, config.TickSeconds, this.registry, config.InterestRadius,

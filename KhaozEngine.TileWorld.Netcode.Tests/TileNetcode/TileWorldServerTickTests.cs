@@ -257,6 +257,33 @@ public class TileWorldServerTickTests
         Assert.Equal(0, st.InteractTarget);
     }
 
+    // MaxCommandsPerSecond admits ten commands per 250 ms tick against a drain of one, so a burst can hand the
+    // queue far more than it will ever consume one per tick. Past the catch-up threshold the stale ones are shed
+    // and the newest is applied, so the server is never left walking input from a minute ago. Without it the first
+    // tick applies seq 0 and the player walks north for the next thirty-nine ticks.
+    [Fact]
+    public void A_command_burst_is_shed_rather_than_replayed_one_per_tick()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(10, 10, 0));
+        s.SpawnPlayer(0, "a", "Ari");
+
+        for (int seq = 0; seq < 39; seq++)
+            s.Enqueue(0, seq, TileCommand.WalkTo(new TileCoord(10, 20, 0), TileMoveMode.Walk));
+        s.Enqueue(0, 39, TileCommand.WalkTo(new TileCoord(20, 10, 0), TileMoveMode.Run));
+
+        s.Tick(Dt);
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState first));
+        Assert.Equal(new TileCoord(20, 10, 0), first.Route.End);
+        Assert.Equal(TileMoveMode.Run, first.Mode);
+
+        // And nothing stale is left behind to re-route the player on the ticks after.
+        for (int i = 0; i < 4; i++) s.Tick(Dt);
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState later));
+        Assert.Equal(new TileCoord(20, 10, 0), later.Route.End);
+        Assert.Equal(new TileCoord(12, 10, 0), later.Tile);
+    }
+
     // SetPlayerState is a door, so what it cannot accept is refused THERE. A route over the cap would otherwise be
     // written happily and then throw out of the snapshot encoder on the next serve, killing that tick for every
     // other player on the server, which is the thing this codebase keeps refusing on purpose.

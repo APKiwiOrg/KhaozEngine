@@ -95,6 +95,8 @@ public class TileWorldPersistenceTests
             Assert.Equal(new TileCoord(30, 40, 1), host2.Placed[0].state.Tile);
             Assert.Equal(TileDirection.SE, host2.Placed[0].state.Facing);
         }
+        // Strict on purpose. The store is disposed by the time this runs, so on Windows this throws if the
+        // sqlite handle is still open, which is the regression #713 was.
         finally { File.Delete(db); }
     }
 

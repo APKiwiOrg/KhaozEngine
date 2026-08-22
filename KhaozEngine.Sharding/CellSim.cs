@@ -382,23 +382,39 @@ public sealed class CellSim
     /// A durable Replication snapshot of this cell's <b>persistable</b> entities: those it owns (present, not a
     /// <see cref="Ghost"/>, not <see cref="Migrating"/>, not <see cref="Transient"/>) whose <see cref="NetId"/> is
     /// not in <paramref name="excludedNetIds"/> (the caller passes the player NetIds, which persist separately).
-    /// Reuses the same <see cref="SnapshotWriter"/> codec cells use for ghosting/migrate, but captures the
-    /// <see cref="ReplicationChannels.Persist"/> channel, so a component is written to the blob only if it declared
-    /// <see cref="ReplicationChannels.Persist"/> (a Replicate-only or Migrate-only component is not persisted).
-    /// <para>The two exclusions answer different questions and neither substitutes for the other.
-    /// <see cref="ReplicationChannels.Persist"/> decides which COMPONENTS of a persisted entity reach the blob;
-    /// <see cref="Transient"/> decides whether the ENTITY reaches it at all. An entity marked
-    /// <see cref="Transient"/> is absent from the bytes rather than present with fewer components, so a restore
-    /// cannot bring it back as a husk (#326).</para>
+    /// Shorthand for <see cref="SnapshotOwned(IReadOnlySet{long}, SnapshotPurpose)"/> at
+    /// <see cref="SnapshotPurpose.Durable"/>.
     /// </summary>
-    public byte[] SnapshotOwned(IReadOnlySet<long> excludedNetIds)
+    public byte[] SnapshotOwned(IReadOnlySet<long> excludedNetIds) =>
+        SnapshotOwned(excludedNetIds, SnapshotPurpose.Durable);
+
+    /// <summary>
+    /// A Replication snapshot of this cell's owned entities for <paramref name="purpose"/>: those it owns (present,
+    /// not a <see cref="Ghost"/>, not <see cref="Migrating"/>) whose <see cref="NetId"/> is not in
+    /// <paramref name="excludedNetIds"/> (the caller passes the player NetIds, which persist separately), minus the
+    /// <see cref="Transient"/> entities this purpose excludes. Reuses the same <see cref="SnapshotWriter"/> codec
+    /// cells use for ghosting/migrate, but captures the <see cref="ReplicationChannels.Persist"/> channel, so a
+    /// component is written only if it declared <see cref="ReplicationChannels.Persist"/> (a Replicate-only or
+    /// Migrate-only component is not captured), for both purposes: what an unload keeps is exactly what a restart
+    /// keeps, component for component.
+    /// <para>The exclusions answer three different questions and none substitutes for another.
+    /// <see cref="ReplicationChannels.Persist"/> decides which COMPONENTS of a captured entity reach the bytes.
+    /// <see cref="Transient"/> decides whether the ENTITY reaches them at all, absent rather than present with
+    /// fewer components, so a restore cannot bring it back as a husk (#326). <see cref="Transient.Scope"/> then
+    /// decides WHICH captures it is absent from: <see cref="TransientScope.Always"/> is left out of both,
+    /// <see cref="TransientScope.DurableOnly"/> only out of <see cref="SnapshotPurpose.Durable"/>, so an
+    /// <see cref="SnapshotPurpose.Eviction"/> freeze is a faithful in-memory copy of the cell rather than a second
+    /// persistence decision (#668).</para>
+    /// </summary>
+    public byte[] SnapshotOwned(IReadOnlySet<long> excludedNetIds, SnapshotPurpose purpose)
     {
         ArgumentNullException.ThrowIfNull(excludedNetIds);
         var ids = new HashSet<long>();
         World.ForEach<NetId>((Entity e, ref NetId id) =>
         {
             if (World.Has<Ghost>(e) || World.Has<Migrating>(e)) return;
-            if (World.Has<Transient>(e)) return;   // never persisted: it must not outlive the process that spawned it
+            // Never captured for this purpose: it must not outlive what the mark says it must not outlive.
+            if (World.TryGet(e, out Transient t) && ExcludedBy(t.Scope, purpose)) return;
             if (excludedNetIds.Contains(id.Value)) return;
             ids.Add(id.Value);
         });
@@ -407,6 +423,49 @@ public sealed class CellSim
         Func<long, IReadOnlyList<RetainedComponent>?>? retainedFrames =
             retainedUnknown.Count == 0 ? null : RetainedFramesFor;
         return SnapshotWriter.WriteFiltered(World, registry, ids, ReplicationChannels.Persist, ownerNetId: null, retainedFrames);
+    }
+
+    // The one rule the two captures differ by. Always is out of every capture, so a purpose added later inherits the
+    // strict answer without touching a marked entity; DurableOnly is out of the save alone.
+    private static bool ExcludedBy(TransientScope scope, SnapshotPurpose purpose) =>
+        scope == TransientScope.Always || purpose == SnapshotPurpose.Durable;
+
+    /// <summary>
+    /// The <see cref="Transient"/> marks a capture for <paramref name="purpose"/> KEEPS the entity for but cannot
+    /// encode, keyed by <see cref="NetId"/>. The marker is in no <see cref="ReplicationRegistry"/> by design (#326),
+    /// so it reaches no bytes, and an entity restored from a capture comes back unmarked unless the caller carries
+    /// the marks beside the bytes and re-applies them, exactly as <see cref="ShardHost.ProcessHandoffs"/> does
+    /// across a handoff. Empty for <see cref="SnapshotPurpose.Durable"/>, which excludes every marked entity anyway.
+    /// </summary>
+    public IReadOnlyDictionary<long, TransientScope> ReadTransientMarks(SnapshotPurpose purpose)
+    {
+        var marks = new Dictionary<long, TransientScope>();
+        if (purpose == SnapshotPurpose.Durable) return marks;
+        World.ForEach<NetId>((Entity e, ref NetId id) =>
+        {
+            if (World.Has<Ghost>(e) || World.Has<Migrating>(e)) return;
+            if (World.TryGet(e, out Transient t) && !ExcludedBy(t.Scope, purpose)) marks[id.Value] = t.Scope;
+        });
+        return marks;
+    }
+
+    /// <summary>
+    /// Re-applies marks read by <see cref="ReadTransientMarks"/> to the entities this cell owns, which is what makes
+    /// a restore from an eviction capture hand back an entity that is still transient rather than one the next
+    /// interval save would write. A net id this cell does not own is skipped (the far side of a capture the cache
+    /// dropped, or an entity the restore left out). Returns how many landed.
+    /// </summary>
+    public int ApplyTransientMarks(IReadOnlyDictionary<long, TransientScope> marks)
+    {
+        ArgumentNullException.ThrowIfNull(marks);
+        int applied = 0;
+        foreach (KeyValuePair<long, TransientScope> kv in marks)
+        {
+            if (!TryGetOwned(kv.Key, out Entity e)) continue;
+            World.Set(e, new Transient { Scope = kv.Value });
+            applied++;
+        }
+        return applied;
     }
 
     private IReadOnlyList<RetainedComponent>? RetainedFramesFor(long netId) =>
@@ -428,7 +487,8 @@ public sealed class CellSim
     /// decode (a corrupt frame, an unknown built-in id) is rolled back (every entity the partial apply spawned is
     /// despawned, so the cell is left empty) and reported as <see cref="CellRestoreResult.Ok"/> = false, so the
     /// persistence driver can quarantine the poisoned bytes instead of crash-looping. Extension frames whose id this
-    /// cell's registry does not know are RETAINED per-netId and re-emitted verbatim by <see cref="SnapshotOwned"/>
+    /// cell's registry does not know are RETAINED per-netId and re-emitted verbatim by
+    /// <see cref="SnapshotOwned(IReadOnlySet{long}, SnapshotPurpose)"/>
     /// (retain-and-rewrite), so a registry downgrade cannot strip data at rest;
     /// <see cref="CellRestoreResult.RetainedFrameCount"/> reports how many. Intended to run once on cell creation.
     /// </summary>

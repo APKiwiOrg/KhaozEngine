@@ -18,7 +18,7 @@ namespace KhaozEngine.Tests.NetWorld;
 /// <see cref="CellPersistence"/> and <see cref="CellEvictor"/> behind it.
 /// <para>#326: a pickup is <see cref="Transient"/> the moment it spawns, so it never reaches a cell blob and no
 /// restore can resurrect it as a husk, and the same opt-out is reachable by hand for any other server-owned entity
-/// (<see cref="ShardedWorldServer.MarkTransient"/>).</para>
+/// (<see cref="ShardedWorldServer.MarkTransient(long)"/>).</para>
 /// <para>#374: an evicted cell takes its pickups' TRACKING with it, through the built-in
 /// <see cref="CellEvictor.CellEvicted"/> subscription or an explicit <see cref="WorldPickups.ForgetCell"/>, so the
 /// seam stops offering an orb nobody can see. The two compose: nothing is offered afterwards, and nothing comes

@@ -70,15 +70,17 @@ public sealed partial class ShardHost : IDisposable
     // the serve epoch (rebuilt at most once per world per tick), mirroring the interest-grid's per-serve-pass cadence.
     private readonly Dictionary<World, (WorldSnapshotIndex index, long epoch)> clientIndexByWorld = new();
 
-    // The netIds crossing in the CURRENT ProcessHandoffs call that were marked Transient on their source cell.
+    // The netIds crossing in the CURRENT ProcessHandoffs call that were marked Transient on their source cell, each
+    // with the TransientScope it carried there (#668: the scope is part of the mark, so a DurableOnly entity must not
+    // arrive as an Always one, which would make the next unload destroy it).
     // Transient is not in any ReplicationRegistry (that is the point of it - persistence costs no wire id), so the
     // Migrate capture cannot carry it, and an unmarked arrival would be persisted by its new owner. Collected in
     // phase 1 and re-applied in phase 2, which is where the destination first holds the adopted entity. Deliberately
     // NOT cleared per call: the in-process link completes the crossing within one pass, but a networked link delivers
-    // the Migrate on a later one, and a scratch set wiped at the top of every call would have nothing left to re-mark
-    // by then. Each entry is instead CONSUMED at the re-mark, so the set drains itself and only an undelivered
+    // the Migrate on a later one, and a scratch map wiped at the top of every call would have nothing left to re-mark
+    // by then. Each entry is instead CONSUMED at the re-mark, so the map drains itself and only an undelivered
     // crossing keeps an entry (which is the entity still being in flight, not a leak).
-    private readonly HashSet<long> transientCrossings = new();
+    private readonly Dictionary<long, TransientScope> transientCrossings = new();
 
     /// <param name="cellSize">World-grid cell edge length in world units. Must be &gt; 0.</param>
     /// <param name="tickSeconds">Fixed timestep shared by every cell, seconds per tick. Must be &gt; 0.</param>
@@ -426,8 +428,9 @@ public sealed partial class ShardHost : IDisposable
             byte[] capture = SnapshotWriter.WriteSingle(
                 snapshotScratch, source.World, registry, netId, entity, ReplicationChannels.Migrate, ownerNetId: null);
             // Read the transient mark BEFORE the source lets go of the entity: it rides beside the capture rather
-            // than inside it, because a persistence-only marker never earns a replication type id (#326).
-            if (source.World.Has<Transient>(entity)) transientCrossings.Add(netId);
+            // than inside it, because a persistence-only marker never earns a replication type id (#326). The scope
+            // rides with it, so the destination re-marks at the same grain rather than the default one (#668).
+            if (source.World.TryGet(entity, out Transient mark)) transientCrossings[netId] = mark.Scope;
             link.Send(new CellMessage(source.Coord, dest, CellMessageKind.Migrate, capture));
             source.World.Set(entity, new Migrating { Destination = dest });
             source.UnregisterOwned(netId); // frozen: relinquished here, so drop it from the owned index at once
@@ -444,8 +447,9 @@ public sealed partial class ShardHost : IDisposable
                     // snapshot: an interval save between adopt and re-mark is exactly the husk this prevents. The
                     // entry is CONSUMED here rather than read, which is what lets the mark survive a link that
                     // delivers the Migrate on a later call instead of within this one.
-                    if (transientCrossings.Remove(netId) && cell.TryGetOwned(netId, out Entity adopted))
-                        cell.World.Set(adopted, default(Transient));
+                    if (transientCrossings.Remove(netId, out TransientScope scope) &&
+                        cell.TryGetOwned(netId, out Entity adopted))
+                        cell.World.Set(adopted, new Transient { Scope = scope });
                     link.Send(new CellMessage(cell.Coord, msg.Source, CellMessageKind.MigrateAck, BitConverter.GetBytes(netId)));
                 }
             }

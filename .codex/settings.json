@@ -39,6 +39,10 @@
           {
             "type": "command",
             "command": "g=\"${CLAUDE_PROJECT_DIR:-.}/scripts/hooks/tag-collision-guard.sh\"; [ -f \"$g\" ] || exit 0; sh \"$g\""
+          },
+          {
+            "type": "command",
+            "command": "g=\"${CLAUDE_PROJECT_DIR:-.}/scripts/hooks/pack-release-guard.sh\"; [ -f \"$g\" ] || exit 0; sh \"$g\""
           }
         ]
       }

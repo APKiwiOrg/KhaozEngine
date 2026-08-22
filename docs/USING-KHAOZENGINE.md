@@ -12853,6 +12853,36 @@ one. Across NODES it does not: two `ShardHost` instances exchange a crossing as 
 design, so an infra link spanning nodes must carry the mark in its own envelope and re-apply it on arrival.
 `WorldPickups` marks everything it spawns, so a game on that seam needs none of this.
 
+**Saying "not across a restart, but yes across an unload" (since 17.39.0, #668).** A cell is captured for two
+reasons, and until 17.39.0 one mark decided both: the durable save that outlives the process, and the in-memory
+freeze `CellEvictor` holds while a cell is unloaded so a re-entered coordinate restores inside the create call. That
+made marking an entity destroy it on an unload too, which an unload is not supposed to do. `Transient` now carries a
+`TransientScope`:
+
+```csharp
+server.MarkTransient(netId);                                  // TransientScope.Always, exactly as 17.38.0
+server.MarkTransient(netId, TransientScope.Always);           // the same thing, spelled out
+server.MarkTransient(netId, TransientScope.DurableOnly);      // never saved, kept across an unload
+
+server.TryGetTransientScope(netId, out TransientScope scope); // false = not marked at all
+server.IsTransient(netId);                                    // true for either scope
+```
+
+`Always` is out of both captures, so the entity evaporates on an unload as surely as on a restart. Reach for it when
+the entity's meaning lives in per-process bookkeeping a restore cannot rebuild, which is why `WorldPickups` uses it.
+`DurableOnly` is out of the save alone: a restart brings back no husk, and an unload plus a route back hands the SAME
+entity under the same `NetId` to whatever was tracking it. Reach for it for authored, whole-zone agent state, a
+spawner holding one record per authored creature keyed to a net id, dormant while its cell is unloaded and expecting
+its entity back on the restore, but re-spawned from the authored content after a restart.
+
+Two caveats. The route back only reaches as far as the evictor's cache
+(`CellEvictionConfig.MaxCachedSnapshots`, 1024 coordinates by default, oldest dropped first): past it the coordinate
+falls back to the store-backed load, and the store never held the entity, so keep your spawner able to notice a net
+id it no longer owns. And the seam under all this,
+`ICellPersistenceHost.SnapshotCell(coord, SnapshotPurpose)` with `ReadTransientMarks` / `ApplyTransientMarks` beside
+it, is three default interface methods: a custom host that has not overridden them keeps the 17.38.0 behaviour, so
+`DurableOnly` reads as `Always` there until it does. `ShardedWorldServer` overrides all three.
+
 Subscribe to **`CellPersistence.OnStoreError`** (`event Action<Exception>`, mirrors `WorldPersistence.OnStoreError`)
 to log/alert on a faulted background cell save, meta write, or quarantine write. The driver prunes the faulted task
 each `Update` (so a store outage can't grow the pending list unbounded or make the boot sequence
@@ -13642,7 +13672,10 @@ its snapshot decode the first time a pickup entered its area of interest, mid-se
 `IncompatibleVersion` rejection at connect. **Client and server must ship together.**
 
 **A pickup is never persisted by default (since 17.38.0).** Every pickup `Spawn` creates is marked
-`KhaozEngine.Sharding.Transient`, so `CellPersistence` leaves it out of the cell blob and no restore brings it back.
+`KhaozEngine.Sharding.Transient` at `TransientScope.Always`, so `CellPersistence` leaves it out of the cell blob, the
+evictor's unload freeze leaves it out too, and no restore of either brings it back (`Always` rather than
+`DurableOnly` because this seam's tracking is dropped on eviction anyway, so for an orb both questions have the same
+answer).
 The seam's state (the time-to-live, the clock, the offer records) lives in this process only, so a resurrected pickup
 is a plain entity carrying `PickupState` that the seam knows nothing about, offered to nobody and expiring never.
 
@@ -13653,20 +13686,26 @@ never, and `Despawn` / `DespawnAll` / `ForgetCell` all miss it. Persistent groun
 `WorldPickups.Rehydrate(world)` that re-adopts restored `PickupState` entities into the seam, filed as
 [#660](https://github.com/APKiwiOrg/KhaozEngine/issues/660). Until that lands, a collectible meant to survive a
 restart belongs in your own content or save data, spawned again at boot, which is also the only place its payload
-still means anything.
+still means anything. Clearing the mark is not the only route to that husk either: re-marking a pickup
+`TransientScope.DurableOnly` keeps it in the evictor's unload freeze while `ForgetCell` has already dropped the
+seam's record for it, so re-entering that coordinate hands back an untracked, never-expiring pickup entity
+mid-session, with no restart involved. Leave a pickup on the `Always` scope `Spawn` gives it.
 
 **The same opt-out is yours for any other transient server-owned entity.** A timed spawn, a wave of adds, a
 projectile, a temporary marker:
 
 ```csharp
-long netId = server.SpawnEntity(x, z, (world, entity) => world.Set(entity, new EnemyKind { … }));
-server.MarkTransient(netId);   // ClearTransient / IsTransient beside it
+long shell = server.SpawnEntity(x, z, (world, entity) => world.Set(entity, new EnemyKind { … }));
+server.MarkTransient(shell);                              // ClearTransient / IsTransient beside it
+
+long wolf = server.SpawnEntity(x, z, (world, entity) => world.Set(entity, new EnemyKind { … }));
+server.MarkTransient(wolf, TransientScope.DurableOnly);   // never saved, but survives a cell unload
 ```
 
 It excludes the ENTITY rather than a component's bytes, which is the axis a `ReplicationChannels` flag cannot reach:
 a channel gates one component TYPE, and dropping bytes would still persist the entity, just as a stripped husk. It
-costs nothing on the wire (a field-less ECS tag in no `ReplicationRegistry`, so no blob layout moves) and it follows
-the entity across a cell handoff inside one `ShardHost`, for any `ICellLink` shape, so walking into the next cell does
+costs nothing on the wire (in no `ReplicationRegistry`, so no blob layout moves) and it follows the entity, scope and
+all, across a cell handoff inside one `ShardHost`, for any `ICellLink` shape, so walking into the next cell does
 not make it persistable there. That stops at the node boundary: the tag has no wire id, so a link carrying a crossing
 between two hosts carries the mark in its own envelope or the destination adopts it unmarked.
 
@@ -13919,6 +13958,6 @@ and execute the published binary; it prints one `AOT PROBE:` line and returns ex
   and this doc match `<KhaozEngineVersion>`, and that the newest `CHANGELOG.md` heading is for that version.
 - SemVer: additive = minor, fixes = patch, breaking = major. Local file-feed for inner-loop dev; GitHub Packages
   on `v*` tags.
-- To change the library: edit, add a headless test, `dotnet pack -c Release -o ./local-feed`, consume locally;
-  when stable, bump the version + add a `CHANGELOG.md` entry + tag for a published release. Each game adopts on
+- To change the library: edit, add a headless test, `scripts/pack-local-feed.sh`, consume locally. When
+  stable, bump the version + add a `CHANGELOG.md` entry + tag for a published release. Each game adopts on
   its own schedule by bumping its pinned version (or its umbrella metapackage version).

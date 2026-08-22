@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using KhaozEngine.Replication;
 using KhaozEngine.Sharding;
 
@@ -48,6 +49,27 @@ public interface ICellPersistenceHost
     /// <c>ShardedWorldServer</c>) overrides it to honour the scope. Call on the server thread.</para>
     /// </summary>
     byte[]? SnapshotCell(CellCoord coord, SnapshotPurpose purpose) => SnapshotCell(coord);
+
+    /// <summary>
+    /// The <see cref="KhaozEngine.Sharding.Transient"/> marks a <paramref name="purpose"/> capture of this cell
+    /// KEEPS the entity for but cannot encode, keyed by net id. The marker is in no
+    /// <see cref="ReplicationRegistry"/> by design, so it reaches no bytes and a restored entity comes back
+    /// unmarked: a caller holding a capture carries these beside it and hands them to
+    /// <see cref="ApplyTransientMarks"/> on the far side, which is what stops an unloaded-then-restored
+    /// <see cref="KhaozEngine.Sharding.TransientScope.DurableOnly"/> entity from becoming persistable on the way
+    /// back (#668). Empty by default and for <see cref="SnapshotPurpose.Durable"/>, which excludes every marked
+    /// entity anyway. Call on the server thread.
+    /// </summary>
+    IReadOnlyDictionary<long, TransientScope> ReadTransientMarks(CellCoord coord, SnapshotPurpose purpose) =>
+        ReadOnlyDictionary<long, TransientScope>.Empty;
+
+    /// <summary>
+    /// Re-applies marks read by <see cref="ReadTransientMarks"/> to the entities a restore just put back into
+    /// <paramref name="coord"/>, so the far side of a capture is transient at the same scope it left at. A net id
+    /// the cell does not own is skipped. No-op by default, which is the pre-17.39.0 behaviour and consistent with a
+    /// host whose <see cref="ReadTransientMarks"/> returns nothing to carry. Call on the server thread.
+    /// </summary>
+    void ApplyTransientMarks(CellCoord coord, IReadOnlyDictionary<long, TransientScope> marks) { }
 
     /// <summary>Restores entities into a cell (call on the server thread). Returns the restored NetId values.</summary>
     IReadOnlyList<long> RestoreCell(CellCoord coord, byte[] snapshot);

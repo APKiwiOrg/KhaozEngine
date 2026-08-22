@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Numerics;
 using KhaozEngine.Physics;
 using KhaozEngine.Ecs;
@@ -160,6 +161,18 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         host.TryGetCell(coord, out CellSim cell)
             ? cell.SnapshotOwned(new HashSet<long>(netIdBySlot.Values), purpose)
             : null;
+
+    /// <inheritdoc />
+    public IReadOnlyDictionary<long, TransientScope> ReadTransientMarks(CellCoord coord, SnapshotPurpose purpose) =>
+        host.TryGetCell(coord, out CellSim cell)
+            ? cell.ReadTransientMarks(purpose)
+            : ReadOnlyDictionary<long, TransientScope>.Empty;
+
+    /// <inheritdoc />
+    public void ApplyTransientMarks(CellCoord coord, IReadOnlyDictionary<long, TransientScope> marks)
+    {
+        if (host.TryGetCell(coord, out CellSim cell)) cell.ApplyTransientMarks(marks);
+    }
 
     /// <inheritdoc />
     public IReadOnlyList<long> RestoreCell(CellCoord coord, byte[] snapshot) =>

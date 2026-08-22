@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using KhaozEngine.Sharding;
 
@@ -63,6 +64,23 @@ public sealed class CellEvictor
         public Task<bool> Save { get; }
     }
 
+    // What an evicted coordinate holds for its synchronous route back: the freeze bytes plus the Transient marks the
+    // bytes cannot encode. The marker is in no ReplicationRegistry by design (#326), so an entity restored from the
+    // freeze comes back UNMARKED unless the marks ride beside it, which would quietly make a DurableOnly entity
+    // persistable the moment its cell was re-entered. Carried the same way ShardHost.ProcessHandoffs carries a mark
+    // across a handoff, and dropped with the cached bytes so the pair is never half-live.
+    private readonly struct CachedFreeze
+    {
+        public CachedFreeze(byte[] bytes, IReadOnlyDictionary<long, TransientScope> marks)
+        {
+            Bytes = bytes;
+            Marks = marks;
+        }
+
+        public byte[] Bytes { get; }
+        public IReadOnlyDictionary<long, TransientScope> Marks { get; }
+    }
+
     private readonly ICellEvictionHost host;
     private readonly CellPersistence persistence;
     private readonly CellEvictionConfig config;
@@ -71,7 +89,7 @@ public sealed class CellEvictor
     private readonly Dictionary<CellCoord, float> idleSeconds = new();
     // Evicted coords whose snapshot is held for a synchronous restore on recreation, plus their eviction order so
     // the oldest is dropped first when the cache is full.
-    private readonly Dictionary<CellCoord, byte[]> cachedSnapshots = new();
+    private readonly Dictionary<CellCoord, CachedFreeze> cachedSnapshots = new();
     private readonly List<CellCoord> cacheOrder = new();
     private readonly List<PendingEviction> pending = new();
     private readonly List<CellCoord> scanScratch = new();
@@ -146,10 +164,10 @@ public sealed class CellEvictor
     // cached snapshot is not ours to handle: CellPersistence loads it from the store on the same event.
     private void OnCellCreated(CellCoord coord)
     {
-        if (!cachedSnapshots.Remove(coord, out byte[]? snapshot)) return;
+        if (!cachedSnapshots.Remove(coord, out CachedFreeze freeze)) return;
         cacheOrder.Remove(coord);
 
-        CellRestoreResult result = host.TryRestoreCell(coord, snapshot);
+        CellRestoreResult result = host.TryRestoreCell(coord, freeze.Bytes);
         if (!result.Ok)
         {
             // These are bytes this process wrote moments ago, so a decode failure means something is badly wrong.
@@ -158,6 +176,10 @@ public sealed class CellEvictor
             persistence.RequestLoad(coord);
             return;
         }
+
+        // Before anything can tick or save: the freeze's bytes never carried the marks, so re-apply them now or the
+        // next interval save writes an entity that was marked never to be written (#668).
+        if (freeze.Marks.Count > 0) host.ApplyTransientMarks(coord, freeze.Marks);
 
         long max = 0;
         foreach (long id in result.NetIds) if (id > max) max = id;
@@ -197,12 +219,12 @@ public sealed class CellEvictor
         // possible moment (the cell is still live and has kept simulating since the write was queued) so what comes
         // back on the route in is the cell as it stood when it stopped, not as it stood when the save began. A host
         // that has not overridden the purpose overload returns the durable bytes and behaves exactly as before.
-        byte[] freeze = p.Snapshot;
+        var freeze = new CachedFreeze(p.Snapshot, ReadOnlyDictionary<long, TransientScope>.Empty);
         if (config.MaxCachedSnapshots > 0)
         {
             byte[]? unload = host.SnapshotCell(p.Coord, SnapshotPurpose.Eviction);
             if (unload is null) return;   // the cell went away under us: nothing to evict and nothing to cache
-            freeze = unload;
+            freeze = new CachedFreeze(unload, host.ReadTransientMarks(p.Coord, SnapshotPurpose.Eviction));
         }
         if (!host.CanEvictCell(p.Coord) || !host.EvictCell(p.Coord)) return;
 
@@ -216,14 +238,14 @@ public sealed class CellEvictor
     // coord from the store when it is recreated, so the driver's per-cell load bookkeeping is deliberately left in
     // place. Dropping a coord from the cache is therefore always paired with ForgetCell, which re-arms the
     // store-backed path. Exactly one of the two is live per evicted coordinate.
-    private void Cache(CellCoord coord, byte[] snapshot)
+    private void Cache(CellCoord coord, in CachedFreeze freeze)
     {
         if (config.MaxCachedSnapshots <= 0)
         {
             persistence.ForgetCell(coord);
             return;
         }
-        cachedSnapshots[coord] = snapshot;
+        cachedSnapshots[coord] = freeze;
         cacheOrder.Add(coord);
         while (cacheOrder.Count > config.MaxCachedSnapshots)
         {

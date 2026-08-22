@@ -430,6 +430,44 @@ public sealed class CellSim
     private static bool ExcludedBy(TransientScope scope, SnapshotPurpose purpose) =>
         scope == TransientScope.Always || purpose == SnapshotPurpose.Durable;
 
+    /// <summary>
+    /// The <see cref="Transient"/> marks a capture for <paramref name="purpose"/> KEEPS the entity for but cannot
+    /// encode, keyed by <see cref="NetId"/>. The marker is in no <see cref="ReplicationRegistry"/> by design (#326),
+    /// so it reaches no bytes, and an entity restored from a capture comes back unmarked unless the caller carries
+    /// the marks beside the bytes and re-applies them, exactly as <see cref="ShardHost.ProcessHandoffs"/> does
+    /// across a handoff. Empty for <see cref="SnapshotPurpose.Durable"/>, which excludes every marked entity anyway.
+    /// </summary>
+    public IReadOnlyDictionary<long, TransientScope> ReadTransientMarks(SnapshotPurpose purpose)
+    {
+        var marks = new Dictionary<long, TransientScope>();
+        if (purpose == SnapshotPurpose.Durable) return marks;
+        World.ForEach<NetId>((Entity e, ref NetId id) =>
+        {
+            if (World.Has<Ghost>(e) || World.Has<Migrating>(e)) return;
+            if (World.TryGet(e, out Transient t) && !ExcludedBy(t.Scope, purpose)) marks[id.Value] = t.Scope;
+        });
+        return marks;
+    }
+
+    /// <summary>
+    /// Re-applies marks read by <see cref="ReadTransientMarks"/> to the entities this cell owns, which is what makes
+    /// a restore from an eviction capture hand back an entity that is still transient rather than one the next
+    /// interval save would write. A net id this cell does not own is skipped (the far side of a capture the cache
+    /// dropped, or an entity the restore left out). Returns how many landed.
+    /// </summary>
+    public int ApplyTransientMarks(IReadOnlyDictionary<long, TransientScope> marks)
+    {
+        ArgumentNullException.ThrowIfNull(marks);
+        int applied = 0;
+        foreach (KeyValuePair<long, TransientScope> kv in marks)
+        {
+            if (!TryGetOwned(kv.Key, out Entity e)) continue;
+            World.Set(e, new Transient { Scope = kv.Value });
+            applied++;
+        }
+        return applied;
+    }
+
     private IReadOnlyList<RetainedComponent>? RetainedFramesFor(long netId) =>
         retainedUnknown.TryGetValue(netId, out List<RetainedComponent>? list) ? list : null;
 

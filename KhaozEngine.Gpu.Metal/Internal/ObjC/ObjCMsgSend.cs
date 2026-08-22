@@ -458,15 +458,10 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
 
         // ---- The draw row's shapes ---------------------------------------------------------------------------
         //
-        // ONE of the seven is a genuinely new ARGUMENT PLACEMENT and the header's standard applies to it: an
+        // ONE of the five is a genuinely new ARGUMENT PLACEMENT and the header's standard applies to it: an
         // argument that spills onto the STACK in a slot the callee does not read is not a fault, it is a wrong
         // number the driver acts on. See MTLRenderCommandEncoder.DrawIndexedPrimitives for the device probe that
         // answers it by VALUE rather than by acceptance.
-        //
-        // FOUR of them are TWO PAIRS, a long form and a short form of the same draw, and which one a call takes
-        // is decided in MTLRenderCommandEncoder rather than here. The short forms carry no argument the long
-        // forms do not, so they add no ABI question at all: what they add is a second code path, and the reason
-        // that path exists is https://github.com/APKiwiOrg/KhaozEngine/issues/598.
 
         /// <summary>
         /// A void message taking four <c>float</c>s, which is
@@ -489,30 +484,15 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         /// <para>
         /// SEVEN ARGUMENTS COUNTING THE RECEIVER AND THE SELECTOR, all of them the integer class row 1's spike
         /// measured throughout, so every one rides a general-purpose argument register and NOTHING SPILLS. It is
-        /// the form taken when the base instance is NON-ZERO, which the incumbent's own rule also is.
-        /// <see cref="SendVoidDrawPrimitivesShort"/> is the other half and
-        /// <see cref="MTLRenderCommandEncoder.DrawPrimitives"/> carries why the pair exists.
+        /// the long form of the selector unconditionally: the incumbent picks between this and the four-argument
+        /// one on <c>instanceStart == 0</c>, and at a base instance of zero the two are the same draw, so one code
+        /// path is taken for <c>setViewports:count:</c>'s reason.
         /// </para>
         /// </summary>
         [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
         [SupportedOSPlatform("macos")]
         internal static partial void SendVoidDrawPrimitives(IntPtr receiver, IntPtr sel, nuint primitiveType,
             nuint vertexStart, nuint vertexCount, nuint instanceCount, nuint baseInstance);
-
-        /// <summary>
-        /// <c>-[MTLRenderCommandEncoder drawPrimitives:vertexStart:vertexCount:instanceCount:]</c>, the SHORT
-        /// form, taken whenever the base instance is zero.
-        /// <para>
-        /// SIX ARGUMENTS COUNTING THE RECEIVER AND THE SELECTOR, which is the long form's list with the last
-        /// register dropped, so there is no argument class here row 1's spike did not measure and no new
-        /// placement question. The whole content of this prototype is the SELECTOR it is sent with, and
-        /// <see cref="MTLRenderCommandEncoder.DrawPrimitives"/> is where that choice and its evidence live.
-        /// </para>
-        /// </summary>
-        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
-        [SupportedOSPlatform("macos")]
-        internal static partial void SendVoidDrawPrimitivesShort(IntPtr receiver, IntPtr sel,
-            nuint primitiveType, nuint vertexStart, nuint vertexCount, nuint instanceCount);
 
         /// <summary>
         /// <c>-[MTLRenderCommandEncoder drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:instanceCount:baseVertex:baseInstance:]</c>,
@@ -542,23 +522,6 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         internal static partial void SendVoidDrawIndexedPrimitives(IntPtr receiver, IntPtr sel,
             nuint primitiveType, nuint indexCount, nuint indexType, IntPtr indexBuffer, nuint indexBufferOffset,
             nuint instanceCount, nint baseVertex, nuint baseInstance);
-
-        /// <summary>
-        /// <c>-[MTLRenderCommandEncoder drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:instanceCount:]</c>,
-        /// the SHORT form, taken when the base vertex and the base instance are BOTH zero.
-        /// <para>
-        /// EIGHT ARGUMENTS COUNTING THE RECEIVER AND THE SELECTOR, against arm64's eight general-purpose argument
-        /// registers, so nothing spills and the long form's stack question does not arise here at all. It is the
-        /// quieter half of the pair and it is carried for symmetry: the two draws answer the "which selector"
-        /// question one way rather than two, which is what keeps a later reader from concluding that the
-        /// non-indexed fork was a typo.
-        /// </para>
-        /// </summary>
-        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
-        [SupportedOSPlatform("macos")]
-        internal static partial void SendVoidDrawIndexedPrimitivesShort(IntPtr receiver, IntPtr sel,
-            nuint primitiveType, nuint indexCount, nuint indexType, IntPtr indexBuffer, nuint indexBufferOffset,
-            nuint instanceCount);
 
         /// <summary>
         /// <c>-[MTLComputeCommandEncoder dispatchThreadgroups:threadsPerThreadgroup:]</c>.

@@ -191,60 +191,6 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// A NON-INDEXED DRAW AT A NON-ZERO BASE INSTANCE, which is the row that keeps the LONG
-        /// <c>drawPrimitives:vertexStart:vertexCount:instanceCount:baseInstance:</c> selector executed by
-        /// something.
-        /// <para>
-        /// <b>IT EXISTS BECAUSE THE SELECTOR STOPPED BEING UNCONDITIONAL</b>
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/598). Every other non-indexed row in this file draws
-        /// at a base instance of zero, so once
-        /// <c>MTLRenderCommandEncoder.DrawPrimitives</c> forks on that argument, the long form is reachable in
-        /// production and reached by no test at all, which is the declared-but-never-sent state that file's
-        /// header rule exists to prevent. The indexed pair needs no equivalent row: the ABI probe above already
-        /// draws at a base vertex of 3 and a base instance of 6.
-        /// </para>
-        /// <para>
-        /// THE ANSWER IS A COLOUR RATHER THAN AN OUTCOME, like everything else here. The vertex stream is bound
-        /// at zero, which is the RED group, and the instance stream is bound at zero with a base instance of 6,
-        /// whose blue is set. Correct is magenta. A base instance that did not land reads instance 0, whose blue
-        /// is dark, and paints red.
-        /// </para>
-        /// </summary>
-        [GpuFact]
-        public void ANonIndexedDrawCarriesItsBaseInstanceThroughTheLongSelector()
-        {
-            if (!Available()) return;
-
-            using MetalGpuDevice device = CreateHeadless();
-            using DrawFixture fixture = new(device);
-
-            using (MetalCommandList list = device.CreateCommandList())
-            {
-                list.Begin();
-                list.SetFramebuffer(fixture.Framebuffer);
-                list.ClearColorTarget(0, Black);
-                list.SetPipeline(fixture.Pipeline);
-                list.SetVertexBuffer(0, fixture.Vertices);
-                list.SetVertexBuffer(1, fixture.Instances);
-
-                list.Draw(vertexCount: 3, instanceCount: 1, vertexStart: 0, instanceStart: 6);
-
-                list.End();
-                device.Submit(list);
-            }
-
-            device.WaitForIdle();
-
-            Assert.Null(device.Diagnostics.DeviceLossReason);
-
-            Color texel = ReadFirstTexel(device, fixture.Target);
-            _output.WriteLine($"instanced non-indexed draw read back {texel}, wanted magenta (1,0,1). "
-                + "Red means the base instance did not reach the driver.");
-
-            Assert.Equal(new Color(1f, 0f, 1f, 1f), texel);
-        }
-
-        /// <summary>
         /// TWO DRAWS IN ONE PASS, WHERE THE SECOND CHANGES ONLY THE VERTEX STREAM. What this proves on hardware
         /// is that the redundancy tracking is safe rather than merely cheap: the second draw re-binds the stream
         /// it changed and NOT the pipeline state, and it still renders the group it asked for.

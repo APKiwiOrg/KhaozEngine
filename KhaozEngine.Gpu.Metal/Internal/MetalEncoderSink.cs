@@ -183,9 +183,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <inheritdoc/>
-        /// <remarks>THE SELECTOR IS PICKED ON THE BASE INSTANCE, which row 14 did not do and
-        /// https://github.com/APKiwiOrg/KhaozEngine/issues/598 changed. The whole argument, including the CI
-        /// evidence and what it costs M-A7, is on <see cref="MTLRenderCommandEncoder.DrawPrimitives"/>.</remarks>
+        /// <remarks>THE LONG FORM UNCONDITIONALLY. The incumbent picks between this and the four-argument
+        /// selector on <c>instanceStart == 0</c>, and at a base instance of zero the two are the same draw, so
+        /// the branch buys nothing and one code path is one thing to be right about.</remarks>
         [MethodImpl(MethodImplOptions.NoInlining)]
         public void Draw(IntPtr encoder, MTLPrimitiveType topology, uint vertexStart, uint vertexCount,
             uint instanceCount, uint baseInstance)

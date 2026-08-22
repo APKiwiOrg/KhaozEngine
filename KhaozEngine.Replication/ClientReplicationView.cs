@@ -35,9 +35,16 @@ public sealed class ClientReplicationView
     // consumers pass no id). Kept in sync from RecordInterpolationSample, whose caller owns the local id per ingest.
     private long? excludedFromInterpolation;
 
+    // The window an extension codec actually reads through: re-pointed at each component's own length-prefixed
+    // payload so a codec cannot reach the bytes of whatever rides behind it (see FramedPayloadStream for why that
+    // matters). One pair per view rather than one per component, so bounding a payload allocates nothing.
+    private readonly FramedPayloadStream framedPayload = new();
+    private readonly BinaryReader framedReader;
+
     public ClientReplicationView(ReplicationRegistry registry)
     {
         this.registry = registry ?? throw new ArgumentNullException(nameof(registry));
+        framedReader = new BinaryReader(framedPayload);
     }
 
     /// <summary>The live NetId→Entity map.</summary>
@@ -262,6 +269,10 @@ public sealed class ClientReplicationView
     /// client tolerates a newer server that added a component. An unknown BUILT-IN id (below the floor, unframed)
     /// is a hard protocol mismatch and throws (<paramref name="streamKind"/> names the stream for the message),
     /// caught by <see cref="TryApply"/>/<see cref="TryApplyDelta"/> and surfaced as "client out of date".
+    /// <para>A KNOWN extension codec is handed a reader bounded to exactly its own framed payload, never the reader
+    /// over the whole stream, so a payload that lies about a declared length of its own cannot be satisfied out of
+    /// the components behind it. A built-in frame is unframed and has no such bound to give: it reads through the
+    /// stream reader as before.</para>
     /// </summary>
     private void ReadEntityComponents(World world, Entity entity, long netId, MemoryStream ms, BinaryReader br,
         byte[] backing, string streamKind, Action<long, ushort, byte[]>? unknownExtensionSink)
@@ -279,9 +290,20 @@ public sealed class ClientReplicationView
                 throw new InvalidOperationException($"{streamKind} extension component {typeId} has an invalid length {len}.");
             if (registry.TryGet(typeId, out ComponentCodec codec))
             {
-                codec.Deserialize(world, entity, br);
+                if (extension)
+                {
+                    // Bounded to this component's own payload. Unbounded, a codec that reads a declared length out
+                    // of its payload has the WHOLE remaining snapshot to satisfy it, so a lie is caught only when it
+                    // runs off the end of the stream and is otherwise served out of the following components' bytes.
+                    framedPayload.Retarget(backing, (int)posBefore, len);
+                    codec.Deserialize(world, entity, framedReader);
+                }
+                else
+                {
+                    codec.Deserialize(world, entity, br);
+                }
                 long end = extension ? posBefore + len : ms.Position;   // codec consumes exactly len for extensions
-                if (extension) ms.Position = end;                       // re-align defensively past the framed payload
+                if (extension) ms.Position = end;                       // the framed read never moved ms: step it over
                 if (codec.FixedDelaySampled)   // interpolated OR discrete nearest-sampled: both need the timestamped bytes
                 {
                     var slice = new byte[end - posBefore];
@@ -306,6 +328,7 @@ public sealed class ClientReplicationView
                 throw new InvalidOperationException($"{streamKind} references unregistered type id {typeId}.");
             }
         }
+        framedPayload.Release();   // do not keep this snapshot's buffer alive until the next apply re-points it
     }
 
     private void RemoveEntityBuffers(long netIdToRemove)

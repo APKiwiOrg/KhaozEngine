@@ -304,6 +304,35 @@ public class TileReplicationTests
             .TryApply(new World(), name, out _));
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    [InlineData(6)]
+    public void A_lying_component_length_is_bounded_by_its_own_payload_not_by_the_entities_behind_it(int followers)
+    {
+        // The end-of-stream case above is the EASY one, and on a real multi-entity snapshot it is the rare one.
+        // Here the same lie has further entities behind it, so a check measured against the STREAM finds exactly
+        // what it asked for: the apply returns true with a 200-step route rebuilt out of the display names that
+        // followed, then re-aligns past the framed payload and decodes those entities correctly on top of it. The
+        // read has to be bounded by the component's own framed payload for the lie to be visible at all.
+        var routeWorld = new World();
+        byte[] route = LyingComponentThenNamedEntities(
+            TileProtocol.TileRouteStateTypeId, new byte[] { 200, 0, 3, 3 }, followers);
+        Assert.False(new ClientReplicationView(TileProtocol.CreateRegistry())
+            .TryApply(routeWorld, route, out string? error));
+        Assert.Contains("200", error!);
+        Assert.Empty(routeWorld.Query().With<TileRouteState>().Entities());
+
+        // Same shape on the other declared length. 40 is UNDER the display-name cap, so the cap check waves it
+        // through and only the payload bound is left to catch it.
+        var nameWorld = new World();
+        byte[] name = LyingComponentThenNamedEntities(
+            TileProtocol.TileIdentityTypeId, new byte[] { 40, 0, (byte)'x' }, followers);
+        Assert.False(new ClientReplicationView(TileProtocol.CreateRegistry())
+            .TryApply(nameWorld, name, out _));
+        Assert.Empty(nameWorld.Query().With<TileIdentity>().Entities());
+    }
+
     [Fact]
     public void An_invalid_utf8_display_name_substitutes_rather_than_throwing()
     {
@@ -329,6 +358,34 @@ public class TileReplicationTests
         w.Write7BitEncodedInt(payload.Length);
         w.Write(payload);
         w.Write((ushort)0);      // end of entity
+        w.Flush();
+        return ms.ToArray();
+    }
+
+    // One entity carrying a hand-rolled extension payload, then <paramref name="followers"/> further entities each
+    // carrying a legitimate 60-byte display name (75 bytes of stream apiece). The followers are the whole point:
+    // they park hundreds of bytes of OTHER components behind the first one, which is what an unbounded
+    // declared-length read helps itself to.
+    static byte[] LyingComponentThenNamedEntities(ushort typeId, byte[] payload, int followers)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(1 + followers);   // entity count
+        w.Write(1L);              // net id
+        w.Write(typeId);
+        w.Write7BitEncodedInt(payload.Length);
+        w.Write(payload);
+        w.Write((ushort)0);       // end of entity
+        byte[] filler = Encoding.UTF8.GetBytes(new string('n', 60));
+        for (int i = 0; i < followers; i++)
+        {
+            w.Write(2L + i);
+            w.Write(TileProtocol.TileIdentityTypeId);
+            w.Write7BitEncodedInt(filler.Length + 2);
+            w.Write((ushort)filler.Length);
+            w.Write(filler);
+            w.Write((ushort)0);
+        }
         w.Flush();
         return ms.ToArray();
     }

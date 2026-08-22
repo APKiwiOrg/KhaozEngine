@@ -59,10 +59,13 @@ public static partial class TileProtocol
     /// <see cref="TileRouteState"/> on the owner-only channel, so an observer's snapshot carries a tile plus step
     /// progress and nothing else. The presentation fields are never written at all, on either component.</para>
     /// <para>Every reader here is hostile-safe in one of two ways. A field whose whole byte range is meaningful is
-    /// CLAMPED, because there is no such thing as a malformed one. A field with a declared length is CHECKED, and a
-    /// frame that lies about it throws, which <c>ClientReplicationView.TryApply</c> turns into a false and the
-    /// caller turns into a disconnect. Reading a lying frame as a short one would rebuild a route out of bytes that
-    /// belong to another component, which is a plausible-looking answer to a question nobody asked.</para>
+    /// CLAMPED, because there is no such thing as a malformed one. A field with a declared length is CHECKED
+    /// against the component's OWN framed payload, and a frame that lies about it throws, which
+    /// <c>ClientReplicationView.TryApply</c> turns into a false and the caller turns into a disconnect. Reading a
+    /// lying frame as a short one would rebuild a route out of bytes that belong to another component, which is a
+    /// plausible-looking answer to a question nobody asked. Bounding the check at the payload rather than at the
+    /// end of the stream is what makes it fire on a real snapshot: with another entity behind this one, an
+    /// unbounded check finds the bytes the lie asked for and passes.</para>
     /// </summary>
     public static ReplicationRegistry CreateRegistry(Action<ReplicationRegistry>? registerExtensions = null)
     {
@@ -131,17 +134,31 @@ public static partial class TileProtocol
         for (int i = 0; i < steps.Length; i++) w.Write((byte)steps[i]);
     }
 
-    // A declared count over the cap, or one the stream cannot satisfy, is a MALFORMED frame: the encoder above
-    // refuses to emit either. Throwing is what turns it into a false out of ClientReplicationView.TryApply (and a
-    // disconnect) instead of a route silently rebuilt from whatever bytes followed. The count is checked BEFORE it
-    // is allocated against, so a hostile ushort can neither over-allocate nor reach the stack allocation below.
+    // The bytes still inside THIS component's framed payload. ClientReplicationView hands an extension codec a
+    // reader bounded to exactly its length-prefixed payload, so that is what this measures, and the distinction is
+    // the whole point of measuring it: against the snapshot, a lying declared length is served out of the FOLLOWING
+    // components' bytes whenever anything rides behind this component, and the apply returns true carrying a value
+    // rebuilt from them. Only a lie that ran off the END of the stream would be caught. A non-seekable stream
+    // cannot be measured at all, so it answers "no bound" and falls through to the short-read check at the read.
+    static long PayloadRemaining(BinaryReader r)
+        => r.BaseStream.CanSeek ? r.BaseStream.Length - r.BaseStream.Position : long.MaxValue;
+
+    // A declared count over the cap, or one this component's own payload cannot satisfy, is a MALFORMED frame: the
+    // encoder above refuses to emit either. Throwing is what turns it into a false out of
+    // ClientReplicationView.TryApply (and a disconnect) instead of a route silently rebuilt from whatever bytes
+    // followed. Both checks run BEFORE the count is allocated against, so a hostile ushort can neither
+    // over-allocate nor reach the stack allocation below.
     static TileRouteState ReadRoute(BinaryReader r)
     {
         int declared = r.ReadUInt16();
         if (declared > MaxRouteSteps)
             throw new InvalidDataException($"A replicated route declares {declared} steps, over the {MaxRouteSteps} cap.");
+        long available = PayloadRemaining(r);
+        if (available < declared)
+            throw new InvalidDataException(
+                $"A replicated route declares {declared} steps behind {available} payload bytes.");
         Span<byte> raw = stackalloc byte[declared];
-        if (r.Read(raw) != declared)
+        if (r.Read(raw) != declared)   // the unbounded fallback: a non-seekable stream has no length to check first
             throw new InvalidDataException($"A replicated route declares {declared} steps the frame does not hold.");
         var steps = new TileDirection[declared];
         for (int i = 0; i < declared; i++)
@@ -170,8 +187,12 @@ public static partial class TileProtocol
         if (declared > MaxDisplayNameBytes)
             throw new InvalidDataException(
                 $"A replicated display name declares {declared} bytes, over the {MaxDisplayNameBytes} cap.");
+        long available = PayloadRemaining(r);
+        if (available < declared)
+            throw new InvalidDataException(
+                $"A replicated display name declares {declared} bytes behind {available} payload bytes.");
         Span<byte> text = stackalloc byte[declared];
-        if (r.Read(text) != declared)
+        if (r.Read(text) != declared)   // the unbounded fallback, as in ReadRoute
             throw new InvalidDataException($"A replicated display name declares {declared} bytes the frame does not hold.");
         return new TileIdentity { DisplayName = Encoding.UTF8.GetString(text) };
     }

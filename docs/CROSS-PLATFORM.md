@@ -110,6 +110,15 @@ shared family is being moved on purpose. Without that guard a bake on the native
 reference it is being checked against and the incumbent's, and the file it wrote would be exactly the file it
 would then have compared against, so nothing downstream could notice.
 
+**A shared family also means a seam repair on ONE Metal path is a broken leg, so both move together.** The two
+Metal backends are held to the same grids, so a behavioural change to either one is a change to the other's
+reference. `17.39.0` is the worked example: `GpuRasterizerState.DepthClipEnabled` was read by Direct3D 11 and
+Vulkan and by neither Metal path, both of which derived the clip mode from the depth test instead
+([#598](https://github.com/APKiwiOrg/KhaozEngine/issues/598)), and the repair shipped as the vendored Veldrid
+fork's `4.9.104` plus the matching `KhaozEngine.Gpu.Metal` change in one release. Fixing only the native one
+would have reddened the guest leg against grids the incumbent baked. `DepthClipModeGpuTests` is the row that now
+holds the contract, and it is backend-agnostic on purpose so all six legs assert it rather than one.
+
 The Metal goldens (`scene2d.metal.txt`, `scene3d.metal.txt`), the Direct3D11 goldens
 (`scene2d.direct3d11.txt`, `scene3d.direct3d11.txt`, baked on WARP), and the Vulkan goldens
 (`scene2d.vulkan.txt`, `scene3d.vulkan.txt`, baked on lavapipe) are all committed and verified on every macOS /

@@ -7,7 +7,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.39.0
 
-A tile world can draw a real glb kit per archetype now, and the glTF loader honours per-vertex COLOR_0.
+A tile world can draw a real glb kit per archetype now, the glTF loader honours per-vertex COLOR_0, and
+`DepthClipEnabled` finally means the same thing on macOS as it does everywhere else.
 
 - **`GltfMeshResolver` (`KhaozEngine.TileWorld.Render3D`) loads an archetype's glb by its `MeshRef`.**
   `new GltfMeshResolver(string rootDirectory, ITileMeshResolver? fallback = null, Action<string>? log = null)`
@@ -44,6 +45,35 @@ A tile world can draw a real glb kit per archetype now, and the glTF loader hono
   boundary. The key itself is a `MeshWeldKey` struct rather than a 14-element `ValueTuple`, because such a tuple
   hashes only its seventh element and its `Rest`, which would leave position out of the hash and make the weld
   quadratic on an unmapped mesh.
+- **`GpuRasterizerState.DepthClipEnabled` is honoured on Metal, on BOTH Metal paths, and is now a stated seam
+  contract** ([#598](https://github.com/APKiwiOrg/KhaozEngine/issues/598)). Direct3D 11 passed the flag to
+  `RasterizerDescription.DepthClipEnable` and Vulkan passed its inverse to `depthClampEnable`, while both Metal
+  backends derived `MTLDepthClipMode` from `DepthStencilState.DepthTestEnabled` and read the flag nowhere at all.
+  Metal has no rasterizer depth-clip enable, so `MTLDepthClipModeClamp` is its equivalent of
+  `DepthClipEnable = FALSE`, and both paths map the flag onto it directly now:
+  `KhaozEngine.Gpu.Metal`'s `MetalPipelineSpecs.ResolveState` and, in the vendored Veldrid fork, `MTLPipeline`'s
+  graphics constructor. Four shipped `KhaozEngine.Render3D` pipelines run the depth test with
+  `depthClipEnabled: false` (`SkyRenderer`, `StarfieldRenderer`, `GroundDecalRenderer`, `ParticleRenderer`), and
+  those four asked for depth CLAMPING and got clipping on macOS only. The member's XML doc and a new
+  `docs/DEPENDENCY-SEAMS.md` section now say what a backend is allowed to do with the flag: it is a contract, not
+  a hint, and a backend without the field expresses it by whatever means its API has.
+- **The two Metal paths had to be repaired in the same release, and that is a general rule.** `GoldenCompare`
+  maps `GpuBackendKind.MetalNative` onto the `metal` golden family, so the native backend verifies grids the
+  incumbent baked: a behavioural repair to one alone reddens the guest leg by construction. **No committed golden
+  moved.** Three of the four pipelines are background passes whose vertex stage emits `z == w` exactly, where the
+  inclusive far-plane test makes clipping and clamping identical, and the fourth draws billboards, which differ
+  only for a sprite crossing the near plane, and no golden scene has one. Both Metal legs ran the full
+  `KhaozEngine.Render.Tests` GPU suite green on the committed grids, so there is no rebake.
+- **Vendored Veldrid fork bumped to `4.9.104`** (commit `d60cdd2392ba1c5ace12697bc1acf45f1879db14`, tag
+  `v4.9.104`, branch `fix/d3d11-immediate-4.9.0`). Its only change over `4.9.103` is the Metal one above, which is
+  the fork's third deliberate difference from upstream and the first that is not opt-in.
+- **`DepthClipModeGpuTests` is the row that holds the contract, and it is backend-agnostic on purpose.** It
+  creates its device through `GpuDeviceContext.CreateHeadless()`, so the one class runs on all five golden legs
+  plus the incumbent Metal one and asserts both directions of the flag on each. The geometry is a quad whose
+  clip-space z runs from -0.5 to +0.5 across x, so one half sits in front of the near plane and the other inside
+  the frustum, with a pixel read from each: that separates "the flag was honoured" from "the draw did not happen".
+  Nothing in the suite could see this class of bug before, because the goldens are baked per backend family and
+  never compared across one.
 
 ## 17.38.0
 

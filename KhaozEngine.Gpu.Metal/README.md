@@ -641,6 +641,16 @@ attachment, because setting one on a pass with no depth attachment is a validati
 seam calls pipeline state (cull mode, winding, fill mode, depth clip, the blend colour) is ENCODER state, so it
 is resolved once at creation and emitted when the pipeline changes.
 
+**`DepthClipEnabled` is the one rasterizer member Metal has no field for, and it is honoured anyway.** Metal has
+no rasterizer depth-clip enable, so the seam's `false` becomes `-setDepthClipMode:MTLDepthClipModeClamp` and its
+`true` becomes `MTLDepthClipModeClip`, which is the same behaviour Direct3D 11 gets from
+`RasterizerDescription.DepthClipEnable` and Vulkan from the inverse of `depthClampEnable`. This backend shipped
+reproducing the incumbent's rule instead, which derived the mode from the DEPTH TEST and read the seam's flag
+nowhere at all, and `17.39.0` corrected both Metal paths together
+([#598](https://github.com/APKiwiOrg/KhaozEngine/issues/598)): the vendored Veldrid fork carries the identical
+change as `4.9.104`. Fixing only this one would have left the guest leg disagreeing with the `metal` grids the
+incumbent baked. Neither moved a committed golden.
+
 **A compute pipeline is created from the function alone**, with no `MTLComputePipelineDescriptor`. The
 descriptor exists to carry per-buffer mutability, the incumbent fills it by counting buffer-kind elements in
 declaration order, and that counter is the arithmetic this backend removes. Metal's default infers the same

@@ -295,6 +295,27 @@ namespace KhaozEngine.Gpu
         public GpuFaceCull CullMode { get; }
         public GpuPolygonFill FillMode { get; }
         public GpuFrontFace FrontFace { get; }
+
+        /// <summary>
+        /// Whether primitives are CLIPPED against the near and far planes (<c>true</c>) or CLAMPED to them
+        /// (<c>false</c>).
+        /// <para>
+        /// THIS IS A BINDING CONTRACT ON EVERY BACKEND, not a hint one may ignore. Clamping keeps geometry that
+        /// falls outside the depth range: it still rasterizes, with its depth pinned to the nearer or farther
+        /// limit. It is what a far-plane background pass wants, and it is the classic directional-shadow
+        /// pancaking trick, where casters behind the light's near plane must still write depth.
+        /// </para>
+        /// <para>
+        /// It is the ONLY member here with no direct Metal equivalent, and that is why the contract is spelled
+        /// out. Metal has no rasterizer depth-clip enable, so both Metal backends express <c>false</c> as
+        /// <c>MTLDepthClipModeClamp</c> on the render encoder. Direct3D 11 passes it to
+        /// <c>RasterizerDescription.DepthClipEnable</c> and Vulkan passes its INVERSE to
+        /// <c>depthClampEnable</c>. Until 17.39.0 both Metal paths derived the mode from
+        /// <see cref="GpuDepthStencilState.DepthTestEnabled"/> and read this flag nowhere, which made four
+        /// shipped pipelines rasterize differently on macOS
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/598).
+        /// </para>
+        /// </summary>
         public bool DepthClipEnabled { get; }
         public bool ScissorTestEnabled { get; }
 

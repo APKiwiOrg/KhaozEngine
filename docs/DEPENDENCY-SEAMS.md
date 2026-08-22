@@ -1117,6 +1117,42 @@ frame is the shape the 2026-08-11 measurement reproduces on the incumbent and th
 exactly**: the fragment referenced only the second buffer, so it was emitted at `buffer(0)` and written at
 `buffer(1)`.
 
+## GPU seam contract: `DepthClipEnabled` binds on every backend, Metal included (17.39.0)
+
+**The question this settles.** `GpuRasterizerState` is the engine's mirror of Veldrid's
+`RasterizerStateDescription`, and four of its five members map one-to-one onto a field every backend has.
+`DepthClipEnabled` is the exception: Metal has no rasterizer depth-clip enable at all. So the seam had to say
+whether the flag is a CONTRACT a backend must honour by whatever means its API offers, or a hint a backend may
+drop where the concept is missing. It is a contract, and the answer lives on the member's XML doc as well as
+here.
+
+**What each backend does with it.** Direct3D 11 passes it straight to `RasterizerDescription.DepthClipEnable`.
+Vulkan passes its INVERSE to `depthClampEnable` (the two flags are opposites, and it needs the `depthClamp`
+device feature, which `VulkanFeatureChain` enables by name). Metal expresses `false` as
+`-setDepthClipMode:MTLDepthClipModeClamp` on the render encoder, which is its equivalent, available since
+macOS 10.11. Clamping keeps geometry outside the depth range and rasterizes it with its depth pinned to the
+limit, rather than discarding it.
+
+**Why it needed writing down.** Until 17.39.0 BOTH Metal paths derived the clip mode from
+`DepthStencilState.DepthTestEnabled` and read `DepthClipEnabled` nowhere at all
+([#598](https://github.com/APKiwiOrg/KhaozEngine/issues/598)). `Veldrid.MTL.MTLPipeline` did it first and the
+engine's own `KhaozEngine.Gpu.Metal` reproduced it deliberately, because the committed `metal` goldens were
+baked through the incumbent's answer. The derivation agrees with the flag wherever the two happen to agree, and
+four shipped Render3D pipelines are exactly where they do not: sky, starfield, ground decal and particles all
+run the depth test with `depthClipEnabled: false`, so they clamped on Windows and Linux and clipped on macOS.
+
+**The repair had to land on both Metal paths in one release, and that is a general rule rather than a detail
+of this fix.** `GoldenCompare` maps `GpuBackendKind.MetalNative` onto the `metal` family, so the native backend
+verifies grids the incumbent baked. Any behavioural change to one of them is a change to the other's reference,
+so a seam repair on one Metal path alone turns the guest leg red by construction. This one shipped as the
+vendored fork's `4.9.104` plus the matching native change together.
+
+**Nothing rebaked, and the reason is worth keeping.** Three of the four pipelines are background passes whose
+vertex stage emits `gl_Position = vec4(xy, 1.0, 1.0)`, so `z == w` exactly, and the far-plane boundary is
+inclusive under clipping: clip and clamp rasterize those identically. The fourth draws projected billboards,
+where the modes differ only for a sprite crossing the near plane, and no golden scene has one. Both Metal legs
+ran the full suite green on the committed grids.
+
 ## Adding a new backend
 
 To swap or add a backend for a seam that already has the separate-package split:

@@ -228,29 +228,34 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// THE DEPTH CLIP MODE COMES FROM THE DEPTH TEST, which is the incumbent's derivation reproduced and
-        /// which https://github.com/APKiwiOrg/KhaozEngine/issues/598 records as a seam question. The seam's own
-        /// <c>DepthClipEnabled</c> reaches nothing here, and this row says so out loud rather than leaving the
-        /// absence to be discovered.
+        /// THE DEPTH CLIP MODE COMES FROM THE SEAM'S OWN FLAG AND FROM NOTHING ELSE
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/598). Both combinations where the flag and the depth
+        /// test DISAGREE are asserted, because agreement is exactly what the old derivation from the depth test
+        /// gave for free: a row that only checked the agreeing pairs would have passed under either rule.
+        /// <para>
+        /// The first pair is the shipped one. Four Render3D pipelines (sky, starfield, ground decal, particles)
+        /// run the depth test with <c>depthClipEnabled: false</c>, and they are what clipped on macOS while
+        /// clamping on Windows and Linux.
+        /// </para>
         /// </summary>
         [Fact]
-        public void TheDepthClipModeIgnoresTheSeamsFlagAndFollowsTheDepthTest()
+        public void TheDepthClipModeFollowsTheSeamsFlagAndNotTheDepthTest()
         {
-            GpuPipelineDescription clipAskedForTestOff = WithDepth(GpuDepthStencilState.Disabled);
-            clipAskedForTestOff.Rasterizer = new GpuRasterizerState(
-                GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise,
-                depthClipEnabled: true, scissorTestEnabled: false);
-
-            Assert.Equal(MTLDepthClipMode.Clamp,
-                MetalPipelineSpecs.ResolveState(clipAskedForTestOff).DepthClipMode);
-
             GpuPipelineDescription clampAskedForTestOn = WithDepth(GpuDepthStencilState.DepthOnlyLessEqual);
             clampAskedForTestOn.Rasterizer = new GpuRasterizerState(
                 GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise,
                 depthClipEnabled: false, scissorTestEnabled: false);
 
-            Assert.Equal(MTLDepthClipMode.Clip,
+            Assert.Equal(MTLDepthClipMode.Clamp,
                 MetalPipelineSpecs.ResolveState(clampAskedForTestOn).DepthClipMode);
+
+            GpuPipelineDescription clipAskedForTestOff = WithDepth(GpuDepthStencilState.Disabled);
+            clipAskedForTestOff.Rasterizer = new GpuRasterizerState(
+                GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise,
+                depthClipEnabled: true, scissorTestEnabled: false);
+
+            Assert.Equal(MTLDepthClipMode.Clip,
+                MetalPipelineSpecs.ResolveState(clipAskedForTestOff).DepthClipMode);
         }
 
         /// <summary>The rasterizer and topology maps, and the two values the state block carries that come from

@@ -13635,15 +13635,20 @@ never, and `Despawn` / `DespawnAll` / `ForgetCell` all miss it. Persistent groun
 `WorldPickups.Rehydrate(world)` that re-adopts restored `PickupState` entities into the seam, filed as
 [#660](https://github.com/APKiwiOrg/KhaozEngine/issues/660). Until that lands, a collectible meant to survive a
 restart belongs in your own content or save data, spawned again at boot, which is also the only place its payload
-still means anything.
+still means anything. Clearing the mark is not the only route to that husk either: re-marking a pickup
+`TransientScope.DurableOnly` keeps it in the evictor's unload freeze while `ForgetCell` has already dropped the
+seam's record for it, so re-entering that coordinate hands back an untracked, never-expiring pickup entity
+mid-session, with no restart involved. Leave a pickup on the `Always` scope `Spawn` gives it.
 
 **The same opt-out is yours for any other transient server-owned entity.** A timed spawn, a wave of adds, a
 projectile, a temporary marker:
 
 ```csharp
-long netId = server.SpawnEntity(x, z, (world, entity) => world.Set(entity, new EnemyKind { … }));
-server.MarkTransient(netId);                               // ClearTransient / IsTransient beside it
-server.MarkTransient(netId, TransientScope.DurableOnly);  // never saved, but survives a cell unload
+long shell = server.SpawnEntity(x, z, (world, entity) => world.Set(entity, new EnemyKind { … }));
+server.MarkTransient(shell);                              // ClearTransient / IsTransient beside it
+
+long wolf = server.SpawnEntity(x, z, (world, entity) => world.Set(entity, new EnemyKind { … }));
+server.MarkTransient(wolf, TransientScope.DurableOnly);   // never saved, but survives a cell unload
 ```
 
 It excludes the ENTITY rather than a component's bytes, which is the axis a `ReplicationChannels` flag cannot reach:

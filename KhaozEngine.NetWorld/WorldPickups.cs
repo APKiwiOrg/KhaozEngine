@@ -62,6 +62,11 @@ namespace KhaozEngine.NetWorld;
 /// https://github.com/APKiwiOrg/KhaozEngine/issues/660. Until that lands, a collectible that outlives a restart
 /// belongs in the game's own content or save data, spawned again at boot, which is also the only way its payload can
 /// still mean anything.</para>
+/// <para>The save is not the only route to that husk. Re-marking a pickup
+/// <see cref="TransientScope.DurableOnly"/> keeps it in the evictor's unload freeze while
+/// <see cref="ForgetCell"/> has already dropped this seam's record for it, so re-entering that coordinate hands
+/// back an untracked, never-expiring pickup entity mid-session, with no restart involved. Leave a pickup on the
+/// <see cref="TransientScope.Always"/> scope <see cref="Spawn"/> gives it.</para>
 /// <para><b>Blobs written before this version still hold husks</b>, since a save cannot be edited after the fact.
 /// Clearing those is a one-time boot sweep, run once against a world saved by an older build, and unnecessary for
 /// every save written since:

@@ -127,7 +127,7 @@ public sealed partial class TileWorldClient : IDisposable
 
     /// <summary>Reconciliations that CUT rather than glided: the local player was on a different SQUARE than the
     /// server, which is a disagreement about the world rather than about timing. See
-    /// <see cref="TileWorldClientConfig.Prediction"/> for the threshold and why it is one tile.</summary>
+    /// <see cref="TileWorldClientConfig.Prediction"/> for the threshold and why it is half a tile.</summary>
     public int SnapCount { get; private set; }
 
     /// <summary>Snapshots refused whole by the decoder. A malformed component frame is never partly applied and
@@ -160,6 +160,20 @@ public sealed partial class TileWorldClient : IDisposable
     /// pending click at the same moment the server dropped the authoritative one.</summary>
     public event Action? CannotReach;
 
+    /// <summary>
+    /// Raised when the local player's position changed DISCONTINUOUSLY: the server moved them
+    /// (<c>TileWorldServer.SetPlayerState</c> with <c>teleport: true</c>, so a respawn, an admin move or a fast
+    /// travel), or prediction was seeded and had no earlier position to be continuous with. See
+    /// <see cref="ReconciliationResult.Teleported"/> for the exact set.
+    /// <para>It is NOT a mispredicted step. A step the two heads disagreed about cuts too, and is counted in
+    /// <see cref="SnapCount"/>, but the avatar is one square from where it was drawn and the world around it is
+    /// the same world. This event is the expensive one: a head answers it by snapping its follow camera, running a
+    /// screen transition and re-centring anything keyed to the player's position. The FIRST snapshot to reconcile
+    /// after a join raises it, which is correct rather than a quirk, since the head has nothing to be continuous
+    /// with at that point either.</para>
+    /// </summary>
+    public event Action? Teleported;
+
     /// <summary>Raised for an opaque game message.</summary>
     public event TileClientMessageHandler? OnGameMessage;
 
@@ -180,6 +194,11 @@ public sealed partial class TileWorldClient : IDisposable
     /// <see cref="DroppedClickCount"/> so a head can log them. Everything else is sent verbatim, an out-of-range
     /// goal included, because the server answers that one by REWRITING the command rather than dropping the tick
     /// and this client mirrors the rewrite when it predicts.</para>
+    /// <para>Before the first snapshot the predicted state is still the default one, standing at tile (0,0) on
+    /// plane 0, so a click made during the join is measured against that and usually dropped. That is deliberate:
+    /// nothing is sent before the seed anyway (see <see cref="Tick"/>), and queueing the click instead would
+    /// predict it from a tile the player was never on. A head that wants the click to survive its loading screen
+    /// re-issues it once <see cref="LocalNetId"/> is set.</para>
     /// </summary>
     /// <param name="command">The click to send on the next command tick.</param>
     public void Queue(in TileCommand command)
@@ -222,7 +241,11 @@ public sealed partial class TileWorldClient : IDisposable
 
     void OnCommandTick(long tick)
     {
-        if (!seeded) return;
+        // Both gates, and IsJoined is the one that matters after a drop: nothing re-handshakes a NetClient, so a
+        // client whose link died can never rejoin, and one that kept predicting and sending would walk an avatar
+        // with no authority behind it into a socket nobody is reading. A reconnect means a NEW TileWorldClient,
+        // which is why ClientPrediction.Reseed is deliberately never called here.
+        if (!IsJoined || !seeded) return;
         TileCommand sent = queued;
         queued = TileCommand.Continue(RunMode);
         // PREDICT the admitted form and SEND the raw one. The server rewrites an out-of-range goal itself, off the

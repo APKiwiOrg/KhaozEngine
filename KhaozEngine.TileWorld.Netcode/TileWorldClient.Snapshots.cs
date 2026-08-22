@@ -27,9 +27,12 @@ public sealed partial class TileWorldClient
     /// <summary>
     /// Pumps the transport and applies whatever arrived. Call it once per frame, BEFORE drawing and before
     /// <see cref="AdvancePresentation"/>, so a frame draws the newest snapshot rather than the previous one.
-    /// <para>The inbox is drained to empty on every call rather than a few events at a time. <c>NetClient</c> caps
-    /// its undrained inbox and drops the OLDEST event once a head stops keeping up, so a poll that left events
-    /// behind would lose the join first and then wonder why no snapshot ever seeded prediction.</para>
+    /// <para>The inbox is drained to EMPTY on every call rather than a few events at a time, and not because
+    /// anything trims it: <c>NetClient</c>'s inbox is a plain unbounded queue, and its own poll drains the whole
+    /// transport queue into it on every call, so the transport's cap cannot bite here either. The reasons are that
+    /// session events are strictly ORDERED, so a snapshot left behind is a frame of reconciliation basis that is
+    /// already stale by the time it is read, and that a queue nothing evicts grows without bound the moment a head
+    /// stops keeping up with it.</para>
     /// </summary>
     public void Poll()
     {
@@ -99,7 +102,10 @@ public sealed partial class TileWorldClient
         // A snapshot the registry cannot decode is refused WHOLE. TryApply returns false for a component frame that
         // lies about its own length, and the half of the frame that did apply before the throw is not a world state
         // anybody chose: reconciling onto a basis rebuilt from it would rebase the player onto a plausible-looking
-        // answer to a question nobody asked. Counted and dropped, and the next snapshot is a full one.
+        // answer to a question nobody asked. Counted and dropped, which is safe only because the next
+        // snapshot is a FULL one: this server serves SnapshotWriter.WriteFiltered every tick, so the next serve
+        // overwrites every component of every entity in interest. The day the serve moves to AoiDeltaReplicator,
+        // which Replication already offers, a dropped frame leaves a hole no later delta fills.
         if (!View.TryApply(World, snapshot, out _))
         {
             DroppedSnapshotCount++;
@@ -133,6 +139,9 @@ public sealed partial class TileWorldClient
         ReconciliationResult result = Prediction.Reconcile((int)serverTick, basis, ackSeq);
         if (result.PositionError > CorrectionEpsilon) CorrectionCount++;
         if (result.HardSnapApplied) SnapCount++;
+        // Raised rather than folded into SnapCount, because the two say different things to a head: a snap is "you
+        // mispredicted a step", a teleport is "you are somewhere else now". See the event's own doc.
+        if (result.Teleported) Teleported?.Invoke();
     }
 
     /// <summary>
@@ -189,7 +198,7 @@ public sealed partial class TileWorldClient
         {
             // First sight of this remote. It draws on its tile centre until it is seen to leave it, because there
             // is no earlier tile to have come from.
-            remoteSamples[netId] = new RemoteSample(Standing(now), now.Tile, now.StepTicks, sampleTime);
+            remoteSamples[netId] = new RemoteSample(Standing(now), now.Tile, sampleTime);
             return;
         }
 
@@ -198,7 +207,7 @@ public sealed partial class TileWorldClient
             // A step committed, and only now is the tile it went to a fact. The glide starts over from the tile
             // the remote just left, at whatever step progress the new state carries, which is zero on the commit
             // tick, so the drawn position is continuous with where the previous glide finished.
-            remoteSamples[netId] = new RemoteSample(GlideFrom(prev.Tile, now), now.Tile, now.StepTicks, sampleTime);
+            remoteSamples[netId] = new RemoteSample(GlideFrom(prev.Tile, now), now.Tile, sampleTime);
             return;
         }
 
@@ -206,12 +215,27 @@ public sealed partial class TileWorldClient
         // zero without the tile changing is the route ending or a re-path around a blocker, and re-stamping the
         // glide there would drag the remote back to the tile the last step started on. Left alone, the glide runs
         // out against its own clamp and parks on the tile the remote is standing on.
-        if (now.StepTicks <= prev.StepTicks) return;
+        if (now.StepTicks <= prev.Glide.StepTicks)
+        {
+            // A turn on the spot still has to reach the screen. TileMoveSimulator.BeginInteract sets Facing with NO
+            // tile change and no step progress for a zero-step interact, which is the ordinary click on the thing
+            // you are already standing next to, so a receiver that only resampled on movement would draw that
+            // player facing their last step until they next walked. The glide's tile pair and its stamp are kept,
+            // so the facing turns and the motion does not restart.
+            if (now.Facing != prev.Glide.Facing)
+            {
+                TileMoveState turned = prev.Glide;
+                turned.Facing = now.Facing;
+                remoteSamples[netId] = new RemoteSample(turned, prev.Tile, prev.At);
+            }
+            return;
+        }
+
         TileMoveState glide = prev.Glide;
         glide.StepTicks = now.StepTicks;
         glide.StepTotal = now.StepTotal;
         glide.Facing = now.Facing;
-        remoteSamples[netId] = new RemoteSample(glide, now.Tile, now.StepTicks, sampleTime);
+        remoteSamples[netId] = new RemoteSample(glide, now.Tile, sampleTime);
     }
 
     // A one-step route from the tile just left to the tile just reached, which is the shape TilePresenter glides
@@ -241,9 +265,11 @@ public sealed partial class TileWorldClient
     /// <summary>
     /// One remote's drawing state. <paramref name="Glide"/> is what <see cref="TilePresenter.Pose"/> is handed: a
     /// synthetic state standing on the tile the remote LEFT, carrying a one-step route to the tile it is on now.
-    /// <paramref name="Tile"/> and <paramref name="StepTicks"/> are the raw replicated values the next frame
-    /// compares against, and <paramref name="At"/> is the render-timeline instant the glide was stamped at, which
-    /// is what the fraction of a tick since then is measured from.
+    /// <paramref name="Tile"/> is the raw replicated tile the next frame compares against, which the glide itself
+    /// cannot answer because it stands on the PREVIOUS one. The step counter the next frame compares against needs
+    /// no field beside it: every site here copies the replicated one into the glide, so <c>Glide.StepTicks</c> IS
+    /// that value. <paramref name="At"/> is the render-timeline instant the glide was stamped at, which is what
+    /// the fraction of a tick since then is measured from.
     /// </summary>
-    readonly record struct RemoteSample(TileMoveState Glide, TileCoord Tile, byte StepTicks, double At);
+    readonly record struct RemoteSample(TileMoveState Glide, TileCoord Tile, double At);
 }

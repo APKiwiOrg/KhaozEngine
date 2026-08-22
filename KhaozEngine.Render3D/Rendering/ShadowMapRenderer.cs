@@ -197,7 +197,8 @@ namespace KhaozEngine.Render3D.Rendering
         // { LightMvp; bones[128] } dynamic UBO at set 0. Front-face cull (the same second-depth trick as the rigid
         // depth pass), scissor test on (per-column clip). Rebuilt with _pipeline whenever the layout reallocates.
         // depthClipEnabled stays TRUE here for the same reason as the rigid pipeline below: the NEAR plane is handled
-        // in the vertex (SkinnedShadowDepthVert's pancake), which is portable, and the far plane should still clip.
+        // in the vertex (SkinnedShadowDepthVert's pancake) and the far plane should still clip, which the flag cannot
+        // express because it turns off both planes together.
         IGpuPipeline BuildSkinnedPipeline(IGpuResourceFactory f, GpuOutputDescription outputs)
         {
             var vertexLayout = new GpuVertexLayoutDescription(
@@ -277,11 +278,10 @@ namespace KhaozEngine.Render3D.Rendering
                 // depthClip stays ON, deliberately (issue #394). It is the FAR plane it now guards: nothing past the
                 // light far plane is down-light of every receiver in the cascade, so clipping it is free. The NEAR
                 // plane is handled in the vertex instead (the pancake in ShaderSources.ShadowDepthVert and its
-                // siblings), because the rasterizer flag is not portable: Veldrid's Metal backend derives
-                // MTLDepthClipMode from DepthStencilState.DepthTestEnabled and ignores RasterizerState.DepthClipEnabled
-                // outright, so flipping this to false would be a silent no-op on Metal, and its Vulkan backend maps it
-                // to depthClampEnable, a device feature that need not be present. Clamping clip z in the vertex needs
-                // nothing from the device and behaves identically on all three backends.
+                // siblings), and that split is the reason the flag is not the tool here: it turns off BOTH clip
+                // planes at once, so flipping it would give up the free far-plane clip to buy a near-plane clamp the
+                // vertex already provides. The flag itself is honoured everywhere now, including on both Metal paths
+                // (issue #598, 17.39.0), which it was not when this pass was written.
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.Front, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: true),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },

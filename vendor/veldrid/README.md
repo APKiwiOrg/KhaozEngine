@@ -1,11 +1,12 @@
 # Veldrid Immediate-Context Fork
 
-These packages come from `APKiwiOrg/veldrid` commit `74e523607843f49cd8f6969815c94b37cd047bb7`, branch
-`fix/d3d11-immediate-4.9.0`, tag `v4.9.103`.
+These packages come from `APKiwiOrg/veldrid` commit `d60cdd2392ba1c5ace12697bc1acf45f1879db14`, branch
+`fix/d3d11-immediate-4.9.0`, tag `v4.9.104`.
 
 They are based on upstream Veldrid `v4.9.0` and retain Vortice `2.3.0`. The fork adds the opt-in
-`D3D11DeviceOptions.UseImmediateContext` mode used by `KhaozEngine.Gpu` for Direct3D11 only. The matching
-Windows Veldrid suite covers buffer, render, resource-set, and texture paths through this mode.
+`D3D11DeviceOptions.UseImmediateContext` mode used by `KhaozEngine.Gpu` for Direct3D11 only, and, as of
+`4.9.104`, one Metal repair that is not opt-in and applies to every Metal pipeline. The matching
+Windows Veldrid suite covers buffer, render, resource-set, and texture paths through the immediate mode.
 
 The immediate-mode guardrail is IN as of `4.9.103`, which is why the vendored line moves off the separate
 `release/*` branch and back onto `fix/d3d11-immediate-4.9.0`. Both throws now exist and they are different
@@ -24,6 +25,21 @@ One residual remains by design. A host driving a `Render3DSurface` off a raw `Ap
 passing `onPrepare` still nests, because the surface's safety-net `Scene3D.PrepareFrame` then runs inside the
 frame's recording. Under this version that residual is a loud `VeldridException` naming the fix rather than
 silent corruption, which is the intended trade.
+
+What `4.9.104` adds over `4.9.103`:
+
+- The Metal backend reads `RasterizerStateDescription.DepthClipEnabled`. `MTLPipeline` derived its
+  `MTLDepthClipMode` from `DepthStencilState.DepthTestEnabled` and read the rasterizer flag nowhere at all, so a
+  pipeline running the depth test with clipping disabled clamped on Direct3D 11 and Vulkan and clipped on Metal.
+  Metal has no rasterizer depth-clip enable of its own, and `MTLDepthClipModeClamp` is its equivalent of
+  `DepthClipEnable = FALSE`, so the flag maps onto it directly. Four shipped KhaozEngine pipelines asked for
+  clamping with the depth test on (sky, starfield, ground decal, particles) and so rasterised differently on
+  macOS than everywhere else. KhaozEngine issue 598.
+
+  The engine's own `KhaozEngine.Gpu.Metal` backend carries the identical change in the same release, which is
+  what keeps the two Metal paths agreeing: they share one `metal` golden family, so a repair to only one of them
+  would leave the guest leg disagreeing with grids the incumbent baked. Neither moved a committed golden, because
+  the three background pipelines among the four emit `z == w` exactly, where clipping and clamping agree.
 
 What `4.9.103` adds over `4.9.102`:
 
@@ -72,12 +88,12 @@ What `4.9.101` added over `4.9.100`:
 The Windows Veldrid suite gained new tests for these paths. They cannot execute on macOS, so the engine's
 Windows WARP CI leg is the executing gate for them.
 
-Package version: `4.9.103`
+Package version: `4.9.104`
 
 SHA-256:
 
 ```text
-8089e48f02d01ba90c25e7a9f18cc64b5b457606b7cf62316d53526a9fac010a  Veldrid.4.9.103.nupkg
-8c938d04da9f3a91d90d5f6097a5f956b417da259e38bf705e40da85cdc72ebd  Veldrid.MetalBindings.4.9.103.nupkg
-00bb3486e28e1370114f8de3d6c5b8a03e4ddbc137dc51126a4515b4138a260d  Veldrid.OpenGLBindings.4.9.103.nupkg
+1105eb60c1e83e3ace9b16f0ac63c1d9c3bd3bca3ac8a21caf774c016ba475c8  Veldrid.4.9.104.nupkg
+2c89dd71b96ea539575ba1031d54a9446b4dd8c4c6bf3cf6286bad6e27e6abf1  Veldrid.MetalBindings.4.9.104.nupkg
+83b59319f641c8cd604192c72a9652d61bec042ea1298b7afed03f4e762cb11f  Veldrid.OpenGLBindings.4.9.104.nupkg
 ```

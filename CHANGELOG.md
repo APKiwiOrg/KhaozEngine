@@ -44,6 +44,16 @@ A tile world can draw a real glb kit per archetype now, and the glTF loader hono
   boundary. The key itself is a `MeshWeldKey` struct rather than a 14-element `ValueTuple`, because such a tuple
   hashes only its seventh element and its `Rest`, which would leave position out of the hash and make the weld
   quadratic on an unmapped mesh.
+- **The ritual's pack into `local-feed` is guarded, so a finish after a release cannot overwrite the released
+  bytes.** No package content changes here, only the repo's own tooling. `scripts/pack-local-feed.sh` is the
+  ritual's pack step now (`AGENTS.md` names it instead of the bare `dotnet pack -c Release -o ./local-feed`): it
+  packs a STAGED version, packs when HEAD is the tag with a clean tree, and refuses when `<KhaozEngineVersion>`
+  names a version that is already tagged and HEAD has moved past it, which was the window in which `local-feed`
+  came to hold a `17.30.0` bigger than what `v17.30.0` describes (#492). `PACK_RELEASED_OK=1` is the deliberate
+  exception. `scripts/hooks/pack-release-guard.sh` denies the bare `dotnet pack` into `local-feed` under the same
+  rule from both settings files, `scripts/check-local-feed.sh` reports a feed that already drifted (it finds 8
+  such versions in the current dev feed), and `scripts/pack-standard.sh` holds the one copy of the rule the three
+  share. Tested by `scripts/tests/pack-local-feed.test.sh`.
 
 ## 17.38.0
 

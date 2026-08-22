@@ -60,7 +60,16 @@ public sealed record TileWorldClientConfig
     /// pending commands on top of the authoritative basis, and the basis carries the authoritative route, so a
     /// client running any number of ticks ahead still lands on the server's own state. Latency therefore
     /// contributes NO error at all here, which is the opposite of the continuous case the engine default was tuned
-    /// for. Any error that does appear is the two heads having stepped different ways.</para>
+    /// for.</para>
+    /// <para>An error that does appear is USUALLY the two heads having stepped different ways, and that is what the
+    /// number below is chosen for, but it is not the only source and a reader raising it should know the other two.
+    /// A command that misses a server tick (a click delayed past one by jitter) has the server synthesise a
+    /// <see cref="TileCommand.Continue"/> for that tick and apply the real command on the next, so the same command
+    /// runs one tick apart on the two heads. And a backlog deeper than the server's catch-up threshold makes its
+    /// command queue skip straight to the newest buffered command, discarding ones this client already predicted.
+    /// Both are latency artifacts rather than disagreements about the world, both resolve themselves within a tick
+    /// or two, and both measure the same magnitude as a real disagreement, so neither can be told apart from one by
+    /// distance alone.</para>
     /// <para>Half a tile is the smallest such disagreement that can show up: one tick of a running step. Below it
     /// there is only float noise in the replay, so it glides. At or above it the heads' last steps went different
     /// ways, which is a fact about the world (a blocker one head cannot see) rather than about timing, and gliding

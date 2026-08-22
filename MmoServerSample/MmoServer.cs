@@ -39,7 +39,7 @@ public sealed class MmoServerConfig
 /// back to a per-slot guest id) via <see cref="WorldPersistence"/> - captured on leave, validated and applied on
 /// join - and demonstrates a game-state validation quarantine through its <see cref="PrivateStats"/> health blob.
 /// It also implements the resume-spawn seam (<see cref="IWorldPersistenceHost.SetResumePositionProvider"/> and
-/// <see cref="IWorldPersistenceHost.TryGetConfiguredSpawn"/>), so a rejoining account is BUILT where it left rather
+/// <see cref="IPersistenceHost{PlayerMoveState}.TryGetConfiguredSpawn"/>), so a rejoining account is BUILT where it left rather
 /// than served the spawn first and moved afterwards. Both are default interface methods, so a head that omits them
 /// keeps the two-teleport reconnect: this sample implements them because it is the file a game copies.
 /// </summary>

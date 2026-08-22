@@ -175,6 +175,18 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
     rather than `OnRecordQuarantined`. Before this, an undecodable record took the outage path too, which left
     the guard set forever for a record that could never successfully decode on any retry, silently stopping
     that player's persistence for the rest of the session.
+  - **Where the machinery actually lives.** Everything described above is
+    `KhaozEngine.WorldStore.StatePersistence<TState>`, generic over a head's state and over its record shape, and
+    `WorldPersistence` is the FLOAT binding of it (17.39.0). The public surface here is unchanged, byte for byte and line for
+    line: the same config type and defaults, the same `player:{accountId}` and `quarantine:` keys, the same
+    `PlayerRecord` JSON, the same cadence, the same events in the same order, the same log lines under the same
+    `WorldPersistence` category. What this package supplies is the four `PlayerMoveState`-shaped answers (a position
+    is a `Vector3` of world metres, a record is a `PlayerRecord`, and `WorldPersistenceConfig.Bounds` is what makes a
+    loaded one unacceptable). `IWorldPersistenceHost` now derives from `IPersistenceHost<PlayerMoveState>` and
+    inherits every member it used to declare, with identical signatures, so an existing implementer is untouched;
+    it keeps `SetResumePositionProvider` under its own name and bridges it onto the generic
+    `SetPositionHintProvider`. `ResumePositionCache` is a forwarder over `PositionHintCache` with the same surface,
+    and `WorldPersistence.ResumeHints` wraps the one cache the core itself reads and writes.
 - **`CellPersistence`** (+ `CellPersistenceConfig`, `WorldMetaRecord`) wires an
   [`IWorldStore`](../KhaozEngine.WorldStore) into a [`Sharding`](../KhaozEngine.Sharding) `ShardHost`-based server
   through **`ICellPersistenceHost`** (the surface `ShardedWorldServer` implements) so a cell's authoritative

@@ -210,7 +210,7 @@ namespace KhaozEngine.Tests.Gpu
             using (Registered(SentinelKind, provider))
             {
                 string? reason = GpuDeviceContext.PreflightProvider(
-                    SentinelKind, allowFallback: true, wasNamed: true, out _);
+                    SentinelKind, allowFallback: true, pinnedByEnvironment: true, out _, out _);
                 Assert.NotNull(reason);
                 Assert.Contains("no support", reason);
             }
@@ -219,7 +219,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(GpuBackendSelector.IsBackendSupported(SentinelKind));
             Assert.Throws<GpuBackendProviderMissingException>(
                 () => GpuDeviceContext.PreflightProvider(
-                    SentinelKind, allowFallback: true, wasNamed: true, out _));
+                    SentinelKind, allowFallback: true, pinnedByEnvironment: true, out _, out _));
         }
 
         /// <summary>
@@ -233,7 +233,7 @@ namespace KhaozEngine.Tests.Gpu
             using (Registered(SentinelKind, provider))
             {
                 Assert.Null(GpuDeviceContext.PreflightProvider(
-                    SentinelKind, allowFallback: true, wasNamed: true, out IGpuBackendProvider? found));
+                    SentinelKind, allowFallback: true, pinnedByEnvironment: true, out IGpuBackendProvider? found, out _));
                 Assert.Same(provider, found);
             }
         }
@@ -251,7 +251,7 @@ namespace KhaozEngine.Tests.Gpu
             using (Registered(SentinelKind, provider))
             {
                 Assert.Null(GpuDeviceContext.PreflightProvider(
-                    SentinelKind, allowFallback: false, wasNamed: true, out _));
+                    SentinelKind, allowFallback: false, pinnedByEnvironment: true, out _, out _));
                 Assert.Equal(0, provider.SupportProbes);
             }
         }
@@ -263,7 +263,7 @@ namespace KhaozEngine.Tests.Gpu
         public void Preflight_ThrowsForAMissingNamedProvider_EvenWhenFallbackIsAllowed()
             => Assert.Throws<GpuBackendProviderMissingException>(
                 () => GpuDeviceContext.PreflightProvider(
-                    SentinelKind, allowFallback: true, wasNamed: true, out _));
+                    SentinelKind, allowFallback: true, pinnedByEnvironment: true, out _, out _));
 
         // --- the creation path itself, end to end and still device-free ---
 

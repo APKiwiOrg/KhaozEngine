@@ -1,5 +1,7 @@
 using System;
+using KhaozEngine.Diagnostics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -100,7 +102,7 @@ namespace KhaozEngine.Tests.Gpu
         public void Preflight_FallsBackForADefaultedBackend_WhenNoProviderIsRegistered()
         {
             string? reason = GpuDeviceContext.PreflightProvider(
-                SentinelKind, allowFallback: true, wasNamed: false, out IGpuBackendProvider? provider);
+                SentinelKind, allowFallback: true, pinnedByEnvironment: false, out IGpuBackendProvider? provider, out _);
 
             Assert.Null(provider);
             Assert.NotNull(reason);
@@ -118,22 +120,143 @@ namespace KhaozEngine.Tests.Gpu
         public void Preflight_StillThrowsForANamedBackend_WhenNoProviderIsRegistered()
             => Assert.Throws<GpuBackendProviderMissingException>(
                 () => GpuDeviceContext.PreflightProvider(
-                    SentinelKind, allowFallback: true, wasNamed: true, out _));
+                    SentinelKind, allowFallback: true, pinnedByEnvironment: true, out _, out _));
 
         /// <summary>
-        /// Which selections count as NAMED, stated once, because it is the input to the rule above and getting
-        /// it wrong in either direction is silent: too broad and a repinned game stops booting, too narrow and a
+        /// Which selections are PINNED, stated once, because it is the input to the rule above and getting it
+        /// wrong in either direction is silent: too broad and a repinned game stops booting, too narrow and a
         /// deliberate A/B answers with the other implementation.
+        /// <para>
+        /// <see cref="GpuBackendSource.UserPreference"/> is the row that moved, and it is the whole reason this
+        /// property is named for the ENVIRONMENT rather than for anyone who asked. It read true until 17.40.0,
+        /// on the reasoning that a stored preference is a request like an override is. But
+        /// <see cref="GpuBackendSelector.SupportedBackends"/> offers native rows now, so a player can store
+        /// <see cref="GpuBackendKind.MetalNative"/>, and a later build that dropped the package or the
+        /// <c>Register()</c> line would throw at boot with the setting that caused it reachable only by editing
+        /// a file. A hard throw is right for the soak session that pins a variable and would otherwise measure
+        /// the wrong implementation. It is never right for a player.
+        /// </para>
         /// </summary>
         [Theory]
         [InlineData(GpuBackendSource.EnvironmentOverride, true)]
-        [InlineData(GpuBackendSource.UserPreference, true)]
+        [InlineData(GpuBackendSource.UserPreference, false)]
         [InlineData(GpuBackendSource.OsProbe, false)]
         [InlineData(GpuBackendSource.UnrecognizedOverride, false)]
         [InlineData(GpuBackendSource.FallbackAfterFailure, false)]
-        public void WasNamed_IsTrueOnlyWhereSomebodyAskedForTheBackend(GpuBackendSource source, bool expected)
+        [InlineData(GpuBackendSource.DefaultProviderMissing, false)]
+        public void WasPinnedByEnvironment_IsTrueOnlyForTheEnvironmentOverride(
+            GpuBackendSource source, bool expected)
             => Assert.Equal(expected,
-                new GpuBackendSelection(GpuBackendKind.MetalNative, source, null).WasNamed);
+                new GpuBackendSelection(GpuBackendKind.MetalNative, source, null).WasPinnedByEnvironment);
+
+        // --- how that fallback is REPORTED, which is the half a consuming game acts on ---
+
+        /// <summary>
+        /// The report split, read at the one place it is decided. Every row is the same missing registration,
+        /// and what changes is who asked for the backend. A stored preference is a choice the player made and
+        /// can un-make, so it reports <see cref="GpuBackendSource.FallbackAfterFailure"/>, which is the signal a
+        /// game clears a stored preference on. Everything else was a DEFAULT nobody chose, and reports
+        /// <see cref="GpuBackendSource.DefaultProviderMissing"/>, which asks a game to clear nothing.
+        /// <para>
+        /// Reporting the defaulted case as <see cref="GpuBackendSource.FallbackAfterFailure"/> is what this row
+        /// exists to stop, and it would be wrong in two directions at once: every repinned game that has not
+        /// taken a native package would read as a device-creation failure in telemetry, and a player who chose
+        /// nothing would be shown a notice saying their graphics choice failed.
+        /// </para>
+        /// </summary>
+        [Theory]
+        [InlineData(GpuBackendSource.OsProbe, GpuBackendSource.DefaultProviderMissing)]
+        [InlineData(GpuBackendSource.UnrecognizedOverride, GpuBackendSource.DefaultProviderMissing)]
+        [InlineData(GpuBackendSource.UserPreference, GpuBackendSource.FallbackAfterFailure)]
+        public void Report_SplitsTheFallbackByWhoAskedForTheBackend(
+            GpuBackendSource asked, GpuBackendSource expected)
+        {
+            var selection = new GpuBackendSelection(GpuBackendKind.MetalNative, asked, null);
+
+            GpuBackendSelection fell = UnregisteredNativeDefault.Report(selection, GpuBackendKind.Metal);
+
+            Assert.Equal(expected, fell.Source);
+            Assert.Equal(GpuBackendKind.Metal, fell.Backend);
+            // What could not be built is preserved on both arms, because a reader of either one has to know
+            // which backend the process was supposed to be on.
+            Assert.Equal(GpuBackendKind.MetalNative, fell.RequestedBackend);
+        }
+
+        /// <summary>
+        /// The negative half stated on its own, because it is the assertion that trips if the two members are
+        /// ever collapsed back into one. A DEFAULT whose provider was never registered must not read as a
+        /// device-creation failure, on any of the provenances that count as a default.
+        /// </summary>
+        [Theory]
+        [InlineData(GpuBackendSource.OsProbe)]
+        [InlineData(GpuBackendSource.UnrecognizedOverride)]
+        public void Report_DoesNotSayFallbackAfterFailure_ForADefaultNobodyChose(GpuBackendSource asked)
+        {
+            GpuBackendSelection fell = UnregisteredNativeDefault.Report(
+                new GpuBackendSelection(GpuBackendKind.VulkanNative, asked, null), GpuBackendKind.Vulkan);
+
+            Assert.NotEqual(GpuBackendSource.FallbackAfterFailure, fell.Source);
+        }
+
+        /// <summary>
+        /// The boot line for the new source, which has to read nothing like the failure line beside it. A reader
+        /// must come away with "this build has no provider for its default backend", not "a device failed to
+        /// create", because only the first one is true and only the first one names a fix.
+        /// </summary>
+        [Fact]
+        public void TheBootHeader_NamesAMissingDefaultProvider_AsAMissingRegistration()
+        {
+            string line = GpuDeviceContext.SelectionLine(GpuBackendSelector.AfterMissingDefaultProvider(
+                new GpuBackendSelection(GpuBackendKind.VulkanNative, GpuBackendSource.OsProbe, null),
+                GpuBackendKind.Vulkan));
+
+            Assert.Equal("GPU backend: Vulkan (default, VulkanNative has no registered provider)", line);
+            Assert.DoesNotContain("failed", line, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// The WARN beside it, aimed at the DEVELOPER: it names the packages, the one call that fixes it, and
+        /// says outright that there is nothing stored to clear. The player-facing fallback WARN says the
+        /// opposite of that last clause, which is the whole reason the two are separate strings rather than one
+        /// with a substitution in it.
+        /// </summary>
+        [Fact]
+        public void TheWarning_ForAMissingDefaultProvider_NamesTheRegistrationRatherThanAStoredChoice()
+        {
+            string warning = UnregisteredNativeDefault.Warning(
+                GpuBackendKind.MetalNative, GpuBackendKind.Metal);
+
+            Assert.Contains("MetalNative", warning);
+            Assert.Contains("KhaozEngine.Gpu.Metal", warning);
+            Assert.Contains("KhaozEngineMetal.Register()", warning);
+            Assert.Contains("nothing to clear", warning);
+            Assert.DoesNotContain("should be cleared", warning);
+
+            // And the contrast that makes it worth having: the player-facing line really does say the thing
+            // this one must not.
+            Assert.Contains("should be cleared", GpuDeviceContext.FallbackWarning(
+                GpuBackendKind.MetalNative, "boom", GpuBackendKind.Metal));
+        }
+
+        /// <summary>
+        /// The header a triage reader opens, which is where the split has to survive: the source reaches the
+        /// capture by NAME, and the default that could not be built rides along on <c>requestedBackend</c>. A
+        /// header that said <c>FallbackAfterFailure</c> here would misattribute every un-wired session in the
+        /// fleet at once.
+        /// </summary>
+        [Fact]
+        public void TheTelemetryHeader_CarriesTheMissingDefaultProvider_ByName()
+        {
+            GpuBackendSelection fell = GpuBackendSelector.AfterMissingDefaultProvider(
+                new GpuBackendSelection(GpuBackendKind.Direct3D11Native, GpuBackendSource.OsProbe, null),
+                GpuBackendKind.Direct3D11);
+
+            var info = new TelemetrySessionInfo().WithGpu(fell, "Microsoft Basic Render Driver", null, null);
+
+            Assert.Equal("Direct3D11", info.GpuBackend);
+            Assert.Equal("DefaultProviderMissing", info.GpuBackendSource);
+            Assert.Equal("Direct3D11Native", info.GpuRequestedBackend);
+        }
     }
 
     /// <summary>

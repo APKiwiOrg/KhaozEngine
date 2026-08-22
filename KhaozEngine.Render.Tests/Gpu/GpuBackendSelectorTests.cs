@@ -99,7 +99,7 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(expected, selection.Backend);
             Assert.Equal(GpuBackendSource.EnvironmentOverride, selection.Source);
-            Assert.True(selection.WasNamed);
+            Assert.True(selection.WasPinnedByEnvironment);
             Assert.NotEqual(GpuBackendSelector.ProbeOS(os), selection.Backend);
         }
 
@@ -160,8 +160,9 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(expected, selection.Backend);
             Assert.Equal(GpuBackendSource.OsProbe, selection.Source);
             Assert.Null(selection.RequestedOverride);
-            // Nobody named it, which is what decides whether a missing native provider throws or falls back.
-            Assert.False(selection.WasNamed);
+            // The environment pinned nothing, which is what decides whether a missing native provider throws
+            // or falls back.
+            Assert.False(selection.WasPinnedByEnvironment);
         }
 
         [Theory]
@@ -207,8 +208,8 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(expected, selection.Backend);
             Assert.Equal(GpuBackendSource.UnrecognizedOverride, selection.Source);
             Assert.Equal("vulcan", selection.RequestedOverride);
-            // A value that decided nothing is not a NAMED backend: the probe picked, so this is a default.
-            Assert.False(selection.WasNamed);
+            // A value that decided nothing pinned nothing: the probe picked, so this is a default.
+            Assert.False(selection.WasPinnedByEnvironment);
         }
 
         [Theory]
@@ -407,6 +408,28 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(2, (int)GpuBackendSource.UnrecognizedOverride);
             Assert.Equal(3, (int)GpuBackendSource.UserPreference);
             Assert.Equal(4, (int)GpuBackendSource.FallbackAfterFailure);
+            Assert.Equal(5, (int)GpuBackendSource.DefaultProviderMissing);
+        }
+
+        /// <summary>
+        /// The 17.40.0 append's own pure helper, beside <see cref="AfterFallback_ReportsWhatRanAndWhatWasAskedFor"/>
+        /// and deliberately shaped the same: what ran, what could not be built, and a source that says which of
+        /// the two things went wrong. The difference is the source, and it is the whole content of the append.
+        /// </summary>
+        [Fact]
+        public void AfterMissingDefaultProvider_ReportsTheIncumbentAndKeepsTheDefaultItCouldNotBuild()
+        {
+            var defaulted = new GpuBackendSelection(
+                GpuBackendKind.VulkanNative, GpuBackendSource.OsProbe, null);
+
+            GpuBackendSelection fell =
+                GpuBackendSelector.AfterMissingDefaultProvider(defaulted, GpuBackendKind.Vulkan);
+
+            Assert.Equal(GpuBackendKind.Vulkan, fell.Backend);
+            Assert.Equal(GpuBackendKind.VulkanNative, fell.RequestedBackend);
+            Assert.Equal(GpuBackendSource.DefaultProviderMissing, fell.Source);
+            // Not the member a game clears a stored preference on: nothing is stored and nothing failed.
+            Assert.NotEqual(GpuBackendSource.FallbackAfterFailure, fell.Source);
         }
     }
 }

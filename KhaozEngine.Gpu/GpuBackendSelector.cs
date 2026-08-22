@@ -40,13 +40,38 @@ namespace KhaozEngine.Gpu
 
         /// <summary>
         /// Device creation on the requested backend FAILED (or the backend failed its support probe), so the
-        /// engine fell back to the OS-probe default to keep the app bootable.
+        /// engine fell back to the platform's Veldrid incumbent (<see cref="GpuBackendSelector.IncumbentFor"/>,
+        /// which is what the OS probe itself answered before 17.40.0) to keep the app bootable.
         /// <see cref="GpuBackendSelection.Backend"/> is what actually runs and
         /// <see cref="GpuBackendSelection.RequestedBackend"/> is what was asked for and did not work. A consuming
         /// game that stores a backend preference MUST clear it when it sees this, or the player retries the same
         /// broken choice on every launch. Appended in 17.23.0.
+        /// <para>
+        /// A STORED PREFERENCE for a provider-backed backend with no registered provider reports this too, since
+        /// 17.40.0. Nothing threw, but the answer a game has to act on is the same one: that stored choice cannot
+        /// run in this build and clearing it is what gets the player off it.
+        /// </para>
         /// </summary>
         FallbackAfterFailure = 4,
+
+        /// <summary>
+        /// The backend the OS probe DEFAULTED to is provider-backed and its provider is not registered in this
+        /// process, so the platform's Veldrid incumbent (<see cref="GpuBackendSelector.IncumbentFor"/>) was
+        /// created instead. <see cref="GpuBackendSelection.RequestedBackend"/> carries the default that could
+        /// not be built. Appended in 17.40.0, the release in which the probe started answering a provider-backed
+        /// backend on every platform.
+        /// <para>
+        /// A MEMBER OF ITS OWN RATHER THAN <see cref="FallbackAfterFailure"/>, because the two say opposite
+        /// things to the two readers that act on them. This one means the game has not referenced a native
+        /// backend package or has not called its <c>Register()</c>, which is a wiring gap in the APP: nothing
+        /// failed, no machine is incapable, and a game that stores a graphics preference must NOT clear it,
+        /// because the player's stored choice had nothing to do with this. Reported as
+        /// <see cref="FallbackAfterFailure"/> it would make every repinned game that has not taken a native
+        /// package read as 100% device-creation failure in telemetry, and would put a "your graphics choice
+        /// failed" notice in front of a player who chose nothing.
+        /// </para>
+        /// </summary>
+        DefaultProviderMissing = 5,
     }
 
     /// <summary>
@@ -60,8 +85,9 @@ namespace KhaozEngine.Gpu
     /// normalized: the untouched string is what makes a typo (<c>vulcan</c>) or stray quoting obvious in a log.
     /// </param>
     /// <param name="RequestedBackend">
-    /// The backend that was ASKED for but did not work, set only when <paramref name="Source"/> is
-    /// <see cref="GpuBackendSource.FallbackAfterFailure"/> (null otherwise). Paired with
+    /// The backend that was ASKED for but did not run, set whenever <paramref name="Source"/> says the engine
+    /// took a different one (<see cref="GpuBackendSource.FallbackAfterFailure"/> and, since 17.40.0,
+    /// <see cref="GpuBackendSource.DefaultProviderMissing"/>), null otherwise. Paired with
     /// <paramref name="Backend"/>, which is what actually runs, this is what lets a consuming game say "your
     /// Vulkan choice failed, you are on Direct3D11" and clear the stored preference that caused it. Added in
     /// 17.23.0 with a default so every existing three-argument construction still compiles.
@@ -73,26 +99,35 @@ namespace KhaozEngine.Gpu
         GpuBackendKind? RequestedBackend = null)
     {
         /// <summary>
-        /// True when the backend was NAMED by the caller (a recognized <c>KE_GRAPHICS_BACKEND</c> value, or the
-        /// stored user preference a game handed in) rather than DEFAULTED to by the OS probe. Added in 17.40.0,
-        /// when the probe started answering a provider-backed backend on every platform.
+        /// True when <c>KE_GRAPHICS_BACKEND</c> PINNED this backend. That is the one provenance for which a
+        /// missing provider is a hard error rather than something to route around. Added in 17.40.0, when the
+        /// OS probe started answering a provider-backed backend on every platform.
         /// <para>
-        /// It exists to split decision I2 along the line it was actually aimed at. A NAMED provider-backed kind
-        /// with no registered provider still throws, because a soak session that asked for the native backend
-        /// must never quietly measure the incumbent and report it as the native one. A DEFAULTED one falls back
-        /// to <see cref="GpuBackendSelector.IncumbentFor"/> instead, because a game that never asked for the
-        /// native package has made no wiring mistake, and throwing at it would mean repinning the engine stops
-        /// the client booting at all.
+        /// It splits decision I2 along the line I2 was aimed at: the SOAK SESSION. A pinned provider-backed kind
+        /// with no registered provider still throws, because a session that set the variable to measure the
+        /// native backend must never quietly measure the incumbent and file the number under the native name,
+        /// and the same reasoning covers the five cross-platform GPU legs, each of which pins its backend this
+        /// way and captures goldens headlessly.
         /// </para>
         /// <para>
-        /// <see cref="GpuBackendSource.UnrecognizedOverride"/> is deliberately NOT named: the raw value was
+        /// EVERY OTHER PROVENANCE FALLS BACK, and <see cref="GpuBackendSource.UserPreference"/> is the one that
+        /// had to move. <see cref="GpuBackendSelector.SupportedBackends"/> offers native rows since 17.40.0, so
+        /// a player can store <see cref="GpuBackendKind.MetalNative"/>, and a later build that dropped the
+        /// package or the <c>Register()</c> line would then throw at boot with the setting that caused it
+        /// unreachable from inside the game. It falls back with
+        /// <see cref="GpuBackendSource.FallbackAfterFailure"/> instead, which is precisely the signal a game
+        /// clears a stored preference on. A DEFAULTED backend falls back too and reports
+        /// <see cref="GpuBackendSource.DefaultProviderMissing"/>, because a game that never asked for the native
+        /// package has no choice to clear and has made no mistake a player can fix.
+        /// </para>
+        /// <para>
+        /// <see cref="GpuBackendSource.UnrecognizedOverride"/> is deliberately NOT pinned: the raw value was
         /// present but decided nothing, so the OS probe picked the backend and this is a default like any
-        /// other. <see cref="GpuBackendSource.FallbackAfterFailure"/> is not named either, since by then the
-        /// backend is what the engine chose after the request failed.
+        /// other. The two fallback sources are not pinned either, since by then the backend is what the engine
+        /// chose rather than what anyone asked for.
         /// </para>
         /// </summary>
-        public bool WasNamed
-            => Source is GpuBackendSource.EnvironmentOverride or GpuBackendSource.UserPreference;
+        public bool WasPinnedByEnvironment => Source is GpuBackendSource.EnvironmentOverride;
     }
 
     /// <summary>
@@ -197,12 +232,16 @@ namespace KhaozEngine.Gpu
         /// <summary>
         /// Map a <c>KE_GRAPHICS_BACKEND</c> value to a backend. Case-insensitive, and it trims whitespace.
         /// <para>
-        /// Every backend is reachable by name, including the ones the OS probe never picks, because naming one
-        /// variable is the whole ergonomic story of a field soak: <c>d3d11</c> and <c>d3d11-native</c> are two
-        /// implementations of the same API and the difference between them is exactly what a soak session is
-        /// measuring, so it has to be expressible in the variable a tester already knows. <c>vulkan</c> and
-        /// <c>vulkan-native</c> are the second such pair, <c>metal</c> and <c>metal-native</c> the third, and the
-        /// incumbent token in each pair keeps pointing at the incumbent indefinitely.
+        /// Every backend is reachable by name, including the ones this platform's probe never answers, because
+        /// naming one variable is the whole ergonomic story of a field soak: <c>d3d11</c> and <c>d3d11-native</c>
+        /// are two implementations of the same API and the difference between them is exactly what a soak session
+        /// is measuring, so it has to be expressible in the variable a tester already knows. <c>vulkan</c> and
+        /// <c>vulkan-native</c> are the second such pair, <c>metal</c> and <c>metal-native</c> the third, and
+        /// since the 17.40.0 flip the SUFFIXED token in each pair is what the probe answers by itself. The
+        /// incumbent token is the opt-out, and it keeps pointing at the incumbent for as long as the incumbent
+        /// exists, which is ONE release (the removal program is
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/683). After that these tokens resolve to a member
+        /// whose implementation is gone, and the parse still succeeds, because the enum is append-only.
         /// </para>
         /// </summary>
         public static bool TryParseBackend(string? value, out GpuBackendKind backend)
@@ -218,8 +257,9 @@ namespace KhaozEngine.Gpu
                 case "d3d11-native": case "direct3d11-native":
                     backend = GpuBackendKind.Direct3D11Native; return true;
                 // The same shape for the second native backend (decision V-I1). `vulkan` still means Veldrid's
-                // Vulkan and keeps meaning it indefinitely, which is what makes it the kill switch the native
-                // Vulkan design leans on: an A/B against the native implementation is one variable away.
+                // Vulkan and keeps meaning it for the one release the incumbent survives, which is what makes it
+                // the kill switch the native Vulkan design leans on: an A/B against the implementation that is
+                // now the Linux default is one variable away.
                 case "vulkan-native": case "vk-native":
                     backend = GpuBackendKind.VulkanNative; return true;
                 // And the third (decision M-I1). The A/B this pair buys is worth more than either of the others,
@@ -437,6 +477,26 @@ namespace KhaozEngine.Gpu
             {
                 Backend = fallbackBackend,
                 Source = GpuBackendSource.FallbackAfterFailure,
+                RequestedBackend = original.Backend,
+            };
+
+        /// <summary>
+        /// The selection to report when the OS default is a provider-backed backend with NO REGISTERED PROVIDER
+        /// and <paramref name="incumbent"/> was created instead: the source becomes
+        /// <see cref="GpuBackendSource.DefaultProviderMissing"/> and the default that could not be built is
+        /// preserved on <see cref="GpuBackendSelection.RequestedBackend"/>.
+        /// <para>
+        /// Deliberately NOT <see cref="AfterFallback"/>, whose contract says device creation failed and a stored
+        /// preference must be cleared. Nothing failed here and nothing is stored: the game has not referenced a
+        /// native backend package. Pure, so both the windowed and the headless path can be pinned with no GPU.
+        /// </para>
+        /// </summary>
+        public static GpuBackendSelection AfterMissingDefaultProvider(
+            GpuBackendSelection original, GpuBackendKind incumbent)
+            => original with
+            {
+                Backend = incumbent,
+                Source = GpuBackendSource.DefaultProviderMissing,
                 RequestedBackend = original.Backend,
             };
 

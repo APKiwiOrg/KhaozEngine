@@ -30,6 +30,12 @@ in-use connection is not idle in the pool and is disposed only when its own owne
   `TileWorldPersistenceTests`). The swallowed `IOException` in the first two is why this shipped: it hid the
   same leak on the Windows legs for as long as it lived, and only the one suite that deleted strictly ever went
   red.
+- **`SqliteWalletStore.Dispose` gets the same `SqliteConnection.ClearPool` treatment** (#715). Found while
+  fixing #713 and left out of that diff because `KhaozEngine.Commerce.Sqlite` is a separate package with its own
+  tests. Identical defect, identical fix, and the same consequence for a server that rotates or deletes a wallet
+  database. `SqliteWalletStoreFileLifetimeTests` carries the same two assertions against a temp file, which the
+  rest of the SQLite wallet suite could never have caught: it runs on `Mode=Memory;Cache=Shared`, so it has no
+  file to fail to release.
 
 ## 17.40.0
 

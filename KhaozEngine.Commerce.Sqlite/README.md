@@ -20,4 +20,6 @@ no-op that returns the prior balance; the same key on a different account, or a 
 account, is a distinct operation.
 
 Opt-in: pulls `Microsoft.Data.Sqlite` without touching the dependency-free `KhaozEngine.Commerce` core. Not
-bundled in the `Server` umbrella. Dispose the store to close the connection.
+bundled in the `Server` umbrella. Dispose the store to close the connection. Disposing also clears the provider's
+connection pool for that connection, so the OS handle on the database file is genuinely released rather than
+parked in the pool, and the file can be deleted, rotated or exclusively opened straight after (since 17.41.0).

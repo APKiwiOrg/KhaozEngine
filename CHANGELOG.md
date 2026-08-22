@@ -86,7 +86,10 @@ A tile world can draw a real glb kit per archetype now, the glTF loader honours 
   clip-space z runs from -0.5 to +0.5 across x, so one half sits in front of the near plane and the other inside
   the frustum, with a pixel read from each: that separates "the flag was honoured" from "the draw did not happen".
   Nothing in the suite could see this class of bug before, because the goldens are baked per backend family and
-  never compared across one.
+  never compared across one. On the hosted runner's paravirtual Metal device, and only while the API validation
+  layer is holding it, the CLAMP row alone is skipped by name, because that device drops `setDepthClipMode` Clamp
+  under `MTLDebugDevice` while real Metal honours it with the same layer armed
+  ([#682](https://github.com/APKiwiOrg/KhaozEngine/issues/682)).
 
 ## 17.38.0
 

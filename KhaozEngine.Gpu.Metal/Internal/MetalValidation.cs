@@ -98,6 +98,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <summary>The process-level variable the Metal runtime reads for shader validation, at launch.</summary>
         internal const string ShaderValidationVar = "MTL_SHADER_VALIDATION";
 
+        /// <summary>The process-level variable that arms a GPU-trace capture, at launch. Named here beside the
+        /// other two because it belongs to the same set and because it DISPLACES them: a process launched with
+        /// this armed gets <see cref="MetalDeviceClass.Capture"/> back, so a reader asking "is the API validation
+        /// layer really holding this device" has to consult this variable as well as
+        /// <see cref="DebugLayerVar"/>.</summary>
+        internal const string CaptureEnabledVar = "MTL_CAPTURE_ENABLED";
+
         /// <summary>The class a device under Metal API validation reports, measured by row 1's spike.</summary>
         internal const string DebugDeviceClass = "MTLDebugDevice";
 

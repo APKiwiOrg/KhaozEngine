@@ -58,8 +58,20 @@ void main() { o = vec4(0.0, 1.0, 0.0, 1.0); }";
         /// and Vulkan set <c>depthClampEnable</c> from its inverse, while both Metal backends derived
         /// <c>MTLDepthClipMode</c> from the DEPTH TEST instead and so clipped this quad, cutting the left half.
         /// </para>
+        /// <para>
+        /// <b>IT IS SKIPPED ON ONE PAIRING, AND ONLY THAT ONE:</b> a virtualised adapter with the Metal API
+        /// validation layer holding the device
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/682">#682</see>). The hosted
+        /// <c>macos-26</c> runner's Apple Paravirtual device drops <c>-setDepthClipMode:</c> with
+        /// <c>MTLDepthClipModeClamp</c> under <c>MTLDebugDevice</c> and rasterizes this draw as a clip, while the
+        /// same device with the layer off passes the row and real Apple silicon passes it WITH the layer armed.
+        /// The clamp is derived and sent correctly on the failing leg itself, pinned there by
+        /// <c>MetalPipelinePlanTests.TheDepthClipModeFollowsTheSeamsFlagAndNotTheDepthTest</c>, so the artefact
+        /// is the device and not this engine. The clip row below and that derivation row stay unconditional, so
+        /// a real regression in either direction still goes red on every leg.
+        /// </para>
         /// </summary>
-        [GpuFact]
+        [GpuFact(RequiresRealGpuUnderMetalApiValidation = true)]
         public void DepthClipDisabled_KeepsTheHalfInFrontOfTheNearPlane()
         {
             (byte nearHalf, byte farHalf) = RenderCrossingQuad(depthClipEnabled: false);

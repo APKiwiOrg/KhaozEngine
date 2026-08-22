@@ -118,6 +118,48 @@ namespace KhaozEngine.Tests.Gpu
             if (expectSkip) Assert.Contains(deviceName!, reason!);
         }
 
+        // The paired gate (#682). The paravirtual device drops setDepthClipMode Clamp under MTLDebugDevice, and
+        // under nothing else, so BOTH halves have to be true before a row is given up. Keying on the layer alone
+        // would retire the row from real Metal, which is the one machine that proves the engine right, and keying
+        // on the adapter alone would retire it from the leg that runs it on every push.
+        [Theory]
+        [InlineData("Apple Paravirtual device", true, true)]
+        [InlineData("Apple Paravirtual device", false, false)]
+        [InlineData("Apple M2 Max", true, false)]
+        [InlineData("Apple M2 Max", false, false)]
+        [InlineData(null, true, false)]
+        [InlineData("", true, false)]
+        public void The_metal_validation_gate_needs_both_the_adapter_and_the_layer(
+            string? deviceName, bool apiValidationHoldsTheDevice, bool expectSkip)
+        {
+            string? reason = GpuFactAttribute.VirtualGpuUnderMetalApiValidationSkipReason(
+                deviceName, apiValidationHoldsTheDevice);
+
+            Assert.Equal(expectSkip, reason != null);
+            if (expectSkip)
+            {
+                Assert.Contains(deviceName!, reason!, StringComparison.Ordinal);
+                Assert.Contains("MTL_DEBUG_LAYER", reason!, StringComparison.Ordinal);
+                Assert.Contains("issues/682", reason!, StringComparison.Ordinal);
+            }
+        }
+
+        // A capture DISPLACES the debug device (#614), so a capture-tier run is holding a CaptureMTLDevice that
+        // validates nothing and must keep running the row. Reading MTL_DEBUG_LAYER alone would skip it there for
+        // an instrument that is not present.
+        [Theory]
+        [InlineData("1", null, true)]
+        [InlineData("1", "", true)]
+        [InlineData("1", "1", false)]
+        [InlineData("0", null, false)]
+        [InlineData(null, null, false)]
+        [InlineData(null, "1", false)]
+        public void The_api_validation_layer_holds_the_device_only_when_no_capture_displaced_it(
+            string? debugLayer, string? capture, bool expectHeld)
+        {
+            Assert.Equal(expectHeld, GpuFactAttribute.ApiValidationHoldsTheDevice(debugLayer, capture));
+        }
+
         // The dormancy escape (VulkanDormancy). Its whole value is what the message SAYS, since a leg that set
         // KE_VULKAN_REQUIRED=1 and then went red learns nothing from "the probe said no". The decision half is
         // pure so it is assertable here, on a machine with no Vulkan loader, which is the only kind of machine

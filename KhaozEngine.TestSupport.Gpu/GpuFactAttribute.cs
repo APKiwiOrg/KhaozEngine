@@ -161,6 +161,74 @@ namespace KhaozEngine.Tests.Gpu
         bool _requiresRealGpu;
 
         /// <summary>
+        /// Declare that this test measures something the hosted runner's VIRTUALISED METAL ADAPTER renders wrong
+        /// only while the METAL API VALIDATION LAYER is holding the device, so it skips on exactly that pairing
+        /// and runs everywhere else. Deliberately narrower than <see cref="RequiresRealGpu"/>, which gives the
+        /// adapter up altogether: this keeps the row on every tier where the adapter is known to answer right.
+        /// <para>
+        /// THE MEASUREMENT IT EXISTS FOR is
+        /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/682">#682</see>. On hosted <c>macos-26</c>
+        /// the Apple Paravirtual device drops <c>-setDepthClipMode:</c> with <c>MTLDepthClipModeClamp</c> under
+        /// <c>MTLDebugDevice</c> and rasterizes the draw as a clip instead. With the layer off, on the same image
+        /// and the same device, the row passes (run 32559601885). On real Apple silicon with the layer armed it
+        /// passes too. NEITHER HALF OF THE PAIRING IS THE GATE ON ITS OWN, which is why this is not keyed on the
+        /// layer: the layer must stay armed on that leg, since it is the engine's only Metal API-validation gate,
+        /// and keying on it alone would retire the row from real Metal as well.
+        /// </para>
+        /// <para>
+        /// A null probe (no device could be created) RUNS, which is the rule every gate on this attribute
+        /// follows: a broken device errors downstream rather than being reported as a device-artefact skip.
+        /// </para>
+        /// </summary>
+        public bool RequiresRealGpuUnderMetalApiValidation
+        {
+            get => _requiresRealGpuUnderMetalApiValidation;
+            set
+            {
+                _requiresRealGpuUnderMetalApiValidation = value;
+                if (value && Skip == null)
+                    Skip = VirtualGpuUnderMetalApiValidationSkipReason(
+                        DeviceName.Value, MetalApiValidationHoldsTheDevice());
+            }
+        }
+
+        bool _requiresRealGpuUnderMetalApiValidation;
+
+        /// <summary>Pure decision for <see cref="RequiresRealGpuUnderMetalApiValidation"/>: the skip reason when a
+        /// virtualised adapter is running under the Metal API validation layer, or null to RUN. Both halves are
+        /// required, so a real GPU under the layer runs and a virtualised adapter without it runs.</summary>
+        internal static string? VirtualGpuUnderMetalApiValidationSkipReason(
+            string? deviceName, bool apiValidationHoldsTheDevice)
+            => apiValidationHoldsTheDevice && IsVirtualisedAdapter(deviceName)
+                ? $"the active adapter is '{deviceName}', a virtualised GPU, and the Metal API validation layer "
+                    + "is holding the device (MTL_DEBUG_LAYER). That pairing mis-renders what this test measures: "
+                    + "the paravirtual device under MTLDebugDevice drops setDepthClipMode Clamp and rasterizes "
+                    + "the draw as a clip. See https://github.com/APKiwiOrg/KhaozEngine/issues/682. The same row "
+                    + "runs on real Metal with the layer armed, on this adapter with the layer off, and on every "
+                    + "other backend"
+                : null;
+
+        /// <summary>Whether the Metal API validation layer is really HOLDING the device in this process, read off
+        /// the two process-launch variables the Metal runtime itself reads before the first device is created.
+        /// <para>
+        /// THE CAPTURE HALF IS NOT PEDANTRY. A GPU-trace capture DISPLACES the debug device (#614), so a run with
+        /// both armed gets a <c>CaptureMTLDevice</c> that is not validating anything, and a row gated on this
+        /// must keep running there rather than be skipped for an instrument that is not present. Off macOS
+        /// neither variable is ever set, so this is false and the gate costs the other four legs nothing.
+        /// </para>
+        /// </summary>
+        internal static bool ApiValidationHoldsTheDevice(string? debugLayerValue, string? captureValue)
+            => KhaozEngine.Gpu.Metal.Internal.MetalValidation.IsArmed(debugLayerValue)
+                && !KhaozEngine.Gpu.Metal.Internal.MetalValidation.IsArmed(captureValue);
+
+        static bool MetalApiValidationHoldsTheDevice()
+            => ApiValidationHoldsTheDevice(
+                Environment.GetEnvironmentVariable(
+                    KhaozEngine.Gpu.Metal.Internal.MetalValidation.DebugLayerVar),
+                Environment.GetEnvironmentVariable(
+                    KhaozEngine.Gpu.Metal.Internal.MetalValidation.CaptureEnabledVar));
+
+        /// <summary>
         /// Declare that this test needs FOUR-SAMPLE MSAA, so it SKIPS with the backend and the real limit named on
         /// a device that cannot give it, instead of quietly measuring nothing.
         /// <para>
@@ -219,12 +287,19 @@ namespace KhaozEngine.Tests.Gpu
         /// in the engine's <c>MetalSamplerPolicy.IsVirtualisedAdapter</c> (this assembly references the engine and
         /// not the reverse): a change here visits that site too.</summary>
         internal static string? VirtualGpuSkipReason(string? deviceName)
+            => IsVirtualisedAdapter(deviceName)
+                ? $"the active adapter is '{deviceName}', a virtualised GPU that renders some effects as a "
+                    + "no-op, and this test asserts an effect is visible rather than comparing a golden"
+                : null;
+
+        /// <summary>THE NAME TEST ITSELF, shared by <see cref="VirtualGpuSkipReason"/> and
+        /// <see cref="VirtualGpuUnderMetalApiValidationSkipReason"/> so the two gates cannot drift apart on what
+        /// counts as virtualised. A null or empty name (no device could be created) is NOT virtualised, which is
+        /// what keeps a dead device an error downstream.</summary>
+        internal static bool IsVirtualisedAdapter(string? deviceName)
             => deviceName is { Length: > 0 } n
                 && (n.Contains("Paravirtual", StringComparison.OrdinalIgnoreCase)
-                    || n.Contains("Virtual", StringComparison.OrdinalIgnoreCase))
-                ? $"the active adapter is '{n}', a virtualised GPU that renders some effects as a no-op, "
-                    + "and this test asserts an effect is visible rather than comparing a golden"
-                : null;
+                    || n.Contains("Virtual", StringComparison.OrdinalIgnoreCase));
 
         static string? ProbeDeviceName()
         {

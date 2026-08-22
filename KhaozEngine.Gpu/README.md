@@ -248,10 +248,14 @@ What it owns today:
   array indistinguishable from a plain 2D texture and bound the wrong type (Metal aborts the process under armed
   validation, lavapipe reads through it silently). That inference is kept as the default, so `IsArray` is true
   whenever `ArrayLayers > 1` and a caller that only passes a layer count is unchanged. The flag names the
-  2D-array case only: a cubemap (`GpuTextureUsage.Cubemap`) and a multisampled texture keep their own type rules.
-  The three native backends create the array type directly. The incumbent Veldrid backend cannot express a
-  one-layer array at all, so it creates a second, never-addressed slice and keeps the seam's logical layer count
-  at one.
+  2D-array case only: a cubemap (`GpuTextureUsage.Cubemap`) keeps its own layer-count rule, and a MULTISAMPLED
+  ARRAY is refused by the constructor (`ArgumentOutOfRangeException` on `IsArray && SampleCount > 1`), because no
+  backend agrees on which type it takes. The three native backends create the array type directly. The incumbent
+  Veldrid backend cannot express a one-layer array at all, so it creates a second, never-addressed slice and
+  keeps the seam's logical layer count at one. Nothing samples that slice, but Veldrid counts it, so the two
+  paths that name subresources handle it: `CopyTexture` (and with it `GpuReadback.ToRgba`) narrows to the logical
+  subresources when a side pads, and an `UpdateTexture` aimed at the phantom layer is refused rather than
+  accepted silently. A `GpuTextureUsage.Staging` texture is never padded, having no view to fix.
 - **`GpuWindowHandle`** - a native window handle (kind + handle/display) the windowing layer hands over, so
   this package needs no reference to the windowing library.
 - **`GpuDeviceContext`** - `CreateForWindow(in GpuWindowHandle, width, height, syncToVerticalBlank = true)` (device

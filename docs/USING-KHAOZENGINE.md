@@ -10253,15 +10253,31 @@ around it by duplicating a single layer into a second slice.
 so `IsArray` is true whenever `ArrayLayers > 1` and code that passes only a layer count behaves exactly as it
 did. The raw constructor takes an `isArray` argument for the same purpose.
 
-**Two shapes it deliberately does not claim.** A cubemap (`GpuTextureUsage.Cubemap`) keeps its own rule, since a
-cube is already six faces and one cube is a `TypeCube` rather than a one-cube cube array. A multisampled texture
-keeps its multisample type, which has no array form on this seam.
+**One shape it deliberately does not claim, and one it refuses.** A cubemap (`GpuTextureUsage.Cubemap`) keeps
+its own rule, since a cube is already six faces and one cube is a `TypeCube` rather than a one-cube cube array.
+A MULTISAMPLED ARRAY is refused outright: the constructor throws `ArgumentOutOfRangeException` for
+`IsArray && SampleCount > 1`, because no backend agrees on which type such a texture takes (Metal, Vulkan and
+Direct3D 11's render-target views derive the multisample type, while Direct3D 11's shader resource view derives
+the array type and drops the multisampling). Build the multisampled target as a single-layer texture and resolve
+it into an array layer instead. Every multisampled render target the engine makes is already single-layer, so
+this refuses a shape nothing was building.
 
-**One backend emulates it.** The three native backends (`KhaozEngine.Gpu.Metal`, `.Vulkan`, `.D3D11`) create the
-array type directly. The incumbent Veldrid backend has no way to express a one-layer array at all, so it creates
-a second slice that is never uploaded to, never sampled and never named by a slot. That costs one slice of
-memory and is invisible through the seam: the description's layer count is still one, and every read and write
-addresses layer 0.
+**One backend emulates it, and the emulation is contained rather than invisible.** The three native backends
+(`KhaozEngine.Gpu.Metal`, `.Vulkan`, `.D3D11`) create the array type directly. The incumbent Veldrid backend has
+no way to express a one-layer array at all, so it creates a second slice that is never uploaded to, never
+sampled and never named by a slot. Nothing samples the phantom, so it cannot reach a picture. Veldrid does COUNT
+it, though, so the two seam paths that name SUBRESOURCES rather than texels have to know about it, and both do:
+
+- `GpuReadback.ToRgba` works. A whole-resource copy names every subresource on both sides, so a two-slice source
+  against the one-slice staging texture the readback allocates used to be refused here (`Source and destination
+  Textures are not compatible to be copied`) and to succeed on the natives. The copy narrows to the LOGICAL
+  subresources whenever a side pads, so the readback is backend-independent again.
+- `UpdateTexture(..., arrayLayer: 1)` on a one-layer array raises `ArgumentOutOfRangeException`, on the
+  incumbent as well as on the natives. Writing to the phantom writes to memory nothing reads, and it used to be
+  accepted silently on exactly one backend.
+
+What is left is one slice of memory. A STAGING texture is never padded at all, since it has no view and nothing
+binds it to a shader.
 
 ---
 

@@ -54,8 +54,8 @@ seam can express a texture array with a single layer.
   is likewise scalar-derived. `Texture2DArray` now sets the flag, and the constructor takes an `isArray`
   argument. **Additive:** the layer-count inference is kept as the default, so `IsArray` is true whenever
   `ArrayLayers > 1` and a caller that passes only a layer count creates exactly the texture it created before.
-  The flag names the 2D-array case only: a cubemap (`GpuTextureUsage.Cubemap`) and a multisampled texture keep
-  their own type rules, which is the precedence each backend already had.
+  The flag names the 2D-array case only: a cubemap (`GpuTextureUsage.Cubemap`) keeps its own layer-count rule,
+  which is the precedence each backend already had, and a multisampled array is refused outright (below).
 - **All four backends honour it, three of them natively.** `KhaozEngine.Gpu.Metal` picks `MTLTextureType2DArray`
   in `MetalFormats.TextureTypeFor`, `KhaozEngine.Gpu.Vulkan` picks `VK_IMAGE_VIEW_TYPE_2D_ARRAY` in
   `VulkanFormats.ToViewType` and carries the flag on its sampled and storage view specs, and
@@ -65,14 +65,39 @@ seam can express a texture array with a single layer.
   `MTLTexture`, `VkTextureView` and `D3D11TextureView` each test `ArrayLayers` against 1, there is no
   `TextureType` value and no `TextureUsage` bit for it, and a `TextureView` cannot widen it either because its
   own `ArrayLayers` feeds the same comparison. So it creates a second slice that is never uploaded to, never
-  sampled and never named by a slot, and the seam's logical layer count stays one. That is invisible through the
-  seam and costs one slice of memory.
+  sampled and never named by a slot, and the seam's logical layer count stays one.
+- **The emulated slice is CONTAINED rather than invisible, which is two behaviour changes on the incumbent.**
+  Nothing samples the phantom, so it cannot reach a picture. But Veldrid COUNTS it, so both seam paths that name
+  subresources rather than texels could see it. A whole-resource `CopyTexture` names every subresource on both
+  sides, so `GpuReadback.ToRgba` on a one-layer array threw `Source and destination Textures are not compatible
+  to be copied` against the one-slice staging texture it allocates, while the same call succeeded on all three
+  natives. `VeldridGpuCommandList.CopyTexture` now narrows to the LOGICAL subresources whenever either side pads,
+  which is the same set of texels the natives copy, and the whole-resource call is unchanged for every texture
+  that does not pad. And `UpdateTexture(..., arrayLayer: 1)` on a one-layer array was accepted silently here and
+  refused by name on the natives: it now raises `ArgumentOutOfRangeException` naming the emulation. Both are
+  pinned by `[GpuFact]`s that run on every backend.
+- **A STAGING texture is never padded.** It is CPU-visible memory with no view and nothing that binds it to a
+  shader, so array-ness cannot be observed on one and the pad only doubled the buffer a readback maps.
+- **A texture cannot be both an ARRAY and MULTISAMPLED, and the description says so.** The backends did not
+  agree on which type such a texture takes: Metal, Vulkan and Direct3D 11's render-target views derive the
+  multisample type, while Direct3D 11's SHADER RESOURCE view nests its multisample test inside the non-array arm
+  (`D3D11Texture.CreateSrvWindows`), so `IsArray && SampleCount > 1` took a plain `Texture2DArray` view over a
+  multisampled resource there. Nothing in the engine builds that shape, so `GpuTextureDescription`'s constructor
+  now throws `ArgumentOutOfRangeException` for it rather than leaving three answers in place. Every multisampled
+  render target the engine makes is single-layer and is unaffected.
 - **The tile-ground pad is gone.** `Scene3D.LoadTileGroundMaterial` duplicated a one-layer set into two layers
   for exactly this reason since 17.38.0. A one-layer set is now a real one-layer array.
   `TileGroundMaterialGpuTests.Single_flat_layer_reproduces_a_vertex_colour_look` is the conformance draw: with
   the pad gone and the flag reverted it aborts the metal-native test host with the message above, and it passes
   with the flag in, on the incumbent and on metal-native alike under armed Metal validation. No golden moves,
   because the padded slice was never sampled and layer 0 carries the same texels either way.
+- **The FFT ocean's placeholder map dropped its pad too.** `OceanFftProducer` built the idle 1x1 map (the one
+  every water draw with no bake behind it binds to the water fragment's `texture2DArray` slot) with two layers
+  for the same reason, and it is a real one-layer array now. The live map's own `Math.Max(2 * cascades, 2)` floor
+  went with it: the cascade count is clamped to at least one, so `2 * cascades` was never below two and the floor
+  had been dead since it was written. Reverting the seam flag with the pad gone aborts the `scene3d_water` golden
+  on metal-native under armed validation (`incorrect type of texture (MTLTextureType2D) bound at Texture binding
+  at index 1`), and it passes with the flag in. No golden moves.
 
 ## 17.38.0
 

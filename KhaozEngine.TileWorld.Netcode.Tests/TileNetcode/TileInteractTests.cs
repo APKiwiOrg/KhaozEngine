@@ -223,6 +223,58 @@ public class TileInteractTests
         Assert.Equal(0, s.InteractTarget);
     }
 
+    // Accepts is what the server's command path asks BEFORE the step, so the four answers are pinned here rather
+    // than inferred from what a step happened to leave behind. The last case is the one a careless implementation
+    // gets wrong, and the one the whole CannotReach seam rests on: a target that does not resolve at all is
+    // ACCEPTED, because "I cannot find what you clicked" is an answer the resolution owes the player, not a reason
+    // to pretend the click never happened.
+    [Fact]
+    public void Accepts_answers_the_plane_rule_and_nothing_else()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        TileObject here = doc.AddObject("bank_booth", 10, 10, 0, 0);
+        TileObject upstairs = doc.AddObject("bank_booth", 20, 20, 1, 0);
+        var sim = new TileMoveSimulator(TileMoveSimulatorTests.Bake(doc), Ticks,
+            new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs));
+        TileMoveState s = TileMoveState.At(new TileCoord(5, 10, 0), TileDirection.N);
+
+        Assert.False(sim.Accepts(s, TileCommand.WalkTo(new TileCoord(5, 14, 1), TileMoveMode.Run)));
+        Assert.False(sim.Accepts(s, TileCommand.Interact(upstairs.Id, TileMoveMode.Run)));
+        Assert.True(sim.Accepts(s, TileCommand.WalkTo(new TileCoord(5, 14, 0), TileMoveMode.Run)));
+        Assert.True(sim.Accepts(s, TileCommand.Interact(here.Id, TileMoveMode.Run)));
+
+        // Accepted is not "will succeed": an unresolved target still reaches the queue, and so does a Continue.
+        Assert.True(sim.Accepts(s, TileCommand.Interact(999999, TileMoveMode.Run)));
+        Assert.True(sim.Accepts(s, TileCommand.Continue(TileMoveMode.Run)));
+    }
+
+    // The plane is read off the STATE, not off the world, so the same command flips answer when the player moves
+    // floors. That is what makes it safe for the server to ask before the step and for the client to ask on click.
+    [Fact]
+    public void Accepts_follows_the_players_own_plane()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        TileObject upstairs = doc.AddObject("bank_booth", 20, 20, 1, 0);
+        var sim = new TileMoveSimulator(TileMoveSimulatorTests.Bake(doc), Ticks,
+            new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs));
+
+        TileCommand click = TileCommand.Interact(upstairs.Id, TileMoveMode.Run);
+        Assert.False(sim.Accepts(TileMoveState.At(new TileCoord(5, 10, 0), TileDirection.N), click));
+        Assert.True(sim.Accepts(TileMoveState.At(new TileCoord(5, 10, 1), TileDirection.N), click));
+    }
+
+    // A simulator with no target seam has no way to tell the planes apart, so it accepts every interaction and the
+    // resolution answers them. Nothing about the walk half changes.
+    [Fact]
+    public void Accepts_admits_every_interaction_when_there_is_no_target_seam()
+    {
+        var sim = new TileMoveSimulator(TileMoveSimulatorTests.Bake(TileMoveSimulatorTests.FlatWorld()), Ticks);
+        TileMoveState s = TileMoveState.At(new TileCoord(5, 10, 0), TileDirection.N);
+
+        Assert.True(sim.Accepts(s, TileCommand.Interact(1, TileMoveMode.Run)));
+        Assert.False(sim.Accepts(s, TileCommand.WalkTo(new TileCoord(5, 14, 2), TileMoveMode.Run)));
+    }
+
     [Fact]
     public void The_queue_holds_one_action_per_player_and_a_second_click_replaces_it()
     {

@@ -198,7 +198,9 @@ public sealed partial class TileWorldServer
     /// </list>
     /// This is also the only place the action queue is written, because whether a command was ACCEPTED is knowable
     /// only before the step: a cross-plane interact leaves no trace in the state afterwards, and an accepted one
-    /// whose target has no reachable tile leaves exactly the same trace.
+    /// whose target has no reachable tile leaves exactly the same trace. The question itself is
+    /// <see cref="TileMoveSimulator.Accepts"/>, so the rule has one definition and the server holds no second copy
+    /// of the target seam to re-derive it from.
     /// </summary>
     TileCommand Admit(in TileCommand cmd, bool arrived, in TileMoveState state, int slot)
     {
@@ -213,7 +215,7 @@ public sealed partial class TileWorldServer
                 // the new route happened to pass a reach tile of the thing the player visibly walked away from.
                 // Only an APPLIED walk clears: a cross-plane goal is dropped by the simulator, so it abandons
                 // nothing.
-                if (cmd.Goal.Plane == state.Tile.Plane) actions.Clear(slot);
+                if (simulator.Accepts(state, cmd)) actions.Clear(slot);
                 return cmd;
 
             case TileCommandKind.Interact:
@@ -222,7 +224,7 @@ public sealed partial class TileWorldServer
                 // would sit armed against every later step. A target that does not resolve at all, and one that
                 // resolves on the player's own plane with no reachable tile, both DO reach the queue, because
                 // CannotReach is exactly their answer.
-                if (InteractAccepted(cmd.Target, state.Tile.Plane)) actions.Issue(slot, cmd.Target, TickCount);
+                if (simulator.Accepts(state, cmd)) actions.Issue(slot, cmd.Target, TickCount);
                 return cmd;
 
             default:
@@ -239,13 +241,6 @@ public sealed partial class TileWorldServer
         if (goal.Plane >= config.PlaneCount) return false;
         return Math.Max(Math.Abs(goal.X - state.Tile.X), Math.Abs(goal.Z - state.Tile.Z)) <= config.MaxGoalRadius;
     }
-
-    // The one rule stated in two places, and deliberately: this is the exact condition TileMoveSimulator's
-    // BeginInteract returns on, asked of the SAME ITileTargets seam, so the two cannot disagree about a target
-    // without disagreeing about the world. Re-derived rather than observed because the step erases the difference
-    // (see Admit). An unresolved target is accepted, which is what leaves the CannotReach answer to the resolution.
-    bool InteractAccepted(long target, int plane) =>
-        targets is null || !targets.TryGetFootprint(target, out _, out int targetPlane) || targetPlane == plane;
 
     // Planes do not shard: a cell holds every plane of its region, so the plane filter happens here, on the
     // interest set, rather than in the topology. A viewer never receives an entity on another plane.

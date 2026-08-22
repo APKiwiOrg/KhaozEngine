@@ -83,6 +83,32 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     /// <summary>Longest route one click may produce, in steps. See <see cref="TileMoveOptions.MaxRouteSteps"/>.</summary>
     public int MaxRouteSteps { get; }
 
+    /// <summary>
+    /// Whether <see cref="Step"/> would APPLY this command rather than drop it whole. THE definition of acceptance,
+    /// and the only one: <see cref="Step"/>, <see cref="BeginWalk"/> and <see cref="BeginInteract"/> all ask this
+    /// rather than repeating the rule, and so does the server's command path, which has to know BEFORE the step
+    /// (afterwards a dropped command and an applied one that achieved nothing leave identical state).
+    /// <para>Accepted is NOT "will succeed". An <see cref="TileCommandKind.Interact"/> naming a target that does not
+    /// resolve at all, or one that resolves on the player's OWN plane with no reachable tile, is accepted here and
+    /// answered with a CannotReach later. That distinction is the whole point: the cleared-route answer is reserved
+    /// for a target the player can see and cannot get to, never for one on another floor.</para>
+    /// <para>A dropped command applies nothing, its MODE included, so a rejected tick reads exactly as though no
+    /// command arrived. Both heads run this, so a client that pre-checks with it refuses the same clicks.</para>
+    /// </summary>
+    /// <param name="state">The state the command would be applied to. Only its tile's plane is consulted.</param>
+    /// <param name="command">The command to weigh.</param>
+    /// <returns>False for a cross-plane walk goal or a resolved cross-plane interaction target, true otherwise,
+    /// <see cref="TileCommandKind.None"/> included (its mode is always applied).</returns>
+    public bool Accepts(in TileMoveState state, in TileCommand command) => command.Kind switch
+    {
+        TileCommandKind.WalkTo => command.Goal.Plane == state.Tile.Plane,
+        TileCommandKind.Interact =>
+            targets is null
+            || !targets.TryGetFootprint(command.Target, out _, out int plane)
+            || plane == state.Tile.Plane,
+        _ => true,
+    };
+
     /// <summary>Advances one tick. <paramref name="dt"/> is unused: a tile step is counted in TICKS, not seconds,
     /// which is what keeps two heads on slightly different frame times byte-identical.</summary>
     /// <param name="state">The state to advance.</param>
@@ -99,7 +125,7 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
             // A goal on another plane is DROPPED whole rather than coerced onto the player's own (see BeginWalk),
             // which is why the guard sits on the case label: an unmatched WalkTo falls past every case here and
             // the tick runs as though no command arrived at all, its mode included.
-            case TileCommandKind.WalkTo when command.Goal.Plane == s.Tile.Plane:
+            case TileCommandKind.WalkTo when Accepts(s, command):
                 s = BeginWalk(s, command.Goal, command.Mode);
                 s.InteractTarget = 0;
                 break;
@@ -132,7 +158,7 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     public TileMoveState BeginWalk(in TileMoveState state, TileCoord goal, TileMoveMode mode)
     {
         TileMoveState s = state;
-        if (goal.Plane != s.Tile.Plane) return s;
+        if (!Accepts(s, TileCommand.WalkTo(goal, mode))) return s;
         s.Mode = mode;
         s.StepTicks = 0;
         s.StepTotal = StepTicks.For(mode);
@@ -147,18 +173,20 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     // on click.
     //
     // A target on ANOTHER PLANE is not that case. It is refused the way BeginWalk refuses a cross-plane goal, with
-    // the state untouched, and that is why the target is resolved BEFORE the first write. Mode, cadence, route and
+    // the state untouched, and that is why acceptance is asked BEFORE the first write. Mode, cadence, route and
     // pending target all have to survive a click the player cannot even see, so the tick reads exactly as a
     // Continue at the mode already held. Reserving the cleared-route answer for a target on the player's OWN plane
     // is what keeps it meaningful: CannotReach then says "I know what you clicked and you cannot get to it", never
-    // "that was on another floor".
+    // "that was on another floor". The refusal itself is Accepts, which is the one definition of it.
     TileMoveState BeginInteract(in TileMoveState state, long target, TileMoveMode mode)
     {
         TileMoveState s = state;
+        if (!Accepts(s, TileCommand.Interact(target, mode))) return s;
+        // Seeded, because the resolve is short circuited on a null seam and the compiler cannot see that the
+        // branches below only read these once it answered true.
         TileRect footprint = default;
         int plane = 0;
         bool resolved = targets is not null && targets.TryGetFootprint(target, out footprint, out plane);
-        if (resolved && plane != s.Tile.Plane) return s;
 
         s.Mode = mode;
         s.StepTicks = 0;

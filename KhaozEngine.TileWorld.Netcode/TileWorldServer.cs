@@ -32,9 +32,6 @@ public sealed partial class TileWorldServer : IDisposable
     readonly ShardHost host;
     readonly ReplicationRegistry registry;
     readonly TileMoveSimulator simulator;
-    // Held as well as handed to the simulator, so the command path can ask the SAME seam the simulator will ask
-    // whether a target is on the player's plane. See Admit for why that answer has to be known before the step.
-    readonly ITileTargets? targets;
     readonly TileActionQueue actions = new();
     readonly RemoteCommandQueue<TileCommand> commands;
     readonly NetIdAllocator allocator = new();
@@ -84,7 +81,6 @@ public sealed partial class TileWorldServer : IDisposable
               + "cannot hold the full area of interest as ghosts.", nameof(config));
 
         this.config = config;
-        this.targets = targets;
         this.registry = registry ?? TileProtocol.CreateRegistry();
         simulator = new TileMoveSimulator(map, config.StepTicks, targets, config.Move);
         // The queue's own neutral is never what a starved player is stepped with: Admit replaces it with a Continue

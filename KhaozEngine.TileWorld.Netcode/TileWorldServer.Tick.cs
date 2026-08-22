@@ -152,13 +152,27 @@ public sealed partial class TileWorldServer
     // emptied with the target still on it IS the arrival, and the same pair of fields answers the abandonment and
     // the failure without the server re-deriving anything the simulator already decided.
     //
+    // Resolution order is (IssuedTick, slot), which is what TilePendingAction.IssuedTick exists for: two players
+    // whose actions come ready on the same tick resolve oldest CLICK first, and the slot breaks a tie between two
+    // clicks on the one tick. tickSlots is netIdBySlot's enumeration order, which is neither, and which becomes
+    // history dependent the moment task 10 adds disconnects and the dictionary starts recycling free-list entries.
+    // Two players clicking the same object on the same tick is a gameplay decision, not a detail.
+    //
     // task 10 adds the other half: the CannotReach notice for the refused case below, and a stale-action cap over
     // TilePendingAction.IssuedTick. What is here is the raise, which is what the tick order needs to be final.
     void ResolveActions()
     {
         if (actions.PendingCount == 0) return;
-        foreach (int slot in tickSlots)
+        actionOrder.Clear();
+        for (int i = 0; i < tickSlots.Count; i++)
+            if (actions.TryPeek(tickSlots[i], out TilePendingAction queued))
+                actionOrder.Add((queued.IssuedTick, tickSlots[i]));
+        if (actionOrder.Count == 0) return;
+        actionOrder.Sort(OldestFirst);
+
+        for (int i = 0; i < actionOrder.Count; i++)
         {
+            int slot = actionOrder[i].slot;
             if (!actions.TryPeek(slot, out TilePendingAction pending)) continue;
             if (!netIdBySlot.TryGetValue(slot, out long netId)) continue;
             // Read through TryGetPlayerState, never off the raw component, because the route is what the idle test

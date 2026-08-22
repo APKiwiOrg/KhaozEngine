@@ -256,6 +256,37 @@ public class TileWorldServerTickTests
         Assert.Equal(0, st.InteractTarget);
     }
 
+    // Two actions coming ready on the SAME tick resolve oldest CLICK first, which is what TilePendingAction's
+    // IssuedTick is for. The setup makes every other order wrong: slot 1 joins first, so the player index's own
+    // enumeration order is [1, 5] and so is ascending slot order, while slot 5 clicked two ticks earlier. Slot 5
+    // walks three steps from the click on tick 0 and slot 1 walks two from the click on tick 2, so both arrive on
+    // tick 5 and the tie is broken by nothing but the issue tick.
+    [Fact]
+    public void Two_actions_ready_on_one_tick_resolve_oldest_click_first()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        TileObject west = doc.AddObject("bank_booth", 10, 10, 0, 0);
+        TileObject east = doc.AddObject("bank_booth", 30, 10, 0, 0);
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(doc, hub.Server, new TileCoord(10, 20, 0));
+        s.SpawnPlayer(1, "a", "Ari");
+        s.SpawnPlayer(5, "b", "Bo");
+        s.SetPlayerState(5, TileMoveState.At(new TileCoord(14, 10, 0), TileDirection.S));   // 3 steps to (11, 10)
+        s.SetPlayerState(1, TileMoveState.At(new TileCoord(33, 10, 0), TileDirection.S));   // 2 steps to (31, 10)
+        var raised = new List<(int slot, long tick)>();
+        s.OnInteract += (slot, _, _) => raised.Add((slot, s.TickCount));
+
+        s.Enqueue(5, 0, TileCommand.Interact(west.Id, TileMoveMode.Run));
+        s.Tick(Dt);   // tick 0, slot 5 clicks
+        s.Tick(Dt);
+        s.Enqueue(1, 0, TileCommand.Interact(east.Id, TileMoveMode.Run));
+        for (int i = 0; i < 6; i++) s.Tick(Dt);   // tick 2, slot 1 clicks, then both walks finish
+
+        Assert.Equal(2, raised.Count);
+        Assert.Equal(raised[0].tick, raised[1].tick);          // the same tick, so the order IS the decision
+        Assert.Equal(new[] { 5, 1 }, raised.ConvertAll(r => r.slot));
+    }
+
     // The arrival test is the state's ROUTE, and a cell handoff rebuilds the state from a capture whose move-state
     // codec omits the route. Read off the raw component, a player crossing a region boundary mid walk reads as
     // arrived and the action fires a region early, on a tile nowhere near the target.

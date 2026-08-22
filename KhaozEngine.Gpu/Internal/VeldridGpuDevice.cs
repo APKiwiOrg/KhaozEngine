@@ -189,9 +189,42 @@ namespace KhaozEngine.Gpu.Internal
 
         public IGpuTexture CreateTexture(in GpuTextureDescription d)
             => new VeldridGpuTexture(_liveness, GraphicsDevice.ResourceFactory.CreateTexture(new TextureDescription(
-                d.Width, d.Height, 1, d.MipLevels, d.ArrayLayers,
+                d.Width, d.Height, 1, d.MipLevels, VeldridArrayLayers(d),
                 VeldridMap.ToVeldrid(d.Format), VeldridMap.ToVeldrid(d.Usage), TextureType.Texture2D,
                 VeldridMap.ToVeldrid(d.SampleCount))));
+
+        /// <summary>
+        /// THE ONE BACKEND THAT CANNOT SAY "ARRAY OF ONE", so it says "array of two" and never addresses the
+        /// second slice (#666).
+        ///
+        /// <para><b>Veldrid 4.9.103 derives array-ness from the layer count in all three of its own backends and
+        /// exposes no way to override it.</b> <c>MTLFormats.VdToMTLTextureType</c> picks <c>Type2DArray</c> only
+        /// for <c>arrayLayers &gt; 1</c>, <c>VkTextureView</c> picks <c>Image2DArray</c> on the same test, and
+        /// <c>D3D11TextureView</c> picks <c>Texture2DArray</c> on <c>d3dTex.ArrayLayers == 1</c>. There is no
+        /// <c>TextureType</c> value and no <c>TextureUsage</c> bit for it, and a <c>TextureView</c> cannot widen
+        /// it either, because its own <c>ArrayLayers</c> feeds the same comparison. So a one-layer array is
+        /// UNREPRESENTABLE in the incumbent, and this padding is the whole of the workaround.</para>
+        ///
+        /// <para><b>The phantom slice is created and nothing else.</b> It is never uploaded to, never sampled and
+        /// never named by a slot, so it costs one slice of memory and cannot reach a picture: the description's
+        /// LOGICAL layer count is still one, every caller addresses layer 0, and the goldens see the same texel
+        /// they saw when <c>Scene3D.LoadTileGroundMaterial</c> did this padding for itself. It is deliberately not
+        /// applied to a cubemap (Veldrid counts CUBES there, so a second one would be six real faces and
+        /// <see cref="GpuTextureDescription.IsArray"/> does not claim the cube case anyway) nor to a multisampled
+        /// texture (which has no array type on this seam).</para>
+        ///
+        /// <para><b>The fork change that would remove this</b> is a <c>bool</c> on Veldrid's own
+        /// <c>TextureDescription</c> (or <c>TextureUsage</c> bit 7, the single free bit in that
+        /// <c>byte</c>-backed flags enum) carried into <c>MTLTexture</c>, <c>VkTextureView</c> and
+        /// <c>D3D11TextureView</c> beside each <c>ArrayLayers &gt; 1</c> test. The three NATIVE backends already
+        /// carry the seam's flag with no fork at all, so the incumbent is the only place a one-layer array is
+        /// emulated rather than created.</para>
+        /// </summary>
+        static uint VeldridArrayLayers(in GpuTextureDescription d)
+            => d.IsArray && d.ArrayLayers <= 1
+                && (d.Usage & GpuTextureUsage.Cubemap) == 0 && d.SampleCount <= 1
+                ? 2
+                : d.ArrayLayers;
 
         public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour)
         {

@@ -116,7 +116,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             in GpuTextureDescription description)
         {
             MetalTextureViewPlan plan = MetalViewPolicy.ForTexture(
-                description.Usage, description.ArrayLayers, description.SampleCount);
+                description.Usage, description.ArrayLayers, description.SampleCount, description.IsArray);
 
             return plan.Staging
                 ? CreateStaging(device, liveness, description, plan)

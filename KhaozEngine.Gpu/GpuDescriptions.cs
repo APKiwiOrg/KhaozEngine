@@ -44,12 +44,32 @@ namespace KhaozEngine.Gpu
         /// request to <see cref="GpuCapabilities.MaxMsaaSampleCount"/>. Must be a power of two.</summary>
         public uint SampleCount { get; }
 
+        /// <summary>Whether the texture is a 2D texture ARRAY rather than a plain 2D texture, which is what
+        /// decides the type a shader binds it as (<c>texture2DArray</c> / <c>Texture2DArray</c> against
+        /// <c>texture2D</c> / <c>Texture2D</c>).
+        /// <para>
+        /// TRUE WHENEVER <see cref="ArrayLayers"/> IS ABOVE ONE, so every caller written before this property
+        /// existed keeps the behaviour it had. The <c>isArray</c> constructor parameter is what a ONE-layer array
+        /// needs, because the layer count alone cannot tell one apart from a plain 2D texture, and
+        /// <see cref="Texture2DArray"/> sets it for you. Before #666 a one-layer set therefore created a plain 2D
+        /// texture, and a pipeline whose fragment declares an array sampler bound the wrong type: Metal kills the
+        /// process when validation is armed, lavapipe tolerates it silently.
+        /// </para>
+        /// <para>
+        /// IT NAMES THE 2D-ARRAY CASE AND NOTHING ELSE. A cubemap (<see cref="GpuTextureUsage.Cubemap"/>) keeps
+        /// its own layer-count rule in every backend, since a cube is already six faces and the seam has no
+        /// one-cube cube-array caller, and a multisampled texture keeps its multisample type, which is the
+        /// precedence each backend's type derivation already had.
+        /// </para></summary>
+        public bool IsArray { get; }
+
         public GpuTextureDescription(uint width, uint height, GpuPixelFormat format, GpuTextureUsage usage,
-            uint mipLevels = 1, uint arrayLayers = 1, uint sampleCount = 1)
+            uint mipLevels = 1, uint arrayLayers = 1, uint sampleCount = 1, bool isArray = false)
         {
             Width = width; Height = height; Format = format; Usage = usage;
             MipLevels = mipLevels; ArrayLayers = arrayLayers;
             SampleCount = sampleCount < 1 ? 1 : sampleCount;
+            IsArray = isArray || arrayLayers > 1;
         }
 
         /// <summary>Convenience for a single-mip, single-layer 2D texture (mirrors <c>TextureDescription.Texture2D</c>).</summary>
@@ -58,10 +78,12 @@ namespace KhaozEngine.Gpu
 
         /// <summary>Convenience for a 2D texture ARRAY with explicit layer + mip counts (the splat-terrain layer
         /// stacks). The ctor already carries <see cref="MipLevels"/>/<see cref="ArrayLayers"/>; this names the
-        /// array case.</summary>
+        /// array case, and it is the only thing that can name a ONE-layer array, because it sets
+        /// <see cref="IsArray"/> rather than leaving the backends to infer array-ness from the layer count
+        /// (#666).</summary>
         public static GpuTextureDescription Texture2DArray(uint width, uint height, GpuPixelFormat format,
             GpuTextureUsage usage, uint arrayLayers, uint mipLevels)
-            => new(width, height, format, usage, mipLevels, arrayLayers);
+            => new(width, height, format, usage, mipLevels, arrayLayers, isArray: true);
     }
 
     /// <summary>Describes a GPU sampler. Engine mirror of Veldrid <c>SamplerDescription</c> (the subset used).</summary>

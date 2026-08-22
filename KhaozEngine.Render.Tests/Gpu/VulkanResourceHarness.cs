@@ -309,8 +309,8 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>A texture description with the defaults every shipped call site uses.</summary>
         internal static GpuTextureDescription Texture(uint width, uint height, GpuTextureUsage usage,
             GpuPixelFormat format = GpuPixelFormat.R8G8B8A8UNorm, uint mipLevels = 1, uint arrayLayers = 1,
-            uint sampleCount = 1)
-            => new(width, height, format, usage, mipLevels, arrayLayers, sampleCount);
+            uint sampleCount = 1, bool isArray = false)
+            => new(width, height, format, usage, mipLevels, arrayLayers, sampleCount, isArray);
 
         /// <summary>Every image view created so far, which is decision V-M11's whole observable surface.</summary>
         internal IReadOnlyList<VulkanImageViewSpec> Views => ResourceApi.Views;

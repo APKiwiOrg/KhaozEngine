@@ -227,10 +227,20 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <c>VK_IMAGE_VIEW_TYPE_CUBE</c> at one logical layer and <c>CUBE_ARRAY</c> above it, and everything else
         /// is a 2D view at one layer and a 2D array above it. The seam expresses no 1D and no 3D texture at all, so
         /// those two arms of the incumbent's switch have no reachable caller here.
+        /// <para>
+        /// WITH ONE DEPARTURE FROM THE INCUMBENT, and it is the point of #666. <paramref name="arrayView"/> is
+        /// <see cref="GpuTextureDescription.IsArray"/>, so a texture the seam asked for as an ARRAY takes
+        /// <c>VK_IMAGE_VIEW_TYPE_2D_ARRAY</c> even at one layer, which is what a fragment declaring
+        /// <c>texture2DArray</c> needs. A 2D-array view over an image with <c>arrayLayers == 1</c> is legal, the
+        /// range simply covers one layer. It is ORed with the count test rather than replacing it, so a caller
+        /// that passes only the count keeps the incumbent's answer, and the CUBE arm is untouched because a cube
+        /// is already six faces and the seam has no one-cube cube-array caller.
+        /// </para>
         /// </summary>
-        internal static ImageViewType ToViewType(bool cubemap, uint arrayLayers) => cubemap
-            ? (arrayLayers == 1 ? ImageViewType.TypeCube : ImageViewType.TypeCubeArray)
-            : (arrayLayers == 1 ? ImageViewType.Type2D : ImageViewType.Type2DArray);
+        internal static ImageViewType ToViewType(bool cubemap, uint arrayLayers, bool arrayView = false)
+            => cubemap
+                ? (arrayLayers == 1 ? ImageViewType.TypeCube : ImageViewType.TypeCubeArray)
+                : (arrayLayers == 1 && !arrayView ? ImageViewType.Type2D : ImageViewType.Type2DArray);
 
         /// <summary>Sampler addressing. Reproduced from <c>VkFormats.VdToVkSamplerAddressMode</c>.</summary>
         internal static SamplerAddressMode ToAddressMode(GpuSamplerAddress address) => address switch

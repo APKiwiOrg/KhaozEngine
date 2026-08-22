@@ -39,18 +39,20 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// the sentence it makes about the probe is now true.
     /// </para>
     /// <para>
-    /// A WINDOWED DEVICE STILL CANNOT DRAW ANYTHING, and that refusal moved rather than disappearing. The
-    /// swapchain, the acquire, the resize, the present and the teardown are real, and a pipeline bind or a draw
-    /// refuses on <c>VulkanCommandList</c> naming its own row. That is the right place for it: the device is no
-    /// longer the thing that is missing, and a windowed device that refused at CREATION would hide a swapchain
-    /// path a human at a window is the only instrument for (MV9).
+    /// A WINDOWED DEVICE DRAWS AND PRESENTS, and the sentence that stood here saying it could not is dead. The
+    /// pipeline binds, the vertex and index binds and the draws landed in row 14 (<c>7f4df174</c>), and the
+    /// swapchain, the acquire ring, the resize, the present and the teardown in row 17 (<c>84a9bc6d</c>). The
+    /// only refusal left on <c>VulkanCommandList</c> is a list constructed with no draw or rendering seam,
+    /// which throws naming the seam it was built without. That is a construction fault in the caller rather
+    /// than a ceiling on what a windowed device can do.
     /// </para>
     /// <para>
-    /// ONE PROCESS CANNOT HOLD A HEADLESS DEVICE AND A WINDOWED ONE AT THE SAME TIME, which is decision V-N1's
-    /// single-instance model showing through. A live <c>VkInstance</c>'s extension list is fixed at creation and
-    /// Vulkan offers no way to add one afterwards, so the second configuration is refused by name with the
-    /// ordering rule that resolves it: create the windowed device first, or run them in separate processes. See
-    /// <c>VulkanInstanceRefCount.Acquire</c> for why refusing beats the two silent alternatives.
+    /// ONE PROCESS HOLDS A HEADLESS DEVICE AND A WINDOWED ONE ONLY IN THAT ORDER, WINDOWED FIRST, which is
+    /// decision V-N1's single-instance model showing through. A live <c>VkInstance</c>'s extension list is fixed
+    /// at creation and Vulkan offers no way to add one afterwards, and the windowed list is the headless one
+    /// plus the two surface extensions, so a headless device asked for while a windowed one is live is served by
+    /// it and the other order is refused by name. See <c>VulkanInstanceRefCount.Satisfies</c> for the rule and
+    /// <c>Acquire</c> for why refusing the remaining shortfall beats the two silent alternatives.
     /// </para>
     /// <para>
     /// No platform guard, anywhere, and that is decision V-P1 rather than an omission. Vulkan is not a Windows

@@ -123,9 +123,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>
         /// Claim the shared instance for <paramref name="key"/>, creating it when there is none.
         /// </summary>
-        /// <exception cref="NotSupportedException">An instance is already live for a DIFFERENT configuration. See
-        /// the remarks: this is the one case the single-instance model cannot serve, and refusing loudly is the
-        /// only honest answer available.</exception>
+        /// <exception cref="NotSupportedException">The live instance does not carry what
+        /// <paramref name="key"/> needs. See the remarks: that is the one case the single-instance model cannot
+        /// serve, and refusing loudly is the only honest answer available.</exception>
         /// <remarks>
         /// A live instance carries a fixed extension and layer list, decided when it was created, and Vulkan
         /// offers no way to add one afterwards. So a process that holds a HEADLESS device open (no surface
@@ -135,14 +135,25 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// instance with the surface extensions "just in case" takes down the golden leg, which runs on a machine
         /// with no display server.
         /// <para>
+        /// THE TEST IS SATISFACTION, NOT EQUALITY, and 17.40.0 is where that stopped being a distinction without
+        /// a difference. It was written as equality, which refused the ordering the refusal message itself
+        /// prescribes: a windowed instance's extension list is the headless one PLUS <c>VK_KHR_surface</c> and
+        /// one platform surface extension, so a headless device asked for while a windowed one is live already
+        /// has everything it needs and asks for nothing the live instance lacks. Equality refused it anyway, so
+        /// "create the windowed device first" resolved nothing and a Linux client that opened a window and then
+        /// took a headless capture was refused whichever order it used. The reverse direction is a real
+        /// shortfall and still refuses, as does a windowed request for a DIFFERENT platform surface, and so does
+        /// any change of validation rung, because the layer is a <c>vkCreateInstance</c> argument.
+        /// </para>
+        /// <para>
         /// THE CASE BECAME REACHABLE WHEN THE WINDOWED PATH LANDED
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/527), AND THE DECISION IS TO KEEP REFUSING
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/543). The only shape that produces it is a process
-        /// that opens a HEADLESS device for a bake and then asks for a WINDOWED one, which is an editor or a tool
-        /// rather than a game, and nothing in this fleet does it. Both alternatives cost more than the case is
-        /// worth, so what the case gets instead is a message stating the ORDERING RULE that resolves it: create
-        /// the windowed device first, or run them in separate processes. That rule is the answer rather than a
-        /// workaround, and it is in the package README too.
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/527), AND THE DECISION NOT TO CREATE A SECOND
+        /// INSTANCE STANDS (https://github.com/APKiwiOrg/KhaozEngine/issues/543). What changed is only which
+        /// requests count as a shortfall. A process that opens a HEADLESS device for a bake and then asks for a
+        /// WINDOWED one is an editor or a tool rather than a game, nothing in this fleet does it, and both
+        /// alternatives still cost more than that case is worth. It gets the message stating the ORDERING RULE
+        /// that resolves it, which now actually resolves it: create the windowed device first, or run them in
+        /// separate processes.
         /// </para>
         /// </remarks>
         internal VulkanInstanceLease<T> Acquire(in VulkanInstanceKey key)
@@ -162,7 +173,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     return new VulkanInstanceLease<T>(this, _live);
                 }
 
-                if (!_liveKey.Equals(key)) throw MismatchedConfiguration(_liveKey, key);
+                if (!Satisfies(_liveKey, key)) throw MismatchedConfiguration(_liveKey, key);
 
                 _count++;
                 return new VulkanInstanceLease<T>(this, _live);
@@ -190,6 +201,25 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 // exists to prevent.
                 _destroy(dying);
             }
+        }
+
+        /// <summary>
+        /// Whether the LIVE instance already carries everything <paramref name="asked"/> needs. Wider than
+        /// equality in exactly one direction, and the direction is decided by the extension lists rather than by
+        /// which entry point asked: windowed is headless plus the two surface extensions, so a headless request
+        /// is served by either kind of live instance, and a windowed request is served only by a windowed
+        /// instance on the SAME platform surface. Validation is a hard match either way, since the layer and the
+        /// <c>VkValidationFeaturesEXT</c> chain are creation arguments and a live instance cannot gain them.
+        /// <para>
+        /// Pure and internal, so the whole rule is decidable with no loader, which is the same reason the
+        /// refcount itself keeps its native calls behind an injected factory.
+        /// </para>
+        /// </summary>
+        internal static bool Satisfies(in VulkanInstanceKey live, in VulkanInstanceKey asked)
+        {
+            if (live.Validation != asked.Validation) return false;
+            if (!asked.Windowed) return true;
+            return live.Windowed && live.Window == asked.Window;
         }
 
         static NotSupportedException MismatchedConfiguration(in VulkanInstanceKey live, in VulkanInstanceKey asked)

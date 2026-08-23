@@ -123,6 +123,32 @@ reaches the engine, because passing one back as a preference gets a redirect plu
 explicit-backend `Create*` call throws `GpuBackendRetiredException`. The backend packages themselves need no
 `<PackageReference>`: the `Game3D` umbrella carries all three, and `AppWindow` registers the platform's own.
 
+Four more things move on the repin, beyond the picker rows:
+
+- `Ruinborne.Tests/Client/GraphicsBackendRegistrationTests.cs:149` calls `GpuBackendSelector.IncumbentFor`,
+  which is deleted. The replacement is `GpuBackendSelector.ProbeOS`, which is the single per-platform map now
+  and is also what a failed request falls back to, so the assertion the row was making still has a home. The
+  surrounding comment about the incumbent becoming the fallback target needs rewriting with it.
+- `Ruinborne.Tests/Client/MenuControllerTests.cs:109-121` asserts that
+  `RequiresFrameCapWarning(Metal, Vsync, 0)` forces `DefaultFrameCapHz`. The predicate is a constant `false` on
+  every backend now (the one that ever answered true was the Veldrid Metal present, and `MetalNative` was
+  measured at gate 5 and throttles from vsync alone), so `MenuController.EffectiveFrameCap` becomes a
+  pass-through and the test becomes "the requested cap is honoured verbatim on every backend". Keep calling the
+  predicate rather than deleting the call: it stays as the question an appended backend answers, and a game
+  that stops asking it will silently miss the day one answers true again.
+- `RuinborneGraphicsBackendSettings.DropUnregisteredNativePreference` is no longer needed. It exists because
+  18.0.0 briefly made a stored preference for an unregistered native a hard throw at boot. It does not: a
+  stored preference with no provider falls back to the platform default and reports `FallbackAfterFailure`,
+  which is the signal the game already clears the setting on, and `AppWindow` now registers a provider for the
+  RESOLVED kind rather than only the platform's own. Deleting the workaround is optional (it is harmless), but
+  keeping it drops a preference the engine would have honoured.
+- **The vendored `Veldrid.4.9.104` fork packages in `vendor/khaozengine` are dead weight, and worse than
+  inert.** The engine pins stock `Veldrid 4.9.0` from nuget.org now, purely as `Veldrid.SPIRV`'s dependency, so
+  a stale `4.9.104` sitting in the vendored feed can shadow the restore. Ruinborne carries
+  `Veldrid.4.9.104.nupkg`, `Veldrid.MetalBindings.4.9.104.nupkg` and `Veldrid.OpenGLBindings.4.9.104.nupkg`
+  there. `refresh-engine.sh` still stages a Veldrid fork on every refresh, which is a `game-template` change
+  rather than a per-game one: https://github.com/APKiwiOrg/game-template/issues/42.
+
 ## 17.41.0
 
 17.41.0 gives the three native backends their own golden families, rows 2 and 3 of the Veldrid removal program

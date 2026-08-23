@@ -21,8 +21,11 @@
        rid's native assets next to the assemblies fixes every binding at once. Linux only, because
        the other two platforms already resolve out of runtimes/ and the copy costs about 13 MB per
        project. Build-time, because a plain `dotnet build` followed by `dotnet run` or `dotnet test`
-       is the shape that breaks. A `dotnet publish -r linux-x64` already lays the natives flat on
-       its own, and this target finds nothing left to do there.
+       is the shape that breaks. PUBLISH splits in two, measured rather than assumed: a
+       `dotnet publish -r linux-x64` resolves the rid's assets flat and ships no runtimes/ folder at
+       all, so there is nothing left to do, while a plain rid-agnostic `dotnet publish` keeps the
+       runtimes/ tree and copies none of the build output's flat natives, so it needs the second
+       target below.
 
        The copy is hardlinked and SkipUnchangedFiles, so a rebuild pays nothing. The filter is the
        host rid's native RuntimeTargetsCopyLocalItems rather than a list of file names, so a package
@@ -47,5 +50,26 @@
           DestinationFolder="$(OutDir)"
           SkipUnchangedFiles="true"
           UseHardlinksIfPossible="true" />
+  </Target>
+
+  <!-- The rid-agnostic publish half. `dotnet publish` with no -r republishes from the resolved package
+       assets rather than from the build output, so the flat copies the target above made in $(OutDir)
+       do not travel and the published app is broken again. Add the same host-rid natives to the
+       publish set with a FLAT RelativePath. The runtimes/<rid>/native copies stay where they are
+       rather than being replaced: the .NET host's own deps.json resolution understands the portable
+       rid perfectly well and any [DllImport]-based native in the graph still resolves through it, so
+       removing them to save the duplicate would trade this bug for a worse one. Skipped when a rid IS
+       set, because the SDK already lays those flat and a second copy at the same relative path is a
+       duplicate-file error. -->
+  <Target Name="KhaozEngineFlattenHostNativesForPublish"
+          AfterTargets="ComputeResolvedFilesToPublishList"
+          Condition="'$(KhaozEngineFlattenHostNatives)' == 'true' and '$([MSBuild]::IsOSPlatform(Linux))' == 'true' and '$(NETCoreSdkPortableRuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' == ''">
+    <ItemGroup>
+      <ResolvedFileToPublish Include="@(RuntimeTargetsCopyLocalItems)"
+                             Condition="'%(RuntimeTargetsCopyLocalItems.AssetType)' == 'native' and '%(RuntimeTargetsCopyLocalItems.RuntimeIdentifier)' == '$(NETCoreSdkPortableRuntimeIdentifier)'">
+        <RelativePath>%(Filename)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
   </Target>
 </Project>

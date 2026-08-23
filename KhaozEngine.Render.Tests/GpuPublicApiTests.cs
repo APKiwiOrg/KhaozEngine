@@ -8,11 +8,17 @@ namespace KhaozEngine.Tests;
 
 /// <summary>
 /// Reflection guard on the GPU seam's no-leak property: nothing an outside assembly can see on the public
-/// surface of <c>KhaozEngine.Gpu</c> may be a Veldrid type. The Veldrid edge that survives 18.0.0's deletion of
-/// the incumbent backend is the SHADER TOOLCHAIN and nothing else, <c>Veldrid.SPIRV</c> plus the base
-/// <c>Veldrid</c> assembly its reflection hands description types back from, and the seam keeps that inside
-/// method bodies while exposing only engine value types / interfaces. A Veldrid type surfacing in a public or
-/// protected signature is an accidental seam breach the compiler would not catch.
+/// surface of <c>KhaozEngine.Gpu</c> may be a toolchain type. The seam keeps the shader toolchain inside method
+/// bodies and exposes only engine value types / interfaces, so a toolchain type reaching a public or protected
+/// signature is an accidental seam breach the compiler would not catch.
+/// <para>
+/// THE <c>Veldrid</c> ROWS ARE KEPT ON PURPOSE AND CANNOT FAIL ANY MORE. Nothing named Veldrid is left in the
+/// graph: the incumbent backend was deleted in 18.0.0 and the toolchain it left behind was swapped for
+/// <c>Silk.NET.Shaderc</c> plus <c>Silk.NET.SPIRV.Cross</c> in the same release. The walk is kept as the
+/// pattern a future toolchain leak is caught by, because rewriting it from scratch later is the expensive
+/// half, and <c>docs/DEPENDENCY-SEAMS.md</c> carries that reasoning. The half that can still fail is
+/// <c>ArchitectureTests.NoTwoShaderToolchains</c>, which refuses the package rather than the type.
+/// </para>
 /// </summary>
 public class GpuPublicApiTests
 {
@@ -25,7 +31,7 @@ public class GpuPublicApiTests
         bool clean = leaks.Count == 0;
         Assert.True(clean,
             "KhaozEngine.Gpu leaks Veldrid types on its externally visible surface (the GPU seam must keep the " +
-            "Veldrid.SPIRV shader toolchain inside method bodies):\n" + string.Join("\n", leaks));
+            "shader toolchain inside method bodies):\n" + string.Join("\n", leaks));
     }
 
     /// <summary>
@@ -118,13 +124,17 @@ public class GpuPublicApiTests
     }
 
     /// <summary>
-    /// The IL half of the no-Veldrid-edge guard (decisions P2, V-P3 and M-P3), and the half that actually binds.
-    /// <c>ArchitectureTests</c> asserts each backend declares no Veldrid <c>PackageReference</c>, which catches
-    /// a deliberate edit to the project file. It cannot catch the subtler failure: a backend reaches Veldrid
-    /// through <c>KhaozEngine.Gpu</c>'s transitive closure whatever the project file says, so an INTERNAL helper
-    /// signature that mentioned a Veldrid type would compile, would put a Veldrid assembly reference in that
-    /// assembly's IL, and would be invisible to every public-surface scan there is. That is precisely why the
-    /// cross-compile helper's signatures are engine types, and this is what proves it.
+    /// The IL half of the no-toolchain-edge guard (decisions P2, V-P3 and M-P3), and the half that actually
+    /// binds. <c>ArchitectureTests</c> asserts each backend declares no toolchain <c>PackageReference</c>, which
+    /// catches a deliberate edit to the project file. It cannot catch the subtler failure: a backend reaches the
+    /// toolchain through <c>KhaozEngine.Gpu</c>'s transitive closure whatever the project file says, so an
+    /// INTERNAL helper signature that mentioned one of its types would compile, would put that assembly
+    /// reference in the backend's IL, and would be invisible to every public-surface scan there is. That is
+    /// precisely why the cross-compile helper's signatures are engine types, and this is what proves it.
+    /// <para>
+    /// The rows below name <c>Veldrid</c>, which no longer exists in the graph, and they are kept for the
+    /// reason the class summary gives: the walk is the pattern, not the vendor.
+    /// </para>
     /// </summary>
     [Theory]
     [InlineData("KhaozEngine.Gpu.D3D11")]

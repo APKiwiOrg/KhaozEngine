@@ -9,9 +9,11 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// The internal, Veldrid-free SPIRV cross-compile helper in <c>KhaozEngine.Gpu</c> (decision P2, section 3 of
-    /// <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c>): the single seat the native Direct3D 11
-    /// backend reaches SPIRV-Cross through, so the backend itself carries no Veldrid edge.
+    /// The internal, toolchain-free SPIRV cross-compile helper in <c>KhaozEngine.Gpu</c> (decision P2, section 3
+    /// of <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c>): the single seat the native Direct3D 11
+    /// backend reaches SPIRV-Cross through, so the backend itself declares no toolchain package. The decision
+    /// was written as "Veldrid-free" and the package left in 18.0.0, taking the wording with it and not the
+    /// rule.
     /// <para>
     /// Two properties are worth separating. That it WORKS (GLSL in, HLSL plus usable reflection out) is the
     /// ordinary half. That its contract mentions no Veldrid type is the half the whole layering decision rests
@@ -21,7 +23,8 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// Device-free and CPU-only, so this runs on every leg. Only <c>HLSL</c> is emitted here, unlike
     /// <c>ShaderValidation</c>, which cross-compiles to all four languages: this helper exists for the Direct3D
-    /// path, and every other backend still goes through Veldrid.
+    /// path, and the same helper's MSL members sit under their own pin and are covered by the Metal tests. The
+    /// Vulkan backend consumes SPIR-V and cross-compiles nothing at all.
     /// </para>
     /// </summary>
     public sealed class SpirvCrossCompileTests
@@ -234,10 +237,15 @@ void main() { fsColor = vec4(1, 0, 0, 1); }";
 
         /// <summary>
         /// THE LAYERING ASSERTION. Every member of the helper and of its result types that the backend can see
-        /// (public or internal, which is everything not private) must be expressed in engine types. A Veldrid
-        /// type anywhere in this contract would compile fine, would put a Veldrid assembly reference in
+        /// (public or internal, which is everything not private) must be expressed in engine types. A toolchain
+        /// type anywhere in this contract would compile fine, would put that assembly reference in
         /// <c>KhaozEngine.Gpu.D3D11</c>'s IL the moment the backend called it, and would defeat decision P2 through
         /// an API surface no public-surface scan looks at.
+        /// <para>
+        /// The walk below looks for a <c>Veldrid</c> assembly, which 18.0.0 left nothing of, so it cannot fail
+        /// any more. It is kept for the same reason <c>GpuPublicApiTests</c> keeps its rows: the walk is the
+        /// pattern, not the vendor. <c>ArchitectureTests.NoTwoShaderToolchains</c> is the half that binds.
+        /// </para>
         /// </summary>
         [Fact]
         public void TheHelpersContract_NamesNoVeldridType()

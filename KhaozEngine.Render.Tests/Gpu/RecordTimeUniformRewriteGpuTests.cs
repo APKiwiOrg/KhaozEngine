@@ -17,7 +17,8 @@ namespace KhaozEngine.Tests.Gpu
     /// <para><b>WHY A MEASUREMENT AND NOT A CODE READ.</b> The ring's own doc comments say a record-time write is
     /// a plain memcpy into the current frame's mapped segment and is not ordered against the draws, so the last
     /// write in a frame decides every byte. That is a statement about three implementations, and #483 exists
-    /// because the same statement was made about a fourth thing (Veldrid's Direct3D 11 leg) where it is FALSE.
+    /// because the same statement was made about a fourth thing (the Direct3D 11 leg the engine shipped until
+    /// <c>18.0.0</c>) where it was FALSE.
     /// A verdict of "safe" on 30-odd renderer sites rests on knowing exactly which backends collapse, and the
     /// only way to know is to make one collapse and photograph it.</para>
     ///
@@ -34,17 +35,17 @@ namespace KhaozEngine.Tests.Gpu
     /// per-draw uniforms by dynamic offset. So a red run here means the ring stopped being a ring, which is a
     /// change that has to be noticed, not a bug that got fixed.</para>
     ///
-    /// <para><b>THE INCUMBENT IS RECORDED BESIDE IT AND NOT ASSERTED</b>, the trade
-    /// <see cref="MetalTwoUniformBufferGpuTests"/> already makes: what the Veldrid Metal leg did with the same
-    /// list is the other half of the audit's evidence, and a row that fails the day somebody else changes it
-    /// would be a failing suite reporting news rather than a regression.</para>
+    /// <para><b>IT USED TO RECORD A SECOND, UNASSERTED MEASUREMENT beside the native one</b>, taken on the
+    /// Veldrid Metal leg that shipped alongside it. That leg was deleted in <c>18.0.0</c> and the control went
+    /// with it, so this row now measures exactly the one backend its name claims. The audit's other half is in
+    /// #483's own record.</para>
     ///
     /// <para><b>DORMANT OFF macOS RATHER THAN SKIPPED</b>, the phase-3 row-19 rule: under <c>KE_GPU_TESTS=1</c>
     /// the Vulkan and Direct3D 11 legs run this assembly in strict mode where a skip is a failure, so the row
     /// returns early with the reason recorded instead.</para>
     ///
     /// <para><b>IT SITS IN <c>NativeDeviceLifecycle</c></b> because it builds a whole <c>MTLDevice</c> and queue
-    /// beside the suite's own, and because it stands the incumbent up next to it.</para>
+    /// beside the suite's own.</para>
     /// </summary>
     [Collection("NativeDeviceLifecycle")]
     public sealed class RecordTimeUniformRewriteGpuTests
@@ -75,40 +76,11 @@ namespace KhaozEngine.Tests.Gpu
             (Color first, Color second) = Measure(native.GpuDevice);
             _out.WriteLine($"native Metal ({native.Capabilities.DeviceName}): {Describe(first, second)}");
 
-            RecordIncumbent();
-
             // The second draw reads the second value on every backend: that half is what says the probe worked at
             // all rather than binding nothing.
             Assert.Equal(Blue, second);
             // And the first draw reads it too, which is the collapse. On an ordered backend this line reads red.
             Assert.Equal(Blue, first);
-        }
-
-        // THE CONTROL. Recorded, never asserted: the Veldrid Metal leg was the OTHER shipped backend on this
-        // machine, and what it did with the same list was evidence the audit cites rather than a contract this
-        // repository owns.
-        void RecordIncumbent()
-        {
-            try
-            {
-                using GpuDeviceContext incumbent = GpuDeviceContext.CreateHeadless(GpuBackendKind.Metal);
-                if (incumbent.Backend != GpuBackendKind.Metal)
-                {
-                    _out.WriteLine($"control not taken: the incumbent came up on {incumbent.Backend}.");
-                    return;
-                }
-
-                (Color first, Color second) = Measure(incumbent.GpuDevice);
-                _out.WriteLine($"incumbent Metal via Veldrid ({incumbent.Capabilities.DeviceName}): "
-                    + Describe(first, second));
-            }
-            catch (Exception ex)
-            {
-                // Diagnostic only. A machine that cannot stand the incumbent up still has a native measurement
-                // worth taking, and losing the row to the control's failure trades the measurement for a footnote.
-                _out.WriteLine("control not taken: the incumbent Metal device threw (" + ex.GetType().Name + ": "
-                    + ex.Message + ").");
-            }
         }
 
         /// <summary>

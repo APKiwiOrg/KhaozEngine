@@ -656,7 +656,7 @@ namespace KhaozEngine.Showcase
             batch.DrawString(A.Big, "KhaozEngine.Render2D", new Vector2(t.X + 24f, t.Y + 16f), (Color)GuiTheme.Default.Text);
             batch.DrawString(A.Small, "The quick brown fox jumps over the lazy dog.", new Vector2(t.X + 24f, t.Y + 76f), new Color(0.8f, 0.85f, 0.95f, 1f));
             batch.DrawString(A.Small, "0123456789  !?@#&*()  +-=/<>  {}[]", new Vector2(t.X + 24f, t.Y + 108f), new Color(0.9f, 0.8f, 0.6f, 1f));
-            batch.DrawString(A.Small, "Alpha blending, tinting, batched quads on Veldrid.", new Vector2(t.X + 24f, t.Y + 140f), new Color(0.7f, 0.95f, 0.8f, 1f));
+            batch.DrawString(A.Small, "Alpha blending, tinting, batched quads in Render2D.", new Vector2(t.X + 24f, t.Y + 140f), new Color(0.7f, 0.95f, 0.8f, 1f));
         }
     }
 

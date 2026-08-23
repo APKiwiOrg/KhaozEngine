@@ -19,7 +19,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// cannot ask for a fifth, and it is a fact about the seam rather than an optimistic bound.
     /// </para>
     /// <para>
-    /// THE RESOURCE IS TYPELESS, THE VIEWS ARE CONCRETE, exactly as the incumbent does it. That is what lets one
+    /// THE RESOURCE IS TYPELESS, THE VIEWS ARE CONCRETE, exactly as the incumbent did it. That is what lets one
     /// depth texture carry both a depth-stencil view that writes it and a shader resource view that samples it,
     /// which the shadow path needs. <see cref="D3D11Formats"/> holds the three format readings.
     /// </para>

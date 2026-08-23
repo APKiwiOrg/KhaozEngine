@@ -98,7 +98,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <summary>
         /// The swapchain's framebuffer, and NULL on a headless device, which is the same answer the Veldrid path
-        /// gives when there is no main swapchain. Decision W2 makes this the SAME object for the life of the
+        /// gave when there is no main swapchain. Decision W2 makes this the SAME object for the life of the
         /// device: a resize changes its size and its views, never its identity, so anything may cache it.
         /// </summary>
         public IGpuFramebuffer? SwapchainFramebuffer => _swapchain?.Framebuffer;
@@ -369,7 +369,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// DECISION W3's QUEUE: store the size and return. Takes no lock, makes no native call and never blocks,
         /// so a window callback on any thread is safe even while the submit thread holds the lock for a replay.
         /// The submit thread applies it at the next present boundary, where it provably owns the context. A
-        /// headless device has nothing to resize and says so by doing nothing, which is what the incumbent does.
+        /// headless device has nothing to resize and says so by doing nothing, which is what the incumbent did.
         /// </summary>
         public void ResizeSwapchain(uint w, uint h) => _swapchain?.QueueResize(w, h);
 
@@ -462,8 +462,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// before it disposes the device. Idempotent, and it never throws.
         /// <para>
         /// IT DOES THE ORDERED RELEASE RATHER THAN JUST FLIPPING THE TOKEN, which is where this device differs
-        /// from the Veldrid wrapper and has to. There, destroying the Veldrid <c>GraphicsDevice</c> frees every
-        /// child object, so latching first and destroying second is the whole of it. Here the children are COM
+        /// from the Veldrid wrapper and has to. There, destroying the Veldrid <c>GraphicsDevice</c> freed every
+        /// child object, so latching first and destroying second was the whole of it. Here the children are COM
         /// objects held by reference count: a token flipped before the swapchain, the samplers and the fence
         /// timeline were released would turn every one of those releases into a no-op (they all read the token),
         /// and the <c>ID3D11Device</c> would then stay alive holding all of them. So the releases happen here,
@@ -528,7 +528,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         // ClearState before the release, so the context is not holding a reference to anything the release is
         // about to drop, and Flush so the driver is handed whatever is still buffered rather than discovering it
-        // during destruction. This is the incumbent's shape (Veldrid's D3D11 device does the same pair) and it is
+        // during destruction. This is the incumbent's shape (Veldrid's D3D11 device did the same pair) and it is
         // the last thing this device does.
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]

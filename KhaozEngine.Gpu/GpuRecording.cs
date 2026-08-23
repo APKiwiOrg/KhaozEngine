@@ -59,9 +59,9 @@ namespace KhaozEngine.Gpu
     /// can touch anything.
     /// <para>
     /// WHY THIS IS NOT LEFT TO THE BACKENDS. They disagree, and each disagreement is load-bearing for that
-    /// backend rather than negotiable: the Veldrid Direct3D11 leg rejects a second recording outright, the
+    /// backend rather than negotiable: the Veldrid Direct3D11 leg rejected a second recording outright, the
     /// engine's own native Direct3D11, Vulkan and Metal backends each tolerate N concurrent recordings for
-    /// three different structural reasons, and the Veldrid Metal and Vulkan legs silently produce a
+    /// three different structural reasons, and the Veldrid Metal and Vulkan legs silently produced a
     /// half-recorded frame. Code written against any one of those does not port, and the machine a fallback
     /// lands on swaps the backend without telling the code. So the refusal lives above them all, where it reads
     /// the same everywhere and is provable with no GPU at all

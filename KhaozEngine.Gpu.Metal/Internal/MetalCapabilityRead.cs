@@ -37,14 +37,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         internal const bool ClipSpaceYInverted = false;
 
-        /// <summary>Metal normalized device depth is [0, 1], not the legacy GL [-1, 1], and the incumbent says so
+        /// <summary>Metal normalized device depth is [0, 1], not the legacy GL [-1, 1], and the incumbent said so
         /// as a hardcoded <c>IsDepthRangeZeroToOne</c> property.</summary>
         internal const bool DepthRangeZeroToOne = true;
 
         /// <summary>
         /// TRUE, hardcoded, reproducing the incumbent's <c>GraphicsDeviceFeatures(samplerAnisotropy: true)</c>.
         /// There is no feature bit to read: <c>MTLSamplerDescriptor.maxAnisotropy</c> is a plain field every Metal
-        /// device honours, so the incumbent's hardcode is correct rather than a shortcut, and asking a device
+        /// device honours, so the incumbent's hardcode was correct rather than a shortcut, and asking a device
         /// would be inventing a question the API does not have.
         /// </summary>
         internal const bool SamplerAnisotropy = true;
@@ -52,7 +52,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <summary>
         /// FALSE, AND IT IS THE ONE CAPABILITY THAT DIFFERS FROM BOTH OTHER NATIVE BACKENDS.
         /// <c>MTLSamplerDescriptor</c> has no LOD bias field at all, so there is nothing to set and nothing to
-        /// ask, and the incumbent reaches the same answer the same way with
+        /// ask, and the incumbent reached the same answer the same way with
         /// <c>GraphicsDeviceFeatures(samplerLodBias: false)</c>.
         /// </summary>
         internal const bool SamplerLodBias = false;
@@ -78,7 +78,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         internal const bool SupportsShadowMaps = true;
 
-        /// <summary>Compute is core Metal rather than an optional feature, and the incumbent says so with
+        /// <summary>Compute is core Metal rather than an optional feature, and the incumbent said so with
         /// <c>GraphicsDeviceFeatures(computeShader: true)</c>. There is no device to ask.</summary>
         internal const bool SupportsCompute = true;
 
@@ -94,7 +94,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <summary>One sample, which is how "no MSAA" is spelled everywhere in the seam, and the answer
         /// <see cref="HighestSupportedSampleCount"/> falls back to when a device answers no to every count it is
-        /// asked about. The incumbent has the same floor, as the <c>return TextureSampleCount.Count1</c> after its
+        /// asked about. The incumbent had the same floor, as the <c>return TextureSampleCount.Count1</c> after its
         /// walk finds nothing.</summary>
         internal const int NoMultisampling = 1;
 
@@ -112,7 +112,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// DOWNWARD MATTERS AND UPWARD WOULD BE A DIFFERENT ANSWER. The supported counts are not required to be
         /// contiguous, so a device that answers yes to 4 and 16 but no to 8 stops an upward walk at 4 and
         /// under-reports the device by a factor of four, which on this member is a menu quietly offering less MSAA
-        /// than the card has and a golden baked at the wrong sample count. The incumbent walks downward, so this
+        /// than the card has and a golden baked at the wrong sample count. The incumbent walked downward, so this
         /// does.
         /// </para>
         /// </summary>

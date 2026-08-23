@@ -30,7 +30,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// AND THE COMPUTE WORKGROUP SIZE COMES OFF THE MODULE, unchanged (<see cref="SpirvLocalSize"/>). Metal needs
     /// the same numbers for <c>dispatchThreadgroups</c>'s <c>threadsPerThreadgroup</c> that the seam's
     /// <c>IGpuComputeShader.ThreadGroupSize*</c> reports, and MSL does not carry the size the way SPIR-V does, so
-    /// the module is the only source. The incumbent takes them from
+    /// the module is the only source. The incumbent took them from
     /// <c>ComputePipelineDescription.ThreadGroupSize*</c>, which is that same source one layer up. On a cache hit
     /// it comes out of the payload instead, which is the one place a hit answers something the emission would
     /// have answered (<see cref="MetalMslCacheEntry"/> carries why).

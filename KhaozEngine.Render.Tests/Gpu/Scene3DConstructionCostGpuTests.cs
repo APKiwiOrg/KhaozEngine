@@ -25,9 +25,10 @@ namespace KhaozEngine.Tests.Gpu
     /// and a threshold on a hosted software rasterizer is a flake with a schedule.
     /// </para>
     /// <para>
-    /// <b>IT HOLDS ON EVERY BACKEND, INCLUDING THE ONES THAT NEVER REACH THE FRONT END.</b> The incumbent Veldrid
-    /// device and the native Vulkan and Direct3D 11 backends compile through
-    /// <see cref="SpirvCompileCache.Shared"/>, so a repeat is a hit and the counter stands still. The native Metal
+    /// <b>IT HOLDS ON EVERY BACKEND, INCLUDING THE ONES THAT NEVER REACH THE FRONT END.</b> The native Vulkan
+    /// and Direct3D 11 backends compile through
+    /// <see cref="SpirvCompileCache.Shared"/>, as the incumbent Veldrid device did, so a repeat is a hit and
+    /// the counter stands still. The native Metal
     /// backend serves a warm run out of its MSL disk cache and never asks the front end at all, so the counter
     /// stands still there for a different reason. Zero either way is the claim, which is what makes this one test
     /// rather than a per-backend family.

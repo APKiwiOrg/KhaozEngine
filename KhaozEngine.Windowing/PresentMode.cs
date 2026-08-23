@@ -8,10 +8,11 @@ namespace KhaozEngine.Windowing
     public enum PresentMode
     {
         /// <summary>Sync presentation to the display's vertical blank (the swapchain's <c>SyncToVerticalBlank</c>).
-        /// Caps to the refresh rate where the backend honours it. NOTE: the Veldrid Metal path does not reliably
-        /// throttle the CPU-side frame rate from this alone (a Mac client can free-run well above the refresh). The
-        /// default <see cref="FrameCap.Auto"/> handles that by resolving to a real cap on Metal + vsync, so you only
-        /// need an explicit <see cref="AppWindow.FrameCapHz"/> to override it.</summary>
+        /// Caps to the refresh rate where the backend honours it. NOTE: the Veldrid Metal path did not reliably
+        /// throttle the CPU-side frame rate from this alone (a Mac client could free-run well above the refresh),
+        /// and <see cref="FrameCap.Auto"/> resolved to a real cap there. That backend was deleted in 18.0.0 and the
+        /// native Metal present throttles from vsync, so no explicit
+        /// <see cref="AppWindow.FrameCapHz"/> is needed.</summary>
         Vsync,
 
         /// <summary>Present with no vertical-blank sync (lowest latency, tearing possible, uncapped fps unless a

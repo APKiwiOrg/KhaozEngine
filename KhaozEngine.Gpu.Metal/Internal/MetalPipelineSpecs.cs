@@ -29,7 +29,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// render encoder, plus the two the depth-stencil state object is built from.
     ///
     /// <para><b>RESOLVED HERE RATHER THAN AT THE BIND, because every one of them is a pure map over an enum.</b>
-    /// The incumbent does the same thing in the same place, and the alternative is a switch per bind on a path
+    /// The incumbent did the same thing in the same place, and the alternative is a switch per bind on a path
     /// that runs per pipeline change per frame.</para>
     ///
     /// <para><b>THE EMISSION IS NOT THIS ROW'S, AND THE SPLIT IS DELIBERATE.</b> Section 6.3's pipeline-state
@@ -76,7 +76,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     ///
     /// <para><b>A DEPTH-TEST-OFF PIPELINE IS <c>Always</c> WITH WRITES OFF, which is where the seam's three-field
     /// depth state loses one field.</b> Metal's depth-stencil descriptor has no test enable: the test is the
-    /// comparison, so "off" is the comparison that always passes. The incumbent reaches the same values through
+    /// comparison, so "off" is the comparison that always passes. The incumbent reached the same values through
     /// Veldrid's own <c>DepthStencilStateDescription</c>, which resolves the flag before Metal sees it. Doing it
     /// here rather than at the descriptor keeps the seam's whole depth state resolved in one place a test can
     /// read.</para>

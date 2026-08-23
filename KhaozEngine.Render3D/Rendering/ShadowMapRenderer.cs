@@ -321,8 +321,8 @@ namespace KhaozEngine.Render3D.Rendering
             // frames keeps every byte identical to what the per-slot writes left behind - including the slots past
             // `count` and the unread tail of each slot, which the depth shaders never declare (the dissolve block
             // stops at 96 of the 256 slot bytes). Covering offset 0 to SizeInBytes also matters on D3D11: only a
-            // whole-buffer write escapes Veldrid's partial-uniform-write staging route, which Maps the immediate
-            // context and stalls on the GPU (see the _frameImage note in ModelRenderer.FrameUbo.cs).
+            // whole-buffer write escapes the partial-uniform-write staging route the incumbent had, which Mapped the
+            // immediate context and stalled on the GPU (see the _frameImage note in ModelRenderer.FrameUbo.cs).
             cl.UpdateBuffer(_lightUbo, 0, (ReadOnlySpan<byte>)_lightImage);
             cl.SetFramebuffer(_fb);
             cl.ClearColorTarget(0, new Color(1f, 1f, 1f, 1f));  // 1.0 = far plane = no caster (whole atlas)

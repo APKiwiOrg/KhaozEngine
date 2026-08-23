@@ -14,7 +14,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </para>
     /// <para>
     /// WHY IT IS NOT A SUBMIT RECEIPT, which is the whole reason work-breakdown row 8 waited on row 13a. Veldrid's
-    /// Direct3D 11 fence is set the instant <c>ExecuteCommandList</c> returns, so a ring recycling against one
+    /// Direct3D 11 fence was set the instant <c>ExecuteCommandList</c> returned, so a ring recycling against one
     /// would hand out a segment the moment the CPU finished ASKING for the work rather than when the GPU finished
     /// DOING it, and the next frame would overwrite uniforms a draw in flight is still reading. That failure is
     /// silent, intermittent and looks like a rendering bug several frames away from its cause. A counter the GPU

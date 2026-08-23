@@ -5,7 +5,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// is decided. Both are WRAP on all three axes, because the seam's shared pair is contractually wrap and the
     /// incumbent's pair is wrap.
     ///
-    /// <para><b>THESE MIRROR THE INCUMBENT'S BUILT-INS, NOT THEIR ENGINE NAMESAKES.</b> The incumbent wraps
+    /// <para><b>THESE MIRROR THE INCUMBENT'S BUILT-INS, NOT THEIR ENGINE NAMESAKES.</b> The incumbent wrapped
     /// Veldrid's own <c>GraphicsDevice.PointSampler</c> and <c>LinearSampler</c>, which come from
     /// <c>Veldrid.SamplerDescription.Point</c> and <c>.Linear</c>, and both are built as
     /// <c>SamplerAddressMode.Wrap</c> on U, V and W. The engine's own <see cref="GpuSamplerDescription.Point"/>

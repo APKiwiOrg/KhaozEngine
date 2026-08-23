@@ -22,7 +22,7 @@ namespace KhaozEngine.Tests.Gpu
     /// Device-free, so they run under a plain <c>dotnet test</c> on any OS. The window handle is never read: on
     /// every path here the throw lands before a swapchain source is built. The opposite leg, a genuine provider
     /// creation failure actually FALLING BACK, is deliberately not pinned here, because it ends in a real device
-    /// creation on the platform's Veldrid incumbent.
+    /// creation on the platform's default backend.
     /// </para>
     /// <para>
     /// Registry and environment are both process-wide, hence the non-parallel collection: the backend is named

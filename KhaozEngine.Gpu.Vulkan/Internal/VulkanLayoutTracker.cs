@@ -21,7 +21,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// which is what makes two lists composable in any submit order.</description></item>
     /// </list>
     ///
-    /// <para><b>WHY LIST-LOCAL RATHER THAN ON THE TEXTURE (V-F7, section 2.5).</b> The incumbent tracks Vulkan
+    /// <para><b>WHY LIST-LOCAL RATHER THAN ON THE TEXTURE (V-F7, section 2.5).</b> The incumbent tracked Vulkan
     /// image layouts as recording-time mutable state ON the texture: <c>VkTexture</c>'s layout array is read to
     /// decide whether a barrier is needed and written to record what the barrier did. Two recordings touching the
     /// same texture read and write the same array, and the loser records either a redundant barrier, which is

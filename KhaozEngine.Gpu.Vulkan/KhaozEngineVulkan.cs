@@ -23,12 +23,13 @@ namespace KhaozEngine.Gpu.Vulkan
     /// THIS BACKEND IS THE LINUX DEFAULT SINCE 17.40.0. <c>GpuBackendSelector.ProbeOS</c> maps Linux, and the
     /// unrecognized-OS catch-all, to <see cref="GpuBackendKind.VulkanNative"/>, so a game that references this
     /// package and calls <see cref="Register"/> runs on it without naming anything, and a game that does
-    /// neither falls back to <see cref="GpuBackendKind.Vulkan"/> with a WARN naming the missing registration
-    /// rather than failing to boot. The flip was taken by DECISION on 2026-08-22, ahead of two of the five
+    /// neither gets a wiring error naming the missing registration, because every backend is provider-backed
+    /// since 18.0.0 and there is no second answer to fall back to. The flip was taken by DECISION on 2026-08-22,
+    /// ahead of two of the five
     /// rollout gates of section 17 (https://github.com/APKiwiOrg/KhaozEngine/issues/529): gate 3's <c>sync</c>
     /// validation job and gate 5's human windowed pass are still open and still carry an instrument. The
-    /// Veldrid Vulkan backend stays selectable by <c>KE_GRAPHICS_BACKEND=vulkan</c> for ONE release (decision
-    /// V-RO2), so a regression here is one environment variable away from an A/B on the same build.
+    /// Veldrid Vulkan backend stayed selectable by <c>KE_GRAPHICS_BACKEND=vulkan</c> for one release (decision
+    /// V-RO2) and was deleted in 18.0.0, so that token is retired and redirects here with a WARN.
     /// </para>
     /// <para>
     /// THIS PARAGRAPH IS A LEDGER, AND A STALE ONE IS WORSE THAN NONE, because it is the first thing a consumer

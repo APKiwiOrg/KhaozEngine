@@ -90,8 +90,8 @@ namespace KhaozEngine.Gpu
         /// failed has no caps to be bad.
         /// <para>
         /// Pure and separate from the logging so both device-creation paths can be pinned headlessly. The failure
-        /// string is the one input an ADOPTED native device must supply for itself (there is no Veldrid device for
-        /// the context to probe), and a provider whose raw-pointer probe faulted has to still produce this warning
+        /// string is the one input an ADOPTED native device must supply for itself (the context has no device object
+        /// of its own to probe), and a provider whose raw-pointer probe faulted has to still produce this warning
         /// instead of a bare "unknown" INFO line.
         /// </para>
         /// </summary>

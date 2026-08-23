@@ -48,7 +48,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// DEPARTURE TWO (V-W2), AND THE POINT OF IT IS THAT THE THROW IS REACHABLE. The incumbent means to refuse
+        /// DEPARTURE TWO (V-W2), AND THE POINT OF IT IS THAT THE THROW IS REACHABLE. The incumbent meant to refuse
         /// a surface that offers no sRGB format when sRGB was asked for, and its check compares a variable it has
         /// already set to <c>VK_FORMAT_UNDEFINED</c> against an sRGB format, so the condition is never true and
         /// the throw is dead code. Reproducing a bug a different device WOULD reach is not parity.

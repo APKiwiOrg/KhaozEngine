@@ -193,7 +193,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// The barrier is the site with the longest fuse: it only exists on a device that reports GPU completion
-        /// fences, so on the Veldrid Direct3D11 leg it is unreachable and always was. It goes live the day a
+        /// fences, so on the Veldrid Direct3D11 leg it was unreachable and always had been. It goes live the day a
         /// Direct3D11 backend issues real fences, which the engine's own native one now does. Driven here on a
         /// device that reports fences, so the shape is proved before the hardware makes it matter.
         /// </summary>

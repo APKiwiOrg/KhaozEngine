@@ -41,7 +41,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// THE SHIPPED PATH ASKS FOR NON-SRGB, and this pins the constant rather than the reasoning. The one
-        /// windowed site in <c>GpuDeviceContext</c> builds its Veldrid <c>SwapchainDescription</c> with
+        /// windowed site in <c>GpuDeviceContext</c> built its Veldrid <c>SwapchainDescription</c> with
         /// <c>colorSrgb: false</c>, and <see cref="GpuWindowedDeviceRequest"/> has no field for it at all, so a
         /// native device cannot ask for the other arm however it is created.
         /// </summary>

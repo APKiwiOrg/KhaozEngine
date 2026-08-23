@@ -80,7 +80,7 @@ namespace KhaozEngine.Tests.Gpu
         /// THE PREFIX PROPERTY, which is a property of the LAYOUT and survives any amount of reordering inside
         /// the shader bodies. Drop the water VERTEX's bathymetry tap (binding 0) and the vertex is left reading
         /// the ocean map (binding 2) while the fragment still reads both, so the vertex's textures are no longer
-        /// a prefix of the layout's: Veldrid binds the ocean map at texture index 1 for every stage, the vertex's
+        /// a prefix of the layout's: Veldrid bound the ocean map at texture index 1 for every stage, the vertex's
         /// emission numbers its one texture 0, and no binding number reconciles that.
         /// <para>
         /// The perturbation is one expression replaced by the fallback constant already sitting beside it, which
@@ -195,7 +195,7 @@ void main() { o = " + skipsA + @"; }";
 
         /// <summary>
         /// A RESOURCE NEITHER STAGE REFERENCES must not trip anything. The cross-compiler drops it from the
-        /// emission entirely and Veldrid reflects an unreferenced separate texture as a <c>UniformBuffer</c> with
+        /// emission entirely and Veldrid reflected an unreferenced separate texture as a <c>UniformBuffer</c> with
         /// no stages, so counting it would be counting a phantom. The guard sees only what the emission kept,
         /// which makes this a clean pass rather than a false alarm (and, deliberately, a false NEGATIVE for the
         /// real slot the dead element still consumes).

@@ -180,8 +180,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         // The list check, shared by both overloads. A foreign list is refused by NAME rather than by a cast
-        // exception, because the two ways to get here (a list from another device, or a list from the Veldrid
-        // backend on a machine running both) look identical at the call site and neither is a bug in this backend.
+        // exception, because the two ways to get here (a list from another device, or, until 18.0.0, a list from
+        // the Veldrid backend on a machine running both) look identical at the call site and neither is a bug here.
         static VulkanCommandList Recording(IGpuCommandList cl)
         {
             ArgumentNullException.ThrowIfNull(cl);

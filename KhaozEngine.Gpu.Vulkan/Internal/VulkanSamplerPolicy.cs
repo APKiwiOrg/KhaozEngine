@@ -11,9 +11,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// is what the sampler is really created with.</param>
     /// <param name="AnisotropyEnable"><c>VkSamplerCreateInfo.anisotropyEnable</c>.</param>
     /// <param name="MaxAnisotropy"><c>maxAnisotropy</c>, 0 when anisotropy is off.</param>
-    /// <param name="MinLod">Always 0, which is the value the engine's Veldrid path hardcodes.</param>
+    /// <param name="MinLod">Always 0, which is the value the engine's Veldrid path hardcoded.</param>
     /// <param name="MaxLod">Always <c>uint.MaxValue</c> as a float, which is the value the engine's Veldrid path
-    /// hardcodes and which every implementation clamps to the real chain.</param>
+    /// hardcoded and which every implementation clamps to the real chain.</param>
     /// <param name="MipLodBias">The seam's whole-mip-level bias.</param>
     internal readonly record struct VulkanSamplerSpec(
         GpuSamplerAddress AddressU,
@@ -60,7 +60,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         internal const float MinLod = 0f;
 
         /// <summary>The maximum LOD every sampler on this backend is created with:
-        /// <c>uint.MaxValue</c> converted to a float, which is the value the engine's Veldrid path passes and which
+        /// <c>uint.MaxValue</c> converted to a float, which is the value the engine's Veldrid path passed and which
         /// arrives at <c>VkSamplerCreateInfo.maxLod</c> through the same widening there.</summary>
         internal const float MaxLod = uint.MaxValue;
 
@@ -74,7 +74,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             uint maxAnisotropy = description.MaximumAnisotropy;
 
             // THE DEGRADATION, in the same direction and with the same two assignments the engine's Veldrid path
-            // makes. See the class note for why this branch is live here and dead on the other native backend.
+            // made. See the class note for why this branch is live here and dead on the other native backend.
             if (filter == GpuSamplerFilter.Anisotropic && !deviceSamplerAnisotropy)
             {
                 filter = GpuSamplerFilter.MinLinearMagLinearMipLinear;

@@ -28,7 +28,7 @@ public class HudTextBaselineGpuTests
         Render2DSnapshot.Capture(64, 64, new KhaozEngine.Primitives.Color(0, 0, 0, 1), ctx =>
         {
             // Not disposed: the callback runs mid-command-recording, so the command list may still reference the
-            // font's atlas at submit (Veldrid's Vulkan backend rejects a submit referencing a disposed resource).
+            // font's atlas at submit (Veldrid's Vulkan backend rejected a submit referencing a disposed resource).
             // The per-capture device is torn down inside Capture, reclaiming it. See Capture's lifetime contract.
             DpiFont dpi = ctx.LoadDefaultDpiFont(32f);
             var ui = new UiViewport(FbW, FbH, LogW, LogH);

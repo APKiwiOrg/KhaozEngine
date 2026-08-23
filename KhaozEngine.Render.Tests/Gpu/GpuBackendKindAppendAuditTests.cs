@@ -578,7 +578,7 @@ namespace KhaozEngine.Tests.Gpu
         // --- row 3: the CreateForWindow / CreateHeadless Veldrid switches, the worst of the three ---
 
         /// <summary>
-        /// The native kind never reaches the Veldrid creation switch, because every entry into that path branches
+        /// The native kind never reached the Veldrid creation switch, because every entry into that path branches
         /// on <see cref="GpuBackendProviders.RequiresProvider"/> first. With nothing registered the observable
         /// outcome is the provider-missing exception naming the one line that fixes it, NOT a Veldrid failure
         /// about Metal, which is what the discard arm produced before this change.

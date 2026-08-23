@@ -130,8 +130,9 @@ namespace KhaozEngine.Gpu
             using IGpuBuffer staging = f.CreateBuffer(new GpuBufferDescription(sizeBytes, GpuBufferUsage.Staging));
             // Drain BEFORE the copy, not only after it. The compute work that produced the data was submitted on
             // another command list, and a copy in a later submission is not ordered against it on every backend
-            // (Veldrid's Vulkan submissions carry no semaphores, and its buffer copy emits no barrier ahead of
-            // itself). A readback is a synchronous operation anyway, so an extra drain on an already-idle device
+            // (the Veldrid Vulkan leg, deleted in 18.0.0, carried no semaphores on its submissions and emitted no
+            // barrier ahead of its buffer copy). A readback is a synchronous operation anyway, so an extra drain
+            // on an already-idle device
             // costs nothing and removes the footgun.
             gd.WaitForIdle();
             using (IGpuCommandList cl = f.CreateCommandList())

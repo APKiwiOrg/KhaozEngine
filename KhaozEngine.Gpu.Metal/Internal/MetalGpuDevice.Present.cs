@@ -62,7 +62,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// than Direct3D 11's (where vsync is an argument of the present call and a setter changes only an
         /// interval).
         /// <para>
-        /// THE WRITE IS UNCONDITIONAL WHEN IT LANDS (M-W2). The incumbent's write sits inside an equality against
+        /// THE WRITE IS UNCONDITIONAL WHEN IT LANDS (M-W2). The incumbent's write sat inside an equality against
         /// three values of <c>MTLFeatureSet</c>, deprecated since macOS 10.15, so on a machine outside that set a
         /// vsync toggle silently does nothing. Reproducing a fragility whose failure is silent is not parity.
         /// </para>

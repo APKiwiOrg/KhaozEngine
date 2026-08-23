@@ -247,7 +247,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// THE VIEWS ARE RELEASED BEFORE THE BUFFERS ARE RESIZED, which is the ordering rule the three-member
         /// surface split exists to make testable at all. <c>IDXGISwapChain::ResizeBuffers</c> fails while any
-        /// outstanding reference to a backbuffer survives, and the incumbent depends on that order silently. The
+        /// outstanding reference to a backbuffer survives, and the incumbent depended on that order silently. The
         /// fake refuses the wrong order by name, so this test would fail as a thrown exception rather than as a
         /// mismatched trace.
         /// </summary>
@@ -395,7 +395,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// The present's raw <c>HRESULT</c> reaches the caller, which is what decision G3's device-loss check
-        /// needs at the site. The incumbent discards it, and a discarded device removal surfaces frames later as
+        /// needs at the site. The incumbent discarded it, and a discarded device removal surfaces frames later as
         /// an unrelated crash. Latching it and calling <c>GetDeviceRemovedReason</c> is row 16's and is not built
         /// here.
         /// </summary>

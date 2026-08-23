@@ -28,7 +28,7 @@ namespace KhaozEngine.Tests.Gpu
         struct ReduceParams
         {
             public uint Count;
-            public uint Pad0, Pad1, Pad2;   // std140 pads the block to 16 bytes; Veldrid needs the uniform buffer to match
+            public uint Pad0, Pad1, Pad2;   // std140 pads the block to 16 bytes; the backend needs the uniform buffer to match
         }
 
         [GpuFact]

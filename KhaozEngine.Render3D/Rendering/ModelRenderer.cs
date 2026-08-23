@@ -168,7 +168,7 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuBuffer? _instanceBuffer;
         uint _instanceCapacity;          // capacity in instances
         // CPU-skinned path: skinned meshes are deformed on the CPU each frame and drawn through THIS no-bone model
-        // pipeline (the bone-buffer GPU read corrupts past element 0 in the windowed Veldrid/Metal swapchain context;
+        // pipeline (the bone-buffer GPU read corrupted past element 0 in the windowed Veldrid/Metal swapchain context;
         // CPU skinning + the proven-clean rigid path sidesteps it - see Scene3D's skinned block). One concatenated
         // transient vertex stream (all skinned draws' deformed verts) + a parallel per-draw instance stream, both
         // grown geometrically and retired like _instanceBuffer.
@@ -448,14 +448,15 @@ namespace KhaozEngine.Render3D.Rendering
             // starfield composite while the model writes alpha 1. That is what this pass wants on every backend.
             //
             // THE SECOND REASON THE THREE VALUES ARE EQUAL NAMES ONE IMPLEMENTATION: the VELDRID Metal backend
-            // writes every clear into colorAttachments[0], so attachments 1 and 2 are never cleared there at all
-            // and they LOAD a freshly created private texture nothing has written. Equal values do not fix that,
+            // wrote every clear into colorAttachments[0], so attachments 1 and 2 were never cleared there at all
+            // and they LOADED a freshly created private texture nothing had written. Equal values do not fix that,
             // they only make the one attachment that does get cleared carry the value the other two should have
             // had. The engine's own native Metal backend (GpuBackendKind.MetalNative) folds each clear into its
             // own attachment's loadAction, so all three really are cleared there, which is a deliberate rendering
             // change on the fleet's reference golden family rather than an invisible correction (decision M-A2 of
-            // docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md). Keep the values equal until the Veldrid
-            // Metal leg retires: this code cannot tell which Metal it is on and must be correct on both.
+            // docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md). The values were kept equal while the Veldrid
+            // Metal leg was still selectable, because this code could not tell which Metal it was on and had to
+            // be correct on both. That leg went in 18.0.0 and the constraint went with it.
             var bg = s.BackgroundColor.WithAlpha(0f);
             cl.ClearColorTarget(0, bg);
             cl.ClearColorTarget(1, bg);

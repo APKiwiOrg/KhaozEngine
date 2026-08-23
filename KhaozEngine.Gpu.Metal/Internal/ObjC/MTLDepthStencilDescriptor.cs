@@ -97,7 +97,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// <c>MTLSamplerState</c>'s reason.
     ///
     /// <para><b>A PIPELINE WITH NO DEPTH ATTACHMENT HOLDS A NIL ONE, deliberately, and that nil is the depth-target
-    /// guard's other half.</b> The incumbent creates this object only inside
+    /// guard's other half.</b> The incumbent created this object only inside
     /// <c>if (outputs.DepthAttachment != null)</c>, so a colour-only pipeline's <c>DepthStencilState</c> is
     /// default-constructed and nil, and its <c>PreDrawCommand</c> then guards the emission on the FRAMEBUFFER
     /// having a depth target. Both halves are reproduced: <c>MetalGraphicsPipeline</c> creates one only for a

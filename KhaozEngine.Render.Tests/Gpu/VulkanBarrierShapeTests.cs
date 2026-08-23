@@ -122,7 +122,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// A LAYOUT OUTSIDE THE EIGHT IS REFUSED BY NAME rather than answered with an empty mask. This is the arm
-        /// the incumbent gets wrong: its unhandled pair falls through to <c>Debug.Fail</c> plus <c>NONE</c>, so in
+        /// the incumbent got wrong: its unhandled pair fell through to <c>Debug.Fail</c> plus <c>NONE</c>, so in
         /// a Release build the mistake ships as a barrier that orders nothing.
         /// </summary>
         [Fact]

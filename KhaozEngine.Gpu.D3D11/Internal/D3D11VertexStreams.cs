@@ -18,7 +18,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <para>
     /// AN INDEX BIND IS NOT DEFERRED, because there is nothing to batch it with: <c>IASetIndexBuffer</c> binds one
     /// buffer and D3D11 has no array form of it. It carries a redundancy cache over the pair (buffer, format) and
-    /// issues at the bind, which is where the incumbent issues it too.
+    /// issues at the bind, which is where the incumbent issued it too.
     /// </para>
     /// <para>
     /// BOTH SPANS THIS TYPE ANSWERS WITH COVER SLOTS THE CALLER DID NOT TOUCH, AND THE CALLER WRITES THE RECORD

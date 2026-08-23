@@ -20,7 +20,7 @@ namespace KhaozEngine.Gpu
     /// ABSENT IS NOT ZERO, and <see cref="HasValue"/> is the whole reason this is not a bag of nullable longs.
     /// Zero stalls IS the passing result, so a backend that keeps no counters must not report the same numbers as
     /// a backend that kept them and never stalled. The default value answers false and is what every incumbent
-    /// Veldrid path gives, Veldrid Metal included. The three native backends give a true value instead: D3D11
+    /// Veldrid path gave, Veldrid Metal included. The three native backends give a true value instead: D3D11
     /// every field except the acquire pair, which it passes as zero because a Direct3D 11 present has no acquire
     /// to wait on, and Vulkan and Metal every field including that pair, both of which really do wait on an
     /// acquire.

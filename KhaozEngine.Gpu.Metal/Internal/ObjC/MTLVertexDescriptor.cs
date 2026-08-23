@@ -118,7 +118,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// <para><b>ONE IS CREATED AND SET RATHER THAN THE DESCRIPTOR'S IMPLICIT ONE BEING MUTATED, and that is a
     /// deliberate divergence from the incumbent.</b> <c>Veldrid.MTL.MTLPipeline</c> reads
     /// <c>mtlDesc.vertexDescriptor</c> and writes into whatever comes back, which relies on that property being
-    /// non-nil on a freshly allocated descriptor. Apple documents its default as nil. The incumbent ships and
+    /// non-nil on a freshly allocated descriptor. Apple documents its default as nil. The incumbent shipped and
     /// renders, so the implementation evidently hands back a lazily created one, but that is an observation about
     /// an implementation rather than a documented contract, and a nil there would not fail loudly: it would drop
     /// every vertex attribute and fail pipeline creation with a message about the vertex function's inputs,

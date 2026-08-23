@@ -50,7 +50,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// The device and the selection arrive independently here, unlike the Veldrid path where the wrapper is
+        /// The device and the selection arrive independently here, unlike the Veldrid path, where the wrapper was
         /// built FROM the selection, so the invariant that path gets by construction has to be enforced. A
         /// mismatched pair does not fail the run, it misattributes it: different readers downstream take the kind
         /// from different halves of the pair, so the golden image would be filed under one backend while the
@@ -122,7 +122,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// A natively created device has no Veldrid device for the threading probe to read a pointer off, so its
+        /// A natively created device has no wrapper device for the threading probe to read a pointer off, so its
         /// caps arrive already probed (through the probe's raw-pointer entry) and the context carries them
         /// through untouched, including the null that means "no answer".
         /// </summary>
@@ -163,7 +163,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// The other half: a probe that ANSWERED, or one that was never applicable, carries no reason, so the
-        /// adopted path stays silent exactly where the Veldrid path does. A warning that fires on a healthy
+        /// adopted path stays silent exactly where the Veldrid path did. A warning that fires on a healthy
         /// session is worse than none, because it trains the reader to skip the one that matters.
         /// </summary>
         [Fact]

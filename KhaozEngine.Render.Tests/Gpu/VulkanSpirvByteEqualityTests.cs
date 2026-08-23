@@ -36,7 +36,7 @@ namespace KhaozEngine.Tests.Gpu
     /// replication of the incumbent's own SPIR-V production, which is
     /// <c>SpirvCompilation.CompileGlslToSpirv(source, fileName: null, stage, GlslCompileOptions.Default)</c>, the
     /// call <c>Veldrid.SPIRV</c>'s <c>CreateFromSpirv</c> makes on a Vulkan device. 76 of 76 equal, 0 mismatches.
-    /// The one difference between the two call shapes is the diagnostic FILE NAME, which the incumbent leaves null
+    /// The one difference between the two call shapes is the diagnostic FILE NAME, which the incumbent left null
     /// and this engine sets, and the measurement is what establishes that it never reaches the module while
     /// <see cref="SpirvFrontEndPin.Debug"/> is false. That measurement is recorded in section 12.1 of the design
     /// and stands as the historical record of what licensed the goldens carrying over. That comparison ran on

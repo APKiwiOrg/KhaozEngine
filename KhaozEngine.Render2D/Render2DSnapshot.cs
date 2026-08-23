@@ -15,7 +15,7 @@ namespace KhaozEngine.Render2D
     /// callback creates and forgets. It still must not dispose what it made, because the recorded command list
     /// names that resource until the submit that happens after the callback returns, and it no longer leaves the
     /// resource to the per-capture device teardown either. That older contract read as harmless because a
-    /// Veldrid backend reclaims a survivor silently, and it is a spec violation on the native Vulkan backend,
+    /// Veldrid backend reclaimed a survivor silently, and it is a spec violation on the native Vulkan backend,
     /// which reports each survivor as a <c>VUID-vkDestroyDevice-device-05137</c> object leak
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/618).</para>
     ///
@@ -83,7 +83,7 @@ namespace KhaozEngine.Render2D
         /// Renders one offscreen frame via <paramref name="draw"/> and reads it back as RGBA bytes.
         /// LIFETIME CONTRACT: the callback runs mid-command-recording, so a GPU resource it creates (a texture,
         /// a font, a <c>VfxRenderer</c>) must NOT be disposed inside the callback - the recorded command list still
-        /// references it until the submit that happens after the callback returns. Veldrid's Vulkan backend rejects
+        /// references it until the submit that happens after the callback returns. Veldrid's Vulkan backend rejected
         /// a submit referencing a disposed resource (other backends tolerate it, so the bug hides off Vulkan).
         /// THE LATER DISPOSE POINT IS HERE: every resource the callback created through its
         /// <see cref="Render2DContext"/> is freed below, after the submit has drained and before the per-capture

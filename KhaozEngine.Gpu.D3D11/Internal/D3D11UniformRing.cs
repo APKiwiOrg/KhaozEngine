@@ -9,9 +9,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <c>segmentStride * framesInFlight</c> bytes into per-frame segments, the lazily acquired mapping every
     /// write goes through, and the write itself.
     /// <para>
-    /// WHAT PROBLEM THIS IS. Veldrid's <c>UpdateBuffer</c> puts a partial write to a <c>DEFAULT</c> constant
-    /// buffer on a pooled staging path that maps the immediate context with plain <c>D3D11_MAP_WRITE</c> and no
-    /// <c>DO_NOT_WAIT</c>, so every such write BLOCKS until the GPU is done with the staging buffer being
+    /// WHAT PROBLEM THIS IS. Veldrid's <c>UpdateBuffer</c> put a partial write to a <c>DEFAULT</c> constant
+    /// buffer on a pooled staging path that mapped the immediate context with plain <c>D3D11_MAP_WRITE</c> and no
+    /// <c>DO_NOT_WAIT</c>, so every such write BLOCKED until the GPU was done with the staging buffer being
     /// recycled. A reporting client paid 22 of those a frame and 12 to 17 ms a pass on a scene that encodes in
     /// under a millisecond elsewhere. Zero renderer sites ask for <see cref="GpuBufferUsage.Dynamic"/>, so every
     /// per-frame uniform buffer in the engine takes that path by construction. Here a write is a memcpy into

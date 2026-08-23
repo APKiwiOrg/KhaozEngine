@@ -8,7 +8,7 @@ namespace KhaozEngine.Tests.Gpu
     /// Decision V-N4: the features <c>vkCreateDevice</c> is asked for, chosen BY NAME rather than by handing the
     /// driver back everything it reported.
     /// <para>
-    /// The incumbent hands <c>vkCreateDevice</c> the entire supported feature struct, and these rows are what
+    /// The incumbent handed <c>vkCreateDevice</c> the entire supported feature struct, and these rows are what
     /// stops that shape coming back. Two things follow from it, both bad: the engine's real dependencies become
     /// unknowable from the code, and a device missing one fails at an unrelated call site on frame one instead of
     /// at creation with the feature's name in the message.

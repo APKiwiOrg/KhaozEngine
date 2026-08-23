@@ -18,7 +18,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// here or neither does, and <see cref="MetalEncoderMark"/> is what makes that structural rather than
     /// remembered.</para>
     ///
-    /// <para><b>THE PER-DRAW MARGINAL IS A REGRESSION TARGET RATHER THAN A PARITY TARGET.</b> The incumbent pays
+    /// <para><b>THE PER-DRAW MARGINAL IS A REGRESSION TARGET RATHER THAN A PARITY TARGET.</b> The incumbent paid
     /// one call per stream per draw unconditionally, so the native marginal is strictly LOWER and M-T2's budget
     /// test freezes the lower number. A future change that reintroduces the unconditional bind is a red test
     /// rather than an invisible cost, which is the whole reason the number is frozen at all.</para>

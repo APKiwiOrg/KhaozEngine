@@ -26,7 +26,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <c>dotnet test</c> on every leg.
     ///
     /// <para><b>THE SPLIT IS FORCED BY MM7 RATHER THAN CHOSEN FOR TIDINESS.</b> The design records that not one
-    /// line of the incumbent's swapchain runs in CI on any leg, ever, and that zero automated coverage is what
+    /// line of the incumbent's swapchain ran in CI on any leg, ever, and that zero automated coverage is what
     /// this row is answering. A headless runner cannot drive a real layer, so the only coverage available for the
     /// ORDER of a present boundary (present, then apply, then acquire, then publish), for the skipped present, for
     /// the counters and for the coalescing is coverage taken against a fake. This interface is the line that makes
@@ -59,7 +59,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <param name="size">The new size, already clamped to at least one by one.</param>
         void SetDrawableSize(MetalDrawableSize size);
 
-        /// <summary><c>-setDisplaySyncEnabled:</c>, written UNCONDITIONALLY (M-W2). The incumbent writes it only
+        /// <summary><c>-setDisplaySyncEnabled:</c>, written UNCONDITIONALLY (M-W2). The incumbent wrote it only
         /// inside three values of an enum deprecated since macOS 10.15, so on a machine outside that set its
         /// vsync toggle silently does nothing.</summary>
         void SetDisplaySyncEnabled(bool enabled);

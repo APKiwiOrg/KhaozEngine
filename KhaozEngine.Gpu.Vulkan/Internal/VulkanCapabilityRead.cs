@@ -45,7 +45,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// FALSE, and it is the one capability that flips every image. Vulkan's clip space really does point Y the
         /// other way, and this backend answers false because it corrects for that at the source: the viewport it
         /// emits on a framebuffer change carries NEGATIVE height (7.2, row 12), which puts the rendered image the
-        /// same way up as Direct3D's and leaves <c>GpuClip.Correct</c> as the identity. The incumbent answers
+        /// same way up as Direct3D's and leaves <c>GpuClip.Correct</c> as the identity. The incumbent answered
         /// false for the same reason through Veldrid's own negative-height viewport, so this is a reproduction
         /// rather than a divergence.
         /// </summary>
@@ -60,14 +60,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         internal const bool SamplerLodBias = true;
 
         /// <summary>Compute shaders are core Vulkan rather than an optional feature: there is no feature bit to
-        /// read and no device to ask, so this is a constant on both paths. The incumbent reports true for Vulkan
+        /// read and no device to ask, so this is a constant on both paths. The incumbent reported true for Vulkan
         /// through the same reasoning.</summary>
         internal const bool SupportsCompute = true;
 
         /// <summary>
         /// TRUE, unlike the Direct3D 11 native backend's, and this is where V-G1's zero-permitted-difference bar
         /// comes from. A fence handed to <c>Submit</c> is a value on the device's one timeline semaphore that
-        /// <c>vkQueueSubmit</c> itself signals on GPU completion (V-F1), and the incumbent answers true for
+        /// <c>vkQueueSubmit</c> itself signals on GPU completion (V-F1), and the incumbent answered true for
         /// Vulkan too, so the member that had to be exempted on the other backend is identical here.
         /// </summary>
         internal const bool SupportsCompletionFences = true;
@@ -116,7 +116,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// whether this backend asked <c>vkCreateDevice</c> for it.</param>
         /// <param name="supportsShadowMaps">Whether <c>R32_SFLOAT</c> can be both a colour attachment and a
         /// sampled image, off <c>vkGetPhysicalDeviceFormatProperties</c>. That pair, and not the depth-stencil one
-        /// the capability's name suggests, is what the shadow pass needs and what the incumbent asks
+        /// the capability's name suggests, is what the shadow pass needs and what the incumbent asked
         /// (<see cref="VulkanPhysicalDeviceReader.ShadowMapFormatFeatures"/>).</param>
         /// <param name="maxMsaaSampleCount">Row 15's reproduction of the incumbent's own computation
         /// (<see cref="VulkanMsaaLimit.MinOverTheEngineTargets"/>), which floors at

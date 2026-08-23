@@ -412,7 +412,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// is the resolution of https://github.com/APKiwiOrg/KhaozEngine/issues/484.
         /// <para>
         /// IT WRITES EVERY SEGMENT, so a value written ONCE persists for the buffer's life exactly as the same
-        /// call on the Veldrid backend persists it, where the buffer has one copy. Writing only the current
+        /// call on the Veldrid backend persisted it, where the buffer had one copy. Writing only the current
         /// segment was the shipped shape for one release and it was a defect rather than a documentation problem:
         /// a load-time write reached one segment out of <see cref="FramesInFlight"/>, so two frames out of every
         /// three bound memory nothing had ever written, intermittently, with nothing thrown and nothing logged.
@@ -443,7 +443,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// that is going to happen anyway.
         /// </para>
         /// <para>
-        /// EVENTUAL CONSISTENCY IS THE GUARANTEE, and it is exactly what the Veldrid leg's persistence gives.
+        /// EVENTUAL CONSISTENCY IS THE GUARANTEE, and it is exactly what the Veldrid leg's persistence gave.
         /// When this returns, every segment either already holds the write or holds a pending patch its next
         /// acquire applies, so ANY segment BOUND after this call carries the value. The window in which an
         /// in-flight segment still holds the old bytes is unobservable through the seam, because that segment is

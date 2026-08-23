@@ -178,9 +178,9 @@ namespace KhaozEngine.Gpu
         /// <para>
         /// THE PORTABLE CONTRACT IS ONE OPEN RECORDING PER DEVICE. Between a <see cref="Begin"/> and its
         /// <see cref="End"/>, do not open a second list on the same device, and do not call any engine API that
-        /// opens one of its own. Backends do not agree on what a second recording means: the Veldrid Direct3D11
-        /// leg rejects it outright, and with Direct3D11 in immediate-context mode a command list IS the device's
-        /// immediate context, so opening one resets the state the first list already recorded. Work that needs a
+        /// opens one of its own. Backends do not agree on what a second recording means: with Direct3D11 in
+        /// immediate-context mode a command list IS the device's immediate context, so opening one resets the
+        /// state the first list already recorded. Work that needs a
         /// list of its own belongs in the frame's pre-record phase, before the frame's list is opened.
         /// </para>
         /// <para>
@@ -212,9 +212,9 @@ namespace KhaozEngine.Gpu
         /// canonical resting layout, so nothing shared is read or written during recording at all. That is the
         /// same property the Direct3D 11 stream buys by touching no device state, obtained here from the API plus
         /// the barrier design instead. It is still a backend property and still not a promise of this interface:
-        /// the same code on either Veldrid backend, on the Veldrid Metal backend, or on the immediate Direct3D 11
-        /// driver is a half-recorded frame or a corrupted one, and a machine that falls back after a failed device
-        /// creation swaps the backend under the code without telling it.
+        /// the same code on the immediate Direct3D 11 driver is a half-recorded frame or a corrupted one, and a
+        /// machine that falls back after a failed device creation swaps the backend under the code without
+        /// telling it.
         /// </para>
         /// <para>
         /// THE ENGINE'S OWN NATIVE METAL BACKEND IS PERMISSIVE TOO, AND IT COSTS THAT BACKEND NOTHING TO BE.
@@ -223,8 +223,8 @@ namespace KhaozEngine.Gpu
         /// outside the list at all: no layout tracker, no barrier batch, no device state cache. So N lists there
         /// record concurrently and submit order is the observable order, because the commits are serialised. That
         /// is the same shape the native Vulkan backend has, reached from Metal's object model instead of from a
-        /// barrier design, and it is a BACKEND PROPERTY with all the same caveats: <c>GpuBackendKind.Metal</c>,
-        /// which is the Veldrid Metal backend and the one a Mac falls back to, does not have it.
+        /// barrier design, and it is a BACKEND PROPERTY with all the same caveats: the retired
+        /// <c>GpuBackendKind.Metal</c>, which named the Veldrid Metal backend, did not have it.
         /// </para>
         /// </summary>
         void Begin();
@@ -320,14 +320,14 @@ namespace KhaozEngine.Gpu
         // fall out of that, and both are proved by the compute [GpuFact] suite on every backend.
         //
         // THE MECHANISMS BELOW ARE NAMED PER IMPLEMENTATION RATHER THAN PER API, and that is not pedantry. Every
-        // API the engine renders on now has two backends behind it (Veldrid's and the engine's own
-        // KhaozEngine.Gpu.Direct3D11, .Vulkan and .Metal), and the pairs do NOT handle either rule the same way.
-        // A sentence that says "on Vulkan" was true of the one implementation that existed when it was written and
-        // is false of the other. The Metal pair is the one place a single sentence still covers both, and that is a
-        // measured coincidence rather than a licence to write to the API: both end the compute encoder when the
-        // render encoder begins, because that is Metal's own rule and neither backend gets to choose. What does
-        // NOT vary is the rule: write to the rule, never to the mechanism, because the mechanism is the part that
-        // differs between two backends a consumer can swap with one environment variable.
+        // API the engine renders on had two backends behind it until 18.0.0 (Veldrid's and the engine's own
+        // KhaozEngine.Gpu.Direct3D11, .Vulkan and .Metal), and the pairs did NOT handle either rule the same way.
+        // A sentence that said "on Vulkan" was true of the one implementation that existed when it was written and
+        // false of the other. The Metal pair was the one place a single sentence covered both, and that was a
+        // measured coincidence rather than a licence to write to the API: both ended the compute encoder when the
+        // render encoder began, because that is Metal's own rule and neither backend got to choose. What does
+        // NOT vary is the rule: write to the rule, never to the mechanism, because the mechanism is the part a
+        // second implementation of the same API is free to change.
         //
         //   1. Compute writes a storage texture, then a GRAPHICS pass samples it: record BOTH in the SAME command
         //      list, and create the texture with Storage | Sampled (see GpuTextureUsage.Storage). Every backend
@@ -399,7 +399,7 @@ namespace KhaozEngine.Gpu
 
     /// <summary>The GPU device: backend info, capabilities, the resource factory, the swapchain framebuffer,
     /// buffer/texture updates, submission, and staging map/unmap. Engine mirror of Veldrid <c>GraphicsDevice</c>
-    /// (the subset the 5.x renderers use). Veldrid is hidden inside the impl. Disposing any resource created
+    /// (the subset the 5.x renderers use). The backend is hidden inside the impl. Disposing any resource created
     /// by this device AFTER the device itself is disposed is a safe no-op, since device destruction already
     /// freed all child objects (teardown-order stragglers cannot destroy against a dead device).</summary>
     public interface IGpuDevice : IDisposable
@@ -435,9 +435,9 @@ namespace KhaozEngine.Gpu
         /// <para>
         /// DEFAULT-IMPLEMENTED, so this was appended without breaking any implementer, and the default is the
         /// honest one: no answers. A backend that cannot report either fact leaves both null, and null means
-        /// "nobody answered" rather than "no" (see <see cref="GpuDeviceDiagnostics"/>). The Veldrid path takes the
-        /// default today, which is correct rather than a gap: Veldrid exposes neither the DXGI adapter flag nor a
-        /// device-removal reason, so a value from it would have to be invented.
+        /// "nobody answered" rather than "no" (see <see cref="GpuDeviceDiagnostics"/>). The Veldrid path took the
+        /// default, which was correct rather than a gap: Veldrid exposes neither the DXGI adapter flag nor a
+        /// device-removal reason, so a value from it would have had to be invented.
         /// </para>
         /// </summary>
         GpuDeviceDiagnostics Diagnostics => default;
@@ -450,9 +450,9 @@ namespace KhaozEngine.Gpu
         /// <para>
         /// DEFAULT-IMPLEMENTED, and the default is the honest one: a device that counts none of this leaves
         /// <see cref="GpuDeviceCounters.HasValue"/> false, which is a DIFFERENT fact from counting and finding
-        /// zero. Metal and the incumbent Veldrid paths take the default. The two native backends report what
-        /// their subsystems count, D3D11 all seven fields, Vulkan the drain pair until its remaining subsystems
-        /// land.
+        /// zero. The native Metal backend takes the default, as the incumbent Veldrid paths did. The other two
+        /// native backends report what their subsystems count, D3D11 all seven fields, Vulkan the drain pair
+        /// until its remaining subsystems land.
         /// </para>
         /// <para>
         /// SAMPLE IT FROM ANY THREAD. The values are monotone cumulative and every one of them is read whole, so a
@@ -531,17 +531,17 @@ namespace KhaozEngine.Gpu
         /// Whether presentation syncs to the display's vertical blank. Settable at runtime: on a windowed device this
         /// reconfigures the live swapchain in place (no recreate, no leaked swapchain, size + depth preserved), so a
         /// game can flip vsync mid-session. A no-op backing value on a headless (no-swapchain) device. On Metal it
-        /// sets the layer's <c>displaySyncEnabled</c>, but the Veldrid Metal present still does not throttle the CPU
-        /// from this alone - pair with a software frame cap for a deterministic rate (see <c>PresentMode</c>).
+        /// sets the layer's <c>displaySyncEnabled</c>, and the native Metal present throttles the CPU from this
+        /// alone, so vsync needs no software frame cap paired with it (see <c>PresentMode</c>).
         /// <para>
-        /// THAT SECOND CLAUSE IS MEASURED ON THE VELDRID METAL BACKEND, AND ONLY THERE. The engine's own
-        /// <see cref="GpuBackendKind.MetalNative"/> writes <c>displaySyncEnabled</c> unconditionally where the
-        /// incumbent writes it inside three values of a deprecated enum, and bounds <c>maximumDrawableCount</c>
+        /// THAT SECOND CLAUSE IS MEASURED ON THE ENGINE'S OWN <see cref="GpuBackendKind.MetalNative"/>, WHICH IS
+        /// THE ONLY METAL BACKEND LEFT. It writes <c>displaySyncEnabled</c> unconditionally where the
+        /// incumbent wrote it inside three values of a deprecated enum, and bounds <c>maximumDrawableCount</c>
         /// with a blocking acquire at the present boundary. Rollout gate 5 of
         /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c> measured it on 2026-08-11 and those two
         /// DO throttle the CPU: the acquire blocks once per frame for 15.175 ms of a 16.669 ms frame, a display
         /// pinned to 120 Hz paces the loop at 120 fps, and turning this property off mid-session free-runs past
-        /// 700 fps with visible tearing. So the software cap is the incumbent's alone now
+        /// 700 fps with visible tearing. So the software cap was the incumbent's alone
         /// (<c>FrameCap.Resolve</c> carries the full reasoning), and vsync with no cap is healthy on the native
         /// backend.
         /// </para>

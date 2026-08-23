@@ -286,7 +286,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             VulkanBufferBinding binding = VulkanBufferBinding.TransferSrc | VulkanBufferBinding.TransferDst;
 
             // A STAGING BUFFER TAKES THE TRANSFER BITS AND NOTHING ELSE. It is CPU-mapped and never bound, so a
-            // binding bit on it would describe a use it cannot have. The incumbent reaches the same set by the
+            // binding bit on it would describe a use it cannot have. The incumbent reached the same set by the
             // longer road of testing each bit against a usage that carries none of them.
             if ((usage & GpuBufferUsage.Staging) != 0) return binding;
 

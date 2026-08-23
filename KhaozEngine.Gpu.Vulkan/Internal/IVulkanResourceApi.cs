@@ -63,7 +63,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// type graph, alongside V-D2's descriptor pool. Do not hand this interface to a recorder to save a
     /// parameter.</para>
     ///
-    /// <para><b>THE MEMORY REQUIREMENTS CALL IS THE <c>2</c> FORM UNCONDITIONALLY.</b> The incumbent probes for
+    /// <para><b>THE MEMORY REQUIREMENTS CALL IS THE <c>2</c> FORM UNCONDITIONALLY.</b> The incumbent probed for
     /// <c>vkGetBufferMemoryRequirements2</c> at run time and falls back to the 1.0 call with
     /// <c>prefersDedicatedAllocation</c> hardcoded false, because it targets Vulkan 1.0. This backend requires 1.3
     /// (row 2's probe), where both the <c>2</c> form and <c>VkMemoryDedicatedRequirements</c> are core, so the

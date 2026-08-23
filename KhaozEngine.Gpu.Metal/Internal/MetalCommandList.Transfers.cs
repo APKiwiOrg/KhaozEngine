@@ -15,7 +15,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// a draw uses, so <see cref="MetalEncoderScope.EnsureRenderEncoder"/> short-circuits on an open pass and hands
     /// the caller's own scene encoder straight back with the resolve descriptor unused. Row 12's comment said "a
     /// resolve opens a blit one" and it was wrong. So <see cref="ResolveTexture"/> calls
-    /// <see cref="MetalEncoderScope.EnsureNoEncoder"/> itself, first, and the incumbent does the same thing for
+    /// <see cref="MetalEncoderScope.EnsureNoEncoder"/> itself, first, and the incumbent did the same thing for
     /// the same reason (<c>ResolveTextureCore</c> is <c>EnsureNoBlitEncoder</c> then <c>EnsureNoRenderPass</c>
     /// then a DIRECT encoder creation).</para>
     ///
@@ -37,7 +37,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <remarks>
         /// <c>-copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:</c>, under section 9.3's alignment
         /// ruling: BOTH offsets must be multiples of four and are refused by name when they are not, while the
-        /// SIZE is padded up, which is the pad the incumbent already applies on its own aligned path.
+        /// SIZE is padded up, which is the pad the incumbent already applied on its own aligned path.
         /// <see cref="MetalCopyAlignment"/> carries the whole ruling and the proof that the pad lands inside both
         /// allocations.
         /// <para>
@@ -49,7 +49,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <para>
         /// AND SINCE 17.40.0 THE REFUSAL IS NO LONGER THIS BACKEND'S ALONE
         /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/684">#684</see>). The offset rule moved up
-        /// to the seam, so Veldrid, native Vulkan and native Direct3D 11 refuse the same offsets with the same
+        /// to the seam, so every backend refuses the same offsets with the same
         /// words out of <c>GpuCopyAlignment</c>, and the incumbent no longer reaches the compute path above from
         /// this engine at all.
         /// </para>

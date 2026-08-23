@@ -207,7 +207,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// A RECYCLED BLOCK IS REUSED RATHER THAN RECREATED, which is the whole fix. Walking round the slots
-        /// repeatedly with the same upload shape allocates ONCE, where the incumbent allocates and destroys per
+        /// repeatedly with the same upload shape allocates ONCE, where the incumbent allocated and destroyed per
         /// call.
         /// </summary>
         [Fact]

@@ -23,8 +23,7 @@ namespace KhaozEngine.Gpu
 
         /// <summary>
         /// <c>D3D11_CREATE_DEVICE_PREVENT_INTERNAL_THREADING_OPTIMIZATIONS</c>, as a raw value ready for
-        /// <c>D3D11DeviceOptions.DeviceCreationFlags</c> (Veldrid takes a <see cref="uint"/> there and casts it
-        /// straight to its own flags enum).
+        /// the device-creation call's flags argument, which takes a <see cref="uint"/>.
         /// <para>
         /// Taken FROM Vortice's enum rather than written out, so the number cannot be wrong and cannot drift. It is
         /// a compile-time constant expression, so the compiler folds it to a literal and no Vortice type is named

@@ -2,7 +2,8 @@ namespace KhaozEngine.Gpu.Internal
 {
     /// <summary>
     /// THE READ HALF of the "is the device still there" token, shared by every GPU backend in the engine: the
-    /// Veldrid wrappers here, and the three native backends (decision X3 for Direct3D 11, V-F10 for Vulkan, M-F6
+    /// deleted Veldrid wrappers it started with, and the three native backends (decision X3 for Direct3D 11,
+    /// V-F10 for Vulkan, M-F6
     /// for Metal, all the same decision under three names). After the device is dead, disposal is a no-op,
     /// <c>IGpuFence.Signaled</c> reads TRUE and <c>WaitForIdle</c> is a no-op. All three say the same thing from
     /// different angles, which is that a destroyed device has no outstanding GPU work left to finish, so the
@@ -50,8 +51,8 @@ namespace KhaozEngine.Gpu.Internal
     /// </para>
     /// <para>
     /// WHERE IN TEARDOWN THE FLIP HAPPENS IS THE CALLER'S DECISION AND IT DIFFERS PER BACKEND, which is why this
-    /// type has no opinion about it. The Veldrid wrapper flips it FIRST, correctly, because destroying a Veldrid
-    /// device already frees its children. Direct3D 11 flips it LAST, because every release above it reads the
+    /// type has no opinion about it. The Veldrid wrapper flipped it FIRST, correctly, because destroying a
+    /// Veldrid device already freed its children. Direct3D 11 flips it LAST, because every release above it reads the
     /// token and would otherwise be skipped, leaving an <c>ID3D11Device</c> alive holding a swapchain nobody can
     /// reach. Vulkan flips it between <c>vkDeviceWaitIdle</c> and <c>vkDestroyDevice</c>. Metal flips it after
     /// the drain and before the queue and the device are released.

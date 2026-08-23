@@ -335,7 +335,7 @@ namespace KhaozEngine.Tests.Gpu
         /// THE APPLY IS PINNED AS A FOUR-CALL SEQUENCE, not merely as "a resize happened": every
         /// <c>ResizeBuffers</c> in the trace is preceded by the present it rode and by the release of the old
         /// views, and followed by the creation of the new ones at the same size. The release-before-resize half
-        /// is the ordering rule <c>IDXGISwapChain::ResizeBuffers</c> enforces and the incumbent depends on
+        /// is the ordering rule <c>IDXGISwapChain::ResizeBuffers</c> enforces and the incumbent dependednds on
         /// silently, and the present-before-resize half is why a drag-resize does not present an undefined
         /// backbuffer.
         /// </para>

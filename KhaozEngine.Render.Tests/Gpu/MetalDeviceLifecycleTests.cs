@@ -57,7 +57,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// <c>softwareAdapter</c> is FALSE with confidence rather than null (M-G2), because Apple ships no
         /// software Metal rasterizer at all. That is a genuinely different answer from "nobody asked", which is
-        /// what the struct documents null as meaning and what the Veldrid Metal path correctly keeps because it
+        /// what the struct documents null as meaning and what the Veldrid Metal path correctly kept because it
         /// cannot answer. And <c>deviceLossReason</c> is null on a healthy device, which is the state #427's
         /// header field reports from.
         /// </summary>
@@ -96,7 +96,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(capabilities.DepthRangeZeroToOne);
             Assert.True(capabilities.SamplerAnisotropy);
             // The one capability that differs from BOTH other native backends: MTLSamplerDescriptor has no LOD
-            // bias at all, and the incumbent answers the same way, which is the bar.
+            // bias at all, and the incumbent answered the same way, which is the bar.
             Assert.False(capabilities.SamplerLodBias);
             Assert.True(capabilities.SupportsShadowMaps);
             Assert.True(capabilities.SupportsCompute);

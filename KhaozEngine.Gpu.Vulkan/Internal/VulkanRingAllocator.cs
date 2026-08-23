@@ -213,7 +213,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// GPU-bound steady state.
         /// </para>
         /// <para>
-        /// EVENTUAL CONSISTENCY IS THE GUARANTEE, and it is exactly what the Veldrid leg's persistence gives. When
+        /// EVENTUAL CONSISTENCY IS THE GUARANTEE, and it is exactly what the Veldrid leg's persistence gave. When
         /// this returns, every segment either already holds the write or holds a pending patch its next acquire
         /// applies, so ANY segment BOUND after this call carries the value. The window in which an in-flight
         /// segment still holds the old bytes is unobservable through the seam, because that segment is not bound

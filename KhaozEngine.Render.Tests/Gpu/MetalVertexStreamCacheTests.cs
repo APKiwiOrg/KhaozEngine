@@ -58,7 +58,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// THE CACHE IS ACTUALLY MAINTAINED, which is what the incumbent's second defect prevents. A re-record of
         /// the same buffer at the same offset marks nothing, and a second draw emits nothing. That marginal is a
-        /// REGRESSION target rather than a parity target: the incumbent pays one call per stream per draw
+        /// REGRESSION target rather than a parity target: the incumbent paid one call per stream per draw
         /// unconditionally, so a change that reintroduces the unconditional bind is a red test rather than an
         /// invisible cost.
         /// </summary>

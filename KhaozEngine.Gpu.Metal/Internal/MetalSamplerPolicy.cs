@@ -30,18 +30,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
     /// <summary>
     /// THE SAMPLER MAPPING, reproduced from what the engine's Veldrid path plus <c>Veldrid.MTL.MTLSampler</c>
-    /// really create between them.
+    /// really created between them.
     ///
-    /// <para><b>FOUR VALUES THE SEAM DOES NOT EXPOSE ARE HARDCODED, because the incumbent hardcodes them and the
+    /// <para><b>FOUR VALUES THE SEAM DOES NOT EXPOSE ARE HARDCODED, because the incumbent hardcoded them and the
     /// committed goldens were baked through them.</b> No comparison function (the shadow path does manual PCF and
     /// never asks for a comparison sampler), a minimum LOD of 0, a maximum LOD of <c>uint.MaxValue</c>, and a
-    /// transparent-black border colour. All four come from the engine's own Veldrid path, which builds every
+    /// transparent-black border colour. All four came from the engine's own Veldrid path, which built every
     /// sampler as <c>new SamplerDescription(u, v, w, filter, null, maxAniso, 0, uint.MaxValue, lodBias,
     /// SamplerBorderColor.TransparentBlack)</c>. Changing one would move pixels.</para>
     ///
     /// <para><b>THE INCUMBENT'S COMPARE-FUNCTION CONDITIONAL IS RESOLVED RATHER THAN REPRODUCED, and its
     /// border-colour one is DIVERGED FROM.</b> <c>MTLSampler</c> writes the compare function only when the seam
-    /// supplied a comparison kind, and the engine's Veldrid path passes <c>null</c> at its ONE call site, so that
+    /// supplied a comparison kind, and the engine's Veldrid path passed <c>null</c> at its ONE call site, so that
     /// arm is NEVER taken and no compare function is written here at all. Carrying a branch whose condition is
     /// constant would be reproducing a branch instead of a behaviour, and it would be a branch no test could
     /// reach either way. The border colour is the other half of row 6's "both reachable conditionals" and it no
@@ -49,11 +49,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
     ///
     /// <para><b>THE BORDER COLOUR IS A DEVICE FACT ON macOS, WHICH THE INCUMBENT DOES NOT ASK ABOUT.</b>
     /// <c>MTLSampler</c> writes it whenever <c>gd.MetalFeatures.IsMacOS</c>, which is true on every machine this
-    /// backend can run on, so the incumbent arms border colours on a device that may not have them. A
+    /// backend can run on, so the incumbent armed border colours on a device that may not have them. A
     /// virtualized GPU is exactly that device: the hosted <c>macos-26</c> runner's Apple Paravirtual device
     /// aborts under the armed debug layer with <c>MTLSamplerBorderColorTransparentBlack is not supported on this
     /// device</c>, and without the layer armed it would silently sample something other than a border. No shipped
-    /// engine sampler asks for <see cref="GpuSamplerAddress.Border"/>, which is why the incumbent's arm has never
+    /// engine sampler asks for <see cref="GpuSamplerAddress.Border"/>, which is why the incumbent's arm had never
     /// been visible: no golden uses a border sampler, so the wrong sample has nowhere to show up. This backend
     /// diverges twice rather than reproducing that. It writes the property ONLY when an address mode is
     /// <see cref="MTLSamplerAddressMode.ClampToBorderColor"/>, so a Wrap, Mirror or Clamp sampler never sends
@@ -75,7 +75,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// nil.</para>
     ///
     /// <para><b>THE ANISOTROPY DEGRADATION IS UNREACHABLE ON METAL, exactly as it was on Direct3D 11 and unlike
-    /// on Vulkan.</b> The engine's Veldrid path falls back from anisotropic filtering to trilinear when the device
+    /// on Vulkan.</b> The engine's Veldrid path fell back from anisotropic filtering to trilinear when the device
     /// reports no <c>SamplerAnisotropy</c>, and <c>MTLGraphicsDevice</c> constructs its
     /// <c>GraphicsDeviceFeatures</c> with <c>samplerAnisotropy: true</c> unconditionally, so no Metal device takes
     /// it. This backend's capability read answers true for the same reason and section 14 requires the two to
@@ -85,7 +85,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <para><b>THE LOD BIAS IS DROPPED, AND THAT IS THE ONE PLACE THE SEAM LOSES SOMETHING ON THIS BACKEND.</b>
     /// <see cref="GpuSamplerDescription.MipLodBias"/> has no <c>MTLSamplerDescriptor</c> field at all, which is
     /// why <c>GpuCapabilities.SamplerLodBias</c> is the one capability that differs from BOTH other native
-    /// backends. The engine's Veldrid path already zeroes the bias on a device that reports no support, so a
+    /// backends. The engine's Veldrid path already zeroed the bias on a device that reports no support, so a
     /// non-zero bias reaches neither implementation and the two agree by construction rather than by accident.
     /// The seam's own doc comment already says it is a no-op on Metal.</para>
     /// </summary>
@@ -95,7 +95,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal const float MinLod = 0f;
 
         /// <summary>The maximum LOD every sampler on this backend is created with: <c>uint.MaxValue</c> converted
-        /// to a float, which is the value the engine's Veldrid path passes and which arrives at
+        /// to a float, which is the value the engine's Veldrid path passed and which arrives at
         /// <c>-setLodMaxClamp:</c> through the same widening there.</summary>
         internal const float MaxLod = uint.MaxValue;
 

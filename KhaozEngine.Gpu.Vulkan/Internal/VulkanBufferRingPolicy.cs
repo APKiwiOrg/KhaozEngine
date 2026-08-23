@@ -21,7 +21,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// logged.</para>
     ///
     /// <para><b>AND THAT MAKES IT A BACKEND-DIVERGENT CREATION FAILURE, WHICH IS THE PART THAT MATTERS MOST.</b>
-    /// The combination is legal on the seam and is ACCEPTED by <see cref="GpuBackendKind.Vulkan"/>, the Veldrid
+    /// The combination is legal on the seam and was ACCEPTED by <see cref="GpuBackendKind.Vulkan"/>, the Veldrid
     /// leg. It is refused here. That divergence is DOCUMENTED (the package README's ring section and
     /// <c>docs/USING-KHAOZENGINE.md</c>) rather than left for a consumer to discover, which is V-M7's own emphasis.
     /// The combination is vacuous in the engine today, so nothing legitimate reaches the throw, but it is

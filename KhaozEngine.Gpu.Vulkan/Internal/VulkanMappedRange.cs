@@ -24,7 +24,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// correct in isolation AND is only ever called where widening is a no-op, and both halves are asserted.</para>
     ///
     /// <para>A coherent chunk never calls any of this. It needs no flush and no invalidate at all, which is why
-    /// coherent types are preferred on every ladder (V-M4) and why the incumbent has never been bitten by having
+    /// coherent types are preferred on every ladder (V-M4) and why the incumbent had never been bitten by having
     /// neither call anywhere in it.</para>
     /// </summary>
     internal static class VulkanMappedRange

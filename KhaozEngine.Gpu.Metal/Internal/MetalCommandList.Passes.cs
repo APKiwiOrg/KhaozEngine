@@ -49,7 +49,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <inheritdoc/>
-        /// <remarks>M-A2: it lands on the attachment this call NAMES, which is the one index the incumbent gets
+        /// <remarks>M-A2: it lands on the attachment this call NAMES, which is the one index the incumbent got
         /// wrong and the one deliberate rendering change this phase spends on the reference golden family.
         /// </remarks>
         public void ClearColorTarget(uint index, Color rgba)

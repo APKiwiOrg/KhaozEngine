@@ -422,8 +422,8 @@ namespace KhaozEngine.Windowing
         /// be changed later via <see cref="FrameCap"/> / <see cref="FrameCapHz"/>.
         /// <para><paramref name="backendPreference"/> is the player's stored graphics-backend choice, handed in as
         /// data (this package reads no settings file). It outranks the OS probe and is outranked by
-        /// <c>KE_GRAPHICS_BACKEND</c>. A preference whose device cannot be created falls back to the incumbent
-        /// backend, which <see cref="BackendSelection"/> then reports as
+        /// <c>KE_GRAPHICS_BACKEND</c>. A preference whose device cannot be created falls back to the platform's
+        /// default backend, which <see cref="BackendSelection"/> then reports as
         /// <see cref="GpuBackendSource.FallbackAfterFailure"/>.</para>
         /// </summary>
         public AppWindow(string title, int width, int height, PresentMode presentMode, FrameCap frameCap,

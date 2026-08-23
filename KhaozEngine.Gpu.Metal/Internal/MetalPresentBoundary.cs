@@ -12,7 +12,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// row 15 (https://github.com/APKiwiOrg/KhaozEngine/issues/581).
     ///
     /// <para><b>NOTHING IN THIS TYPE TOUCHES OBJECTIVE-C, WHICH IS HOW MM7 IS ANSWERED AS FAR AS IT CAN BE.</b>
-    /// The design records that not one line of the incumbent's swapchain runs in CI on any leg, ever. A headless
+    /// The design records that not one line of the incumbent's swapchain ran in CI on any leg, ever. A headless
     /// runner cannot drive a real <c>CAMetalLayer</c>, so every native call goes behind
     /// <see cref="IMetalSwapchainApi"/> and everything that DECIDES anything is here, driven by a fake on every
     /// leg: the order of the boundary, the skipped present, the orphan target, the counters, the coalescing and
@@ -40,7 +40,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <para><b>A SKIPPED PRESENT IS NOT A SKIPPED FRAME (M-W5).</b> <see cref="FramesBegun"/> counts every
     /// boundary, including one whose drawable came back nil, because it is the denominator every per-frame figure
     /// in <c>GpuDeviceCounters</c> is divided by and a frame that recorded and submitted is a frame however it
-    /// ended. The incumbent counts nothing at all here and logs nothing either, which is the regression this row
+    /// ended. The incumbent counted nothing at all here and logged nothing either, which is the regression this row
     /// exists for: <see cref="SkippedPresents"/> is the count, and the first one WARNs once with the reason.</para>
     ///
     /// <para><b>THE ACQUIRE IS TIMED RATHER THAN PROBED, and that is forced (M-W4).</b> Vulkan can ask
@@ -148,7 +148,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal long FramesBegun => Volatile.Read(ref _framesBegun);
 
         /// <summary>Boundaries whose drawable was nil, so the frame rendered into the orphan target and was not
-        /// presented. The number the incumbent does not keep.</summary>
+        /// presented. The number the incumbent did not keep.</summary>
         internal long SkippedPresents => Volatile.Read(ref _skippedPresents);
 
         /// <summary>M-W4's pair, cumulative since the device was created.
@@ -301,7 +301,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 }
             }
 
-            // RELEASED HERE rather than at the next acquire, which is where the incumbent releases it. See the
+            // RELEASED HERE rather than at the next acquire, which is where the incumbent released it. See the
             // type remarks: the committed present buffer retains the drawable until it completes, so this is
             // never the last reference to a texture the framebuffer still names.
             _api.ReleaseDrawable(_drawable);
@@ -315,7 +315,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (!_pending.Take(out MetalDrawableSize? size, out bool? sync)) return;
 
-            // THE DRAIN IS THE WHOLE POINT OF DEFERRING TO THE BOUNDARY. The incumbent applies a resize inline on
+            // THE DRAIN IS THE WHOLE POINT OF DEFERRING TO THE BOUNDARY. The incumbent applied a resize inline on
             // the calling thread with no drain anywhere, releasing a depth texture in-flight frames may still be
             // reading. There is no depth texture here (the seam cannot ask for one), so what this protects is the
             // drawable swap and the layer reconfiguration, and it is the seat a depth rebuild would need the day
@@ -330,7 +330,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (sync is { } enabled)
             {
-                // UNCONDITIONALLY (M-W2). The incumbent writes this only inside three values of an enum
+                // UNCONDITIONALLY (M-W2). The incumbent wrote this only inside three values of an enum
                 // deprecated since macOS 10.15, so a machine outside that set loses its vsync toggle silently.
                 _api.SetDisplaySyncEnabled(enabled);
                 _syncApplied = enabled;

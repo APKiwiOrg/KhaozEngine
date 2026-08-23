@@ -25,7 +25,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <item><description><b><see cref="ClearColourTarget"/> and <see cref="ClearDepthStencil"/>.</b> Before the
     /// pass opens, the value is stored as pending and becomes <c>loadAction = Clear</c> on the attachment the
     /// caller NAMED (M-A2). After it has opened, the RENDER pass is ended and the value stored as pending anyway,
-    /// which is what the incumbent forces through <c>EnsureNoRenderPass</c> in its own
+    /// which is what the incumbent forced through <c>EnsureNoRenderPass</c> in its own
     /// <c>ClearColorTargetCore</c>: Metal has no clear COMMAND, so a clear arriving mid-pass costs a whole
     /// encoder boundary and there is no cheaper shape available. A blit or compute encoder open at the time is
     /// left alone, which is that same helper's semantics and not <c>EnsureNoEncoder</c>'s.</description></item>
@@ -339,7 +339,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             }
 
             // THE GATE IS THE SEAM'S RASTERIZER STATE, NOT METAL'S (M-A6), and a gated-out rectangle is NOT
-            // marked: it stays owed, so the next pipeline with the test on receives it. The incumbent clears its
+            // marked: it stays owed, so the next pipeline with the test on receives it. The incumbent cleared its
             // own flag inside this same branch for the same reason.
             if (_scissorTestEnabled && ScissorOwed)
             {
@@ -355,7 +355,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <c>SetFramebufferCore</c> and the other is <c>End</c>, and those are exactly the two callers of this.
         /// <para>
         /// THE CLEAR-ONLY CASE IS REPRODUCED DELIBERATELY, NOT INHERITED BY ACCIDENT. A framebuffer plus a clear
-        /// plus an <c>End</c> with no draw between them must still clear, because the incumbent forces exactly
+        /// plus an <c>End</c> with no draw between them must still clear, because the incumbent forced exactly
         /// that and a golden depends on it. Under a deferred begin that is a begin and end pair with no draws,
         /// and it is the ONE place the deferral needs an explicit flush rather than falling out of the schedule.
         /// It needs no "did a draw happen" flag to detect: a begin CONSUMES the pending array, so a pending clear

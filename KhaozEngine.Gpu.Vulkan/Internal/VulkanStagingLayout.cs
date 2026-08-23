@@ -21,7 +21,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <param name="DepthPitch">Bytes for one whole depth slice, which for a 2D texture is the whole
     /// subresource.</param>
     /// <param name="ArrayPitch">Bytes between array layers OF THIS SUBRESOURCE. Equal to
-    /// <paramref name="DepthPitch"/>, exactly as the incumbent sets it.</param>
+    /// <paramref name="DepthPitch"/>, exactly as the incumbent set it.</param>
     /// <param name="Size">How many bytes the subresource occupies, which is what
     /// <see cref="MappedData.SizeInBytes"/> carries.</param>
     internal readonly record struct VulkanSubresourceLayout(
@@ -55,7 +55,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// reproducing ARITHMETIC rather than agreeing with a driver, which is the one reason this can be pinned at all
     /// without a device.</para>
     ///
-    /// <para><b>EVERY FORMULA BELOW CITES ITS SOURCE.</b> The incumbent is the vendored Veldrid fork this engine
+    /// <para><b>EVERY FORMULA BELOW CITES ITS SOURCE.</b> The incumbent was the vendored Veldrid fork this engine
     /// ships against (<c>4.9.104</c>, Vulkan tree <c>v4.9.0</c>), and the six functions this reproduces are
     /// <c>FormatSizeHelpers.GetSizeInBytes</c>, <c>FormatHelpers.GetRowPitch</c>, <c>FormatHelpers.GetNumRows</c>,
     /// <c>FormatHelpers.GetDepthPitch</c>, <c>FormatHelpers.GetRegionSize</c> and <c>Util.GetDimension</c>, plus the
@@ -73,14 +73,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// branch comes back HERE, with the incumbent's own version as the reference, and the table gains its rows.</para>
     ///
     /// <para><b>DEPTH IS ALWAYS 1</b>, because <see cref="GpuTextureDescription"/> has no depth at all: the seam
-    /// expresses 2D textures, 2D arrays and cubemaps and nothing else. The incumbent's depth terms are therefore
+    /// expresses 2D textures, 2D arrays and cubemaps and nothing else. The incumbent's depth terms were therefore
     /// multiplications by one, kept visible in the formulas below rather than folded away, so a reader comparing
     /// the two sources sees the same shape.</para>
     ///
-    /// <para><b>ARITHMETIC IS IN 64 BITS AND THE RESULT IS REFUSED ABOVE 32.</b> The incumbent computes in
-    /// <c>uint</c> throughout and wraps silently on a texture large enough to overflow, which would create a
+    /// <para><b>ARITHMETIC IS IN 64 BITS AND THE RESULT IS REFUSED ABOVE 32.</b> The incumbent computed in
+    /// <c>uint</c> throughout and wrapped silently on a texture large enough to overflow, which would create a
     /// staging buffer far too small and corrupt whatever sits after it. Every value this type produces is identical
-    /// to the incumbent's everywhere the incumbent does not wrap, and above that it throws by name. That is a
+    /// to the incumbent's everywhere the incumbent did not wrap, and above that it throws by name. That is a
     /// guard rather than a divergence: <see cref="MappedData.SizeInBytes"/> is a <c>uint</c>, so a staging texture
     /// past this bound cannot be described through the seam at all.</para>
     /// </summary>
@@ -342,7 +342,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + " array layers. The offset it would produce lands in whatever follows the buffer.");
         }
 
-        // The 32-bit ceiling. See the class note: identical to the incumbent everywhere the incumbent does not
+        // The 32-bit ceiling. See the class note: identical to the incumbent everywhere the incumbent did not
         // wrap, and named rather than silent above it.
         static ulong Fits(ulong value, in VulkanStagingShape shape, string what)
         {

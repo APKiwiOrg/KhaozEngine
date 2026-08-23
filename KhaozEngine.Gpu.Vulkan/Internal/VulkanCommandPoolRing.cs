@@ -18,7 +18,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// buffer's slot advances once per BATCH rather than once per frame, which changes how often the wait is
     /// reached and nothing about what it means.</para>
     ///
-    /// <para><b>A POOL PER SLOT, NOT ONE POOL WITH <c>RESET_COMMAND_BUFFER</c>.</b> The incumbent creates one pool
+    /// <para><b>A POOL PER SLOT, NOT ONE POOL WITH <c>RESET_COMMAND_BUFFER</c>.</b> The incumbent created one pool
     /// per list with that flag, which tells the driver every buffer must be individually resettable and pushes it
     /// onto the slower per-buffer allocator. Resetting the WHOLE pool is the documented fast path and returns the
     /// last record's memory to the pool's arena in one operation. The cost is three pool objects per list instead
@@ -49,7 +49,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     ///
     /// <para><b>DISPOSAL HANDS THE POOLS TO THE RETIRE LIST</b> (V-F9) at the highest value any of its slots was
     /// submitted at, so a list disposed with submissions outstanding destroys nothing until the GPU has passed
-    /// them. The incumbent uses a refcount, which also works and which this design does not need because the
+    /// them. The incumbent used a refcount, which also works and which this design does not need because the
     /// retire list exists for resources anyway. Every held destroy is TERMINAL (it allocates nothing and retires
     /// nothing), which is what makes it legal in the teardown drain that runs between <c>vkDeviceWaitIdle</c> and
     /// <c>vkDestroyDevice</c>.</para>

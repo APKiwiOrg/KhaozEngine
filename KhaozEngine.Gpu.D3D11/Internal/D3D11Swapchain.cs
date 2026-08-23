@@ -193,7 +193,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// Release every view over the backbuffer, THEN resize the buffers, THEN create the views again.
         /// <c>IDXGISwapChain::ResizeBuffers</c> fails while any outstanding reference to a backbuffer exists, so
         /// the middle step is impossible without the first, and getting it wrong leaves the window presenting a
-        /// swapchain whose buffers no longer match it. The incumbent has the same order and states it nowhere,
+        /// swapchain whose buffers no longer match it. The incumbent had the same order and stated it nowhere,
         /// which is why the three steps are three members of <see cref="ID3D11SwapchainSurface"/>: the order is
         /// engine logic here, asserted by a device-free test, rather than a detail buried in a Windows-only body
         /// that only a human with a real window could ever catch.

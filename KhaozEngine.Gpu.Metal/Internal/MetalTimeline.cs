@@ -274,7 +274,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <para><b>NOT <c>waitUntilCompleted</c> ON A RETAINED LAST COMMAND BUFFER</b>, which is what the
         /// incumbent does. That needs the buffer kept alive under a lock to be read at all and gives nothing to
         /// count without extra bookkeeping, where a value on the timeline is both the thing to wait for and the
-        /// thing to time. <b>There is no C6-style bet here</b>: the incumbent's drain is already real, and phase
+        /// thing to time. <b>There is no C6-style bet here</b>: the incumbent's drain was already real, and phase
         /// 2's win was in making an empty method body exist, so nobody should look for that win twice.</para>
         ///
         /// <para><b>IT WAITS IN SLICES, AND THAT IS THIS BACKEND'S ONE ADDITION TO M-F5's SENTENCE.</b> The

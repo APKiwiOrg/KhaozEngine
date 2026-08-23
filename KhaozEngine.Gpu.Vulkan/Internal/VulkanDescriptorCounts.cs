@@ -17,8 +17,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// budget until a fresh pool spawns, and it never stops, because every spawned pool leaks the same way.</para>
     ///
     /// <para><b>AND IT BINDS HARDER HERE THAN THERE.</b> Decision V-D4 makes EVERY uniform buffer in every layout
-    /// a <see cref="VulkanDescriptorType.UniformBufferDynamic"/>, where the incumbent only makes the elements the
-    /// engine declared dynamic. So the counter the incumbent forgets is the one this backend spends on almost
+    /// a <see cref="VulkanDescriptorType.UniformBufferDynamic"/>, where the incumbent only made the elements the
+    /// engine declared dynamic. So the counter the incumbent forgot is the one this backend spends on almost
     /// every set it will ever allocate, and the map editor churns those on every document load. Taking and
     /// restoring are ONE pair of methods here (<see cref="Take"/> and <see cref="Restore"/>) over ONE value, which
     /// is the structural reason the same divergence cannot be written: there is no second list of field names to
@@ -156,7 +156,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <summary>
-        /// GIVE <paramref name="request"/> BACK, on all seven types. This is the method the incumbent writes with
+        /// GIVE <paramref name="request"/> BACK, on all seven types. This is the method the incumbent wrote with
         /// five of its seven fields, and the reason it is a single expression here rather than seven statements.
         /// </summary>
         internal VulkanDescriptorCounts Restore(in VulkanDescriptorCounts request) => Add(request);

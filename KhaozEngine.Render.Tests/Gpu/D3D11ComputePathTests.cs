@@ -607,7 +607,7 @@ namespace KhaozEngine.Tests.Gpu
         /// (<c>R32_Typeless</c> plus the raw view flag, counted in 4-byte elements, over a
         /// <c>BufferAllowRawViews</c> resource). This asserts the policy the compute bind path rides on: both
         /// structured kinds carry raw views, a read-write one carries BOTH so a read-write storage block is still
-        /// readable, and the stride stays advisory. Keeping it identical to the incumbent is why the ocean's
+        /// readable, and the stride stays advisory. Keeping it identical to the incumbent was why the ocean's
         /// existing kernels work, because SPIRV-Cross emits a GLSL storage block as a <c>ByteAddressBuffer</c> and
         /// never as a <c>StructuredBuffer&lt;T&gt;</c>.
         /// </summary>

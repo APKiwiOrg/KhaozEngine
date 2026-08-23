@@ -44,7 +44,7 @@ namespace KhaozEngine.Tests.Gpu
     /// run in CI on tag, and lavapipe is the one that matters for the crash: until it runs there, the Vulkan fence
     /// path is unproven and only the argument plus the Metal evidence stands behind it. WHICH DIRECT3D 11 BACKEND
     /// it is decides what happens on that WARP leg, and the two differ. The incumbent
-    /// <c>GpuBackendKind.Direct3D11</c> never takes the fence path at all (its Veldrid fence is a CPU submit
+    /// <c>GpuBackendKind.Direct3D11</c> never took the fence path at all (its Veldrid fence was a CPU submit
     /// receipt), so it stays on the fallback the suppressed-capability leg here exercises and the fenced test
     /// skips by capability. The engine's own <c>Direct3D11Native</c> backend reports completion fences on both
     /// its timeline mechanisms (decision C5), so on a process that came up on it the fenced test RUNS, which is

@@ -5,7 +5,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// decided. Both are WRAP on all three axes, because the seam's shared pair is contractually wrap and the
     /// incumbent's pair is wrap. Section 14.
     ///
-    /// <para><b>THESE MIRROR THE INCUMBENT'S BUILT-INS, NOT THEIR ENGINE NAMESAKES.</b> The incumbent wraps
+    /// <para><b>THESE MIRROR THE INCUMBENT'S BUILT-INS, NOT THEIR ENGINE NAMESAKES.</b> The incumbent wrapped
     /// Veldrid's own <c>GraphicsDevice.PointSampler</c> and <c>LinearSampler</c>, which come from
     /// <c>Veldrid.SamplerDescription.Point</c> and <c>.Linear</c>, and both of those are documented and built as
     /// <c>SamplerAddressMode.Wrap</c> on U, V and W. The engine's own <see cref="GpuSamplerDescription.Point"/> and
@@ -30,8 +30,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     ///
     /// <para><b>THE PAIR IS DEVICE-OWNED AND A CONSUMER CANNOT DESTROY IT.</b> The wrappers the device hands out
     /// for these two do not own their <c>VkSampler</c>, so a consumer that disposes one it got from
-    /// <c>IGpuDevice.PointSampler</c> destroys nothing, which is the same rule the Veldrid path and the Direct3D 11
-    /// backend both apply to their shared pairs.</para>
+    /// <c>IGpuDevice.PointSampler</c> destroys nothing, which is the same rule the Direct3D 11 backend applies to
+    /// its shared pair.</para>
     /// </summary>
     internal static class VulkanSharedSamplers
     {

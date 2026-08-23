@@ -203,7 +203,7 @@ float crackBorderDistCheap(vec2 qp, float t, out vec2 outCell)
 
 void main() {
     // Build NDC from gl_FragCoord, NOT from an interpolated UV: render-target texture SAMPLING has a
-    // backend-dependent Y origin (Veldrid does not normalize it; the post passes hide this because they sample and
+    // backend-dependent Y origin (the backend does not normalize it; the post passes hide this because they sample and
     // write at the same UV so any flip cancels, but a reconstruction does not), whereas gl_FragCoord is upper-left
     // on every backend. Both paths below unproject with the RAW (un-clip-corrected) inverse view-projection,
     // matching the backend-independent Camera.ScreenToRay picking convention, so the decal is identical on

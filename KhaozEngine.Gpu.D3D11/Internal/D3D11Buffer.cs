@@ -23,7 +23,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <c>DEFAULT</c>-usage buffer with <c>BufferAllowRawViews</c> and a FULL-RANGE byte-address view, and
     /// <see cref="GpuBufferDescription.StructureByteStride"/> stays advisory. SPIRV-Cross emits a GLSL storage
     /// block as a <c>ByteAddressBuffer</c> or an <c>RWByteAddressBuffer</c>, so a stride-shaped structured view
-    /// would not be what the compiled shader reads. Keeping this identical to the incumbent is why the ocean
+    /// would not be what the compiled shader reads. Keeping this identical to the incumbent was why the ocean
     /// compute kernels keep working.
     /// </para>
     /// <para>

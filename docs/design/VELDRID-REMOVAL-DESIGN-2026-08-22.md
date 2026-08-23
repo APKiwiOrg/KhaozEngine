@@ -487,6 +487,24 @@ rather than a test that pretends otherwise.
 downsampled grids and robust to driver noise, so the likely outcome is that no grid moves. Likely is not
 measured. Row 9 exists to measure it, and its finding is the count of grids that moved, recorded either way.
 
+**Row 9 finding, 2026-08-23: 31 of the 120 grids moved, and all of them stayed inside the tolerance.** R3 said
+the likely outcome was that no grid moved, and that likely was not measured. It is measured now, on a
+`bake=true` dispatch across all three legs at `8fbf64aa` (run 32625377415, every leg green), and the likely
+outcome is the wrong one: `metal-native` moved 19 of its 40, `direct3d11-native` 6 and `vulkan-native` 6, worst
+cell 0.0431 against a `GoldenGrid.DefaultTolerance` of 0.06. The committed grids therefore STAY, unchanged, and
+none of the bake output was committed. Two things make that movement the TOOLCHAIN rather than driver noise,
+which is the part worth keeping. First, the Direct3D 11 and Vulkan families are 39-of-40 different files and yet
+moved the same six programs by the same delta vector, agreeing on over 98 percent of cells at the file's
+four-decimal precision, so two unrelated software rasterizers on two operating systems moved together. Second,
+the ordinary push run on the same commit (32625331381, green) recorded the identical worst-cell delta for every
+one of those programs in its `golden-deltas.<backend>.txt`, so the movement reproduces across an independent run
+and even the hosted paravirtual Metal adapter of [#614](https://github.com/APKiwiOrg/KhaozEngine/issues/614) is
+not what produces it. Every grid that moved is a 3D scene, and no 2D grid moved on any leg. The residual to
+carry forward is headroom rather than correctness: `scene3d_sky_world_sun` on Metal now sits at 72 percent of
+the tolerance budget, so the families still pass, and a later change of this shape has less room than the
+numbers from before row 8 would suggest.
+[#692](https://github.com/APKiwiOrg/KhaozEngine/issues/692).
+
 **R4: the two toolchains corrupt each other in one process.** Measured, section 2.3 result 4. Mitigated by
 **Row 8 addendum, 2026-08-23: what the corpus comparison could not see.** The swap's gate was the
 out-of-process corpus comparison plus `ShaderValidation` green on every target, and both passed while the

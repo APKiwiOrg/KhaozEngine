@@ -83,7 +83,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <para><b>THE PASS SPLIT IS UNAVOIDABLE HERE AND IS AVOIDED ENTIRELY BY THE RING</b>, which is the whole
     /// contrast section 9.2 and 9.3 draw between the two paths. <c>vkCmdCopyBuffer</c> is not permitted inside a
     /// <c>vkCmdBeginRendering</c> scope, so a bulk upload recorded mid-frame ends the pass, copies, barriers, and
-    /// lets the next draw begin it again. That is the same cost the incumbent pays for EVERY uniform write, and the
+    /// lets the next draw begin it again. That is the same cost the incumbent paid for EVERY uniform write, and the
     /// ring's entire value is that a uniform write no longer comes here at all.</para>
     ///
     /// <para><b>IMPLEMENTED BY <see cref="VulkanCommandList"/></b>, which owns the deferred begin

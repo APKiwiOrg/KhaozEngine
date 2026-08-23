@@ -107,10 +107,10 @@ namespace KhaozEngine.Render3D.Rendering
         // same base is byte-identical, and every backend records four fewer commands per destination.
         //
         // On D3D11 it is not a micro-optimization, it is the difference between two code paths. Veldrid's
-        // D3D11CommandList.UpdateBufferCore sends a PARTIAL write to a non-Dynamic UniformBuffer down the staging
-        // route: rent a staging buffer, then GraphicsDevice.UpdateBuffer it, which Maps the IMMEDIATE context with
-        // D3D11_MAP_WRITE (not WRITE_DISCARD, and no DO_NOT_WAIT flag). That blocks the calling thread until the GPU
-        // has finished with the staging buffer it just recycled, so each partial write is a CPU/GPU sync point in
+        // D3D11CommandList.UpdateBufferCore sent a PARTIAL write to a non-Dynamic UniformBuffer down the staging
+        // route: rent a staging buffer, then GraphicsDevice.UpdateBuffer it, which Mapped the IMMEDIATE context with
+        // D3D11_MAP_WRITE (not WRITE_DISCARD, and no DO_NOT_WAIT flag). That blocked the calling thread until the GPU
+        // had finished with the staging buffer it just recycled, so each partial write was a CPU/GPU sync point in
         // the middle of the pass encode. Only a write covering the WHOLE buffer from offset 0 takes the cheap
         // UpdateSubresource path. The model pass's own UBO is exactly UboBytes, so packing it into one write moves
         // it off the staging route entirely. A splat material's combined UBO is larger (params tail), so it stays on

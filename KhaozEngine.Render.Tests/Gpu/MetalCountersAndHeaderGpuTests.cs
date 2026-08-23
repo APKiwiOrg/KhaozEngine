@@ -47,7 +47,7 @@ namespace KhaozEngine.Tests.Gpu
     /// the acquire pair are therefore exactly zero and literally true. The swapchain row
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/581) is what makes them move on a windowed device.
     /// <see cref="GpuDeviceCounters.HasValue"/> being true is what makes a capture carry columns at all, and it is
-    /// the difference between this device and the incumbent Veldrid Metal path, which keeps the default and
+    /// the difference between this device and the incumbent Veldrid Metal path, which kept the default and
     /// reports nothing.</para>
     ///
     /// <para><b>IT SITS IN <c>NativeDeviceLifecycle</c></b> because it builds a whole device beside the suite's
@@ -230,7 +230,7 @@ namespace KhaozEngine.Tests.Gpu
         /// so it compares the header against the device rather than against a literal. Metal has no such
         /// ambiguity: Apple ships no software Metal rasterizer at all, so FALSE is the answer on every machine
         /// this can run on, and pinning the literal is what makes the header distinguishable from the incumbent
-        /// Veldrid Metal path, which correctly leaves the field null because it cannot answer.
+        /// Veldrid Metal path, which correctly left the field null because it could not answer.
         /// </para>
         /// </summary>
         [GpuFact]

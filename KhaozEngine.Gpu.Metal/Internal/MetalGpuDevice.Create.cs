@@ -53,7 +53,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// window into a layer" and "build a device over a layer".
         /// <para>
         /// <b>IT EXISTS BECAUSE OF MM7, AND IT IS THE FURTHEST THAT OBSERVATION CAN BE PUSHED.</b> The design
-        /// records that not one line of the incumbent's swapchain runs in CI on any leg, ever. A headless runner
+        /// records that not one line of the incumbent's swapchain ran in CI on any leg, ever. A headless runner
         /// cannot produce an <c>NSWindow</c>, and it CAN produce a <c>CAMetalLayer</c>, which row 1's spike
         /// established on a real device. So the window resolution is the only part that has to wait for a windowed
         /// playtest, and everything from the layer down (the configuration, the acquire, the present, the resize
@@ -190,8 +190,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // CreateForWindow's own catch does, because ownership of it transfers to the api this builds.
                 if (host is { } resolved) created.AttachSwapchain(resolved, syncToVerticalBlank, framesInFlight);
 
-                // No threading probe and no threading failure. That pair exists because a natively created
-                // Direct3D 11 device has no Veldrid GraphicsDevice for D3D11ThreadingProbe to read a raw pointer
+                // No threading probe and no threading failure. That pair exists because the GPU package holds
+                // no device object of its own for D3D11ThreadingProbe to read a raw Direct3D 11 pointer
                 // off. Metal has no D3D11_FEATURE_DATA_THREADING analogue at all, so there is nothing to ask and
                 // two nulls are the honest answer rather than a gap (4.2's first two rows).
                 return new GpuProviderDevice(created, ThreadingCaps: null, ThreadingProbeFailure: null);

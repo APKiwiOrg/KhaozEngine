@@ -74,7 +74,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _layer.SetFramebufferOnly(true);
             _layer.SetDrawableSize(size.ToCGSize());
 
-            // UNCONDITIONALLY (M-W2), where the incumbent writes it only inside three values of an enum
+            // UNCONDITIONALLY (M-W2), where the incumbent wrote it only inside three values of an enum
             // deprecated since macOS 10.15.
             _layer.SetDisplaySyncEnabled(syncToVerticalBlank);
 

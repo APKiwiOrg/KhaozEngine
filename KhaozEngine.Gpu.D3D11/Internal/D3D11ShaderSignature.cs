@@ -53,7 +53,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </list>
     /// <para>
     /// BOTH WORKAROUNDS STAY. The native backend uses the SAME SPIRV-Cross and the SAME FXC, so it inherits the
-    /// gap intolerance unchanged, and the Veldrid leg ships alongside indefinitely. The fix in a shader is always
+    /// gap intolerance unchanged. The fix in a shader is always
     /// one of two shapes: a negligible-but-live SINK that reads every declared input so none is dropped (the
     /// shadow vertices), or ORDERING the interpolants so the used ones form a gap-free prefix (the terrain
     /// vertex). They come out with SPIRV-Cross, not before.

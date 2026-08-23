@@ -66,7 +66,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// THE HEADLINE: one aligned copy emits EXACTLY ONE entry, at the offsets it was given, with the SIZE
         /// PADDED UP to a multiple of four. The pad is the half of section 9.3's ruling that does not throw, and
-        /// it is the same <c>(4 - size % 4) % 4</c> the incumbent already applies on its own aligned path.
+        /// it is the same <c>(4 - size % 4) % 4</c> the incumbent already applied on its own aligned path.
         /// <para>
         /// THE PAD IS SAFE BY ARITHMETIC RATHER THAN BY A BOUND CHECK, which <see cref="MetalCopyAlignment"/>
         /// carries in full: every buffer is allocated at <see cref="MetalBufferPolicy.AllocationBytes"/>, so an

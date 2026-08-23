@@ -163,7 +163,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// TEXTURE CREATION SUBMITS NOTHING (V-M10), which is the claim the incumbent's shape makes false: its
+        /// TEXTURE CREATION SUBMITS NOTHING (V-M10), which is the claim the incumbent's shape made false: its
         /// constructor issues a whole <c>vkQueueSubmit</c> for the clear and another for the sampled transition, so
         /// loading a scene with two hundred textures is two hundred submissions before a frame is drawn. Twenty
         /// textures here, one open batch, zero submits.
@@ -219,7 +219,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// A SAMPLED TEXTURE WITH NO CLEAR TAKES ONE BARRIER AND NOTHING ELSE, straight from <c>UNDEFINED</c> to
-        /// <c>SHADER_READ_ONLY_OPTIMAL</c>. That is the common case, and it is where the incumbent spends a whole
+        /// <c>SHADER_READ_ONLY_OPTIMAL</c>. That is the common case, and it is where the incumbent spent a whole
         /// queue submit.
         /// </summary>
         [Fact]
@@ -440,7 +440,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// THE FACTORY'S ANISOTROPY ANSWER COMES FROM THE DEVICE'S CAPABILITY, which is the same member the
-        /// engine's Veldrid path reads, so the two agree by construction rather than by luck.
+        /// engine's Veldrid path read, so the two agree by construction rather than by luck.
         /// </summary>
         [Fact]
         public void TheFactorysSamplers_ReadTheDevicesAnisotropyCapability()
@@ -561,7 +561,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// A CUBEMAP'S IMAGE AND ITS SAMPLED VIEW BOTH CARRY THE LOGICAL LAYER COUNT, and the six-fold expansion
-        /// happens on the far side of the seam where the incumbent does it too. Asserting it here rather than in
+        /// happens on the far side of the seam where the incumbent did it too. Asserting it here rather than in
         /// the fake is what keeps the expansion in ONE place.
         /// </summary>
         [Fact]

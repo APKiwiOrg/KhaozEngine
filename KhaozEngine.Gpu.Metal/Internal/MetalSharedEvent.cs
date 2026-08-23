@@ -11,7 +11,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// released with the device (M-F1). Everything here is a native call and nothing here decides anything,
     /// which is the split <see cref="IMetalSharedEvent"/> exists to make.
     /// <para>
-    /// WHAT THIS REPLACES IS MOST OF THE POINT. The incumbent Veldrid Metal backend's fence path is a hand-built
+    /// WHAT THIS REPLACES IS MOST OF THE POINT. The incumbent Veldrid Metal backend's fence path was a hand-built
     /// block literal and descriptor allocated with <c>Marshal.AllocHGlobal</c>, an invoke pointer from
     /// <c>Marshal.GetFunctionPointerForDelegate</c>, a lock plus a dictionary lookup INSIDE the driver's
     /// completion callback, a second process-global dictionary and static callback for AOT targets, and a

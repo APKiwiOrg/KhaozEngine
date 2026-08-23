@@ -16,8 +16,8 @@ namespace KhaozEngine.Render2D
         // and the vertex shader multiplies it. Each Begin claims its OWN 256-byte slot (VpSlotBytes), so no slot is
         // overwritten within a frame's command list - the same distinct-slot + dynamic-offset pattern the 3D
         // dynamic-offset renderers use (OverlayMeshRenderer / GroundDecalRenderer), which is safe regardless of how
-        // a backend orders mid-command-list buffer copies (overwriting one shared slot mid-list mis-binds on
-        // Metal/Veldrid). cl.UpdateBuffer records the write into the command stream, so cross-frame reuse of the
+        // a backend orders mid-command-list buffer copies (overwriting one shared slot mid-list mis-bound on
+        // the Veldrid Metal leg). cl.UpdateBuffer records the write into the command stream, so cross-frame reuse of the
         // same slots is safe too (each frame's list runs to completion before the next) - no ring is needed here,
         // unlike the vertex buffers (gd.UpdateBuffer, an off-timeline write). _beginIndex resets each NewFrame,
         // _vpUbo grows on demand.
@@ -32,7 +32,7 @@ namespace KhaozEngine.Render2D
         // THE CPU MIRROR OF THE WHOLE UBO, which is what makes each Begin's write a WHOLE-buffer write.
         //
         // A Begin used to write its own 64 bytes at its slot offset, and a PARTIAL write to a non-Dynamic uniform
-        // buffer is the shape Veldrid's D3D11CommandList.UpdateBufferCore sends down its staging route: rent a
+        // buffer is the shape Veldrid's D3D11CommandList.UpdateBufferCore sent down its staging route: rent a
         // staging buffer, hand it to GraphicsDevice.UpdateBuffer, which Maps the IMMEDIATE context with
         // D3D11_MAP_WRITE (not WRITE_DISCARD, no DO_NOT_WAIT) and blocks until the GPU has released the buffer being
         // recycled. Only a write covering the whole buffer from offset 0 takes the cheap UpdateSubresource path, so

@@ -18,7 +18,7 @@ namespace KhaozEngine.Tests.Gpu
     /// decides when those are SAFE is in <see cref="D3D11RingRecyclingTests"/>.
     /// </para>
     /// <para>
-    /// WHY THE RING EXISTS AT ALL, since none of these numbers mean much without it. Veldrid puts a partial write
+    /// WHY THE RING EXISTS AT ALL, since none of these numbers mean much without it. Veldrid put a partial write
     /// to a default-usage constant buffer on a pooled staging path whose map blocks until the GPU is done with the
     /// buffer being recycled, and zero renderer sites ask for a dynamic buffer, so every per-frame uniform write
     /// in the engine takes that path. A reporting client paid 22 blocking maps a frame and 12 to 17 ms a pass for

@@ -12,8 +12,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <para><b>THE RULING IS ASYMMETRIC AND BOTH HALVES ARE DELIBERATE.</b> macOS requires the source offset,
     /// the destination offset AND the size of
     /// <c>copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:</c> to be multiples of four. The SIZE half
-    /// is padded up, which is the <c>(4 - size % 4) % 4</c> the incumbent already applies on its own aligned
-    /// path. The OFFSET half THROWS by name. The incumbent instead routes any unaligned copy through an embedded
+    /// is padded up, which is the <c>(4 - size % 4) % 4</c> the incumbent already applied on its own aligned
+    /// path. The OFFSET half THROWS by name. The incumbent instead routed any unaligned copy through an embedded
     /// compute shader driven by a dedicated compute pipeline, and shipping a second metallib plus a second
     /// pipeline for a case no consumer produces is the unreachable-code reproduction G1 declined once already.
     /// </para>

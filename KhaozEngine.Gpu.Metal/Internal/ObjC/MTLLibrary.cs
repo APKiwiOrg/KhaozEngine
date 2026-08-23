@@ -100,7 +100,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         /// entry point of that name.
         /// <para>
         /// THE NAME IS THE ONE READ OUT OF THE EMISSION (M-S5), never a hardcoded <c>main0</c>. SPIRV-Cross
-        /// renames the GLSL <c>main</c> because <c>main</c> is reserved in MSL, and the incumbent gets the name
+        /// renames the GLSL <c>main</c> because <c>main</c> is reserved in MSL, and the incumbent got the name
         /// from a Veldrid layer this backend does not have.
         /// </para>
         /// </summary>

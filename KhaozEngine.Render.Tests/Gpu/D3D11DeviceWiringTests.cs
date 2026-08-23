@@ -175,8 +175,8 @@ namespace KhaozEngine.Tests.Gpu
         ///   pump, the swapchain and its views, then the fence subsystem, which takes the timeline's fence and
         ///   event objects with it.</description></item>
         ///   <item><description>The liveness token is flipped LAST. Every release above reads it and no-ops when
-        ///   it says dead, so flipping it first (which is what the Veldrid wrapper does, correctly, because
-        ///   destroying a Veldrid device frees its children) would silently skip all of them and leave the
+        ///   it says dead, so flipping it first (which is what the Veldrid wrapper did, correctly, because
+        ///   destroying a Veldrid device freed its children) would silently skip all of them and leave the
         ///   ID3D11Device alive holding a swapchain nobody can reach.</description></item>
         /// </list>
         /// </summary>

@@ -13,7 +13,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// THIS IS THE DEPENDENCY WORK-BREAKDOWN ROW 8 WAITED ON ROW 13a FOR, and the reason is worth stating once in
     /// executable form. A ring recycles a segment when the submission that last used it has FINISHED, which is a
-    /// completion read. Veldrid's Direct3D 11 fence is a <c>ManualResetEvent</c> set the instant
+    /// completion read. Veldrid's Direct3D 11 fence was a <c>ManualResetEvent</c> set the instant
     /// <c>ExecuteCommandList</c> returns, so a ring built on one would hand a segment back the moment the CPU
     /// finished asking for the work rather than when the GPU finished doing it, and the next frame would overwrite
     /// uniforms a draw in flight is still reading. Nothing throws and nothing logs. The frame is just wrong,

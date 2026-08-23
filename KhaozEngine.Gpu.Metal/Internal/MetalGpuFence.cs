@@ -11,7 +11,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// counter against the value submission N signalled. Every fence the seam hands out is therefore two fields
     /// and a comparison, and the expensive object is created once per device. There is no
     /// <c>ManualResetEvent</c>, no per-fence dictionary entry and no allocation on the completion path anywhere
-    /// in this backend, all three of which the incumbent has.
+    /// in this backend, all three of which the incumbent had.
     /// </para>
     /// <para>
     /// THE LIFECYCLE. A fence is UNARMED when created, which reads unsignalled, because the seam requires a
@@ -23,7 +23,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// RESET CANNOT UNSIGNAL ANYTHING, and that is not a compromise. The counter is device-wide and monotonic,
     /// so there is nothing to wind back and nothing that would want to be: a reset fence is re-armed by its next
     /// submission with a strictly HIGHER value than the one it just held, which is exactly the fresh target the
-    /// seam asks for. The incumbent's Veldrid fence has real per-object state to clear, and this is the same
+    /// seam asks for. The incumbent's Veldrid fence had real per-object state to clear, and this is the same
     /// contract reached with less.
     /// </para>
     /// <para>

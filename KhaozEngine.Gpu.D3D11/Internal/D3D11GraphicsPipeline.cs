@@ -17,7 +17,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// vertex bytecode are both in hand.
     /// </para>
     /// <para>
-    /// THERE IS NO STATE CACHE, and its absence is decision X2 rather than an omission. The incumbent carries a
+    /// THERE IS NO STATE CACHE, and its absence is decision X2 rather than an omission. The incumbent carried a
     /// 328-line resource cache keyed on each state description. The Direct3D 11 runtime already returns an
     /// existing object for an identical state description, so the cache duplicates a service the runtime provides,
     /// and it is a lock plus four dictionaries on the creation path to do it. That is a claimed runtime behaviour

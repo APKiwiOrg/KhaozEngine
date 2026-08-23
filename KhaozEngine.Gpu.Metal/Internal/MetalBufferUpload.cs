@@ -11,7 +11,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// allocation, no release, and above all NO ENCODER. Every other buffer stages into the list's own arena and
     /// pays a blit encoder, which on this API means ending the render encoder and therefore discarding the bound
     /// pipeline, every argument-table entry, the viewport, the scissor and every vertex stream (M-R4), so the
-    /// next draw pays a full re-activation for a copy of a few bytes. The incumbent routes EVERY record-time
+    /// next draw pays a full re-activation for a copy of a few bytes. The incumbent routed EVERY record-time
     /// <c>UpdateBuffer</c> down the second path, uniform buffers included, and the shipped renderers write a
     /// uniform buffer per pass and often per draw. The saved work is not the copy. It is the encoder.</para>
     ///

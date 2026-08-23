@@ -89,8 +89,9 @@ namespace KhaozEngine.Gpu
     /// is only ever destroyed after every older batch already was.</item>
     /// </list>
     /// <para><b>The fallback, in two flavours.</b> On a device with no GPU-completion fence
-    /// (<see cref="GpuCapabilities.SupportsCompletionFences"/> false: Direct3D11 and OpenGL, where Veldrid's fence
-    /// is a CPU-side submit receipt) the barrier is absent, and a batch instead waits out
+    /// (<see cref="GpuCapabilities.SupportsCompletionFences"/> false, which the retired Direct3D11 and OpenGL legs
+    /// answered because the Veldrid fence there was a CPU-side submit receipt) the barrier is absent, and a batch
+    /// instead waits out
     /// <see cref="FrameDelay"/> frame boundaries. <see cref="Create"/> then destroys it behind one
     /// <c>WaitForIdle</c>, which is exactly the pre-fence behaviour, so an unfenced backend loses the speed-up and
     /// keeps every safety property it had. <see cref="CreateFrameCounted"/> destroys it on the frame count alone,

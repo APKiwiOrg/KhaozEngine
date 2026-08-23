@@ -42,8 +42,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <see cref="VulkanDebugMessenger"/>, which owns the native messenger and the CDECL callback, and never
     /// created at all when <c>KE_VULKAN_VALIDATION</c> is off.
     /// <para>
-    /// <b>IT LOGS AND NEVER THROWS, WHICH IS THE DECISION.</b> The incumbent's callback throws a managed exception
-    /// and calls <c>Debugger.Break()</c> from inside a native driver callback. Unwinding a managed exception
+    /// <b>IT LOGS AND NEVER THROWS, WHICH IS THE DECISION.</b> The incumbent's callback threw a managed exception
+    /// and called <c>Debugger.Break()</c> from inside a native driver callback. Unwinding a managed exception
     /// through native driver frames is not a diagnostic: it is undefined behaviour that destroys the stack the
     /// diagnostic was about, on a code path that only runs when something has already gone wrong.
     /// <c>strict</c>'s throw is what that behaviour is FOR, and it happens at a controlled point through

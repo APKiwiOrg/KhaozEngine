@@ -155,7 +155,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// THE STATE BLOCK IS EMITTED ONCE PER PIPELINE PER ENCODER, WHICH IS M-R8 AND M-R4 MEETING. A second
         /// draw with nothing changed emits none, a REDUNDANT bind of the pipeline already in place emits none
-        /// (the guard the incumbent lacks, whose <c>SetPipelineCore</c> sets its changed flag on every call), and
+        /// (the guard the incumbent lacked, whose <c>SetPipelineCore</c> set its changed flag on every call), and
         /// a genuinely different pipeline emits one.
         ///
         /// <para><b>WHAT A RED RUN MEANS.</b> Too many blocks is a cost nothing else can see: five encoder calls
@@ -274,7 +274,7 @@ namespace KhaozEngine.Tests.Gpu
         ///
         /// <para><b>THE GUARD IS NOT THE ONE A READER EXPECTS, WHICH IS WHY BOTH ARMS USE THE SAME PIPELINE.</b>
         /// Two things could plausibly gate the trio: the framebuffer having a depth attachment, or the pipeline
-        /// declaring a depth output. The incumbent asks only the first, so the two blocks below differ in exactly
+        /// declaring a depth output. The incumbent asked only the first, so the two blocks below differ in exactly
         /// one field and the equality assertion pins that.</para>
         ///
         /// <para><b>WHAT A RED RUN MEANS.</b> Either a colour-only pass is being sent the trio (a validation

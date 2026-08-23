@@ -4,13 +4,13 @@ namespace KhaozEngine.Gpu
     /// What an <see cref="IGpuBackendProvider"/> hands back from a creation call: the device itself, plus the two
     /// diagnostic values only the provider is in a position to produce.
     /// <para>
-    /// The threading pair is carried rather than re-derived because a natively created device has no Veldrid
-    /// <c>GraphicsDevice</c> for <c>D3D11ThreadingProbe</c> to read a raw <c>ID3D11Device</c> pointer off. The
+    /// The threading pair is carried rather than re-derived because the GPU package holds no device object of
+    /// its own for <c>D3D11ThreadingProbe</c> to read a raw <c>ID3D11Device</c> pointer off. The
     /// provider owns that pointer, so it runs the probe's raw-pointer entry itself and passes both halves through:
     /// <paramref name="ThreadingCaps"/> null means "no answer", and <paramref name="ThreadingProbeFailure"/> is the
     /// reason when the probe was ATTEMPTED and did not answer (null when it answered, and null when there was
     /// nothing to ask). Those are exactly the two values <see cref="GpuDeviceContext"/> needs to log the same
-    /// threading line, with the same WARN, that the Veldrid path logs.
+    /// threading line, with the same WARN, that the Veldrid path logged.
     /// </para>
     /// </summary>
     /// <param name="Device">The created device. A provider that cannot create one THROWS instead of returning

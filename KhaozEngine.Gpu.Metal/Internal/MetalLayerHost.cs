@@ -28,7 +28,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// line is driven against a REAL layer on a real device in CI, and only these six selectors wait for a
     /// windowed playtest. That is as far as MM7 can be pushed and it is a long way further than zero.</para>
     ///
-    /// <para><b>ONLY THE <c>NSWindow</c> SOURCE IS REPRODUCED.</b> The incumbent additionally accepts an
+    /// <para><b>ONLY THE <c>NSWindow</c> SOURCE IS REPRODUCED.</b> The incumbent additionally accepted an
     /// <c>NSView</c> and a <c>UIView</c> source. <see cref="GpuWindowHandle"/> can express neither: <c>Cocoa</c>
     /// means an <c>NSWindow</c> at the one site that builds one, and there is no iOS head in this fleet, so a
     /// <c>UIView</c> arm would be a code path with no caller and no test on the one surface that already has

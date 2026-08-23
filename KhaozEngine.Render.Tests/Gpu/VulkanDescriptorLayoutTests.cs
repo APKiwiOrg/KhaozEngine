@@ -14,7 +14,7 @@ namespace KhaozEngine.Tests.Gpu
     /// COMPARE. Work-breakdown row 10 (https://github.com/APKiwiOrg/KhaozEngine/issues/520).
     /// <para>
     /// The dedup half is the part that is easy to mistake for a micro-optimisation and is not. Identity-shared
-    /// set layouts are what make bound descriptors survive a pipeline switch: the incumbent creates one handle per
+    /// set layouts are what make bound descriptors survive a pipeline switch: the incumbent created one handle per
     /// <c>ResourceLayout</c> object with no dedup at all, so nothing is ever compatible with anything and every
     /// switch forces a full rebind of every set.
     /// </para>
@@ -175,7 +175,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// TWO LAYOUTS WITH IDENTICAL CONTENT SHARE ONE <c>VkDescriptorSetLayout</c> (V-D5). This is the
-        /// assertion the whole decision reduces to, and the one the incumbent fails by construction.
+        /// assertion the whole decision reduces to, and the one the incumbent failed by construction.
         /// </summary>
         [Fact]
         public void TwoIdenticalLayouts_ShareOneDescriptorSetLayout()

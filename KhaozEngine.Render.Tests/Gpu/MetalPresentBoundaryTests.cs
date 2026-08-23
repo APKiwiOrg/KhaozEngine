@@ -182,7 +182,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// M-W5, THE HEADLINE REGRESSION: a nil drawable binds the device-owned orphan target, the frame still
-        /// COUNTS, and only its present is skipped. The incumbent builds the whole frame and throws every draw in
+        /// COUNTS, and only its present is skipped. The incumbent built the whole frame and threw every draw in
         /// it away with nothing logged and nothing counted.
         /// </summary>
         [Fact]
@@ -376,7 +376,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// M-W7: A RESIZE APPLIES AT THE BOUNDARY, AFTER A DRAIN. The incumbent applies it inline on the calling
+        /// M-W7: A RESIZE APPLIES AT THE BOUNDARY, AFTER A DRAIN. The incumbent applied it inline on the calling
         /// thread with no drain anywhere. The drain is asserted to come FIRST, because a drain after the write is
         /// a drain that protected nothing.
         /// </summary>
@@ -421,7 +421,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// M-W2: A VSYNC CHANGE QUEUES AND IS THEN WRITTEN UNCONDITIONALLY. The incumbent writes
+        /// M-W2: A VSYNC CHANGE QUEUES AND IS THEN WRITTEN UNCONDITIONALLY. The incumbent wrote
         /// <c>displaySyncEnabled</c> only when <c>MetalFeatures.MaxFeatureSet</c> equals one of three values of an
         /// enum deprecated since macOS 10.15, so on a machine outside that set the toggle silently does nothing.
         /// There is no condition here to assert the absence of, so what is asserted is that the write HAPPENS.

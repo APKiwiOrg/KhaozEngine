@@ -198,8 +198,8 @@ namespace KhaozEngine.Game
         /// <para>Precedence, highest first: the <c>KE_GRAPHICS_BACKEND</c> environment override (the debug lever,
         /// which always wins), then this, then the OS probe. Applied at window creation, so it is honoured on the
         /// default window; a custom <see cref="WindowFactory"/> must forward it itself.</para>
-        /// <para>A preference the machine cannot actually create a device on falls back to the platform's Veldrid incumbent
-        /// rather than failing to boot. Read <see cref="GameApp.Window"/>'s <c>BackendSelection</c> after startup:
+        /// <para>A preference the machine cannot actually create a device on falls back to the platform's default
+        /// backend rather than failing to boot. Read <see cref="GameApp.Window"/>'s <c>BackendSelection</c> after startup:
         /// a <c>Source</c> of <see cref="KhaozEngine.Gpu.GpuBackendSource.FallbackAfterFailure"/> means the stored
         /// preference did not work and the game MUST clear it, or the player retries the same broken choice on
         /// every launch. Offer only <c>GpuBackendSelector.SupportedBackends()</c> in the settings UI.</para>

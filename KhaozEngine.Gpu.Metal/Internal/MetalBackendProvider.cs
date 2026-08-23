@@ -16,7 +16,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </para>
     /// <para>
     /// THE PROBE LANDING A ROW BEFORE CREATION WAS DELIBERATE rather than an artefact of scheduling: it is what
-    /// makes a SILENT FALLBACK impossible. Without it a soak session could measure the incumbent Veldrid Metal
+    /// makes a SILENT FALLBACK impossible. Without it a soak session could have measured the incumbent Veldrid Metal
     /// backend and file the numbers under the native one, which is the exact failure the whole gate-4 capture
     /// exists to avoid.
     /// </para>

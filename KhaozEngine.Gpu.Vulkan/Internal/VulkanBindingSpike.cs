@@ -58,7 +58,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>
         /// The loader and its function-pointer acquisition (section 3.1). <c>Vk.GetApi</c> is the entry point
         /// the whole binding hangs off, <c>EnumerateInstanceVersion</c> is what section 5.1 clamps the instance
-        /// apiVersion against (the incumbent hardcodes 1.0.0 at two sites and never calls it), and the two
+        /// apiVersion against (the incumbent hardcoded 1.0.0 at two sites and never called it), and the two
         /// <c>TryGet*Extension</c> generics are the per-instance and per-device loading a hand-rolled binding
         /// would have to invent. <c>Vk.Version13</c> is the floor every one of the four hard device
         /// requirements in 5.2 is measured against.

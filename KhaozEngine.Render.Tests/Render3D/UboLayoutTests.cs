@@ -531,7 +531,7 @@ namespace KhaozEngine.Tests.Render3D
         public void WaterUbo_BoundRangeAndStride_SatisfyTheD3D11ConstantCountRule()
         {
             // D3D11's PSSetConstantBuffers1 requires FirstConstant AND NumConstants to be multiples of 16 constants,
-            // and Veldrid 4.9.0 derives them as offset/16 and max(size, 256)/16 with NO rounding. So a bound size
+            // and Veldrid 4.9.0 derived them as offset/16 and max(size, 256)/16 with NO rounding. So a bound size
             // under 256 is padded to 256 and is fine, an exact multiple of 256 is fine, and ANYTHING IN BETWEEN
             // yields a non-multiple-of-16 count that D3D11 rejects outright - leaving the whole cbuffer unbound, so
             // the shader reads zeros. That is not hypothetical: 14.22.0 grew this payload to 272 and binding 272

@@ -45,7 +45,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal const bool SamplerAnisotropy = true;
 
         /// <summary>Every Direct3D 11 device honours a sampler mip LOD bias. The other half of the dropped
-        /// degradation: the incumbent forces <c>MipLodBias</c> to 0 when this is false, which on this backend is
+        /// degradation: the incumbent forced <c>MipLodBias</c> to 0 when this is false, which on this backend is
         /// a branch nothing can enter.</summary>
         internal const bool SamplerLodBias = true;
 
@@ -60,7 +60,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <summary>The highest sample count Direct3D 11 defines, and therefore the top of the descending walk in
         /// <see cref="HighestSupportedSampleCount"/>. Matches the ceiling Veldrid's <c>GetSampleCountLimit</c>
-        /// reports through <c>TextureSampleCount.Count32</c>, which is what keeps the two answers comparable.
+        /// reported through <c>TextureSampleCount.Count32</c>, which is what kept the two answers comparable.
         /// </summary>
         internal const int MaxQueriedSampleCount = 32;
 

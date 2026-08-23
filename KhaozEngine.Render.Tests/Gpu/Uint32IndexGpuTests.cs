@@ -8,7 +8,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu
 {
     // On-device check that 32-bit (UInt32) mesh indices actually rasterize on a real backend (Metal here; the
-    // same Veldrid GpuIndexFormat path drives D3D11 + Vulkan in the golden CI). The decisive trick: the visible
+    // same Veldrid GpuIndexFormat path drove D3D11 + Vulkan in the golden CI). The decisive trick: the visible
     // triangle is referenced ONLY by indices past the 16-bit ceiling (65536..65538). If the index buffer were
     // wrongly created/bound as 16-bit, those indices would truncate to 0,1,2 and reference the degenerate padding
     // verts at the origin, so nothing would cover the centre. A correct 32-bit index buffer renders the triangle.

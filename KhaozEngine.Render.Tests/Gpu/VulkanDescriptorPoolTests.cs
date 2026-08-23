@@ -23,7 +23,7 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class VulkanDescriptorPoolTests
     {
-        // A shape that uses all seven counted types at once, including the two the incumbent's free forgets and
+        // A shape that uses all seven counted types at once, including the two the incumbent's free forgot and
         // the two this backend's own layout policy can never produce. The pool's accounting is asserted complete
         // rather than complete-for-what-we-happen-to-emit, which is the whole of V-D3.
         static readonly VulkanDescriptorCounts AllSeven = new(
@@ -115,7 +115,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <para>
         /// The shape churned is the one the engine really builds: a resource set over a ring-backed uniform
         /// buffer, which under V-D4 is a <c>UNIFORM_BUFFER_DYNAMIC</c> descriptor and therefore spends exactly the
-        /// counter the incumbent forgets.
+        /// counter the incumbent forgot.
         /// </para>
         /// </summary>
         [Fact]

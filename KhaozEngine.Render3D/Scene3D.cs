@@ -161,7 +161,7 @@ namespace KhaozEngine.Render3D
         // Per-frame bone palette, slot-packed: draw i's composed matrices live at [i*MaxBonesPerDraw ..], padded to
         // the per-draw window so each draw's dynamic-offset bind selects exactly its slice. Cleared each Begin().
         readonly List<Matrix4x4> _boneMatrices = new();
-        // CPU skinning (the bone-buffer GPU read corrupts past element 0 in the windowed Veldrid/Metal swapchain
+        // CPU skinning (the bone-buffer GPU read corrupted past element 0 in the windowed Veldrid/Metal swapchain
         // context, so skinned meshes are deformed on the CPU and drawn through the proven-clean no-bone model
         // pipeline). _skinnedCpuVerts caches each loaded mesh's source vertices (parallel to _skinnedMeshes); the
         // three reused lists are the per-frame deformed-vertex stream, the per-draw instance data, and the draw list.
@@ -1693,7 +1693,7 @@ namespace KhaozEngine.Render3D
             }
 
             // CPU-skin each queued skinned draw into one concatenated stream + per-draw instance data (deformed on the
-            // CPU because the GPU bone-buffer read corrupts past element 0 in the windowed Veldrid/Metal swapchain
+            // CPU because the GPU bone-buffer read corrupted past element 0 in the windowed Veldrid/Metal swapchain
             // context - only bones[0] survives; extensively bisected). Built here (before both passes) so the shadow
             // depth pass and the model pass share the uploaded skinned buffers. SkinningMath.SkinVertex mirrors the
             // shader blend exactly. A draw that is camera-culled AND (shadows off, or outside the shadow ortho

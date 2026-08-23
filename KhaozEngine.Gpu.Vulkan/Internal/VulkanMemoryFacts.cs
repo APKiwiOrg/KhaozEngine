@@ -87,7 +87,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// The pool key's second half (V-M2). Buffers are <c>VK_IMAGE_TILING_LINEAR</c>-equivalent and optimal-tiling
     /// images are not, and the two may not share a <c>bufferImageGranularity</c> page.
     /// <para>
-    /// <b>THIS ENUM IS THE ENTIRE GRANULARITY IMPLEMENTATION, and that is the point.</b> The incumbent rounds every
+    /// <b>THIS ENUM IS THE ENTIRE GRANULARITY IMPLEMENTATION, and that is the point.</b> The incumbent rounded every
     /// non-dedicated request up to a multiple of <c>bufferImageGranularity</c> and shares chunks between the two,
     /// which is correct and wasteful, and its rounding adds a whole granule even when the size is already aligned.
     /// Separating the pools makes the constraint STRUCTURAL: a linear allocation and an optimal one can never be

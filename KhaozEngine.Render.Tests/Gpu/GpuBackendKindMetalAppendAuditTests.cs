@@ -248,7 +248,7 @@ namespace KhaozEngine.Tests.Gpu
         // bind and the warning would be noise. The capped arm is the incumbent's alone again. ---
 
         /// <summary>
-        /// The native kind is UNCAPPED where the incumbent caps, which is gate 5's measured answer rather than a
+        /// The native kind is UNCAPPED where the incumbent capped, which is gate 5's measured answer rather than a
         /// default. Both halves are asserted in one row deliberately: the interesting failure is not "the native
         /// kind reads 0", it is the two kinds agreeing, which is what an over-wide edit in either direction would
         /// produce and what the conservative arm this replaced actually did.
@@ -396,7 +396,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains(GoldenCompare.FamilyOverrideEnvVar, refusal);
         }
 
-        // That the incumbent still bakes as it always did is the other half of this row, and it is not asserted
+        // That the incumbent still baked as it always did is the other half of this row, and it is not asserted
         // here: GpuBackendKindAppendAuditTests.Baking_IsAllowedOnEveryBackendThatOwnsItsFamily already walks all
         // SEVEN owning backends since 17.41.0, Metal and MetalNative among them, which is the stronger form of
         // the same claim.
@@ -512,7 +512,7 @@ namespace KhaozEngine.Tests.Gpu
         // generically, or a Metal wiring fault reads as somebody else's. ---
 
         /// <summary>
-        /// The native kind never reaches the Veldrid creation switch, because every entry into that path branches
+        /// The native kind never reached the Veldrid creation switch, because every entry into that path branches
         /// on <see cref="GpuBackendProviders.RequiresProvider"/> first. With nothing registered the observable
         /// outcome is the provider-missing exception stating the naming CONVENTION, which is the phase-3 fix
         /// paying out: written as a switch it would need an arm here, and written as one package's entry point it

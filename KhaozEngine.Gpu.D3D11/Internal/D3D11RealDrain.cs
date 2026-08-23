@@ -6,10 +6,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <c>KE_D3D11_REAL_DRAIN</c>, THE M2 KILL SWITCH (decision C6, section 13). Unlike
     /// <see cref="D3D11RecordModes"/>, which selects between two drivers that both ship, this one has a real
     /// default and an escape hatch: the drain is ON, and setting the variable to 0 restores the empty
-    /// <c>WaitForIdle</c> the incumbent Direct3D 11 backend has always had.
+    /// <c>WaitForIdle</c> the incumbent Direct3D 11 backend always had.
     /// <para>
-    /// WHAT THE SWITCH IS FOR, and why it is temporary. Veldrid's <c>WaitForIdleCore</c> on Direct3D 11 is an
-    /// empty method body, so every drain in the engine currently does nothing there, including one half of the
+    /// WHAT THE SWITCH IS FOR, and why it is temporary. Veldrid's <c>WaitForIdleCore</c> on Direct3D 11 was an
+    /// empty method body, so every drain in the engine did nothing there, including one half of the
     /// only ordering guarantee the seam offers. That has never caused a known bug, because Direct3D 11 tracks
     /// resource hazards itself, defers destruction by reference counting and blocks in <c>Map</c> by definition,
     /// so the empty body is arguably correct-by-API. Making it real can therefore only ever be MORE conservative,

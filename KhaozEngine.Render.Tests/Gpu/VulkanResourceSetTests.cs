@@ -12,8 +12,8 @@ namespace KhaozEngine.Tests.Gpu
     /// is never <c>VK_WHOLE_SIZE</c> and never the ring stride. Work-breakdown row 10
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/520).
     ///
-    /// <para><b>THE WRITE-ONCE SET IS A PORT.</b> The incumbent already allocates one set and issues one update at
-    /// creation and never touches it again. What is new is that it holds by CONSTRUCTION rather than by the
+    /// <para><b>THE WRITE-ONCE SET IS A PORT.</b> The incumbent already allocated one set and issued one update at
+    /// creation and never touched it again. What is new is that it holds by CONSTRUCTION rather than by the
     /// incumbent happening to be written that way, which is
     /// <c>VulkanRecordingUnreachabilityTests</c>'s business, and the range, which is this file's.</para>
     ///

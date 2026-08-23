@@ -39,7 +39,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <c>CreateTexture</c>, so a Direct3D 11 <c>Texture2DArray</c> shader resource view over a one-slice
         /// resource and a Vulkan <c>VK_IMAGE_VIEW_TYPE_2D_ARRAY</c> over a one-layer image are both ACCEPTED BY
         /// THE DRIVER here or not at all, and Metal's descriptor takes <c>Type2DArray</c> with
-        /// <c>arrayLength</c> 1. The incumbent has no way to say it and pads to a second, never-addressed slice,
+        /// <c>arrayLength</c> 1. The incumbent had no way to say it and padded to a second, never-addressed slice,
         /// which this exercises from the other side: the upload and the generate below name layer 0 only.
         /// <para>
         /// That such a texture then DRAWS correctly under an array-declaring fragment is
@@ -75,7 +75,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// A ONE-LAYER ARRAY READS BACK THROUGH <see cref="GpuReadback.ToRgba"/> (#666). The incumbent's phantom
         /// slice is emulation, not decoration: a whole-resource copy names EVERY subresource on both sides, so a
-        /// two-slice source against a one-slice staging destination is a shape mismatch Veldrid refuses outright
+        /// two-slice source against a one-slice staging destination is a shape mismatch Veldrid refused outright
         /// ("Source and destination Textures are not compatible to be copied"). That made the readback of a
         /// one-layer array a regression against the plain 2D texture the same call produced before #666, on the
         /// one backend that pads. The copy path narrows to the LOGICAL subresources for a padded texture, so this
@@ -104,8 +104,8 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// THE PHANTOM SLICE IS NOT ADDRESSABLE, ON ANY BACKEND (#666). The incumbent pads a one-layer array to
-        /// two slices, and Veldrid counts the pad, so an upload aimed at layer 1 used to be accepted here and
+        /// THE PHANTOM SLICE IS NOT ADDRESSABLE, ON ANY BACKEND (#666). The incumbent padded a one-layer array to
+        /// two slices, and Veldrid counted the pad, so an upload aimed at layer 1 used to be accepted here and
         /// land in memory the seam never promised, while the three natives refused the same call by name. Both
         /// answers are now the refusal, which is what lets a caller develop against one backend and ship on
         /// another.

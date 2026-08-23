@@ -20,7 +20,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <para>
     /// That ordering is deliberate rather than an artefact. The probe answers a question about the MACHINE, which
     /// is what a settings screen and the fallback path consume, and it is the row that makes a silent fallback
-    /// impossible: without it a soak session could measure the incumbent Veldrid Vulkan backend and file the
+    /// impossible: without it a soak session could have measured the incumbent Veldrid Vulkan backend and filed the
     /// numbers under the native one. Whether this package can build a device is a different fact, answered
     /// row by row through the build-out and settled as yes now that every row has landed, and folding the two
     /// together would make the probe answer false for a reason that has nothing to do with the hardware.

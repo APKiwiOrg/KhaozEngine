@@ -13,7 +13,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// by CONVENTION: callers drain before they dispose, and every caller that forgets is a use-after-free the GPU
     /// finds. Recording a timeline value at <c>Dispose</c> and destroying only once the counter passes it makes
     /// the same guarantee STRUCTURAL. The engine's own <c>WaitForIdle</c> calls stay exactly where they are,
-    /// because they are the seam's contract and the Veldrid leg still needs them.</para>
+    /// because they are the seam's contract.</para>
     ///
     /// <para><b>A VALUE AND A CALLBACK, because there is nothing else to be generic over yet.</b> No resource type
     /// exists on this backend: buffers, textures and samplers arrived with row 9

@@ -12,10 +12,10 @@ namespace KhaozEngine.Render3D.Rendering
     /// <para>
     /// WHY THE SHAPE MATTERS, AND ON ONE BACKEND IN PARTICULAR. A water pass used to record one
     /// <c>UpdateBuffer</c> per plane, each covering <see cref="PayloadBytes"/> at <c>i * SlotBytes</c>. Veldrid's
-    /// <c>D3D11CommandList.UpdateBufferCore</c> sends a PARTIAL write to a non-Dynamic uniform buffer down the
-    /// staging route: rent a staging buffer, hand it to <c>GraphicsDevice.UpdateBuffer</c>, which Maps the
-    /// IMMEDIATE context with <c>D3D11_MAP_WRITE</c> (not WRITE_DISCARD, no DO_NOT_WAIT) and therefore BLOCKS
-    /// until the GPU has finished with the staging buffer being recycled. Only a write covering the whole buffer
+    /// <c>D3D11CommandList.UpdateBufferCore</c> sent a PARTIAL write to a non-Dynamic uniform buffer down the
+    /// staging route: rent a staging buffer, hand it to <c>GraphicsDevice.UpdateBuffer</c>, which Mapped the
+    /// IMMEDIATE context with <c>D3D11_MAP_WRITE</c> (not WRITE_DISCARD, no DO_NOT_WAIT) and therefore BLOCKED
+    /// until the GPU had finished with the staging buffer being recycled. Only a write covering the whole buffer
     /// from offset 0 takes the cheap <c>UpdateSubresource</c> path. So a four-plane frame was four CPU/GPU sync
     /// points in the middle of the water encode, and it is one <c>UpdateSubresource</c> now. Metal and Vulkan have
     /// no such split and are simply issued fewer commands. The engine's own native D3D11 backend routes every

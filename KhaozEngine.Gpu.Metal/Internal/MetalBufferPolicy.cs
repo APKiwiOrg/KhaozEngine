@@ -11,8 +11,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// Direct3D 11 derives bind flags and a CPU access mode.
     /// Metal's <c>-newBufferWithLength:options:</c> takes a length and a
     /// storage mode and nothing else, so a buffer here has no declared use at all: what it is used for is decided
-    /// entirely by where it gets bound. The incumbent passes a literal <c>0</c> for the options of every buffer it
-    /// creates, which is Shared storage with the default cache mode, and this backend passes the same value
+    /// entirely by where it gets bound. The incumbent passed a literal <c>0</c> for the options of every buffer it
+    /// created, which is Shared storage with the default cache mode, and this backend passes the same value
     /// spelled out (<c>MTLResourceOptions.SharedDefaultCache</c>).</para>
     ///
     /// <para><b>THE RING IS NOT BUILT HERE AND THE PREDICATE IT READS IS.</b> <see cref="IsRingBacked"/> is the
@@ -59,7 +59,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// binding throws at creation.
         ///
         /// <para><b>THIS IS A DOCUMENTED BACKEND-DIVERGENT CREATION FAILURE rather than a defect.</b> The
-        /// combination is legal on the seam and both Veldrid backends accept it, and it is vacuous in this engine
+        /// combination is legal on the seam and both Veldrid backends accepted it, and it is vacuous in this engine
         /// today: nothing creates a buffer with a uniform bit and a structured bit at once. The ring rebases every
         /// bind of a ring-backed buffer by a per-frame offset, and a structured binding of the same buffer would
         /// read whichever segment the frame happened to land on. Refusing at creation is what turns that into a

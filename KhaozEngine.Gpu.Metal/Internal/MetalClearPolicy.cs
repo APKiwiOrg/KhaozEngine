@@ -33,7 +33,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// target clears only its first.
     /// <c>KhaozEngine.Render3D/Rendering/ModelRenderer.BeginModelPass</c> clears attachments 0, 1 and 2 of
     /// <c>ModelFB</c>, so this IS a deliberate rendering change on the fleet's reference golden family. 2.4 is
-    /// the argument for making it: what those two attachments load under the incumbent is a freshly created
+    /// the argument for making it: what those two attachments load under the incumbent was a freshly created
     /// <c>StorageModePrivate</c> texture nothing has written, which means the OLD behaviour was the unstable one
     /// and the committed goldens were baked reading it.</para>
     ///
@@ -55,7 +55,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// THE FOLD IS AT THE RECORD, NOT AT THE BEGIN, which is what made the two positions genuinely
         /// comparable and is what still makes the negative arm reproduce the defect rather than approximate it.
         /// Under <see cref="MetalClearMode.Attachment0"/> a clear of attachment 2 overwrites attachment 0's
-        /// pending value exactly as the incumbent does, so a pass clearing three attachments to three colours
+        /// pending value exactly as the incumbent did, so a pass clearing three attachments to three colours
         /// ends up with the LAST of them on slot 0 and nothing on the rest. Folding at the begin instead would
         /// have to invent a rule for which of the three won.
         /// </para>

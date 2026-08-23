@@ -261,7 +261,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 instance.Messenger?.Pump.ThrowIfLatched("vkCreateDevice");
 
                 // No threading probe and no threading failure. That pair exists because a natively created
-                // Direct3D 11 device has no Veldrid GraphicsDevice for D3D11ThreadingProbe to read a raw pointer
+                // Direct3D 11 device has no device object of its own for D3D11ThreadingProbe to read a raw pointer
                 // off. Vulkan has no equivalent query at all: its threading rules are spec guarantees rather than
                 // a driver capability, so there is nothing to ask and nulls are the honest answer rather than a
                 // gap.
@@ -302,7 +302,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 pNext: &features13,
                 timelineSemaphore: true);
 
-            // Named one by one, which is the whole of V-N4. The incumbent hands vkCreateDevice the entire
+            // Named one by one, which is the whole of V-N4. The incumbent handed vkCreateDevice the entire
             // supported feature struct, so its real dependencies are unknowable from the code and a device missing
             // one fails at an unrelated call site instead of here with the feature's name in the message.
             var core = new PhysicalDeviceFeatures(

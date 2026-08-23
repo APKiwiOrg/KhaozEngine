@@ -22,9 +22,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// bind class.</description></item>
     /// </list>
     ///
-    /// <para><b>WHY DEFERRED AT ALL, WHEN THE INCUMBENT EMITS AT THE CALL.</b> Veldrid's Vulkan backend issues
-    /// <c>vkCmdBindVertexBuffers</c> inside <c>SetVertexBufferCore</c> with no guard, so a renderer that rebinds
-    /// the same mesh buffer before every draw of that mesh pays a native call per draw for a state change that did
+    /// <para><b>WHY DEFERRED AT ALL, WHEN THE INCUMBENT EMITTED AT THE CALL.</b> Veldrid's Vulkan backend issued
+    /// <c>vkCmdBindVertexBuffers</c> inside <c>SetVertexBufferCore</c> with no guard, so a renderer that rebound
+    /// the same mesh buffer before every draw of that mesh paid a native call per draw for a state change that did
     /// not happen. Deferring costs one array read per draw and makes the redundant case free, and it is the shape
     /// every other schedule in this backend already has: the descriptor binds record and flush, the framebuffer
     /// bind records and the begin is deferred to the first draw, the viewport and scissor are values a draw

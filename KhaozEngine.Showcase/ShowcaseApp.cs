@@ -157,13 +157,13 @@ namespace KhaozEngine.Showcase
             _autoRoom = System.Environment.GetEnvironmentVariable("KE_SHOWCASE_ROOM");
 
             // KE_SHOWCASE_FRAME_CAP pins the frame-cap intent for a measured run. The default Auto resolves to a
-            // SOFTWARE cap on the INCUMBENT Metal backend plus vsync (FrameCap.Resolve), and that cap sleeps the
-            // loop before the present ever blocks. A capture taken under it therefore reads the acquire-wait
+            // SOFTWARE cap on the INCUMBENT Metal backend plus vsync (FrameCap.Resolve), and that cap slept the
+            // loop before the present ever blocked. A capture taken under it therefore reads the acquire-wait
             // counters as near zero no matter how the backend acquires, which is a false pass rather than a
             // reading. MM4's exit criterion is stated against the UNCAPPED capture for exactly that reason, so the
             // run that reads it has to be able to ask for one. It still has to: gate 5 measured MetalNative's
             // present as throttling from vsync and took it OUT of the capped arm (M-W3), so this lever is what an
-            // incumbent baseline capture needs, and what pins the two runs to the same pacing on both backends.
+            // incumbent baseline capture needed, and what pinned the two runs to the same pacing on both backends.
             if (ParseFrameCap(System.Environment.GetEnvironmentVariable("KE_SHOWCASE_FRAME_CAP")) is { } cap)
                 FrameCap = cap;
 

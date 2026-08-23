@@ -58,7 +58,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// ordering question and this answers none.
     /// </para>
     /// <para>
-    /// WHY THE HANDLER EXISTS AT ALL, since the shared event replaced the fence dictionary. The incumbent reads
+    /// WHY THE HANDLER EXISTS AT ALL, since the shared event replaced the fence dictionary. The incumbent read
     /// <c>status</c> in exactly one place (to decide whether to wait) and never reads <c>error</c>, so a Metal
     /// command-buffer failure is invisible to the engine and to telemetry today, which is what #427 asks for.
     /// M-G4 requires both to be read at completion in EVERY configuration, so the handler survives the fence

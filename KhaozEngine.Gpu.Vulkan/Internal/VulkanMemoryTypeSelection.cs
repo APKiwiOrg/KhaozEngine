@@ -29,7 +29,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// exist and row 2's probe already checks for one, so this fails loudly on a device that cannot happen.</para>
     ///
     /// <para><b>COHERENT IS PREFERRED EVERYWHERE, and cached is preferred for READBACK.</b> That pairing is the
-    /// whole of the flush-and-invalidate story. The incumbent has no <c>vkFlushMappedMemoryRanges</c> and no
+    /// whole of the flush-and-invalidate story. The incumbent had no <c>vkFlushMappedMemoryRanges</c> and no
     /// <c>vkInvalidateMappedMemoryRanges</c> anywhere and rests entirely on a coherent type existing. Preferring
     /// coherent keeps the common path free, and preferring CACHED for readback is what makes a non-coherent type
     /// reachable at all: an uncached host read of a whole framebuffer is slow enough to matter, so readback takes

@@ -19,7 +19,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <para><b>WHY A RULE RATHER THAN A HABIT.</b> Metal's factory methods return AUTORELEASED objects:
     /// <c>-commandBuffer</c>, <c>-renderCommandEncoderWithDescriptor:</c>, <c>-name</c>, every descriptor. Without
     /// a pool in scope they live until the calling thread's implicit pool drains, and under a frame loop on a
-    /// thread pool thread that is never. The incumbent Veldrid Metal backend wraps FOUR sites and does not wrap
+    /// thread pool thread that is never. The incumbent Veldrid Metal backend wrapped FOUR sites and did not wrap
     /// others, which is exactly the shape that accumulates and is the observation M-N5 is made against. The design
     /// asks for this to be "enforced by a device-free architecture test over the type graph rather than by
     /// review", in the shape V-D2 used for descriptor-pool unreachability.</para>

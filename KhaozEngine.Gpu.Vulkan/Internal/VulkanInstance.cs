@@ -12,7 +12,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// first device and destroyed with the last.
     /// <para>
     /// <b>THE VERSION IS ASKED FOR RATHER THAN ASSUMED</b> (V-N2):
-    /// <c>apiVersion = min(VK_API_VERSION_1_3, vkEnumerateInstanceVersion())</c>. The incumbent hardcodes
+    /// <c>apiVersion = min(VK_API_VERSION_1_3, vkEnumerateInstanceVersion())</c>. The incumbent hardcoded
     /// <c>1.0.0</c> at two sites and never calls <c>vkEnumerateInstanceVersion</c> at all, which is why everything
     /// past 1.0 has to arrive there as an extension. Here 1.3 is the floor the whole design is built on, so a
     /// loader below it is turned away by the probe before this type is reached.

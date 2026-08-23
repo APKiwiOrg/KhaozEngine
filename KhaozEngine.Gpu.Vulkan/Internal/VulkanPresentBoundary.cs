@@ -374,8 +374,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 ForgetHeldImage();
             }
 
-            // CHECKED (V-W7). The incumbent ignores this result entirely, so it can never learn that the surface
-            // it presents to has changed underneath it, which is how a window that was resized while occluded
+            // CHECKED (V-W7). The incumbent ignored this result entirely, so it could never learn that the surface
+            // it presented to had changed underneath it, which is how a window that was resized while occluded
             // comes back stretched.
             Interpret(outcome, "vkQueuePresentKHR");
         }

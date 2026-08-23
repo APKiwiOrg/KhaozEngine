@@ -30,7 +30,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// <para><b>SIX PROPERTIES AND ONE ACQUIRE IS THE WHOLE SURFACE.</b> <c>allowsNextDrawableTimeout</c> is a
     /// pacing knob that belongs to https://github.com/APKiwiOrg/KhaozEngine/issues/380 with its own measurement
     /// and is deliberately absent (11.2), and <c>presentsWithTransaction</c>, <c>colorspace</c> and
-    /// <c>wantsExtendedDynamicRangeContent</c> are all things the incumbent never writes, so writing one here
+    /// <c>wantsExtendedDynamicRangeContent</c> are all things the incumbent never wrote, so writing one here
     /// would be a divergence wearing a feature's clothes.</para>
     /// </summary>
     /// <param name="Handle">The Objective-C object, or <see cref="IntPtr.Zero"/> for nil.</param>
@@ -133,7 +133,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         internal MTLPixelFormat PixelFormat()
             => (MTLPixelFormat)ObjCMsgSend.SendNUInt(Handle, ObjCRuntime.Sel("pixelFormat"));
 
-        /// <summary><c>-setFramebufferOnly:</c>, which the incumbent sets true: a drawable's texture is an
+        /// <summary><c>-setFramebufferOnly:</c>, which the incumbent set true: a drawable's texture is an
         /// attachment and never a sampling or copy source, which is what lets the driver pick the cheapest
         /// layout for it.</summary>
         [SupportedOSPlatform("macos")]
@@ -181,7 +181,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
 
         /// <summary>
         /// <c>-setMaximumDrawableCount:</c>, set to <c>KE_METAL_FRAMES_IN_FLIGHT</c> (M-W4), so the depth of the
-        /// drawable queue and the depth of the uniform ring are one number. The incumbent never writes it and
+        /// drawable queue and the depth of the uniform ring are one number. The incumbent never wrote it and
         /// takes whatever the default is. Row 1's spike round-tripped it on a headless layer.
         /// </summary>
         [SupportedOSPlatform("macos")]

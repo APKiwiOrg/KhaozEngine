@@ -22,7 +22,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// DISPATCH.</b> <c>-dispatchThreadgroups:threadsPerThreadgroup:</c> takes the group size as an argument,
     /// where Direct3D 11 and Vulkan read it out of the compiled module, so this is the one backend where the
     /// number has to travel from the shader to the draw path. Row 9 read it out of the SPIR-V rather than taking
-    /// it from a description nothing validates (which is what the incumbent does through
+    /// it from a description nothing validates (which is what the incumbent did through
     /// <c>ComputePipelineDescription.ThreadGroupSize*</c>), and this hands the same numbers on to row 14
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/580).</para>
     ///

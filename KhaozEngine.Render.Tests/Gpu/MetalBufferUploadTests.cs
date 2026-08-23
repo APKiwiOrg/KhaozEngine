@@ -14,7 +14,7 @@ namespace KhaozEngine.Tests.Gpu
     /// sent uniform writes down the staging path would render byte-identical pixels and would cost a FULL
     /// graphics-state re-activation per write, because opening a blit encoder ends the render encoder and
     /// discards the pipeline, every argument-table entry, the viewport, the scissor and every vertex stream
-    /// (M-R4). No golden can see that. The incumbent does exactly it, for every record-time
+    /// (M-R4). No golden can see that. The incumbent did exactly it, for every record-time
     /// <c>UpdateBuffer</c> including the per-draw uniform ones, and moving those off that path is the whole
     /// reason the ring exists.</para>
     ///

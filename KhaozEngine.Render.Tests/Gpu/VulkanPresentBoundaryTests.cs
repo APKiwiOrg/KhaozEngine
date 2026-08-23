@@ -139,8 +139,8 @@ namespace KhaozEngine.Tests.Gpu
         // ---- the checked present result ---------------------------------------------------------------------
 
         /// <summary>
-        /// <c>vkQueuePresentKHR</c>'s RESULT IS CHECKED (V-W7). The incumbent ignores it entirely, so it can never
-        /// learn that the surface it presents to changed underneath it.
+        /// <c>vkQueuePresentKHR</c>'s RESULT IS CHECKED (V-W7). The incumbent ignored it entirely, so it could never
+        /// learn that the surface it presented to changed underneath it.
         /// </summary>
         [Fact]
         public void AnOutOfDatePresentQueuesARecreate()

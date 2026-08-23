@@ -100,8 +100,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>
         /// <c>vkCmdPipelineBarrier2</c>, with explicit source and destination stage and access masks per barrier
         /// (V-F6). The whole barrier model is this one call: there is no <c>vkCmdPipelineBarrier</c> and no
-        /// if/else over layout pairs, which is what the incumbent has and what silently emits <c>NONE</c> masks in
-        /// Release when it meets a pair it does not handle.
+        /// if/else over layout pairs, which is what the incumbent had and what silently emitted <c>NONE</c> masks in
+        /// Release when it met a pair it did not handle.
         /// <para>
         /// ONE CALL CARRYING N BARRIERS is the unit that matters here, and both numbers are countable off the
         /// dependency info: a budget that froze only the call count would pass a recorder that put a barrier per

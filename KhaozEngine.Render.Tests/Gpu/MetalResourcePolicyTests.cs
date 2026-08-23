@@ -197,7 +197,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// U3's SECOND invariant (M-M6): a ring-backed buffer that also declares a structured binding throws at
         /// CREATION, as a documented backend-divergent creation failure. The message has to carry the reason,
-        /// because both Veldrid backends accept the combination and a consumer hitting this needs to know it is a
+        /// because both Veldrid backends accepted the combination and a consumer hitting this needs to know it is a
         /// deliberate difference rather than a bug.
         /// </summary>
         [Fact]
@@ -239,7 +239,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// THE EAGER VIEW SET IS EMPTY FOR EVERY USAGE THE SEAM CAN EXPRESS (M-M10), which is the assertion the
         /// design's "no view factory reachable from the recording type" reduces to on this backend: nothing this
-        /// seam can ask for NARROWS a texture, so every case is the branch where the incumbent uses the target's
+        /// seam can ask for NARROWS a texture, so every case is the branch where the incumbent used the target's
         /// own texture and creates no native object.
         /// </summary>
         [Fact]
@@ -331,7 +331,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// The four values the seam does not expose, hardcoded to what the engine's Veldrid path passes: no
+        /// The four values the seam does not expose, hardcoded to what the engine's Veldrid path passed: no
         /// comparison function, a minimum LOD of 0, a maximum LOD of <c>uint.MaxValue</c>, and a transparent-black
         /// border colour ON A SAMPLER THAT BORDERS. Changing one would move pixels.
         /// </summary>
@@ -351,7 +351,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// THE BORDER COLOUR IS WRITTEN ONLY WHEN AN ADDRESS MODE ASKS FOR IT, on any one of the three axes, and
         /// is left alone otherwise. A null spec value means <c>-setBorderColor:</c> is never sent, which is what
-        /// keeps a Wrap, Mirror or Clamp sampler off a property the device may not have. The incumbent writes it
+        /// keeps a Wrap, Mirror or Clamp sampler off a property the device may not have. The incumbent wrote it
         /// whenever it is on macOS, so this row is a divergence rather than a reproduction.
         /// </summary>
         [Fact]

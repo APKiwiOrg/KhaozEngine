@@ -335,7 +335,7 @@ namespace KhaozEngine.Tests.Gpu
         /// encoder is opened with the SERIAL dispatch type, so dispatches inside it do not overlap and a
         /// read-after-write between them is ordered by the encoder itself, which is why this backend carries no
         /// barrier batch, no layout tracker and no dependency analysis at all. The seam's rule 2 still says a
-        /// dependent chain needs <c>End</c>, <c>Submit</c> and <c>WaitForIdle</c>, because the Veldrid legs need
+        /// dependent chain needs <c>End</c>, <c>Submit</c> and <c>WaitForIdle</c>, because the Veldrid legs needed
         /// the drain and a consumer that dropped it because THIS backend tolerates the chain would break on them.
         /// So this row asserts the backend property and changes nothing about what portable code may assume.</para>
         ///

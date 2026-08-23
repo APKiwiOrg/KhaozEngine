@@ -46,10 +46,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// on a machine with no Vulkan loader.
     /// <para>
     /// THREE DEPARTURES FROM THE INCUMBENT LIVE HERE, and all three are bug fixes rather than preferences. This
-    /// asks for <c>VK_EXT_debug_utils</c> and never the <c>VK_EXT_debug_report</c> the incumbent uses, which has
+    /// asks for <c>VK_EXT_debug_utils</c> and never the <c>VK_EXT_debug_report</c> the incumbent used, which has
     /// been deprecated for six years. It requests exactly one layer, <c>VK_LAYER_KHRONOS_validation</c>, and never
-    /// the long-removed <c>VK_LAYER_LUNARG_standard_validation</c> the incumbent also asks for. And the pump this
-    /// knob switches on LOGS, where the incumbent's callback throws a managed exception and calls
+    /// the long-removed <c>VK_LAYER_LUNARG_standard_validation</c> the incumbent also asked for. And the pump this
+    /// knob switches on LOGS, where the incumbent's callback threw a managed exception and called
     /// <c>Debugger.Break()</c> from inside a native driver callback.
     /// </para>
     /// <para>
@@ -66,7 +66,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// whitespace trimmed.</summary>
         internal const string EnvVarName = "KE_VULKAN_VALIDATION";
 
-        /// <summary>The one validation layer this backend ever requests. The incumbent additionally asks for
+        /// <summary>The one validation layer this backend ever requests. The incumbent additionally asked for
         /// <c>VK_LAYER_LUNARG_standard_validation</c>, which was removed from the SDK in 2020 and which a modern
         /// loader answers by failing instance creation outright.</summary>
         internal const string LayerName = "VK_LAYER_KHRONOS_validation";

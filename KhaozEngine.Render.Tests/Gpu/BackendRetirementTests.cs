@@ -258,7 +258,8 @@ namespace KhaozEngine.Tests.Gpu
             GpuBackendKind retired)
         {
             var ex = Assert.Throws<GpuBackendRetiredException>(
-                () => GpuDeviceContext.PreflightProvider(retired, allowFallback: true, out _));
+                () => GpuDeviceContext.PreflightProvider(
+                    new GpuBackendSelection(retired, GpuBackendSource.OsProbe, null), allowFallback: true, out _));
 
             Assert.Equal(retired, ex.Backend);
             Assert.Contains("retired in 18.0.0", ex.Message, StringComparison.Ordinal);

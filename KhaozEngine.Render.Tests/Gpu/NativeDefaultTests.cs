@@ -21,6 +21,12 @@ namespace KhaozEngine.Tests.Gpu
     /// practice a game never reaches it: the three native packages ship in the <c>KhaozEngine.Game2D</c> and
     /// <c>KhaozEngine.Game3D</c> umbrellas, and <c>AppWindow</c> registers the platform's own at boot.
     /// </para>
+    /// <para>
+    /// A DEFAULT IS NOT A STORED PREFERENCE, and that distinction is the fix on top of the 18.0.0 change. A
+    /// settings file naming a provider-less kind falls back and reports
+    /// <see cref="GpuBackendSource.FallbackAfterFailure"/>, because a player cannot reach the setting that caused
+    /// it. <c>StoredPreferenceSelfHealTests</c>, at the foot of this file, is that half.
+    /// </para>
     /// </summary>
     public sealed class NativeDefaultTests
     {
@@ -104,6 +110,11 @@ namespace KhaozEngine.Tests.Gpu
         /// 17.40.0 fell back here and reported <see cref="GpuBackendSource.DefaultProviderMissing"/>, on the
         /// reasoning that a game which never referenced a native package had made no wiring mistake. That
         /// reasoning depended entirely on the Veldrid incumbent being there to run instead.
+        /// <para>
+        /// A DEFAULT is what this row is about, and a stored preference is the case it is NOT about. The
+        /// provenance carried on the selection is what tells the two apart, so the row states the default's own
+        /// (<see cref="GpuBackendSource.OsProbe"/>) rather than leaving it to whatever a bare kind implied.
+        /// </para>
         /// </summary>
         [Theory]
         [InlineData(true)]
@@ -111,7 +122,8 @@ namespace KhaozEngine.Tests.Gpu
         public void Preflight_ThrowsForAnUnregisteredProvider_WhateverTheFallbackAllowance(bool allowFallback)
         {
             var ex = Assert.Throws<GpuBackendProviderMissingException>(
-                () => GpuDeviceContext.PreflightProvider(SentinelKind, allowFallback, out _));
+                () => GpuDeviceContext.PreflightProvider(
+                    new GpuBackendSelection(SentinelKind, GpuBackendSource.OsProbe, null), allowFallback, out _));
 
             // The message has to say whose line is missing, because the fix is in the consuming app and not in
             // the engine. It states the naming CONVENTION plus two worked examples rather than switching on the
@@ -121,11 +133,18 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// The half that has to stay true for a PLAYER, and the reason the throw above is safe. Nothing a player
-        /// can store reaches that path: <see cref="GpuBackendSelector.Resolve(string?, OSPlatformKind)"/> answers
-        /// the platform's native backend for every provenance, and a windowed game has that backend registered by
-        /// <c>AppWindow</c> before the first device. A settings file cannot name a kind the engine has no provider
-        /// for, because <see cref="GpuBackendSelector.SupportedBackends"/> only ever offered registered ones.
+        /// The half that has to stay true for a PLAYER: what a bare DEFAULT resolves to is always one of the three
+        /// kinds the engine ships a package for, and <c>AppWindow</c> registers that kind at boot, so the throw
+        /// above is not something an ordinary windowed game can reach by doing nothing.
+        /// <para>
+        /// WHAT IT DOES NOT SAY, and used to. This doc claimed nothing a player can store reaches the throw at
+        /// all, on the reasoning that <see cref="GpuBackendSelector.SupportedBackends"/> only ever offered
+        /// registered kinds. That is a claim about ONE process. A settings file outlives the build that wrote it:
+        /// a Windows player who picked <see cref="GpuBackendKind.VulkanNative"/> while the game registered all
+        /// three, and a profile synced off another machine, both hand this build a kind it has no provider for.
+        /// The preflight now reports that as a fallback for a stored preference rather than throwing, and
+        /// <c>StoredPreferenceSelfHealTests</c> is where that path is pinned.
+        /// </para>
         /// </summary>
         [Theory]
         [InlineData(OSPlatformKind.MacOS)]
@@ -238,6 +257,77 @@ namespace KhaozEngine.Tests.Gpu
             {
                 Assert.Null(GoldenCompare.BakeRefusal(GpuBackendSelector.Select(), familyOverride: false));
             }
+        }
+    }
+
+    /// <summary>
+    /// A STORED PREFERENCE this build has no provider for, driven through the public windowed entry a game calls,
+    /// and still device-free: the platform's own kind is stood up with a fake provider for the duration, so the
+    /// fallback lands somewhere real without a driver.
+    /// <para>
+    /// The case is not hypothetical, and it is what 18.0.0 broke and this restores. A Windows player picks
+    /// <c>VulkanNative</c> from a settings screen while the game still registers all three natives, the game later
+    /// drops its explicit registrations and takes only what <c>AppWindow</c> registers, and the saved file now
+    /// names a kind with no provider. A synced profile from another machine does the same thing on the first
+    /// launch. Either way the player cannot reach the setting that caused it, so the engine has to self-heal and
+    /// hand the game the one signal it already clears the preference on.
+    /// </para>
+    /// <para>
+    /// It registers under a REAL kind, so it belongs in the same collection as the rest of the process-wide
+    /// graphics state, and it puts back exactly what it found rather than unregistering: the assembly's own
+    /// registration for the platform kind outlives this test and every <c>GpuFact</c> after it needs it.
+    /// </para>
+    /// </summary>
+    [Collection("GraphicsBackendGlobalState")]
+    public sealed class StoredPreferenceSelfHealTests
+    {
+        // A kind no member takes, standing in for a backend this build ships no package for. Distinct from the
+        // 9001/9002 the other two files use so no registry entry can be shared across them.
+        const GpuBackendKind StoredKind = (GpuBackendKind)9004;
+
+        /// <summary>
+        /// The whole self-heal in one call: the preference is asked for, has no provider, and the context that
+        /// comes back runs the platform's native backend and reports
+        /// <see cref="GpuBackendSource.FallbackAfterFailure"/> with the stored kind preserved on
+        /// <see cref="GpuBackendSelection.RequestedBackend"/>. That pair is what a game clears the setting on.
+        /// </summary>
+        [Fact]
+        public void AStoredPreferenceWithNoProvider_SelfHealsToThePlatformNative()
+        {
+            GpuBackendKind platform = GpuBackendSelector.ProbeOS(GpuBackendSelector.DetectOS());
+            GpuBackendProviders.TryGet(platform, out IGpuBackendProvider? prior);
+            GpuBackendProviders.Register(platform, new FakeBackendProvider(platform));
+
+            try
+            {
+                using var env = new EnvScope(GpuBackendSelector.EnvVarName, null);
+                using GpuDeviceContext ctx =
+                    GpuDeviceContext.CreateForWindow(default, 8, 8, true, (GpuBackendKind?)StoredKind);
+
+                Assert.Equal(platform, ctx.Backend);
+                Assert.Equal(GpuBackendSource.FallbackAfterFailure, ctx.Selection.Source);
+                Assert.Equal(StoredKind, ctx.Selection.RequestedBackend);
+            }
+            finally
+            {
+                if (prior is null) GpuBackendProviders.Unregister(platform);
+                else GpuBackendProviders.Register(platform, prior);
+            }
+        }
+
+        /// <summary>
+        /// And the boundary, through the same public entry: the SAME provider-less kind NAMED outright still
+        /// throws rather than self-healing. The named overload reports the same
+        /// <see cref="GpuBackendSource.UserPreference"/> provenance, so what tells the two apart is the fallback
+        /// allowance, and a caller that named one backend is not asking to be given another.
+        /// </summary>
+        [Fact]
+        public void TheSameKindNamedOutright_StillThrows()
+        {
+            GpuBackendProviderMissingException ex = Assert.Throws<GpuBackendProviderMissingException>(
+                () => GpuDeviceContext.CreateForWindow(default, 8, 8, true, StoredKind));
+
+            Assert.Equal(StoredKind, ex.Backend);
         }
     }
 }

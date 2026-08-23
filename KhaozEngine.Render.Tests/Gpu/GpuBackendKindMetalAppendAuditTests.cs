@@ -111,7 +111,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             var ex = Assert.Throws<GpuBackendRetiredException>(
                 () => GpuDeviceContext.PreflightProvider(
-                    GpuBackendKind.Metal, allowFallback: true, out _));
+                    new GpuBackendSelection(GpuBackendKind.Metal, GpuBackendSource.OsProbe, null),
+                    allowFallback: true, out _));
 
             Assert.Equal(GpuBackendKind.MetalNative, ex.Replacement);
         }

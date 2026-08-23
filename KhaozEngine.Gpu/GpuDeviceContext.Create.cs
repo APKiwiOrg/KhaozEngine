@@ -77,7 +77,7 @@ namespace KhaozEngine.Gpu
             // reason.
             bool canFallBack = allowFallback && selection.Backend != fallback;
 
-            string? failure = PreflightProvider(selection.Backend, canFallBack,
+            string? failure = PreflightProvider(selection, canFallBack,
                 out IGpuBackendProvider? provider);
             var request = new GpuWindowedDeviceRequest(window, width, height, syncToVerticalBlank);
             Exception? cause = null;
@@ -134,6 +134,11 @@ namespace KhaozEngine.Gpu
         // provider's own functional probe answered no.
         const string NoMachineSupport = "this machine reports no support for it";
 
+        // The reason a STORED preference could not be had because this build has no provider for it at all. Worded
+        // as a fact about the build rather than the machine, because that is what it is: the same settings file on
+        // the same hardware boots fine against a build that registered the backend.
+        const string NoRegisteredProvider = "no graphics backend provider for it is registered in this build";
+
         // The one fallback warning, in one place. It is the line that tells a player their stored graphics choice
         // does not work here, and every backend that fell back has to say it identically or a support reply is
         // written against wording that depends on which backend was asked for.
@@ -160,6 +165,17 @@ namespace KhaozEngine.Gpu
         /// the hardware, and only the second one is allowed to fall back.
         /// </para>
         /// <para>
+        /// ONE PROVENANCE IS EXEMPT FROM THAT THROW, and it is the one a wiring fault is not: a STORED
+        /// <see cref="GpuBackendSource.UserPreference"/> with a fallback available. A settings file written on
+        /// another machine, or by a build that registered all three natives before the game dropped its explicit
+        /// registrations, names a kind this process has no provider for, and refusing to boot leaves the player
+        /// with the setting that caused it unreachable from inside the game. It reports
+        /// <see cref="GpuBackendSource.FallbackAfterFailure"/> instead, which is exactly the signal a consuming
+        /// game clears a stored preference on. An <see cref="GpuBackendSource.EnvironmentOverride"/> still throws,
+        /// because a soak session that pinned a variable must never quietly measure something else, and so does an
+        /// explicitly named <c>Create*(kind)</c>, which arrives here with no fallback allowance at all.
+        /// </para>
+        /// <para>
         /// A RETIRED backend throws <see cref="GpuBackendRetiredException"/> here, and it throws AHEAD of the
         /// registry lookup. That ordering is decision 5.2 of the removal design rather than tidiness: the four
         /// members retired in 18.0.0 have no provider, so leaving them to
@@ -174,16 +190,22 @@ namespace KhaozEngine.Gpu
         /// entirely and a real failure throws.
         /// </para>
         /// </summary>
-        internal static string? PreflightProvider(GpuBackendKind backend, bool allowFallback,
+        internal static string? PreflightProvider(GpuBackendSelection selection, bool allowFallback,
             out IGpuBackendProvider? provider)
         {
+            GpuBackendKind backend = selection.Backend;
             if (GpuBackendSelector.IsRetired(backend))
             {
                 throw new GpuBackendRetiredException(backend,
                     GpuBackendSelector.NativeReplacementFor(backend, GpuBackendSelector.DetectOS()));
             }
 
-            provider = GpuBackendProviders.Require(backend);
+            if (!GpuBackendProviders.TryGet(backend, out provider) || provider is null)
+            {
+                if (allowFallback && selection.Source is GpuBackendSource.UserPreference) return NoRegisteredProvider;
+                throw new GpuBackendProviderMissingException(backend);
+            }
+
             if (!allowFallback) return null;
             return GpuBackendSelector.IsBackendSupported(backend) ? null : NoMachineSupport;
         }
@@ -299,7 +321,7 @@ namespace KhaozEngine.Gpu
             bool canFallBack = allowFallback && !selection.WasPinnedByEnvironment
                 && selection.Backend != fallback;
 
-            string? failure = PreflightProvider(selection.Backend, canFallBack,
+            string? failure = PreflightProvider(selection, canFallBack,
                 out IGpuBackendProvider? provider);
             if (failure is null)
             {

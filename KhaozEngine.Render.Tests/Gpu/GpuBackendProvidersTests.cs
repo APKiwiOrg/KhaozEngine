@@ -202,7 +202,7 @@ namespace KhaozEngine.Tests.Gpu
             using (Registered(SentinelKind, provider))
             {
                 string? reason = GpuDeviceContext.PreflightProvider(
-                    SentinelKind, allowFallback: true, out _);
+                    new GpuBackendSelection(SentinelKind, GpuBackendSource.OsProbe, null), allowFallback: true, out _);
                 Assert.NotNull(reason);
                 Assert.Contains("no support", reason);
             }
@@ -211,7 +211,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(GpuBackendSelector.IsBackendSupported(SentinelKind));
             Assert.Throws<GpuBackendProviderMissingException>(
                 () => GpuDeviceContext.PreflightProvider(
-                    SentinelKind, allowFallback: true, out _));
+                    new GpuBackendSelection(SentinelKind, GpuBackendSource.OsProbe, null), allowFallback: true, out _));
         }
 
         /// <summary>
@@ -225,7 +225,8 @@ namespace KhaozEngine.Tests.Gpu
             using (Registered(SentinelKind, provider))
             {
                 Assert.Null(GpuDeviceContext.PreflightProvider(
-                    SentinelKind, allowFallback: true, out IGpuBackendProvider? found));
+                    new GpuBackendSelection(SentinelKind, GpuBackendSource.OsProbe, null),
+                    allowFallback: true, out IGpuBackendProvider? found));
                 Assert.Same(provider, found);
             }
         }
@@ -242,20 +243,61 @@ namespace KhaozEngine.Tests.Gpu
             using (Registered(SentinelKind, provider))
             {
                 Assert.Null(GpuDeviceContext.PreflightProvider(
-                    SentinelKind, allowFallback: false, out _));
+                    new GpuBackendSelection(SentinelKind, GpuBackendSource.OsProbe, null), allowFallback: false, out _));
                 Assert.Equal(0, provider.SupportProbes);
             }
         }
 
-        /// <summary>A missing provider throws even where a fallback WOULD have been allowed, and since 18.0.0 that
-        /// is the rule for every provenance rather than for a NAMED backend alone. 17.40.0 let a DEFAULTED one
-        /// fall back to the platform's Veldrid incumbent, and there is no incumbent left to fall back to, so a
-        /// wiring gap is a wiring gap whoever asked. See <c>NativeDefaultTests</c>.</summary>
-        [Fact]
-        public void Preflight_ThrowsForAMissingProvider_EvenWhenFallbackIsAllowed()
+        /// <summary>A missing provider throws even where a fallback WOULD have been allowed, for every provenance
+        /// except the STORED PREFERENCE row below. 17.40.0 let a DEFAULTED one fall back to the platform's Veldrid
+        /// incumbent, and there is no incumbent left to fall back to, so a wiring gap in the app's own startup is a
+        /// wiring gap. See <c>NativeDefaultTests</c>.</summary>
+        [Theory]
+        [InlineData(GpuBackendSource.OsProbe)]
+        [InlineData(GpuBackendSource.EnvironmentOverride)]
+        [InlineData(GpuBackendSource.UnrecognizedOverride)]
+        [InlineData(GpuBackendSource.FallbackAfterFailure)]
+        public void Preflight_ThrowsForAMissingProvider_EvenWhenFallbackIsAllowed(GpuBackendSource source)
             => Assert.Throws<GpuBackendProviderMissingException>(
                 () => GpuDeviceContext.PreflightProvider(
-                    SentinelKind, allowFallback: true, out _));
+                    new GpuBackendSelection(SentinelKind, source, null), allowFallback: true, out _));
+
+        /// <summary>
+        /// THE ONE PROVENANCE THAT ROUTES AROUND A MISSING PROVIDER: a stored
+        /// <see cref="GpuBackendSource.UserPreference"/>. A settings file synced from another machine, or written
+        /// by a build that registered all three natives before the game dropped its explicit registrations, names
+        /// a kind this process has no provider for. Throwing there locks the player out of the very screen that
+        /// would clear it, so the preflight reports the reason and the caller falls back and self-heals.
+        /// <para>
+        /// The reason names the BUILD rather than the machine, because the same file on the same hardware boots
+        /// fine against a build that registered the backend, and the fallback warning a player reads is written
+        /// from this string.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void Preflight_FallsBackForAMissingProvider_WhenAStoredPreferenceAskedForIt()
+        {
+            string? reason = GpuDeviceContext.PreflightProvider(
+                new GpuBackendSelection(SentinelKind, GpuBackendSource.UserPreference, null),
+                allowFallback: true, out IGpuBackendProvider? provider);
+
+            Assert.NotNull(reason);
+            Assert.Contains("registered in this build", reason, StringComparison.Ordinal);
+            Assert.Null(provider);
+        }
+
+        /// <summary>
+        /// And the boundary that keeps the exemption from swallowing the "retry as X" lever. The explicitly named
+        /// <c>Create*(kind)</c> overloads report <see cref="GpuBackendSource.UserPreference"/> too, since naming a
+        /// backend from outside the engine is the same provenance class, and they arrive here with no fallback
+        /// allowance. Without the allowance the exemption does not apply and the missing provider throws.
+        /// </summary>
+        [Fact]
+        public void Preflight_StillThrowsForAStoredPreference_WhenNoFallbackIsAllowed()
+            => Assert.Throws<GpuBackendProviderMissingException>(
+                () => GpuDeviceContext.PreflightProvider(
+                    new GpuBackendSelection(SentinelKind, GpuBackendSource.UserPreference, null),
+                    allowFallback: false, out _));
 
         // --- the creation path itself, end to end and still device-free ---
 

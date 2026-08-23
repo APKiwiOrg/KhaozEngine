@@ -69,9 +69,10 @@ namespace KhaozEngine.Tests.Gpu
         {
             ArgumentException ex = Assert.Throws<ArgumentException>(() => D3D11ViewPolicy.ForBuffer(usage));
 
-            // The message has to name the divergence, because a consumer meeting this has working code on the
-            // other Direct3D 11 backend and no other way to find out why this one refuses it.
-            Assert.Contains("Direct3D11", ex.Message, StringComparison.Ordinal);
+            // The message has to name the divergence, because the combination is legal on the seam and a
+            // consumer meeting the refusal has no other way to find out why this backend will not take it.
+            // The Veldrid backend that used to accept it was deleted in 18.0.0, which the message says too.
+            Assert.Contains("documented divergence", ex.Message, StringComparison.Ordinal);
         }
 
         /// <summary>The dynamic bit is the one thing a uniform buffer may be combined with, because the ring IS

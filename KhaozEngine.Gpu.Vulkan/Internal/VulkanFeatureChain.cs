@@ -183,7 +183,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         static NotSupportedException Missing(string device, string feature, string why)
             => new($"The native Vulkan backend cannot create a device on {device}: it reports no {feature}, and "
                 + $"{why}. This feature is MANDATORY on a conformant Vulkan 1.3 device, so a device reporting the "
-                + "1.3 version floor and not this bit is below spec. Select GpuBackendKind.Vulkan, which goes "
-                + "through Veldrid, on this machine.");
+                + "1.3 version floor and not this bit is below spec. There is no second Vulkan path to fall back "
+                + "to on this machine: GpuBackendKind.Vulkan named the Veldrid backend and was retired in "
+                + "18.0.0.");
     }
 }

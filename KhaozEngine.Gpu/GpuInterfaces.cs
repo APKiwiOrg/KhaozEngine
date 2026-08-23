@@ -3,9 +3,13 @@ using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Gpu
 {
-    /// <summary>A CPU-mapped view of a staging resource for readback. Engine mirror of Veldrid
-    /// <c>MappedResource</c>: the base pointer, the row pitch (bytes per row, may exceed Width*bpp), and the
-    /// total mapped size.</summary>
+    // PROVENANCE FOR THE HANDLE TYPES BELOW, recorded once. The seam's shape was taken from Veldrid 4.9 in 2025,
+    // when that library was the one implementation behind it, which is why the handles and their members line up
+    // with its vocabulary. It is the seam's own shape now: 18.0.0 deleted that backend, and each handle is
+    // whatever the native backend that created it decided to put behind this interface.
+
+    /// <summary>A CPU-mapped view of a staging resource for readback: the base pointer, the row pitch (bytes per
+    /// row, may exceed Width*bpp), and the total mapped size.</summary>
     public readonly struct MappedData
     {
         /// <summary>Base pointer of the mapped region.</summary>
@@ -25,15 +29,15 @@ namespace KhaozEngine.Gpu
     /// <see cref="IGpuBuffer"/>, <see cref="IGpuTexture"/>, or <see cref="IGpuSampler"/>.</summary>
     public interface IGpuBindableResource { }
 
-    /// <summary>A GPU buffer handle (vertex / index / uniform). Engine wrapper over Veldrid <c>DeviceBuffer</c>.</summary>
+    /// <summary>A GPU buffer handle (vertex / index / uniform), owned by the backend that created it.</summary>
     public interface IGpuBuffer : IGpuBindableResource, IDisposable
     {
         /// <summary>Buffer size in bytes.</summary>
         uint SizeInBytes { get; }
     }
 
-    /// <summary>A GPU texture handle. Engine wrapper over Veldrid <c>Texture</c>; exposes its dimensions and
-    /// format for pipeline / framebuffer reasoning.</summary>
+    /// <summary>A GPU texture handle, exposing its dimensions and format for pipeline / framebuffer
+    /// reasoning.</summary>
     public interface IGpuTexture : IGpuBindableResource, IDisposable
     {
         /// <summary>Texel width.</summary>
@@ -49,11 +53,11 @@ namespace KhaozEngine.Gpu
         GpuPixelFormat Format { get; }
     }
 
-    /// <summary>A GPU sampler handle. Engine wrapper over Veldrid <c>Sampler</c>.</summary>
+    /// <summary>A GPU sampler handle.</summary>
     public interface IGpuSampler : IGpuBindableResource, IDisposable { }
 
     /// <summary>A GPU completion fence: the signal a submission raises once the GPU has finished executing it.
-    /// Engine wrapper over Veldrid <c>Fence</c>. Created through <see cref="IGpuResourceFactory.CreateFence"/>,
+    /// Created through <see cref="IGpuResourceFactory.CreateFence"/>,
     /// handed to <see cref="IGpuDevice.Submit(IGpuCommandList,IGpuFence)"/>, then POLLED through
     /// <see cref="Signaled"/>. There is deliberately no blocking wait on this seam: a caller that wants to block
     /// already has <see cref="IGpuDevice.WaitForIdle"/>, and the whole reason the fence exists is to replace a
@@ -75,7 +79,7 @@ namespace KhaozEngine.Gpu
         void Reset();
     }
 
-    /// <summary>A render-target framebuffer handle. Engine wrapper over Veldrid <c>Framebuffer</c>; exposes its
+    /// <summary>A render-target framebuffer handle, exposing its
     /// <see cref="GpuOutputDescription"/> so a matching pipeline can be created.</summary>
     public interface IGpuFramebuffer : IDisposable
     {
@@ -87,28 +91,26 @@ namespace KhaozEngine.Gpu
         uint Height { get; }
     }
 
-    /// <summary>A graphics pipeline handle. Engine wrapper over Veldrid <c>Pipeline</c>.</summary>
+    /// <summary>A graphics pipeline handle.</summary>
     public interface IGpuPipeline : IDisposable { }
 
-    /// <summary>A compute pipeline handle. Engine wrapper over the Veldrid <c>Pipeline</c> a
-    /// <c>ComputePipelineDescription</c> produces. A distinct type from <see cref="IGpuPipeline"/> on purpose:
-    /// Veldrid has one <c>Pipeline</c> type and one <c>SetPipeline</c> for both kinds, so binding a compute
-    /// pipeline for a draw is a runtime error there and a compile error here.</summary>
+    /// <summary>A compute pipeline handle, and a distinct type from <see cref="IGpuPipeline"/> on purpose. The
+    /// API this seam was drawn from had one pipeline type and one set-pipeline call for both kinds, so binding a
+    /// compute pipeline for a draw was a runtime error there. Here it does not compile.</summary>
     public interface IGpuComputePipeline : IDisposable { }
 
-    /// <summary>A resource-layout handle (binding-slot shape). Engine wrapper over Veldrid <c>ResourceLayout</c>.</summary>
+    /// <summary>A resource-layout handle (binding-slot shape).</summary>
     public interface IGpuResourceLayout : IDisposable { }
 
-    /// <summary>A bound resource set handle. Engine wrapper over Veldrid <c>ResourceSet</c>.</summary>
+    /// <summary>A bound resource set handle.</summary>
     public interface IGpuResourceSet : IDisposable { }
 
-    /// <summary>A compiled shader set (vertex + fragment) handle. Engine wrapper over the Veldrid
-    /// <c>Shader[]</c> a SPIR-V cross-compile produces.</summary>
+    /// <summary>A compiled shader set (vertex + fragment) handle, over whatever a SPIR-V cross-compile produced
+    /// for the backend that built it.</summary>
     public interface IGpuShaderSet : IDisposable { }
 
-    /// <summary>A compiled compute shader handle (the single-stage sibling of <see cref="IGpuShaderSet"/>).
-    /// Engine wrapper over the Veldrid <c>Shader</c> a single-stage SPIR-V cross-compile produces, plus the
-    /// workgroup size read out of the module itself.</summary>
+    /// <summary>A compiled compute shader handle (the single-stage sibling of <see cref="IGpuShaderSet"/>),
+    /// plus the workgroup size read out of the module itself.</summary>
     public interface IGpuComputeShader : IDisposable
     {
         /// <summary>Workgroup size on X, read from the shader's own <c>layout(local_size_x = ...)</c>. Cover N
@@ -121,7 +123,7 @@ namespace KhaozEngine.Gpu
         uint ThreadGroupSizeZ { get; }
     }
 
-    /// <summary>Creates GPU resources. Engine mirror of Veldrid <c>ResourceFactory</c> (the subset used).</summary>
+    /// <summary>Creates GPU resources.</summary>
     public interface IGpuResourceFactory
     {
         /// <summary>Create a buffer.</summary>
@@ -169,7 +171,7 @@ namespace KhaozEngine.Gpu
         IGpuFence CreateFence();
     }
 
-    /// <summary>Records GPU commands for one submission. Engine mirror of Veldrid <c>CommandList</c>.</summary>
+    /// <summary>Records GPU commands for one submission.</summary>
     public interface IGpuCommandList : IDisposable
     {
         /// <summary>
@@ -398,8 +400,8 @@ namespace KhaozEngine.Gpu
     }
 
     /// <summary>The GPU device: backend info, capabilities, the resource factory, the swapchain framebuffer,
-    /// buffer/texture updates, submission, and staging map/unmap. Engine mirror of Veldrid <c>GraphicsDevice</c>
-    /// (the subset the 5.x renderers use). The backend is hidden inside the impl. Disposing any resource created
+    /// buffer/texture updates, submission, and staging map/unmap, covering what the 5.x renderers use. The
+    /// backend is hidden inside the impl. Disposing any resource created
     /// by this device AFTER the device itself is disposed is a safe no-op, since device destruction already
     /// freed all child objects (teardown-order stragglers cannot destroy against a dead device).</summary>
     public interface IGpuDevice : IDisposable
@@ -435,9 +437,9 @@ namespace KhaozEngine.Gpu
         /// <para>
         /// DEFAULT-IMPLEMENTED, so this was appended without breaking any implementer, and the default is the
         /// honest one: no answers. A backend that cannot report either fact leaves both null, and null means
-        /// "nobody answered" rather than "no" (see <see cref="GpuDeviceDiagnostics"/>). The Veldrid path took the
-        /// default, which was correct rather than a gap: Veldrid exposes neither the DXGI adapter flag nor a
-        /// device-removal reason, so a value from it would have had to be invented.
+        /// "nobody answered" rather than "no" (see <see cref="GpuDeviceDiagnostics"/>). The backend the engine
+        /// shipped until 18.0.0 took the default, which was correct rather than a gap: it exposed neither the
+        /// DXGI adapter flag nor a device-removal reason, so a value from it would have had to be invented.
         /// </para>
         /// </summary>
         GpuDeviceDiagnostics Diagnostics => default;
@@ -450,7 +452,7 @@ namespace KhaozEngine.Gpu
         /// <para>
         /// DEFAULT-IMPLEMENTED, and the default is the honest one: a device that counts none of this leaves
         /// <see cref="GpuDeviceCounters.HasValue"/> false, which is a DIFFERENT fact from counting and finding
-        /// zero. The native Metal backend takes the default, as the incumbent Veldrid paths did. The other two
+        /// zero. The native Metal backend takes the default. The other two
         /// native backends report what their subsystems count, D3D11 all seven fields, Vulkan the drain pair
         /// until its remaining subsystems land.
         /// </para>

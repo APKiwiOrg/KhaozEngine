@@ -194,15 +194,20 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             => new("The native Vulkan backend could not describe the surface it was asked to present to: "
                 + reason + ". A windowed device whose surface cannot be read has nothing to create a swapchain "
                 + "against, so creation fails here rather than handing back a device that renders into a window "
-                + "that never updates. Select GpuBackendKind.Vulkan, which goes through Veldrid, for a working "
-                + "windowed device on this machine.");
+                + "that never updates. This is a driver or window-system fault rather than a backend choice: "
+                + "since 18.0.0 the native backend is the only Vulkan implementation the engine has, so there is "
+                + "nothing else to select. A headless device (GpuDeviceContext.CreateHeadless) needs no surface "
+                + "and still works, and on Windows or macOS that platform's own native backend is the supported "
+                + "windowed path.");
 
         static InvalidOperationException NoFirstSwapchain(in VulkanSwapchainSpec spec, string? failure)
             => new("The native Vulkan backend could not create its FIRST swapchain at "
                 + spec.Extent.Width + "x" + spec.Extent.Height + ": " + (failure ?? "no reason reported")
                 + ". A windowed device with no swapchain has nothing to present to, so creation fails here rather "
-                + "than handing back a device that renders into a window that never updates. Select "
-                + "GpuBackendKind.Vulkan, which goes through Veldrid, for a working windowed device on this "
-                + "machine.");
+                + "than handing back a device that renders into a window that never updates. This is a driver "
+                + "or window-system fault rather than a backend choice: since 18.0.0 the native backend is the "
+                + "only Vulkan implementation the engine has, so there is nothing else to select. A headless "
+                + "device (GpuDeviceContext.CreateHeadless) needs no swapchain and still works, and on Windows "
+                + "or macOS that platform's own native backend is the supported windowed path.");
     }
 }

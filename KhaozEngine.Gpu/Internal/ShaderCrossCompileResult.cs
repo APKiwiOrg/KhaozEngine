@@ -33,9 +33,10 @@ namespace KhaozEngine.Gpu.Internal
     /// own name.
     /// </para>
     /// <para>
-    /// Deliberately Veldrid-free, and this file names no Veldrid type at all, which is the visible half of
-    /// decision P2. <c>KhaozEngine.Gpu.D3D11</c> and <c>KhaozEngine.Gpu.Metal</c> read these types across
-    /// <c>InternalsVisibleTo</c>, and a Veldrid type anywhere in this shape would put a Veldrid assembly reference
+    /// Deliberately toolchain-free, and this file names no third-party type at all, which is the visible half of
+    /// decision P2 (written as "Veldrid-free" while Veldrid was the toolchain, and unchanged by its removal in
+    /// 18.0.0). <c>KhaozEngine.Gpu.D3D11</c> and <c>KhaozEngine.Gpu.Metal</c> read these types across
+    /// <c>InternalsVisibleTo</c>, and a toolchain type anywhere in this shape would put that assembly reference
     /// in a backend's IL through an internal API that no public-surface scan checks. The engine mirrors
     /// (<see cref="GpuVertexElement"/>, <see cref="GpuResourceLayoutDescription"/>) already exist for exactly
     /// this purpose, so nothing new is invented here.

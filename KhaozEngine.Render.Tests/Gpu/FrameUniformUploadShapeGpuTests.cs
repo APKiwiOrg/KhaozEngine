@@ -13,18 +13,17 @@ namespace KhaozEngine.Tests.Gpu
     /// The regression guard for the D3D11 encode decay: a frame's per-frame uniform blocks must go up as ONE
     /// whole-buffer write each, not as a run of partial writes.
     /// <para>
-    /// Why the shape matters, and why it matters on ONE backend in particular. Veldrid 4.9.0's
-    /// <c>D3D11CommandList.UpdateBufferCore</c> split three ways. A write to a non-Dynamic, non-Staging buffer takes
-    /// <c>UpdateSubresource</c> on the deferred context - but for a UNIFORM buffer only when the write covers the
-    /// whole buffer from offset 0, because D3D11 forbids a partial box on a constant buffer. Everything else falls
-    /// through to the staging route: rent a staging buffer, hand it to <c>GraphicsDevice.UpdateBuffer</c>, which Maps
-    /// the IMMEDIATE context with <c>D3D11_MAP_WRITE</c> (not WRITE_DISCARD, no DO_NOT_WAIT), then record a
-    /// <c>CopySubresourceRegion</c>. That Map blocks until the GPU has finished with the staging buffer being
-    /// recycled, so every partial uniform write is a CPU/GPU sync point sitting in the middle of a pass's encode.
-    /// The model pass used to record five of them per destination and the shadow depth pass three per cascade, which
-    /// is what turned a Windows client's shadow and model encode into 12-17 ms while the same scene encoded in under
-    /// 1 ms on Metal. Metal and Vulkan have no such split, so this test asserts a property that is free there and
-    /// load-bearing on D3D11, and it runs on both legs (Metal locally, WARP in CI).
+    /// Why the shape matters, and why it matters on ONE backend in particular. Direct3D 11 forbids a partial box
+    /// on a constant buffer, so a partial write to a uniform buffer that is not ring-backed cannot go up as one
+    /// <c>UpdateSubresource</c>: it has to take a staging copy, and a staging copy that maps the immediate context
+    /// blocks until the GPU is done with the buffer being recycled. That is a CPU/GPU sync point sitting in the
+    /// middle of a pass's encode. It was measured rather than reasoned: the model pass recorded five partial
+    /// writes per destination and the shadow depth pass three per cascade, which turned a Windows client's shadow
+    /// and model encode into 12 to 17 ms while the same scene encoded in under 1 ms on Metal. The native
+    /// Direct3D 11 backend's uniform ring (<c>D3D11UniformRing</c>) is what makes such a write a memcpy into
+    /// already-mapped memory today, and Metal and Vulkan never had the split at all, so what this test holds is
+    /// the SHAPE: a renderer that goes back to a run of partial writes has grown that cost back the moment a
+    /// destination leaves the ring. It runs on both legs (Metal locally, WARP in CI).
     /// </para>
     /// <para>
     /// Asserted by destination SIZE rather than by a handle, because the buffers are private to the renderers. The
@@ -65,11 +64,12 @@ namespace KhaozEngine.Tests.Gpu
                 $"{what}: {distinct.Count} different {size}-byte buffers were written, so size no longer identifies it - retarget this assertion");
 
             Assert.True(hits.Count == 1,
-                $"{what}: expected ONE upload per frame, got {hits.Count}. A partial per-frame write to a uniform " +
-                "buffer is a CPU/GPU sync point on D3D11 (see the class remarks); pack the block and upload it once.");
+                $"{what}: expected ONE upload per frame, got {hits.Count}. A run of partial per-frame writes to a " +
+                "uniform buffer is what the D3D11 encode decay was made of (see the class remarks). Pack the " +
+                "block and upload it once.");
             Assert.True(hits[0].IsWholeBuffer,
                 $"{what}: the upload covered [{hits[0].Offset}, {hits[0].Offset + hits[0].Bytes}) of {size} bytes. " +
-                "Only a whole-buffer write from offset 0 escapes Veldrid's D3D11 partial-uniform-write staging route.");
+                "Only a whole-buffer write from offset 0 avoids a staging copy on a Direct3D 11 constant buffer.");
         }
 
         /// <summary>As <see cref="AssertOneWholeBufferWrite"/>, but for a destination a frame legitimately writes
@@ -90,7 +90,7 @@ namespace KhaozEngine.Tests.Gpu
             for (int i = 0; i < hits.Count; i++)
                 Assert.True(hits[i].IsWholeBuffer,
                     $"{what}: upload {i} covered [{hits[i].Offset}, {hits[i].Offset + hits[i].Bytes}) of {size} bytes. " +
-                    "Only a whole-buffer write from offset 0 escapes Veldrid's D3D11 partial-uniform-write staging route.");
+                    "Only a whole-buffer write from offset 0 avoids a staging copy on a Direct3D 11 constant buffer.");
         }
 
         [GpuFact]

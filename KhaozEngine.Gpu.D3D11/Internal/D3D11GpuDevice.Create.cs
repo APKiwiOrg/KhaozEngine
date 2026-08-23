@@ -92,7 +92,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                         "The native Direct3D 11 backend needs ID3D11DeviceContext1 and this runtime does not "
                         + "offer it. Every constant-buffer bind goes through *SetConstantBuffers1 with an "
                         + "explicit first constant and constant count, which exists only on the versioned "
-                        + "context. Select GpuBackendKind.Direct3D11 on this machine.");
+                        + "context. There is no second Direct3D 11 path to fall back to on this machine: "
+                        + "GpuBackendKind.Direct3D11 named the Veldrid backend and was retired in 18.0.0.");
 
                 bool debugLayerActive = (creationFlags & D3D11DebugLayer.CreateDeviceDebug) != 0;
                 if (debugLayerActive) log.Info(D3D11DebugLayer.ActiveDescription);
@@ -190,14 +191,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _fences = new D3D11FenceSubsystem(
                 D3D11FenceTimelines.CreateWindows(device, context), _submitLock, _liveness, realDrain);
             log.Info($"D3D11 completion fences: {_fences.Mechanism}. This device reports "
-                + "SupportsCompletionFences true, which is the one permitted capability difference from the "
-                + "Veldrid Direct3D 11 backend (decision C5).");
+                + "SupportsCompletionFences true, the one capability difference decision C5 permitted this "
+                + "backend to carry over the one the engine shipped before it.");
             if (!realDrain)
             {
-                log.Warn($"{D3D11RealDrain.EnvVarName} is OFF, so WaitForIdle on this device does NOTHING, which "
-                    + "is the empty method body the Veldrid Direct3D 11 backend has always had. Every drain in "
-                    + "the engine is a no-op on this run, and any measurement of one reads zero because the call "
-                    + "is empty rather than because the GPU was idle.");
+                log.Warn($"{D3D11RealDrain.EnvVarName} is OFF, so WaitForIdle on this device does NOTHING. Every "
+                    + "drain in the engine is a no-op on this run, and any measurement of one reads zero because "
+                    + "the call is empty rather than because the GPU was idle.");
             }
 
             // 4. THE RING. One allocator for the device, over the fence subsystem's read half, so a segment is
@@ -371,7 +371,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 result.CheckError();
                 throw new InvalidOperationException(
                     "D3D11CreateDevice reported success and handed back no device. The native Direct3D 11 "
-                    + "backend cannot run on this machine. Select GpuBackendKind.Direct3D11.");
+                    + "backend cannot run on this machine, and GpuBackendKind.Direct3D11 is not a fallback: "
+                    + "it named the Veldrid backend and was retired in 18.0.0.");
             }
 
             immediateContext = context;

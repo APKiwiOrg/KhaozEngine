@@ -10,7 +10,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// a <c>vkCmdClearAttachments</c>, when the instance must close, and whether a framebuffer bind owes a
     /// viewport and a scissor. Every one of those is a decision that can be WRONG, and every one of them runs
     /// under a plain <c>[Fact]</c> on a machine with no Vulkan loader, because the six calls it makes go through
-    /// <see cref="IVulkanRenderApi"/>.
+    /// <see cref="IVulkanRenderApi"/>. THE INCUMBENT below means the Veldrid Vulkan backend the engine shipped
+    /// until <c>18.0.0</c>: the shapes attributed to it are reproduced because the goldens were baked through it,
+    /// and it is cited as their origin rather than as anything that still runs.
     ///
     /// <list type="number">
     /// <item><description><b>The state is three things:</b> the bound framebuffer, a pending clear value per
@@ -35,17 +37,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     ///
     /// <para><b>THE CLEAR-ONLY PASS IS REPRODUCED DELIBERATELY, NOT INHERITED BY ACCIDENT (V-A3).</b>
     /// <c>SetFramebuffer</c> plus a clear plus <c>End</c> with no draw between them must still clear, because the
-    /// incumbent forces exactly that at two sites and a golden depends on it. Under a deferred begin that is a
-    /// begin and end pair with no draws, and it is the ONE place the deferral needs an explicit flush rather than
-    /// falling out of the schedule. It needs no "did a draw happen" flag to detect: a begin CONSUMES the pending
-    /// array, so a pending clear still sitting there at the end of a pass is itself the proof that no draw
-    /// came.</para>
+    /// incumbent forced exactly that at two sites and a golden still depends on it. Under a deferred begin that
+    /// is a begin and end pair with no draws, and it is the ONE place the deferral needs an explicit flush
+    /// rather than falling out of the schedule. It needs no "did a draw happen" flag to detect: a begin CONSUMES
+    /// the pending array, so a pending clear still sitting there at the end of a pass is itself the proof that
+    /// no draw came.</para>
     ///
-    /// <para><b>THE FRAMEBUFFER-CHANGE GUARD WRAPS THE WHOLE OF <see cref="SetFramebuffer"/>, WHICH IS WHAT
-    /// VELDRID'S BASE CLASS DOES (V-A5).</b> There is no <c>SetViewport</c> on the seam at all: the engine gets a
-    /// viewport because <c>CommandList.SetFramebuffer</c> auto-calls <c>SetFullViewports</c> and
-    /// <c>SetFullScissorRects</c>, and the whole body sits inside an <c>if (_framebuffer != fb)</c> identity
-    /// guard. BOTH halves have to be reproduced. A backend that does not emit rasterises nothing. A backend that
+    /// <para><b>THE FRAMEBUFFER-CHANGE GUARD WRAPS THE WHOLE OF <see cref="SetFramebuffer"/>, WHICH IS THE
+    /// CONTRACT THE SEAM INHERITED (V-A5).</b> There is no <c>SetViewport</c> on the seam at all: the engine gets
+    /// a viewport because the base class the seam was drawn from auto-called <c>SetFullViewports</c> and
+    /// <c>SetFullScissorRects</c> from <c>CommandList.SetFramebuffer</c>, with the whole body inside an
+    /// <c>if (_framebuffer != fb)</c> identity guard, and every shipped renderer is written to that. BOTH halves
+    /// have to be reproduced. A backend that does not emit rasterises nothing. A backend that
     /// emits UNCONDITIONALLY diverges on the shipped sequence <c>SetFramebuffer(fb)</c>,
     /// <c>SetScissorRect(...)</c>, draw, <c>SetFramebuffer(fb)</c>, draw, where the second bind silently restores
     /// the full scissor and the second draw renders outside the intended rectangle. That is golden-visible, and
@@ -61,8 +64,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// schedule collapses repeated marks.</para>
     ///
     /// <para><b>ONE VIEWPORT AND ONE SCISSOR, AT INDEX 0, AND A NON-ZERO INDEX IS REFUSED.</b> The seam's
-    /// <c>SetScissorRect</c> carries an output index because Veldrid modelled one scissor per colour target, and the
-    /// native Direct3D 11 backend refuses a non-zero one for the same reason this does: nothing in the engine
+    /// <c>SetScissorRect</c> carries an output index because its shape was taken from Veldrid 4.9, which
+    /// modelled one scissor per colour target, and the native Direct3D 11 backend refuses a non-zero one for the
+    /// same reason this does: nothing in the engine
     /// passes one, a Vulkan viewport is not per-attachment in the first place, and honouring an index would mean
     /// enabling <c>multiViewport</c> and matching the pipeline's viewport count to the attachment count for a
     /// shape no shipped renderer has. A refusal by name beats a silently ignored index.</para>
@@ -411,8 +415,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             throw new ArgumentOutOfRangeException(nameof(index), index,
                 "The native Vulkan backend sets ONE scissor rectangle, at index 0. The seam carries an output "
-                + "index because Veldrid models one scissor per colour target, nothing in the engine passes a "
-                + "non-zero one, and honouring it would mean enabling multiViewport and matching every pipeline's "
+                + "index because the seam's shape was taken from Veldrid 4.9, which modelled one scissor per "
+                + "colour target. Nothing in the engine passes a non-zero one, and honouring it would mean "
+                + "enabling multiViewport and matching every pipeline's "
                 + "viewport count to its attachment count for a shape no shipped renderer has. It is refused by "
                 + "name rather than ignored, which is what the native Direct3D 11 backend does with the same "
                 + "index for the same reason.");

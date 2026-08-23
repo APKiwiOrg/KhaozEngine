@@ -21,13 +21,16 @@ namespace KhaozEngine.Gpu.Internal
     /// <para>
     /// <b>Why there is anything to check.</b> Metal has no binding decorations. The cross-compiler hands each
     /// resource an index of its own within one of three argument tables, assigned in SPIR-V id order, which
-    /// follows where each resource is FIRST REFERENCED across the emitted function bodies. The incumbent Veldrid
-    /// Metal backend, meanwhile, bound a resource set by counting the layout's elements in BINDING order, one
-    /// counter per kind. Those two agree only by luck, and where they disagree Metal reads the wrong resource and
-    /// returns zero rather than failing: Vulkan and Direct3D11 stay perfectly correct because they honour the
-    /// decorations. Three separate shipped bugs of this shape are recorded in
-    /// <c>docs/design/FFT-OCEAN-DESIGN-2026-07-26.md</c>, and every one of them was found by an image golden or a
-    /// bisect rather than by a build failure.
+    /// follows where each resource is FIRST REFERENCED across the emitted function bodies. A backend that binds
+    /// a resource set by counting the layout's elements in BINDING order, one counter per kind, agrees with that
+    /// numbering only by luck, and where the two disagree Metal reads the wrong resource and returns zero rather
+    /// than failing: Vulkan and Direct3D11 stay perfectly correct because they honour the decorations. That is
+    /// the shape the engine shipped on Metal until <c>18.0.0</c>, and three separate shipped bugs of it are
+    /// recorded in <c>docs/design/FFT-OCEAN-DESIGN-2026-07-26.md</c>, every one found by an image golden or a
+    /// bisect rather than by a build failure. The native Metal backend binds at an AUTHORED index instead, so
+    /// what these two checks hold up now is the engine's own one-uniform-buffer-per-pipeline rule, which
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/604">#604</see> retires together with the
+    /// shaders it blocks.
     /// </para>
     /// <para>
     /// <b>THE JOIN IS KEYED ON THE SPIR-V ID, PER STAGE.</b> Each emitted argument is named <c>_&lt;id&gt;</c>
@@ -57,14 +60,15 @@ namespace KhaozEngine.Gpu.Internal
 
         static readonly string[] Spaces = { "buffer", "texture", "sampler" };
 
-        /// <summary>WHICH BACKEND THE CONSTRAINT PROTECTS, carried in every message this type throws. Without it
-        /// the rejection reads as a bug in the validator to anyone whose shader draws correctly on every device
-        /// they own: the engine's own native Metal backend binds at the index read out of each stage's emission
-        /// and renders all of these shapes correctly, so the constraint was the INCUMBENT Veldrid Metal backend's
-        /// alone and retired with that leg (issue #604).</summary>
-        const string IncumbentClause =
-            "This constrains the INCUMBENT Veldrid Metal backend (GpuBackendKind.Metal) alone. The engine's own "
-            + "native Metal backend binds at the index read out of each stage's emission, and Vulkan and "
+        /// <summary>WHAT THE CONSTRAINT PROTECTS, carried in every message this type throws. Without it the
+        /// rejection reads as a bug in the validator to anyone whose shader draws correctly on every device they
+        /// own, and it would read that way fairly: no backend the engine ships needs this shape rejected. What is
+        /// left is the engine's one-uniform-buffer rule, kept because lifting it moves goldens on all three
+        /// backends rather than because a device requires it, and retired by issue #604 together with the shaders
+        /// it blocks.</summary>
+        const string RuleClause =
+            "This enforces the engine's one-uniform-buffer-per-pipeline rule (issue #604) rather than a limit of "
+            + "any backend it ships. The native Metal backend binds at an authored index, and Vulkan and "
             + "Direct3D11 honour the decorations, so all three render this correctly and a shader that looks fine "
             + "on every device you tested can still be rejected here.";
 
@@ -112,7 +116,7 @@ namespace KhaozEngine.Gpu.Internal
                         + "two disagree the wrong resource is bound to each slot, on Metal ONLY, and silently. "
                         + "Make the first reference to each resource happen in binding order - hoist a first touch "
                         + "into main when a helper function reaches a later binding first. "
-                        + IncumbentClause);
+                        + RuleClause);
                 }
             }
             return bySpace;
@@ -120,17 +124,16 @@ namespace KhaozEngine.Gpu.Internal
 
         /// <summary>
         /// THE PREFIX PROPERTY, which is a constraint on the LAYOUT rather than on first-reference order and is
-        /// therefore not reachable by <see cref="CheckStage"/>. Veldrid numbered a resource with one counter per
-        /// kind across the WHOLE layout and bound it at that number in every stage its mask named, while the
+        /// therefore not reachable by <see cref="CheckStage"/>. The rule counts a resource with one counter per
+        /// kind across the WHOLE layout and expects it at that number in every stage its mask names, while the
         /// cross-compiler numbers each stage densely from 0 over only the bindings that stage declares. The two
         /// agree only when every stage's resources are a PREFIX of the layout's, per index space. A vertex-only
         /// texture placed after a fragment-only one cannot be made to work at any binding number.
         /// <para>
-        /// WHAT IT CANNOT SEE: an element no stage references at all. That element still consumed a Veldrid slot
-        /// and still shifted everything after it, but it is absent from both stages' emissions and from the
-        /// reflection's kinds (Veldrid reflected an unreferenced separate texture as a <c>UniformBuffer</c> with no
-        /// stages), so there is nothing sound to count. A false negative there is the price of never firing on a
-        /// correct shader.
+        /// WHAT IT CANNOT SEE: an element no stage references at all. That element still takes a slot in the
+        /// whole-layout count and still shifts everything after it, but it is absent from both stages' emissions
+        /// and from the reflection's kinds, so there is nothing sound to count. A false negative there is the
+        /// price of never firing on a correct shader.
         /// </para>
         /// </summary>
         /// <exception cref="ShaderValidationException">One stage's resources are not a prefix of the layout's.
@@ -176,13 +179,13 @@ namespace KhaozEngine.Gpu.Internal
                     $"{tag}: the {stage} stage's {space} resources are not a PREFIX of the resource layout. It "
                     + $"reads layout(set={set}, binding={binding}) but never reads "
                     + $"layout(set={missedSet}, binding={missedBinding}), which comes before it in the {space} "
-                    + "index space. Veldrid counts one slot per kind across the WHOLE layout while the "
+                    + "index space. The layout is counted one slot per kind across the WHOLE of it while the "
                     + "cross-compiler numbers each stage densely from 0 over only what that stage declares, so "
                     + $"this stage reaches for a lower {space} index than the layout binds binding {binding} at, "
                     + "and no binding number can reconcile the two. Reorder the layout so every resource this "
                     + $"stage reads comes before the ones it does not, or give it a reference to binding "
                     + $"{missedBinding} as well. "
-                    + IncumbentClause);
+                    + RuleClause);
             }
         }
 

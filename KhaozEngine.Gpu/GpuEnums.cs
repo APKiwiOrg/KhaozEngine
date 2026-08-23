@@ -2,9 +2,13 @@ using System;
 
 namespace KhaozEngine.Gpu
 {
-    /// <summary>Pixel format for a GPU texture. Engine-side mirror of the Veldrid <c>PixelFormat</c> members the
-    /// 5.x renderers use. Each native backend maps these members to its own API format itself. Until 18.0.0
-    /// <c>Internal/VeldridMap</c> mapped them 1:1 to Veldrid for the incumbent device.</summary>
+    // PROVENANCE FOR THE WHOLE FILE, recorded once. Every member set below was taken from the equivalent Veldrid
+    // 4.9 enum in 2025, when the engine ran on that library, which is why the shapes look the way they do. They
+    // are the seam's own now: 18.0.0 deleted the mapping layer with the backend that needed it, and each native
+    // backend maps these members to its own API's values itself.
+
+    /// <summary>Pixel format for a GPU texture, covering what the 5.x renderers use. Each native backend maps
+    /// these members to its own API format itself.</summary>
     public enum GpuPixelFormat
     {
         /// <summary>8-bit-per-channel RGBA, unsigned normalized. The 2D + 3D colour-target format.</summary>
@@ -27,8 +31,8 @@ namespace KhaozEngine.Gpu
         R16G16Float,
     }
 
-    /// <summary>How a GPU texture may be used. Flags so a texture can be both a render target and sampled, etc.
-    /// Mirrors Veldrid <c>TextureUsage</c>.</summary>
+    /// <summary>How a GPU texture may be used. Flags so a texture can be both a render target and sampled,
+    /// etc.</summary>
     [Flags]
     public enum GpuTextureUsage
     {
@@ -48,12 +52,12 @@ namespace KhaozEngine.Gpu
         GenerateMipmaps = 1 << 5,
         /// <summary>Read-write from a compute shader (a storage / UAV image, GLSL <c>image2D</c>), bound through a
         /// <see cref="GpuResourceKind.TextureReadWrite"/> slot. Combine with <see cref="Sampled"/> for the usual
-        /// compute-writes-then-graphics-samples handoff. Mirrors Veldrid <c>TextureUsage.Storage</c>; needs
+        /// compute-writes-then-graphics-samples handoff. Needs
         /// <see cref="GpuCapabilities.SupportsCompute"/>.</summary>
         Storage = 1 << 6,
     }
 
-    /// <summary>How a GPU buffer is used. Mirrors Veldrid <c>BufferUsage</c>.</summary>
+    /// <summary>How a GPU buffer is used.</summary>
     [Flags]
     public enum GpuBufferUsage
     {
@@ -77,7 +81,7 @@ namespace KhaozEngine.Gpu
         Staging = 1 << 7,
     }
 
-    /// <summary>Element size of an index buffer. Mirrors Veldrid <c>IndexFormat</c>.</summary>
+    /// <summary>Element size of an index buffer.</summary>
     public enum GpuIndexFormat
     {
         /// <summary>16-bit unsigned indices (the 3D meshes use <see cref="UInt16"/>).</summary>
@@ -86,7 +90,7 @@ namespace KhaozEngine.Gpu
         UInt32,
     }
 
-    /// <summary>How vertices are assembled into primitives. Mirrors Veldrid <c>PrimitiveTopology</c>.</summary>
+    /// <summary>How vertices are assembled into primitives.</summary>
     public enum GpuPrimitiveTopology
     {
         /// <summary>Independent triangles (3 verts each).</summary>
@@ -101,7 +105,7 @@ namespace KhaozEngine.Gpu
         PointList,
     }
 
-    /// <summary>Which shader stages a resource is visible to. Flags. Mirrors Veldrid <c>ShaderStages</c>.</summary>
+    /// <summary>Which shader stages a resource is visible to. Flags.</summary>
     [Flags]
     public enum GpuShaderStages
     {
@@ -121,7 +125,7 @@ namespace KhaozEngine.Gpu
         Compute = 1 << 5,
     }
 
-    /// <summary>The kind of resource bound at a layout slot. Mirrors Veldrid <c>ResourceKind</c>.</summary>
+    /// <summary>The kind of resource bound at a layout slot.</summary>
     public enum GpuResourceKind
     {
         /// <summary>A uniform (constant) buffer.</summary>
@@ -138,7 +142,7 @@ namespace KhaozEngine.Gpu
         Sampler,
     }
 
-    /// <summary>Triangle face culling mode. Mirrors Veldrid <c>FaceCullMode</c>.</summary>
+    /// <summary>Triangle face culling mode.</summary>
     public enum GpuFaceCull
     {
         /// <summary>Cull back faces.</summary>
@@ -149,7 +153,7 @@ namespace KhaozEngine.Gpu
         None,
     }
 
-    /// <summary>Polygon fill mode. Mirrors Veldrid <c>PolygonFillMode</c>.</summary>
+    /// <summary>Polygon fill mode.</summary>
     public enum GpuPolygonFill
     {
         /// <summary>Filled (solid) polygons.</summary>
@@ -158,7 +162,7 @@ namespace KhaozEngine.Gpu
         Wireframe,
     }
 
-    /// <summary>Winding order treated as front-facing. Mirrors Veldrid <c>FrontFace</c>.</summary>
+    /// <summary>Winding order treated as front-facing.</summary>
     public enum GpuFrontFace
     {
         /// <summary>Clockwise winding is front (the 5.x renderers use <see cref="Clockwise"/>).</summary>
@@ -167,7 +171,7 @@ namespace KhaozEngine.Gpu
         CounterClockwise,
     }
 
-    /// <summary>Depth / stencil comparison function. Mirrors Veldrid <c>ComparisonKind</c>.</summary>
+    /// <summary>Depth / stencil comparison function.</summary>
     public enum GpuComparison
     {
         /// <summary>Never passes.</summary>
@@ -188,7 +192,7 @@ namespace KhaozEngine.Gpu
         Always,
     }
 
-    /// <summary>Blend source/destination factor. Mirrors Veldrid <c>BlendFactor</c>.</summary>
+    /// <summary>Blend source/destination factor.</summary>
     public enum GpuBlendFactor
     {
         /// <summary>Zero.</summary>
@@ -217,7 +221,7 @@ namespace KhaozEngine.Gpu
         InverseBlendFactor,
     }
 
-    /// <summary>Blend equation. Mirrors Veldrid <c>BlendFunction</c>.</summary>
+    /// <summary>Blend equation.</summary>
     public enum GpuBlendFunction
     {
         /// <summary>source*srcFactor + dest*destFactor.</summary>
@@ -232,8 +236,8 @@ namespace KhaozEngine.Gpu
         Maximum,
     }
 
-    /// <summary>Sampler texture-filtering mode. Mirrors the subset of Veldrid <c>SamplerFilter</c> the renderers
-    /// use (point vs linear min/mag/mip).</summary>
+    /// <summary>Sampler texture-filtering mode, the subset the renderers use (point versus linear
+    /// min/mag/mip).</summary>
     public enum GpuSamplerFilter
     {
         /// <summary>Nearest-neighbour (point) sampling - the pixelated upscale + crisp 2D path.</summary>
@@ -245,7 +249,7 @@ namespace KhaozEngine.Gpu
         Anisotropic,
     }
 
-    /// <summary>Sampler addressing (wrap) mode. Mirrors Veldrid <c>SamplerAddressMode</c>.</summary>
+    /// <summary>Sampler addressing (wrap) mode.</summary>
     public enum GpuSamplerAddress
     {
         /// <summary>Wrap (repeat).</summary>
@@ -258,7 +262,7 @@ namespace KhaozEngine.Gpu
         Border,
     }
 
-    /// <summary>CPU map access mode for a staging resource. Mirrors Veldrid <c>MapMode</c>.</summary>
+    /// <summary>CPU map access mode for a staging resource.</summary>
     public enum GpuMapMode
     {
         /// <summary>Read-only mapping (readback path).</summary>

@@ -282,8 +282,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 + "at the constant-buffer bind. No other bind carries that base, so the vertex, index, indirect or "
                 + "structured read would address the first segment while the uniform read addressed the current "
                 + "one, and one frame's data would be read as another's with nothing thrown and nothing logged. "
-                + "This combination IS accepted by GpuBackendKind.Direct3D11, so it is a documented divergence of "
-                + "this backend. Create two buffers, one uniform and one for the other usage.",
+                + "The seam allows the combination and the Veldrid Direct3D 11 backend deleted in 18.0.0 "
+                + "accepted it, so this is a documented divergence of GpuBackendKind.Direct3D11Native rather "
+                + "than a defect. Create two buffers, one uniform and one for the other usage.",
                 nameof(usage));
     }
 }

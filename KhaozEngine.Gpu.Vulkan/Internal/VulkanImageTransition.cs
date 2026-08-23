@@ -8,10 +8,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// layouts it is built from. Pure arithmetic over enums, so what a transition synchronises against is a plain
     /// <c>[Fact]</c> rather than a thing only a validation layer on a real device can see.
     ///
-    /// <para><b>ARMS OVER LAYOUTS, NOT OVER LAYOUT PAIRS, AND THAT IS THE WHOLE OF THE DECISION.</b> The incumbent
-    /// answers a transition with a 25-arm if/else over the PAIR of layouts, ending in a debug assertion, and in
-    /// Release it silently emits <c>NONE</c> on both stage masks for a pair it does not handle. A barrier with
-    /// <c>NONE</c> on both sides synchronises nothing, and its only signal is an assertion that compiles away. Here
+    /// <para><b>ARMS OVER LAYOUTS, NOT OVER LAYOUT PAIRS, AND THAT IS THE WHOLE OF THE DECISION.</b> The backend
+    /// the engine shipped until <c>18.0.0</c> answered a transition with a 25-arm if/else over the PAIR of
+    /// layouts, ending in a debug assertion, and in Release it silently emitted <c>NONE</c> on both stage masks
+    /// for a pair it did not handle. A barrier with <c>NONE</c> on both sides synchronises nothing, and its only
+    /// signal there was an assertion that compiles away. Here
     /// each SIDE is answered independently by <see cref="StageFor"/> and <see cref="AccessFor"/>, which are total
     /// over the eight layouts this backend uses, so every pair is covered by construction and there is no
     /// unhandled one to fall through. A layout outside the eight throws by name instead of emitting an empty
@@ -53,8 +54,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// layout being left and the DESTINATION stage for the layout being entered.
         /// </summary>
         /// <exception cref="ArgumentOutOfRangeException">A layout outside the eight this backend uses. Answering
-        /// <c>NONE</c> instead would be the incumbent's Release-build behaviour, which is a barrier that
-        /// synchronises nothing.</exception>
+        /// <c>NONE</c> instead would emit a barrier that synchronises nothing.</exception>
         internal static PipelineStageFlags2 StageFor(ImageLayout layout) => layout switch
         {
             // NOTHING HAS HAPPENED TO IT. Only ever a source, and only at the two sites named in the type remarks.
@@ -216,6 +216,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             "A native Vulkan image layout outside the eight this backend uses. Every barrier names both stage "
             + "masks and both access masks explicitly (V-F6), so an unrecognised layout is refused rather than "
             + "answered with an empty mask: an empty mask on both sides is a barrier that synchronises nothing, "
-            + "which is what the incumbent emits in Release for a layout pair its if/else does not handle.";
+            + "which orders no memory and no execution while looking like a barrier in a capture.";
     }
 }

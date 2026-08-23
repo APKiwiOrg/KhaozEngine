@@ -16,9 +16,9 @@ namespace KhaozEngine.Gpu.Internal
     /// under their own <see cref="MslCrossCompilePin"/> and touch nothing else: the front end is untouched, so the
     /// SPIR-V byte-equality drift test keeps meaning what it meant, as did <c>VulkanSpirvIncumbentParityTests</c>
     /// until it went with the incumbent in 18.0.0. #462 is NOT taken here and section 12.2 is why:
-    /// <c>libveldrid-spirv</c> exports three non-incidental
-    /// C entry points, none of which carries a resource-binding table, so an engine-owned shim over that library
-    /// would get exactly what the managed wrapper already gets.
+    /// the outgoing <c>libveldrid-spirv</c> exported three
+    /// non-incidental C entry points, none of which carried a resource-binding table, so an engine-owned shim
+    /// over that library would have got exactly what the managed wrapper already got.
     /// </para>
     /// <para>
     /// AND THE MSL HALF HAS NO GLSL-SOURCE CONVENIENCE, WHICH IS A DECISION RATHER THAN AN OMISSION. The
@@ -38,18 +38,22 @@ namespace KhaozEngine.Gpu.Internal
     /// <para>
     /// WHY IT LIVES IN <c>KhaozEngine.Gpu</c> RATHER THAN IN THE BACKEND (decision P2, section 3 of
     /// <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c>). The shader path needs SPIRV-Cross, and
-    /// SPIRV-Cross arrives as <c>Veldrid.SPIRV</c>. Referencing that from <c>KhaozEngine.Gpu.D3D11</c> would
-    /// bless a Veldrid package inside a backend whose entire premise is being Veldrid-free, which is a bad signal
-    /// no guard would ever catch. This package already owns <see cref="ShaderValidation"/>, which uses precisely
-    /// this static API with no device in existence, so the edge is already at home here. And one seat is what
-    /// makes the eventual SPIRV-Cross replacement a change to one package rather than three.
+    /// SPIRV-Cross arrives as a package: <c>Silk.NET.SPIRV.Cross</c> since 18.0.0, and <c>Veldrid.SPIRV</c>
+    /// when the decision was taken. Referencing it from <c>KhaozEngine.Gpu.D3D11</c> would put a toolchain
+    /// package inside a backend that declares none, which is a bad signal no guard would ever catch. The
+    /// Veldrid wording the decision was written in outlived the package: what P2 keeps out of the backend is
+    /// the toolchain, whichever one it is. This package already owns <see cref="ShaderValidation"/>, which
+    /// uses precisely this static API with no device in existence, so the edge is already at home here. And
+    /// one seat is what makes the eventual SPIRV-Cross replacement a change to one package rather than three.
     /// </para>
     /// <para>
-    /// THE SIGNATURES ARE VELDRID-FREE, and that is the load-bearing half rather than a nicety. The backend
-    /// consumes these members across <c>InternalsVisibleTo</c>. A Veldrid type in any parameter or return shape
-    /// would put a Veldrid assembly reference in the backend's IL through an internal API, and internal API is
-    /// exactly what a public-surface scan does not check. Everything crosses the boundary as
-    /// <see cref="CrossCompiledPair"/> / <see cref="CrossCompiledCompute"/> over the engine's own mirrors.
+    /// THE SIGNATURES NAME NO TOOLCHAIN TYPE, and that is the load-bearing half rather than a nicety. The
+    /// backend consumes these members across <c>InternalsVisibleTo</c>. A toolchain type in any parameter or
+    /// return shape would put that assembly reference in the backend's IL through an internal API, and internal
+    /// API is exactly what a public-surface scan does not check. The rule was written as "Veldrid-free" while
+    /// Veldrid was the toolchain, and it binds the same way against <c>Silk.NET.SPIRV.Cross</c>. Everything
+    /// crosses the boundary as <see cref="CrossCompiledPair"/> / <see cref="CrossCompiledCompute"/> over the
+    /// engine's own mirrors.
     /// </para>
     /// </summary>
     internal static class SpirvCrossCompile

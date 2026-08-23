@@ -24,11 +24,12 @@ namespace KhaozEngine.Tests.Gpu
     /// binding 0. Section 2.3 rules that this is a HYPOTHESIS about the incumbent's numbering rather than a
     /// measured property of Metal, and MM6 is the measurement that settles it.</para>
     ///
-    /// <para><b>IT IS ONLY READABLE BECAUSE 2.2b TOOK THE ID JOIN.</b> The native backend binds at the index the
-    /// compiler put each argument at, read out of each stage's own SPIR-V module, rather than at an index counted
-    /// over the declared layout array the way the incumbent does. Under the fallback that was briefly taken
-    /// (#586) this backend would have used the incumbent's numbering, both hypotheses would have predicted the
-    /// same answer, and these two rows could not have separated them.</para>
+    /// <para><b>IT WAS ONLY READABLE BECAUSE 2.2b TOOK THE ID JOIN.</b> When these rows were written the native
+    /// backend bound at the index the compiler put each argument at, read out of each stage's own SPIR-V module,
+    /// rather than at an index counted over the declared layout array the way the incumbent did. Under the
+    /// fallback that was briefly taken (#586) this backend would have used the incumbent's numbering, both
+    /// hypotheses would have predicted the same answer, and these two rows could not have separated them. Row 10
+    /// authors the index outright now, which the last row below is about.</para>
     ///
     /// <para><b>EVERY ROW ASSERTS A PIXEL, WHICH IS THE WHOLE POINT.</b> Section 18's row 17 records that a
     /// <c>[GpuFact]</c> asserting only no-throw is how the all-black splat terrain shipped, and this claim is
@@ -43,25 +44,25 @@ namespace KhaozEngine.Tests.Gpu
     /// nothing bound at all is BLACK. A probe whose only failure mode was black could not tell a mis-bind from a
     /// pipeline that never bound, which is the same trap row 14's ABI probe was built around.</para>
     ///
-    /// <para><b>THE INCUMBENT IS MEASURED BESIDE IT AND ASSERTED ON.</b> A pass on the native backend alone would
-    /// not say the constraint moved: it would also be the reading if the constraint had quietly stopped
-    /// reproducing anywhere, in which case the answer is about a toolchain version rather than about this
-    /// backend. So each row runs the SAME shape through <see cref="GpuBackendKind.Metal"/> as a control and writes
-    /// what it read into the test output. The control is RECORDED rather than asserted, deliberately: asserting
-    /// that the incumbent still mis-binds would be a test that goes red the day somebody else fixes it, which is a
-    /// failing suite reporting good news.</para>
+    /// <para><b>EACH ROW USED TO MEASURE THE INCUMBENT BESIDE IT, RECORDED AND NEVER ASSERTED.</b> The
+    /// comparison was the point: a pass on the native backend alone would not say the constraint had moved, since
+    /// it is also the reading if the constraint had quietly stopped reproducing anywhere. That control stood the
+    /// Veldrid Metal leg up through <see cref="GpuBackendKind.Metal"/>, which is retired since <c>18.0.0</c> and
+    /// throws when named in code, so the controls were deleted with it and each row now measures exactly the
+    /// backend its name claims. What replaces the comparison is the device-free row at the end, which pins the
+    /// two numberings against each other with no device at all.</para>
     ///
     /// <para><b>NO SHADER CHANGES ON THE STRENGTH OF THIS (M-B4).</b> The invariant stays in force whatever these
     /// two rows read. A pass authorises FILING its removal as work with its own gates on all three backends, and
-    /// nothing else, because the Veldrid Metal leg still ships and still numbers its buffers by declaration
-    /// order.</para>
+    /// nothing else, which is
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/604">#604</see>.</para>
     ///
     /// <para><b>DORMANT OFF macOS RATHER THAN SKIPPED</b>, which is phase 3's row-19 lesson: under
     /// <c>KE_GPU_TESTS=1</c> the Vulkan and Direct3D 11 legs run this assembly in strict mode where a skip is a
     /// failure, so each row returns early with the reason recorded instead.</para>
     ///
     /// <para><b>IT SITS IN <c>NativeDeviceLifecycle</c></b> because it builds a whole <c>MTLDevice</c> and queue
-    /// beside the suite's own, and because it stands the incumbent up next to it.</para>
+    /// beside the suite's own.</para>
     /// </summary>
     [Collection("NativeDeviceLifecycle")]
     public sealed class MetalTwoUniformBufferGpuTests
@@ -96,8 +97,6 @@ namespace KhaozEngine.Tests.Gpu
             Color native = MeasureOnNative(TwoInVertexVert, TwoInVertexFrag, GpuShaderStages.Vertex,
                 GpuShaderStages.Vertex);
 
-            RecordIncumbent(TwoInVertexVert, TwoInVertexFrag, GpuShaderStages.Vertex, GpuShaderStages.Vertex);
-
             Assert.Equal(Yellow, native);
         }
 
@@ -118,9 +117,6 @@ namespace KhaozEngine.Tests.Gpu
             if (!MetalDormancy.NativeDeviceAvailable(_out)) return;
 
             Color native = MeasureOnNative(FragmentOnlyVert, FragmentOnlyFrag,
-                GpuShaderStages.Vertex | GpuShaderStages.Fragment, GpuShaderStages.Fragment);
-
-            RecordIncumbent(FragmentOnlyVert, FragmentOnlyFrag,
                 GpuShaderStages.Vertex | GpuShaderStages.Fragment, GpuShaderStages.Fragment);
 
             Assert.Equal(Yellow, native);
@@ -155,25 +151,11 @@ namespace KhaozEngine.Tests.Gpu
             Color native = MeasureOnNative(SplitStageVert, SplitStageFrag, GpuShaderStages.Vertex,
                 GpuShaderStages.Fragment);
 
-            // THIS ROW'S CONTROL IS THE ONE THAT PROVOKES METAL'S API VALIDATION, and it does so by
-            // construction: the whole point of the split-stage shape is that the incumbent writes the fragment's
-            // buffer at index 1 while the emitted function reads index 0, so the draw really does leave a
-            // declared fragment buffer unbound. The layer is entitled to object, and its default error mode
-            // aborts the host, which on the metal-native leg would take the other six thousand rows down with
-            // it. The NATIVE measurement above is untouched and still runs under validation, which is the half
-            // that asserts anything.
-            //
-            // The layer independently confirming MM6's mechanism is worth recording rather than only working
-            // around: "Fragment Function(main0): missing Buffer binding at index 0" is the incumbent's
-            // mis-binding, seen from outside this repository's own reasoning about it (2.3a of the design).
-            if (!MetalValidationDormancy.StandDown(_out,
-                "reproduces the incumbent's mis-binding on purpose, which the layer sees as a draw with an "
-                + "unbound fragment buffer"))
-            {
-                RecordIncumbent(SplitStageVert, SplitStageFrag, GpuShaderStages.Vertex,
-                    GpuShaderStages.Fragment);
-            }
-
+            // THIS ROW USED TO TAKE A SECOND MEASUREMENT on the incumbent, behind a validation stand-down: the
+            // split-stage shape is the one where the incumbent wrote the fragment's buffer at index 1 while the
+            // emitted function read index 0, so that draw really did leave a declared fragment buffer unbound and
+            // the layer was entitled to abort the host over it. The incumbent is gone, the stand-down went with
+            // it, and the native measurement here has always run under the armed layer.
             Assert.Equal(Yellow, native);
         }
 
@@ -183,12 +165,12 @@ namespace KhaozEngine.Tests.Gpu
         /// so the two halves the explanation rests on, the EMISSION and this engine's reproduction of the
         /// incumbent's arithmetic, stay checked on the days nobody has a Mac in front of them.
         ///
-        /// <para><b>WHAT IT DOES NOT PIN IS THE INCUMBENT ITSELF.</b> Veldrid's live binding is recorded by the
-        /// rows above and asserted by nothing, which is the deliberate trade in the control's own header. So the
-        /// day Veldrid numbers its buffers the way the emission does, nothing here goes red: the control quietly
-        /// reads yellow, and what goes stale is the recorded table in 2.3a and the measurement in the body of
-        /// #604. A changed control reading is the signal to refresh both, and it arrives in this file's test
-        /// output rather than as a failure.</para>
+        /// <para><b>WHAT IT PINS IS THE ARITHMETIC, NOT A DEVICE.</b> The incumbent's live binding was never
+        /// asserted anywhere, only recorded beside the rows above, and it cannot be measured at all now that the
+        /// backend is deleted. This row is what is left of the comparison, and it is the durable half: the
+        /// per-kind declaration-order count is a checked-in reproduction rather than a device reading, so it goes
+        /// red when the EMISSION moves away from it, which is the event the recorded table in 2.3a and the
+        /// measurement in the body of #604 both depend on.</para>
         ///
         /// <para><b>18.0.0 TURNED THIS ROW OVER, AND THAT IS THE ROW'S CONTENT NOW.</b> Until row 10 (#693) the
         /// index was SPIRV-Cross's to choose, and this program was the constructed counter-example: a fragment
@@ -236,9 +218,9 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Both buffers read: the answer MM6 bets on.</summary>
         static Color Yellow => new(1f, 1f, 0f, 1f);
 
-        // THE NATIVE BACKEND, NAMED RATHER THAN RESOLVED, and asserted to be what came back. A selection that fell
-        // back to the incumbent would measure Veldrid and report it as the native backend, which is the one
-        // failure this row could not see from its own output.
+        // THE NATIVE BACKEND, NAMED RATHER THAN RESOLVED, and asserted to be what came back. A selection that
+        // quietly fell back to something else would measure that instead and report it as the native backend,
+        // which is the one failure this row could not see from its own output.
         Color MeasureOnNative(string vertex, string fragment, GpuShaderStages first, GpuShaderStages second)
         {
             using GpuDeviceContext native = GpuDeviceContext.CreateHeadless(GpuBackendKind.MetalNative);
@@ -247,40 +229,6 @@ namespace KhaozEngine.Tests.Gpu
             Color measured = Measure(native.GpuDevice, vertex, fragment, first, second);
             _out.WriteLine($"native Metal ({native.Capabilities.DeviceName}): {Describe(measured)}");
             return measured;
-        }
-
-        // THE CONTROL. Recorded, never asserted: what makes MM6 readable is that the two backends can be compared
-        // on one machine in one process, and what would make this suite fragile is a row that fails when the
-        // incumbent's own behaviour improves. A control that cannot be taken at all is recorded as that.
-        void RecordIncumbent(string vertex, string fragment, GpuShaderStages first, GpuShaderStages second)
-        {
-            // NO VALIDATION STAND-DOWN HERE, and that is a scoping decision rather than an omission. ONE of the
-            // three rows provokes the layer, the split-stage one, and it stands down at its own call site. The
-            // other two were measured under the armed layer and record BOTH buffers read cleanly, with no
-            // objection, because the incumbent's count and the emission agree on those two shapes. Standing all
-            // three down would have cost two clean control readings on the one leg that runs the layer, which is
-            // the leg whose output is the reason to take a control at all.
-            try
-            {
-                using GpuDeviceContext incumbent = GpuDeviceContext.CreateHeadless(GpuBackendKind.Metal);
-                if (incumbent.Backend != GpuBackendKind.Metal)
-                {
-                    _out.WriteLine($"control not taken: the incumbent came up on {incumbent.Backend}.");
-                    return;
-                }
-
-                Color measured = Measure(incumbent.GpuDevice, vertex, fragment, first, second);
-                _out.WriteLine($"incumbent Metal via Veldrid ({incumbent.Capabilities.DeviceName}): "
-                    + Describe(measured));
-            }
-            catch (Exception ex)
-            {
-                // The control is diagnostic. A machine that cannot stand the incumbent up beside the native
-                // device still has a native measurement worth taking, and losing the row to the control's failure
-                // would trade the measurement for its footnote.
-                _out.WriteLine("control not taken: the incumbent Metal device threw (" + ex.GetType().Name + ": "
-                    + ex.Message + ").");
-            }
         }
 
         /// <summary>
@@ -360,7 +308,7 @@ namespace KhaozEngine.Tests.Gpu
             gd.WaitForIdle();
 
             // A DEVICE THAT LOST ITSELF WOULD READ BLACK AND MEAN SOMETHING ELSE ENTIRELY, so the latch is checked
-            // before the pixel is believed. The incumbent answers null here as well, through the same member.
+            // before the pixel is believed.
             Assert.Null(gd.Diagnostics.DeviceLossReason);
 
             byte[] pixels = GpuReadback.ToRgba(gd, target, (int)Size, (int)Size);

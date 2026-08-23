@@ -38,19 +38,28 @@ These graph rules are not just prose. Headless architecture tests in `KhaozEngin
   (`Primitives` is the zero-dependency leaf, `Simulation` may reference `Determinism` and nothing else, the
   Foundation umbrella stays GPU-free, `App` never references `Gui`), the locked ProjectReference membership of the four umbrellas, opt-in backends staying out of
   every umbrella's transitive closure, the INVERSE rule for the three native GPU backends (every umbrella that
-  carries `Gpu` must carry all three, since 18.0.0), `Render3D` staying seams-only, and each native backend
-  declaring no `Veldrid` package of its own.
+  carries `Gpu` must carry all three, since 18.0.0), `Render3D` staying seams-only, and the repository-wide
+  one-shader-toolchain rule (`NoTwoShaderToolchains`, which since 18.0.0 subsumes the narrower per-backend
+  no-`Veldrid`-package guard it replaced).
 - `GpuPublicApiTests.cs` - reflection guards that walk the public and protected surface of `KhaozEngine.Gpu` and
-  fail if any Veldrid type leaks through it, proving the GPU seam keeps the SHADER TOOLCHAIN contained. That is
-  the whole of what the rule guards since 18.0.0: the incumbent backend was deleted, and then the toolchain it
-  left behind was swapped for `Silk.NET.Shaderc` plus `Silk.NET.SPIRV.Cross`, so there is no Veldrid assembly
-  in the graph at all any more and this walk can no longer fail. It is kept as the leak detector for whatever
-  the toolchain is, and `ArchitectureTests.NoTwoShaderToolchains` is what now keeps the Veldrid half true by
-  refusing the package. The same walk runs
-  over `KhaozEngine.Gpu.D3D11` for `Veldrid`, `Vortice` and `SharpGen`, since a Direct3D type in a public
-  signature would load a Windows-only assembly on a platform that has none. A third guard reads that assembly's
-  own references and fails on any `Veldrid` one, which is the only way to catch a Veldrid type crossing through
-  an INTERNAL API that no surface scan looks at.
+  fail if a toolchain type leaks through it, proving the GPU seam keeps the SHADER TOOLCHAIN contained. Keeping
+  the toolchain off the seam is the whole of what the rule guards since 18.0.0: the backend that used to sit
+  behind the seam was deleted, and the toolchain it left behind was swapped for `Silk.NET.Shaderc` plus
+  `Silk.NET.SPIRV.Cross`, so the walk that names Veldrid types can no longer fail and is kept as the pattern for
+  whatever the toolchain is. `ArchitectureTests.NoTwoShaderToolchains` is the live half, and it refuses the
+  package rather than the type. The same walk runs over `KhaozEngine.Gpu.D3D11` for `Veldrid`, `Vortice` and
+  `SharpGen`, and the live half of that one is `Vortice` and `SharpGen`: a Direct3D type in a public signature
+  would load a Windows-only assembly on a platform that has none. A third guard reads each native backend's own
+  assembly references, which is the only way to catch a type crossing through an INTERNAL API that no surface
+  scan looks at. Its `Veldrid` rows are kept deliberately even though nothing in the graph can fail them now,
+  because the walk is the pattern a future toolchain leak is caught by and rewriting it from scratch later is
+  the expensive half.
+
+**"The incumbent", throughout the GPU packages and the GPU test assembly, means the Veldrid backend deleted in
+`18.0.0`.** Each of the four GPU package READMEs says so at its head. `KhaozEngine.Render.Tests` has no README
+to say it in, and around forty of its GPU test classes cite that backend's behaviour in their doc comments,
+because reproducing it or diverging from it deliberately is why most of those assertions exist. Those citations
+are history and are kept: the numbers they pin are still the numbers the goldens were baked against.
 
 Changing a documented edge therefore means changing the matching expectation in these tests, so the graph and
 this doc cannot silently drift apart.
@@ -620,27 +629,28 @@ game owns that write. Direction of flow is what keeps the closure intact, not th
 
 ## D3D11 driver-threading probe: a declared package, not a new seam
 
-Since 17.22.0 `KhaozEngine.Gpu` declares a `PackageReference` to `Vortice.Direct3D11`, and
-`ArchitectureTests` maps it to the same `Gpu` home as `Veldrid`:
+Since 17.22.0 `KhaozEngine.Gpu` declares a `PackageReference` to `Vortice.Direct3D11`, mapped by
+`ArchitectureTests` to the `Gpu` home:
 
 ```
 KhaozEngine.Gpu -> Vortice.Direct3D11   (diagnostics only: ID3D11Device::CheckFeatureSupport with
                                          D3D11_FEATURE_THREADING, read once at device creation on
-                                         Windows on the Direct3D11 backend, and nowhere else)
+                                         Windows on the native Direct3D 11 backend, and nowhere else)
 ```
 
-This adds no dependency the engine did not already have. `Vortice.Direct3D11` IS Veldrid's own D3D11 binding and
-has been a transitive dependency of `Veldrid` 4.9.0 the whole time. What changed is that it is now DECLARED,
-because `ArchitectureTests.EveryThirdPartyPackage_IsDeliberatelyMapped` requires every third-party reference a
-packable library uses to be a deliberate edit rather than something inherited by accident. `Gpu` is the correct
-home for THIS use: it is the same seam Veldrid is confined to, reached through the raw `ID3D11Device` pointer
-Veldrid itself publishes on `BackendInfoD3D11.Device`, and nothing outside `Internal/D3D11ThreadingProbe` names a
-Vortice type inside this package.
+It arrived as a declaration of something the graph already had: `Vortice.Direct3D11` was a transitive dependency
+of the `Veldrid` package the engine ran on until 18.0.0, and
+`ArchitectureTests.EveryThirdPartyPackage_IsDeliberatelyMapped` requires every third-party reference a packable
+library uses to be a deliberate edit rather than something inherited by accident. `Gpu` is the correct home for
+THIS use: the probe reads a raw `ID3D11Device` pointer the backend hands across the seam, and nothing outside
+`Internal/D3D11ThreadingProbe` names a Vortice type inside this package.
 
 `Vortice.Direct3D11` now has a SECOND home, `KhaozEngine.Gpu.D3D11`, and that is a different use rather than a
 widening of this one: that package IS the Direct3D 11 interop, so the binding is its subject matter and not a
-diagnostic borrowed from a neighbour. Both homes pin the same Vortice 2.3.0 line, which is what Veldrid depends
-on, so there is exactly one D3D11 binding and one `SharpGen.Runtime` in the graph. The native backend adds
+diagnostic borrowed from a neighbour. Both homes pin the same Vortice 2.3.0 line, so there is exactly one D3D11
+binding and one `SharpGen.Runtime` in the graph. That line was chosen because it was what the removed `Veldrid`
+package depended on, and with it gone the pin is free to move, which is deliberately NOT part of 18.0.0
+([#726](https://github.com/APKiwiOrg/KhaozEngine/issues/726)). The native backend adds
 `Vortice.D3DCompiler` on the same line for its own FXC call, and that one is its alone.
 
 It also does not widen what loads at runtime anywhere else. The probe's guard returns before any Vortice type is
@@ -740,17 +750,20 @@ is the failure mode a second implementation of one API creates: rule 1 is satisf
 at the sampled bind rather than by the queued layout restore that comment described, and a dependent-dispatch
 chain inside one list IS ordered here. Both sentences were true of Veldrid's Vulkan backend and false of this
 one. The comment now names the implementation each mechanism belongs to, and says outright that the mechanism is
-the part that differs between two backends one environment variable apart, while rule 2's portable requirement is
-unchanged and a consumer that drops the drain still breaks on the Veldrid legs the same machine falls back to
+the part that differs between two implementations of one API, while rule 2's portable requirement is unchanged
+and a consumer that drops the drain is writing to one backend rather than to the seam
 ([#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529)). The native Metal backend later joined the
 permissive side by a third mechanism, its compute encoder's serial dispatch type, which is what makes three of
 three engine-owned backends honour rule 2 natively
-([#585](https://github.com/APKiwiOrg/KhaozEngine/issues/585)) and leaves only the two Veldrid legs needing the
-drain. That is the quorum [#461](https://github.com/APKiwiOrg/KhaozEngine/issues/461) has been waiting for, and
-it is evidence rather than a contract change. It registers under `GpuBackendKind.VulkanNative`, which landed in
+([#585](https://github.com/APKiwiOrg/KhaozEngine/issues/585)). Since 18.0.0 those three are the only backends
+there are, so nothing the engine ships needs the drain for rule 2 at all. That is the quorum
+[#461](https://github.com/APKiwiOrg/KhaozEngine/issues/461) has been waiting for, and it is evidence rather than
+a contract change: the drain stays in the seam contract because a FOURTH backend may need it. It registers under `GpuBackendKind.VulkanNative`, which landed in
 `17.32.0`, so the backend is selectable by name (`KE_GRAPHICS_BACKEND=vulkan-native`) and a machine that cannot
-run it arrives through the reported fallback. **Since 17.40.0 the OS probe selects it on Linux**, and a
-process that has not referenced the package arrives at the incumbent through that same reported fallback. The
+run it arrives through the reported fallback. **Since 17.40.0 the OS probe selects it on Linux**, and since
+18.0.0 there is nothing behind it: a process that has not referenced the package has no provider to select and
+fails to create a device
+([#723](https://github.com/APKiwiOrg/KhaozEngine/issues/723) is the consumer-side shape of that). The
 `vulkan-native` CI leg verifies the committed `vulkan-native` goldens on lavapipe, a byte-identical copy of the
 incumbent family it was a guest in until `17.41.0`
 ([#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)), which is the continuous exercise the rollout is
@@ -774,7 +787,8 @@ loader resolves at runtime, and a machine without one fails the functional probe
 existing fallback. So the Vulkan package has no OS-suffixed TFM, no guard attributes and no `NoInlining`
 bodies, and adding them back by analogy would create a boundary the backend does not have.
 
-**The binding is contained the same way the Veldrid one is.** `Silk.NET.Vulkan` and its two extension packages
+**The binding is contained the same way the Direct3D 11 one is.** `Silk.NET.Vulkan` and its two extension
+packages
 are mapped to `Gpu.Vulkan` alone in `ArchitectureTests.ThirdPartyHomes`, and no `Silk` type may appear on the
 package's externally visible surface (`GpuPublicApiTests.GpuVulkanPublicApi_DoesNotLeakBackendTypes`). The
 reason is the seam rather than the load path: a `Silk.NET.Vulkan` type in a public signature makes a consumer
@@ -794,7 +808,8 @@ one csproj line each, beside the `KhaozEngine.Render.Tests` grant both already c
 unchanged: `TestSupport.Gpu -> Gpu.D3D11`, `TestSupport.Gpu -> Gpu.Vulkan` and, since the Metal instance below,
 `TestSupport.Gpu -> Gpu.Metal`, never the reverse.
 
-The no-Veldrid rule below applies to ALL THREE packages, and both assertions are theories over the three of them.
+The no-toolchain-package rule below applies to ALL THREE packages, and both assertions are theories over the
+three of them.
 
 ### The third instance: `KhaozEngine.Gpu.Metal`
 
@@ -806,10 +821,11 @@ through `KhaozEngineMetal.Register()` under `GpuBackendKind.MetalNative`, which 
 Neither `IGpuDevice` nor `IGpuCommandList` has an unbuilt member left: it creates devices headless and windowed,
 compiles GLSL through SPIR-V to MSL, builds pipelines from a per-program binding table whose indices it AUTHORED
 into that MSL, records and submits against an `MTLSharedEvent` timeline, draws, dispatches, and presents through a
-`CAMetalLayer`. **Since 17.40.0 the OS probe selects it on macOS**, and a process that has not referenced the
-package arrives at the incumbent through the reported fallback. The `metal-native` CI leg verifies the
-incumbent's committed `metal` goldens on the same real GPU as a guest in that family, which is the continuous
-exercise the rollout is measured against.
+`CAMetalLayer`. **Since 17.40.0 the OS probe selects it on macOS**, and since 18.0.0 there is nothing behind
+it: a process that has not referenced the package has no provider to select and fails to create a device. The
+`metal-native` CI leg verifies the committed `metal-native` goldens on real Apple hardware, a family this
+backend has OWNED since `17.41.0` and was a guest in before that, which is the continuous exercise the rollout
+is measured against.
 
 ```
 KhaozEngine.Gpu.Metal -> KhaozEngine.Gpu           (the only direction, for the third time)
@@ -822,7 +838,8 @@ KhaozEngine.Gpu.Metal -> (no third-party package at all)
 took `Vortice.Direct3D11` and phase 3 took `Silk.NET.Vulkan` on the reasoning that owning the BACKEND and owning
 the BINDING are different things. That reasoning is unchanged and it has nothing to point at here: Silk.NET
 ships no Metal, Vortice ships no Metal, and Apple ships no managed binding of any kind. Vendoring
-`Veldrid.MetalBindings` is rejected by name, so the interop is an engine-owned `[LibraryImport]` layer over
+`Veldrid.MetalBindings` was rejected by name (the vendored fork was still in the tree when M-P3 was taken), so
+the interop is an engine-owned `[LibraryImport]` layer over
 `objc_msgSend` with blittable-only signatures, one file per Objective-C class, and this is the only backend in
 the program whose `ArchitectureTests.ThirdPartyHomes` row is empty. **Do not add one for symmetry**, and read
 an empty row there as the assertion it is rather than as a missing entry.
@@ -839,13 +856,17 @@ would stop this assembly compiling on the Linux `ci.yml` leg and both Windows le
 Everything else is the pattern as before. The surface is pinned member by member
 (`GpuMetalPublicSurface_IsExactlyTheApprovedMembers`) beside the leak scan
 (`GpuMetalPublicApi_DoesNotLeakBackendTypes`), it grants `InternalsVisibleTo` to `KhaozEngine.Render.Tests` and
-to `KhaozEngine.TestSupport.Gpu` for the third shared ring adapter, and it declares no `Veldrid` package.
+to `KhaozEngine.TestSupport.Gpu` for the third shared ring adapter, and it declares no shader-toolchain
+package.
 
 ### What the backend package may reference, and the one edge it may NOT
 
 `KhaozEngine.Gpu.D3D11` references `KhaozEngine.Gpu`, `KhaozEngine.Diagnostics` (so the support probe can say
 WHY a machine is unsupported instead of answering a bare false), `Vortice.Direct3D11` and `Vortice.D3DCompiler`.
-It declares NO `Veldrid` package, and that is decision P2 rather than an accident of ordering.
+It declares NO SHADER-TOOLCHAIN package, and that is decision P2 rather than an accident of ordering. P2 was
+written as "no `Veldrid` package" when `KhaozEngine.Gpu` still built a Veldrid device and `Veldrid.SPIRV` was
+the toolchain. Both of those are gone since 18.0.0, and what the decision was actually protecting is the
+sentence above: the toolchain edge lives in ONE package.
 
 The shader path needs glslang and, for Direct3D 11 and Metal, SPIRV-Cross. They arrive as `Silk.NET.Shaderc`
 and `Silk.NET.SPIRV.Cross` (plus `Silk.NET.SPIRV` for the enums the two join on, and a `.Native` package
@@ -929,7 +950,7 @@ them by.
 
 Those one-sided edges are asserted rather than intended, and they need their own assertions because the two
 scans below cannot see them: every half lives in the same assembly, so a Vulkan call into `SpirvCrossCompile`
-would compile, would add no Veldrid reference, and would read identically to every package-level and
+would compile, would add no package reference of its own, and would read identically to every package-level and
 assembly-level check. `VulkanShaderFrontEndOnlyTests` reads that backend's `TypeRef` table off disk instead, and
 asserts it names `SpirvFrontEnd` and no back-end type. `MetalShaderArchitectureTests` does the Metal half as a
 MEMBER check rather than a type check, because that backend names `SpirvCrossCompile` legitimately and
@@ -938,7 +959,7 @@ that the SPIRV-Cross migration stays a change to one half of one file.
 
 ```
 KhaozEngine.Gpu.D3D11 -> Vortice.Direct3D11, Vortice.D3DCompiler   (its subject matter)
-KhaozEngine.Gpu.D3D11 -> Veldrid*                                  (never, asserted two ways)
+KhaozEngine.Gpu.D3D11 -> any shader toolchain package              (never, asserted two ways)
 ```
 
 `Vortice.D3DCompiler` is CALLED from exactly ONE type, `Internal/D3D11Fxc`, which compiles emitted HLSL to DXBC
@@ -955,20 +976,27 @@ drift into validating a shader nobody ships.
 
 Two ways, because one of them alone would not bind. `ArchitectureTests.ThirdPartyHomes` reads the project
 files and maps the five shader-toolchain package ids to `KhaozEngine.Gpu` alone, which catches the deliberate
-edit, and `ArchitectureTests.NoTwoShaderToolchains` rejects a `Veldrid` id anywhere in the tree. Neither can
+edit, and `ArchitectureTests.NoTwoShaderToolchains` rejects a `Veldrid` package id anywhere in the tree, which
+is the one-toolchain rule stated as the only id it can currently name. Neither can
 catch the subtler failure, because a toolchain assembly is in a backend's transitive closure through
 `KhaozEngine.Gpu` whatever the project file says, so an INTERNAL helper signature mentioning a toolchain type
 would compile, would put that assembly's reference in the backend's IL, and would be invisible to every
 public-surface scan there is.
 `GpuPublicApiTests.NativeGpuBackend_ReferencesNoVeldridAssembly`
 reflects over the built assembly's references and closed exactly that gap while Veldrid was the toolchain. It
-can only pass now, and the reason to keep it is that the contract it enforced is the reason the helper's whole
-contract is expressed in engine mirrors (`CrossCompiledPair` / `ShaderReflection` over `GpuVertexElement` and
-`GpuResourceLayoutDescription`). Both are theories over all three native backend packages.
+can only pass now, and it is kept because deleting it would delete the record of WHY the three natives are
+shaped as they are, which is risk R7 of
+[design/VELDRID-REMOVAL-DESIGN-2026-08-22.md](design/VELDRID-REMOVAL-DESIGN-2026-08-22.md) and the reason that
+reasoning is written down HERE rather than only in a test name. The rule it enforced is why the toolchain
+helper's whole contract is expressed in engine mirrors (`CrossCompiledPair` / `ShaderReflection` over
+`GpuVertexElement` and `GpuResourceLayoutDescription`) rather than in the toolchain's own types: a backend that
+could name a toolchain type would have no reason to accept a mirror, the mirrors would rot, and the next
+toolchain swap would stop being a change to one half of one file. Both are theories over all three native
+backend packages.
 
 The same `InternalsVisibleTo` carries the other internal the backend needs, `IGpuDeviceLifecycle`: a natively
-created device implements it to get the disposal latch the deleted Veldrid wrapper introduced, so a resource
-wrapper disposed after the device no-ops instead of calling into freed driver objects.
+created device implements it to get the disposal latch the deleted Veldrid wrapper introduced in 2025, so a
+resource wrapper disposed after the device no-ops instead of calling into freed driver objects.
 
 ### The shared-internal seam: four types all three backends now sit on
 
@@ -1065,8 +1093,9 @@ list of engine calls that opened a list of their own, and the windowed loop's pr
 that leg's, and it went with the vendored fork. The other two stayed, for reasons that are this SEAM's rather
 than any backend's, and the distinction is the whole point of writing a seam contract down:
 
-- **The rule is not the incumbent's.** The gate refuses a nested `Begin` on every backend, including the three
-  that tolerate concurrent recording natively. A rule that only binds where a backend punishes you is a backend
+- **The rule is not any one backend's.** The gate refuses a nested `Begin` on every backend, including the
+  three that tolerate concurrent recording natively, and it went on refusing after the only backend that
+  punished a nested `Begin` was deleted. A rule that binds only where a backend punishes you is a backend
   property with a rule's name on it.
 - **The pre-record phase is where the refused work legally goes.** The seam has no dispatch-to-dispatch barrier
   call (see the compute ordering contract on `IGpuCommandList`), so a dependent dispatch chain is ordered only
@@ -1080,8 +1109,14 @@ than any backend's, and the distinction is the whole point of writing a seam con
 
 What DID retire is the urgency: the seven sites are no longer a hazard inventory waiting on a per-site design
 decision, and the tests that drive them are kept as a cheap device-free regression net rather than as
-outstanding work. `OpenListTrackingGpuDevice` is kept on the same footing, and a pass on either is evidence that
-nothing nested, never evidence about a backend.
+outstanding work. `OpenListTrackingGpuDevice` is kept on the same footing. It is a device-free `IGpuDevice` over
+`FakeGpuDevice` whose command lists share one open counter, so it answers the seam's question (did anything open
+a second list while one was recording) on any machine, with no GPU and no CI leg. It was built as the headless
+stand-in for a real device fault, since the Direct3D 11 backend the engine shipped until 18.0.0 made a command
+list the device's immediate context in one of its modes, so a nested `Begin` silently invalidated the outer
+list's bindings and faulted several draws later. The three natives all pass it trivially, which is why it costs
+nothing and not a reason to delete it: a pass on either is evidence that nothing nested, never evidence about a
+backend.
 
 ## GPU seam member: deferred retirement leaves Render3D (`GpuRetireQueue`, 17.37.0)
 
@@ -1095,7 +1130,7 @@ Water) simply had the use-after-free instead.
 
 **It is deliberately NOT a member of `IGpuDevice`.** `Retire(IDisposable)` on the interface was the shape #80
 proposed, and it fails on two counts: a device has no frame boundary, which is the only point at which freeing is
-provably safe, and adding an interface member breaks all four backend implementations plus every test fake, which
+provably safe, and adding an interface member breaks every backend implementation plus every test fake, which
 is a major-version change to fix a hitch. A seam-owned type that any renderer instantiates gets the same
 by-construction safety with an additive surface.
 
@@ -1121,7 +1156,7 @@ GPU reaches it, and nothing in the original shape said how many could pile up fi
 ceiling from whatever happened to throttle the caller. That is the difference between a designed bound and an
 emergent one, and it is why `MaxSealedBatches` (a `Create` parameter, default 8) sits on the queue rather than
 being left to the backend's ring backpressure to imply: past it the queue drains once and frees the whole holding,
-so the bound holds identically on a Veldrid backend with no ring at all and on an offscreen loop that never
+so the bound holds identically on a backend with no ring at all and on an offscreen loop that never
 presents. `ValveDrains` and the now-public `SealedBatchCount` are the two members that let a caller see it working.
 The frame-counted factory needed none of this, since a frame count is already a bound.
 
@@ -1148,7 +1183,7 @@ contents instead of nothing, which is the splat terrain's recorded signature. Sa
 
 **The narrower statement matters, because the broad one is false.** This section used to say that any pipeline
 reading more than one uniform buffer mis-binds, full stop. Measured on an Apple M2 Max, two shapes that the
-broad rule forbids bind CORRECTLY on the incumbent: a vertex stage reading two uniform buffers at sets 0 and
+broad rule bound CORRECTLY on the incumbent: a vertex stage reading two uniform buffers at sets 0 and
 1, and a pipeline whose set-0 buffer is read by both stages with a fragment-only second buffer at set 1. The
 shape that fails is the one the shipped record failed in, each stage referencing exactly one of the two
 buffers. TEXTURES and samplers in a second set mapped fine in the shapes measured. Read that as a result about
@@ -1220,14 +1255,15 @@ per-draw UBO holding `{ Mvp; Model; P; <frame block>; bones[128] }` read by both
 matrices+bones, fragment = the frame block for lighting), with material maps at set 1. An earlier attempt
 that kept the frame UBO fragment-only in a second binding/set rendered every skinned mesh black - the
 second-UBO tell - and is the reason this note now says "per pipeline", not "per vertex stage". **That black
-frame is the shape the 2026-08-11 measurement reproduces on the incumbent and the mechanism above explains
+frame is the shape the 2026-08-11 measurement reproduced on the incumbent and the mechanism above explains
 exactly**: the fragment referenced only the second buffer, so it was emitted at `buffer(0)` and written at
 `buffer(1)`.
 
 ## GPU seam contract: `DepthClipEnabled` binds on every backend, Metal included (17.39.0)
 
-**The question this settles.** `GpuRasterizerState` is the engine's mirror of Veldrid's
-`RasterizerStateDescription`, and four of its five members map one-to-one onto a field every backend has.
+**The question this settles.** `GpuRasterizerState` took its shape from Veldrid 4.9's
+`RasterizerStateDescription` in 2025 and is the seam's own now, and four of its five members map one-to-one onto
+a field every backend has.
 `DepthClipEnabled` is the exception: Metal has no rasterizer depth-clip enable at all. So the seam had to say
 whether the flag is a CONTRACT a backend must honour by whatever means its API offers, or a hint a backend may
 drop where the concept is missing. It is a contract, and the answer lives on the member's XML doc as well as
@@ -1243,9 +1279,8 @@ limit, rather than discarding it.
 **One carve-out, and it is Metal's alone: a render pass with NO depth attachment drops the flag.** Both Metal
 paths emit `-setDepthClipMode:` inside the same guard as the depth-stencil state, and that guard is the bound
 FRAMEBUFFER having a depth attachment, because a depth-stencil state on a depth-less pass is a validation
-failure (`../KhaozEngine.Gpu.Metal/Internal/MetalRenderApi.cs:134-138` returns early on `!block.DepthTrio`,
-and the vendored fork's `MTLCommandList.cs:181-186` gates the same three calls on a non-null
-`_framebuffer.DepthTarget`). A colour-only target therefore rasterizes at the encoder default, `MTLDepthClipModeClip`, whatever the
+failure (`../KhaozEngine.Gpu.Metal/Internal/MetalRenderApi.cs:134-138` returns early on `!block.DepthTrio`).
+A colour-only target therefore rasterizes at the encoder default, `MTLDepthClipModeClip`, whatever the
 bound pipeline asked for, and `false` cannot be expressed there at all. Direct3D 11 and Vulkan keep the flag in
 rasterizer state that exists with or without a depth attachment, so they honour it there. No pixel differs
 today: the engine's colour-only passes are the fullscreen post ones, whose vertex stage emits z = 0 exactly,
@@ -1255,17 +1290,19 @@ pass or the seam declares it undefined there.
 
 **Why it needed writing down.** Until 17.39.0 BOTH Metal paths derived the clip mode from
 `DepthStencilState.DepthTestEnabled` and read `DepthClipEnabled` nowhere at all
-([#598](https://github.com/APKiwiOrg/KhaozEngine/issues/598)). `Veldrid.MTL.MTLPipeline` did it first and the
-engine's own `KhaozEngine.Gpu.Metal` reproduced it deliberately, because the committed `metal` goldens were
-baked through the incumbent's answer. The derivation agrees with the flag wherever the two happen to agree, and
+([#598](https://github.com/APKiwiOrg/KhaozEngine/issues/598)). `Veldrid.MTL.MTLPipeline` did it first and
+`KhaozEngine.Gpu.Metal` reproduced it deliberately, because the committed `metal` goldens of the day were baked
+through that answer. The derivation agrees with the flag wherever the two happen to agree, and
 four shipped Render3D pipelines are exactly where they do not: sky, starfield, ground decal and particles all
 run the depth test with `depthClipEnabled: false`, so they clamped on Windows and Linux and clipped on macOS.
 
-**The repair had to land on both Metal paths in one release, and that is a general rule rather than a detail
-of this fix.** `GoldenCompare` maps `GpuBackendKind.MetalNative` onto the `metal` family, so the native backend
-verifies grids the incumbent baked. Any behavioural change to one of them is a change to the other's reference,
-so a seam repair on one Metal path alone turns the guest leg red by construction. This one shipped as the
-vendored fork's `4.9.104` plus the matching native change together.
+**The repair had to land on both Metal paths in one release, and the rule behind that outlived the pair.**
+`GoldenCompare` mapped `GpuBackendKind.MetalNative` onto the `metal` family then, so the native backend was
+verifying grids the other path had baked, and any behavioural change to one of them was a change to the other's
+reference: a seam repair on one Metal path alone turned the guest leg red by construction. So this one shipped
+as the vendored fork's `4.9.104` plus the matching native change together. Since `17.41.0` the native backend
+owns `metal-native` outright and there is no second Metal path to keep in step, but the general form of the rule
+still holds wherever one leg is a guest in another's family.
 
 **Nothing rebaked, and the reason is worth keeping.** Three of the four pipelines are background passes whose
 vertex stage emits `gl_Position = vec4(xy, 1.0, 1.0)`, so `z == w` exactly, and the far-plane boundary is
@@ -1273,7 +1310,7 @@ inclusive under clipping: clip and clamp rasterize those identically. The fourth
 where the modes differ for a sprite crossing EITHER plane: clipping drops the outside fragments, clamping keeps
 them and pins their depth to the limit, and at the FAR plane those clamped-to-1 fragments then pass the pass's
 LessEqual test against a background depth of 1. No golden scene has a billboard crossing either plane. Both
-Both Metal legs of the day ran the full suite green on the committed grids.
+Metal legs of the day ran the full suite green on the committed grids.
 
 ## GPU seam contract: a `CopyBuffer` offset is a multiple of four on every backend (17.40.0)
 
@@ -1304,13 +1341,13 @@ start is still legal to READ, just not to copy from, so a caller who genuinely n
 **What it cost in this repository: nothing, and that is measured rather than assumed.** All five in-repo
 `GpuReadback.ReadBuffer<T>` callers leave `srcOffsetBytes` at its default of 0, and
 `MetalCopyBufferCallSiteTests` sweeps every `CopyBuffer` call site in shipped source mechanically and finds no
-unaligned offset anywhere. It was a behaviour change for a CONSUMER that passed one on Veldrid, Vulkan or
-Direct3D 11, where the call used to be taken.
+unaligned offset anywhere. It was a behaviour change for a CONSUMER that passed one on any of the three
+backends where the call used to be taken.
 
-**Why it landed before the Veldrid removal rather than after.** Deleting the incumbent would have narrowed the
-divergence from three-versus-one to two-versus-one and resolved nothing. Taking it while the incumbent is still
-present is what makes a green suite evidence that nothing ever leaned on the tolerant behaviour, because the
-incumbent enforces the new rule too and every golden still passes through it
+**Why it landed before the Veldrid removal rather than after.** Deleting that backend would have narrowed the
+divergence from three-versus-one to two-versus-one and resolved nothing. Taking it while the backend was still
+there is what makes a green suite evidence that nothing ever leaned on the tolerant behaviour, because it
+enforced the new rule too and every golden of the day passed through it
 (`docs/design/VELDRID-REMOVAL-DESIGN-2026-08-22.md` section 6, row 1 of section 7).
 
 **Where it is pinned.** `KhaozEngine.Render.Tests/Gpu/CopyBufferOffsetContractTests.cs` drives every

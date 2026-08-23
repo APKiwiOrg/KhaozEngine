@@ -59,9 +59,11 @@ namespace KhaozEngine.Gpu.Internal
     /// so the pin does not pretend to.
     /// </para>
     /// <para>
-    /// Veldrid-free on purpose, like everything else the native backend reads across
-    /// <c>InternalsVisibleTo</c>: <c>CrossCompileOptions</c> is a Veldrid type, so it stays private inside
+    /// TOOLCHAIN-FREE ON PURPOSE, like everything else the native backend reads across
+    /// <c>InternalsVisibleTo</c>: the cross-compiler's own options type stays private inside
     /// <see cref="SpirvCrossCompile"/> and is BUILT from these constants rather than being the source of them.
+    /// The rule was written as "Veldrid-free" against that library's <c>CrossCompileOptions</c>, and it binds
+    /// the same way against <c>Silk.NET.SPIRV.Cross</c>'s <c>CompilerOptions</c> since 18.0.0.
     /// </para>
     /// </summary>
     internal static class HlslCrossCompilePin

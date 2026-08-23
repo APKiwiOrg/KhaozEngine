@@ -229,6 +229,25 @@ suitable window platform (GlfwPlatform - not applicable)"*. Foundation therefore
 `IncludeNativeLibrariesForSelfExtract=false` (inherited, overridable the same way as `CETCompat`); leave it
 inherited. The default is a no-op unless you set `PublishSingleFile=true`.
 
+### Linux: the natives land next to your assemblies (18.0.0)
+
+Nothing to do, but worth knowing why your Linux `bin/` has a few `.so` files loose in it. Silk.NET does not
+reach GLFW, OpenAL Soft, `libshaderc_shared` or `libspirv-cross` through `[DllImport]`, so the .NET host's own
+`deps.json` native resolution never runs for them. `Silk.NET.Core` probes `runtimes/<rid>/native` itself, and on
+Linux the rid it asks for is the DISTRO one (`ubuntu.24.04-x64`), never the portable `linux-x64` the packages
+ship under. Both bridges are gone: `deps.json` has carried no rid fallback graph since .NET 8, and Silk's own
+fallback guess only understands rids beginning `osx` or `win`. So a Linux app built the ordinary way finds
+none of them, and dies at the first shader compile with `Could not load from any of the possible library names`
+out of `SpirvFrontEnd`'s static constructor
+([#722](https://github.com/APKiwiOrg/KhaozEngine/issues/722)).
+
+`KhaozEngine.Foundation` ships a targets file that copies the host rid's native assets flat into your output
+directory, which is the first place Silk's resolver looks. It rides in on `Game2D`, `Game3D`, `Server` or a
+direct `Foundation` reference, it runs on `build` and on a rid-agnostic `publish`, and it is a no-op on Windows
+and macOS (both resolve out of `runtimes/` fine) and on `publish -r <rid>` (the SDK already lays those flat).
+A project that references no native package copies nothing. Set
+`<KhaozEngineFlattenHostNatives>false</KhaozEngineFlattenHostNatives>` if you lay the natives out yourself.
+
 **New game head checklist:** set `<OutputType>WinExe</OutputType>` on the Desktop head (no stray console window;
 the engine attaches the parent console for terminal launches). `CETCompat` and
 `IncludeNativeLibrariesForSelfExtract` are the engine-imposed build-property defaults. Pin your umbrella package

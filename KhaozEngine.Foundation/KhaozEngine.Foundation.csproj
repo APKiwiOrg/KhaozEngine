@@ -50,10 +50,17 @@
     <ProjectReference Include="../KhaozEngine.CodeHealth.Analyzers/KhaozEngine.CodeHealth.Analyzers.csproj"
                       PrivateAssets="none" />
   </ItemGroup>
-  <!-- Ship the game-head build defaults (CETCompat=false, overridable) so every consuming
-       head inherits the standard. buildTransitive/ makes it flow whether Foundation is a
-       direct reference (Server, gameplay-logic libs) or pulled in via Game2D/Game3D. -->
+  <!-- Ship the game-head build defaults (CETCompat=false, overridable) and the Linux host-native
+       flatten (#722) so every consuming head inherits the standard. buildTransitive/ makes them flow
+       whether Foundation is a direct reference (Server, gameplay-logic libs) or pulled in via
+       Game2D/Game3D. The umbrella ProjectReferences on that second path carry PrivateAssets that
+       keep the Build asset flowing, because the ProjectReference default suppresses it.
+       KhaozEngine.HostNatives.targets is not auto-imported by NuGet (only the PackageId-named file
+       is), it is pulled in by the Import at the top of KhaozEngine.Foundation.targets, which is why
+       it ships next to it in BOTH folders. -->
   <ItemGroup>
+    <None Include="build/KhaozEngine.HostNatives.targets" Pack="true" PackagePath="build/KhaozEngine.HostNatives.targets" />
+    <None Include="build/KhaozEngine.HostNatives.targets" Pack="true" PackagePath="buildTransitive/KhaozEngine.HostNatives.targets" />
     <None Include="build/KhaozEngine.Foundation.props" Pack="true" PackagePath="build/KhaozEngine.Foundation.props" />
     <None Include="build/KhaozEngine.Foundation.props" Pack="true" PackagePath="buildTransitive/KhaozEngine.Foundation.props" />
     <None Include="build/KhaozEngine.Foundation.targets" Pack="true" PackagePath="build/KhaozEngine.Foundation.targets" />

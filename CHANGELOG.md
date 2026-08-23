@@ -90,6 +90,31 @@ package leave too and NO Veldrid package is left anywhere in the graph. BREAKING
   because `libveldrid-spirv` shipped linux-x64 and not linux-arm64. The replacement natives ship eight RIDs
   including linux-arm64, so the constraint is gone, but every golden in the tree was baked on x64 and moving the
   leg is a separate change with its own bake.
+- **`KhaozEngine.Foundation` ships a targets file that lays the host rid's natives FLAT on a Linux build.**
+  Consumer-visible packaging change, and the reason a Linux build of any game on the engine works at all.
+  Silk.NET reaches GLFW, OpenAL Soft, `libshaderc_shared` and `libspirv-cross` through its own path resolver
+  rather than `[DllImport]`, so the .NET host's `deps.json` native resolution never runs for them, and the
+  resolver probes `runtimes/<DISTRO rid>/native` (`ubuntu.24.04-x64`) while the packages ship under the portable
+  `linux-x64`. `deps.json` has carried no rid fallback graph since .NET 8 and Silk's own guess only understands
+  `osx` and `win` rids, so nothing bridged the two: a Linux consumer died at its first shader compile with
+  `Could not load from any of the possible library names` out of `SpirvFrontEnd`'s static constructor, and the
+  windowing and audio natives had always been in the same position. `build/KhaozEngine.HostNatives.targets` now
+  ships under `build/` and `buildTransitive/`, arriving via `Game2D`, `Game3D`, `Server` or a direct `Foundation`
+  reference, and copies the host rid's native assets into the output directory, which is the FIRST place the
+  resolver looks. It covers `build` and a rid-agnostic `publish`, and is a no-op on Windows and macOS (both
+  already resolve out of `runtimes/`), on `publish -r <rid>` (the SDK lays those flat itself) and in a project
+  that references no native package. Opt out with `KhaozEngineFlattenHostNatives=false`. The engine's own build
+  imports the same file from `Directory.Build.targets` instead of keeping a second copy.
+  [#722](https://github.com/APKiwiOrg/KhaozEngine/issues/722).
+- **The `Game2D`, `Game3D` and `Server` umbrellas stop suppressing Foundation's build assets.** Found while
+  shipping the above: a `ProjectReference` packs with `exclude="Build,Analyzers"` by default, so a head that
+  referenced an umbrella rather than `KhaozEngine.Foundation` itself never received Foundation's `build/` folder,
+  and the `CETCompat=false` (7.23.0) and `IncludeNativeLibrariesForSelfExtract=false` (12.0.0) defaults were
+  silently not applied to it. The 7.23.0 entry's claim that `buildTransitive/` alone makes the transitive case
+  work is the belief this corrects: it is necessary and it was never sufficient. The three edges (`Game2D` to
+  `Foundation`, `Game3D` to `Game2D`, `Server` to `Foundation`) now pin `PrivateAssets="contentfiles;analyzers"`, so Build flows and Analyzers stay private.
+  A head that had been running with CET on and its single-file natives bundled inherits both defaults on repin,
+  which is the intended behaviour but IS a change in what your published head does.
 - **The five toolchain package ids must move together**, enforced by
   `ArchitectureTests.TheShaderToolchainPackages_ArePinnedInLockstep`. The shader caches key on
   `SpirvToolchainVersion`, which reads its token off the two MANAGED assemblies, while glslang and SPIRV-Cross

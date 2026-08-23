@@ -44,8 +44,14 @@ referenced directly or via `Game2D`/`Game3D`/`Server`:
 - `IncludeNativeLibrariesForSelfExtract=false` (unless pinned) when single-file publishing, so
   the GLFW, graphics-loader and OpenAL natives stay loose next to the apphost where the loader can find them
   (bundling them self-extracting breaks boot with "GlfwPlatform - not applicable").
+- Linux only: the host rid's native assets (GLFW, OpenAL Soft, `libshaderc_shared`, `libspirv-cross`) are
+  copied FLAT into the output directory on `build` and on a rid-agnostic `publish`. Silk.NET probes
+  `runtimes/<distro rid>/native`, which nothing writes, so without this a Linux app cannot load any of them
+  ([#722](https://github.com/APKiwiOrg/KhaozEngine/issues/722)). No-op on Windows and macOS, on
+  `publish -r <rid>`, and in a project that references no native package. Opt out with
+  `KhaozEngineFlattenHostNatives=false`.
 
-Both are overridable by setting the property in your game head.
+All three are overridable by setting the property in your game head.
 
 Deliberately NOT included: networking (`KhaozEngine.Netcode*`), the render/windowing/audio
 stack, and the opt-in `KhaozEngine.Physics.Bepu` backend (add it explicitly if you want a real

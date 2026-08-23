@@ -27,31 +27,10 @@
     <DeterministicSourcePaths Condition="'$(DeterministicSourcePaths)' == ''">true</DeterministicSourcePaths>
   </PropertyGroup>
 
-  <!-- THE LINUX NATIVE LOAD PATH. Silk.NET does not use [DllImport] for these bindings, so the .NET host's own
-       deps.json resolution never runs: Silk.NET.Core's DefaultPathResolver does the work, and it asks
-       Microsoft.DotNet.PlatformAbstractions for the current runtime identifier and then probes
-       runtimes/<rid>/native under the app base. On Linux that call answers with the DISTRO rid
-       (ubuntu.24.04-x64 on the CI runner and in a stock ubuntu container), never the portable linux-x64 the
-       packages actually ship under, and neither bridge between the two is left standing: deps.json has carried
-       no rid fallback graph since .NET 8, and the resolver's hand-rolled guess only understands rids that start
-       with osx or win. macOS and Windows therefore resolve out of runtimes/ and Linux cannot, which is how
-       18.0.0's shaderc front end threw "Could not load from any of the possible library names" on every Linux
-       test that compiles a shader (#691), while the Metal and D3D11 legs loaded the same package fine.
-
-       The resolver's FIRST probe is the app base directory itself, so one flat copy of the host rid's native
-       assets next to the assemblies fixes every binding at once: shaderc, SPIRV-Cross, GLFW, OpenAL Soft.
-       Linux only, because the other two platforms already work and the copy is about 13 MB per project.
-       Build-time, because CI builds once and then runs every test leg against that output without rebuilding. -->
-  <Target Name="KhaozEngineCopyHostNativesToOutput"
-          AfterTargets="CopyFilesToOutputDirectory"
-          Condition="'$([MSBuild]::IsOSPlatform(Linux))' == 'true' and '$(NETCoreSdkPortableRuntimeIdentifier)' != ''">
-    <ItemGroup>
-      <_KhaozEngineHostNative Include="@(RuntimeTargetsCopyLocalItems)"
-                              Condition="'%(RuntimeTargetsCopyLocalItems.AssetType)' == 'native' and '%(RuntimeTargetsCopyLocalItems.RuntimeIdentifier)' == '$(NETCoreSdkPortableRuntimeIdentifier)'" />
-    </ItemGroup>
-    <Copy SourceFiles="@(_KhaozEngineHostNative)"
-          DestinationFolder="$(OutDir)"
-          SkipUnchangedFiles="true"
-          UseHardlinksIfPossible="true" />
-  </Target>
+  <!-- THE LINUX NATIVE LOAD PATH lives in the Foundation package's build folder, because a consumer
+       needs the same rule and build/ files do not flow across a ProjectReference (#722). The engine's
+       own projects consume it from source here, so the rule exists once. Import the native file
+       directly rather than KhaozEngine.Foundation.targets: that one also carries game-head policy
+       (the CETCompat report) which has no business running on every project in this repo. -->
+  <Import Project="$(MSBuildThisFileDirectory)KhaozEngine.Foundation/build/KhaozEngine.HostNatives.targets" />
 </Project>

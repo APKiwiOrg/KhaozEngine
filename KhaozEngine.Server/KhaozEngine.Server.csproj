@@ -17,7 +17,13 @@
   </PropertyGroup>
   <ItemGroup>
     <!-- GPU-free foundation -->
-    <ProjectReference Include="../KhaozEngine.Foundation/KhaozEngine.Foundation.csproj" />
+    <!-- PrivateAssets keeps the BUILD asset flowing to the consumer (#722). The ProjectReference
+         default is contentfiles;analyzers;build, which stamps exclude="Build,Analyzers" on the packed
+         dependency, and that is what stopped Foundation's build/ files (the CETCompat and single-file
+         defaults, and now the Linux host-native flatten) from ever reaching a head. Analyzers stay
+         private here, they travel on their own include="All" dependencies below. -->
+    <ProjectReference Include="../KhaozEngine.Foundation/KhaozEngine.Foundation.csproj"
+                      PrivateAssets="contentfiles;analyzers" />
     <!-- networking -->
     <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
     <ProjectReference Include="../KhaozEngine.Netcode.Abstractions/KhaozEngine.Netcode.Abstractions.csproj" />

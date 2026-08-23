@@ -82,9 +82,10 @@ public class CetCompatDefaultTests
     [InlineData("KhaozEngine.Foundation.targets")]
     public void Csproj_PacksAsset_ToBuildTransitive(string file)
     {
-        // buildTransitive/ is what makes the default flow to heads that pull Foundation transitively
-        // via Game2D/Game3D (not just direct references). Without it, Nullwake and SpaceGame would
-        // silently NOT inherit CET-off.
+        // buildTransitive/ is NECESSARY for the default to reach a head that pulls Foundation transitively
+        // via Game2D/Game3D rather than referencing it directly. It is not sufficient: the umbrella
+        // ProjectReference has to keep the Build asset flowing too, which it did not until 18.0.0 (issue 722).
+        // HostNativesFlattenTests.UmbrellaEdge_KeepsTheBuildAssetFlowing guards that other half.
         string csproj = Path.Combine(FoundationDir(), "KhaozEngine.Foundation.csproj");
 
         bool packedTransitive = XDocument.Load(csproj).Descendants("None").Any(n =>

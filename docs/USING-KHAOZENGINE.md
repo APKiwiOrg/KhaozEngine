@@ -449,12 +449,21 @@ the frame's command list.
 
 **Why it exists.** Some per-frame GPU work cannot be recorded into the frame's list at all: a compute dispatch
 whose output another dispatch reads in the same frame has no dispatch-to-dispatch barrier at the GPU seam, so its
-only ordering is a submit plus a device wait, which means a command list of its own. With Direct3D11 in
-immediate-context mode a command list IS the device's immediate context and `Begin` calls `ClearState` on it, so
-opening a second list while the frame's is recording wipes every binding the frame believes is live and the
-device faults a few draws later (issue #423). The headless hosts (`Render3DSnapshot.Capture`,
+only ordering is a submit plus a device wait, which means a command list of its own. Opening one while the
+frame's list is recording is the nested recording the seam refuses by name, on every backend, so that work has
+nowhere to go inside the record phase. The headless hosts (`Render3DSnapshot.Capture`,
 `Render3DPreview.Capture`) open the frame's list themselves and could already honour that ordering. The windowed
 loop opened it before calling back, so no host running on a window could (issue #429). This phase is the fix.
+
+**It was built for a backend that no longer exists, and it is KEPT anyway (18.0.0, issue #690).** The urgency
+came from the vendored Veldrid Direct3D11 leg, where a command list WAS the device's immediate context and a
+second `Begin` called `ClearState` on it, so the nesting was a silent one-frame corruption rather than a refusal
+(issue #423). That leg was deleted in 18.0.0, and the plan of record had been to retire this phase with it. It
+was not, because neither reason it rests on was that leg's: the seam still offers no dispatch-to-dispatch
+barrier, so a dependent compute chain still pays `End` + `Submit` + a device wait and still needs a list of its
+own, and the one-open-recording rule is still enforced for every recording the engine opens, on every backend.
+Nothing about `AppWindow.Run(onFrame, onPrepare)`, `GameApp.OnPrepareWorld` or `Scene3D.PrepareFrame` changed in
+18.0.0, and no game needs to do anything.
 
 **What belongs where.** `onPrepare` is for update-side work and for filling the frame's queues, which is what
 puts a producer's own command list before the frame's. Do **not** record into `Frame.Commands` there: the list is
@@ -10194,10 +10203,10 @@ needs its own list goes in the frame's pre-record phase (`AppWindow.Run(onFrame,
 
 This is a real portability rule, not defensive style. Backends disagree about what a second recording means:
 
-- The deleted Veldrid Direct3D11 leg **rejected** it. Its vendored fork's guardrail threw on a second recorder.
-- With Direct3D11 in immediate-context mode a command list **is** the device's immediate context, and `Begin`
-  calls `ClearState` on it, so opening a second list wipes the state the first one already recorded. That is the
-  ocean-pass corruption of 17.26.0, and it looked like a rendering bug somewhere else entirely.
+- The deleted Veldrid Direct3D11 leg **rejected** it, and before its fork grew a guardrail it **corrupted** on
+  it: a command list there was the device's immediate context, and `Begin` called `ClearState` on it, so opening
+  a second list wiped the state the first one had already recorded. That is the ocean-pass corruption of 17.26.0,
+  and it looked like a rendering bug somewhere else entirely. Both the fork and the leg went in 18.0.0.
 - Vulkan and Metal have their own list lifetimes.
 
 **A backend may be more permissive, and that changes nothing above.** The engine's own native Direct3D11 backend
@@ -10268,6 +10277,18 @@ Two limits, both deliberate. Calling `IGpuCommandList.Begin` directly is still l
 consumer's own list gets whatever its backend does. And the register is per DEVICE, not per thread, because the
 contract is: recording on two threads at once is refused here exactly as it is on one, even on a backend whose
 own object model would allow it.
+
+**A `Render3DSurface` driven off a raw `AppWindow.Run(onFrame)`, with no `onPrepare`, still nests, and that is
+the whole of what happens (18.0.0, issue #690).** `Render3DSurface.Render` calls `Scene3D.PrepareFrame` as a
+safety net, but by then the frame's list is open, so a scene with a producer that owns a command list (today: the
+FFT ocean, and `Scene3D.Begin`'s retire barrier once a retirement is pending) gets `GpuNestedRecordingException`
+naming the fix. There used to be a second layer under that, the vendored Veldrid fork's own guardrail throwing
+`VeldridException` on its leg, and it went with the fork in 18.0.0. Nothing replaced it and nothing needs to: the
+register refuses before any list is begun, so the message and the behaviour are identical on all three backends.
+The fix is unchanged, and it is the one the message names: queue and prepare the scene in `onPrepare`, call
+`Render` from `onFrame`, or subclass `GameApp3D`, which does exactly that for you. Note the data-dependence above
+applies here too, so a raw-`AppWindow` host with no ocean can run for a long time before the first unload turns
+its missing phase into an exception.
 
 ### Uniform buffers on the native Direct3D 11 backend (17.32.0)
 

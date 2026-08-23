@@ -68,7 +68,8 @@ namespace KhaozEngine.Gpu.Vulkan
         /// </para>
         /// <para>
         /// A WINDOWED GAME NEEDS NO CALL TO THIS since 18.0.0. <c>AppWindow</c> registers the running platform's
-        /// backend at boot through <c>GpuBackends.RegisterPlatformDefault()</c>, and this package ships in the
+        /// backend at boot through <c>GpuBackends.RegisterResolvedIfUnregistered(preference)</c>, which also seats the
+        /// preference or override the process resolves to, and this package ships in the
         /// <c>KhaozEngine.Game2D</c> and <c>KhaozEngine.Game3D</c> umbrellas. This member is for a custom or
         /// headless host, and for a process that wants a backend other than its own platform's.
         /// </para>

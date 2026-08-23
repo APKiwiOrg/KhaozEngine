@@ -150,14 +150,20 @@ consults the probe FIRST, so all three states behave: no loader and no driver bo
 answer yes.
 
 Keeping those two questions apart is decision V-I4, and here it bites harder than it did on Direct3D 11. A
-native request that failed used to fall back to the incumbent Vulkan backend
-(`GpuBackendSelector.IncumbentFor`) and report `FallbackAfterFailure`, which in a log line looked a great deal
-like a forgotten registration. `IncumbentFor` went with the incumbent in 18.0.0, so a failed request falls back
-to whatever `GpuBackendSelector.ProbeOS` answers for the platform, and to nothing at all when the request
-already IS that default. A forgotten registration for a backend the caller NAMED throws instead, and since
-17.40.0 a forgotten one for the DEFAULT falls back like an incapable machine, because the probe answers a
-provider-backed kind everywhere now and a game that never referenced the package made no wiring mistake.
-Telling the two apart is what the whole soak measurement rests on, and NAMING the backend is what keeps them
+request that fails on a machine falls back to whatever `GpuBackendSelector.ProbeOS` answers for the platform
+and reports `FallbackAfterFailure`, which in a log line looks a great deal like a forgotten registration, and
+there is nothing to fall back to when the request already IS that default. `GpuBackendSelector.IncumbentFor`
+and the incumbent Vulkan backend it mapped to were both deleted in 18.0.0, so there is exactly one Vulkan
+implementation and one default per platform.
+
+A forgotten REGISTRATION throws `GpuBackendProviderMissingException` rather than falling back, whoever asked,
+with one exception: a PLAYER'S STORED CHOICE (`GpuBackendSelection.CameFromStoredPreference`) falls back and
+reports `FallbackAfterFailure`, because a settings file outlives the build that wrote it and refusing the boot
+would leave the setting unreachable. A DEFAULT with no provider throws like any other wiring gap, which is the
+17.40.0 behaviour reversed: `GpuBackendSource.DefaultProviderMissing` is retired with the incumbent fallback it
+reported and has no producer. In practice nothing meets it, since the `Game2D` and `Game3D` umbrellas carry
+this package and `AppWindow` plus both snapshot hosts register at boot. Telling a wiring gap apart from an
+incapable machine is what the whole soak measurement rests on, and NAMING the backend is what keeps them
 apart.
 
 ## Naming it

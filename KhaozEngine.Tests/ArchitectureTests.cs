@@ -355,8 +355,9 @@ public class ArchitectureTests
     /// ALL THREE, not the build machine's one, because a NuGet package restores on every platform its consumer
     /// builds on and the umbrella cannot know which. A foreign backend is inert rather than merely harmless:
     /// each package is platform-guarded, its interop sits behind <c>NoInlining</c> bodies the JIT never compiles
-    /// off its platform, and <c>GpuBackends.RegisterPlatformDefault()</c> registers only the running platform's,
-    /// so <c>GpuBackendSelector.SupportedBackends()</c> never offers a player a row that cannot boot.
+    /// off its platform, and <c>GpuBackends.RegisterResolvedIfUnregistered()</c> registers only what this OS can
+    /// run (the platform's own, plus the resolved kind when that differs and its package is not OS-specific), so
+    /// <c>GpuBackendSelector.SupportedBackends()</c> never offers a player a row that cannot boot.
     /// </para>
     /// <para>
     /// GATED ON CARRYING <c>Gpu</c>, so this says nothing about <c>Foundation</c> or <c>Server</c>: both are

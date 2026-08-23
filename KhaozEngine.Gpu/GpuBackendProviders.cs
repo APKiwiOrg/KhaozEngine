@@ -51,8 +51,8 @@ namespace KhaozEngine.Gpu
                 + "and KhaozEngine.Gpu.Vulkan exposes KhaozEngineVulkan.Register(). Referencing the package is "
                 + "not enough on its own: the CLR loads an assembly lazily on first type reference, so a "
                 + "self-registering module initializer would run on some machines and not others. A windowed game "
-                + "gets this for free, because AppWindow calls GpuBackends.RegisterPlatformDefault() at boot, and "
-                + "a headless host calls that same member once itself. This does not fall back to another "
+                + "gets this for free, because AppWindow calls GpuBackends.RegisterResolvedIfUnregistered() at "
+                + "boot, and a headless host calls that same member once itself. This does not fall back to another "
                 + "backend, on purpose. A run that quietly used a backend other than the one asked for would "
                 + "report its measurements under the wrong name.";
     }

@@ -97,7 +97,11 @@ namespace KhaozEngine.Gpu.Internal
                 {
                     uint set = cross.CompilerGetDecoration(compiler, resource.Id, Decoration.DescriptorSet);
                     uint binding = cross.CompilerGetDecoration(compiler, resource.Id, Decoration.Binding);
-                    into[(set, binding)] = Kind(cross, compiler, type, resource.Id);
+                    // FIRST WINS, exactly as the layout table above does. The kind at a (set, binding) is a
+                    // property of the program rather than of a stage, so the two can only differ in a module
+                    // that is already malformed, and the two tables disagreeing there would put the emitted
+                    // registers and the reflected layouts on different rules.
+                    into.TryAdd((set, binding), Kind(cross, compiler, type, resource.Id));
                 }
             }
         }

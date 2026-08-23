@@ -16,7 +16,7 @@ namespace KhaozEngine.Gpu.Internal
     /// Metal backend refused an unaligned offset from the day it shipped while Veldrid, native Vulkan and native
     /// Direct3D 11 all took one. The same public call therefore succeeded on three backends and threw on the
     /// fourth, which is a portability trap a consumer only finds on a user's Mac. Stating the strictest backend's
-    /// requirement as the seam's contract is what makes the four agree, and it is the direction that cannot
+    /// requirement as the seam's contract is what makes them agree, and it is the direction that cannot
     /// silently return the wrong bytes: rounding an offset UP moves which data the caller reads, and rounding it
     /// DOWN turns a copy into a read of a wider window that can run off the end of the source.
     /// </para>

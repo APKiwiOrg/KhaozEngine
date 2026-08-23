@@ -3,13 +3,13 @@ using System;
 namespace KhaozEngine.Gpu
 {
     /// <summary>
-    /// Every backend the engine was willing to try failed: the requested one, and then the platform's Veldrid
-    /// incumbent it fell back to. There is no device, so the app cannot render.
+    /// Every backend the engine was willing to try failed: the requested one, and then the platform default it
+    /// fell back to. There is no device, so the app cannot render.
     /// <para>
     /// IT EXISTS BECAUSE THE FIRST FAILURE USED TO VANISH. The fallback's own exception propagated raw out of
-    /// device creation, so a crash report named the incumbent, carried the incumbent's reason, and said nothing
-    /// about the backend that was actually asked for or why it did not work. On a machine where the requested
-    /// backend is a native one and the incumbent is its Veldrid twin, those two failures usually have the SAME
+    /// device creation, so a crash report named the fallback, carried the fallback's reason, and said nothing
+    /// about the backend that was actually asked for or why it did not work. Where the requested backend and
+    /// the fallback are two implementations of the same API, those two failures usually have the SAME
     /// underlying cause (a missing loader, a driver that will not initialize), and the one worth reading is the
     /// first. A reader who only ever sees the second re-derives the whole sequence from a log line.
     /// </para>

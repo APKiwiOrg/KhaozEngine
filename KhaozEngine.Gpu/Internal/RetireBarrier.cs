@@ -33,8 +33,8 @@ namespace KhaozEngine.Gpu.Internal
     /// fence to the queue and waiting on it with an infinite timeout, so a fence submitted here and later polled
     /// signaled carries EXACTLY the guarantee the <c>WaitForIdle</c> it replaces carried, taken at the moment of
     /// the submit instead of the moment of the free. Metal reaches the same place from the other side: a command
-    /// queue executes its command buffers in commit order and Veldrid signals the fence from the buffer's
-    /// completion handler, so an empty buffer committed last completes last.</para>
+    /// queue executes its command buffers in commit order and the Metal backend signals the fence from the
+    /// buffer's completion handler, so an empty buffer committed last completes last.</para>
     ///
     /// <para>The cost is one command-buffer commit on frames that retired something, against the 1.5 to 1.6 ms
     /// pipeline stall it replaces.</para>
@@ -73,14 +73,14 @@ namespace KhaozEngine.Gpu.Internal
             // frame's pre-record phase.
             //
             // WHICH BACKENDS THAT IS TRUE OF, now that one of them issues real fences. On the Veldrid Direct3D11
-            // leg it stays unreachable: that backend reports no completion fences, so TryCreate returns null and
-            // no barrier exists. On the engine's own native Direct3D11 backend (GpuBackendKind.Direct3D11Native)
+            // leg it stayed unreachable: that backend reported no completion fences, so TryCreate returned null
+            // and no barrier existed. On the engine's own native Direct3D11 backend (GpuBackendKind.Direct3D11Native)
             // fences ARE real, so a barrier is built there, and its default recording driver is what makes that
             // safe: recording appends to an engine-owned command stream and touches no device state at all, so a
             // Begin here cannot disturb an open recording, and the frame's own replay opens with its own
             // ClearState and a reset redundancy cache, so nothing carries over from this empty submission. Under
             // KE_D3D11_RECORD=immediate the hazard is exactly as described above and the barrier is exactly as
-            // unsafe as it is on the incumbent, which is one of the reasons that driver is an A/B lever rather
+            // unsafe as it was on the incumbent, which is one of the reasons that driver is an A/B lever rather
             // than a supported configuration (decision M1, spec section 10.3).
             _cl = gd.Factory.CreateCommandList();
         }

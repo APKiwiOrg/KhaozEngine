@@ -111,7 +111,7 @@ namespace KhaozEngine.Gpu
         /// <para>
         /// It splits decision I2 along the line I2 was aimed at: the SOAK SESSION. A pinned provider-backed kind
         /// with no registered provider still throws, because a session that set the variable to measure the
-        /// native backend must never quietly measure the incumbent and file the number under the native name,
+        /// native backend must never quietly measure a different implementation and file the number under that name,
         /// and the same reasoning covers the five cross-platform GPU legs, each of which pins its backend this
         /// way and captures goldens headlessly.
         /// </para>
@@ -373,13 +373,13 @@ namespace KhaozEngine.Gpu
                 case "d3d11": case "direct3d11": backend = GpuBackendKind.Direct3D11; return true;
                 // Suffixed rather than a second variable. The whole token is matched, so these can never be
                 // confused with the two above, and a tester who typo'd the suffix gets the UnrecognizedOverride
-                // diagnostic rather than a silent run on the incumbent implementation under the new name.
+                // diagnostic rather than a silent run on a different implementation under the new name.
                 case "d3d11-native": case "direct3d11-native":
                     backend = GpuBackendKind.Direct3D11Native; return true;
-                // The same shape for the second native backend (decision V-I1). `vulkan` still means Veldrid's
-                // Vulkan and keeps meaning it for the one release the incumbent survives, which is what makes it
-                // the kill switch the native Vulkan design leans on: an A/B against the implementation that is
-                // now the Linux default is one variable away.
+                // The same shape for the second native backend (decision V-I1). `vulkan` meant Veldrid's Vulkan until
+                // 18.0.0, which made it the kill switch the native Vulkan design leaned on: an A/B against the
+                // implementation that is now the Linux default was one variable away. With the incumbent gone
+                // the token is retired and redirects here with a WARN.
                 case "vulkan-native": case "vk-native":
                     backend = GpuBackendKind.VulkanNative; return true;
                 // And the third (decision M-I1). The A/B this pair buys is worth more than either of the others,

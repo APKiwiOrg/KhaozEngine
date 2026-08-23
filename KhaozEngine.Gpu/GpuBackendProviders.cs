@@ -72,8 +72,8 @@ namespace KhaozEngine.Gpu
     /// <see cref="Require"/> throws for it, always, with no fallback. An incapable MACHINE is the other case
     /// entirely, is answered by the provider's own functional probe through
     /// <see cref="GpuBackendSelector.IsBackendSupported"/>, and is reported through the ordinary
-    /// <see cref="GpuBackendSource.FallbackAfterFailure"/> path. Collapsing the two would let a soak session
-    /// silently measure the incumbent backend and file the numbers under the new one.
+    /// <see cref="GpuBackendSource.FallbackAfterFailure"/> path. Collapsing the two would have let a soak
+    /// session silently measure the incumbent backend and file the numbers under the new one.
     /// </para>
     /// </summary>
     public static class GpuBackendProviders

@@ -3,14 +3,14 @@ using System;
 namespace KhaozEngine.Gpu
 {
     /// <summary>
-    /// The native windowing platform a <see cref="GpuWindowHandle"/> belongs to. Picks which Veldrid
-    /// <c>SwapchainSource</c> factory <see cref="GpuDeviceContext.CreateForWindow(in GpuWindowHandle, uint, uint, bool)"/> uses. Cocoa/Win32 carry
+    /// The native windowing platform a <see cref="GpuWindowHandle"/> belongs to. Picks which platform swapchain
+    /// surface <see cref="GpuDeviceContext.CreateForWindow(in GpuWindowHandle, uint, uint, bool)"/> builds. Cocoa/Win32 carry
     /// just the window handle; X11/Wayland also need the display pointer.
     /// </summary>
     public enum GpuWindowKind { Cocoa, Win32, X11, Wayland }
 
     /// <summary>
-    /// A platform-native window handle handed to the GPU layer so it can build a Veldrid swapchain WITHOUT the
+    /// A platform-native window handle handed to the GPU layer so it can build a swapchain WITHOUT the
     /// GPU package taking a windowing dependency. The window/input platform (KhaozEngine.Windowing, on Silk.NET)
     /// reads the native handle and passes it here as an opaque <see cref="IntPtr"/> plus a <see cref="Kind"/>.
     /// <see cref="Display"/> is only used for X11 (the X display) and Wayland (the wl_display); for Cocoa/Win32

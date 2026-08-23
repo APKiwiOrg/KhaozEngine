@@ -21,7 +21,7 @@ namespace KhaozEngine.Gpu
     /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>. The enum
     /// itself is the safe part. What is not safe is every place that switches on it, compares against it, or
     /// derives a string from it: three of those degrade a new backend SILENTLY rather than failing, and the worst
-    /// of them does not throw at all (a discard arm that asks Veldrid for a Metal device). Walk the table.
+    /// of them did not throw at all (a discard arm that asked Veldrid for a Metal device). Walk the table.
     /// </para>
     /// <para>
     /// The audit is an executable one now, which is what made the second append a diff rather than a
@@ -92,7 +92,7 @@ namespace KhaozEngine.Gpu
         /// that actually ran. It renders the SAME images as <see cref="Direct3D11"/>, and from <c>17.41.0</c> it
         /// OWNS the <c>direct3d11-native</c> golden family. It was a GUEST in the incumbent's <c>direct3d11</c>
         /// family until then (decision I3), which was the strongest free proof the port had, and row 2 of the
-        /// Veldrid removal promoted it because the incumbent that owns <c>direct3d11</c> is being deleted and a
+        /// Veldrid removal promoted it because the incumbent that owned <c>direct3d11</c> was being deleted and a
         /// family whose owner is gone is a set of references nothing may ever re-bake
         /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/685">#685</see>). The new family was
         /// seeded as a byte-identical COPY of the incumbent's, so the guest-era agreement survives as committed
@@ -164,8 +164,8 @@ namespace KhaozEngine.Gpu
         /// Whether <paramref name="kind"/> is Direct3D 11 through EITHER implementation. This is the right question
         /// for anything that talks to the D3D11 API or reports on the D3D11 driver (the
         /// <c>D3D11_FEATURE_DATA_THREADING</c> probe and its log line), because the driver underneath is the same
-        /// one whichever implementation drove it. It is the WRONG question for anything that maps a kind onto a
-        /// Veldrid backend or creates a device, since only <see cref="GpuBackendKind.Direct3D11"/> is Veldrid's.
+        /// one whichever implementation drove it. It is the WRONG question for anything that creates a device,
+        /// since <see cref="GpuBackendKind.Direct3D11"/> is retired and no longer maps onto an implementation.
         /// </summary>
         public static bool IsDirect3D11(this GpuBackendKind kind)
             => kind is GpuBackendKind.Direct3D11 or GpuBackendKind.Direct3D11Native;
@@ -178,8 +178,8 @@ namespace KhaozEngine.Gpu
         /// <para>
         /// It is the right question for anything that talks to the Vulkan API or reports on the Vulkan driver,
         /// because the driver and the ICD underneath are the same ones whichever implementation drove them. It is
-        /// the WRONG question for anything that maps a kind onto a Veldrid backend or creates a device, since only
-        /// <see cref="GpuBackendKind.Vulkan"/> is Veldrid's. Nothing in the engine gates on it today, unlike
+        /// the WRONG question for anything that creates a device, since <see cref="GpuBackendKind.Vulkan"/> is
+        /// retired and no longer maps onto an implementation. Nothing in the engine gates on it today, unlike
         /// <see cref="IsDirect3D11"/>, whose two readers are the driver-threading probe and the log line that
         /// reports what the probe found: Vulkan has no <c>D3D11_FEATURE_DATA_THREADING</c> analogue to ask about,
         /// so those two sites correctly exclude both Vulkan implementations.
@@ -194,9 +194,8 @@ namespace KhaozEngine.Gpu
         /// <para>
         /// It is the right question for anything that talks to the Metal API or reasons about how a Metal frame
         /// reaches the display, because the drawable and the display underneath are the same ones whichever
-        /// implementation drove them. It is the WRONG question for anything that maps a kind onto a Veldrid
-        /// backend, creates a device, or reaches into the Veldrid wrapper, since only
-        /// <see cref="GpuBackendKind.Metal"/> is Veldrid's.
+        /// implementation drove them. It is the WRONG question for anything that creates a device, since
+        /// <see cref="GpuBackendKind.Metal"/> is retired and no longer maps onto an implementation.
         /// </para>
         /// <para>
         /// It has NO reader in the engine today, and the reason is worth recording rather than looking like an
@@ -205,9 +204,10 @@ namespace KhaozEngine.Gpu
         /// as a CONSERVATIVE DEFAULT while which arm <see cref="GpuBackendKind.MetalNative"/> belongs in was an
         /// open measurement (decision M-W3). Rollout gate 5 took that measurement on 2026-08-11: the native
         /// present throttles the CPU from vsync alone, so both sites went back to an equality against
-        /// <see cref="GpuBackendKind.Metal"/> and the software cap is the incumbent's alone. The predicate stays
-        /// because the QUESTION it asks is still the right one for the next site that reasons about the Metal API
-        /// rather than about Veldrid's implementation of it.
+        /// <see cref="GpuBackendKind.Metal"/> and the software cap was the incumbent's alone. That incumbent was
+        /// deleted in 18.0.0, so no live backend takes the cap. The predicate stays because the QUESTION it asks
+        /// is still the right one for the next site that reasons about the Metal API rather than about one
+        /// particular implementation of it.
         /// </para>
         /// </summary>
         public static bool IsMetal(this GpuBackendKind kind)

@@ -13,7 +13,7 @@ the only backends now, on every platform, and this is rows 4, 5 and 6 of the Vel
 toolchain that turns the engine's one GLSL source into SPIR-V and cross-compiles it, and swapping it for
 `Silk.NET.Shaderc` plus `Silk.NET.SPIRV.Cross` is the next release's program
 ([#691](https://github.com/APKiwiOrg/KhaozEngine/issues/691)). BREAKING, hence the major: four
-`GpuBackendKind` members no longer name anything that can create a device.
+`GpuBackendKind` members no longer name anything that can create a device. This release also carries what 17.41.0 had staged and never tagged: the three native backends' own golden families (rows 2 and 3 of the removal program) and the two SQLite file-handle fixes, listed at the end of this entry.
 
 - **The Veldrid backend is deleted** (`VeldridGpuDevice`, `VeldridGpuCommandList`, `VeldridResources`,
   `VeldridMap`, `VeldridMetalCommandQueue`, 1247 lines in `KhaozEngine.Gpu/Internal` alone, plus the vendored
@@ -148,13 +148,6 @@ Four more things move on the repin, beyond the picker rows:
   `Veldrid.4.9.104.nupkg`, `Veldrid.MetalBindings.4.9.104.nupkg` and `Veldrid.OpenGLBindings.4.9.104.nupkg`
   there. `refresh-engine.sh` still stages a Veldrid fork on every refresh, which is a `game-template` change
   rather than a per-game one: https://github.com/APKiwiOrg/game-template/issues/42.
-
-## 17.41.0
-
-17.41.0 gives the three native backends their own golden families, rows 2 and 3 of the Veldrid removal program
-([#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)), ahead of the incumbent delete. The bare local
-bake refusal that 17.40.0 introduced lasted one release: a bare local run now reads and may bake
-`metal-native`.
 
 - **The three native backends OWN their own golden families, and the three new families are byte-identical
   copies of the incumbent ones** ([#685](https://github.com/APKiwiOrg/KhaozEngine/issues/685),

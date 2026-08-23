@@ -34,7 +34,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/581).
     ///
     /// <para><b>THIS TYPE IS WHERE MM7 IS ANSWERED AS FAR AS IT CAN BE.</b> The design records that not one line
-    /// of the incumbent's swapchain runs in CI on any leg, ever, and that the Metal leg being otherwise the
+    /// of the incumbent's swapchain ran in CI on any leg, ever, and that the Metal leg being otherwise the
     /// best-covered leg in the matrix makes a green run read as stronger evidence than it is. Nothing can move
     /// <c>nextDrawable</c> onto a headless runner. What CAN move is every decision AROUND it: which pixel format
     /// the layer gets, what a zero-sized window resolves to, and how the size the layer is configured at is
@@ -71,7 +71,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// answer is written down once instead of being a literal <c>false</c> at the call site.
         /// <para>
         /// <c>GpuWindowedDeviceRequest</c> HAS NO FIELD FOR IT. The seam carries a window, a size and a vsync flag
-        /// and nothing else, and the Veldrid path's own <c>SwapchainDescription</c> is built with
+        /// and nothing else, and the Veldrid path's own <c>SwapchainDescription</c> was built with
         /// <c>colorSrgb: false</c> at the one windowed site in <c>GpuDeviceContext</c>. So the sRGB arm of
         /// <see cref="LayerPixelFormat"/> is unreachable from the shipped path today. It is written and tested
         /// anyway because it is the incumbent's own conditional and M-W1 reproduces the configuration field for

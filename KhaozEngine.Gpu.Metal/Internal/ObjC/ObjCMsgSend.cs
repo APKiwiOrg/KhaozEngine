@@ -402,7 +402,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         /// lives in the selector rather than in the argument list.
         /// <para>
         /// M-R6's WHOLE POINT IS THIS PROTOTYPE. One call writes a contiguous run of the stage's buffer table,
-        /// where the incumbent emits one call per element per stage: that fan-out is the #418 defect arriving on
+        /// where the incumbent emitted one call per element per stage: that fan-out is the #418 defect arriving on
         /// a second API, and the vendored fork does not declare a single array setter, so this is the shape the
         /// design says had to be written by hand rather than copied.
         /// </para>
@@ -484,7 +484,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         /// <para>
         /// SEVEN ARGUMENTS COUNTING THE RECEIVER AND THE SELECTOR, all of them the integer class row 1's spike
         /// measured throughout, so every one rides a general-purpose argument register and NOTHING SPILLS. It is
-        /// the long form of the selector unconditionally: the incumbent picks between this and the four-argument
+        /// the long form of the selector unconditionally: the incumbent picked between this and the four-argument
         /// one on <c>instanceStart == 0</c>, and at a base instance of zero the two are the same draw, so one code
         /// path is taken for <c>setViewports:count:</c>'s reason.
         /// </para>

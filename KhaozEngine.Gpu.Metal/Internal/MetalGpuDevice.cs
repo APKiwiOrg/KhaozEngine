@@ -239,7 +239,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <inheritdoc/>
         /// <remarks>M-G2's <c>softwareAdapter</c> is ALWAYS false with confidence rather than null, because Apple
         /// ships no software Metal rasterizer at all. That is a genuinely different answer from "nobody asked",
-        /// which is what the struct documents null as meaning and what the Veldrid Metal path correctly keeps.
+        /// which is what the struct documents null as meaning and what the Veldrid Metal path correctly kept.
         /// <c>deviceLossReason</c> comes from the latch, is null until something is latched, and is the header
         /// field #427 asks for.</remarks>
         public GpuDeviceDiagnostics Diagnostics => new(softwareAdapter: false, _loss.HeaderValue);
@@ -330,7 +330,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// and encoding outside the lock would let two threads encode in one order and commit in another.
         /// <para>
         /// EVERY COMMITTED BUFFER GETS THE HANDLER (M-F2, M-G4), in every configuration and behind no knob. It is
-        /// the only place a Metal command-buffer failure is ever reported, which the incumbent does not do at
+        /// the only place a Metal command-buffer failure is ever reported, which the incumbent did not do at
         /// all, and a latch built on checks that compile away in Release never fires.
         /// </para>
         /// <para>
@@ -572,7 +572,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// Tear the device down, in the ONE order M-F6 permits: DRAIN first, then the liveness flip, then release
         /// the queue and the device.
         /// <para>
-        /// The incumbent already calls its wait first, so this is reproduction rather than repair. It is still
+        /// The incumbent already called its wait first, so this is reproduction rather than repair. It is still
         /// established HERE rather than left to whichever later row adds the first releasable resource, because a
         /// teardown order established once is an order every later row inherits, and the row that adds a resource
         /// is not the row thinking about ordering.

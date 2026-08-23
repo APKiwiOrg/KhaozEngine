@@ -79,7 +79,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         internal void SetDepthAttachmentPixelFormat(MTLPixelFormat format)
             => ObjCMsgSend.SendVoidNUInt(Handle, ObjCRuntime.Sel("setDepthAttachmentPixelFormat:"), (nuint)format);
 
-        /// <summary>Set the stencil attachment's pixel format, which the incumbent writes only for a combined
+        /// <summary>Set the stencil attachment's pixel format, which the incumbent wrote only for a combined
         /// depth-stencil format and this backend does the same.</summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]

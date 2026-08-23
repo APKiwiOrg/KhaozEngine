@@ -29,7 +29,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         internal bool IsNull => Handle == IntPtr.Zero;
 
         /// <summary>A fresh descriptor at +1, or nil. The caller releases it after the texture is created,
-        /// exactly as the incumbent does.</summary>
+        /// exactly as the incumbent did.</summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static MTLTextureDescriptor New()

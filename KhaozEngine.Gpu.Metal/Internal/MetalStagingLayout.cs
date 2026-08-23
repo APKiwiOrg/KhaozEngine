@@ -42,7 +42,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// table those formulas produce and asserts this type against it, which converts "should be identical" into a
     /// checked fact BEFORE a single golden runs.</para>
     ///
-    /// <para><b>EVERY FORMULA CITES ITS SOURCE BY MEMBER NAME</b> (V-I6). The incumbent is the vendored Veldrid
+    /// <para><b>EVERY FORMULA CITES ITS SOURCE BY MEMBER NAME</b> (V-I6). The incumbent was the vendored Veldrid
     /// fork this engine pins (<c>4.9.104</c>), and the six functions this reproduces are
     /// <c>FormatSizeHelpers.GetSizeInBytes</c>, <c>FormatHelpers.GetRowPitch</c>, <c>FormatHelpers.GetNumRows</c>,
     /// <c>FormatHelpers.GetDepthPitch</c>, <c>FormatHelpers.GetRegionSize</c> and <c>Util.GetDimension</c>, plus
@@ -67,14 +67,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// own version as the reference, and the table gains its rows.</para>
     ///
     /// <para><b>DEPTH IS ALWAYS 1</b>, because <see cref="GpuTextureDescription"/> has no depth at all: the seam
-    /// expresses 2D textures, 2D arrays and cubemaps and nothing else. The incumbent's depth terms are therefore
+    /// expresses 2D textures, 2D arrays and cubemaps and nothing else. The incumbent's depth terms were therefore
     /// multiplications by one, kept visible below rather than folded away, so a reader comparing the two sources
     /// sees the same shape.</para>
     ///
-    /// <para><b>ARITHMETIC IS IN 64 BITS AND THE RESULT IS REFUSED ABOVE 32.</b> The incumbent computes in
-    /// <c>uint</c> throughout and wraps silently on a texture large enough to overflow, which would create a
+    /// <para><b>ARITHMETIC IS IN 64 BITS AND THE RESULT IS REFUSED ABOVE 32.</b> The incumbent computed in
+    /// <c>uint</c> throughout and wrapped silently on a texture large enough to overflow, which would create a
     /// staging buffer far too small and corrupt whatever sits after it. Every value here is identical to the
-    /// incumbent's everywhere the incumbent does not wrap, and above that it throws by name. That is a guard
+    /// incumbent's everywhere the incumbent did not wrap, and above that it throws by name. That is a guard
     /// rather than a divergence: <see cref="MappedData.SizeInBytes"/> is a <c>uint</c>, so a staging texture past
     /// this bound cannot be described through the seam at all. It is the Vulkan sibling's ruling inherited
     /// deliberately, because the two backends reproduce the same incumbent arithmetic and disagreeing about its
@@ -139,7 +139,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// THE LOOP IS REPRODUCED RATHER THAN REPLACED BY A SHIFT. The two agree for every level a real texture
         /// has and they stop agreeing at a level count of 32 or more, where a shift is undefined and the loop
         /// simply keeps answering 1. A mip level that high is unreachable through the seam, and the loop is what
-        /// the incumbent does, which is the tie-breaker in a type whose whole job is agreeing with it.
+        /// the incumbent did, which is the tie-breaker in a type whose whole job is agreeing with it.
         /// </para>
         /// </summary>
         internal static uint MipDimension(uint largestLevelDimension, uint mipLevel)
@@ -233,7 +233,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <c>MTLBuffer</c> written by a software strided copy, so an over-large region writes past the
         /// subresource into whatever follows it in the same allocation, or past the allocation itself. A Private
         /// texture is written by a blit the DRIVER validates, so an over-large region is a validation failure at
-        /// best and texels in the wrong place at worst. The incumbent checks neither.
+        /// best and texels in the wrong place at worst. The incumbent checked neither.
         /// </para>
         /// <para>
         /// The mip level and array layer are checked first, through the same <c>RequireSubresource</c> the layout
@@ -334,7 +334,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + ". On a staging texture that writes past the subresource into whatever follows it, and on a "
                 + "Private texture the driver either refuses the blit or puts the texels somewhere else.");
 
-        // The 32-bit ceiling. See the class note: identical to the incumbent everywhere the incumbent does not
+        // The 32-bit ceiling. See the class note: identical to the incumbent everywhere the incumbent did not
         // wrap, and named rather than silent above it.
         static ulong Fits(ulong value, in MetalStagingShape shape, string what)
         {

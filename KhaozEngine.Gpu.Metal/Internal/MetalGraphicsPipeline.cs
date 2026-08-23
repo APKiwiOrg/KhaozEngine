@@ -21,7 +21,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// them.</para>
     ///
     /// <para><b>THE DEPTH-STENCIL STATE IS CREATED ONLY FOR A PIPELINE THAT DECLARES A DEPTH OUTPUT, which is the
-    /// creation half of the depth-target guard.</b> The incumbent does the same, inside
+    /// creation half of the depth-target guard.</b> The incumbent did the same, inside
     /// <c>if (outputs.DepthAttachment != null)</c>, so a colour-only pipeline's state handle is nil. The emission
     /// half stays with the pre-draw block, gated on the BOUND FRAMEBUFFER having a depth target, because
     /// <c>-setDepthStencilState:</c> on a pass with no depth attachment is a validation error under the debug
@@ -277,7 +277,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         // M-B2 AND THE VERTEX PLAN, WRITTEN OUT. The layout index and the attribute's bufferIndex are the SAME
-        // number by construction, because both come from MetalVertexStreamIndex.ForSlot: the incumbent computes it
+        // number by construction, because both come from MetalVertexStreamIndex.ForSlot: the incumbent computed it
         // twice from NonVertexBufferCount and getting the two out of step is what binds a vertex buffer where a
         // uniform should be.
         [SupportedOSPlatform("macos")]

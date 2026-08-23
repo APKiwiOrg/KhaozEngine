@@ -84,7 +84,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <inheritdoc/>
-        /// <remarks>Every value the seam does not expose is hardcoded to what the incumbent hardcodes, the
+        /// <remarks>Every value the seam does not expose is hardcoded to what the incumbent hardcoded, the
         /// incumbent's compare-function conditional is resolved rather than reproduced, and its border-colour one
         /// is diverged from: a <see cref="GpuSamplerAddress.Border"/> mode on a device without border colours is
         /// refused by name here rather than aborting the process under the debug layer. See

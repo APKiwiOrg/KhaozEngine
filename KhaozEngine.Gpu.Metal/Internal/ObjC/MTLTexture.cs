@@ -55,7 +55,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         Depth32Float = 252,
 
         /// <summary><c>MTLPixelFormatDepth24Unorm_Stencil8</c>. Not supported on Apple silicon at all, which is a
-        /// fact about the DEVICE rather than about this table: the incumbent maps the same seam format to the same
+        /// fact about the DEVICE rather than about this table: the incumbent mapped the same seam format to the same
         /// value and a texture asking for it fails at creation on both.</summary>
         Depth24UnormStencil8 = 255,
 
@@ -143,7 +143,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// the package declares none at all: the GPU seam has no texture-view type, so a bind names an
     /// <see cref="IGpuTexture"/> and can never narrow it by mip, layer or format, which is precisely the
     /// condition under which <c>Veldrid.MTL.MTLTextureView</c> takes its <c>else</c> branch and uses the target's
-    /// own <c>DeviceTexture</c>. The incumbent still allocates a MANAGED wrapper for that on the draw path, lazily
+    /// own <c>DeviceTexture</c>. The incumbent still allocated a MANAGED wrapper for that on the draw path, lazily
     /// and per bind (<c>Util.GetTextureView</c> from <c>MTLCommandList</c>'s bind path), which is the shape
     /// https://github.com/APKiwiOrg/KhaozEngine/issues/423 recorded 25 <c>DEVICE_REMOVED</c> stacks inside. Here
     /// the bindable handle IS the texture, decided at creation. <c>MetalViewPolicy</c> is where that is decided

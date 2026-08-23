@@ -31,7 +31,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// <c>MTLTextureDescriptor.resourceOptions</c> take. An <c>NSUInteger</c>, and a PACKED one: the storage mode
     /// occupies bits 4 and up, the CPU cache mode bits 0 to 3.
     /// <para>
-    /// ONLY THE ONE VALUE THIS BACKEND PASSES IS DECLARED. The incumbent passes a literal <c>0</c> for every
+    /// ONLY THE ONE VALUE THIS BACKEND PASSES IS DECLARED. The incumbent passed a literal <c>0</c> for every
     /// buffer it creates, which is <c>StorageModeShared | CPUCacheModeDefaultCache</c> spelled as its numeric
     /// value, and this names it instead so a reader does not have to decode a zero. The shifted form is written
     /// out rather than folded to a constant, because the shift IS the fact a reader needs.
@@ -45,7 +45,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
 
         /// <summary>
         /// The options every buffer in this backend is created with: <c>Shared</c> storage and the default CPU
-        /// cache mode, which is numerically 0 and is what the incumbent passes.
+        /// cache mode, which is numerically 0 and is what the incumbent passed.
         /// </summary>
         internal static ulong SharedDefaultCache => (ulong)MTLStorageMode.Shared << StorageModeShift;
     }

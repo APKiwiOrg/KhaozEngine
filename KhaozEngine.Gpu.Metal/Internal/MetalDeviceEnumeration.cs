@@ -43,7 +43,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </para>
     /// <para>
     /// THE DEFAULT PATH DOES NOT ENUMERATE AT ALL. <c>MTLCreateSystemDefaultDevice()</c> is what M-N1 pins as the
-    /// default and what the incumbent calls, so an unset variable takes that function's answer rather than
+    /// default and what the incumbent called, so an unset variable takes that function's answer rather than
     /// element zero of <c>MTLCopyAllDevices()</c>, which is a different choice on any machine where the two
     /// differ.
     /// </para>

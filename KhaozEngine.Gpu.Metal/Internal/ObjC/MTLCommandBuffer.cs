@@ -8,7 +8,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// <c>MTLCommandBufferStatus</c>. An <c>NSInteger</c>, which is 64 bits everywhere Metal ships, so the
     /// underlying type is <c>long</c> (C# does not allow <c>nint</c> as an enum base).
     /// <para>
-    /// The incumbent reads this in exactly ONE place, <c>WaitForIdleCore</c>, to decide whether waiting is worth
+    /// The incumbent read this in exactly ONE place, <c>WaitForIdleCore</c>, to decide whether waiting is worth
     /// it. Decision M-G4 reads it at every completion instead, because <see cref="Error"/> is the only place a
     /// Metal device loss is ever reported and this is the flag that says an error is there to read.
     /// </para>

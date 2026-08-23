@@ -183,7 +183,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <inheritdoc/>
-        /// <remarks>THE LONG FORM UNCONDITIONALLY. The incumbent picks between this and the four-argument
+        /// <remarks>THE LONG FORM UNCONDITIONALLY. The incumbent picked between this and the four-argument
         /// selector on <c>instanceStart == 0</c>, and at a base instance of zero the two are the same draw, so
         /// the branch buys nothing and one code path is one thing to be right about.</remarks>
         [MethodImpl(MethodImplOptions.NoInlining)]

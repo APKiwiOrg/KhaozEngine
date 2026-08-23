@@ -68,13 +68,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// PROPERTY. Measured on an Apple M2 Max under macOS 26.6: <c>MTLDevice</c> does not respond to
         /// <c>minimumConstantBufferOffsetAlignment</c> or to <c>minimumBufferOffsetAlignment</c>, and it does
         /// respond to <c>minimumLinearTextureAlignmentForPixelFormat:</c>. Metal's constant-buffer offset rule is
-        /// a feature-table fact rather than a runtime query, which is why the incumbent hardcodes it
+        /// a feature-table fact rather than a runtime query, which is why the incumbent hardcoded it
         /// (<c>MetalFeatures.IsMacOS ? 16u : 256u</c>) rather than asking.
         /// </para>
         /// <para>
         /// So the read is the closest question the API actually answers: the minimum alignment the DEVICE
         /// requires for a buffer offset, asked for the pixel format the swapchain and every golden readback use.
-        /// It came back 16 on that machine, which is exactly what the incumbent hardcodes for macOS, so the two
+        /// It came back 16 on that machine, which is exactly what the incumbent hardcoded for macOS, so the two
         /// independent statements of the number agree. The check over it (M-M3's 256 stride is a multiple of it)
         /// is the tripwire M-N4 wanted, and it fires in the conservative direction on a device with coarser
         /// buffer granularity than the ring assumes.

@@ -24,7 +24,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     ///
     /// <para><b>CREATION ISSUES NO COMMAND BUFFER (M-M9), and there is no creation-time clear either.</b> Phase
     /// 3 answered the undefined-initial-contents question with a deliberate clear, and here it is answered by
-    /// parity instead. The incumbent does not clear, the 36 committed <c>metal</c> goldens are green under that,
+    /// parity instead. The incumbent did not clear, the 36 committed <c>metal</c> goldens are green under that,
     /// and adding a clear would change what a render target reads before anything writes it.</para>
     /// </summary>
     internal sealed class MetalTexture : IGpuTexture, IMetalOwnedResource, IMetalBindable
@@ -131,8 +131,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             var shape = new MetalStagingShape(description.Width, description.Height, description.MipLevels,
                 description.ArrayLayers, description.Format);
 
-            // The incumbent walks every mip level and multiplies by the layer count. This is that walk, with the
-            // ceiling the incumbent silently wraps at turned into a named refusal.
+            // The incumbent walked every mip level and multiplied by the layer count. This is that walk, with the
+            // ceiling the incumbent silently wrapped at turned into a named refusal.
             ulong total = MetalStagingLayout.TotalBytes(shape);
 
             MTLBuffer buffer = device.NewBuffer((nuint)total, MTLResourceOptions.SharedDefaultCache);
@@ -179,7 +179,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     description.Height,
                     description.MipLevels,
                     // The DESCRIPTION's layer count, unexpanded. For a cube texture Metal counts CUBES here, and
-                    // reproducing the incumbent means passing the same number it passes.
+                    // reproducing the incumbent meant passing the same number it passed.
                     description.ArrayLayers,
                     description.SampleCount,
                     plan.Usage,

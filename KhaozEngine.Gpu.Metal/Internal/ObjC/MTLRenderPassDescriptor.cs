@@ -52,7 +52,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         Store = 1,
 
         /// <summary><c>MTLStoreActionMultisampleResolve</c>: resolve into the resolve attachment and discard the
-        /// multisampled one. Not taken: the incumbent resolves through a standalone encoder and
+        /// multisampled one. Not taken: the incumbent resolved through a standalone encoder and
         /// <c>scene3d_hdr_msaa</c> is a committed golden in the family this phase is measured against (2.5).
         /// </summary>
         MultisampleResolve = 2,
@@ -232,7 +232,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
 
         /// <summary>
         /// <c>colorAttachments[<paramref name="index"/>]</c>, through
-        /// <c>-objectAtIndexedSubscript:</c>. THE INDEX IS THE WHOLE OF M-A2: the incumbent writes every clear
+        /// <c>-objectAtIndexedSubscript:</c>. THE INDEX IS THE WHOLE OF M-A2: the incumbent wrote every clear
         /// into slot 0, so <c>ModelFB</c>'s normal and linear-depth attachments are never cleared at all, and
         /// passing the caller's own index here is the one-line fix that ends.
         /// </summary>

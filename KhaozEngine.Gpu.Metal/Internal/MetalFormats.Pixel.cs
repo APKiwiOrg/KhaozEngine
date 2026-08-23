@@ -31,7 +31,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <para><b><paramref name="depthFormat"/> IS THE WHOLE REASON THIS TAKES TWO ARGUMENTS.</b>
         /// <see cref="GpuPixelFormat.R32Float"/> is a single float channel that the 3D pass uses BOTH as a colour
         /// attachment (the linear-depth MRT target) and, on a shadow map, as a depth attachment. Metal has two
-        /// different pixel formats for those and the incumbent picks between them on the texture's declared
+        /// different pixel formats for those and the incumbent picked between them on the texture's declared
         /// DepthStencil usage, so a texture's format is not a function of the seam's format alone. Getting it
         /// backwards produces a depth target the shadow pass cannot write, which is a black shadow map rather
         /// than an error.</para>
@@ -65,7 +65,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// under the debug layer M-T7 arms on every run. The RENDER PIPELINE descriptor splits them across
         /// <c>depthAttachmentPixelFormat</c> and <c>stencilAttachmentPixelFormat</c>, where naming a stencil
         /// format the framebuffer's texture does not have makes the pipeline incompatible with it, which Metal
-        /// rejects at creation. The incumbent asks this same question at both points, so this is reproduction
+        /// rejects at creation. The incumbent asked this same question at both points, so this is reproduction
         /// rather than a rule this backend invents.
         /// </para>
         /// <para>
@@ -92,7 +92,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <param name="arrayView"><see cref="GpuTextureDescription.IsArray"/>: the texture was asked for as an
         /// ARRAY even though its layer count cannot say so. It is ORed with the layer-count test rather than
         /// replacing it, so a caller that passes only the count gets exactly the type it got before (#666). The
-        /// cube and multisample arms above it keep their own rule, which is the precedence the incumbent has.
+        /// cube and multisample arms above it keep their own rule, which is the precedence the incumbent had.
         /// </param>
         internal static MTLTextureType TextureTypeFor(uint arrayLayers, bool multisampled, bool cube,
             bool arrayView = false)
@@ -114,7 +114,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <see cref="GpuTextureUsage.Cubemap"/> is a texture TYPE rather than a usage.
         /// <see cref="GpuTextureUsage.GenerateMipmaps"/> adds nothing, which is worth naming because it is the one
         /// a reader will doubt: <c>-generateMipmapsForTexture:</c> constrains the FORMAT (colour-renderable and
-        /// filterable) rather than the usage bits, the incumbent adds no bit for it, and the committed metal
+        /// filterable) rather than the usage bits, the incumbent added no bit for it, and the committed metal
         /// goldens include mipped textures baked under exactly that. Adding <see cref="MTLTextureUsage.ShaderRead"/>
         /// here for it would be an improvement over a behaviour the goldens already prove correct.</para>
         /// </summary>

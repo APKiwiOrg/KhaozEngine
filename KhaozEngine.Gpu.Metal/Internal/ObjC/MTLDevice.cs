@@ -7,9 +7,9 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
 {
     /// <summary>
     /// <c>MTLGPUFamily</c>, and decision M-N3's whole vocabulary. New capability questions ask
-    /// <c>-supportsFamily:</c>, never the <c>-supportsFeatureSet:</c> the incumbent enumerates: that selector has
+    /// <c>-supportsFamily:</c>, never the <c>-supportsFeatureSet:</c> the incumbent enumerated: that selector has
     /// been deprecated since macOS 10.15, and <c>MTLFeatureSupport.MaxFeatureSet</c> feeds two fragile reads (the
-    /// vsync equality test M-W2 removes, and the <c>IsMacOS</c> flag the incumbent derives its uniform-buffer
+    /// vsync equality test M-W2 removes, and the <c>IsMacOS</c> flag the incumbent derived its uniform-buffer
     /// alignment and its sampler border colour from).
     /// <para>
     /// PARITY SURFACES ARE THE EXCEPTION and reproduce the incumbent's own question (M-C3, section 14), because a

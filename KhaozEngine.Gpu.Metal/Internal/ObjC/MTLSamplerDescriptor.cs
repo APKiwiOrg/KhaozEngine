@@ -16,7 +16,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
 
     /// <summary>
     /// <c>MTLSamplerMipFilter</c>, an <c>NSUInteger</c>. Three members, and <see cref="NotMipmapped"/> is the one
-    /// this backend never selects: the incumbent maps every seam filter onto <see cref="Nearest"/> or
+    /// this backend never selects: the incumbent mapped every seam filter onto <see cref="Nearest"/> or
     /// <see cref="Linear"/>, so a sampler here always mip-filters even when the texture has one level.
     /// </summary>
     internal enum MTLSamplerMipFilter : ulong
@@ -88,10 +88,10 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// <para>
     /// <b>THE COMPARE FUNCTION IS NEVER SET AND THE BORDER COLOUR IS SET ONLY WHEN A BORDER MODE ASKS FOR IT.</b>
     /// <c>Veldrid.MTL.MTLSampler</c> writes the compare function only when the seam supplied a comparison kind,
-    /// and the engine's own Veldrid path passes <c>null</c> at every call site, so that arm is never taken and the
+    /// and the engine's own Veldrid path passed <c>null</c> at every call site, so that arm was never taken and the
     /// descriptor keeps its default of <c>MTLCompareFunctionNever</c>. Reproducing a conditional whose condition
     /// is constant would be reproducing a branch instead of a behaviour, so the constant answer is written
-    /// directly. The border colour is a DIVERGENCE rather than a resolved conditional: the incumbent writes it
+    /// directly. The border colour is a DIVERGENCE rather than a resolved conditional: the incumbent wrote it
     /// whenever it is on macOS, and this sends <c>-setBorderColor:</c> only for a descriptor that actually borders,
     /// because a device without border colours asserts under the debug layer on one that carries the property.
     /// <c>MetalSamplerPolicy</c> carries both statements where a test can read them.
@@ -117,7 +117,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
 
         /// <summary>
         /// Write the whole request, in the incumbent's own order and with its own values. The LOD clamps are the
-        /// ones the engine's Veldrid path passes (<c>0</c> and <c>uint.MaxValue</c>), and the maximum anisotropy
+        /// ones the engine's Veldrid path passed (<c>0</c> and <c>uint.MaxValue</c>), and the maximum anisotropy
         /// is raised to at least 1 exactly as <c>Veldrid.MTL.MTLSampler</c> raises it, because Metal rejects 0.
         /// <para>
         /// A NULL <paramref name="border"/> SENDS NOTHING, and the difference is not cosmetic. Leaving the

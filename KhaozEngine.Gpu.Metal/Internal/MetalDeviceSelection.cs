@@ -8,7 +8,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <summary>What <c>KE_METAL_DEVICE</c> was understood to be asking for (decision M-N1).</summary>
     internal enum MetalDeviceRequestKind
     {
-        /// <summary>Unset or blank: <c>MTLCreateSystemDefaultDevice()</c>, which is what the incumbent does and
+        /// <summary>Unset or blank: <c>MTLCreateSystemDefaultDevice()</c>, which is what the incumbent did and
         /// what keeps <c>GpuCapabilities.DeviceName</c> parity satisfiable by construction. On this path the
         /// machine is never enumerated at all.</summary>
         Default = 0,
@@ -81,7 +81,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <para>
     /// THE DEFAULT IS <c>MTLCreateSystemDefaultDevice()</c> AND NOT "element zero of the enumeration", which is a
     /// decision rather than a shortcut and is the one place this differs in SHAPE from its Vulkan sibling. The
-    /// incumbent Veldrid Metal backend calls that function, section 14 demands ZERO capability differences, and
+    /// incumbent Veldrid Metal backend called that function, section 14 demands ZERO capability differences, and
     /// <c>GpuCapabilities.DeviceName</c> is one of the compared members, so asking the same function for the same
     /// device is what makes parity satisfiable by construction instead of by luck. A machine where the system
     /// default is not <c>MTLCopyAllDevices()[0]</c> would otherwise silently swap the GPU underneath the one gate
@@ -236,7 +236,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// many words.
         /// <para>
         /// That distinction is the whole reason M-N1 asks for the line. A soak session comparing this backend
-        /// against the incumbent has to be able to tell "this run chose device 1" from "device 0 could not run
+        /// against the incumbent had to be able to tell "this run chose device 1" from "device 0 could not run
         /// the backend and device 1 was substituted", because those are different machines from the
         /// measurement's point of view and only one of them is comparable with an incumbent run.
         /// </para>

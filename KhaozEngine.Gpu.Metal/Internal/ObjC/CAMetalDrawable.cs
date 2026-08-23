@@ -20,7 +20,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// the whole recording: the acquire pins the drawable, and only the next present boundary lets it go.</para>
     ///
     /// <para><b>A NIL DRAWABLE IS A NORMAL ANSWER (M-W5).</b> <c>-nextDrawable</c> returns nil when the layer has
-    /// none to give, which the incumbent turns into a whole frame of recording built and thrown away with nothing
+    /// none to give, which the incumbent turned into a whole frame of recording built and thrown away with nothing
     /// logged and nothing counted. Here it is the device-owned ORPHAN target and a skipped present, and
     /// <see cref="IsNull"/> is the one question that decides between them.</para>
     /// </summary>

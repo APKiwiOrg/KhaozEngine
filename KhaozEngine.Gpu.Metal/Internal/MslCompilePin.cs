@@ -4,7 +4,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 {
     /// <summary>
     /// DECISION M-S6, AND THE ONE PLACE THE <c>MTLCompileOptions</c> ARE WRITTEN DOWN (section 12.4 of
-    /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>). The incumbent passes a default-constructed
+    /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>). The incumbent passed a default-constructed
     /// options object, so two facts about the runner are currently unstated rather than decided, and the committed
     /// <c>metal</c> goldens were baked under whichever defaults were in force.
     ///

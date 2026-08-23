@@ -12,7 +12,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// WHY IT IS A RULE AND NOT A HABIT. Metal's factory methods return autoreleased objects: <c>-commandBuffer</c>,
     /// <c>-renderCommandEncoderWithDescriptor:</c>, <c>-name</c>, every descriptor. Off the main thread, or on any
     /// thread whose implicit pool drains when the run loop next turns, "next drain" under a frame loop means
-    /// never. The incumbent Veldrid Metal backend wraps FOUR sites and does not wrap others, which is exactly the
+    /// never. The incumbent Veldrid Metal backend wrapped FOUR sites and did not wrap others, which is exactly the
     /// shape that accumulates, and that is the observation this decision is made against.
     /// </para>
     /// <para>

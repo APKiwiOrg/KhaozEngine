@@ -7,7 +7,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// breakdown row 14 (https://github.com/APKiwiOrg/KhaozEngine/issues/580).
     /// <para>
     /// IT IS FOUR RATHER THAN ONE BECAUSE A STAGING TEXTURE IS NOT A TEXTURE HERE. Row 6 backs one with an
-    /// <c>MTLBuffer</c> and a SOFTWARE subresource layout (M-C5), exactly as the incumbent does, so a copy with a
+    /// <c>MTLBuffer</c> and a SOFTWARE subresource layout (M-C5), exactly as the incumbent did, so a copy with a
     /// staging side is a buffer copy on that side and the selector changes with it. The incumbent's
     /// <c>CopyTextureCore</c> has the same four branches for the same reason.
     /// </para>
@@ -90,7 +90,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// those numbers into the regions the three copy selectors take, and a mistake here is the same class of
     /// failure: the copy succeeds, the pointer is valid, and the texels are in the wrong places.</para>
     ///
-    /// <para><b>EVERY REGION IS ONE SUBRESOURCE.</b> The incumbent loops over array layers inside one call and
+    /// <para><b>EVERY REGION IS ONE SUBRESOURCE.</b> The incumbent looped over array layers inside one call and
     /// this backend loops OUTSIDE, one region per layer, which is the same set of native calls in the same order
     /// with the loop where a test can see it.</para>
     /// </summary>
@@ -158,7 +158,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// The staging-to-staging arm: two software layouts, and the bytes that move between them.
         /// <para>
         /// THE SMALLER OF THE TWO SUBRESOURCE SIZES, which is the Vulkan sibling's shape rather than the
-        /// incumbent's per-ROW loop. The incumbent copies row by row because its wider base-class overload can
+        /// incumbent's per-ROW loop. The incumbent copied row by row because its wider base-class overload can
         /// name a sub-rectangle and a differing row pitch on each side. This seam names whole subresources, and
         /// the two sides compute their pitches through the SAME arithmetic, so for any pair whose shapes agree the
         /// per-row loop and one contiguous copy move identical bytes. Taking the smaller size is what keeps a
@@ -175,7 +175,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// that changed it at all would already be past the end of one of them. <c>CopyTexture</c>'s own loop is
         /// saved from that by iteration order alone (each region is followed by the one it would overwrite, which
         /// then rewrites it), and <c>CopyTextureSubresource</c> is not, which is what makes the unpadded size a
-        /// rule rather than an optimisation. The incumbent agrees by construction: its staging-to-staging arm
+        /// rule rather than an optimisation. The incumbent agreed by construction: its staging-to-staging arm
         /// issues one EXACT row-sized copy per row with no padding anywhere.
         /// </para>
         /// </summary>

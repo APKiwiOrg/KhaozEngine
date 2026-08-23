@@ -108,8 +108,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <para>
         /// THERE IS NO SINGLE-ELEMENT OVERLOAD, deliberately, and it is the same rule <c>ID3D11BindSink</c>
         /// expresses by having only array calls. M-R6's law is one call per (kind, stage) per flush, so a
-        /// per-element entry point would be the #418 fan-out defect available as an API. The incumbent emits one
-        /// call per element per stage and the vendored fork's binding does not declare a single array setter,
+        /// per-element entry point would be the #418 fan-out defect available as an API. The incumbent emitted one
+        /// call per element per stage and the vendored fork's binding did not declare a single array setter,
         /// which is what this member exists to beat.
         /// </para>
         /// </summary>

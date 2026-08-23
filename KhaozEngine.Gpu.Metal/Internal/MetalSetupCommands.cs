@@ -34,7 +34,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <para><b>TEXTURE CREATION IS NOT ON THIS PATH AT ALL, which is where Metal differs from the Vulkan
     /// sibling.</b> V-M10 exists mostly because <c>VkTexture</c>'s constructor clears and transitions, each with
     /// its own <c>vkQueueSubmit</c>, so a scene load was two hundred submissions before a frame was drawn. Metal
-    /// has no layout to transition and the incumbent does not clear at creation, so M-M9 says texture creation
+    /// has no layout to transition and the incumbent did not clear at creation, so M-M9 says texture creation
     /// issues no command buffer and this type only ever sees uploads. That is why it has no <c>Prepare</c>
     /// member: there is nothing to prepare.</para>
     ///
@@ -64,7 +64,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// reading being exactly right.</para>
     ///
     /// <para><b>AND THE OPEN BATCH CARRIES A BYTE BUDGET, WHICH IS A SAFETY VALVE RATHER THAN THAT ARENA</b>
-    /// (<see cref="DefaultStagingCapBytes"/>). The incumbent holds ONE staging allocation at a time, because it
+    /// (<see cref="DefaultStagingCapBytes"/>). The incumbent held ONE staging allocation at a time, because it
     /// commits and releases per call. Batching trades that for holding every payload since the last flush, and
     /// the flush sites are all device-level READS, so a caller that only ever uploads never reaches one: peak
     /// footprint becomes the sum of every upload in the load rather than the largest of them.
@@ -142,7 +142,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <summary>How many batches this buffer has committed. A reading rather than a gate: M-M9's whole claim
-        /// is that this number stays below the upload count, and the incumbent's equivalent is exactly one per
+        /// is that this number stays below the upload count, and the incumbent's equivalent was exactly one per
         /// upload.</summary>
         internal int FlushCount { get; private set; }
 
@@ -202,7 +202,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// one blit into the destination texture's subresource.
         /// <para>
         /// THE PAYLOAD IS TIGHTLY PACKED, which is what the seam's <c>byte[]</c> overloads document, and a short
-        /// array is refused by name rather than read past. The incumbent computes the same source row pitch
+        /// array is refused by name rather than read past. The incumbent computed the same source row pitch
         /// (<c>FormatHelpers.GetRowPitch(width, format)</c>) and copies through a staging TEXTURE whose mip 0
         /// happens to have exactly that pitch, so the number is the same one arrived at by a shorter road.
         /// </para>

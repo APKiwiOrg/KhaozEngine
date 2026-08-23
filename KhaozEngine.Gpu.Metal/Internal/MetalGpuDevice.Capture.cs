@@ -7,12 +7,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <summary>
     /// M-G5's NATIVE FRAME CAPTURE. This device owns its <c>MTLCommandQueue</c>, so an armed
     /// <see cref="GpuFrameCapture"/> is serviced with the pointer in hand and the reflection into Veldrid's
-    /// private <c>_commandQueue</c> field never runs on this path.
+    /// private <c>_commandQueue</c> field the incumbent needed never ran on this path.
     /// <para>
     /// <b>THIS IS THE THIRD OF THE THREE SITES THE METAL APPEND DEGRADED SILENTLY (4.2), AND IT IS THE ONE THAT
-    /// COULD NOT BE FIXED BY WIDENING A GATE.</b> <c>GpuFrameCapture.VeldridPathCaptures</c> answers true for
-    /// <c>GpuBackendKind.Metal</c> alone, and widening it to the Metal FAMILY would have fixed nothing: that
-    /// check lives inside the Veldrid device wrapper, which a provider-built native device never becomes. So the
+    /// COULD NOT BE FIXED BY WIDENING A GATE.</b> <c>GpuFrameCapture.VeldridPathCaptures</c>, deleted in 18.0.0,
+    /// answered true for <c>GpuBackendKind.Metal</c> alone, and widening it to the Metal FAMILY would have fixed
+    /// nothing: that check lived inside the Veldrid device wrapper, which a provider-built native device never
+    /// becomes. So the
     /// native backend services its own captures instead, which is both the correct fix and the one that removes
     /// the reflection.
     /// </para>

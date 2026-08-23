@@ -35,7 +35,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>: measure what a default-constructed
     /// <c>MTLCompileOptions</c> reports, so decision M-S6's pin is a no-op on the day it lands.
     /// <para>
-    /// WHY THIS IS A MEASUREMENT AND NOT A CHOICE. The incumbent passes a default-constructed options object, so
+    /// WHY THIS IS A MEASUREMENT AND NOT A CHOICE. The incumbent passed a default-constructed options object, so
     /// two facts about the runner are currently unstated rather than decided, and the committed metal goldens
     /// were baked under whichever defaults were in force. <c>fastMathEnabled</c> changes floating-point results,
     /// so flipping it moves every pixel with no other symptom. <c>languageVersion</c> defaults to the newest the

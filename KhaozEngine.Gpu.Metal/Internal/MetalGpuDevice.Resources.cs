@@ -65,7 +65,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// TWO PATHS, WHICH IS THE INCUMBENT'S OWN <c>if</c>. A STAGING texture is a Shared buffer, so the upload
         /// is a strided <c>memcpy</c> into it and no command buffer exists. A non-staging texture is Private, so
         /// the bytes are staged and blitted, and M-M9 puts that blit on the device's setup command buffer instead
-        /// of the whole queue submit the incumbent issues per call.
+        /// of the whole queue submit the incumbent issued per call.
         /// </remarks>
         public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height,
             uint mipLevel, uint arrayLayer)
@@ -148,7 +148,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         ///
         /// <para><b>A WRITE MAPPING DOES NOT DRAIN.</b> The seam's own reason for a wait is that the bytes the
         /// caller is about to READ may not have arrived, and a caller mapping for
-        /// <see cref="GpuMapMode.Write"/> is the producer rather than the consumer. The incumbent does not wait
+        /// <see cref="GpuMapMode.Write"/> is the producer rather than the consumer. The incumbent did not wait
         /// in either mode, so this is strictly narrower than "always wait" and strictly safer than what ships.</para>
         ///
         /// <para><b>THE DRAIN THAT COVERS THE FLUSH IS THE QUEUE'S AND NOT THE TIMELINE'S, WHICH IS THE ONE

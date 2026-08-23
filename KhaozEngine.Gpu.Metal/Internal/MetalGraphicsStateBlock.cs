@@ -19,7 +19,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     ///
     /// <para><b>THE GUARD IS THE FRAMEBUFFER'S AND ONLY THE FRAMEBUFFER'S, WHICH IS THE INCUMBENT'S OWN CONDITION
     /// AND NOT THE ONE A READER EXPECTS.</b> Two things could plausibly gate the trio: the bound framebuffer
-    /// having a depth attachment, or the bound pipeline declaring a depth output. The incumbent asks only the
+    /// having a depth attachment, or the bound pipeline declaring a depth output. The incumbent asked only the
     /// first, so a COLOUR-ONLY pipeline drawing into a framebuffer that has depth is sent
     /// <c>-setDepthStencilState:</c> with the NIL state object row 11 creates for it, which Metal reads as its
     /// own default (always pass, no write). Reproducing that is not cosmetic: the 36 committed <c>metal</c>

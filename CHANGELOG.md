@@ -408,6 +408,18 @@ in-use connection is not idle in the pool and is disposed only when its own owne
   handshake on a hosted runner ([#720](https://github.com/APKiwiOrg/KhaozEngine/issues/720)). Existing callers
   that pass a real port are unaffected.
 
+- **The OIDC loopback redirect capture binds its own socket, so port 0 is atomic there too.**
+  `HttpLoopbackListener` was the other half of the same race: `HttpListener` cannot be given port 0, so an
+  OS-assigned port had to come off a throwaway probe socket and be bound after that socket was released. It is a
+  `TcpListener` now, parsing the single redirect request itself, so the bind is atomic and `RedirectUri` names
+  the port the OS actually gave it. The public shape is unchanged (`RedirectUri`, `WaitForRedirectAsync`, the
+  caller-supplied completion page, and the fixed-port path a provider with a pre-registered redirect URI needs),
+  with two exception types moving underneath it: a fixed port already in use throws `SocketException` rather
+  than `HttpListenerException`, and cancelling the wait surfaces `OperationCanceledException`. Connections are
+  now served off the accept loop, so a browser pre-connect that opens a socket and never sends no longer holds
+  the real redirect behind its read budget
+  ([#720](https://github.com/APKiwiOrg/KhaozEngine/issues/720)).
+
 ## 17.40.0
 
 17.40.0 makes the native backends the default (the rollout bullets) and ships the tile netcode package,

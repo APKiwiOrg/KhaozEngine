@@ -157,9 +157,19 @@ namespace KhaozEngine.Gpu.Internal
                 context = CreateContext(tag);
                 Compiler* vertex = CreateCompiler(context, vertexSpirv, backend, tag);
                 Compiler* fragment = CreateCompiler(context, fragmentSpirv, backend, tag);
-                RemapHlslRegisters(context, backend, tag, vertex, fragment);
-                return new CrossCompiledPair(Emit(context, vertex, tag), Emit(context, fragment, tag),
-                    SpirvCrossReflect.ForPair(_cross, context, vertex, fragment, tag));
+                MslIndexAssignment[] msl = RemapResourceBindings(context, backend, tag, vertex, fragment);
+
+                // THE EMISSION IS TAKEN BEFORE THE USE QUERY, and the order is the mechanism rather than style.
+                // A resource binding is marked used as the emitter consumes it, so asking first answers false for
+                // everything and every element would read as unreferenced by both stages.
+                string vertexSource = Emit(context, vertex, tag);
+                string fragmentSource = Emit(context, fragment, tag);
+                RequireNoHelperBuffers(backend, vertex, "vertex", tag);
+                RequireNoHelperBuffers(backend, fragment, "fragment", tag);
+
+                return new CrossCompiledPair(vertexSource, fragmentSource,
+                    SpirvCrossReflect.ForPair(_cross, context, vertex, fragment, tag),
+                    MslUse(backend, msl, (GpuShaderStages.Vertex, (nint)vertex), (GpuShaderStages.Fragment, (nint)fragment)));
             }
             catch (ShaderValidationException ex)
             {
@@ -180,9 +190,13 @@ namespace KhaozEngine.Gpu.Internal
             {
                 context = CreateContext(tag);
                 Compiler* compute = CreateCompiler(context, computeSpirv, backend, tag);
-                RemapHlslRegisters(context, backend, tag, compute);
-                return new CrossCompiledCompute(Emit(context, compute, tag),
-                    SpirvCrossReflect.ForCompute(_cross, context, compute, tag));
+                MslIndexAssignment[] msl = RemapResourceBindings(context, backend, tag, compute);
+                string computeSource = Emit(context, compute, tag);
+                RequireNoHelperBuffers(backend, compute, "compute", tag);
+
+                return new CrossCompiledCompute(computeSource,
+                    SpirvCrossReflect.ForCompute(_cross, context, compute, tag),
+                    MslUse(backend, msl, (GpuShaderStages.Compute, (nint)compute)));
             }
             catch (ShaderValidationException ex)
             {
@@ -196,28 +210,92 @@ namespace KhaozEngine.Gpu.Internal
         }
 
         /// <summary>
-        /// THE STEP BETWEEN PARSING AND EMITTING, AND ONLY ON THE HLSL PATH. SPIRV-Cross would otherwise name
-        /// each resource's register with the module's raw <c>Binding</c> decoration, which the Direct3D 11
-        /// backend's own numbering does not match. <see cref="HlslRegisterRemap"/> holds the rule and the reason.
+        /// THE STEP BETWEEN PARSING AND EMITTING, and both targets take it now. SPIRV-Cross would otherwise name
+        /// each resource from a counter of its own: the module's raw <c>Binding</c> decoration on the HLSL path,
+        /// and a per-stage running count on the MSL path. Neither is what the backend binds against, and
+        /// <see cref="HlslRegisterRemap"/> and <see cref="MslIndexRemap"/> hold the two rules and the reason.
         /// <para>
         /// THE PROGRAM'S RESOURCES ARE READ ACROSS EVERY STAGE FIRST, then one numbering is installed on all of
-        /// them, so the two stages of a pair emit the same register for the same resource. Nothing happens on the
-        /// MSL path: the native Metal backend READS its indices out of the emitted MSL rather than agreeing with
-        /// them in advance, so a remap there would be a numbering nobody consults.
+        /// them, so the two stages of a pair emit the same index for the same resource. That is the whole of what
+        /// "authored" means: 18.0.0's row 10 replaced the native Metal backend's parse of the emitted argument
+        /// list, and the SPIR-V decoration walk that joined it back to a declared element, with this call.
         /// </para>
         /// </summary>
-        static unsafe void RemapHlslRegisters(Context* context, Backend backend, string tag,
+        /// <returns>The MSL assignments, for the post-emission use query. Empty on the HLSL path.</returns>
+        static unsafe MslIndexAssignment[] RemapResourceBindings(Context* context, Backend backend, string tag,
             params Compiler*[] compilers)
         {
-            if (backend != Backend.Hlsl) return;
+            if (backend != Backend.Hlsl && backend != Backend.Msl) return [];
 
             var resources = new Dictionary<(uint Set, uint Binding), GpuResourceKind>();
             foreach (Compiler* compiler in compilers)
                 SpirvCrossReflect.ReadResourceKinds(_cross, context, compiler, resources, tag);
 
-            HlslRegisterAssignment[] assignments = HlslRegisterRemap.Assign(resources);
+            if (backend == Backend.Hlsl)
+            {
+                HlslRegisterAssignment[] hlsl = HlslRegisterRemap.Assign(resources);
+                foreach (Compiler* compiler in compilers)
+                    HlslRegisterRemap.Install(_cross, context, compiler, hlsl, tag);
+                return [];
+            }
+
+            MslIndexAssignment[] msl = MslIndexRemap.Assign(resources);
             foreach (Compiler* compiler in compilers)
-                HlslRegisterRemap.Install(_cross, context, compiler, assignments, tag);
+                MslIndexRemap.Install(_cross, context, compiler, msl, tag);
+            return msl;
+        }
+
+        // Which resources each emitted MSL stage actually carries an argument for. Empty on the HLSL path, where
+        // nothing asks the question. Called AFTER the emission, which is what makes the answer true.
+        static unsafe MslStageUse[] MslUse(Backend backend, MslIndexAssignment[] assignments,
+            params (GpuShaderStages Stage, nint Compiler)[] stages)
+        {
+            if (backend != Backend.Msl) return [];
+
+            var use = new MslStageUse[stages.Length];
+            for (int i = 0; i < stages.Length; i++)
+            {
+                use[i] = new MslStageUse(stages[i].Stage,
+                    MslIndexRemap.UsedBy(_cross, (Compiler*)stages[i].Compiler, assignments));
+            }
+
+            return use;
+        }
+
+        /// <summary>
+        /// THE REFUSAL THAT KEEPS THE AUTHORED NUMBERING THE ONLY NUMBERING. SPIRV-Cross emits its own helper
+        /// buffer arguments for a handful of features (a swizzle buffer for emulated texture swizzling, a
+        /// buffer-size buffer for runtime array lengths, output buffers for tessellation and for
+        /// vertex-as-compute), and it numbers them from the TOP of the argument table by default, which is
+        /// exactly where decision M-B2 pins the vertex streams. Such an argument carries no
+        /// <c>(set, binding)</c>, so it is in no layout, in no binding table, and invisible to the
+        /// pipeline-creation collision assertion.
+        /// <para>
+        /// IT WAS LOUD BEFORE AND STAYS LOUD. The parse this row deleted threw on a helper argument, because its
+        /// name is not the <c>_&lt;id&gt;</c> shape the id join needed. Nothing in the authored path would ever
+        /// look at one, so the throw moves here rather than disappearing. No shipped program needs any of them.
+        /// </para>
+        /// </summary>
+        static unsafe void RequireNoHelperBuffers(Backend backend, Compiler* compiler, string stage, string tag)
+        {
+            if (backend != Backend.Msl) return;
+
+            string? needed =
+                _cross.CompilerMslNeedsSwizzleBuffer(compiler) != 0 ? "a swizzle buffer"
+                : _cross.CompilerMslNeedsBufferSizeBuffer(compiler) != 0 ? "a buffer-size buffer"
+                : _cross.CompilerMslNeedsOutputBuffer(compiler) != 0 ? "a shader output buffer"
+                : _cross.CompilerMslNeedsPatchOutputBuffer(compiler) != 0 ? "a patch output buffer"
+                : _cross.CompilerMslNeedsInputThreadgroupMem(compiler) != 0 ? "input threadgroup memory"
+                : null;
+
+            if (needed is null) return;
+
+            throw new ShaderValidationException(
+                $"{tag} [{stage}]: the emitted MSL needs {needed}, which SPIRV-Cross adds as a buffer argument of "
+                + "its own with no set or binding. Its default index is at the top of the buffer table, where "
+                + "decision M-B2 pins the vertex streams, and the engine's authored indices cannot see it to "
+                + "avoid it. Nothing shipped needs one, so this is a shader using a feature the native Metal "
+                + "backend has not been taught to number.");
         }
 
         static unsafe Context* CreateContext(string tag)

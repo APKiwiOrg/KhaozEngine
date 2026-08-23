@@ -72,9 +72,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
             byte[] fragmentSpirv = SpirvFrontEnd.ToSpirv(fragmentGlsl, GpuShaderStages.Fragment, tag);
             CrossCompiledPair msl = SpirvCrossCompile.VertexFragmentToMsl(vertexSpirv, fragmentSpirv, tag);
 
-            MetalMslProgram program = Assemble(msl.Reflection, tag,
-                (MetalShaderStage.Vertex, msl.VertexSource, vertexSpirv),
-                (MetalShaderStage.Fragment, msl.FragmentSource, fragmentSpirv));
+            MetalMslProgram program = Assemble(msl.Reflection, msl.MslUse, tag,
+                (MetalShaderStage.Vertex, msl.VertexSource),
+                (MetalShaderStage.Fragment, msl.FragmentSource));
 
             // AFTER the assemble rather than beside it, so a program whose emission cannot be READ is never
             // cached: an entry that reproduces a throw on every launch is a slower failure, not a cache.
@@ -107,33 +107,55 @@ namespace KhaozEngine.Gpu.Metal.Internal
             (uint x, uint y, uint z) = SpirvLocalSize.Parse(spirv, tag);
             CrossCompiledCompute msl = SpirvCrossCompile.ComputeToMsl(spirv, tag);
 
-            MetalMslProgram program = Assemble(msl.Reflection, tag,
-                (MetalShaderStage.Compute, msl.ComputeSource, spirv));
+            MetalMslProgram program = Assemble(msl.Reflection, msl.MslUse, tag,
+                (MetalShaderStage.Compute, msl.ComputeSource));
 
             cache?.TryStore(key, new MetalMslCacheEntry(program, x, y, z));
             return (program, x, y, z);
         }
 
-        // ONE read of the emission feeds both halves: the entry-point name the device asks the library for, and
-        // the arguments the table joins. Parsing twice would let the two disagree, which is the shape M-S5 warns
-        // about from the other direction (a function looked up by a name nothing read).
-        static MetalMslProgram Assemble(ShaderReflection reflection, string tag,
-            params (MetalShaderStage Stage, string Msl, byte[] Spirv)[] stages)
+        // THE EMISSION IS READ FOR EXACTLY ONE THING NOW: the entry-point NAME the device asks the library for
+        // (M-S5). Where each resource went is not read at all any more, because the engine authored it: the use
+        // lists say which stage carries an argument for what, and MslIndexRemap's scheme says where. That is the
+        // deletion row 10 exists for.
+        static MetalMslProgram Assemble(ShaderReflection reflection, MslStageUse[] use, string tag,
+            params (MetalShaderStage Stage, string Msl)[] stages)
         {
             var emitted = new MetalMslStage[stages.Length];
-            var joins = new List<MetalMslStageJoin>(stages.Length);
+            var used = new List<MetalStageResourceUse>(stages.Length);
 
             for (int i = 0; i < stages.Length; i++)
             {
-                (MetalShaderStage stage, string msl, byte[] spirv) = stages[i];
-                (string name, List<MetalMslArgument> arguments) = MetalMslEntryPoint.Parse(msl, stage, tag);
-
-                emitted[i] = new MetalMslStage(stage, name, msl);
-                joins.Add(new MetalMslStageJoin(stage, spirv, arguments));
+                (MetalShaderStage stage, string msl) = stages[i];
+                emitted[i] = new MetalMslStage(stage, MetalMslEntryPoint.NameOf(msl, stage, tag), msl);
+                used.Add(new MetalStageResourceUse(stage, UseFor(use, stage, tag)));
             }
 
-            return new MetalMslProgram(
-                emitted, MetalShaderIndexTable.Build(reflection.ResourceLayouts, joins, tag));
+            return new MetalMslProgram(emitted, MetalShaderIndexTable.Build(reflection.ResourceLayouts, used, tag));
         }
+
+        // The cross-compile returns one use list per stage it emitted, so a missing one means the emission and
+        // this assembly disagree about which stages the program has. Defaulting to an empty list would build a
+        // table binding nothing for that stage, which is a black frame with no error.
+        static IReadOnlyList<MslResourceRef> UseFor(MslStageUse[] use, MetalShaderStage stage, string tag)
+        {
+            GpuShaderStages wanted = stage switch
+            {
+                MetalShaderStage.Vertex => GpuShaderStages.Vertex,
+                MetalShaderStage.Fragment => GpuShaderStages.Fragment,
+                MetalShaderStage.Compute => GpuShaderStages.Compute,
+                _ => throw new ArgumentOutOfRangeException(nameof(stage), stage,
+                    "this MetalShaderStage has no GpuShaderStages counterpart."),
+            };
+
+            foreach (MslStageUse candidate in use)
+                if (candidate.Stage == wanted) return candidate.Used;
+
+            throw new ShaderValidationException(
+                $"{tag}: the MSL cross-compile returned no resource-use list for the "
+                + stage.ToString().ToLowerInvariant() + " stage, so there is nothing to say which of the "
+                + "program's authored indices that stage actually binds.");
+        }
+
     }
 }

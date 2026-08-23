@@ -190,21 +190,26 @@ namespace KhaozEngine.Tests.Gpu
         /// #604. A changed control reading is the signal to refresh both, and it arrives in this file's test
         /// output rather than as a failure.</para>
         ///
-        /// <para><b>THE TWO NUMBERS DISAGREE HERE AND AGREE EVERYWHERE ELSE.</b>
-        /// <c>MetalShaderIndexTableTests.EveryShippedProgram_ResolvesEveryEmittedArgumentThroughItsDecorations</c>
-        /// asserts ZERO disagreements between the emitted index and the incumbent's per-kind declaration-order
-        /// arithmetic across the whole shipped corpus, which is 2.2b's standing evidence that this backend changes
-        /// no binding. That is a fact about programs the engine ships, not a property of the arithmetic, and this
-        /// row is the constructed counter-example: a fragment function referencing only the set-1 buffer is
-        /// emitted at <c>buffer(0)</c>, while a count over the declared array puts it at <c>buffer(1)</c> because
-        /// set 0 declares a buffer the fragment never mentions.</para>
+        /// <para><b>18.0.0 TURNED THIS ROW OVER, AND THAT IS THE ROW'S CONTENT NOW.</b> Until row 10 (#693) the
+        /// index was SPIRV-Cross's to choose, and this program was the constructed counter-example: a fragment
+        /// function referencing only the set-1 buffer was emitted at <c>buffer(0)</c> while a count over the
+        /// declared array put it at <c>buffer(1)</c>, because set 0 declares a buffer the fragment never
+        /// mentions. The engine authors the index now, walking the reflected layouts in ascending
+        /// <c>(set, binding)</c> with a counter per argument table, which is the SAME walk the per-kind
+        /// declaration-order arithmetic does. So the emission and the count agree here, on the one shape that
+        /// used to separate them.</para>
         ///
-        /// <para><b>WHICH IS THE WHOLE ONE-UBO CONSTRAINT, WITH ITS MECHANISM NAMED.</b> The incumbent writes the
-        /// buffer at index 1 and the function reads index 0, so it reads a slot nothing wrote: all zero, silently,
-        /// exactly as the seam doc records. Nothing about Metal is involved.</para>
+        /// <para><b>WHICH IS THE ONE-UBO CONSTRAINT'S MECHANISM, MEASURED GONE.</b> The constraint existed
+        /// because the writer's index and the reader's index were computed by two different rules that happened
+        /// to agree on the shipped set. There is one rule now, so a second uniform buffer per pipeline is a
+        /// numbering question with an answer rather than a hazard.
+        /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/604">#604</see> is the change that RETIRES
+        /// the shipped validation still enforcing the old constraint, and row 10 deliberately did not, because
+        /// that validation and its negative tests invert together or new shaders fail before reaching a
+        /// device.</para>
         /// </summary>
         [Fact]
-        public void TheSplitStageProgramIsWhereTheEmissionAndTheCountDisagree()
+        public void TheSplitStageProgramNowAgreesWithTheCount_BecauseTheIndexIsAuthored()
         {
             MetalShaderIndexTable table = MetalShaderBuild.Pair(SplitStageVert, SplitStageFrag, null,
                 "MM6SplitStage").Table;
@@ -222,8 +227,8 @@ namespace KhaozEngine.Tests.Gpu
             _out.WriteLine($"set 1 binding 0, fragment stage: the emission put it at buffer({emitted.Index}), a "
                 + $"per-kind declaration-order count puts it at buffer({counted}).");
 
-            Assert.Equal(0, emitted.Index);
             Assert.Equal(1, counted);
+            Assert.Equal(counted, emitted.Index);
         }
 
         // ---- The measurement ---------------------------------------------------------------------------------

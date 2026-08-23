@@ -68,18 +68,26 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// The regression case, reconstructed from the source that actually shipped it by moving ONE line. The row
-        /// pass reads <c>Timing</c> (binding 0) at the top of its spectrum evaluation; drop that read below the
-        /// <c>H0</c> read (binding 1) and the two swap Metal slots, because Metal indices follow first-reference
-        /// order while the resource layout is counted in binding order.
+        /// pass reads <c>Timing</c> (binding 0) at the top of its spectrum evaluation. Dropping that read below
+        /// the <c>H0</c> read (binding 1) used to swap their Metal slots, because Metal indices followed
+        /// first-reference order while the resource layout was counted in binding order.
         /// <para>
         /// What that cost, before the guard existed: the kernel divided by a tile size it had read out of the
-        /// spectrum buffer, got 0, and produced a NaN surface - on Metal only, with Vulkan and Direct3D11 correct,
+        /// spectrum buffer, got 0, and produced a NaN surface, on Metal only, with Vulkan and Direct3D11 correct,
         /// and with nothing in the GLSL that looks wrong. Keeping the real source here rather than a synthetic
-        /// stand-in is deliberate; this exact shape is the one that cost the afternoon.
+        /// stand-in is deliberate, because this exact shape is the one that cost the afternoon.
+        /// </para>
+        /// <para>
+        /// AND 18.0.0 ENDED IT AT THE SOURCE. Row 10 (#693) made the engine AUTHOR each resource's Metal index in
+        /// ascending <c>(set, binding)</c>, so first-reference order decides nothing and this edit is now
+        /// harmless. The row is kept, inverted, as the record of which class of afternoon stopped existing.
+        /// <c>MslBindingOrderGuardTests</c> carries the same inversion for the graphics pair, and
+        /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/604">#604</see> is the change that deletes
+        /// the now-inert check itself.
         /// </para>
         /// </summary>
         [Fact]
-        public void TheRowPassIsRejectedIfItsUniformReadDropsBelowItsSpectrumRead()
+        public void TheRowPassWithItsUniformReadMovedDown_IsAcceptedBecauseTheIndexIsAuthored()
         {
             const string uniformFirst = "    float depth = Timing.w;\n    vec4 h = H0[";
 
@@ -100,13 +108,10 @@ namespace KhaozEngine.Tests.Gpu
                         "    float depth = Timing.w;" + NewlineOf(source) + "    float dk = KE_TWO_PI / tile;");
                 Assert.NotEqual(source, broken);
 
-                var ex = Assert.Throws<ShaderValidationException>(
-                    () => ShaderValidation.ValidateCompute(broken, "RowPassWithTheUniformReadMovedDown"));
-                Assert.Contains("RowPassWithTheUniformReadMovedDown", ex.Message);
-                Assert.Contains("binding order", ex.Message);
+                ShaderValidation.ValidateCompute(broken, "RowPassWithTheUniformReadMovedDown");
 
-                // The unmodified source must still PASS, or the guard is rejecting everything and the assertion
-                // above proves nothing.
+                // The unmodified source must pass too, so a validation that had started accepting nothing would
+                // still be caught somewhere in this file rather than reading as a clean inversion.
                 ShaderValidation.ValidateCompute(source, "RowPassUnmodified");
             }
         }

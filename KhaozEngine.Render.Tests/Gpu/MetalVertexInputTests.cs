@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 using Xunit;
@@ -164,13 +165,16 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AFragmentStageBufferAtTheSameIndex_DoesNotCollide()
         {
+            // 31 uniform buffers so the one the FRAGMENT stage reads is authored at buffer index 30, which is
+            // where stream 0 sits. The vertex stage reads none of them, so the two numberings never meet.
+            var kinds = new GpuResourceKind[31];
+            Array.Fill(kinds, GpuResourceKind.UniformBuffer);
+
             MetalShaderIndexTable table = MetalShaderIndexTable.Build(
-                Layout(GpuResourceKind.UniformBuffer),
+                Layout(kinds),
                 new[]
                 {
-                    new MetalMslStageJoin(MetalShaderStage.Fragment,
-                        Spirv((Id: 70, Set: 0, Binding: 0)),
-                        new[] { new MetalMslArgument(MetalIndexSpace.Buffer, 30, "_70") }),
+                    new MetalStageResourceUse(MetalShaderStage.Fragment, new[] { new MslResourceRef(0, 30) }),
                 },
                 "fragment only");
 
@@ -308,16 +312,22 @@ namespace KhaozEngine.Tests.Gpu
 
         // A table whose VERTEX stage reads one uniform buffer at the given index. Hand-built for the reason
         // MetalShaderIndexTableRefusalTests gives: no shipped program can reach the shapes below.
+        // Since 18.0.0 an index cannot be handed to the table: MslIndexRemap assigns it by walking the layout in
+        // ascending (set, binding) with a counter per argument table, so the way to reach index N is to declare N
+        // uniform buffers in front of the one this stage reads.
         static MetalShaderIndexTable VertexTableAt(int index)
-            => MetalShaderIndexTable.Build(
-                Layout(GpuResourceKind.UniformBuffer),
+        {
+            var kinds = new GpuResourceKind[index + 1];
+            Array.Fill(kinds, GpuResourceKind.UniformBuffer);
+
+            return MetalShaderIndexTable.Build(
+                Layout(kinds),
                 new[]
                 {
-                    new MetalMslStageJoin(MetalShaderStage.Vertex,
-                        Spirv((Id: 70, Set: 0, Binding: 0)),
-                        new[] { new MetalMslArgument(MetalIndexSpace.Buffer, index, "_70") }),
+                    new MetalStageResourceUse(MetalShaderStage.Vertex, new[] { new MslResourceRef(0, index) }),
                 },
                 "hand-built");
+        }
 
         static GpuResourceLayoutDescription[] Layout(params GpuResourceKind[] kinds)
         {
@@ -327,23 +337,5 @@ namespace KhaozEngine.Tests.Gpu
             return [new GpuResourceLayoutDescription(elements)];
         }
 
-        // The same minimal module MetalShaderIndexTableRefusalTests assembles: SpirvResourceDecorations reads
-        // nothing but the header and the OpDecorate pairs.
-        static byte[] Spirv(params (int Id, int Set, int Binding)[] resources)
-        {
-            const uint opDecorate = 71, decorationBinding = 33, decorationDescriptorSet = 34;
-            var words = new List<uint> { 0x07230203, 0x00010000, 0, 1, 0 };
-
-            foreach ((int id, int set, int binding) in resources)
-            {
-                words.AddRange(new[] { (4u << 16) | opDecorate, (uint)id, decorationDescriptorSet, (uint)set });
-                words.AddRange(new[] { (4u << 16) | opDecorate, (uint)id, decorationBinding, (uint)binding });
-            }
-
-            var bytes = new byte[words.Count * 4];
-            for (int i = 0; i < words.Count; i++)
-                BitConverter.TryWriteBytes(bytes.AsSpan(i * 4), words[i]);
-            return bytes;
-        }
     }
 }

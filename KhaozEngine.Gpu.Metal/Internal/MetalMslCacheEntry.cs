@@ -55,7 +55,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// written by an older format is a miss rather than a misread: the engine version in the key already
         /// separates releases, and this separates two formats within one release, which is what a developer
         /// iterating on this file hits.</summary>
-        internal const int FormatVersion = 1;
+        internal const int FormatVersion = 2;
 
         /// <summary>Bytes of SHA-256 appended after the body.</summary>
         internal const int HashLength = 32;
@@ -89,6 +89,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// an order of magnitude under it while still being 25 times the 159 the shipped corpus produces.
         /// </summary>
         internal const int MaxEntries = 4096;
+
+        /// <summary>
+        /// WHAT FORMAT 2 STOPPED STORING, written down because a payload that carries LESS is the unusual
+        /// direction for a format bump. Until 18.0.0 each entry carried the index space and the index the
+        /// emission had been parsed for. Row 10 (#693) authors those, so they are a pure function of the layouts
+        /// this payload already carries, and storing them would create a second authority able to disagree with
+        /// the scheme: a file written under one numbering and served under another binds every resource one slot
+        /// out with nothing to notice. The triples that remain are the half no scheme can derive.
+        /// </summary>
+        internal const string DroppedInFormat2 = "space and index, now authored by MslIndexRemap";
 
         readonly MetalMslProgram _program;
 
@@ -244,7 +254,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             GpuResourceLayoutDescription[]? layouts = ReadLayouts(reader);
             if (layouts is null) return null;
 
-            List<KeyValuePair<MetalIndexTableKey, MetalIndexTableEntry>>? entries = ReadEntries(reader);
+            List<MetalIndexTableKey>? entries = ReadEntries(reader);
             if (entries is null) return null;
             if (body.Position != body.Length) return null;   // trailing bytes nothing wrote
 
@@ -309,38 +319,31 @@ namespace KhaozEngine.Gpu.Metal.Internal
             return layouts;
         }
 
+        // The (set, binding, stage) triples the emission referenced, and nothing else. See DroppedInFormat2.
         static void WriteEntries(BinaryWriter writer, MetalShaderIndexTable table)
         {
             writer.Write(table.Count);
-            foreach ((MetalIndexTableKey key, MetalIndexTableEntry entry) in table.Entries())
+            foreach ((MetalIndexTableKey key, MetalIndexTableEntry _) in table.Entries())
             {
                 writer.Write(key.Set);
                 writer.Write(key.Binding);
                 writer.Write((int)key.Stage);
-                writer.Write((int)entry.Space);
-                writer.Write(entry.Index);
             }
         }
 
-        static List<KeyValuePair<MetalIndexTableKey, MetalIndexTableEntry>>? ReadEntries(BinaryReader reader)
+        static List<MetalIndexTableKey>? ReadEntries(BinaryReader reader)
         {
             int count = reader.ReadInt32();
             if (count < 0 || count > MaxEntries) return null;
 
-            var entries = new List<KeyValuePair<MetalIndexTableKey, MetalIndexTableEntry>>(count);
+            var entries = new List<MetalIndexTableKey>(count);
             for (int i = 0; i < count; i++)
             {
                 int set = reader.ReadInt32();
                 int binding = reader.ReadInt32();
                 if (!TryStage(reader.ReadInt32(), out MetalShaderStage stage)) return null;
 
-                int space = reader.ReadInt32();
-                int index = reader.ReadInt32();
-                if (!Enum.IsDefined((MetalIndexSpace)space)) return null;
-
-                entries.Add(new KeyValuePair<MetalIndexTableKey, MetalIndexTableEntry>(
-                    new MetalIndexTableKey(set, binding, stage),
-                    new MetalIndexTableEntry((MetalIndexSpace)space, index)));
+                entries.Add(new MetalIndexTableKey(set, binding, stage));
             }
             return entries;
         }

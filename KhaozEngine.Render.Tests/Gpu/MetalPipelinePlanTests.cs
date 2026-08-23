@@ -156,10 +156,14 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AVertexStreamCollision_IsRefusedAtPipelineCreation()
         {
-            // A vertex stage reading a uniform buffer at [[buffer(30)]], which is where stream 0 goes.
-            MetalShaderSet shaders = ShaderSet(VertexTableAt(30));
+            // A vertex stage reading a uniform buffer the authored scheme put at [[buffer(30)]], which is where
+            // stream 0 goes. Reaching that index takes 30 buffers in front of it, and the pipeline has to declare
+            // the same shape or the layout check refuses it first.
+            var declared = new GpuResourceKind[31];
+            Array.Fill(declared, GpuResourceKind.UniformBuffer);
 
-            GpuPipelineDescription description = Description(shaders, Layout(GpuResourceKind.UniformBuffer));
+            MetalShaderSet shaders = ShaderSet(VertexTableAt(30));
+            GpuPipelineDescription description = Description(shaders, Layout(declared));
             description.VertexLayouts = new List<GpuVertexLayoutDescription>
             {
                 new(new GpuVertexElement("Position", GpuVertexElementFormat.Float3)),
@@ -445,22 +449,24 @@ namespace KhaozEngine.Tests.Gpu
         static MetalShaderIndexTable TableFor(params GpuResourceKind[] kinds)
             => MetalShaderIndexTable.Build(
                 Reflected(kinds),
-                [
-                    new MetalMslStageJoin(MetalShaderStage.Fragment,
-                        Spirv((Id: 70, Set: 0, Binding: 0)),
-                        [new MetalMslArgument(MetalIndexSpace.Buffer, 0, "_70")]),
-                ],
+                [new MetalStageResourceUse(MetalShaderStage.Fragment, [new MslResourceRef(0, 0)])],
                 "hand-built");
 
+        // A vertex stage reading ONE uniform buffer that the authored scheme puts at the given buffer index.
+        // Since 18.0.0 an index cannot be handed to the table: it is assigned by walking the layout in ascending
+        // (set, binding) with a counter per argument table, so the way to reach index N is to declare N uniform
+        // buffers in front of the one this stage reads. That is also the honest shape, because it is what a
+        // program pushing a vertex resource up toward the top-pinned stream range actually looks like.
         static MetalShaderIndexTable VertexTableAt(int index)
-            => MetalShaderIndexTable.Build(
-                Reflected(GpuResourceKind.UniformBuffer),
-                [
-                    new MetalMslStageJoin(MetalShaderStage.Vertex,
-                        Spirv((Id: 70, Set: 0, Binding: 0)),
-                        [new MetalMslArgument(MetalIndexSpace.Buffer, index, "_70")]),
-                ],
+        {
+            var kinds = new GpuResourceKind[index + 1];
+            Array.Fill(kinds, GpuResourceKind.UniformBuffer);
+
+            return MetalShaderIndexTable.Build(
+                Reflected(kinds),
+                [new MetalStageResourceUse(MetalShaderStage.Vertex, [new MslResourceRef(0, index)])],
                 "hand-built");
+        }
 
         static GpuResourceLayoutDescription[] Reflected(params GpuResourceKind[] kinds)
         {
@@ -468,23 +474,6 @@ namespace KhaozEngine.Tests.Gpu
             for (int i = 0; i < kinds.Length; i++)
                 elements[i] = new GpuResourceLayoutElement("e" + i, kinds[i], GpuShaderStages.Fragment);
             return [new GpuResourceLayoutDescription(elements)];
-        }
-
-        static byte[] Spirv(params (int Id, int Set, int Binding)[] resources)
-        {
-            const uint opDecorate = 71, decorationBinding = 33, decorationDescriptorSet = 34;
-            var words = new List<uint> { 0x07230203, 0x00010000, 0, 1, 0 };
-
-            foreach ((int id, int set, int binding) in resources)
-            {
-                words.AddRange(new[] { (4u << 16) | opDecorate, (uint)id, decorationDescriptorSet, (uint)set });
-                words.AddRange(new[] { (4u << 16) | opDecorate, (uint)id, decorationBinding, (uint)binding });
-            }
-
-            var bytes = new byte[words.Count * 4];
-            for (int i = 0; i < words.Count; i++)
-                BitConverter.TryWriteBytes(bytes.AsSpan(i * 4), words[i]);
-            return bytes;
         }
     }
 }

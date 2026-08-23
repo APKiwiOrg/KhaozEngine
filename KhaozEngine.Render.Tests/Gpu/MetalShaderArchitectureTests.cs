@@ -89,9 +89,13 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains(nameof(SpirvFrontEnd), types, StringComparer.Ordinal);
             Assert.Contains(nameof(SpirvLocalSize), types, StringComparer.Ordinal);
 
-            // The id-keyed join's key reader, which is what section 2.2b's ruling rests on. Naming it is what
-            // says the binding table is READ off the decorations rather than counted.
-            Assert.Contains(nameof(SpirvResourceDecorations), types, StringComparer.Ordinal);
+            // THE AUTHORED SCHEME, WHICH IS WHAT ROW 10 PUT IN PLACE OF THE JOIN (#693). The backend derives
+            // its binding table by calling the same MslIndexRemap the emitter installs from, so naming it is
+            // what says the two cannot drift. What it must NOT name any more is SpirvResourceDecorations: the
+            // decoration walk was the join's key reader, the binding path has no join left, and a reference
+            // reappearing here means one came back.
+            Assert.Contains(nameof(MslIndexRemap), types, StringComparer.Ordinal);
+            Assert.DoesNotContain(nameof(SpirvResourceDecorations), types, StringComparer.Ordinal);
         }
 
         /// <summary>

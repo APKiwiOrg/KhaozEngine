@@ -42,11 +42,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </para>
     /// <para>
     /// THE TWO PRODUCING ASSEMBLIES ARE IN THE KEY BY THEIR MVID, because the payload has FIELDS this key would
-    /// otherwise not name. The pins and the sources name the TOOLCHAIN, and four payload fields are produced by
-    /// engine code that sits outside it: <see cref="MetalMslEntryPoint"/>'s parse (the entry-point name and every
-    /// argument), <see cref="MetalShaderIndexTable"/>'s build on top of <c>SpirvResourceDecorations.Read</c> (the
-    /// binding table), <c>SpirvCrossCompile</c>'s reflect (the layouts) and <c>SpirvLocalSize.Parse</c> (a compute
-    /// kernel's workgroup size). Within ONE engine version, editing any of those and re-running serves the OLD
+    /// otherwise not name. The pins and the sources name the TOOLCHAIN, and several payload fields are produced
+    /// by engine code that sits outside it: <see cref="MetalMslEntryPoint"/>'s read of the entry-point name,
+    /// <see cref="MetalShaderIndexTable"/>'s build over <c>MslIndexRemap</c>'s scheme (the binding table),
+    /// <c>SpirvCrossCompile</c>'s reflect (the layouts) and <c>SpirvLocalSize.Parse</c> (a compute kernel's
+    /// workgroup size). Within ONE engine version, editing any of those and re-running serves the OLD
     /// payload out of the cache with no error anywhere, which is the wrong-pixel-no-error class arriving through
     /// the cache instead of through a bind. The branch's own planted-entry test is the proof it is reachable: a
     /// hit answers with a stored table for sources the emitter would refuse outright.
@@ -107,8 +107,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <summary>
         /// The module version id of <c>KhaozEngine.Gpu</c>, which owns the other three payload producers:
-        /// <c>SpirvCrossCompile</c>'s reflect (the layouts), <c>SpirvResourceDecorations.Read</c> (the decorations
-        /// the table joins on) and <c>SpirvLocalSize.Parse</c> (the workgroup size).
+        /// <c>SpirvCrossCompile</c>'s reflect (the layouts), <c>MslIndexRemap</c> (the scheme the binding table's
+        /// indices come from, and the per-stage use query behind its entries) and <c>SpirvLocalSize.Parse</c>
+        /// (the workgroup size).
         /// </summary>
         internal static Guid GpuModuleId { get; } =
             typeof(SpirvCrossCompile).Assembly.ManifestModule.ModuleVersionId;

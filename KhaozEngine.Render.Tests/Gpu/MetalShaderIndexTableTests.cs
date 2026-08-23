@@ -16,7 +16,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c> is the ruling this guards.
     ///
     /// <para>
-    /// WHAT SEPARATES THIS FROM <see cref="MetalMslIdJoinSpikeTests"/>, which asserts the same properties. That
+    /// WHAT SEPARATES THIS FROM <see cref="MetalMslAuthoredIndexTests"/>, which asserts the same properties. That
     /// one RE-IMPLEMENTS the join inside the test, because it was measuring whether a mechanism could exist. This
     /// one drives the SHIPPED mechanism, <c>MetalShaderBuild</c> and <c>MetalShaderIndexTable</c>, over the same
     /// corpus. A test that re-implements what it checks passes forever while the shipped path rots beside it,
@@ -208,21 +208,37 @@ namespace KhaozEngine.Tests.Gpu
                 perStage.TryGetValue(stage.Stage, out int referenced);
                 unreferencedSlots += totalElements - referenced;
 
-                // STRUCTURAL: every resource argument the parse produced reached the table, per stage. The census
-                // floor below counts the CORPUS rather than the join, so without this a single dropped argument
-                // would sit invisible inside a total of more than a hundred entries and read as an element the
-                // stage never referenced. The parse closes the other half of the same hole itself: an argument
-                // whose index attribute cannot be read is a throw rather than a skip, so the count on this side
-                // cannot quietly shrink either.
-                (_, List<MetalMslArgument> arguments) = MetalMslEntryPoint.Parse(stage.Msl, stage.Stage, program);
-                Assert.Equal(arguments.Count, referenced);
+                // STRUCTURAL: every resource argument the emission carries reached the table, per stage. The
+                // census floor below counts the CORPUS rather than one program, so without this a single missing
+                // entry would sit invisible inside a total of more than a hundred and read as an element the
+                // stage never referenced. Counting the attributes is enough here because
+                // MetalMslAuthoredIndexTests checks the far stronger property, which is that each of those
+                // attributes names the index the engine authored for the element it belongs to.
+                Assert.Equal(ResourceAttributes(stage.Msl), referenced);
             }
+        }
+
+        // How many [[buffer(n)]], [[texture(n)]] and [[sampler(n)]] attributes one stage's emitted MSL carries.
+        // Every resource argument has exactly one and no other argument has any: stage_in, the return value's
+        // position and every builtin carry a different attribute or none.
+        static int ResourceAttributes(string msl)
+        {
+            int count = 0;
+            foreach (string marker in new[] { "[[buffer(", "[[texture(", "[[sampler(" })
+            {
+                for (int at = msl.IndexOf(marker, StringComparison.Ordinal); at >= 0;
+                     at = msl.IndexOf(marker, at + marker.Length, StringComparison.Ordinal))
+                {
+                    count++;
+                }
+            }
+            return count;
         }
 
         /// <summary>
         /// <c>MTLResourceLayout</c>'s and <c>GetBufferBase</c>'s arithmetic, reproduced here as the STANDING
         /// GUARD, over the engine's own mirror types. It is reproduced a second time in
-        /// <see cref="MetalMslIdJoinSpikeTests"/>, over Veldrid's types, as the ruling's EVIDENCE, and both
+        /// <see cref="MetalMslAuthoredIndexTests"/>, over Veldrid's types, as the ruling's EVIDENCE, and both
         /// copies are deliberate: the spike measures the incumbent as the incumbent actually spells it, and this
         /// one keeps that comparison running against the shipped mechanism. What 2.2b requires is the part both
         /// of them keep, which is that the per-kind arithmetic is written as the COMPARISON and never as the
@@ -231,7 +247,7 @@ namespace KhaozEngine.Tests.Gpu
         /// order.
         ///
         /// <para>TWO COPIES IS THE LIMIT, WHICH IS WHY THIS ONE IS <c>internal</c>. MM6's mechanism row,
-        /// <c>MetalTwoUniformBufferGpuTests.TheSplitStageProgramIsWhereTheEmissionAndTheCountDisagree</c>, needs
+        /// <c>MetalTwoUniformBufferGpuTests.TheSplitStageProgramNowAgreesWithTheCount_BecauseTheIndexIsAuthored</c>, needs
         /// the same walk to say where the incumbent WOULD have put the buffer, and it reads this one rather than
         /// writing a third. So a correction to the arithmetic lands in both places at once, and the only other
         /// copy left is the spike's, which is deliberately over Veldrid's own types.</para>

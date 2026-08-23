@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Runtime.Versioning;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal;
 using KhaozEngine.Gpu.Metal.Internal;
 using Xunit;
@@ -196,20 +197,9 @@ namespace KhaozEngine.Tests.Gpu
                     Array.Empty<GpuResourceLayoutDescription>(),
                     new[]
                     {
-                        new MetalMslStageJoin(MetalShaderStage.Compute, MinimalSpirv(),
-                            Array.Empty<MetalMslArgument>()),
+                        new MetalStageResourceUse(MetalShaderStage.Compute, Array.Empty<MslResourceRef>()),
                     },
                     "hand-built"));
-
-        // A SPIR-V header and nothing else, which is a valid input to the decoration walk: a module declaring no
-        // resources decorates nothing, and the walk needs no types, no functions and no entry point.
-        static byte[] MinimalSpirv()
-        {
-            uint[] words = { 0x07230203, 0x00010000, 0, 1, 0 };
-            var bytes = new byte[words.Length * 4];
-            Buffer.BlockCopy(words, 0, bytes, 0, bytes.Length);
-            return bytes;
-        }
 
         /// <summary>
         /// The disposal contract: a set releases its functions and libraries once, a second Dispose is a no-op,

@@ -14,7 +14,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// The one parse of an emitted MSL entry point's resource arguments. It was shared by both row-1 join
     /// spikes so the two measurements were taken over exactly the same census and a difference between them was
-    /// a difference in the JOIN rather than in the counting. Only <see cref="MetalMslIdJoinSpikeTests"/> is left
+    /// a difference in the JOIN rather than in the counting. Only <see cref="MetalMslAuthoredIndexTests"/> is left
     /// (the name spike went with the toolchain in 18.0.0, its refutation recorded in
     /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/586">#586</see>), and the parse stays shared
     /// with nothing rather than being folded in: it is the neutral half, and inlining it would put the counting

@@ -1,54 +1,37 @@
 using System;
-using System.Collections.Generic;
-using System.Globalization;
 using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Gpu.Metal.Internal
 {
-    /// <summary>One resource argument of an emitted MSL entry point: which index space it landed in, at what
-    /// index, and the name the cross-compiler gave it.</summary>
-    /// <param name="Space">The Metal index space the attribute named.</param>
-    /// <param name="Index">The index the cross-compiler chose within that space.</param>
-    /// <param name="Name">The declared argument name, which for a resource with no debug name is SPIRV-Cross's
-    /// <c>_&lt;id&gt;</c>.</param>
-    internal readonly record struct MetalMslArgument(MetalIndexSpace Space, int Index, string Name);
-
     /// <summary>
-    /// THE ENTRY POINT AS THE EMISSION ACTUALLY WROTE IT: its NAME, and its resource arguments with the indices
-    /// SPIRV-Cross chose. Everything the native Metal backend knows about where a resource went comes through
-    /// here, because Metal has no binding decorations and the CPU-side count the incumbent uses is the authority
-    /// this backend removes (M-B1, section 8.2).
+    /// THE ENTRY POINT'S NAME, READ OUT OF THE EMISSION, and since 18.0.0 that is the only thing this reads.
     ///
     /// <para>
     /// THE NAME IS READ RATHER THAN ASSUMED (M-S5). SPIRV-Cross renames the GLSL <c>main</c>, because <c>main</c>
-    /// is reserved in MSL, and it emits <c>main0</c> today. The incumbent looks a function up by a name Veldrid
-    /// supplies from a layer this backend does not have, so guessing <c>main0</c> here would be inheriting a
+    /// is reserved in MSL, and it emits <c>main0</c> today. The incumbent looked a function up by a name Veldrid
+    /// supplied from a layer this backend does not have, so guessing <c>main0</c> here would be inheriting a
     /// convention through a gap rather than reading a fact. It is also what the cache discussion forced into the
     /// payload, and the cache that landed carries it: a hit skips the emission, so
-    /// <see cref="MetalMslCacheEntry"/> holds the name this parse read, because there is no other source for it.
+    /// <see cref="MetalMslCacheEntry"/> holds the name this read, because there is no other source for it.
     /// </para>
     /// <para>
-    /// THE CLOSING PARENTHESIS IS MATCHED BY DEPTH, never taken as the first one. Every argument carries an
-    /// attribute of its own, so a naive scan stops inside <c>[[buffer(0)]]</c> and sees a single argument. That is
-    /// the exact failure <c>ShaderValidation.CheckMslBufferSlots</c> already documents and already solves, and
-    /// 2.2 counted the existence of that walk as an asset when it ruled the table is READ off the emission. This
-    /// is that walk, promoted from a compute-only diagnostic into the binding path.
+    /// THE ARGUMENT LIST IS NO LONGER PARSED, AND THAT IS WHAT ROW 10 DELETED (#693). Until 18.0.0 this type also
+    /// read each argument's <c>[[buffer(n)]]</c> attribute, because the index a resource landed at was
+    /// SPIRV-Cross's to choose and the engine's only way to learn it was the text.
+    /// <c>MslIndexRemap</c> now authors those indices before the emission, so there is nothing left to
+    /// discover and the walk that discovered it is gone. What survives here is the name, which SPIRV-Cross still
+    /// chooses.
+    /// </para>
+    /// <para>
+    /// THE CLOSING PARENTHESIS IS STILL MATCHED BY DEPTH, even though nothing inside it is read any more. The
+    /// name is the last identifier BEFORE the opening parenthesis, so only the opening one is load-bearing, but
+    /// finding the argument list at all is what proves the match is an entry point rather than a forward
+    /// declaration or a comment.
     /// </para>
     /// <para>
     /// AND EVERY FAILURE HERE IS LOUD (2.2b, pin 1). An entry point that cannot be found, an argument list that
-    /// does not close, a name that cannot be read, an index attribute that does not close, and an index that is
-    /// not a number: each throws naming the program and the stage. There is no path from a malformed emission
-    /// to an empty argument list that a later count could fill in, because a silent fallback to counting is
-    /// precisely the mechanism this backend exists not to reproduce.
-    /// </para>
-    /// <para>
-    /// THE LAST TWO OF THOSE ARE WHY DROPPING AN ARGUMENT IS NOT AN OPTION HERE. A malformed
-    /// <c>[[buffer(n)]]</c> is unreachable from any shipped emission, because SPIRV-Cross always writes a decimal
-    /// literal, so the tempting shape is to skip the argument and carry on. That skip is the row's own failure
-    /// mode wearing a different hat: the element then reaches <see cref="MetalShaderIndexTable"/> as an argument
-    /// that was never there, none of the join's refusals can fire on an argument it never sees, and the element
-    /// reads as unreferenced by that stage and is simply not bound. Black frame, no error. So the two shapes that
-    /// could only ever be skipped are throws instead.
+    /// does not open or does not close, and a name that cannot be read: each throws naming the program and the
+    /// stage. A function looked up by a guessed name is exactly the gap M-S5 exists to close.
     /// </para>
     /// </summary>
     internal static class MetalMslEntryPoint
@@ -69,16 +52,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
         };
 
         /// <summary>
-        /// The entry point's declared NAME and its resource arguments, in declaration order.
+        /// The entry point's declared NAME, which is what the device passes to <c>-newFunctionWithName:</c>.
         /// </summary>
         /// <param name="msl">The emitted MSL for one stage.</param>
         /// <param name="stage">Which stage's entry point to find.</param>
         /// <param name="label">A name for the program, included in any error message.</param>
         /// <exception cref="ShaderValidationException">The stage's entry point is not present, its argument list
-        /// does not close, its name cannot be read, or one of its resource arguments carries an index attribute
-        /// that does not close or whose index is not a number.</exception>
-        internal static (string Name, List<MetalMslArgument> Arguments) Parse(string msl, MetalShaderStage stage,
-            string label)
+        /// does not open or does not close, or its name cannot be read.</exception>
+        internal static string NameOf(string msl, MetalShaderStage stage, string label)
         {
             ArgumentNullException.ThrowIfNull(msl);
 
@@ -99,8 +80,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             {
                 throw new ShaderValidationException(
                     $"{where}: the '{keyword.Trim()}' entry point has no argument list at all, which no "
-                    + "SPIRV-Cross emission produces. Treating this as zero arguments would bind nothing and "
-                    + "render an untextured frame with no error, so it is a stop.");
+                    + "SPIRV-Cross emission produces, so the match is not an entry point at all and the name "
+                    + "read out of it would be some other declaration's.");
             }
 
             int close = -1, depth = 0;
@@ -116,7 +97,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     + "is truncated or is not MSL.");
             }
 
-            return (ReadName(msl, start + keyword.Length, open, where), ReadArguments(msl, open, close, where));
+            return ReadName(msl, start + keyword.Length, open, where);
         }
 
         // The declared name is the last identifier before the '(': "vertex main0_out main0(" names main0, and the
@@ -138,77 +119,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     + "be main0, so an unreadable one is a stop rather than a default.");
             }
             return name;
-        }
-
-        static List<MetalMslArgument> ReadArguments(string msl, int open, int close, string where)
-        {
-            var arguments = new List<MetalMslArgument>();
-
-            foreach (string raw in msl.Substring(open + 1, close - open - 1).Split(','))
-            {
-                string argument = raw.Trim();
-                foreach (MetalIndexSpace space in Spaces)
-                {
-                    string marker = "[[" + space.Word() + "(";
-                    int at = argument.IndexOf(marker, StringComparison.Ordinal);
-                    if (at < 0) continue;
-
-                    // An argument WITHOUT one of the three markers is skipped, and that is the only skip in here:
-                    // stage_in, the return value's position and every builtin land in this loop and none of them
-                    // is a resource. Past this point the argument IS a resource, so the two ways its index can
-                    // fail to read are stops rather than skips.
-                    int numberStart = at + marker.Length;
-                    int numberEnd = argument.IndexOf(')', numberStart);
-                    if (numberEnd < 0)
-                    {
-                        throw new ShaderValidationException(
-                            $"{where}: the resource argument '{argument}' opens a [[{space.Word()}(]] attribute "
-                            + "that never closes, so there is no index to read out of it. Skipping the argument "
-                            + "is what a count-based backend does: this element would then be absent from the "
-                            + "binding table, read as unreferenced by this stage, and simply not bound, which is "
-                            + "a wrong frame with no error (2.2b, pin 1).");
-                    }
-
-                    string number = argument[numberStart..numberEnd];
-                    if (!int.TryParse(number, NumberStyles.None, CultureInfo.InvariantCulture, out int index))
-                    {
-                        throw new ShaderValidationException(
-                            $"{where}: the resource argument '{argument}' declares "
-                            + $"[[{space.Word()}({number})]] and '{number}' is not an index. SPIRV-Cross writes a "
-                            + "decimal literal here, so an emission this cannot read has changed shape and the "
-                            + "indices are no longer being read at all. There is deliberately no path that skips "
-                            + "the argument: an unbound element renders a wrong frame with no error.");
-                    }
-
-                    // The declared name is the last identifier before the attribute, past any reference or
-                    // pointer punctuation: "constant _68& _70 [[buffer(0)]]" names _70.
-                    string declaration = argument[..at].TrimEnd();
-                    int split = declaration.LastIndexOfAny(NameBreaks);
-                    arguments.Add(new MetalMslArgument(space, index,
-                        split >= 0 ? declaration[(split + 1)..] : declaration));
-                    break;
-                }
-            }
-
-            return arguments;
-        }
-
-        // Allocated once rather than per call: this runs per stage per program at load, and both arrays are
-        // read-only by use.
-        static readonly MetalIndexSpace[] Spaces =
-            { MetalIndexSpace.Buffer, MetalIndexSpace.Texture, MetalIndexSpace.Sampler };
-
-        static readonly char[] NameBreaks = { ' ', '&', '*' };
-
-        /// <summary>The SPIR-V id an argument name carries, which is the key the table joins on. SPIRV-Cross
-        /// names a variable with no debug name <c>_&lt;id&gt;</c>, so an argument named <c>_70</c> is variable 70
-        /// IN THAT STAGE'S OWN MODULE. False for any other shape, which is what a resource carrying a real name
-        /// would produce, and the caller turns that into a throw rather than a fallback.</summary>
-        internal static bool TryReadId(string argumentName, out uint id)
-        {
-            id = 0;
-            if (argumentName is null || argumentName.Length < 2 || argumentName[0] != '_') return false;
-            return uint.TryParse(argumentName.AsSpan(1), out id);
         }
     }
 }

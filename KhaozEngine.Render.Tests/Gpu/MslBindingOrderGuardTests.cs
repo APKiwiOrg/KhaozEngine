@@ -5,9 +5,25 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// The Metal binding-order guard, from both sides: every negative case is REAL SHIPPED SOURCE with one line
-    /// moved or one expression dropped, and every one is proved to pass again the moment the perturbation is
-    /// undone, so a guard that had started rejecting everything would fail here rather than look like a pass.
+    /// The Metal binding-order guard, from both sides: every case is REAL SHIPPED SOURCE with one line moved or
+    /// one expression dropped, and every one is proved to pass again the moment the perturbation is undone, so a
+    /// guard that had started rejecting everything would fail here rather than look like a pass.
+    /// <para>
+    /// <b>HALF OF THESE FACTS INVERTED IN 18.0.0, AND THEY ARE REWRITTEN RATHER THAN DELETED.</b> Row 10 (#693)
+    /// made the engine AUTHOR each resource's Metal index, walking the reflected layout in ascending
+    /// <c>(set, binding)</c>, so a stage's emitted indices are in binding order by construction. That is exactly
+    /// the property <c>MslBindingOrder.CheckStage</c> existed to enforce, and its premise (the cross-compiler
+    /// numbers a stage's arguments in FIRST-REFERENCE order) is simply false now. The check is inert: it cannot
+    /// fire on any input. So the three first-reference cases below assert that the perturbed source is now
+    /// ACCEPTED, which is the honest record of what changed and is what makes the deletion in
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/604">#604</see> a removal of dead code rather
+    /// than a loosening.
+    /// </para>
+    /// <para>
+    /// <b>THE PREFIX CASES ARE UNTOUCHED AND STILL LIVE.</b> <c>CheckPrefix</c> tests a property of the SHADER
+    /// (which elements each stage reads) rather than of the numbering, so it still throws. It is the piece #604
+    /// has to lift deliberately, in the same change that rewrites the shaders it blocks.
+    /// </para>
     /// <para>
     /// These are plain <c>[Fact]</c>s. The whole check is a text read of a cross-compile, so it runs in the fast
     /// GPU-free lane on every push, which is the entire point: the three shipped bugs of this shape were each
@@ -24,16 +40,20 @@ namespace KhaozEngine.Tests.Gpu
         // ---- 1. The graphics pair, which had no guard at all before 17.36.0 -------------------------------
 
         /// <summary>
-        /// THE FFT OCEAN'S OWN REGRESSION, on the stage that cost the most (issue #323, and the "One map array,
-        /// bound first" section of the FFT ocean design). The water fragment reads the ocean map (binding 2) and
-        /// then the resolved scene depth (binding 4), in that order and deliberately. Lift the scene-depth read
-        /// above the cascade block and Metal swaps the two, because it numbers a stage's textures by FIRST
-        /// REFERENCE while the resource layout is counted in binding order. The shipped symptom was the water
-        /// reading its own derivative layer as the scene depth: it rendered, it just rendered wrong, on Metal
-        /// only.
+        /// THE FFT OCEAN'S OWN REGRESSION, INVERTED BY ROW 10 (issue #323, and the "One map array, bound first"
+        /// section of the FFT ocean design). The water fragment reads the ocean map (binding 2) and then the
+        /// resolved scene depth (binding 4). Lifting the scene-depth read above the cascade block used to swap
+        /// the two on Metal, because the cross-compiler numbered a stage's textures by FIRST REFERENCE while the
+        /// resource layout was counted in binding order, and the shipped symptom was the water reading its own
+        /// derivative layer as the scene depth: it rendered, it just rendered wrong, on Metal only.
+        /// <para>
+        /// SINCE 18.0.0 THE INDEX IS AUTHORED IN BINDING ORDER, so moving a read moves nothing. The perturbation
+        /// is still applied and still proved to change the source, because the value of this row now is that it
+        /// says WHICH edit stopped mattering and why.
+        /// </para>
         /// </summary>
         [Fact]
-        public void TheWaterFragmentIsRejectedIfItsSceneDepthReadRisesAboveItsOceanRead()
+        public void TheWaterFragmentWithItsSceneDepthReadLifted_IsAcceptedBecauseTheIndexIsAuthored()
         {
             const string depthRead = "    ivec2 sz = textureSize(sampler2D(DepthTex, Samp), 0);\n";
             const string oceanBlock = "    vec2 oceanSlope = vec2(0.0);\n";
@@ -50,16 +70,8 @@ namespace KhaozEngine.Tests.Gpu
                     .Replace(oceanBlock.Replace("\n", nl), depthRead.Replace("\n", nl) + oceanBlock.Replace("\n", nl));
                 Assert.NotEqual(source, broken);
 
-                var ex = Assert.Throws<ShaderValidationException>(
-                    () => ShaderValidation.ValidatePair(ShaderSources.WaterVert, broken, "WaterWithTheDepthReadLifted"));
-                Assert.Contains("WaterWithTheDepthReadLifted", ex.Message);
-                Assert.Contains("Metal fragment entry point", ex.Message);
-                // Named by what the author wrote, so the message is greppable in the GLSL: the scene depth
-                // (binding 4) landed in the ocean map's (binding 2) texture slot.
-                Assert.Contains("layout(set=0, binding=4) at texture index 1", ex.Message);
-                Assert.Contains("layout(set=0, binding=2)", ex.Message);
-                Assert.Contains("binding order", ex.Message);
-
+                ShaderValidation.ValidatePair(
+                    ShaderSources.WaterVert, broken, "WaterWithTheDepthReadLifted");
                 ShaderValidation.ValidatePair(ShaderSources.WaterVert, source, "WaterUnmodified");
             }
         }
@@ -102,46 +114,56 @@ namespace KhaozEngine.Tests.Gpu
         /// the entry point it decorates, so a fragment declaring <c>layout(early_fragment_tests) in;</c> comes
         /// out as <c>[[ early_fragment_tests ]] fragment main0_out main0(...)</c>. A parse that accepts the stage
         /// keyword only at the start of a line loses that entry point, and since an entry point the parse cannot
-        /// find is SILENCE rather than a throw, such a shader would validate clean with no fragment index-order
-        /// check and no prefix check at all. The reversed reference order below is the proof the entry point was
-        /// read: it is rejected, and putting the two reads back in binding order passes again.
+        /// find is SILENCE rather than a throw, such a shader would validate clean with no checks at all.
+        /// <para>
+        /// THE PROOF IS A PREFIX VIOLATION SINCE 18.0.0, and it had to move. It used to be a reversed reference
+        /// order, which row 10 made legal, so a green run would then have proved nothing about whether the entry
+        /// point was found. A stage reading a LATER element while skipping an earlier one of the same kind is
+        /// still a refusal, so it still separates "the guard saw this function" from "the guard saw nothing".
+        /// </para>
         /// </summary>
         [Fact]
         public void AFragmentDeclaringEarlyFragmentTestsIsStillChecked()
         {
-            const string reversed = "texture(sampler2D(B, S), vec2(0.5)) + texture(sampler2D(A, S), vec2(0.5))";
-            const string inOrder = "texture(sampler2D(A, S), vec2(0.5)) + texture(sampler2D(B, S), vec2(0.5))";
+            const string skipsA = "texture(sampler2D(B, S), vec2(0.5))";
+            const string readsBoth = "texture(sampler2D(A, S), vec2(0.5)) + texture(sampler2D(B, S), vec2(0.5))";
+            const string vert = @"#version 450
+layout(set=0, binding=0) uniform texture2D A;
+layout(set=0, binding=1) uniform texture2D B;
+layout(set=0, binding=2) uniform sampler S;
+layout(location=0) in vec3 P;
+void main() { gl_Position = vec4(P, 1.0) + textureLod(sampler2D(A, S), vec2(0.5), 0.0); }";
             const string frag = @"#version 450
 layout(early_fragment_tests) in;
 layout(set=0, binding=0) uniform texture2D A;
 layout(set=0, binding=1) uniform texture2D B;
 layout(set=0, binding=2) uniform sampler S;
 layout(location=0) out vec4 o;
-void main() { o = " + reversed + @"; }";
+void main() { o = " + skipsA + @"; }";
 
             var ex = Assert.Throws<ShaderValidationException>(
-                () => ShaderValidation.ValidatePair(PositionOnlyVert, frag, "EarlyFragmentTestsReversed"));
-            Assert.Contains("EarlyFragmentTestsReversed", ex.Message);
-            Assert.Contains("Metal fragment entry point", ex.Message);
-            Assert.Contains("layout(set=0, binding=1) at texture index 0", ex.Message);
-            Assert.Contains("layout(set=0, binding=0)", ex.Message);
+                () => ShaderValidation.ValidatePair(vert, frag, "EarlyFragmentTestsSkippingA"));
+            Assert.Contains("EarlyFragmentTestsSkippingA", ex.Message);
+            Assert.Contains("the fragment stage's texture resources are not a PREFIX", ex.Message);
+            Assert.Contains("reads layout(set=0, binding=1)", ex.Message);
+            Assert.Contains("never reads layout(set=0, binding=0)", ex.Message);
 
             ShaderValidation.ValidatePair(
-                PositionOnlyVert, frag.Replace(reversed, inOrder), "EarlyFragmentTestsInBindingOrder");
+                vert, frag.Replace(skipsA, readsBoth), "EarlyFragmentTestsReadingBoth");
         }
 
         // ---- 2. The compute guard, which could not see a same-kind swap before 17.36.0 -------------------
 
         /// <summary>
-        /// TWO STORAGE BUFFERS SWAPPING, which is the case the kind-comparing guard is blind to by construction:
-        /// Metal spells both <c>device T&amp;</c> and the reflection calls both
-        /// <c>StructuredBufferReadWrite</c>, so nothing about their KINDS distinguishes them. The column pass
-        /// reads the work buffer (binding 1) and then the foam accumulator (binding 2), and its <c>emit</c>
-        /// helper deliberately touches no buffer at all so that ordering holds. Lift the foam read above the work
-        /// reads and the two swap Metal slots.
+        /// TWO STORAGE BUFFERS SWAPPING, THE COMPUTE HALF OF THE SAME INVERSION. Metal spells both
+        /// <c>device T&amp;</c> and the reflection calls both <c>StructuredBufferReadWrite</c>, so nothing about
+        /// their KINDS distinguishes them, which is why the kind-comparing guard was blind to this and the id
+        /// join was not. The column pass reads the work buffer (binding 1) and then the foam accumulator
+        /// (binding 2), and lifting the foam read above the work reads used to swap their Metal slots. The
+        /// authored indices follow binding order, so it no longer does.
         /// </summary>
         [Fact]
-        public void TheColumnPassIsRejectedIfItsFoamReadRisesAboveItsWorkRead()
+        public void TheColumnPassWithItsFoamReadLifted_IsAcceptedBecauseTheIndexIsAuthored()
         {
             string lf = OceanComputeShaders.ColumnPass(32).Replace("\r\n", "\n");
 
@@ -164,13 +186,7 @@ void main() { o = " + reversed + @"; }";
                 string broken = source.Replace(moved, "").Replace(workLoop, moved + workLoop);
                 Assert.NotEqual(source, broken);
 
-                var ex = Assert.Throws<ShaderValidationException>(
-                    () => ShaderValidation.ValidateCompute(broken, "ColumnPassWithTheFoamReadLifted"));
-                Assert.Contains("ColumnPassWithTheFoamReadLifted", ex.Message);
-                Assert.Contains("Metal compute entry point", ex.Message);
-                Assert.Contains("layout(set=0, binding=2) at buffer index 1", ex.Message);
-                Assert.Contains("layout(set=0, binding=1)", ex.Message);
-
+                ShaderValidation.ValidateCompute(broken, "ColumnPassWithTheFoamReadLifted");
                 ShaderValidation.ValidateCompute(source, "ColumnPassUnmodified");
             }
         }

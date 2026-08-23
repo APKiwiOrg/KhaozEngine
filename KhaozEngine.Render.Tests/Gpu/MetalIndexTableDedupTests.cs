@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
 using Xunit;
 using Xunit.Abstractions;
@@ -290,7 +291,7 @@ namespace KhaozEngine.Tests.Gpu
         public void TrailingEmptyDeclaredLayouts_AreTheSameShapeAsNone()
         {
             MetalShaderIndexTable resourceFree = MetalShaderIndexTable.Build(
-                [], Array.Empty<MetalMslStageJoin>(), "resource-free");
+                [], Array.Empty<MetalStageResourceUse>(), "resource-free");
             MetalShaderIndexTable oneBuffer = OneEntry(GpuResourceKind.UniformBuffer);
 
             resourceFree.RequireLayoutShape([], "nothing declared");
@@ -317,9 +318,7 @@ namespace KhaozEngine.Tests.Gpu
                 layouts,
                 new[]
                 {
-                    new MetalMslStageJoin(MetalShaderStage.Fragment,
-                        Spirv((Id: 70, Set: 0, Binding: 0)),
-                        new[] { new MetalMslArgument(MetalIndexSpace.Buffer, 0, "_70") }),
+                    new MetalStageResourceUse(MetalShaderStage.Fragment, new[] { new MslResourceRef(0, 0) }),
                 },
                 "hand-built");
 
@@ -331,31 +330,6 @@ namespace KhaozEngine.Tests.Gpu
             for (int i = 0; i < kinds.Length; i++)
                 elements[i] = new GpuResourceLayoutElement(prefix + i, kinds[i], GpuShaderStages.Fragment);
             return [new GpuResourceLayoutDescription(elements)];
-        }
-
-        // A minimal SPIR-V module carrying nothing but the header and the OpDecorate pairs asked for, which is
-        // genuinely all SpirvResourceDecorations reads.
-        static byte[] Spirv(params (int Id, int Set, int Binding)[] resources)
-        {
-            const uint opDecorate = 71, decorationBinding = 33, decorationDescriptorSet = 34;
-            var words = new List<uint> { 0x07230203, 0x00010000, 0, 1, 0 };
-
-            foreach ((int id, int set, int binding) in resources)
-            {
-                words.AddRange(new[] { (4u << 16) | opDecorate, (uint)id, decorationDescriptorSet, (uint)set });
-                words.AddRange(new[] { (4u << 16) | opDecorate, (uint)id, decorationBinding, (uint)binding });
-            }
-
-            var bytes = new byte[words.Count * 4];
-            for (int w = 0; w < words.Count; w++)
-            {
-                uint value = words[w];
-                bytes[w * 4] = (byte)value;
-                bytes[w * 4 + 1] = (byte)(value >> 8);
-                bytes[w * 4 + 2] = (byte)(value >> 16);
-                bytes[w * 4 + 3] = (byte)(value >> 24);
-            }
-            return bytes;
         }
     }
 }

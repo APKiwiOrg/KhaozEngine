@@ -474,11 +474,10 @@ namespace KhaozEngine.Tests.Gpu
         /// end, where "the run did not split" and "the run stopped early" produce the same call log.
         /// </para>
         /// <para>
-        /// AND THE MIDDLE ONE IS SET 1's, which is the emission deciding rather than the fixture: the two sets'
-        /// three buffers land at 0, 1 and 2 in both stages with slot 1's between slot 0's two. That is 2.2b's
-        /// point arriving for free (an index is a fact about the emission, not about the slot), and it is read
-        /// off the table below rather than assumed, so a cross-compiler bump that renumbers them fails on the
-        /// premise instead of on the subject.
+        /// AND WHICH ONE IS IN THE MIDDLE IS READ OFF THE TABLE rather than assumed. The two sets' three buffers
+        /// land at 0, 1 and 2 in both stages, and since 18.0.0 the order is the authored one, ascending
+        /// <c>(set, binding)</c>, so slot 0's second buffer is the middle. Reading it means a renumbering fails
+        /// on the premise below instead of on the subject.
         /// </para>
         /// </summary>
         [Fact]
@@ -498,23 +497,24 @@ namespace KhaozEngine.Tests.Gpu
             MetalBoundSet slotOne = MetalBindProgram.Set(
                 new MetalBoundResource(MetalIndexSpace.Buffer, model, 0, 32, AppliesCallerOffset: false));
 
-            // THE PREMISE, READ OFF THE TABLE: three contiguous indices with slot 1's buffer in the middle.
-            Assert.True(table.TryGetIndex(1, MetalTwoSetProgram.ObjectBinding, MetalShaderStage.Fragment,
+            // THE PREMISE, READ OFF THE TABLE: three contiguous indices with slot 0's second buffer in the
+            // middle.
+            Assert.True(table.TryGetIndex(0, MetalTwoSetProgram.MaterialBinding, MetalShaderStage.Fragment,
                 out MetalIndexTableEntry middle));
             Assert.True(table.TryGetIndex(0, MetalTwoSetProgram.FrameBinding, MetalShaderStage.Fragment,
                 out MetalIndexTableEntry frameEntry));
-            Assert.True(table.TryGetIndex(0, MetalTwoSetProgram.MaterialBinding, MetalShaderStage.Fragment,
-                out MetalIndexTableEntry materialEntry));
+            Assert.True(table.TryGetIndex(1, MetalTwoSetProgram.ObjectBinding, MetalShaderStage.Fragment,
+                out MetalIndexTableEntry objectEntry));
             Assert.Equal(
                 new[] { middle.Index - 1, middle.Index, middle.Index + 1 },
-                new[] { materialEntry.Index, middle.Index, frameEntry.Index });
+                new[] { frameEntry.Index, middle.Index, objectEntry.Index });
 
             var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             var calls = new FakeMetalEncoderCalls();
             var sink = new FakeMetalEncoderSink(calls);
 
-            harness.DisposeWithoutRelease(model);
-            Assert.Equal(IntPtr.Zero, ((IMetalBindable)model).BindHandle);
+            harness.DisposeWithoutRelease(material);
+            Assert.Equal(IntPtr.Zero, ((IMetalBindable)material).BindHandle);
 
             records.SetIndexTable(table);
             records.Record(0, slotZero, 0);

@@ -13,65 +13,67 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <c>DescriptorSet</c> decoration.</param>
     /// <param name="Binding">The element's position within that layout, which is the <c>Binding</c>
     /// decoration.</param>
-    /// <param name="Stage">Which stage's argument table the index is in. The same element has DIFFERENT indices
-    /// in different stages, and no index at all in a stage that does not reference it.</param>
+    /// <param name="Stage">Which stage's argument table the index is in. An element the emission gave that stage
+    /// no argument for has NO entry, which is what the stage half of this key decides. Since 18.0.0 it does not
+    /// decide the INDEX: an element's index is authored once for the whole program.</param>
     internal readonly record struct MetalIndexTableKey(int Set, int Binding, MetalShaderStage Stage);
 
-    /// <summary>Where the emission actually put one element for one stage.</summary>
+    /// <summary>Where the engine told the emission to put one element.</summary>
     /// <param name="Space">Which of the three argument tables.</param>
     /// <param name="Index">The index within that table.</param>
     internal readonly record struct MetalIndexTableEntry(MetalIndexSpace Space, int Index);
 
+    /// <summary>Which declared resources one emitted stage carries an argument for, as
+    /// <c>SpirvCrossCompile</c> asked SPIRV-Cross after the emission.</summary>
+    /// <param name="Stage">Which stage these belong to.</param>
+    /// <param name="Used">The <c>(set, binding)</c> pairs that stage emitted an argument for.</param>
+    internal readonly record struct MetalStageResourceUse(
+        MetalShaderStage Stage, IReadOnlyList<MslResourceRef> Used);
+
     /// <summary>
     /// THE PER-PROGRAM BINDING TABLE, KEYED ON <c>(set, binding, stage)</c>, AND THE WHOLE OF WHAT M-B1 MEANS
-    /// (decision M-B1 as re-adjudicated in section 2.2b of
-    /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>). Metal has no binding decorations, so the
-    /// index a resource actually landed at is a fact about the EMISSION and nothing else. This reads it.
+    /// (decision M-B1, re-adjudicated in section 2.2b of
+    /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c> and closed by row 10 of
+    /// <c>docs/design/VELDRID-REMOVAL-DESIGN-2026-08-22.md</c>). Metal has no binding decorations, so the index a
+    /// resource lands at is a fact about the EMISSION and nothing else.
     ///
     /// <para>
-    /// THE JOIN IS KEYED ON THE SPIR-V ID, and section 2.2a is why it is not keyed on the name. Each emitted
-    /// argument is named <c>_&lt;id&gt;</c> after its SPIR-V result id, and that id's <c>DescriptorSet</c> and
-    /// <c>Binding</c> decorations resolve it to a declared element. Measured over the shipped set the name join
-    /// reached 0 of 159 arguments and this one reached 159 of 159, with no failure class of any size. The three
-    /// ways the name join died are all absent by construction here: a decoration is present whether or not a name
-    /// is, an id needs no <c>{blockType}_{instance}</c> convention, and the per-stage renumbering that killed the
-    /// suffix rule is the MECHANISM here because each stage's ids are read out of that stage's own module.
+    /// 18.0.0 STATES THAT FACT INSTEAD OF DISCOVERING IT (#693). <see cref="MslIndexRemap"/> assigns every
+    /// resource the program declares an index before the emission and installs it through
+    /// <c>spvc_compiler_msl_add_resource_binding</c>, so this table is BUILT FROM THE ASSIGNMENT rather than read
+    /// back out of the text. What that deleted, in one move: the parse of each entry point's argument list, the
+    /// SPIR-V decoration walk that resolved each <c>_&lt;id&gt;</c> argument name to a declared element, and the
+    /// whole question of whether the two agree. There is nothing left to join.
     /// </para>
     /// <para>
-    /// IT DOMINATES THE ARITHMETIC IT REPLACES, and the margin is measured rather than argued. The incumbent
-    /// assigns each element a per-kind declaration-order slot and sums the preceding layouts, which is right only
-    /// where first-reference order happens to equal declaration order. Over the shipped set the two agree on all
-    /// 159 arguments today, so this backend changes NO binding, and <c>MetalMslIdJoinSpikeTests</c> keeps that
-    /// comparison standing through the rollout window as the evidence for that sentence. What separates them is
-    /// the day a shader changes: the arithmetic then binds the wrong resource and renders a wrong pixel with no
-    /// validation error, which is the class that produced `7.25.0`, `7.51.2` and the splat terrain, while this
-    /// throws at shader-set creation, device-free, before any device runs.
+    /// THE FIVE REFUSALS THE JOIN OWNED COLLAPSE TO THREE, and the two that went are the two that can no longer
+    /// happen. An argument name that is not <c>_&lt;id&gt;</c> and an id carrying no decorations were both
+    /// failures to RESOLVE an argument, and nothing resolves an argument any more. What is left is structural and
+    /// still throws, naming the program and the stage: a <c>(set, binding)</c> outside the declared layout array,
+    /// a binding outside that set's elements, and two entries on one <c>(set, binding, stage)</c>. The kind check
+    /// went with them for a better reason than disuse: the space an element binds in is now DERIVED from its
+    /// kind, so an element in the wrong space is unconstructible rather than merely rejected.
     /// </para>
     /// <para>
-    /// <b>NOTHING HERE EVER FALLS BACK TO A COUNT (2.2b, pin 1).</b> An argument name that is not
-    /// <c>_&lt;id&gt;</c>, an id carrying no decorations in that stage's module, a <c>(set, binding)</c> outside
-    /// the declared layout array, a kind that does not match its index space, or two arguments resolving to one
-    /// element: every one of them throws, naming the program, the stage and the offending argument. A silent
-    /// fallback would reintroduce the arithmetic's failure mode inside this mechanism, which is the worst of the
-    /// three outcomes available. The <c>_&lt;id&gt;</c> spelling is a SPIRV-Cross emission convention that nothing
-    /// promises, and throwing loudly is what makes that fragility safe. Those are the five classes THIS type
-    /// owns. <see cref="MetalMslEntryPoint"/> owns two more in front of it, for the same reason and with the same
-    /// answer: an argument whose index attribute cannot be read is a throw there rather than a dropped argument,
-    /// because an argument dropped before this point is one none of the five refusals below can ever see.
+    /// AN ELEMENT WITH NO ENTRY FOR A STAGE IS NOT BOUND FOR THAT STAGE, unchanged, and still correct by
+    /// construction rather than a gap. SPIRV-Cross omits an argument a stage does not reference, and the
+    /// engine asks it which ones those were (<see cref="MslIndexRemap.UsedBy"/>) rather than inferring it from a
+    /// text it no longer reads. Over the shipped set 95 of 254 stage/element slots are unreferenced, so this is
+    /// the common case rather than the corner.
     /// </para>
     /// <para>
-    /// AN ELEMENT WITH NO ENTRY FOR A STAGE IS NOT BOUND FOR THAT STAGE, and that is correct by construction
-    /// rather than a gap. SPIRV-Cross omits an argument a stage does not reference, and binding one anyway is what
-    /// an index-counting backend does that produces the off-by-one. Over the shipped set 95 of 254 stage/element
-    /// slots are unreferenced, so this is the common case rather than the corner.
+    /// AND AN ELEMENT'S INDEX NO LONGER DEPENDS ON THE STAGE. The authored scheme numbers across the union of
+    /// both stages, so the same element is at the same index in the vertex and the fragment argument table. The
+    /// stage stays in the key because the binder resolves through it and because PRESENCE is still per stage,
+    /// but a whole class of "right index, wrong stage" defect is gone by construction.
     /// </para>
     /// <para>
-    /// WHAT LATER ROWS ADD. Row 10 (https://github.com/APKiwiOrg/KhaozEngine/issues/576) landed the content
-    /// deduplication: <see cref="MetalIndexTableCache"/> keys on <see cref="ContentKey"/>, every table handed out
-    /// goes through it at shader-set creation, and <see cref="SameIndicesAs"/> is the handle compare that buys.
-    /// Row 13 (https://github.com/APKiwiOrg/KhaozEngine/issues/579) binds through <see cref="TryGetIndex"/>, one
-    /// array call per (kind, stage), and invalidates a pipeline switch through <see cref="SameIndicesAs"/>.
-    /// Neither changes what this reads.
+    /// WHAT LATER ROWS ADD. Row 10 of the Metal program (https://github.com/APKiwiOrg/KhaozEngine/issues/576)
+    /// landed the content deduplication: <see cref="MetalIndexTableCache"/> keys on <see cref="ContentKey"/>,
+    /// every table handed out goes through it at shader-set creation, and <see cref="SameIndicesAs"/> is the
+    /// handle compare that buys. Row 13 (https://github.com/APKiwiOrg/KhaozEngine/issues/579) binds through
+    /// <see cref="TryGetIndex"/>, one array call per (kind, stage), and invalidates a pipeline switch through
+    /// <see cref="SameIndicesAs"/>. Neither changes what this holds.
     /// </para>
     /// </summary>
     internal sealed class MetalShaderIndexTable
@@ -96,91 +98,58 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal int Count => _entries.Count;
 
         /// <summary>
-        /// Build the table for one program from every stage's emitted MSL and that stage's own SPIR-V module.
+        /// Build the table for one program from the AUTHORED assignment plus each stage's use list.
+        /// <para>
+        /// THE INDEX COMES FROM THE LAYOUTS ALONE, which is what makes this reproducible without the emission.
+        /// <see cref="MslIndexRemap.Assign"/> is a pure function of the reflected resources, so the same layouts
+        /// give the same indices on every call, in every process, forever. The use lists carry the only thing
+        /// the layouts cannot answer: which stage emitted an argument for what.
+        /// </para>
         /// </summary>
         /// <param name="layouts">The reflection's resource layouts, in set order.</param>
-        /// <param name="stages">Each stage's own SPIR-V module and the arguments already parsed out of its
-        /// emitted entry point. The arguments are passed in rather than re-parsed here so the name the library is
-        /// asked for and the indices the table is built from come from ONE read of the emission.</param>
+        /// <param name="stages">Each stage, with the resources its emission carries an argument for.</param>
         /// <param name="label">A name for the program, included in every error message.</param>
-        /// <exception cref="ShaderValidationException">Any of the five failure classes pin 1 gives the JOIN. The
-        /// two the argument parse owns have already fired before this runs.</exception>
+        /// <exception cref="ShaderValidationException">A use list names a set or a binding the layout array does
+        /// not declare, or two entries land on one <c>(set, binding, stage)</c>.</exception>
         internal static MetalShaderIndexTable Build(GpuResourceLayoutDescription[] layouts,
-            IReadOnlyList<MetalMslStageJoin> stages, string label)
+            IReadOnlyList<MetalStageResourceUse> stages, string label)
         {
             ArgumentNullException.ThrowIfNull(layouts);
             ArgumentNullException.ThrowIfNull(stages);
 
+            Dictionary<(uint Set, uint Binding), MetalIndexTableEntry> authored = Authored(layouts);
             var entries = new Dictionary<MetalIndexTableKey, MetalIndexTableEntry>();
 
-            foreach (MetalMslStageJoin stage in stages)
+            foreach (MetalStageResourceUse stage in stages)
             {
-                IReadOnlyDictionary<uint, SpirvResourceDecoration> decorations =
-                    SpirvResourceDecorations.Read(stage.Spirv, $"{label} [{Name(stage.Stage)}]");
-
-                foreach (MetalMslArgument argument in stage.Arguments)
+                foreach (MslResourceRef used in stage.Used)
                 {
-                    string where = $"{label} [{Name(stage.Stage)}] [[{argument.Space.Word()}({argument.Index})]] "
-                        + $"'{argument.Name}'";
+                    string where = $"{label} [{Name(stage.Stage)}] set={Text(used.Set)} binding={Text(used.Binding)}";
 
-                    if (!MetalMslEntryPoint.TryReadId(argument.Name, out uint id))
+                    if (used.Set < 0 || used.Set >= layouts.Length)
                     {
                         throw Loud(where,
-                            "its name is not the _<id> shape SPIRV-Cross gives a resource with no debug name, so "
-                            + "there is no SPIR-V id to resolve it through. Something named this resource: check "
-                            + "whether SpirvFrontEndPin still strips debug info and whether the Veldrid.SPIRV pin "
-                            + "moved. There is deliberately no fallback to counting arguments.");
+                            $"it names a set past the {Text(layouts.Length)} layouts the reflection declares. Set "
+                            + "N is the layout at slot N, and that positional assumption is checked here rather "
+                            + "than assumed.");
                     }
 
-                    if (!decorations.TryGetValue(id, out SpirvResourceDecoration decoration))
+                    GpuResourceLayoutElement[] elements = layouts[used.Set].Elements;
+                    if (used.Binding < 0 || used.Binding >= elements.Length)
                     {
                         throw Loud(where,
-                            $"SPIR-V id {id.ToString(CultureInfo.InvariantCulture)} carries no DescriptorSet and "
-                            + "Binding pair in THIS STAGE'S own module. Ids are renumbered per stage, so an id "
-                            + "read against the wrong module is exactly this symptom.");
+                            $"it names a binding in a set that declares {Text(elements.Length)} elements. Binding "
+                            + "M is that layout's element M, and that positional assumption is checked here too.");
                     }
 
-                    if (decoration.Set >= (uint)layouts.Length)
+                    var key = new MetalIndexTableKey(used.Set, used.Binding, stage.Stage);
+                    MetalIndexTableEntry entry = authored[((uint)used.Set, (uint)used.Binding)];
+                    if (!entries.TryAdd(key, entry))
                     {
                         throw Loud(where,
-                            $"it decorates set {decoration.Set.ToString(CultureInfo.InvariantCulture)}, past the "
-                            + $"{layouts.Length.ToString(CultureInfo.InvariantCulture)} layouts the reflection "
-                            + "declares. Set N is the layout at slot N, and that positional assumption is checked "
-                            + "here rather than assumed.");
+                            "this stage's use list names it twice. One element is one argument in one stage, so a "
+                            + "repeat means the list did not come from an emission.");
                     }
-
-                    GpuResourceLayoutElement[] elements = layouts[(int)decoration.Set].Elements;
-                    if (decoration.Binding >= (uint)elements.Length)
-                    {
-                        throw Loud(where,
-                            $"it decorates binding {decoration.Binding.ToString(CultureInfo.InvariantCulture)} in "
-                            + $"set {decoration.Set.ToString(CultureInfo.InvariantCulture)}, which declares "
-                            + $"{elements.Length.ToString(CultureInfo.InvariantCulture)} elements. Binding M is "
-                            + "that layout's element M, and that positional assumption is checked here too.");
-                    }
-
-                    GpuResourceKind kind = elements[(int)decoration.Binding].Kind;
-                    if (!argument.Space.MatchesKind(kind))
-                    {
-                        throw Loud(where,
-                            $"it resolved to a {kind} element, which does not belong in the "
-                            + $"{argument.Space.Word()} index space. The join reached the wrong element, and "
-                            + "binding it would put a resource of one kind where another was expected.");
-                    }
-
-                    var key = new MetalIndexTableKey((int)decoration.Set, (int)decoration.Binding, stage.Stage);
-                    if (entries.TryGetValue(key, out MetalIndexTableEntry existing))
-                    {
-                        throw Loud(where,
-                            $"a second argument in this stage already resolved to set "
-                            + $"{decoration.Set.ToString(CultureInfo.InvariantCulture)} binding "
-                            + $"{decoration.Binding.ToString(CultureInfo.InvariantCulture)}, at "
-                            + $"[[{existing.Space.Word()}({existing.Index.ToString(CultureInfo.InvariantCulture)})]]. "
-                            + "The join is a bijection within a stage, so two arguments collapsing onto one "
-                            + "element means one of them would never be bound.");
-                    }
-
-                    entries[key] = new MetalIndexTableEntry(argument.Space, argument.Index);
                 }
             }
 
@@ -189,93 +158,111 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <summary>
         /// REBUILD A TABLE THAT WAS ALREADY BUILT ONCE, from a cache payload rather than from an emission
-        /// (<see cref="MetalMslCacheEntry"/>, pin 6 of 2.2b). The join is not re-run, because the emission a hit
-        /// skips is the only thing that could answer it. What IS re-run is every check the join's OUTPUT has to
-        /// satisfy, because a payload is a file and a file can be wrong in ways an emission cannot.
+        /// (<see cref="MetalMslCacheEntry"/>, pin 6 of 2.2b).
         /// <para>
-        /// THE STRUCTURAL CHECKS ARE THE POINT, and they are pin 1's discipline applied to a second way in.
-        /// A cached entry naming a set past the layout array, a binding past that set's elements, an index space
-        /// that does not match the element's kind, or two entries on one <c>(set, binding, stage)</c> throws here
-        /// exactly as it would have thrown in <see cref="Build"/>. The caller treats that throw as corruption,
-        /// which is a miss and a delete rather than a wrong table: a table is the one thing in this backend whose
-        /// silent corruption renders wrong pixels with no error anywhere.
+        /// THE PAYLOAD NO LONGER CARRIES AN INDEX, and that is 18.0.0's change to this member. An index is a pure
+        /// function of the layouts, which the payload does carry, so storing one would only create a second
+        /// authority able to disagree with the scheme: a file written under one numbering and served under
+        /// another binds every resource one slot out, silently. What the payload carries is the
+        /// <c>(set, binding, stage)</c> triples, which is exactly the part no scheme can derive, and the indices
+        /// are recomputed here through the same <see cref="Build"/> the emission path uses.
         /// </para>
         /// <para>
-        /// THE STAGE SET IS CHECKED TOO, AND CROSS-CHECKED AGAINST THE ENTRIES, which the layouts cannot do for
-        /// it. A table is keyed on <c>(set, binding, stage)</c> and the SOURCES a payload carries are what decide
-        /// which stages exist, so the two halves of one payload have to agree: a compute payload carrying a
-        /// fragment entry, or a graphics payload with one stage where the emission always produces a pair, is a
-        /// file nothing this engine wrote could have produced. Neither is reachable through
-        /// <see cref="MetalMslCacheEntry"/>'s writer today and both authenticate perfectly once written by hand,
-        /// which is the whole reason the read side checks rather than trusts.
+        /// THE STRUCTURAL CHECKS ARE STILL THE POINT, because a payload is a file and a file can be wrong in ways
+        /// an emission cannot. A triple naming a set past the layout array, a binding past that set's elements,
+        /// or two triples on one key throws exactly as it would have thrown in <see cref="Build"/>. The caller
+        /// treats that throw as corruption, which is a miss and a delete rather than a wrong table.
+        /// </para>
+        /// <para>
+        /// THE STAGE SET IS CHECKED TOO, AND CROSS-CHECKED AGAINST THE TRIPLES, which the layouts cannot do for
+        /// it. The SOURCES a payload carries are what decide which stages exist, so the two halves of one payload
+        /// have to agree: a compute payload carrying a fragment entry, or a graphics payload with one stage where
+        /// the emission always produces a pair, is a file nothing this engine wrote could have produced.
         /// </para>
         /// </summary>
-        /// <param name="entries">The cached entries, in any order.</param>
+        /// <param name="used">The cached <c>(set, binding, stage)</c> triples, in any order.</param>
         /// <param name="layouts">The cached reflection layouts, in set order.</param>
         /// <param name="stages">The stages the payload carries a source for. A compute program is exactly one
         /// <see cref="MetalShaderStage.Compute"/>, a graphics program exactly
         /// <see cref="MetalShaderStage.Vertex"/> and <see cref="MetalShaderStage.Fragment"/>.</param>
         /// <param name="label">A name for the program, included in any error message.</param>
-        /// <exception cref="ShaderValidationException">The payload's entries, stages and layouts do not
+        /// <exception cref="ShaderValidationException">The payload's triples, stages and layouts do not
         /// agree.</exception>
-        internal static MetalShaderIndexTable FromCache(
-            IReadOnlyList<KeyValuePair<MetalIndexTableKey, MetalIndexTableEntry>> entries,
+        internal static MetalShaderIndexTable FromCache(IReadOnlyList<MetalIndexTableKey> used,
             GpuResourceLayoutDescription[] layouts, IReadOnlySet<MetalShaderStage> stages, string label)
         {
-            ArgumentNullException.ThrowIfNull(entries);
+            ArgumentNullException.ThrowIfNull(used);
             ArgumentNullException.ThrowIfNull(layouts);
             ArgumentNullException.ThrowIfNull(stages);
 
             RequireProgramShape(stages, label);
 
-            var rebuilt = new Dictionary<MetalIndexTableKey, MetalIndexTableEntry>(entries.Count);
-            foreach ((MetalIndexTableKey key, MetalIndexTableEntry entry) in entries)
+            var byStage = new Dictionary<MetalShaderStage, List<MslResourceRef>>();
+            foreach (MetalIndexTableKey key in used)
             {
-                string where = $"{label} [{Name(key.Stage)}] [[{entry.Space.Word()}"
-                    + $"({entry.Index.ToString(CultureInfo.InvariantCulture)})]] "
-                    + $"set={key.Set.ToString(CultureInfo.InvariantCulture)} "
-                    + $"binding={key.Binding.ToString(CultureInfo.InvariantCulture)}";
-
                 if (!stages.Contains(key.Stage))
                 {
-                    throw Loud(where,
-                        "the cached entry names a stage the payload carries no source for. The index it holds was "
-                        + "read out of an emission this payload does not contain, so nothing here can be checked "
-                        + "against the text it came from.");
+                    throw Loud($"{label} [{Name(key.Stage)}] set={Text(key.Set)} binding={Text(key.Binding)}",
+                        "the cached triple names a stage the payload carries no source for. The element it names "
+                        + "was read out of an emission this payload does not contain.");
                 }
 
-                if (key.Set < 0 || key.Set >= layouts.Length)
-                {
-                    throw Loud(where, "the cached entry names a set outside the cached layout array.");
-                }
-
-                GpuResourceLayoutElement[] elements = layouts[key.Set].Elements;
-                if (key.Binding < 0 || key.Binding >= elements.Length)
-                {
-                    throw Loud(where, "the cached entry names a binding outside that set's cached elements.");
-                }
-
-                if (!entry.Space.MatchesKind(elements[key.Binding].Kind))
-                {
-                    throw Loud(where,
-                        $"the cached entry resolves to a {elements[key.Binding].Kind} element, which does not "
-                        + "belong in that index space.");
-                }
-
-                if (entry.Index < 0) throw Loud(where, "the cached entry carries a negative index.");
-                if (!rebuilt.TryAdd(key, entry))
-                {
-                    throw Loud(where, "the payload carries two entries for one (set, binding, stage), so one of "
-                        + "them would never be bound.");
-                }
+                if (!byStage.TryGetValue(key.Stage, out List<MslResourceRef>? list))
+                    byStage[key.Stage] = list = [];
+                list.Add(new MslResourceRef(key.Set, key.Binding));
             }
 
-            return new MetalShaderIndexTable(rebuilt, layouts);
+            var rebuilt = new List<MetalStageResourceUse>(byStage.Count);
+            foreach ((MetalShaderStage stage, List<MslResourceRef> list) in byStage)
+                rebuilt.Add(new MetalStageResourceUse(stage, list));
+
+            return Build(layouts, rebuilt, label);
         }
 
+        /// <summary>
+        /// THE AUTHORED ASSIGNMENT, DERIVED FROM THE LAYOUTS, which is the whole of what row 10 replaced a parse
+        /// with. <see cref="MslIndexRemap"/> holds the rule and <c>SpirvCrossCompile</c> installs it on the
+        /// compiler before emitting, so this call reproduces the numbering the emitted MSL actually carries.
+        /// Two derivations of one scheme would be a thing to keep in step: there is one, called from both sides.
+        /// </summary>
+        static Dictionary<(uint Set, uint Binding), MetalIndexTableEntry> Authored(
+            GpuResourceLayoutDescription[] layouts)
+        {
+            var kinds = new Dictionary<(uint Set, uint Binding), GpuResourceKind>();
+            for (int set = 0; set < layouts.Length; set++)
+            {
+                GpuResourceLayoutElement[] elements = layouts[set].Elements ?? [];
+                for (int binding = 0; binding < elements.Length; binding++)
+                    kinds[((uint)set, (uint)binding)] = elements[binding].Kind;
+            }
+
+            var authored = new Dictionary<(uint Set, uint Binding), MetalIndexTableEntry>(kinds.Count);
+            foreach (MslIndexAssignment assignment in MslIndexRemap.Assign(kinds))
+            {
+                authored[(assignment.Set, assignment.Binding)] =
+                    new MetalIndexTableEntry(SpaceOf(assignment.Space), (int)assignment.Index);
+            }
+
+            return authored;
+        }
+
+        // The one place the engine's two spellings of Metal's three argument tables meet. MslIndexRemap's lives
+        // in KhaozEngine.Gpu, beside the emitter that installs the indices, and MetalIndexSpace lives here,
+        // beside the binder that reads them. MetalIndexSpaceAgreementTests pins the kind-to-space rule they each
+        // state, so this mapping stays a rename rather than a second opinion.
+        static MetalIndexSpace SpaceOf(MslIndexSpace space) => space switch
+        {
+            MslIndexSpace.Buffer => MetalIndexSpace.Buffer,
+            MslIndexSpace.Texture => MetalIndexSpace.Texture,
+            MslIndexSpace.Sampler => MetalIndexSpace.Sampler,
+            _ => throw new ArgumentOutOfRangeException(nameof(space), space,
+                "this MslIndexSpace has no Metal argument table. The two enums are the same three spaces, so a "
+                + "new member on one is an engine change that has to visit the other."),
+        };
+
         // THE TWO SHAPES A METAL PROGRAM CAN HAVE, and there is no third. A compute kernel is one compute stage,
-        // dispatched on its own encoder. A graphics program is a vertex and fragment PAIR, because SPIRV-Cross
-        // assigns the indices across the pair at once and neither half's emission exists without the other. A
+        // dispatched on its own encoder. A graphics program is a vertex and fragment PAIR, because the authored
+        // indices are assigned across the pair at once and neither half's emission exists without the other. A
         // payload of any other shape did not come from MetalShaderBuild, so refusing it here is refusing a file
         // rather than refusing a program.
         static void RequireProgramShape(IReadOnlySet<MetalShaderStage> stages, string label)
@@ -484,6 +471,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         static string Name(MetalShaderStage stage) => stage.ToString().ToLowerInvariant();
+
+        static string Text(int value) => value.ToString(CultureInfo.InvariantCulture);
 
         static ShaderValidationException Loud(string where, string why)
             => new($"{where}: {why}");

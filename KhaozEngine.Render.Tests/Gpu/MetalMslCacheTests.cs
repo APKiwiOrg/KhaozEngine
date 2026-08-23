@@ -369,19 +369,18 @@ void main() { Values[gl_GlobalInvocationID.x] = gl_GlobalInvocationID.x; }
             };
 
             Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
-                Entry(1, 0, MetalIndexSpace.Buffer, 0), layouts, Graphics, "bad-set"));
+                Entry(1, 0), layouts, Graphics, "bad-set"));
             Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
-                Entry(0, 3, MetalIndexSpace.Buffer, 0), layouts, Graphics, "bad-binding"));
+                Entry(0, 3), layouts, Graphics, "bad-binding"));
             Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
-                Entry(0, 0, MetalIndexSpace.Texture, 0), layouts, Graphics, "wrong-space"));
-            Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
-                Entry(0, 0, MetalIndexSpace.Buffer, -1), layouts, Graphics, "negative-index"));
+                Entry(-1, 0), layouts, Graphics, "negative-set"));
 
-            // And the shape it accepts, so the four above are refusals rather than a rebuild that never works.
+            // And the shape it accepts, so the three above are refusals rather than a rebuild that never works.
+            // The index is the AUTHORED one, recomputed from the layouts, which is the whole of format 2's point.
             MetalShaderIndexTable table = MetalShaderIndexTable.FromCache(
-                Entry(0, 0, MetalIndexSpace.Buffer, 2), layouts, Graphics, "fine");
+                Entry(0, 0), layouts, Graphics, "fine");
             Assert.True(table.TryGetIndex(0, 0, MetalShaderStage.Vertex, out MetalIndexTableEntry entry));
-            Assert.Equal(new MetalIndexTableEntry(MetalIndexSpace.Buffer, 2), entry);
+            Assert.Equal(new MetalIndexTableEntry(MetalIndexSpace.Buffer, 0), entry);
         }
 
         /// <summary>
@@ -402,7 +401,7 @@ void main() { Values[gl_GlobalInvocationID.x] = gl_GlobalInvocationID.x; }
                      })
             {
                 Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
-                    Array.Empty<KeyValuePair<MetalIndexTableKey, MetalIndexTableEntry>>(),
+                    Array.Empty<MetalIndexTableKey>(),
                     Array.Empty<GpuResourceLayoutDescription>(), new HashSet<MetalShaderStage>(shape), "shape"));
             }
 
@@ -410,7 +409,7 @@ void main() { Values[gl_GlobalInvocationID.x] = gl_GlobalInvocationID.x; }
             foreach (IReadOnlySet<MetalShaderStage> shape in new[] { Graphics, Compute })
             {
                 Assert.Equal(0, MetalShaderIndexTable.FromCache(
-                    Array.Empty<KeyValuePair<MetalIndexTableKey, MetalIndexTableEntry>>(),
+                    Array.Empty<MetalIndexTableKey>(),
                     Array.Empty<GpuResourceLayoutDescription>(), shape, "shape").Count);
             }
         }
@@ -430,9 +429,9 @@ void main() { Values[gl_GlobalInvocationID.x] = gl_GlobalInvocationID.x; }
             };
 
             Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
-                Entry(0, 0, MetalIndexSpace.Buffer, 0, MetalShaderStage.Compute), layouts, Graphics, "not-mine"));
+                Entry(0, 0, MetalShaderStage.Compute), layouts, Graphics, "not-mine"));
             Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
-                Entry(0, 0, MetalIndexSpace.Buffer, 0, MetalShaderStage.Fragment), layouts, Compute, "not-mine"));
+                Entry(0, 0, MetalShaderStage.Fragment), layouts, Compute, "not-mine"));
         }
 
         /// <summary>
@@ -457,7 +456,7 @@ void main() { Values[gl_GlobalInvocationID.x] = gl_GlobalInvocationID.x; }
                 new MetalMslProgram(
                     new[] { new MetalMslStage(MetalShaderStage.Vertex, "main0", "vertex void main0() {}") },
                     MetalShaderIndexTable.FromCache(
-                        Entry(0, 0, MetalIndexSpace.Buffer, 0, MetalShaderStage.Vertex), layouts, Graphics,
+                        Entry(0, 0, MetalShaderStage.Vertex), layouts, Graphics,
                         "half-pair")),
                 0, 0, 0);
 
@@ -467,7 +466,7 @@ void main() { Values[gl_GlobalInvocationID.x] = gl_GlobalInvocationID.x; }
                 new MetalMslProgram(
                     new[] { new MetalMslStage(MetalShaderStage.Compute, "main0", "kernel void main0() {}") },
                     MetalShaderIndexTable.FromCache(
-                        Entry(0, 0, MetalIndexSpace.Buffer, 0, MetalShaderStage.Fragment), layouts, Graphics,
+                        Entry(0, 0, MetalShaderStage.Fragment), layouts, Graphics,
                         "wrong-stage")),
                 8, 4, 2);
         }
@@ -531,8 +530,6 @@ void main() { Values[gl_GlobalInvocationID.x] = gl_GlobalInvocationID.x; }
                 writer.Write(0);                                  // set
                 writer.Write(0);                                  // binding
                 writer.Write((int)MetalShaderStage.Compute);
-                writer.Write((int)MetalIndexSpace.Buffer);
-                writer.Write(3);                                  // index
             })));
 
             MetalMslCacheEntry? entry = cache.TryLoad(key, "control");
@@ -542,9 +539,12 @@ void main() { Values[gl_GlobalInvocationID.x] = gl_GlobalInvocationID.x; }
             Assert.Equal(0, cache.Discards);
             Assert.Equal((8u, 4u, 2u),
                 (entry!.ThreadGroupSizeX, entry.ThreadGroupSizeY, entry.ThreadGroupSizeZ));
+
+            // The index is AUTHORED from the payload's own layouts rather than read out of it, which is what
+            // format 2 changed: the one buffer element of the one layout is buffer 0 and nothing else.
             Assert.True(entry.Program.Table.TryGetIndex(
                 0, 0, MetalShaderStage.Compute, out MetalIndexTableEntry index));
-            Assert.Equal(new MetalIndexTableEntry(MetalIndexSpace.Buffer, 3), index);
+            Assert.Equal(new MetalIndexTableEntry(MetalIndexSpace.Buffer, 0), index);
         }
 
         // ---- the null edge -------------------------------------------------------------------------------
@@ -693,15 +693,12 @@ void main() { Values[gl_GlobalInvocationID.x] = gl_GlobalInvocationID.x; }
             return file;
         }
 
-        static List<KeyValuePair<MetalIndexTableKey, MetalIndexTableEntry>> Entry(
-            int set, int binding, MetalIndexSpace space, int index,
-            MetalShaderStage stage = MetalShaderStage.Vertex)
-            => new()
-            {
-                new KeyValuePair<MetalIndexTableKey, MetalIndexTableEntry>(
-                    new MetalIndexTableKey(set, binding, stage),
-                    new MetalIndexTableEntry(space, index)),
-            };
+        // A payload's table entries are (set, binding, stage) triples since format 2: the space and the index
+        // are authored from the layouts rather than stored, so there is nothing left for a hand-built entry to
+        // disagree about except which element it names.
+        static List<MetalIndexTableKey> Entry(
+            int set, int binding, MetalShaderStage stage = MetalShaderStage.Vertex)
+            => [new MetalIndexTableKey(set, binding, stage)];
 
         static void AssertSameProgram(MetalMslProgram expected, MetalMslProgram actual)
         {

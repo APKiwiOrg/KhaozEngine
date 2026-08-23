@@ -1,225 +1,191 @@
 using System;
 using System.Collections.Generic;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// PIN 1 OF SECTION 2.2b, DRIVEN: <b>the parse fails LOUDLY and never falls back.</b> All SEVEN ways it can
-    /// fail throw at shader-set creation, device-free, naming the program, the stage and the offending argument.
-    /// Five of them are the id-keyed join in <c>MetalShaderIndexTable</c>, and two are the argument parse in front
-    /// of it (<c>MetalMslEntryPoint</c>), where a malformed index attribute is a stop rather than a dropped
-    /// argument.
+    /// PIN 1 OF SECTION 2.2b, DRIVEN, AS 18.0.0 LEFT IT: <b>the binding table fails LOUDLY and never falls back.</b>
+    /// Every way it can fail throws at shader-set creation, device-free, naming the program and the stage.
     ///
     /// <para>
-    /// WHY THIS IS THE MOST IMPORTANT FILE IN THE ROW. The <c>_&lt;id&gt;</c> argument name is a SPIRV-Cross
-    /// emission convention and nothing promises it: a resource that reaches the emission carrying a real name, or
-    /// a name mangled to dodge a collision, does not parse. 2.2b calls that the mechanism's genuine fragility and
-    /// rules that the answer is to throw rather than to fall back to a count. A silent fallback would reintroduce
-    /// the incumbent's failure mode INSIDE the mechanism that replaced it, which is the worst of the three
-    /// outcomes available, and it is exactly the kind of "helpful" recovery a later reader adds in good faith.
-    /// These rows are what make that edit fail.
+    /// SEVEN REFUSALS BECAME SIX, AND THE THREE THAT WENT ARE THE THREE THAT CANNOT HAPPEN ANY MORE. Row 10
+    /// (#693) authored the indices instead of parsing them out of the emitted MSL, so an argument name that is
+    /// not <c>_&lt;id&gt;</c>, a SPIR-V id carrying no decorations in that stage's module, and a malformed index
+    /// attribute are all failures to RESOLVE an argument, and nothing resolves an argument any more. The kind
+    /// check went too, for a better reason than disuse: the index space is DERIVED from the element's kind now,
+    /// so a resource in the wrong space is unconstructible rather than merely rejected.
     /// </para>
     /// <para>
-    /// HAND-BUILT INPUTS RATHER THAN SHIPPED SHADERS, deliberately. Every shipped program joins cleanly (that is
+    /// WHAT IS LEFT IS STRUCTURAL, AND IT IS STILL THE MOST IMPORTANT PROPERTY IN THE ROW. A use list naming a
+    /// set or a binding the layouts do not declare, or naming one element twice in one stage, is a payload or a
+    /// caller that does not match the reflection, and a table built from it binds a resource where another was
+    /// expected. 2.2b's ruling is unchanged: throw rather than fall back to a count, because a silent recovery
+    /// reintroduces the incumbent's failure mode inside the mechanism that replaced it, and it is exactly the
+    /// kind of helpful edit a later reader adds in good faith.
+    /// </para>
+    /// <para>
+    /// AND THE ENTRY-POINT PARSE STILL HAS FOUR OF ITS OWN, because the NAME is still read out of the emission
+    /// (M-S5). It is the only thing that is.
+    /// </para>
+    /// <para>
+    /// HAND-BUILT INPUTS RATHER THAN SHIPPED SHADERS, deliberately. Every shipped program builds cleanly (that is
     /// <see cref="MetalShaderIndexTableTests"/>'s subject), so a refusal can only be reached by constructing the
-    /// shape, and constructing it is also the clearest statement of what each refusal MEANS. The SPIR-V is
-    /// hand-assembled to a few instructions, because <c>SpirvResourceDecorations</c> needs nothing but
-    /// <c>OpDecorate</c> and the module header.
+    /// shape, and constructing it is also the clearest statement of what each refusal MEANS.
     /// </para>
     /// </summary>
     public sealed class MetalShaderIndexTableRefusalTests
     {
         [Fact]
-        public void AnArgumentNameThatIsNotAnId_IsRefusedRatherThanCounted()
-        {
-            ShaderValidationException error = Build(
-                Spirv((Id: 70, Set: 0, Binding: 0)),
-                new MetalMslArgument(MetalIndexSpace.Buffer, 0, "myUniformBlock"),
-                Layout(GpuResourceKind.UniformBuffer));
-
-            Assert.Contains("myUniformBlock", error.Message, StringComparison.Ordinal);
-            Assert.Contains("_<id>", error.Message, StringComparison.Ordinal);
-
-            // The point is not the message, it is that there is NO index. A fallback to the argument's ordinal
-            // would have produced 0 here and bound something.
-            Assert.Contains("no fallback", error.Message, StringComparison.OrdinalIgnoreCase);
-        }
-
-        [Fact]
-        public void AnIdWithNoDecorationsInThisStagesModule_IsRefused()
-        {
-            // The module decorates 70 and the argument names 77, which is precisely what reading a PAIR'S shared
-            // reflection instead of this stage's own module looks like (pin 2): each stage renumbers its ids, so
-            // Model's vertex stage emits _70 where its fragment stage emits _77 for the same element.
-            ShaderValidationException error = Build(
-                Spirv((Id: 70, Set: 0, Binding: 0)),
-                new MetalMslArgument(MetalIndexSpace.Buffer, 0, "_77"),
-                Layout(GpuResourceKind.UniformBuffer));
-
-            Assert.Contains("77", error.Message, StringComparison.Ordinal);
-            Assert.Contains("THIS STAGE'S own module", error.Message, StringComparison.Ordinal);
-        }
-
-        [Fact]
         public void ASetPastTheDeclaredLayoutArray_IsRefused()
         {
-            ShaderValidationException error = Build(
-                Spirv((Id: 70, Set: 3, Binding: 0)),
-                new MetalMslArgument(MetalIndexSpace.Buffer, 0, "_70"),
-                Layout(GpuResourceKind.UniformBuffer));
-
-            Assert.Contains("set 3", error.Message, StringComparison.Ordinal);
-            Assert.Contains("positional assumption", error.Message, StringComparison.Ordinal);
+            Assert.Contains("past the 1 layouts", Refusal(() => Build(
+                Layout(GpuResourceKind.UniformBuffer), Used((Set: 1, Binding: 0)))),
+                StringComparison.Ordinal);
         }
 
         [Fact]
         public void ABindingPastThatSetsElementArray_IsRefused()
         {
-            ShaderValidationException error = Build(
-                Spirv((Id: 70, Set: 0, Binding: 5)),
-                new MetalMslArgument(MetalIndexSpace.Buffer, 0, "_70"),
-                Layout(GpuResourceKind.UniformBuffer));
-
-            Assert.Contains("binding 5", error.Message, StringComparison.Ordinal);
-            Assert.Contains("element M", error.Message, StringComparison.Ordinal);
+            Assert.Contains("declares 1 elements", Refusal(() => Build(
+                Layout(GpuResourceKind.UniformBuffer), Used((Set: 0, Binding: 1)))),
+                StringComparison.Ordinal);
         }
 
+        /// <summary>One element is one argument in one stage. A use list naming it twice did not come from an
+        /// emission, and the second would silently replace the first.</summary>
         [Fact]
-        public void AKindThatDoesNotMatchItsIndexSpace_IsRefused()
+        public void OneElementNamedTwiceInOneStage_IsRefused()
         {
-            // A texture element reached through a [[buffer(n)]] argument: the join landed somewhere, and the kind
-            // check is what says it landed on the wrong element rather than binding a texture as a buffer.
-            ShaderValidationException error = Build(
-                Spirv((Id: 70, Set: 0, Binding: 0)),
-                new MetalMslArgument(MetalIndexSpace.Buffer, 0, "_70"),
-                Layout(GpuResourceKind.TextureReadOnly));
-
-            Assert.Contains("TextureReadOnly", error.Message, StringComparison.Ordinal);
-            Assert.Contains("buffer index space", error.Message, StringComparison.Ordinal);
-        }
-
-        [Fact]
-        public void TwoArgumentsResolvingToOneElementInOneStage_IsRefused()
-        {
-            // Two ids both decorated (0, 0). One of them would never be bound, so the bijection is asserted
-            // rather than left to whichever write landed last.
-            ShaderValidationException error = Build(
-                Spirv((Id: 70, Set: 0, Binding: 0), (Id: 71, Set: 0, Binding: 0)),
-                new[]
-                {
-                    new MetalMslArgument(MetalIndexSpace.Buffer, 0, "_70"),
-                    new MetalMslArgument(MetalIndexSpace.Buffer, 1, "_71"),
-                },
-                Layout(GpuResourceKind.UniformBuffer));
-
-            Assert.Contains("bijection", error.Message, StringComparison.Ordinal);
+            Assert.Contains("names it twice", Refusal(() => Build(
+                Layout(GpuResourceKind.UniformBuffer), Used((Set: 0, Binding: 0), (Set: 0, Binding: 0)))),
+                StringComparison.Ordinal);
         }
 
         /// <summary>
-        /// REFUSAL SIX, IN THE PARSE RATHER THAN THE JOIN: an index attribute that never closes. The join cannot
-        /// refuse an argument it never receives, so dropping this one would leave its element absent from the
-        /// table, reading as unreferenced by the stage and therefore not bound. That is the black-frame-no-error
-        /// outcome the whole row exists to close, so it is a stop here.
+        /// THE POSITIVE CONTROL FOR ALL THREE, and the row that states what "authored" means. The index a table
+        /// records is the one <c>MslIndexRemap</c>'s scheme assigns, which is a per-space counter walked in
+        /// ascending <c>(set, binding)</c> and is NOT the binding number: the layout below puts a second uniform
+        /// buffer at binding 2, behind a texture at binding 1, so it lands at <c>buffer(1)</c> while the texture
+        /// lands at <c>texture(0)</c>. Three different numbers for one element, and the table carries the one the
+        /// emission was told to use.
         /// </summary>
         [Fact]
-        public void AnIndexAttributeThatNeverCloses_IsRefusedRatherThanDropped()
-        {
-            // The attribute's ')' lands past a comma, so the argument the parse sees carries an unterminated
-            // [[buffer(. The entry point's own parentheses still balance, which is what keeps this the attribute's
-            // refusal rather than the argument list's.
-            ShaderValidationException error = ParseRefusal("constant _68& _70 [[buffer(0, 1)]]");
-
-            Assert.Contains("_70", error.Message, StringComparison.Ordinal);
-            Assert.Contains("never closes", error.Message, StringComparison.Ordinal);
-            Assert.Contains("not bound", error.Message, StringComparison.Ordinal);
-        }
-
-        /// <summary>
-        /// REFUSAL SEVEN: an index that is not a number. Unreachable from any shipped emission, because
-        /// SPIRV-Cross writes a decimal literal, and that is exactly why it has to throw: the day it is reachable
-        /// is the day the emission changed shape, and a skip would answer that with a silently unbound element.
-        /// </summary>
-        [Fact]
-        public void AnIndexThatIsNotANumber_IsRefusedRatherThanDropped()
-        {
-            ShaderValidationException error = ParseRefusal("texture2d<float> _77 [[texture(zero)]]");
-
-            Assert.Contains("_77", error.Message, StringComparison.Ordinal);
-            Assert.Contains("zero", error.Message, StringComparison.Ordinal);
-            Assert.Contains("no path that skips", error.Message, StringComparison.Ordinal);
-        }
-
-        /// <summary>The other half of those two: a WELL-FORMED entry point of the same shape parses, so neither
-        /// row above is passing against a parse that throws unconditionally. It also pins what the parse reads,
-        /// which is the name past the reference punctuation and the index out of the attribute.</summary>
-        [Fact]
-        public void AWellFormedEntryPoint_ParsesItsNameAndItsArgumentIndices()
-        {
-            (string name, List<MetalMslArgument> arguments) = MetalMslEntryPoint.Parse(
-                EntryPoint("constant _68& _70 [[buffer(2)]]", "texture2d<float> _77 [[texture(0)]]"),
-                MetalShaderStage.Fragment, "hand-built");
-
-            Assert.Equal("main0", name);
-            Assert.Equal(
-                new[]
-                {
-                    new MetalMslArgument(MetalIndexSpace.Buffer, 2, "_70"),
-                    new MetalMslArgument(MetalIndexSpace.Texture, 0, "_77"),
-                },
-                arguments);
-        }
-
-        /// <summary>The other half of pin 1: a CLEAN join over the same hand-built shape produces the index the
-        /// emission chose, not the binding number. Without this the rows above would all pass against a Build
-        /// that threw unconditionally.</summary>
-        [Fact]
-        public void ACleanJoin_RecordsTheIndexTheEmissionChoseRatherThanTheBindingNumber()
+        public void ACleanBuild_RecordsTheAuthoredIndexRatherThanTheBindingNumber()
         {
             MetalShaderIndexTable table = MetalShaderIndexTable.Build(
-                Layout(GpuResourceKind.UniformBuffer, GpuResourceKind.TextureReadOnly),
-                new[]
-                {
-                    new MetalMslStageJoin(MetalShaderStage.Fragment,
-                        Spirv((Id: 70, Set: 0, Binding: 0), (Id: 71, Set: 0, Binding: 1)),
-                        new[]
-                        {
-                            // Binding 0 landed at buffer 2, binding 1 at texture 0: neither index is its binding.
-                            new MetalMslArgument(MetalIndexSpace.Buffer, 2, "_70"),
-                            new MetalMslArgument(MetalIndexSpace.Texture, 0, "_71"),
-                        }),
-                },
+                Layout(GpuResourceKind.UniformBuffer, GpuResourceKind.TextureReadOnly,
+                    GpuResourceKind.UniformBuffer),
+                Used((Set: 0, Binding: 0), (Set: 0, Binding: 1), (Set: 0, Binding: 2)),
                 "hand-built");
 
-            Assert.True(table.TryGetIndex(0, 0, MetalShaderStage.Fragment, out MetalIndexTableEntry uniform));
-            Assert.Equal(new MetalIndexTableEntry(MetalIndexSpace.Buffer, 2), uniform);
+            Assert.True(table.TryGetIndex(0, 0, MetalShaderStage.Fragment, out MetalIndexTableEntry first));
+            Assert.Equal(new MetalIndexTableEntry(MetalIndexSpace.Buffer, 0), first);
 
             Assert.True(table.TryGetIndex(0, 1, MetalShaderStage.Fragment, out MetalIndexTableEntry texture));
             Assert.Equal(new MetalIndexTableEntry(MetalIndexSpace.Texture, 0), texture);
 
+            Assert.True(table.TryGetIndex(0, 2, MetalShaderStage.Fragment, out MetalIndexTableEntry second));
+            Assert.Equal(new MetalIndexTableEntry(MetalIndexSpace.Buffer, 1), second);
+
             // AND A STAGE WITH NO ENTRY IS NOT BOUND FOR THAT STAGE, which is correct by construction rather than
-            // a gap: SPIRV-Cross omits an argument a stage does not reference.
+            // a gap: SPIRV-Cross omits an argument a stage does not reference, and the engine asks it which.
             Assert.False(table.TryGetIndex(0, 0, MetalShaderStage.Vertex, out _));
         }
 
         /// <summary>
+        /// TWO UNIFORM BUFFERS IN ONE LAYOUT GET TWO DISTINCT BUFFER INDICES, BY CONSTRUCTION. That is the shape
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/604 exists for: the incumbent's per-kind declaration
+        /// count is what made a second uniform buffer per pipeline unsafe, and an authored scheme states the two
+        /// indices instead of counting to them. This row does NOT lift #604's shipped validation, which is that
+        /// issue's own change, and it is the device-free evidence that the numbering half of it is already done.
+        /// </summary>
+        [Fact]
+        public void TwoUniformBuffersInOneLayout_GetTwoDistinctAuthoredBufferIndices()
+        {
+            MetalShaderIndexTable table = MetalShaderIndexTable.Build(
+                Layout(GpuResourceKind.UniformBuffer, GpuResourceKind.UniformBuffer),
+                Used((Set: 0, Binding: 0), (Set: 0, Binding: 1)),
+                "two-ubo");
+
+            Assert.True(table.TryGetIndex(0, 0, MetalShaderStage.Fragment, out MetalIndexTableEntry first));
+            Assert.True(table.TryGetIndex(0, 1, MetalShaderStage.Fragment, out MetalIndexTableEntry second));
+
+            Assert.Equal(MetalIndexSpace.Buffer, first.Space);
+            Assert.Equal(MetalIndexSpace.Buffer, second.Space);
+            Assert.NotEqual(first.Index, second.Index);
+            Assert.Equal(0, first.Index);
+            Assert.Equal(1, second.Index);
+        }
+
+        /// <summary>
+        /// AND THE SAME HOLDS ACROSS TWO SETS, which is the splat terrain's own shape: set 0 read by the vertex
+        /// alone and set 1 by the fragment alone. The two uniform buffers still get distinct indices, and each
+        /// stage's table carries only what that stage reads.
+        /// </summary>
+        [Fact]
+        public void TwoUniformBuffersAcrossTwoSetsReadByDifferentStages_KeepDistinctIndices()
+        {
+            MetalShaderIndexTable table = MetalShaderIndexTable.Build(
+                new[]
+                {
+                    new GpuResourceLayoutDescription(Elements(GpuResourceKind.UniformBuffer)),
+                    new GpuResourceLayoutDescription(Elements(GpuResourceKind.UniformBuffer)),
+                },
+                new[]
+                {
+                    new MetalStageResourceUse(MetalShaderStage.Vertex, new[] { new MslResourceRef(0, 0) }),
+                    new MetalStageResourceUse(MetalShaderStage.Fragment, new[] { new MslResourceRef(1, 0) }),
+                },
+                "split-sets");
+
+            Assert.True(table.TryGetIndex(0, 0, MetalShaderStage.Vertex, out MetalIndexTableEntry vertex));
+            Assert.True(table.TryGetIndex(1, 0, MetalShaderStage.Fragment, out MetalIndexTableEntry fragment));
+
+            Assert.Equal(new MetalIndexTableEntry(MetalIndexSpace.Buffer, 0), vertex);
+            Assert.Equal(new MetalIndexTableEntry(MetalIndexSpace.Buffer, 1), fragment);
+            Assert.False(table.TryGetIndex(1, 0, MetalShaderStage.Vertex, out _));
+            Assert.False(table.TryGetIndex(0, 0, MetalShaderStage.Fragment, out _));
+        }
+
+        /// <summary>THE FOUR THE ENTRY-POINT PARSE STILL OWNS. The name is the one thing still read out of the
+        /// emission (M-S5), so an emission it cannot read is a stop rather than a guessed <c>main0</c>.</summary>
+        [Fact]
+        public void AnEntryPointTheParseCannotRead_IsRefusedRatherThanGuessed()
+        {
+            Assert.Contains("declares no 'fragment' entry point",
+                NameRefusal("kernel main0()\n{\n}\n"), StringComparison.Ordinal);
+            Assert.Contains("no argument list at all",
+                NameRefusal("fragment main0_out main0\n"), StringComparison.Ordinal);
+            Assert.Contains("never closes",
+                NameRefusal("fragment main0_out main0(constant A& _7 [[buffer(0)]]\n"), StringComparison.Ordinal);
+            Assert.Contains("name could not be read",
+                NameRefusal("fragment ()\n{\n}\n"), StringComparison.Ordinal);
+        }
+
+        /// <summary>The other half of those four: a well-formed entry point of the same shape reads its name, so
+        /// none of the rows above is passing against a parse that throws unconditionally.</summary>
+        [Fact]
+        public void AWellFormedEntryPoint_ReadsItsName()
+        {
+            Assert.Equal("main0", MetalMslEntryPoint.NameOf(
+                EntryPoint("constant _68& _70 [[buffer(2)]]", "texture2d<float> _77 [[texture(0)]]"),
+                MetalShaderStage.Fragment, "hand-built"));
+        }
+
+        /// <summary>
         /// PIN 4, DRIVEN: the declared layout array is shape-checked against the reflection the table was built
-        /// from, at pipeline creation. Row 11 is the only caller, and this is what says the check is real before
-        /// that row exists to call it.
+        /// from, at pipeline creation. Row 11 is the only caller, and this is what says the check is real.
         /// </summary>
         [Fact]
         public void ADeclaredLayoutArrayOfADifferentShape_IsRefusedByTheShapeCheck()
         {
             MetalShaderIndexTable table = MetalShaderIndexTable.Build(
                 Layout(GpuResourceKind.UniformBuffer, GpuResourceKind.TextureReadOnly),
-                new[]
-                {
-                    new MetalMslStageJoin(MetalShaderStage.Fragment,
-                        Spirv((Id: 70, Set: 0, Binding: 0)),
-                        new[] { new MetalMslArgument(MetalIndexSpace.Buffer, 0, "_70") }),
-                },
+                Used((Set: 0, Binding: 0)),
                 "hand-built");
 
             // The same shape passes, so the rows below are not passing because the check refuses everything.
@@ -273,34 +239,29 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>A table over the given layout whose fragment stage references element 0 and nothing else. The
-        /// first kind has to be a buffer kind, because the one argument is a <c>[[buffer(0)]]</c>.</summary>
+        /// first kind has to be a buffer kind, because the assertions above read a buffer index.</summary>
         static MetalShaderIndexTable OneEntry(params GpuResourceKind[] kinds)
-            => MetalShaderIndexTable.Build(
-                Layout(kinds),
-                new[]
-                {
-                    new MetalMslStageJoin(MetalShaderStage.Fragment,
-                        Spirv((Id: 70, Set: 0, Binding: 0)),
-                        new[] { new MetalMslArgument(MetalIndexSpace.Buffer, 0, "_70") }),
-                },
-                "hand-built");
+            => MetalShaderIndexTable.Build(Layout(kinds), Used((Set: 0, Binding: 0)), "hand-built");
 
-        static ShaderValidationException Build(byte[] spirv, MetalMslArgument argument,
-            GpuResourceLayoutDescription[] layouts)
-            => Build(spirv, new[] { argument }, layouts);
+        static MetalShaderIndexTable Build(GpuResourceLayoutDescription[] layouts,
+            MetalStageResourceUse[] used)
+            => MetalShaderIndexTable.Build(layouts, used, "hand-built");
 
-        static ShaderValidationException Build(byte[] spirv, IReadOnlyList<MetalMslArgument> arguments,
-            GpuResourceLayoutDescription[] layouts)
-            => Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.Build(
-                layouts,
-                new[] { new MetalMslStageJoin(MetalShaderStage.Fragment, spirv, arguments) },
-                "hand-built"));
+        /// <summary>One fragment stage using the given elements, which is the shape every refusal above is built
+        /// on: the stage half of the key is never what is under test here.</summary>
+        static MetalStageResourceUse[] Used(params (int Set, int Binding)[] elements)
+        {
+            var refs = new MslResourceRef[elements.Length];
+            for (int i = 0; i < elements.Length; i++)
+                refs[i] = new MslResourceRef(elements[i].Set, elements[i].Binding);
+            return new[] { new MetalStageResourceUse(MetalShaderStage.Fragment, refs) };
+        }
 
         static string Refusal(Action call) => Assert.Throws<ShaderValidationException>(call).Message;
 
-        static ShaderValidationException ParseRefusal(params string[] arguments)
-            => Assert.Throws<ShaderValidationException>(() => MetalMslEntryPoint.Parse(
-                EntryPoint(arguments), MetalShaderStage.Fragment, "hand-built"));
+        static string NameRefusal(string msl)
+            => Assert.Throws<ShaderValidationException>(
+                () => MetalMslEntryPoint.NameOf(msl, MetalShaderStage.Fragment, "hand-built")).Message;
 
         /// <summary>A fragment entry point of the shape SPIRV-Cross emits, carrying the given argument text
         /// verbatim. The return type between the keyword and the name is not decoration: it is why the name is
@@ -317,36 +278,6 @@ namespace KhaozEngine.Tests.Gpu
             for (int i = 0; i < kinds.Length; i++)
                 elements[i] = new GpuResourceLayoutElement("e" + i, kinds[i], GpuShaderStages.Fragment);
             return elements;
-        }
-
-        /// <summary>
-        /// A minimal SPIR-V module carrying nothing but the header and the <c>OpDecorate</c> pairs asked for. That
-        /// is genuinely all <c>SpirvResourceDecorations</c> reads, which is itself a fact worth pinning: the walk
-        /// never resolves a storage class or chases a pointer type, so a module with no types, no functions and no
-        /// entry point is a valid input to it.
-        /// </summary>
-        static byte[] Spirv(params (int Id, int Set, int Binding)[] resources)
-        {
-            const uint opDecorate = 71, decorationBinding = 33, decorationDescriptorSet = 34;
-            var words = new List<uint> { 0x07230203, 0x00010000, 0, 1, 0 };   // magic, version, generator, bound, schema
-
-            foreach ((int id, int set, int binding) in resources)
-            {
-                // OpDecorate is 4 words here: (wordCount << 16) | opcode, target, decoration, literal.
-                words.AddRange(new[] { (4u << 16) | opDecorate, (uint)id, decorationDescriptorSet, (uint)set });
-                words.AddRange(new[] { (4u << 16) | opDecorate, (uint)id, decorationBinding, (uint)binding });
-            }
-
-            var bytes = new byte[words.Count * 4];
-            for (int w = 0; w < words.Count; w++)
-            {
-                uint value = words[w];
-                bytes[w * 4] = (byte)value;
-                bytes[w * 4 + 1] = (byte)(value >> 8);
-                bytes[w * 4 + 2] = (byte)(value >> 16);
-                bytes[w * 4 + 3] = (byte)(value >> 24);
-            }
-            return bytes;
         }
     }
 }

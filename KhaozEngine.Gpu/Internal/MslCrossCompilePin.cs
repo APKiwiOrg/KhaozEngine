@@ -71,6 +71,22 @@ namespace KhaozEngine.Gpu.Internal
         internal const int SpecializationConstantCount = 0;
 
         /// <summary>
+        /// Which argument-table numbering the emitted MSL carries, as a token for <see cref="Identity"/>.
+        /// <c>authored</c> is <see cref="MslIndexRemap"/>'s counter-per-argument-table rule, installed through
+        /// <c>spvc_compiler_msl_add_resource_binding</c> before the emission, which is what the native Metal
+        /// backend's binding table is built from. <c>counted</c> would be SPIRV-Cross's own behaviour, a per-stage
+        /// running count over whatever that stage happens to declare, which is what 18.0.0's row 10 replaced.
+        /// <para>
+        /// IT IS IN THE IDENTITY BECAUSE IT IS IN THE BYTES. The numbering is not a SPIRV-Cross option and
+        /// nothing else in this pin moves when it changes, so without a token here an MSL cache entry written
+        /// under one numbering would be served under the other: same key, indices from the old scheme, and a
+        /// machine that binds every resource one slot out while every cold machine is fine. That is the same
+        /// failure the sibling <see cref="HlslCrossCompilePin.RegisterNumbering"/> token exists for.
+        /// </para>
+        /// </summary>
+        internal const string IndexNumbering = "authored";
+
+        /// <summary>
         /// A stable one-line rendering of the pinned set, for a cache key. Any change to a value above MUST change
         /// this string, because it is what makes a cached emission belong to the options it was emitted under: a
         /// cache hit keyed without it would hand back MSL from the old set forever.
@@ -86,7 +102,8 @@ namespace KhaozEngine.Gpu.Internal
             + ";fixClipSpaceZ=" + Bit(FixClipSpaceZ)
             + ";invertVertexOutputY=" + Bit(InvertVertexOutputY)
             + ";normalizeResourceNames=" + Bit(NormalizeResourceNames)
-            + ";specializations=" + SpecializationConstantCount.ToString(CultureInfo.InvariantCulture);
+            + ";specializations=" + SpecializationConstantCount.ToString(CultureInfo.InvariantCulture)
+            + ";indices=" + IndexNumbering;
 
         // 1 / 0 rather than true / false, matching the sibling pins: nothing but a hash reads this token.
         static string Bit(bool value) => value ? "1" : "0";

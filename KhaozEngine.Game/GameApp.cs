@@ -161,7 +161,7 @@ namespace KhaozEngine.Game
 
             // The graphics backend is the first fact worth having in a crash file and the first one that exists:
             // the device is up as soon as the window is. A boot-time crash that reads "backend: MetalNative" is a
-            // different investigation from the same crash on the incumbent, and the tester should not have to
+            // different investigation from the same crash on another backend, and the tester should not have to
             // remember which one they launched. Free when the crash file is opted out (the note is just held).
             CrashReport.Note("backend", _window.Backend.ToString());
 

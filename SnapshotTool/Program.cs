@@ -12,7 +12,7 @@ namespace SnapshotTool;
 /// mirrors). The default form is register-the-shots:
 /// <see cref="SnapshotHost"/> resolves the output dir from <c>args[0]</c> (a temp default otherwise), runs
 /// each shot headless (no window), writes a PNG per shot, logs each path, and prints the final summary.
-/// Needs a GPU device (the underlying captures use Veldrid/Metal).
+/// Needs a GPU device (the underlying captures use the Metal backend).
 /// Run: <c>dotnet run --project SnapshotTool -- /tmp/ke-snapshot-demo</c>
 /// <para>
 /// Two GPU-free subcommands sit in front of the default render form (see <see cref="DiffCommands"/>):

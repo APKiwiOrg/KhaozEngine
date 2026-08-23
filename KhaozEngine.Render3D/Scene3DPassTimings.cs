@@ -8,8 +8,8 @@ namespace KhaozEngine.Render3D
     /// <para>
     /// This measures wall-clock CPU time spent RECORDING commands for a pass (the span between that pass's first
     /// and last graphics-API call), not true GPU execution time - the GPU pipeline runs asynchronously behind the
-    /// command list, so a cheap encode can precede expensive GPU work or vice versa. <c>KhaozEngine.Gpu</c>'s pinned
-    /// Veldrid 4.9.0 exposes no timestamp-query API to measure true per-pass GPU time; see
+    /// command list, so a cheap encode can precede expensive GPU work or vice versa. <c>KhaozEngine.Gpu</c>
+    /// exposes no timestamp-query API to measure true per-pass GPU time, see
     /// <c>docs/USING-KHAOZENGINE.md</c> for the full explanation. Feed these numbers into a
     /// <c>KhaozEngine.Diagnostics.PassTimings</c> meter (e.g. once per frame) to get rolling avg/min/max for a
     /// <c>DiagnosticsOverlay</c> section; <see cref="Render3D"/> itself has no dependency on

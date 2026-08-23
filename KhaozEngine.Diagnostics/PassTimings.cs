@@ -12,8 +12,8 @@ namespace KhaozEngine.Diagnostics;
 /// What this measures: CPU time spent RECORDING (encoding) commands for a pass, i.e. the wall-clock span a
 /// <c>Stopwatch</c> bracket placed around that pass's command-list calls observes. It is NOT true GPU execution
 /// time: the GPU pipeline is asynchronous, so a fast encode can precede slow GPU work (or vice versa) and this
-/// meter cannot see that. Veldrid 4.9.0 (the engine's pinned GPU abstraction version) exposes no timestamp-query
-/// API, so true per-pass GPU timestamps are out of scope until a Veldrid upgrade adds one; see
+/// meter cannot see that. The engine's GPU seam exposes no timestamp-query API, so true per-pass GPU
+/// timestamps are out of scope until one is added, see
 /// <c>docs/USING-KHAOZENGINE.md</c> for the full explanation of what is and is not measured.
 /// </para>
 /// <para>

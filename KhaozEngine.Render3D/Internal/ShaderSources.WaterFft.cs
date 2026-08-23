@@ -15,11 +15,11 @@ namespace KhaozEngine.Render3D.Internal
     /// depth rather than as two textures bound last.
     /// </para>
     /// <para>
-    /// First, Veldrid numbers a backend's resource slots with one counter PER KIND across the whole resource
-    /// layout, and binds each element to the stages in its mask - while the cross-compiler numbers each stage
+    /// First, Veldrid numbered a backend's resource slots with one counter PER KIND across the whole resource
+    /// layout, and bound each element to the stages in its mask - while the cross-compiler numbers each stage
     /// DENSELY over only the bindings that stage declares. The two agree only when every stage's resources are a
     /// PREFIX of the layout. A vertex-only texture sitting after a fragment-only one therefore cannot line up at
-    /// any binding number: the vertex sees dense index 0 and Veldrid binds it at global index 1, so the vertex
+    /// any binding number: the vertex sees dense index 0 and Veldrid bound it at global index 1, so the vertex
     /// samples an unbound slot and gets zero, silently. Hence one ocean map array, declared identically in both
     /// stages, ahead of the fragment-only scene depth - the vertex's resources are then a prefix of each kind, and
     /// the fragment's are the whole list. (16.13.0's bathymetry field is read by both stages too, and sits ahead

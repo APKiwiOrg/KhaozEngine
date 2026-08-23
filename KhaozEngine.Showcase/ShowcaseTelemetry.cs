@@ -168,7 +168,7 @@ namespace KhaozEngine.Showcase
 
             // Loop frames since the capture opened. It is the denominator that makes a capture SELF-VERIFYING:
             // GpuDeviceCounters.FramesBegun would serve, but a backend with no counters (the Veldrid Metal
-            // incumbent is one) writes no GPU columns at all, and then nothing in the file says whether the rows
+            // incumbent was one) writes no GPU columns at all, and then nothing in the file says whether the rows
             // describe the frames the run was asked for. Divide it by the elapsed t and a wrong reading has
             // nowhere to hide.
             _channels.Add(new TelemetryChannel("frames", _frames));

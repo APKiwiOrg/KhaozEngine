@@ -24,7 +24,7 @@ namespace KhaozEngine.Render3D.Rendering
     /// ARE fine on Metal (<see cref="ModelRenderer"/>'s rigid instanced path uses real ones, instanceStepRate 1,
     /// in production, proven by its multi-instance tests). The actual Metal invariant, bisected via the skinned
     /// bone palette: a vertex shader must NOT index a SEPARATE buffer BY a per-instance attribute's value - that
-    /// is what corrupts past element 0 in the windowed Veldrid/Metal swapchain context, which is why skinned
+    /// is what corrupted past element 0 in the windowed Veldrid/Metal swapchain context, which is why skinned
     /// meshes are deformed on the CPU instead of reading a per-instance bone index into a GPU bone buffer (see
     /// <see cref="ModelRenderer"/> and docs/USING-KHAOZENGINE.md's GPU-backend gotchas note).
     /// </summary>
@@ -48,7 +48,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         // THE SLOTS AS ONE CONTIGUOUS CPU IMAGE, and the queue that lets them all be packed before the first draw.
         // A per-draw UpdateBuffer used to sit between the draws, and a PARTIAL write to a non-Dynamic uniform buffer
-        // is the shape Veldrid's D3D11CommandList.UpdateBufferCore sends down its staging route: rent a staging
+        // is the shape Veldrid's D3D11CommandList.UpdateBufferCore sent down its staging route: rent a staging
         // buffer, hand it to GraphicsDevice.UpdateBuffer, which Maps the IMMEDIATE context with D3D11_MAP_WRITE (not
         // WRITE_DISCARD, no DO_NOT_WAIT) and blocks until the GPU has released the buffer being recycled. Only a
         // write covering the whole buffer from offset 0 takes the cheap UpdateSubresource path, so a ten-proxy frame

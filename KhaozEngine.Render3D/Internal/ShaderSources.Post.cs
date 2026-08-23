@@ -14,7 +14,7 @@ namespace KhaozEngine.Render3D.Internal
         //      comes straight from the mesh's per-vertex ModelVertex.Color (unlit), alpha via the blend. ONE dynamic
         //      UBO per draw carries BOTH the frame ViewProj and the per-draw World (a single 128-byte slot selected
         //      by a dynamic offset). This deliberately does NOT split ViewProj/World into two UBO bindings: Veldrid/
-        //      SPIRV-Cross on Metal mis-binds a SECOND uniform buffer in a set (it reads the first buffer's bytes -
+        //      SPIRV-Cross on Metal mis-bound a SECOND uniform buffer in a set (it read the first buffer's bytes -
         //      the same trap the splat/model passes fold around by using one UBO), so both matrices ride in one
         //      buffer. The vertex layout declares the full ModelVertex (locations 0..4) so the same GPU vertex buffer
         //      the model pass uses binds unchanged, and only Position (0) and Color (2) carry any meaning here (the

@@ -3,7 +3,7 @@ namespace KhaozEngine.Windowing
     /// <summary>
     /// Software frame-rate cap: paces a render loop to a target Hz using a monotonic clock, so a game can pin its
     /// render rate to an integer multiple of its fixed simulation/network tick regardless of whether the swapchain's
-    /// vsync actually throttles on a given backend (notably the Veldrid Metal path, which can free-run well above the
+    /// vsync actually throttles on a given backend (notably the Veldrid Metal path, which could free-run well above the
     /// display refresh even with <c>SyncToVerticalBlank</c> on). Pure scheduling math driven by a caller-supplied
     /// monotonic time. <see cref="AppWindow.Run(System.Action{Frame})"/> owns the actual waiting. Deterministic and headless-testable.
     /// </summary>

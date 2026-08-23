@@ -32,7 +32,7 @@ namespace KhaozEngine.Render3D.Rendering
     /// Each pass packs its own slot and uploads the WHOLE mirror, so the other slot goes up again carrying the
     /// bytes it already held: a slot's mirror value does not change once its pass has packed it, so the second
     /// upload is a no-op for anything already recorded. That is the <c>SpriteBatch</c> argument, and it is what
-    /// keeps the write off Veldrid's blocking partial-uniform-write staging route on Direct3D 11 (#408) without
+    /// keeps the write off the blocking partial-uniform-write staging route the incumbent had on Direct3D 11 (#408) without
     /// reintroducing a collapse.
     /// </para>
     /// </summary>

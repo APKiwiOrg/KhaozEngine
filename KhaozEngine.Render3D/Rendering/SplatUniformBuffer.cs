@@ -11,7 +11,7 @@ namespace KhaozEngine.Render3D.Rendering
     /// WHY THE MATERIAL RETAINS ITS PARAMS. The splat pipeline binds ONE uniform buffer (a second UBO in a set
     /// mis-binds on Metal, see <c>ModelRenderer</c>), so the frame block and the per-material params share a
     /// buffer that is LARGER than the frame block. Re-syncing the frame block into it each frame was therefore a
-    /// PARTIAL write, and Veldrid's <c>D3D11CommandList.UpdateBufferCore</c> sends a partial write to a non-Dynamic
+    /// PARTIAL write, and Veldrid's <c>D3D11CommandList.UpdateBufferCore</c> sent a partial write to a non-Dynamic
     /// uniform buffer down its staging route: rent a staging buffer, hand it to
     /// <c>GraphicsDevice.UpdateBuffer</c>, which Maps the IMMEDIATE context with <c>D3D11_MAP_WRITE</c> (not
     /// WRITE_DISCARD, no DO_NOT_WAIT) and blocks until the GPU has released the buffer being recycled. Only a write

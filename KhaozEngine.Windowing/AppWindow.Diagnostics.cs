@@ -51,7 +51,7 @@ namespace KhaozEngine.Windowing
         /// it was lost if it has been. Read through to the device on every access rather than captured, because a
         /// device loss happens at an arbitrary moment long after creation and a cached value would always say the
         /// device was fine. A null member means the backend does not report that fact, which is what every
-        /// backend on the Veldrid path answers for both.
+        /// backend on the Veldrid path answered for both.
         /// <para>
         /// The same value as <c>GpuDeviceContext.Diagnostics</c>, here because a windowed game holds an
         /// <see cref="AppWindow"/> and not the context, and without this it cannot reach either fact for its own

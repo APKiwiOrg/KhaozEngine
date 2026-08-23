@@ -97,7 +97,7 @@ namespace KhaozEngine.Render3D.Internal
             // A single-level array (a 1x1 flat-colour set, the untextured world's shape) neither declares the
             // generate usage nor runs the generate pass, mirroring CreateMipped: the native Vulkan backend
             // refuses a generation request on a texture with nothing to generate, and the incumbent merely
-            // tolerates it as a no-op. Found by the vulkan-native guest leg on the first untextured golden.
+            // tolerated it as a no-op. Found by the vulkan-native guest leg on the first untextured golden.
             GpuTextureUsage usage = GpuTextureUsage.Sampled | (mips > 1 ? GpuTextureUsage.GenerateMipmaps : 0);
             IGpuTexture albedo = gd.Factory.CreateTexture(GpuTextureDescription.Texture2DArray(
                 w, h, GpuPixelFormat.R8G8B8A8UNorm, usage, (uint)layers.Count, mips));

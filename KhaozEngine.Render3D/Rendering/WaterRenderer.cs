@@ -76,7 +76,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// <para>
         /// **It must be a multiple of 256, and so must the BOUND RANGE - which is why the range is SlotBytes and
         /// not PayloadBytes.** D3D11's <c>PSSetConstantBuffers1</c> requires both <c>FirstConstant</c> and
-        /// <c>NumConstants</c> to be multiples of 16 constants, and Veldrid 4.9.0 computes them as
+        /// <c>NumConstants</c> to be multiples of 16 constants, and Veldrid 4.9.0 computed them as
         /// <c>firstConstant = offset / 16</c> and <c>numConstants = max(size, 256) / 16</c> with no rounding
         /// (Veldrid.D3D11.D3D11CommandList). So a bound size UNDER 256 is padded up to 256 and is fine (that is why
         /// OverlayMeshRenderer's 128-byte range works), and any exact multiple of 256 is fine, but anything in
@@ -186,7 +186,7 @@ namespace KhaozEngine.Render3D.Rendering
             var f = gd.Factory;
             _shaders = f.CreateShadersFromSpirv(ShaderSources.WaterVert, ShaderSources.WaterFrag);
             _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
-                // ORDER IS LOAD-BEARING, and not for the usual reason. Veldrid numbers a backend's resource slots
+                // ORDER IS LOAD-BEARING, and not for the usual reason. Veldrid numbered a backend's resource slots
                 // with one counter PER KIND over this whole list, binding each element to the stages in its mask,
                 // while the cross-compiler numbers each stage DENSELY over only the bindings that stage declares.
                 // Those agree only when every stage's resources are a PREFIX of this list. The vertex stage uses

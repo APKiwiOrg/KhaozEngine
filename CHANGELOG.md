@@ -88,6 +88,34 @@ toolchain that turns the engine's one GLSL source into SPIR-V and cross-compiles
   wiped the open recording's bindings ([#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423)), but the
   rule outlived its cause: `GpuRecording` enforces it on every backend, and the tracker asserts the shape on any
   machine rather than leaving it to a WARP leg.
+- **#424's F8 set is retired, one item at a time rather than as a block**
+  ([#690](https://github.com/APKiwiOrg/KhaozEngine/issues/690)). F8 said the nested-`Begin` site list, the
+  fork's second-recorder guardrail and the windowed loop's pre-record phase all become dead weight once the
+  Veldrid Direct3D11 leg goes. One of the three did. **#428's guardrail is dead**, deleted with `vendor/veldrid`
+  above, and the prose claiming it still caught its own leg under the seam is gone with it. **#424's seven-site
+  list retires as WORK**, because the fix landed at the seam and not per site (`GpuRecording`, 17.36.0), while
+  `NestedRecordingSiteTests` and `OpenListTrackingGpuDevice` are kept as a device-free regression net for the
+  same reason the bullet above keeps the tracker. **#429's pre-record phase is KEPT**, see the next bullet. The
+  seam contract is unchanged: a nested `Begin` is still refused, on every backend, including the three that
+  tolerate concurrent recording natively.
+- **CONSUMER NOTE: the #429 public API rollback did NOT happen, and nothing you call changed.**
+  `AppWindow.Run(onFrame, onPrepare)`, `GameApp.OnPrepareWorld` and `Scene3D.PrepareFrame` all stay exactly as
+  they shipped. They were built for the incumbent's immediate-context corruption and were slated to retire with
+  it, and they were kept because neither reason they rest on was that backend's: the seam still has no
+  dispatch-to-dispatch barrier call, so a dependent compute chain still pays `End` + `Submit` + a device wait
+  and still needs a command list of its own, and the one-open-recording rule still refuses opening one inside
+  the frame's list. Deleting the phase would have left the engine's own FFT ocean with no legal place to run on
+  a windowed frame. Who this reaches: Ruinborne, Hardpoint, SpaceGame and Nullwake all drive their frames
+  through `GameApp` / `GameApp3D`, none overrides `OnPrepareWorld` and none drives a raw `AppWindow` or a
+  `Render3DSurface` directly, so the fleet needs no change either way. The one residual, decided rather than
+  left to omission: a host driving a `Render3DSurface` off a raw `AppWindow.Run(onFrame)` without passing
+  `onPrepare` still nests, and gets `GpuNestedRecordingException` naming the fix, identically on all three
+  backends. The fork's `VeldridException` layer under that case is gone and is deliberately not replaced.
+- **`GpuNestedRecordingException`'s message no longer explains itself with a backend.** It used to justify the
+  portable one-open-recording rule by describing the incumbent's immediate-context mode. It now names the rule,
+  the damage and the fix with no backend in it, because a developer who meets a backend name in a portable
+  refusal reasonably concludes the rule belonged to that backend and stops applying it once that backend is
+  gone. `Owner`, `Attempted` and every refusal site are unchanged, and a test pins the wording.
 - **The `Newtonsoft.Json` CVE override STAYS.** It arrives through `Veldrid.SPIRV` to `Veldrid` to
   `NativeLibraryLoader` to `Microsoft.Extensions.DependencyModel`, and `Veldrid.SPIRV` depends on the `Veldrid`
   base assembly, so deleting the incumbent BACKEND does not take the transitive chain with it. The override

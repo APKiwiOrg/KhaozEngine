@@ -488,6 +488,20 @@ downsampled grids and robust to driver noise, so the likely outcome is that no g
 measured. Row 9 exists to measure it, and its finding is the count of grids that moved, recorded either way.
 
 **R4: the two toolchains corrupt each other in one process.** Measured, section 2.3 result 4. Mitigated by
+**Row 8 addendum, 2026-08-23: what the corpus comparison could not see.** The swap's gate was the
+out-of-process corpus comparison plus `ShaderValidation` green on every target, and both passed while the
+Windows leg went black on 165 pixel assertions with no compile error anywhere. The comparison reads hashes,
+so a moved hash cannot say WHAT moved, and the reading taken from it (a SPIRV-Cross version difference in
+the fragment text) was true of 36 of the 42 moved HLSL rows and wrong about the other six. Those six were
+register numbering: SPIRV-Cross names a resource's register with the module's raw `Binding` decoration,
+`Veldrid.SPIRV` re-numbered into a per-file counter first, and section 8.1 of the Direct3D 11 design assumed
+the emitter did the latter on its own. `HlslRegisterRemap` installs the numbering explicitly now, and the
+test that would have caught this before a runner did is `D3D11HlslRegisterAgreementTests`, which reads the
+registers out of the emitted text and compares them against the ones `D3D11RegisterScheme` assigns. The
+transferable lesson is that a hash table is a drift detector and not a comparison: where two toolchains are
+being swapped, the artefact dump has to be diffed and READ, and the six rows that mattered were sitting in
+it the whole time.
+
 ordering (row 8 after row 4) and by atomicity (one commit). The residual risk is a developer adding a
 `Veldrid.SPIRV` reference back for a comparison, so row 8's gate includes an assertion that no assembly in the
 tree references both.

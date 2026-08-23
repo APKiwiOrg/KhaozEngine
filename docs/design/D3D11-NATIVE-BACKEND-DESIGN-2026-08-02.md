@@ -617,6 +617,15 @@ ELEMENTS, which is a different and much smaller set, and testing only those six 
 texture-and-sampler register space unasserted, which is exactly the space where a numbering error compiles
 cleanly and renders wrongly.
 
+**Addendum, 2026-08-23 (18.0.0).** "The emitted HLSL numbers its own registers" was read here as a property
+of SPIRV-Cross and is a property of the outgoing wrapper. SPIRV-Cross emits the module's raw `Binding`
+decoration as the register index, and `Veldrid.SPIRV` re-numbered every resource into the per-kind counter
+above before emitting, so the agreement this section calls for was being arranged by the library rather than
+by anything in this engine. The toolchain swap removed the library and the agreement with it. It is arranged
+here now, by `KhaozEngine.Gpu.Internal.HlslRegisterRemap`, and `D3D11HlslRegisterAgreementTests` asserts the
+two halves against each other over every shipped program, which is the assertion this section specified only
+for the CPU half.
+
 ### 8.2 Pinning the cross-compile options (S3, new)
 
 Draft A asserted that using the same SPIRV-Cross yields byte-identical HLSL and therefore identical DXBC.

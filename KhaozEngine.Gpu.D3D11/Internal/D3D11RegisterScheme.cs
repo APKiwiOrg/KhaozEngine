@@ -112,6 +112,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// that reason, so the two halves agree by construction.
     /// </para>
     /// <para>
+    /// THE OTHER HALF OF THIS RULE IS <c>KhaozEngine.Gpu.Internal.HlslRegisterRemap</c>, which makes the emitted
+    /// HLSL name the registers this type assigns. SPIRV-Cross on its own emits the module's raw <c>Binding</c>
+    /// decoration, which is not this numbering, so the two agreeing is arranged rather than given.
+    /// <c>D3D11HlslRegisterAgreementTests</c> compares them over every shipped program, because the failure when
+    /// they disagree is a black frame on the Windows leg and nothing else.
+    /// </para>
+    /// <para>
     /// WHAT LIVES ELSEWHERE. Turning an assigned register into a native bind call is the bind flush, which also
     /// owns the per-stage fan-out and the redundancy caches. This type answers only "which register", never "which
     /// call".

@@ -32,6 +32,15 @@ package leave too and NO Veldrid package is left anywhere in the graph. BREAKING
   process holding both corrupts one of them, so there was no staged cutover, no feature flag, and no in-process
   test able to compare the two. `ArchitectureTests.NoTwoShaderToolchains` now fails the build if any `Veldrid`
   package id reappears in a csproj or in `Directory.Packages.props`.
+  The HLSL back end pins one thing the outgoing library did silently: SPIRV-Cross names a resource's register
+  with the module's raw `Binding` decoration, so a block at `binding = 6` emits as `register(b6)`, while
+  `Veldrid.SPIRV` re-numbered every resource into a per-file counter first, which is the numbering
+  `D3D11RegisterScheme` binds against. `HlslRegisterRemap` installs that numbering explicitly, per
+  `(stage, set, binding)`, and `D3D11HlslRegisterAgreementTests` compares the registers the emitted text names
+  against the ones the register scheme assigns over every shipped program, which is the half decision S2 never
+  pinned. `HlslCrossCompilePin.Identity` gained a `registers=perFile` token so the compiled-shader cache
+  partitions on it: the numbering is not a SPIRV-Cross option, so nothing else in the key moved when it changed,
+  and a warm entry would otherwise have been served with the wrong registers.
   [#691](https://github.com/APKiwiOrg/KhaozEngine/issues/691).
 - **Every shipped shader was recompiled through both toolchains and the two emissions compared out of process**,
   because no test could do it in one. The tables are committed at
@@ -41,7 +50,8 @@ package leave too and NO Veldrid package is left anywhere in the graph. BREAKING
   of the 78 are byte-identical apart from that single word. The magic, SPIR-V version (`0x00010000`, SPIR-V 1.0)
   and schema words are unchanged on all 78. The other 36 changed code because the newer glslang contracts
   multiply-add chains into `OpExtInst`, which moved total emission by 368 bytes across the whole set, 0.09 %.
-  MSL and HLSL each carried 36 of 78 over byte-identical, the moves being fragment text only. All 86 reflected
+  MSL carried 36 of 78 over byte-identical, the moves being fragment text only, and HLSL 42 of 78, the 36 that
+  moved being exactly the 36 modules whose SPIR-V code generation moved. All 86 reflected
   layouts are shape-identical: same sets, bindings, kinds, stages and vertex formats, with only the reflected
   NAMES differing, and `ShaderCorpusTests` asserts that rather than leaving it as a claim.
 - **The front end's optimisation level, target environment and SPIR-V version are pinned explicitly**, on

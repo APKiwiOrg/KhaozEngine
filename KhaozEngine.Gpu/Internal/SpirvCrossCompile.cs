@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Silk.NET.SPIRV.Cross;
 
@@ -156,6 +157,7 @@ namespace KhaozEngine.Gpu.Internal
                 context = CreateContext(tag);
                 Compiler* vertex = CreateCompiler(context, vertexSpirv, backend, tag);
                 Compiler* fragment = CreateCompiler(context, fragmentSpirv, backend, tag);
+                RemapHlslRegisters(context, backend, tag, vertex, fragment);
                 return new CrossCompiledPair(Emit(context, vertex, tag), Emit(context, fragment, tag),
                     SpirvCrossReflect.ForPair(_cross, context, vertex, fragment, tag));
             }
@@ -178,6 +180,7 @@ namespace KhaozEngine.Gpu.Internal
             {
                 context = CreateContext(tag);
                 Compiler* compute = CreateCompiler(context, computeSpirv, backend, tag);
+                RemapHlslRegisters(context, backend, tag, compute);
                 return new CrossCompiledCompute(Emit(context, compute, tag),
                     SpirvCrossReflect.ForCompute(_cross, context, compute, tag));
             }
@@ -190,6 +193,31 @@ namespace KhaozEngine.Gpu.Internal
             {
                 if (context is not null) _cross.ContextDestroy(context);
             }
+        }
+
+        /// <summary>
+        /// THE STEP BETWEEN PARSING AND EMITTING, AND ONLY ON THE HLSL PATH. SPIRV-Cross would otherwise name
+        /// each resource's register with the module's raw <c>Binding</c> decoration, which the Direct3D 11
+        /// backend's own numbering does not match. <see cref="HlslRegisterRemap"/> holds the rule and the reason.
+        /// <para>
+        /// THE PROGRAM'S RESOURCES ARE READ ACROSS EVERY STAGE FIRST, then one numbering is installed on all of
+        /// them, so the two stages of a pair emit the same register for the same resource. Nothing happens on the
+        /// MSL path: the native Metal backend READS its indices out of the emitted MSL rather than agreeing with
+        /// them in advance, so a remap there would be a numbering nobody consults.
+        /// </para>
+        /// </summary>
+        static unsafe void RemapHlslRegisters(Context* context, Backend backend, string tag,
+            params Compiler*[] compilers)
+        {
+            if (backend != Backend.Hlsl) return;
+
+            var resources = new Dictionary<(uint Set, uint Binding), GpuResourceKind>();
+            foreach (Compiler* compiler in compilers)
+                SpirvCrossReflect.ReadResourceKinds(_cross, context, compiler, resources, tag);
+
+            HlslRegisterAssignment[] assignments = HlslRegisterRemap.Assign(resources);
+            foreach (Compiler* compiler in compilers)
+                HlslRegisterRemap.Install(_cross, context, compiler, assignments, tag);
         }
 
         static unsafe Context* CreateContext(string tag)

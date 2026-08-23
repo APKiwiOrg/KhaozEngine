@@ -885,6 +885,12 @@ one file rather than a second file, because the SPIRV-Cross replacement
 ([#462](https://github.com/APKiwiOrg/KhaozEngine/issues/462)) has to stay one seat. The two pins are separate
 because they freeze different option sets and drift independently.
 
+The HLSL half runs one step the MSL half does not: `Internal/HlslRegisterRemap` installs the register
+numbering the Direct3D 11 backend binds against, per `(stage, set, binding)`, between parsing and emitting.
+SPIRV-Cross on its own emits the module's raw `Binding` decoration as the register index, which is not that
+numbering, so 18.0.0 had to make explicit what `Veldrid.SPIRV` had been doing inside the library. Metal needs
+no equivalent: it READS its indices out of the emitted MSL rather than agreeing with them in advance.
+
 - `KhaozEngine.Gpu.D3D11` reaches both halves, because DXBC is a function of both.
 - `KhaozEngine.Gpu.Metal` reaches both halves too, and that is the Direct3D 11 shape rather than the Vulkan one:
   its sources are GLSL and Metal consumes MSL. It reaches one member more than its Direct3D 11 sibling,

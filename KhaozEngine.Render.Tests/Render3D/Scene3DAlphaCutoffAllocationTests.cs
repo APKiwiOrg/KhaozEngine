@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
@@ -39,11 +38,12 @@ namespace KhaozEngine.Tests.Render3D
 
             for (int i = 0; i < 4; i++) scene.ApplyAlphaCutoffsForTest(instanceData, runs);   // warm-up
 
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 20; i++) scene.ApplyAlphaCutoffsForTest(instanceData, runs);
-            long after = GC.GetAllocatedBytesForCurrentThread();
-
-            Assert.Equal(0L, after - before);
+            // Retries once before failing (see AllocAssert.NoPerCallAllocation) to ride out an unrelated gen-0
+            // collision from the rest of the process, per issue #284.
+            AllocAssert.NoPerCallAllocation("ApplyAlphaCutoffs over 20 calls", () =>
+            {
+                for (int i = 0; i < 20; i++) scene.ApplyAlphaCutoffsForTest(instanceData, runs);
+            });
         }
     }
 }

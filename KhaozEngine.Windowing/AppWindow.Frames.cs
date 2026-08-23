@@ -26,8 +26,8 @@ namespace KhaozEngine.Windowing
         /// documents still holds, and passing <c>null</c> for <paramref name="onPrepare"/> is exactly that overload.
         /// <para>
         /// Reach for it when something in the frame has to submit GPU work on a command list of its OWN: opening one
-        /// while the frame's list is recording is a device fault waiting to happen on Direct3D11 in immediate-context
-        /// mode (see <see cref="FramePhases"/> and
+        /// while the frame's list is recording is the nested recording the GPU seam refuses by name on every backend
+        /// (see <see cref="FramePhases"/> and
         /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/429">#429</see>). <c>GameApp</c> uses this
         /// overload, so a game on <c>GameApp</c> / <c>GameApp3D</c> already has the phase and needs no change.
         /// </para>
@@ -71,8 +71,8 @@ namespace KhaozEngine.Windowing
                 // present. Both callbacks always run, so update advances even on a render-suppressed frame.
                 FramePhases.Run(_frame, render, _device, _cl, ClearColor, onPrepare, record);
 
-                // Pace the loop to the plan's cap. Silk's own loop runs the callback as fast as the GPU allows (the
-                // Veldrid Metal present does not throttle the CPU), so idle here to hold the target cadence - the base
+                // Pace the loop to the plan's cap. Silk's own loop runs the callback as fast as the GPU allows (a
+                // Metal present does not throttle the CPU), so idle here to hold the target cadence - the base
                 // cap when focused, a low cap when unfocused, an idle rate when minimized. Rebuild the limiter only when
                 // the target Hz changes (a focus / minimize transition), so steady-state pacing keeps a stable anchor.
                 if (plan.CapHz != _paceHz) { _paceHz = plan.CapHz; _paceLimiter = new FrameLimiter(plan.CapHz); }

@@ -13,13 +13,23 @@ namespace KhaozEngine.Windowing
     /// recorded into the frame's list at all: a compute dispatch whose output another dispatch reads in the same
     /// frame has no dispatch-to-dispatch barrier at the GPU seam
     /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/311">#311</see>), so its only ordering is a submit
-    /// plus a device wait, which means a command list of its own. With Direct3D11 in immediate-context mode a command
-    /// list IS the device's immediate context and opening one calls <c>ClearState</c> on it, so opening a second list
-    /// while the frame's is recording wipes every binding the frame believes is live and the device faults a few
-    /// draws later (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/423">#423</see>). The headless hosts
-    /// could honour that on their own because they open the frame's list themselves. The windowed loop opened it
-    /// before calling back, so no host running on a window could
+    /// plus a device wait, which means a command list of its own. Opening one while the frame's list is recording is
+    /// what the seam's open-recording register refuses, so the work has nowhere to go inside the record phase. The
+    /// headless hosts could honour that on their own because they open the frame's list themselves. The windowed
+    /// loop opened it before calling back, so no host running on a window could
     /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/429">#429</see>).
+    /// </para>
+    /// <para>
+    /// <b>The phase OUTLIVED the leg that made it urgent, and that was decided rather than assumed</b>
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/690">#690</see>). It was built while the vendored
+    /// Veldrid Direct3D11 backend recorded straight onto the immediate context, where a second <c>Begin</c> ran
+    /// <c>ClearState</c> and silently corrupted the open recording
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/423">#423</see>), and the plan of record was to
+    /// retire it with that backend. Both reasons it actually rests on survived 18.0.0: #311's rule is a property of
+    /// this SEAM rather than of any backend (the seam has no barrier call, so a dependent dispatch chain still pays
+    /// End plus Submit plus a device wait), and the one-open-recording contract is still enforced for every engine
+    /// recording on every backend. Delete this phase and the ocean's priming pass has no legal place to run on a
+    /// windowed frame at all.
     /// </para>
     /// <para>
     /// It knows nothing about 3D, water, or what a producer is. It only guarantees WHEN the two callbacks run

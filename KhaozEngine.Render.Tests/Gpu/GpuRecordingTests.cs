@@ -12,9 +12,10 @@ namespace KhaozEngine.Tests.Gpu
     /// one-open-recording-per-device contract stopped being a paragraph and started being a refusal
     /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/424">#424</see>).
     /// <para>
-    /// Every assertion here is device-free on purpose. The fault it replaces reproduced on Direct3D11 in
-    /// immediate-context mode, on hardware the dev machine does not have, several draws after the call that
-    /// caused it, and never in an image. A rule that can only be checked there is a rule nobody checks.
+    /// Every assertion here is device-free on purpose. The fault it replaced reproduced on the deleted Veldrid
+    /// Direct3D11 leg's immediate-context mode, on hardware the dev machine does not have, several draws after
+    /// the call that caused it, and never in an image. A rule that can only be checked there is a rule nobody
+    /// checks, which is why the register outlived the leg (#690) and these tests do too.
     /// </para>
     /// </summary>
     public sealed class GpuRecordingTests

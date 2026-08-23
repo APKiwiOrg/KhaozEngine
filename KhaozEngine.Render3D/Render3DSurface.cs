@@ -41,12 +41,15 @@ namespace KhaozEngine.Render3D
         /// the call below no-ops (#429). A host driving a surface off a raw <see cref="AppWindow"/> should do the
         /// same: queue and prepare the scene in the <c>onPrepare</c> callback, and call this from <c>onFrame</c>.
         /// <b>A host that does not still nests</b>, because the call below then runs inside the frame's recording.
-        /// That residual is now a refusal on every backend rather than on one: a producer with GPU work of its own
-        /// opens its list through <see cref="Gpu.GpuRecording"/>, which sees the frame's own list already open and
-        /// throws <see cref="Gpu.GpuNestedRecordingException"/> naming the fix. The Veldrid fork's <c>4.9.103</c>
-        /// guardrail (vendored since 17.27.0) still catches its own leg one layer below. A loud, portable,
-        /// same-everywhere refusal instead of a picture that is silently right on the dev machine and corrupt on a
-        /// player's is the intended trade (#424).
+        /// That residual is a refusal on every backend: a producer with GPU work of its own opens its list through
+        /// <see cref="Gpu.GpuRecording"/>, which sees the frame's own list already open and throws
+        /// <see cref="Gpu.GpuNestedRecordingException"/> naming the fix. A loud, portable, same-everywhere refusal
+        /// instead of a picture that is silently right on the dev machine and corrupt on a player's is the intended
+        /// trade (#424).
+        /// <b>That refusal is now the whole of it</b>, decided rather than inherited (#690): the vendored Veldrid
+        /// fork's second-recorder guardrail used to catch its own leg one layer below this, and both the fork and
+        /// the leg were deleted in 18.0.0. Nothing sits under the seam any more, and nothing needs to: the register
+        /// refuses before a list is begun, so the host sees the same exception naming the same fix wherever it runs.
         /// </para></summary>
         public void Render(Frame frame)
         {

@@ -14,8 +14,17 @@ namespace KhaozEngine.Tests.Gpu
     /// THE SEVEN LATENT SITES OF <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/424">#424</see>, each
     /// driven from inside an open recording and each asserted to refuse by name. They were found by the #423
     /// root-cause investigation as SIBLINGS of the ocean prime: every one opens, submits and drains a command list
-    /// of its own, which is safe exactly as long as nobody calls it while a frame is recording, and silently
-    /// device-corrupting on the Direct3D11 immediate path the moment somebody does.
+    /// of its own, which is safe exactly as long as nobody calls it while a frame is recording, and was silently
+    /// device-corrupting on the deleted Veldrid Direct3D11 leg's immediate path the moment somebody did.
+    /// <para>
+    /// <b>The list retired with that leg. This class did not</b>
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/690">#690</see>). What the seven sites were as
+    /// OUTSTANDING WORK ended when the fix landed at the seam, and the hazard they stood for ended with the
+    /// backend that had it. What is left is the cheapest regression net in the suite: seven entry points that each
+    /// still open a list of their own, asserted to go through the register, with no GPU and in milliseconds. The
+    /// argument for keeping it is the one that keeps <see cref="OpenListTrackingGpuDevice"/>, and it is not an
+    /// argument that any backend is fragile.
+    /// </para>
     /// <para>
     /// The point of testing them together is that the fix is one seam and not seven patches. Each test below is the
     /// same two lines against a different entry point, which is only possible because they all open through

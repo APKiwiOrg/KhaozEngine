@@ -9,11 +9,19 @@ namespace KhaozEngine.Tests.Gpu
     /// while another one is recording? It wraps <see cref="FakeGpuDevice"/> (so nothing here touches a GPU),
     /// reports compute support, and hands out command lists that all share one open counter.
     /// <para>
-    /// That counter is the headless stand-in for a real device fault. With Direct3D11 in immediate-context mode a
-    /// command list IS the device's immediate context and <c>Begin</c> resets it, so a nested <c>Begin</c> silently
-    /// invalidates every binding the outer list believes is live and the device faults several draws later
+    /// That counter is the headless stand-in for a real device fault. On the deleted Veldrid Direct3D11 leg's
+    /// immediate-context mode a command list WAS the device's immediate context and <c>Begin</c> reset it, so a
+    /// nested <c>Begin</c> silently invalidated every binding the outer list believed was live and the device
+    /// faulted several draws later
     /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/423">#423</see>, and the latent sites in #424).
     /// The shape is cheap to assert on any machine, so it is asserted here rather than left to a WARP CI leg.
+    /// </para>
+    /// <para>
+    /// <b>It stays after that leg's deletion</b>
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/690">#690</see>). The three native backends all
+    /// pass it trivially, which is a reason it costs nothing and not a reason it is pointless: the question it
+    /// answers is the SEAM's rule, not one backend's tolerance, and the engine still has to keep answering it.
+    /// Read a pass here as "nothing nested", never as evidence about any backend.
     /// </para>
     /// </summary>
     internal sealed class OpenListTrackingGpuDevice : IGpuDevice

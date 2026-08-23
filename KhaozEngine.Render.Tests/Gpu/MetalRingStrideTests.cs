@@ -46,7 +46,7 @@ namespace KhaozEngine.Tests.Gpu
         public void TheStrideIsTheSizeRoundedUpTo256(uint sizeInBytes, uint expected)
             => Assert.Equal(expected, MetalRingStride.SegmentStrideFor(sizeInBytes));
 
-        /// <summary>A FLAT FLOOR, not a maximum against the device (M-M3). The incumbent reports 16 on macOS and
+        /// <summary>A FLAT FLOOR, not a maximum against the device (M-M3). The incumbent reported 16 on macOS and
         /// a device-derived stride would pack tighter, which is exactly the tradeoff the design declines: one
         /// number governing all three rings is what lets one shared policy test assert it, and a device-shaped
         /// number under a golden-bearing path is what it refuses to buy the memory with.</summary>

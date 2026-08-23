@@ -10,8 +10,8 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// DECISION M-G5: <c>MetalFrameCapture</c> takes the native backend's command-queue POINTER instead of
-    /// reflecting into Veldrid's private <c>_commandQueue</c> field, and the reflection that survives for the
-    /// Veldrid Metal leg is its own named thing that a test can ask about directly.
+    /// reflecting into Veldrid's private <c>_commandQueue</c> field, and the reflection that survived for the
+    /// Veldrid Metal leg was its own named thing a test could ask about directly.
     ///
     /// <para><b>WHAT WAS ACTUALLY WRONG WITH THE OLD SHAPE.</b> It was not that reflection is distasteful. It is
     /// that the reflection's failure mode is a silent one: a Veldrid field rename returns zero, the capture is

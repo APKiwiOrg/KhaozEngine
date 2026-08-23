@@ -161,7 +161,7 @@ void main() { o = vec4(0.0, 1.0, 0.0, 1.0); }";
 
                 // Declared empty rather than dropped, and bound below: the native Metal backend requires the
                 // declared layout array to be the same shape as the reflection, and Veldrid's Metal backend
-                // dereferences a null at the draw when a declared layout has no set bound. Both halves are the
+                // dereferenced a null at the draw when a declared layout had no set bound. Both halves are the
                 // same requirement GpuDeviceSmokeTests documents at length.
                 ResourceLayouts = new[] { layout },
                 Outputs = fb.Outputs,

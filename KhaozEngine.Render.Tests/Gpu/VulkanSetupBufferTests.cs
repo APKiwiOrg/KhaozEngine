@@ -17,7 +17,7 @@ namespace KhaozEngine.Tests.Gpu
     {
         /// <summary>
         /// NOTHING IS SUBMITTED UNTIL SOMETHING FLUSHES, and the ratio is what V-M10 is about: many appends, one
-        /// submit. The incumbent's ratio is one submit per texture.
+        /// submit. The incumbent's ratio was one submit per texture.
         /// </summary>
         [Fact]
         public void ManyAppends_FlushAsOneSubmit()
@@ -270,7 +270,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// A DEVICE-LEVEL BUFFER UPLOAD IS A STAGED COPY BRACKETED BY TWO NARROWED BARRIERS. The narrowing is
-        /// <see cref="VulkanUploadBarrier"/>'s: the incumbent emits one global <c>VkMemoryBarrier</c> whose
+        /// <see cref="VulkanUploadBarrier"/>'s: the incumbent emitted one global <c>VkMemoryBarrier</c> whose
         /// destination is a vertex-attribute read whatever the buffer really is, so an index buffer and a storage
         /// buffer are both synchronised as though they were vertex attributes.
         /// <para>

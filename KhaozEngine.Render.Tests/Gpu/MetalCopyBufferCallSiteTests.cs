@@ -18,7 +18,7 @@ namespace KhaozEngine.Tests.Gpu
     ///
     /// <para><b>THE THROW IS A DELIBERATE HOLE AND THIS IS WHAT SAYS THE HOLE IS EMPTY.</b> macOS requires both
     /// offsets of <c>copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:</c> to be multiples of four.
-    /// The incumbent routes an unaligned copy through an embedded compute shader driven by a dedicated compute
+    /// The incumbent routed an unaligned copy through an embedded compute shader driven by a dedicated compute
     /// pipeline, and shipping a second metallib plus a second pipeline for a case no consumer produces is the
     /// unreachable-code reproduction G1 declined once already. That decision is only safe while the refusal stays
     /// unreachable, and "stays" is the word a test has to carry: the day someone adds a call site with a computed

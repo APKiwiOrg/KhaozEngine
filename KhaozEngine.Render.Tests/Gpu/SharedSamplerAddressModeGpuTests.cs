@@ -19,7 +19,7 @@ namespace KhaozEngine.Tests.Gpu
     ///
     /// <para><b>Why it is worth a device.</b> This is exactly what the native Direct3D 11 backend got wrong: it
     /// built its shared pair from the engine's <c>GpuSamplerDescription.Point</c> / <c>.Linear</c> statics, which
-    /// are documented CLAMP on every axis, where the incumbent's pair comes from Veldrid's identically named
+    /// are documented CLAMP on every axis, where the incumbent's pair came from Veldrid's identically named
     /// built-ins, which are WRAP. Nothing throws, nothing logs, and the only witnesses were two goldens on CI run
     /// 30963173087 (<c>scene3d_texbillboard</c> worst 0.393, <c>scene3d_particles_flipbook</c> worst 0.359). This
     /// test fails on the pre-fix native backend and passes on Metal, Vulkan and both Direct3D 11 paths, because

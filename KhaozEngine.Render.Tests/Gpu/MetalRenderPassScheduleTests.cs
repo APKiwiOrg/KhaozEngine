@@ -79,7 +79,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// M-A2, AND THE WHOLE REASON THIS ROW EXISTS. Three attachments cleared to three colours produce three
-        /// <c>loadAction = Clear</c> entries with three DIFFERENT values, where the incumbent writes all three
+        /// <c>loadAction = Clear</c> entries with three DIFFERENT values, where the incumbent wrote all three
         /// into slot 0 and leaves attachments 1 and 2 loading a texture nothing has written.
         /// </summary>
         [Fact]
@@ -158,7 +158,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// A CLEAR THAT ARRIVES AFTER THE PASS OPENED ENDS IT AND GOES BACK ON THE PENDING ARRAY. Metal has no
-        /// clear COMMAND, so there is no cheaper shape available, and this is exactly what the incumbent forces
+        /// clear COMMAND, so there is no cheaper shape available, and this is exactly what the incumbent forced
         /// through <c>EnsureNoRenderPass</c> in its own <c>ClearColorTargetCore</c>. The cost is an encoder
         /// boundary, which M-T2's budget counts.
         /// </summary>
@@ -262,7 +262,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// M-A3, FORCING SITE ONE OF TWO: <c>End</c>. A framebuffer plus a clear plus no draw must still CLEAR,
-        /// which under a deferred begin is a begin and end pair with nothing between them. The incumbent forces
+        /// which under a deferred begin is a begin and end pair with nothing between them. The incumbent forced
         /// exactly this and a golden depends on it.
         /// </summary>
         [Fact]
@@ -460,7 +460,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// AND A GATED-OUT RECTANGLE STAYS OWED, which is the half of the gate that is easy to get wrong in the
-        /// other direction. The incumbent clears its own flag INSIDE the enabled branch, so the next pipeline
+        /// other direction. The incumbent cleared its own flag INSIDE the enabled branch, so the next pipeline
         /// with the test on receives the rectangle it should have had.
         /// </summary>
         [Fact]
@@ -485,7 +485,7 @@ namespace KhaozEngine.Tests.Gpu
         /// stays emitted across a pipeline switch, whatever the new pipeline's gate says, because the owed-ness
         /// is carried by the encoder stamp and nothing about a pipeline change invalidates encoder state. Marking
         /// here would re-emit an identical rectangle on every draw that follows a <c>SetPipeline</c>, which is a
-        /// per-draw native call the incumbent does not make.
+        /// per-draw native call the incumbent did not make.
         /// </summary>
         [Fact]
         public void EnablingTheScissorTestAfterAnEmissionDoesNotOweTheRectangleAgain()

@@ -380,7 +380,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// EVERY PIPELINE IS COMPILED THROUGH THE DEVICE'S ONE <c>VkPipelineCache</c> (V-S7). The incumbent passes
+        /// EVERY PIPELINE IS COMPILED THROUGH THE DEVICE'S ONE <c>VkPipelineCache</c> (V-S7). The incumbent passed
         /// <c>VkPipelineCache.Null</c> at BOTH creation sites, so every launch recompiles every pipeline from
         /// SPIR-V, and asserting the handle here is what stops that being reintroduced by an edit to one of the
         /// two call sites.

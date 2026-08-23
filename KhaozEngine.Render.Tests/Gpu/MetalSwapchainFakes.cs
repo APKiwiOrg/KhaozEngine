@@ -9,7 +9,7 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// THE FAKE <see cref="IMetalSwapchainApi"/> EVERY DEVICE-FREE SWAPCHAIN ROW DRIVES, and the thing that makes
-    /// M-W4 to M-W7 assertable at all. MM7 records that the incumbent's swapchain has ZERO automated coverage
+    /// M-W4 to M-W7 assertable at all. MM7 records that the incumbent's swapchain had ZERO automated coverage
     /// anywhere in the net, and the reason is that a headless runner has no window and no display. This fake
     /// removes the display from the question: what is left is the ORDER of a present boundary, the skipped
     /// present, the orphan target, the counters and the coalescing, and every one of those is a decision.

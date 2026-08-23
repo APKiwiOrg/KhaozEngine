@@ -341,7 +341,7 @@ namespace KhaozEngine.Tests.Gpu
                 VulkanInstanceLayout.HeadlessInstanceExtensions((VulkanValidationMode)mode);
 
             Assert.Equal(new[] { "VK_EXT_debug_utils" }, extensions);
-            // NEVER the deprecated one. The incumbent uses VK_EXT_debug_report, which has been deprecated for six
+            // NEVER the deprecated one. The incumbent used VK_EXT_debug_report, which has been deprecated for six
             // years, and this row's whole departure from it is the newer extension.
             Assert.DoesNotContain("VK_EXT_debug_report", extensions);
         }
@@ -379,7 +379,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// ONE layer, only under the knob. The incumbent additionally requests
+        /// ONE layer, only under the knob. The incumbent additionally requested
         /// <c>VK_LAYER_LUNARG_standard_validation</c>, removed from the SDK in 2020, which a modern loader answers
         /// by failing instance creation outright.
         /// </summary>

@@ -11,7 +11,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <c>KE_D3D11_REAL_DRAIN</c> kill switch that restores the no-op, and the per-frame counters that are the
     /// M2 measurement.
     /// <para>
-    /// WHY THIS IS A CHANGE AT ALL. Veldrid's <c>WaitForIdleCore</c> on Direct3D 11 is an empty method body, so
+    /// WHY THIS IS A CHANGE AT ALL. Veldrid's <c>WaitForIdleCore</c> on Direct3D 11 was an empty method body, so
     /// every drain in the engine currently does nothing there, including one half of the only ordering guarantee
     /// the seam offers. It has never caused a known bug, because Direct3D 11 tracks hazards itself, but a
     /// primitive that does nothing on one backend makes the seam's guarantees backend-dependent in an
@@ -101,7 +101,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// THE KILL SWITCH. With the drain off the call returns without signalling, without polling and without
-        /// counting, which is the empty body the Veldrid Direct3D 11 path has always had. Not counting is
+        /// counting, which is the empty body the Veldrid Direct3D 11 path always had. Not counting is
         /// deliberate: counting them would report a run with the switch down as having drained a few hundred
         /// times for zero milliseconds, which reads as a drain that costs nothing rather than as a drain that
         /// never ran.

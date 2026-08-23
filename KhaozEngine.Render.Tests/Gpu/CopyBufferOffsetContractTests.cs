@@ -17,18 +17,19 @@ namespace KhaozEngine.Tests.Gpu
     /// happens to be running on.
     ///
     /// <para><b>WHY THIS IS ONE FILE RATHER THAN A ROW IN EACH BACKEND'S OWN SUITE.</b> The claim is not "Metal
-    /// refuses" or "Vulkan refuses". It is that the FOUR AGREE, and a claim about agreement can only be asserted
-    /// where the four are side by side. Each backend's own transfer suite still owns everything else about its
+    /// refuses" or "Vulkan refuses". It is that the backends AGREE, and a claim about agreement can only be
+    /// asserted where they are side by side. Each backend's own transfer suite still owns everything else about its
     /// copy, and <c>MetalTransferPathTests</c> keeps the two rows that pin the side-naming, because naming the
     /// wrong end sends a caller to inspect the buffer that was fine.</para>
     ///
-    /// <para><b>THE INCUMBENT IS IN THE TABLE ON PURPOSE, AND THAT IS THE PART WITH A SHELF LIFE.</b> Veldrid,
+    /// <para><b>THE INCUMBENT WAS IN THE TABLE ON PURPOSE, AND THAT WAS THE PART WITH A SHELF LIFE.</b> Veldrid,
     /// native Vulkan and native Direct3D 11 all TOOK an unaligned offset before this landed, and only native
     /// Metal refused, because macOS requires the alignment of
     /// <c>copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:</c>. Tightening the seam instead of
     /// loosening Metal is the direction that cannot silently return the wrong bytes, and doing it while the
-    /// incumbent is still here is what makes a green suite evidence that nothing in the engine ever leaned on
-    /// the tolerant behaviour. When the incumbent goes, its two rows go with it and the other three stay.</para>
+    /// incumbent was still here is what made a green suite evidence that nothing in the engine ever leaned on
+    /// the tolerant behaviour. The incumbent went in 18.0.0 and took its two rows with it, and the rest
+    /// stay.</para>
     ///
     /// <para><b>WHAT A RED RUN MEANS.</b> Either a backend stopped enforcing the rule, or one of them started
     /// wording its refusal differently, or the rule stopped being four bytes on one side of the seam and not the
@@ -121,8 +122,8 @@ namespace KhaozEngine.Tests.Gpu
         /// AND THE SMALLEST ALIGNED OFFSET IS STILL TAKEN, on each of the three backends whose copy can be
         /// recorded without a device. The refusal is a four-byte rule and not a rounding to something wider, so a
         /// guard that hardened into "only zero" or "only a multiple of sixteen" is red here rather than
-        /// discovered by a consumer. The incumbent's accept side needs a real
-        /// <c>Veldrid.CommandList</c> under it and is covered by <c>CopyBufferOffsetGpuTests</c> on the two
+        /// discovered by a consumer. The incumbent's accept side needed a real
+        /// <c>Veldrid.CommandList</c> under it and was covered by <c>CopyBufferOffsetGpuTests</c> on the two
         /// incumbent CI legs.
         /// </summary>
         [Fact]

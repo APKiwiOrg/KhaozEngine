@@ -282,7 +282,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains(GoldenCompare.FamilyOverrideEnvVar, refusal);
         }
 
-        // That the incumbent still bakes as it always did is the other half of this row, and it is not asserted
+        // That the incumbent still baked as it always did is the other half of this row, and it is not asserted
         // here: GpuBackendKindAppendAuditTests.Baking_IsAllowedOnEveryBackendThatOwnsItsFamily already walks all
         // SEVEN owning backends since 17.41.0, Vulkan and VulkanNative among them, which is the stronger form of
         // the same claim.
@@ -370,7 +370,7 @@ namespace KhaozEngine.Tests.Gpu
         // provider registry generically, or a Vulkan wiring fault reads as a Direct3D 11 one. ---
 
         /// <summary>
-        /// The native kind never reaches the Veldrid creation switch, because every entry into that path branches
+        /// The native kind never reached the Veldrid creation switch, because every entry into that path branches
         /// on <see cref="GpuBackendProviders.RequiresProvider"/> first. With nothing registered the observable
         /// outcome is the provider-missing exception naming the one line that fixes it.
         /// </summary>
@@ -443,9 +443,9 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// The native kind is OFFERED now, because it is what "Vulkan" means on Linux from this release.
         /// Asserted with the provider registered and reporting SUPPORTED, since the offered list is probed and
-        /// an unregistered kind answers no. What is still NOT asserted is that the incumbent is present:
-        /// whether Veldrid Vulkan is offered is a fact about the machine (a developer Mac has no loader and
-        /// answers no), and pinning it here would be pinning the runner rather than the candidate list.
+        /// an unregistered kind answers no. What was never asserted is that the incumbent was present:
+        /// whether Veldrid Vulkan was offered was a fact about the machine (a developer Mac had no loader and
+        /// answered no), and pinning it here would have been pinning the runner rather than the candidate list.
         /// </summary>
         [Fact]
         public void SupportedBackends_OffersTheNativeKind_ToAPlayer()

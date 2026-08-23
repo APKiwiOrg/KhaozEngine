@@ -10,7 +10,7 @@ namespace KhaozEngine.Tests.Gpu
     // VUID-vkQueueWaitIdle-queue-parameter), and mode 4, the wrapper's Dispose forwarded to the Veldrid
     // resource destroy against the destroyed device (the loader aborts vkDestroyImage,
     // VUID-vkDestroyImage-device-parameter). GpuDeviceContext.Dispose now flips a shared DeviceLiveness
-    // token inside the lifecycle gate: WaitForIdle after device death is a safe no-op, and every VeldridGpu*
+    // token inside the lifecycle gate: WaitForIdle after device death is a safe no-op, and every
     // resource wrapper skips its underlying destroy once the device is dead (device destruction already
     // freed all child objects). The spy sits ABOVE the latch, so it records that the drain was attempted
     // while the latch keeps it from reaching the dead device.

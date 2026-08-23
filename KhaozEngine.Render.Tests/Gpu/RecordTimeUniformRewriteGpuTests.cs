@@ -35,7 +35,7 @@ namespace KhaozEngine.Tests.Gpu
     /// change that has to be noticed, not a bug that got fixed.</para>
     ///
     /// <para><b>THE INCUMBENT IS RECORDED BESIDE IT AND NOT ASSERTED</b>, the trade
-    /// <see cref="MetalTwoUniformBufferGpuTests"/> already makes: what the Veldrid Metal leg does with the same
+    /// <see cref="MetalTwoUniformBufferGpuTests"/> already makes: what the Veldrid Metal leg did with the same
     /// list is the other half of the audit's evidence, and a row that fails the day somebody else changes it
     /// would be a failing suite reporting news rather than a regression.</para>
     ///
@@ -84,8 +84,8 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(Blue, first);
         }
 
-        // THE CONTROL. Recorded, never asserted: the Veldrid Metal leg is the OTHER shipped backend on this
-        // machine, and what it does with the same list is evidence the audit cites rather than a contract this
+        // THE CONTROL. Recorded, never asserted: the Veldrid Metal leg was the OTHER shipped backend on this
+        // machine, and what it did with the same list was evidence the audit cites rather than a contract this
         // repository owns.
         void RecordIncumbent()
         {

@@ -15,9 +15,9 @@ namespace KhaozEngine.Tests.Gpu
     /// the seam that exists so a number can be asserted about an EMISSION rather than about what a recorder
     /// reports. Work-breakdown row 13 (https://github.com/APKiwiOrg/KhaozEngine/issues/579).
     ///
-    /// <para><b>THESE ARE REGRESSION TARGETS AND NOT PARITY TARGETS.</b> The incumbent emits one call per
+    /// <para><b>THESE ARE REGRESSION TARGETS AND NOT PARITY TARGETS.</b> The incumbent emitted one call per
     /// resource per stage and re-binds every vertex stream on every draw unconditionally, so every number here is
-    /// strictly lower than what the Veldrid Metal leg pays. Freezing the lower number is what makes a future
+    /// strictly lower than what the Veldrid Metal leg paid. Freezing the lower number is what makes a future
     /// change that reintroduces the fan-out a red test rather than an invisible cost, which is the whole reason
     /// the seam is shaped around call CLASSES rather than around a recorder's own bookkeeping.</para>
     ///
@@ -128,7 +128,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// THE VERTEX-STREAM MARGINAL, WHICH IS THE ONE STATED AS A REGRESSION TARGET IN THE DESIGN'S OWN WORDS.
-        /// The incumbent pays one <c>setVertexBuffer</c> per stream per draw unconditionally, because its cache
+        /// The incumbent paid one <c>setVertexBuffer</c> per stream per draw unconditionally, because its cache
         /// is permanently cold. Here two streams cost ONE array call on the draw that binds them and ZERO on
         /// every draw after.
         /// </summary>

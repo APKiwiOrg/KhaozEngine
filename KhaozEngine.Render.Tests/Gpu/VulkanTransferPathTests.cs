@@ -29,7 +29,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// A BUFFER COPY IS A BARRIER, THE COPY, AND A BARRIER, in that order. A <c>VkBuffer</c> has no layout, so
         /// nothing the layout tracker does orders this copy against the dispatch that wrote its source or the
-        /// draw that reads its destination. The incumbent emits ONE barrier, after the copy, naming
+        /// draw that reads its destination. The incumbent emitted ONE barrier, after the copy, naming
         /// <c>VERTEX_INPUT</c> and <c>VERTEX_ATTRIBUTE_READ</c> and nothing else, which orders one consumer and
         /// nothing on the source side at all.
         /// </summary>
@@ -62,7 +62,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>Both barrier shapes name both stage masks and both access masks explicitly (V-F6), and the
-        /// source side of the FIRST is what the incumbent leaves out entirely.</summary>
+        /// source side of the FIRST is what the incumbent left out entirely.</summary>
         [Fact]
         public void TheBufferCopyBarriers_NameEveryMaskInBothDirections()
         {

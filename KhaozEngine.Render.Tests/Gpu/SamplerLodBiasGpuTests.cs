@@ -4,7 +4,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu
 {
     // The terrain sampler uses anisotropy + a positive mip LOD bias to tame distance/grazing "fuzz" on a noisy
-    // tiling albedo. LOD bias is a D3D11 / Vulkan feature; Metal's sampler has none and Veldrid THROWS on a
+    // tiling albedo. LOD bias is a D3D11 / Vulkan feature; Metal's sampler has none and Veldrid THREW on a
     // non-zero bias, so CreateSampler must feature-guard it to 0 there. This proves the sampler builds on every
     // backend (no throw) whether or not bias is supported - CI runs it on D3D11 + Vulkan (bias applied) and Metal
     // (bias dropped to 0), which is exactly the fallback we rely on.

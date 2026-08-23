@@ -238,7 +238,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// A FRAME LOOP DOES NOT ALLOCATE A STAGING BLOCK PER UPLOAD, which is the cost M-M8 exists to remove:
-        /// the incumbent allocates and releases a whole <c>MTLBuffer</c> per record-time <c>UpdateBuffer</c> and
+        /// the incumbent allocated and released a whole <c>MTLBuffer</c> per record-time <c>UpdateBuffer</c> and
         /// its own source carries a TODO asking for them to be pooled. The block count staying flat across many
         /// frames is the whole reading.
         /// </summary>

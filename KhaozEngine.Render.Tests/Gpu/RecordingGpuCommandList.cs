@@ -34,7 +34,7 @@ namespace KhaozEngine.Tests.Gpu
             int DrawsBefore = 0)
         {
             /// <summary>Whether this write covers the destination from offset 0 to its end. That is the only shape
-            /// Veldrid's D3D11 backend sends down the cheap <c>UpdateSubresource</c> path for a uniform buffer;
+            /// Veldrid's D3D11 backend sent down the cheap <c>UpdateSubresource</c> path for a uniform buffer;
             /// anything narrower is a staging round trip that Maps the immediate context and waits on the GPU.</summary>
             public bool IsWholeBuffer => Offset == 0 && Bytes == Buffer.SizeInBytes;
         }

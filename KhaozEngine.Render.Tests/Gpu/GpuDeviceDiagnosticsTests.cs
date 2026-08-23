@@ -73,7 +73,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>The member was APPENDED with a default implementation, so every existing
         /// <see cref="IGpuDevice"/> kept compiling, and the default is the honest one: no answers. The Veldrid
-        /// path takes it, which is correct rather than a gap, since Veldrid exposes neither the DXGI adapter flag
+        /// path took it, which was correct rather than a gap, since Veldrid exposes neither the DXGI adapter flag
         /// nor a device-removal reason.</summary>
         [Fact]
         public void ADeviceThatDoesNotOverrideTheMemberReportsNoAnswers()

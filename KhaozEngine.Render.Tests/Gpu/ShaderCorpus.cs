@@ -21,7 +21,7 @@ namespace KhaozEngine.Tests.Gpu
     /// because it has to be. Section 2.3 result 4 of
     /// <c>docs/design/VELDRID-REMOVAL-DESIGN-2026-08-22.md</c> measured that <c>Veldrid.SPIRV</c> and
     /// <c>Silk.NET.Shaderc</c> CORRUPT EACH OTHER when both are loaded: both statically link glslang and
-    /// SPIRV-Tools, the second one loaded interposes on the first, and the incumbent then reads shuffle operands
+    /// SPIRV-Tools, the second one loaded interposes on the first, and the incumbent then read shuffle operands
     /// out of executable memory or aborts. So the obvious instrument, a test asserting that the new toolchain
     /// equals the old, is poisoned by its own existence and cannot be written at all.
     /// <para>

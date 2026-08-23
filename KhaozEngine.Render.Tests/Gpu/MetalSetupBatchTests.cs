@@ -25,7 +25,7 @@ namespace KhaozEngine.Tests.Gpu
         public MetalSetupBatchTests(ITestOutputHelper output) => _output = output;
 
         /// <summary>
-        /// M-M9's CLAIM, device-free: many uploads, one batch, one commit. The incumbent's equivalent is one whole
+        /// M-M9's CLAIM, device-free: many uploads, one batch, one commit. The incumbent's equivalent was one whole
         /// queue submit per upload.
         /// </summary>
         [Fact]

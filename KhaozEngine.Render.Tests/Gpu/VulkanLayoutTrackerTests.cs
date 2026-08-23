@@ -689,7 +689,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// TWO LISTS TOUCHING ONE TEXTURE CANNOT DISAGREE, WHICH IS THE WHOLE RULING (V-F7, section 2.5). Nothing
         /// shared is read or written during recording, so each list assumes rest, transitions, and restores,
-        /// independently and in either submit order. The incumbent tracks the layout ON the texture instead, and
+        /// independently and in either submit order. The incumbent tracked the layout ON the texture instead, and
         /// the loser of that race records either a redundant barrier or NO BARRIER FOR A TRANSITION IT NEEDED,
         /// which is a corruption no golden on a software rasterizer will show.
         /// <para>

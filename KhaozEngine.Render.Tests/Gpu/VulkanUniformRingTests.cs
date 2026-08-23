@@ -49,7 +49,7 @@ namespace KhaozEngine.Tests.Gpu
         /// uniform descriptor carries the ring's per-frame base, so the other bind would read segment zero while
         /// the uniform read read segment N.
         /// <para>
-        /// This combination is ACCEPTED by <see cref="GpuBackendKind.Vulkan"/>, the Veldrid leg, which is what
+        /// This combination was ACCEPTED by <see cref="GpuBackendKind.Vulkan"/>, the Veldrid leg, which is what
         /// makes it a DIVERGENCE rather than a bug fix, and the message has to name that: a consumer meeting this
         /// has working code on the other Vulkan backend and no other way to find out why this one refuses it.
         /// </para>

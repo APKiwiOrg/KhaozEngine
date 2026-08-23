@@ -38,7 +38,7 @@ namespace KhaozEngine.Tests.Gpu
     /// levels and 3 layers), which is where a mip offset and a layer pitch can disagree.</para>
     ///
     /// <para><b>DEVICE-FREE, so it runs on every <c>dotnet test</c> on every leg</b>, which is the point: the
-    /// arithmetic is software on both sides, so agreeing with the incumbent is a statement about code rather than
+    /// arithmetic is software on both sides, so agreeing with the incumbent was a statement about code rather than
     /// about a driver, and it is checkable on the Linux and Windows legs where there is no Metal at all.</para>
     /// </summary>
     public sealed class MetalStagingLayoutTableTests
@@ -53,7 +53,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <param name="Height">Mip 0 height.</param>
         /// <param name="MipLevels">Mip level count.</param>
         /// <param name="ArrayLayers">Array layer count.</param>
-        /// <param name="TotalBytes">What the incumbent allocates the whole staging <c>MTLBuffer</c> at.</param>
+        /// <param name="TotalBytes">What the incumbent allocated the whole staging <c>MTLBuffer</c> at.</param>
         /// <param name="MipLevel">Which mip level this row's layout is for.</param>
         /// <param name="ArrayLayer">Which array layer.</param>
         /// <param name="Offset">The subresource's byte offset from the buffer's first byte.</param>

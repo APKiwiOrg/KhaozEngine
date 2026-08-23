@@ -36,7 +36,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// A CLEAR RECORDED BEFORE THE FIRST DRAW FOLDS INTO <c>loadOp = CLEAR</c> AND COSTS NO CALL, which is the
-        /// whole reason the begin is deferred. The incumbent takes a <c>vkCmdClearAttachments</c> for the same
+        /// whole reason the begin is deferred. The incumbent took a <c>vkCmdClearAttachments</c> for the same
         /// sequence, because its begin is not deferred and the clear therefore always arrives inside an open pass.
         /// </summary>
         [Fact]
@@ -126,7 +126,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// THE CLEAR-ONLY PASS STILL CLEARS, THROUGH A BEGIN AND END PAIR WITH NO DRAWS. <c>SetFramebuffer</c>
-        /// plus a clear plus <c>End</c> is a shape the incumbent forces at two sites and a golden depends on, and
+        /// plus a clear plus <c>End</c> is a shape the incumbent forced at two sites and a golden depends on, and
         /// it is the ONE place a deferred begin needs an explicit flush rather than falling out of the schedule.
         /// </summary>
         [Fact]
@@ -290,7 +290,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// THE EMITTED VIEWPORT HEIGHT IS NEGATIVE AND ITS ORIGIN IS SHIFTED DOWN BY THE HEIGHT. That pair is what
-        /// makes Vulkan's clip space match Direct3D's, which is why the incumbent reports
+        /// makes Vulkan's clip space match Direct3D's, which is why the incumbent reported
         /// <c>ClipSpaceYInverted = false</c> and why <c>GpuClip.Correct</c> is the identity on this backend: every
         /// matrix the engine builds assumes the flip already happened here.
         /// <para>

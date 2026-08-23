@@ -383,7 +383,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// The context owns a provider-built device exactly as it owns a Veldrid one, so disposing the context is
+        /// The context owns a provider-built device exactly as it owned a Veldrid one, so disposing the context is
         /// what destroys it. A provider path that left the device alive would leak a real D3D11 device per created
         /// context.
         /// </summary>
@@ -419,7 +419,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// A creation failure on an explicitly named backend propagates rather than becoming a different backend,
-        /// which is the same contract the explicit-backend Veldrid overload has.
+        /// which is the same contract the explicit-backend Veldrid overload had.
         /// </summary>
         [Fact]
         public void CreateForWindow_PropagatesAProviderFailure_WhenTheBackendWasNamedOutright()

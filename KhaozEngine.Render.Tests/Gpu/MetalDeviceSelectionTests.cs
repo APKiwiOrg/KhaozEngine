@@ -12,7 +12,7 @@ namespace KhaozEngine.Tests.Gpu
     /// THE ONE SHAPE DIFFERENCE FROM THE VULKAN SIBLING IS THE DEFAULT, and it is worth stating here because it
     /// is what the rows below do NOT test. An unset variable takes <c>MTLCreateSystemDefaultDevice()</c> rather
     /// than element zero of the enumeration, so <see cref="MetalDeviceSelection.Choose"/> is only ever reached on
-    /// the enumerated path. That is not an optimisation: the incumbent calls that function, section 14 compares
+    /// the enumerated path. That is not an optimisation: the incumbent called that function, section 14 compares
     /// <c>DeviceName</c> under a zero-permitted-difference bar, and taking the array's first element instead
     /// would swap the GPU underneath the one gate that has to isolate the backend swap.
     /// </para>
@@ -213,7 +213,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// A SELECTION AND A SUBSTITUTION READ DIFFERENTLY, which is the whole reason M-N1 asks for the line at
-        /// all. A soak session comparing this backend against the incumbent has to tell "this run chose device 1"
+        /// all. A soak session comparing this backend against the incumbent had to tell "this run chose device 1"
         /// from "the request could not be honoured and device 0 was used", because those are different machines
         /// from the measurement's point of view.
         /// </summary>
@@ -245,7 +245,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// The default path names the lever, because a session log that never mentions a variable is a session
-        /// log in which nobody discovers it exists. It also says the incumbent uses the same device, which is the
+        /// log in which nobody discovers it exists. It also says the incumbent used the same device, which is the
         /// sentence that makes a capability comparison meaningful.
         /// </summary>
         [Fact]

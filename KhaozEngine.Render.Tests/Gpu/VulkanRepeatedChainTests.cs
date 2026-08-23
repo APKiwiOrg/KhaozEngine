@@ -24,7 +24,7 @@ namespace KhaozEngine.Tests.Gpu
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/623).</para>
     ///
     /// <para><b>WHY NO OTHER LEG SAW IT.</b> The refusal is this backend's own bookkeeping rather than anything
-    /// the driver reports, so the incumbent Veldrid Vulkan leg passes these same rows on the same lavapipe, and
+    /// the driver reports, so the incumbent Veldrid Vulkan leg passed these same rows on the same lavapipe, and
     /// Metal and Direct3D 11 never reach this code at all. That is the guest-leg design working: a defect in the
     /// engine's own Vulkan backend, found by running the incumbent's golden family against it.</para>
     /// </summary>

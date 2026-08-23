@@ -399,7 +399,7 @@ namespace KhaozEngine.Tests.Gpu
         /// THE FOUR VALUES THE SEAM DOES NOT EXPOSE ARE THE INCUMBENT'S, because the committed goldens were baked
         /// through them: no comparison sampler, a minimum LOD of 0, a maximum LOD of <c>uint.MaxValue</c> and a
         /// transparent-black border. The maximum LOD is asserted as the widened <c>uint.MaxValue</c> rather than as
-        /// a round number, because that widening is what the engine's Veldrid path passes and what reaches
+        /// a round number, because that widening is what the engine's Veldrid path passed and what reaches
         /// <c>VkSamplerCreateInfo.maxLod</c> there.
         /// </summary>
         [Fact]
@@ -415,7 +415,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// THE ANISOTROPY DEGRADATION IS LIVE HERE, unlike on the Direct3D 11 backend where it was unreachable. The
-        /// engine's Veldrid path falls back from anisotropic filtering to trilinear on a device without
+        /// engine's Veldrid path fell back from anisotropic filtering to trilinear on a device without
         /// <c>samplerAnisotropy</c> and drops the maximum anisotropy with it, and lavapipe is exactly such a
         /// device: it is the rasterizer the golden gate runs on. Asking for <c>anisotropyEnable</c> without the
         /// feature is <c>VUID-VkSamplerCreateInfo-anisotropyEnable-01070</c> rather than a slow path.
@@ -438,7 +438,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// THE LOD BIAS IS NEVER DROPPED, which is the OTHER degradation the Veldrid path carries and the one that
+        /// THE LOD BIAS IS NEVER DROPPED, which is the OTHER degradation the Veldrid path carried and the one that
         /// really is unreachable here. It exists because Metal's sampler has no bias at all. <c>mipLodBias</c> is
         /// core Vulkan with no feature bit in front of it, and this backend's capability read answers true
         /// unconditionally, so a branch dropping it could never be taken and would be a branch nothing can test.

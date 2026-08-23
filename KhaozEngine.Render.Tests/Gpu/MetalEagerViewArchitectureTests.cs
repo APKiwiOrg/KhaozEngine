@@ -29,7 +29,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <see cref="IGpuTexture"/> whole, <c>CreateFramebuffer</c> carries no mip or layer parameter, and per-face
     /// cubemap rendering is not expressible. So nothing can NARROW a texture by mip, layer or format, which is
     /// exactly the condition under which <c>Veldrid.MTL.MTLTextureView</c> takes its <c>else</c> branch and reuses
-    /// the target's own <c>DeviceTexture</c>. The incumbent still pays a MANAGED wrapper for that, allocated
+    /// the target's own <c>DeviceTexture</c>. The incumbent still paid a MANAGED wrapper for that, allocated
     /// lazily on the draw path by <c>Util.GetTextureView</c> from <c>MTLCommandList</c>'s bind path, and all 25
     /// <c>DEVICE_REMOVED</c> stacks in https://github.com/APKiwiOrg/KhaozEngine/issues/423 surfaced inside that
     /// lazy constructor. Here the bindable handle IS the texture and it is decided at creation.</para>

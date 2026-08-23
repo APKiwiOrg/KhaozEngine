@@ -87,7 +87,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// M-M6's SECOND creation-time invariant against a real device, because a refusal that only exists in a
-        /// policy type is a refusal a factory can forget to call. Both Veldrid backends accept this combination,
+        /// policy type is a refusal a factory can forget to call. Both Veldrid backends accepted this combination,
         /// so it is a documented backend-divergent creation failure and the message has to say so.
         /// </summary>
         [GpuFact]
@@ -332,7 +332,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <c>WaitForIdle</c>'s own fault comes from the drain's separate empty buffer.</para>
         ///
         /// <para><b>AND THE RATIO IS THE POINT OF THE DECISION.</b> Eight uploads produce ONE committed batch,
-        /// where the incumbent issues one whole queue submit per call. The counters are read before and after the
+        /// where the incumbent issued one whole queue submit per call. The counters are read before and after the
         /// flush so the claim is a measurement rather than a description.</para>
         /// </summary>
         [GpuFact]

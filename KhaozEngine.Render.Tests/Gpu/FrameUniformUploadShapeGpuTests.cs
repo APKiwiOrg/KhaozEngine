@@ -14,7 +14,7 @@ namespace KhaozEngine.Tests.Gpu
     /// whole-buffer write each, not as a run of partial writes.
     /// <para>
     /// Why the shape matters, and why it matters on ONE backend in particular. Veldrid 4.9.0's
-    /// <c>D3D11CommandList.UpdateBufferCore</c> splits three ways. A write to a non-Dynamic, non-Staging buffer takes
+    /// <c>D3D11CommandList.UpdateBufferCore</c> split three ways. A write to a non-Dynamic, non-Staging buffer takes
     /// <c>UpdateSubresource</c> on the deferred context - but for a UNIFORM buffer only when the write covers the
     /// whole buffer from offset 0, because D3D11 forbids a partial box on a constant buffer. Everything else falls
     /// through to the staging route: rent a staging buffer, hand it to <c>GraphicsDevice.UpdateBuffer</c>, which Maps

@@ -16,8 +16,8 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class MetalClearPolicyTests
     {
         /// <summary>
-        /// Under the shipped position a clear lands where the caller asked. Under the incumbent's it lands on
-        /// slot 0 whatever was asked, which is what makes a framebuffer with three colour targets clear only
+        /// Under the shipped position a clear lands where the caller asked. Under the incumbent's it landed on
+        /// slot 0 whatever was asked, which is what made a framebuffer with three colour targets clear only
         /// its first.
         /// </summary>
         [Theory]

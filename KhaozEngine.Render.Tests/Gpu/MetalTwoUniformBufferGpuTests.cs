@@ -26,7 +26,7 @@ namespace KhaozEngine.Tests.Gpu
     ///
     /// <para><b>IT IS ONLY READABLE BECAUSE 2.2b TOOK THE ID JOIN.</b> The native backend binds at the index the
     /// compiler put each argument at, read out of each stage's own SPIR-V module, rather than at an index counted
-    /// over the declared layout array the way the incumbent does. Under the fallback that was briefly taken
+    /// over the declared layout array the way the incumbent did. Under the fallback that was briefly taken
     /// (#586) this backend would have used the incumbent's numbering, both hypotheses would have predicted the
     /// same answer, and these two rows could not have separated them.</para>
     ///
@@ -48,12 +48,12 @@ namespace KhaozEngine.Tests.Gpu
     /// reproducing anywhere, in which case the answer is about a toolchain version rather than about this
     /// backend. So each row runs the SAME shape through <see cref="GpuBackendKind.Metal"/> as a control and writes
     /// what it read into the test output. The control is RECORDED rather than asserted, deliberately: asserting
-    /// that the incumbent still mis-binds would be a test that goes red the day somebody else fixes it, which is a
+    /// that the incumbent still mis-bound would be a test that goes red the day somebody else fixes it, which is a
     /// failing suite reporting good news.</para>
     ///
     /// <para><b>NO SHADER CHANGES ON THE STRENGTH OF THIS (M-B4).</b> The invariant stays in force whatever these
     /// two rows read. A pass authorises FILING its removal as work with its own gates on all three backends, and
-    /// nothing else, because the Veldrid Metal leg still ships and still numbers its buffers by declaration
+    /// nothing else, because the Veldrid Metal leg shipped and numbered its buffers by declaration
     /// order.</para>
     ///
     /// <para><b>DORMANT OFF macOS RATHER THAN SKIPPED</b>, which is phase 3's row-19 lesson: under
@@ -133,7 +133,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <para><b>IT IS HERE BECAUSE THE FIRST TWO ROWS CAME BACK YELLOW ON BOTH BACKENDS.</b> That is a real
         /// answer rather than a bad one, and it says the recorded constraint is narrower than
         /// <c>docs/DEPENDENCY-SEAMS.md</c> states it: a pipeline reading two uniform buffers does not mis-bind
-        /// per se, on either backend. What the incumbent's numbering can disagree with the emission about is a
+        /// per se, on either backend. What the incumbent's numbering could disagree with the emission about is a
         /// stage that references FEWER buffers than the pipeline declares before them, because the incumbent
         /// counts every element declared in the preceding sets while the cross-compiler numbers only the
         /// arguments the stage it is emitting actually references.</para>
@@ -156,7 +156,7 @@ namespace KhaozEngine.Tests.Gpu
                 GpuShaderStages.Fragment);
 
             // THIS ROW'S CONTROL IS THE ONE THAT PROVOKES METAL'S API VALIDATION, and it does so by
-            // construction: the whole point of the split-stage shape is that the incumbent writes the fragment's
+            // construction: the whole point of the split-stage shape is that the incumbent wrote the fragment's
             // buffer at index 1 while the emitted function reads index 0, so the draw really does leave a
             // declared fragment buffer unbound. The layer is entitled to object, and its default error mode
             // aborts the host, which on the metal-native leg would take the other six thousand rows down with
@@ -183,9 +183,9 @@ namespace KhaozEngine.Tests.Gpu
         /// so the two halves the explanation rests on, the EMISSION and this engine's reproduction of the
         /// incumbent's arithmetic, stay checked on the days nobody has a Mac in front of them.
         ///
-        /// <para><b>WHAT IT DOES NOT PIN IS THE INCUMBENT ITSELF.</b> Veldrid's live binding is recorded by the
+        /// <para><b>WHAT IT DOES NOT PIN IS THE INCUMBENT ITSELF.</b> Veldrid's live binding was recorded by the
         /// rows above and asserted by nothing, which is the deliberate trade in the control's own header. So the
-        /// day Veldrid numbers its buffers the way the emission does, nothing here goes red: the control quietly
+        /// day Veldrid numbered its buffers the way the emission does, nothing here went red: the control quietly
         /// reads yellow, and what goes stale is the recorded table in 2.3a and the measurement in the body of
         /// #604. A changed control reading is the signal to refresh both, and it arrives in this file's test
         /// output rather than as a failure.</para>
@@ -199,7 +199,7 @@ namespace KhaozEngine.Tests.Gpu
         /// emitted at <c>buffer(0)</c>, while a count over the declared array puts it at <c>buffer(1)</c> because
         /// set 0 declares a buffer the fragment never mentions.</para>
         ///
-        /// <para><b>WHICH IS THE WHOLE ONE-UBO CONSTRAINT, WITH ITS MECHANISM NAMED.</b> The incumbent writes the
+        /// <para><b>WHICH IS THE WHOLE ONE-UBO CONSTRAINT, WITH ITS MECHANISM NAMED.</b> The incumbent wrote the
         /// buffer at index 1 and the function reads index 0, so it reads a slot nothing wrote: all zero, silently,
         /// exactly as the seam doc records. Nothing about Metal is involved.</para>
         /// </summary>
@@ -355,7 +355,7 @@ namespace KhaozEngine.Tests.Gpu
             gd.WaitForIdle();
 
             // A DEVICE THAT LOST ITSELF WOULD READ BLACK AND MEAN SOMETHING ELSE ENTIRELY, so the latch is checked
-            // before the pixel is believed. The incumbent answers null here as well, through the same member.
+            // before the pixel is believed. The incumbent answered null here as well, through the same member.
             Assert.Null(gd.Diagnostics.DeviceLossReason);
 
             byte[] pixels = GpuReadback.ToRgba(gd, target, (int)Size, (int)Size);

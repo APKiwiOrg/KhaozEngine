@@ -9,7 +9,7 @@ namespace KhaozEngine.Tests.Gpu
     /// offset rounds DOWN, the end rounds UP, and the end clamps to the memory object's own size, which is the
     /// spec's "or the remainder to the end of the memory object" clause rather than a safety net.
     /// <para>
-    /// The incumbent emits neither <c>vkFlushMappedMemoryRanges</c> nor <c>vkInvalidateMappedMemoryRanges</c>
+    /// The incumbent emitted neither <c>vkFlushMappedMemoryRanges</c> nor <c>vkInvalidateMappedMemoryRanges</c>
     /// anywhere, so there is no prior art in this engine to compare against and the rules come straight off
     /// <c>VUID-VkMappedMemoryRange-offset-00687</c>, <c>-size-01389</c> and <c>-size-01390</c>. That is exactly the
     /// kind of arithmetic that is written once, believed forever and wrong.

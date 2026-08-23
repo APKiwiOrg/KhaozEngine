@@ -67,7 +67,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// THE REDUCTION IS THE INCUMBENT'S LADDER: the highest recognised bit, and 1 rather than 0 for a mask
         /// with none. A driver that failed the query leaves a zeroed structure behind there, so the floor is what
-        /// the incumbent silently answers and what this says out loud.
+        /// the incumbent silently answered and what this says out loud.
         /// </summary>
         [Fact]
         public void TheReduction_IsTheHighestBitAndOneForNone()

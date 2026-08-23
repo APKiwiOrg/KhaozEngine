@@ -13,7 +13,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// WHAT THE SNAPSHOT CALLBACK CREATES, THE CAPTURE FREES (#618). A resource handed out by
     /// <see cref="Render2DContext"/> and never disposed used to be left to the per-capture device teardown, which
-    /// every Veldrid backend reclaims silently and the native Vulkan backend reports as a
+    /// every Veldrid backend reclaimed silently and the native Vulkan backend reports as a
     /// VUID-vkDestroyDevice-device-05137 object leak: six of them across four capture devices turned the
     /// synchronisation-validation gate red while the suite stayed green.
     /// <para>

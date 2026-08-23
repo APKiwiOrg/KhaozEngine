@@ -71,10 +71,9 @@ public partial class ArchitectureTests
         ["Silk.NET.SPIRV"] = new[] { "Gpu" },
         ["Silk.NET.SPIRV.Cross"] = new[] { "Gpu" },
         ["Silk.NET.SPIRV.Cross.Native"] = new[] { "Gpu" },
-        // Veldrid's own D3D11 binding, already transitive via Veldrid. Declared in Gpu for the driver-threading
-        // probe (Internal/D3D11ThreadingProbe), and in Gpu.D3D11 because that package IS the Direct3D11 interop.
-        // Two homes, one binding: both pin the same Vortice 2.3.0 line, which is what Veldrid depends on, so
-        // there is exactly one D3D11 binding and one SharpGen.Runtime in the graph.
+        // The D3D11 binding. Declared in Gpu for the driver-threading probe (Internal/D3D11ThreadingProbe), and in
+        // Gpu.D3D11 because that package IS the Direct3D11 interop. Two homes, one binding: both pin the same
+        // Vortice 2.3.0 line, so there is exactly one D3D11 binding and one SharpGen.Runtime in the graph.
         ["Vortice.Direct3D11"] = new[] { "Gpu", "Gpu.D3D11" },
         // FXC, for the native backend's own D3DCompile call. Only the backend compiles shaders to DXBC.
         ["Vortice.D3DCompiler"] = new[] { "Gpu.D3D11" },

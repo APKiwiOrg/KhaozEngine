@@ -35,7 +35,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// M-R6, WHICH IS THE ROW'S HEADLINE. A full activation is ONE ARRAY CALL PER (kind, stage), not one call
-        /// per resource per stage. The incumbent emits the latter, which is the #418 fan-out defect arriving on a
+        /// per resource per stage. The incumbent emitted the latter, which is the #418 fan-out defect arriving on a
         /// second API, and the vendored fork's binding layer does not declare a single array setter, so this is
         /// the shape the design says had to be written rather than copied.
         /// </summary>

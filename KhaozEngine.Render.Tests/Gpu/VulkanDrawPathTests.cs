@@ -102,7 +102,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// A REBIND OF WHAT IS ALREADY RECORDED EMITS NOTHING AT ALL, buffer and offset both. This is the guard
-        /// the incumbent does not have: it issues <c>vkCmdBindVertexBuffers</c> inside its own
+        /// the incumbent did not have: it issued <c>vkCmdBindVertexBuffers</c> inside its own
         /// <c>SetVertexBufferCore</c> with no comparison, so a renderer that rebinds one mesh's buffer before each
         /// of its draws pays a native call per draw for a state change that did not happen.
         /// </summary>
@@ -280,7 +280,7 @@ namespace KhaozEngine.Tests.Gpu
         /// barrier at the sampled bind rather than the incumbent's queued layout restore armed by a usage flag.
         ///
         /// <para><b>AND IT IS EMITTED BEFORE THE RENDER PASS BEGINS</b>, which the trace pins. A barrier inside a
-        /// dynamic-rendering instance is a different call, and the incumbent drains its own queued restores before
+        /// dynamic-rendering instance is a different call, and the incumbent drained its own queued restores before
         /// <c>EnsureRenderPassActive</c> for exactly this reason.</para>
         /// </summary>
         [Fact]
@@ -473,7 +473,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <para><b>THIS IS EVIDENCE FOR THE AUTOMATIC-HAZARD SEAM CAPABILITY</b>
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/461) AND NOT A CONTRACT CHANGE. The seam's compute
         /// rule 2 is unchanged: a portable consumer still separates dependent dispatches with <c>End</c>,
-        /// <c>Submit</c> and <c>WaitForIdle</c>, because the Veldrid legs need the drain.</para>
+        /// <c>Submit</c> and <c>WaitForIdle</c>, because the Veldrid legs needed the drain.</para>
         /// </summary>
         [Fact]
         public void ADependentDispatch_GetsOneBarrierAndAnIndependentOneGetsNone()

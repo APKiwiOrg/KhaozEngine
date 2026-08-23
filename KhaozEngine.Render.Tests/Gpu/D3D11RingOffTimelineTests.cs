@@ -56,7 +56,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// A LOAD-TIME WRITE LANDS IN EVERY SEGMENT, BYTE FOR BYTE, at the same offset within each, and it costs
         /// no completion read at all because nothing has been submitted yet. That is the whole fix in one fact:
-        /// the same call on the Veldrid backend writes the buffer's only copy, and here it writes all of them, so
+        /// the same call on the Veldrid backend wrote the buffer's only copy, and here it writes all of them, so
         /// the value persists for the buffer's life either way.
         /// </summary>
         [Fact]

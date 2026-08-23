@@ -58,7 +58,7 @@ namespace KhaozEngine.Tests.Gpu
     {
         /// <summary>
         /// THE TABLE. Each row is a format, a shape, one subresource of it, and the six numbers the incumbent's
-        /// arithmetic produces for that subresource plus the whole buffer's size.
+        /// arithmetic produced for that subresource plus the whole buffer's size.
         /// </summary>
         [Theory]
         [InlineData(GpuPixelFormat.R8UNorm, 4, 4, 1, 1, 0, 0, 4, 16, 16, 16, 0, 16)]
@@ -166,7 +166,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// THE MIP DIMENSION IS A REPEATED HALVING WITH A FLOOR OF 1, not a shift, and the two agree for every
         /// level a real texture has. The loop is reproduced rather than replaced because it keeps answering 1 at
-        /// level counts where a shift is undefined, and because agreeing with the incumbent is this type's whole
+        /// level counts where a shift is undefined, and because agreeing with the incumbent was this type's whole
         /// job.
         /// </summary>
         [Theory]
@@ -280,7 +280,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// A SUBRESOURCE OUTSIDE THE TEXTURE IS REFUSED rather than answered with an offset that lands in whatever
-        /// follows the buffer. The incumbent's arithmetic has no bound check at all: it would compute a plausible
+        /// follows the buffer. The incumbent's arithmetic had no bound check at all: it would compute a plausible
         /// number for mip 9 of a 3-mip texture and hand back a pointer into the next allocation.
         /// </summary>
         [Fact]
@@ -310,7 +310,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// A STAGING TEXTURE TOO LARGE FOR A 32-BIT SIZE IS REFUSED BY NAME. The incumbent computes this in 32
+        /// A STAGING TEXTURE TOO LARGE FOR A 32-BIT SIZE IS REFUSED BY NAME. The incumbent computed this in 32
         /// bits throughout and WRAPS silently, which sizes the buffer far too small and corrupts whatever follows
         /// it. Every value below that bound is identical to the incumbent's, which is what the table above is.
         /// This is the one place the two deliberately differ, in the direction of saying so.

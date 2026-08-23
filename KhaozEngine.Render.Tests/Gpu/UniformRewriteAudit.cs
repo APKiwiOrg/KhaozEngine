@@ -14,7 +14,7 @@ namespace KhaozEngine.Tests.Gpu
     /// uniform buffer on the three engine-owned native backends is a memcpy into that frame's own ring segment. It
     /// records no command, so it is NOT ordered against the draws in the same list: the last write in the frame
     /// decides every byte, and a draw recorded between two writes reads the SECOND one. On the Veldrid backends
-    /// the same call is a recorded copy that executes in command order and the draw reads the FIRST.
+    /// the same call was a recorded copy that executed in command order and the draw read the FIRST.
     /// <c>RecordTimeUniformRewriteGpuTests</c> measures both readings on one machine. So a renderer with this
     /// shape renders differently on the two families, silently, with nothing thrown and nothing logged.</para>
     ///

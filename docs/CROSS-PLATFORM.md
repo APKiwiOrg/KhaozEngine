@@ -555,9 +555,22 @@ library names` on every Linux test that compiles a shader
 ([#691](https://github.com/APKiwiOrg/KhaozEngine/issues/691)) while the other two legs loaded the same package
 fine. `Directory.Build.targets` copies the host rid's native assets flat into the output on Linux builds, which
 is the first place the resolver looks, and the leg asserts they arrived in a step of its own straight after the
-build, because the failure otherwise reads as a shader bug rather than a packaging one. The same hole on the
-CONSUMER side, where no repo-local target reaches, is
-[#722](https://github.com/APKiwiOrg/KhaozEngine/issues/722).
+build, because the failure otherwise reads as a shader bug rather than a packaging one.
+
+**The CONSUMER half is the same rule, shipped.** A repo-local target reaches nothing downstream, so a Linux
+build of any game on `Game2D`/`Game3D` had the identical hole, and GLFW and OpenAL Soft had always had it: the
+toolchain swap only made it visible, because it put a Silk binding on the path of every test that compiles a
+shader. Since `18.0.0` the rule lives in `KhaozEngine.Foundation/build/KhaozEngine.HostNatives.targets`, which
+ships in the Foundation package under both `build/` and `buildTransitive/` and is what `Directory.Build.targets`
+imports for the engine's own projects, so there is one copy of it
+([#722](https://github.com/APKiwiOrg/KhaozEngine/issues/722)). Getting it to a consumer took one more thing than
+packing it: every umbrella `ProjectReference` used to pack with `exclude="Build,Analyzers"`, the
+`ProjectReference` default, which had been quietly dropping Foundation's whole `build/` folder on the floor for
+any head that referenced `Game2D`/`Game3D`/`Server` rather than `Foundation` itself. Those three edges now pin
+`PrivateAssets="contentfiles;analyzers"`. Validated against a scratch console app on `Game3D` in an amd64
+ubuntu container: without the rule it dies in `SpirvFrontEnd..cctor`, with it the four natives are flat beside
+the apphost on `build`, on `publish` and on `publish -r linux-x64`, and shaderc, SPIRV-Cross, GLFW and OpenAL
+Soft all load.
 
 Net result: **all three legs are blocking, none of them informational** - `metal-native` (macOS),
 `direct3d11-native` (Windows/WARP) and `vulkan-native` (Linux/lavapipe). The RASTERIZERS are long validated,

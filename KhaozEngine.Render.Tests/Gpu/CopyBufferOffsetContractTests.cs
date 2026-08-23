@@ -234,15 +234,6 @@ namespace KhaozEngine.Tests.Gpu
                 list.Begin();
                 list.CopyBuffer(fixtures.Uniforms, src, fixtures.Staging, dst, CopyBytes);
             });
-
-            // THE INCUMBENT, WITH NO Veldrid.CommandList UNDER IT AT ALL, which is the arm's second claim: the
-            // refusal happens before the forward, so a null command list is never dereferenced and neither
-            // buffer is cast. Remove the guard and this is a NullReferenceException instead.
-            yield return ("Veldrid", (src, dst) =>
-            {
-                var list = new VeldridGpuCommandList(new DeviceLiveness(), null!, owns: false);
-                list.CopyBuffer(null!, src, null!, dst, CopyBytes);
-            });
         }
 
         MetalCommandList NewMetalList()

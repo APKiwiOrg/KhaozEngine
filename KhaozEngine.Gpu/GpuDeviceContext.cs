@@ -1,20 +1,17 @@
 using System;
 using System.Collections.Generic;
-using Veldrid;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu
 {
     /// <summary>
-    /// Owns a Veldrid device created via <see cref="CreateForWindow(in GpuWindowHandle, uint, uint, bool)"/> / <see cref="CreateHeadless()"/> plus the
-    /// engine-owned <see cref="GpuDevice"/> wrapping it. Centralizes backend selection (no hard-coded
-    /// <c>GraphicsBackend.Metal</c>) and surfaces <see cref="GpuCapabilities"/>. Renderers consume
-    /// <see cref="GpuDevice"/>, and the raw Veldrid device stays a private implementation detail of this context.
+    /// Owns the <see cref="IGpuDevice"/> a registered <see cref="IGpuBackendProvider"/> built, created through
+    /// <see cref="CreateForWindow(in GpuWindowHandle, uint, uint, bool)"/> / <see cref="CreateHeadless()"/>.
+    /// Centralizes backend selection and surfaces <see cref="GpuCapabilities"/>.
     /// <para>
-    /// It is ALSO the only path a device gets handed back to a consumer on, which is why it additionally adopts an
-    /// <see cref="IGpuDevice"/> the engine created itself, with no Veldrid device behind it (the internal
-    /// constructor below). Everything a consumer or a session log sees is the same on both paths.
+    /// It is the only path a device gets handed back to a consumer on, so everything a consumer or a session log
+    /// sees about a device is decided here, once, whichever backend built it.
     /// </para>
     /// </summary>
     /// <remarks>
@@ -26,16 +23,13 @@ namespace KhaozEngine.Gpu
     /// </remarks>
     public sealed partial class GpuDeviceContext : IDisposable
     {
-        // Serializes GraphicsDevice creation and disposal across every thread and every backend. See the class
-        // remarks for why: it closes the concurrent-device-creation race that aborts the Vulkan loader on lavapipe.
+        // Serializes device creation and disposal across every thread and every backend. See the class remarks
+        // for why: it closes the concurrent-device-creation race that aborts the Vulkan loader on lavapipe.
         static readonly object _lifecycleGate = new();
 
         static readonly ILogger log = Log.For<GpuDeviceContext>();
 
         readonly bool _ownsDevice;
-        // The raw Veldrid device, on the Veldrid creation path only. NULL on the adopted-device path: a device the
-        // engine built itself has no GraphicsDevice behind it and disposes through IGpuDevice instead (see Dispose).
-        readonly GraphicsDevice? _device;
 
         /// <summary>The selected graphics backend (from <see cref="GpuBackendSelector"/>).</summary>
         public GpuBackendKind Backend => Selection.Backend;
@@ -86,9 +80,9 @@ namespace KhaozEngine.Gpu
 
         /// <summary>
         /// The adapter the device is running on, as the backend reports it, or an empty string when it reports
-        /// nothing. On Direct3D11 this is EXACTLY the DXGI adapter description (Veldrid reads
-        /// <c>IDXGIAdapter::GetDesc().Description</c> into <c>GraphicsDevice.DeviceName</c>), which is the string
-        /// that identifies the physical card in a bug report, so no Vortice interop is needed to get it.
+        /// nothing. On Direct3D11 this is EXACTLY the DXGI adapter description
+        /// (<c>IDXGIAdapter::GetDesc().Description</c>), which is the string that identifies the physical card in
+        /// a bug report.
         /// <para>
         /// The same value as <see cref="GpuCapabilities.DeviceName"/> on <see cref="Capabilities"/>, which stays
         /// the single source. It is named again here because "adapter description" is what a reader chasing a
@@ -114,8 +108,7 @@ namespace KhaozEngine.Gpu
         /// The live device diagnostics: whether this session is on a software rasterizer, and why the device was
         /// lost if it has been. Read THROUGH to the device on every access rather than captured, because a device
         /// loss happens at an arbitrary moment after creation and a cached value would always say the device was
-        /// fine. Null members mean the backend does not report that fact, which is what the Veldrid path answers
-        /// for both.
+        /// fine. Null members mean the backend does not report that fact.
         /// </summary>
         public GpuDeviceDiagnostics Diagnostics => GpuDevice.Diagnostics;
 
@@ -128,43 +121,22 @@ namespace KhaozEngine.Gpu
         public GpuDeviceCounters Counters => GpuDevice.Counters;
 
         /// <summary>
-        /// The engine-owned GPU device: on the Veldrid path, the wrapper around the underlying Veldrid device.
-        /// Renderers (Render2D / Render3D) consume this instead of the raw device, so Veldrid stays hidden. That
-        /// wrapper is non-owning, and disposal flows through this context's <see cref="Dispose"/> either way.
+        /// The engine-owned GPU device, as its backend package built it. Renderers (Render2D / Render3D) consume
+        /// this and never a backend type. Disposal flows through this context's <see cref="Dispose"/>.
         /// </summary>
         public IGpuDevice GpuDevice { get; }
 
-        GpuDeviceContext(GraphicsDevice device, GpuBackendSelection selection, bool ownsDevice)
-        {
-            _device = device;
-            Selection = selection;
-            _ownsDevice = ownsDevice;
-            // Non-owning wrapper: this context owns the raw device's disposal (see Dispose), so the wrapper must
-            // not dispose it again.
-            GpuDevice = new VeldridGpuDevice(device, selection.Backend, ownsDevice: false);
-            // VeldridMap.ReadCapabilities stays the single source, and it is now read ONCE, inside the wrapper.
-            Capabilities = GpuDevice.Capabilities;
-            ThreadingCaps = Internal.D3D11ThreadingProbe.TryQuery(device, selection.Backend, out string? probeFailure);
-            ThreadingProbeFailure = probeFailure;
-            // Scanned per created device rather than cached process-wide, so a late-attaching overlay still shows
-            // up and there is no static state to reason about. Device creation is rare, and off Windows this is a
-            // guard and a return.
-            InjectedModules = Internal.InjectedModuleProbe.TryScan(out string? scanFailure);
-            LogCreation(selection, Capabilities, ThreadingCaps, ThreadingProbeFailure, InjectedModules, scanFailure);
-        }
-
         /// <summary>
-        /// Adopt an <see cref="IGpuDevice"/> the engine created ITSELF, with no Veldrid device behind it. This is
-        /// the path a native backend comes back through: its provider creates the device, probes its own driver
-        /// capabilities (via the raw-pointer entry on <see cref="Internal.D3D11ThreadingProbe"/>, since there is no
-        /// Veldrid device to read a pointer off), and hands both here.
+        /// Adopt the <see cref="IGpuDevice"/> a backend package built. This is the ONE path a device arrives on:
+        /// the registered provider creates it, probes its own driver capabilities (via the raw-pointer entry on
+        /// <see cref="Internal.D3D11ThreadingProbe"/>), and hands both here.
         /// <para>
-        /// Everything a consumer or a session log observes is identical to the Veldrid path: the same
+        /// Everything a consumer or a session log observes is decided here rather than by the backend: the same
         /// capabilities-from-the-device rule, the same four ordered diagnostic lines, the same
         /// <see cref="GpuTelemetry"/> feed, and the same process-wide lifecycle gate around disposal.
         /// </para>
         /// <para>
-        /// <paramref name="threadingCaps"/> null means "no answer", exactly as it does on the Veldrid path, and
+        /// <paramref name="threadingCaps"/> null means "no answer", and
         /// <paramref name="threadingProbeFailure"/> is the reason when the probe was ATTEMPTED and did not answer
         /// (null when it answered, and null when there was nothing to ask). That pair is precisely what the
         /// raw-pointer entry on <see cref="Internal.D3D11ThreadingProbe"/> hands back, so a provider whose probe
@@ -174,8 +146,7 @@ namespace KhaozEngine.Gpu
         /// </para>
         /// <para>
         /// <paramref name="device"/>'s own <see cref="IGpuDevice.Backend"/> MUST agree with
-        /// <paramref name="selection"/>'s, and a mismatch throws. The Veldrid path gets that invariant for free,
-        /// because it builds the wrapper from the same selection. Here the two arrive independently, and different
+        /// <paramref name="selection"/>'s, and a mismatch throws. The two arrive independently, and different
         /// consumers downstream read different halves of the pair (the golden image filename, the telemetry session
         /// header, the Direct3D11 threading gate), so a mismatched pair would not fail the run, it would
         /// misattribute it. Silent misattribution is the worst outcome for a rollout whose whole purpose is
@@ -196,7 +167,6 @@ namespace KhaozEngine.Gpu
                     nameof(selection));
             }
 
-            _device = null;
             Selection = selection;
             _ownsDevice = ownsDevice;
             GpuDevice = device;
@@ -207,10 +177,9 @@ namespace KhaozEngine.Gpu
             LogCreation(selection, Capabilities, ThreadingCaps, ThreadingProbeFailure, InjectedModules, scanFailure);
         }
 
-        // The four diagnostic lines every created device emits, in this order, whichever path created it. One
-        // place, so a log from an adopted native device and a log from a Veldrid device answer the same questions
-        // in the same order. Two copies of this sequence would be two logs a reader cannot compare, which is the
-        // whole reason the lines exist.
+        // The four diagnostic lines every created device emits, in this order, whichever backend created it. One
+        // place, so two backends' logs answer the same questions in the same order. Two copies of this sequence
+        // would be two logs a reader cannot compare, which is the whole reason the lines exist.
         static void LogCreation(GpuBackendSelection selection, GpuCapabilities capabilities,
             GpuThreadingCaps? threadingCaps, string? probeFailure, IReadOnlyList<string>? modules,
             string? scanFailure)
@@ -232,6 +201,16 @@ namespace KhaozEngine.Gpu
             if (selection.RequestedOverride != null && selection.Source != GpuBackendSource.EnvironmentOverride)
                 log.Warn(UnrecognizedOverrideWarning(selection.RequestedOverride, selection.Backend));
 
+            // The 18.0.0 retirement, said out loud once per device. A redirect that only showed up as a changed
+            // backend name in the boot line would be exactly the silent implementation swap the removal design
+            // refuses: a tester who set KE_GRAPHICS_BACKEND=metal, or a player whose settings file still says
+            // Direct3D11, has to be told the backend they named is gone and which one ran.
+            if (Retired(selection.RequestedBackend))
+            {
+                log.Warn(GpuBackendSelector.RetirementWarning(
+                    selection.RequestedBackend!.Value, selection.Backend));
+            }
+
             log.Info(SelectionLine(selection));
         }
 
@@ -241,13 +220,23 @@ namespace KhaozEngine.Gpu
         static string OriginOf(GpuBackendSelection selection) => selection.Source switch
         {
             GpuBackendSource.OsProbe => DefaultOrigin,
+            // The RETIRED arms come first, and the ordering is the whole reason they read correctly: a switch
+            // expression takes the first matching arm, so a guarded arm placed after its own unguarded source is
+            // a compile error rather than a subtle one. Since 18.0.0 two sources can carry a retired
+            // RequestedBackend, and both have to say so.
+            GpuBackendSource.EnvironmentOverride when Retired(selection.RequestedBackend) =>
+                $"{GpuBackendSelector.EnvVarName} override, {selection.RequestedBackend} retired",
             GpuBackendSource.EnvironmentOverride => $"{GpuBackendSelector.EnvVarName} override",
             GpuBackendSource.UnrecognizedOverride => $"{DefaultOrigin}, override not recognized",
             GpuBackendSource.UserPreference => "stored user preference",
+            // A retirement is not a failure, and a reader who is told a device failed to create goes looking for
+            // a driver. Both arms still report FallbackAfterFailure to the GAME, on purpose: the action is
+            // identical (clear the stored choice) and a second source would have made every consumer handle two.
+            GpuBackendSource.FallbackAfterFailure when Retired(selection.RequestedBackend) =>
+                $"fallback, {selection.RequestedBackend} retired",
             GpuBackendSource.FallbackAfterFailure => $"fallback, {selection.RequestedBackend} failed",
-            // The 17.40.0 member, and it deliberately reads nothing like the line above it. Nothing failed and
-            // nobody chose: the default is a backend this build has no provider for, and the word a reader
-            // needs is the missing registration rather than a failure that did not happen.
+            // Retired in 18.0.0 and never produced any more (see the member). Kept as a spelled-out arm rather
+            // than folded into the discard so a 17.40.0 capture replayed through here still reads as itself.
             GpuBackendSource.DefaultProviderMissing =>
                 $"default, {selection.RequestedBackend} has no registered provider",
             _ => $"unknown source {(int)selection.Source}",
@@ -263,6 +252,11 @@ namespace KhaozEngine.Gpu
         /// reads as the default.
         /// </summary>
         internal const string DefaultOrigin = "default";
+
+        // Null-tolerant, because RequestedBackend is only set when the engine took a different backend than the
+        // one asked for, which is exactly the case the two retirement arms above are switching on.
+        static bool Retired(GpuBackendKind? requested)
+            => requested is GpuBackendKind kind && GpuBackendSelector.IsRetired(kind);
 
         /// <summary>
         /// The boot line exactly as it reaches the log, built here rather than inline so a test reads the same
@@ -302,10 +296,8 @@ namespace KhaozEngine.Gpu
         // headlessly rather than only the one a Windows Direct3D11 machine can reach.
         static void LogThreadingCaps(GpuBackendKind backend, GpuThreadingCaps? caps, string? probeFailure)
         {
-            // BOTH Direct3D11 implementations, via IsDirect3D11. The driver underneath is the same one whichever
-            // implementation drove it, so an emulating-command-lists driver is exactly as worth warning about on
-            // the native leg. An equality check against Direct3D11 alone would have dropped this line and the two
-            // telemetry threading fields it feeds on the one backend the probe was written for.
+            // Via IsDirect3D11, which still covers both members: the retired GpuBackendKind.Direct3D11 never
+            // reaches a created device, and the predicate is about the DRIVER rather than an implementation.
             if (!backend.IsDirect3D11()) return;
 
             log.Info($"D3D11 driver threading: {GpuThreadingDiagnostics.Describe(caps)}");
@@ -340,14 +332,11 @@ namespace KhaozEngine.Gpu
             {
                 // Latch the device first (still inside the gate) so any later straggling drain from a
                 // resource wrapper disposed after this context no-ops instead of waiting on a dead device.
-                // Through IGpuDeviceLifecycle, not a cast to the Veldrid wrapper: the cast is what confined this
-                // context to one implementation of IGpuDevice. A device with nothing to latch skips it.
+                // Through IGpuDeviceLifecycle rather than a cast to any one implementation, which is what keeps
+                // this context free of every backend. A device with nothing to latch skips it.
                 (GpuDevice as IGpuDeviceLifecycle)?.MarkDeviceDisposed();
-                // On the Veldrid path this context owns the RAW device and the wrapper is non-owning, so the raw
-                // device is what gets destroyed. An adopted device owns whatever it is built on, so it disposes
-                // itself.
-                if (_device != null) _device.Dispose();
-                else GpuDevice.Dispose();
+                // An adopted device owns whatever it is built on, so it disposes itself.
+                GpuDevice.Dispose();
             }
         }
     }

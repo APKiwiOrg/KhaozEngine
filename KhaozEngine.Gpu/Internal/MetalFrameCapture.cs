@@ -9,13 +9,8 @@ namespace KhaozEngine.Gpu.Internal
     /// Objective-C runtime. Used only when a capture is armed (see <see cref="GpuFrameCapture"/>). Every step is
     /// best-effort and swallows errors, because a failed capture must never break rendering.
     ///
-    /// <para><b>IT TAKES THE COMMAND QUEUE AS A POINTER, WHICH IS DECISION M-G5.</b> This used to reach into
-    /// Veldrid's private <c>_commandQueue</c> field by reflection and return zero if the layout differed, which
-    /// meant the whole feature was one Veldrid refactor away from silently producing no trace. The native Metal
-    /// backend OWNS its queue, so it hands the pointer in and no reflection happens on that path at all. The
-    /// Veldrid Metal path still has to find its queue somehow and the reflection survives for it, isolated in
-    /// <see cref="VeldridMetalCommandQueue"/> so it is one named thing that can be tested rather than a step
-    /// buried in the middle of a capture.</para>
+    /// <para><b>IT TAKES THE COMMAND QUEUE AS A POINTER, WHICH IS DECISION M-G5.</b> The native Metal backend
+    /// OWNS its queue, so it hands the pointer straight in and no reflection happens anywhere on this path.</para>
     ///
     /// <para><b><c>MTL_CAPTURE_ENABLED=1</c> MUST BE IN THE ENVIRONMENT BEFORE THE PROCESS LAUNCHES</b>, which is
     /// the same process-launch rule M-G3 measured for the validation variables: setting it in-process does not
@@ -95,9 +90,8 @@ namespace KhaozEngine.Gpu.Internal
         /// <paramref name="outputPath"/>. False when nothing was started, which is the ordinary answer on a
         /// process without <c>MTL_CAPTURE_ENABLED=1</c> and on every non-macOS platform.
         /// </summary>
-        /// <param name="commandQueue">The <c>id&lt;MTLCommandQueue&gt;</c> to capture. The native backend passes
-        /// its own, the Veldrid path passes whatever <see cref="VeldridMetalCommandQueue.TryRead"/> found.
-        /// <see cref="IntPtr.Zero"/> answers false, which is how a Veldrid layout change presents.</param>
+        /// <param name="commandQueue">The <c>id&lt;MTLCommandQueue&gt;</c> to capture, which the native backend
+        /// passes from the queue it owns. <see cref="IntPtr.Zero"/> answers false.</param>
         /// <param name="outputPath">A fresh, non-existent path. Metal creates the <c>.gputrace</c> bundle.</param>
         internal static bool Start(IntPtr commandQueue, string outputPath)
         {
@@ -106,8 +100,8 @@ namespace KhaozEngine.Gpu.Internal
             // THE ZERO-QUEUE REFUSAL COMES BEFORE EVERY P/INVOKE IN THIS TYPE, WHICH IS WHAT MAKES IT AN ANSWER ON
             // EVERY PLATFORM. libobjc does not exist on Linux or Windows, so the pool push below is a
             // DllNotFoundException there, and pushing before this check threw that exception out of Start on the
-            // two legs where zero is the ONLY input this member ever gets. Zero is exactly what a Veldrid layout
-            // change produces, so the refusal has to be a false rather than a throw wherever it is reached.
+            // two legs where zero is the ONLY input this member ever gets, so the refusal has to be a false
+            // rather than a throw wherever it is reached.
             if (commandQueue == IntPtr.Zero) return false;
 
             // THE POOL IS PUSHED HERE RATHER THAN LEFT TO THE CALLER'S, which is M-N5's rule honoured on the one

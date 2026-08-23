@@ -3,7 +3,7 @@
     <PackageId>KhaozEngine.Gpu</PackageId>
     <!-- Shared engine version line: <KhaozEngineVersion> in Directory.Build.props. -->
     <Version>$(KhaozEngineVersion)</Version>
-    <Description>GPU backend seam for the custom MonoGame-free stack. Owns backend selection (GpuBackendSelector: RuntimeInformation probe, a stored GpuBackendKind? user preference passed in as data, and a KE_GRAPHICS_BACKEND override on top) and its provenance (GpuBackendSelection / GpuBackendSource record which of those decided, and keep the raw override value, so an unrecognized one is logged as a warning instead of silently reading as the OS default), the backend support probe and creation fallback (IsBackendSupported / SupportedBackends functionally probe what a settings UI may offer, and a failed device creation falls back to the OS-probe backend and reports FallbackAfterFailure with the backend that was requested, so a player cannot get stuck on a choice that will not start), the Direct3D11 driver-threading probe (GpuThreadingCaps / GpuThreadingDiagnostics: DriverCommandLists and DriverConcurrentCreates read off the live device and logged next to the backend line, with a WARN when the driver cannot build command lists and the D3D11 runtime is emulating them in software, and a hard no-op off Windows and off Direct3D11), GpuCapabilities (clip-space-Y / depth-range), and a GpuDeviceContext that wraps Veldrid device creation (windowed via CreateForWindow from a native window handle, headless via GraphicsDevice.CreateMetal) so the 5.x renderers stop hard-coding GraphicsBackend.Metal. Renderers consume the engine-owned IGpuDevice (GpuDevice). The raw Veldrid device is a private implementation detail of the context. Veldrid deps are confined here.</Description>
+    <Description>GPU backend seam for the custom MonoGame-free stack. Owns backend selection (GpuBackendSelector: RuntimeInformation probe, a stored GpuBackendKind? user preference passed in as data, and a KE_GRAPHICS_BACKEND override on top) and its provenance (GpuBackendSelection / GpuBackendSource record which of those decided, and keep the raw override value, so an unrecognized one is logged as a warning instead of silently reading as the OS default), the backend support probe and creation fallback (IsBackendSupported / SupportedBackends functionally probe what a settings UI may offer through each backend's own registered provider, and a failed device creation falls back to the platform default and reports FallbackAfterFailure with the backend that was requested, so a player cannot get stuck on a choice that will not start), the Direct3D11 driver-threading probe (GpuThreadingCaps / GpuThreadingDiagnostics: DriverCommandLists and DriverConcurrentCreates read off the live device and logged next to the backend line, with a WARN when the driver cannot build command lists and the D3D11 runtime is emulating them in software, and a hard no-op off Windows and off Direct3D11), GpuCapabilities (clip-space-Y / depth-range), and a GpuDeviceContext that resolves a backend, asks GpuBackendProviders for its registered IGpuBackendProvider and adopts the device that provider built. This package creates NO device of its own since 18.0.0, when the Veldrid incumbent backend was deleted: the three engine-owned native backends (KhaozEngine.Gpu.Metal / .Vulkan / .D3D11) are the only implementations, and the four Veldrid GpuBackendKind members are retired tokens that resolve to a named exception. Renderers consume the engine-owned IGpuDevice (GpuDevice). The remaining Veldrid.SPIRV edge is the SHADER TOOLCHAIN and nothing else, and it is confined here.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
@@ -14,13 +14,19 @@
     <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <!-- The SHADER TOOLCHAIN. Veldrid.SPIRV is glslang plus SPIRV-Cross, and its reflection hands back
+         description types defined in the Veldrid base assembly, which is why the base package is still named
+         here as a direct reference rather than ridden transitively. Neither is a backend any more: the
+         incumbent was deleted in 18.0.0, and both entries go in row 8's swap onto Silk.NET.Shaderc plus
+         Silk.NET.SPIRV.Cross (https://github.com/APKiwiOrg/KhaozEngine/issues/683). -->
     <PackageReference Include="Veldrid" />
     <PackageReference Include="Veldrid.SPIRV" />
-    <!-- Veldrid's own D3D11 binding, already here transitively. Declared so the D3D11 driver-threading probe
-         (Internal/D3D11ThreadingProbe) can call ID3D11Device::CheckFeatureSupport on the raw device pointer
-         Veldrid publishes. Loaded only on Windows, only on the Direct3D11 backend. -->
+    <!-- The D3D11 binding, so the driver-threading probe (Internal/D3D11ThreadingProbe) can call
+         ID3D11Device::CheckFeatureSupport on the raw device pointer the native Direct3D 11 backend hands it.
+         Loaded only on Windows, only on Direct3D 11. -->
     <PackageReference Include="Vortice.Direct3D11" />
-    <!-- Override the vulnerable Newtonsoft.Json 9.0.1 that Veldrid.SPIRV drags in (NU1903). -->
+    <!-- Override the vulnerable Newtonsoft.Json 9.0.1 the toolchain drags in (NU1903), through
+         Veldrid.SPIRV -> Veldrid -> NativeLibraryLoader -> Microsoft.Extensions.DependencyModel. -->
     <PackageReference Include="Newtonsoft.Json" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
@@ -32,10 +38,10 @@
          reads nothing else of this package's internals. -->
     <InternalsVisibleTo Include="KhaozEngine.TestSupport.Gpu" />
     <!-- The native Direct3D11 backend package (decision P2). It reads three internals of this package and
-         nothing else: the Veldrid-free SPIRV cross-compile helper (Internal/SpirvCrossCompile), which is what
+         nothing else: the toolchain-free SPIRV cross-compile helper (Internal/SpirvCrossCompile), which is what
          keeps the Veldrid.SPIRV edge out of a backend whose premise is being Veldrid-free, IGpuDeviceLifecycle,
-         the disposal hook a natively created device implements so it gets the same liveness latch the Veldrid
-         wrapper has, and Internal/DeviceLiveness, which IS that latch: row 18 of the Metal design extracted the
+         the disposal hook a natively created device implements so it gets a liveness latch, and
+         Internal/DeviceLiveness, which IS that latch: row 18 of the Metal design extracted the
          three per-backend copies into one shared token here (#531). All three are internal on purpose: none of
          them is API a consumer should see. -->
     <InternalsVisibleTo Include="KhaozEngine.Gpu.D3D11" />
@@ -54,11 +60,9 @@
          siblings. MetalShaderArchitectureTests asserts over the built IL that it names the MSL members and
          NEVER an HLSL one.
          It reads ONE thing no sibling does: Internal/MetalFrameCapture, plus GpuFrameCapture's internal
-         arm-consume pair. That is decision M-G5 rather than an extra edge for convenience. The capture lives
-         here because the Veldrid Metal path needs it too, and the native backend owns its MTLCommandQueue, so it
-         hands the pointer in and the reflection into Veldrid's private _commandQueue field never runs on that
-         path. Widening a backend-kind gate could not have achieved that: the gate sits inside the Veldrid device
-         wrapper, which a provider-built device never becomes. -->
+         arm-consume pair. That is decision M-G5 rather than an extra edge for convenience: the capture drives
+         MTLCaptureManager through this package's own objc_msgSend declarations, and the backend owns its
+         MTLCommandQueue, so it hands the pointer straight in. -->
     <InternalsVisibleTo Include="KhaozEngine.Gpu.Metal" />
   </ItemGroup>
 </Project>

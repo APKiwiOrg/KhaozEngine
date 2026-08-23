@@ -27,8 +27,9 @@ namespace KhaozEngine.Tests.Gpu
     /// one shows up here as every program moving at once.
     /// </para>
     /// <para>
-    /// PARITY WITH THE INCUMBENT IS A SEPARATE ASSERTION AND IT LIVES NEXT DOOR, in
-    /// <see cref="VulkanSpirvIncumbentParityTests"/>. It is the one that licenses carrying the committed
+    /// PARITY WITH THE INCUMBENT WAS A SEPARATE ASSERTION AND IT LIVED NEXT DOOR, in
+    /// <c>VulkanSpirvIncumbentParityTests</c>, deleted in 18.0.0 with the incumbent. It is the one that licensed
+    /// carrying the committed
     /// <c>vulkan</c> goldens over to the native backend without a rebake. It was measured once, in process, on
     /// 2026-08-08: all 34 shipped graphics programs (68 stage compiles) and all 8 shipped compute kernels, 76
     /// stage emissions in total, compiled to BYTE-IDENTICAL SPIR-V under this path and under a faithful
@@ -54,8 +55,8 @@ namespace KhaozEngine.Tests.Gpu
     /// passes. Do that ONLY when a shader source or the pinned front-end options changed ON PURPOSE, and read the
     /// diff: a one-line GLSL edit moving one program's hash is expected, and the same edit moving every program
     /// means the OPTIONS moved instead. The second case puts the parity claim above in question along with the
-    /// goldens it licenses, so read <see cref="VulkanSpirvIncumbentParityTests"/>'s result before re-baking: if
-    /// it is red as well, the two paths have diverged and a bake here hides that rather than fixing it.
+    /// goldens it licenses. There is no second producer left to check that against, so a bake here is now taken
+    /// on the diff alone and the reading has to be that much more careful.
     /// </para>
     /// <para>
     /// THE SPIR-V IS DUMPED ON FAILURE to <c>Gpu/spirv-evidence/</c> as <c>.spv</c> files, for the same reason the

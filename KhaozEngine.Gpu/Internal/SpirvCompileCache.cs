@@ -25,13 +25,11 @@ namespace KhaozEngine.Gpu.Internal
     /// a game creates one per window, and both would recompile from scratch every time.
     /// </para>
     /// <para>
-    /// <b>THE OPTIONS IDENTITY IS IN THE KEY BECAUSE TWO CALLERS OWN TWO SETS.</b> Every engine-owned compile runs
-    /// through <see cref="SpirvFrontEnd"/> under <see cref="SpirvFrontEndPin"/>, and the incumbent
-    /// <see cref="VeldridGpuDevice"/> deliberately keeps the library's own defaults on both of its paths. Those two
-    /// sets are maintained independently, and their equality is asserted by
-    /// <c>VulkanSpirvIncumbentParityTests</c> rather than held by construction, so a memo that keyed on the source
-    /// alone would hand one caller the other's bytes the moment they diverged, and would do it silently. Keying on
-    /// the identity string makes a divergence produce two entries instead of one wrong answer.
+    /// <b>THE OPTIONS IDENTITY IS IN THE KEY BECAUSE A CALLER MAY OWN ITS OWN SET.</b> Every engine-owned compile
+    /// runs through <see cref="SpirvFrontEnd"/> under <see cref="SpirvFrontEndPin"/>, but the memo is keyed on the
+    /// identity string rather than the source alone, so a caller compiling the same source under different options
+    /// gets its own entry instead of the other caller's bytes. That divergence produces two entries rather than
+    /// one wrong answer, and it would otherwise be silent.
     /// </para>
     /// <para>
     /// <b>EVERY CALLER GETS ITS OWN ARRAY.</b> <see cref="GetOrCompile"/> hands back a copy, so the cached module

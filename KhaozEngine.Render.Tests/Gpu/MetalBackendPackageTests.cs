@@ -276,16 +276,16 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// The append site answered for a THIRD backend the same way it was for the first two and with no edit
-        /// at all: <see cref="GpuBackendProviders.RequiresProvider"/> is stated as "everything the built-in path
-        /// does not build", so an appended kind is provider-backed by default. That is the safe direction, and
-        /// it is what makes registering under the pinned ordinal below reach the provider registry rather than
-        /// the Veldrid creation switch, whose discard arm would ask Veldrid for a Metal device.
+        /// at all: <see cref="GpuBackendProviders.RequiresProvider"/> was stated as "everything the built-in
+        /// path does not build", so an appended kind was provider-backed by default. 18.0.0 deleted the built-in
+        /// path with the Veldrid incumbent, so EVERY kind reaches the provider registry now and the question the
+        /// site asked no longer has two answers.
         /// </summary>
         [Fact]
         public void TheNativeKind_IsProviderBacked_WithNoEditToTheRegistry()
         {
             Assert.True(GpuBackendProviders.RequiresProvider(KhaozEngineMetal.MetalNativeKind));
-            Assert.False(GpuBackendProviders.RequiresProvider(GpuBackendKind.Metal));
+            Assert.True(GpuBackendProviders.RequiresProvider(GpuBackendKind.Metal));
         }
 
         /// <summary>

@@ -12,12 +12,9 @@ namespace KhaozEngine.Gpu
     /// device is created), or Metal disables programmatic capture. No-op on non-Metal backends and if the capture
     /// API is unavailable. Debug-only, and do not arm in shipping builds.
     /// <para>
-    /// WHICH Metal serves an armed capture is <see cref="VeldridPathCaptures"/> for the Veldrid path, and the
-    /// native Metal device itself for its own. The two are separate code paths rather than one widened gate, and
-    /// decision M-G5 of <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c> is why: the native backend
-    /// owns its command queue, so it captures with the pointer in hand while the Veldrid path has to find the
-    /// queue by reflection. Both consume an arm at a PRESENT boundary, so a headless device of either kind never
-    /// consumes one.
+    /// The native Metal device services an armed capture itself, with its own command-queue pointer in hand
+    /// (decision M-G5 of <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>). The arm is consumed at a
+    /// PRESENT boundary, so a headless device never consumes one.
     /// </para>
     /// </remarks>
     public static class GpuFrameCapture
@@ -45,31 +42,6 @@ namespace KhaozEngine.Gpu
                 return true;
             }
         }
-
-        /// <summary>
-        /// Whether the VELDRID device wrapper is the thing that services an armed capture on
-        /// <paramref name="backend"/>. True for <see cref="GpuBackendKind.Metal"/> and nothing else.
-        /// <para>
-        /// Extracted from the inline check it used to be so the append audit can assert it device-free, the way
-        /// <c>D3D11ThreadingProbe.IsApplicable</c> is the pure half of an impure site. What it pins is that this
-        /// is NOT the family question: widening it to <c>GpuBackendKinds.IsMetal</c> would read as the fix for
-        /// <see cref="GpuBackendKind.MetalNative"/> arming no capture, and it would fix nothing, because a
-        /// provider-built device never becomes the Veldrid wrapper this runs inside. The native backend owns its
-        /// own queue and services its own captures with the pointer in hand, which is also what removes the
-        /// reflection into Veldrid's private <c>_commandQueue</c> field on that path (decision M-G5 of
-        /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>).
-        /// </para>
-        /// <para>
-        /// THAT NATIVE PATH NOW EXISTS: <c>MetalGpuDevice.ServiceFrameCaptureAtPresentBoundary</c> is the native
-        /// device's own consumption site and takes the same <see cref="TryConsume"/> and
-        /// <see cref="NextAction"/> this one does. So this member stays FALSE for
-        /// <see cref="GpuBackendKind.MetalNative"/> permanently rather than pending a fix, which is what the
-        /// append audit asserts. The third of the three sites the Metal append degraded SILENTLY is closed by a
-        /// second implementation rather than by a wider predicate, and the arm it consumes is consumed at a
-        /// PRESENT, so a headless device of either kind still consumes nothing.
-        /// </para>
-        /// </summary>
-        internal static bool VeldridPathCaptures(GpuBackendKind backend) => backend == GpuBackendKind.Metal;
 
         /// <summary>What to do at a swapchain present boundary for the one-shot full-frame capture.</summary>
         internal enum CaptureAction { None, StartAfterPresent, StopAfterPresent }

@@ -16,9 +16,9 @@ namespace KhaozEngine.Tests.Gpu
     /// <para><b>WHAT WAS ACTUALLY WRONG WITH THE OLD SHAPE.</b> It was not that reflection is distasteful. It is
     /// that the reflection's failure mode is a silent one: a Veldrid field rename returns zero, the capture is
     /// skipped, and the session that armed it finds an empty output directory, which is indistinguishable from a
-    /// missing <c>MTL_CAPTURE_ENABLED</c> and from an unarmed run. The native backend owns its queue, so on that
-    /// path the failure mode is deleted rather than handled, and on the Veldrid path
-    /// <see cref="VeldridMetalCommandQueue"/> is a member the row below asks a live device about.</para>
+    /// missing <c>MTL_CAPTURE_ENABLED</c> and from an unarmed run. The native backend owns its queue, so the
+    /// failure mode is deleted rather than handled: there was a second path through the Veldrid device wrapper,
+    /// which reflected into a private field to find the queue, and it went with the wrapper in 18.0.0.</para>
     ///
     /// <para><b>THE CAPTURE PATH IS SAFE TO EXECUTE ON AN ORDINARY RUN, WHICH IS A MEASUREMENT RATHER THAN AN
     /// ASSUMPTION.</b> <c>-startCaptureWithDescriptor:error:</c> in a process where capture was never enabled
@@ -63,36 +63,6 @@ namespace KhaozEngine.Tests.Gpu
             MetalFrameCapture.Stop(() => drained = true);
             Assert.False(drained);
         }
-
-        /// <summary>
-        /// THE REFLECTION THE VELDRID LEG STILL NEEDS, ASKED OF A LIVE VELDRID METAL DEVICE. This is the row that
-        /// turns the next Veldrid field rename into a red test instead of an empty output directory, and it is the
-        /// reason the read is a named type rather than a step inside the capture. Dormant when the incumbent did
-        /// not come up on Metal, which is every non-macOS leg.
-        /// </summary>
-        [GpuFact]
-        public void VeldridsPrivateCommandQueueField_IsStillWhereTheReflectionLooks()
-        {
-            using GpuDeviceContext incumbent = GpuDeviceContext.CreateHeadless();
-            if (incumbent.Backend != GpuBackendKind.Metal)
-            {
-                _out.WriteLine($"dormant: the incumbent device came up on {incumbent.Backend}, not Metal, so it "
-                    + "has no Metal command queue to find.");
-                return;
-            }
-
-            var wrapper = (VeldridGpuDevice)incumbent.GpuDevice;
-            IntPtr queue = VeldridMetalCommandQueue.TryRead(wrapper.GraphicsDevice);
-
-            _out.WriteLine($"Veldrid {VeldridMetalCommandQueue.FieldName} -> {queue}");
-            Assert.NotEqual(IntPtr.Zero, queue);
-        }
-
-        /// <summary>A null device reads zero rather than throwing, because the capture path answers false on zero
-        /// and a throw here would break a frame for a debug feature.</summary>
-        [Fact]
-        public void TheVeldridQueueRead_AnswersZeroForNothingRatherThanThrowing()
-            => Assert.Equal(IntPtr.Zero, VeldridMetalCommandQueue.TryRead(null));
 
         /// <summary>
         /// THE NATIVE PATH, WITH A REAL QUEUE POINTER AND NO REFLECTION ANYWHERE. Both arms are honest: on an

@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
-using Veldrid;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -10,8 +9,8 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>End-to-end smoke of the engine GPU abstraction on the real device (Metal on the dev box): create
     /// a device, a buffer, a render-target texture + framebuffer, a passthrough graphics pipeline (built via
     /// <see cref="IGpuResourceFactory.CreateShadersFromSpirv"/>), and a command list; record + submit an empty
-    /// clear pass; read back one pixel; dispose. Proves the Veldrid impl actually works through the seam. Runs
-    /// only with <c>KE_GPU_TESTS=1</c>.</summary>
+    /// clear pass; read back one pixel; dispose. Proves the platform's backend actually works through the seam.
+    /// Runs only with <c>KE_GPU_TESTS=1</c>.</summary>
     public class GpuDeviceSmokeTests
     {
         const string Vert = @"#version 450
@@ -25,8 +24,7 @@ void main() { o = vec4(0.0, 1.0, 0.0, 1.0); }";
         [GpuFact]
         public void Device_CreatesResources_BuildsPipeline_And_SubmitsClearPass()
         {
-            var opts = new GraphicsDeviceOptions(false, null, false, ResourceBindingModel.Improved, true, true);
-            using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless(opts);
+            using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
             IGpuDevice device = ctx.GpuDevice;
             IGpuResourceFactory f = device.Factory;
 
@@ -70,18 +68,14 @@ void main() { o = vec4(0.0, 1.0, 0.0, 1.0); }";
                 ShaderSet = shaders,
                 // THE EMPTY LAYOUT IS DECLARED RATHER THAN DROPPED, and the local above was always built for
                 // this. These shaders bind no resources, and the SPIR-V reflection still reports ONE resource
-                // layout for them, an empty one. Veldrid tolerates the disagreement, so this read
-                // Array.Empty<IGpuResourceLayout>() for years and passed on every backend. The native Metal
-                // backend does not: its binding table is keyed on (set, binding, stage) read out of the shader's
-                // own decorations, so it requires the declared array to be the same SHAPE as the reflection it
-                // built the table from, and a pipeline declaring zero layouts against a reflection reporting one
-                // is refused at creation. Declaring the empty layout is what this pipeline always meant.
-                //
-                // AND DECLARING IT OBLIGES THE DRAW TO BIND ONE, which is the half that has to be got right on
-                // BOTH backends at once and was measured rather than reasoned: with the layout declared and no
-                // set bound, Veldrid's Metal backend dereferences a null inside ActivateGraphicsResourceSet at
-                // the draw. So the empty set below is not decoration. One declared layout, one bound set, on
-                // every backend.
+                // layout for them, an empty one. The native Metal backend's binding table is keyed on
+                // (set, binding, stage) read out of the shader's own decorations, so it requires the declared
+                // array to be the same SHAPE as the reflection it built the table from, and a pipeline declaring
+                // zero layouts against a reflection reporting one is refused at creation. Declaring the empty
+                // layout is what this pipeline always meant, and declaring it obliges the draw to bind one, which
+                // is why the empty set below is not decoration. One declared layout, one bound set, on every
+                // backend. See https://github.com/APKiwiOrg/KhaozEngine/issues/599 for the trailing-empty-set
+                // trim that removes the ceremony, which lands with the toolchain swap.
                 ResourceLayouts = new[] { layout },
                 Outputs = fb.Outputs,
             };

@@ -40,11 +40,9 @@ namespace KhaozEngine.Gpu.Internal
     {
         /// <summary>
         /// The compile options every ENGINE-OWNED SPIR-V emission uses, in ONE place, which is every emission
-        /// that comes through this type. The incumbent <see cref="VeldridGpuDevice"/> keeps the library's own
-        /// defaults deliberately and does not read these, so the equality of the two sets is asserted by
-        /// <c>VulkanSpirvIncumbentParityTests</c> rather than held by construction. PRIVATE, because it is the
-        /// one member here whose type is a Veldrid type, and the rest of this class is part of the Veldrid-free
-        /// contract the native backends consume across <c>InternalsVisibleTo</c>.
+        /// that comes through this type. PRIVATE, because it is one of the two members here whose type is a
+        /// toolchain type, and the rest of this class is part of the toolchain-free contract the native backends
+        /// consume across <c>InternalsVisibleTo</c>.
         /// <para>
         /// BUILT FROM <see cref="SpirvFrontEndPin"/> rather than written here, exactly as
         /// <see cref="SpirvCrossCompile"/> builds its own set from <see cref="HlslCrossCompilePin"/>. The pin holds
@@ -69,7 +67,7 @@ namespace KhaozEngine.Gpu.Internal
             if (glsl is null) throw new ArgumentNullException(nameof(glsl));
 
             string tag = label ?? "shader";
-            ShaderStages veldridStage = VeldridMap.ToVeldrid(stage);
+            ShaderStages toolchainStage = ToToolchainStage(stage);
             try
             {
                 // THE FILE NAME IS A DIAGNOSTIC TAG AND NOT AN INPUT TO THE EMISSION. shaderc uses it to identify
@@ -87,13 +85,30 @@ namespace KhaozEngine.Gpu.Internal
                 // one source, so carrying it costs no entries.
                 return SpirvCompileCache.Shared.GetOrCompile(
                     SpirvFrontEndPin.Identity + ";label=" + tag, stage, glsl,
-                    () => SpirvCompilation.CompileGlslToSpirv(glsl, $"{tag}.{stage}", veldridStage, _options)
+                    () => SpirvCompilation.CompileGlslToSpirv(glsl, $"{tag}.{stage}", toolchainStage, _options)
                         .SpirvBytes);
             }
             catch (Exception ex)
             {
                 throw new ShaderValidationException($"{tag}: {stage} GLSL to SPIR-V failed: {ex.Message}", ex);
             }
+        }
+
+        // The engine stage flags as the SPIR-V front end names them. The ONE remaining outward map from an engine
+        // type onto a toolchain type, and it is private for the reason the class doc gives: a Veldrid type in any
+        // non-private signature here would put a Veldrid assembly reference into a backend's IL across
+        // InternalsVisibleTo, and every backend's premise is having none. It leaves with the toolchain in row 8 of
+        // the Veldrid removal (https://github.com/APKiwiOrg/KhaozEngine/issues/683).
+        static ShaderStages ToToolchainStage(GpuShaderStages s)
+        {
+            ShaderStages r = 0;
+            if ((s & GpuShaderStages.Vertex) != 0) r |= ShaderStages.Vertex;
+            if ((s & GpuShaderStages.Geometry) != 0) r |= ShaderStages.Geometry;
+            if ((s & GpuShaderStages.TessellationControl) != 0) r |= ShaderStages.TessellationControl;
+            if ((s & GpuShaderStages.TessellationEvaluation) != 0) r |= ShaderStages.TessellationEvaluation;
+            if ((s & GpuShaderStages.Fragment) != 0) r |= ShaderStages.Fragment;
+            if ((s & GpuShaderStages.Compute) != 0) r |= ShaderStages.Compute;
+            return r;
         }
     }
 }

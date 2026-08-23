@@ -7,22 +7,33 @@
   </PropertyGroup>
   <ItemGroup>
     <!-- GPU / windowing / render stack -->
-    <!-- APKiwi Veldrid 4.9.0 fork with opt-in serialized Direct3D11 immediate-context recording. See
-         KhaozEngine.Gpu/GpuDeviceContext.cs for the D3D11-only opt-in and KhaozEngine #410 for field evidence. -->
-    <PackageVersion Include="Veldrid" Version="4.9.104" />
+    <!-- The SHADER TOOLCHAIN, and nothing else. Veldrid.SPIRV carries glslang for the GLSL to SPIR-V front end
+         and SPIRV-Cross for the back end, and it declares a dependency on Veldrid, so the base package cannot
+         leave the graph while the toolchain is here. What DID leave in 18.0.0 is the incumbent backend, the
+         APKiwi 4.9.x fork it needed and the vendor/veldrid feed that served it: the pin is stock upstream from
+         nuget.org now, and the only Veldrid types the engine names are the descriptions Veldrid.SPIRV's
+         reflection hands back (Internal/SpirvCrossCompile, Internal/SpirvFrontEnd, ShaderValidation). Both
+         entries go in row 8 of the removal program, the toolchain swap onto Silk.NET.Shaderc plus
+         Silk.NET.SPIRV.Cross (https://github.com/APKiwiOrg/KhaozEngine/issues/683). -->
+    <PackageVersion Include="Veldrid" Version="4.9.0" />
     <PackageVersion Include="Veldrid.SPIRV" Version="1.0.15" />
-    <!-- Already a transitive dependency of Veldrid 4.9.0 (its own D3D11 binding), declared explicitly in
-         KhaozEngine.Gpu so the D3D11 driver-threading probe can call ID3D11Device::CheckFeatureSupport.
-         Keep this pinned to whatever Veldrid depends on, so there is one D3D11 binding in the graph. -->
+    <!-- The D3D11 binding. Declared explicitly in KhaozEngine.Gpu so the driver-threading probe can call
+         ID3D11Device::CheckFeatureSupport on the raw device pointer the native backend hands it, and in
+         KhaozEngine.Gpu.D3D11 for the backend itself. Still 2.3.0 because Veldrid depends on that line and it is
+         still in the graph under Veldrid.SPIRV, so the graph keeps ONE D3D11 binding and one SharpGen.Runtime.
+         Free to move with row 8 (#617). -->
     <PackageVersion Include="Vortice.Direct3D11" Version="2.3.0" />
     <!-- FXC for the engine-owned native Direct3D11 backend (KhaozEngine.Gpu.D3D11), which compiles the
          cross-compiled HLSL to DXBC itself. Pinned to the SAME 2.3.0 Vortice line as Vortice.Direct3D11 above,
          not to the newest 3.x: both 2.3.0 packages resolve SharpGen.Runtime 2.0.0-beta.13 and
          Vortice.Mathematics 1.4.25, so the graph keeps one COM interop layer. A 3.x D3DCompiler beside a 2.3.0
          Direct3D11 would drag a second SharpGen.Runtime major into the same process, and Direct3D11 cannot move
-         because it is pinned to what Veldrid depends on. -->
+         because it is pinned to what Veldrid depends on, and Veldrid is still in the graph under Veldrid.SPIRV.
+         Free to move with row 8 (#617). -->
     <PackageVersion Include="Vortice.D3DCompiler" Version="2.3.0" />
-    <!-- CVE override: Veldrid.SPIRV drags in vulnerable Newtonsoft.Json 9.0.1 (NU1903). Not used directly. -->
+    <!-- CVE override: the toolchain drags in vulnerable Newtonsoft.Json 9.0.1 (NU1903), through
+         Veldrid.SPIRV -> Veldrid -> NativeLibraryLoader -> Microsoft.Extensions.DependencyModel. Not used
+         directly, and it leaves with the toolchain in row 8 rather than with the incumbent backend. -->
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageVersion Include="Silk.NET.Windowing" Version="2.23.0" />
     <PackageVersion Include="Silk.NET.Windowing.Glfw" Version="2.23.0" />

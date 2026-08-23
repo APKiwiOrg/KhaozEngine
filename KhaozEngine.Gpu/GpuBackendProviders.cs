@@ -50,9 +50,11 @@ namespace KhaozEngine.Gpu
                 + "KhaozEngine<Backend>.Register(), so KhaozEngine.Gpu.D3D11 exposes KhaozEngineD3D11.Register() "
                 + "and KhaozEngine.Gpu.Vulkan exposes KhaozEngineVulkan.Register(). Referencing the package is "
                 + "not enough on its own: the CLR loads an assembly lazily on first type reference, so a "
-                + "self-registering module initializer would run on some machines and not others. This does not "
-                + "fall back to another backend, on purpose. A run that quietly used a backend other than the one "
-                + "asked for would report its measurements under the wrong name.";
+                + "self-registering module initializer would run on some machines and not others. A windowed game "
+                + "gets this for free, because AppWindow calls GpuBackends.RegisterPlatformDefault() at boot, and "
+                + "a headless host calls that same member once itself. This does not fall back to another "
+                + "backend, on purpose. A run that quietly used a backend other than the one asked for would "
+                + "report its measurements under the wrong name.";
     }
 
     /// <summary>
@@ -126,24 +128,17 @@ namespace KhaozEngine.Gpu
                 : throw new GpuBackendProviderMissingException(backend);
 
         /// <summary>
-        /// Whether <paramref name="backend"/> is created by a registered provider rather than by the engine's own
-        /// built-in creation path.
+        /// Whether <paramref name="backend"/> is created by a registered provider. CONSTANT TRUE since 18.0.0:
+        /// this package builds no device of its own any more, so every live backend arrives through the registry
+        /// and an APPENDED <see cref="GpuBackendKind"/> is provider-backed with nothing to remember.
         /// <para>
-        /// Stated as "everything the built-in path does not build", which makes an APPENDED
-        /// <see cref="GpuBackendKind"/> provider-backed by default. That is the safe direction and the reason it is
-        /// written this way round: the alternative is a list somebody has to remember to add the new kind to, and
-        /// forgetting THAT sends the new backend down the Veldrid switch, whose discard arm asks for a Metal device
-        /// on Windows. Getting it wrong in this direction throws a message naming the missing registration instead.
+        /// Kept as a member rather than deleted because it is the question the creation path and the support
+        /// probe ask, and because a build-it-here path could return. What it must NEVER become again is a list
+        /// somebody has to add a new kind to: forgetting that is what used to send a new backend into a switch
+        /// whose discard arm asked for a Metal device on Windows.
         /// </para>
         /// </summary>
-        public static bool RequiresProvider(GpuBackendKind backend) => !IsBuiltIn(backend);
-
-        // The backends KhaozEngine.Gpu creates itself, through Veldrid, with no registry involved. Deliberately a
-        // positive membership test rather than a switch: it needs no arm for a kind that does not exist yet, and
-        // it cannot silently answer "built in" for one.
-        static bool IsBuiltIn(GpuBackendKind backend)
-            => backend is GpuBackendKind.Metal or GpuBackendKind.Vulkan
-                or GpuBackendKind.Direct3D11 or GpuBackendKind.OpenGL;
+        public static bool RequiresProvider(GpuBackendKind backend) => true;
 
         // Test seam. The registry is process-wide static state, so a test that registers a fake provider has to be
         // able to put it back. Internal because a consuming app has no reason to unregister a backend mid-run:

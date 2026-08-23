@@ -12,8 +12,7 @@ namespace KhaozEngine.Tests.Gpu
     /// hands every caller its own array, and that it stops growing at its capacity.
     /// <para>
     /// DEVICE-FREE AND ON EVERY LEG. glslang ships per RID and runs on the CPU, so these are plain
-    /// <see cref="FactAttribute"/>s in the fast <c>ci.yml</c> loop, like
-    /// <see cref="VulkanSpirvIncumbentParityTests"/> beside them. Every case asserts on a cache IT built, never on
+    /// <see cref="FactAttribute"/>s in the fast <c>ci.yml</c> loop. Every case asserts on a cache IT built, never on
     /// <c>SpirvCompileCache.Shared</c>, so no counter another class can move is read here and the class needs no
     /// serial collection. The miss callback goes through <see cref="SpirvFrontEnd"/>, which has a memo of its own,
     /// and that is deliberate: it makes these cases cost one compile between them, and every assertion below is on

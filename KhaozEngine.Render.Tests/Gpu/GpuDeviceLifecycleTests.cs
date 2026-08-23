@@ -2,7 +2,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using KhaozEngine.Gpu;
-using Veldrid;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -29,7 +28,6 @@ namespace KhaozEngine.Tests.Gpu
         [GpuFact]
         public void Concurrent_CreateHeadless_Use_Dispose_AllThreadsSucceed()
         {
-            var opts = new GraphicsDeviceOptions(false, null, false, ResourceBindingModel.Improved, true, true);
             var failures = new ConcurrentBag<Exception>();
 
             var tasks = new Task[ThreadCount];
@@ -41,7 +39,7 @@ namespace KhaozEngine.Tests.Gpu
                     {
                         for (int c = 0; c < CyclesPerThread; c++)
                         {
-                            using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless(opts);
+                            using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
                             IGpuDevice device = ctx.GpuDevice;
 
                             // Trivial device use so the created device is actually exercised, not just torn down.

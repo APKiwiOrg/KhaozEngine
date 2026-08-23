@@ -220,16 +220,6 @@ namespace KhaozEngine.Tests.Gpu
             ctx.Dispose();
         }
 
-        /// <summary>
-        /// The Veldrid path's half of the same change. Removing the cast removed the compile error that used to
-        /// keep <c>MarkDeviceDisposed</c> reachable, so dropping the interface from the wrapper would now silently
-        /// stop the latch on every existing backend and no test would fail. This is that test.
-        /// </summary>
-        [Fact]
-        public void TheVeldridDevice_StillCarriesTheDisposalHook()
-        {
-            Assert.True(typeof(IGpuDeviceLifecycle).IsAssignableFrom(typeof(VeldridGpuDevice)));
-        }
     }
 
     /// <summary>

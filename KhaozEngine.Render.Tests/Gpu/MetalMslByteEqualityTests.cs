@@ -26,11 +26,11 @@ namespace KhaozEngine.Tests.Gpu
     /// once.
     /// </para>
     /// <para>
-    /// PARITY WITH THE INCUMBENT IS THE OTHER ARTEFACT AND IT IS A STANDING TEST, not a memory.
-    /// <see cref="MetalMslIncumbentParityTests"/> compares the two paths on every leg, which is phase 3's upgrade
-    /// inherited: the equality is not true by construction, so a one-off measurement licenses only the afternoon
-    /// it was taken. Neither test substitutes for the other. A wrong emission produced identically by both paths
-    /// passes there and fails here. A right emission that only the engine produces passes here and fails there.
+    /// PARITY WITH THE INCUMBENT WAS THE OTHER ARTEFACT AND IT WAS A STANDING TEST, <c>MetalMslIncumbentParityTests</c>,
+    /// which compared the two paths on every leg. It was deleted in 18.0.0 with the second path, and what it
+    /// bought is gone with it: this file pins what the engine EMITS, and nothing checks that emission against an
+    /// independent producer any more. That is the cost the removal design records as R2, and the honest reading
+    /// of a green run here is regression detection rather than correctness evidence.
     /// </para>
     /// <para>
     /// DEVICE-FREE AND ON EVERY LEG. The SPIRV-Cross native ships per RID and runs on macOS, Linux and Windows, so

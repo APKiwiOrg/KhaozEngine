@@ -34,23 +34,14 @@ public class ArchitectureTests
         "Physics.Bepu", "WorldStore.Sqlite", "WorldStore.SqlServer",
         "Server.Admin", "Social.Discord", "Commerce.Sqlite", "Commerce.SqlServer",
         "Identity.Oidc", "Identity.Discord",
-        // The engine-owned native Direct3D11 backend. Opt-in for the usual pay-for-what-you-use reason and for a
-        // second one specific to it: welding a Direct3D backend into a graph every consumer carries would make
-        // the D3D11 interop non-optional for the Linux server heads (decision P1 of
-        // docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md).
-        "Gpu.D3D11",
-        // The engine-owned native Vulkan backend, opt-in for the same two reasons (decision V-P1 of
-        // docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md). Silk.NET.Vulkan is a large assembly, and the
-        // premise of this phase is Veldrid leaving rather than dependency count falling, so a consumer that
-        // never names Vulkan must never load it.
-        "Gpu.Vulkan",
-        // The engine-owned native Metal backend, opt-in for the first of those two reasons (decision M-P1 of
-        // docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md). The second one reads differently here and is
-        // worth stating: this package drags in no third-party assembly at all, so the cost of carrying it is
-        // its own IL rather than a binding. It stays opt-in anyway, because a backend every consumer carries is
-        // a backend every consumer is choosing between, and the whole rollout model is that naming it is what
-        // reaches it.
-        "Gpu.Metal",
+        // THE THREE NATIVE GPU BACKENDS ARE NOT ON THIS LIST ANY MORE, and their absence is asserted rather than
+        // assumed: NativeGpuBackends_AreCarriedByEveryUmbrellaThatCarriesGpu below requires the opposite of what
+        // this list would have meant. They were opt-in from decisions P1 / V-P1 / M-P1, on pay-for-what-you-use
+        // plus a second argument about not welding a Direct3D backend into the Linux server heads' graph. Both
+        // arguments died with the Veldrid incumbent in 18.0.0: KhaozEngine.Gpu builds no device of its own any
+        // more, so an umbrella carrying Gpu without a backend carries a stack that cannot create a device, and
+        // the server heads are unaffected because the Foundation and Server umbrellas carry no Gpu at all
+        // (FoundationUmbrella_StaysGpuFree and ServerUmbrella_StaysGpuFree are what hold that).
     };
 
     // The GPU / runtime stack. None of these may appear in the Foundation or Server umbrella closures (both
@@ -67,10 +58,16 @@ public class ArchitectureTests
     // must appear here (or in IgnoredInfraPackages) so adding a dependency is always a deliberate edit.
     static readonly Dictionary<string, string[]> ThirdPartyHomes = new(StringComparer.Ordinal)
     {
-        // GPU seam: the Veldrid binding is contained inside KhaozEngine.Gpu (Internal/VeldridGpuDevice).
+        // SHADER TOOLCHAIN ONLY since 18.0.0, and contained inside KhaozEngine.Gpu. Veldrid.SPIRV is glslang
+        // plus SPIRV-Cross, and its reflection hands back description types defined in the Veldrid BASE
+        // assembly, which is the whole reason a package named Veldrid is still mapped after the incumbent
+        // backend was deleted. Both rows leave together at the toolchain swap (#683 row 8).
         ["Veldrid"] = new[] { "Gpu" },
         ["Veldrid.SPIRV"] = new[] { "Gpu" },
-        // Pinned alongside Veldrid.SPIRV shader reflection, stays inside Gpu.
+        // CVE override for the vulnerable Newtonsoft.Json 9.0.1 the toolchain still drags in (NU1903), through
+        // Veldrid.SPIRV -> Veldrid -> NativeLibraryLoader -> Microsoft.Extensions.DependencyModel. It survives
+        // the incumbent delete because Veldrid.SPIRV depends on Veldrid, which is what puts that chain back
+        // whatever the engine declares. It goes with the toolchain swap, not before it.
         ["Newtonsoft.Json"] = new[] { "Gpu" },
         // Veldrid's own D3D11 binding, already transitive via Veldrid. Declared in Gpu for the driver-threading
         // probe (Internal/D3D11ThreadingProbe), and in Gpu.D3D11 because that package IS the Direct3D11 interop.
@@ -308,6 +305,9 @@ public class ArchitectureTests
             {
                 "Windowing", "Render2D", "Gui", "Audio", "Particles", "Telegraphs", "Game", "Foundation",
                 "Localization.Analyzers", "CodeHealth.Analyzers",
+                // The three engine-owned native GPU backends, no longer opt-in as of 18.0.0. See
+                // NativeGpuBackends_AreCarriedByEveryUmbrellaThatCarriesGpu below for why.
+                "Gpu.Metal", "Gpu.D3D11", "Gpu.Vulkan",
             }
         },
         {
@@ -346,13 +346,64 @@ public class ArchitectureTests
     }
 
     /// <summary>
-    /// Decisions P2 (Direct3D 11), V-P3 (Vulkan) and M-P3 (Metal): an engine-owned native backend declares NO Veldrid package
-    /// of its own. Both shader paths need SPIRV-Cross, which ships as <c>Veldrid.SPIRV</c>, and the tempting
-    /// shortcut is to reference it straight from the backend and bless the edge above. That is rejected:
-    /// blessing a Veldrid package inside a backend whose entire premise is being Veldrid-free is a bad signal
-    /// no other guard would ever catch, and it would scatter the eventual SPIRV-Cross replacement across
+    /// The INVERSE of the rule above, for the three native GPU backends, and it is the guard that keeps the
+    /// 18.0.0 delete shippable. They were opt-in until then, on pay-for-what-you-use. That argument required a
+    /// built-in backend to fall back to, and deleting the Veldrid incumbent deleted it: <c>KhaozEngine.Gpu</c>
+    /// builds no device of its own any more, so an umbrella that carries <c>Gpu</c> and no backend ships a stack
+    /// that throws <c>GpuBackendProviderMissingException</c> at the first device.
+    /// <para>
+    /// ALL THREE, not the build machine's one, because a NuGet package restores on every platform its consumer
+    /// builds on and the umbrella cannot know which. A foreign backend is inert rather than merely harmless:
+    /// each package is platform-guarded, its interop sits behind <c>NoInlining</c> bodies the JIT never compiles
+    /// off its platform, and <c>GpuBackends.RegisterPlatformDefault()</c> registers only the running platform's,
+    /// so <c>GpuBackendSelector.SupportedBackends()</c> never offers a player a row that cannot boot.
+    /// </para>
+    /// <para>
+    /// GATED ON CARRYING <c>Gpu</c>, so this says nothing about <c>Foundation</c> or <c>Server</c>: both are
+    /// GPU-free metapackages and stay that way under <see cref="FoundationUmbrella_StaysGpuFree"/> and
+    /// <see cref="ServerUmbrella_StaysGpuFree"/>. What it catches is the shape that would ship a
+    /// broken repin: a graphics umbrella losing a backend edge, or a fourth umbrella gaining Gpu without one.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void NativeGpuBackends_AreCarriedByEveryUmbrellaThatCarriesGpu()
+    {
+        IReadOnlyDictionary<string, Project> graph = LoadGraph();
+        var violations = new List<string>();
+        foreach (string umbrella in Umbrellas)
+        {
+            HashSet<string> closure = TransitiveClosure(umbrella, graph).Select(Short).ToHashSet(StringComparer.Ordinal);
+            if (!closure.Contains("Gpu")) continue;
+
+            foreach (string backend in NativeGpuBackends.Where(b => !closure.Contains(b)))
+                violations.Add($"{Short(umbrella)} carries Gpu but not {backend}");
+        }
+
+        bool clean = violations.Count == 0;
+        Assert.True(clean,
+            "Every umbrella that carries KhaozEngine.Gpu must carry all three native GPU backends: " +
+            string.Join("; ", violations) +
+            ". KhaozEngine.Gpu builds no device of its own since 18.0.0, so an umbrella with Gpu and no backend " +
+            "ships a stack that cannot create one.");
+    }
+
+    // The three engine-owned native GPU backends (short names), which every Gpu-carrying umbrella must reach.
+    static readonly string[] NativeGpuBackends = { "Gpu.Metal", "Gpu.D3D11", "Gpu.Vulkan" };
+
+    /// <summary>
+    /// Decisions P2 (Direct3D 11), V-P3 (Vulkan) and M-P3 (Metal): an engine-owned native backend declares NO
+    /// Veldrid package of its own. Both shader paths need SPIRV-Cross, which ships as <c>Veldrid.SPIRV</c>, and
+    /// the tempting shortcut is to reference it straight from the backend and bless the edge above. That is
+    /// rejected: blessing a Veldrid package inside a backend whose entire premise is being Veldrid-free is a bad
+    /// signal no other guard would ever catch, and it would scatter the eventual SPIRV-Cross replacement across
     /// several packages instead of one. The edge stays in <c>KhaozEngine.Gpu</c> behind an internal,
     /// Veldrid-free cross-compile helper (<c>Internal/SpirvCrossCompile</c>) plus <c>InternalsVisibleTo</c>.
+    /// <para>
+    /// STILL LOAD-BEARING AFTER 18.0.0, which is worth stating because the incumbent backend it was written
+    /// beside is gone. What is left of Veldrid in this repository is the SHADER TOOLCHAIN, and that is exactly
+    /// the edge this guard refuses: the one shortcut a native backend has a real reason to take. It goes vacuous
+    /// at the toolchain swap (#683 row 8) and not before.
+    /// </para>
     /// <para>
     /// What is asserted is the DECLARED edge, which is the one a person adds. Veldrid is of course still in each
     /// backend's transitive closure, through <c>KhaozEngine.Gpu</c>, and must be: that is where the helper lives.

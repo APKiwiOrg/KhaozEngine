@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Render3D;
@@ -49,15 +48,16 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Equal(placements.Count, instances.Items.Count);   // not vacuous: every placement really is queued
 
             instances.Begin();
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 20; i++)
+            // Retries once before failing (see AllocAssert.NoPerCallAllocation) to ride out an unrelated gen-0
+            // collision from the rest of the process, per issue #284.
+            AllocAssert.NoPerCallAllocation("Queue over 20 calls", () =>
             {
-                PropRenderer.Queue(instances, placements, meshes, Vector3.Zero, drawRadius: 1000f);
-                instances.Begin();
-            }
-            long after = GC.GetAllocatedBytesForCurrentThread();
-
-            Assert.Equal(0L, after - before);
+                for (int i = 0; i < 20; i++)
+                {
+                    PropRenderer.Queue(instances, placements, meshes, Vector3.Zero, drawRadius: 1000f);
+                    instances.Begin();
+                }
+            });
         }
 
         [Fact]
@@ -75,15 +75,16 @@ namespace KhaozEngine.Tests.Terrain
             Assert.True(instances.Items.Count > placements.Count);   // not vacuous: multi-part, so more than one each
 
             instances.Begin();
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 20; i++)
+            // Retries once before failing (see AllocAssert.NoPerCallAllocation) to ride out an unrelated gen-0
+            // collision from the rest of the process, per issue #284.
+            AllocAssert.NoPerCallAllocation("QueueParts over 20 calls", () =>
             {
-                PropRenderer.Queue(instances, placements, parts, Vector3.Zero, drawRadius: 1000f);
-                instances.Begin();
-            }
-            long after = GC.GetAllocatedBytesForCurrentThread();
-
-            Assert.Equal(0L, after - before);
+                for (int i = 0; i < 20; i++)
+                {
+                    PropRenderer.Queue(instances, placements, parts, Vector3.Zero, drawRadius: 1000f);
+                    instances.Begin();
+                }
+            });
         }
     }
 }

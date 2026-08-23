@@ -18,6 +18,9 @@ namespace KhaozEngine.Tests.Gpu
     /// checks, which is why the register outlived the leg (#690) and these tests do too.
     /// </para>
     /// </summary>
+    // A zero-allocation reading measures its neighbours too (#264), and the concurrent-open row below is exactly
+    // the kind of neighbour that churns the GC, so the whole class sits off the parallel pool (#721).
+    [Collection("AllocSensitive")]
     public sealed class GpuRecordingTests
     {
         [Fact]
@@ -170,7 +173,7 @@ namespace KhaozEngine.Tests.Gpu
         /// ZERO STEADY-STATE ALLOCATION, asserted rather than reasoned about, because everything that keeps it
         /// zero is easy to break by accident: the scope is a readonly struct, the slot factory is a cached static
         /// lambda, the owner names are literals, and the lock is uncontended. Any per-call allocation at all would
-        /// be tens of bytes times ten thousand, so the bound below separates cleanly from measurement noise.
+        /// be tens of bytes times ten thousand, so a real regression still fails both passes of the retry below.
         /// </summary>
         [Fact]
         public void Opening_and_closing_allocates_nothing_in_the_steady_state()
@@ -181,12 +184,13 @@ namespace KhaozEngine.Tests.Gpu
             for (int i = 0; i < 10_000; i++)
                 using (GpuRecording.Open(device, cl, "the window's frame list")) { }
 
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 10_000; i++)
-                using (GpuRecording.Open(device, cl, "the window's frame list")) { }
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-
-            Assert.True(allocated < 1024, $"10000 open+dispose pairs allocated {allocated} bytes.");
+            // Retries once before failing (see AllocAssert.NoPerCallAllocation) to ride out an unrelated gen-0
+            // collision from the rest of the process, per issue #284.
+            AllocAssert.NoPerCallAllocation("10000 open+dispose pairs", () =>
+            {
+                for (int i = 0; i < 10_000; i++)
+                    using (GpuRecording.Open(device, cl, "the window's frame list")) { }
+            });
         }
 
         [Fact]

@@ -2,10 +2,11 @@ namespace KhaozEngine.Gpu
 {
     /// <summary>
     /// The graphics backend the engine runs on. Selection is centralized in <see cref="GpuBackendSelector"/>, and
-    /// the active backend is exposed on <see cref="GpuDeviceContext.Backend"/>. Four of the members name a Veldrid
-    /// backend the engine creates itself. <see cref="Direct3D11Native"/>, <see cref="VulkanNative"/> and
-    /// <see cref="MetalNative"/> name engine-owned implementations that arrive through
-    /// <see cref="GpuBackendProviders"/> instead.
+    /// the active backend is exposed on <see cref="GpuDeviceContext.Backend"/>. <see cref="Direct3D11Native"/>,
+    /// <see cref="VulkanNative"/> and <see cref="MetalNative"/> name the engine-owned implementations, which
+    /// arrive through <see cref="GpuBackendProviders"/> and are the only members that can create a device.
+    /// <see cref="Metal"/>, <see cref="Vulkan"/>, <see cref="Direct3D11"/> and <see cref="OpenGL"/> named the
+    /// Veldrid backend removed in 18.0.0 and are RETIRED (<see cref="GpuBackendSelector.IsRetired"/>).
     /// </summary>
     /// <remarks>
     /// Members are APPEND-ONLY and pinned to explicit values, the same contract
@@ -29,16 +30,22 @@ namespace KhaozEngine.Gpu
     /// decision already written down and pinned.
     /// </para>
     /// <para>
-    /// SINCE 17.40.0 THE THREE NATIVE MEMBERS ARE THE DEFAULTS and the four Veldrid members are not. The OS
-    /// probe answers <see cref="MetalNative"/> on macOS, <see cref="Direct3D11Native"/> on Windows and
-    /// <see cref="VulkanNative"/> on Linux and everything else, so a session that configures nothing runs on
-    /// the engine's own implementation. Each API's Veldrid member stays reachable for ONE release, as the
-    /// opt-out a game sets through <c>KE_GRAPHICS_BACKEND</c> or a stored preference, and as the backend
-    /// <see cref="GpuBackendSelector.IncumbentFor"/> names for a failed native creation to fall back to. The
-    /// Veldrid IMPLEMENTATIONS are removed by the removal program
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/683) in the release after that. The MEMBERS never are:
-    /// the enum is append-only, a game has persisted them as a player's saved choice, and they become tokens
-    /// that resolve to a named exception rather than values that vanish.
+    /// SINCE 18.0.0 THE THREE NATIVE MEMBERS ARE THE ONLY LIVE ONES. The OS probe answers
+    /// <see cref="MetalNative"/> on macOS, <see cref="Direct3D11Native"/> on Windows and
+    /// <see cref="VulkanNative"/> on Linux and everything else, and the Veldrid backend that implemented the
+    /// other four was deleted by https://github.com/APKiwiOrg/KhaozEngine/issues/687.
+    /// </para>
+    /// <para>
+    /// THE FOUR MEMBERS THEMSELVES ARE KEPT FOREVER, because the enum is append-only and a game has persisted
+    /// them as a player's saved choice. They are RETIRED rather than removed and rather than repointed:
+    /// <see cref="GpuBackendSelector.IsRetired"/> answers for them, a stored preference or a
+    /// <c>KE_GRAPHICS_BACKEND</c> token naming one is redirected onto that API's native backend with a WARN
+    /// (reported to the game as <see cref="GpuBackendSource.FallbackAfterFailure"/>, which is the signal it
+    /// already clears a stored choice on), and naming one in CODE throws
+    /// <see cref="GpuBackendRetiredException"/>. Section 5.2 of
+    /// <c>docs/design/VELDRID-REMOVAL-DESIGN-2026-08-22.md</c> rules out the tidy-looking alternative by name:
+    /// repointing <see cref="Direct3D11"/> at <see cref="Direct3D11Native"/> would move every Windows tester's
+    /// stored choice onto a different implementation with no rebuild signal and no player notice.
     /// </para>
     /// <para>
     /// WHICH sites degrade silently is not a fixed list, and the third append is where that stopped being a
@@ -51,24 +58,29 @@ namespace KhaozEngine.Gpu
     public enum GpuBackendKind
     {
         /// <summary>
-        /// Apple Metal, through Veldrid. The macOS default until 17.40.0, and since then the one-release
-        /// opt-out from <see cref="MetalNative"/> plus what <see cref="GpuBackendSelector.IncumbentFor"/>
-        /// answers for macOS. See the remarks above.
+        /// RETIRED IN 18.0.0. Apple Metal through Veldrid: the macOS default until 17.40.0 and the one-release
+        /// opt-out after it. Redirects to <see cref="MetalNative"/> from a stored preference or a
+        /// <c>KE_GRAPHICS_BACKEND=metal</c> token, and throws <see cref="GpuBackendRetiredException"/> when
+        /// named in code. See the remarks above.
         /// </summary>
         Metal = 0,
         /// <summary>
-        /// Vulkan, through Veldrid. The Linux (and catch-all) default until 17.40.0, and since then the
-        /// one-release opt-out from <see cref="VulkanNative"/> plus what
-        /// <see cref="GpuBackendSelector.IncumbentFor"/> answers for Linux. See the remarks above.
+        /// RETIRED IN 18.0.0. Vulkan through Veldrid: the Linux (and catch-all) default until 17.40.0 and the
+        /// one-release opt-out after it. Redirects to <see cref="VulkanNative"/>. See the remarks above.
         /// </summary>
         Vulkan = 1,
         /// <summary>
-        /// Direct3D 11, through Veldrid. The Windows default until 17.40.0, and since then the one-release
-        /// opt-out from <see cref="Direct3D11Native"/> plus what
-        /// <see cref="GpuBackendSelector.IncumbentFor"/> answers for Windows. See the remarks above.
+        /// RETIRED IN 18.0.0. Direct3D 11 through Veldrid: the Windows default until 17.40.0 and the
+        /// one-release opt-out after it. Redirects to <see cref="Direct3D11Native"/>. See the remarks above.
         /// </summary>
         Direct3D11 = 2,
-        /// <summary>OpenGL, through Veldrid.</summary>
+        /// <summary>
+        /// RETIRED IN 18.0.0. OpenGL through Veldrid, and the one retirement with NO native replacement: the
+        /// engine never had an OpenGL implementation of its own and is not gaining one, so it redirects to
+        /// whatever <see cref="GpuBackendSelector.ProbeOS"/> answers for the platform. It was never offered by
+        /// <see cref="GpuBackendSelector.SupportedBackends"/> either, because there is no windowed GL path.
+        /// See the remarks above.
+        /// </summary>
         OpenGL = 3,
 
         /// <summary>

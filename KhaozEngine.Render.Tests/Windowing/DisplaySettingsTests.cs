@@ -6,7 +6,7 @@ namespace KhaozEngine.Tests.Windowing;
 
 /// <summary>
 /// The runtime display-settings surface: the pure window-mode policy (<see cref="WindowModePlanner"/>), the
-/// Metal-vsync-needs-a-cap predicate, and the <see cref="DisplaySettings"/> snapshot value. All headless - the
+/// backend-needs-a-software-cap predicate, and the <see cref="DisplaySettings"/> snapshot value. All headless - the
 /// live swapchain / Silk-window side is exercised by the GPU present-mode test and the windowed smoke sample.
 /// </summary>
 public class DisplaySettingsTests
@@ -88,25 +88,24 @@ public class DisplaySettingsTests
         Assert.False(plan.SetSize);
     }
 
-    // ---- Metal vsync warning predicate ----
+    // ---- the frame-cap warning predicate ----
 
-    [Fact]
-    public void Metal_vsync_with_no_frame_cap_wants_a_frame_cap_warning()
-    {
-        Assert.True(DisplaySettings.RequiresFrameCapWarning(GpuBackendKind.Metal, PresentMode.Vsync, frameCapHz: 0));
-    }
-
+    // NOTHING warns since 18.0.0. The only backend whose present did not throttle the CPU from vsync alone was
+    // the Veldrid Metal incumbent, and it was deleted. MetalNative was measured at rollout gate 5 (2026-08-11)
+    // and its present throttles, so vsync with no software cap is a healthy configuration there and warning
+    // about it would be noise (M-W3). Direct3D11Native and VulkanNative throttle as their incumbents did. The
+    // predicate is kept, not deleted, as the question an APPENDED backend has to answer.
     [Theory]
-    [InlineData(GpuBackendKind.Metal, PresentMode.Vsync, 60)]      // capped -> deterministic already
-    [InlineData(GpuBackendKind.Metal, PresentMode.Immediate, 0)]  // not vsync
-    [InlineData(GpuBackendKind.Direct3D11, PresentMode.Vsync, 0)] // D3D11 vsync really caps
-    [InlineData(GpuBackendKind.Vulkan, PresentMode.Vsync, 0)]     // Vulkan FIFO really caps
-    [InlineData(GpuBackendKind.Direct3D11Native, PresentMode.Vsync, 0)] // as its incumbent
-    [InlineData(GpuBackendKind.VulkanNative, PresentMode.Vsync, 0)]     // as its incumbent
-    // MetalNative measured at rollout gate 5 (2026-08-11): its present throttles the CPU from vsync alone, so
-    // vsync with no software cap is a healthy configuration there and warning about it would be noise (M-W3).
     [InlineData(GpuBackendKind.MetalNative, PresentMode.Vsync, 0)]
-    public void Other_configs_do_not_warn(GpuBackendKind backend, PresentMode mode, int cap)
+    [InlineData(GpuBackendKind.Direct3D11Native, PresentMode.Vsync, 0)]
+    [InlineData(GpuBackendKind.VulkanNative, PresentMode.Vsync, 0)]
+    [InlineData(GpuBackendKind.MetalNative, PresentMode.Vsync, 60)]   // capped -> deterministic already
+    [InlineData(GpuBackendKind.MetalNative, PresentMode.Immediate, 0)] // not vsync
+    [InlineData(GpuBackendKind.Metal, PresentMode.Vsync, 0)]           // retired, and it does not warn either
+    [InlineData(GpuBackendKind.Direct3D11, PresentMode.Vsync, 0)]
+    [InlineData(GpuBackendKind.Vulkan, PresentMode.Vsync, 0)]
+    [InlineData(GpuBackendKind.OpenGL, PresentMode.Vsync, 0)]
+    public void No_config_warns(GpuBackendKind backend, PresentMode mode, int cap)
     {
         Assert.False(DisplaySettings.RequiresFrameCapWarning(backend, mode, cap));
     }

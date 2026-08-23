@@ -159,33 +159,36 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// The fourteenth site, and the one section 4.3 does not list because it did not exist when the table was
-        /// written. <see cref="GpuBackendProviders.RequiresProvider"/> is stated as "everything the built-in path
-        /// does not build", so an APPENDED member is provider-backed with NO edit, which is the safe direction:
-        /// forgetting throws a message naming the missing registration instead of routing the new kind into the
-        /// switch above.
+        /// written. <see cref="GpuBackendProviders.RequiresProvider"/> was "everything the built-in path does not
+        /// build" and is CONSTANT TRUE since 18.0.0, because there is no built-in path left. An APPENDED member
+        /// is provider-backed with nothing to remember, which is the safe direction and now the only one:
+        /// forgetting the registration throws a message naming it rather than routing the new kind anywhere.
         /// </summary>
         [Fact]
-        public void TheNativeKind_IsProviderBacked_WithNoEditToTheRegistry()
+        public void EveryKind_IsProviderBacked_WithNoEditToTheRegistry()
         {
-            Assert.True(GpuBackendProviders.RequiresProvider(GpuBackendKind.Direct3D11Native));
-            Assert.False(GpuBackendProviders.RequiresProvider(GpuBackendKind.Direct3D11));
+            foreach (GpuBackendKind kind in Enum.GetValues<GpuBackendKind>())
+                Assert.True(GpuBackendProviders.RequiresProvider(kind));
         }
 
-        // --- row 4: GpuBackendSelector.ToVeldrid ---
+        // --- row 4: GpuBackendSelector.ToVeldrid, DELETED in 18.0.0 with the backend it mapped onto ---
 
         /// <summary>
-        /// It carried a discard (<c>_ =&gt; GraphicsBackend.Metal</c>), so a missing arm here was never a compile
-        /// error and never a <c>SwitchExpressionException</c>: it was a wrong answer. The native kind now throws
-        /// saying what is actually wrong.
+        /// The row that used to live here mapped a <see cref="GpuBackendKind"/> onto Veldrid's own backend enum,
+        /// behind a discard (<c>_ =&gt; GraphicsBackend.Metal</c>), so a missing arm was never a compile error
+        /// and never a <c>SwitchExpressionException</c>: it was a wrong answer, and the worst of them asked for a
+        /// Metal device on Windows. It is gone with the Veldrid backend, and what stands in its place is the
+        /// property that made it dangerous being impossible: there is no map from a kind to an implementation any
+        /// more, only the registry, and an unregistered kind throws by name.
         /// </summary>
         [Fact]
-        public void ToVeldrid_ThrowsForTheNativeKind_RatherThanAnsweringMetal()
+        public void ThereIsNoBackendMapLeftToGetWrong_OnlyTheRegistry()
         {
-            NotSupportedException ex = Assert.Throws<NotSupportedException>(
-                () => GpuBackendSelector.ToVeldrid(GpuBackendKind.Direct3D11Native));
+            var ex = Assert.Throws<GpuBackendProviderMissingException>(
+                () => GpuBackendProviders.Require((GpuBackendKind)9003));
 
-            Assert.Contains(nameof(GpuBackendKind.Direct3D11Native), ex.Message);
-            Assert.Contains("RequiresProvider", ex.Message);
+            Assert.Contains("9003", ex.Message, StringComparison.Ordinal);
+            Assert.Contains("Register()", ex.Message, StringComparison.Ordinal);
         }
 
         // --- row 5: GpuBackendSelector.TryParseBackend ---
@@ -255,28 +258,33 @@ namespace KhaozEngine.Tests.Gpu
         // half of the split. ---
 
         /// <summary>
-        /// Every token the warning offers parses, and parses to a DISTINCT backend. A list carrying a stale token
-        /// is worse than a short one, because it tells the reader to type something the parser rejects.
+        /// Every token the warning offers parses, and parses to a DISTINCT and LIVE backend. A list carrying a
+        /// stale token is worse than a short one, because it tells the reader to type something the parser
+        /// rejects, or (since 18.0.0) something that names a backend the engine no longer has.
         /// </summary>
         [Fact]
-        public void EveryTokenTheWarningNames_Parses_ToADistinctBackend()
+        public void EveryTokenTheWarningNames_Parses_ToADistinctLiveBackend()
         {
             var named = new List<GpuBackendKind>();
 
             foreach (string token in WarningTokens())
             {
                 Assert.True(GpuBackendSelector.TryParseBackend(token, out GpuBackendKind backend), token);
+                Assert.False(GpuBackendSelector.IsRetired(backend), token);
                 Assert.DoesNotContain(backend, named);
                 named.Add(backend);
             }
         }
 
         /// <summary>
-        /// And every member is named by one of them. This is the half an append breaks: the appending change edits
-        /// the parse switch because nothing works without it, then leaves the list alone because nothing fails.
+        /// And every LIVE member is named by one of them. This is the half an append breaks: the appending change
+        /// edits the parse switch because nothing works without it, then leaves the list alone because nothing
+        /// fails. The four retired members are deliberately absent, which is the other half of the same
+        /// agreement: they still PARSE, so a script that sets one keeps working, but a diagnostic must not OFFER
+        /// a backend that no longer exists.
         /// </summary>
         [Fact]
-        public void EveryBackendKind_IsNamedByTheWarning()
+        public void EveryLiveBackendKind_IsNamedByTheWarning_AndNoRetiredOneIs()
         {
             var named = new HashSet<GpuBackendKind>();
             foreach (string token in WarningTokens())
@@ -286,7 +294,10 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             foreach (GpuBackendKind kind in Enum.GetValues<GpuBackendKind>())
-                Assert.Contains(kind, named);
+            {
+                if (GpuBackendSelector.IsRetired(kind)) Assert.DoesNotContain(kind, named);
+                else Assert.Contains(kind, named);
+            }
         }
 
         /// <summary>
@@ -324,21 +335,21 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// Every OS probes to the ENGINE'S OWN backend. This row read "still answers the incumbent" for three
-        /// appends and was the single line each program's rollout was pointed at, so it is the row whose flip
-        /// IS the release: the assertion is inverted rather than deleted, and the incumbent map it used to pin
-        /// lives on beside it as <see cref="GpuBackendSelector.IncumbentFor"/>, which is what a failed native
-        /// creation falls back to for one more release.
+        /// appends and was the single line each program's rollout was pointed at, so it is the row whose flip WAS
+        /// the release. The incumbent map that used to be pinned beside it, <c>IncumbentFor</c>, was deleted in
+        /// 18.0.0 with the backend it named, and the retired member each of its arms answered is asserted here
+        /// instead: what the probe answers now is a LIVE backend on every OS, which is the property a fallback
+        /// landing on the probe depends on.
         /// </summary>
         [Theory]
-        [InlineData(OSPlatformKind.MacOS, GpuBackendKind.MetalNative, GpuBackendKind.Metal)]
-        [InlineData(OSPlatformKind.Windows, GpuBackendKind.Direct3D11Native, GpuBackendKind.Direct3D11)]
-        [InlineData(OSPlatformKind.Linux, GpuBackendKind.VulkanNative, GpuBackendKind.Vulkan)]
-        [InlineData(OSPlatformKind.Unknown, GpuBackendKind.VulkanNative, GpuBackendKind.Vulkan)]
-        public void ProbeOS_AnswersTheNativeBackend_OnEveryOs(
-            OSPlatformKind os, GpuBackendKind expected, GpuBackendKind incumbent)
+        [InlineData(OSPlatformKind.MacOS, GpuBackendKind.MetalNative)]
+        [InlineData(OSPlatformKind.Windows, GpuBackendKind.Direct3D11Native)]
+        [InlineData(OSPlatformKind.Linux, GpuBackendKind.VulkanNative)]
+        [InlineData(OSPlatformKind.Unknown, GpuBackendKind.VulkanNative)]
+        public void ProbeOS_AnswersTheNativeBackend_OnEveryOs(OSPlatformKind os, GpuBackendKind expected)
         {
             Assert.Equal(expected, GpuBackendSelector.ProbeOS(os));
-            Assert.Equal(incumbent, GpuBackendSelector.IncumbentFor(os));
+            Assert.False(GpuBackendSelector.IsRetired(GpuBackendSelector.ProbeOS(os)));
         }
 
         // --- row 8: GpuBackendSelector._windowCandidates, likewise asserted in
@@ -486,22 +497,26 @@ namespace KhaozEngine.Tests.Gpu
         // --- row 13: GpuDeviceContext.CreateOrFallBack's requested-versus-fallback comparison ---
 
         /// <summary>
-        /// A value comparison, not a switch, so it is invisible to any arm sweep. It is correct by default for
-        /// exactly one reason, and the reason is worth pinning: the native kind is never EQUAL to the backend
-        /// the guard falls back to on any OS, so a native request never short-circuits the "nothing to fall
-        /// back TO" guard and always routes through the functional probe instead.
+        /// A value comparison, not a switch, so it is invisible to any arm sweep. What it decides is whether a
+        /// failed request has anywhere to go: a request that already IS the platform default short-circuits the
+        /// guard, because falling back onto the backend that just refused would warn about a change that is not
+        /// one and then fail again for the same reason.
         /// <para>
-        /// The fallback target moved at 17.40.0 from <see cref="GpuBackendSelector.ProbeOS"/> to
-        /// <see cref="GpuBackendSelector.IncumbentFor"/>, and that edit is what keeps this invariant true: once
-        /// the probe answers the native kind, a fallback still aimed at it would send the retry straight back to
-        /// the backend that just refused.
+        /// The fallback target moved TWICE. It was <see cref="GpuBackendSelector.ProbeOS"/>, then 17.40.0 pointed
+        /// it at the Veldrid incumbent so a failed native request could try the other implementation, and 18.0.0
+        /// pointed it back at the probe because there is no other implementation. So on WINDOWS a
+        /// <see cref="GpuBackendKind.Direct3D11Native"/> request is now its own fallback and correctly has
+        /// nowhere to go, which is what this row records rather than asserts away.
         /// </para>
         /// </summary>
         [Fact]
-        public void ANativeRequest_IsNeverItsOwnFallback_OnAnyOs()
+        public void ANativeRequest_IsItsOwnFallback_OnExactlyItsOwnPlatform()
         {
             foreach (OSPlatformKind os in Enum.GetValues<OSPlatformKind>())
-                Assert.NotEqual(GpuBackendKind.Direct3D11Native, GpuBackendSelector.IncumbentFor(os));
+            {
+                bool isOwnPlatform = GpuBackendSelector.ProbeOS(os) == GpuBackendKind.Direct3D11Native;
+                Assert.Equal(isOwnPlatform, os == OSPlatformKind.Windows);
+            }
         }
 
         // --- decision I4: no new telemetry field ---

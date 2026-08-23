@@ -76,34 +76,36 @@ namespace KhaozEngine.Tests.Gpu
         // --- row 3: the CreateForWindow / CreateHeadless Veldrid switches. In the registry class below. ---
 
         /// <summary>
-        /// The fourteenth site, stated negatively so it needs no edit:
-        /// <see cref="GpuBackendProviders.RequiresProvider"/> is "everything the built-in path does not build",
-        /// and <c>IsBuiltIn</c> is a positive membership test over the four Veldrid kinds rather than a switch.
-        /// So an APPENDED member is provider-backed with no edit at all, and forgetting one throws a message
-        /// naming the missing registration instead of routing the new kind into the Veldrid creation switch.
+        /// The fourteenth site, stated so it needs no edit. It was "everything the built-in path does not build"
+        /// over a positive membership test across the four Veldrid kinds, which made an APPENDED member
+        /// provider-backed with no edit at all. 18.0.0 deleted the built-in path, so
+        /// <see cref="GpuBackendProviders.RequiresProvider"/> is now unconditionally true and the site stopped
+        /// being an append site entirely. Forgetting a registration still throws a message naming it.
         /// </summary>
         [Fact]
         public void TheNativeKind_IsProviderBacked_WithNoEditToTheRegistry()
         {
             Assert.True(GpuBackendProviders.RequiresProvider(GpuBackendKind.VulkanNative));
-            Assert.False(GpuBackendProviders.RequiresProvider(GpuBackendKind.Vulkan));
+            Assert.True(GpuBackendProviders.RequiresProvider(GpuBackendKind.Vulkan));
         }
 
         // --- row 4: GpuBackendSelector.ToVeldrid, one more explicit throwing arm ---
 
         /// <summary>
-        /// There IS a <c>GraphicsBackend.Vulkan</c>, which is exactly why this arm matters more here than it did
-        /// for Direct3D 11. Mapping the native kind onto it would not fail: it would quietly build the INCUMBENT
-        /// Veldrid Vulkan device and attribute a whole soak session to the implementation that did not run.
+        /// There WAS a <c>GraphicsBackend.Vulkan</c>, which is exactly why this arm mattered more here than it
+        /// did for Direct3D 11. Mapping the native kind onto it would not have failed: it would have quietly
+        /// built the INCUMBENT Veldrid Vulkan device and attributed a whole soak session to the implementation
+        /// that did not run. The map was deleted in 18.0.0 with the backend it addressed, and what stands in its
+        /// place is that the retired member cannot build anything at all.
         /// </summary>
         [Fact]
-        public void ToVeldrid_ThrowsForTheNativeKind_RatherThanAnsweringTheIncumbent()
+        public void TheRetiredIncumbentKind_CannotBuildADevice_RatherThanQuietlyBuildingOne()
         {
-            NotSupportedException ex = Assert.Throws<NotSupportedException>(
-                () => GpuBackendSelector.ToVeldrid(GpuBackendKind.VulkanNative));
+            var ex = Assert.Throws<GpuBackendRetiredException>(
+                () => GpuDeviceContext.PreflightProvider(
+                    GpuBackendKind.Vulkan, allowFallback: true, out _));
 
-            Assert.Contains(nameof(GpuBackendKind.VulkanNative), ex.Message);
-            Assert.Contains("RequiresProvider", ex.Message);
+            Assert.Equal(GpuBackendKind.VulkanNative, ex.Replacement);
         }
 
         // --- row 5: GpuBackendSelector.TryParseBackend, the two new tokens (V-I1) ---
@@ -122,16 +124,22 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// The suffix must not bleed either way, and the incumbent token keeps pointing at the incumbent for the
         /// ONE release it survives. Decision V-RO2 read INDEFINITELY and the dated addendum to the design
-        /// supersedes it on the trigger rather than on the shape: <c>vulkan</c> is still the kill switch every
-        /// structural bet in the Vulkan design leans on, and since the 17.40.0 flip it is the opt-out from the
-        /// Linux default rather than the default itself, so an A/B against the native backend is one environment
-        /// variable away for as long as there are two implementations to compare.
+        /// supersedes it on the trigger rather than on the shape: <c>vulkan</c> was the kill switch every
+        /// structural bet in the Vulkan design leans on, it became the opt-out from the Linux default at the
+        /// 17.40.0 flip, and 18.0.0 retired the implementation behind it. The TOKEN survives that, still parsing
+        /// to the retired member, so <c>TryParseBackend</c> stays a pure lookup and the redirect onto
+        /// <see cref="GpuBackendKind.VulkanNative"/> happens one layer up where it can be warned about.
         /// </summary>
         [Fact]
-        public void TryParseBackend_KeepsTheIncumbentTokenPointingAtTheIncumbent()
+        public void TryParseBackend_KeepsTheRetiredTokenPointingAtTheRetiredMember()
         {
             Assert.True(GpuBackendSelector.TryParseBackend("vulkan", out GpuBackendKind backend));
             Assert.Equal(GpuBackendKind.Vulkan, backend);
+            Assert.True(GpuBackendSelector.IsRetired(backend));
+
+            // And the layer above redirects it, which is what keeps a soak script that says vulkan working.
+            Assert.Equal(GpuBackendKind.VulkanNative,
+                GpuBackendSelector.Resolve("vulkan", OSPlatformKind.Linux).Backend);
         }
 
         [Theory]
@@ -183,44 +191,37 @@ namespace KhaozEngine.Tests.Gpu
         /// Only the Linux row is here. The full four-OS mapping is the same assertion for all three appends, so
         /// it is pinned once in <c>GpuBackendKindAppendAuditTests.ProbeOS_AnswersTheNativeBackend_OnEveryOs</c>,
         /// and "this kind is never what the fallback answers" is walked over every OS by
-        /// <see cref="ANativeRequest_IsNeverItsOwnFallback_OnAnyOs"/> below.
+        /// <see cref="ANativeRequest_IsItsOwnFallback_OnExactlyItsOwnPlatform"/> below.
         /// </para>
         /// </summary>
         [Fact]
         public void ProbeOS_AnswersTheNativeBackend_OnLinux()
         {
             Assert.Equal(GpuBackendKind.VulkanNative, GpuBackendSelector.ProbeOS(OSPlatformKind.Linux));
-            // The incumbent is still one token away, and is what a failed native creation falls back to.
-            Assert.Equal(GpuBackendKind.Vulkan, GpuBackendSelector.IncumbentFor(OSPlatformKind.Linux));
+            // And it is what a failed creation falls back to as well since 18.0.0, the incumbent map having gone
+            // with the incumbent. There is one Linux answer now rather than two.
+            Assert.False(GpuBackendSelector.IsRetired(GpuBackendSelector.ProbeOS(OSPlatformKind.Linux)));
         }
 
         // --- row 8: GpuBackendSelector._windowCandidates. In the registry class below. ---
 
         // --- rows 9 and 10: FrameCap.Resolve and DisplaySettings.RequiresFrameCapWarning ---
-        // Correct by DEFAULT for the reason the Direct3D 11 rows are: both gate on Metal, so the native Vulkan
-        // kind falls into the uncapped arm identically to the incumbent. Recorded because this is the arm #380's
-        // present-pacing work will revisit, and a later edit must not quietly reclassify a native leg.
+        // Correct by DEFAULT for the reason the Direct3D 11 rows are, and since 18.0.0 correct for every kind:
+        // both gated on the Veldrid Metal incumbent, and with it deleted neither has a capped arm left. Recorded
+        // because this is the arm #380's present-pacing work will revisit, and because an APPENDED backend whose
+        // present free-runs under vsync has to put an arm back in both places in one commit.
 
         [Theory]
         [InlineData(PresentMode.Vsync)]
         [InlineData(PresentMode.Immediate)]
-        public void FrameCapAuto_ResolvesTheNativeKindExactlyLikeTheIncumbent(PresentMode present)
-        {
-            int incumbent = FrameCap.Auto.Resolve(GpuBackendKind.Vulkan, present, 144);
-            int native = FrameCap.Auto.Resolve(GpuBackendKind.VulkanNative, present, 144);
-
-            Assert.Equal(0, incumbent);
-            Assert.Equal(incumbent, native);
-        }
+        public void FrameCapAuto_ResolvesTheNativeKindUncapped(PresentMode present)
+            => Assert.Equal(0, FrameCap.Auto.Resolve(GpuBackendKind.VulkanNative, present, 144));
 
         [Theory]
         [InlineData(PresentMode.Vsync)]
         [InlineData(PresentMode.Immediate)]
-        public void FrameCapWarning_IsSilentOnTheNativeKind_ExactlyLikeTheIncumbent(PresentMode present)
-        {
-            Assert.False(DisplaySettings.RequiresFrameCapWarning(GpuBackendKind.Vulkan, present, 0));
-            Assert.False(DisplaySettings.RequiresFrameCapWarning(GpuBackendKind.VulkanNative, present, 0));
-        }
+        public void FrameCapWarning_IsSilentOnTheNativeKind(PresentMode present)
+            => Assert.False(DisplaySettings.RequiresFrameCapWarning(GpuBackendKind.VulkanNative, present, 0));
 
         // --- row 11: GoldenCompare, at BOTH filename sites (decision V-I3, superseded at 17.41.0) ---
 
@@ -297,21 +298,26 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// A value comparison rather than a switch, so it is invisible to any arm sweep, and correct by default
         /// for a reason worth pinning: the native kind is never EQUAL to what
-        /// <see cref="GpuBackendSelector.ProbeOS"/> returns on any OS, so a native request never short-circuits
-        /// the "nothing to fall back TO" guard and always routes through the functional probe.
+        /// <see cref="GpuBackendSelector.ProbeOS"/> returns on that OS, so the guard fires exactly where there
+        /// really is nowhere to go.
         /// <para>
-        /// The consequence differs from Direct3D 11's, and the soak depends on it. On Linux the fallback is
-        /// <see cref="GpuBackendKind.Vulkan"/> while the request is <see cref="GpuBackendKind.VulkanNative"/>, so
-        /// a machine whose native creation fails falls back to the INCUMBENT Vulkan backend and reports
-        /// <see cref="GpuBackendSource.FallbackAfterFailure"/>, while a missing REGISTRATION still throws. Those
-        /// two look alike in a log line and telling them apart is the whole of decision V-I4.
+        /// THE ANSWER INVERTED IN 18.0.0. Until then the fallback target was the Veldrid incumbent, so a native
+        /// request always had somewhere to go and this row asserted "never its own fallback" on every OS. With
+        /// the incumbent deleted the target is the probe itself, so on LINUX a
+        /// <see cref="GpuBackendKind.VulkanNative"/> request is its own fallback and correctly gets a hard
+        /// failure rather than a retry onto the backend that just refused. Elsewhere it still routes through the
+        /// functional probe. What decision V-I4 is about survives unchanged: a machine failure reports
+        /// <see cref="GpuBackendSource.FallbackAfterFailure"/> and a missing REGISTRATION throws.
         /// </para>
         /// </summary>
         [Fact]
-        public void ANativeRequest_IsNeverItsOwnFallback_OnAnyOs()
+        public void ANativeRequest_IsItsOwnFallback_OnExactlyItsOwnPlatform()
         {
             foreach (OSPlatformKind os in Enum.GetValues<OSPlatformKind>())
-                Assert.NotEqual(GpuBackendKind.VulkanNative, GpuBackendSelector.IncumbentFor(os));
+            {
+                bool isOwnFallback = GpuBackendSelector.ProbeOS(os) == GpuBackendKind.VulkanNative;
+                Assert.Equal(isOwnFallback, os is OSPlatformKind.Linux or OSPlatformKind.Unknown);
+            }
         }
 
         // --- decision V-I1's other half: no new telemetry field ---

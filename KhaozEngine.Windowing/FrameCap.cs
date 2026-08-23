@@ -8,17 +8,12 @@ namespace KhaozEngine.Windowing
     /// REQUEST. <see cref="Resolve"/> turns it into the concrete Hz the loop actually paces to for a given backend and
     /// present mode. The default value (<c>default(FrameCap)</c>) is <see cref="Auto"/>, so a zero-initialised options
     /// struct opts into the backend-aware default rather than free-running.
-    /// <para><b>Auto semantics.</b> Vsync throttles the CPU frame rate on the D3D11 and Vulkan paths, so
-    /// <see cref="Auto"/> there stays uncapped and lets vsync do the work. The Veldrid Metal present does NOT throttle
-    /// the CPU from vsync alone (a Mac client free-runs a whole core plus the GPU well above the refresh), so
-    /// <see cref="Auto"/> on that backend with vsync resolves to a real cap - the display refresh rate when it is
-    /// known, else <see cref="DefaultMetalAutoCapHz"/>. With <see cref="PresentMode.Immediate"/> (any backend) the
-    /// consumer asked for an uncapped, lowest-latency present, so <see cref="Auto"/> respects that and stays
-    /// uncapped.</para>
-    /// <para><b>Which Metal.</b> The sentence above is measured on the VELDRID Metal present and applies to it
-    /// alone. The engine's own <see cref="GpuBackendKind.MetalNative"/> backend was measured at rollout gate 5 and
-    /// its present DOES throttle from vsync, so it takes the uncapped arm with the other native backends (see
-    /// <see cref="Resolve"/>).</para>
+    /// <para><b>Auto semantics.</b> Vsync throttles the CPU frame rate on all three live backends, so
+    /// <see cref="Auto"/> stays uncapped everywhere and lets vsync do the work. With
+    /// <see cref="PresentMode.Immediate"/> the consumer asked for an uncapped, lowest-latency present, so
+    /// <see cref="Auto"/> respects that too. The one backend that needed a software cap was the Veldrid Metal
+    /// incumbent, deleted in 18.0.0, and <see cref="Resolve"/> carries the measurement that says none of its
+    /// successors does.</para>
     /// Pure and headless-testable. Only <see cref="AppWindow"/> supplies the (impure) live display refresh rate.
     /// </summary>
     public readonly record struct FrameCap
@@ -41,13 +36,19 @@ namespace KhaozEngine.Windowing
         /// <summary>The target Hz for a <see cref="CapKind.Fixed"/> cap (0 for <see cref="Auto"/> / <see cref="Uncapped"/>).</summary>
         public int Value { get; private init; }
 
-        /// <summary>The fallback cap for <see cref="Auto"/> on the incumbent Metal backend + vsync when the live
-        /// display refresh rate is unavailable. 120 Hz: high enough to feel smooth, low enough to stop the free-run
-        /// burning a whole core.</summary>
+        /// <summary>A sensible software cap for a Mac client that wants one without reading the monitor. 120 Hz:
+        /// high enough to feel smooth, low enough to stop a free-run burning a whole core.
+        /// <para>
+        /// UNUSED BY <see cref="Resolve"/> SINCE 18.0.0, and kept as public API. It was the <see cref="Auto"/>
+        /// cap for the Veldrid Metal incumbent when no display refresh was known, and that backend is deleted.
+        /// A consumer that still wants the number can pass <c>FrameCap.Hz(DefaultMetalAutoCapHz)</c>, so
+        /// removing it would break that consumer for a word.
+        /// </para></summary>
         public const int DefaultMetalAutoCapHz = 120;
 
-        /// <summary>The engine picks a backend-aware default (uncapped where vsync throttles, a real cap on the
-        /// incumbent Metal backend + vsync). The default <see cref="FrameCap"/> value.</summary>
+        /// <summary>The engine picks a backend-aware default, which is uncapped on every live backend since
+        /// 18.0.0 because vsync throttles the present on all three. The default <see cref="FrameCap"/>
+        /// value.</summary>
         public static FrameCap Auto => default;
 
         /// <summary>Free-run intentionally (never cap), whatever the backend. This is the explicit "0 = uncapped" intent.</summary>
@@ -65,31 +66,29 @@ namespace KhaozEngine.Windowing
         /// <summary>
         /// Resolve this cap to the concrete Hz the loop should pace to on <paramref name="backend"/> with
         /// <paramref name="present"/> (0 = uncapped). A fixed cap is its own value and an uncapped cap is 0, both
-        /// regardless of backend. <see cref="Auto"/> resolves per the type remarks: a real cap only on
-        /// (the incumbent <see cref="GpuBackendKind.Metal"/> + <see cref="PresentMode.Vsync"/>) - the
-        /// <paramref name="displayRefreshHz"/> when positive, else <see cref="DefaultMetalAutoCapHz"/> - and 0
-        /// (uncapped) everywhere else, since vsync throttles there or the consumer chose an uncapped present. Pure.
+        /// regardless of backend. Pure.
         /// <para>
-        /// <b>The capped arm is the INCUMBENT Metal backend alone, and that is a measurement rather than an
-        /// assumption.</b> The real question this arm asks is whether the backend's present throttles the CPU from
-        /// vsync alone, not which API it is. It briefly covered both Metal implementations
-        /// (<c>GpuBackendKinds.IsMetal</c>) as a conservative default, because the native Metal backend sets
-        /// <c>displaySyncEnabled</c> unconditionally and bounds <c>maximumDrawableCount</c>, either of which could
-        /// make the software cap redundant there. Rollout gate 5 read it on 2026-08-11 and the answer is that the
-        /// native present throttles, on three legs: an uncapped 8000-frame field capture with vsync on blocked in
-        /// the drawable acquire exactly once per frame for 15.175 ms against a 16.669 ms median frame (91 percent
-        /// of every frame), a human windowed pass on a display pinned to 120 Hz sat at 120 fps, and toggling vsync
-        /// OFF mid-session jumped to 700 fps and beyond with visible tearing, which is what rules out any other
-        /// bottleneck as the source of the pacing. A software cap at the display refresh cannot bind on top of
-        /// that, so <see cref="GpuBackendKind.MetalNative"/> takes the uncapped arm (decision M-W3 of
-        /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>). This is also the arm #380's
-        /// present-pacing work will revisit.
+        /// <b><see cref="Auto"/> RESOLVES TO 0 ON EVERY LIVE BACKEND SINCE 18.0.0, and that is a measurement
+        /// rather than a simplification.</b> The question the arm asks is whether the backend's present throttles
+        /// the CPU from vsync alone, not which API it is, and the only backend that ever answered no was the
+        /// Veldrid Metal incumbent, which was deleted. Rollout gate 5 read
+        /// <see cref="GpuBackendKind.MetalNative"/> on 2026-08-11 and its present throttles, on three legs: an
+        /// uncapped 8000-frame field capture with vsync on blocked in the drawable acquire exactly once per frame
+        /// for 15.175 ms against a 16.669 ms median frame (91 percent of every frame), a human windowed pass on a
+        /// display pinned to 120 Hz sat at 120 fps, and toggling vsync OFF mid-session jumped to 700 fps and
+        /// beyond with visible tearing, which rules out any other bottleneck as the source of the pacing. A
+        /// <see cref="GpuBackendKind.Direct3D11Native"/> or <see cref="GpuBackendKind.VulkanNative"/> present
+        /// throttles from vsync as its incumbent's did (decision M-W3 of
+        /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>). This is the arm #380's present-pacing
+        /// work will revisit.
         /// </para>
         /// <para>
-        /// So no native backend is in this arm: a <see cref="GpuBackendKind.Direct3D11Native"/> or
-        /// <see cref="GpuBackendKind.VulkanNative"/> present throttles the CPU from vsync exactly as its
-        /// incumbent's does, and <see cref="GpuBackendKind.MetalNative"/> now measures the same way, so each
-        /// behaves identically to the implementation it is being A/B'd against.
+        /// The <paramref name="backend"/> and <paramref name="displayRefreshHz"/> parameters are KEPT rather than
+        /// removed, and this is row 9 of the GpuBackendKind append audit: a backend whose present free-runs under
+        /// vsync puts an arm back here, and in
+        /// <see cref="DisplaySettings.RequiresFrameCapWarning"/> in the same commit, or a consumer is silently
+        /// left free-running. Removing the parameters would make that a signature change on public API instead of
+        /// a one-line arm.
         /// </para>
         /// </summary>
         public int Resolve(GpuBackendKind backend, PresentMode present, int displayRefreshHz)
@@ -97,9 +96,7 @@ namespace KhaozEngine.Windowing
             {
                 CapKind.Fixed => Value,
                 CapKind.Uncapped => 0,
-                _ => backend == GpuBackendKind.Metal && present == PresentMode.Vsync
-                        ? (displayRefreshHz > 0 ? displayRefreshHz : DefaultMetalAutoCapHz)
-                        : 0,
+                _ => 0,
             };
     }
 }

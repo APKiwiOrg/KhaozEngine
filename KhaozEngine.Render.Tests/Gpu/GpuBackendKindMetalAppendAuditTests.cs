@@ -82,37 +82,38 @@ namespace KhaozEngine.Tests.Gpu
         // --- row 3: the CreateForWindow / CreateHeadless Veldrid switches. In the registry class below. ---
 
         /// <summary>
-        /// The fourteenth site, stated negatively so it needs no edit:
-        /// <see cref="GpuBackendProviders.RequiresProvider"/> is "everything the built-in path does not build",
-        /// and <c>IsBuiltIn</c> is a positive membership test over the four Veldrid kinds rather than a switch.
-        /// So an APPENDED member is provider-backed with no edit at all, and forgetting one throws a message
-        /// naming the missing registration instead of routing the new kind into the Veldrid creation switch.
+        /// The fourteenth site, stated so it needs no edit. It was "everything the built-in path does not build"
+        /// over a positive membership test across the four Veldrid kinds, which made an APPENDED member
+        /// provider-backed with no edit at all. 18.0.0 deleted the built-in path, so
+        /// <see cref="GpuBackendProviders.RequiresProvider"/> is now unconditionally true and the site stopped
+        /// being an append site entirely. Forgetting a registration still throws a message naming it.
         /// </summary>
         [Fact]
         public void TheNativeKind_IsProviderBacked_WithNoEditToTheRegistry()
         {
             Assert.True(GpuBackendProviders.RequiresProvider(GpuBackendKind.MetalNative));
-            Assert.False(GpuBackendProviders.RequiresProvider(GpuBackendKind.Metal));
+            Assert.True(GpuBackendProviders.RequiresProvider(GpuBackendKind.Metal));
         }
 
         // --- row 4: GpuBackendSelector.ToVeldrid, one more explicit throwing arm ---
 
         /// <summary>
-        /// There IS a <c>GraphicsBackend.Metal</c>, so this arm matters for the reason the Vulkan one does and
-        /// then some. Mapping the native kind onto it would not fail: it would build the INCUMBENT Veldrid Metal
-        /// device, on the one platform where that device is what the OS probe answers anyway, and attribute a
-        /// whole soak session to the implementation that did not run. The discard arm this replaced answered
-        /// <c>Metal</c> for every unlisted member, so of the three appends this is the one where the old bug's
-        /// wrong answer would have looked entirely correct.
+        /// There WAS a <c>GraphicsBackend.Metal</c>, so this arm mattered for the reason the Vulkan one did and
+        /// then some. Mapping the native kind onto it would not have failed: it would have built the INCUMBENT
+        /// Veldrid Metal device, on the one platform where that device was what the OS probe answered anyway, and
+        /// attributed a whole soak session to the implementation that did not run. The discard arm it replaced
+        /// answered <c>Metal</c> for every unlisted member, so of the three appends this was the one where the
+        /// old bug's wrong answer would have looked entirely correct. The map went with the backend in 18.0.0,
+        /// and the retired member cannot build anything at all now.
         /// </summary>
         [Fact]
-        public void ToVeldrid_ThrowsForTheNativeKind_RatherThanAnsweringTheIncumbent()
+        public void TheRetiredIncumbentKind_CannotBuildADevice_RatherThanQuietlyBuildingOne()
         {
-            NotSupportedException ex = Assert.Throws<NotSupportedException>(
-                () => GpuBackendSelector.ToVeldrid(GpuBackendKind.MetalNative));
+            var ex = Assert.Throws<GpuBackendRetiredException>(
+                () => GpuDeviceContext.PreflightProvider(
+                    GpuBackendKind.Metal, allowFallback: true, out _));
 
-            Assert.Contains(nameof(GpuBackendKind.MetalNative), ex.Message);
-            Assert.Contains("RequiresProvider", ex.Message);
+            Assert.Equal(GpuBackendKind.MetalNative, ex.Replacement);
         }
 
         // --- row 5: GpuBackendSelector.TryParseBackend, the two new tokens (M-I1) ---
@@ -216,15 +217,16 @@ namespace KhaozEngine.Tests.Gpu
         /// Only the macOS row is here. The full four-OS mapping is the same assertion for all three appends, so
         /// it is pinned once in <c>GpuBackendKindAppendAuditTests.ProbeOS_AnswersTheNativeBackend_OnEveryOs</c>,
         /// and "this kind is never what the fallback answers" is walked over every OS by
-        /// <see cref="ANativeRequest_IsNeverItsOwnFallback_OnAnyOs"/> below.
+        /// <see cref="ANativeRequest_IsItsOwnFallback_OnExactlyItsOwnPlatform"/> below.
         /// </para>
         /// </summary>
         [Fact]
         public void ProbeOS_AnswersTheNativeBackend_OnMacOs()
         {
             Assert.Equal(GpuBackendKind.MetalNative, GpuBackendSelector.ProbeOS(OSPlatformKind.MacOS));
-            // The incumbent is still one token away, and is what a failed native creation falls back to.
-            Assert.Equal(GpuBackendKind.Metal, GpuBackendSelector.IncumbentFor(OSPlatformKind.MacOS));
+            // And it is what a failed creation falls back to as well since 18.0.0, the incumbent map having gone
+            // with the incumbent. There is one macOS answer now rather than two.
+            Assert.False(GpuBackendSelector.IsRetired(GpuBackendSelector.ProbeOS(OSPlatformKind.MacOS)));
         }
 
         // --- row 8: GpuBackendSelector._windowCandidates. In the registry class below. ---
@@ -251,16 +253,14 @@ namespace KhaozEngine.Tests.Gpu
         /// produce and what the conservative arm this replaced actually did.
         /// </summary>
         [Fact]
-        public void FrameCapAuto_LeavesTheNativeKindUncapped_UnlikeTheIncumbent()
+        public void FrameCapAuto_LeavesTheNativeKindUncapped()
         {
             Assert.Equal(0, FrameCap.Auto.Resolve(GpuBackendKind.MetalNative, PresentMode.Vsync, 144));
-            Assert.Equal(144, FrameCap.Auto.Resolve(GpuBackendKind.Metal, PresentMode.Vsync, 144));
 
-            // The fallback arm too, since a windowed Mac session with no live refresh rate is the case the
-            // constant exists for, and it is the arm that would silently reintroduce a 120 Hz cap.
+            // The no-live-refresh arm too, since a windowed Mac session with no refresh rate to read is the case
+            // FrameCap.DefaultMetalAutoCapHz existed for, and it is the arm that would silently reintroduce a
+            // 120 Hz cap on a backend measured not to need one.
             Assert.Equal(0, FrameCap.Auto.Resolve(GpuBackendKind.MetalNative, PresentMode.Vsync, displayRefreshHz: 0));
-            Assert.Equal(FrameCap.DefaultMetalAutoCapHz,
-                FrameCap.Auto.Resolve(GpuBackendKind.Metal, PresentMode.Vsync, displayRefreshHz: 0));
         }
 
         /// <summary>
@@ -285,26 +285,18 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// And the warning is SILENT on the native kind while it still fires on the incumbent, because the two
-        /// sites take one decision and a session that capped without saying so (or said so without capping) would
-        /// be the pair disagreeing. Vsync plus an uncapped frame rate is a healthy configuration there, so the
-        /// warning telling a tester to set a cap would be advice against the measurement.
+        /// And the warning is SILENT on the native kind, because the two sites take one decision and a session
+        /// that capped without saying so (or said so without capping) would be the pair disagreeing. Vsync plus
+        /// an uncapped frame rate is a healthy configuration there, so the warning telling a tester to set a cap
+        /// would be advice against the measurement.
         /// </summary>
-        [Fact]
-        public void FrameCapWarning_IsSilentOnTheNativeKind_UnlikeTheIncumbent()
-        {
-            Assert.False(DisplaySettings.RequiresFrameCapWarning(
-                GpuBackendKind.MetalNative, PresentMode.Vsync, frameCapHz: 0));
-            Assert.True(DisplaySettings.RequiresFrameCapWarning(
-                GpuBackendKind.Metal, PresentMode.Vsync, frameCapHz: 0));
-
-            // And the other two inputs still gate it on the incumbent, so the flip narrowed the BACKEND arm and
-            // nothing else.
-            Assert.False(DisplaySettings.RequiresFrameCapWarning(
-                GpuBackendKind.Metal, PresentMode.Vsync, frameCapHz: 60));
-            Assert.False(DisplaySettings.RequiresFrameCapWarning(
-                GpuBackendKind.Metal, PresentMode.Immediate, frameCapHz: 0));
-        }
+        [Theory]
+        [InlineData(PresentMode.Vsync, 0)]
+        [InlineData(PresentMode.Vsync, 60)]
+        [InlineData(PresentMode.Immediate, 0)]
+        public void FrameCapWarning_IsSilentOnTheNativeKind(PresentMode present, int frameCapHz)
+            => Assert.False(DisplaySettings.RequiresFrameCapWarning(
+                GpuBackendKind.MetalNative, present, frameCapHz));
 
         /// <summary>
         /// The two sites agree on every backend, which is the claim that actually matters and the one neither
@@ -327,20 +319,19 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// The capped arm is ONE member wide, walked over the whole enum. Stated this way rather than as a list
-        /// of the other native kinds because that is what the flip made true: every native backend's present
-        /// throttles the CPU from vsync, MetalNative's by gate 5's measurement and the other two by their
-        /// incumbents', so each behaves identically to the implementation it is being A/B'd against and only the
-        /// Veldrid Metal present still needs a software cap.
+        /// The capped arm is EMPTY since 18.0.0, walked over the whole enum. It was one member wide, the Veldrid
+        /// Metal incumbent, and gate 5 measured that every native backend's present throttles the CPU from vsync
+        /// (MetalNative by its own three legs, the other two by their incumbents'). Deleting the incumbent left
+        /// nothing in the arm, and this is the row that goes red the day something is put back into it without
+        /// the measurement to justify it.
         /// </summary>
         [Fact]
-        public void OnlyTheIncumbentMetalKind_IsInTheCappedArm()
+        public void NoKindIsInTheCappedArm()
         {
             foreach (GpuBackendKind kind in Enum.GetValues<GpuBackendKind>())
             {
-                bool expected = kind == GpuBackendKind.Metal;
-                Assert.Equal(expected, FrameCap.Auto.Resolve(kind, PresentMode.Vsync, 144) > 0);
-                Assert.Equal(expected, DisplaySettings.RequiresFrameCapWarning(kind, PresentMode.Vsync, 0));
+                Assert.Equal(0, FrameCap.Auto.Resolve(kind, PresentMode.Vsync, 144));
+                Assert.False(DisplaySettings.RequiresFrameCapWarning(kind, PresentMode.Vsync, 0));
             }
         }
 
@@ -415,34 +406,36 @@ namespace KhaozEngine.Tests.Gpu
         // rather than the upgrade it was on Direct3D 11. ---
 
         /// <summary>
-        /// The frame-capture gate, and the disposition is the interesting part: it stays the Veldrid Metal kind
-        /// ALONE and must not be widened to <see cref="GpuBackendKinds.IsMetal"/>. Widening reads like the fix
-        /// and fixes nothing, because the check lives inside the Veldrid device wrapper, which a provider-built
-        /// native device never becomes. The native backend owns its own queue and services its own captures with
-        /// the pointer in hand, which is also what removes the reflection into Veldrid's private
-        /// <c>_commandQueue</c> field on that path (decision M-G5).
+        /// The frame-capture gate, which had a second arm until 18.0.0. It was the Veldrid Metal kind ALONE, and
+        /// widening it to <see cref="GpuBackendKinds.IsMetal"/> read like the fix and fixed nothing, because the
+        /// check lived inside the Veldrid device wrapper that a provider-built native device never becomes. The
+        /// wrapper is gone, so the gate is gone with it: the native Metal device services an armed capture
+        /// itself, with its own command-queue pointer in hand, which is what removed the reflection into
+        /// Veldrid's private <c>_commandQueue</c> field on that path (decision M-G5).
+        /// <para>
+        /// What is left to pin is that the arm is BACKEND-BLIND now. Arming is a process-wide one-shot, and the
+        /// device that consumes it is the one that knows whether it can, so nothing has to decide from a kind.
+        /// </para>
         /// </summary>
         [Fact]
-        public void TheFrameCaptureGate_IsTheVeldridPathAlone_NotTheMetalFamily()
+        public void TheFrameCaptureArm_IsBackendBlind_AndConsumedByTheDeviceThatCanServiceIt()
         {
-            Assert.True(GpuFrameCapture.VeldridPathCaptures(GpuBackendKind.Metal));
-            Assert.False(GpuFrameCapture.VeldridPathCaptures(GpuBackendKind.MetalNative));
+            Assert.False(GpuFrameCapture.IsArmed);
 
-            // Stated as the thing a later reader is most likely to "fix": the family predicate is a strictly
-            // wider answer, and this site is the one place in the engine where wider is wrong.
+            GpuFrameCapture.ArmNext("/tmp/khaozengine-append-audit.gputrace");
+            try
+            {
+                Assert.True(GpuFrameCapture.IsArmed);
+            }
+            finally
+            {
+                Assert.True(GpuFrameCapture.TryConsume(out _));
+            }
+
+            Assert.False(GpuFrameCapture.IsArmed);
+            // Stated as the thing a later reader is most likely to reintroduce: the family predicate still
+            // exists, and there is no longer any capture site for it to gate.
             Assert.True(GpuBackendKind.MetalNative.IsMetal());
-        }
-
-        /// <summary>
-        /// And no other backend reaches it either, so the gate is one kind rather than "not the natives". Walked
-        /// over every member because the failure this pins is a capture silently arming on a session whose API
-        /// has no <c>MTLCaptureManager</c> at all.
-        /// </summary>
-        [Fact]
-        public void NoBackendButVeldridMetal_ServicesACapture()
-        {
-            foreach (GpuBackendKind kind in Enum.GetValues<GpuBackendKind>())
-                Assert.Equal(kind == GpuBackendKind.Metal, GpuFrameCapture.VeldridPathCaptures(kind));
         }
 
         // --- row 13: GpuDeviceContext.CreateOrFallBack's requested-versus-fallback comparison ---
@@ -453,20 +446,22 @@ namespace KhaozEngine.Tests.Gpu
         /// <see cref="GpuBackendSelector.ProbeOS"/> returns on any OS, so a native request never short-circuits
         /// the "nothing to fall back TO" guard and always routes through the functional probe.
         /// <para>
-        /// On macOS the fallback is <see cref="GpuBackendKind.Metal"/> while the request is
-        /// <see cref="GpuBackendKind.MetalNative"/>, so a Mac whose native creation fails falls back to the
-        /// incumbent Metal backend and reports <see cref="GpuBackendSource.FallbackAfterFailure"/>, while a
-        /// missing REGISTRATION still throws. Those two look alike in a log line, and telling them apart is
-        /// decision M-I4. It matters more here than in either predecessor because gate 4 has to take its own
-        /// incumbent baseline: a silent fallback would have the soak measure the incumbent and file the number
-        /// under the native backend's name.
+        /// THE ANSWER INVERTED IN 18.0.0. Until then the fallback target was the Veldrid incumbent, so a macOS
+        /// <see cref="GpuBackendKind.MetalNative"/> request whose creation failed fell back to the incumbent
+        /// Metal backend. With the incumbent deleted the target is the probe itself, so on macOS the request is
+        /// its own fallback and correctly gets a hard failure rather than a retry onto the backend that just
+        /// refused. What decision M-I4 is about survives unchanged: a machine failure reports
+        /// <see cref="GpuBackendSource.FallbackAfterFailure"/> and a missing REGISTRATION throws.
         /// </para>
         /// </summary>
         [Fact]
-        public void ANativeRequest_IsNeverItsOwnFallback_OnAnyOs()
+        public void ANativeRequest_IsItsOwnFallback_OnExactlyItsOwnPlatform()
         {
             foreach (OSPlatformKind os in Enum.GetValues<OSPlatformKind>())
-                Assert.NotEqual(GpuBackendKind.MetalNative, GpuBackendSelector.IncumbentFor(os));
+            {
+                bool isOwnFallback = GpuBackendSelector.ProbeOS(os) == GpuBackendKind.MetalNative;
+                Assert.Equal(isOwnFallback, os == OSPlatformKind.MacOS);
+            }
         }
 
         // --- decision M-I1's other half: no new telemetry field ---

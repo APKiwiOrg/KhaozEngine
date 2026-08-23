@@ -35,37 +35,30 @@ namespace KhaozEngine.Windowing
 
         /// <summary>
         /// True when <paramref name="presentMode"/> cannot deterministically cap the frame rate on
-        /// <paramref name="backend"/> without a software <see cref="FrameCapHz"/>: vsync selected, no frame cap, on
-        /// the INCUMBENT <see cref="GpuBackendKind.Metal"/> backend, whose Veldrid present does not throttle the
-        /// CPU from vsync alone (a Mac client free-runs well above the refresh). Pure and headless-testable.
-        /// <see cref="AppWindow"/> uses it to emit a one-time warning so a consumer knows to set
-        /// <see cref="FrameCapHz"/> for a real cap on that backend.
+        /// <paramref name="backend"/> without a software <see cref="FrameCapHz"/>. Pure and headless-testable.
         /// <para>
-        /// An equality against the incumbent kind rather than the <c>GpuBackendKinds.IsMetal</c> family predicate,
-        /// because the question the arm asks is whether THIS BACKEND'S PRESENT throttles the CPU from vsync alone,
-        /// not which API it is. <see cref="GpuBackendKind.MetalNative"/> was measured at rollout gate 5 on
-        /// 2026-08-11 and its present DOES throttle, on three legs: an uncapped 8000-frame field capture with
-        /// vsync on read <c>AcquireWaitCount</c> at exactly 1.000 per frame and <c>AcquireWaitMs</c> at 15.175 ms
-        /// against a 16.669 ms median frame, a human windowed pass on a display pinned to 120 Hz sat at 120 fps,
-        /// and toggling vsync OFF mid-session jumped to 700 fps and beyond with visible tearing, which is what
-        /// proves the pacing came from vsync rather than from any other bottleneck. So vsync plus an uncapped
-        /// frame rate is a HEALTHY configuration on the native backend and warning about it would be noise
+        /// FALSE FOR EVERY BACKEND SINCE 18.0.0, and that is a measurement rather than a simplification. The one
+        /// backend that ever answered true was the Veldrid Metal incumbent, whose present did not throttle the
+        /// CPU from vsync alone, and it was deleted. <see cref="GpuBackendKind.MetalNative"/> was measured at
+        /// rollout gate 5 on 2026-08-11 and its present DOES throttle, on three legs: an uncapped 8000-frame
+        /// field capture with vsync on read <c>AcquireWaitCount</c> at exactly 1.000 per frame and
+        /// <c>AcquireWaitMs</c> at 15.175 ms against a 16.669 ms median frame, a human windowed pass on a display
+        /// pinned to 120 Hz sat at 120 fps, and toggling vsync OFF mid-session jumped to 700 fps and beyond with
+        /// visible tearing, which is what proves the pacing came from vsync rather than from any other
+        /// bottleneck. <see cref="GpuBackendKind.Direct3D11Native"/> and
+        /// <see cref="GpuBackendKind.VulkanNative"/> throttle the CPU from vsync as their incumbents did
         /// (decision M-W3 of <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>).
         /// </para>
         /// <para>
-        /// This is the same arm as <see cref="FrameCap.Resolve"/> and it takes the same decision for the same
-        /// reason, so the two move together or the pair disagrees: the warning tells a consumer to set a cap
-        /// precisely when the backend-aware default would not supply one.
-        /// </para>
-        /// <para>
-        /// No other backend warns, which is correct for <see cref="GpuBackendKind.MetalNative"/> by the
-        /// measurement above and for <see cref="GpuBackendKind.Direct3D11Native"/> and
-        /// <see cref="GpuBackendKind.VulkanNative"/> because their vsync throttles the CPU exactly as their
-        /// incumbents' does.
+        /// KEPT RATHER THAN DELETED, as the question an APPENDED backend has to answer. It is row 10 of the
+        /// GpuBackendKind append audit, it pairs with <see cref="FrameCap.Resolve"/>'s
+        /// <see cref="FrameCap.Auto"/> arm, and the two move together or a consumer is told to set a cap that
+        /// the backend-aware default would not have supplied. A backend whose present free-runs under vsync puts
+        /// an arm back here and in <see cref="FrameCap.Resolve"/> in the same commit.
         /// </para>
         /// </summary>
         public static bool RequiresFrameCapWarning(GpuBackendKind backend, PresentMode presentMode, int frameCapHz)
-            => backend == GpuBackendKind.Metal && presentMode == PresentMode.Vsync && frameCapHz <= 0;
+            => false;
     }
 
     /// <summary>

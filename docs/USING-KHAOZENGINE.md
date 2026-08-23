@@ -340,12 +340,15 @@ engine's own `MetalNative` was measured on 2026-08-11 and its present DOES throt
 once per frame for 15.175 ms of a 16.669 ms frame, a display pinned to 120 Hz paces it at 120 fps, and turning
 vsync off mid-session free-runs past 700 fps with visible tearing. The incumbent was deleted in 18.0.0, so vsync
 with no software cap is a healthy configuration on every live backend and `FrameCap.Auto` resolves to uncapped
-everywhere. Nothing branches on `GameApp.Backend` to set a cap. `GameApp`/`AppWindow` keep the one-time warning
-(`Console.Error`) and the `DisplaySettings.RequiresFrameCapWarning` rule behind it, which no live backend trips,
-because a future backend whose present free-runs under vsync puts an arm back rather than changing public API.
-The window-mode policy is the pure
-`WindowModePlanner.Compute`, the auto-cap resolver is the pure `FrameCap.Resolve`, and the warning rule is the
-pure `DisplaySettings.RequiresFrameCapWarning` (fed the resolved cap) - all headless-unit-tested.
+everywhere. Nothing branches on `GameApp.Backend` to set a cap. The one-time `Console.Error` warning is GONE at 18.0.0:
+`AppWindow.WarnIfMetalVsyncUncapped` and its one-shot latch were deleted with the backend that tripped them, so
+nothing on the frame-cap path writes to `Console.Error` any more. The pure predicate
+`DisplaySettings.RequiresFrameCapWarning(backend, presentMode, frameCapHz)` STAYS, now a constant `false`, as
+the QUESTION an appended backend has to answer: it is row 10 of the `GpuBackendKind` append audit and it pairs
+with `FrameCap.Resolve`'s `Auto` arm, so a backend whose present free-runs under vsync puts an arm back in both
+in the same commit rather than changing public API. Its only in-repo readers are those audits and the
+`DisplaySettings` / `FrameCap` unit tests. The window-mode policy is the pure `WindowModePlanner.Compute`, and
+the auto-cap resolver is the pure `FrameCap.Resolve` - all headless-unit-tested.
 
 **Runtime window placement (since 9.26.0).** `IDisplaySettings` also exposes the window position + monitor, so a
 consumer can persist and restore the full placement (which monitor + position + size) across launches. Position
@@ -9304,7 +9307,8 @@ because no live device reports one.
 
 `IsMetal()` has no reader in the engine today, and the reason is worth knowing if you are choosing between it
 and an equality. It was written for the software frame-cap pair in `KhaozEngine.Windowing`, `FrameCap.Resolve`
-and `DisplaySettings.RequiresFrameCapWarning`, which apply a real cap and warn when a consumer has not set one.
+and `DisplaySettings.RequiresFrameCapWarning`, which applied a real cap and warned when a consumer had not set
+one.
 The only backend that ever needed that cap was the Veldrid Metal present, which did not throttle the CPU from
 vsync alone. Whether the engine's own Metal backend needed it too was an open measurement until 2026-08-11,
 when rollout gate 5 measured that the native present throttles. With the incumbent deleted in 18.0.0 both sites

@@ -6,6 +6,33 @@ Windowing + input foundation for the custom MonoGame-free stack.
   frame loop. `Run(onFrame)` clears + presents around your callback; each `Frame` gives `Dt`, an engine-native
   `InputState`, framebuffer size, and the GPU command list to draw into. `AppWindow.Scaled(...)` fits a
   design-sized window to the display.
+- `GpuBackends` (18.0.0) - the one call that puts a graphics backend in the process, and the reason a repinned
+  game needs no startup line of its own. `KhaozEngine.Gpu` builds no device since 18.0.0 and cannot reference a
+  backend package without a dependency cycle, so something above that seam has to close it, and this package is
+  the lowest thing every windowed and in-repo headless host already has in its graph. Registering says a
+  provider EXISTS (a fact about the app's wiring). WHICH backend runs is `GpuBackendSelector`'s answer, and
+  whether the machine can run it is the separate functional probe behind
+  `GpuBackendSelector.IsBackendSupported`.
+  - `RegisterResolvedIfUnregistered(userPreference = null)` - **what `AppWindow` calls at boot**, and what a
+    headless host should call. It registers a provider for the kind the selector RESOLVES to with the stored
+    preference in the chain, AND for this platform's own kind, which is where a failed request falls back to.
+    Registering only the platform's own is the bug it was written to fix: a Windows player who picked
+    `VulkanNative`, or a developer who pinned `vulkan-native` on a Mac, was told to add a package the umbrella
+    already ships. It touches nothing already registered, per kind, so a host's own provider (a wrapper that
+    counts allocations, a fake in a test) stays authoritative even though `AppWindow` writes late. It returns
+    the kind it registered, or null when both were already there. A package that cannot run on this OS is not
+    registered at all, so a `d3d11-native` request on a Mac gets the ordinary missing-provider throw rather than
+    a seated provider that answers no to everything.
+  - `RegisterPlatformDefault()` - this OS's own backend and nothing else: Metal on macOS, Direct3D 11 on
+    Windows, Vulkan on Linux and everything else. Idempotent, thread-safe, and never null, since the probe's
+    Vulkan arm is a catch-all rather than a Linux special case.
+  - `RegisterAll()` - all three whatever the OS, for a process that means to reach every backend it can, which
+    in practice is a test harness or a tool comparing two implementations in one process. A GAME does not want
+    it: `GpuBackendSelector.SupportedBackends()` offers the player every registered kind that probes true, and a
+    foreign kind that somehow probed true would be a settings row that cannot boot.
+  - A custom host still calls a package's own `KhaozEngineMetal.Register()` / `KhaozEngineD3D11.Register()` /
+    `KhaozEngineVulkan.Register()` when it wants exactly one backend, or one this platform does not default to.
+    Registration is idempotent and last-writer-wins per kind, so the two mix freely and in any order.
 - **The frame's pre-record phase.** `Run(onFrame, onPrepare)` is the same loop with a second
   callback, invoked each frame after the frame's `Dt` / input / size are latched and **before** the frame's command
   list is opened. `Run(onFrame)` is exactly `Run(onFrame, null)`, so nothing changes for a host that does not want
@@ -34,9 +61,9 @@ Windowing + input foundation for the custom MonoGame-free stack.
     2026-08-11 as blocking the CPU
     in the drawable acquire for the whole vertical-blank wait. A consumer-set value always wins. `AppWindow.FrameCapHz`
     setter is the explicit int form (positive = fixed, 0 = intentional `Uncapped`), and its getter returns the RESOLVED
-    effective cap. The one-time Metal-vsync warning (`Console.Error`, via the pure
-    `DisplaySettings.RequiresFrameCapWarning` fed the resolved cap) fires ONLY for an explicit uncapped + vsync choice
-    on the incumbent Metal backend, never for the resolved `Auto` default and never on `MetalNative`.
+    effective cap. The one-time Metal-vsync warning is GONE at 18.0.0, along with the only backend that ever
+    tripped it: `AppWindow.WarnIfMetalVsyncUncapped` and its `_warnedMetalVsync` latch were deleted, and nothing
+    writes to `Console.Error` from the frame-cap path any more.
   - `AppWindow.BackgroundThrottle` (a `BackgroundThrottlePolicy`, default `Default` = ON) throttles a backgrounded
     window. **Minimized** (detected via Silk's `WindowState.Minimized`): skip render + present and idle at `MinimizedHz`
     (default 10). `Run` sets `Frame.RenderSuppressed` and still calls the callback so update-side simulation keeps
@@ -50,9 +77,14 @@ Windowing + input foundation for the custom MonoGame-free stack.
     swapchain's vsync in place via `IGpuDevice.SyncToVerticalBlank` - no recreate. On Metal it engages
     `CAMetalLayer.displaySyncEnabled`. The deleted Veldrid Metal backend did not cap the CPU that way and needed a
     `FrameCapHz` paired with vsync. `MetalNative` was measured on 2026-08-11 and its present does throttle from
-    vsync alone, so it needs no cap and never warns. The one-time `Console.Error` warning and the
-    `DisplaySettings.RequiresFrameCapWarning` rule behind it stay, unarmed on every live backend, for a future
-    backend that free-runs.
+    vsync alone, so it needs no cap. The one-time `Console.Error` warning and the `AppWindow` members that armed
+    it were DELETED at 18.0.0 with the backend that tripped it. What stays is the pure predicate
+    `DisplaySettings.RequiresFrameCapWarning(backend, presentMode, frameCapHz)`, now a constant `false`, and it
+    stays as the QUESTION rather than as a live warning: it is row 10 of the `GpuBackendKind` append audit and
+    it pairs with `FrameCap.Resolve`'s `Auto` arm, so an appended backend whose present free-runs under vsync
+    puts an arm back in both in the same commit. Its only in-repo readers are those audits and the
+    `DisplaySettings` / `FrameCap` unit tests, which is exactly what a question-shaped member should look like.
+    Deleting it would take the audit row with it and let the next backend land with a silent frame-cap gap.
   - `AppWindow.WindowMode` (`WindowMode { Windowed, BorderlessFullscreen, ExclusiveFullscreen }`) switches how the
     window occupies the display; `AppWindow.Resize(w, h)` sets the windowed size in logical points. The swapchain
     follows the new framebuffer via the existing `FramebufferResize` hook, so HiDPI is unchanged (the backbuffer

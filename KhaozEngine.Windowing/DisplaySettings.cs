@@ -56,6 +56,15 @@ namespace KhaozEngine.Windowing
         /// the backend-aware default would not have supplied. A backend whose present free-runs under vsync puts
         /// an arm back here and in <see cref="FrameCap.Resolve"/> in the same commit.
         /// </para>
+        /// <para>
+        /// NOTHING IN THE ENGINE CALLS IT ANY MORE, and that is deliberate rather than an oversight to tidy up.
+        /// <c>AppWindow.WarnIfMetalVsyncUncapped</c> and its one-shot latch were deleted in 18.0.0 with the
+        /// backend that tripped them, so there is no <c>Console.Error</c> warning left on the frame-cap path.
+        /// The readers left are the three <c>GpuBackendKind</c> append audits and this package's own
+        /// <c>DisplaySettings</c> / <c>FrameCap</c> unit tests, which is what a question-shaped member is
+        /// supposed to look like: deleting it would take the audit row with it and let the next appended backend
+        /// land with a silent frame-cap gap.
+        /// </para>
         /// </summary>
         public static bool RequiresFrameCapWarning(GpuBackendKind backend, PresentMode presentMode, int frameCapHz)
             => false;
@@ -73,9 +82,10 @@ namespace KhaozEngine.Windowing
     public interface IDisplaySettings
     {
         /// <summary>How the window presents frames. Setting it reconfigures the live swapchain's vsync in place
-        /// (no recreate). On the incumbent Veldrid Metal backend, pair vsync with <see cref="FrameCapHz"/> for a
-        /// deterministic cap. The engine's own <c>MetalNative</c> backend throttles from vsync alone (gate 5,
-        /// see <see cref="DisplaySettings.RequiresFrameCapWarning"/>), so it needs no cap.</summary>
+        /// (no recreate). Every backend the engine still has throttles the CPU from vsync alone, so none of them
+        /// needs a <see cref="FrameCapHz"/> paired with vsync for a deterministic cap. The deleted Veldrid Metal
+        /// incumbent was the one that did, and <c>MetalNative</c> was measured at gate 5 and does not (see
+        /// <see cref="DisplaySettings.RequiresFrameCapWarning"/>).</summary>
         PresentMode PresentMode { get; set; }
 
         /// <summary>Software frame-rate cap in Hz (0 = uncapped). Takes effect next frame.</summary>

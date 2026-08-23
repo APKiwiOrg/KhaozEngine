@@ -99,9 +99,10 @@ package leave too and NO Veldrid package is left anywhere in the graph. BREAKING
 - **The `Game2D`, `Game3D` and `Server` umbrellas stop suppressing Foundation's build assets.** Found while
   shipping the above: a `ProjectReference` packs with `exclude="Build,Analyzers"` by default, so a head that
   referenced an umbrella rather than `KhaozEngine.Foundation` itself never received Foundation's `build/` folder,
-  and the `CETCompat=false` and `IncludeNativeLibrariesForSelfExtract=false` defaults documented since 12.0.0
-  were silently not applied to it. The three edges (`Game2D` to `Foundation`, `Game3D` to `Game2D`, `Server` to
-  `Foundation`) now pin `PrivateAssets="contentfiles;analyzers"`, so Build flows and Analyzers stay private.
+  and the `CETCompat=false` (7.23.0) and `IncludeNativeLibrariesForSelfExtract=false` (12.0.0) defaults were
+  silently not applied to it. The 7.23.0 entry's claim that `buildTransitive/` alone makes the transitive case
+  work is the belief this corrects: it is necessary and it was never sufficient. The three edges (`Game2D` to
+  `Foundation`, `Game3D` to `Game2D`, `Server` to `Foundation`) now pin `PrivateAssets="contentfiles;analyzers"`, so Build flows and Analyzers stay private.
   A head that had been running with CET on and its single-file natives bundled inherits both defaults on repin,
   which is the intended behaviour but IS a change in what your published head does.
 - **The five toolchain package ids must move together**, enforced by

@@ -22,9 +22,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// work before each point. Everything the seam calls a fence is a REMEMBERED VALUE on this one timeline
     /// (see <c>D3D11GpuFence</c>), never a device object of its own.
     /// <para>
-    /// ONE timeline per device, and it is the reason decision C5 works at all. Veldrid's Direct3D 11 fence is a
-    /// <c>ManualResetEvent</c> set the instant <c>ExecuteCommandList</c> returns, so it is a submit RECEIPT and
-    /// not a completion signal, which is why the incumbent backend hardcodes
+    /// ONE timeline per device, and it is the reason decision C5 works at all. Veldrid's Direct3D 11 fence was a
+    /// <c>ManualResetEvent</c> set the instant <c>ExecuteCommandList</c> returned, so it was a submit RECEIPT and
+    /// not a completion signal, which is why the incumbent backend hardcoded
     /// <see cref="GpuCapabilities.SupportsCompletionFences"/> false. A counter the GPU advances is a completion
     /// signal, on both mechanisms below, which is what lets that capability read true here.
     /// </para>

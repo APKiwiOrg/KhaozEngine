@@ -48,7 +48,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary><see cref="IGpuCommandList.SetGraphicsResourceSet(uint,IGpuResourceSet,uint)"/>.</summary>
         SetGraphicsResourceSetDynamic = 8,
         /// <summary><see cref="IGpuCommandList.SetVertexBuffer(uint,IGpuBuffer,uint)"/>. The no-offset overload
-        /// records this same opcode with an offset of zero, exactly as the incumbent forwards it.</summary>
+        /// records this same opcode with an offset of zero, exactly as the incumbent forwarded it.</summary>
         SetVertexBuffer = 9,
         /// <summary><see cref="IGpuCommandList.SetIndexBuffer"/>.</summary>
         SetIndexBuffer = 10,
@@ -68,7 +68,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary><see cref="IGpuCommandList.CopyTexture"/>.</summary>
         CopyTexture = 17,
         /// <summary>Either <c>CopyTextureSubresource</c> overload. The short one records this with a destination
-        /// mip and layer of zero, exactly as the incumbent forwards it.</summary>
+        /// mip and layer of zero, exactly as the incumbent forwarded it.</summary>
         CopyTextureSubresource = 18,
         /// <summary><see cref="IGpuCommandList.GenerateMipmaps"/>.</summary>
         GenerateMipmaps = 19,

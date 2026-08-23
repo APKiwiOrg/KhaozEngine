@@ -47,7 +47,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <para>
     /// EVERY ELEMENT IS A <c>TEXCOORD</c>, AND THAT IS NOT LAZINESS. The engine's GLSL binds vertex inputs by
     /// LOCATION, and SPIRV-Cross emits each location as <c>TEXCOORD&lt;location&gt;</c> in the HLSL it produces.
-    /// The incumbent already declares every element with the texture-coordinate semantic for the same reason, so
+    /// The incumbent already declared every element with the texture-coordinate semantic for the same reason, so
     /// the semantic name carries no meaning and the INDEX carries all of it. The index therefore counts across all
     /// buffer slots in array order rather than restarting per slot: slot 1's first element continues where slot 0
     /// left off, exactly as a second GLSL location would.

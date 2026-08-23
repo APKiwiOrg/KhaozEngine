@@ -35,7 +35,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <see cref="End"/> seals. <c>Submit</c> takes the device's submit lock, replays, and releases, which
     /// <see cref="D3D11CommandDrivers.Submit{TEmitter}"/> does. Note that this is the NATIVE backend's contract:
     /// decision R4 leaves the PORTABLE seam contract at one open recording per device, since the Veldrid D3D11
-    /// leg ships alongside indefinitely and rejects a second recorder.
+    /// leg rejected a second recorder outright while it shipped alongside.
     /// </para>
     /// <para>
     /// Per-call state validation is deliberately absent from the record path, matching the incumbent wrapper,
@@ -166,7 +166,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _emitter.SetGraphicsResourceSet(slot, set, dynamicOffset);
         }
 
-        /// <summary>The no-offset overload is the offset overload at zero, exactly as the incumbent forwards it,
+        /// <summary>The no-offset overload is the offset overload at zero, exactly as the incumbent forwarded it,
         /// so there is one binding path rather than two that could diverge.</summary>
         public void SetVertexBuffer(uint slot, IGpuBuffer b)
         {
@@ -204,7 +204,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _emitter.Draw(vertexCount, instanceCount, vertexStart, instanceStart);
         }
 
-        /// <summary>One instance from vertex zero, exactly as the incumbent forwards it.</summary>
+        /// <summary>One instance from vertex zero, exactly as the incumbent forwarded it.</summary>
         public void Draw(uint vertexCount)
         {
             RequireRecording();
@@ -258,7 +258,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _emitter.CopyTexture(src, dst);
         }
 
-        /// <summary>Mip zero and layer zero of the destination, exactly as the incumbent forwards it.</summary>
+        /// <summary>Mip zero and layer zero of the destination, exactly as the incumbent forwarded it.</summary>
         public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer, IGpuTexture dst,
             uint width, uint height)
         {

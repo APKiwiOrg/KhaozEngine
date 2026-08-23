@@ -29,7 +29,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// sRGB variant would gamma-encode on write and shift every pixel the renderers produce.
     /// </para>
     /// <para>
-    /// THE DEPTH ATTACHMENT IS OPTIONAL AND IS NULL ON EVERY SHIPPED PATH. The incumbent's swapchain builds a
+    /// THE DEPTH ATTACHMENT IS OPTIONAL AND IS NULL ON EVERY SHIPPED PATH. The incumbent's swapchain built a
     /// depth texture when its description carries a depth format, and the engine's windowed creation passes none
     /// (<c>new SwapchainDescription(source, width, height, null, syncToVerticalBlank, false)</c>), so the renderers
     /// bring their own depth targets. The path is reproduced anyway, because a swapchain type that cannot express
@@ -76,7 +76,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <param name="immediateContext">The device's immediate context, borrowed the same way, and needed for
         /// one reason only: <see cref="ReleaseAttachments"/> has to unbind the backbuffer's views from it before
         /// they can be released, since the context's own reference is one <c>ResizeBuffers</c> fails on.</param>
-        /// <param name="adapter">The adapter the factory is fetched off, which is how the incumbent reaches an
+        /// <param name="adapter">The adapter the factory is fetched off, which is how the incumbent reached an
         /// <c>IDXGIFactory</c> and is the adapter the explicit-selection work of decision G2 will own.</param>
         /// <param name="hwnd">The Win32 window handle to present into.</param>
         /// <param name="width">The initial backbuffer width.</param>
@@ -164,7 +164,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             DisposeWindows();
         }
 
-        // The incumbent's two release points, in one place, plus the unbind the incumbent never has to make. The
+        // The incumbent's two release points, in one place, plus the unbind the incumbent never had to make. The
         // depth texture releases its own views, and the liveness gate is what makes a teardown that runs after the
         // device was destroyed a no-op rather than a release against freed memory. The unbind rides the same gate,
         // for the same reason: a call on the immediate context of a destroyed device is a call against freed
@@ -172,8 +172,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         //
         // THE UNBIND IS THE HALF THAT IS EASY TO MISS. ResizeBuffers fails on any surviving reference to a
         // backbuffer, INDIRECT ones included, and the immediate context holds one: OMSetRenderTargets AddRefs the
-        // render target view and does not drop it because the application disposed its wrapper. The incumbent is
-        // immune to this without doing anything about it, since it executes every command list with
+        // render target view and does not drop it because the application disposed its wrapper. The incumbent was
+        // immune to this without doing anything about it, since it executed every command list with
         // restoreContextState false (D3D11GraphicsDevice.SubmitCommandsCore), which resets the context state at the
         // end of every submit. This backend deliberately does not: decision R3 puts its one ClearState at the HEAD
         // of a replay and the end of a submit emits nothing, so after the last submit of a frame the swapchain's
@@ -260,7 +260,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         // The incumbent's present, argument for argument: the sync interval the vsync flag selects, and no flags.
         // The HRESULT is RETURNED rather than checked, which is the one departure and the seam decision G3's
-        // device-loss latch needs: the incumbent discards it, and a discarded device removal surfaces frames later
+        // device-loss latch needs: the incumbent discarded it, and a discarded device removal surfaces frames later
         // as an unrelated crash.
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]

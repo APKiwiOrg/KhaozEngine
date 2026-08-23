@@ -7,7 +7,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// values, the <see cref="D3D11ReferenceList"/> that keeps their resource arguments alive, and the
     /// <see cref="D3D11PayloadArena"/> that holds their bulk bytes. Storage only. The encoding lives in
     /// <see cref="D3D11StreamEmitter"/> and the decoding in <see cref="D3D11StreamReplay"/>, which is what keeps
-    /// three jobs out of one file (the incumbent's equivalent is 1751 lines against an 800-line cap).
+    /// three jobs out of one file (the incumbent's equivalent was 1751 lines against an 800-line cap).
     /// <para>
     /// <see cref="Reset"/> is what <c>Begin</c> reaches, and it is one integer write plus two child resets. No
     /// native call, no lock, no device contact, which is the property section 5.1 states and the one that makes a

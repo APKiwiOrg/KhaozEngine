@@ -103,8 +103,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// 11): true, on BOTH mechanisms. Read from here by the native device's capability assembly.
         /// <para>
         /// It is a constant rather than a question because both timelines are real completion signals. The
-        /// incumbent reports false for a specific reason, which is that Veldrid's Direct3D 11 fence is a
-        /// <c>ManualResetEvent</c> set when <c>ExecuteCommandList</c> returns, so it says the SUBMISSION happened
+        /// incumbent reported false for a specific reason, which is that Veldrid's Direct3D 11 fence was a
+        /// <c>ManualResetEvent</c> set when <c>ExecuteCommandList</c> returned, so it said the SUBMISSION happened
         /// and not that the GPU finished. Nothing here has that shape, so nothing here has to report it.
         /// </para>
         /// <para>
@@ -238,7 +238,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <summary>
         /// THE REAL <c>WaitForIdle</c> (decision C6): signal a fresh point and poll until the GPU reaches it.
-        /// Replaces the empty method body the Veldrid Direct3D 11 backend has always had.
+        /// Replaces the empty method body the Veldrid Direct3D 11 backend always had.
         /// <para>
         /// It returns immediately, and counts nothing, in the two cases where it is deliberately not a drain: the
         /// device is dead (X3, a destroyed device has nothing to wait for) and the <c>KE_D3D11_REAL_DRAIN</c>

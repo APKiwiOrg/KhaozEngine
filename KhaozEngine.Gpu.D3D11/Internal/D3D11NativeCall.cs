@@ -59,7 +59,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         IASetIndexBuffer = 15,
 
         /// <summary>A non-indexed draw. D3D11 has no non-instanced entry point, so the seam's single-instance
-        /// draw arrives here as one instance, exactly as the incumbent issues it.</summary>
+        /// draw arrives here as one instance, exactly as the incumbent issued it.</summary>
         DrawInstanced = 16,
         /// <summary>An indexed draw, likewise always through the instanced entry point.</summary>
         DrawIndexedInstanced = 17,

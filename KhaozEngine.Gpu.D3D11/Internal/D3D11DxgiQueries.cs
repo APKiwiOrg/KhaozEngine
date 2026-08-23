@@ -56,8 +56,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>The adapter description, exactly as DXGI gives it.
         /// <c>IDXGIAdapter::GetDesc().Description</c> through
         /// <see cref="D3D11CapabilityRead.TrimAdapterName"/>, which cuts at the first NUL and changes nothing
-        /// else, so this is the same string the incumbent reports through <c>GraphicsDevice.DeviceName</c> (it
-        /// assigns <c>desc.Description</c> raw) and the parity assertion on it holds by construction. Whitespace
+        /// else, so this is the same string the incumbent reported through <c>GraphicsDevice.DeviceName</c> (it
+        /// assigned <c>desc.Description</c> raw) and the parity assertion on it held by construction. Whitespace
         /// a vendor padded with is KEPT, for the reason recorded on
         /// <see cref="D3D11CapabilityRead.TrimAdapterName"/>.</summary>
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -133,7 +133,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             }
             catch
             {
-                // Degrade to blob shadows rather than throw, exactly as the incumbent does. A capability read is
+                // Degrade to blob shadows rather than throw, exactly as the incumbent did. A capability read is
                 // never allowed to be the thing that fails device creation.
                 return false;
             }

@@ -9,8 +9,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// with). ONE VARIABLE, TWO EFFECTS, deliberately: a session debugging a Direct3D problem wants both, and
     /// remembering two names to get one answer is how a capture ends up taken with half the instrumentation on.
     /// <para>
-    /// THIS IS THE CHEAPEST DIAGNOSTIC IN THE DESIGN. The engine hardcodes Veldrid's debug flag false today, so
-    /// there is currently no way to get debug-layer output out of a diagnostic run at all, and the 25
+    /// THIS IS THE CHEAPEST DIAGNOSTIC IN THE DESIGN. The engine hardcoded Veldrid's debug flag false, so there
+    /// was no way at all to get debug-layer output out of a diagnostic run, and the 25
     /// <c>DEVICE_REMOVED</c> stacks on #423 are exactly the shape of report the debug layer answers in one
     /// session. The layer costs real performance, which is why nothing turns it on by default and why the INFO
     /// line below exists: a capture must PROVE the lever was on rather than resting on the tester believing they

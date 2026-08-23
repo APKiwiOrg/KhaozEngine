@@ -193,7 +193,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// rather than shaping the view. That is not a simplification: SPIRV-Cross emits a GLSL storage block as a
         /// <c>ByteAddressBuffer</c> or <c>RWByteAddressBuffer</c>, so a structured view with a stride would not be
         /// what the compiled shader reads. The ocean compute kernels are the shipped proof, and keeping this
-        /// identical to the incumbent is why they keep working.
+        /// identical to the incumbent was why they keep working.
         /// </para>
         /// <para>
         /// A read-only structured buffer takes the shader resource view alone, and a read-write one takes BOTH,
@@ -251,8 +251,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <summary>
         /// THE BACKEND-DIVERGENT CREATION FAILURE, in one place with its whole reason attached. A uniform buffer
-        /// combined with any other bindable usage is legal on the seam and accepted by the Veldrid backend, and it
-        /// throws here.
+        /// combined with any other bindable usage is legal on the seam and was accepted by the Veldrid backend, and
+        /// it throws here.
         /// <para>
         /// WHY IT CANNOT SIMPLY BE HONOURED. The ring is what makes a per-frame uniform write cost nothing, and it
         /// works by putting <c>FramesInFlight</c> copies of the buffer end to end in one allocation and adding the

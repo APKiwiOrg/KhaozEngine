@@ -17,7 +17,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// released first. Keeping <see cref="ReleaseAttachments"/>, <see cref="ResizeBuffers"/> and
     /// <see cref="CreateAttachments"/> as three members puts that ORDER in <see cref="D3D11Swapchain"/>, where a
     /// device-free test can assert it, instead of burying it inside one Windows-only body where only a Windows
-    /// tester with a real window could ever find it broken. The incumbent has the same order and states it
+    /// tester with a real window could ever find it broken. The incumbent had the same order and stated it
     /// nowhere.
     /// </para>
     /// <para>
@@ -60,7 +60,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// THE CONTEXT'S BIND IS A REFERENCE TOO, which is the half of the obligation an implementation will miss.
         /// <c>OMSetRenderTargets</c> takes its own reference on the render target view, and the context does not
         /// drop it because the application released its wrapper, so releasing only the views still fails the
-        /// resize. This backend cannot inherit the incumbent's accidental immunity: the incumbent resets the
+        /// resize. This backend cannot inherit the incumbent's accidental immunity: the incumbent reset the
         /// context state at the end of every submit (<c>ExecuteCommandList</c> with <c>restoreContextState</c>
         /// false), while decision R3 puts this backend's one <c>ClearState</c> at the HEAD of a replay and the end
         /// of a submit emits nothing, so the last frame's targets are still bound when a resize applies at the
@@ -110,7 +110,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// THE RESULT IS RETURNED RATHER THAN CHECKED, and that is work-breakdown row 16's seam (decision G3):
         /// device loss is detected by checking the <c>HRESULT</c> after <c>Present</c>, calling
         /// <c>GetDeviceRemovedReason</c> IMMEDIATELY at the fault site and latching it. None of that is built
-        /// here. What is built here is that the value reaches the caller at all, since the incumbent discards it
+        /// here. What is built here is that the value reaches the caller at all, since the incumbent discarded it
         /// and a discarded <c>HRESULT</c> is a device removal that surfaces several frames later as an unrelated
         /// crash.
         /// </para>

@@ -130,7 +130,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <summary>
         /// Clear the depth attachment. The STENCIL goes with it at zero, matching the incumbent: Veldrid's clear
-        /// passes both flags, the seam carries no stencil value to pass instead, and a depth-only view ignores
+        /// passed both flags, the seam carries no stencil value to pass instead, and a depth-only view ignores
         /// the stencil flag.
         /// <para>
         /// The shared seam has already refused a framebuffer that DECLARES no depth attachment, so the throw below
@@ -244,7 +244,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>
         /// DECISION R5, RULE 2, in the order every draw path in this backend takes: the resource-set flush FIRST,
         /// then the batched vertex streams, then the draw. Direct3D 11 has no non-instanced entry point, so the
-        /// seam's single-instance draw arrives here as one instance, exactly as the incumbent issues it.
+        /// seam's single-instance draw arrives here as one instance, exactly as the incumbent issued it.
         /// </summary>
         public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart)
         {

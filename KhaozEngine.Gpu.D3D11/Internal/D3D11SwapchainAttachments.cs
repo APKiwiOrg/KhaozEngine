@@ -13,7 +13,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </para>
     /// <para>
     /// THE SIZE COMES BACK FROM THE SURFACE RATHER THAN BEING ECHOED FROM THE REQUEST, and that is a fidelity
-    /// point rather than a convenience. The incumbent builds its swapchain framebuffer out of a wrapper over the
+    /// point rather than a convenience. The incumbent built its swapchain framebuffer out of a wrapper over the
     /// texture <c>GetBuffer(0)</c> returned, and that wrapper reads its width and height off the real resource
     /// description, so the framebuffer reports what the backbuffer ACTUALLY is. That matters because DXGI reads a
     /// zero width or height in <c>ResizeBuffers</c> as "match the window's client area", which the windowing layer

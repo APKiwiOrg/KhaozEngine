@@ -109,9 +109,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     || D3D11AdapterSelection.IsSoftwareChoice(choice, adapters);
 
                 // The threading probe runs HERE rather than in GpuDeviceContext, because a natively created
-                // device has no Veldrid GraphicsDevice to read a raw ID3D11Device pointer off. Both halves travel
+                // device has no wrapper object to read a raw ID3D11Device pointer off. Both halves travel
                 // out through GpuProviderDevice, so the native leg logs the same threading line the Veldrid leg
-                // does instead of going dark on the backend it was written to diagnose.
+                // did instead of going dark on the backend it was written to diagnose.
                 GpuThreadingCaps? threadingCaps = D3D11ThreadingProbe.TryQuery(device.NativePointer,
                     out string? threadingProbeFailure);
 
@@ -290,7 +290,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         // The two environment levers that reach D3D11CreateDevice, OR'd exactly as decision G4 states, each
         // warning about its own unrecognized value. GpuD3D11DeviceFlags is the engine-wide lever and is logged
-        // here rather than by GpuDeviceContext, whose logging of it belongs to the Veldrid creation path.
+        // here rather than by GpuDeviceContext, whose logging of it belonged to the Veldrid creation path.
         static uint ResolveCreationFlags()
         {
             uint flags = GpuD3D11DeviceFlags.FromEnvironment(out string? preventValue);

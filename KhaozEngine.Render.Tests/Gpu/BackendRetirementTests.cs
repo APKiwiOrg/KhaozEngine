@@ -270,6 +270,28 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// AND THE REGISTRY ITSELF SAYS SO, not only the creation path in front of it.
+        /// <see cref="GpuBackendProviders.Require"/> is public and a consumer comparing two backends in one
+        /// process calls it directly, so it used to answer a retirement with "add a package reference", naming a
+        /// package that has not existed since 18.0.0. It carries the same check, ahead of the same lookup, so
+        /// the two entry points cannot give the same reader different reasons for the same fact.
+        /// </summary>
+        [Theory]
+        [InlineData(GpuBackendKind.Metal)]
+        [InlineData(GpuBackendKind.Vulkan)]
+        [InlineData(GpuBackendKind.Direct3D11)]
+        [InlineData(GpuBackendKind.OpenGL)]
+        public void RequiringARetiredBackend_ThrowsTheRetiredException_RatherThanNamingAMissingPackage(
+            GpuBackendKind retired)
+        {
+            var ex = Assert.Throws<GpuBackendRetiredException>(() => GpuBackendProviders.Require(retired));
+
+            Assert.Equal(retired, ex.Backend);
+            Assert.Contains("retired in 18.0.0", ex.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("Register()", ex.Message, StringComparison.Ordinal);
+        }
+
+        /// <summary>
         /// A settings screen never offers a retired member, which is the other half of what makes the stored
         /// preference safe: the engine self-heals the ones already saved, and stops new ones being created.
         /// </summary>

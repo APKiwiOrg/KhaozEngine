@@ -121,11 +121,27 @@ namespace KhaozEngine.Gpu
         /// the throw half of decision I2, and the creation path calls it BEFORE the machine-capability probe
         /// precisely so a forgotten registration can never be read as an incapable machine and turned into a quiet
         /// fallback onto a different backend.
+        /// <para>
+        /// A RETIRED backend throws <see cref="GpuBackendRetiredException"/> instead, and the check sits AHEAD of
+        /// the registry lookup for the reason decision 5.2 gives: the four members retired in 18.0.0 have no
+        /// provider and never will, so the missing-provider message would send a reader off to add a package
+        /// reference that cannot help. <c>GpuDeviceContext.PreflightProvider</c> makes the same check first, and
+        /// this one is what covers a consumer calling <see cref="Require"/> directly to drive a backend
+        /// comparison in one process.
+        /// </para>
         /// </summary>
         public static IGpuBackendProvider Require(GpuBackendKind backend)
-            => _providers.TryGetValue(backend, out IGpuBackendProvider? provider)
+        {
+            if (GpuBackendSelector.IsRetired(backend))
+            {
+                throw new GpuBackendRetiredException(backend,
+                    GpuBackendSelector.NativeReplacementFor(backend, GpuBackendSelector.DetectOS()));
+            }
+
+            return _providers.TryGetValue(backend, out IGpuBackendProvider? provider)
                 ? provider
                 : throw new GpuBackendProviderMissingException(backend);
+        }
 
         /// <summary>
         /// Whether <paramref name="backend"/> is created by a registered provider. CONSTANT TRUE since 18.0.0:

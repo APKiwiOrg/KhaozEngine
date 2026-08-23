@@ -79,14 +79,18 @@ Three paths reach a retired member and each answers differently, on purpose:
   successor and WARNs, recording the retired member on `RequestedBackend`. Refusing the boot would turn every
   soak script, CI leg and shell alias in the fleet that still names one into a crash, for a variable whose
   whole purpose is to get a run going.
-- **A stored `UserPreference`** for a retired member self-heals to the platform native and reports
-  `FallbackAfterFailure` with the retired member on `RequestedBackend`. That is the signal a consuming game
-  already acts on, and acting on it clears the setting, which is the only thing that gets the player off a dead
-  choice permanently. It is rejected AHEAD of `GpuBackendProviders.Require`, because `Require` throws by
-  contract and a saved settings file must never be able to make the engine throw at boot.
+- **A stored `UserPreference`** for a retired member self-heals to that API's own native backend, the same
+  `NativeReplacementFor` map the token takes, and reports `FallbackAfterFailure` with the retired member on
+  `RequestedBackend`. That is the signal a consuming game already acts on, and acting on it clears the setting,
+  which is the only thing that gets the player off a dead choice permanently. It is rejected AHEAD of
+  `GpuBackendProviders.Require`, because `Require` throws by contract and a saved settings file must never be
+  able to make the engine throw at boot. Where the replacement has no package on this OS (a stored
+  `Direct3D11` on a Mac), creation falls back to the platform default and warns rather than throwing.
 - **Naming one in code**, through `GpuDeviceContext.CreateForWindow` / `CreateHeadless` with an explicit
   selection, throws `GpuBackendRetiredException`, naming the retirement and the native to use. A caller that
-  named one in source is a caller that has to be edited.
+  named one in source is a caller that has to be edited. `GpuBackendProviders.Require` throws the same
+  exception for the same reason, so a consumer reaching the registry directly is told about the retirement
+  rather than about a package that no longer exists.
 
 `GpuBackendSelector.SupportedBackends()` never offers a retired member, so a settings dropdown built from it
 cannot hand a player a new dead preference. `IsBackendSupported` answers false for all four.

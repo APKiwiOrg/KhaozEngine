@@ -46,8 +46,9 @@ namespace KhaozEngine.Tests.Gpu
     /// <c>KhaozEngine.Gpu</c> and cannot see a backend's cache at all. The reason is specific rather than
     /// hygienic. That cache's key covers the shader sources, the engine version and all three pinned option sets,
     /// so a source or an options change is a different entry and could never be answered stale. What the key does
-    /// NOT name is the thing each pin's own header says pins the emission, the <c>Veldrid.SPIRV</c> package
-    /// version. So within one engine version a cached entry can hold the PREVIOUS cross-compiler's output, and a
+    /// NOT name is the thing each pin's own header says pins the emission, the toolchain package version, which
+    /// is <c>Silk.NET.Shaderc</c> and <c>Silk.NET.SPIRV.Cross</c> since 18.0.0 and was <c>Veldrid.SPIRV</c>
+    /// before it. So within one engine version a cached entry can hold the PREVIOUS cross-compiler's output, and a
     /// drift test reading it would report no drift on exactly the change it exists to catch.
     /// <see cref="ThisTestEmitsFresh_AndCannotBeAnsweredFromADiskCache"/> is that pinned mechanically.
     /// </para>

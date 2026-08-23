@@ -11,9 +11,10 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// THE CROSS-COMPILER'S OWN VERSION IS IN BOTH SHADER-CACHE KEYS
     /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/610">#610</see>). Every option pin freezes
-    /// what the toolchain is ASKED for. What freezes the emitted text is the <c>Veldrid.SPIRV</c> package, which
-    /// is not an engine assembly, so neither the engine version nor the Metal key's module version ids move when
-    /// it does. A package bump without an engine bump used to leave every cached program on both backends
+    /// what the toolchain is ASKED for. What freezes the emitted text is the toolchain package version
+    /// (<c>Silk.NET.Shaderc</c> and <c>Silk.NET.SPIRV.Cross</c> since 18.0.0, <c>Veldrid.SPIRV</c> before it),
+    /// and none of those is an engine assembly, so neither the engine version nor the Metal key's module version
+    /// ids move when one does. A package bump without an engine bump used to leave every cached program on both backends
     /// answering with the previous cross-compiler's output.
     ///
     /// <para>
@@ -22,7 +23,7 @@ namespace KhaozEngine.Tests.Gpu
     /// </para>
     /// <para>
     /// DEVICE-FREE AND PACKAGE-FREE: the identity is passed IN, so the claim is asserted without restoring two
-    /// versions of <c>Veldrid.SPIRV</c>. That the real identity feeds the shipped overload is asserted
+    /// versions of a toolchain package. That the real identity feeds the shipped overload is asserted
     /// separately, on each key, which is the half a fabricated input cannot cover.
     /// </para>
     /// </summary>
@@ -45,7 +46,10 @@ namespace KhaozEngine.Tests.Gpu
         {
             string identity = SpirvToolchainVersion.Identity;
 
-            Assert.StartsWith("veldrid-spirv;", identity, StringComparison.Ordinal);
+            // BOTH package names, because the toolchain is two packages since 18.0.0: the glslang front end and
+            // the SPIRV-Cross back end ship separately, and an upgrade can move either alone.
+            Assert.StartsWith("Silk.NET.Shaderc;", identity, StringComparison.Ordinal);
+            Assert.Contains("|Silk.NET.SPIRV.Cross;", identity, StringComparison.Ordinal);
             Assert.DoesNotContain(SpirvToolchainVersion.Unknown, identity, StringComparison.Ordinal);
 
             // BOTH halves are in it, because either one alone can stand still across a package bump: the
@@ -73,7 +77,7 @@ namespace KhaozEngine.Tests.Gpu
                 new AssemblyName("ke-toolchain-probe"), AssemblyBuilderAccess.Run);
 
             Assert.Equal(
-                "veldrid-spirv;assembly=0.0.0.0;package=" + SpirvToolchainVersion.Unknown,
+                "ke-toolchain-probe;assembly=0.0.0.0;package=" + SpirvToolchainVersion.Unknown,
                 SpirvToolchainVersion.For(bare));
         }
 
@@ -85,10 +89,10 @@ namespace KhaozEngine.Tests.Gpu
             Guid metal = MetalShaderKey.MetalModuleId;
             Guid gpu = MetalShaderKey.GpuModuleId;
 
-            string baseline = MetalShaderKey.For(metal, gpu, "veldrid-spirv;assembly=1.0.15.1", Program);
-            string bumped = MetalShaderKey.For(metal, gpu, "veldrid-spirv;assembly=1.0.16.0", Program);
+            string baseline = MetalShaderKey.For(metal, gpu, "Silk.NET.Shaderc;assembly=2.23.0.0", Program);
+            string bumped = MetalShaderKey.For(metal, gpu, "Silk.NET.Shaderc;assembly=2.24.0.0", Program);
 
-            Assert.Equal(baseline, MetalShaderKey.For(metal, gpu, "veldrid-spirv;assembly=1.0.15.1", Program));
+            Assert.Equal(baseline, MetalShaderKey.For(metal, gpu, "Silk.NET.Shaderc;assembly=2.23.0.0", Program));
             Assert.NotEqual(baseline, bumped);
 
             // The shipped overload hashes the identity of the package this process actually loaded.
@@ -113,16 +117,16 @@ namespace KhaozEngine.Tests.Gpu
         {
             const D3D11ShaderStage stage = D3D11ShaderStage.Vertex;
 
-            string baseline = D3D11ShaderKey.For(stage, 0u, "veldrid-spirv;assembly=1.0.15.1", Program);
-            string bumped = D3D11ShaderKey.For(stage, 0u, "veldrid-spirv;assembly=1.0.16.0", Program);
+            string baseline = D3D11ShaderKey.For(stage, 0u, "Silk.NET.Shaderc;assembly=2.23.0.0", Program);
+            string bumped = D3D11ShaderKey.For(stage, 0u, "Silk.NET.Shaderc;assembly=2.24.0.0", Program);
 
-            Assert.Equal(baseline, D3D11ShaderKey.For(stage, 0u, "veldrid-spirv;assembly=1.0.15.1", Program));
+            Assert.Equal(baseline, D3D11ShaderKey.For(stage, 0u, "Silk.NET.Shaderc;assembly=2.23.0.0", Program));
             Assert.NotEqual(baseline, bumped);
 
             // Every stage of the program moves, not just the one that named the flag.
             Assert.NotEqual(
-                D3D11ShaderKey.For(D3D11ShaderStage.Fragment, 0u, "veldrid-spirv;assembly=1.0.15.1", Program),
-                D3D11ShaderKey.For(D3D11ShaderStage.Fragment, 0u, "veldrid-spirv;assembly=1.0.16.0", Program));
+                D3D11ShaderKey.For(D3D11ShaderStage.Fragment, 0u, "Silk.NET.Shaderc;assembly=2.23.0.0", Program),
+                D3D11ShaderKey.For(D3D11ShaderStage.Fragment, 0u, "Silk.NET.Shaderc;assembly=2.24.0.0", Program));
 
             // The shipped overload hashes the identity of the package this process actually loaded.
             Assert.Equal(

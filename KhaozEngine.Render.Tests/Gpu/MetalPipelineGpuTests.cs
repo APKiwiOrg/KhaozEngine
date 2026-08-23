@@ -103,12 +103,11 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuShaderSet shaders = factory.CreateShadersFromSpirv(FullscreenVert, FullscreenFrag);
             var metal = (MetalShaderSet)shaders;
 
-            // A SHADER THAT REFERENCES NOTHING STILL REFLECTS ONE EMPTY SET, which this row found rather than
-            // assumed and which is why the declaration below is built from the reflection instead of being empty.
-            // No shipped program is in that shape (all 34 reference at least one resource), so nothing depends on
-            // it today, and https://github.com/APKiwiOrg/KhaozEngine/issues/599 carries the question.
-            Assert.Single(metal.Table.Layouts);
-            Assert.Empty(metal.Table.Layouts[0].Elements);
+            // A SHADER THAT REFERENCES NOTHING REFLECTS ZERO SETS since the toolchain swap landed #599 (the
+            // incumbent's reflection produced one empty set here, which this row pinned until 18.0.0). The
+            // declaration below is still built from the reflection, which is now the empty array, and the shape
+            // check accepts that as readily as a single empty declared layout.
+            Assert.Empty(metal.Table.Layouts);
 
             List<IGpuResourceLayout> layouts = ReflectedLayouts(factory, metal);
             try

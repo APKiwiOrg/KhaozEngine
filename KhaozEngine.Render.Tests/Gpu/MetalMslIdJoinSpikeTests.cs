@@ -4,16 +4,18 @@ using System.Linq;
 using System.Text;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Internal;
-using Veldrid;
-using Veldrid.SPIRV;
 using Xunit;
 using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// THE VARIANT THE NAME SPIKE DID NOT TRY. <see cref="MetalMslNameJoinSpikeTests"/> refuted M-B1's join on
-    /// NAMES, and that refutation stands. It never tried the other key. SPIRV-Cross names an unnamed variable
+    /// THE VARIANT THE NAME SPIKE DID NOT TRY. The row-1 name spike refuted M-B1's join on NAMES, and that
+    /// refutation stands: it is recorded in
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/586">#586</see> and in section 2.2 of the
+    /// Metal design, and the spike itself went in 18.0.0 because the option it measured the forecloseable lever
+    /// with (<c>normalizeResourceNames</c>) was a flag on the outgoing wrapper and has no SPIRV-Cross
+    /// equivalent. It never tried the other key. SPIRV-Cross names an unnamed variable
     /// <c>_&lt;id&gt;</c> after its SPIR-V result id, and the <c>DescriptorSet</c> and <c>Binding</c> decorations
     /// that give that id its meaning are not debug information, so they survive the
     /// <c>SpirvFrontEndPin.Debug=false</c> stripping that removes the names. So the join can be keyed on the ID:
@@ -84,13 +86,6 @@ namespace KhaozEngine.Tests.Gpu
 
         public MetalMslIdJoinSpikeTests(ITestOutputHelper output) => _output = output;
 
-        /// <summary>The cross-compile options the shipped path uses, identical to the name spike's, so the two
-        /// measurements differ in the JOIN and in nothing else.</summary>
-        static CrossCompileOptions ShippedOptions => new(
-            HlslCrossCompilePin.FixClipSpaceZ,
-            HlslCrossCompilePin.InvertVertexOutputY,
-            HlslCrossCompilePin.NormalizeResourceNames);
-
         /// <summary>Every counter the measurement produces, so the report and the assertions read the same
         /// numbers rather than two independently maintained sets.</summary>
         sealed class Census
@@ -140,22 +135,20 @@ namespace KhaozEngine.Tests.Gpu
             {
                 byte[] vertex = SpirvFrontEnd.ToSpirv(program.VertexGlsl, GpuShaderStages.Vertex, program.Name);
                 byte[] fragment = SpirvFrontEnd.ToSpirv(program.FragmentGlsl, GpuShaderStages.Fragment, program.Name);
-                VertexFragmentCompilationResult result = SpirvCompilation.CompileVertexFragment(
-                    vertex, fragment, CrossCompileTarget.MSL, ShippedOptions);
+                CrossCompiledPair result = SpirvCrossCompile.VertexFragmentToMsl(vertex, fragment, program.Name);
                 MeasureProgram(census, program.Name, result.Reflection.ResourceLayouts, new[]
                 {
-                    ("vertex", result.VertexShader, "vertex ", vertex),
-                    ("fragment", result.FragmentShader, "fragment ", fragment),
+                    ("vertex", result.VertexSource, "vertex ", vertex),
+                    ("fragment", result.FragmentSource, "fragment ", fragment),
                 });
             }
 
             foreach (ShippedComputeKernel kernel in D3D11ShaderProgramCatalog.ComputeKernels())
             {
                 byte[] compute = SpirvFrontEnd.ToSpirv(kernel.ComputeGlsl, GpuShaderStages.Compute, kernel.Name);
-                ComputeCompilationResult result = SpirvCompilation.CompileCompute(
-                    compute, CrossCompileTarget.MSL, ShippedOptions);
+                CrossCompiledCompute result = SpirvCrossCompile.ComputeToMsl(compute, kernel.Name);
                 MeasureProgram(census, kernel.Name, result.Reflection.ResourceLayouts,
-                    new[] { ("compute", result.ComputeShader, "kernel ", compute) });
+                    new[] { ("compute", result.ComputeSource, "kernel ", compute) });
             }
 
             string report = census.Report();
@@ -204,7 +197,7 @@ namespace KhaozEngine.Tests.Gpu
                 + "is the moment to re-read section 2.2a rather than to update a number:\n" + report);
         }
 
-        static void MeasureProgram(Census census, string program, IReadOnlyList<ResourceLayoutDescription> layouts,
+        static void MeasureProgram(Census census, string program, IReadOnlyList<GpuResourceLayoutDescription> layouts,
             (string Stage, string Msl, string Keyword, byte[] Spirv)[] stages)
         {
             census.Programs++;
@@ -238,7 +231,7 @@ namespace KhaozEngine.Tests.Gpu
                         continue;
                     }
 
-                    ResourceLayoutElementDescription[] elements = layouts[(int)decoration.Set].Elements;
+                    GpuResourceLayoutElement[] elements = layouts[(int)decoration.Set].Elements;
                     if (decoration.Binding >= (uint)elements.Length)
                     {
                         census.BindingOverflow++;
@@ -247,7 +240,7 @@ namespace KhaozEngine.Tests.Gpu
                         continue;
                     }
 
-                    ResourceKind kind = elements[(int)decoration.Binding].Kind;
+                    GpuResourceKind kind = elements[(int)decoration.Binding].Kind;
                     if (!SpaceMatches(argument.Space, kind))
                     {
                         census.Fail("resolved element is the wrong kind for the index space", $"{where} -> {kind}");
@@ -270,7 +263,7 @@ namespace KhaozEngine.Tests.Gpu
         /// referenced, which is what makes the gap count mean anything.
         /// </summary>
         static void CompareAgainstTheIncumbent(Census census, string program, string stage,
-            IReadOnlyList<ResourceLayoutDescription> layouts, HashSet<(int Set, int Binding)> resolved,
+            IReadOnlyList<GpuResourceLayoutDescription> layouts, HashSet<(int Set, int Binding)> resolved,
             List<(EmittedArgument Argument, int Set, int Binding)> placed)
         {
             // The incumbent's arithmetic, reproduced: per-kind counters, with uniform and both structured kinds
@@ -280,18 +273,18 @@ namespace KhaozEngine.Tests.Gpu
             int buffers = 0, textures = 0, samplers = 0;
             for (int set = 0; set < layouts.Count; set++)
             {
-                ResourceLayoutElementDescription[] elements = layouts[set].Elements;
+                GpuResourceLayoutElement[] elements = layouts[set].Elements;
                 for (int e = 0; e < elements.Length; e++)
                 {
                     incumbent[(set, e)] = (buffers, textures, samplers);
                     switch (elements[e].Kind)
                     {
-                        case ResourceKind.UniformBuffer:
-                        case ResourceKind.StructuredBufferReadOnly:
-                        case ResourceKind.StructuredBufferReadWrite: buffers++; break;
-                        case ResourceKind.TextureReadOnly:
-                        case ResourceKind.TextureReadWrite: textures++; break;
-                        case ResourceKind.Sampler: samplers++; break;
+                        case GpuResourceKind.UniformBuffer:
+                        case GpuResourceKind.StructuredBufferReadOnly:
+                        case GpuResourceKind.StructuredBufferReadWrite: buffers++; break;
+                        case GpuResourceKind.TextureReadOnly:
+                        case GpuResourceKind.TextureReadWrite: textures++; break;
+                        case GpuResourceKind.Sampler: samplers++; break;
                     }
                 }
             }
@@ -313,7 +306,7 @@ namespace KhaozEngine.Tests.Gpu
                 int gaps = 0;
                 for (int set = 0; set <= argSet; set++)
                 {
-                    ResourceLayoutElementDescription[] elements = layouts[set].Elements;
+                    GpuResourceLayoutElement[] elements = layouts[set].Elements;
                     for (int e = 0; e < elements.Length; e++)
                     {
                         if (set == argSet && e >= argBinding) break;
@@ -330,12 +323,12 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
-        static bool SpaceMatches(string space, ResourceKind kind) => space switch
+        static bool SpaceMatches(string space, GpuResourceKind kind) => space switch
         {
-            "buffer" => kind is ResourceKind.UniformBuffer or ResourceKind.StructuredBufferReadOnly
-                or ResourceKind.StructuredBufferReadWrite,
-            "texture" => kind is ResourceKind.TextureReadOnly or ResourceKind.TextureReadWrite,
-            "sampler" => kind is ResourceKind.Sampler,
+            "buffer" => kind is GpuResourceKind.UniformBuffer or GpuResourceKind.StructuredBufferReadOnly
+                or GpuResourceKind.StructuredBufferReadWrite,
+            "texture" => kind is GpuResourceKind.TextureReadOnly or GpuResourceKind.TextureReadWrite,
+            "sampler" => kind is GpuResourceKind.Sampler,
             _ => false,
         };
     }

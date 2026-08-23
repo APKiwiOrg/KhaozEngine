@@ -7,34 +7,43 @@
   </PropertyGroup>
   <ItemGroup>
     <!-- GPU / windowing / render stack -->
-    <!-- The SHADER TOOLCHAIN, and nothing else. Veldrid.SPIRV carries glslang for the GLSL to SPIR-V front end
-         and SPIRV-Cross for the back end, and it declares a dependency on Veldrid, so the base package cannot
-         leave the graph while the toolchain is here. What DID leave in 18.0.0 is the incumbent backend, the
-         APKiwi 4.9.x fork it needed and the vendor/veldrid feed that served it: the pin is stock upstream from
-         nuget.org now, and the only Veldrid types the engine names are the descriptions Veldrid.SPIRV's
-         reflection hands back (Internal/SpirvCrossCompile, Internal/SpirvFrontEnd, ShaderValidation). Both
-         entries go in row 8 of the removal program, the toolchain swap onto Silk.NET.Shaderc plus
-         Silk.NET.SPIRV.Cross (https://github.com/APKiwiOrg/KhaozEngine/issues/683). -->
-    <PackageVersion Include="Veldrid" Version="4.9.0" />
-    <PackageVersion Include="Veldrid.SPIRV" Version="1.0.15" />
+    <!-- The SHADER TOOLCHAIN, and nothing else. Silk.NET.Shaderc is google/shaderc (glslang) for the GLSL to
+         SPIR-V front end and Silk.NET.SPIRV.Cross is KhronosGroup/SPIRV-Cross for the MSL and HLSL back ends,
+         each a thin MIT binding over an Apache-2.0 native that ships per RID. Silk.NET.SPIRV carries the SPIR-V
+         enums (Decoration, ExecutionModel) the two join on. They arrived in 18.0.0 as row 8 of the Veldrid
+         removal (https://github.com/APKiwiOrg/KhaozEngine/issues/691), replacing Veldrid.SPIRV 1.0.15 and the
+         Veldrid base package its reflection types came from.
+         PINNED TO THE SAME 2.23.0 LINE as the windowing, input, audio and Vulkan bindings above, which the
+         comment at the top of this file exists to enforce, so the toolchain rides that lockstep for free.
+         THE FIVE MUST MOVE TOGETHER, and ArchitectureTests.TheShaderToolchainPackages_ArePinnedInLockstep
+         fails the build if they do not. SpirvToolchainVersion reads the shader caches' key token off the two
+         MANAGED assemblies, and glslang lives in the .Native blobs, which are separate package ids now where
+         Veldrid.SPIRV shipped both halves in one. Bump a .Native alone and the emitted SPIR-V moves while the
+         cache key stands still, so every warm entry answers with the old compiler's bytes.
+         THE SWAP WAS ATOMIC AND HAD TO BE: both libraries statically link glslang and SPIRV-Tools, and with
+         both loaded the second interposes on the first and the incumbent reads shuffle operands out of
+         executable memory (section 2.3 result 4 of docs/design/VELDRID-REMOVAL-DESIGN-2026-08-22.md). Never
+         add a Veldrid.SPIRV reference back for a comparison: ArchitectureTests.NoTwoShaderToolchains fails the
+         build if either Veldrid entry reappears in any csproj or here. -->
+    <PackageVersion Include="Silk.NET.Shaderc" Version="2.23.0" />
+    <PackageVersion Include="Silk.NET.Shaderc.Native" Version="2.23.0" />
+    <PackageVersion Include="Silk.NET.SPIRV" Version="2.23.0" />
+    <PackageVersion Include="Silk.NET.SPIRV.Cross" Version="2.23.0" />
+    <PackageVersion Include="Silk.NET.SPIRV.Cross.Native" Version="2.23.0" />
     <!-- The D3D11 binding. Declared explicitly in KhaozEngine.Gpu so the driver-threading probe can call
          ID3D11Device::CheckFeatureSupport on the raw device pointer the native backend hands it, and in
-         KhaozEngine.Gpu.D3D11 for the backend itself. Still 2.3.0 because Veldrid depends on that line and it is
-         still in the graph under Veldrid.SPIRV, so the graph keeps ONE D3D11 binding and one SharpGen.Runtime.
-         Free to move with row 8 (#617). -->
+         KhaozEngine.Gpu.D3D11 for the backend itself. The reason it sat at 2.3.0 was Veldrid, which depended on
+         that line and was in the graph under Veldrid.SPIRV. Both left in 18.0.0, so nothing outside this file
+         holds the pin any more and the unpin is #617's to take, on its own evidence rather than as a side
+         effect of the toolchain swap. -->
     <PackageVersion Include="Vortice.Direct3D11" Version="2.3.0" />
     <!-- FXC for the engine-owned native Direct3D11 backend (KhaozEngine.Gpu.D3D11), which compiles the
          cross-compiled HLSL to DXBC itself. Pinned to the SAME 2.3.0 Vortice line as Vortice.Direct3D11 above,
          not to the newest 3.x: both 2.3.0 packages resolve SharpGen.Runtime 2.0.0-beta.13 and
          Vortice.Mathematics 1.4.25, so the graph keeps one COM interop layer. A 3.x D3DCompiler beside a 2.3.0
-         Direct3D11 would drag a second SharpGen.Runtime major into the same process, and Direct3D11 cannot move
-         because it is pinned to what Veldrid depends on, and Veldrid is still in the graph under Veldrid.SPIRV.
-         Free to move with row 8 (#617). -->
+         Direct3D11 would drag a second SharpGen.Runtime major into the same process. The two move together, and
+         they move in #617. -->
     <PackageVersion Include="Vortice.D3DCompiler" Version="2.3.0" />
-    <!-- CVE override: the toolchain drags in vulnerable Newtonsoft.Json 9.0.1 (NU1903), through
-         Veldrid.SPIRV -> Veldrid -> NativeLibraryLoader -> Microsoft.Extensions.DependencyModel. Not used
-         directly, and it leaves with the toolchain in row 8 rather than with the incumbent backend. -->
-    <PackageVersion Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageVersion Include="Silk.NET.Windowing" Version="2.23.0" />
     <PackageVersion Include="Silk.NET.Windowing.Glfw" Version="2.23.0" />
     <PackageVersion Include="Silk.NET.Input" Version="2.23.0" />

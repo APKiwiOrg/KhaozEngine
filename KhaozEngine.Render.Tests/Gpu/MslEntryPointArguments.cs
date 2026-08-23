@@ -12,10 +12,13 @@ namespace KhaozEngine.Tests.Gpu
     public readonly record struct EmittedArgument(string Space, int Index, string Name);
 
     /// <summary>
-    /// The one parse of an emitted MSL entry point's resource arguments, shared by both row-1 join spikes
-    /// (<see cref="MetalMslNameJoinSpikeTests"/> and <see cref="MetalMslIdJoinSpikeTests"/>) so the two
-    /// measurements are taken over exactly the same census and a difference between them is a difference in the
-    /// JOIN rather than in the counting.
+    /// The one parse of an emitted MSL entry point's resource arguments. It was shared by both row-1 join
+    /// spikes so the two measurements were taken over exactly the same census and a difference between them was
+    /// a difference in the JOIN rather than in the counting. Only <see cref="MetalMslIdJoinSpikeTests"/> is left
+    /// (the name spike went with the toolchain in 18.0.0, its refutation recorded in
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/586">#586</see>), and the parse stays shared
+    /// with nothing rather than being folded in: it is the neutral half, and inlining it would put the counting
+    /// inside the thing being counted.
     ///
     /// <para>
     /// The closing parenthesis is matched by DEPTH rather than taken as the first one, because every argument

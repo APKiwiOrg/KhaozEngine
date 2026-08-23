@@ -1,6 +1,6 @@
 using System;
-using Veldrid;
-using Veldrid.SPIRV;
+using System.Runtime.InteropServices;
+using Silk.NET.SPIRV.Cross;
 
 namespace KhaozEngine.Gpu.Internal
 {
@@ -54,23 +54,14 @@ namespace KhaozEngine.Gpu.Internal
     internal static class SpirvCrossCompile
     {
         /// <summary>
-        /// The cross-compile options every HLSL emission uses, in ONE place so the whole program is emitted
-        /// under one set rather than under whatever each call site happened to pass. PRIVATE, because it is the
-        /// one member of this class whose type is a Veldrid type, and every non-private member here is part of
-        /// the Veldrid-free contract the backend consumes across <c>InternalsVisibleTo</c>.
-        /// <para>
-        /// PINNED, decision S3. The values are not written here: they are BUILT from
-        /// <see cref="HlslCrossCompilePin"/>, which holds them as Veldrid-free constants together with the
-        /// citation from the fork that says what <c>CreateFromSpirv</c> does with them (it forwards them
-        /// verbatim, and derives nothing from <c>ResourceBindingModel</c>, which the design had assumed).
-        /// <c>D3D11HlslByteEqualityTests</c> hashes what this set emits for every shipped program, so a changed
-        /// value fails as a hash table that no longer matches rather than as a golden nobody can explain.
-        /// </para>
+        /// THE ONE SPIRV-Cross API HANDLE. <c>GetApi</c> loads the native library, so it is created once for the
+        /// process. Every context, compiler and options object below is created and destroyed per call: the C API
+        /// is a tree of allocations owned by a context, and one long-lived context would accumulate every module
+        /// the process ever compiled.
+        /// PRIVATE, because it is a toolchain type, and every non-private member of this class is part of the
+        /// toolchain-free contract the backends consume across <c>InternalsVisibleTo</c>.
         /// </summary>
-        static readonly CrossCompileOptions _hlslOptions = new(
-            HlslCrossCompilePin.FixClipSpaceZ,
-            HlslCrossCompilePin.InvertVertexOutputY,
-            HlslCrossCompilePin.NormalizeResourceNames);
+        static readonly Cross _cross = Cross.GetApi();
 
         /// <summary>
         /// Cross-compile a vertex and fragment SPIR-V pair to HLSL, with the reflection the backend binds
@@ -84,24 +75,7 @@ namespace KhaozEngine.Gpu.Internal
         /// something the engine's own description mirrors do not model.</exception>
         internal static CrossCompiledPair VertexFragmentToHlsl(byte[] vertexSpirv, byte[] fragmentSpirv,
             string? label = null)
-        {
-            if (vertexSpirv is null) throw new ArgumentNullException(nameof(vertexSpirv));
-            if (fragmentSpirv is null) throw new ArgumentNullException(nameof(fragmentSpirv));
-
-            string tag = label ?? "shader pair";
-            VertexFragmentCompilationResult result;
-            try
-            {
-                result = SpirvCompilation.CompileVertexFragment(
-                    vertexSpirv, fragmentSpirv, CrossCompileTarget.HLSL, _hlslOptions);
-            }
-            catch (Exception ex)
-            {
-                throw new ShaderValidationException($"{tag}: cross-compile to HLSL failed: {ex.Message}", ex);
-            }
-
-            return new CrossCompiledPair(result.VertexShader, result.FragmentShader, Reflect(result.Reflection, tag));
-        }
+            => Pair(vertexSpirv, fragmentSpirv, Backend.Hlsl, "HLSL", label ?? "shader pair");
 
         /// <summary>
         /// Cross-compile a compute SPIR-V module to HLSL, with its reflection. The compute sibling of
@@ -112,22 +86,7 @@ namespace KhaozEngine.Gpu.Internal
         /// <exception cref="ShaderValidationException">The module failed to cross-compile, or declares something
         /// the engine's own description mirrors do not model.</exception>
         internal static CrossCompiledCompute ComputeToHlsl(byte[] computeSpirv, string? label = null)
-        {
-            if (computeSpirv is null) throw new ArgumentNullException(nameof(computeSpirv));
-
-            string tag = label ?? "compute shader";
-            ComputeCompilationResult result;
-            try
-            {
-                result = SpirvCompilation.CompileCompute(computeSpirv, CrossCompileTarget.HLSL, _hlslOptions);
-            }
-            catch (Exception ex)
-            {
-                throw new ShaderValidationException($"{tag}: compute cross-compile to HLSL failed: {ex.Message}", ex);
-            }
-
-            return new CrossCompiledCompute(result.ComputeShader, Reflect(result.Reflection, tag));
-        }
+            => Compute(computeSpirv, Backend.Hlsl, "HLSL", label ?? "compute shader");
 
         /// <summary>The GLSL-source convenience over <see cref="SpirvFrontEnd.ToSpirv"/> plus
         /// <see cref="VertexFragmentToHlsl"/>, which is the shape every call site actually has: the engine's
@@ -149,22 +108,6 @@ namespace KhaozEngine.Gpu.Internal
         }
 
         /// <summary>
-        /// The cross-compile options every MSL emission uses, built from <see cref="MslCrossCompilePin"/> exactly
-        /// as the HLSL set is built from <see cref="HlslCrossCompilePin"/>, and private for the same reason: it is
-        /// a Veldrid type, and every non-private member of this class is part of the Veldrid-free contract the
-        /// backends consume across <c>InternalsVisibleTo</c>.
-        /// <para>
-        /// A SEPARATE OBJECT FROM THE HLSL SET EVEN THOUGH THE VALUES MATCH TODAY, deliberately. The two pins are
-        /// maintained independently and answer to different parity measurements, so sharing one options instance
-        /// would silently couple a future Direct3D flag to the Metal goldens.
-        /// </para>
-        /// </summary>
-        static readonly CrossCompileOptions _mslOptions = new(
-            MslCrossCompilePin.FixClipSpaceZ,
-            MslCrossCompilePin.InvertVertexOutputY,
-            MslCrossCompilePin.NormalizeResourceNames);
-
-        /// <summary>
         /// Cross-compile a vertex and fragment SPIR-V pair to MSL, with the reflection the backend binds against.
         /// The MSL sibling of <see cref="VertexFragmentToHlsl"/>, and the pair is compiled TOGETHER for the same
         /// reason: the resource layouts are a property of the program, and a per-stage compile would produce two
@@ -183,24 +126,7 @@ namespace KhaozEngine.Gpu.Internal
         /// something the engine's own description mirrors do not model.</exception>
         internal static CrossCompiledPair VertexFragmentToMsl(byte[] vertexSpirv, byte[] fragmentSpirv,
             string? label = null)
-        {
-            if (vertexSpirv is null) throw new ArgumentNullException(nameof(vertexSpirv));
-            if (fragmentSpirv is null) throw new ArgumentNullException(nameof(fragmentSpirv));
-
-            string tag = label ?? "shader pair";
-            VertexFragmentCompilationResult result;
-            try
-            {
-                result = SpirvCompilation.CompileVertexFragment(
-                    vertexSpirv, fragmentSpirv, CrossCompileTarget.MSL, _mslOptions);
-            }
-            catch (Exception ex)
-            {
-                throw new ShaderValidationException($"{tag}: cross-compile to MSL failed: {ex.Message}", ex);
-            }
-
-            return new CrossCompiledPair(result.VertexShader, result.FragmentShader, Reflect(result.Reflection, tag));
-        }
+            => Pair(vertexSpirv, fragmentSpirv, Backend.Msl, "MSL", label ?? "shader pair");
 
         /// <summary>
         /// Cross-compile a compute SPIR-V module to MSL, with its reflection. The compute sibling of
@@ -211,94 +137,171 @@ namespace KhaozEngine.Gpu.Internal
         /// <exception cref="ShaderValidationException">The module failed to cross-compile, or declares something
         /// the engine's own description mirrors do not model.</exception>
         internal static CrossCompiledCompute ComputeToMsl(byte[] computeSpirv, string? label = null)
+            => Compute(computeSpirv, Backend.Msl, "MSL", label ?? "compute shader");
+
+        // ---- the SPIRV-Cross session ---------------------------------------------------------------------
+
+        // One context per call, holding both stage compilers, so the pair's two modules are parsed and emitted
+        // under one allocation owner and freed together. spvc_context_destroy releases every compiler and every
+        // string it handed out, which is why the emitted text is copied to managed strings before it returns.
+        static unsafe CrossCompiledPair Pair(byte[] vertexSpirv, byte[] fragmentSpirv, Backend backend,
+            string target, string tag)
+        {
+            if (vertexSpirv is null) throw new ArgumentNullException(nameof(vertexSpirv));
+            if (fragmentSpirv is null) throw new ArgumentNullException(nameof(fragmentSpirv));
+
+            Context* context = null;
+            try
+            {
+                context = CreateContext(tag);
+                Compiler* vertex = CreateCompiler(context, vertexSpirv, backend, tag);
+                Compiler* fragment = CreateCompiler(context, fragmentSpirv, backend, tag);
+                return new CrossCompiledPair(Emit(context, vertex, tag), Emit(context, fragment, tag),
+                    SpirvCrossReflect.ForPair(_cross, context, vertex, fragment, tag));
+            }
+            catch (ShaderValidationException ex)
+            {
+                throw new ShaderValidationException($"{tag}: cross-compile to {target} failed: {ex.Message}", ex);
+            }
+            finally
+            {
+                if (context is not null) _cross.ContextDestroy(context);
+            }
+        }
+
+        static unsafe CrossCompiledCompute Compute(byte[] computeSpirv, Backend backend, string target, string tag)
         {
             if (computeSpirv is null) throw new ArgumentNullException(nameof(computeSpirv));
 
-            string tag = label ?? "compute shader";
-            ComputeCompilationResult result;
+            Context* context = null;
             try
             {
-                result = SpirvCompilation.CompileCompute(computeSpirv, CrossCompileTarget.MSL, _mslOptions);
+                context = CreateContext(tag);
+                Compiler* compute = CreateCompiler(context, computeSpirv, backend, tag);
+                return new CrossCompiledCompute(Emit(context, compute, tag),
+                    SpirvCrossReflect.ForCompute(_cross, context, compute, tag));
             }
-            catch (Exception ex)
+            catch (ShaderValidationException ex)
             {
-                throw new ShaderValidationException($"{tag}: compute cross-compile to MSL failed: {ex.Message}", ex);
+                throw new ShaderValidationException(
+                    $"{tag}: compute cross-compile to {target} failed: {ex.Message}", ex);
             }
-
-            return new CrossCompiledCompute(result.ComputeShader, Reflect(result.Reflection, tag));
+            finally
+            {
+                if (context is not null) _cross.ContextDestroy(context);
+            }
         }
 
-        // The Veldrid-to-engine boundary, and the only place it happens. VeldridMap owned the forward direction
-        // (engine to Veldrid) until 18.0.0 deleted it with the incumbent device, because that is what device
-        // creation needed. This reverse half stays: SPIRV-Cross reflection still hands back Veldrid description
-        // types, so the maps live here with their single consumer rather than as a second unused half of a
-        // forward map that no longer exists.
-        static ShaderReflection Reflect(SpirvReflection reflection, string tag)
+        static unsafe Context* CreateContext(string tag)
         {
-            var vertexElements = new GpuVertexElement[reflection.VertexElements.Length];
-            for (int i = 0; i < vertexElements.Length; i++)
-            {
-                VertexElementDescription element = reflection.VertexElements[i];
-                vertexElements[i] = new GpuVertexElement(element.Name, FromVeldrid(element.Format, tag));
-            }
-
-            var layouts = new GpuResourceLayoutDescription[reflection.ResourceLayouts.Length];
-            for (int set = 0; set < layouts.Length; set++)
-            {
-                ResourceLayoutElementDescription[] source = reflection.ResourceLayouts[set].Elements;
-                var elements = new GpuResourceLayoutElement[source.Length];
-                for (int i = 0; i < elements.Length; i++)
-                {
-                    // dynamic: false always. A dynamic binding is a property of how the ENGINE declares a layout
-                    // for a per-draw rebase, not something a SPIR-V module can express, so reflection can never
-                    // report one and inventing a value here would be a guess that reads as a fact.
-                    elements[i] = new GpuResourceLayoutElement(
-                        source[i].Name, FromVeldrid(source[i].Kind, tag), FromVeldrid(source[i].Stages));
-                }
-                layouts[set] = new GpuResourceLayoutDescription(elements);
-            }
-
-            return new ShaderReflection(vertexElements, layouts);
+            Context* context;
+            if (_cross.ContextCreate(&context) != Result.Success || context is null)
+                throw new ShaderValidationException($"{tag}: spvc_context_create failed.");
+            return context;
         }
 
-        static GpuShaderStages FromVeldrid(ShaderStages s)
+        // Parse one module and stand a backend compiler on it, with the pinned options installed. TakeOwnership
+        // hands the parsed IR to the compiler, which the context then owns: the alternative, Copy, would keep a
+        // second copy of every module alive for the length of the call and buy nothing, since nothing here reads
+        // the IR again afterwards.
+        static unsafe Compiler* CreateCompiler(Context* context, byte[] spirv, Backend backend, string tag)
         {
-            GpuShaderStages r = GpuShaderStages.None;
-            if ((s & ShaderStages.Vertex) != 0) r |= GpuShaderStages.Vertex;
-            if ((s & ShaderStages.Geometry) != 0) r |= GpuShaderStages.Geometry;
-            if ((s & ShaderStages.TessellationControl) != 0) r |= GpuShaderStages.TessellationControl;
-            if ((s & ShaderStages.TessellationEvaluation) != 0) r |= GpuShaderStages.TessellationEvaluation;
-            if ((s & ShaderStages.Fragment) != 0) r |= GpuShaderStages.Fragment;
-            if ((s & ShaderStages.Compute) != 0) r |= GpuShaderStages.Compute;
-            return r;
+            if (spirv.Length % 4 != 0)
+                throw new ShaderValidationException(
+                    $"{tag}: the module is {spirv.Length} bytes, which is not a whole number of SPIR-V words.");
+
+            ParsedIr* ir;
+            fixed (byte* bytes = spirv)
+            {
+                Check(context, _cross.ContextParseSpirv(context, (uint*)bytes, (nuint)(spirv.Length / 4), &ir), tag,
+                    "parse the SPIR-V module");
+            }
+
+            Compiler* compiler;
+            Check(context, _cross.ContextCreateCompiler(context, backend, ir, CaptureMode.TakeOwnership, &compiler),
+                tag, "create the " + backend + " compiler");
+
+            CompilerOptions* options;
+            Check(context, _cross.CompilerCreateCompilerOptions(compiler, &options), tag, "create the options");
+            Configure(options, backend);
+            Check(context, _cross.CompilerInstallCompilerOptions(compiler, options), tag, "install the options");
+            return compiler;
         }
 
-        static GpuResourceKind FromVeldrid(ResourceKind k, string tag) => k switch
+        /// <summary>
+        /// THE PINNED OPTION SET, in ONE place so the whole program is emitted under one set rather than under
+        /// whatever each call site happened to pass. The values are not written here: they are BUILT from
+        /// <see cref="HlslCrossCompilePin"/> and <see cref="MslCrossCompilePin"/>, which hold them as
+        /// toolchain-free constants. <c>D3D11HlslByteEqualityTests</c> and <c>MetalMslByteEqualityTests</c> hash
+        /// what this set emits for every shipped program, so a changed value fails as a hash table that no longer
+        /// matches rather than as a golden nobody can explain.
+        /// <para>
+        /// THE TWO PINS STAY SEPARATE EVEN THOUGH THEIR VALUES MATCH TODAY, deliberately. They are maintained
+        /// independently and answer to different parity measurements, so folding them into one set would silently
+        /// couple a future Direct3D flag to the Metal goldens.
+        /// </para>
+        /// <para>
+        /// THE LANGUAGE VERSIONS ARE PINNED HERE RATHER THAN IN A PIN FILE because they are properties of the
+        /// EMITTER rather than options the engine chose between: shader model 5.0 is what the Direct3D 11 backend
+        /// compiles with FXC, and SPIRV-Cross's own default is 3.0, which emits a dialect that backend cannot
+        /// use. Leaving either to a default would let a SPIRV-Cross upgrade move every emitted program.
+        /// </para>
+        /// <para>
+        /// <c>NormalizeResourceNames</c> HAS NO SPIRV-Cross OPTION AND NEVER DID. It was a flag on the outgoing
+        /// wrapper, which implemented it by renaming resources itself before emitting. Both pins hold it false,
+        /// which #586 measured is also the only value that keeps the emission byte-comparable, so there is
+        /// nothing to install and a flip of either pin would need the renaming pass written here first.
+        /// </para>
+        /// </summary>
+        static unsafe void Configure(CompilerOptions* options, Backend backend)
         {
-            ResourceKind.UniformBuffer => GpuResourceKind.UniformBuffer,
-            ResourceKind.StructuredBufferReadOnly => GpuResourceKind.StructuredBufferReadOnly,
-            ResourceKind.StructuredBufferReadWrite => GpuResourceKind.StructuredBufferReadWrite,
-            ResourceKind.TextureReadOnly => GpuResourceKind.TextureReadOnly,
-            ResourceKind.TextureReadWrite => GpuResourceKind.TextureReadWrite,
-            ResourceKind.Sampler => GpuResourceKind.Sampler,
-            _ => throw new ShaderValidationException(
-                $"{tag}: the module declares a resource of kind {k}, which the engine's GpuResourceKind mirror "
-                + "does not model. Add the kind to the mirror and to both directions of the map, or the register "
-                + "assignment will be counted against a shape the binder cannot express."),
-        };
+            bool fixClipSpaceZ = backend == Backend.Hlsl
+                ? HlslCrossCompilePin.FixClipSpaceZ : MslCrossCompilePin.FixClipSpaceZ;
+            bool invertY = backend == Backend.Hlsl
+                ? HlslCrossCompilePin.InvertVertexOutputY : MslCrossCompilePin.InvertVertexOutputY;
 
-        // Named separately from the string-free flags map above so the failure can carry the shader label: a
-        // format the mirror does not model is a real stop, and "which shader" is the first thing the reader asks.
-        static GpuVertexElementFormat FromVeldrid(VertexElementFormat f, string tag) => f switch
+            _cross.CompilerOptionsSetBool(options, CompilerOption.FixupDepthConvention, Bit(fixClipSpaceZ));
+            _cross.CompilerOptionsSetBool(options, CompilerOption.FlipVertexY, Bit(invertY));
+            if (backend == Backend.Hlsl)
+                _cross.CompilerOptionsSetUint(options, CompilerOption.HlslShaderModel, HlslShaderModel);
+            else
+                _cross.CompilerOptionsSetUint(options, CompilerOption.MslVersion, MslVersion);
+        }
+
+        /// <summary>Shader model 5.0, as SPIRV-Cross spells it. What FXC compiles the emitted HLSL under in
+        /// <c>KhaozEngine.Gpu.D3D11</c>, and what the outgoing toolchain asked for.</summary>
+        const uint HlslShaderModel = 50;
+
+        /// <summary>MSL 1.2, as SPIRV-Cross spells it (major * 10000 + minor * 100). The outgoing toolchain's
+        /// value and SPIRV-Cross's own default, pinned so it stays that whatever the default becomes.</summary>
+        const uint MslVersion = 10200;
+
+        static byte Bit(bool value) => value ? (byte)1 : (byte)0;
+
+        // Emit one stage. The returned pointer belongs to the context and dies with it, so the text is copied
+        // into a managed string before anything else happens.
+        static unsafe string Emit(Context* context, Compiler* compiler, string tag)
         {
-            VertexElementFormat.Float1 => GpuVertexElementFormat.Float1,
-            VertexElementFormat.Float2 => GpuVertexElementFormat.Float2,
-            VertexElementFormat.Float3 => GpuVertexElementFormat.Float3,
-            VertexElementFormat.Float4 => GpuVertexElementFormat.Float4,
-            _ => throw new ShaderValidationException(
-                $"{tag}: the module declares a vertex input of format {f}, which the engine's "
-                + "GpuVertexElementFormat mirror does not model (it covers Float1 to Float4, the set the "
-                + "renderers declare). Add the format to the mirror and to both directions of the map."),
-        };
+            byte* text;
+            Check(context, _cross.CompilerCompile(compiler, &text), tag, "emit the stage");
+            return Marshal.PtrToStringUTF8((IntPtr)text) ?? string.Empty;
+        }
+
+        /// <summary>
+        /// The one place a SPIRV-Cross result code becomes an exception, and it reads the context's own last
+        /// error string rather than only naming the code. Internal because
+        /// <see cref="SpirvCrossReflect"/> shares it: the reflection pass makes the same kind of call and its
+        /// failures read the same way.
+        /// </summary>
+        internal static unsafe void Check(Context* context, Result result, string tag, string what)
+        {
+            if (result == Result.Success) return;
+
+            // The context carries the C++ side's own message, which is the half that says WHY. Without it a
+            // failure reads as a bare error code, and the outgoing toolchain surfaced the exception text.
+            string detail = _cross.ContextGetLastErrorStringS(context) ?? string.Empty;
+            throw new ShaderValidationException(
+                $"{tag}: could not {what} ({result})" + (detail.Length == 0 ? "." : ": " + detail.TrimEnd()));
+        }
     }
 }

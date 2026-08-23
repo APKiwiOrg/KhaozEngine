@@ -1,4 +1,5 @@
 using System.Globalization;
+using Silk.NET.Shaderc;
 
 namespace KhaozEngine.Gpu.Internal
 {
@@ -43,29 +44,72 @@ namespace KhaozEngine.Gpu.Internal
     /// </para>
     /// <para>
     /// WHY EACH VALUE IS WHAT IT IS. <see cref="Debug"/> off is the value the engine has always shipped under, and
-    /// it is the one that decides whether glslang writes source text and line tables into the module. Turning it on
+    /// it decides whether the compiler writes source text and line tables into the module. Turning it on
     /// would grow every module, change every hash and change nothing a player sees, which is why there is no
     /// environment knob for it here and why the Direct3D 11 backend's <c>KE_D3D11_DEBUG</c> is not an analogue: that
     /// gate reaches FXC and never reaches this leg. <see cref="MacroCount"/> is zero because the engine's GLSL
     /// carries no preprocessor variants, and adding one would fork every program's SPIR-V by definition.
     /// <see cref="EntryPoint"/> is <c>main</c>, which is the convention the seam documents and every shipped source
-    /// obeys.
+    /// obeys. <see cref="Optimization"/>, <see cref="TargetEnvironment"/> and <see cref="SpirvTarget"/> arrived with
+    /// the toolchain swap and each carries its own note below.
     /// </para>
     /// <para>
-    /// Veldrid-free on purpose, like <see cref="HlslCrossCompilePin"/>: <c>GlslCompileOptions</c> is a Veldrid type,
-    /// so it stays private inside <see cref="SpirvFrontEnd"/> and is BUILT from these constants rather than being
-    /// the source of them.
+    /// UNTIL 18.0.0 THIS FILE HELD FEWER VALUES THAN THE COMPILE ACTUALLY USED, which is the trap the swap walked
+    /// out of rather than into. The outgoing toolchain took a two-field options object and decided the
+    /// optimisation level, the client API and the SPIR-V version underneath it, so three of the six values below
+    /// were being chosen by a library and recorded nowhere. They are pinned now, so a toolchain upgrade that moves
+    /// a default fails as a moved hash in three checked-in tables instead of moving every shipped module quietly.
     /// </para>
     /// </summary>
     internal static class SpirvFrontEndPin
     {
         /// <summary>No debug information in the emitted module. Off is what the whole shipped shader set was
-        /// compiled under, and flipping it moves every module's bytes.</summary>
-        internal const bool Debug = false;
+        /// compiled under, and flipping it moves every module's bytes.
+        /// <para>
+        /// <c>static readonly</c> RATHER THAN <c>const</c>, and that is deliberate: a const false folds the
+        /// compiler-option call in <see cref="SpirvFrontEnd"/> away at compile time, which the zero-warning build
+        /// then fails as unreachable code. A pin whose value cannot be flipped in one place without an
+        /// accompanying edit somewhere else is not a pin.
+        /// </para>
+        /// </summary>
+        internal static readonly bool Debug = false;
 
         /// <summary>How many preprocessor macros are defined for the compile. Zero: the engine ships one variant
         /// of every source.</summary>
         internal const int MacroCount = 0;
+
+        /// <summary>
+        /// THE OPTIMISATION LEVEL, EXPLICITLY, and it is the one value here that was not chosen until 18.0.0.
+        /// Every module the engine has ever shipped was optimised, and nothing said so: the outgoing toolchain
+        /// took <see cref="Debug"/> false as its whole option set and passed
+        /// <c>optimization_level_performance</c> underneath. Section 2.3 result 3 of
+        /// <c>docs/design/VELDRID-REMOVAL-DESIGN-2026-08-22.md</c> is where that was measured, by compiling four
+        /// shipped sources through both toolchains: three of the four match the outgoing byte LENGTH exactly at
+        /// <c>Performance</c> and none matches at <c>Zero</c>.
+        /// <para>
+        /// SO THE VALUE IS NOT A PREFERENCE, IT IS THE STATUS QUO WRITTEN DOWN. Moving it to <c>Zero</c> would
+        /// grow every module and move every hash in three checked-in tables, for no player-visible gain, and
+        /// moving it to <c>Size</c> would do the same in the other direction. It is separate from
+        /// <see cref="Debug"/> under the new toolchain, where the outgoing one folded both into one flag, which
+        /// is exactly why it earns a line of its own here.
+        /// </para>
+        /// </summary>
+        internal const OptimizationLevel Optimization = OptimizationLevel.Performance;
+
+        /// <summary>
+        /// The client API the module is compiled for, and its version. Vulkan 1.0, which is what the outgoing
+        /// toolchain targeted: every committed module's header word reads <c>0x00010000</c>, and the native
+        /// Vulkan backend hands those bytes to <c>vkCreateShaderModule</c> unchanged. Pinned rather than left to
+        /// the compiler's default so a shaderc upgrade that moved its default cannot move every module quietly.
+        /// </summary>
+        internal const TargetEnv TargetEnvironment = TargetEnv.Vulkan;
+
+        /// <summary>The version of <see cref="TargetEnvironment"/>, as shaderc's own numbering spells it.</summary>
+        internal const uint TargetEnvironmentVersion = (uint)EnvVersion.Vulkan10;
+
+        /// <summary>The SPIR-V version the module declares. 1.0, matching the header of every module the engine
+        /// has shipped, and the floor every consumer of these bytes accepts.</summary>
+        internal const SpirvVersion SpirvTarget = SpirvVersion.Shaderc10;
 
         /// <summary>The entry point name every stage declares. Not an option to the compiler, but part of the
         /// identity of what was compiled, because a module named at a different entry point is a different
@@ -89,8 +133,11 @@ namespace KhaozEngine.Gpu.Internal
         /// </para>
         /// </summary>
         internal static readonly string Identity =
-            "glslang/spirv"
+            "shaderc/spirv"
             + ";debug=" + Bit(Debug)
+            + ";opt=" + Optimization.ToString()
+            + ";env=" + TargetEnvironment.ToString() + "." + TargetEnvironmentVersion.ToString(CultureInfo.InvariantCulture)
+            + ";spirv=" + SpirvTarget.ToString()
             + ";macros=" + MacroCount.ToString(CultureInfo.InvariantCulture)
             + ";entryPoint=" + EntryPoint;
 

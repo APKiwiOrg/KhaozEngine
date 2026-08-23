@@ -435,7 +435,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             ArgumentNullException.ThrowIfNull(declared);
 
-            if (declared.Count != _layouts.Length)
+            // A DECLARED LAYOUT THAT BINDS NOTHING IS THE SAME SHAPE AS NO LAYOUT AT ALL (#599). The reflection
+            // stops at the highest set a resource declares, so a resource-free shader reflects zero sets, while a
+            // pipeline may still be created with one empty layout, which is what the incumbent accepted and what
+            // the engine's own tests do. Trailing empty declared layouts are trimmed before the count is compared,
+            // so both ResourceLayouts = [] and [empty] are legal against zero reflected sets. An empty declared
+            // layout in the MIDDLE is not trimmed: it has to match a reflected gap set positionally.
+            int declaredCount = declared.Count;
+            while (declaredCount > _layouts.Length && (declared[declaredCount - 1].Elements?.Length ?? 0) == 0)
+                declaredCount--;
+
+            if (declaredCount != _layouts.Length)
             {
                 throw new ShaderValidationException(
                     $"{label}: the pipeline declares {declared.Count.ToString(CultureInfo.InvariantCulture)} "
@@ -445,10 +455,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     + "different shape resolves every element through a key that means something else.");
             }
 
-            for (int set = 0; set < declared.Count; set++)
+            for (int set = 0; set < declaredCount; set++)
             {
                 GpuResourceLayoutElement[] mine = _layouts[set].Elements;
-                GpuResourceLayoutElement[] theirs = declared[set].Elements;
+                GpuResourceLayoutElement[] theirs = declared[set].Elements ?? [];
 
                 if (theirs.Length != mine.Length)
                 {

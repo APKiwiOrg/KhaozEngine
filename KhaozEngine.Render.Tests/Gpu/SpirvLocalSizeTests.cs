@@ -1,7 +1,5 @@
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Internal;
-using Veldrid;
-using Veldrid.SPIRV;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -14,8 +12,9 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class SpirvLocalSizeTests
     {
-        static byte[] Spirv(string glsl)
-            => SpirvCompilation.CompileGlslToSpirv(glsl, "t", ShaderStages.Compute, GlslCompileOptions.Default).SpirvBytes;
+        // Through the engine's own front-end seat, which is also the only one there is since the toolchain swap
+        // in 18.0.0: these used to call the outgoing library directly under its defaults.
+        static byte[] Spirv(string glsl) => SpirvFrontEnd.ToSpirv(glsl, GpuShaderStages.Compute, "t");
 
         [Theory]
         [InlineData("layout(local_size_x = 256) in;", 256u, 1u, 1u)]

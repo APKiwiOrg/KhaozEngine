@@ -3,7 +3,7 @@
     <PackageId>KhaozEngine.Gpu</PackageId>
     <!-- Shared engine version line: <KhaozEngineVersion> in Directory.Build.props. -->
     <Version>$(KhaozEngineVersion)</Version>
-    <Description>GPU backend seam for the custom MonoGame-free stack. Owns backend selection (GpuBackendSelector: RuntimeInformation probe, a stored GpuBackendKind? user preference passed in as data, and a KE_GRAPHICS_BACKEND override on top) and its provenance (GpuBackendSelection / GpuBackendSource record which of those decided, and keep the raw override value, so an unrecognized one is logged as a warning instead of silently reading as the OS default), the backend support probe and creation fallback (IsBackendSupported / SupportedBackends functionally probe what a settings UI may offer through each backend's own registered provider, and a failed device creation falls back to the platform default and reports FallbackAfterFailure with the backend that was requested, so a player cannot get stuck on a choice that will not start), the Direct3D11 driver-threading probe (GpuThreadingCaps / GpuThreadingDiagnostics: DriverCommandLists and DriverConcurrentCreates read off the live device and logged next to the backend line, with a WARN when the driver cannot build command lists and the D3D11 runtime is emulating them in software, and a hard no-op off Windows and off Direct3D11), GpuCapabilities (clip-space-Y / depth-range), and a GpuDeviceContext that resolves a backend, asks GpuBackendProviders for its registered IGpuBackendProvider and adopts the device that provider built. This package creates NO device of its own since 18.0.0, when the Veldrid incumbent backend was deleted: the three engine-owned native backends (KhaozEngine.Gpu.Metal / .Vulkan / .D3D11) are the only implementations, and the four Veldrid GpuBackendKind members are retired tokens that resolve to a named exception. Renderers consume the engine-owned IGpuDevice (GpuDevice). The remaining Veldrid.SPIRV edge is the SHADER TOOLCHAIN and nothing else, and it is confined here.</Description>
+    <Description>GPU backend seam for the custom MonoGame-free stack. Owns backend selection (GpuBackendSelector: RuntimeInformation probe, a stored GpuBackendKind? user preference passed in as data, and a KE_GRAPHICS_BACKEND override on top) and its provenance (GpuBackendSelection / GpuBackendSource record which of those decided, and keep the raw override value, so an unrecognized one is logged as a warning instead of silently reading as the OS default), the backend support probe and creation fallback (IsBackendSupported / SupportedBackends functionally probe what a settings UI may offer through each backend's own registered provider, and a failed device creation falls back to the platform default and reports FallbackAfterFailure with the backend that was requested, so a player cannot get stuck on a choice that will not start), the Direct3D11 driver-threading probe (GpuThreadingCaps / GpuThreadingDiagnostics: DriverCommandLists and DriverConcurrentCreates read off the live device and logged next to the backend line, with a WARN when the driver cannot build command lists and the D3D11 runtime is emulating them in software, and a hard no-op off Windows and off Direct3D11), GpuCapabilities (clip-space-Y / depth-range), and a GpuDeviceContext that resolves a backend, asks GpuBackendProviders for its registered IGpuBackendProvider and adopts the device that provider built. This package creates NO device of its own since 18.0.0, when the Veldrid incumbent backend was deleted: the three engine-owned native backends (KhaozEngine.Gpu.Metal / .Vulkan / .D3D11) are the only implementations, and the four Veldrid GpuBackendKind members are retired tokens that resolve to a named exception. Renderers consume the engine-owned IGpuDevice (GpuDevice). The SHADER TOOLCHAIN (Silk.NET.Shaderc plus Silk.NET.SPIRV.Cross) is the one third-party edge left here, and it is confined to this package.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
@@ -14,20 +14,23 @@
     <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <!-- The SHADER TOOLCHAIN. Veldrid.SPIRV is glslang plus SPIRV-Cross, and its reflection hands back
-         description types defined in the Veldrid base assembly, which is why the base package is still named
-         here as a direct reference rather than ridden transitively. Neither is a backend any more: the
-         incumbent was deleted in 18.0.0, and both entries go in row 8's swap onto Silk.NET.Shaderc plus
-         Silk.NET.SPIRV.Cross (https://github.com/APKiwiOrg/KhaozEngine/issues/683). -->
-    <PackageReference Include="Veldrid" />
-    <PackageReference Include="Veldrid.SPIRV" />
+    <!-- The SHADER TOOLCHAIN, and the only package edge in the engine that reaches glslang or SPIRV-Cross.
+         Silk.NET.Shaderc compiles GLSL 450 to SPIR-V (Internal/SpirvFrontEnd) and Silk.NET.SPIRV.Cross emits
+         MSL and HLSL and hands back the reflection the backends bind against (Internal/SpirvCrossCompile,
+         ShaderValidation). The two .Native packages carry the per-RID binaries, and Silk.NET.SPIRV carries the
+         SPIR-V enums both bindings name in their signatures.
+         ONE SEAT, decision P2: no backend package declares a toolchain reference of its own, and all three
+         consume toolchain-free signatures across InternalsVisibleTo. That is what made row
+         8's swap a change to one package instead of three. -->
+    <PackageReference Include="Silk.NET.Shaderc" />
+    <PackageReference Include="Silk.NET.Shaderc.Native" />
+    <PackageReference Include="Silk.NET.SPIRV" />
+    <PackageReference Include="Silk.NET.SPIRV.Cross" />
+    <PackageReference Include="Silk.NET.SPIRV.Cross.Native" />
     <!-- The D3D11 binding, so the driver-threading probe (Internal/D3D11ThreadingProbe) can call
          ID3D11Device::CheckFeatureSupport on the raw device pointer the native Direct3D 11 backend hands it.
          Loaded only on Windows, only on Direct3D 11. -->
     <PackageReference Include="Vortice.Direct3D11" />
-    <!-- Override the vulnerable Newtonsoft.Json 9.0.1 the toolchain drags in (NU1903), through
-         Veldrid.SPIRV -> Veldrid -> NativeLibraryLoader -> Microsoft.Extensions.DependencyModel. -->
-    <PackageReference Include="Newtonsoft.Json" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>
@@ -39,7 +42,7 @@
     <InternalsVisibleTo Include="KhaozEngine.TestSupport.Gpu" />
     <!-- The native Direct3D11 backend package (decision P2). It reads three internals of this package and
          nothing else: the toolchain-free SPIRV cross-compile helper (Internal/SpirvCrossCompile), which is what
-         keeps the Veldrid.SPIRV edge out of a backend whose premise is being Veldrid-free, IGpuDeviceLifecycle,
+         keeps the shader-toolchain package edge out of a backend that declares none of its own, IGpuDeviceLifecycle,
          the disposal hook a natively created device implements so it gets a liveness latch, and
          Internal/DeviceLiveness, which IS that latch: row 18 of the Metal design extracted the
          three per-backend copies into one shared token here (#531). All three are internal on purpose: none of

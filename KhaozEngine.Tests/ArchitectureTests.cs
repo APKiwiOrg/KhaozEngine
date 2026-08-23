@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Xunit;
 
@@ -15,7 +16,7 @@ namespace KhaozEngine.Tests;
 /// a layering invariant, or an umbrella's membership fails CI instead of silently drifting from the docs.
 /// The graph is pure XML parsing, no build or GPU needed.
 /// </summary>
-public class ArchitectureTests
+public partial class ArchitectureTests
 {
     // The four code-free umbrella metapackages. A package is "in an umbrella" iff it is in the umbrella's
     // transitive ProjectReference closure.
@@ -58,17 +59,18 @@ public class ArchitectureTests
     // must appear here (or in IgnoredInfraPackages) so adding a dependency is always a deliberate edit.
     static readonly Dictionary<string, string[]> ThirdPartyHomes = new(StringComparer.Ordinal)
     {
-        // SHADER TOOLCHAIN ONLY since 18.0.0, and contained inside KhaozEngine.Gpu. Veldrid.SPIRV is glslang
-        // plus SPIRV-Cross, and its reflection hands back description types defined in the Veldrid BASE
-        // assembly, which is the whole reason a package named Veldrid is still mapped after the incumbent
-        // backend was deleted. Both rows leave together at the toolchain swap (#683 row 8).
-        ["Veldrid"] = new[] { "Gpu" },
-        ["Veldrid.SPIRV"] = new[] { "Gpu" },
-        // CVE override for the vulnerable Newtonsoft.Json 9.0.1 the toolchain still drags in (NU1903), through
-        // Veldrid.SPIRV -> Veldrid -> NativeLibraryLoader -> Microsoft.Extensions.DependencyModel. It survives
-        // the incumbent delete because Veldrid.SPIRV depends on Veldrid, which is what puts that chain back
-        // whatever the engine declares. It goes with the toolchain swap, not before it.
-        ["Newtonsoft.Json"] = new[] { "Gpu" },
+        // THE SHADER TOOLCHAIN, contained inside KhaozEngine.Gpu, and five package ids for what used to be one.
+        // Shaderc is the GLSL front end, SPIRV.Cross is the MSL / HLSL back end, and Silk.NET.SPIRV carries the
+        // enums (Decoration, ExecutionModel) the two join on. The .Native pair are the RID-split native blobs.
+        // They replaced Veldrid.SPIRV and the Veldrid base package in 18.0.0, and with them went the
+        // Newtonsoft.Json 9.0.1 CVE override (NU1903), which existed only to pin the vulnerable version that
+        // Veldrid.SPIRV -> Veldrid -> NativeLibraryLoader -> Microsoft.Extensions.DependencyModel dragged in.
+        // Nothing in the tree references Newtonsoft.Json any more. NoTwoShaderToolchains keeps it that way.
+        ["Silk.NET.Shaderc"] = new[] { "Gpu" },
+        ["Silk.NET.Shaderc.Native"] = new[] { "Gpu" },
+        ["Silk.NET.SPIRV"] = new[] { "Gpu" },
+        ["Silk.NET.SPIRV.Cross"] = new[] { "Gpu" },
+        ["Silk.NET.SPIRV.Cross.Native"] = new[] { "Gpu" },
         // Veldrid's own D3D11 binding, already transitive via Veldrid. Declared in Gpu for the driver-threading
         // probe (Internal/D3D11ThreadingProbe), and in Gpu.D3D11 because that package IS the Direct3D11 interop.
         // Two homes, one binding: both pin the same Vortice 2.3.0 line, which is what Veldrid depends on, so
@@ -392,48 +394,109 @@ public class ArchitectureTests
     static readonly string[] NativeGpuBackends = { "Gpu.Metal", "Gpu.D3D11", "Gpu.Vulkan" };
 
     /// <summary>
-    /// Decisions P2 (Direct3D 11), V-P3 (Vulkan) and M-P3 (Metal): an engine-owned native backend declares NO
-    /// Veldrid package of its own. Both shader paths need SPIRV-Cross, which ships as <c>Veldrid.SPIRV</c>, and
-    /// the tempting shortcut is to reference it straight from the backend and bless the edge above. That is
-    /// rejected: blessing a Veldrid package inside a backend whose entire premise is being Veldrid-free is a bad
-    /// signal no other guard would ever catch, and it would scatter the eventual SPIRV-Cross replacement across
-    /// several packages instead of one. The edge stays in <c>KhaozEngine.Gpu</c> behind an internal,
-    /// Veldrid-free cross-compile helper (<c>Internal/SpirvCrossCompile</c>) plus <c>InternalsVisibleTo</c>.
+    /// RISK R4 OF THE TOOLCHAIN SWAP (row 8 of the Veldrid removal,
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/691">#691</see>): NEVER TWO SHADER TOOLCHAINS
+    /// IN ONE GRAPH. This is not a tidiness rule and it is not about package weight.
+    /// <c>Veldrid.SPIRV</c> and <c>Silk.NET.Shaderc</c> both statically link glslang and SPIRV-Tools, and
+    /// section 2.3 result 4 of <c>docs/design/VELDRID-REMOVAL-DESIGN-2026-08-22.md</c> measured what happens
+    /// when a process loads both: the second one loaded interposes on the first, and the first then reads
+    /// shuffle operands out of executable memory or aborts outright. The failure is a corrupted shader or a
+    /// crash in whichever library lost the race, which is to say it does not look like a packaging mistake at
+    /// the point it goes wrong.
     /// <para>
-    /// STILL LOAD-BEARING AFTER 18.0.0, which is worth stating because the incumbent backend it was written
-    /// beside is gone. What is left of Veldrid in this repository is the SHADER TOOLCHAIN, and that is exactly
-    /// the edge this guard refuses: the one shortcut a native backend has a real reason to take. It goes vacuous
-    /// at the toolchain swap (#683 row 8) and not before.
+    /// THE OBVIOUS THING TO DO IS THE FORBIDDEN THING, which is why this is a build-time guard rather than a
+    /// note. Anyone comparing the two toolchains reaches first for a reference to both and a test asserting
+    /// they agree, and that test cannot exist. The comparison that replaces it is two runs in two processes
+    /// with a diff between them, and it is committed:
+    /// <c>KhaozEngine.Render.Tests/Gpu/shader-corpus/</c>.
     /// </para>
     /// <para>
-    /// What is asserted is the DECLARED edge, which is the one a person adds. Veldrid is of course still in each
-    /// backend's transitive closure, through <c>KhaozEngine.Gpu</c>, and must be: that is where the helper lives.
-    /// The property that actually matters is that no Veldrid TYPE is reachable from a backend's IL, and a
-    /// project-file scan cannot see types, so <c>GpuPublicApiTests</c> asserts that half by reflecting over the
-    /// built assemblies' references. The two together are the guard, and the IL walk is the load-bearing half.
+    /// This replaces <c>NativeGpuBackend_DeclaresNoVeldridPackage</c>, which asserted the narrower property
+    /// that no NATIVE BACKEND declared a Veldrid package while <c>KhaozEngine.Gpu</c> still did. That guard
+    /// went vacuous the moment the last Veldrid reference left, exactly as its own note said it would, and a
+    /// vacuous guard reads as a live one. The repository-wide rule subsumes it.
     /// </para>
     /// </summary>
-    [Theory]
-    [InlineData("KhaozEngine.Gpu.D3D11")]
-    [InlineData("KhaozEngine.Gpu.Vulkan")]
-    [InlineData("KhaozEngine.Gpu.Metal")]
-    public void NativeGpuBackend_DeclaresNoVeldridPackage(string backendProject)
+    [Fact]
+    public void NoTwoShaderToolchains()
     {
-        IReadOnlyDictionary<string, Project> graph = LoadGraph();
-        Project backend = graph[backendProject];
+        var offenders = new List<string>();
+        foreach (Project project in LoadGraph().Values.OrderBy(p => p.Name, StringComparer.Ordinal))
+            foreach (string pkg in project.PackageRefs.Where(IsVeldridPackage).OrderBy(p => p, StringComparer.Ordinal))
+                offenders.Add($"{project.Name} references {pkg}");
 
-        string[] veldrid = backend.PackageRefs
-            .Where(p => p.StartsWith("Veldrid", StringComparison.Ordinal))
-            .OrderBy(p => p, StringComparer.Ordinal)
-            .ToArray();
+        string central = Path.Combine(RepoRoot(), "Directory.Packages.props");
+        foreach (Match m in DeclaredPackageIds().Matches(File.ReadAllText(central)))
+            if (IsVeldridPackage(m.Groups[1].Value))
+                offenders.Add($"Directory.Packages.props declares {m.Groups[1].Value}");
 
-        bool clean = veldrid.Length == 0;
-        Assert.True(clean,
-            backendProject + " declares a Veldrid PackageReference: [" + string.Join(", ", veldrid) + "]. " +
-            "A native backend is Veldrid-free by construction. If this was added for the SPIRV-Cross shader " +
-            "path, put the call behind KhaozEngine.Gpu's internal SpirvCrossCompile helper instead, whose " +
-            "signatures are Veldrid-free precisely so this edge never has to exist.");
+        Assert.True(offenders.Count == 0,
+            "A second shader toolchain is back in the graph. Veldrid.SPIRV and Silk.NET.Shaderc both statically "
+            + "link glslang and SPIRV-Tools, and a process holding both corrupts one of them (section 2.3 "
+            + "result 4 of docs/design/VELDRID-REMOVAL-DESIGN-2026-08-22.md), so this cannot be blessed even "
+            + "temporarily and even for a comparison. To compare the two toolchains, run the shader corpus "
+            + "writer in two processes and diff the tables: see "
+            + "KhaozEngine.Render.Tests/Gpu/shader-corpus/README.md.\n  "
+            + string.Join("\n  ", offenders));
     }
+
+    /// <summary>
+    /// THE FIVE SHADER TOOLCHAIN IDS MOVE TOGETHER, and this is not tidiness. <c>SpirvToolchainVersion</c> is
+    /// the shader caches' guard against a toolchain bump inside one engine version, and it reads its token off
+    /// the two MANAGED assemblies. glslang and SPIRV-Cross do not live there. They live in the NATIVE blobs that
+    /// <c>Silk.NET.Shaderc.Native</c> and <c>Silk.NET.SPIRV.Cross.Native</c> carry, and those are separate
+    /// package ids.
+    /// <para>
+    /// Until 18.0.0 the managed wrapper and its native blob shipped as ONE package, so reading the managed
+    /// assembly's version was a proxy for the native one BY CONSTRUCTION. It is a convention now. Pin
+    /// <c>Silk.NET.Shaderc.Native</c> forward while leaving <c>Silk.NET.Shaderc</c> where it is and the emitted
+    /// SPIR-V moves while the cache key does not, which is the failure that looks like nothing happening: every
+    /// warm entry keeps answering with the previous compiler's bytes. This row is what makes that split fail at
+    /// build time instead.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void TheShaderToolchainPackages_ArePinnedInLockstep()
+    {
+        string[] toolchain =
+        {
+            "Silk.NET.Shaderc", "Silk.NET.Shaderc.Native",
+            "Silk.NET.SPIRV", "Silk.NET.SPIRV.Cross", "Silk.NET.SPIRV.Cross.Native",
+        };
+
+        string central = File.ReadAllText(Path.Combine(RepoRoot(), "Directory.Packages.props"));
+        var pinned = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (Match m in PinnedVersions().Matches(central))
+            if (toolchain.Contains(m.Groups[1].Value, StringComparer.Ordinal))
+                pinned[m.Groups[1].Value] = m.Groups[2].Value;
+
+        string[] missing = toolchain.Where(id => !pinned.ContainsKey(id)).ToArray();
+        Assert.True(missing.Length == 0,
+            "A shader toolchain package has no central pin: " + string.Join(", ", missing));
+
+        string[] versions = pinned.Values.Distinct(StringComparer.Ordinal).OrderBy(v => v, StringComparer.Ordinal)
+            .ToArray();
+        Assert.True(versions.Length == 1,
+            "The shader toolchain packages are pinned to different versions, and the managed halves are what "
+            + "SpirvToolchainVersion reads its cache-key token off while the .Native halves are what actually "
+            + "compile. A split pin moves the emitted bytes without moving the key, so every warm shader cache "
+            + "entry keeps answering with the previous compiler's output. Pins:\n  "
+            + string.Join("\n  ", pinned.OrderBy(e => e.Key, StringComparer.Ordinal)
+                .Select(e => e.Key + " = " + e.Value)));
+    }
+
+    [GeneratedRegex(@"<PackageVersion\s[^>]*Include=""([^""]+)""[^>]*Version=""([^""]+)""")]
+    private static partial Regex PinnedVersions();
+
+    // Matched on the id, not on a substring of the line, so a package id that merely CONTAINS the word and a
+    // comment that mentions the history are both left alone. The history is worth keeping: Directory.Packages.props
+    // explains there why the toolchain is five package ids now, and that note is the reason nobody re-adds one.
+    static bool IsVeldridPackage(string id)
+        => id.Equals("Veldrid", StringComparison.OrdinalIgnoreCase)
+           || id.StartsWith("Veldrid.", StringComparison.OrdinalIgnoreCase);
+
+    [GeneratedRegex(@"<Package(?:Version|Reference)\s[^>]*Include=""([^""]+)""")]
+    private static partial Regex DeclaredPackageIds();
 
     [Fact]
     public void Terrain_NeverReferencesRender3DOrPhysics()

@@ -1,16 +1,14 @@
 using System;
 using KhaozEngine.Gpu.Internal;
-using Veldrid;
-using Veldrid.SPIRV;
 
 namespace KhaozEngine.Gpu
 {
     /// <summary>
     /// Device-free validation of a GLSL 450 vertex/fragment shader pair (<see cref="ValidatePair"/>) or a single
     /// compute shader (<see cref="ValidateCompute"/>). Compiles the sources to SPIR-V and cross-compiles them to
-    /// every backend shading language the engine targets (HLSL, MSL, GLSL, ESSL), entirely on the CPU via
-    /// Veldrid.SPIRV. No <c>GraphicsDevice</c> is created, so this runs in a fast, GPU-free test loop and on CI
-    /// machines without a graphics device.
+    /// every backend shading language the engine targets (HLSL and MSL), entirely on the CPU via shaderc and
+    /// SPIRV-Cross. No device is created, so this runs in a fast, GPU-free test loop and on CI machines with no
+    /// graphics device at all.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -40,24 +38,29 @@ namespace KhaozEngine.Gpu
     /// PREFIX of the layout's, per index space. Read that type for the mechanism and for what it deliberately
     /// stays silent about.
     /// </para>
+    /// <para>
+    /// THE TARGETS ARE THE ONES THE ENGINE SHIPS, AND SINCE 18.0.0 THAT IS TWO: HLSL for the native Direct3D 11
+    /// backend and MSL for the native Metal one. Vulkan is not a target because it consumes the SPIR-V directly,
+    /// so the front-end compile IS its validation.
+    /// </para>
+    /// <para>
+    /// GLSL AND ESSL WERE DROPPED WITH THE TOOLCHAIN SWAP, and that was row 8's open decision (section 9 of
+    /// <c>docs/design/VELDRID-REMOVAL-DESIGN-2026-08-22.md</c>). SPIRV-Cross has both back ends, so keeping them
+    /// would have cost two lines. What they cost instead is a FALSE STOP: with no OpenGL or GLES backend anywhere
+    /// in the engine since the incumbents were deleted, a shader that emits fine for both shipped targets and
+    /// trips a GLSL or ESSL back end is refused for a device nobody can run it on. A gate that can only produce
+    /// false negatives is worse than no gate.
+    /// </para>
     /// </remarks>
     public static class ShaderValidation
     {
-        // The backend shading languages the engine cross-compiles to at load (matches CreateShadersFromSpirv's reach).
-        static readonly CrossCompileTarget[] Targets =
-        {
-            CrossCompileTarget.HLSL,   // Direct3D 11
-            CrossCompileTarget.MSL,    // Metal
-            CrossCompileTarget.GLSL,   // OpenGL
-            CrossCompileTarget.ESSL,   // OpenGL ES
-        };
 
         /// <summary>
         /// Validates a GLSL 450 vertex + fragment shader pair without a graphics device. First compiles each source
         /// to SPIR-V (entry point <c>main</c>, the same convention as the runtime SPIR-V path
-        /// <c>CreateShadersFromSpirv</c>), then cross-compiles the pair to HLSL, MSL, GLSL, and ESSL in turn. A
-        /// compile error at any stage throws, so calling this from a test is enough to prove the pair builds on
-        /// every backend.
+        /// <c>CreateShadersFromSpirv</c>), then cross-compiles the pair to HLSL and MSL. A compile error at any
+        /// stage throws, so calling this from a test is enough to prove the pair builds on every backend the
+        /// engine ships. GLSL and ESSL are deliberately not swept: see the type's own note above.
         /// </summary>
         /// <param name="vertexGlsl">The vertex shader source, GLSL <c>#version 450</c>.</param>
         /// <param name="fragmentGlsl">The fragment shader source, GLSL <c>#version 450</c>.</param>
@@ -77,35 +80,24 @@ namespace KhaozEngine.Gpu
             byte[] vertSpirv = CompileToSpirv(vertexGlsl, GpuShaderStages.Vertex, tag);
             byte[] fragSpirv = CompileToSpirv(fragmentGlsl, GpuShaderStages.Fragment, tag);
 
-            foreach (CrossCompileTarget target in Targets)
-            {
-                VertexFragmentCompilationResult result;
-                try
-                {
-                    result = SpirvCompilation.CompileVertexFragment(vertSpirv, fragSpirv, target);
-                }
-                catch (Exception ex)
-                {
-                    throw new ShaderValidationException(
-                        $"{tag}: cross-compile to {target} failed: {ex.Message}", ex);
-                }
-                if (target != CrossCompileTarget.MSL) continue;
+            // Both emitters run through the SAME seat the shipped shader path uses, so what is validated is what
+            // the backends will actually compile, under the same pinned options. Each throws its own named
+            // ShaderValidationException naming the tag and the target, which is why neither call is wrapped here.
+            SpirvCrossCompile.VertexFragmentToHlsl(vertSpirv, fragSpirv, tag);
+            CrossCompiledPair msl = SpirvCrossCompile.VertexFragmentToMsl(vertSpirv, fragSpirv, tag);
 
-                // Both stages first, then the pair-wide prefix property, so a per-stage swap (the common case,
-                // and the one with a one-line fix) is reported ahead of the layout-shaped constraint.
-                var vertex = MslBindingOrder.CheckStage(
-                    vertSpirv, result.VertexShader, MslBindingOrder.Vertex, tag);
-                var fragment = MslBindingOrder.CheckStage(
-                    fragSpirv, result.FragmentShader, MslBindingOrder.Fragment, tag);
-                MslBindingOrder.CheckPrefix(vertex, fragment, tag);
-            }
+            // Both stages first, then the pair-wide prefix property, so a per-stage swap (the common case,
+            // and the one with a one-line fix) is reported ahead of the layout-shaped constraint.
+            var vertex = MslBindingOrder.CheckStage(vertSpirv, msl.VertexSource, MslBindingOrder.Vertex, tag);
+            var fragment = MslBindingOrder.CheckStage(fragSpirv, msl.FragmentSource, MslBindingOrder.Fragment, tag);
+            MslBindingOrder.CheckPrefix(vertex, fragment, tag);
         }
 
         /// <summary>
         /// Validates a GLSL 450 COMPUTE shader without a graphics device: compiles the source to SPIR-V (entry
         /// point <c>main</c>, the same convention as the runtime path
         /// <see cref="IGpuResourceFactory.CreateComputeShaderFromSpirv"/>), then cross-compiles the single stage to
-        /// HLSL, MSL, GLSL, and ESSL in turn. The compute sibling of
+        /// HLSL and MSL. The compute sibling of
         /// <see cref="ValidatePair(string, string, string?)"/>, and the same reason to use it: a compute shader that
         /// miscompiles on one backend otherwise only blows up at first dispatch on a real device of that backend,
         /// whereas this runs in the fast GPU-free test lane on every push.
@@ -122,26 +114,16 @@ namespace KhaozEngine.Gpu
             string tag = label ?? "compute shader";
             byte[] spirv = CompileToSpirv(computeGlsl, GpuShaderStages.Compute, tag);
 
-            foreach (CrossCompileTarget target in Targets)
-            {
-                ComputeCompilationResult result;
-                try
-                {
-                    result = SpirvCompilation.CompileCompute(spirv, target);
-                }
-                catch (Exception ex)
-                {
-                    throw new ShaderValidationException(
-                        $"{tag}: compute cross-compile to {target} failed: {ex.Message}", ex);
-                }
-                if (target != CrossCompileTarget.MSL) continue;
+            // Same seat as the shipped compute path, for the same reason the pair validator uses it, and each
+            // emitter throws its own named failure naming the tag and the target.
+            SpirvCrossCompile.ComputeToHlsl(spirv, tag);
+            CrossCompiledCompute msl = SpirvCrossCompile.ComputeToMsl(spirv, tag);
 
-                // The id join first, because it is exact and sees a same-kind swap. The kind comparison below is
-                // the fallback for the one case the join cannot answer: an index space carrying an argument whose
-                // name is not the _<id> shape, where the join deliberately says nothing rather than guess.
-                var resolved = MslBindingOrder.CheckStage(spirv, result.ComputeShader, MslBindingOrder.Compute, tag);
-                if (resolved is null || !resolved.ContainsKey("buffer")) CheckMslBufferSlots(result, tag);
-            }
+            // The id join first, because it is exact and sees a same-kind swap. The kind comparison below is
+            // the fallback for the one case the join cannot answer: an index space carrying an argument whose
+            // name is not the _<id> shape, where the join deliberately says nothing rather than guess.
+            var resolved = MslBindingOrder.CheckStage(spirv, msl.ComputeSource, MslBindingOrder.Compute, tag);
+            if (resolved is null || !resolved.ContainsKey("buffer")) CheckMslBufferSlots(msl, tag);
         }
 
         /// <summary>
@@ -178,10 +160,10 @@ namespace KhaozEngine.Gpu
         /// first.
         /// </para>
         /// </summary>
-        static void CheckMslBufferSlots(ComputeCompilationResult result, string tag)
+        static void CheckMslBufferSlots(CrossCompiledCompute result, string tag)
         {
             string[] declared = BufferKindsFromReflection(result);
-            string[] emitted = BufferKindsFromEntryPoint(result.ComputeShader);
+            string[] emitted = BufferKindsFromEntryPoint(result.ComputeSource);
             if (declared.Length == 0 || emitted.Length != declared.Length) return;   // shapes disagree: nothing to say
 
             for (int i = 0; i < declared.Length; i++)
@@ -199,16 +181,16 @@ namespace KhaozEngine.Gpu
 
         /// <summary>The kind of every BUFFER resource the module declares, in binding order, as
         /// <c>uniform</c>/<c>storage</c>. Textures and samplers have their own Metal index space and are skipped.</summary>
-        static string[] BufferKindsFromReflection(ComputeCompilationResult result)
+        static string[] BufferKindsFromReflection(CrossCompiledCompute result)
         {
             var kinds = new System.Collections.Generic.List<string>();
-            foreach (ResourceLayoutDescription set in result.Reflection.ResourceLayouts)
+            foreach (GpuResourceLayoutDescription set in result.Reflection.ResourceLayouts)
             {
-                foreach (ResourceLayoutElementDescription element in set.Elements)
+                foreach (GpuResourceLayoutElement element in set.Elements)
                 {
-                    if (element.Kind == ResourceKind.UniformBuffer) kinds.Add("uniform");
-                    else if (element.Kind == ResourceKind.StructuredBufferReadOnly
-                          || element.Kind == ResourceKind.StructuredBufferReadWrite) kinds.Add("storage");
+                    if (element.Kind == GpuResourceKind.UniformBuffer) kinds.Add("uniform");
+                    else if (element.Kind == GpuResourceKind.StructuredBufferReadOnly
+                          || element.Kind == GpuResourceKind.StructuredBufferReadWrite) kinds.Add("storage");
                 }
             }
             return kinds.ToArray();

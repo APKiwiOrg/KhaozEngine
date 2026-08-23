@@ -4,6 +4,7 @@ using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using KhaozEngine.Render3D.Internal;
+using Silk.NET.Shaderc;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -49,7 +50,22 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0, SpirvFrontEndPin.MacroCount);
             Assert.Equal("main", SpirvFrontEndPin.EntryPoint);
 
-            Assert.Equal("glslang/spirv;debug=0;macros=0;entryPoint=main", SpirvFrontEndPin.Identity);
+            // THE THREE VALUES 18.0.0 ADDED, and they are the reason this test grew rather than merely moved.
+            // The outgoing toolchain chose all three underneath a two-field options object, so the engine shipped
+            // every module it has ever shipped under an optimisation level, a client API and a SPIR-V version
+            // that were recorded nowhere. Performance is the level the incumbent was measured to have been using
+            // (section 2.3 result 3 of docs/design/VELDRID-REMOVAL-DESIGN-2026-08-22.md), and Vulkan 1.0 with
+            // SPIR-V 1.0 is what every committed module's header actually declares, so none of the three is a
+            // preference. They are the status quo written down, and pinning them is what turns a shaderc default
+            // moving under the engine into three moved hash tables instead of a quiet rebuild of every shader.
+            Assert.Equal(OptimizationLevel.Performance, SpirvFrontEndPin.Optimization);
+            Assert.Equal(TargetEnv.Vulkan, SpirvFrontEndPin.TargetEnvironment);
+            Assert.Equal((uint)EnvVersion.Vulkan10, SpirvFrontEndPin.TargetEnvironmentVersion);
+            Assert.Equal(SpirvVersion.Shaderc10, SpirvFrontEndPin.SpirvTarget);
+
+            Assert.Equal(
+                "shaderc/spirv;debug=0;opt=Performance;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main",
+                SpirvFrontEndPin.Identity);
         }
 
         /// <summary>
@@ -64,7 +80,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.NotEmpty(SpirvFrontEndPin.Identity);
             Assert.DoesNotContain('\n', SpirvFrontEndPin.Identity);
             Assert.DoesNotContain('\r', SpirvFrontEndPin.Identity);
-            Assert.StartsWith("glslang/spirv", SpirvFrontEndPin.Identity, StringComparison.Ordinal);
+            Assert.StartsWith("shaderc/spirv", SpirvFrontEndPin.Identity, StringComparison.Ordinal);
         }
 
         /// <summary>

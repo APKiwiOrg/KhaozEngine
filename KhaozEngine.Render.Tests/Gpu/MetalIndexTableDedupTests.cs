@@ -278,6 +278,34 @@ namespace KhaozEngine.Tests.Gpu
         // A table over the given layout whose fragment stage references element 0 and nothing else, from the
         // refusal suite's own helper shape. The first kind has to be a buffer kind, because the one argument is a
         // [[buffer(0)]].
+        /// <summary>
+        /// A DECLARED LAYOUT THAT BINDS NOTHING IS THE SAME SHAPE AS NO LAYOUT (#599, landed with the toolchain
+        /// swap). A resource-free shader reflects zero sets since 18.0.0, and a pipeline created against it with
+        /// <c>ResourceLayouts = []</c> or with one empty declared layout is legal either way: trailing empty
+        /// declared layouts are trimmed before the count is compared. An empty layout in the MIDDLE is not
+        /// trimmed, because sets are positional, and a declared element the shader never reflected is still
+        /// refused.
+        /// </summary>
+        [Fact]
+        public void TrailingEmptyDeclaredLayouts_AreTheSameShapeAsNone()
+        {
+            MetalShaderIndexTable resourceFree = MetalShaderIndexTable.Build(
+                [], Array.Empty<MetalMslStageJoin>(), "resource-free");
+            MetalShaderIndexTable oneBuffer = OneEntry(GpuResourceKind.UniformBuffer);
+
+            resourceFree.RequireLayoutShape([], "nothing declared");
+            resourceFree.RequireLayoutShape([new GpuResourceLayoutDescription()], "one empty declared");
+            resourceFree.RequireLayoutShape(
+                [new GpuResourceLayoutDescription(), new GpuResourceLayoutDescription()], "two empty declared");
+            Assert.Throws<ShaderValidationException>(() => resourceFree.RequireLayoutShape(
+                Layout(GpuResourceKind.UniformBuffer), "an element the shader never reflected"));
+
+            oneBuffer.RequireLayoutShape(
+                [Layout(GpuResourceKind.UniformBuffer)[0], new GpuResourceLayoutDescription()], "trailing empty");
+            Assert.Throws<ShaderValidationException>(() => oneBuffer.RequireLayoutShape(
+                [new GpuResourceLayoutDescription(), Layout(GpuResourceKind.UniformBuffer)[0]], "leading empty"));
+        }
+
         static MetalShaderIndexTable OneEntry(params GpuResourceKind[] kinds) => OneEntry(Layout("e", kinds));
 
         // The same table with the elements named something else, for the name-invariance row.

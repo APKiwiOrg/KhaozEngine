@@ -87,7 +87,14 @@ void main()
             Assert.Equal(2, elements.Length);
             Assert.Equal(GpuVertexElementFormat.Float3, elements[0].Format);
             Assert.Equal(GpuVertexElementFormat.Float2, elements[1].Format);
-            Assert.All(elements, e => Assert.False(string.IsNullOrWhiteSpace(e.Name)));
+            // NOT that the name is non-empty, which is what this asserted until 18.0.0 and which was an
+            // assertion about the OUTGOING toolchain rather than about the module. Veldrid.SPIRV reported
+            // SPIRV-Cross's FALLBACK name for anything the module does not name, the SPIR-V id rendered as
+            // "_25"; shaderc reports the empty string, because with debug info off there is no OpName to
+            // report. Nothing binds on either (#586), the ids move whenever the compiler version does, and
+            // KhaozEngine.Render.Tests/Gpu/shader-corpus/README.md has the measurement. Empty, never null, is
+            // the contract that is left.
+            Assert.All(elements, e => Assert.NotNull(e.Name));
         }
 
         /// <summary>
@@ -114,6 +121,85 @@ void main()
             Assert.Equal(GpuResourceKind.TextureReadOnly, layouts[1].Elements[0].Kind);
             Assert.Equal(GpuResourceKind.Sampler, layouts[1].Elements[1].Kind);
             Assert.All(layouts[1].Elements, e => Assert.True((e.Stages & GpuShaderStages.Fragment) != 0));
+        }
+
+        // THE PAIR THAT TELLS AN EXPLICIT SORT APART FROM A LUCKY ONE. Three orders are deliberately different
+        // here. GLSL DECLARATION order is Surface, SurfaceSampler, Tint. SPIRV-Cross enumerates by resource TYPE,
+        // so its list order is Tint, Surface, SurfaceSampler. BINDING order, which is the only one the backends
+        // may see, is SurfaceSampler at 0, Tint at 1, Surface at 2. A reflection that trusted either of the first
+        // two would compile, bind every resource to the wrong register and produce a picture. The vertex inputs
+        // do the same in miniature: declared 2, 0, 1 and reflected 0, 1, 2.
+        const string ShuffledVertexGlsl = @"#version 450
+layout(location = 2) in vec4 Weights;
+layout(location = 0) in vec3 Position;
+layout(location = 1) in vec2 TexCoord;
+layout(set = 0, binding = 0) uniform Transform { mat4 Mvp; };
+layout(location = 0) out vec2 fsUv;
+void main()
+{
+    fsUv = TexCoord + Weights.xy;
+    gl_Position = Mvp * vec4(Position, 1);
+}";
+
+        const string ShuffledFragmentGlsl = @"#version 450
+layout(location = 0) in vec2 fsUv;
+layout(location = 0) out vec4 fsColor;
+layout(set = 1, binding = 2) uniform texture2D Surface;
+layout(set = 1, binding = 0) uniform sampler SurfaceSampler;
+layout(set = 1, binding = 1) uniform Tint { vec4 Colour; };
+void main()
+{
+    fsColor = texture(sampler2D(Surface, SurfaceSampler), fsUv) * Colour;
+}";
+
+        /// <summary>
+        /// RISK R5, AS A TEST RATHER THAN A COMMENT. SPIRV-Cross hands its resources back in neither declaration
+        /// nor binding order, and both reflected arrays are indexed POSITIONALLY by the backends, so an
+        /// enumeration order trusted as-is is a silent rebinding rather than a failure. The sort in
+        /// <c>SpirvCrossReflect</c> is what makes the order a property of the module instead of a property of the
+        /// library version, which matters most in the release that changed the library version.
+        /// </summary>
+        [Fact]
+        public void AShuffledSource_ReflectsInBindingOrderAndNotInTheOrderItWasHandedBack()
+        {
+            CrossCompiledPair pair =
+                SpirvCrossCompile.GlslPairToHlsl(ShuffledVertexGlsl, ShuffledFragmentGlsl, "shuffled pair");
+
+            GpuVertexElement[] inputs = pair.Reflection.VertexElements;
+            Assert.Equal(
+                new[] { GpuVertexElementFormat.Float3, GpuVertexElementFormat.Float2, GpuVertexElementFormat.Float4 },
+                inputs.Select(e => e.Format));
+
+            GpuResourceLayoutElement[] set1 = pair.Reflection.ResourceLayouts[1].Elements;
+            Assert.Equal(
+                new[] { GpuResourceKind.Sampler, GpuResourceKind.UniformBuffer, GpuResourceKind.TextureReadOnly },
+                set1.Select(e => e.Kind));
+        }
+
+        // A pair that binds nothing at all. Legal GLSL, and the shape #599 was filed about.
+        const string BareVertexGlsl = @"#version 450
+layout(location = 0) in vec3 Position;
+void main() { gl_Position = vec4(Position, 1); }";
+
+        const string BareFragmentGlsl = @"#version 450
+layout(location = 0) out vec4 fsColor;
+void main() { fsColor = vec4(1, 0, 0, 1); }";
+
+        /// <summary>
+        /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/599">#599</see>. A module that declares no
+        /// resource reflects NO sets, not one empty set. The array is what a pipeline's resource layouts are
+        /// built from set by set, so a phantom set 0 is a layout the backend creates, binds and validates against
+        /// for a shader that never asked for one.
+        /// </summary>
+        [Fact]
+        public void AResourceFreeSource_ReflectsNoSetsAtAll()
+        {
+            CrossCompiledPair pair =
+                SpirvCrossCompile.GlslPairToHlsl(BareVertexGlsl, BareFragmentGlsl, "bare pair");
+
+            Assert.Empty(pair.Reflection.ResourceLayouts);
+            // The vertex side is untouched by the trim: an input signature is not a resource set.
+            Assert.Single(pair.Reflection.VertexElements);
         }
 
         [Fact]

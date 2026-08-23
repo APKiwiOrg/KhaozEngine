@@ -309,6 +309,36 @@ is an argument for keeping a cheap regression net, not for deleting it. What ret
 retired together per #424's F8. **#429 is a public API rollback rather than a deletion**, so it is a
 consumer-visible decision and gets its own row.
 
+**SHIPPED as row 7 in 18.0.0, and F8's premise was half wrong ([#690](https://github.com/APKiwiOrg/KhaozEngine/issues/690)).**
+F8 said the three pieces "become dead weight" once the Veldrid Direct3D11 leg goes, and that held for exactly
+one of them. The adjudication, per item:
+
+- **#428's fork guardrail: DEAD, and already deleted.** It lived in `vendor/veldrid` and went with the fork in
+  row 4. What row 7 removed is the prose that still claimed it "catches its own leg one layer below"
+  (`Render3DSurface`), which was false the moment the fork went.
+- **#424's seven-site list: RETIRED AS WORK, its regression net KEPT.** The list stopped being outstanding work
+  when #424 was fixed at the seam rather than per site (`GpuRecording`, 17.36.0), which is AFTER F8 was written.
+  `NestedRecordingSiteTests` and `OpenListTrackingGpuDevice` are kept on the same argument the paragraph above
+  makes for the tracker: device-free, milliseconds, and answering the seam's question rather than a backend's.
+- **#429's pre-record phase: KEPT, not rolled back. This is where F8's premise fails.** F8 assumed the phase
+  existed only because of the incumbent's immediate-context corruption. It rests on two things, and neither is
+  that leg's. The seam has no dispatch-to-dispatch barrier call, so a dependent dispatch chain is ordered only
+  by `End` + `Submit` + a device wait and therefore needs a list of its own (#311, restated in the compute
+  ordering contract on `IGpuCommandList` and unchanged by 18.0.0). And the one-open-recording rule is enforced
+  for every engine recording on every backend, so there is nowhere inside the record phase to open that list.
+  Rolling the phase back would leave the engine's own FFT ocean with no legal place to run on a windowed frame,
+  on all three native backends. No public API changed, so the consumer note says what did NOT happen.
+- **The residual, decided in writing** (the row's gate): a host driving a `Render3DSurface` off a raw
+  `AppWindow.Run(onFrame)` with no `onPrepare` still nests, and that is now the whole of it, a
+  `GpuNestedRecordingException` naming the fix, identical on all three backends. The fork's `VeldridException`
+  layer under it is gone and is not replaced, because the register refuses before any list is begun. Written up
+  in `docs/USING-KHAOZENGINE.md`, `docs/DEPENDENCY-SEAMS.md` and the `Render3DSurface` XML doc.
+
+One shipped behaviour change came out of it: `GpuNestedRecordingException`'s message used to explain the
+portable rule by describing the incumbent's immediate-context mode. It names the rule, the damage and the fix
+with no backend in it now, pinned by a test, because a developer who meets a backend name in a portable refusal
+reasonably concludes the rule was that backend's and stops applying it once that backend is gone.
+
 ### 4.3 The phantom-slice emulation goes for free
 
 `VeldridArrayLayers` pads a one-layer texture array to two slices, `HasPhantomLayer` remembers it,

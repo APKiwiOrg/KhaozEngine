@@ -1017,6 +1017,32 @@ lock at all is held while a backend is inside `Begin`, which matters because Beg
 native Metal and Vulkan backends while their rings wait for the GPU. A process-wide gate around it would have
 turned one device's backpressure into every other device's stall, which is exactly what the first cut did.
 
+**The gate outlived the backend it was written against, and so did the phase that lets callers honour it
+(18.0.0, [#690](https://github.com/APKiwiOrg/KhaozEngine/issues/690)).** Three things were built for the Veldrid
+Direct3D11 leg and planned for retirement with it: that fork's own second-recorder guardrail, the seven-site
+list of engine calls that opened a list of their own, and the windowed loop's pre-record phase
+(`AppWindow.Run(onFrame, onPrepare)` / `GameApp.OnPrepareWorld` / `Scene3D.PrepareFrame`). Only the first was
+that leg's, and it went with the vendored fork. The other two stayed, for reasons that are this SEAM's rather
+than any backend's, and the distinction is the whole point of writing a seam contract down:
+
+- **The rule is not the incumbent's.** The gate refuses a nested `Begin` on every backend, including the three
+  that tolerate concurrent recording natively. A rule that only binds where a backend punishes you is a backend
+  property with a rule's name on it.
+- **The pre-record phase is where the refused work legally goes.** The seam has no dispatch-to-dispatch barrier
+  call (see the compute ordering contract on `IGpuCommandList`), so a dependent dispatch chain is ordered only
+  by `End` + `Submit` + a device wait, which means a command list of its own. Inside the frame's recording there
+  is nowhere to open one. Deleting the phase would leave the engine's own FFT ocean with no legal place to run
+  on a windowed frame, on all three native backends.
+- **The residual is a refusal and nothing else.** A host driving a `Render3DSurface` off a raw
+  `AppWindow.Run(onFrame)` without passing `onPrepare` still nests, and gets `GpuNestedRecordingException`
+  naming the fix. Under the fork that same case had a second, backend-specific exception under it. Nothing
+  replaced that layer, because the register refuses before a list is begun and reads the same everywhere.
+
+What DID retire is the urgency: the seven sites are no longer a hazard inventory waiting on a per-site design
+decision, and the tests that drive them are kept as a cheap device-free regression net rather than as
+outstanding work. `OpenListTrackingGpuDevice` is kept on the same footing, and a pass on either is evidence that
+nothing nested, never evidence about a backend.
+
 ## GPU seam member: deferred retirement leaves Render3D (`GpuRetireQueue`, 17.37.0)
 
 `GpuRetireQueue` is a new PUBLIC type on `KhaozEngine.Gpu` (with `GpuRetireBarrier` internal beside it), moved

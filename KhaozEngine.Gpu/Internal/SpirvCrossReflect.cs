@@ -73,6 +73,35 @@ namespace KhaozEngine.Gpu.Internal
             return new ShaderReflection(Array.Empty<GpuVertexElement>(), Layouts(elements));
         }
 
+        /// <summary>
+        /// Every resource one module declares, keyed on <c>(set, binding)</c>, merged into
+        /// <paramref name="into"/>. The kind-only half of <see cref="ReadStage"/>, for
+        /// <see cref="HlslRegisterRemap"/>: it needs the raw binding numbers, which the layout array folds away
+        /// when it turns a set's elements into dense positions, and it needs them BEFORE the emission rather
+        /// than beside it.
+        /// <para>
+        /// CALLED ONCE PER STAGE and merged, for the same reason the layouts are: a resource both stages declare
+        /// is one resource, at one register, and a per-stage numbering would give the two stages different ones.
+        /// </para>
+        /// </summary>
+        internal static unsafe void ReadResourceKinds(Cross cross, Context* context, Compiler* compiler,
+            Dictionary<(uint Set, uint Binding), GpuResourceKind> into, string tag)
+        {
+            Resources* resources;
+            SpirvCrossCompile.Check(context, cross.CompilerCreateShaderResources(compiler, &resources), tag,
+                "reflect the module's resources");
+
+            foreach (ResourceType type in Modelled)
+            {
+                foreach (ReflectedResource resource in List(cross, resources, type))
+                {
+                    uint set = cross.CompilerGetDecoration(compiler, resource.Id, Decoration.DescriptorSet);
+                    uint binding = cross.CompilerGetDecoration(compiler, resource.Id, Decoration.Binding);
+                    into[(set, binding)] = Kind(cross, compiler, type, resource.Id);
+                }
+            }
+        }
+
         // One stage's contribution, merged into the shared table. Returns that stage's vertex inputs when asked
         // for them, which only the vertex stage of a pair is.
         static unsafe GpuVertexElement[] ReadStage(Cross cross, Context* context, Compiler* compiler,

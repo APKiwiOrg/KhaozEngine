@@ -99,8 +99,9 @@ flowchart LR
    compute read-after-write and so needs a submit plus a device wait) do it here, where no frame list is open.
    `Render3DSurface.Render`, `Render3DPreview.Capture` and `Render3DSnapshot.Capture` all call it. On a windowed
    host the effective call is the one `GameApp3D` makes in the loop's prepare phase, and the surface's is then a
-   no-op (issue #429). Opening a second command list while the frame's is recording resets the device's immediate
-   context on Direct3D11 and corrupts the frame (issue #423).
+   no-op (issue #429). Opening a second command list while the frame's is recording is refused by the seam's
+   open-recording register on every backend, which is why the phase exists and why it stayed when the backend
+   that used to corrupt the frame instead of refusing was deleted (issues #423 and #690).
 4. At frame end, `Render3DSurface` / `Render2DSurface` flush through `ModelRenderer` / the sprite shader, which
    record commands on `GpuDeviceContext` - the opaque seam (device, buffers, pipelines, command list).
 5. `GpuBackendSelector` picked the backend at startup (`KE_GRAPHICS_BACKEND` override, then the game's stored

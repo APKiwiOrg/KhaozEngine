@@ -7,9 +7,10 @@ The 3D integration for `KhaozEngine.Game`, split out so a 2D game pulls **no 3D 
   - In `OnPrepareWorld` (the pre-record phase, before the frame's command list opens): `Scene.Begin()` ->
     `OnDraw3D(Scene)` -> `Scene.PrepareFrame()`. So `OnDraw3D` runs after `OnUpdate` on the same frame, as it
     always did, but now at a point where a producer may still submit GPU work on a command list of its own. That is
-    what the FFT ocean's priming pass needs, and nesting it inside the frame's recording faults a Direct3D11 device
-    in immediate-context mode ([#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423),
-    [#429](https://github.com/APKiwiOrg/KhaozEngine/issues/429)).
+    what the FFT ocean's priming pass needs, and nesting it inside the frame's recording is refused by the seam on
+    every backend ([#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423),
+    [#429](https://github.com/APKiwiOrg/KhaozEngine/issues/429), kept rather than retired with the Veldrid leg in
+    [#690](https://github.com/APKiwiOrg/KhaozEngine/issues/690)).
   - In `OnRenderWorld` (the record phase): `Surface3D.Render(frame)`, plus feeding the per-pass timings to the
     diagnostics HUD. `Render3DSurface.Render` calls `Scene.PrepareFrame()` too, and on this path it finds the frame
     already prepared and no-ops - the phase's call is the effective one.

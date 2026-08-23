@@ -42,6 +42,13 @@ package leave too and NO Veldrid package is left anywhere in the graph. BREAKING
   partitions on it: the numbering is not a SPIRV-Cross option, so nothing else in the key moved when it changed,
   and a warm entry would otherwise have been served with the wrong registers.
   [#691](https://github.com/APKiwiOrg/KhaozEngine/issues/691).
+  Row 9 then measured what the swap did to the pictures rather than assuming it: 31 of the 120 committed golden
+  grids moved at the byte level (19 Metal, 6 Direct3D 11, 6 Vulkan, every one of them a 3D scene), the worst
+  cell by 0.0431 against a tolerance of 0.06, so all three families still pass and the committed goldens are
+  UNCHANGED. The movement is the toolchain and not driver noise: the Direct3D 11 and Vulkan families are
+  different files and moved the same six programs by the same delta vector, and a green compare run on the same
+  commit recorded the identical worst-cell delta for each.
+  [#692](https://github.com/APKiwiOrg/KhaozEngine/issues/692).
 - **Every shipped shader was recompiled through both toolchains and the two emissions compared out of process**,
   because no test could do it in one. The tables are committed at
   `KhaozEngine.Render.Tests/Gpu/shader-corpus/`, with the method and the full result in the README beside them.

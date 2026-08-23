@@ -10,6 +10,8 @@ using System.Threading.Tasks;
 using KhaozEngine.NetWorld;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,10 +24,16 @@ namespace KhaozEngine.Server.Admin;
 /// single bearer token. Off until constructed; binds the supplied certificate and address from
 /// <see cref="AdminEndpointOptions"/>. Mutating routes return 202 (the command is enqueued / awaited on the store);
 /// capabilities not wired in the facade return 501.
+///
+/// <para><see cref="AdminEndpointOptions.Port"/> 0 asks the OS for a free port and <see cref="BoundPort"/> reports
+/// the one Kestrel actually took, which is the only race-free way to reach an ephemeral port: picking one from a
+/// throwaway probe socket first leaves a window in which another listener on the host takes it between the probe
+/// and the real bind, and the two then split the connections.</para>
 /// </summary>
 public sealed class AdminHttpServer : IAsyncDisposable
 {
     private readonly WebApplication app;
+    private int boundPort;
 
     public AdminHttpServer(ServerAdmin admin, AdminEndpointOptions options)
     {
@@ -159,8 +167,41 @@ public sealed class AdminHttpServer : IAsyncDisposable
         return doc.RootElement.Clone();
     }
 
-    public Task StartAsync(CancellationToken cancellationToken = default) => app.StartAsync(cancellationToken);
+    /// <summary>
+    /// The TCP port this endpoint is listening on. Reads back the port Kestrel resolved, so it is the OS-assigned
+    /// one when <see cref="AdminEndpointOptions.Port"/> was 0 and the configured one otherwise. Only meaningful once
+    /// <see cref="StartAsync"/> has returned, which is also the moment the socket is bound and accepting, so a
+    /// caller that builds its URL from this property cannot connect before the listener is up.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The endpoint has not been started.</exception>
+    public int BoundPort => boundPort != 0
+        ? boundPort
+        : throw new InvalidOperationException("BoundPort is only available once StartAsync has returned.");
+
+    public async Task StartAsync(CancellationToken cancellationToken = default)
+    {
+        await app.StartAsync(cancellationToken).ConfigureAwait(false);
+        boundPort = ResolveBoundPort(app);
+    }
+
     public Task StopAsync(CancellationToken cancellationToken = default) => app.StopAsync(cancellationToken);
+
+    // Kestrel writes the endpoints it actually bound (ephemeral port resolved) into the server addresses feature
+    // during start, so this runs after StartAsync and never before.
+    private static int ResolveBoundPort(WebApplication app)
+    {
+        IServerAddressesFeature? addresses =
+            app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>();
+        if (addresses is not null)
+        {
+            foreach (string address in addresses.Addresses)
+            {
+                if (Uri.TryCreate(address, UriKind.Absolute, out Uri? uri) && uri.Port > 0) return uri.Port;
+            }
+        }
+        throw new InvalidOperationException("Kestrel reported no bound address after start.");
+    }
+
     public ValueTask DisposeAsync() => app.DisposeAsync();
 }
 

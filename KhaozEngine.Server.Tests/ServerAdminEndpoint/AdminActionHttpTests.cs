@@ -17,8 +17,8 @@ namespace KhaozEngine.Tests.ServerAdminEndpoint;
 
 /// <summary>
 /// Exercises the game-registered admin action seam over a real loopback HTTPS listener, cloning the AdminHttpServer
-/// harness (TcpPortSupport.FreeTcpPort, self-signed cert, bearer client). The action registry never touches the
-/// simulation, so the backing world is a do-nothing controllable rather than a live server.
+/// harness (OS-assigned port, self-signed cert, bearer client). The action registry never touches the simulation, so
+/// the backing world is a do-nothing controllable rather than a live server.
 /// </summary>
 public class AdminActionHttpTests
 {
@@ -48,12 +48,18 @@ public class AdminActionHttpTests
         }
     }
 
+    // A stuck peer is the failure this budget exists for: without it HttpClient waits its 100 second default, which
+    // turns a wrong-listener-on-our-port into a three minute red instead of a quick one (#720).
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(20);
+
     private static async Task<Harness> StartAsync(ServerAdmin admin, bool withBearer = true)
     {
-        int port = TcpPortSupport.FreeTcpPort();
+        // Port 0: Kestrel takes an OS-assigned port and reports it back, so there is no probe-release-rebind window
+        // in which another listener on the host can take the port between the pick and the bind (#720). BoundPort is
+        // readable only after StartAsync, which is also when the socket is accepting, so the client cannot beat it.
         var opts = new AdminEndpointOptions
         {
-            Port = port,
+            Port = 0,
             BearerToken = "secret",
             Certificate = AdminTlsCertificate.CreateSelfSigned("localhost"),
         };
@@ -61,9 +67,48 @@ public class AdminActionHttpTests
         await http.StartAsync();
 
         var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
-        var hc = new HttpClient(handler);
+        var hc = new HttpClient(handler) { Timeout = RequestTimeout };
         if (withBearer) hc.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "secret");
-        return new Harness { Http = http, Client = hc, Handler = handler, BaseUrl = $"https://127.0.0.1:{port}/admin" };
+        return new Harness
+        {
+            Http = http,
+            Client = hc,
+            Handler = handler,
+            BaseUrl = $"https://127.0.0.1:{http.BoundPort}/admin",
+        };
+    }
+
+    /// <summary>
+    /// Port 0 is the race-free way to reach an ephemeral port: Kestrel binds one itself and reports it back, so no
+    /// probe socket has to release a port before the real bind and no second listener can slip into that window
+    /// (#720). BoundPort staying unreadable until the bind has happened is the other half of the contract, since it
+    /// is what stops a caller building a URL for a socket that is not accepting yet.
+    /// </summary>
+    [Fact]
+    public async Task Port0_BindsAnEphemeralPort_ReadableOnlyOnceStarted()
+    {
+        var admin = new ServerAdmin(new NullAdminControllable());
+        admin.RegisterAction("ping", _ => AdminActionResult.Ok());
+        var opts = new AdminEndpointOptions
+        {
+            Port = 0,
+            BearerToken = "secret",
+            Certificate = AdminTlsCertificate.CreateSelfSigned("localhost"),
+        };
+        await using var http = new AdminHttpServer(admin, opts);
+        Assert.Throws<InvalidOperationException>(() => _ = http.BoundPort);
+
+        await http.StartAsync();
+        Assert.InRange(http.BoundPort, 1, 65535);
+
+        // The reported port is the one actually listening, not a number the caller picked.
+        using var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
+        using var hc = new HttpClient(handler) { Timeout = RequestTimeout };
+        hc.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "secret");
+        HttpResponseMessage resp = await hc.GetAsync($"https://127.0.0.1:{http.BoundPort}/admin/actions");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        await http.StopAsync();
     }
 
     [Fact]

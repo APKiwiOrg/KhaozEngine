@@ -399,6 +399,15 @@ in-use connection is not idle in the pool and is disposed only when its own owne
   rest of the SQLite wallet suite could never have caught: it runs on `Mode=Memory;Cache=Shared`, so it has no
   file to fail to release.
 
+- **The admin endpoint can bind an OS-assigned port, and reports the one it got.** `AdminEndpointOptions.Port`
+  accepts 0, and the new `AdminHttpServer.BoundPort` reads back the port Kestrel resolved once `StartAsync` has
+  returned (it throws before that, because there is no bound socket to name yet). The alternative, picking a
+  free port from a throwaway probe socket, has to release that port before the real listener can take it, and
+  another listener on the host can take it in between. On Windows the two then split the connections and each
+  side hangs on a protocol it cannot parse, which is how the admin HTTPS suite spent three minutes failing a TLS
+  handshake on a hosted runner ([#720](https://github.com/APKiwiOrg/KhaozEngine/issues/720)). Existing callers
+  that pass a real port are unaffected.
+
 ## 17.40.0
 
 17.40.0 makes the native backends the default (the rollout bullets) and ships the tile netcode package,

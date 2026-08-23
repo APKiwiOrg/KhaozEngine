@@ -25,6 +25,10 @@ await using var endpoint = new AdminHttpServer(admin, new AdminEndpointOptions
 await endpoint.StartAsync();
 ```
 
+`Port = 0` asks the OS for a free port instead, and `endpoint.BoundPort` reports the one Kestrel took once
+`StartAsync` has returned. Prefer that over picking a port from a throwaway probe socket: the probe has to release
+the port before Kestrel can bind it, and another listener on the host can take it in that window.
+
 Routes (under `/admin`, all require `Authorization: Bearer <token>`): `GET /online`, `POST /teleport`, `POST /kick`,
 `POST /broadcast`, `GET /accounts?prefix=`, `GET /bans`, `POST /ban`, `POST /unban`, `GET /actions` (lists registered
 action names), `GET /actions/{name}` (dispatches with a null payload), `POST /actions/{name}` (dispatches with an

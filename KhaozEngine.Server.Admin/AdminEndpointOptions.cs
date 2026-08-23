@@ -7,7 +7,10 @@ namespace KhaozEngine.Server.Admin;
 /// reaches it through a tunnel).</summary>
 public sealed class AdminEndpointOptions
 {
-    /// <summary>The admin listen port (separate from the game transport port).</summary>
+    /// <summary>
+    /// The admin listen port (separate from the game transport port). 0 asks the OS for a free port, which
+    /// <see cref="AdminHttpServer.BoundPort"/> reports once the endpoint has started.
+    /// </summary>
     public required int Port { get; init; }
 
     /// <summary>The single bearer token required on every request (constant-time compared).</summary>

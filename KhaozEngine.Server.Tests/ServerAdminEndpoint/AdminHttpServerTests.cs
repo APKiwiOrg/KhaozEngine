@@ -19,6 +19,13 @@ namespace KhaozEngine.Tests.ServerAdminEndpoint;
 
 public class AdminHttpServerTests
 {
+    // Port 0 throughout: Kestrel takes an OS-assigned port and AdminHttpServer.BoundPort reports it back, so there
+    // is no probe-release-rebind window in which another listener on the host can take the port between the pick and
+    // the bind, and no URL exists before the socket is accepting (#720).
+    // The client budget is the other half: without it HttpClient waits its 100 second default, so a wrong listener
+    // sitting on our port fails the run in minutes rather than seconds.
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(20);
+
     private static float Flat(float x, float z) => 0f;
 
     [Fact]
@@ -32,10 +39,9 @@ public class AdminHttpServerTests
         server.Tick(config.TickSeconds);
 
         var admin = new ServerAdmin(server);
-        int port = TcpPortSupport.FreeTcpPort();
         var opts = new AdminEndpointOptions
         {
-            Port = port,
+            Port = 0,
             BearerToken = "secret",
             Certificate = AdminTlsCertificate.CreateSelfSigned("localhost"),
         };
@@ -43,8 +49,8 @@ public class AdminHttpServerTests
         await http.StartAsync();
 
         using var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
-        using var hc = new HttpClient(handler);
-        string baseUrl = $"https://127.0.0.1:{port}/admin";
+        using var hc = new HttpClient(handler) { Timeout = RequestTimeout };
+        string baseUrl = $"https://127.0.0.1:{http.BoundPort}/admin";
 
         HttpResponseMessage noAuth = await hc.GetAsync(baseUrl + "/online");
         Assert.Equal(HttpStatusCode.Unauthorized, noAuth.StatusCode);
@@ -82,10 +88,9 @@ public class AdminHttpServerTests
         admin.Teleport(PlayerRef.Slot(0), moved);
         for (int i = 0; i < 5; i++) { server.Poll(); server.Tick(config.TickSeconds); }
 
-        int port = TcpPortSupport.FreeTcpPort();
         var opts = new AdminEndpointOptions
         {
-            Port = port,
+            Port = 0,
             BearerToken = "secret",
             Certificate = AdminTlsCertificate.CreateSelfSigned("localhost"),
         };
@@ -93,10 +98,10 @@ public class AdminHttpServerTests
         await http.StartAsync();
 
         using var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
-        using var hc = new HttpClient(handler);
+        using var hc = new HttpClient(handler) { Timeout = RequestTimeout };
         hc.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "secret");
 
-        HttpResponseMessage ok = await hc.GetAsync($"https://127.0.0.1:{port}/admin/online");
+        HttpResponseMessage ok = await hc.GetAsync($"https://127.0.0.1:{http.BoundPort}/admin/online");
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
         string body = await ok.Content.ReadAsStringAsync();
 
@@ -139,10 +144,9 @@ public class AdminHttpServerTests
 
         // Start AdminHttpServer.
         var admin = new ServerAdmin(server);
-        int port = TcpPortSupport.FreeTcpPort();
         var opts = new AdminEndpointOptions
         {
-            Port = port,
+            Port = 0,
             BearerToken = "secret",
             Certificate = AdminTlsCertificate.CreateSelfSigned("localhost"),
         };
@@ -150,9 +154,9 @@ public class AdminHttpServerTests
         await http.StartAsync();
 
         using var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
-        using var hc = new HttpClient(handler);
+        using var hc = new HttpClient(handler) { Timeout = RequestTimeout };
         hc.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "secret");
-        string baseUrl = $"https://127.0.0.1:{port}/admin";
+        string baseUrl = $"https://127.0.0.1:{http.BoundPort}/admin";
 
         // Act: POST /broadcast with a JSON body - exercises BroadcastRequest binding.
         var content = new StringContent("{\"Text\":\"hello\"}", Encoding.UTF8, "application/json");
@@ -194,10 +198,9 @@ public class AdminHttpServerTests
         var store = new TokenCapturingAccountStore();
         var admin = new ServerAdmin(server, bans: null, accounts: store);
 
-        int port = TcpPortSupport.FreeTcpPort();
         var opts = new AdminEndpointOptions
         {
-            Port = port,
+            Port = 0,
             BearerToken = "secret",
             Certificate = AdminTlsCertificate.CreateSelfSigned("localhost"),
         };
@@ -205,10 +208,10 @@ public class AdminHttpServerTests
         await http.StartAsync();
 
         using var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
-        using var hc = new HttpClient(handler);
+        using var hc = new HttpClient(handler) { Timeout = RequestTimeout };
         hc.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "secret");
 
-        HttpResponseMessage resp = await hc.GetAsync($"https://127.0.0.1:{port}/admin/accounts?prefix=player:");
+        HttpResponseMessage resp = await hc.GetAsync($"https://127.0.0.1:{http.BoundPort}/admin/accounts?prefix=player:");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         Assert.True(store.Captured.CanBeCanceled,

@@ -21,9 +21,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// logged.</para>
     ///
     /// <para><b>AND THAT MAKES IT A BACKEND-DIVERGENT CREATION FAILURE, WHICH IS THE PART THAT MATTERS MOST.</b>
-    /// The combination is legal on the seam and was ACCEPTED by <see cref="GpuBackendKind.Vulkan"/>, the Veldrid
-    /// leg. It is refused here. That divergence is DOCUMENTED (the package README's ring section and
-    /// <c>docs/USING-KHAOZENGINE.md</c>) rather than left for a consumer to discover, which is V-M7's own emphasis.
+    /// The combination is legal on the seam and refused here. That divergence is DOCUMENTED (the package
+    /// README's ring section and <c>docs/USING-KHAOZENGINE.md</c>) rather than left for a consumer to discover,
+    /// which is V-M7's own emphasis.
     /// The combination is vacuous in the engine today, so nothing legitimate reaches the throw, but it is
     /// expressible on the seam and refusing it silently would be worse than refusing it loudly.</para>
     ///
@@ -71,9 +71,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + "segment per frame in flight and the frame's base offset is supplied at the bind, as the dynamic "
                 + "uniform descriptor's pDynamicOffsets entry. No other binding carries that base, so the "
                 + $"{others} bind would address the first segment while the uniform bind addressed the current "
-                + "one, and one frame's data would be read as another's with nothing thrown. This combination IS "
-                + "accepted by GpuBackendKind.Vulkan (the Veldrid leg), so it is a documented divergence of "
-                + "GpuBackendKind.VulkanNative rather than a defect. Create two buffers instead.",
+                + "one, and one frame's data would be read as another's with nothing thrown. The seam allows "
+                + "the combination, so this is a documented divergence of GpuBackendKind.VulkanNative rather "
+                + "than a defect. Create two buffers instead.",
                 nameof(usage));
         }
 

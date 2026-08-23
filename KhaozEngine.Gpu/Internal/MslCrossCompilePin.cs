@@ -31,14 +31,17 @@ namespace KhaozEngine.Gpu.Internal
     /// </para>
     /// <para>
     /// <b>WHAT THIS PIN DOES NOT FREEZE, which its name invites the opposite belief about (2.2b, pin 7).</b> It
-    /// freezes the <c>CrossCompileOptions</c> the emission is REQUESTED under. It does NOT freeze SPIRV-Cross's
+    /// freezes the compiler options the emission is REQUESTED under. It does NOT freeze SPIRV-Cross's
     /// resource NAMING or its index NUMBERING, and no option in this set reaches either. The binding table this
     /// backend builds is read off the emitted argument names, which spell SPIR-V ids as <c>_70</c>, and nothing in
-    /// this file promises that convention. What actually freezes the emission is the exact <c>Veldrid.SPIRV</c>
-    /// version pinned in <c>Directory.Packages.props</c>, whose bundled <c>libveldrid-spirv</c> carries the
-    /// SPIRV-Cross the engine emits through. So the drift this backend is exposed to arrives on a deliberate
-    /// package bump rather than on a runner image or an OS update, and <c>MetalShaderIndexTableTests</c> is what
-    /// turns that bump into a red device-free leg instead of a wrong pixel. <c>MetalMslIncumbentParityTests</c>
+    /// this file promises that convention. What actually freezes the emission is the exact SPIRV-Cross version
+    /// pinned in <c>Directory.Packages.props</c>, which since 18.0.0 is <c>Silk.NET.SPIRV.Cross</c> plus its
+    /// <c>.Native</c> blob and until then was <c>Veldrid.SPIRV</c> with <c>libveldrid-spirv</c> bundled inside
+    /// it (row 8 of the Veldrid removal,
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/691">#691</see>). So the drift this backend
+    /// is exposed to arrives on a deliberate package bump rather than on a runner image or an OS update, and
+    /// <c>MetalShaderIndexTableTests</c> is what turns that bump into a red device-free leg instead of a wrong
+    /// pixel. <c>MetalMslIncumbentParityTests</c>
     /// stood beside it until it went away with the incumbent. <c>MslCompilePin</c>, in the Metal backend, carries
     /// the same sentence about the other half of the toolchain. Both shader-cache keys hash that package version
     /// too, read off the loaded assembly by <see cref="SpirvToolchainVersion"/>, so a bump partitions the caches
@@ -46,9 +49,12 @@ namespace KhaozEngine.Gpu.Internal
     /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/610">#610</see>).
     /// </para>
     /// <para>
-    /// Veldrid-free on purpose, like everything else the native backend reads across
-    /// <c>InternalsVisibleTo</c>: <c>CrossCompileOptions</c> is a Veldrid type, so it stays private inside
+    /// TOOLCHAIN-FREE ON PURPOSE, like everything else the native backend reads across
+    /// <c>InternalsVisibleTo</c>: the cross-compiler's own options type stays private inside
     /// <see cref="SpirvCrossCompile"/> and is BUILT from these constants rather than being the source of them.
+    /// Until 18.0.0 that type was Veldrid's <c>CrossCompileOptions</c> and the rule was written as
+    /// "Veldrid-free". The package is gone and the rule outlived it: it is <c>Silk.NET.SPIRV.Cross</c>'s
+    /// <c>CompilerOptions</c> that stays private now, for the same reason.
     /// </para>
     /// </summary>
     internal static class MslCrossCompilePin

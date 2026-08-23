@@ -3,7 +3,12 @@ using System.Collections.Generic;
 
 namespace KhaozEngine.Gpu
 {
-    /// <summary>Describes a GPU buffer to create. Engine mirror of Veldrid <c>BufferDescription</c>.</summary>
+    // PROVENANCE FOR THE DESCRIPTIONS BELOW, recorded once. Their shapes were taken from the equivalent
+    // Veldrid 4.9 descriptions in 2025, when that library was the one implementation behind this seam. They are
+    // the seam's own now: 18.0.0 deleted that backend, and each native backend translates these into its own
+    // API's structures itself.
+
+    /// <summary>Describes a GPU buffer to create.</summary>
     public readonly struct GpuBufferDescription
     {
         /// <summary>Size of the buffer in bytes.</summary>
@@ -109,7 +114,7 @@ namespace KhaozEngine.Gpu
             => new(width, height, format, usage, mipLevels, arrayLayers, isArray: true);
     }
 
-    /// <summary>Describes a GPU sampler. Engine mirror of Veldrid <c>SamplerDescription</c> (the subset used).</summary>
+    /// <summary>Describes a GPU sampler, in the subset the renderers use.</summary>
     public readonly struct GpuSamplerDescription
     {
         /// <summary>Addressing on U.</summary>
@@ -123,7 +128,7 @@ namespace KhaozEngine.Gpu
         /// <summary>Max anisotropy when <see cref="Filter"/> is <see cref="GpuSamplerFilter.Anisotropic"/>
         /// (ignored otherwise). 0 keeps the historical behaviour.</summary>
         public uint MaximumAnisotropy { get; }
-        /// <summary>Mip-level bias added to the computed LOD (whole mip levels; maps to Veldrid <c>LodBias</c>).
+        /// <summary>Mip-level bias added to the computed LOD, in whole mip levels.
         /// A positive value biases sampling toward blurrier mips, which tames grazing-angle / distance shimmer on
         /// high-frequency tiling textures (e.g. noisy terrain albedo). 0 (default) keeps the historical behaviour.
         /// Honoured on D3D11 / Vulkan; Metal's sampler has no LOD bias, so it is a no-op there.</summary>
@@ -222,8 +227,7 @@ namespace KhaozEngine.Gpu
         }
     }
 
-    /// <summary>Vertex attribute component format. Mirrors the subset of Veldrid <c>VertexElementFormat</c> the
-    /// renderers use (Float2/3/4).</summary>
+    /// <summary>Vertex attribute component format, in the subset the renderers use (Float2/3/4).</summary>
     public enum GpuVertexElementFormat
     {
         /// <summary>One 32-bit float.</summary>
@@ -258,8 +262,7 @@ namespace KhaozEngine.Gpu
         }
     }
 
-    /// <summary>Per-attachment blend state. Engine mirror of Veldrid <c>BlendAttachmentDescription</c>, with the
-    /// three presets the renderers use.</summary>
+    /// <summary>Per-attachment blend state, with the three presets the renderers use.</summary>
     public readonly struct GpuBlendAttachment
     {
         /// <summary>Whether blending is enabled (else the source overwrites).</summary>
@@ -307,8 +310,8 @@ namespace KhaozEngine.Gpu
             GpuBlendFactor.Zero, GpuBlendFactor.One, GpuBlendFunction.Add);
     }
 
-    /// <summary>Depth-stencil pipeline state. Engine mirror of the subset of Veldrid
-    /// <c>DepthStencilStateDescription</c> the renderers use (depth test/write/comparison, no stencil).</summary>
+    /// <summary>Depth-stencil pipeline state, in the subset the renderers use (depth test, write and
+    /// comparison, no stencil).</summary>
     public readonly struct GpuDepthStencilState
     {
         /// <summary>Whether the depth test runs.</summary>
@@ -334,7 +337,7 @@ namespace KhaozEngine.Gpu
         public static GpuDepthStencilState DepthTestLessEqualNoWrite => new(true, false, GpuComparison.LessEqual);
     }
 
-    /// <summary>Rasterizer pipeline state. Engine mirror of Veldrid <c>RasterizerStateDescription</c>.</summary>
+    /// <summary>Rasterizer pipeline state.</summary>
     public readonly struct GpuRasterizerState
     {
         public GpuFaceCull CullMode { get; }
@@ -385,8 +388,8 @@ namespace KhaozEngine.Gpu
         }
     }
 
-    /// <summary>Describes a framebuffer's attachment formats for pipeline creation. Engine mirror of Veldrid
-    /// <c>OutputDescription</c>: an optional depth format plus the colour attachment formats.</summary>
+    /// <summary>Describes a framebuffer's attachment formats for pipeline creation: an optional depth format
+    /// plus the colour attachment formats.</summary>
     public readonly struct GpuOutputDescription
     {
         /// <summary>Depth-stencil attachment format, or null if none.</summary>
@@ -415,8 +418,7 @@ namespace KhaozEngine.Gpu
         public GpuOutputDescription WithSampleCount(int sampleCount) => new(Depth, Colour, sampleCount);
     }
 
-    /// <summary>Describes a graphics pipeline. Engine mirror of Veldrid <c>GraphicsPipelineDescription</c>: the
-    /// per-attachment blend state, depth-stencil, rasterizer, topology, the vertex layouts (one per vertex
+    /// <summary>Describes a graphics pipeline: the per-attachment blend state, depth-stencil, rasterizer, topology, the vertex layouts (one per vertex
     /// buffer slot, including the per-instance buffer), the compiled shader set, the resource layouts, and the
     /// target outputs.</summary>
     public struct GpuPipelineDescription
@@ -442,7 +444,7 @@ namespace KhaozEngine.Gpu
     }
 
     /// <summary>Describes a compute pipeline: the compiled compute shader plus the resource layouts (binding sets,
-    /// in set order). Engine mirror of Veldrid <c>ComputePipelineDescription</c>, minus its thread-group size -
+    /// in set order). It carries no thread-group size:
     /// the engine reads that off the shader module instead (see <see cref="IGpuComputeShader.ThreadGroupSizeX"/>),
     /// so there is no second copy of the workgroup size to disagree with the GLSL.
     ///

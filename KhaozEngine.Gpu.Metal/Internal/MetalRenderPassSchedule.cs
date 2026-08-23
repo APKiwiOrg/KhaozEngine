@@ -11,7 +11,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// whether a framebuffer bind owes a viewport and a scissor. Every one of those is a decision that can be
     /// WRONG, and every one of them runs under a plain <c>[Fact]</c> on a machine with no Metal at all, because
     /// the four native calls it makes go through <see cref="IMetalRenderApi"/> and the boundaries through
-    /// <see cref="MetalEncoderScope"/>.
+    /// <see cref="MetalEncoderScope"/>. THE INCUMBENT below means the Veldrid Metal backend the engine shipped
+    /// until <c>18.0.0</c>: the shapes attributed to it are reproduced because the goldens were baked through it,
+    /// and it is cited as their origin rather than as anything that still runs.
     ///
     /// <list type="number">
     /// <item><description><b>The state is four things:</b> the bound framebuffer, a pending clear value per
@@ -55,11 +57,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// end an encoder to remember to set it, which is exactly the registration-time forgetting the stamp
     /// mechanism was chosen over.</para>
     ///
-    /// <para><b>THE FRAMEBUFFER-CHANGE GUARD WRAPS THE WHOLE OF <see cref="SetFramebuffer"/>, WHICH IS WHAT
-    /// VELDRID'S BASE CLASS DOES (M-A6).</b> There is no <c>SetViewport</c> on the seam at all: the engine gets a
-    /// viewport because <c>CommandList.SetFramebuffer</c> auto-calls <c>SetFullViewports</c> and
-    /// <c>SetFullScissorRects</c>, and the whole body sits inside an <c>if (_framebuffer != fb)</c> identity
-    /// guard. BOTH halves have to be reproduced. A backend that does not emit rasterises nothing. A backend that
+    /// <para><b>THE FRAMEBUFFER-CHANGE GUARD WRAPS THE WHOLE OF <see cref="SetFramebuffer"/>, WHICH IS THE
+    /// CONTRACT THE SEAM INHERITED (M-A6).</b> There is no <c>SetViewport</c> on the seam at all: the engine gets
+    /// a viewport because the base class the seam was drawn from auto-called <c>SetFullViewports</c> and
+    /// <c>SetFullScissorRects</c> from <c>CommandList.SetFramebuffer</c>, with the whole body inside an
+    /// <c>if (_framebuffer != fb)</c> identity guard, and every shipped renderer is written to that. BOTH halves
+    /// have to be reproduced. A backend that does not emit rasterises nothing. A backend that
     /// emits UNCONDITIONALLY diverges on the shipped sequence <c>SetFramebuffer(fb)</c>,
     /// <c>SetScissorRect(...)</c>, draw, <c>SetFramebuffer(fb)</c>, draw, where the second bind silently restores
     /// the full scissor and the second draw renders outside the intended rectangle. That is golden-visible, and
@@ -548,8 +551,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             throw new ArgumentOutOfRangeException(nameof(index), index,
                 "The native Metal backend sets ONE scissor rectangle, at index 0. The seam carries an output "
-                + "index because Veldrid models one scissor per colour target, nothing in the engine passes a "
-                + "non-zero one, and Metal's own rectangle is per ENCODER rather than per attachment, so "
+                + "index because the seam's shape was taken from Veldrid 4.9, which modelled one scissor per "
+                + "colour target. Nothing in the engine passes a non-zero one, and Metal's own rectangle is "
+                + "per ENCODER rather than per attachment, so "
                 + "honouring an index would mean inventing a mapping no shipped renderer asks for. It is refused "
                 + "by name rather than ignored, which is what both native sibling backends do with the same "
                 + "index for the same reason.");

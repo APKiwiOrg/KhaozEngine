@@ -6,16 +6,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <c>KE_D3D11_REAL_DRAIN</c>, THE M2 KILL SWITCH (decision C6, section 13). Unlike
     /// <see cref="D3D11RecordModes"/>, which selects between two drivers that both ship, this one has a real
     /// default and an escape hatch: the drain is ON, and setting the variable to 0 restores the empty
-    /// <c>WaitForIdle</c> the incumbent Direct3D 11 backend always had.
+    /// <c>WaitForIdle</c> this backend replaced.
     /// <para>
-    /// WHAT THE SWITCH IS FOR, and why it is temporary. Veldrid's <c>WaitForIdleCore</c> on Direct3D 11 was an
-    /// empty method body, so every drain in the engine did nothing there, including one half of the
-    /// only ordering guarantee the seam offers. That has never caused a known bug, because Direct3D 11 tracks
-    /// resource hazards itself, defers destruction by reference counting and blocks in <c>Map</c> by definition,
-    /// so the empty body is arguably correct-by-API. Making it real can therefore only ever be MORE conservative,
-    /// which means the risk is performance and nothing else, which means it is measurable rather than latent. M2
-    /// is that measurement, this is the lever a field session flips if it goes badly, and the exit criterion
-    /// (total drain duration under 0.2 ms per frame across two consecutive soak builds) REMOVES this type.
+    /// WHAT THE SWITCH IS FOR, and why it is temporary. The Direct3D 11 backend the engine shipped until
+    /// <c>18.0.0</c> had an empty <c>WaitForIdleCore</c>, so every drain in the engine did nothing there,
+    /// including one half of the only ordering guarantee the seam offers. That never caused a known bug, because
+    /// Direct3D 11 tracks resource hazards itself, defers destruction by reference counting and blocks in
+    /// <c>Map</c> by definition, so the empty body is arguably correct-by-API. Making it real can therefore only
+    /// ever be MORE conservative, which means the risk is performance and nothing else, which means it is
+    /// measurable rather than latent. M2 is that measurement, this is the lever a field session flips if it goes
+    /// badly, and the exit criterion (total drain duration under 0.2 ms per frame across two consecutive soak
+    /// builds) REMOVES this type.
     /// </para>
     /// <para>
     /// Everything here is pure except <see cref="FromEnvironment"/>, so the parse is headless-testable on any
@@ -70,7 +71,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// line on every session is a line nobody reads.</summary>
         internal static string DisabledDescription
             => $"The native Direct3D 11 WaitForIdle is a NO-OP for this run (from {EnvVarName}=0). It will not "
-                + "wait for the GPU, matching the empty body the Veldrid Direct3D 11 backend has always had. "
+                + "wait for the GPU, which is the empty body this switch exists to restore. "
                 + "This is the M2 kill switch and it exists for the soak window only, so unset the variable to "
                 + "go back to the real drain.";
     }

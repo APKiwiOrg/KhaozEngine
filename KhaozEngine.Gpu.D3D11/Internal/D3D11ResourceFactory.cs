@@ -234,7 +234,6 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         static NotSupportedException NotBuiltYet(string what)
             => new($"{what} is not built yet on the native Direct3D 11 backend. Resources, resource layouts, "
-                + "resource sets and graphics pipelines are live. Select GpuBackendKind.Direct3D11 for a fully "
-                + "working Direct3D 11 device.");
+                + "resource sets and graphics pipelines are live.");
     }
 }

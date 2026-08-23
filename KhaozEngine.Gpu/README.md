@@ -4,6 +4,12 @@ The GPU backend seam for the custom MonoGame-free stack: the graphics APIs conta
 layer. Since 18.0.0 this package builds NO device of its own, and the engine's three backend packages are the
 only implementations.
 
+**"The incumbent" below always means the Veldrid backend deleted in 18.0.0**, whichever of its three graphics
+APIs the sentence is about. It is cited in the past tense, because what it did is what several members here
+were shaped to reproduce or to diverge from, and that reasoning is what makes the seam readable. Nothing
+selects it any more, and no Veldrid package is left in the graph: the shader toolchain it left behind became
+`Silk.NET.Shaderc` plus `Silk.NET.SPIRV.Cross` in the same release.
+
 What it owns today:
 
 - **`GpuBackendKind`** - Metal / Vulkan / Direct3D11 / OpenGL / Direct3D11Native / VulkanNative / MetalNative.

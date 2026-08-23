@@ -5,14 +5,16 @@ namespace KhaozEngine.Gpu.Internal
     /// <summary>Reads a compute module's workgroup size straight out of its SPIR-V, so the engine never asks a
     /// caller to repeat the shader's own <c>layout(local_size_x = ...)</c> in C#.
     ///
-    /// This exists because of a silent-failure shape in the layer below. Veldrid's
-    /// <c>ComputePipelineDescription</c> carries <c>ThreadGroupSizeX/Y/Z</c> and validates nothing against the
-    /// shader, and only ONE backend reads them: Metal, where they become the <c>threadsPerThreadgroup</c> argument
-    /// of <c>dispatchThreadGroups</c> (MSL does not carry the workgroup size the way SPIR-V does). Vulkan and
-    /// Direct3D11 ignore them entirely and take the size from the module. So a description that disagrees with the
-    /// shader is invisible on two backends and produces WRONG RESULTS on the third, with no error anywhere. And
-    /// <c>Veldrid.SPIRV</c> does not report the size back either: its <c>ComputeCompilationResult</c> carries only
-    /// the cross-compiled source and a resource-layout reflection.
+    /// This exists because of a silent-failure shape in the layer it was written against, the Veldrid stack the
+    /// engine ran on until 18.0.0. Its <c>ComputePipelineDescription</c> carried <c>ThreadGroupSizeX/Y/Z</c> and
+    /// validated nothing against the shader, and only ONE backend read them: Metal, where they became the
+    /// <c>threadsPerThreadgroup</c> argument of <c>dispatchThreadGroups</c> (MSL does not carry the workgroup
+    /// size the way SPIR-V does). Vulkan and Direct3D11 ignored them entirely and took the size from the module.
+    /// So a description that disagreed with the shader was invisible on two backends and produced WRONG RESULTS
+    /// on the third, with no error anywhere. And <c>Veldrid.SPIRV</c> did not report the size back either: its
+    /// <c>ComputeCompilationResult</c> carried only the cross-compiled source and a resource-layout reflection.
+    /// The three native backends took the size from this parse from the day each shipped, so the bug class has
+    /// no home left, and the parse is what keeps it that way.
     ///
     /// Parsing the one execution mode out of the module is a few lines and removes the whole class of bug, so the
     /// engine's <see cref="IGpuComputeShader"/> exposes the size it read rather than trusting a caller-supplied

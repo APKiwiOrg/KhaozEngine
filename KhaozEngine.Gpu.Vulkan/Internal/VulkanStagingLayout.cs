@@ -42,21 +42,25 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         uint X, uint Y, uint Width, uint Height);
 
     /// <summary>
-    /// THE INCUMBENT'S SOFTWARE SUBRESOURCE LAYOUT, REPRODUCED BYTE FOR BYTE. Decision V-C7, section 13.
+    /// THE SOFTWARE SUBRESOURCE LAYOUT THE ENGINE SHIPPED UNTIL <c>18.0.0</c>, REPRODUCED BYTE FOR BYTE.
+    /// Decision V-C7, section 13. THE INCUMBENT throughout this file means that backend, the vendored Veldrid
+    /// fork the engine pinned at <c>4.9.104</c> (Vulkan tree <c>v4.9.0</c>) and deleted in <c>18.0.0</c>. Its
+    /// arithmetic is reproduced rather than replaced because every golden in the suite was baked through it and
+    /// the seam states its byte contract in its terms, so the citations below are provenance for numbers that are
+    /// still live.
     ///
     /// <para><b>THIS IS THE HIGHEST-RISK PARITY SURFACE IN THE BACKEND.</b> Every golden in the suite reads back
     /// through <c>IGpuDevice.Map(staging, ...)</c> and consumes <see cref="MappedData.RowPitch"/>, so a DIFFERENT
     /// arithmetic here produces a garbled grid on every scene at once. Nothing about that failure is loud: the
     /// readback succeeds, the pointer is valid, and the pixels are simply in the wrong places.</para>
     ///
-    /// <para><b>THE INCUMBENT BACKS A STAGING TEXTURE WITH A <c>VkBuffer</c> AND COMPUTES THE LAYOUT IN
-    /// SOFTWARE.</b> Not a linear-tiled image, and not <c>vkGetImageSubresourceLayout</c>: the row pitch, the depth
+    /// <para><b>IT BACKED A STAGING TEXTURE WITH A <c>VkBuffer</c> AND COMPUTED THE LAYOUT IN SOFTWARE.</b>
+    /// Not a linear-tiled image, and not <c>vkGetImageSubresourceLayout</c>: the row pitch, the depth
     /// pitch, the array pitch and the subresource offset are all engine arithmetic. Reproducing that is therefore
     /// reproducing ARITHMETIC rather than agreeing with a driver, which is the one reason this can be pinned at all
     /// without a device.</para>
     ///
-    /// <para><b>EVERY FORMULA BELOW CITES ITS SOURCE.</b> The incumbent was the vendored Veldrid fork this engine
-    /// ships against (<c>4.9.104</c>, Vulkan tree <c>v4.9.0</c>), and the six functions this reproduces are
+    /// <para><b>EVERY FORMULA BELOW CITES ITS SOURCE.</b> The six functions this reproduces are
     /// <c>FormatSizeHelpers.GetSizeInBytes</c>, <c>FormatHelpers.GetRowPitch</c>, <c>FormatHelpers.GetNumRows</c>,
     /// <c>FormatHelpers.GetDepthPitch</c>, <c>FormatHelpers.GetRegionSize</c> and <c>Util.GetDimension</c>, plus the
     /// three that compose them: <c>Util.ComputeMipOffset</c>, <c>Util.ComputeArrayLayerOffset</c> and
@@ -342,8 +346,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + " array layers. The offset it would produce lands in whatever follows the buffer.");
         }
 
-        // The 32-bit ceiling. See the class note: identical to the incumbent everywhere the incumbent did not
-        // wrap, and named rather than silent above it.
+        // The 32-bit ceiling. See the class note: the arithmetic runs in 64 bits, so a size the seam cannot
+        // describe is named here rather than wrapping silently.
         static ulong Fits(ulong value, in VulkanStagingShape shape, string what)
         {
             if (value <= uint.MaxValue) return value;
@@ -354,9 +358,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + " of that native Vulkan staging texture is "
                 + value.ToString(CultureInfo.InvariantCulture)
                 + " bytes, which does not fit the 32-bit size the GPU seam describes a mapping with "
-                + "(MappedData.SizeInBytes is a uint). The incumbent computes this in 32 bits throughout and "
-                + "wraps here silently, which sizes the staging buffer far too small and corrupts whatever "
-                + "follows it. Read back in tiles.");
+                + "(MappedData.SizeInBytes is a uint). The same arithmetic in 32 bits wraps here silently, "
+                + "which sizes the staging buffer far too small and corrupts whatever follows it, so it is "
+                + "refused by name instead. Read back in tiles.");
         }
     }
 }

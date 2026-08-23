@@ -751,6 +751,22 @@ jobs:
 
       - run: dotnet build -c Release --no-restore
 
+      # TRIPWIRE for the Linux native load path. Silk.NET resolves its natives through its OWN path resolver,
+      # which on Linux asks for the distro rid (ubuntu.24.04-x64) and so never looks under runtimes/linux-x64,
+      # where the packages ship them. Directory.Build.targets copies the host rid's natives flat into the output
+      # for exactly that reason, and the comment there carries the full story. When that copy stops happening the
+      # symptom is hundreds of tests failing inside a shaderc type initializer, which reads like a shader bug and
+      # is not one, so assert the files are where the resolver looks instead.
+      - name: Assert the host natives landed beside the assemblies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          out=KhaozEngine.Render.Tests/bin/Release/net10.0
+          for lib in libshaderc_shared.so libspirv-cross.so; do
+            test -f "$out/$lib" || { echo "MISSING: $out/$lib"; ls -l "$out" | head -40; exit 1; }
+          done
+          ls -l "$out"/*.so
+
       # Linux: install Mesa lavapipe (software Vulkan) + the loader. The lavapipe ICD manifest's path/name
       # drifts across Ubuntu runner images, so DISCOVER it rather than hardcoding (the old hardcoded
       # /usr/share/vulkan/icd.d/lvp_icd.x86_64.json went missing and gave "Found no drivers!"). Dump what the

@@ -27,7 +27,10 @@ What it owns today:
   Windows -> `Direct3D11Native`, Linux and everything else -> `VulkanNative`, and since 18.0.0 those are the
   only backends. A `metal` / `d3d11` / `vulkan` / `gl` token names a retired member and RESOLVES to that API's
   native backend with a WARN. `IncumbentFor` is deleted, so `ProbeOS` is the single map and is what a failed
-  device creation, a stored preference for a retired member and an unrecognized override all fall back TO. `Select(string?, OSPlatformKind)` is the pure, headless-testable overload.
+  device creation and an unrecognized override both fall back TO, along with a stored `OpenGL`. A stored
+  `Metal` / `Vulkan` / `Direct3D11` takes `NativeReplacementFor` instead, the same map the token takes, so a
+  Windows player's stored `Vulkan` runs `VulkanNative` rather than being quietly reversed onto the platform
+  default. `Select(string?, OSPlatformKind)` is the pure, headless-testable overload.
 - **`GpuBackendSelection` / `GpuBackendSource`** (17.21.0) - the same choice, reported with its provenance.
   `Resolve()` and the pure `Resolve(string?, OSPlatformKind)` return `GpuBackendSelection(Backend, Source,
   RequestedOverride)`, where `Source` is `OsProbe`, `EnvironmentOverride`, or `UnrecognizedOverride`, and
@@ -35,7 +38,10 @@ What it owns today:
   `Select` is implemented on top of `Resolve`, so there is one decision path and the two cannot drift. A blank
   or whitespace-only value counts as no override at all. Only a non-blank unparseable value is
   `UnrecognizedOverride`, and the OS probe still decides the backend in that case, so
-  `WasPinnedByEnvironment` (17.40.0) is false for it: a value that decided nothing pinned nothing. This exists because a typo'd
+  `WasPinnedByEnvironment` (17.40.0) is false for it: a value that decided nothing pinned nothing.
+  `CameFromStoredPreference` (18.0.0) is the mirror: true when a player's saved choice put this backend here,
+  honoured as `UserPreference` or already redirected off a retired member, and it is the one provenance for
+  which a MISSING provider falls back rather than throwing. This exists because a typo'd
   override is otherwise indistinguishable from the OS default: the run silently uses the default and reads as
   "the requested backend did not help" when it never ran.
 - **Stored user preference** (17.23.0) - `Resolve(string?, OSPlatformKind, GpuBackendKind?)` (and the matching

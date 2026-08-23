@@ -65,9 +65,11 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(GpuBackendKind.Metal, OSPlatformKind.MacOS, GpuBackendKind.MetalNative)]
         [InlineData(GpuBackendKind.Vulkan, OSPlatformKind.Linux, GpuBackendKind.VulkanNative)]
         // A cross-platform stored value, which is what a settings file copied between machines produces. It
-        // resolves to THIS platform's default rather than to the retired member's own API, because the API it
-        // named cannot run here at all.
-        [InlineData(GpuBackendKind.Direct3D11, OSPlatformKind.MacOS, GpuBackendKind.MetalNative)]
+        // resolves to the API it NAMED, the same as the env token does, and the creation path then falls back to
+        // this platform's default because no Direct3D 11 package can register on a Mac. Resolution says what the
+        // player asked for, creation says what the machine can do, and collapsing the two here is what made a
+        // stored Vulkan on Windows silently mean Direct3D 11.
+        [InlineData(GpuBackendKind.Direct3D11, OSPlatformKind.MacOS, GpuBackendKind.Direct3D11Native)]
         // OpenGL has no native replacement anywhere, so every platform answers its own default.
         [InlineData(GpuBackendKind.OpenGL, OSPlatformKind.Linux, GpuBackendKind.VulkanNative)]
         public void AStoredPreferenceForARetiredBackend_SelfHealsAndReportsFallback(

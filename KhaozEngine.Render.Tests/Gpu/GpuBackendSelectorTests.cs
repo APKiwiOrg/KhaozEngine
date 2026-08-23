@@ -288,26 +288,63 @@ namespace KhaozEngine.Tests.Gpu
         /// acting on it CLEARS the setting. That is the only thing that gets the player off a dead choice
         /// permanently. It is rejected here, ahead of <c>GpuBackendProviders.Require</c>, because Require throws
         /// by contract and a saved settings file must never be able to make the engine throw at boot.
+        /// <para>
+        /// WHERE IT LANDS IS <c>NativeReplacementFor</c>, the same map the environment token takes, and the two
+        /// used to disagree: a stored <c>Vulkan</c> on Windows resolved to <c>Direct3D11Native</c> while
+        /// <c>KE_GRAPHICS_BACKEND=vulkan</c> on the same machine resolved to <c>VulkanNative</c>. The player
+        /// chose that API OVER the platform's default, so the faithful replacement is its native backend, and
+        /// where that cannot be created the ordinary creation fallback still takes them to the default and warns.
+        /// </para>
         /// </summary>
         [Theory]
         [InlineData(OSPlatformKind.MacOS, GpuBackendKind.Metal, GpuBackendKind.MetalNative)]
         [InlineData(OSPlatformKind.Windows, GpuBackendKind.Direct3D11, GpuBackendKind.Direct3D11Native)]
         [InlineData(OSPlatformKind.Linux, GpuBackendKind.Vulkan, GpuBackendKind.VulkanNative)]
-        [InlineData(OSPlatformKind.Windows, GpuBackendKind.Metal, GpuBackendKind.Direct3D11Native)]
+        // The row that moved. A stored Metal on Windows names an API, and the API's native backend is what
+        // answers for it, exactly as the env token does.
+        [InlineData(OSPlatformKind.Windows, GpuBackendKind.Metal, GpuBackendKind.MetalNative)]
+        // A stored Vulkan on Windows is the case the split was found on: the player picked Vulkan over the
+        // platform's Direct3D 11, and the redirect must not quietly reverse that.
+        [InlineData(OSPlatformKind.Windows, GpuBackendKind.Vulkan, GpuBackendKind.VulkanNative)]
+        // OpenGL is the one arm that still answers the platform default, because the engine never had an OpenGL
+        // implementation and NativeReplacementFor maps it to ProbeOS.
         [InlineData(OSPlatformKind.Linux, GpuBackendKind.OpenGL, GpuBackendKind.VulkanNative)]
+        [InlineData(OSPlatformKind.MacOS, GpuBackendKind.OpenGL, GpuBackendKind.MetalNative)]
         [InlineData(OSPlatformKind.Unknown, GpuBackendKind.Vulkan, GpuBackendKind.VulkanNative)]
-        public void Resolve_RetiredPreference_SelfHealsToThePlatformNativeAndReportsFallback(
+        public void Resolve_RetiredPreference_SelfHealsToTheNativeReplacementAndReportsFallback(
             OSPlatformKind os, GpuBackendKind preference, GpuBackendKind expected)
         {
             GpuBackendSelection selection = GpuBackendSelector.Resolve(null, os, preference);
 
-            // The platform's OWN default, not the retired member's API: a stored Metal on Windows must not send
-            // the player to a Metal device that cannot exist there.
-            Assert.Equal(GpuBackendSelector.ProbeOS(os), selection.Backend);
+            Assert.Equal(GpuBackendSelector.NativeReplacementFor(preference, os), selection.Backend);
             Assert.Equal(expected, selection.Backend);
             Assert.Equal(GpuBackendSource.FallbackAfterFailure, selection.Source);
             Assert.Equal(preference, selection.RequestedBackend);
             Assert.Null(selection.RequestedOverride);
+            // And it stays routable: a replacement with no package on this OS must fall back at creation rather
+            // than throw, which is what this predicate licenses.
+            Assert.True(selection.CameFromStoredPreference);
+        }
+
+        /// <summary>
+        /// The property that broke and the reason this row exists: the STORED path and the ENVIRONMENT path
+        /// answer the same backend for the same retired member on the same OS. They diverged silently, because
+        /// each had its own test pinning its own answer and nothing compared them.
+        /// </summary>
+        [Theory]
+        [InlineData(OSPlatformKind.Windows, "vulkan", GpuBackendKind.Vulkan)]
+        [InlineData(OSPlatformKind.Windows, "metal", GpuBackendKind.Metal)]
+        [InlineData(OSPlatformKind.MacOS, "d3d11", GpuBackendKind.Direct3D11)]
+        [InlineData(OSPlatformKind.Linux, "gl", GpuBackendKind.OpenGL)]
+        public void Resolve_ARetiredMember_AnswersTheSameBackend_StoredOrPinned(
+            OSPlatformKind os, string token, GpuBackendKind retired)
+        {
+            GpuBackendSelection pinned = GpuBackendSelector.Resolve(token, os);
+            GpuBackendSelection stored = GpuBackendSelector.Resolve(null, os, retired);
+
+            Assert.Equal(pinned.Backend, stored.Backend);
+            Assert.Equal(retired, pinned.RequestedBackend);
+            Assert.Equal(retired, stored.RequestedBackend);
         }
 
         [Fact]

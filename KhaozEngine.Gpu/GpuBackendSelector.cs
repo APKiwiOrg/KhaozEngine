@@ -55,8 +55,9 @@ namespace KhaozEngine.Gpu
         /// (<see cref="GpuBackendKind.Metal"/>, <see cref="GpuBackendKind.Vulkan"/>,
         /// <see cref="GpuBackendKind.Direct3D11"/>, <see cref="GpuBackendKind.OpenGL"/>) still parse and still
         /// deserialize, so a settings file written by an older build loads. Selection rejects them ahead of the
-        /// provider registry and self-heals to the platform's native backend, and the game clears the stored
-        /// choice on exactly the signal it already handles.
+        /// provider registry and self-heals to that API's native backend through
+        /// <see cref="GpuBackendSelector.NativeReplacementFor"/>, the same map the environment token takes, and
+        /// the game clears the stored choice on exactly the signal it already handles.
         /// </para>
         /// </summary>
         FallbackAfterFailure = 4,
@@ -131,6 +132,30 @@ namespace KhaozEngine.Gpu
         /// </para>
         /// </summary>
         public bool WasPinnedByEnvironment => Source is GpuBackendSource.EnvironmentOverride;
+
+        /// <summary>
+        /// True when a PLAYER'S STORED CHOICE is what put this backend here: either honoured as it stands
+        /// (<see cref="GpuBackendSource.UserPreference"/>), or already redirected off a member retired in
+        /// 18.0.0, which reports <see cref="GpuBackendSource.FallbackAfterFailure"/> with the retired member on
+        /// <see cref="RequestedBackend"/>.
+        /// <para>
+        /// The mirror of <see cref="WasPinnedByEnvironment"/>, deciding the same question from the other side:
+        /// whether a MISSING provider for this backend may be routed around or has to throw. A stored choice
+        /// outlives the build that wrote it and the machine it was written on, and the player cannot reach the
+        /// setting from a game that refused to boot, so it routes around. Everything else is either the engine's
+        /// own default (nothing to route to) or somebody's deliberate pin (routing around it is the
+        /// misattribution decision I2 exists to prevent).
+        /// </para>
+        /// <para>
+        /// The retirement arm is narrowed to a RETIRED <see cref="RequestedBackend"/> on purpose, because
+        /// <see cref="GpuBackendSource.FallbackAfterFailure"/> is also what a selection reports on the way back
+        /// IN after a fallback, carrying the live backend that just failed. That one is the engine's last
+        /// attempt and has nothing left to route to.
+        /// </para>
+        /// </summary>
+        public bool CameFromStoredPreference => Source is GpuBackendSource.UserPreference
+            || (Source is GpuBackendSource.FallbackAfterFailure
+                && RequestedBackend is GpuBackendKind stored && GpuBackendSelector.IsRetired(stored));
     }
 
     /// <summary>
@@ -147,7 +172,8 @@ namespace KhaozEngine.Gpu
     /// RETIREMENT LIVES HERE, and deliberately not in the provider registry. The four members the removed
     /// Veldrid incumbent owned still parse, still deserialize and still name a backend a player may have stored,
     /// so <see cref="Resolve(string?, OSPlatformKind, GpuBackendKind?)"/> rejects them AHEAD of
-    /// <see cref="GpuBackendProviders.Require"/> and answers the platform's native backend instead. A retired
+    /// <see cref="GpuBackendProviders.Require"/> and answers that API's native backend instead, by the one map
+    /// <see cref="NativeReplacementFor"/>, whichever of the two paths named it. A retired
     /// member that reaches device creation by being NAMED outright throws
     /// <see cref="GpuBackendRetiredException"/> rather than being redirected, because a caller that named one
     /// implementation is not asking to be quietly given another.
@@ -254,10 +280,20 @@ namespace KhaozEngine.Gpu
                 // the setting, which is the only thing that gets the player off it permanently. Rejecting here,
                 // ahead of GpuBackendProviders.Require, is decision 5.2 of the removal design: Require throws by
                 // contract, and a saved settings file must never be able to make the engine throw at boot.
+                //
+                // WHAT IT LANDS ON IS THE SAME MAP THE ENV TOKEN TAKES, NativeReplacementFor rather than
+                // ProbeOS, and the two used to disagree: a Windows player's stored Vulkan resolved to
+                // Direct3D11Native while KE_GRAPHICS_BACKEND=vulkan on the same machine resolved to
+                // VulkanNative. The player chose Vulkan OVER this platform's default, so the faithful
+                // replacement is that API's native backend, and dropping them onto the default silently
+                // reverses a choice they made deliberately. Where the replacement cannot be created, the
+                // ordinary fallback at creation still takes them to the platform default and warns. OpenGL has
+                // no native sibling and NativeReplacementFor answers ProbeOS for it, so that one arm is
+                // unchanged.
                 if (IsRetired(preferred))
                 {
-                    return new GpuBackendSelection(ProbeOS(os), GpuBackendSource.FallbackAfterFailure, raw,
-                        preferred);
+                    return new GpuBackendSelection(NativeReplacementFor(preferred, os),
+                        GpuBackendSource.FallbackAfterFailure, raw, preferred);
                 }
 
                 return new GpuBackendSelection(preferred, GpuBackendSource.UserPreference, raw);
@@ -390,8 +426,10 @@ namespace KhaozEngine.Gpu
         /// </para>
         /// <para>
         /// SINCE 18.0.0 THIS IS ALSO WHAT A FALLBACK LANDS ON. The Veldrid incumbent is gone and
-        /// <c>IncumbentFor</c> went with it, so a failed device creation, a stored preference for a retired
-        /// member and an unrecognized override all end up here. There is exactly one default per platform now,
+        /// <c>IncumbentFor</c> went with it, so a failed device creation and an unrecognized override both end
+        /// up here, as does a stored preference for <see cref="GpuBackendKind.OpenGL"/>, the one retired member
+        /// with no native sibling. The other three retired members resolve to their own API's native backend
+        /// (<see cref="NativeReplacementFor"/>) and reach this only if that backend cannot be created. There is exactly one default per platform now,
         /// which is what makes the fallback's "nothing to fall back TO when the request already IS the default"
         /// guard a complete statement rather than a first approximation.
         /// </para>

@@ -292,6 +292,39 @@ namespace KhaozEngine.Tests.Gpu
         /// backend from outside the engine is the same provenance class, and they arrive here with no fallback
         /// allowance. Without the allowance the exemption does not apply and the missing provider throws.
         /// </summary>
+        /// <summary>
+        /// The retirement half of the same exemption. A stored member retired in 18.0.0 is redirected by the
+        /// selector onto its API's native backend and already reports
+        /// <see cref="GpuBackendSource.FallbackAfterFailure"/>, so by the time the preflight sees it the
+        /// UserPreference provenance is gone. A stored <c>Direct3D11</c> on a Mac lands on a kind whose package
+        /// cannot register there, and throwing would put the boot failure back exactly where the retirement was
+        /// designed to prevent it.
+        /// <para>
+        /// The row below it is the narrowing that keeps this from swallowing the engine's own last attempt: the
+        /// selection a fallback re-enters with reports the same source and carries the LIVE backend that failed
+        /// on <c>RequestedBackend</c>, and that one has nothing left to route to.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void Preflight_FallsBackForAMissingProvider_WhenARetiredPreferenceWasRedirectedOntoIt()
+        {
+            string? reason = GpuDeviceContext.PreflightProvider(
+                new GpuBackendSelection(SentinelKind, GpuBackendSource.FallbackAfterFailure, null,
+                    GpuBackendKind.Direct3D11), allowFallback: true, out _);
+
+            Assert.NotNull(reason);
+            Assert.Contains("registered in this build", reason, StringComparison.Ordinal);
+        }
+
+        /// <summary>A fallback selection carrying a LIVE requested backend is the engine's own second attempt,
+        /// not a player's stored choice, so a missing provider on it still throws.</summary>
+        [Fact]
+        public void Preflight_ThrowsForAMissingProvider_OnTheEnginesOwnFallbackSelection()
+            => Assert.Throws<GpuBackendProviderMissingException>(
+                () => GpuDeviceContext.PreflightProvider(
+                    new GpuBackendSelection(SentinelKind, GpuBackendSource.FallbackAfterFailure, null,
+                        GpuBackendKind.VulkanNative), allowFallback: true, out _));
+
         [Fact]
         public void Preflight_StillThrowsForAStoredPreference_WhenNoFallbackIsAllowed()
             => Assert.Throws<GpuBackendProviderMissingException>(

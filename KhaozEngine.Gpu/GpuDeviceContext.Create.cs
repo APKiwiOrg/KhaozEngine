@@ -171,9 +171,12 @@ namespace KhaozEngine.Gpu
         /// registrations, names a kind this process has no provider for, and refusing to boot leaves the player
         /// with the setting that caused it unreachable from inside the game. It reports
         /// <see cref="GpuBackendSource.FallbackAfterFailure"/> instead, which is exactly the signal a consuming
-        /// game clears a stored preference on. An <see cref="GpuBackendSource.EnvironmentOverride"/> still throws,
-        /// because a soak session that pinned a variable must never quietly measure something else, and so does an
-        /// explicitly named <c>Create*(kind)</c>, which arrives here with no fallback allowance at all.
+        /// game clears a stored preference on. A stored RETIRED member takes the same exemption, since the
+        /// selector has already redirected it onto its API's native backend and that backend may have no package
+        /// on this OS. An <see cref="GpuBackendSource.EnvironmentOverride"/> still throws, because a soak session
+        /// that pinned a variable must never quietly measure something else, and so does an explicitly named
+        /// <c>Create*(kind)</c>, which arrives here with no fallback allowance at all.
+        /// <see cref="GpuBackendSelection.CameFromStoredPreference"/> is where that line is drawn.
         /// </para>
         /// <para>
         /// A RETIRED backend throws <see cref="GpuBackendRetiredException"/> here, and it throws AHEAD of the
@@ -202,7 +205,7 @@ namespace KhaozEngine.Gpu
 
             if (!GpuBackendProviders.TryGet(backend, out provider) || provider is null)
             {
-                if (allowFallback && selection.Source is GpuBackendSource.UserPreference) return NoRegisteredProvider;
+                if (allowFallback && selection.CameFromStoredPreference) return NoRegisteredProvider;
                 throw new GpuBackendProviderMissingException(backend);
             }
 

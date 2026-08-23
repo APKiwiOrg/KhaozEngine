@@ -42,9 +42,12 @@ toolchain that turns the engine's one GLSL source into SPIR-V and cross-compiles
 - **`GpuBackendSelector.IncumbentFor` is GONE**, and with it the one-release opt-out 17.40.0 shipped.
   `GpuBackendSelector.ProbeOS` is the single map now (macOS to `MetalNative`, Windows to `Direct3D11Native`,
   Linux and everything else to `VulkanNative`) and it is also what every fallback lands on: a failed device
-  creation, a stored preference for a retired member and an unrecognized override all end up at the platform's
-  own backend. There is exactly one default per platform, which is what makes the "nothing to fall back TO when
-  the request already IS the default" guard a complete statement rather than a first approximation.
+  creation and an unrecognized override both end up at the platform's own backend, as does a stored `OpenGL`,
+  the one retired member with no native sibling. A stored `Metal`, `Vulkan` or `Direct3D11` resolves to its own
+  API's native backend through `NativeReplacementFor`, exactly as the env token does, and reaches the platform
+  default only if that backend cannot be created here. There is exactly one default per platform, which is what
+  makes the "nothing to fall back TO when the request already IS the default" guard a complete statement rather
+  than a first approximation.
 - **The `Game2D` and `Game3D` umbrellas carry the three backend packages.** They used to be opt-in and in no
   umbrella, which was correct while `KhaozEngine.Gpu` could still build a device and is wrong now that it
   cannot. A repinned game therefore needs NO new call of its own: `AppWindow` and both snapshot hosts

@@ -9252,10 +9252,17 @@ Four things a game has to know:
 
 `GpuBackendSelector.IncumbentFor(OSPlatformKind)` is GONE in 18.0.0, along with the incumbent it mapped to.
 `GpuBackendSelector.ProbeOS` is the single map now, and it is also what a fallback lands on: a failed device
-creation, a stored preference for a retired member and an unrecognized override all end up at the platform's
-own native backend. `GpuBackendSelection.WasPinnedByEnvironment` still says whether `KE_GRAPHICS_BACKEND`
+creation and an unrecognized override both end up at the platform's own native backend, as does a stored
+`OpenGL`, the one retired member with no native sibling. A stored `Metal`, `Vulkan` or `Direct3D11` resolves to
+its OWN API's native backend through `NativeReplacementFor`, the same map the `KE_GRAPHICS_BACKEND` token takes,
+and reaches the platform default only if that backend cannot be created here. `GpuBackendSelection.WasPinnedByEnvironment` still says whether `KE_GRAPHICS_BACKEND`
 pinned the backend. A stored preference is deliberately not pinned, so a player's saved choice can be
 redirected at boot instead of throwing with the setting that caused it unreachable from inside the game.
+`GpuBackendSelection.CameFromStoredPreference` (18.0.0) is its mirror and answers the other half: true when a
+player's saved choice put this backend here, either honoured as `UserPreference` or already redirected off a
+retired member. That is the one provenance for which a MISSING provider falls back instead of throwing, which
+is what keeps a settings file written on another machine (or by a build that registered more backends than this
+one does) from refusing the boot.
 
 **The four retired members, and what happens to each caller.** `GpuBackendSelector.IsRetired(kind)` answers for
 `Metal`, `Vulkan`, `Direct3D11` and `OpenGL`. They are kept forever, because the enum is append-only and games

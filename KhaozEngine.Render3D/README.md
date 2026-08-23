@@ -78,7 +78,11 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   prepare the scene in `AppWindow.Run`'s `onPrepare` callback instead (`GameApp3D` does, in `OnPrepareWorld`, see
   issue #429). A host that does neither no longer gets a silently corrupt frame on one backend: every scene path
   that opens a list of its own goes through the seam's open-recording register, so the nesting is a
-  `GpuNestedRecordingException` naming both sides on every backend (issue #424). The calls that refuse mid-frame
+  `GpuNestedRecordingException` naming both sides on every backend (issue #424). That refusal is the whole of the
+  residual since 18.0.0, and the pre-record phase it points at was KEPT rather than retired with the Veldrid leg
+  it was built for ([#690](https://github.com/APKiwiOrg/KhaozEngine/issues/690)): the seam has no
+  dispatch-to-dispatch barrier, so a producer with a dependent compute chain still needs a list of its own and
+  still has nowhere to open one inside the frame's recording. The calls that refuse mid-frame
   are a mipped `LoadTexture`, `LoadSplatMaterial`, `LoadTileGroundMaterial`, `DebugReadShadowMap`,
   `DebugReadSplatAlbedoMip`,
   `Render3DPreview.Capture`, `Render3DPreview.ReadbackRgba`, and `Scene3D.Begin` on a device with GPU completion

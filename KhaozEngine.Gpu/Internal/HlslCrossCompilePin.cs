@@ -52,6 +52,13 @@ namespace KhaozEngine.Gpu.Internal
     /// <see cref="SpecializationConstantCount"/> is zero because the seam exposes no specialization constants.
     /// </para>
     /// <para>
+    /// WHAT IS NOT HERE, BECAUSE IT IS NOT AN OPTION. The register numbering the emitted HLSL carries is
+    /// installed per resource by <see cref="HlslRegisterRemap"/> rather than chosen by a flag, and 18.0.0 is
+    /// where it had to become explicit: the outgoing library did that re-numbering itself, silently, and
+    /// SPIRV-Cross on its own emits the module's raw <c>Binding</c> decoration instead. A pin cannot express it,
+    /// so the pin does not pretend to.
+    /// </para>
+    /// <para>
     /// Veldrid-free on purpose, like everything else the native backend reads across
     /// <c>InternalsVisibleTo</c>: <c>CrossCompileOptions</c> is a Veldrid type, so it stays private inside
     /// <see cref="SpirvCrossCompile"/> and is BUILT from these constants rather than being the source of them.

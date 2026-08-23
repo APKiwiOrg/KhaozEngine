@@ -39,7 +39,7 @@ Counts, per target, of rows whose hash is unchanged across the swap:
 |---|---|---|---|
 | 78 SPIR-V | 0 | 78 | the generator word on all 78, code generation on 36 |
 | 78 MSL | 36 | 42 | SPIRV-Cross version, in the fragment text |
-| 78 HLSL | 36 | 42 | SPIRV-Cross version, in the fragment text |
+| 78 HLSL | 42 | 36 | the multiply-add contraction, wherever the SPIR-V moved |
 | 86 layout | 0 | 86 | reflected names only. Every shape is unchanged |
 
 **SPIR-V.** Every module's header word 2, the generator magic, moved from `0x000d000a` to
@@ -58,10 +58,23 @@ pinned explicitly at `OptimizationLevel.Performance` on `SpirvFrontEndPin`, whic
 section 2.3 result 3 measured the incumbent to have been using all along. Two different levels cannot
 leave 42 of 78 modules byte-identical apart from one header word.
 
-**MSL and HLSL.** 36 of 78 unchanged each, and the split is by stage rather than by program: vertex
-text carries over byte-identical while fragment text moves a few bytes either way
-(`Beam.fragment` HLSL 1807 to 1809 characters, MSL 1523 to 1493). A SPIRV-Cross version difference in
-how it emits the fragment body.
+**MSL.** 36 of 78 unchanged, and the split is by stage rather than by program: vertex text carries
+over byte-identical while fragment text moves a few bytes either way (`Beam.fragment` MSL 1523 to
+1493 characters). A SPIRV-Cross version difference in how it emits the fragment body.
+
+**HLSL.** 42 of 78 unchanged, and the 36 that moved are exactly the 36 modules whose SPIR-V code
+generation moved: the newer glslang contracts multiply-add chains, so `(a * 2.0f) - 1.0f` emits as
+`mad(a, 2.0f, -1.0f)`. Nothing else differs.
+
+The first take of this table read 36 unchanged and 42 moved, and the extra six were a defect rather
+than a version difference. SPIRV-Cross names a resource's register with the module's raw `Binding`
+decoration, so `Water`'s uniform block at `binding = 6` emitted as `register(b6)` and its samplers as
+`s1`, `s3`, `s5`. The outgoing toolchain re-numbered every resource into a per-file counter first
+(`b0`, and `s0`, `s1`, `s2`), which is what `D3D11RegisterScheme` binds against, so the swap left the
+CPU side binding a texture at `t0` that the shader reads at `t1`. Every shader still compiled and the
+Windows leg went black: 165 pixel assertions, no compile error. `HlslRegisterRemap` installs the
+per-file numbering explicitly, and `D3D11HlslRegisterAgreementTests` now compares the registers the
+emitted text names against the ones the register scheme assigns, over every shipped program.
 
 **Layout.** All 86 hashes moved and not one shape did.
 `ShaderCorpusTests.TheLayoutsReflectedByBothToolchains_HaveTheSameShapeOnceNamesAreStripped` asserts

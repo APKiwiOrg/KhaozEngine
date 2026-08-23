@@ -1,4 +1,11 @@
 <Project>
+  <!-- The Linux native load path (#722). Kept in its own file so the engine's OWN build can import
+       exactly that rule from the repo root without also picking up the game-head policy below.
+       build/ files do not flow across a ProjectReference, so the repo cannot consume this package's
+       build folder the way a consumer does. Both copies of this folder (build/ and buildTransitive/)
+       carry both files, so the import resolves whichever way NuGet picks. -->
+  <Import Project="$(MSBuildThisFileDirectory)KhaozEngine.HostNatives.targets" />
+
   <!-- Surface the inherited CETCompat default in the build log so the security-posture
        change is discoverable, not silent. Dual-gated so the message is honest:
          * _KhaozEngineCetDefaulted == true: our props applied the default (the marker is set

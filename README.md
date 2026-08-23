@@ -102,7 +102,8 @@ multi-target `net8.0`, so a small status endpoint (or any other Azure Functions 
 bounded HTTP retry) can run as an isolated-worker app on the Linux Consumption (Y1) plan, which supports .NET
 8 but not .NET 10. Every other package stays `net10.0`-only. MonoGame-free: Silk.NET windowing/input (GLFW
 natives bundled per-RID), the engine's own Metal / Direct3D 11 / Vulkan backends behind `KhaozEngine.Gpu`
-for the GPU (with `Veldrid.SPIRV` kept as the shader toolchain), Silk.NET.OpenAL for audio.
+for the GPU (with `Silk.NET.Shaderc` and `Silk.NET.SPIRV.Cross` as the shader toolchain, which replaced
+`Veldrid.SPIRV` in 18.0.0 and left no Veldrid package in the graph), Silk.NET.OpenAL for audio.
 `System.Numerics` math throughout.
 
 ## Why it exists

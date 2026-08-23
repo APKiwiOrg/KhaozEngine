@@ -3,8 +3,11 @@
 KhaozEngine's custom stack (Render2D / Render3D) runs on the engine's own graphics backends. Each desktop OS
 gets one, and the GPU golden-snapshot net verifies rendering on each one through a CI matrix. The Veldrid
 incumbent that used to sit behind all three was deleted in `18.0.0`
-([#687](https://github.com/APKiwiOrg/KhaozEngine/issues/687)). `Veldrid.SPIRV` stays, as the SHADER TOOLCHAIN
-and nothing else, confined to `KhaozEngine.Gpu`.
+([#687](https://github.com/APKiwiOrg/KhaozEngine/issues/687)), and the shader toolchain it left behind was
+swapped out in the same release ([#691](https://github.com/APKiwiOrg/KhaozEngine/issues/691)). `Veldrid.SPIRV`
+is gone. The toolchain is `Silk.NET.Shaderc` (glslang, the GLSL to SPIR-V front end) plus
+`Silk.NET.SPIRV.Cross` (the MSL and HLSL back end), still confined to `KhaozEngine.Gpu` and still the only
+place in the engine that compiles a shader.
 
 ## Platform → backend (desktop scope)
 
@@ -719,10 +722,14 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
 
 When a backend-specific render bug reproduces ONLY on the CI rasterizer (WARP / lavapipe), dump the SPIRV-Cross
 output locally to read what that backend's compiler receives:
-`Veldrid.SPIRV.SpirvCompilation.CompileVertexFragment(vsGlslBytes, fsGlslBytes, CrossCompileTarget.HLSL, new CrossCompileOptions())`
-is a pure cross-compile that runs on any OS and is byte-identical to what FXC sees on Windows, so you can diff
-the broken shader's signature against a working sibling. That call is the SHADER TOOLCHAIN, which stays after
-the incumbent backend was deleted. Bisect with many cheap Windows-only `cross-platform-gpu`
+```bash
+KE_WRITE_SHADER_CORPUS=1 KE_SHADER_CORPUS_DUMP=/tmp/shaders dotnet test KhaozEngine.Render.Tests --filter ShaderCorpus
+```
+
+That drops the emitted HLSL and MSL for every shipped program as files under that directory, alongside the
+SPIR-V each was cross-compiled from. It is a pure cross-compile with no device, so it runs on any OS and
+produces byte-identical text to what FXC sees on Windows, which is what lets you diff a broken shader's
+signature against a working sibling. Bisect with many cheap Windows-only `cross-platform-gpu`
 `workflow_dispatch` runs, and restore the full three-backend matrix only to verify the final fix.
 
 ## Remaining productization gaps
@@ -732,10 +739,11 @@ This release delivers the **verification mechanism**, not a finished cross-platf
 1. **Windowed-app native bundling (mostly resolved).** The headless golden tests use `CreateHeadless`
    (no window), so they need no windowing natives. The engine windows through Silk.NET.Windowing (GLFW), which
    bundles its natives per-RID across desktop, so a shipped windowed game needs no hand-bundled SDL2 (no
-   `brew install sdl2` on macOS). `libveldrid-spirv` still rides along per-RID via `Veldrid.SPIRV`, which is
-   the shader toolchain and, with the `Veldrid` base package its reflection returns description types from, the
-   only Veldrid left in the graph. The remaining work is run-verifying the
-   windowed path on Windows/Linux hardware (the headless matrix above does not open a window).
+   `brew install sdl2` on macOS). The shader toolchain's natives ride along per-RID the same way, as
+   `Silk.NET.Shaderc.Native` and `Silk.NET.SPIRV.Cross.Native`, and they cover eight RIDs including
+   `linux-arm64`, which the outgoing `libveldrid-spirv` did not. No Veldrid package is left in the graph at
+   all. The remaining work is run-verifying the windowed path on Windows/Linux hardware (the headless matrix
+   above does not open a window).
 2. **There is no OpenGL backend and there is not going to be one.** The engine never wrote one, the incumbent's
    was never verified, and `OpenGL` is a RETIRED `GpuBackendKind` member since `18.0.0`: the token still parses,
    so a script that sets `KE_GRAPHICS_BACKEND=gl` keeps working, and it runs the platform's own default and

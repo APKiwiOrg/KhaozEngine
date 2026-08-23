@@ -1593,20 +1593,21 @@ the symlink step, and both are worth stating before somebody cites this section 
 ## What the package may reference, and the one edge it may not
 
 `KhaozEngine.Gpu.Vulkan` references `KhaozEngine.Gpu` and the three Silk.NET Vulkan packages. It declares NO
-`Veldrid` package, and that is decision V-P3 rather than an accident of ordering: the shader path needs
-glslang, which arrives as `Veldrid.SPIRV`, and referencing it from a backend whose entire premise is
-being Veldrid-free is a bad signal no guard reading package ids would catch. The edge stays in
-`KhaozEngine.Gpu` behind its internal, Veldrid-free `SpirvFrontEnd` helper, which this package reaches across
-`InternalsVisibleTo`.
+shader-toolchain package, and that is decision V-P3 rather than an accident of ordering: the shader path needs
+glslang, which arrives as `Silk.NET.Shaderc`, and referencing it from a backend that owns no compile path of its
+own is a bad signal no guard reading package ids would catch. The edge stays in
+`KhaozEngine.Gpu` behind its internal `SpirvFrontEnd` helper, whose signatures are engine types, and which this
+package reaches across `InternalsVisibleTo`.
 
 That is asserted TWO ways, and the second one is the load-bearing half:
 
-- `ArchitectureTests.NativeGpuBackend_DeclaresNoVeldridPackage` reads the project file, which catches the
-  deliberate edit.
+- `ArchitectureTests.ThirdPartyHomes` reads the project file, which catches the deliberate edit: the
+  shader-toolchain package ids are mapped to `KhaozEngine.Gpu` alone, and `ArchitectureTests.NoTwoShaderToolchains`
+  rejects a `Veldrid` package id anywhere in the tree.
 - `GpuPublicApiTests.NativeGpuBackend_ReferencesNoVeldridAssembly` reflects over the BUILT assembly's
-  references. Veldrid is in this package's transitive closure through `KhaozEngine.Gpu` whatever the project
-  file says, so an internal helper signature naming a Veldrid type would compile, would put a Veldrid assembly
-  reference in this assembly's IL, and would be invisible to every public-surface scan there is.
+  references. Veldrid was in this package's transitive closure through `KhaozEngine.Gpu` until 18.0.0 whatever
+  the project file said, so an internal helper signature naming a Veldrid type would compile, would put a
+  Veldrid assembly reference in this assembly's IL, and would be invisible to every public-surface scan there is.
 
 `GpuPublicApiTests.GpuVulkanPublicApi_DoesNotLeakBackendTypes` adds the third rule: no `Silk` type on the
 externally visible surface either. Not for load-path reasons, which V-P1 removes, but for the seam's own: a

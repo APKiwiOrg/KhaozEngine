@@ -140,9 +140,13 @@ exception is the trivial-change case below.
 - **Public repo, every leg GitHub-hosted.** The engine went public on 2026-08-06, after its private CI
   became the largest line on the org's GitHub bill, so standard hosted runners are free and no leg
   touches a personal machine any more. `ci.yml` builds, tests, packs and publishes on **x64**
-  `ubuntu-latest` (x64 is load-bearing, the test suite needs x64-only natives like `libveldrid-spirv`,
-  which ships linux-x64 but not linux-arm64), and the path-gated `cross-platform-gpu.yml` matrix runs
-  THREE blocking golden legs since 18.0.0, one per engine-owned backend: `metal-native` on hosted
+  `ubuntu-latest`. **x64 is no longer load-bearing and the leg stays on it anyway.** The reason it was
+  pinned there was `libveldrid-spirv`, which shipped linux-x64 and not linux-arm64. That package left
+  with the toolchain swap in 18.0.0, and its replacements (`Silk.NET.Shaderc.Native` and
+  `Silk.NET.SPIRV.Cross.Native`) ship eight RIDs including linux-arm64, so the constraint is gone.
+  Moving the leg is a separate, deliberate change with its own bake, not a side effect of the swap:
+  every golden in the tree was baked on x64 runners. `cross-platform-gpu.yml`, the path-gated matrix,
+  runs THREE blocking golden legs since 18.0.0, one per engine-owned backend: `metal-native` on hosted
   `macos-26` (pinned to the number, not to `macos-latest`, so an image promotion cannot move the GPU
   under a golden gate), `direct3d11-native` on Windows/WARP and `vulkan-native` on Linux/lavapipe. The
   three incumbent legs were deleted with the backend they tested, and each native leg owns the golden
@@ -310,8 +314,11 @@ exception is the trivial-change case below.
   names the fix. **It never says `0`**, deliberately, because a count is only ever printed when it was
   actually read (the full case is in the `ledger.sh` header).
 - net10.0, MonoGame-free: Silk.NET (windowing + input, GLFW natives bundled per-RID), the engine's own
-  Metal / Direct3D 11 / Vulkan backends behind `KhaozEngine.Gpu` (GPU, with `Veldrid.SPIRV` kept as the
-  shader toolchain), Silk.NET.OpenAL (audio), xUnit (tests).
+  Metal / Direct3D 11 / Vulkan backends behind `KhaozEngine.Gpu` (GPU, with `Silk.NET.Shaderc` and
+  `Silk.NET.SPIRV.Cross` as the shader toolchain since 18.0.0, replacing `Veldrid.SPIRV`),
+  Silk.NET.OpenAL (audio), xUnit (tests). Veldrid is gone from the tree entirely, and
+  `ArchitectureTests.NoTwoShaderToolchains` keeps it out: two glslang copies in one process corrupt
+  each other, so a second shader toolchain cannot be added back even temporarily for a comparison.
 
 ### Agent build workaround: .buildhome (unreadable ~/.gitconfig)
 

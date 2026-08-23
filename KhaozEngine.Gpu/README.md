@@ -455,6 +455,7 @@ What it owns today:
 This package builds NO device since 18.0.0, and the containment is complete: the resource, command and device
 surface is the engine-owned `IGpuDevice` / `IGpuResourceFactory` / `IGpuCommandList` interface set, the backend
 implementations are the three sibling packages, and no third-party type reaches the public API (asserted by
-reflection in `GpuPublicApiTests` here, and by `ArchitectureTests.ThirdPartyHomes`, which maps `Veldrid` and
-`Veldrid.SPIRV` to this package alone and to the shader toolchain alone). Adding a backend is a new
+reflection in `GpuPublicApiTests` here, and by `ArchitectureTests.ThirdPartyHomes`, which maps the five
+shader-toolchain package ids (`Silk.NET.Shaderc`, `Silk.NET.SPIRV.Cross`, `Silk.NET.SPIRV` and the two `.Native`
+blobs) to this package alone, and to its shader toolchain alone). Adding a backend is a new
 `IGpuDevice` implementation behind an `IGpuBackendProvider`, not a consumer-visible change.

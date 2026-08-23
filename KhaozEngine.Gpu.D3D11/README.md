@@ -153,12 +153,14 @@ This package references `KhaozEngine.Gpu`, `KhaozEngine.Diagnostics`, `Vortice.D
 Veldrid type, which is asserted two ways: the architecture tests reject a `Veldrid*` package reference on this
 project, and a reflection test rejects a `Veldrid*` assembly reference in the built IL.
 
-The shader path still needs SPIRV-Cross, which arrives as `Veldrid.SPIRV`. That edge stays in
-`KhaozEngine.Gpu`, behind an internal, Veldrid-free cross-compile helper plus `InternalsVisibleTo`.
+The shader path still needs SPIRV-Cross, which arrives as `Silk.NET.SPIRV.Cross` (with
+`Silk.NET.SPIRV.Cross.Native` carrying the blob and `Silk.NET.SPIRV` the enums it shares with the front end).
+That edge stays in `KhaozEngine.Gpu`, behind an internal cross-compile helper whose signatures are engine
+types, plus `InternalsVisibleTo`.
 `KhaozEngine.Gpu` already owns `ShaderValidation`, which uses precisely that static API with no device in
 existence, so the helper is at home there, and it becomes the single seat for the eventual SPIRV-Cross
-replacement. Blessing a Veldrid package inside a backend whose premise is being Veldrid-free would be a bad
-signal that no guard would ever catch.
+replacement. Blessing a shader-toolchain package inside a backend that deliberately declares none would be a
+bad signal that no guard would ever catch.
 
 ## Recording, and the two drivers
 
@@ -803,8 +805,8 @@ plus a full-range RAW view.
 ## The shader path: GLSL to HLSL to our own FXC call
 
 **GLSL 450 stays the single source and the backend calls FXC itself.** `CreateShadersFromSpirv` and
-`CreateComputeShaderFromSpirv` cross-compile through the internal, Veldrid-free SPIRV-Cross helper in
-`KhaozEngine.Gpu`, then compile the emitted HLSL to `vs_5_0` / `ps_5_0` / `cs_5_0` with
+`CreateComputeShaderFromSpirv` cross-compile through the internal SPIRV-Cross helper in `KhaozEngine.Gpu`,
+whose signatures are engine types, then compile the emitted HLSL to `vs_5_0` / `ps_5_0` / `cs_5_0` with
 `Vortice.D3DCompiler` at optimization level 3. DXC is not an alternative and not a preference: DXC emits DXIL,
 Direct3D 11 consumes DXBC, and there is no supported DXC path to DXBC, so Shader Model 6.x is unreachable from
 this backend at all. `SpirvLocalSize` still hand-parses the workgroup size out of the module, because D3D11
@@ -823,9 +825,9 @@ shader edit. Thirty moving at once is an option drift, which is exactly what the
 or option change and is never set on CI, where the whole point is that the table does not move on its own.
 
 **Compiled modules are cached on disk.** Keyed on the whole program's GLSL sources, the FXC profile, the FXC
-flags, the pinned cross-compile options, the `Veldrid.SPIRV` version that emitted the HLSL
-([#610](https://github.com/APKiwiOrg/KhaozEngine/issues/610), read off the assembly the process loaded rather
-than out of the props file) and the engine version, under
+flags, the pinned cross-compile options, the `Silk.NET.Shaderc` and `Silk.NET.SPIRV.Cross` versions that
+emitted the HLSL ([#610](https://github.com/APKiwiOrg/KhaozEngine/issues/610), read off the assemblies the
+process loaded rather than out of the props file) and the engine version, under
 `<local-app-data>/KhaozEngine/d3d11-dxbc/<engine version>/`. The key covers the WHOLE program rather than one
 stage, because a pair is cross-compiled together and the emitted vertex HLSL is a function of the fragment source
 too. Every failure is a miss: a cache that cannot be read or written is a slower start and nothing else. Set

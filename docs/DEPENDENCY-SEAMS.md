@@ -42,9 +42,11 @@ These graph rules are not just prose. Headless architecture tests in `KhaozEngin
   declaring no `Veldrid` package of its own.
 - `GpuPublicApiTests.cs` - reflection guards that walk the public and protected surface of `KhaozEngine.Gpu` and
   fail if any Veldrid type leaks through it, proving the GPU seam keeps the SHADER TOOLCHAIN contained. That is
-  the whole of what the rule guards since 18.0.0: the incumbent backend was deleted and `Veldrid.SPIRV` (with
-  the `Veldrid` base assembly its reflection types live in) is the only Veldrid left in the graph, confined to
-  `KhaozEngine.Gpu`. The same walk runs
+  the whole of what the rule guards since 18.0.0: the incumbent backend was deleted, and then the toolchain it
+  left behind was swapped for `Silk.NET.Shaderc` plus `Silk.NET.SPIRV.Cross`, so there is no Veldrid assembly
+  in the graph at all any more and this walk can no longer fail. It is kept as the leak detector for whatever
+  the toolchain is, and `ArchitectureTests.NoTwoShaderToolchains` is what now keeps the Veldrid half true by
+  refusing the package. The same walk runs
   over `KhaozEngine.Gpu.D3D11` for `Veldrid`, `Vortice` and `SharpGen`, since a Direct3D type in a public
   signature would load a Windows-only assembly on a platform that has none. A third guard reads that assembly's
   own references and fails on any `Veldrid` one, which is the only way to catch a Veldrid type crossing through
@@ -57,7 +59,7 @@ this doc cannot silently drift apart.
 
 | Area | Seam (dependency-free) | Backend(s) | Third-party library |
 |---|---|---|---|
-| GPU / rendering | `KhaozEngine.Gpu` (`GpuDeviceContext` + `GpuInterfaces`, `GpuBackendSelector`, `GpuBackendProviders` / `IGpuBackendProvider`, and `GpuRecording`, the mandatory open-recording gate described below). It builds NO device of its own since 18.0.0 | THREE engine-owned native backends, all of which ship outside the seam and all of which are carried by the `Game2D` / `Game3D` umbrellas since 18.0.0: `KhaozEngine.Gpu.D3D11` (`KhaozEngineD3D11.Register()`), `KhaozEngine.Gpu.Vulkan` (`KhaozEngineVulkan.Register()`) and `KhaozEngine.Gpu.Metal` (`KhaozEngineMetal.Register()`), plus any other registered out-of-package provider. `KhaozEngine.Windowing.GpuBackends` registers the running platform's one, and `AppWindow` calls it at boot | Veldrid.SPIRV (+ the `Veldrid` base assembly its reflection types live in) in the seam, as the SHADER TOOLCHAIN and nothing else, plus Vortice.Direct3D11 for the driver-threading probe. Vortice.Direct3D11 + Vortice.D3DCompiler in the D3D11 backend and Silk.NET.Vulkan (+ its KHR and EXT extension packages) in the Vulkan one. The Metal backend declares NO third-party binding at all: its Objective-C interop is engine-owned `libobjc` and `Metal.framework` P/Invoke. None of the three declares a Veldrid package of its own |
+| GPU / rendering | `KhaozEngine.Gpu` (`GpuDeviceContext` + `GpuInterfaces`, `GpuBackendSelector`, `GpuBackendProviders` / `IGpuBackendProvider`, and `GpuRecording`, the mandatory open-recording gate described below). It builds NO device of its own since 18.0.0 | THREE engine-owned native backends, all of which ship outside the seam and all of which are carried by the `Game2D` / `Game3D` umbrellas since 18.0.0: `KhaozEngine.Gpu.D3D11` (`KhaozEngineD3D11.Register()`), `KhaozEngine.Gpu.Vulkan` (`KhaozEngineVulkan.Register()`) and `KhaozEngine.Gpu.Metal` (`KhaozEngineMetal.Register()`), plus any other registered out-of-package provider. `KhaozEngine.Windowing.GpuBackends` registers the running platform's one, and `AppWindow` calls it at boot | Silk.NET.Shaderc and Silk.NET.SPIRV.Cross (+ their `.Native` blobs and the shared Silk.NET.SPIRV enums) in the seam, as the SHADER TOOLCHAIN and nothing else, replacing Veldrid.SPIRV in 18.0.0, plus Vortice.Direct3D11 for the driver-threading probe. Vortice.Direct3D11 + Vortice.D3DCompiler in the D3D11 backend and Silk.NET.Vulkan (+ its KHR and EXT extension packages) in the Vulkan one. The Metal backend declares NO third-party binding at all: its Objective-C interop is engine-owned `libobjc` and `Metal.framework` P/Invoke. None of the three declares a shader toolchain package of its own |
 | 3D physics | `KhaozEngine.Physics` (`IPhysicsWorld`, value-type shapes/poses/queries, and since the floating-origin release also the default-method `Origin` / `CanRebase` / `Rebase(newOrigin)`, so an existing implementer keeps compiling and correctly reports that it cannot rebase - the seam learns a plain `Vector3`, never a frame type, and keeps its zero project references) | `KhaozEngine.Physics.Bepu` (`BepuPhysicsWorld`, which overrides all three: bulk direct pose writes plus broadphase refits over every allocated body set and the statics, so sleeping bodies, contacts and constraints all survive a shift) | BepuPhysics v2 |
 | Netcode transport | `KhaozEngine.Netcode` (`INetTransport` incl. the default-method `Stats` -> `NetTransportStats`, `LoopbackTransport`) + `Netcode.Abstractions` | `KhaozEngine.Netcode.LiteNetLib` (fills `Stats` via `EnableStatistics`) | LiteNetLib |
 | Persistence | `KhaozEngine.WorldStore` (`IWorldStore`, `InMemoryWorldStore`) | `WorldStore.Sqlite`, `WorldStore.SqlServer` | Microsoft.Data.Sqlite / SqlClient |
@@ -845,10 +847,12 @@ to `KhaozEngine.TestSupport.Gpu` for the third shared ring adapter, and it decla
 WHY a machine is unsupported instead of answering a bare false), `Vortice.Direct3D11` and `Vortice.D3DCompiler`.
 It declares NO `Veldrid` package, and that is decision P2 rather than an accident of ordering.
 
-The shader path needs glslang and, for Direct3D 11 and Metal, SPIRV-Cross. Both arrive as `Veldrid.SPIRV`.
-Referencing it from a backend would be the obvious shortcut and is rejected twice over: blessing a Veldrid
-package inside a backend whose entire premise is being Veldrid-free is a bad signal no guard would catch, and it
-would scatter the eventual SPIRV-Cross replacement across every backend package instead of keeping it in one.
+The shader path needs glslang and, for Direct3D 11 and Metal, SPIRV-Cross. They arrive as `Silk.NET.Shaderc`
+and `Silk.NET.SPIRV.Cross` (plus `Silk.NET.SPIRV` for the enums the two join on, and a `.Native` package
+behind each), and until 18.0.0 they arrived as the single `Veldrid.SPIRV` package.
+Referencing any of them from a backend would be the obvious shortcut and is rejected twice over: a toolchain
+package inside a backend is a dependency no guard would think to look for, and it would scatter the next
+toolchain swap across every backend package instead of keeping it in one.
 The edge stays in `KhaozEngine.Gpu` behind internal helpers plus `InternalsVisibleTo`, which is where it already
 belongs: this package owns `ShaderValidation`, which uses precisely that static API with no device in existence.
 
@@ -857,12 +861,15 @@ design: an engine that deletes the Veldrid incumbent and then lets `Veldrid.SPIR
 backend packages has swapped one containment problem for a worse one, because the toolchain edge is the harder
 of the two to see. `18.0.0` deleted the incumbent
 ([#687](https://github.com/APKiwiOrg/KhaozEngine/issues/687)) and left the toolchain exactly where it was, one
-seat in `KhaozEngine.Gpu`, so the swap that replaces it
-([#462](https://github.com/APKiwiOrg/KhaozEngine/issues/462), row 8 of
-[#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)) stays a change to one half of one file. The two
-guards below are what hold it, and they are now the ONLY reason a `Veldrid` reference is remarkable anywhere:
-with no incumbent left, every other Veldrid edge the engine ever had is gone, and these two are what keep the
-last one from spreading.
+seat in `KhaozEngine.Gpu`. The swap that replaced it
+([#691](https://github.com/APKiwiOrg/KhaozEngine/issues/691), row 8 of
+[#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)) landed in the same release and was a change to one
+half of one file, which is the containment paying for itself. The two guards below are what held it there.
+`ArchitectureTests.NoTwoShaderToolchains` is the third and the one that matters most now: with no Veldrid
+assembly left in the graph, an IL walk for Veldrid types can only pass, so the live guard is the one that
+refuses the PACKAGE. It has to, because two copies of glslang in one process corrupt each other, which makes
+"reference both for a moment and compare them" a thing that cannot be done at all rather than a thing that is
+merely untidy.
 
 **AND THAT SEAM IS TWO MEMBERS NOW RATHER THAN ONE, which is decision V-S3** (section 12.3 of
 [design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md](design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md), landed
@@ -916,13 +923,16 @@ no Direct3D type at all, and all of it is tested headlessly on macOS and Linux. 
 the same profile, the same flags and the same pinned cross-compile options as the shipped path, so it cannot
 drift into validating a shader nobody ships.
 
-Two ways, because one of them alone would not bind. `ArchitectureTests.NativeGpuBackend_DeclaresNoVeldridPackage`
-reads the project file, which catches the deliberate edit. It cannot catch the subtler failure: Veldrid is in a
-backend's transitive closure through `KhaozEngine.Gpu` whatever the project file says, so an INTERNAL helper
-signature mentioning a Veldrid type would compile, would put a Veldrid assembly reference in the backend's IL,
-and would be invisible to every public-surface scan there is.
+Two ways, because one of them alone would not bind. `ArchitectureTests.ThirdPartyHomes` reads the project
+files and maps the five shader-toolchain package ids to `KhaozEngine.Gpu` alone, which catches the deliberate
+edit, and `ArchitectureTests.NoTwoShaderToolchains` rejects a `Veldrid` id anywhere in the tree. Neither can
+catch the subtler failure, because a toolchain assembly is in a backend's transitive closure through
+`KhaozEngine.Gpu` whatever the project file says, so an INTERNAL helper signature mentioning a toolchain type
+would compile, would put that assembly's reference in the backend's IL, and would be invisible to every
+public-surface scan there is.
 `GpuPublicApiTests.NativeGpuBackend_ReferencesNoVeldridAssembly`
-reflects over the built assembly's references and closes exactly that gap, which is why the helper's whole
+reflects over the built assembly's references and closed exactly that gap while Veldrid was the toolchain. It
+can only pass now, and the reason to keep it is that the contract it enforced is the reason the helper's whole
 contract is expressed in engine mirrors (`CrossCompiledPair` / `ShaderReflection` over `GpuVertexElement` and
 `GpuResourceLayoutDescription`). Both are theories over all three native backend packages.
 

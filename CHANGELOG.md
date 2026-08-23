@@ -9,10 +9,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 18.0.0 deletes the Veldrid incumbent GPU backend. The engine's own Metal, Direct3D 11 and Vulkan backends are
 the only backends now, on every platform, and this is rows 4, 5 and 6 of the Veldrid removal program
-([#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)). `Veldrid.SPIRV` STAYS: it is still the shader
-toolchain that turns the engine's one GLSL source into SPIR-V and cross-compiles it, and swapping it for
-`Silk.NET.Shaderc` plus `Silk.NET.SPIRV.Cross` is the next release's program
-([#691](https://github.com/APKiwiOrg/KhaozEngine/issues/691)). BREAKING, hence the major: four
+([#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)). It then swaps the shader TOOLCHAIN the deleted
+backend left behind, which is row 8 of the same program
+([#691](https://github.com/APKiwiOrg/KhaozEngine/issues/691)), so `Veldrid.SPIRV` and the `Veldrid` base
+package leave too and NO Veldrid package is left anywhere in the graph. BREAKING, hence the major: four
 `GpuBackendKind` members no longer name anything that can create a device. This release also carries what 17.41.0 had staged and never tagged: the three native backends' own golden families (rows 2 and 3 of the removal program) and the two SQLite file-handle fixes, listed at the end of this entry.
 
 - **The Veldrid backend is deleted** (`VeldridGpuDevice`, `VeldridGpuCommandList`, `VeldridResources`,
@@ -21,9 +21,71 @@ toolchain that turns the engine's one GLSL source into SPIR-V and cross-compiles
   and the second-recorder guardrail lived). `KhaozEngine.Gpu` builds NO device of its own any more. It keeps
   the seam (the
   interfaces, the selector, the provenance, the capabilities, the counters, the retire queue, the shader
-  validation) and the shader path, which is the only Veldrid it still references: `Veldrid.SPIRV` plus the
-  `Veldrid` base package, because SPIRV-Cross reflection hands back description types defined there.
+  validation) and the shader path, which was the only Veldrid it still referenced until row 8 replaced that too.
   [#687](https://github.com/APKiwiOrg/KhaozEngine/issues/687).
+- **The shader toolchain is `Silk.NET.Shaderc` plus `Silk.NET.SPIRV.Cross`, and `Veldrid.SPIRV` is gone.**
+  Five package ids at the 2.23.0 line the repo already pins for windowing, input, audio and Vulkan, replacing
+  one: `Silk.NET.Shaderc` (+ `.Native`) is glslang for the GLSL to SPIR-V front end, `Silk.NET.SPIRV.Cross`
+  (+ `.Native`) is the MSL and HLSL back end, and `Silk.NET.SPIRV` carries the enums the two join on. All five
+  are referenced by `KhaozEngine.Gpu` alone, exactly where the outgoing one sat, so no backend package gained a
+  dependency. **The swap had to be atomic.** Both libraries statically link glslang and SPIRV-Tools, and a
+  process holding both corrupts one of them, so there was no staged cutover, no feature flag, and no in-process
+  test able to compare the two. `ArchitectureTests.NoTwoShaderToolchains` now fails the build if any `Veldrid`
+  package id reappears in a csproj or in `Directory.Packages.props`.
+  [#691](https://github.com/APKiwiOrg/KhaozEngine/issues/691).
+- **Every shipped shader was recompiled through both toolchains and the two emissions compared out of process**,
+  because no test could do it in one. The tables are committed at
+  `KhaozEngine.Render.Tests/Gpu/shader-corpus/`, with the method and the full result in the README beside them.
+  All 78 SPIR-V modules moved their hash and none moved for an interesting reason: the header's generator word
+  went `0x000d000a` to `0x000d000b`, the same generator (Google Shaderc over Glslang) one version newer, and 42
+  of the 78 are byte-identical apart from that single word. The magic, SPIR-V version (`0x00010000`, SPIR-V 1.0)
+  and schema words are unchanged on all 78. The other 36 changed code because the newer glslang contracts
+  multiply-add chains into `OpExtInst`, which moved total emission by 368 bytes across the whole set, 0.09 %.
+  MSL and HLSL each carried 36 of 78 over byte-identical, the moves being fragment text only. All 86 reflected
+  layouts are shape-identical: same sets, bindings, kinds, stages and vertex formats, with only the reflected
+  NAMES differing, and `ShaderCorpusTests` asserts that rather than leaving it as a claim.
+- **The front end's optimisation level, target environment and SPIR-V version are pinned explicitly**, on
+  `SpirvFrontEndPin`, and until now they were not pinned at all. The outgoing toolchain took a two-field options
+  object and chose all three underneath, so every module the engine has ever shipped was compiled at
+  `OptimizationLevel.Performance` for Vulkan 1.0 at SPIR-V 1.0 with that recorded nowhere. Those are the values
+  now written down, which is the status quo made explicit rather than a change: a shaderc upgrade that moves a
+  default is now three moved hash tables instead of a quiet rebuild of every shader.
+- **Reflection enumerates through SPIRV-Cross under an EXPLICIT sort**, vertex inputs by location and resources
+  by binding, never the order the library returns. It returns them in neither declaration nor binding order, and
+  both arrays are indexed positionally by the backends, so trusting it is a silent rebinding rather than a
+  failure. `SpirvCrossCompileTests` pins it with a source whose declaration order, SPIRV-Cross order and binding
+  order are three different orders.
+- **A shader that declares no resource reflects no sets, rather than one empty set.**
+  [#599](https://github.com/APKiwiOrg/KhaozEngine/issues/599). The layout array is what a pipeline's resource
+  layouts are built from set by set, so a phantom set 0 is a layout the backend creates, binds and validates
+  against for a shader that never asked for one.
+- **The Metal shape check treats a trailing EMPTY declared layout as no layout at all**, which is the other half
+  of #599. A resource-free shader reflects zero sets now, and a pipeline created against it with one empty
+  `GpuResourceLayoutDescription` (the shape the incumbent accepted, and the shape the engine's own smoke, MSAA
+  and depth-clip tests use) is as legal as `ResourceLayouts = []`. `MetalShaderIndexTable.RequireLayoutShape`
+  trims trailing empty declared layouts before comparing counts, and an empty layout in the middle is still
+  positional. Found by the bare Metal run of the swap branch, where five GpuFacts refused their own empty layout.
+- **The three byte-equality tables were re-baked**, and what moved matches the corpus exactly from an
+  independent code path: 78 of 78 SPIR-V rows, 42 of 78 HLSL, 42 of 78 MSL. The SPIR-V table's own header now
+  records why every entry moved, so the next reader who re-bakes all 78 at once does not read a generator word
+  as an optimisation change.
+- **`ShaderValidation` no longer sweeps GLSL and ESSL**, only the HLSL and MSL the engine actually ships.
+  SPIRV-Cross has both back ends, so keeping them would have cost two lines. What they cost instead is a false
+  stop: with no OpenGL or GLES backend left anywhere in the engine, a shader that emits fine for both shipped
+  targets and trips a GLSL back end would be refused for a device nobody can run it on.
+- **The `Newtonsoft.Json` 9.0.1 CVE override (NU1903) is gone**, along with the
+  `Veldrid.SPIRV -> Veldrid -> NativeLibraryLoader -> Microsoft.Extensions.DependencyModel` chain that dragged
+  the vulnerable version in. Nothing in the tree references `Newtonsoft.Json` any more.
+- **x64 is no longer load-bearing on the Linux CI leg**, and the leg stays on x64 anyway. It was pinned there
+  because `libveldrid-spirv` shipped linux-x64 and not linux-arm64. The replacement natives ship eight RIDs
+  including linux-arm64, so the constraint is gone, but every golden in the tree was baked on x64 and moving the
+  leg is a separate change with its own bake.
+- **The five toolchain package ids must move together**, enforced by
+  `ArchitectureTests.TheShaderToolchainPackages_ArePinnedInLockstep`. The shader caches key on
+  `SpirvToolchainVersion`, which reads its token off the two MANAGED assemblies, while glslang and SPIRV-Cross
+  live in the `.Native` blobs. Those shipped inside `Veldrid.SPIRV` and are separate package ids now, so bumping
+  a `.Native` alone would move the emitted bytes while the cache key stood still and every warm entry kept
+  answering with the old compiler's output.
 - **`GpuBackendKind.Metal`, `.Vulkan`, `.Direct3D11` and `.OpenGL` are RETIRED, not removed and not
   repointed.** The enum is append-only because games persist a player's chosen backend, so the four members are
   kept forever and answer `GpuBackendSelector.IsRetired`. What happens depends on who names one:

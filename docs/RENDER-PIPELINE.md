@@ -78,9 +78,9 @@ build step). Source lives inline in `Render3D/Internal/ShaderSources.cs` and `Re
 
 ```mermaid
 flowchart LR
-    GLSL["GLSL #version 450<br/>(authored once)"] --> SPV["SPIR-V<br/>via Veldrid.SPIRV"]
-    SPV --> MSL["MSL (Metal)"]
-    SPV --> HLSL["HLSL (D3D11)"]
+    GLSL["GLSL #version 450<br/>(authored once)"] --> SPV["SPIR-V<br/>via Silk.NET.Shaderc"]
+    SPV -->|Silk.NET.SPIRV.Cross| MSL["MSL (Metal)"]
+    SPV -->|Silk.NET.SPIRV.Cross| HLSL["HLSL (D3D11)"]
     SPV --> GLO["GLSL (Vulkan / GL)"]
 ```
 

@@ -791,6 +791,7 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     path when no action is live). Callable on a remote character's brain too (no ownership state) -
     `ReplicatedCharacterAnimators.BrainFor(id)` reaches it.
 
-Renderer deps (the GPU backends, `Veldrid.SPIRV`, SharpGLTF) are confined to this package via
+Renderer deps (the GPU backends, the `Silk.NET.Shaderc` and `Silk.NET.SPIRV.Cross` shader toolchain,
+SharpGLTF) are confined to this package via
 `KhaozEngine.Gpu`. See
 `docs/USING-KHAOZENGINE.md`.

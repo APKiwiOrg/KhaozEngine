@@ -216,13 +216,13 @@ desktop head and ships as `WinExe`.
 
 Publish each game **self-contained** for its RID (`dotnet publish -c Release -r <rid> --self-contained`): the
 game ships its own pinned .NET runtime plus the native libs (GLFW, the platform's own graphics loader, the
-`libveldrid-spirv` shader toolchain, OpenAL) so a runtime or
+`libshaderc_shared` and `libspirv-cross` shader toolchain, OpenAL) so a runtime or
 native-lib CVE is patched by re-publishing, not by waiting on an engine package bump. See
 [SECURITY-BASELINE.md](SECURITY-BASELINE.md).
 
 If you also single-file publish (`PublishSingleFile=true`), the native libs **must stay loose** next to the
-exe. KhaozEngine reaches GLFW, the graphics loaders, `libveldrid-spirv` and OpenAL through native libraries the
-runtime locates by probing the apphost
+exe. KhaozEngine reaches GLFW, the graphics loaders, `libshaderc_shared`, `libspirv-cross` and OpenAL through
+native libraries the runtime locates by probing the apphost
 directory. .NET's default for single-file is `IncludeNativeLibrariesForSelfExtract=true`, which packs them into
 the self-extracting exe where Silk.NET's loader can't find them, so the game dies at boot with *"Couldn't find a
 suitable window platform (GlfwPlatform - not applicable)"*. Foundation therefore defaults
@@ -9942,15 +9942,17 @@ processes and no public API can serialize a source-compiled `MTLLibrary` anyway.
 own half of the work, GLSL to SPIR-V and then SPIR-V to MSL, which nothing else caches and which cost 3,443 ms
 across the shipped set of 42 programs when measured. One file per program lands under
 `<local-app-data>/KhaozEngine/metal-msl/<engine version>/`, keyed on the shader sources, the pinned compile
-options, the engine version, the `Veldrid.SPIRV` version that emitted the MSL and the module version ids of the
-two engine assemblies that produce the payload, and holds every stage's emitted MSL, its entry-point name, the
-binding table read off that emission and a compute kernel's workgroup size. A warm start reads all 42 back in 13 ms from 333 KiB. Those two module ids are in the key
+options, the engine version, the `Silk.NET.Shaderc` and `Silk.NET.SPIRV.Cross` versions that emitted the MSL
+and the module version ids of the two engine assemblies that produce the payload, and holds every stage's
+emitted MSL, its entry-point name, the binding table read off that emission and a compute kernel's workgroup
+size. A warm start reads all 42 back in 13 ms from 333 KiB. Those two module ids are in the key
 because four of those fields are read OUT of the emission by engine code the pinned options do not cover, so
 within one engine version an edit to any of them would otherwise keep serving the payload the previous build
 wrote. It costs an engine DEVELOPER one re-emission of the corpus per rebuild, about 3.4 seconds, and costs a
-consumer of a release nothing at all, since a release's assemblies are built once. The `Veldrid.SPIRV` version is
-in the key for the neighbouring reason: the pinned options freeze what SPIRV-Cross is ASKED for and not what it
-emits, so bumping that package without bumping the engine would otherwise keep serving the previous emission.
+consumer of a release nothing at all, since a release's assemblies are built once. The `Silk.NET.Shaderc` and
+`Silk.NET.SPIRV.Cross` versions are in the key for the neighbouring reason: the pinned options freeze what
+SPIRV-Cross is ASKED for and not what it emits, so bumping either package without bumping the engine would
+otherwise keep serving the previous emission.
 Point the variable at a directory to relocate it, or set it to any of `off`, `0`, `false`, `no` or `none` to emit
 fresh every time, which is what to do when you are chasing a binding or shader problem and want to be sure of
 what ran. Any other value is a directory path, which is why the disable words are a set rather than `off` alone.
@@ -10443,10 +10445,10 @@ observable effect today, because nothing creates a native device yet.
 
 **`KE_D3D11_SHADER_CACHE` controls the compiled-shader cache.** Compiled modules are cached on disk under
 `<local-app-data>/KhaozEngine/d3d11-dxbc/<engine version>/`, keyed on the shader sources, the compile target, the
-compile flags, the `Veldrid.SPIRV` version that cross-compiled them and the engine version, so only the first
-start on a given engine version pays for the compile. The cross-compiler's own version is in the key because the
-pinned options freeze what it is ASKED for and not what it emits, so bumping that package without bumping the
-engine would otherwise keep serving the previous cross-compiler's bytes.
+compile flags, the `Silk.NET.Shaderc` and `Silk.NET.SPIRV.Cross` versions that cross-compiled them and the
+engine version, so only the first start on a given engine version pays for the compile. The toolchain's own
+versions are in the key because the pinned options freeze what it is ASKED for and not what it emits, so bumping
+either package without bumping the engine would otherwise keep serving the previous cross-compiler's bytes.
 Point the variable at a directory to relocate it (a CI workspace, or a machine whose local app data is not
 writable), or set it to any of `off`, `0`, `false`, `no` or `none` to compile fresh every time, which is what to
 do when you are chasing a shader miscompile and want to be sure of what ran. Any other value is a directory path,

@@ -539,10 +539,11 @@ that has no GPU rather than as a wrong pixel on one that does.
 **The emission is pinned twice and neither pin covers the numbering.** One pin freezes the cross-compile options
 and one freezes `MTLCompileOptions` (`languageVersion` 3.2, fast math on, `preserveInvariance` off, all measured
 rather than assumed). Neither reaches the cross-compiler's naming or index assignment, which the binding table
-depends on. What freezes those is the exact `Veldrid.SPIRV` version the engine pins, so that drift arrives on a
-deliberate package bump and lands as a red device-free test rather than as a wrong frame. That version is in the
-emission cache's key as well, read off the assembly the process loaded rather than out of the props file, so a
-bump partitions the cache instead of serving the previous cross-compiler's output
+depends on. What freezes those is the exact `Silk.NET.Shaderc` and `Silk.NET.SPIRV.Cross` versions the engine
+pins, so that drift arrives on a deliberate package bump and lands as a red device-free test rather than as a
+wrong frame. Those versions are in the emission cache's key as well, read off the assemblies the process loaded
+rather than out of the props file, so a bump partitions the cache instead of serving the previous
+cross-compiler's output
 ([#610](https://github.com/APKiwiOrg/KhaozEngine/issues/610)).
 
 **The disk cache holds the EMISSION, not a `.metallib`.** macOS already caches the MSL-to-library compile across
@@ -552,9 +553,10 @@ service warmed first so neither number is startup cost), and no public API can s
 engine's own half, GLSL to SPIR-V and then SPIR-V to MSL, and that is what is cached
 ([#592](https://github.com/APKiwiOrg/KhaozEngine/issues/592)). One file per program under
 `<local-app-data>/KhaozEngine/metal-msl/<engine version>/`, keyed on the shader sources, all three pinned option
-sets, the engine version, the `Veldrid.SPIRV` version that emitted it and the module version ids of the two
-assemblies that PRODUCE the payload, holding every stage's MSL, every stage's entry-point name, the binding table
-read off that emission and a compute kernel's workgroup size. Over the shipped corpus of 42 programs that is 333 KiB and turns 3,443 ms of cold emission into
+sets, the engine version, the `Silk.NET.Shaderc` and `Silk.NET.SPIRV.Cross` versions that emitted it and the
+module version ids of the two assemblies that PRODUCE the payload, holding every stage's MSL, every stage's
+entry-point name, the binding table read off that emission and a compute kernel's workgroup size. Over the
+shipped corpus of 42 programs that is 333 KiB and turns 3,443 ms of cold emission into
 13 ms.
 
 **Old engine versions' folders are swept at cache open** ([#611](https://github.com/APKiwiOrg/KhaozEngine/issues/611)).
@@ -987,8 +989,8 @@ the fork as the reference implementation is a different act and the design does 
 **It carries no third-party package at all (M-P3).** This is the only backend in the program whose
 `ArchitectureTests.ThirdPartyHomes` row is empty, and the emptiness is asserted rather than implied. It also
 carries no `Veldrid` edge of its own, checked twice: `ArchitectureTests` reads the project file, and
-`GpuPublicApiTests` walks the built IL, which is the half that binds, because Veldrid is in the transitive
-closure through `KhaozEngine.Gpu` whatever the project file says.
+`GpuPublicApiTests` walks the built IL, which is the half that binds, because until 18.0.0 Veldrid was in the
+transitive closure through `KhaozEngine.Gpu` whatever the project file said.
 
 ## What the three spikes answered
 

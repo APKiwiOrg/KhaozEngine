@@ -193,6 +193,45 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void TheRetiredSource_KeepsItsPublishedNumber()
             => Assert.Equal(5, (int)GpuBackendSource.DefaultProviderMissing);
+
+        /// <summary>
+        /// AND IT HAS NO PRODUCER, which is the half a number alone does not say. Five documents claimed the
+        /// source was live after the builder that made it was deleted, so this walks every input the selector
+        /// can be handed (every OS, every token the parser accepts plus the blank and typo cases, every
+        /// <see cref="GpuBackendKind"/> as a stored preference) and every post-fallback report, and asserts the
+        /// source never comes back.
+        /// <para>
+        /// A mechanical pin rather than a prose promise: it goes red the day a code path starts producing it
+        /// again, which is the only signal that the docs saying "retired, no producer" have to be rewritten.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void TheRetiredSource_IsNeverProduced_ByAnySelection()
+        {
+            string?[] overrides =
+            {
+                null, "", "   ", "metal", "vulkan", "d3d11", "direct3d11", "gl", "opengl",
+                "metal-native", "mtl-native", "vulkan-native", "vk-native", "d3d11-native", "direct3d11-native",
+                "vulcan", "METAL-NATIVE",
+            };
+
+            foreach (OSPlatformKind os in Enum.GetValues<OSPlatformKind>())
+            {
+                foreach (string? raw in overrides)
+                {
+                    Assert.NotEqual(GpuBackendSource.DefaultProviderMissing,
+                        GpuBackendSelector.Resolve(raw, os, userPreference: null).Source);
+
+                    foreach (GpuBackendKind preference in Enum.GetValues<GpuBackendKind>())
+                    {
+                        GpuBackendSelection selection = GpuBackendSelector.Resolve(raw, os, preference);
+                        Assert.NotEqual(GpuBackendSource.DefaultProviderMissing, selection.Source);
+                        Assert.NotEqual(GpuBackendSource.DefaultProviderMissing,
+                            GpuBackendSelector.AfterFallback(selection, GpuBackendSelector.ProbeOS(os)).Source);
+                    }
+                }
+            }
+        }
     }
 
     /// <summary>

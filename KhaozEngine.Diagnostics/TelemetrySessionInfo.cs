@@ -47,10 +47,15 @@ public sealed class TelemetrySessionInfo
 
     /// <summary>
     /// Where that backend choice came from, as a name (<c>"OsProbe"</c>, <c>"EnvironmentOverride"</c>,
-    /// <c>"UserPreference"</c>, <c>"FallbackAfterFailure"</c>, <c>"DefaultProviderMissing"</c>, ...). The
-    /// provenance is what separates a deliberate backend from one the engine fell back to, so a capture is
-    /// readable without guessing, and it separates the two FALLBACKS as well: one is a device creation that
-    /// failed, the other is a build with no provider registered for its own platform default.
+    /// <c>"UserPreference"</c>, <c>"FallbackAfterFailure"</c>, ...). The provenance is what separates a
+    /// deliberate backend from one the engine fell back to, so a capture is readable without guessing.
+    /// <para>
+    /// <c>"DefaultProviderMissing"</c> appears in 17.40.0 captures and in nothing newer. It was RETIRED at
+    /// 18.0.0 with the incumbent fallback it reported and has no producer, so a reader parsing a fleet's
+    /// captures keeps the case for the old ones and will never meet it on a current build. The engine reports
+    /// every fallback as <c>"FallbackAfterFailure"</c> now, whether the requested backend failed to create, was
+    /// refused by this machine, or had no provider in this build.
+    /// </para>
     /// </summary>
     public string? GpuBackendSource { get; set; }
 

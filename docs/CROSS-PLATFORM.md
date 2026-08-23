@@ -113,12 +113,18 @@ caused it lives inside the client that then will not start. Two mechanisms, and 
   readonly struct of native pointers, no device state), so no second window is created. There is exactly one
   default per platform since `18.0.0`, so "nothing to fall back TO when the request already IS the default" is
   the only case the fallback skips.
-- **A default with no registered provider** takes that same fallback, added at 17.40.0 with the flip. Pinning a
-  backend in `KE_GRAPHICS_BACKEND` and not registering it still THROWS `GpuBackendProviderMissingException`,
-  which is the half that stops a soak session measuring one backend and filing the number under another. An
-  ordinary windowed game never sees either: `AppWindow` calls `GpuBackends.RegisterResolvedIfUnregistered()`
-  at boot, and `Render2DSnapshot` / `Render3DSnapshot` do the same for a headless host.
-- **`CreateHeadless()` falls back as well since 17.40.0**, in both of the ways a default can fail: the
+- **A STORED PREFERENCE with no registered provider** takes that same fallback, and it is the only provenance
+  that may. A settings file outlives the build that wrote it and the machine it was written on (a profile synced
+  across machines, or a game that dropped its explicit registrations after the player had picked a backend), and
+  refusing the boot leaves the setting that caused it unreachable from inside the game.
+  `GpuBackendSelection.CameFromStoredPreference` draws that line and covers a preference already redirected off
+  a retired member. A DEFAULT with no provider throws `GpuBackendProviderMissingException`, and so does a
+  backend pinned in `KE_GRAPHICS_BACKEND`, which is the half that stops a soak session measuring one backend and
+  filing the number under another. An ordinary windowed game meets none of it: `AppWindow` calls
+  `GpuBackends.RegisterResolvedIfUnregistered(preference)` at boot, registering both the kind that is about to
+  be asked for and this platform's own as the fallback target, and `Render2DSnapshot` / `Render3DSnapshot` do
+  the same for a headless host.
+- **`CreateHeadless()` falls back as well since 17.40.0**, in both of the ways a request can fail: the
   unregistered provider above, and a REGISTERED provider that refuses this machine. A pinned backend still
   propagates everything there, which is what keeps each of the three legs below capturing goldens under the name
   it pinned.
@@ -126,10 +132,12 @@ caused it lives inside the client that then will not start. Two mechanisms, and 
 The fallback is REPORTED, never repaired: `Source` becomes `FallbackAfterFailure`, `Backend` is what actually
 runs, and `RequestedBackend` is what failed. **A game storing a backend preference must clear it on seeing that
 source**, or the player retries the same broken choice every launch. The engine cannot, since writing a setting
-is file IO and `KhaozEngine.Gpu` does none. The unregistered-provider case above reports the appended
-`DefaultProviderMissing` instead, which a game must NOT clear a preference for: nothing failed and the player
-chose nothing, the gap is a missing `Register()` call in the app. And when the fallback fails too there is no
-device at all, which `GpuNoUsableBackendException` reports naming both backends and both reasons.
+is file IO and `KhaozEngine.Gpu` does none. `GpuBackendSource.DefaultProviderMissing` (ordinal 5), which
+17.40.0 appended for a DEFAULT that fell back to the incumbent, is RETIRED at 18.0.0 with NO PRODUCER: there is
+no incumbent to create instead, so that case throws. The member keeps its number because the enum is
+append-only and a 17.40.0 capture that recorded a 5 still has to read back as what it meant. And when the
+fallback fails too there is no device at all, which `GpuNoUsableBackendException` reports naming both backends
+and both reasons.
 
 A RETIRED member never reaches any of this. It is answered before the provider registry: as an env token by
 the redirect, as a stored preference by the self-heal, and in code by `GpuBackendRetiredException`.

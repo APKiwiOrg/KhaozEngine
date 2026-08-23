@@ -62,7 +62,9 @@ Since 17.40.0 the case where nobody named it is different, because the OS probe 
 Windows, and since 18.0.0 nobody has to make the call: the `Game2D` and `Game3D` umbrellas carry this package,
 and `AppWindow` plus both snapshot hosts call `GpuBackends.RegisterResolvedIfUnregistered()` before they
 create anything. A default with no provider registered at all throws `GpuBackendProviderMissingException` too,
-since `GpuBackendSource.DefaultProviderMissing` was retired with the backend it used to fall back to.
+since `GpuBackendSource.DefaultProviderMissing` was retired at 18.0.0 with the backend it used to fall back to
+and nothing produces it any more. A stored PREFERENCE with no provider is the one case that still falls back,
+because a settings file outlives the build that wrote it.
 
 ## What the machine probe checks
 

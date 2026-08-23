@@ -69,8 +69,8 @@ What it owns today:
   `GpuBackendProviderMissingException` and never falls back**, because a run that quietly used a different
   backend would file its measurements under the wrong name. Since 18.0.0 a DEFAULTED backend with no
   registered provider throws the same exception, because there is no incumbent left to create instead, and
-  `GpuBackendSource.DefaultProviderMissing` is retired with the fallback it reported. An ordinary game never
-  meets either: the `Game2D` and `Game3D` umbrellas carry the three backend packages and `AppWindow` plus both
+  `GpuBackendSource.DefaultProviderMissing` is retired with the fallback it reported and has no producer left.
+  An ordinary game never meets either: the `Game2D` and `Game3D` umbrellas carry the three backend packages and `AppWindow` plus both
   snapshot hosts call `GpuBackends.RegisterResolvedIfUnregistered()` at boot. A stored `UserPreference`
   still falls back and reports `FallbackAfterFailure`, the signal a game clears the preference on, and a
   preference naming a RETIRED member takes the same report after being redirected onto that API's native
@@ -85,17 +85,15 @@ What it owns today:
 - **`AfterFallback(selection, fallbackBackend)`** (17.23.0) - the pure helper building the post-fallback report
   (backend becomes what ran, source becomes `FallbackAfterFailure`, `RequestedBackend` keeps what was asked
   for). Used by `GpuDeviceContext`, and by a consumer driving its own retry so both report identically.
-- **`GpuBackendSource.DefaultProviderMissing` / `AfterMissingDefaultProvider(selection, incumbent)`** (17.40.0) -
-  the same shape for the case the flip created: the backend the OS probe DEFAULTED to is provider-backed and its
-  provider is not registered in this process, so the incumbent was created instead and `RequestedBackend` carries
-  the default that could not be built. **A member of its own rather than `FallbackAfterFailure`**, because the
-  two say opposite things to the readers that act on them. This one means the app has not referenced a native
-  backend package or has not called its `Register()`, which is a wiring gap in the APP: nothing failed, no
-  machine is incapable, and a game that stores a graphics preference must NOT clear it. Reported as
-  `FallbackAfterFailure` it would make every repinned game that has not taken a native package read as
-  device-creation failure in telemetry, and would put a "your graphics choice failed" notice in front of a player
-  who chose nothing. The boot line says `default, {RequestedBackend} has no registered provider` and the WARN
-  names the package and the one `Register()` call that fixes it.
+- **`GpuBackendSource.DefaultProviderMissing`** (17.40.0, ordinal 5) - **RETIRED AT 18.0.0, WITH NO PRODUCER.**
+  Nothing in the engine reports it any more and no code path can produce it. It named the case the 17.40.0 flip
+  created, a default whose provider was not registered, which fell back to the platform's Veldrid incumbent.
+  There is no incumbent, so that case throws `GpuBackendProviderMissingException` instead, and its pure builder
+  `AfterMissingDefaultProvider` was deleted with the fallback. The MEMBER stays and keeps its number, because
+  this enum is append-only and a 17.40.0 capture that recorded a 5 still has to read back as what it meant, and
+  `GpuDeviceContext` keeps a spelled-out boot-line arm for it (`default, {RequestedBackend} has no registered
+  provider`) so a replayed capture reads as itself. A game switching on `GpuBackendSource` keeps its arm for old
+  captures and will never see it on a live 18.0.0 run.
 - **`GpuNoUsableBackendException`** (17.40.0) - the DOUBLE FALL: the requested backend failed, the engine fell
   back, and the fallback failed too, so there is no device. It carries `RequestedBackend`, `FallbackBackend` and
   both failures, and its message names both backends and both reasons in the order they were tried. The FIRST

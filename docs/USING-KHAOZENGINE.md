@@ -9441,16 +9441,18 @@ if (sel.Source == GpuBackendSource.FallbackAfterFailure)
 1. **Clear the stored preference** when you see `FallbackAfterFailure`, and tell the player what happened.
 2. **Only ever offer `SupportedBackends()`** in the UI, so the common case is prevented rather than recovered.
 
-**`GpuBackendSource.DefaultProviderMissing` (17.40.0) is the one fallback you must NOT clear a preference for.**
-It means the backend the OS probe DEFAULTED to is provider-backed and its provider is not registered in this
-process, so the incumbent was created instead. Nothing failed, no machine is incapable, and the player chose
-nothing: the fix is a package reference plus a `Register()` call in the app, and the WARN names both. The boot
-line reads `GPU backend: Vulkan (default, VulkanNative has no registered provider)` rather than a failure line,
-and the telemetry header carries `"backendSource": "DefaultProviderMissing"` with the default that could not be
-built on `requestedBackend`. Handling it as `FallbackAfterFailure` would make every un-wired session in a fleet
-read as device-creation failure and would put a "your graphics choice failed" notice in front of a player who
-made no choice. `GpuBackendSelector.AfterMissingDefaultProvider(selection, incumbent)` is its pure builder, the
-twin of `AfterFallback` below.
+**`GpuBackendSource.DefaultProviderMissing` (17.40.0, ordinal 5) is RETIRED at 18.0.0 and has NO PRODUCER.**
+Nothing in the engine reports it any more, and no code path can produce it on an 18.0.0 run. It named the case
+the 17.40.0 flip created, a default whose provider was not registered, which fell back to the platform's Veldrid
+incumbent and told the app to add a package reference. There is no incumbent, so that case throws
+`GpuBackendProviderMissingException` instead, and its pure builder `GpuBackendSelector.AfterMissingDefaultProvider`
+was DELETED with the fallback: a consumer that called it must drop the call, since a default with no provider is
+now a wiring gap with no second answer. The MEMBER stays, because the enum is append-only and a 17.40.0 capture
+that recorded a 5 has to keep reading as what it meant, and `GpuDeviceContext` keeps a spelled-out boot-line arm
+for it (`default, {RequestedBackend} has no registered provider`) so a replayed capture reads as itself. A game
+switching on `GpuBackendSource` keeps its arm for old captures and will never see it live. In practice an
+ordinary game never met the case either way: the `Game2D` and `Game3D` umbrellas carry the three backend
+packages, and `AppWindow` plus both snapshot hosts register at boot.
 
 **When the fallback fails too, `GpuNoUsableBackendException` (17.40.0) names BOTH attempts.** There is no device
 at that point and the app cannot render, and the exception carries `RequestedBackend`, `FallbackBackend`, the

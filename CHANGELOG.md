@@ -38,7 +38,9 @@ package leave too and NO Veldrid package is left anywhere in the graph. BREAKING
   `D3D11RegisterScheme` binds against. `HlslRegisterRemap` installs that numbering explicitly, per
   `(stage, set, binding)`, and `D3D11HlslRegisterAgreementTests` compares the registers the emitted text names
   against the ones the register scheme assigns over every shipped program, which is the half decision S2 never
-  pinned.
+  pinned. `HlslCrossCompilePin.Identity` gained a `registers=perFile` token so the compiled-shader cache
+  partitions on it: the numbering is not a SPIRV-Cross option, so nothing else in the key moved when it changed,
+  and a warm entry would otherwise have been served with the wrong registers.
   [#691](https://github.com/APKiwiOrg/KhaozEngine/issues/691).
 - **Every shipped shader was recompiled through both toolchains and the two emissions compared out of process**,
   because no test could do it in one. The tables are committed at

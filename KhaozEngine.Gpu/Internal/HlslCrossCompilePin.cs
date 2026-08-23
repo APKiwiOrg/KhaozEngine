@@ -81,6 +81,21 @@ namespace KhaozEngine.Gpu.Internal
         internal const int SpecializationConstantCount = 0;
 
         /// <summary>
+        /// Which register numbering the emitted HLSL carries, as a token for <see cref="Identity"/>.
+        /// <c>perFile</c> is <see cref="HlslRegisterRemap"/>'s counter-per-register-file rule, which is what the
+        /// Direct3D 11 backend binds against. <c>raw</c> would be SPIRV-Cross's own behaviour, the module's
+        /// <c>Binding</c> decoration used as the register index.
+        /// <para>
+        /// IT IS IN THE IDENTITY BECAUSE IT IS IN THE BYTES. The numbering is not a SPIRV-Cross option and
+        /// nothing else in this pin moves when it changes, so without a token here a compiled-shader cache
+        /// written under one numbering would be served under the other: same key, wrong registers, and a machine
+        /// that renders black while every other machine is fine. That is the exact failure
+        /// <c>D3D11ShaderKey</c>'s header names in its second paragraph.
+        /// </para>
+        /// </summary>
+        internal const string RegisterNumbering = "perFile";
+
+        /// <summary>
         /// A stable one-line rendering of the pinned set, for a cache key. Any change to a value above MUST change
         /// this string, because it is what makes a compiled-shader cache entry belong to the options it was
         /// emitted under: a cache hit keyed without it would hand back bytes from the old set forever.
@@ -92,7 +107,8 @@ namespace KhaozEngine.Gpu.Internal
         /// cache key by construction instead of by remembering.
         /// </para>
         /// <para>
-        /// The token SHAPE is exactly the literal this replaced, so no existing cache key moved.
+        /// The token shape is the literal this replaced plus the <c>registers=</c> token 18.0.0 added, which
+        /// moved every key on purpose: the emission under the same options changed with it.
         /// <c>D3D11ShaderPathTests</c> asserts the whole string against that literal, which is what keeps the
         /// derivation honest about it.
         /// </para>
@@ -102,7 +118,8 @@ namespace KhaozEngine.Gpu.Internal
             + ";fixClipSpaceZ=" + Bit(FixClipSpaceZ)
             + ";invertVertexOutputY=" + Bit(InvertVertexOutputY)
             + ";normalizeResourceNames=" + Bit(NormalizeResourceNames)
-            + ";specializations=" + SpecializationConstantCount.ToString(CultureInfo.InvariantCulture);
+            + ";specializations=" + SpecializationConstantCount.ToString(CultureInfo.InvariantCulture)
+            + ";registers=" + RegisterNumbering;
 
         // 1 / 0 rather than true / false: nothing but a hash reads this token, and the short form is what the
         // shipped keys were already built with.

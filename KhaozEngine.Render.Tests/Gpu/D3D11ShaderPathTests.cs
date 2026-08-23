@@ -387,14 +387,17 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(HlslCrossCompilePin.InvertVertexOutputY);
             Assert.False(HlslCrossCompilePin.NormalizeResourceNames);
             Assert.Equal(0, HlslCrossCompilePin.SpecializationConstantCount);
+            Assert.Equal("perFile", HlslCrossCompilePin.RegisterNumbering);
 
             Assert.Equal(
-                "spirv-cross/hlsl;fixClipSpaceZ=0;invertVertexOutputY=0;normalizeResourceNames=0;specializations=0",
+                "spirv-cross/hlsl;fixClipSpaceZ=0;invertVertexOutputY=0;normalizeResourceNames=0"
+                + ";specializations=0;registers=perFile",
                 HlslCrossCompilePin.Identity);
 
             Assert.Contains("fixClipSpaceZ=0", HlslCrossCompilePin.Identity, StringComparison.Ordinal);
             Assert.Contains("invertVertexOutputY=0", HlslCrossCompilePin.Identity, StringComparison.Ordinal);
             Assert.Contains("normalizeResourceNames=0", HlslCrossCompilePin.Identity, StringComparison.Ordinal);
+            Assert.Contains("registers=perFile", HlslCrossCompilePin.Identity, StringComparison.Ordinal);
         }
 
         /// <summary>

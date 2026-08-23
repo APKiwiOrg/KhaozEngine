@@ -44,6 +44,27 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// THE REFUSAL JUSTIFIES ITSELF WITH THE PORTABLE RULE, NEVER WITH ONE BACKEND'S MECHANISM. The message
+        /// used to explain the rule by describing the deleted Veldrid Direct3D11 leg's immediate-context mode,
+        /// which was the incumbent's mechanism and is no backend's now. A developer who reads a backend name in
+        /// a portable refusal reasonably concludes the rule is that backend's, which is exactly how a seam rule
+        /// decays into "the one machine I have tolerates it" (#690 retires that framing with the leg it named).
+        /// What the message owes the reader is the rule and the FIX, both asserted here.
+        /// </summary>
+        [Fact]
+        public void The_refusal_names_the_portable_rule_and_the_fix_and_no_single_backend()
+        {
+            string message = GpuNestedRecordingException.BuildMessage("the window's frame list", "the ocean prime");
+
+            Assert.Contains("ONE OPEN RECORDING PER DEVICE", message);
+            Assert.Contains("onPrepare", message);
+            Assert.Contains("Scene3D.PrepareFrame", message);
+
+            foreach (string backend in new[] { "Direct3D11", "Direct3D 11", "immediate-context", "Metal", "Vulkan" })
+                Assert.DoesNotContain(backend, message, StringComparison.Ordinal);
+        }
+
+        /// <summary>
         /// The pattern the engine's own renderers use everywhere: own list, sequentially, outside anyone else's
         /// recording. It must stay free, or the guard would have broken the ocean prime, the preview and the
         /// retire barrier while fixing the nesting.

@@ -34,12 +34,18 @@ namespace KhaozEngine.Gpu
         public string Attempted { get; }
 
         /// <summary>The message text, built here so a test can assert the wording without catching anything.
-        /// </summary>
+        /// <para>
+        /// It explains itself with the PORTABLE RULE and never with one backend's mechanism, which is a
+        /// deliberate change from the wording that shipped through 17.x. That named the incumbent's
+        /// immediate-context mode as the reason, and a reader who meets a backend name in a portable refusal
+        /// reasonably concludes the rule belongs to that backend and stops applying it once that backend is
+        /// gone. The rule outlived the leg (#690), so the message says the rule, the damage and the fix.
+        /// </para></summary>
         public static string BuildMessage(string owner, string attempted) =>
             $"{attempted} tried to open a GPU recording while {owner} is already recording on this device. "
-            + "The portable contract on IGpuCommandList.Begin is ONE OPEN RECORDING PER DEVICE. With Direct3D11 "
-            + "in immediate-context mode a command list IS the device's immediate context and opening a second "
-            + "one resets it, so every binding the first recording believes is live goes away and the device "
+            + "The portable contract on IGpuCommandList.Begin is ONE OPEN RECORDING PER DEVICE. Backends "
+            + "disagree about what a second concurrent recording means, and on the ones that do not tolerate "
+            + "it every binding the first recording believes is live goes away and the device "
             + "faults several draws later, nowhere near this call. Do the work in the frame's pre-record phase "
             + "instead: AppWindow.Run takes an onPrepare callback that runs before the frame's list is opened, "
             + "and Scene3D.PrepareFrame is where a 3D producer's own GPU work belongs. Work that is not "

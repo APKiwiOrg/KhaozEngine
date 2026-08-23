@@ -137,12 +137,14 @@ namespace KhaozEngine.Gpu
         /// <summary>Create a resource set.</summary>
         IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d);
         /// <summary>Cross-compile GLSL 450 SPIR-V vertex + fragment sources (entry point <c>main</c>) into a
-        /// backend shader set. Wraps <c>Veldrid.SPIRV.CreateFromSpirv</c>.</summary>
+        /// backend shader set. Every backend compiles through the shared <c>SpirvFrontEnd</c>, and through
+        /// <c>SpirvCrossCompile</c> where its API wants HLSL or MSL (until 18.0.0 the incumbent wrapped
+        /// <c>Veldrid.SPIRV.CreateFromSpirv</c> instead).</summary>
         IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl);
         /// <summary>Cross-compile a GLSL 450 SPIR-V COMPUTE source (entry point <c>main</c>) into a backend compute
-        /// shader. Wraps the single-stage <c>Veldrid.SPIRV.CreateFromSpirv</c>. The workgroup size is read back off
-        /// the compiled module and surfaced on <see cref="IGpuComputeShader.ThreadGroupSizeX"/>, which is also what
-        /// the compute pipeline is built with, so there is no second copy to keep in sync.
+        /// shader, by the same front end and cross-compile path as the graphics pair. The workgroup size is read
+        /// back off the compiled module and surfaced on <see cref="IGpuComputeShader.ThreadGroupSizeX"/>, which is
+        /// also what the compute pipeline is built with, so there is no second copy to keep in sync.
         /// <para>DECLARE <c>layout(local_size_x = N) in;</c> in the source. Omitting it is not an error: GLSL's
         /// default workgroup size is 1x1x1 and that is what gets compiled in, so a dispatch runs ONE invocation per
         /// group and the shader is silently a few hundred times slower than intended rather than broken. Nothing
@@ -329,41 +331,43 @@ namespace KhaozEngine.Gpu
         //
         //   1. Compute writes a storage texture, then a GRAPHICS pass samples it: record BOTH in the SAME command
         //      list, and create the texture with Storage | Sampled (see GpuTextureUsage.Storage). Every backend
-        //      then handles the handoff. Veldrid's Vulkan backend queues a layout restore at dispatch time and
-        //      drains it before the next draw (per command list, and armed by the Sampled flag). The native
-        //      Vulkan backend tracks image layouts list-locally instead and transitions at the DRAW, from what
-        //      the bound sets name, so the restore is not something it can skip. Both Metal backends end the
-        //      compute encoder when the render encoder begins, and both Direct3D 11 backends unbind the UAV as the
-        //      SRV is bound.
-        //      Split across two command lists, the Veldrid Vulkan restore is silently skipped, so that split is
-        //      NOT safe on this seam.
+        //      then handles the handoff. The native Vulkan backend tracks image layouts list-locally and
+        //      transitions at the DRAW, from what the bound sets name, so the restore is not something it can
+        //      skip (the Veldrid Vulkan backend, deleted in 18.0.0, queued a layout restore at dispatch time
+        //      instead and drained it before the next draw, per command list and armed by the Sampled flag). The
+        //      Metal backend ends the compute encoder when the render encoder begins, and the Direct3D 11 backend
+        //      unbinds the UAV as the SRV is bound.
+        //      Split across two command lists, the Veldrid Vulkan restore was silently skipped, and that split
+        //      stays NOT safe on this seam.
         //
         //   2. A dispatch that READS what an earlier dispatch WROTE (the classic ping-pong: an FFT stage, a
         //      multi-pass reduction) must be separated by End + IGpuDevice.Submit + IGpuDevice.WaitForIdle.
-        //      Chaining dependent dispatches inside one command list is NOT safe on this seam: on Veldrid's
-        //      Vulkan backend no memory barrier is emitted between them at all (storage buffers are not tracked,
-        //      and a storage image stays in the same layout so the transition is a no-op), and dispatches inside
-        //      a command buffer may overlap. A submit boundary plus a device drain is the only ordering this seam
-        //      can guarantee.
+        //      Chaining dependent dispatches inside one command list is NOT safe on this seam: on the Veldrid
+        //      Vulkan backend (deleted in 18.0.0) no memory barrier was emitted between them at all (storage
+        //      buffers were not tracked, and a storage image stayed in the same layout so the transition was a
+        //      no-op), and dispatches inside a command buffer may overlap. A submit boundary plus a device drain
+        //      is the only ordering this seam guarantees.
         //
         //      THE NATIVE VULKAN BACKEND IS MORE PERMISSIVE, AND THAT CHANGES NOTHING ABOVE. It emits a global
         //      memory barrier before a dispatch that binds a resource an earlier dispatch in the same recording
         //      wrote, so the chain is ordered there without the drain. That is a BACKEND PROPERTY, exactly like
         //      the nested-Begin permissiveness on IGpuCommandList.Begin, and dropping the End plus Submit plus
-        //      WaitForIdle because it works on that backend breaks on the Veldrid backend the same machine falls
-        //      back to. It is evidence for an automatic-hazard seam capability
+        //      WaitForIdle because it works on that backend is writing to the backend rather than to the seam
+        //      (until 18.0.0 it broke outright on the Veldrid backend the same machine fell back to). It is
+        //      evidence for an automatic-hazard seam capability
         //      (https://github.com/APKiwiOrg/KhaozEngine/issues/461), which is where a consumer-visible version
         //      of this would have to live.
         //
         //      SO IS THE NATIVE METAL BACKEND, BY A THIRD MECHANISM, AND IT IS THE ONE THAT COMPLETES A QUORUM.
         //      Its compute encoder is created with the default SERIAL dispatch type, where consecutive dispatches
         //      in one encoder are ordered and their hazards tracked by the driver, so a dependent chain is ordered
-        //      there without a barrier and without the drain. That is now three of three engine-owned backends
+        //      there without a barrier and without the drain. That is three of three engine-owned backends
         //      honouring rule 2 natively by three different mechanisms (hazard tracking on Direct3D 11, a real
-        //      barrier on Vulkan, serial ordering on Metal), and only the two Veldrid legs still need the drain.
-        //      It is still a backend property and it still changes nothing above: the drain is what this SEAM
-        //      guarantees, the quorum is evidence for #461 rather than a contract change, and consumer code that
-        //      drops it because the machine it was written on tolerated it breaks on the fallback.
+        //      barrier on Vulkan, serial ordering on Metal), and the two Veldrid legs that still needed the drain
+        //      went away in 18.0.0. It is still a backend property and it still changes nothing above: the drain
+        //      is what this SEAM guarantees, the quorum is evidence for #461 rather than a contract change, and
+        //      consumer code that drops it because the machine it was written on tolerated it is relying on a
+        //      property the seam never promised.
         //
         // Rule 2 costs a GPU stall per dependent stage, which is real: it is the current ceiling on any multi-pass
         // compute chain built against this seam.

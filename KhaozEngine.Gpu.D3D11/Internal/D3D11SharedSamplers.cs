@@ -3,11 +3,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <summary>
     /// THE TWO DESCRIPTIONS THE DEVICE'S SHARED SAMPLER PAIR IS BUILT FROM, and the one place their address mode
     /// is decided. Both are WRAP on all three axes, because the seam's shared pair is contractually wrap and the
-    /// incumbent's pair is wrap.
+    /// incumbent's pair was wrap.
     /// <para>
-    /// <b>THESE MIRROR THE INCUMBENT'S BUILT-INS, NOT THEIR ENGINE NAMESAKES.</b> The incumbent wraps Veldrid's
-    /// own <c>GraphicsDevice.PointSampler</c> and <c>LinearSampler</c>, which come from
-    /// <c>Veldrid.SamplerDescription.Point</c> and <c>.Linear</c>, and both of those are documented and built as
+    /// <b>THESE MIRROR THE INCUMBENT'S BUILT-INS, NOT THEIR ENGINE NAMESAKES.</b> The incumbent wrapped
+    /// Veldrid's own <c>GraphicsDevice.PointSampler</c> and <c>LinearSampler</c>, which came from
+    /// <c>Veldrid.SamplerDescription.Point</c> and <c>.Linear</c>, and both of those were documented and built as
     /// <c>SamplerAddressMode.Wrap</c> on U, V and W. The engine's own
     /// <see cref="GpuSamplerDescription.Point"/> and <see cref="GpuSamplerDescription.Linear"/> statics carry the
     /// SAME NAMES and the OPPOSITE address mode: their ctor defaults every axis to
@@ -27,9 +27,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// Everything else is the ctor default and deliberately so: no anisotropy and no LOD bias, matching the
     /// incumbent's built-ins byte for byte. The four values the seam does not expose at all (comparison function,
     /// minimum LOD, maximum LOD, border colour) are hardcoded one level down in <see cref="D3D11Sampler"/>, per
-    /// decision G1. <c>NativeVsVeldridCapabilityParityTests</c> compares this pair against
-    /// <c>Veldrid.SamplerDescription.Point</c> and <c>.Linear</c> field by field, on every OS, so a drift is a
-    /// device-free failure rather than a golden one.
+    /// decision G1. <c>NativeVsVeldridCapabilityParityTests</c> compared this pair against
+    /// <c>Veldrid.SamplerDescription.Point</c> and <c>.Linear</c> field by field, on every OS, so a drift was a
+    /// device-free failure rather than a golden one. That test went away with the incumbent in 18.0.0, so a drift
+    /// is a golden failure again, which is the failure mode the paragraph above describes.
     /// </para>
     /// </summary>
     internal static class D3D11SharedSamplers

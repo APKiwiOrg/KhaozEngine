@@ -4,9 +4,9 @@ The engine's own native Direct3D 11 backend for the [KhaozEngine.Gpu](../KhaozEn
 `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.0.0, so a game on either umbrella already has
 it, and a consumer that references `KhaozEngine.Gpu` outside them adds this package explicitly.
 
-**"The incumbent" below always means the Veldrid Direct3D 11 backend, deleted in 18.0.0.** Many passages keep
-it in the present tense because they document the behaviour this backend was built to reproduce or to diverge
-from, and that reasoning is what makes the code readable. Nothing selects it any more.
+**"The incumbent" below always means the Veldrid Direct3D 11 backend, deleted in 18.0.0.** It is cited in the
+past tense throughout, because the behaviour this backend was built to reproduce or to diverge from is what
+makes the code readable. Nothing selects it any more.
 
 > **Status: DEVICE CREATION IS REAL.** `CreateForWindow` and `CreateHeadless` build a device on Windows: the
 > adapter choice, the `ID3D11Device` and its versioned context, one device state and one emitter context, the
@@ -83,7 +83,7 @@ reason and reported as unsupported. WARP counts as supported deliberately, since
 committed Direct3D 11 goldens are baked on and the one CI pins.
 
 An incapable machine and a missing registration are kept strictly apart: the first falls back and reports
-`FallbackAfterFailure`, the second throws. Collapsing them would let a soak session silently measure the
+`FallbackAfterFailure`, the second throws. Collapsing them would have let a soak session silently measure the
 incumbent backend and file the numbers under this one.
 
 ## What creating a device does
@@ -487,8 +487,8 @@ scope. A device-free test asserts that neither seam grew a barrier member, so th
 
 **Structured buffers keep the RAW byte-address treatment**, created by the resource path and consumed unchanged
 here. SPIRV-Cross emits a GLSL storage block as a `ByteAddressBuffer` or an `RWByteAddressBuffer`, never a
-`StructuredBuffer<T>`, so `StructureByteStride` stays advisory and both views are raw. Keeping this identical to
-the incumbent is why the ocean's existing kernels work.
+`StructuredBuffer<T>`, so `StructureByteStride` stays advisory and both views are raw. That treatment was kept
+identical to the incumbent, which is why the ocean's existing kernels work.
 
 **A resolve is one `ResolveSubresource` at subresource 0 on both sides**, which is the whole of what the seam can
 express: `ResolveTexture` takes two bare textures with no mip, no layer and no region. `GenerateMipmaps` goes
@@ -710,7 +710,7 @@ nothing thrown and nothing logged.
 
 **BACKEND-DIVERGENT CREATION FAILURE: a uniform buffer combined with any other bindable usage throws here.**
 `UniformBuffer | StructuredBufferReadOnly` (or either read-write structured bit, or the vertex, index or indirect
-bits) is legal on the seam and is ACCEPTED by `GpuBackendKind.Direct3D11`. It is refused at creation on this
+bits) is legal on the seam and was ACCEPTED by `GpuBackendKind.Direct3D11`. It is refused at creation on this
 backend, because no bind other than the constant-buffer bind carries the ring's per-frame base: a structured
 buffer's full-range RAW view, a vertex bind, an index bind and an indirect argument read all address byte zero, so
 they would read the first segment while the uniform bind read the current one. Nothing about that is an error at
@@ -906,7 +906,7 @@ lands AFTER the present, because `ResizeBuffers` discards the backbuffer content
 away the frame that had just been rendered.
 
 **The present's `HRESULT` is returned rather than discarded**, which is the seam the device-loss latch needs to
-check at the fault site: the incumbent discards it, and a discarded device removal surfaces frames later as an
+check at the fault site: the incumbent discarded it, and a discarded device removal surfaces frames later as an
 unrelated crash. A failed present also skips the queued resize, so the caller receives that `HRESULT` instead of a
 throw out of `ResizeBuffers` against a device that has just gone. Naming the removal, calling
 `GetDeviceRemovedReason` and surfacing it in the session header are the latch's, below.
@@ -915,12 +915,12 @@ The four native calls sit behind `ID3D11SwapchainSurface`, the same shape the ri
 have, so the queue, the coalescing, the boundary, the apply order, the sync interval and the framebuffer identity
 are all device-free `[Fact]`s. The resize is three members rather than one on purpose: `ResizeBuffers` fails while
 any outstanding reference to a backbuffer survives, so releasing the views first is a correctness rule the
-incumbent depends on silently, and splitting it puts that order where a test can assert it.
+incumbent depended on silently, and splitting it puts that order where a test can assert it.
 
-The release does one thing the incumbent does not: it unbinds the output-merger before it disposes the views.
+The release does one thing the incumbent did not: it unbinds the output-merger before it disposes the views.
 `ResizeBuffers` fails on INDIRECT references too, and the immediate context holds one, since `OMSetRenderTargets`
-takes its own reference on the render target view and keeps it after the wrapper is disposed. The incumbent is
-immune by accident, because it resets the context state at the end of every submit, while R3 puts this backend's
+takes its own reference on the render target view and keeps it after the wrapper is disposed. The incumbent was
+immune by accident, because it reset the context state at the end of every submit, while R3 puts this backend's
 one `ClearState` at the head of a replay instead, so the last frame's targets are still bound when a resize
 applies at the present boundary. That half is not device-free testable, because a fake surface has no context to
 inspect, and its evidence is a real window resize on the WARP leg.
@@ -930,24 +930,24 @@ inspect, and its evidence is a real window resize on the WARP leg.
 Decisions G1 to G4. Everything in this section is engine logic over four interop calls, so nearly all of it is
 device-free `[Fact]`s that run on macOS and Linux.
 
-**Capability parity with the incumbent, except one member (G1).** `GpuCapabilities` reads the same here as on
+**Capability parity with the incumbent, except one member (G1).** `GpuCapabilities` reads here what it read on
 `GpuBackendKind.Direct3D11` field for field, with `SupportsCompletionFences` true rather than false (decision
 C5). Five of the nine members are CONSTANTS of the feature levels this backend requires rather than device
 answers: `ClipSpaceYInverted` false, `DepthRangeZeroToOne` true, `SamplerAnisotropy` true, `SamplerLodBias` true
 and `SupportsCompute` true. The four a device answers are `DeviceName` (the DXGI adapter description, cut at the
-first NUL because it arrives out of a fixed 128-wide-char buffer, and otherwise raw: the incumbent does not trim
-the vendor's padding either, and the two strings are compared character for character), `MaxMsaaSampleCount` (the
+first NUL because it arrives out of a fixed 128-wide-char buffer, and otherwise raw: the incumbent did not trim
+the vendor's padding either, and the two strings were compared character for character), `MaxMsaaSampleCount` (the
 MIN over `R8G8B8A8_UNORM`, `R32_FLOAT` and `R32G8X24_TYPELESS` via `CheckMultisampleQualityLevels`, walked
 DOWNWARD from 32 because the supported counts are not required to be contiguous, and any query failure yields 1),
 `SupportsShadowMaps` (`CheckFormatSupport(R32_FLOAT)` for `RenderTarget | ShaderSample`), and
 `SupportsCompletionFences` (from the fence subsystem, so the capability and the fence path cannot disagree).
-The depth format is the TYPELESS sibling on purpose: the incumbent's depth-flagged `D32_Float_S8_UInt` becomes
-`R32G8X24_Typeless` in `D3D11Formats.ToDxgiFormat` before it queries, so both backends ask the driver about the
-same DXGI format and the parity assertion is satisfiable by construction.
+The depth format is the TYPELESS sibling on purpose: the incumbent's depth-flagged `D32_Float_S8_UInt` became
+`R32G8X24_Typeless` in its own `D3D11Formats.ToDxgiFormat` before it queried, so both backends asked the driver
+about the same DXGI format and the parity assertion was satisfiable by construction.
 
-`MaxMsaaSampleCount` is the member the parity assertion exists for. A different answer changes what
-`AntiAliasing.ResolveFor` picks, which changes the field look and the golden output, and it would neither throw
-nor log.
+`MaxMsaaSampleCount` was the member the parity assertion existed for, and that assertion went away with the
+incumbent in 18.0.0. A different answer changes what `AntiAliasing.ResolveFor` picks, which changes the field
+look and the golden output, and it would neither throw nor log.
 
 **An out-of-range MSAA request THROWS at texture creation (C4)** rather than rounding down. The engine already
 has the one place a request is meant to be clamped, so a count arriving at `CreateTexture` above
@@ -956,7 +956,7 @@ a framebuffer that is quietly not multisampled.
 
 **The sampler's four hardcodes are reproduced and its two degradations are dropped (G1).** No comparison
 function, minimum LOD 0, maximum LOD `uint.MaxValue`, transparent-black border colour: those four are hardcoded
-because the incumbent hardcodes them and the committed goldens were baked through them, and the seam exposes none
+because the incumbent hardcoded them and the committed goldens were baked through them, and the seam exposes none
 of them so a caller cannot ask for anything else. The incumbent's anisotropic-to-trilinear fallback and its
 forcing of `MipLodBias` to 0 are NOT reproduced, because both read capabilities that are constants here, so both
 branches are unreachable and carrying them would mean shipping a fallback nothing can enter.

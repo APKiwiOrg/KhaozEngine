@@ -45,8 +45,8 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// THE THREE FORMATS ARE THE ENGINE'S OWN MRT AND THE DEPTH FLAG IS SET ON EXACTLY ONE OF THEM, which is
-        /// what <c>VeldridMap.MaxMsaaSampleCount</c> passes: colour, linear depth as a COLOUR target, and the
-        /// combined depth-stencil target as a depth one.
+        /// what <c>VeldridMap.MaxMsaaSampleCount</c> (deleted in 18.0.0) passed: colour, linear depth as a COLOUR
+        /// target, and the combined depth-stencil target as a depth one.
         /// </summary>
         [Fact]
         public void TheThreeTargets_AreTheEnginesOwnAndOnlyTheLastIsQueriedAsDepth()

@@ -13,8 +13,9 @@ namespace KhaozEngine.Gpu.Internal
     /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>), and it is what phase 3's front-end split
     /// was paying for. <see cref="VertexFragmentToMsl"/> and <see cref="ComputeToMsl"/> sit beside the HLSL pair
     /// under their own <see cref="MslCrossCompilePin"/> and touch nothing else: the front end is untouched, so the
-    /// SPIR-V byte-equality drift test and <c>VulkanSpirvIncumbentParityTests</c> both keep meaning what they
-    /// meant. #462 is NOT taken here and section 12.2 is why: <c>libveldrid-spirv</c> exports three non-incidental
+    /// SPIR-V byte-equality drift test keeps meaning what it meant, as did <c>VulkanSpirvIncumbentParityTests</c>
+    /// until it went with the incumbent in 18.0.0. #462 is NOT taken here and section 12.2 is why:
+    /// <c>libveldrid-spirv</c> exports three non-incidental
     /// C entry points, none of which carries a resource-binding table, so an engine-owned shim over that library
     /// would get exactly what the managed wrapper already gets.
     /// </para>
@@ -227,10 +228,11 @@ namespace KhaozEngine.Gpu.Internal
             return new CrossCompiledCompute(result.ComputeShader, Reflect(result.Reflection, tag));
         }
 
-        // The Veldrid-to-engine boundary, and the only place it happens. VeldridMap owns the forward direction
-        // (engine to Veldrid) because that is what device creation needs. Reflection is the one place the engine
-        // reads a Veldrid description back, so the reverse maps live here with their single consumer rather than
-        // as a second unused half of every VeldridMap entry.
+        // The Veldrid-to-engine boundary, and the only place it happens. VeldridMap owned the forward direction
+        // (engine to Veldrid) until 18.0.0 deleted it with the incumbent device, because that is what device
+        // creation needed. This reverse half stays: SPIRV-Cross reflection still hands back Veldrid description
+        // types, so the maps live here with their single consumer rather than as a second unused half of a
+        // forward map that no longer exists.
         static ShaderReflection Reflect(SpirvReflection reflection, string tag)
         {
             var vertexElements = new GpuVertexElement[reflection.VertexElements.Length];

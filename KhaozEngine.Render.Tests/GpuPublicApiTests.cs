@@ -8,9 +8,11 @@ namespace KhaozEngine.Tests;
 
 /// <summary>
 /// Reflection guard on the GPU seam's no-leak property: nothing an outside assembly can see on the public
-/// surface of <c>KhaozEngine.Gpu</c> may be a Veldrid type. The seam contains Veldrid inside
-/// <c>Internal/VeldridGpuDevice</c> and exposes only engine value types / interfaces, so a Veldrid type
-/// surfacing in a public or protected signature is an accidental seam breach the compiler would not catch.
+/// surface of <c>KhaozEngine.Gpu</c> may be a Veldrid type. The Veldrid edge that survives 18.0.0's deletion of
+/// the incumbent backend is the SHADER TOOLCHAIN and nothing else, <c>Veldrid.SPIRV</c> plus the base
+/// <c>Veldrid</c> assembly its reflection hands description types back from, and the seam keeps that inside
+/// method bodies while exposing only engine value types / interfaces. A Veldrid type surfacing in a public or
+/// protected signature is an accidental seam breach the compiler would not catch.
 /// </summary>
 public class GpuPublicApiTests
 {
@@ -22,8 +24,8 @@ public class GpuPublicApiTests
 
         bool clean = leaks.Count == 0;
         Assert.True(clean,
-            "KhaozEngine.Gpu leaks Veldrid types on its externally visible surface (the GPU seam must keep Veldrid " +
-            "contained in Internal/VeldridGpuDevice):\n" + string.Join("\n", leaks));
+            "KhaozEngine.Gpu leaks Veldrid types on its externally visible surface (the GPU seam must keep the " +
+            "Veldrid.SPIRV shader toolchain inside method bodies):\n" + string.Join("\n", leaks));
     }
 
     /// <summary>
@@ -296,8 +298,8 @@ public class GpuPublicApiTests
         var leaks = new List<string>();
 
         // GetExportedTypes returns exactly the types visible outside the assembly, including nested public types.
-        // A genuinely internal type (e.g. VeldridGpuDevice) is absent; a public type in an Internal namespace is
-        // present and therefore still checked.
+        // A genuinely internal type (e.g. SpirvFrontEnd) is absent, and a public type in an Internal namespace
+        // is present and therefore still checked.
         foreach (Type t in assembly.GetExportedTypes())
         {
             string owner = t.FullName ?? t.Name;

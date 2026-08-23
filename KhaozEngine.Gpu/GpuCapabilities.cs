@@ -44,8 +44,10 @@ namespace KhaozEngine.Gpu
         /// R32_Float target and SAMPLE that target in a shader (the manual-PCF depth-compare the shadow map uses).
         /// Every currently-supported backend (Metal / D3D11 / Vulkan) reports true; the flag exists so
         /// <c>ShadowSettings.ResolveFor</c> in KhaozEngine.Render3D can degrade <c>ShadowMode.ShadowMap</c> to
-        /// <c>Blob</c> (never crash) on a hypothetical device that lacks it, mirroring the MSAA clamp. Derived from
-        /// Veldrid's per-format usage support (see <c>VeldridMap.SupportsShadowMaps</c>).</summary>
+        /// <c>Blob</c> (never crash) on a hypothetical device that lacks it, mirroring the MSAA clamp. Each native
+        /// backend answers it from its own per-format read (<c>MetalCapabilityRead</c>, <c>D3D11CapabilityRead</c>,
+        /// <c>VulkanCapabilityRead</c>). Until 18.0.0 it came from Veldrid's per-format usage support
+        /// (<c>VeldridMap.SupportsShadowMaps</c>).</summary>
         public bool SupportsShadowMaps { get; }
 
         /// <summary>True if the device can run compute shaders (Veldrid <c>Features.ComputeShader</c>). Metal,

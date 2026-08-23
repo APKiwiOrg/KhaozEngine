@@ -18,12 +18,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// them here as plain data, which is the whole split.
     /// </para>
     /// <para>
-    /// PARITY WITH THE INCUMBENT IS THE POINT, AND ZERO MEMBERS MAY DIFFER (V-G1), which is a stricter bar than
-    /// the Direct3D 11 backend's and is the correct one here: that backend had a capability defect to correct,
-    /// and this one does not, because <c>KhaozEngine.Gpu.Internal.VeldridMap.SupportsCompletionFences</c> already
-    /// answers true for <c>GraphicsBackend.Vulkan</c>. <c>VeldridMap.ReadCapabilities</c> is the ground truth
-    /// this must match member for member, and <c>NativeVsVeldridVulkanCapabilityParityTests</c> asserts it with
-    /// nothing exempted. A difference the parity test finds is a bug HERE until proven otherwise.
+    /// PARITY WITH THE INCUMBENT WAS THE POINT, AND ZERO MEMBERS WERE PERMITTED TO DIFFER (V-G1), which was a
+    /// stricter bar than the Direct3D 11 backend's and was the correct one here: that backend had a capability
+    /// defect to correct, and this one does not, because
+    /// <c>KhaozEngine.Gpu.Internal.VeldridMap.SupportsCompletionFences</c> (deleted in 18.0.0) already answered
+    /// true for <c>GraphicsBackend.Vulkan</c>. <c>VeldridMap.ReadCapabilities</c> was what the incumbent
+    /// answered and this read was matched against it member for member, with
+    /// <c>NativeVsVeldridVulkanCapabilityParityTests</c> asserting it with nothing exempted. A difference that
+    /// parity test found was a bug HERE until proven otherwise. The bar was met, and both went away with the
+    /// incumbent in 18.0.0.
     /// </para>
     /// <para>
     /// <b><see cref="GpuCapabilities.MaxMsaaSampleCount"/> IS THE ONE MEMBER THIS TYPE DOES NOT DECIDE</b>, and it takes it as a
@@ -77,21 +80,21 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// THE DEVICE NAME AS THE SEAM WANTS IT: exactly what the driver reported, or the empty string when it
         /// reported nothing.
         /// <para>
-        /// THIS IS NOT <see cref="VulkanDeviceFacts.DeviceName"/>, AND THE DIFFERENCE IS A PARITY ONE. That one
+        /// THIS IS NOT <see cref="VulkanDeviceFacts.DeviceName"/>, AND THE DIFFERENCE WAS A PARITY ONE. That one
         /// is the LOGGABLE name and substitutes <c>"unnamed device 0x…"</c> for a driver that reports nothing,
-        /// because a rejection line naming an empty string is a line nobody can act on. The incumbent performs no
-        /// such substitution (Veldrid's Vulkan device reports <c>VkPhysicalDeviceProperties.deviceName</c> read
-        /// as a C string, and <c>VeldridMap.ReadCapabilities</c> turns a null into <c>""</c>), and
-        /// <see cref="GpuCapabilities.DeviceName"/> is compared string for string by the parity test, so carrying
-        /// the substituted name across the seam would be a capability difference on exactly the devices that
-        /// report no name. The seam's own doc already says empty is what "the backend does not report one" looks
-        /// like.
+        /// because a rejection line naming an empty string is a line nobody can act on. The incumbent performed
+        /// no such substitution (Veldrid's Vulkan device reported <c>VkPhysicalDeviceProperties.deviceName</c>
+        /// read as a C string, and <c>VeldridMap.ReadCapabilities</c> turned a null into <c>""</c>), and
+        /// <see cref="GpuCapabilities.DeviceName"/> was compared string for string by the parity test, so
+        /// carrying the substituted name across the seam would have been a capability difference on exactly the
+        /// devices that report no name. The seam's own doc already says empty is what "the backend does not
+        /// report one" looks like.
         /// </para>
         /// <para>
-        /// NO WHITESPACE TRIM, for the reason the Direct3D 11 backend does not trim either: the incumbent does
-        /// not, and trimming on one path alone converts a cosmetic improvement into a parity failure on every
-        /// machine whose vendor pads its name. The NUL cut is defensive and expects to find nothing, since the
-        /// marshaller on both paths already stops at the first terminator.
+        /// NO WHITESPACE TRIM, for the reason the Direct3D 11 backend does not trim either: the incumbent did
+        /// not, and trimming on one path alone would have converted a cosmetic improvement into a parity failure
+        /// on every machine whose vendor pads its name. The NUL cut is defensive and expects to find nothing,
+        /// since the marshaller on both paths already stops at the first terminator.
         /// </para>
         /// </summary>
         internal static string ReportedDeviceName(string? name)

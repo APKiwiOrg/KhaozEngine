@@ -101,6 +101,16 @@ toolchain that turns the engine's one GLSL source into SPIR-V and cross-compiles
   [#689](https://github.com/APKiwiOrg/KhaozEngine/issues/689). Absorbs
   [#540](https://github.com/APKiwiOrg/KhaozEngine/issues/540), which asked for the Veldrid Vulkan leg, its
   extension list and the CI libvulkan symlink step to retire together: all three are deleted here.
+- **The prose follows the delete too.** The XML doc comments that still cited `VeldridMap`, `VeldridGpuDevice`,
+  the `NativeVsVeldrid*` parity tests and the two `*IncumbentParityTests` as if a reader could open them, the
+  three native package READMEs and the root catalog rows that described the incumbent in the present tense, the
+  rule 1 and rule 2 seam comment in `GpuInterfaces.cs` that named Veldrid's Vulkan behaviour as live, and the
+  three native package `<Description>` strings (which still said opt-in, NOT in any umbrella, and for Metal IN
+  PROGRESS) now cite the incumbent in the past tense with every piece of reasoning kept. The present-tense
+  incumbent sentences left in `.cs` comments that name no deleted type are
+  [#717](https://github.com/APKiwiOrg/KhaozEngine/issues/717). Closes
+  [#716](https://github.com/APKiwiOrg/KhaozEngine/issues/716) and
+  [#718](https://github.com/APKiwiOrg/KhaozEngine/issues/718).
 
 **Consumer note (Ruinborne, the only game that names a `GpuBackendKind`).** Its graphics-settings picker carries
 three incumbent rows, and they go: drop the `Metal` / `Vulkan` / `Direct3D11` rows and their label keys, and

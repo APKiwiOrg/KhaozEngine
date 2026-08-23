@@ -5,8 +5,9 @@ namespace KhaozEngine.Gpu.Internal
     /// <summary>
     /// DECISION S3, AND THE ONE PLACE THE CROSS-COMPILE OPTIONS ARE WRITTEN DOWN (section 8.2 of
     /// <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c>). Every HLSL emission in the engine runs under
-    /// exactly these values, so the native Direct3D 11 backend and the incumbent Veldrid one cross-compile the same
-    /// GLSL to the same bytes, and a drift is a failing hash rather than a golden nobody can explain.
+    /// exactly these values, so a drift is a failing hash rather than a golden nobody can explain. Until 18.0.0
+    /// they were also what kept the native Direct3D 11 backend and the incumbent Veldrid one cross-compiling the
+    /// same GLSL to the same bytes.
     ///
     /// <para>
     /// WHAT THE FORK ACTUALLY DOES, which is not what the design assumed. Section 8.2 was written expecting
@@ -28,13 +29,13 @@ namespace KhaozEngine.Gpu.Internal
     /// }
     /// </code>
     /// <para>
-    /// The options are forwarded verbatim. The overload the engine's incumbent path actually calls
-    /// (<c>VeldridGpuDevice.CreateShadersFromSpirv</c>, the three-argument one with no options) constructs
-    /// <c>new CrossCompileOptions()</c> and forwards that, so the incumbent's whole shipped shader set was
-    /// cross-compiled under the library DEFAULTS. <c>ResourceBindingModel</c> is not a member of
+    /// The options are forwarded verbatim. The overload the engine's incumbent path called
+    /// (<c>VeldridGpuDevice.CreateShadersFromSpirv</c>, the three-argument one with no options, deleted in
+    /// 18.0.0) constructed <c>new CrossCompileOptions()</c> and forwarded that, so the incumbent's whole shipped
+    /// shader set was cross-compiled under the library DEFAULTS. <c>ResourceBindingModel</c> is not a member of
     /// <c>CrossCompileOptions</c> at all: it lives on <c>GraphicsDeviceOptions</c> and
-    /// <c>GraphicsPipelineDescription</c>, and in the vendored fork the only backend that reads it is Metal
-    /// (<c>src/Veldrid/MTL/MTLPipeline.cs</c>, <c>src/Veldrid/MTL/MTLCommandList.cs</c>). It reaches neither the
+    /// <c>GraphicsPipelineDescription</c>, and in the vendored fork the only backend that read it was Metal
+    /// (<c>src/Veldrid/MTL/MTLPipeline.cs</c>, <c>src/Veldrid/MTL/MTLCommandList.cs</c>). It reached neither the
     /// Direct3D 11 backend nor SPIRV-Cross, so it cannot have moved a byte of emitted HLSL.
     /// </para>
     /// <para>

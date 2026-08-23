@@ -91,7 +91,8 @@ namespace KhaozEngine.Tests.Gpu
         public void Present() => _inner.Present();
 
         // Non-owning: the wrapped device belongs to the GpuDeviceContext the test created it from, same contract
-        // as VeldridGpuDevice's own non-owning wrapper (see GpuDeviceContext.GpuDevice).
+        // as the one VeldridGpuDevice's own non-owning wrapper carried until 18.0.0 (see
+        // GpuDeviceContext.GpuDevice).
         public void Dispose() { }
     }
 }

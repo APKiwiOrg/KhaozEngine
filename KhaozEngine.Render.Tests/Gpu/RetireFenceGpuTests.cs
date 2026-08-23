@@ -149,9 +149,10 @@ namespace KhaozEngine.Tests.Gpu
             return (drains, fenced, ms, peak, peakBatches, valve);
         }
 
-        // Fences are a Vulkan and Metal capability (VeldridMap), so this SKIPS rather than fails on a backend
-        // without them: asserting a capability the device cannot have is a red test for a feature that was never
-        // claimed (#423). The two surfaces that publish it must still agree, which is asserted below.
+        // Fences were a Vulkan and Metal capability under the incumbent's VeldridMap (deleted in 18.0.0), and
+        // each native backend answers for itself now, so this SKIPS rather than fails on a backend without them:
+        // asserting a capability the device cannot have is a red test for a feature that was never claimed
+        // (#423). The two surfaces that publish it must still agree, which is asserted below.
         [GpuFact(RequiresCompletionFences = true)]
         public void Mesh_churn_survives_hundreds_of_frames_and_the_fence_path_drains_only_at_the_valve()
         {

@@ -66,13 +66,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <summary>
         /// PARITY, NOT AN UPGRADE, and that is worth stating where a reader will look for it (M-F4).
-        /// <c>KhaozEngine.Gpu.Internal.VeldridMap.SupportsCompletionFences</c> already answers true for
-        /// <c>GraphicsBackend.Metal</c>, with a doc comment explaining that Metal registers the fence against the
-        /// command buffer and sets it from the completion handler. Phase 2's C5 was an UPGRADE because Veldrid's
-        /// Direct3D 11 fence is a submit receipt rather than a completion signal, so nobody should look for that
-        /// win twice here. The consequence for the gates is that <c>RetireFenceGpuTests</c> and
-        /// <c>Scene3DUnloadDrainTests</c> already RUN on this leg, so the criterion is NO NEW SKIPS rather than
-        /// two fewer.
+        /// <c>KhaozEngine.Gpu.Internal.VeldridMap.SupportsCompletionFences</c> (deleted in 18.0.0) already
+        /// answered true for <c>GraphicsBackend.Metal</c>, with a doc comment explaining that Metal registered
+        /// the fence against the command buffer and set it from the completion handler. Phase 2's C5 was an
+        /// UPGRADE because Veldrid's Direct3D 11 fence was a submit receipt rather than a completion signal, so
+        /// nobody should look for that win twice here. The consequence for the gates is that
+        /// <c>RetireFenceGpuTests</c> and <c>Scene3DUnloadDrainTests</c> already RUN on this leg, so the
+        /// criterion is NO NEW SKIPS rather than two fewer.
         /// <para>
         /// It is a constant rather than a question because a shared event is unconditionally a real completion
         /// signal. Row 16 (https://github.com/APKiwiOrg/KhaozEngine/issues/582) reads it from here when it

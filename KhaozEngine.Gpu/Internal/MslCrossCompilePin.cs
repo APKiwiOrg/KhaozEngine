@@ -5,17 +5,19 @@ namespace KhaozEngine.Gpu.Internal
     /// <summary>
     /// DECISION M-S3, AND THE ONE PLACE THE MSL CROSS-COMPILE OPTIONS ARE WRITTEN DOWN (section 12.3 of
     /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>). Every MSL emission the native Metal backend
-    /// consumes runs under exactly these values, so it and the incumbent Veldrid Metal path cross-compile the same
-    /// GLSL to the same bytes, and a drift is a failing hash rather than a golden nobody can explain.
+    /// consumes runs under exactly these values, so a drift is a failing hash rather than a golden nobody can
+    /// explain. Until 18.0.0 they were also what kept this path and the incumbent Veldrid Metal one
+    /// cross-compiling the same GLSL to the same bytes.
     ///
     /// <para>
     /// THE VALUES ARE THE LIBRARY DEFAULTS, STATED RATHER THAN INHERITED, and the reason is the same one
-    /// <see cref="HlslCrossCompilePin"/> records from the other target. <c>VeldridGpuDevice</c> reaches the
-    /// incumbent's shader path through the three-argument <c>CreateFromSpirv</c>, which constructs
-    /// <c>new CrossCompileOptions()</c> and forwards it verbatim, so the incumbent's whole shipped Metal shader set
-    /// was cross-compiled under the defaults. If this pin stated anything else, the parity measurement would fail
-    /// and THIS is what would have to move. That parity is the entire licence for reusing the committed
-    /// <c>metal</c> goldens without a rebake, so the pin is load-bearing rather than tidy.
+    /// <see cref="HlslCrossCompilePin"/> records from the other target. <c>VeldridGpuDevice</c>, deleted in
+    /// 18.0.0, reached the incumbent's shader path through the three-argument <c>CreateFromSpirv</c>, which
+    /// constructs <c>new CrossCompileOptions()</c> and forwards it verbatim, so the incumbent's whole shipped
+    /// Metal shader set was cross-compiled under the defaults. If this pin had stated anything else, the parity
+    /// measurement would have failed and THIS is what would have had to move. That parity was the entire licence
+    /// for reusing the committed <c>metal</c> goldens without a rebake, so the pin is load-bearing rather than
+    /// tidy.
     /// </para>
     /// <para>
     /// WHY EACH VALUE IS WHAT IT IS. <see cref="FixClipSpaceZ"/> and <see cref="InvertVertexOutputY"/> append a
@@ -35,12 +37,12 @@ namespace KhaozEngine.Gpu.Internal
     /// this file promises that convention. What actually freezes the emission is the exact <c>Veldrid.SPIRV</c>
     /// version pinned in <c>Directory.Packages.props</c>, whose bundled <c>libveldrid-spirv</c> carries the
     /// SPIRV-Cross the engine emits through. So the drift this backend is exposed to arrives on a deliberate
-    /// package bump rather than on a runner image or an OS update, and <c>MetalShaderIndexTableTests</c> plus
-    /// <c>MetalMslIncumbentParityTests</c> are what turn that bump into a red device-free leg instead of a wrong
-    /// pixel. <c>MslCompilePin</c>, in the Metal backend, carries the same sentence about the other half of the
-    /// toolchain. Both shader-cache keys hash that package version too, read off the loaded assembly by
-    /// <see cref="SpirvToolchainVersion"/>, so a bump partitions the caches rather than leaving them answering
-    /// with the previous cross-compiler's output
+    /// package bump rather than on a runner image or an OS update, and <c>MetalShaderIndexTableTests</c> is what
+    /// turns that bump into a red device-free leg instead of a wrong pixel. <c>MetalMslIncumbentParityTests</c>
+    /// stood beside it until it went away with the incumbent. <c>MslCompilePin</c>, in the Metal backend, carries
+    /// the same sentence about the other half of the toolchain. Both shader-cache keys hash that package version
+    /// too, read off the loaded assembly by <see cref="SpirvToolchainVersion"/>, so a bump partitions the caches
+    /// rather than leaving them answering with the previous cross-compiler's output
     /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/610">#610</see>).
     /// </para>
     /// <para>

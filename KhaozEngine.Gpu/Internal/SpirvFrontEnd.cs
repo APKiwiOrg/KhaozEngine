@@ -74,9 +74,10 @@ namespace KhaozEngine.Gpu.Internal
                 // the source string in its own error text, and it reaches the module only when debug info is
                 // generated, which SpirvFrontEndPin.Debug turns off. The one-off parity measurement recorded in
                 // section 12.1 of the Vulkan design is what established that rather than assuming it: the
-                // incumbent's own path passes NO file name, and every shipped program still compiled to
-                // byte-identical SPIR-V under both. VulkanSpirvIncumbentParityTests re-checks it on every leg,
-                // so a flip of the Debug pin fails there rather than quietly moving the bytes.
+                // incumbent's own path passed NO file name, and every shipped program still compiled to
+                // byte-identical SPIR-V under both. VulkanSpirvIncumbentParityTests re-checked it on every leg
+                // until it went with the incumbent in 18.0.0, so a flip of the Debug pin now surfaces as moved
+                // bytes in the drift table (VulkanSpirvByteEqualityTests) rather than as a parity failure.
                 //
                 // THE TAG IS STILL IN THE MEMO'S KEY (#640), precisely because that equality is a fact about the
                 // Debug pin rather than a property of the compiler. Keying without it would be correct only while

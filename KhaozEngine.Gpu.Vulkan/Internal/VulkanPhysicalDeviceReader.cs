@@ -289,13 +289,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// actually needs are render target and sampled image.
         /// </para>
         /// <para>
-        /// THE INCUMBENT ASKS THIS PAIR TOO, which is what makes it the parity answer as well as the correct one:
-        /// <c>VeldridMap.SupportsShadowMaps</c> calls <c>GetPixelFormatSupport</c> with
+        /// THE INCUMBENT ASKED THIS PAIR TOO, which is what made it the parity answer as well as the correct one:
+        /// <c>VeldridMap.SupportsShadowMaps</c> (deleted in 18.0.0) called <c>GetPixelFormatSupport</c> with
         /// <c>RenderTarget | Sampled</c>. The Direct3D 11 sibling
         /// (<c>D3D11DxgiQueries.SupportsShadowMapsWindows</c>) settled the same question with the warning worth
-        /// repeating here: a capability question stricter than the incumbent's reports false where the incumbent
-        /// reports true, and the visible result is the shadow path degrading to blob shadows on ONE backend only,
-        /// silently, with nothing failing.
+        /// repeating here: a capability question stricter than the incumbent's reported false where the incumbent
+        /// reported true, and the visible result was the shadow path degrading to blob shadows on ONE backend
+        /// only, silently, with nothing failing.
         /// </para>
         /// </summary>
         internal const FormatFeatureFlags ShadowMapFormatFeatures =

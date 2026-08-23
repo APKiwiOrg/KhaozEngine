@@ -27,31 +27,32 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         float MipLodBias);
 
     /// <summary>
-    /// THE SAMPLER MAPPING, reproduced exactly from what the incumbent creates. Section 14's last paragraph.
+    /// THE SAMPLER MAPPING, reproduced exactly from what the incumbent created before it was deleted in 18.0.0.
+    /// Section 14's last paragraph.
     ///
     /// <para><b>FOUR VALUES THE SEAM DOES NOT EXPOSE ARE HARDCODED, and they are hardcoded because the incumbent
-    /// hardcodes them and the committed goldens were baked through them.</b> No comparison function (the shadow
+    /// hardcoded them and the committed goldens were baked through them.</b> No comparison function (the shadow
     /// path does manual PCF and never asks for a comparison sampler, so <c>compareEnable</c> is false and
     /// <c>compareOp</c> is <c>NEVER</c>), a minimum LOD of 0, a maximum LOD of <c>uint.MaxValue</c>, and a
-    /// transparent-black border colour. All four come from the engine's own Veldrid path, which builds every
+    /// transparent-black border colour. All four came from the engine's own Veldrid path, which built every
     /// sampler as <c>new SamplerDescription(u, v, w, filter, null, maxAniso, 0, uint.MaxValue, lodBias,
     /// SamplerBorderColor.TransparentBlack)</c>. Changing one would move pixels.</para>
     ///
     /// <para><b>THE ANISOTROPY DEGRADATION IS REPRODUCED, unlike on the Direct3D 11 backend where it was
-    /// unreachable.</b> The engine's Veldrid path falls back from anisotropic filtering to trilinear when the
-    /// device reports no <c>samplerAnisotropy</c>, and drops the maximum anisotropy to 0 with it. Every Direct3D 11
+    /// unreachable.</b> The engine's Veldrid path fell back from anisotropic filtering to trilinear when the
+    /// device reported no <c>samplerAnisotropy</c>, and dropped the maximum anisotropy to 0 with it. Every Direct3D 11
     /// device has the feature, so that backend dropped the branch as dead code. A VULKAN device may genuinely lack
     /// it, lavapipe being the case that matters most here because it is the rasterizer the golden gate runs on, and
     /// asking for <c>anisotropyEnable</c> without the feature is
     /// <c>VUID-VkSamplerCreateInfo-anisotropyEnable-01070</c> rather than a slow path. So the branch is live, it
-    /// reads the SAME capability the Veldrid path reads, and the two agree by construction.</para>
+    /// reads the SAME capability the Veldrid path read, and the two agreed by construction.</para>
     ///
     /// <para><b>THE LOD-BIAS DEGRADATION IS NOT REPRODUCED, and that one really is unreachable.</b> The Veldrid
-    /// path drops a non-zero bias when the device reports no <c>SamplerLodBias</c>, which exists because Metal's
-    /// sampler has no bias at all. <c>mipLodBias</c> is core Vulkan with no feature bit in front of it, this
-    /// backend's capability read answers true unconditionally, and section 14 requires that answer to be identical
-    /// to the incumbent's (it is: <c>VeldridMap</c> answers true for Vulkan too). A branch that can never be taken
-    /// would be a branch nothing can test.</para>
+    /// path dropped a non-zero bias when the device reported no <c>SamplerLodBias</c>, which existed because
+    /// Metal's sampler has no bias at all. <c>mipLodBias</c> is core Vulkan with no feature bit in front of it,
+    /// this backend's capability read answers true unconditionally, and section 14 required that answer to be
+    /// identical to the incumbent's (it was: <c>VeldridMap</c> answered true for Vulkan too). A branch that can
+    /// never be taken would be a branch nothing can test.</para>
     /// </summary>
     internal static class VulkanSamplerPolicy
     {

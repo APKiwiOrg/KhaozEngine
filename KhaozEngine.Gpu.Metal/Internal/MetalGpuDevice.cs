@@ -39,15 +39,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </para>
     /// <para>
     /// <b><see cref="Capabilities"/> IS COMPLETE AS OF ROW 16</b>
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/582), including M-C3's sample-count walk, and it is
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/582), including M-C3's sample-count walk, and it was
     /// pinned member for member against the incumbent at ZERO permitted differences by
-    /// <c>NativeVsVeldridMetalCapabilityParityTests</c>. Every decision behind it is in
-    /// <see cref="MetalCapabilityRead"/>, which has no device in it.
+    /// <c>NativeVsVeldridMetalCapabilityParityTests</c> until both went away in 18.0.0. Every decision behind it
+    /// is in <see cref="MetalCapabilityRead"/>, which has no device in it.
     /// </para>
     /// <para>
     /// <b>TEARDOWN IS M-F6's ORDER AND NOTHING ELSE:</b> drain first, stop the completion route, then flip the
     /// liveness token inside the lifecycle lock, then dispose the timeline and release the queue and the device.
-    /// The incumbent already waits first, so the drain half is reproduction rather than repair, which is the one
+    /// The incumbent already waited first, so the drain half is reproduction rather than repair, which is the one
     /// place this backend inherits a correct teardown instead of fixing one.
     /// </para>
     /// </summary>

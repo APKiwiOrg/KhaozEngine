@@ -7,37 +7,39 @@ namespace KhaozEngine.Gpu.Internal
     /// <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c>). Every ENGINE-OWNED GLSL to SPIR-V compile
     /// runs under exactly these values, which means every call that goes through <see cref="SpirvFrontEnd"/>:
     /// both native backends and <c>ShaderValidation</c>. It is NOT every compile in the process, and the
-    /// difference matters. The incumbent <c>VeldridGpuDevice</c> deliberately keeps the library's own defaults on
-    /// both of its paths, so the two sets are maintained independently and their equality is ASSERTED by
-    /// <c>VulkanSpirvIncumbentParityTests</c> rather than guaranteed by construction. That assertion is what
-    /// keeps the native Vulkan backend handing <c>vkCreateShaderModule</c> the same bytes the incumbent hands it,
-    /// and so what keeps the 36 committed goldens testing the BACKEND rather than the compiler.
+    /// difference matters. Until 18.0.0 the incumbent <c>VeldridGpuDevice</c> deliberately kept the library's own
+    /// defaults on both of its paths, so the two sets were maintained independently and their equality was
+    /// ASSERTED by <c>VulkanSpirvIncumbentParityTests</c> rather than guaranteed by construction. Both are gone
+    /// with the incumbent, and that assertion is what kept the native Vulkan backend handing
+    /// <c>vkCreateShaderModule</c> the same bytes the incumbent handed it, and so what licensed the 36 committed
+    /// goldens carrying over as a test of the BACKEND rather than of the compiler.
     ///
     /// <para>
-    /// V-S2 IS TWO ARTEFACTS AND THIS IS ONLY THE FIRST. The second is the parity check against the incumbent's
+    /// V-S2 IS TWO ARTEFACTS AND THIS IS ONLY THE FIRST. The second was the parity check against the incumbent's
     /// own path, first taken as a ONE-OFF in-process measurement and RECORDED in section 12.1 of the design,
-    /// which is what licensed carrying the goldens over without a rebake, and now also asserted continuously on
-    /// every leg by <c>VulkanSpirvIncumbentParityTests</c>. <c>VulkanSpirvByteEqualityTests</c> is neither: it is
-    /// a DRIFT detector baked from this path's own emission, so a green run there is not parity evidence and
-    /// reading it as such reads it backwards. All of it is needed and none of it substitutes for the rest.
+    /// which is what licensed carrying the goldens over without a rebake, and then asserted continuously on every
+    /// leg by <c>VulkanSpirvIncumbentParityTests</c> until it went with the incumbent, leaving the recorded
+    /// measurement as what survives. <c>VulkanSpirvByteEqualityTests</c> is neither: it is a DRIFT detector baked
+    /// from this path's own emission, so a green run there is not parity evidence and reading it as such reads it
+    /// backwards. All of it was needed and none of it substituted for the rest.
     /// </para>
     /// <para>
-    /// WHAT THE INCUMBENT ACTUALLY DOES, read rather than assumed. BOTH of <c>VeldridGpuDevice</c>'s shader paths
-    /// call <c>SpirvCompilation.CompileGlslToSpirv</c> themselves under <c>GlslCompileOptions.Default</c> and hand
-    /// the resulting module to <c>Veldrid.SPIRV</c>'s <c>CreateFromSpirv</c>. <c>CreateComputeShaderFromSpirv</c>
-    /// always did, so it could read the workgroup size back, and
+    /// WHAT THE INCUMBENT ACTUALLY DID, read rather than assumed. BOTH of <c>VeldridGpuDevice</c>'s shader paths
+    /// called <c>SpirvCompilation.CompileGlslToSpirv</c> themselves under <c>GlslCompileOptions.Default</c> and
+    /// handed the resulting module to <c>Veldrid.SPIRV</c>'s <c>CreateFromSpirv</c>.
+    /// <c>CreateComputeShaderFromSpirv</c> always did, so it could read the workgroup size back, and
     /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/640">#640</see> moved
     /// <c>CreateShadersFromSpirv</c> to the same shape so one memo could sit in front of glslang for a wrapper
-    /// that was recompiling the same <c>const string</c> on every device. Neither goes through this pin, on
-    /// purpose: that wrapper leaves the graph only when Veldrid itself does. Handing that library a module rather
+    /// that was recompiling the same <c>const string</c> on every device. Neither went through this pin, on
+    /// purpose, and both left the graph with the incumbent. Handing that library a module rather
     /// than a source changes nothing below it, because every branch of it sniffs the SPIR-V header first.
     /// <c>EnsureSpirv</c> does on the Vulkan branch, where the bytes reach <c>vkCreateShaderModule</c> with no
     /// cross-compilation at all because Vulkan consumes SPIR-V, and
-    /// <c>SpirvCompilation.CompileVertexFragment</c> does per stage on every other. The only thing that differs
-    /// between the two option sets is the diagnostic FILE NAME, which the incumbent leaves null on its graphics
-    /// path and names <c>compute</c> on its compute one, while this engine sets
-    /// <c>&lt;label&gt;.&lt;stage&gt;</c>. The parity check is what establishes that the name never reaches the
-    /// module while <see cref="Debug"/> is false, and what would catch it starting to.
+    /// <c>SpirvCompilation.CompileVertexFragment</c> does per stage on every other. The only thing that differed
+    /// between the two option sets was the diagnostic FILE NAME, which the incumbent left null on its graphics
+    /// path and named <c>compute</c> on its compute one, while this engine sets
+    /// <c>&lt;label&gt;.&lt;stage&gt;</c>. The parity check is what established that the name never reaches the
+    /// module while <see cref="Debug"/> is false.
     /// </para>
     /// <para>
     /// WHY EACH VALUE IS WHAT IT IS. <see cref="Debug"/> off is the value the engine has always shipped under, and

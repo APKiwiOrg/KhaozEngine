@@ -39,10 +39,10 @@ namespace KhaozEngine.Tests.Gpu
     /// The one difference between the two call shapes is the diagnostic FILE NAME, which the incumbent leaves null
     /// and this engine sets, and the measurement is what establishes that it never reaches the module while
     /// <see cref="SpirvFrontEndPin.Debug"/> is false. That measurement is recorded in section 12.1 of the design
-    /// and stands as the historical record of what licensed the goldens carrying over. The same comparison now
-    /// runs on every leg as a standing test, because the equality is not true by construction: the pin governs
-    /// the engine's own front-end seat and the incumbent keeps the library defaults. This test's job starts where
-    /// that measurement ended: nothing has moved since.
+    /// and stands as the historical record of what licensed the goldens carrying over. That comparison ran on
+    /// every leg as a standing test until 18.0.0, because the equality was not true by construction: the pin
+    /// governed the engine's own front-end seat and the incumbent kept the library defaults. This test's job
+    /// starts where that measurement ended: nothing has moved since.
     /// </para>
     /// <para>
     /// DEVICE-FREE AND ON EVERY LEG. The front end runs on the CPU through a native that ships per RID and already
@@ -238,11 +238,11 @@ namespace KhaozEngine.Tests.Gpu
                 .Append("# One line per emitted stage: <program>.<stage> <sha256>.\n")
                 .Append("#\n")
                 .Append("# These are the bytes vkCreateShaderModule receives verbatim on the native Vulkan\n")
-                .Append("# backend, and the bytes the incumbent Veldrid Vulkan path receives too: that equality\n")
+                .Append("# backend, and the bytes the incumbent Veldrid Vulkan path received too: that equality\n")
                 .Append("# was measured on 2026-08-08, 76 of 76 stages byte-identical, recorded in section 12.1\n")
-                .Append("# of docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md, and is asserted on every\n")
-                .Append("# leg by VulkanSpirvIncumbentParityTests. This table is NEITHER: it is a DRIFT detector\n")
-                .Append("# baked from this path's own emission.\n")
+                .Append("# of docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md, and was asserted on every\n")
+                .Append("# leg by VulkanSpirvIncumbentParityTests until 18.0.0. This table is NEITHER: it is a\n")
+                .Append("# DRIFT detector baked from this path's own emission.\n")
                 .Append("#\n")
                 .Append("# Re-bake with KE_UPDATE_SPIRV_HASHES=1 and read the diff. One program moving is a\n")
                 .Append("# shader edit. Every program moving at once is the options, which puts the parity claim\n")

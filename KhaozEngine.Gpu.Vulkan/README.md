@@ -4,9 +4,9 @@ The engine's own native Vulkan backend for the [KhaozEngine.Gpu](../KhaozEngine.
 CARRIED by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas, so a game on either of them has it
 without adding anything, and a game that references `KhaozEngine.Gpu` on its own adds this package explicitly.
 
-**"The incumbent" below always means the Veldrid Vulkan backend, deleted in 18.0.0.** Many passages keep it in
-the present tense because they document the behaviour this backend was built to reproduce or to diverge from,
-and that reasoning is what makes the code readable. Nothing selects it any more.
+**"The incumbent" below always means the Veldrid Vulkan backend, deleted in 18.0.0.** It is cited throughout
+in the past tense: what it did is what this backend was built to reproduce or to diverge from, and that
+reasoning is what makes the code readable. Nothing selects it any more.
 
 > **Status: BUILT, CONTINUOUSLY EXERCISED, AND THE DEFAULT ON LINUX SINCE 17.40.0. Registration, probe, headless and
 > windowed devices, the completion timeline, the memory allocator, the command list's lifecycle, the uniform
@@ -69,8 +69,8 @@ and that reasoning is what makes the code readable. Nothing selects it any more.
 > every attachment is transitioned as one batched barrier immediately before `vkCmdBeginRendering`, `End`
 > restores everything the recording touched, and a transition out of `UNDEFINED` is refused everywhere except
 > the two sites permitted to discard. And since
-> [#528](https://github.com/APKiwiOrg/KhaozEngine/issues/528) its CAPABILITY READ is a device-free type held
-> against the incumbent's answers with ZERO permitted differences, its `GpuDeviceCounters` fill is checked as
+> [#528](https://github.com/APKiwiOrg/KhaozEngine/issues/528) its CAPABILITY READ is a device-free type that was
+> held against the incumbent's answers with ZERO permitted differences, its `GpuDeviceCounters` fill is checked as
 > nine readings rather than an absence, and both `GpuDeviceDiagnostics` fields are asserted all the way into the
 > telemetry session header. And since
 > [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525) IT DRAWS: the vertex and index binds, both `Draw`
@@ -150,12 +150,15 @@ consults the probe FIRST, so all three states behave: no loader and no driver bo
 answer yes.
 
 Keeping those two questions apart is decision V-I4, and here it bites harder than it did on Direct3D 11. A
-native request that fails falls back to the incumbent Vulkan backend (`GpuBackendSelector.IncumbentFor`) and
-reports `FallbackAfterFailure`, which in a log line looks a great deal like a forgotten registration. A
-forgotten registration for a backend the caller NAMED throws instead, and since 17.40.0 a forgotten one for
-the DEFAULT falls back like an incapable machine, because the probe answers a provider-backed kind everywhere
-now and a game that never referenced the package made no wiring mistake. Telling the two apart is what the
-whole soak measurement rests on, and NAMING the backend is what keeps them apart.
+native request that failed used to fall back to the incumbent Vulkan backend
+(`GpuBackendSelector.IncumbentFor`) and report `FallbackAfterFailure`, which in a log line looked a great deal
+like a forgotten registration. `IncumbentFor` went with the incumbent in 18.0.0, so a failed request falls back
+to whatever `GpuBackendSelector.ProbeOS` answers for the platform, and to nothing at all when the request
+already IS that default. A forgotten registration for a backend the caller NAMED throws instead, and since
+17.40.0 a forgotten one for the DEFAULT falls back like an incapable machine, because the probe answers a
+provider-backed kind everywhere now and a game that never referenced the package made no wiring mistake.
+Telling the two apart is what the whole soak measurement rests on, and NAMING the backend is what keeps them
+apart.
 
 ## Naming it
 
@@ -243,8 +246,8 @@ them and degrade quietly when it does not. `geometryShader`, `tessellationShader
 nothing in this engine uses them.
 
 **A device loss reports why, at the site that noticed.** Every `VkResult` is checked in EVERY configuration,
-which is the one thing this backend could not inherit: the incumbent's `CheckResult` is
-`[Conditional("DEBUG")]`, so a latch built on its shape would never fire in a Release build. On
+which is the one thing this backend could not inherit: the incumbent's `CheckResult` was
+`[Conditional("DEBUG")]`, so a latch built on its shape would never have fired in a Release build. On
 `VK_ERROR_DEVICE_LOST` the call's name and the result are latched immediately, the liveness token flips so every
 later destroy is a no-op, and the reason reaches you two ways: an ERROR line in the session log and the
 `deviceLossReason` field of the telemetry session header. There is no recovery path, which is what the liveness
@@ -290,9 +293,9 @@ on the hot path. A request at or above 16 MiB, or one the driver says it prefers
 allocation for, gets its own `vkAllocateMemory` outside the pools.
 
 **Linear and optimal never share a chunk, and that is the whole `bufferImageGranularity` implementation.**
-Buffers and optimal-tiling images may not share a granularity page. The incumbent rounds every non-dedicated
-request up to a multiple of that granularity and shares chunks, which is correct and wasteful, and its rounding
-adds a granule even when the size is already aligned. Separating the pools by tiling makes the constraint
+Buffers and optimal-tiling images may not share a granularity page. The incumbent rounded every non-dedicated
+request up to a multiple of that granularity and shared chunks, which was correct and wasteful, and its rounding
+added a granule even when the size was already aligned. Separating the pools by tiling makes the constraint
 structural, so there is no granularity arithmetic anywhere in this package and none to get wrong.
 
 **Host-visible chunks are `vkMapMemory`'d once at creation and never unmapped.** Every host-visible allocation
@@ -302,8 +305,8 @@ could not do and had to emulate with a record-phase map, and it is what makes th
 policy. Anyone porting the D3D11 ring's map-and-unmap dance across is porting a workaround for a restriction
 Vulkan does not have, and the native seam has no unmap member so the alternative is not expressible.
 
-**Coherent memory is preferred everywhere and cached is preferred for readback.** The incumbent has no
-`vkFlushMappedMemoryRanges` and no `vkInvalidateMappedMemoryRanges` anywhere and rests entirely on a
+**Coherent memory is preferred everywhere and cached is preferred for readback.** The incumbent had no
+`vkFlushMappedMemoryRanges` and no `vkInvalidateMappedMemoryRanges` anywhere and rested entirely on a
 `HOST_COHERENT` type existing. Here both are real: a coherent chunk skips them entirely, and a cached
 non-coherent chunk, which is what readback staging deliberately prefers, emits them with the range widened to
 `nonCoherentAtomSize`. Widening is why every suballocation in such a chunk is also aligned and sized to that
@@ -342,18 +345,18 @@ dynamic uniform descriptor's `pDynamicOffsets` entry, which is what keeps a reso
 
 **A record-time `UpdateBuffer` on a uniform buffer is a `memcpy` and NOTHING else**: no staging buffer, no
 `vkCmdCopyBuffer`, no memory barrier and no render-pass split. That is the whole of what the ring buys, and the
-obvious reading of why it is not worth much here is wrong. On the shipped incumbent the same call takes a
-staging buffer from a per-list pool, memcpys into it, and calls a copy path whose FIRST statement ends the
-active render pass. Ending it transitions the attachments and emits a full pipeline flush. Then the copy. Then a
-GLOBAL `VkMemoryBarrier`. Then the next draw lazily re-begins the pass. So a record-time uniform write on the
-incumbent is a render-pass split plus a pipeline flush plus a global barrier, not a memcpy. And that barrier's
-destination is `VertexAttributeRead` at `VertexInput`, so it does not cover a uniform read at all: the write is
-both expensive AND under-synchronised for the usage every per-frame uniform buffer in the engine has.
+obvious reading of why it is not worth much here is wrong. On the shipped incumbent the same call took a
+staging buffer from a per-list pool, did a memcpy into it, and called a copy path whose FIRST statement ended
+the active render pass. Ending it transitioned the attachments and emitted a full pipeline flush. Then the copy.
+Then a GLOBAL `VkMemoryBarrier`. Then the next draw lazily re-began the pass. So a record-time uniform write on
+the incumbent was a render-pass split plus a pipeline flush plus a global barrier, not a memcpy. And that
+barrier's destination was `VertexAttributeRead` at `VertexInput`, so it did not cover a uniform read at all: the
+write was both expensive AND under-synchronised for the usage every per-frame uniform buffer in the engine has.
 
 **And it LANDS THE MOMENT IT IS MADE, which is the ring's one consequence for a renderer.** Recording no
 command means it is not ordered against the draws in the same list, so two writes to the same range inside one
 frame leave the second value for every draw of that frame, including the draws recorded between them. The
-incumbent's render-pass split orders it instead, so this is a real difference between the two Vulkan backends.
+incumbent's render-pass split ordered it instead, so that was a real difference between the two Vulkan backends.
 Per-draw and per-pass uniforms are addressed by dynamic offset rather than by rewriting one range, which is what
 the engine's renderers do and what makes the ring possible at all.
 
@@ -414,19 +417,20 @@ patch is not a stall at all.
 write to a NON-uniform buffer, and a texture upload, sub-allocate out of a host-visible persistently mapped
 arena, record a copy, and bracket it in two barriers narrowed to the destination's actual usage rather than the
 incumbent's one global `VertexAttributeRead` guess. Staging blocks are pooled by power-of-two size class with a real
-retention cap of 8 MiB. The incumbent destroys any returned staging buffer over 512 bytes, so every real-sized
-upload creates and destroys a `VkBuffer` AND a device memory block per call, and raising that to a real cap is
-removing an allocation storm from every load rather than an optimisation. The arena recycles PER SLOT, in the
-window where `Begin` has already waited for the slot it is advancing onto, because the blocks the previous
+retention cap of 8 MiB. The incumbent destroyed any returned staging buffer over 512 bytes, so every real-sized
+upload created and destroyed a `VkBuffer` AND a device memory block per call, and raising that to a real cap
+removed an allocation storm from every load rather than being an optimisation. The arena recycles PER SLOT, in
+the window where `Begin` has already waited for the slot it is advancing onto, because the blocks the previous
 record filled belong to a submission that may still be in flight.
 
 **Where measurement gate MV1's NATIVE reading comes from, stated because no counter here answers it.** MV1 bets
-that the ring is worth as much on Vulkan as on Direct3D 11, and its magnitude is unmeasured because nobody has
-counted how many record-time `UpdateBuffer` calls per frame the [#410] scene makes on the INCUMBENT. That first
-half is an incumbent measurement and is not this backend's code at all. The native half is three counters, and
-each already has a home that is not a new field on the ring:
+that the ring is worth as much on Vulkan as on Direct3D 11, and its magnitude is unmeasured because nobody
+counted how many record-time `UpdateBuffer` calls per frame the [#410] scene made on the INCUMBENT, and with the
+incumbent deleted in 18.0.0 nobody now can. That first half was an incumbent measurement and was not this
+backend's code at all. The native half is three counters, and each already has a home that is not a new field on
+the ring:
 
-- **Record-time `UpdateBuffer` calls per frame** are counted by the CALLER, on the renderer side, and are the
+- **Record-time `UpdateBuffer` calls per frame** are counted by the CALLER, on the renderer side, and were the
   same number on both legs by construction, because the call sites are shared engine code rather than backend
   code. The ring's own write path counts NOTHING, deliberately: it is a memcpy on the hot path this design
   exists to make cheap, and a counter on it would be the one piece of per-write work the ring removed.
@@ -434,13 +438,13 @@ each already has a home that is not a new field on the ring:
   ([#522](https://github.com/APKiwiOrg/KhaozEngine/issues/522)). The exit criterion is that this lands at or
   below the framebuffer-change count, which is a statement about that row's deferred begin rather than about the
   ring, and the ring's contribution to it is a NEGATIVE one: it removes the pass splits the incumbent's uniform
-  writes cause.
+  writes caused.
 - **Record-time global barriers** are countable through `IVkCmdSink`'s barrier class, which is already the
   budget seam. The exit criterion is ZERO, and the ring is why: a uniform write records no barrier at all, and
   the staging arena's barriers are per-buffer rather than global and are not on the per-draw path.
 
-No speculative counter is added here for any of the three. **And if the incumbent's counts turn out near zero
-already, the ring is still taken because it is the only correct design on this API, and the bet is RECORDED AS
+No speculative counter is added here for any of the three. **And the ring is taken whatever the incumbent's counts
+would have shown, because it is the only correct design on this API, and a bet that did not pay is RECORDED AS
 NOT PAYING rather than quietly forgotten.**
 
 [#410]: https://github.com/APKiwiOrg/KhaozEngine/issues/410
@@ -465,7 +469,7 @@ absent here.** Do not port the stream across as a "missing" feature.
 
 **Each list owns `FramesInFlight` `VkCommandPool`s with one primary buffer each, reset with
 `vkResetCommandPool`.** Not one pool with `VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT`, which is what the
-incumbent creates: that flag tells the driver every buffer must be individually resettable and pushes it onto
+incumbent created: that flag tells the driver every buffer must be individually resettable and pushes it onto
 the slower per-buffer allocator, while resetting the whole pool is the documented fast path and returns the last
 record's memory to the pool's arena in one operation. The cost is three pool objects per list instead of one.
 The flag is not merely unused, it is unreachable: the package's internal command seam has no parameter through
@@ -495,8 +499,8 @@ has to know rather than one they can see, which is why it is written down twice.
 a time.
 
 **A list disposed with submissions outstanding hands its pools to the retire list** at the highest timeline value
-any of its slots was submitted at, and they are destroyed once the counter passes it. The incumbent uses a
-refcount, which also works and which this design does not need because the retire list exists for resources
+any of its slots was submitted at, and they are destroyed once the counter passes it. The incumbent used a
+refcount, which also worked and which this design does not need because the retire list exists for resources
 anyway.
 
 **One `vkQueueSubmit` per submission, with the timeline value allocated inside the lock that orders it.** The
@@ -548,14 +552,14 @@ outright, so a post-chain intermediate that is both a render target and sampled 
 renders into it transitions and restores. It is a property of the RESOURCE rather than of a recording, which is
 what makes lists composable in any submit order.
 
-**No texture creation submits anything to the queue.** The incumbent's texture constructor clears render targets
-and transitions sampled textures, and each of those grabs a shared pool, records one command and issues a WHOLE
-`vkQueueSubmit`: two hundred textures is two hundred submissions before a frame is drawn. Here both are appended
-to ONE device-owned setup command buffer, flushed lazily at the next submit **or at any device-level read**
-(`Map`, a readback, `WaitForIdle`). The read-path half is what removes the hole rather than moving it: a render
-target created and immediately read back must still see cleared contents. The clear itself is preserved
-deliberately, because undefined contents are not stable across runs and the goldens require stability on the same
-rasterizer.
+**No texture creation submits anything to the queue.** The incumbent's texture constructor cleared render
+targets and transitioned sampled textures, and each of those grabbed a shared pool, recorded one command and
+issued a WHOLE `vkQueueSubmit`: two hundred textures was two hundred submissions before a frame was drawn. Here
+both are appended to ONE device-owned setup command buffer, flushed lazily at the next submit **or at any
+device-level read** (`Map`, a readback, `WaitForIdle`). The read-path half is what removes the hole rather than
+moving it: a render target created and immediately read back must still see cleared contents. The clear itself
+is preserved deliberately, because undefined contents are not stable across runs and the goldens require
+stability on the same rasterizer.
 
 **That buffer takes its own short lock, the third one.** A `VkCommandPool` and every buffer allocated from it are
 externally synchronised, so two threads creating two textures may not append to one setup buffer at once.
@@ -589,9 +593,10 @@ set equal to the `depthPitch` rather than to the distance between array layers.
 
 **`Map(staging, Read)` waits on the timeline's last submitted value before returning the pointer**, counted as a
 drain. Direct3D 11's `Map(READ)` blocks by definition, so this is where Vulkan has to be explicit about something
-the other API did implicitly. A WRITE map does not wait, matching the incumbent. There is no `vkMapMemory` and no
-`vkUnmapMemory` anywhere on this path: host-visible chunks are mapped once at chunk creation and never unmapped,
-so a map is a pointer plus an offset and an unmap is bookkeeping plus, on a non-coherent memory type, a flush.
+the other API did implicitly. A WRITE map does not wait, and neither did the incumbent's. There is no
+`vkMapMemory` and no `vkUnmapMemory` anywhere on this path: host-visible chunks are mapped once at chunk
+creation and never unmapped, so a map is a pointer plus an offset and an unmap is bookkeeping plus, on a
+non-coherent memory type, a flush.
 
 **Disposal is one TERMINAL retire per resource.** The single held entry destroys a texture's views inline, then
 its image, then its memory, and never re-retires a child. A destroy that retired another destroy that then freed
@@ -605,8 +610,8 @@ ungated, and it ABANDONS rather than frees on a dead device.
 `VK_IMAGE_LAYOUT_UNDEFINED` rather than `PREINITIALIZED`, which describes a host-written linear image. The
 memory-requirements call is the `2` form unconditionally, because this backend requires Vulkan 1.3 where it and
 `VkMemoryDedicatedRequirements` are core. An out-of-range sample count is refused rather than rounded down. And
-`GpuPixelFormat.R16G16Float` maps to `VK_FORMAT_R16G16_SFLOAT`: the incumbent maps it to the FOUR-channel
-`VK_FORMAT_R16G16B16A16_SFLOAT`, which is invisible there because the only texture using that format is the
+`GpuPixelFormat.R16G16Float` maps to `VK_FORMAT_R16G16_SFLOAT`: the incumbent mapped it to the FOUR-channel
+`VK_FORMAT_R16G16B16A16_SFLOAT`, which was invisible there because the only texture using that format is the
 distortion offset target and it is written and sampled through red and green alone, and would not be invisible
 here because the reproduced staging arithmetic sizes that format at four bytes per texel.
 
@@ -626,15 +631,15 @@ buffer. Binding index equals element index, `descriptorCount` is always 1, sampl
 `SHADER_READ_ONLY_OPTIMAL` and storage images bind `GENERAL`, and `SAMPLED_IMAGE` and `SAMPLER` are separate and
 never `COMBINED_IMAGE_SAMPLER`, which the shared GLSL sources already assume by declaring `texture2D` and
 `sampler` separately. Structured read-only and read-write both map to `STORAGE_BUFFER`. **The write-once
-immutable set is a PORT rather than an invention** and the incumbent already does it. What is new is the
+immutable set is a PORT rather than an invention** and the incumbent already did it. What is new is the
 enforcement below, and that it now holds by construction.
 
 **`VkDescriptorSetLayout` and `VkPipelineLayout` are content-deduplicated, and that is load-bearing.**
 Identity-shared set layouts are what make bound descriptors SURVIVE a pipeline switch: Vulkan decides
 pipeline-layout compatibility by comparing set layouts slot by slot, so one handle per distinct CONTENT turns
 that into a pointer compare that always answers correctly, which is exactly what the bind-flush row computes its
-compatible prefix with. The incumbent creates one per `ResourceLayout` object with no dedup, so nothing there is
-ever compatible with anything and every switch forces a full rebind of every set.
+compatible prefix with. The incumbent created one per `ResourceLayout` object with no dedup, so nothing there
+was ever compatible with anything and every switch forced a full rebind of every set.
 
 The key is exactly what `vkCreateDescriptorSetLayout` reads, in order: binding number, descriptor type,
 descriptor count, stage flags. **Two omissions are deliberate.** Element NAMES are not in it, because Vulkan
@@ -653,13 +658,13 @@ identical refusal for structured buffers, because a texture or a sampler has no 
 would leave the positional `pDynamicOffsets` array misaligned against the set's real dynamic descriptors.
 Vacuous in the engine today: all six shipped dynamic elements are uniform buffers.
 
-**Pools are sized from actual demand and freeing restores EVERY counted type.** The incumbent creates every pool
-with `maxSets = 1000` and 100 descriptors of each of seven types, whose per-type ceiling is reached long before
-its set ceiling, and its free path restores five of the seven it spends: it forgets `UniformBufferDynamicCount`
-and `StorageBufferDynamicCount`, both of which its own allocate does spend. An application that churns
-dynamic-offset resource sets leaks pool budget until a fresh pool spawns, and every fresh pool leaks the same
+**Pools are sized from actual demand and freeing restores EVERY counted type.** The incumbent created every pool
+with `maxSets = 1000` and 100 descriptors of each of seven types, whose per-type ceiling was reached long before
+its set ceiling, and its free path restored five of the seven it spent: it forgot `UniformBufferDynamicCount`
+and `StorageBufferDynamicCount`, both of which its own allocate did spend. An application that churned
+dynamic-offset resource sets leaked pool budget until a fresh pool spawned, and every fresh pool leaked the same
 way. This engine's sets are overwhelmingly dynamic-offset ones, the map editor churns them on every document
-load, and the rule above makes far more descriptors dynamic here than there, so the leak is aimed squarely at
+load, and the rule above makes far more descriptors dynamic here than there, so the leak was aimed squarely at
 this consumer. Here take and restore are one pair of methods over one value with structural equality, so there
 is no second list of field names to fall out of step, and a churn test allocates and frees in a loop and asserts
 the pool count does not grow. A new pool holds as many sets as the most that have ever been live at once
@@ -772,8 +777,8 @@ reporting the spec's required maximum. Like the window refusal, it leaves the sl
 next draw instead of being spent on the first.
 
 **The array is recomposed once per RUN, which is the incumbent's own bug not inherited.** Its
-batching flush resets the batch count and the first set but NOT the accumulated dynamic-offset count, so a second
-batch inside one flush passes a too-large count built from stale entries. The invariant here is that the count
+batching flush reset the batch count and the first set but NOT the accumulated dynamic-offset count, so a second
+batch inside one flush passed a too-large count built from stale entries. The invariant here is that the count
 passed equals the sum of that call's sets' dynamic descriptors, and the device-free budget test asserts it over a
 whole frame rather than leaving it to a reading of the code.
 
@@ -785,7 +790,7 @@ set N when they were created with identically defined set layouts for sets 0 thr
 push-constant ranges. Content dedup makes "identically defined" into HANDLE IDENTITY and push constants are
 declined, so the computation is the longest common prefix of the two layouts' set-layout handle sequences. A
 rebind of the layout already current does nothing. Without dedup this would answer zero every time, which is
-exactly what the incumbent pays and what a blunt clear-everything version reproduces by construction rather than
+exactly what the incumbent paid and what a blunt clear-everything version reproduces by construction rather than
 by choice.
 
 **A prefix is bounded by the SHORTER of the two sequences, which is what makes a switch to a narrower pipeline a
@@ -816,7 +821,7 @@ below for the identity guard that sits in front of it. The draw and dispatch mem
 in the design.** No cache for either, and therefore no invalidation of either on a resize. `CreateFramebuffer`
 creates no driver object: every attachment view already exists on the texture, so a framebuffer is an aggregate
 of borrowed handles and its disposal releases nothing. `IGpuFramebuffer.Outputs` is already
-`VkPipelineRenderingCreateInfo`'s input verbatim. The incumbent's alternative is three render passes per
+`VkPipelineRenderingCreateInfo`'s input verbatim. The incumbent's alternative was three render passes per
 framebuffer with no cache, no dedup across framebuffers of identical format, one `VkFramebuffer` per swapchain
 image, and all of it rebuilt on every resize, so porting it properly would have meant writing a render-pass
 cache, a framebuffer cache and an invalidation problem. Dynamic rendering deletes all three. The cost is the
@@ -825,7 +830,7 @@ and routes through the existing reported fallback.
 
 **`vkCmdBeginRendering` is DEFERRED to the first draw.** A clear recorded after `SetFramebuffer` therefore folds
 into `loadOp = CLEAR` with its own clear value instead of costing a `vkCmdClearAttachments`. A clear that arrives
-after the pass has already opened still issues one, which is what the incumbent does in the same situation.
+after the pass has already opened still issues one, which is what the incumbent did in the same situation.
 `storeOp` is `STORE` unconditionally and there is no way to ask for anything else: `DONT_CARE` for depth leaves
 contents undefined, undefined is not stable across runs, and the goldens require stability on the same
 rasterizer.
@@ -894,10 +899,11 @@ front-end options as constants with an identity derived from them, so a pin chan
 by construction. Separately, a ONE-OFF in-process measurement compiled every shipped program through both this
 path and a faithful replication of the incumbent's own SPIR-V production and compared the modules byte for byte:
 **76 of 76 stages identical, 0 mismatches, taken 2026-08-08 before the first golden run** and recorded in
-section 12.1 of the design. THAT is what licenses the committed `vulkan` goldens carrying over unmodified.
-`VulkanSpirvByteEqualityTests` is a different thing and its header says so: its table is baked from this path's
-own emission, so what it detects is DRIFT, and a wrong emission baked once would pass forever. Reading a green
-run there as parity evidence reads it backwards.
+section 12.1 of the design. THAT is what licensed the committed `vulkan` goldens carrying over unmodified, and
+those bytes are what the `vulkan-native` family was seeded from in 17.41.0. `VulkanSpirvByteEqualityTests` is a
+different thing and its header says so: its table is baked from this path's own emission, so what it detects is
+DRIFT, and a wrong emission baked once would pass forever. Reading a green run there as parity evidence reads it
+backwards.
 
 **`VkShaderModule`s are deduplicated by SPIR-V hash within a device.** The shipped set is 76 stage emissions and
 59 distinct modules, because one fullscreen vertex source backs eleven post-processing programs on its own and
@@ -973,8 +979,8 @@ declared state past the last colour output throws away a state the caller wrote 
 site declares exactly that, so enforcing the contract costs nothing and only fires on a description that was
 already wrong.
 
-**The `VkPipelineCache` is persisted, and a corrupt file cannot crash a launch.** The incumbent passes
-`VkPipelineCache.Null` at both of its creation sites, so every launch recompiles every pipeline from SPIR-V,
+**The `VkPipelineCache` is persisted, and a corrupt file cannot crash a launch.** The incumbent passed
+`VkPipelineCache.Null` at both of its creation sites, so every launch recompiled every pipeline from SPIR-V,
 across considerably more permutations than programs because everything except viewport and scissor is baked in.
 Here one cache is created with the device, seeded from a file under
 `<local-app-data>/KhaozEngine/vulkan-pipeline-cache/<engine version>` and written back at teardown. The mechanics
@@ -1032,9 +1038,9 @@ and `dstAccessMask` all named. There is no `vkCmdPipelineBarrier` on any path an
 
 **The masks are answered per LAYOUT, and that is what makes the pair space total.** The source masks are the old
 layout's own stages and accesses, the destination masks are the new layout's, and eight layouts are covered. A
-layout outside those eight throws by name. The incumbent instead runs a 25-arm if/else over the PAIR, ends it in
-a debug assertion, and in Release emits `NONE` on both stage masks for a pair it does not handle, which is a
-barrier that synchronises nothing on a path whose only signal compiles away. The shape here turns "no pair
+layout outside those eight throws by name. The incumbent instead ran a 25-arm if/else over the PAIR, ended it in
+a debug assertion, and in Release emitted `NONE` on both stage masks for a pair it did not handle, which is a
+barrier that synchronises nothing on a path whose only signal compiled away. The shape here turns "no pair
 produces an empty mask on both sides" into a device-free test PER LAYOUT, eight of them, plus one loop over the
 pair space that the eight already imply. Under a per-pair shape that loop would be the only way to know, and it
 would be 49 separate facts to keep total by hand.
@@ -1047,9 +1053,9 @@ lets N lists record concurrently on this backend and lets their submissions comp
 written in list 1 and sampled in list 2 pays a restore in list 1 and a re-transition in list 2, which is
 redundant and harmless.
 
-The incumbent keeps the layout ON the texture as recording-time mutable state. Two recordings touching one
-texture read and write the same array, and the loser records either a redundant barrier, which is harmless, or NO
-barrier for a transition it needed, which is a corruption no golden on a software rasterizer will show.
+The incumbent kept the layout ON the texture as recording-time mutable state. Two recordings touching one
+texture read and wrote the same array, and the loser recorded either a redundant barrier, which is harmless, or
+NO barrier for a transition it needed, which is a corruption no golden on a software rasterizer would show.
 
 **Per-level tracking has to meet a whole-chain bind, and here is how the two get on.** The standard streaming
 path produces both shapes in one list: a copy seeds mip 0, `GenerateMipmaps` walks the chain a level at a time,
@@ -1174,8 +1180,8 @@ plausibly wrong rather than throwing:
 4. **The descriptor binds flush and the command issues**, as one pair with nothing between them.
 
 **The vertex and index binds RECORD and the draw flushes them**, with a rebind of what is already recorded
-emitting nothing at all. The incumbent issues `vkCmdBindVertexBuffers` inside its own `SetVertexBufferCore` with
-no comparison, so a renderer that rebinds one mesh's buffer before each of its draws pays a native call per draw
+emitting nothing at all. The incumbent issued `vkCmdBindVertexBuffers` inside its own `SetVertexBufferCore` with
+no comparison, so a renderer that rebound one mesh's buffer before each of its draws paid a native call per draw
 for a state change that did not happen. A run is cut by a clean slot and by an unbound one alike, because
 `vkCmdBindVertexBuffers` takes a dense array from `firstBinding` and a binding nothing bound cannot be skipped
 inside one call.
@@ -1193,10 +1199,11 @@ frame: a texture already in the layout it is asked for emits nothing.
 resource an earlier dispatch in the same list WROTE gets one read-after-write barrier before it, driven by a set
 of written resources rather than by a barrier per dispatch, so a run of independent dispatches is not serialised.
 **That is not a contract change.** The seam's rule 2 still says a portable consumer separates dependent dispatches
-with `End`, `Submit` and `WaitForIdle`, because a consumer that drops it here breaks on Metal. It is evidence
-for the automatic-hazard seam capability
-([#461](https://github.com/APKiwiOrg/KhaozEngine/issues/461)), which after this row has two of three backends able
-to answer yes.
+with `End`, `Submit` and `WaitForIdle`, because the drain is what the SEAM guarantees and the ordering here is a
+BACKEND PROPERTY. It is evidence for the automatic-hazard seam capability
+([#461](https://github.com/APKiwiOrg/KhaozEngine/issues/461)), which is still a proposal rather than a member of
+`GpuCapabilities`: since the native Metal backend joined by its serial compute encoder, three of three
+engine-owned backends order a dependent chain natively.
 
 **A dispatch, a copy, a mip generation and a resolve all end the pending render pass instance first**, through the
 one helper that rule has, because every one of them is illegal inside one.
@@ -1227,8 +1234,8 @@ mismatch that reads like a rendering bug.
 
 **`MaxMsaaSampleCount` is the incumbent's own computation reproduced**, not a formula invented here: the minimum
 over the engine's three MRT targets of the highest sample count each supports, read through
-`vkGetPhysicalDeviceImageFormatProperties` exactly as `VkGraphicsDevice.GetSampleCountLimit` does, with the
-citation pinned in a constant so the two sources can be diffed. That is what makes the capability parity test's
+`vkGetPhysicalDeviceImageFormatProperties` exactly as `VkGraphicsDevice.GetSampleCountLimit` did, with the
+citation pinned in a constant so the two sources could be diffed. That is what made the capability parity test's
 asserted identical satisfiable by construction rather than by luck.
 
 **Both buffer-copy offsets must be multiples of four, and Vulkan is not what asks for it (17.40.0).** This
@@ -1240,8 +1247,8 @@ range. The size is unconstrained.
 
 **A buffer copy gets a global memory barrier on EITHER side**, which is a deliberate departure. A `VkBuffer` has
 no layout, so nothing the tracker does orders a copy out of a buffer a dispatch just wrote or into one a draw is
-about to read. The incumbent emits one barrier, after the copy, naming `VERTEX_INPUT` and
-`VERTEX_ATTRIBUTE_READ` and nothing else, which orders exactly one consumer and nothing on the source side at
+about to read. The incumbent emitted one barrier, after the copy, naming `VERTEX_INPUT` and
+`VERTEX_ATTRIBUTE_READ` and nothing else, which ordered exactly one consumer and nothing on the source side at
 all. Two calls on a path that runs once per readback is the right price for closing a hazard class a golden on a
 software rasterizer cannot show.
 
@@ -1284,13 +1291,13 @@ against the incumbent.
 
 **Two departures, both bugs rather than behaviours.** `preTransform` reads the surface's own `currentTransform`
 rather than being hardcoded to `IDENTITY`, which is wrong on any device reporting a rotation. And the
-incumbent's sRGB fallback compares a variable it has already set to `VK_FORMAT_UNDEFINED` against an sRGB
-format, so its intended throw is dead code. The refusal here is real. Reproducing a bug a different device WOULD
+incumbent's sRGB fallback compared a variable it had already set to `VK_FORMAT_UNDEFINED` against an sRGB
+format, so its intended throw was dead code. The refusal here is real. Reproducing a bug a different device WOULD
 reach is not parity.
 
 **The acquire keeps the incumbent's TIMING and replaces its SYNCHRONISATION.** Acquiring at present time for the
 next frame is a genuinely good property, because it makes the image index known before recording starts. What
-the incumbent does on top of that is block the CPU on a fence with an infinite timeout, submit with no
+the incumbent did on top of that was block the CPU on a fence with an infinite timeout, submit with no
 image-availability wait semaphore, and present with no wait semaphore either. That last part is a specification
 violation a validation layer flags, and a design that gates on validation cannot deliberately reproduce a
 configuration validation rejects. So the acquire signals a binary semaphore the frame's FIRST submit waits on at
@@ -1325,7 +1332,7 @@ recreate**, coalesced and applied at the next present boundary on the submit thr
 provably owns the queue and no recording is in flight. `ResizeSwapchain` stores a number and returns: no lock, no
 native call, nothing that can block, so a window callback on any thread is safe. Vulkan cannot change a
 swapchain's present mode in place, so vsync is a full recreate here rather than the argument of a present call
-it is on Direct3D 11. The incumbent ignores `vkQueuePresentKHR`'s result entirely.
+it is on Direct3D 11. The incumbent ignored `vkQueuePresentKHR`'s result entirely.
 
 **Recreation drains the timeline first, unconditionally**, which is what makes retiring a possibly pending
 binary semaphore safe: there is no way to ask one whether it is pending, and destroying a pending semaphore is
@@ -1422,18 +1429,19 @@ every public member of `GpuCapabilities`. The bar was met, and it went away with
 
 **The device name the seam carries is the driver's own, and it is not the one the log prints.**
 `VulkanDeviceFacts.DeviceName` substitutes `unnamed device 0x…` when a driver reports nothing readable, because a
-rejection line naming an empty string is a line nobody can act on. The incumbent makes no such substitution and
-`GpuCapabilities.DeviceName` is compared string for string, so the capability read takes
+rejection line naming an empty string is a line nobody can act on. The incumbent made no such substitution and
+`GpuCapabilities.DeviceName` was compared string for string, so the capability read takes
 `VulkanPhysicalDeviceRead.ReportedDeviceName` instead: verbatim, empty when the driver reported nothing, which is
 exactly what the seam's own doc says empty means. There is **no whitespace trim on either path**, because the
-incumbent does not trim and trimming one side alone fails parity on every machine whose vendor pads its name.
+incumbent did not trim and trimming one side alone would have failed parity on every machine whose vendor pads
+its name.
 
 **`SupportsShadowMaps` asks `R32_SFLOAT` for COLOUR attachment plus sampled image**, held as
 `VulkanPhysicalDeviceReader.ShadowMapFormatFeatures` with the decision split off the driver call so the bits are
 assertable device-free. Asking for the depth-stencil attachment bit instead, which the capability's name
 suggests, is not a stricter question but a structurally false one: `R32_SFLOAT` is a colour format and no driver
 reports that bit for it. The pass wants this pair anyway, since `ShadowMapRenderer` creates the atlas as
-`R32Float` with `RenderTarget | Sampled` and hangs a separate depth-stencil off it, and it is also the parity
+`R32Float` with `RenderTarget | Sampled` and hangs a separate depth-stencil off it, and it was also the parity
 answer, since `VeldridMap.SupportsShadowMaps` asked `GetPixelFormatSupport` for the same two.
 
 **`MaxMsaaSampleCount` is a real driver reading**, since row 15

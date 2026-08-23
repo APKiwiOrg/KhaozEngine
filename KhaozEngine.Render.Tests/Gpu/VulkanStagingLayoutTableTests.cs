@@ -10,22 +10,22 @@ namespace KhaozEngine.Tests.Gpu
     /// backend converted into a checked fact BEFORE a single golden runs.
     ///
     /// <para><b>WHY A TABLE AND NOT AN ASSERTION.</b> Every golden in the suite reads back through
-    /// <c>IGpuDevice.Map(staging, ...)</c> and consumes <see cref="MappedData.RowPitch"/>. The incumbent backs a
-    /// staging texture with a <c>VkBuffer</c> and computes the row pitch, the depth pitch, the array pitch and the
+    /// <c>IGpuDevice.Map(staging, ...)</c> and consumes <see cref="MappedData.RowPitch"/>. The incumbent backed a
+    /// staging texture with a <c>VkBuffer</c> and computed the row pitch, the depth pitch, the array pitch and the
     /// subresource offset IN SOFTWARE, so a different arithmetic here garbles all 36 goldens at once and does it
     /// silently. One draft of the design asserted the rows are tightly packed and moved on, which may well be right
     /// and is the wrong posture either way, because the goldens depend on the arithmetic and not on the
     /// assertion.</para>
     ///
     /// <para><b>PROVENANCE: EVERY NUMBER BELOW WAS PRODUCED BY THE INCUMBENT'S OWN FORMULAS, TRANSCRIBED
-    /// INDEPENDENTLY OF THE CODE UNDER TEST.</b> The incumbent is the vendored Veldrid fork this engine ships
+    /// INDEPENDENTLY OF THE CODE UNDER TEST.</b> The incumbent was the vendored Veldrid fork this engine shipped
     /// against, <c>4.9.103</c>, whose Vulkan tree is <c>v4.9.0</c>. A throwaway generator transcribed these nine
     /// functions line by line and emitted the rows, so the table is a second derivation rather than a snapshot of
     /// what <see cref="VulkanStagingLayout"/> happens to answer:
     /// <list type="bullet">
-    /// <item><description><c>src/Veldrid/FormatSizeHelpers.cs:15</c> <c>GetSizeInBytes</c>, through
-    /// <c>KhaozEngine.Gpu/Internal/VeldridMap.cs:13-20</c>, which is where
-    /// <see cref="GpuPixelFormat.D32FloatS8UInt"/> becomes FIVE bytes per texel.</description></item>
+    /// <item><description><c>src/Veldrid/FormatSizeHelpers.cs:15</c> <c>GetSizeInBytes</c>, through what
+    /// <c>KhaozEngine.Gpu/Internal/VeldridMap.cs</c> lines 13 to 20 held until 18.0.0, which is where
+    /// <see cref="GpuPixelFormat.D32FloatS8UInt"/> became FIVE bytes per texel.</description></item>
     /// <item><description><c>src/Veldrid/FormatHelpers.cs:107</c> <c>GetRowPitch</c>, uncompressed arm at line
     /// 133.</description></item>
     /// <item><description><c>src/Veldrid/FormatHelpers.cs:182</c> <c>GetNumRows</c>, uncompressed arm at line

@@ -287,10 +287,11 @@ namespace KhaozEngine.Tests.Gpu
         // the same claim.
 
         // --- row 12: VeldridMap.SupportsCompletionFences and VeldridGpuDevice's Metal frame capture, neither an
-        // append site. The first switches on Veldrid's own GraphicsBackend rather than on GpuBackendKind, and it
-        // already answers true for GraphicsBackend.Vulkan, which is why V-G1 can demand ZERO capability
-        // differences where Direct3D 11 had to permit one. The second lives inside the Veldrid wrapper, which a
-        // provider-built device never becomes. Named here so a later reader does not re-raise them. ---
+        // append site, and both deleted in 18.0.0. The first switched on Veldrid's own GraphicsBackend rather
+        // than on GpuBackendKind, and it already answered true for GraphicsBackend.Vulkan, which is why V-G1
+        // could demand ZERO capability differences where Direct3D 11 had to permit one. The second lived inside
+        // the Veldrid wrapper, which a provider-built device never became. Named here so a later reader does not
+        // re-raise them. ---
 
         // --- row 13: GpuDeviceContext.CreateOrFallBack's requested-versus-fallback comparison, and the fourth
         // row whose REASONING differs ---

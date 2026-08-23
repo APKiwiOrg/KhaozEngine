@@ -78,15 +78,15 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// Declare that this test needs <see cref="KhaozEngine.Gpu.GpuCapabilities.SupportsCompletionFences"/>, so
         /// it SKIPS with a reason naming the backend on a device that has none, instead of failing an assertion it
-        /// can never satisfy. The incumbent Direct3D11 backend is the one without them, and it reported two red
-        /// tests for a feature it does not have (part of <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/423">#423</see>).
-        /// Vulkan, Metal and the engine's own <c>Direct3D11Native</c> backend all report them, so this skips
-        /// nothing on those three and the gate is read off the device rather than off a backend list.
+        /// can never satisfy. The incumbent Direct3D11 backend was the one without them, and it reported two red
+        /// tests for a feature it did not have (part of <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/423">#423</see>).
+        /// It went away in 18.0.0 and the three native backends left all report them, so this skips nothing today
+        /// and the gate is read off the device rather than off a backend list.
         /// <para>
         /// This is the ONE thing that skips in strict mode, and it is not the hole strict mode exists to close: a
-        /// missing capability is a property of the device, decided by <c>VeldridMap</c>, not a device that failed
-        /// to come up. If no device can be created at all, this skips nothing and the test still errors, so a CI
-        /// leg with a broken device can never go quiet.
+        /// missing capability is a property of the device, decided by each backend's own capability read (it was
+        /// <c>VeldridMap</c> until 18.0.0), not a device that failed to come up. If no device can be created at
+        /// all, this skips nothing and the test still errors, so a CI leg with a broken device can never go quiet.
         /// </para>
         /// </summary>
         public bool RequiresCompletionFences

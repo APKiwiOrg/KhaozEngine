@@ -80,8 +80,9 @@ namespace KhaozEngine.Tests.Gpu
         /// <c>MaxMsaaSampleCount</c> is asserted as a POWER OF TWO OF AT LEAST FOUR, because its exact value above
         /// that is a property of the machine. Four is the floor rather than the walk's own 1: an Apple M2 Max
         /// reports 4, every Metal device the engine supports answers at least 4, and a 1 here means the walk found
-        /// nothing rather than that the machine is unusual. What pins the number against the incumbent's own is
-        /// <c>NativeVsVeldridMetalCapabilityParityTests</c>, which reads both devices in one process.
+        /// nothing rather than that the machine is unusual. What pinned the number against the incumbent's own
+        /// was <c>NativeVsVeldridMetalCapabilityParityTests</c>, which read both devices in one process, and it
+        /// went away with the incumbent in 18.0.0.
         /// </summary>
         [GpuFact]
         public void Capabilities_AnswerEveryMemberOfTheSeam()
@@ -186,8 +187,8 @@ namespace KhaozEngine.Tests.Gpu
         /// command list) rather than about the package, and telling those two apart is what the row is for.
         /// </para>
         /// <para>
-        /// <b>AND "EVERY MEMBER" IS CHECKED BY REFLECTION RATHER THAN BELIEVED</b>, which is the same guard
-        /// <c>NativeVsVeldridMetalCapabilityParityTests</c> puts on its hand-written comparer. The first version
+        /// <b>AND "EVERY MEMBER" IS CHECKED BY REFLECTION RATHER THAN BELIEVED</b>, which was the same guard
+        /// <c>NativeVsVeldridMetalCapabilityParityTests</c> put on its hand-written comparer. The first version
         /// of this row drove twelve of the interface's members and claimed all of them: the whole data half
         /// (both <c>Map</c> overloads, both <c>Unmap</c>, all three <c>UpdateBuffer</c>, both
         /// <c>UpdateTexture</c>) and <c>Submit(list, fence)</c> were never called, so a stub put back on

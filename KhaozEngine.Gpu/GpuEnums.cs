@@ -3,7 +3,8 @@ using System;
 namespace KhaozEngine.Gpu
 {
     /// <summary>Pixel format for a GPU texture. Engine-side mirror of the Veldrid <c>PixelFormat</c> members the
-    /// 5.x renderers use; mapped 1:1 to Veldrid inside the impl (<c>Internal/VeldridMap</c>).</summary>
+    /// 5.x renderers use. Each native backend maps these members to its own API format itself. Until 18.0.0
+    /// <c>Internal/VeldridMap</c> mapped them 1:1 to Veldrid for the incumbent device.</summary>
     public enum GpuPixelFormat
     {
         /// <summary>8-bit-per-channel RGBA, unsigned normalized. The 2D + 3D colour-target format.</summary>

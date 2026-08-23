@@ -75,10 +75,11 @@ namespace KhaozEngine.Tests.Gpu
         /// DECISION W2, AND THE POINT OF THE WHOLE TYPE: the framebuffer is the SAME OBJECT across a resize, and
         /// the views underneath it are different objects.
         /// <para>
-        /// The incumbent disposes the depth texture and the whole framebuffer and builds a new one, which is why
-        /// <c>VeldridGpuDevice.ResizeSwapchain</c> re-wraps only on a reference change, a workaround whose comment
-        /// names the Windows black screen after going fullscreen, maximising or drag-resizing. Owning the wrapper
-        /// is what deletes that workaround's reason to exist.
+        /// The incumbent disposed the depth texture and the whole framebuffer and built a new one, which is why
+        /// <c>VeldridGpuDevice.ResizeSwapchain</c> re-wrapped only on a reference change, a workaround whose
+        /// comment named the Windows black screen after going fullscreen, maximising or drag-resizing. Owning
+        /// this wrapper is what deleted that workaround's reason to exist, and the Veldrid device that carried
+        /// the workaround went away in 18.0.0.
         /// </para>
         /// </summary>
         [Fact]

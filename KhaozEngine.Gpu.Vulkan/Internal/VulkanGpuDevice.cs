@@ -113,17 +113,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// FINAL</b> (row 18, https://github.com/APKiwiOrg/KhaozEngine/issues/528). The assembly moved off this
     /// creation path into a device-free type, so the five constants, the device-name normalisation and the
     /// sample-count floor are all plain <c>[Fact]</c>s on a machine with no loader, and
-    /// <c>NativeVsVeldridVulkanCapabilityParityTests</c> holds the whole set against the incumbent's with ZERO
-    /// permitted differences (V-G1), which is a stricter bar than the Direct3D 11 backend's because there is no
-    /// incumbent capability defect to correct here.
+    /// <c>NativeVsVeldridVulkanCapabilityParityTests</c> held the whole set against the incumbent's with ZERO
+    /// permitted differences (V-G1), a stricter bar than the Direct3D 11 backend's because there was no
+    /// incumbent capability defect to correct here. That test went away with the incumbent in 18.0.0.
     /// <c>MaxMsaaSampleCount</c>, the last member pinned to 1, landed with row 15
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525) as the incumbent's OWN computation reproduced
-    /// rather than a formula invented here (V-C5), which is what keeps the parity assertion satisfiable by
+    /// rather than a formula invented here (V-C5), which is what kept the parity assertion satisfiable by
     /// construction rather than by luck: see <see cref="VulkanMsaaLimit"/>.
     /// </para>
     /// <para>
-    /// <b>TEARDOWN CALLS <c>vkDeviceWaitIdle</c> FIRST</b> (V-F10), unlike the incumbent, which destroys the
-    /// memory manager and the pools and only then waits. Everything the device owns is destroyed after that wait
+    /// <b>TEARDOWN CALLS <c>vkDeviceWaitIdle</c> FIRST</b> (V-F10), unlike the incumbent, which destroyed the
+    /// memory manager and the pools and only then waited. Everything the device owns is destroyed after that wait
     /// and before the liveness token flips, and only then is the real device destroyed, so no wrapper can observe
     /// "alive" after the object it would destroy has gone. <see cref="Dispose"/> carries the full order.
     /// </para>

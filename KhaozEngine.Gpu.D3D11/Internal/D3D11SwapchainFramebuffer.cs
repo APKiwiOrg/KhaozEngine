@@ -13,13 +13,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// a named open end rather than growing a mode into that type.
     /// </para>
     /// <para>
-    /// WHAT STABLE IDENTITY REPLACES. The incumbent disposes the depth texture and the whole framebuffer on every
-    /// resize and builds a new object, which is why <c>VeldridGpuDevice.ResizeSwapchain</c> re-wraps only on a
-    /// reference change: a wrapper cached once would otherwise hand back a DISPOSED framebuffer, and the comment
-    /// on that workaround names the Windows black screen after going fullscreen, maximising or drag-resizing. We
-    /// own the wrapper, so we keep it. That makes Direct3D 11 behave the way Metal already does, which is the
-    /// behaviour the rest of the engine was written against, and it deletes the workaround's reason to exist
-    /// rather than guarding it.
+    /// WHAT STABLE IDENTITY REPLACES. The incumbent disposed the depth texture and the whole framebuffer on every
+    /// resize and built a new object, which is why <c>VeldridGpuDevice.ResizeSwapchain</c> (deleted in 18.0.0)
+    /// re-wrapped only on a reference change: a wrapper cached once would otherwise hand back a DISPOSED
+    /// framebuffer, and the comment on that workaround named the Windows black screen after going fullscreen,
+    /// maximising or drag-resizing. We own the wrapper, so we keep it. That makes Direct3D 11 behave the way
+    /// Metal already does, which is the behaviour the rest of the engine was written against, and it deleted the
+    /// workaround's reason to exist rather than guarding it.
     /// </para>
     /// <para>
     /// THE HAZARD STABLE IDENTITY CREATES, AND WHY IT DOES NOT BITE. Decision W6's guard in

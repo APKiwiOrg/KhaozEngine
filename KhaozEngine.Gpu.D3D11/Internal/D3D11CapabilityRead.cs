@@ -17,13 +17,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// queries and everything downstream of them is engine logic.
     /// </para>
     /// <para>
-    /// PARITY WITH THE INCUMBENT IS THE POINT, and exactly one member is allowed to differ.
-    /// <c>KhaozEngine.Gpu.Internal.VeldridMap.ReadCapabilities</c> is the ground truth this must match member for
-    /// member, with <see cref="GpuCapabilities.SupportsCompletionFences"/> as the ONE permitted difference
-    /// (decision C5 makes it true here and Veldrid's Direct3D11 fence is a CPU-side submit receipt, so it is
-    /// false there). <c>NativeVsVeldridCapabilityParityTests</c> asserts that, and the reason the assertion
-    /// matters most for <see cref="GpuCapabilities.MaxMsaaSampleCount"/> is that a different answer silently
-    /// changes what <c>AntiAliasing.ResolveFor</c> picks, which changes the field look and the golden output.
+    /// PARITY WITH THE INCUMBENT WAS THE POINT, and exactly one member was allowed to differ. What
+    /// <c>KhaozEngine.Gpu.Internal.VeldridMap.ReadCapabilities</c> (deleted in 18.0.0) answered was the ground
+    /// truth this read was matched against member for member, with
+    /// <see cref="GpuCapabilities.SupportsCompletionFences"/> as the ONE permitted difference (decision C5 makes
+    /// it true here and Veldrid's Direct3D11 fence was a CPU-side submit receipt, so it was false there).
+    /// <c>NativeVsVeldridCapabilityParityTests</c> asserted that, and the reason the assertion mattered most for
+    /// <see cref="GpuCapabilities.MaxMsaaSampleCount"/> is that a different answer silently changes what
+    /// <c>AntiAliasing.ResolveFor</c> picks, which changes the field look and the golden output. Both went away
+    /// in 18.0.0, so what the reads below stand on now is the reasoning recorded with each one.
     /// </para>
     /// </summary>
     internal static class D3D11CapabilityRead
@@ -66,18 +68,19 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// THE ADAPTER NAME, READ AS A C STRING. <c>DXGI_ADAPTER_DESC::Description</c> is a fixed 128-wide-char
         /// buffer, so cutting at the first NUL is what "trailing nulls trimmed" means for it. The cut is
         /// DEFENSIVE and is expected to find nothing: the Vortice marshaller already stops at the first NUL on
-        /// the native path and on the incumbent's, so the string that arrives here normally has no terminator
+        /// the native path, and did on the incumbent's, so the string that arrives here normally has no terminator
         /// left in it. It stays because a marshalling change that stopped doing that would otherwise put 100-odd
         /// NULs into the session header.
         /// <para>
         /// NO WHITESPACE TRIM, AND THAT IS A PARITY DECISION RATHER THAN AN OVERSIGHT. The padding observation is
         /// real: at least one vendor pads its description with a space, so a trim would produce a tidier name.
-        /// The incumbent does not trim (<c>D3D11GraphicsDevice</c> assigns <c>desc.Description</c> to its device
-        /// name raw), and <see cref="GpuCapabilities.DeviceName"/> is compared string for string by
-        /// <c>NativeVsVeldridCapabilityParityTests</c>, so trimming on one path alone converts a cosmetic
+        /// The incumbent did not trim (<c>D3D11GraphicsDevice</c> assigned <c>desc.Description</c> to its device
+        /// name raw), and <see cref="GpuCapabilities.DeviceName"/> was compared string for string by
+        /// <c>NativeVsVeldridCapabilityParityTests</c>, so trimming on one path alone converted a cosmetic
         /// improvement into a parity failure on every machine whose vendor pads. Parity with the incumbent
-        /// outranks cosmetics here. A trim is still allowed later, but it has to change BOTH paths and decision
-        /// T4's assertion in the same commit.
+        /// outranked cosmetics here. Decision T4's assertion WAS that parity test, so it went away with the
+        /// incumbent in 18.0.0: a trim is a live option again, on the one path left, with no assertion to change
+        /// alongside it and nothing left to catch one that goes wrong.
         /// </para>
         /// <para>
         /// Null and a description whose first character is the terminator both come back as the empty string,
@@ -125,15 +128,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// attachment of a framebuffer must support the count the framebuffer is created at. The colour target is
         /// <c>R8G8B8A8_UNORM</c>, the linear-depth target is <c>R32_FLOAT</c> and the depth-stencil target is the
         /// engine's <c>D32_FLOAT_S8X24_UINT</c>, which is the same three
-        /// <c>KhaozEngine.Gpu.Internal.VeldridMap.MaxMsaaSampleCount</c> folds over, in the same order.
+        /// <c>KhaozEngine.Gpu.Internal.VeldridMap.MaxMsaaSampleCount</c> folded over, in the same order.
         /// <para>
-        /// THE DEPTH ATTACHMENT IS ASKED ABOUT AS <c>R32G8X24_TYPELESS</c> ON BOTH PATHS, which is what makes
-        /// "comparable by construction" true rather than nearly true. The incumbent asks for the sample-count
+        /// THE DEPTH ATTACHMENT WAS ASKED ABOUT AS <c>R32G8X24_TYPELESS</c> ON BOTH PATHS, which is what made
+        /// "comparable by construction" true rather than nearly true. The incumbent asked for the sample-count
         /// limit of <c>PixelFormat.D32_Float_S8_UInt</c> with its depth flag set, and Veldrid's
-        /// <c>D3D11Formats.ToDxgiFormat</c> maps that pair to <c>Format.R32G8X24_Typeless</c> BEFORE the
-        /// <c>CheckMultisampleQualityLevels</c> call, so the DXGI format the driver is handed is the typeless
+        /// <c>D3D11Formats.ToDxgiFormat</c> mapped that pair to <c>Format.R32G8X24_Typeless</c> BEFORE the
+        /// <c>CheckMultisampleQualityLevels</c> call, so the DXGI format the driver was handed was the typeless
         /// sibling and not the fully typed one. <see cref="D3D11DxgiQueries"/> passes that same typeless format
-        /// for exactly this reason, and the note is here because this fold is where the parity claim lives.
+        /// for exactly this reason, and the note is here because this fold is where the parity claim lived.
         /// </para>
         /// <para>
         /// Anything at or below zero folds to <see cref="NoMultisampling"/>, which is how a failed query reaches
@@ -151,8 +154,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// THE WHOLE CAPABILITY SET, assembled from the four facts a device supplies plus the five constants
         /// above. This is the single source both <c>GpuDeviceContext.Capabilities</c> and
         /// <c>IGpuDevice.Capabilities</c> come from on this backend, exactly as
-        /// <c>VeldridMap.ReadCapabilities</c> is on the incumbent, and section 11 says so for the same reason the
-        /// incumbent has one: the two copies drifted before 15.2.0 and the device wrapper's silently left the
+        /// <c>VeldridMap.ReadCapabilities</c> was on the incumbent, and section 11 says so for the same reason the
+        /// incumbent had one: the two copies drifted before 15.2.0 and the device wrapper's silently left the
         /// adapter name and both sampler flags at their defaults.
         /// </summary>
         /// <param name="adapterName">Already through <see cref="TrimAdapterName"/>.</param>
@@ -160,7 +163,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <param name="supportsShadowMaps">Whether R32_FLOAT is usable as both a render target and a sampled
         /// texture, which is what the manual-PCF shadow path needs.</param>
         /// <param name="supportsCompletionFences">
-        /// The ONE permitted difference from the incumbent, and it is a parameter rather than a constant because
+        /// The ONE difference the incumbent parity permitted, and it is a parameter rather than a constant because
         /// <see cref="D3D11FenceSubsystem.SupportsCompletionFences"/> owns the answer. Decision C5 makes it true
         /// on both fence mechanisms, so this is true in practice, and taking it from the subsystem is what stops
         /// the capability and the fence path being able to disagree.

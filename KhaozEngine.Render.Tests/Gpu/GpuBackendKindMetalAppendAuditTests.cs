@@ -401,9 +401,9 @@ namespace KhaozEngine.Tests.Gpu
         // the same claim.
 
         // --- row 12: VeldridMap.SupportsCompletionFences, and the VeldridGpuDevice frame-capture gate, which is
-        // THE THIRD SILENT SITE. The first is not an append site at all: it switches on Veldrid's own
-        // GraphicsBackend and already answers true for GraphicsBackend.Metal, which is why M-F4 is parity here
-        // rather than the upgrade it was on Direct3D 11. ---
+        // THE THIRD SILENT SITE. Both were deleted in 18.0.0. The first was not an append site at all: it
+        // switched on Veldrid's own GraphicsBackend and already answered true for GraphicsBackend.Metal, which is
+        // why M-F4 is parity here rather than the upgrade it was on Direct3D 11. ---
 
         /// <summary>
         /// The frame-capture gate, which had a second arm until 18.0.0. It was the Veldrid Metal kind ALONE, and

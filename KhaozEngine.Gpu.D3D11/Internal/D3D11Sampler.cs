@@ -10,22 +10,23 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <see cref="IGpuSampler"/> for the native Direct3D 11 backend: one <c>ID3D11SamplerState</c>, created
     /// eagerly, disposed under the liveness gate.
     /// <para>
-    /// FOUR VALUES ARE HARDCODED, and they are hardcoded because the incumbent hardcodes them and the committed
+    /// FOUR VALUES ARE HARDCODED, and they are hardcoded because the incumbent hardcoded them and the committed
     /// goldens were baked through them. No comparison function (the shadow path does manual PCF and never asks for
     /// a comparison sampler), a minimum LOD of 0, a maximum LOD of <c>uint.MaxValue</c> which Direct3D clamps to
     /// the real chain, and a transparent-black border colour. The seam exposes none of the four, so a caller
     /// cannot ask for anything else, and changing one would move pixels.
     /// </para>
     /// <para>
-    /// THE INCUMBENT'S TWO DEGRADATIONS ARE NOT REPRODUCED. Its sampler path falls back from anisotropic filtering
-    /// to trilinear when the device lacks anisotropy, and drops a non-zero LOD bias when the device lacks bias
-    /// support, both because Metal has neither. Every Direct3D 11 device has both, so on this backend those
-    /// branches are unreachable and carrying them would mean shipping a fallback nothing can enter. Decision G1
-    /// says so, and the two capabilities the dropped branches read are now CONSTANTS rather than device answers:
-    /// <see cref="D3D11CapabilityRead.SamplerAnisotropy"/> and
-    /// <see cref="D3D11CapabilityRead.SamplerLodBias"/>, both true, both asserted equal to the incumbent's by
-    /// <c>NativeVsVeldridCapabilityParityTests</c>. That is what turns "unreachable" from a claim here into
-    /// something a test fails on.
+    /// THE INCUMBENT'S TWO DEGRADATIONS ARE NOT REPRODUCED. Its sampler path fell back from anisotropic
+    /// filtering to trilinear when the device lacked anisotropy, and dropped a non-zero LOD bias when the device
+    /// lacked bias support, both because Metal has neither. Every Direct3D 11 device has both, so on this backend
+    /// those branches are unreachable and carrying them would mean shipping a fallback nothing can enter.
+    /// Decision G1 says so, and the two capabilities the dropped branches read are now CONSTANTS rather than
+    /// device answers: <see cref="D3D11CapabilityRead.SamplerAnisotropy"/> and
+    /// <see cref="D3D11CapabilityRead.SamplerLodBias"/>, both true, and both were asserted equal to the
+    /// incumbent's by <c>NativeVsVeldridCapabilityParityTests</c> until that test went away with the incumbent in
+    /// 18.0.0. That assertion is what turned "unreachable" from a claim here into something a test failed on, and
+    /// what carries it now is the feature-level guarantee each of those two constants records.
     /// </para>
     /// </summary>
     [SupportedOSPlatform("windows")]

@@ -25,12 +25,12 @@ namespace KhaozEngine.Tests.Gpu
     /// </para>
     /// <para>
     /// Three rows of the table are deliberately not asserted here, and each is a decision rather than a gap.
-    /// <c>VeldridMap.SupportsCompletionFences</c> switches on Veldrid's own <c>GraphicsBackend</c> and not on
-    /// <see cref="GpuBackendKind"/> at all, so it is not an append site (it is in the table only so a later reader
-    /// does not re-raise it). <c>VeldridGpuDevice</c>'s Metal frame-capture check lives inside the Veldrid
-    /// wrapper, which a provider-built device never becomes, so the native kind cannot reach it. And the fourth
-    /// creation-path row is asserted through its observable behaviour below rather than by naming a private
-    /// switch.
+    /// <c>VeldridMap.SupportsCompletionFences</c> (deleted in 18.0.0) switched on Veldrid's own
+    /// <c>GraphicsBackend</c> and not on <see cref="GpuBackendKind"/> at all, so it was never an append site (it
+    /// is in the table only so a later reader does not re-raise it). <c>VeldridGpuDevice</c>'s Metal
+    /// frame-capture check lived inside the Veldrid wrapper, which a provider-built device never became, so the
+    /// native kind could not reach it. And the fourth creation-path row is asserted through its observable
+    /// behaviour below rather than by naming a private switch.
     /// </para>
     /// <para>
     /// Rows 3, 6 and 8 are asserted in <see cref="GpuBackendKindAppendAuditRegistryTests"/> instead of here,

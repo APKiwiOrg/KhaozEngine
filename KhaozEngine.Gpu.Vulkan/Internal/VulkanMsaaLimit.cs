@@ -30,10 +30,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// this row's own obligation.</para>
     ///
     /// <para><b>THE THREE FORMATS ARE THE ENGINE'S, NOT THE BACKEND'S.</b>
-    /// <c>KhaozEngine.Gpu.Internal.VeldridMap.MaxMsaaSampleCount</c> folds the MINIMUM over the colour target, the
-    /// linear-depth target and the depth-stencil target the 3D scene renders into, because every attachment of an
-    /// MRT must support the count. Both halves of the computation are reproduced here: the fold and the
-    /// per-format query.</para>
+    /// <c>KhaozEngine.Gpu.Internal.VeldridMap.MaxMsaaSampleCount</c> (deleted in 18.0.0, in git history) folded
+    /// the MINIMUM over the colour target, the linear-depth target and the depth-stencil target the 3D scene
+    /// renders into, because every attachment of an MRT must support the count. Both halves of the computation
+    /// are reproduced here: the fold and the per-format query.</para>
     ///
     /// <para><b>AND THE DEPTH FLAG DOES NOT REACH THE FORMAT MAPPING, WHICH LOOKS LIKE A BUG AND IS THE
     /// CONTRACT.</b> <c>GetSampleCountLimit</c> passes its <c>depthFormat</c> argument to the USAGE bits alone and
@@ -53,12 +53,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>
         /// WHAT THIS REPRODUCES, AS A MEMBER RATHER THAN A LINE NUMBER (V-I6). Pinned in a constant so a reader
         /// comparing the two sources knows exactly which two functions to open, and so a later edit that changed
-        /// the computation without changing this string is a lie somebody has to write deliberately.
+        /// the computation without changing this string is a lie somebody has to write deliberately. Only one of
+        /// the two is still openable in the tree: Veldrid's own is upstream, and the engine's fold went with the
+        /// incumbent in 18.0.0, so it reads out of git history now.
         /// </summary>
         internal const string Citation =
             "Veldrid 4.9.103 (Vulkan tree v4.9.0): VkGraphicsDevice.GetSampleCountLimit, folded by "
-            + "KhaozEngine.Gpu.Internal.VeldridMap.MaxMsaaSampleCount over R8_G8_B8_A8_UNorm, R32_Float and "
-            + "D32_Float_S8_UInt.";
+            + "KhaozEngine.Gpu.Internal.VeldridMap.MaxMsaaSampleCount (deleted in 18.0.0) over "
+            + "R8_G8_B8_A8_UNorm, R32_Float and D32_Float_S8_UInt.";
 
         /// <summary>
         /// The three formats the fold covers and whether each is queried with a DEPTH-STENCIL attachment usage

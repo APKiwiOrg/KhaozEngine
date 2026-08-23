@@ -21,11 +21,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// the same reason: a static initializer would resolve them on first touch of ANY member.
     /// </para>
     /// <para>
-    /// DEFENSIVE ON EVERY QUERY, and that matches the incumbent rather than being extra caution.
-    /// <c>VeldridMap.MaxMsaaSampleCount</c> and <c>VeldridMap.SupportsShadowMaps</c> both swallow and degrade,
-    /// because a capability read that throws would fail device creation over a question whose answer only decides
-    /// how pretty the frame is. Section 11 says the same in as many words: any multisample query failure yields
-    /// 1.
+    /// DEFENSIVE ON EVERY QUERY, and that matched the incumbent rather than being extra caution.
+    /// <c>VeldridMap.MaxMsaaSampleCount</c> and <c>VeldridMap.SupportsShadowMaps</c> (both deleted in 18.0.0)
+    /// swallowed and degraded, because a capability read that throws would fail device creation over a question
+    /// whose answer only decides how pretty the frame is. Section 11 says the same in as many words: any
+    /// multisample query failure yields 1.
     /// </para>
     /// </summary>
     internal static class D3D11DxgiQueries
@@ -111,14 +111,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// directional shadow map needs (it renders depth into an R32_FLOAT target and samples that target for the
         /// manual PCF compare).
         /// <para>
-        /// TWO BITS, WHICH IS EXACTLY WHAT THE INCUMBENT ENDS UP CHECKING.
-        /// <c>VeldridMap.SupportsShadowMaps</c> calls
+        /// TWO BITS, WHICH IS EXACTLY WHAT THE INCUMBENT ENDED UP CHECKING.
+        /// <c>VeldridMap.SupportsShadowMaps</c> called
         /// <c>GetPixelFormatSupport(R32_Float, Texture2D, RenderTarget | Sampled)</c>, and Veldrid's
-        /// <c>D3D11GraphicsDevice.GetPixelFormatSupportCore</c> turns that USAGE pair into a
+        /// <c>D3D11GraphicsDevice.GetPixelFormatSupportCore</c> turned that USAGE pair into a
         /// <c>RenderTarget</c> test and a <c>ShaderSample</c> test against the result of
-        /// <c>CheckFormatSupport</c>. The texture TYPE selects no bit at all there, so requiring
-        /// <c>FormatSupport.Texture2D</c> as well would be a stricter question than the incumbent asks and could
-        /// report false where the incumbent reports true, which is the shadow path silently degrading to blob
+        /// <c>CheckFormatSupport</c>. The texture TYPE selected no bit at all there, so requiring
+        /// <c>FormatSupport.Texture2D</c> as well would be a stricter question than the incumbent asked and could
+        /// report false where the incumbent reported true, which is the shadow path silently degrading to blob
         /// shadows on one backend only.
         /// </para>
         /// </summary>

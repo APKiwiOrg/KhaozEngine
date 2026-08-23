@@ -4,8 +4,8 @@ The engine's own native Metal backend for the [KhaozEngine.Gpu](../KhaozEngine.G
 `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.0.0, so a repinned game gets it without adding
 anything. It was opt-in and in no umbrella while the deleted Veldrid incumbent still shipped.
 
-**"The incumbent" below always means the Veldrid Metal backend, deleted in 18.0.0.** Many passages keep it in
-the present tense because they document the behaviour this backend was built to reproduce or to diverge from,
+**"The incumbent" below always means the Veldrid Metal backend, deleted in 18.0.0.** It is cited throughout in
+the past tense, because what it did is the behaviour this backend was built to reproduce or to diverge from,
 and that reasoning is what makes the code readable. Nothing selects it any more.
 
 > **Status: it creates a device, HEADLESS OR WINDOWED, with a TIMELINE and REAL RESOURCES that RECORDS AND
@@ -51,8 +51,8 @@ and that reasoning is what makes the code readable. Nothing selects it any more.
 > [The shader path, and where a binding index comes from](#the-shader-path-and-where-a-binding-index-comes-from).
 > Row 12 added framebuffers and the deferred render pass: `CreateFramebuffer`, `SetFramebuffer`, both clears and
 > both scissor members. A recording can bind a target and clear it, and the clear lands on the attachment it
-> names. See [Render passes: a descriptor per pass, and one index the incumbent gets
-> wrong](#render-passes-a-descriptor-per-pass-and-one-index-the-incumbent-gets-wrong).
+> names. See [Render passes: a descriptor per pass, and one index the incumbent got
+> wrong](#render-passes-a-descriptor-per-pass-and-one-index-the-incumbent-got-wrong).
 > Row 10 added resource layouts and resource sets, neither of which touches Metal at all, and deduplicated the
 > binding table so two programs that map every element the same way share one. See
 > [Layouts, sets, and the table two pipelines can share](#layouts-sets-and-the-table-two-pipelines-can-share).
@@ -117,7 +117,7 @@ The deleted Veldrid Metal backend's own support check created a device inside a 
 FLOOR of this probe rather than the whole of it. On top of it, four reads, each cheap here and expensive
 anywhere later:
 
-- **a device exists and reports a name**, which is what `GpuCapabilities.DeviceName` parity depends on under a
+- **a device exists and reports a name**, which is what `GpuCapabilities.DeviceName` parity depended on under a
   zero-permitted-difference bar.
 - **`supportsFamily:` answers at or above the floor**, meaning any `MTLGPUFamilyApple` generation or
   `MTLGPUFamilyMac2`. An Apple silicon Mac answers both arms and an Intel Mac on a supported macOS answers the
@@ -133,11 +133,11 @@ the exception named.
 
 **One of those four asks for a property Metal does not have, and the probe says so.** Measured on an Apple M2
 Max under macOS 26.6: `MTLDevice` responds to neither `minimumConstantBufferOffsetAlignment` nor
-`minimumBufferOffsetAlignment`, which is why the incumbent hardcodes `MetalFeatures.IsMacOS ? 16u : 256u`
+`minimumBufferOffsetAlignment`, which is why the incumbent hardcoded `MetalFeatures.IsMacOS ? 16u : 256u`
 rather than asking. So the probe asks for the real property through `respondsToSelector:` first, and a future
 macOS that ships one is read with no code change, then falls back to
 `minimumLinearTextureAlignmentForPixelFormat:`, which IS a device-reported buffer offset alignment. It reads 16
-on that machine, which is exactly what the incumbent hardcodes for macOS, so two independent statements of the
+on that machine, which is exactly what the incumbent hardcoded for macOS, so two independent statements of the
 number agree.
 
 ## The device, the queue, and the two variables that steer them
@@ -152,9 +152,9 @@ submit order the observable order by construction.
 case-insensitive substring of a device name, or `discrete`, `integrated` or `low-power`. Unset, the DEFAULT is
 `MTLCreateSystemDefaultDevice()` rather than element zero of the enumeration, and that is a decision rather than
 a shortcut: the deleted Veldrid Metal backend called that function, `GpuCapabilities.DeviceName` was compared
-against it under a zero-permitted-difference bar, and taking the array's first element instead would swap the
-GPU underneath the one gate that has to isolate the backend swap. An ordinary run therefore never enumerates at
-all.
+against it under a zero-permitted-difference bar, and taking the array's first element instead would have
+swapped the GPU underneath the one gate that had to isolate the backend swap. An ordinary run therefore never
+enumerates at all.
 
 Metal has exactly one classification flag, `-isLowPower`, and no `isDiscrete` and no device-type enumeration of
 the kind Vulkan has. So `discrete` means "not low-power", and `integrated` and `low-power` are the same
@@ -163,7 +163,7 @@ rather than failing, because a name substring is machine-specific by nature and 
 refusal to start would make a diagnostic lever into a way of bricking a session. An ineligible device is never
 chosen on any path, including an explicit index: honouring that pin would trade a warning now for a crash on
 frame one. And the log line says SELECTION or SUBSTITUTED in as many words, because a soak session comparing
-this backend against the incumbent has to tell those apart.
+this backend against the incumbent had to tell those apart.
 
 **`KE_METAL_VALIDATION`** takes `0`, `1` or `shaders`, and it REPORTS rather than arms. Metal API validation is
 a process-launch mechanism: the runtime reads `MTL_DEBUG_LAYER` and `MTL_SHADER_VALIDATION` before the first
@@ -203,7 +203,7 @@ read.
 Every command buffer's `status` and `error` are read when it finishes, in every configuration, and the first
 failure latches its `MTLCommandBufferError` code and the driver's own description at the site that saw it, flips
 the device's liveness token so every later release is a no-op, and lands in the telemetry session header's
-`deviceLossReason` field. The incumbent reads `status` in exactly one place and never reads `error` at all, so
+`deviceLossReason` field. The incumbent read `status` in exactly one place and never read `error` at all, so
 this is reporting that did not exist rather than reporting that was moved.
 
 Every failure latches, not only the codes that sound device-level. The GPU seam has no way to resubmit a
@@ -222,15 +222,15 @@ defect to correct. While both shipped, a test created both devices in one proces
 carrying a reflection check that the comparison covered the whole struct, so a member added later could not
 weaken the assertion by being forgotten.
 
-Seven of the nine members are CONSTANTS, because the incumbent answers them with constants too. Metal's clip
+Seven of the nine members are CONSTANTS, because the incumbent answered them with constants too. Metal's clip
 space already matches the engine's, so `ClipSpaceYInverted` is false with no viewport correction anywhere.
 `SamplerLodBias` is false, and it is the one capability that differs from both other native backends, because
 `MTLSamplerDescriptor` has no LOD bias field at all. `SupportsShadowMaps` is true unconditionally: the
-incumbent's own question routes to a format switch with no `R32_Float` case, so it answers true on every Metal
-device, and asking Metal a real question instead could only produce a parity difference.
+incumbent's own question routed to a format switch with no `R32_Float` case, so it answered true on every Metal
+device, and asking Metal a real question instead could only have produced a parity difference.
 
 **`MaxMsaaSampleCount` asks `-supportsTextureSampleCount:` for 32, 16, 8, 4, 2 and 1 and takes the first yes.**
-That reproduces the incumbent's own walk, including the fact that it ignores the pixel format, and the
+That reproduces the incumbent's own walk, including the fact that it ignored the pixel format, and the
 format-blindness is CORRECT rather than a bug carried for parity: `-supportsTextureSampleCount:` is the only
 sample-count query Metal has and it takes no format, so a sample-count limit on Metal is format-independent by
 construction. Asking per format would be inventing a question the API cannot answer. Downward matters, because
@@ -275,8 +275,8 @@ submission order with monotonic values, so the counter reaching 6 requires the s
 Polling a later fence therefore covers every earlier submission, which is what `GpuRetireQueue` relies on.
 
 **The completion handler is not deleted along with the fence dictionary.** It survives with reporting as its
-only job: reading `status` and `error` at completion, which the incumbent never does for `error` at all, so a
-Metal command-buffer failure is invisible to the engine and to telemetry today. The shared event owns ordering
+only job: reading `status` and `error` at completion, which the incumbent never did for `error` at all, so a
+Metal command-buffer failure was invisible to the engine and to telemetry there. The shared event owns ordering
 and the handler owns reporting, and the handler takes no lock, touches no dictionary and advances no counter.
 
 It is one global block carrying no captures, so it finds the right latch by reading `[commandBuffer
@@ -320,15 +320,15 @@ pitch and size for subresource 0 out of that arithmetic, which a checked-in 232-
 numbers Veldrid's own functions produced, with no device in the room. `Unmap` is a no-op, as it was in the
 incumbent, because a Shared buffer's pointer needs no unmapping.
 
-**`Map` waits, where the incumbent does not.** `MTLGraphicsDevice.MapCore` hands back `contents()` immediately,
-which is correct today only because every engine caller drains first, so the seam's guarantee rests on a
+**`Map` waits, where the incumbent did not.** `MTLGraphicsDevice.MapCore` handed back `contents()` immediately,
+which was correct at the time only because every engine caller drains first, so the seam's guarantee rested on a
 convention rather than on the backend. Here a read mapping drains, and it commits the pending setup batch
 first, so a texture uploaded and immediately read back sees the uploaded bytes. That drain is the QUEUE
 drain rather than the timeline's, because a setup batch signals no timeline value and only a completed
 empty buffer covers one. A write mapping does not drain, because the caller is the producer.
 
 **A device-level `UpdateTexture` records into a device-owned setup command buffer rather than issuing its own
-queue submit.** The incumbent creates a staging texture, a command list and a whole `SubmitCommands` per call.
+queue submit.** The incumbent created a staging texture, a command list and a whole `SubmitCommands` per call.
 Here they accumulate into one buffer, flushed at the next device-level read. That trades the incumbent's one
 live staging allocation for holding every payload since the last flush, so the open batch carries a **64 MB
 staging budget**: an upload that would cross it commits the batch first. A five-layer 1024-square splat set
@@ -343,15 +343,15 @@ process, so two devices share a handle and a cross-device use SUCCEEDS, leaving 
 about who releases what.
 
 The `MipLodBias` a sampler description carries is dropped, because `MTLSamplerDescriptor` has no LOD bias field
-at all, which is why `GpuCapabilities.SamplerLodBias` is false on this backend and on the incumbent alike.
+at all, which is why `GpuCapabilities.SamplerLodBias` is false on this backend, as it was on the incumbent.
 
-**`GpuSamplerAddress.Border` is a DEVICE FEATURE here, and this backend diverges from the incumbent over it.**
+**`GpuSamplerAddress.Border` is a DEVICE FEATURE here, and this backend diverged from the incumbent over it.**
 Sampler border colours are a `MTLGPUFamilyMac2` feature, so a Metal device that answers no to that family has
 none: the debug layer asserts on any sampler descriptor carrying one, and without the layer armed the device
-samples something other than a border. The incumbent writes the border colour whenever it is on macOS and never
-asks the device, which means it arms border colours on a machine that cannot honour them. This backend asks
+samples something other than a border. The incumbent wrote the border colour whenever it was on macOS and never
+asked the device, which meant it armed border colours on a machine that cannot honour them. This backend asks
 once, at device creation, off the family answer the probe already reads for the floor, and then does two things
-the incumbent does not:
+the incumbent did not:
 
 - **the property is written ONLY when an address mode is `Border`.** A Wrap, Mirror or Clamp sampler never sends
   `-setBorderColor:` at all, so the shared WRAP pair and every shipped engine sampler are untouched by
@@ -365,7 +365,7 @@ What the refusal bites is a test fixture that exercises every address mode, and 
 border sampler on a virtualized GPU. The hosted `macos-26` runner's Apple Paravirtual device is exactly that
 device, and it is where the difference was found.
 
-## The uniform ring: a `memcpy` where the incumbent splits the encoder (M-M3 to M-M8)
+## The uniform ring: a `memcpy` where the incumbent split the encoder (M-M3 to M-M8)
 
 **A `UniformBuffer`-usage buffer is ONE `MTLBuffer` of `align(size, 256) * KE_METAL_FRAMES_IN_FLIGHT`**, and
 none of that is visible through the seam. `IGpuBuffer.SizeInBytes` still reports what you asked for, the buffer
@@ -380,17 +380,17 @@ pass, one per retire barrier), so frames of headroom is that number divided by t
 variable keeps the name it has on the other two backends, and nothing that reasons about depth should read
 "frames" literally.
 
-**The point is the ENCODER rather than the copy.** On the incumbent a record-time `UpdateBuffer` allocates an
-`MTLBuffer`, copies, ENDS THE RENDER ENCODER to open a blit encoder, copies again and releases, and then the
-next draw pays a full graphics-state re-activation, because ending a render encoder discards the bound
+**The point is the ENCODER rather than the copy.** On the incumbent a record-time `UpdateBuffer` allocated an
+`MTLBuffer`, copied, ENDED THE RENDER ENCODER to open a blit encoder, copied again and released, and then the
+next draw paid a full graphics-state re-activation, because ending a render encoder discards the bound
 pipeline, the whole argument table, the viewport, the scissor and every vertex stream. Under the ring the same
 call is a `memcpy` into mapped memory and opens nothing at all. The shipped renderers write a uniform buffer
 per pass and often per draw.
 
 **It is also a CORRECTNESS change, which the same ring was not on Direct3D 11.**
-`MTLGraphicsDevice.UpdateBufferCore` is an unguarded copy into `contents()` with no fence, no frame index and
+`MTLGraphicsDevice.UpdateBufferCore` was an unguarded copy into `contents()` with no fence, no frame index and
 no diagnostic. Direct3D 11's `MAP_WRITE_DISCARD` lets the driver rename a buffer under a write and Metal
-renames nothing, so that is a plain data race with a submitted command buffer, and the segment gate is what
+renames nothing, so that was a plain data race with a submitted command buffer, and the segment gate is what
 removes it. Automatic hazard tracking does not help: it orders GPU work against GPU work and says nothing about
 a CPU write racing a GPU read.
 
@@ -418,7 +418,7 @@ a capture taken there.
 
 **Every OTHER record-time `UpdateBuffer` stages through a per-list arena and pays one blit.** Bulk payloads
 genuinely need the copy command, so what the arena removes is the incumbent's allocate-and-release of a whole
-`MTLBuffer` per call, which its own source carries a TODO asking for. Blocks are pooled by power-of-two size
+`MTLBuffer` per call, which its own source carried a TODO asking for. Blocks are pooled by power-of-two size
 class, sub-allocated by bumping, and handed back only once the timeline has reached the value the submission
 that read them signalled. The arena never waits: a slot still in flight keeps its blocks and gets them back at
 a later visit. It retains up to 8 MiB of idle blocks and releases the largest first past that.
@@ -440,8 +440,8 @@ both `UniformBuffer` and a structured usage throws, because the ring rebases eve
 binding of the same buffer would read whichever segment the frame landed on.
 
 **A record-time upload to a non-uniform buffer needs a four-byte-aligned destination offset.** macOS requires
-that of the copy, the size half is padded up the way the incumbent already pads it, and the offset half throws
-by name rather than shipping the incumbent's answer to it, which is an embedded compute shader and a dedicated
+that of the copy, the size half is padded up the way the incumbent padded it, and the offset half throws by
+name rather than shipping the incumbent's answer to it, which was an embedded compute shader and a dedicated
 pipeline for a case no shipped call site produces. Every record-time site in the engine passes 0 or a multiple
 of an element stride. A ring-backed write has no such requirement, being a `memcpy`.
 
@@ -478,8 +478,8 @@ Three helpers own every transition and each ends the outgoing encoder before ope
 
 **Ending an encoder discards EVERYTHING it held**, and this backend acts on all of it: the bound pipeline, the
 whole argument table, the viewport, the scissor, every vertex stream and the index buffer. The incumbent
-forgets the vertex streams there and is saved only by a second defect that makes its stream cache permanently
-cold, so it re-binds every stream on every draw. This backend keeps the cache, which means it has to keep the
+forgot the vertex streams there and was saved only by a second defect that made its stream cache permanently
+cold, so it re-bound every stream on every draw. This backend keeps the cache, which means it has to keep the
 invalidation, and the test for it is written behaviourally (bind, force an encoder end through a blit, bind
 again, assert the second bind was re-issued) because that shape fails on the corruption rather than on the
 bookkeeping.
@@ -512,7 +512,7 @@ model pass reading the normal texture through the albedo sampler, a crease term 
 splat terrain reading one uniform buffer's bytes through another). The MECHANISM behind the last of those three
 was measured against this backend in 2026-08, and it is the count: for a fragment function that reads set 1
 alone, the emission puts the buffer at `buffer(0)` and a declaration-order count puts it at `buffer(1)`, so the
-incumbent writes it at an index the function does not read. What the measured shape then produces is an
+incumbent wrote it at an index the function does not read. What the measured shape then produces is an
 ALL-ZERO read, because it leaves the fragment's `buffer(0)` unbound. The incident's own symptom, one buffer's
 bytes arriving through another, needs the earlier buffer bound to the reading stage, so it is a sibling of the
 measured shape rather than the measured shape, and it stays unreproduced rather than refuted. This backend
@@ -590,11 +590,11 @@ this backend must never accept quietly.
 a layout here is the engine's own bookkeeping and nothing else. Metal's answer to a descriptor set is an argument
 buffer, which this backend declines by name: the engine's per-frame binding traffic is dominated by offsets-only
 rebinds of ONE set, which argument buffers do not improve, and every route to them changes the emitted MSL for
-every program at once, which would put the committed `metal` goldens in play and destroy the byte-equality parity
-claim in the same move.
+every program at once, which would put the committed `metal-native` goldens in play. While the incumbent still
+shipped it would also have destroyed the byte-equality parity claim in the same move.
 
-**A layout counts nothing.** The incumbent's layout object is the same element array plus per-kind counters, and
-its bind path re-walks the whole layout array to sum them on every single bind. That arithmetic is right only
+**A layout counts nothing.** The incumbent's layout object was the same element array plus per-kind counters, and
+its bind path re-walked the whole layout array to sum them on every single bind. That arithmetic is right only
 where the compiler's first-reference order happens to equal declaration order, which is the mechanism behind the
 three incidents the section above lists. What declaration order is for here is that an element's POSITION is its
 binding number, which is the key the binding table is read through. The only refusal a layout adds is a per-draw
@@ -632,7 +632,7 @@ argument tables are absolute and per encoder, so a bound resource survives a pip
 invalidate is only the mapping from an element to an index. Two programs that map every element identically
 therefore invalidate nothing, and with a fresh table object per program that comparison would be a reference test
 that is never equal, so every switch would invalidate everything, which is exactly what the incumbent already
-does. Tables are keyed on a content string rendering the layout shape and every entry, canonicalised at
+did. Tables are keyed on a content string rendering the layout shape and every entry, canonicalised at
 shader-set creation because a table is a property of the emission, and never evicted, because a rebuilt instance
 would silently start invalidating again. Measured over the shipped catalog at row 10, on 2026-08-10, **42
 programs produced 17 distinct tables and 25 programs shared one with an earlier program**. That is a measurement
@@ -646,8 +646,8 @@ record one. Nothing draws yet, because the draw itself is
 
 **Vertex streams are pinned at the TOP of the `[[buffer(n)]]` space, 30 downward, and resource buffers grow from
 0 wherever the emission put them.** The one real collision in Metal's binding model is that both share one space
-on the vertex stage, and the fork's answer makes each numbering depend on the other's count: a stream lands at
-`NonVertexBufferCount + i`, computed in two places that have to agree. That count is the CPU's belief about
+on the vertex stage, and the fork's answer made each numbering depend on the other's count: a stream landed at
+`NonVertexBufferCount + i`, computed in two places that had to agree. That count is the CPU's belief about
 where the resource buffers went, which is the quantity this backend's binding table replaces as the authority,
 so it is not reproduced. Top pinning depends on nothing, and it moves no pixel: a stream's index is invisible to
 the emitted MSL, which reaches attributes through `[[stage_in]]`, so it only has to agree between the vertex
@@ -681,12 +681,12 @@ change as `4.9.104`. Fixing only this one would have left the native leg disagre
 incumbent baked. Neither moved a committed golden.
 
 **A compute pipeline is created from the function alone**, with no `MTLComputePipelineDescriptor`. The
-descriptor exists to carry per-buffer mutability, the incumbent fills it by counting buffer-kind elements in
+descriptor exists to carry per-buffer mutability, the incumbent filled it by counting buffer-kind elements in
 declaration order, and that counter is the arithmetic this backend removes. Metal's default infers the same
 mutability from the function's own `const device` and `constant` qualifiers.
 
-**Binding the pipeline that is already bound does nothing.** The incumbent clears its whole active-set array and
-sets a changed flag on every call including a redundant one, so a repeat bind costs a state re-emit plus a full
+**Binding the pipeline that is already bound does nothing.** The incumbent cleared its whole active-set array and
+set a changed flag on every call including a redundant one, so a repeat bind cost a state re-emit plus a full
 re-activation of every resource set. Here it costs one reference comparison. Which pipeline is bound survives an
 encoder boundary, because the recorder still intends it, and whether its state has reached the current encoder
 does not, because that is encoder state: the two are tracked separately rather than collapsed into one flag.
@@ -711,8 +711,8 @@ one flush and a bind that changes nothing costs nothing.
 **A flush emits ONE ARRAY CALL per (kind, stage), not one call per resource per stage.**
 `setVertexBuffers:offsets:withRange:` and its five siblings take a range, so a full activation of a
 model-shaped set is one buffer call, one texture call and one sampler call on the fragment stage plus one
-buffer call on the vertex stage. The incumbent emits one call per element per stage, which is a fan-out defect
-this engine already paid to fix once on another API, and the vendored Metal fork's binding layer does not
+buffer call on the vertex stage. The incumbent emitted one call per element per stage, which is a fan-out defect
+this engine already paid to fix once on another API, and the vendored Metal fork's binding layer did not
 declare a single array setter, so these are hand-written against the ABI a spike measured on real hardware. All
 twelve selectors (eight on the render encoder, four on the compute encoder, which is a separate protocol) are
 sent to a live encoder by a `[GpuFact]`, including the vertex stage's texture and sampler tables, which only a
@@ -746,8 +746,8 @@ any movement falls back to the full rebind, whose nil handle is the safe degrada
 
 **Every bind record carries an encoder-epoch stamp, so a boundary re-activates it.** A record-time
 `UpdateBuffer` big enough to take the staging path opens a blit encoder mid-pass, and the reopened pass is a new
-encoder with an empty argument table. The incumbent tracks vertex-stream binds and does NOT invalidate them
-there, and is saved only by a second defect that makes its cache permanently cold. Porting the tracking without
+encoder with an empty argument table. The incumbent tracked vertex-stream binds and did NOT invalidate them
+there, and was saved only by a second defect that made its cache permanently cold. Porting the tracking without
 the invalidation would ship a corruption no golden reaches, because the goldens do not restart a render pass
 mid-scene, so both arrive together here: two vertex streams cost one array call on the draw that binds them,
 zero on every draw after, and one again after any encoder boundary.
@@ -786,7 +786,7 @@ what every shipped resource-set shape already does and what `MetalRingStrideTest
 refusal names the numbers, so a caller who gets it wrong is told at the first draw rather than reading another
 frame's uniforms.
 
-## Render passes: a descriptor per pass, and one index the incumbent gets wrong
+## Render passes: a descriptor per pass, and one index the incumbent got wrong
 
 `IGpuDevice.Factory.CreateFramebuffer` gives back a render target, and `SetFramebuffer`, `ClearColorTarget`,
 `ClearDepthStencil`, `SetScissorRect` and `SetFullScissorRects` record against it. The draw is
@@ -910,26 +910,26 @@ and `drawableSize` from the host view's frame.
 
 **The exception is that `drawableSize` is the view frame in POINTS multiplied by
 `-[NSWindow backingScaleFactor]`, because a drawable size is in PIXELS**
-([#605](https://github.com/APKiwiOrg/KhaozEngine/issues/605)). The incumbent's NSView arm writes the points
-straight through, which opens a Retina window at half its real resolution until the first framebuffer-resize
-callback corrects it, and the incumbent's own UIView arm multiplies by the native scale. The two arms of one
-constructor disagree and only one of them can be right, so this is a fix rather than an improvement smuggled
+([#605](https://github.com/APKiwiOrg/KhaozEngine/issues/605)). The incumbent's NSView arm wrote the points
+straight through, which opened a Retina window at half its real resolution until the first framebuffer-resize
+callback corrected it, and the incumbent's own UIView arm multiplied by the native scale. The two arms of one
+constructor disagreed and only one of them could be right, so this is a fix rather than an improvement smuggled
 into a backend swap. Only the FIRST frame moves: `ResizeSwapchain` already writes the pixel size the windowing
 layer forwards, so the steady state never had the defect. A degenerate scale falls back to 1.0. That arm is defensive rather than reachable: the resolve refuses a zero
 window handle and a nil content view before the scale is ever read, so only a future caller that skips those
 refusals could deliver the nil receiver whose message send answers 0. The arithmetic lives in `MetalSwapchainPolicy` and is asserted device-free on every leg,
 which is why the scalar is read rather than the whole conversion handed to `-[NSView convertRectToBacking:]`.
 
-**Four more things change, and each answers something the incumbent gets wrong.**
+**Four more things change, and each answers something the incumbent got wrong.**
 
-**Vsync always applies.** The incumbent writes `displaySyncEnabled` only when its `MTLFeatureSet` enumeration
-lands on one of three values of an enum deprecated since macOS 10.15, so on a machine outside that set a vsync
-toggle silently does nothing. `CAMetalLayer.displaySyncEnabled` is a macOS property on a macOS-only backend and
+**Vsync always applies.** The incumbent wrote `displaySyncEnabled` only when its `MTLFeatureSet` enumeration
+landed on one of three values of an enum deprecated since macOS 10.15, so on a machine outside that set a vsync
+toggle silently did nothing. `CAMetalLayer.displaySyncEnabled` is a macOS property on a macOS-only backend and
 needs no capability test, so it is written unconditionally.
 
 **A frame with no drawable renders somewhere and counts.** `-nextDrawable` returns nil when the layer has none
-to give. The incumbent's framebuffer then reports itself unrenderable, every draw in that frame is silently
-discarded, and nothing is logged or counted. Here the framebuffer is repointed at a device-owned ORPHAN TARGET
+to give. The incumbent's framebuffer then reported itself unrenderable, every draw in that frame was silently
+discarded, and nothing was logged or counted. Here the framebuffer is repointed at a device-owned ORPHAN TARGET
 at the current size, the frame records, submits and completes exactly like any other, only its PRESENT is
 skipped, and it counts into `GpuDeviceCounters.FramesBegun` because a skipped present is not a skipped frame.
 The first one WARNs once per device. A minimised window is the ordinary cause and it recovers by itself.
@@ -944,12 +944,12 @@ number.
 
 **A resize is queued and applied at the next present boundary, after a drain.** `ResizeSwapchain` stores a size
 and returns: no lock, no native call, nothing that can block, so a window callback arriving on any thread while
-the submit thread is committing is safe. The incumbent applies it inline on the calling thread, recreating its
+the submit thread is committing is safe. The incumbent applied it inline on the calling thread, recreating its
 depth texture (releasing one in-flight frames may still be reading) with no drain anywhere. A runtime
 `SyncToVerticalBlank` change queues the same way, and a burst of thirty size events between two presents costs
 one apply.
 
-**The present rides its own command buffer**, exactly as the incumbent does it. `Present()` is a separate seam
+**The present rides its own command buffer**, exactly as the incumbent did it. `Present()` is a separate seam
 call from `Submit()`, so the frame's own buffer is already committed by the time a present runs, and
 `-presentDrawable:` on a later-committed buffer runs after it by queue order anyway. One extra command buffer
 per frame is a rounding error, and it is counted: the uncommitted-buffer bound this backend asserts is the

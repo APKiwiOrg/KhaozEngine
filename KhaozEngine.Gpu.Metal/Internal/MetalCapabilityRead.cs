@@ -6,7 +6,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// DECISION M-G1's CAPABILITY ASSEMBLY, WITH NO DEVICE IN IT. Section 14 of
     /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c> carries a member-by-member table saying where
     /// each <see cref="GpuCapabilities"/> member comes from on this backend, and SEVEN of the nine turn out to be
-    /// constants of what the incumbent answers on Metal rather than answers a device gives. Those seven, the
+    /// constants of what the incumbent answered on Metal rather than answers a device gives. Those seven, the
     /// device-name pass-through and the sample-count walk are all here, so every rule that decides what the engine
     /// believes about the device is a plain <c>[Fact]</c> on a machine with no Metal at all.
     /// <para>
@@ -16,12 +16,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// design expected to be a device read and is not: see its own remarks below.
     /// </para>
     /// <para>
-    /// PARITY WITH THE INCUMBENT IS THE POINT, AND ZERO MEMBERS MAY DIFFER (M-G1), which is phase 3's bar rather
-    /// than phase 2's and is right for phase 3's reason: the incumbent Metal backend has no capability defect to
-    /// correct, because <c>KhaozEngine.Gpu.Internal.VeldridMap.SupportsCompletionFences</c> already answers true
-    /// for <c>GraphicsBackend.Metal</c>. <c>VeldridMap.ReadCapabilities</c> over <c>MTLGraphicsDevice</c> is the
-    /// ground truth this must match member for member, and <c>NativeVsVeldridMetalCapabilityParityTests</c>
-    /// asserts it with nothing exempted. A difference that test finds is a bug HERE until proven otherwise.
+    /// PARITY WITH THE INCUMBENT WAS THE POINT, AND ZERO MEMBERS WERE PERMITTED TO DIFFER (M-G1), phase 3's bar
+    /// rather than phase 2's and right for phase 3's reason: the incumbent Metal backend had no capability defect to
+    /// correct, because <c>KhaozEngine.Gpu.Internal.VeldridMap.SupportsCompletionFences</c> already answered true
+    /// for <c>GraphicsBackend.Metal</c>. What <c>VeldridMap.ReadCapabilities</c> answered over
+    /// <c>MTLGraphicsDevice</c> was the ground truth this read was matched against member for member, and
+    /// <c>NativeVsVeldridMetalCapabilityParityTests</c> asserted it with nothing exempted, so a difference that
+    /// test found was a bug HERE until proven otherwise. The bar was met, and both went away with the incumbent
+    /// in 18.0.0, so what the reads below stand on now is the reasoning recorded with each one.
     /// </para>
     /// </summary>
     internal static class MetalCapabilityRead
@@ -59,13 +61,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// TRUE, AND IT IS A CONSTANT RATHER THAN THE DEVICE READ SECTION 14 EXPECTED, which is this row's one
         /// correction to the design and is written down here because the next reader will reach for a device
         /// query. The table says the native source is "the incumbent's own question: is <c>R32_Float</c> usable as
-        /// BOTH render target and sampled", and asking the incumbent that question ON METAL has no device call in
-        /// it: <c>VeldridMap.SupportsShadowMaps</c> calls <c>GetPixelFormatSupport</c>, which on
-        /// <c>MTLGraphicsDevice.GetPixelFormatSupportCore</c> asks <c>MTLFormats.IsFormatSupported</c>, whose
-        /// switch has no <c>R32_Float</c> case and falls to <c>default: return true</c>. The remainder of that
-        /// method only fills in a properties struct nobody here reads, and returns true for a
-        /// <c>TextureType.Texture2D</c> unconditionally. So the incumbent answers TRUE on every Metal device that
-        /// exists, and reproducing the question faithfully means reproducing that constant.
+        /// BOTH render target and sampled", and asking the incumbent that question ON METAL had no device call in
+        /// it: <c>VeldridMap.SupportsShadowMaps</c> called <c>GetPixelFormatSupport</c>, which on
+        /// <c>MTLGraphicsDevice.GetPixelFormatSupportCore</c> asked <c>MTLFormats.IsFormatSupported</c>, whose
+        /// switch had no <c>R32_Float</c> case and fell to <c>default: return true</c>. The remainder of that
+        /// method only filled in a properties struct nobody here reads, and returned true for a
+        /// <c>TextureType.Texture2D</c> unconditionally. So the incumbent answered TRUE on every Metal device
+        /// that exists, and reproducing the question faithfully meant reproducing that constant.
         /// <para>
         /// AND ASKING METAL A REAL QUESTION HERE WOULD BE A PARITY FAILURE RATHER THAN AN IMPROVEMENT, which is
         /// M-N3's parity exception spelled out on the one member where it bites. A native backend that read the
@@ -81,11 +83,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal const bool SupportsCompute = true;
 
         /// <summary>
-        /// TRUE, and it was ALREADY true, which is why M-G1's bar is zero permitted differences. A fence handed to
-        /// <c>Submit</c> is a value on this device's one <c>MTLSharedEvent</c> that the GPU signals on completion
-        /// (M-F1), and <c>VeldridMap.SupportsCompletionFences</c> answers true for <c>GraphicsBackend.Metal</c>
-        /// because the incumbent sets its fence from a command-buffer completion handler. The member that had to
-        /// be exempted on the Direct3D 11 backend is identical on both Metal paths.
+        /// TRUE, and it was ALREADY true, which is why M-G1's bar was zero permitted differences. A fence handed
+        /// to <c>Submit</c> is a value on this device's one <c>MTLSharedEvent</c> that the GPU signals on
+        /// completion (M-F1), and <c>VeldridMap.SupportsCompletionFences</c> answered true for
+        /// <c>GraphicsBackend.Metal</c> because the incumbent set its fence from a command-buffer completion
+        /// handler. The member that had to be exempted on the Direct3D 11 backend was identical on both Metal
+        /// paths.
         /// </summary>
         internal const bool SupportsCompletionFences = true;
 
@@ -121,9 +124,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <b>IT IGNORES THE FORMAT, AND THAT IS CORRECT RATHER THAN A BUG CARRIED FOR PARITY.</b>
         /// <c>-supportsTextureSampleCount:</c> is the ONLY sample-count query Metal has and it takes no pixel
         /// format, so a sample-count limit on Metal is format-independent by construction.
-        /// <c>MTLGraphicsDevice.GetSampleCountLimit</c> declares <c>(PixelFormat format, bool depthFormat)</c> and
-        /// reads neither, and <c>VeldridMap.MaxMsaaSampleCount</c> then takes a MIN over three formats whose three
-        /// answers are the same number, so the min is a no-op and reproducing it means reproducing one walk. A
+        /// <c>MTLGraphicsDevice.GetSampleCountLimit</c> declared <c>(PixelFormat format, bool depthFormat)</c> and
+        /// read neither, and <c>VeldridMap.MaxMsaaSampleCount</c> then took a MIN over three formats whose three
+        /// answers were the same number, so the min was a no-op and reproducing it meant reproducing one walk. A
         /// native backend that "improved" this by asking per format would be inventing a question the API cannot
         /// answer, which is the C4 failure phase 2 corrected in flight and the V-C5 ruling phase 3 made against
         /// both of its drafts, arriving here for the third time.
@@ -154,24 +157,26 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// THE DEVICE NAME AS THE SEAM WANTS IT: exactly what Metal reported, or the empty string when it reported
         /// nothing.
         /// <para>
-        /// NO TRIM, WHICH SECTION 14 INHERITS FROM PHASE 3 BY NAME RATHER THAN REDISCOVERING. The incumbent stores
-        /// <c>_device.name</c> as it comes and hands it back verbatim through <c>MTLGraphicsDevice.DeviceName</c>,
-        /// and <see cref="GpuCapabilities.DeviceName"/> is compared string for string by the parity test, so a
-        /// trim on the native path alone would convert a cosmetic improvement into a parity failure on any device
-        /// whose reported name carries padding. Apple's own names do not pad today, which is exactly why this
-        /// would ship green and fail on somebody else's machine.
+        /// NO TRIM, WHICH SECTION 14 INHERITS FROM PHASE 3 BY NAME RATHER THAN REDISCOVERING. The incumbent stored
+        /// <c>_device.name</c> as it came and handed it back verbatim through <c>MTLGraphicsDevice.DeviceName</c>,
+        /// and <see cref="GpuCapabilities.DeviceName"/> was compared string for string by the parity test, so a
+        /// trim on the native path alone would have converted a cosmetic improvement into a parity failure on any
+        /// device whose reported name carries padding. Apple's own names do not pad today, which is exactly why a
+        /// trim would ship green and fail on somebody else's machine, and with that comparison gone in 18.0.0
+        /// nothing is left that would catch one.
         /// </para>
         /// <para>
         /// The null-to-empty fold is the seam's documented spelling of "the backend reports no name", and it is
-        /// the same fold <c>VeldridMap.ReadCapabilities</c> performs with <c>gd.DeviceName ?? ""</c>.
+        /// the same fold <c>VeldridMap.ReadCapabilities</c> performed with <c>gd.DeviceName ?? ""</c>.
         /// </para>
         /// </summary>
         internal static string ReportedDeviceName(string? name) => name ?? string.Empty;
 
         /// <summary>
-        /// Section 14's table, assembled. Everything not passed in is a constant above, and every constant is
-        /// asserted BY VALUE in the parity test rather than read back from here, so a change to one fails that
-        /// test rather than agreeing with itself.
+        /// Section 14's table, assembled. Everything not passed in is a constant above, and every constant was
+        /// asserted BY VALUE in the parity test rather than read back from here, so a change to one failed that
+        /// test rather than agreeing with itself. That test went away with the incumbent in 18.0.0, and what a
+        /// change has to argue with now is the reasoning recorded on each constant.
         /// </summary>
         /// <param name="deviceName">The device's own <c>-name</c>, verbatim.</param>
         /// <param name="maxMsaaSampleCount"><see cref="HighestSupportedSampleCount"/> over a real device, which is

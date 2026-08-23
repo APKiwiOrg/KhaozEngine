@@ -7,9 +7,9 @@ namespace KhaozEngine.Gpu.Internal
     /// underlying native device is destroyed.
     /// <para>
     /// This is an interface rather than a cast on purpose. Disposal used to read
-    /// <c>((VeldridGpuDevice)GpuDevice).MarkDeviceDisposed()</c>, and since the context is the engine's only
-    /// device-creation path, that one cast is what made the Veldrid wrapper the only <see cref="IGpuDevice"/>
-    /// a consumer could ever be handed: any other implementation would have thrown
+    /// <c>((VeldridGpuDevice)GpuDevice).MarkDeviceDisposed()</c>, on a device deleted in 18.0.0, and since the
+    /// context is the engine's only device-creation path, that one cast is what made the Veldrid wrapper the only
+    /// <see cref="IGpuDevice"/> a consumer could ever be handed: any other implementation would have thrown
     /// <see cref="System.InvalidCastException"/> at teardown. See decision P3 and section 4.2 of
     /// <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c>.
     /// </para>

@@ -16,10 +16,11 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// reported with Metal's own words rather than paraphrased.</para>
     ///
     /// <para><b>WHAT IS DELIBERATELY NOT SET.</b> <c>alphaToCoverageEnabled</c>, because the GPU seam has no
-    /// member for it and <c>VeldridGpuDevice</c> constructs its <c>BlendStateDescription</c> through the overload
-    /// that leaves it false, so the incumbent sets false onto a descriptor whose default is already false.
-    /// <c>rasterizationEnabled</c>, <c>inputPrimitiveTopology</c> and the tessellation properties, for the same
-    /// reason in each case: no seam member reaches them and the incumbent never writes one.</para>
+    /// member for it and <c>VeldridGpuDevice</c> (deleted in 18.0.0) constructed its
+    /// <c>BlendStateDescription</c> through the overload that left it false, so the incumbent set false onto a
+    /// descriptor whose default is already false. <c>rasterizationEnabled</c>, <c>inputPrimitiveTopology</c> and
+    /// the tessellation properties, for the same reason in each case: no seam member reaches them and the
+    /// incumbent never wrote one.</para>
     /// </summary>
     /// <param name="Handle">The Objective-C object, or <see cref="IntPtr.Zero"/> for nil.</param>
     internal readonly record struct MTLRenderPipelineDescriptor(IntPtr Handle)

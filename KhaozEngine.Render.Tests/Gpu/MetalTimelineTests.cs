@@ -47,9 +47,9 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void SupportsCompletionFences_IsUnconditionallyTrue()
         {
-            // M-F4: PARITY rather than an upgrade. VeldridMap already answers true for GraphicsBackend.Metal, so
-            // the gate criterion for this backend is NO NEW SKIPS rather than two fewer, and this constant is
-            // where row 16 reads the answer from.
+            // M-F4: PARITY rather than an upgrade. VeldridMap (deleted in 18.0.0) already answered true for
+            // GraphicsBackend.Metal, so the gate criterion for this backend was NO NEW SKIPS rather than two
+            // fewer, and this constant is where row 16 reads the answer from.
             Assert.True(MetalTimeline.SupportsCompletionFences);
         }
 

@@ -13,14 +13,16 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// What they pin is the property that made a native backend impossible before it: the context was the only
     /// creation path, it took a Veldrid <c>GraphicsDevice</c>, and its disposal cast the wrapper back to
-    /// <c>VeldridGpuDevice</c>. Any other <see cref="IGpuDevice"/> would therefore have thrown an
-    /// <see cref="InvalidCastException"/> at teardown even if something had managed to construct a context around
-    /// it. See decision P3 and section 4.2 of <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c>.
+    /// <c>VeldridGpuDevice</c> (deleted in 18.0.0). Any other <see cref="IGpuDevice"/> would therefore have
+    /// thrown an <see cref="InvalidCastException"/> at teardown even if something had managed to construct a
+    /// context around it. See decision P3 and section 4.2 of
+    /// <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c>.
     /// </para>
     /// <para>
-    /// The Veldrid path's own liveness latch is covered by <c>DeviceDisposedLatchTests</c> against a real device.
-    /// What is asserted HERE about that path is the one thing removing the cast made silently droppable: that the
-    /// Veldrid wrapper still carries the hook at all.
+    /// The liveness latch itself is covered by <c>DeviceDisposedLatchTests</c> against a real device. What was
+    /// asserted HERE about the incumbent's path was the one thing removing the cast made silently droppable: that
+    /// the Veldrid wrapper still carried the hook at all. That wrapper went away in 18.0.0, so what is left here
+    /// is the teardown-order assertion below, against a fake device that implements the hook.
     /// </para>
     /// </summary>
     public sealed class GpuDeviceContextAdoptionTests
@@ -205,10 +207,10 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// The regression itself. <see cref="FakeGpuDevice"/> is not the Veldrid wrapper and does not implement
-        /// the lifecycle hook, so under the old <c>((VeldridGpuDevice)GpuDevice).MarkDeviceDisposed()</c> disposal
-        /// this throws <see cref="InvalidCastException"/>. The hook being optional is deliberate: a device with
-        /// nothing that can outlive it has no latch to flip.
+        /// The regression itself. <see cref="FakeGpuDevice"/> does not implement the lifecycle hook and was not
+        /// the Veldrid wrapper, so under the old <c>((VeldridGpuDevice)GpuDevice).MarkDeviceDisposed()</c>
+        /// disposal this threw <see cref="InvalidCastException"/>. The hook being optional is deliberate: a
+        /// device with nothing that can outlive it has no latch to flip.
         /// </summary>
         [Fact]
         public void Dispose_DoesNotRequireTheDeviceToBeTheVeldridWrapper()

@@ -1,37 +1,57 @@
-# cross-platform-gpu: desktop GPU test matrix (Win D3D11 incumbent + Win D3D11 native / Linux Vulkan incumbent
-# + Linux Vulkan native / macOS Metal incumbent + macOS Metal native), plus one Vulkan
-# synchronisation-validation job.
+# cross-platform-gpu: desktop GPU test matrix over the three engine-owned native backends (macOS Metal /
+# Windows Direct3D 11 / Linux Vulkan), plus one Vulkan synchronisation-validation job.
 #
-# BILLING: this repo is PUBLIC, so GitHub-hosted standard runners are free. ALL FIVE legs run hosted and cost
+# THREE LEGS SINCE 18.0.0, not six. The Veldrid incumbent backend was deleted (#687), and the three legs that
+# ran it (`metal`, `direct3d11`, `vulkan`) went with it (#689, https://github.com/APKiwiOrg/KhaozEngine/issues/540).
+# Each surviving leg used to be one half of an A/B pair on one runner. Each is now the only implementation of
+# its API the engine has, and it owns the golden family named after it.
+#
+# BILLING: this repo is PUBLIC, so GitHub-hosted standard runners are free. All three legs run hosted and cost
 # nothing, Metal included: it moved to hosted macos-26 (#552), and no leg touches a personal machine any more.
 # The suite split that follows was decided when the repo was private and hosted minutes billed
 # (Linux 1x, Windows 2x, macOS 10x). It is KEPT on its merits rather than its cost: the golden subset is
 # the fast signal a push wants, and the full suite is a slower sweep that belongs on the cron. Read the
-# "2x billing" notes below as history explaining how the tiers were chosen, not as a live constraint. If
-# a tier is ever revisited, the argument now has to be about feedback speed and lavapipe stability,
-# because the money is gone. The engine went public 2026-08-06 after its private CI became the largest
-# line on the org's GitHub bill.
+# "2x billing" notes below as history explaining how the tiers were chosen, not as a live constraint. The
+# engine went public 2026-08-06 after its private CI became the largest line on the org's GitHub bill.
+#
+# THE TIERS WERE RE-DECIDED AT THE DELETE, AGAINST MEASURED FULL-SUITE DURATIONS, and they did not move.
+# Run 32579723071 was a full-matrix workflow_dispatch, so every leg ran the FULL suite. Per leg:
+#   metal-native      macos-26        4m31s
+#   metal             macos-26        3m56s   (deleted)
+#   direct3d11-native windows-latest 25m43s
+#   direct3d11        windows-latest 37m41s  (deleted)
+#   vulkan-native     ubuntu-latest  26m36s  (serialized collections + strict validation)
+#   vulkan            ubuntu-latest  21m45s  (deleted)
+#   vulkan-native sync job            4m36s
+# So metal-native keeps `always`: the whole suite on a real GPU costs four and a half minutes, which is
+# cheaper than the OTHER legs' golden subsets, and it is the strongest net in the program. The two software
+# legs keep `scheduled`: their full suites are about 26 minutes each, six times the Metal leg, and almost all
+# of that is pipeline creation on a software rasterizer rather than engine work. Promoting either to `always`
+# would take the push gate from roughly 8 minutes to roughly 26 for the one trigger whose job is fast
+# feedback, and what it would newly catch is a behavioural regression visible ONLY under WARP or lavapipe,
+# which is the rarest failure this matrix has ever produced. The weekly cron still sweeps both in full.
+# The delete also shortened the matrix's own wall clock: the slowest leg was direct3d11 at 37m41s and is now
+# vulkan-native at 26m36s, and a full dispatch drops about 63 minutes of runner time.
 #
 # What this does (suite split by leg + trigger, decided from measured cost + lavapipe stability):
-#   * The Metal leg runs the FULL test suite (every [GpuFact], golden and behavioral, plus the headless
-#     suite) on GitHub-hosted macos-26, pinned to the number rather than to macos-latest so an image
-#     promotion cannot move the GPU under a golden gate. It used to run on the self-hosted dev Mac, because
-#     hosted macos-14 has no usable Metal device at all (#547), and macos-15 and macos-26 both do (#552). It
-#     covers pull_request like every other leg now: the exclusion that used to sit here existed only to keep
-#     a fork from routing work onto a personal machine, and there is no personal machine in this workflow
-#     any more.
-#   * The GitHub-hosted Metal NATIVE leg runs the engine's own KhaozEngine.Gpu.Metal backend
-#     (KE_GRAPHICS_BACKEND=metal-native) on exactly the incumbent Metal leg's tier, which is the FULL suite on
-#     every trigger, on the same hosted macos-26 image (decision M-T6). It OWNS the metal-native golden family
-#     FROM 17.41.0, exactly as direct3d11-native and vulkan-native own theirs (row 2 of #683, which supersedes
-#     the guest ruling of decision M-I3): it verifies the committed metal-native grids on the same real GPU, and
-#     it bakes them on a bake dispatch exactly as the incumbent legs bake theirs.
+#   * The Metal NATIVE leg runs the engine's own KhaozEngine.Gpu.Metal backend
+#     (KE_GRAPHICS_BACKEND=metal-native) on the FULL test suite (every [GpuFact], golden and behavioral, plus
+#     the headless suite) on every trigger, on GitHub-hosted macos-26 (decision M-T6). The image is pinned to
+#     the number rather than to macos-latest so a promotion cannot move the GPU under a golden gate. The pair
+#     of Metal legs used to run on the self-hosted dev Mac, because hosted macos-14 has no usable Metal device
+#     at all (#547), and macos-15 and macos-26 both do (#552). It covers pull_request like every other leg:
+#     the exclusion that used to sit on the Metal pair existed only to keep a fork from routing work onto a
+#     personal machine, and there is no personal machine in this workflow any more. It OWNS the metal-native
+#     golden family FROM 17.41.0, exactly as direct3d11-native and vulkan-native own theirs (row 2 of #683,
+#     which supersedes the guest ruling of decision M-I3): it verifies the committed metal-native grids on the
+#     same real GPU, and it bakes them on a bake dispatch.
 #     THIS IS THE STRONGEST REGRESSION NET IN THE PROGRAM, and that is why it takes the expensive tier. The
-#     other two native legs run golden-only on push, on software rasterizers, and the Vulkan one has no
+#     other two legs run golden-only on push, on software rasterizers, and the Vulkan one has no
 #     swapchain coverage at all. This one runs everything, on a real GPU, every time, and the metal family is
 #     the fleet's cross-backend reference, so a golden disagreement here is a fleet event rather than a leg
 #     event.
-#     Three things are its own rather than the incumbent Metal leg's. It sets KE_METAL_REQUIRED=1, because the
+#     Three things were this leg's rather than the incumbent Metal leg's, and they are simply this leg's now.
+#     It sets KE_METAL_REQUIRED=1, because the
 #     rows that need a native device go DORMANT when the probe refuses the machine, and a dormant row on the one
 #     leg built to run them is a pass that asserted nothing which the zero-skipped criterion of rollout gate 2
 #     cannot see (the same lesson as KE_VULKAN_REQUIRED, inherited by name). It arms Metal's TWO validation
@@ -73,37 +93,42 @@
 #     which is #591's own second option and keeps the filter out of this workflow where a filter goes stale.
 #     Three rows do that today, each because the thing it does is legitimate in a test and illegitimate in a
 #     shipped frame: the row-1 interop spike records offset setters on an encoder with no pipeline bound because
-#     it is measuring the objc_msgSend ABI rather than drawing, the validation-reader row cannot tell an
-#     in-process variable from a launch one in a process that was launched with it, and MM6's incumbent CONTROL
-#     reproduces the Veldrid Metal mis-binding on purpose, which the layer sees as a draw with an unbound
-#     fragment buffer. That last one is the layer confirming this program's own finding from outside it.
-#   * The GitHub-hosted D3D11 leg (2x billing) runs only the golden tests
-#     (FullyQualifiedName~Golden) on push / pull_request, and the FULL suite on the weekly
-#     schedule and on workflow_dispatch. Rationale: the full suite on hosted Windows measured
-#     17m14s vs the golden-only 7m44s (trial runs 29542939552 / 29545657401), about +19 billed
-#     2x minutes per run - too much per-push for this repo's cost posture, so full hosted
-#     coverage rides the weekly cron (and any manual dispatch) instead.
+#     it is measuring the objc_msgSend ABI rather than drawing, and the validation-reader row cannot tell an
+#     in-process variable from a launch one in a process that was launched with it. A third row stood down for
+#     the same reason until 18.0.0: MM6's incumbent CONTROL reproduced the Veldrid Metal mis-binding on purpose,
+#     which the layer saw as a draw with an unbound fragment buffer. It went with the incumbent it controlled.
 #   * The GitHub-hosted D3D11 NATIVE leg (2x billing) runs the engine's own KhaozEngine.Gpu.D3D11
-#     backend (KE_GRAPHICS_BACKEND=direct3d11-native) on exactly the incumbent leg's tier: golden
-#     tests only on push / pull_request, the FULL suite on the weekly schedule and on
-#     workflow_dispatch (decision T5). It OWNS the direct3d11-native golden family from 17.41.0
+#     backend (KE_GRAPHICS_BACKEND=direct3d11-native): golden tests only (FullyQualifiedName~Golden) on
+#     push / pull_request, the FULL suite on the weekly schedule and on workflow_dispatch (decision T5).
+#     It OWNS the direct3d11-native golden family from 17.41.0
 #     (row 2 of #683, superseding decision I3's guest ruling): it verifies the committed direct3d11-native
-#     goldens on the same WARP rasterizer, and it bakes them on a bake dispatch like any other owning
-#     leg (see the test step). Its golden-only
-#     push tier was chosen when this repo was private and Windows billed at 2x, where the leg doubled the
-#     D3D11 spend on the gated paths. The repo is public and those minutes are free now, so the tier is
-#     kept for feedback speed rather than money.
+#     goldens on the WARP rasterizer, and it bakes them on a bake dispatch like any other owning
+#     leg (see the test step). The golden-only push tier was chosen when this repo was private and Windows
+#     billed at 2x, on a measurement of the incumbent leg: the full suite on hosted Windows was 17m14s against
+#     the golden-only 7m44s (trial runs 29542939552 / 29545657401). The repo is public and those minutes are
+#     free now, and the tier survived the 18.0.0 re-decision on feedback speed alone: this leg's own full
+#     suite measured 25m43s in run 32579723071 (see the header), which is six times the Metal leg.
 #   * The GitHub-hosted Vulkan NATIVE leg (1x) runs the engine's own KhaozEngine.Gpu.Vulkan backend
-#     (KE_GRAPHICS_BACKEND=vulkan-native) on the incumbent Vulkan leg's tier: golden tests only on
+#     (KE_GRAPHICS_BACKEND=vulkan-native) on the D3D11 native leg's tier: golden tests only on
 #     push / pull_request, the FULL suite on the weekly schedule and on workflow_dispatch (decision
 #     V-T8). It OWNS the vulkan-native golden family from 17.41.0, exactly as direct3d11-native owns
 #     direct3d11-native's (row 2 of #683, superseding decision V-T1's guest ruling): it verifies the
-#     committed vulkan-native goldens on the same lavapipe rasterizer and bakes them on a bake
+#     committed vulkan-native goldens on the lavapipe rasterizer and bakes them on a bake
 #     dispatch. Two things are its own rather than the D3D11
 #     leg's: it sets KE_VULKAN_REQUIRED=1, because the rows that need a native device go DORMANT
 #     without one and a dormant row on the one leg built to run them is a pass that asserted nothing,
 #     and its scheduled full suite runs under KE_VULKAN_VALIDATION=strict, which is the first
 #     validation layer this repo has ever installed anywhere (decision V-T4).
+#     THE LAVAPIPE HISTORY BELONGS TO THIS LEG NOW, inherited from the incumbent Vulkan leg that carried it
+#     until 18.0.0. Chasing that leg's full-suite crashes surfaced four real engine defects, all fixed:
+#     concurrent device creation racing the Vulkan loader (serialized process-wide in GpuDeviceContext),
+#     mid-life resource disposal racing queued async work (drained via WaitForIdle before disposing), and a
+#     teardown-order pair where a wrapper outliving its device drained or destroyed against the dead device
+#     (latched by a shared DeviceLiveness token). The full PARALLEL suite on lavapipe still exhibits residual
+#     driver-side instability with delayed-corruption symptoms (a CoreCLR fatal, deliberately not chased), so
+#     the full-suite runs serialize xUnit test collections via KE_TEST_EXTRA_ARGS, one live device at a time.
+#     That is most of why this leg's full suite measured 26m36s in run 32579723071. Golden-only runs keep
+#     their months-green parallel configuration.
 #   * The Vulkan SYNC-VALIDATION job (1x, gpu-vulkan-sync below) is the second validation tier, and it
 #     is a separate job rather than a matrix leg because it runs a different suite for a different
 #     reason: the golden subset plus the compute suite under KE_VULKAN_VALIDATION=sync, on the
@@ -112,47 +137,34 @@
 #     net that can see a missing barrier or a wrong image layout, which a software rasterizer executes
 #     correctly anyway and which no golden and no core-validation run can catch (decision V-T4, and
 #     MV5 and MV6 in the design's section 16 are both read off it).
-#   * The GitHub-hosted Vulkan leg (1x) runs only the golden tests on push/pull_request, and the
-#     FULL suite on the weekly schedule and on workflow_dispatch, same tier as D3D11. Chasing this
-#     leg's full-suite crashes surfaced four real engine defects, all fixed: concurrent device
-#     creation racing the Vulkan loader (serialized process-wide in GpuDeviceContext), mid-life
-#     resource disposal racing queued async work (drained via WaitForIdle before disposing), and a
-#     teardown-order pair where a wrapper outliving its device drained or destroyed against the
-#     dead device (latched by a shared DeviceLiveness token). The full PARALLEL suite on lavapipe
-#     still exhibits residual driver-side instability with delayed-corruption symptoms (a CoreCLR
-#     fatal, deliberately not chased), so the full-suite runs serialize xUnit test collections via
-#     KE_TEST_EXTRA_ARGS, one live device at a time (~22 min serialized in the validation container
-#     vs minutes parallel). Golden-only runs keep their months-green parallel configuration.
 #   * Committed per-backend goldens live at KhaozEngine.Render.Tests/Gpu/goldens/<name>.<backend>.txt.
 #     The family in that filename is the GoldenBackendToken, not the leg name. Since 17.41.0 the two
 #     coincide on every live leg, because every kind owns the family named after it: direct3d11-native
 #     reads the direct3d11-native files. That is a property of the mapping rather than of the name, and
 #     it is the mapping the goldens follow.
-#   * All five legs are committed and blocking, and they do not carry the same history. macOS Metal,
-#     Windows D3D11 (WARP) and Linux Vulkan (Mesa lavapipe) are long validated, with months of green
-#     runs behind them. Windows D3D11 native (WARP, pinned) blocks BY DESIGN rather than by record: it
-#     is the native backend's continuous exercise (decision RO3), so it gates from its first run, and
-#     its first recorded evidence is rollout gate 1 on issue #460. Linux Vulkan native (lavapipe,
-#     pinned) blocks on the same grounds and for the same reason (decision V-RO1), and its first
-#     recorded evidence is rollout gate 1 on issue #529.
-#   * THE INCUMBENT VULKAN LEG IS DELIBERATELY NOT COUPLED TO THE NATIVE BACKEND'S HEALTH. It installs
-#     no validation layer, sets no KE_VULKAN_REQUIRED, and its rows that touch a native device stay
-#     dormant if the probe ever refuses the runner. That leg is the escape hatch decision V-RO2 keeps
-#     selectable indefinitely, and an escape hatch that goes red whenever the thing it escapes from
-#     goes red is not one.
+#   * All three legs are committed and blocking, and they do not carry the same history. macOS Metal's
+#     runner, Windows WARP and Linux lavapipe are long validated as RASTERIZERS, with months of green runs
+#     behind them under the Veldrid incumbent that used to share each one. The three native BACKENDS block
+#     BY DESIGN rather than by record: each is its backend's continuous exercise (decisions RO3, V-RO1 and
+#     M-T6), so it gated from its first run. Their first recorded evidence is rollout gate 1 on issues #460
+#     (Direct3D 11) and #529 (Vulkan).
+#   * THERE IS NO ESCAPE HATCH LEG ANY MORE. Decision V-RO2 kept the incumbent Vulkan leg selectable
+#     indefinitely as the fallback if the native backend went bad, and it was deliberately not coupled to
+#     that backend's health for exactly that reason. #683 closed the question the other way: the incumbent
+#     is deleted, so a native backend going bad is fixed rather than escaped from.
 #
 # Generating goldens for a NEW scene or backend:
 #   1. Run this workflow manually (Actions -> cross-platform-gpu -> Run workflow) with bake = true.
-#   2. ALL SIX legs render with KE_UPDATE_GOLDENS=1 and upload their own family's grids as artifacts
+#   2. ALL THREE legs render with KE_UPDATE_GOLDENS=1 and upload their own family's grids as artifacts
 #      named goldens-<backend> (e.g. scene2d.<backend>.txt). Every leg is a bake leg since 17.41.0,
 #      because every leg owns the family it verifies. The sync-validation job still sits a bake dispatch
 #      out: it is a validation instrument over a subset, not a producer of references, and the
 #      vulkan-native matrix leg bakes that family.
 #   3. Download the artifacts, drop the files into KhaozEngine.Render.Tests/Gpu/goldens/, and commit them.
-#      ONE CONSTRAINT UNTIL ROW 4 OF #683 LANDS: the three native families are byte-identical COPIES of
-#      the incumbent ones and GoldenFamilyCopyGoldenTests asserts it, so committing a native leg's bake
-#      output in this window forks each pair and reds that row. Commit the three incumbent artifacts and
-#      copy them across, exactly as row 3 seeded them. The constraint dies with the incumbent families.
+#      The constraint that used to sit here died with row 4 of #683: the three native families were
+#      byte-identical COPIES of the incumbent ones and GoldenFamilyCopyGoldenTests asserted it, so a
+#      native leg's bake output could not be committed on its own. The incumbent families are gone and so
+#      is that test, and each leg's artifact is now committed as it comes.
 #   4. After that, the push/PR legs VERIFY what was baked, each leg against its own family.
 #
 # Running the matrix WITHOUT the GPU shader disk caches (#614):
@@ -162,24 +174,22 @@
 #   for a flake that could be a warm cache entry read back wrong: the same commit, cacheless. Every other
 #   trigger leaves the variables blank, which is the default location and the shipped behaviour.
 #
-# Software rasterizers (these runners have no real GPU):
-#   * Linux uses Mesa lavapipe (software Vulkan); the workflow discovers the lavapipe ICD manifest at runtime
-#     (its name/path drifts across Ubuntu images) and points VK_ICD_FILENAMES/VK_DRIVER_FILES at it. Both
-#     Linux legs additionally pin KE_VULKAN_DEVICE=llvmpipe (decision V-G2), for the reason both Windows
-#     legs pin their adapter: the loader-level ICD pin has needed repairing before when a runner image
-#     moved the manifest, and the incumbent leg creates NATIVE devices too through the capability-parity
-#     test, so an unpinned native device there could pick a different physical device from the one the
-#     native leg measures. The variable has exactly one reader, the native backend's own physical-device
-#     selection, so the Veldrid device is unaffected. Empty on Windows and macOS.
-#   * Windows D3D11 falls back to WARP (software) automatically when no hardware adapter is present. Neither
-#     Windows leg rides that accident: both pin KE_D3D11_ADAPTER=warp (decision G2), so a runner image that
-#     grows a paravirtual adapter cannot silently change the rasterizer under the golden gate. The incumbent
-#     leg needs the pin because the parity tests create native devices there too, and the variable is read
-#     only by the native backend's adapter selection, so the Veldrid device it also creates is unaffected.
+# Software rasterizers (the Windows and Linux runners have no real GPU):
+#   * Linux uses Mesa lavapipe (software Vulkan). The workflow discovers the lavapipe ICD manifest at runtime
+#     (its name and path drift across Ubuntu images) and points VK_ICD_FILENAMES/VK_DRIVER_FILES at it. The
+#     leg additionally pins KE_VULKAN_DEVICE=llvmpipe (decision V-G2), for the reason the Windows leg pins
+#     its adapter: the loader-level ICD pin has needed repairing before when a runner image moved the
+#     manifest, and an unpinned physical-device selection could then land on something else entirely without
+#     the leg saying so. The variable has exactly one reader, the native backend's own physical-device
+#     selection. Empty on Windows and macOS.
+#   * Windows D3D11 falls back to WARP (software) automatically when no hardware adapter is present. The leg
+#     does not ride that accident: it pins KE_D3D11_ADAPTER=warp (decision G2), so a runner image that
+#     grows a paravirtual adapter cannot silently change the rasterizer under the golden gate. The variable
+#     is read only by the native backend's adapter selection.
 #
 # The headless golden tests use Render2D/3D Snapshot -> CreateHeadless (offscreen, NO window), so SDL2 is
-# NOT required here (only the Vulkan/D3D11 runtime plus a (software) rasterizer). A shipped windowed game
-# still needs SDL2 + libveldrid-spirv bundled per-RID; see docs/CROSS-PLATFORM.md.
+# NOT required here (only the Vulkan/D3D11/Metal runtime plus a (software) rasterizer where there is no real
+# GPU). A shipped windowed game still needs SDL2 bundled per-RID; see docs/CROSS-PLATFORM.md.
 #
 # The fast inner-loop CI (build/test/pack/publish, GPU tests skipped) stays in ci.yml, untouched.
 
@@ -204,7 +214,7 @@ on:
       - 'KhaozEngine.Render2D/**'
       - 'KhaozEngine.Gpu/**'
       # The native Direct3D 11 backend. Its shader path owns the FXC call, so a change here can reject HLSL
-      # that SPIRV-Cross emits, or hole a vertex input signature, and the incumbent Windows leg's FXC step
+      # that SPIRV-Cross emits, or hole a vertex input signature, and the Windows leg's FXC step
       # below is the only thing that runs a compiler over the shipped programs (decision S5).
       - 'KhaozEngine.Gpu.D3D11/**'
       # The native Vulkan backend, watched for the same reason as its D3D11 sibling above and missed when
@@ -290,7 +300,7 @@ on:
         description: 'Which legs to run. Pick one backend when debugging it, "all" for the full matrix.'
         type: choice
         default: all
-        options: [all, metal, metal-native, direct3d11, direct3d11-native, vulkan, vulkan-native]
+        options: [all, metal-native, direct3d11-native, vulkan-native]
       # WHICH SHAPE A DISPATCH TAKES ON THE metal-native LEG, and it exists because that leg has THREE Metal
       # process-launch variables and no two of the interesting ones can share a process. It was a two-way choice
       # while the pair being separated was MTL_SHADER_VALIDATION against MTL_CAPTURE_ENABLED (a GPU-trace capture
@@ -347,28 +357,6 @@ on:
         type: choice
         default: deep
         options: [deep, push, capture]
-      # THE #617 CONTROL EXPERIMENT, as an input because it is one question asked once rather than a tier anything
-      # should ride. That issue's diagnosis needs the INCUMBENT Metal leg run under MTL_SHADER_VALIDATION=1, which
-      # this matrix has never done: METAL_DEEP_TIER gates on matrix.backend == 'metal-native', so the incumbent
-      # leg's green on the run that failed 186 native rows is not the control it looks like. Green here says the
-      # rung is fine on the paravirtual runner and #617's failures are native-leg-specific. Red with the same
-      # blank-render shape says the runner drops work under the rung for any backend, and the rung belongs on real
-      # hardware only.
-      #
-      # SHADER VALIDATION ALONE, AND NEVER THE DEBUG LAYER, which is the whole reason this is its own input rather
-      # than a value of `tier`. MTL_DEBUG_LAYER at its default assert error mode used to abort the incumbent host
-      # outright, attributed by #621 to one row that stands down under the layer on the incumbent now, so the
-      # abort is fixed rather than theoretical. It is still not armed here: the layer's error mode gates the SUITE
-      # rather than a row, hosted macos-26 is not the machine that measurement was taken on, and a blocking golden
-      # leg is the wrong place to discover the next provoking row. MTL_SHADER_VALIDATION on its own does not abort
-      # the incumbent, measured on an M2 Max, which is what makes this control runnable at all.
-      #
-      # Default false, so every other trigger and every other dispatch leaves the incumbent leg exactly as it was:
-      # neither Metal variable, the escape hatch decision M-RO2 keeps selectable.
-      incumbentShaderValidation:
-        description: 'Incumbent metal leg only: arm MTL_SHADER_VALIDATION=1 there (the #617 control, never the debug layer)'
-        type: boolean
-        default: false
       # THE DISCRIMINATING KNOB FOR #614, and the reason it is an INPUT rather than a branch edit is that the
       # thing it has to split is per-boot. The metal-native leg fails roughly one varying GPU test per boot on
       # the hosted paravirtual adapter, deterministically wrong when it is wrong, and one hypothesis is the
@@ -376,7 +364,7 @@ on:
       # adapter fault would be expected to vary. Splitting those needs the SAME commit run with the caches off,
       # which a workflow input gives and a code change does not.
       #
-      # ALL SIX LEGS, not the metal ones, which is what keeps the A/B honest. The three backends' caches are one
+      # ALL THREE LEGS, not the metal one, which is what keeps the A/B honest. The three backends' caches are one
       # mechanism (KhaozEngine.Gpu/Internal/GpuDiskCache), so a dispatch that disabled one leg's cache would
       # compare a cacheless macOS run against cached Windows and Linux runs and could not say whether a
       # difference belonged to the cache or to the leg. Every leg reads the same value from the workflow-level
@@ -451,34 +439,30 @@ jobs:
           #               serialize xUnit collections (KE_TEST_EXTRA_ARGS, header). Every leg is hosted and
           #               free now, so these tiers are kept for feedback speed rather than for money.
           #
-          # `d3d11Adapter` is the leg's KE_D3D11_ADAPTER value, and BOTH Windows legs pin it to warp
-          # (decision G2). The native leg pins it because it is new and should STATE its rasterizer rather
-          # than inherit an accident of the runner image. The incumbent leg pins it because the parity tests
-          # create NATIVE devices there too: unpinned, those resolve DriverType.Hardware against whatever
-          # adapter the image exposes, so the two Windows legs would exercise different rasterizers for the
-          # same native code and a parity difference could be the adapter rather than the implementation.
-          # This does NOT touch the Veldrid incumbent device itself, whose selection is unchanged (and with
-          # it what the shared goldens are compared against): KE_D3D11_ADAPTER has exactly one reader,
+          # `d3d11Adapter` is the leg's KE_D3D11_ADAPTER value, pinned to warp (decision G2). The leg pins it
+          # rather than inheriting an accident of the runner image: unpinned, the selection resolves
+          # DriverType.Hardware against whatever adapter the image exposes, so a golden difference could be
+          # the adapter rather than the implementation. KE_D3D11_ADAPTER has exactly one reader,
           # D3D11AdapterSelection in the native backend package. Empty on macOS and Linux, where blank reads
           # as "let the API pick".
           #
-          # direct3d11-native is the engine's own native D3D11 backend (decision T5). Same OS, same runner
-          # and the same suite tier as the incumbent leg, which is the point: two implementations of one API
-          # on one rasterizer. They were checked against a single shared set of goldens until 17.41.0
-          # (decision I3). Each owns its own family now (row 2 of #683), seeded byte-identical from the
-          # shared set, so the two legs still compare the same bytes on the same rasterizer.
+          # direct3d11-native is the engine's own native D3D11 backend (decision T5), and the only Windows leg
+          # since 18.0.0. It ran beside a Veldrid incumbent leg on the same runner and the same tier until
+          # then, which was the point while there were two implementations of one API to compare. They shared
+          # one set of goldens until 17.41.0 (decision I3) and each owned its own after (row 2 of #683), seeded
+          # byte-identical from the shared set, so nothing about this leg's bytes moved when its twin left.
           # METAL RUNS ON HOSTED macos-26, which is `macos-latest` and GA. Pinned to the number, not to
           # `macos-latest`, so a future image promotion cannot silently move the GPU under a golden gate.
           # macos-14 is DEPRECATED by GitHub and is the one image that does not work at all:
           # MTLCreateSystemDefaultDevice() returns nil there even though MTLCopyAllDevices() reports an
-          # "Apple Paravirtual device", and that nil is what Veldrid dereferences, which was the whole of the
-          # 363-failure run 31091112757. macos-15 and macos-26 both return the device and both run the full
-          # suite green (4813 passed / 1 skipped; run 31131019941 is the macos-26 one). Every golden passes on
+          # "Apple Paravirtual device", and dereferencing that nil was the whole of the 363-failure run
+          # 31091112757. macos-15 and macos-26 both return the device and both run the full
+          # suite green (4813 passed / 1 skipped, run 31131019941 is the macos-26 one). Every golden passes on
           # the paravirtual adapter against goldens baked on real Apple silicon, because they are
           # tolerance-based. The single behavioural skip is [GpuFact(RequiresRealGpu)] (#552).
           # Do NOT "fix" a future Metal problem by moving this back to macos-14.
           #
-          # This leg used to be self-hosted, and moving it off is a security improvement as much as a convenience:
+          # Metal used to be self-hosted, and moving it off is a security improvement as much as a convenience:
           # a self-hosted runner was the only reason this PUBLIC repo needed allows_public_repositories on the org
           # runner group, and the only reason a personal machine was reachable from CI at all. With Metal hosted,
           # nothing here touches that machine, so the pull_request exclusion that used to guard it is gone too and
@@ -487,35 +471,32 @@ jobs:
           # leg that VERIFIES a golden family it does not OWN (decisions I3 and V-T1), and three places acted
           # on it: KE_UPDATE_GOLDENS was held empty, the test step sat a bake dispatch out, and the baked-
           # goldens upload was skipped. From 17.41.0 no leg is a guest, so the column would have been `''` on
-          # all six rows with nothing reading a true value, which is a flag that cannot go wrong because it
+          # every row with nothing reading a true value, which is a flag that cannot go wrong because it
           # cannot do anything. It is gone rather than emptied: the RULE it enforced lives in
           # GoldenCompare.BakeRefusal, which is under test, and a dead matrix column is not.
           #
-          # `vulkanDevice` is the leg's KE_VULKAN_DEVICE value, pinned on BOTH Linux legs for the reason
-          # d3d11Adapter is pinned on both Windows legs, and reaching only the native backend's selection.
+          # `vulkanDevice` is the leg's KE_VULKAN_DEVICE value, pinned for the reason d3d11Adapter is pinned on
+          # the Windows leg, and reaching only the native backend's selection.
           #
           # `vulkanValidation` is the tier this leg's FULL suite gates at, and only the full suite: the
           # push-path golden subset runs with validation off, because that path is the fast signal and
           # the layer is expensive. Empty means the leg installs no layer at all, which is every leg but
           # vulkan-native. `sync`, the second tier, is not a value here: it runs a different SUITE on a
-          # different trigger, so it is the separate gpu-vulkan-sync job rather than a third Linux leg.
-          # `metal-native` is the engine's own native Metal backend (decision M-T6). Same OS, same runner image
-          # and the same `always` tier as the incumbent Metal leg, which is the point for the third time: two
-          # implementations of one API on one GPU. They shared one set of goldens until 17.41.0 (M-I3) and each
-          # owns its own now (row 2 of #683), metal-native seeded byte-identical from metal. It takes the
+          # different trigger, so it is the separate gpu-vulkan-sync job rather than a second Linux leg.
+          # `metal-native` is the engine's own native Metal backend (decision M-T6), and the only macOS leg
+          # since 18.0.0. It ran beside a Veldrid incumbent Metal leg on the same runner image and the same
+          # `always` tier until then. They shared one set of goldens until 17.41.0 (M-I3) and each owned its
+          # own after (row 2 of #683), metal-native seeded byte-identical from metal. It takes the
           # expensive tier for the reason in the header: it is the only leg in the program that runs everything
           # on real hardware, and the family it verifies carries the fleet's reference bytes.
-          # It pins NO device. Both Windows legs pin their adapter and both Linux legs pin their physical device
-          # because an unpinned native selection there could land on a different rasterizer from the incumbent's.
-          # macOS has no such choice to get wrong: the native backend's default is MTLCreateSystemDefaultDevice()
-          # rather than the enumeration's first element, which is the same device the incumbent gets, so a pin
-          # would add a name that has to match a runner image and buy nothing. KE_METAL_DEVICE stays unset.
+          # It pins NO device. Windows pins its adapter and Linux pins its physical device because an unpinned
+          # native selection there could land on a rasterizer nobody chose. macOS has no such choice to get
+          # wrong: the native backend's default is MTLCreateSystemDefaultDevice() rather than the enumeration's
+          # first element, so a pin would add a name that has to match a runner image and buy nothing.
+          # KE_METAL_DEVICE stays unset.
           all='[
-            {"os":"macos-26",      "backend":"metal",             "runner":"macos-26",                      "fullSuite":"always",    "d3d11Adapter":"",     "vulkanDevice":"",         "vulkanValidation":""},
             {"os":"macos-26",      "backend":"metal-native",      "runner":"macos-26",                      "fullSuite":"always",    "d3d11Adapter":"",     "vulkanDevice":"",         "vulkanValidation":""},
-            {"os":"windows-latest","backend":"direct3d11",        "runner":"windows-latest",                "fullSuite":"scheduled", "d3d11Adapter":"warp", "vulkanDevice":"",         "vulkanValidation":""},
             {"os":"windows-latest","backend":"direct3d11-native", "runner":"windows-latest",                "fullSuite":"scheduled", "d3d11Adapter":"warp", "vulkanDevice":"",         "vulkanValidation":""},
-            {"os":"ubuntu-latest", "backend":"vulkan",            "runner":"ubuntu-latest",                 "fullSuite":"scheduled", "d3d11Adapter":"",     "vulkanDevice":"llvmpipe", "vulkanValidation":""},
             {"os":"ubuntu-latest", "backend":"vulkan-native",     "runner":"ubuntu-latest",                 "fullSuite":"scheduled", "d3d11Adapter":"",     "vulkanDevice":"llvmpipe", "vulkanValidation":"strict"}
           ]'
 
@@ -536,22 +517,21 @@ jobs:
     needs: legs
     name: ${{ matrix.os }} / ${{ matrix.backend }}
     runs-on: ${{ matrix.runner }}
-    # All five legs are blocking, with no continue-on-error on any of them. Three are long validated: Metal
-    # (macOS), Direct3D11 (Windows/WARP) and Vulkan (Linux/Mesa lavapipe). The three native legs each verify
-    # their OWN family since 17.41.0, holding the incumbent's bytes on the incumbent's own rasterizer, and each
-    # blocks by design rather than by record: a native
-    # backend's CI leg is its continuous exercise (decisions RO3 and V-RO1), so it gates from its first run.
-    # Their first recorded evidence is rollout gate 1 on issues #460 and #529 respectively.
+    # All three legs are blocking, with no continue-on-error on any of them. Each verifies its OWN golden
+    # family since 17.41.0, on the rasterizer its deleted incumbent used to share (macOS paravirtual Metal,
+    # Windows WARP, Linux Mesa lavapipe), and each blocks by design rather than by record: a native
+    # backend's CI leg is its continuous exercise (decisions RO3, V-RO1 and M-T6), so it gates from its first
+    # run. The first recorded evidence is rollout gate 1 on issues #460 and #529.
     # Goldens are tolerance-based (32x18 averaged grid), robust to software-rasterizer noise. If
     # the lavapipe leg ever flakes on a runner-image change, re-add
-    # `continue-on-error: ${{ matrix.backend == 'vulkan' }}` here to drop it back to informational.
+    # `continue-on-error: ${{ matrix.backend == 'vulkan-native' }}` here to drop it back to informational.
     #
-    # Runner split: every leg that runs is GitHub-hosted, and free, because the repo is public. Both D3D11
-    # legs and Vulkan are software rasterizers and were always hosted, so the visibility flip cost them
-    # nothing. Metal was the one leg that needed real hardware, and it is absent (see the leg table).
-    # The suite tiers (native leg golden-only on push, decision T5) were chosen against 2x Windows billing
-    # and are kept for feedback speed.
-    # The matrix keys stay on `os` (drives the OS-specific setup steps + the leg name); `runner` picks where.
+    # Runner split: every leg is GitHub-hosted, and free, because the repo is public. Windows and Linux are
+    # software rasterizers and were always hosted, so the visibility flip cost them nothing. Metal was the one
+    # leg that needed real hardware, and it moved to hosted macos-26 (#552).
+    # The suite tiers (the two software legs golden-only on push, decision T5) were chosen against 2x Windows
+    # billing and are kept for feedback speed, re-decided against measured durations at the 18.0.0 delete.
+    # The matrix keys stay on `os` (drives the OS-specific setup steps + the leg name). `runner` picks where.
     strategy:
       fail-fast: false
       # Built by the `legs` job above, which is also where the leg table and its per-leg rationale live.
@@ -628,7 +608,9 @@ jobs:
       #       - the same plus MTL_SHADER_VALIDATION=1 on top: 1m19s to 1m50s, a 3.5x to 4x multiplier.
       #       - the INCUMBENT backend, which is the shape the old pair belongs to: 3m43s to 5m20s unarmed
       #         against 4m37s to 6m2s with the shader rung, +24% and +13% within their own sittings. Same
-      #         command, KE_GRAPHICS_BACKEND unset.
+      #         command, KE_GRAPHICS_BACKEND unset. That row is HISTORY as of 18.0.0: the incumbent backend is
+      #         deleted, and an unset KE_GRAPHICS_BACKEND now selects the platform native. It is kept because
+      #         it is what makes the misattributed pair above legible.
       #     On the hosted Apple Paravirtual device the armed run was 7m46s (run 31581572414) against the same
       #     leg's debug-layer-only run at 10m54s (run 31585988023), 29% FASTER, which is work being dropped
       #     rather than instrumented. Local arming multiplies the time. Hosted arming divides it.
@@ -642,17 +624,18 @@ jobs:
       # the pass colour without drawing, which is every symptom above. That is the same silent-loss mechanism
       # #614 (https://github.com/APKiwiOrg/KhaozEngine/issues/614) carries as a live candidate for its own
       # varying failures on this leg, so one armed artifact is likely to answer both questions or neither.
-      # There was no control leg to appeal to either: the incumbent metal leg armed NEITHER Metal variable, so run
-      # 31581572414's green metal leg is not the control it looks like. The `incumbentShaderValidation` input
-      # above is that control, and METAL_INCUMBENT_SHADER_RUNG below is what arms it.
+      # There is no control leg to appeal to either. The incumbent metal leg armed NEITHER Metal variable, so run
+      # 31581572414's green metal leg is not the control it looks like, and 18.0.0 deleted that leg with the
+      # backend under it. The `incumbentShaderValidation` dispatch input that used to arm a control there went
+      # with it, so #617's control is now a dispatch of THIS leg at `tier: push` against one at `tier: deep`.
       # The cron is always deep, so leaving this as it was turns the whole matrix red every Sunday on a rung
       # that cannot testify about the code. It is now DISPATCH ONLY: a human aims it, on purpose, at a
       # question worth asking, and the cron keeps MTL_DEBUG_LAYER (armed on every run of this leg, below). It no
       # longer keeps the frame capture beside it: #614 measured that the capture displaces the debug device, so
       # the cron used to carry two instruments of which the armed one was the one it was not investigating.
       # #617 stays open with the diagnosis.
-      # THAT VARIABLE ALONE, AND THE DEBUG LAYER STAYS OFF THE INCUMBENT HERE, but the reason has changed and it
-      # is no longer that nobody knows what aborts. The abort was
+      # THE ABORT THAT USED TO GATE ALL OF THIS IS UNDERSTOOD, and the reason is no longer that nobody knows
+      # what aborts. It was
       #     -[MTLDebugRenderCommandEncoder validateCommonDrawErrors:]:6001: failed assertion
       #     `Draw Errors Validation / Fragment Function(main0): missing Buffer binding at index 0 for _14[0].'
       # the layer at its default assert error mode killing the process, exactly as row 19 measured on the native
@@ -660,8 +643,8 @@ jobs:
       # row, GpuSkinningReproGpuTests.FoldMatrixIntoBoneBuffer_VertexReadsOneResource_ReadsEveryBone. MM6's own
       # control was not the source and never was: that half already stands down under the layer. This row is the
       # SAME split-stage shape from a different file, the offscreen record of the original skinned-model failure
-      # that #604 keeps, and it provokes the layer for the same reason MM6's control does. It stands down under
-      # the layer on the INCUMBENT alone now, so the native leg keeps asserting it. Measured on this branch on an
+      # that #604 keeps, and it provoked the layer for the same reason MM6's control did. It stood down under
+      # the layer on the INCUMBENT alone, so the native leg keeps asserting it. Measured on this branch on an
       # M2 Max: KhaozEngine.Render.Tests at Category!=LiveSocket with KE_GRAPHICS_BACKEND unset, KE_GPU_TESTS=1
       # and MTL_DEBUG_LAYER=1 runs to completion, 6217 passed, 0 failed, 0 skipped, where it used to abort after
       # about a thousand rows in under two seconds.
@@ -669,8 +652,6 @@ jobs:
       # is the wrong place to find the next provoking row: the layer's error mode gates the SUITE rather than a
       # row, hosted macos-26 is not the machine that measurement was taken on, and the way the native leg earned
       # the layer was a dispatch first. That dispatch is #617's control experiment to make.
-      # MTL_SHADER_VALIDATION on its own does NOT abort the incumbent either: it runs the whole assembly green
-      # under that variable, which is what makes the control experiment above possible at all.
       METAL_DEEP_TIER: ${{ (matrix.backend == 'metal-native' && github.event_name == 'workflow_dispatch' && inputs.tier == 'deep') && '1' || '' }}
       # WHETHER THIS RUN ARMS THE FRAME CAPTURE, as one expression with two readers (the variable and the
       # artifact name), for the reason the two predicates above are one expression each.
@@ -682,11 +663,6 @@ jobs:
       # input above. The instrument the unattended triggers exist to carry is the debug layer, so the capture is
       # the one that moves to an attended trigger.
       METAL_CAPTURE_TIER: ${{ (matrix.backend == 'metal-native' && github.event_name == 'workflow_dispatch' && inputs.tier == 'capture') && '1' || '' }}
-      # WHETHER THIS RUN ARMS THE #617 CONTROL ON THE INCUMBENT METAL LEG, as one expression with three readers
-      # (the shader-validation variable, the detailed logger and the artifact name). The reasoning, including why
-      # it is shader validation alone and never the debug layer, is on the `incumbentShaderValidation` input.
-      # `matrix.backend == 'metal'` is the incumbent leg and nothing else: the native leg reads METAL_DEEP_TIER.
-      METAL_INCUMBENT_SHADER_RUNG: ${{ (matrix.backend == 'metal' && github.event_name == 'workflow_dispatch' && inputs.incumbentShaderValidation) && '1' || '' }}
     steps:
       # THE TIER-EDIT GUARD (https://github.com/APKiwiOrg/KhaozEngine/issues/614), and the only step in this job
       # that asserts something about THIS FILE rather than about the engine. It runs before the checkout because
@@ -816,10 +792,10 @@ jobs:
       # KE_VULKAN_VALIDATION). Gating on the leg column alone was wrong in both directions on the push path: it
       # installed an apt package a golden-subset run has no use for, and it ran the hard manifest check below
       # against a run that would not have validated anything even with the layer present, so the only outcome
-      # it could produce there was a false failure. The incumbent Vulkan leg never installs the layer on any
-      # trigger: that leg is the indefinitely-selectable escape hatch of decision V-RO2, and adding a new apt
-      # package to it would let a package rename on a future runner image redden the very leg the native
-      # backend escapes to.
+      # it could produce there was a false failure. The incumbent Vulkan leg never installed the layer on any
+      # trigger, because it was the indefinitely-selectable escape hatch of decision V-RO2 and a package rename
+      # on a future runner image would have reddened the very leg the native backend escaped to. That leg was
+      # deleted in 18.0.0, so the leg column now selects one Linux leg and the trigger does the rest.
       #
       # THE MANIFEST CHECK IS THE POINT OF THE STEP, not a nicety, and it stays HARD on the armed runs. A
       # missing layer does not fail anything by itself: the engine WARNs, names what to install, and creates
@@ -839,27 +815,6 @@ jobs:
             exit 1
           fi
           echo "Khronos validation layer manifest: $layer"
-
-      # Veldrid 4.9.0's Vulkan binding P/Invokes the bare names "libdl" and "libvulkan"; modern Ubuntu only
-      # ships the versioned libdl.so.2 / libvulkan.so.1 (no -dev unversioned symlink), so the device init
-      # throws DllNotFoundException before any rendering. Provide the unversioned symlinks the loader expects.
-      #
-      # BOTH LINUX LEGS, AND IT IS NOT DEAD ON THE NATIVE ONE. Silk.NET resolves through its own native-context
-      # search and needs no symlink, which makes this step look like the incumbent's alone. It is not: the
-      # capability-parity test creates a VELDRID Vulkan device beside the native one, on whichever leg it runs,
-      # so removing this step from the native leg breaks that test at device creation with a DllNotFoundException
-      # that reads as a mystery rather than as a deleted workaround. The step retires with the Veldrid Vulkan leg
-      # itself, in phase 4 and not before: https://github.com/APKiwiOrg/KhaozEngine/issues/540
-      - name: Symlink libdl / libvulkan for Veldrid (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          set -x
-          libdir=/usr/lib/x86_64-linux-gnu
-          dl=$(ldconfig -p | awk '/libdl\.so\.2/ {print $NF; exit}')
-          vk=$(ldconfig -p | awk '/libvulkan\.so\.1/ {print $NF; exit}')
-          [ -n "$dl" ] && sudo ln -sf "$dl" "$libdir/libdl.so" || echo "WARN: libdl.so.2 not found"
-          [ -n "$vk" ] && sudo ln -sf "$vk" "$libdir/libvulkan.so" || echo "WARN: libvulkan.so.1 not found"
-          ls -l "$libdir/libdl.so" "$libdir/libvulkan.so" 2>/dev/null || true
 
       # No --summary, deliberately (decision V-D7 of docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md).
       # The summary prints the driver and the API version and NO device limits at all, so no Vulkan device limit
@@ -916,29 +871,30 @@ jobs:
       # And it is scoped to the ONE test project that owns these tests, because run over the whole solution the
       # setting fails on each of the other 17 test projects, where matching zero is the correct outcome.
       - name: Shader FXC validation (no device)
-        # ONE Windows leg, not every Windows leg. Nothing here creates a device or selects a backend, so the
-        # compile is device-free and backend-independent and one Windows leg suffices: the native leg would run
-        # byte-identical work for zero added coverage at the Windows 2x rate. Pinned to the incumbent leg rather
-        # than to matrix.os for that reason.
-        # The pin key `matrix.backend == 'direct3d11'` is LOAD-BEARING. Rename or retire that leg and this step
-        # silently stops running, with nothing failing anywhere: the TreatNoTestsAsError guard below catches a
-        # test-class rename, not a matrix-key rename.
-        if: matrix.backend == 'direct3d11'
+        # THE ONE WINDOWS LEG. Nothing here creates a device or selects a backend, so the compile is device-free
+        # and backend-independent, and it used to be pinned to `direct3d11` because the incumbent and native
+        # Windows legs would otherwise run byte-identical work twice at the Windows 2x rate. 18.0.0 deleted the
+        # incumbent leg, so this moved to `direct3d11-native`, which is now the only Windows leg there is.
+        # The pin key is LOAD-BEARING. Rename or retire that leg and this step silently stops running, with
+        # nothing failing anywhere: the TreatNoTestsAsError guard below catches a test-class rename, not a
+        # matrix-key rename.
+        if: matrix.backend == 'direct3d11-native'
         run: dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~D3D11FxcValidationTests" -- RunConfiguration.TreatNoTestsAsError=true
         shell: bash
 
       # Suite selection per leg + trigger (the cost + stability split in the header):
-      #   * fullSuite: always (Metal): the FULL suite on every trigger - "Category!=LiveSocket",
+      #   * fullSuite: always (metal-native): the FULL suite on every trigger - "Category!=LiveSocket",
       #     mirroring ci.yml's exclusion (LiveSocket needs a live network peer, not available here).
-      #   * fullSuite: scheduled (both D3D11 legs, Vulkan): golden tests only on push/PR
+      #   * fullSuite: scheduled (direct3d11-native, vulkan-native): golden tests only on push/PR
       #     ("FullyQualifiedName~Golden"), the FULL suite on schedule + workflow_dispatch. D3D11: full hosted
       #     Windows measured +19 billed 2x minutes per run vs golden-only (17m14s vs 7m44s, runs
-      #     29542939552 / 29545657401), so per-push hosted coverage stays golden-only and the weekly cron
-      #     carries the full sweep. The native leg takes that same tier for the same reason, at the same 2x
-      #     rate (decision T5). Both Vulkan legs: the same tier again, and their full-suite runs serialize xUnit
+      #     29542939552 / 29545657401), and the native leg's own full suite measured 25m43s in run
+      #     32579723071, so per-push hosted coverage stays golden-only and the weekly cron
+      #     carries the full sweep (decision T5, re-decided at the 18.0.0 delete: see the header).
+      #     The Vulkan leg takes the same tier, and its full-suite runs serialize xUnit
       #     test collections (KE_TEST_EXTRA_ARGS below) because lavapipe under full parallel load still shows
       #     residual driver-side instability after the four engine-defect fixes (see the header). The native
-      #     Vulkan leg inherits that serialisation on day one rather than claiming to have fixed it, and MV7 is
+      #     Vulkan leg inherited that serialisation on day one rather than claiming to have fixed it, and MV7 is
       #     the experiment that takes it off that leg alone if four green weeks plus one unserialized dispatch
       #     ever earn it.
       #
@@ -950,35 +906,34 @@ jobs:
         env:
           KE_GPU_TESTS: '1'
           KE_GRAPHICS_BACKEND: ${{ matrix.backend }}
-          # Both Windows legs pin the adapter (decision G2, matrix comment above), because both create native
-          # devices: the incumbent leg does it through the parity tests. Empty on macOS and Linux, and blank is
-          # parsed as "let DXGI pick". Read only by the native backend, so no Veldrid device sees it.
+          # The Windows leg pins the adapter (decision G2, matrix comment above). Empty on macOS and Linux,
+          # and blank is parsed as "let DXGI pick". Read only by the native backend's adapter selection.
           KE_D3D11_ADAPTER: ${{ matrix.d3d11Adapter }}
-          # Both Linux legs pin the physical device (decision V-G2, matrix comment above), because both create
-          # native Vulkan devices: the incumbent leg does it through the capability-parity test. Empty on Windows
-          # and macOS. Read only by the native backend's selection, so no Veldrid device sees it.
+          # The Linux leg pins the physical device (decision V-G2, matrix comment above). Empty on Windows
+          # and macOS. Read only by the native backend's physical-device selection.
           KE_VULKAN_DEVICE: ${{ matrix.vulkanDevice }}
           # ONLY THE LEG BUILT TO HAVE A NATIVE VULKAN DEVICE DECLARES ONE MANDATORY. Every row that needs one
           # asks VulkanDormancy.NativeDeviceAvailable and returns early when the functional probe refuses the
-          # machine, which is right on a developer box and on every leg but this one. On THIS leg that early
-          # return is a test that asserted nothing and reported green, and the zero-skipped criterion of rollout
-          # gate 2 cannot see it, because a dormant row does not skip. With the variable set the helper THROWS
-          # instead, naming what VulkanSupportProbe.MissingRequirement objected to, so a loader or driver
-          # regression reds the leg. Unset everywhere else, which is what keeps the incumbent leg and every
-          # developer box dormant exactly as before.
+          # machine, which is right on a developer box and on the two legs that are not Linux. On THIS leg that
+          # early return is a test that asserted nothing and reported green, and the zero-skipped criterion of
+          # rollout gate 2 cannot see it, because a dormant row does not skip. With the variable set the helper
+          # THROWS instead, naming what VulkanSupportProbe.MissingRequirement objected to, so a loader or driver
+          # regression reds the leg. Unset everywhere else, which is what keeps every developer box dormant
+          # exactly as before.
           KE_VULKAN_REQUIRED: ${{ (matrix.backend == 'vulkan-native') && '1' || '' }}
           # THE SAME DECISION ON THE THIRD BACKEND, and the same reason (decision M-T6, phase 3's row-19 lesson
           # inherited by name). Every Metal row that needs a native device routes its dormancy through
           # MetalDormancy, whether through NativeDeviceAvailable or through the inline copy of the same pair some
-          # of them carry, and returns early when the machine cannot provide one, which is right on a Windows box,
-          # on a Linux box and on the incumbent Metal leg. On THIS leg that early return is a test that asserted nothing and
-          # reported green. With the variable set the helper THROWS instead, naming what the machine objected to
-          # in the probe's own words, so a runner-image regression that took the Metal device away reds the leg
-          # rather than quietly emptying the rows it was built for.
+          # of them carry, and returns early when the machine cannot provide one, which is right on a Windows box
+          # and on a Linux box. On THIS leg that early return is a test that asserted nothing and reported green.
+          # With the variable set the helper THROWS instead, naming what the machine objected to in the probe's
+          # own words, so a runner-image regression that took the Metal device away reds the leg rather than
+          # quietly emptying the rows it was built for.
           #
-          # AND IT IS UNSET ON THE INCUMBENT METAL LEG, deliberately, exactly as KE_VULKAN_REQUIRED is unset on
-          # the incumbent Vulkan leg. That leg is the escape hatch decision M-RO2 keeps selectable until the
-          # closing act, and an escape hatch that goes red whenever the thing it escapes from goes red is not one.
+          # It used to be unset on the incumbent Metal leg, exactly as KE_VULKAN_REQUIRED was unset on the
+          # incumbent Vulkan leg: those were the escape hatches decisions M-RO2 and V-RO2 kept selectable until
+          # the closing act, and an escape hatch that goes red whenever the thing it escapes from goes red is
+          # not one. The closing act is 18.0.0, and both legs went with it.
           KE_METAL_REQUIRED: ${{ (matrix.backend == 'metal-native') && '1' || '' }}
           # TIER ONE OF METAL'S VALIDATION GATE (decision M-T7): API validation, on EVERY run of the native Metal
           # leg. It is an environment variable with no install, no apt package and no manifest to check, which is
@@ -995,13 +950,11 @@ jobs:
           # strict tier holds, because #617 measured it rendering nothing at all on this runner. The predicate
           # lives once, in the METAL_DEEP_TIER job env above, with the whole reasoning beside it.
           #
-          # TWO LEGS CAN ARM THIS NOW, and they are different questions rather than one tier widened. On the
-          # native leg it is tier two of that leg's validation gate. On the INCUMBENT leg it is #617's control
-          # experiment, off by default and armed only by the `incumbentShaderValidation` dispatch input, asking
-          # whether the paravirtual runner drops work under the rung for any backend or only for ours. The two
-          # predicates stay separate expressions because they answer to different inputs and different legs, and
-          # they meet only here, where the variable is one name either way.
-          MTL_SHADER_VALIDATION: ${{ (env.METAL_DEEP_TIER != '' || env.METAL_INCUMBENT_SHADER_RUNG != '') && '1' || '' }}
+          # ONE LEG ARMS THIS. A second predicate lived here until 18.0.0, arming the rung on the INCUMBENT
+          # Metal leg as #617's control experiment (whether the paravirtual runner drops work under the rung for
+          # any backend or only for ours). That leg is deleted, so the control is now a `tier: push` dispatch of
+          # this leg against a `tier: deep` one.
+          MTL_SHADER_VALIDATION: ${{ env.METAL_DEEP_TIER != '' && '1' || '' }}
           # NOT A VALIDATION TIER, and its trigger is the INVERSE of tier two's, which is a measurement rather
           # than a preference. Metal refuses a GPU-trace capture destination in a process that did not have this
           # set at launch, so without it MetalFrameCaptureTests asserts only that an unarmed process refuses, and
@@ -1093,8 +1046,8 @@ jobs:
           # detailed console output measured 1.5MB to 1.6MB across two sittings on this commit, which is a
           # rounding error against an artifact this leg uploads either way.
           #
-          # The Vulkan half of the expression is unchanged and stays keyed to VULKAN_VALIDATION_ARMED: those
-          # legs are `fullSuite: scheduled`, their rungs really are schedule-and-dispatch only, and the same
+          # The Vulkan half of the expression is unchanged and stays keyed to VULKAN_VALIDATION_ARMED: that
+          # leg is `fullSuite: scheduled`, its rungs really are schedule-and-dispatch only, and the same
           # follow-the-instrument rule therefore already holds there.
           #
           # ONE KNOWN SIDE EFFECT, and it is a levelling rather than a regression: the device-evidence step's
@@ -1103,11 +1056,7 @@ jobs:
           # run #614 has actually read came off the cron or a dispatch, which were detailed already, so this
           # makes the push tail match the tail that instrument was designed against instead of diverging from it.
           #
-          # AND THE INCUMBENT METAL LEG WHENEVER THE #617 CONTROL IS ARMED, for the same follow-the-instrument
-          # reason. That run configures the Metal sink, because the sink reads the process LAUNCH environment
-          # rather than the leg name, so without detailed verbosity its lines would land in the stream vstest
-          # discards and the control would produce exactly the unreadable artifact #617 already paid for once.
-          KE_TEST_LOGGER_ARGS: ${{ (env.VULKAN_VALIDATION_ARMED != '' || matrix.backend == 'metal-native' || env.METAL_INCUMBENT_SHADER_RUNG != '') && '--logger console;verbosity=detailed' || '' }}
+          KE_TEST_LOGGER_ARGS: ${{ (env.VULKAN_VALIDATION_ARMED != '' || matrix.backend == 'metal-native') && '--logger console;verbosity=detailed' || '' }}
           # THE THREE SHADER DISK CACHES, ALL FROM ONE VALUE (#614). Blank on every ordinary trigger, which is
           # the shipped default location, and `off` on a dispatch that asked for it. Each variable belongs to one
           # backend and is inert on the other two legs, so setting all three on every leg costs nothing and is
@@ -1134,10 +1083,10 @@ jobs:
           KE_TEST_FILTER: ${{ (matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && 'Category!=LiveSocket' || 'FullyQualifiedName~Golden' }}
           # BOTH Vulkan legs' full-suite runs: serialize xUnit collections, one live device at a time
           # (~22 min serialized vs minutes parallel, header). Empty for every other leg and for
-          # golden-only runs (months of parallel green history). The two legs are named separately rather
-          # than matched on a prefix because MV7 takes serialisation off the NATIVE leg alone if it wins,
-          # and the incumbent keeps it either way: that bet says nothing about the incumbent.
-          KE_TEST_EXTRA_ARGS: ${{ ((matrix.backend == 'vulkan' || matrix.backend == 'vulkan-native') && matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) && '-- xUnit.ParallelizeTestCollections=false' || '' }}
+          # golden-only runs (months of parallel green history). It is named rather than matched on a prefix
+          # because MV7 takes serialisation off this leg if it wins, and a prefix match would take it off any
+          # future Linux leg with it.
+          KE_TEST_EXTRA_ARGS: ${{ (matrix.backend == 'vulkan-native' && matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) && '-- xUnit.ParallelizeTestCollections=false' || '' }}
         # Plain --blame (no --blame-crash) is kept permanently: it only writes a tiny Sequence.xml naming the
         # last-started test if the host dies (no dump utility attached, no measurable overhead), and a lavapipe
         # native crash without it is unattributable - an unnamed crash on the unattended weekly cron would cost
@@ -1155,17 +1104,18 @@ jobs:
           dotnet test -c Release --no-build --filter "$KE_TEST_FILTER" --blame --results-directory TestResults $KE_TEST_LOGGER_ARGS $KE_TEST_EXTRA_ARGS 2>&1 | tee TestResults/suite-output.log
         shell: bash
 
-      # WHAT THE BOOT'S GPU ACTUALLY WAS (#614), on BOTH macOS legs. That issue's whole difficulty is that a red
+      # WHAT THE BOOT'S GPU ACTUALLY WAS (#614), on the macOS leg. That issue's whole difficulty is that a red
       # run tells you the name of a test and nothing about the machine it failed on: the metal-native leg fails
       # roughly one varying GPU test per boot on the hosted Apple Paravirtual device, bit-identically wrong when
-      # it is wrong, while the same commit passes on real Metal locally and the incumbent leg passes beside it.
-      # The runner image version is already known to be identical across green and red attempts, so the next
-      # readings worth having are the device's own.
+      # it is wrong, while the same commit passes on real Metal locally. The runner image version is already
+      # known to be identical across green and red attempts, so the next readings worth having are the
+      # device's own. The incumbent Metal leg that used to run beside it as a same-boot control is deleted
+      # (18.0.0), so the control is now this leg's own green runs.
       #
       # ALWAYS RATHER THAN failure(), WHICH IS THE POINT OF THE INSTRUMENT. The question is what DIFFERS between
       # a red boot and a green one, and a failure-only capture has nothing to difference against: it would
-      # produce a red boot's facts and no baseline anywhere. The incumbent leg is green in every occurrence on
-      # the ledger, so it is the control, and its evidence only exists if a green run takes it.
+      # produce a red boot's facts and no baseline anywhere. That matters more now than it did with a control
+      # leg beside it, because a green run of THIS leg is the only baseline left.
       #
       # IT CANNOT RED A GREEN LEG. continue-on-error plus `|| true` on every command, for the reason the Vulkan
       # diagnostics step above carries it: this is evidence, and a diagnostic that can fail the thing it is
@@ -1205,8 +1155,8 @@ jobs:
           # reads (name, highest Apple family, Mac2 / Common1, buffer-offset alignment and its selector, sample
           # count 1), the capability set the backend reports, and the adapter description the device answers
           # with. Those rows already print all of it through ITestOutputHelper, and detailed verbosity is what
-          # forwards a PASSING test's output at all, so this needs no new code. They run on the incumbent leg
-          # too: the Metal probe reads the system default device rather than the selected backend's.
+          # forwards a PASSING test's output at all, so this needs no new code. They read the system default
+          # device rather than the selected backend's, so they answer on any macOS leg.
           dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build \
             --filter "FullyQualifiedName~MetalBackendPackageTests.TheFourReads_AnswerOnARealDevice|FullyQualifiedName~GpuCapabilitiesDiagTests.LiveDeviceReportsNameAndSamplerFeatures|FullyQualifiedName~GpuDeviceDiagnosticsGpuTests.AdapterDescription_IsTheDeviceNameTheBackendReports" \
             --logger "console;verbosity=detailed" > device-evidence/engine-device-facts.txt 2>&1 || true
@@ -1362,22 +1312,21 @@ jobs:
       # the single MetalValidationLogHost announcement. A MetalDeviceLossLatch line appears NOWHERE in a clean
       # run, which is exactly what makes that category the thing a scan step should be looking for.
       #
-      # THE NAME HAS FOUR CASES NOW rather than two, and every one of them is read off the expression that arms
-      # the thing it names, because #614 is the bill for a name that was false. `debug-layer` was this artifact's
+      # THE NAME HAS THREE CASES, and every one of them is read off the expression that arms the thing it names,
+      # because #614 is the bill for a name that was false. `debug-layer` was this artifact's
       # name on every unattended run while MTL_CAPTURE_ENABLED was displacing the debug device, so a reader who
       # went looking for the layer's evidence found a file named for an instrument that was not holding the
       # device. The cases:
-      #   * shader-validation - the deep dispatch on the native leg, and the #617 control on the incumbent.
+      #   * shader-validation - the deep dispatch.
       #   * capture           - `tier=capture`, where the device is a CaptureMTLDevice and the layer is NOT the
       #                         live instrument. Named for what it is rather than for what is merely set.
-      #   * debug-layer       - every unattended trigger on the native leg, and true again as of #614.
-      # The incumbent leg reaches this step only when the control armed it, so an ordinary run of that leg still
-      # uploads nothing at all.
+      #   * debug-layer       - every unattended trigger, and true again as of #614.
+      # A fourth case, the #617 control on the incumbent Metal leg, went with that leg in 18.0.0.
       - name: Upload Metal validation log
-        if: always() && (matrix.backend == 'metal-native' || env.METAL_INCUMBENT_SHADER_RUNG != '')
+        if: always() && matrix.backend == 'metal-native'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: metal-validation-${{ (env.METAL_DEEP_TIER != '' || env.METAL_INCUMBENT_SHADER_RUNG != '') && 'shader-validation' || (env.METAL_CAPTURE_TIER != '' && 'capture' || 'debug-layer') }}-${{ matrix.backend }}
+          name: metal-validation-${{ env.METAL_DEEP_TIER != '' && 'shader-validation' || (env.METAL_CAPTURE_TIER != '' && 'capture' || 'debug-layer') }}-${{ matrix.backend }}
           path: TestResults/suite-output.log
           if-no-files-found: ignore
 
@@ -1536,28 +1485,6 @@ jobs:
             exit 1
           fi
           echo "Khronos validation layer manifest: $layer"
-
-      # The matrix leg's symlink step, copied here for the same reason the rest of this setup is copied. It is
-      # LATENT on this job today and it is cheap insurance rather than dead weight: this job runs
-      # vulkan-native, and Silk.NET resolves through its own native-context search, so nothing on the selected
-      # subset is known to need the unversioned names. What it guards is the Veldrid fallback, where Veldrid
-      # 4.9.0's Vulkan binding P/Invokes the bare "libdl" and "libvulkan" that modern Ubuntu ships versioned
-      # only. Any test that reaches a Veldrid Vulkan device from here (the capability-parity row is the one
-      # that already does it on the matrix legs, and the Compute filter's reach is not frozen) would otherwise
-      # fail at device creation with a DllNotFoundException, which is the least diagnosable shape a failure can
-      # take on a job whose whole output is a validation log. This job's setup is a deliberate copy that fails
-      # LOUDLY rather than silently when it drifts, and a MISSING step is the one drift that fails silently, so
-      # the copy is kept complete. Retires with the Veldrid Vulkan leg itself, in phase 4 and not before:
-      # https://github.com/APKiwiOrg/KhaozEngine/issues/540
-      - name: Symlink libdl / libvulkan for Veldrid
-        run: |
-          set -x
-          libdir=/usr/lib/x86_64-linux-gnu
-          dl=$(ldconfig -p | awk '/libdl\.so\.2/ {print $NF; exit}')
-          vk=$(ldconfig -p | awk '/libvulkan\.so\.1/ {print $NF; exit}')
-          [ -n "$dl" ] && sudo ln -sf "$dl" "$libdir/libdl.so" || echo "WARN: libdl.so.2 not found"
-          [ -n "$vk" ] && sudo ln -sf "$vk" "$libdir/libvulkan.so" || echo "WARN: libvulkan.so.1 not found"
-          ls -l "$libdir/libdl.so" "$libdir/libvulkan.so" 2>/dev/null || true
 
       # THE SUBSET IS THE GOLDEN FAMILY PLUS THE COMPUTE SUITE, and the naming contract is what selects it
       # (design section 15). `FullyQualifiedName~Golden` is the same substring the matrix job's push path uses,

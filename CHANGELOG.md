@@ -12,7 +12,9 @@ the only backends now, on every platform, and this is rows 4, 5 and 6 of the Vel
 ([#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)). It then swaps the shader TOOLCHAIN the deleted
 backend left behind, which is row 8 of the same program
 ([#691](https://github.com/APKiwiOrg/KhaozEngine/issues/691)), so `Veldrid.SPIRV` and the `Veldrid` base
-package leave too and NO Veldrid package is left anywhere in the graph. BREAKING, hence the major: four
+package leave too and NO Veldrid package is left anywhere in the graph. All eleven rows of that program are in
+this release, so the removal is COMPLETE at 18.0.0 rather than spread across the two releases it was planned
+for. BREAKING, hence the major: four
 `GpuBackendKind` members no longer name anything that can create a device. This release also carries what 17.41.0 had staged and never tagged: the three native backends' own golden families (rows 2 and 3 of the removal program) and the two SQLite file-handle fixes, listed at the end of this entry.
 
 - **The Veldrid backend is deleted** (`VeldridGpuDevice`, `VeldridGpuCommandList`, `VeldridResources`,
@@ -300,6 +302,39 @@ package leave too and NO Veldrid package is left anywhere in the graph. BREAKING
   [#717](https://github.com/APKiwiOrg/KhaozEngine/issues/717). Closes
   [#716](https://github.com/APKiwiOrg/KhaozEngine/issues/716) and
   [#718](https://github.com/APKiwiOrg/KhaozEngine/issues/718).
+- **The removal's closing sweep, and the last runtime strings that named a deleted backend as live.** A
+  refusal that tells you what to do instead is only worth carrying if the advice can be taken, and four could
+  not: the native Vulkan missing-feature refusal advised selecting `GpuBackendKind.Vulkan`, "which goes through
+  Veldrid", and three Direct3D 11 refusals (the versioned-context one, the null-device one and the unbuilt-member
+  one) advised `GpuBackendKind.Direct3D11`. Both members are retired tokens that throw when named in code, so
+  each refusal sent the caller into a second one. They now say there is no second path on this machine and why.
+  The `D3D11ViewPolicy` ring-combination refusal dates the backend its divergence is measured against, and the
+  Showcase text card stops drawing "batched quads on Veldrid." on screen. Two GPU test rows
+  (`MetalTwoUniformBufferGpuTests` MM6 and `RecordTimeUniformRewriteGpuTests`) stood a control up with
+  `CreateHeadless(GpuBackendKind.Metal)` inside a try that logged "control not taken", so the control had not
+  run since 18.0.0 and the log made a failure look like a choice. The arms and the log are gone and both class
+  notes record where the comparison's durable half now lives.
+- **The seam's own prose stops describing `Veldrid.SPIRV` as still in the graph.** Row 8 replaced it, so the
+  `MslCrossCompilePin` sentence naming the pinned version, the `SpirvCrossCompile` header saying SPIRV-Cross
+  "arrives as `Veldrid.SPIRV`", the `HlslCrossCompilePin` and `ShaderCrossCompileResult` containment
+  paragraphs, `SpirvLocalSize`'s whole rationale, and the root README's `KhaozEngine.Gpu` row all named a
+  package that had left. Each now states the rule in toolchain terms and keeps the Veldrid wording as the form
+  decision P2 was written in. `GpuPublicApiTests` and `SpirvCrossCompileTests` say in as many words that their
+  `Veldrid` rows cannot fail any more and are kept as the pattern, with
+  `ArchitectureTests.NoTwoShaderToolchains` named as the half that binds.
+- **"The incumbent" is defined where it is used.** The three backend package READMEs already carried that
+  anchor. `KhaozEngine.Gpu`'s README now does too, and `docs/DEPENDENCY-SEAMS.md` carries it for the GPU test
+  assembly, which has no README and around forty classes that cite the deleted backend's behaviour because
+  reproducing it or diverging from it is why the assertion exists. Those citations are history and are kept:
+  the numbers they pin are the numbers the goldens were baked against.
+- **The Veldrid removal program is COMPLETE**, all eleven rows in one release. `docs/INDEX.md` says so and
+  names what stays open behind it, and section 7 of
+  `docs/design/VELDRID-REMOVAL-DESIGN-2026-08-22.md` carries a dated closing note with the five things the
+  rows found that the design did not predict. Closes
+  [#694](https://github.com/APKiwiOrg/KhaozEngine/issues/694),
+  [#725](https://github.com/APKiwiOrg/KhaozEngine/issues/725),
+  [#593](https://github.com/APKiwiOrg/KhaozEngine/issues/593) and
+  [#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683).
 
 **Consumer note (Ruinborne, the only game that names a `GpuBackendKind`).** Its graphics-settings picker carries
 three incumbent rows, and they go: drop the `Metal` / `Vulkan` / `Direct3D11` rows and their label keys, and

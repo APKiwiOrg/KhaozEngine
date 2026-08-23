@@ -4591,11 +4591,15 @@ to a named exception rather than members that disappear.
 
 Filed as issues when this spec lands, not discovered later.
 
-- **MF1.** The program's CLOSING ACT: retire all three Veldrid legs together, move the SPIR-V front end and both
+- **MF1. COMPLETE, 2026-08-24, at `18.0.0`.** Specified as
+  [VELDRID-REMOVAL-DESIGN-2026-08-22.md](VELDRID-REMOVAL-DESIGN-2026-08-22.md) and delivered as all eleven
+  rows of [#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683) in one release. Its section 7 carries the
+  closing note. As written: the program's CLOSING ACT: retire all three Veldrid legs together, move the
+  SPIR-V front end and both
   cross-compile back ends onto a direct SPIRV-Cross binding, drop `Veldrid` and `Veldrid.SPIRV` and the
   `Newtonsoft.Json` override and the CI `libvulkan` symlink step, and decide what the three golden families
   mean once each has one implementation behind it (19). Triggered by all three native backends passing gate 4.
-  Subsumes phase 3's VF11 and phase 2's F8.
+  Subsumes phase 3's VF11 and phase 2's F8. Every clause of that landed, and MF2 landed with it as row 10.
 - **MF2.** Own the MSL numbering by pinning it into the emission, which becomes possible the moment MF1's
   direct SPIRV-Cross binding exists and `add_msl_resource_binding` is reachable. M-B1's MSL parse and its
   SPIR-V decoration walk are both deleted and the table is authored rather than read (2.2). This is the seat

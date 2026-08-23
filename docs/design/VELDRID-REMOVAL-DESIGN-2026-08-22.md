@@ -444,6 +444,39 @@ gap folded in weakens that claim.
 
 ## 7. The order of work
 
+**CLOSING NOTE, 2026-08-24: every row below has landed and the program is complete.** Rows 2 and 3 shipped in
+`17.40.0` and `17.41.0`. Rows 4 to 11 shipped in `18.0.0`. The two-release split this section forces was
+planned around section 2.3's result 4, and it held as an ORDERING (the incumbent backend was deleted before
+the toolchain was swapped, in separate commits, with no in-process comparison between the two toolchains at
+any point) while collapsing into ONE staged version. Nothing was tagged between row 4 and row 11, so what
+consumers see is a single `18.0.0` carrying both halves. That is the one structural thing this section got
+wrong, and it cost nothing: the rows stayed ordered, the pack-guard kept the staged version honest, and no
+consumer ever pinned a build with half the removal in it.
+
+**WHAT THE ROWS FOUND THAT THIS DOCUMENT DID NOT PREDICT.** Five things, one per surprise, because each is a
+place the design reasoned from the wrong premise and the implementation corrected it in flight.
+
+- **Row 8: the Linux native resolver.** The swap was costed as a package exchange. `Silk.NET.Shaderc` and
+  `Silk.NET.SPIRV.Cross` resolve their native blobs differently from the way `Veldrid.SPIRV` bundled
+  `libveldrid-spirv`, and the Linux leg needed that worked out before it went green. The outgoing package
+  shipped `linux-x64` and not `linux-arm64`, which is the constraint `AGENTS.md` records, and it was the
+  incoming pair's resolver rather than the architecture list that took the time.
+- **Row 8: HLSL register numbering is per file, not per module.** Section 2.3 measured reflection order and
+  optimisation level. It did not measure the numbering. `Veldrid.SPIRV` re-numbered registers itself, silently,
+  and SPIRV-Cross on its own emits the module's raw `Binding` decoration. `HlslRegisterRemap` exists because of
+  that, installed per resource rather than expressed as a pin option, and `HlslCrossCompilePin` says in as many
+  words that a pin cannot express it.
+- **Row 4: the Foundation build assets never reached a head.** The deletion inventory was written against the
+  package graph. The build-asset half of it turned out never to have been reachable from a game head at all, so
+  removing it changed nothing anywhere and the inventory's estimate of the blast radius was high.
+- **Row 9: 31 of 120 golden grids moved, all inside tolerance.** R3 guessed nothing would move. Thirty-one did,
+  worst cell `0.0431` against a tolerance of `0.06`, so the committed goldens stayed as they were. Wrong in the
+  count and right in the consequence, which is exactly the shape a tolerance-based golden is for.
+- **Row 7: #429's pre-record phase was KEPT, not retired.** The row was written to retire #424's F8 set
+  together. The phase turned out to be load-bearing for `Render3DSurface` without an `onPrepare`, independently
+  of the fork it was built for, so it stayed and the residual is documented in the `Render3D`, `Game` and
+  `Game.Render3D` READMEs rather than rolled back.
+
 Two releases, and the split is forced by section 2.3's result 4 rather than chosen for comfort. Rows 1 to 7 are
 release one and remove `Veldrid`. Rows 8 to 11 are release two and remove `Veldrid.SPIRV`.
 

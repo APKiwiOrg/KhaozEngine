@@ -21,8 +21,9 @@ each frame:
 The two-phase split is the windowed loop's (`AppWindow.Run(onFrame, onPrepare)`), and the order a game sees is
 unchanged by it: `OnUpdate` still precedes `OnPrepareWorld`, which still precedes `OnRenderWorld` and the 2D
 passes. What it buys is a point in the frame where a world pass may still submit GPU work on a command list of its
-**own** - which is a device fault if done while the frame's list is recording
-([#429](https://github.com/APKiwiOrg/KhaozEngine/issues/429)). Do not record into `Frame.Commands` from
+**own** - which the GPU seam refuses by name if done while the frame's list is recording
+([#429](https://github.com/APKiwiOrg/KhaozEngine/issues/429), kept rather than rolled back with the Veldrid leg it
+was built for, [#690](https://github.com/APKiwiOrg/KhaozEngine/issues/690)). Do not record into `Frame.Commands` from
 `OnPrepareWorld`. Draw in `OnRenderWorld`. Both seams are skipped on a render-suppressed (minimized) frame.
 
 Subclass it and override `OnLoad` / `OnUpdate(dt)` / `OnDraw2D(batch)` / `OnResize(w, h)`; call

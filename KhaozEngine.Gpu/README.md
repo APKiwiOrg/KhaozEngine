@@ -228,7 +228,12 @@ What it owns today:
   enforced on every backend now, by `GpuRecording` below, rather than by one leg's fork.
 - **`GpuRecording` / `GpuRecordingScope` / `GpuNestedRecordingException`** - the seam's open-recording register,
   and where the portable one-open-recording-per-device contract on `IGpuCommandList.Begin` is enforced rather
-  than described ([#424](https://github.com/APKiwiOrg/KhaozEngine/issues/424)).
+  than described ([#424](https://github.com/APKiwiOrg/KhaozEngine/issues/424)). It STAYS after the incumbent's
+  deletion, and its refusal message changed in 18.0.0 to say so
+  ([#690](https://github.com/APKiwiOrg/KhaozEngine/issues/690)): the wording used to explain the rule by
+  describing the vendored fork's immediate-context mode, and now names the portable rule, the damage and the fix
+  with no backend in it, because a reader who meets a backend name in a portable refusal reasonably stops
+  applying the rule once that backend is gone.
   `GpuRecording.Open(device, list, owner)` begins the list and claims the device, the returned scope ends it and
   releases, and a second `Open` on the same device throws `GpuNestedRecordingException` carrying `Owner` (who is
   already recording) and `Attempted` (who was refused). `OpenOwner(device)` and `CanOpen(device)` answer the same

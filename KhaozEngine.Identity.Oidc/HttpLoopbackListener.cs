@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -11,7 +12,16 @@ using KhaozEngine.Identity;
 namespace KhaozEngine.Identity.Oidc;
 
 /// <summary>Loopback redirect capture on http://127.0.0.1:&lt;port&gt;/ for the auth-code flow: binds a short-lived
-/// <see cref="HttpListener"/>, accepts the provider's single redirect request, and returns its parsed query.</summary>
+/// socket, accepts the provider's single redirect request, and returns its parsed query.
+///
+/// The bind is a plain <see cref="TcpListener"/> rather than an <c>HttpListener</c> because
+/// <c>HttpListener</c> cannot be given port 0: an OS-assigned port had to be read off a throwaway probe socket
+/// and then bound after that socket was released, and another listener on the host can take the port inside
+/// that window. On Windows the collision is not even refused, since an http.sys prefix and an ordinary socket on
+/// the same port do not exclude each other, so the two split the incoming connections and each side hangs on a
+/// protocol it cannot parse (#720). A <see cref="TcpListener"/> binds port 0 atomically and reports the port the
+/// OS actually gave it, so there is no window at all. What it costs is the request parsing below, which for a
+/// redirect capture is one request line and one static page.</summary>
 public sealed class HttpLoopbackListener : ILoopbackListener
 {
     /// <summary>
@@ -24,37 +34,159 @@ public sealed class HttpLoopbackListener : ILoopbackListener
     public const string DefaultCompletionPageHtml =
         "<html><body>Sign-in complete. You may close this window.</body></html>";
 
-    // Cap on probe-then-bind retries when an OS-assigned ephemeral port is requested (port 0). Matches
-    // LiveSocketSupport.TryBindServer's default so both socket families behave the same under contention.
-    private const int MaxBindAttempts = 16;
+    // A redirect is one small GET, so a connection that has not produced a complete request head within this
+    // budget is not the redirect (a browser pre-connect that never sends, a port scanner) and is dropped. The
+    // listener keeps accepting, so dropping one costs the real redirect nothing.
+    private static readonly TimeSpan RequestHeadBudget = TimeSpan.FromSeconds(15);
 
-    private readonly HttpListener listener = new();
+    // Ceiling on the request head we will buffer before dropping a connection. A browser redirect head runs to a
+    // few hundred bytes; anything past this is not one.
+    private const int MaxRequestHeadBytes = 16 * 1024;
+
+    private readonly TcpListener listener;
     private readonly string completionPage;
 
+    /// <summary>The redirect URI the provider must send the browser back to. It carries the port that is actually
+    /// bound, so for an OS-assigned port (0) it is only meaningful after the constructor has returned.</summary>
     public Uri RedirectUri { get; }
 
     /// <summary>
-    /// Binds the loopback listener. <paramref name="completionPageHtml"/> overrides the completion page shown to
-    /// the browser after sign-in (for localization or branding), defaulting to <see cref="DefaultCompletionPageHtml"/>.
+    /// Binds the loopback listener. Pass 0 for an OS-assigned port, or a fixed port when the provider requires a
+    /// pre-registered redirect URI. <paramref name="completionPageHtml"/> overrides the completion page shown to
+    /// the browser after sign-in (for localization or branding), defaulting to
+    /// <see cref="DefaultCompletionPageHtml"/>. A fixed port already in use throws <see cref="SocketException"/>.
     /// </summary>
     public HttpLoopbackListener(int port, string? completionPageHtml = null)
     {
         completionPage = completionPageHtml ?? DefaultCompletionPageHtml;
-        RedirectUri = Bind(listener, port);
+        listener = new TcpListener(IPAddress.Loopback, port);
+        try
+        {
+            listener.Start();
+        }
+        catch
+        {
+            listener.Dispose();
+            throw;
+        }
+
+        RedirectUri = new Uri($"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/");
     }
 
+    /// <summary>
+    /// Accepts connections until one delivers a well-formed HTTP request, serves it the completion page, and
+    /// returns that request's parsed query. Connections that deliver nothing usable are dropped without ending
+    /// the wait. Cancelling ends the wait by faulting, never by returning an empty result.
+    /// </summary>
     public async Task<LoopbackResult> WaitForRedirectAsync(CancellationToken ct)
     {
-        using CancellationTokenRegistration registration = ct.Register(static state =>
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        TaskCompletionSource<LoopbackResult> captured = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
         {
-            HttpListener target = (HttpListener)state!;
-            try { target.Stop(); } catch { /* best-effort cancellation */ }
-        }, listener);
+            Task accepting = AcceptUntilCapturedAsync(captured, stop.Token);
+            if (await Task.WhenAny(captured.Task, accepting).ConfigureAwait(false) == accepting)
+            {
+                // The accept loop only ends early by faulting (cancelled, or the listener disposed under it), so
+                // awaiting it surfaces that. When it ended because the capture completed, this returns at once.
+                await accepting.ConfigureAwait(false);
+            }
 
-        HttpListenerContext context = await listener.GetContextAsync().ConfigureAwait(false);
+            return await captured.Task.ConfigureAwait(false);
+        }
+        finally
+        {
+            stop.Cancel();
+        }
+    }
 
-        System.Collections.Specialized.NameValueCollection parsed =
-            HttpUtility.ParseQueryString(context.Request.Url?.Query ?? string.Empty);
+    private async Task AcceptUntilCapturedAsync(TaskCompletionSource<LoopbackResult> captured, CancellationToken ct)
+    {
+        while (!captured.Task.IsCompleted)
+        {
+            TcpClient client = await listener.AcceptTcpClientAsync(ct).ConfigureAwait(false);
+
+            // Each connection is served off the accept loop, so a peer that connects and then says nothing
+            // cannot hold the real redirect behind it for the length of its budget.
+            _ = RespondAsync(client, captured, ct);
+        }
+    }
+
+    private async Task RespondAsync(TcpClient client, TaskCompletionSource<LoopbackResult> captured, CancellationToken ct)
+    {
+        using (client)
+        using (CancellationTokenSource budget = CancellationTokenSource.CreateLinkedTokenSource(ct))
+        {
+            budget.CancelAfter(RequestHeadBudget);
+            try
+            {
+                NetworkStream stream = client.GetStream();
+                string? head = await ReadRequestHeadAsync(stream, budget.Token).ConfigureAwait(false);
+                if (head is null || !TryParseTarget(head, out string target))
+                    return;
+
+                byte[] body = Encoding.UTF8.GetBytes(completionPage);
+                byte[] header = Encoding.ASCII.GetBytes(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n" +
+                    $"Content-Length: {body.Length}\r\nConnection: close\r\n\r\n");
+                await stream.WriteAsync(header, budget.Token).ConfigureAwait(false);
+                await stream.WriteAsync(body, budget.Token).ConfigureAwait(false);
+                await stream.FlushAsync(budget.Token).ConfigureAwait(false);
+
+                captured.TrySetResult(new LoopbackResult(RedirectUri.ToString(), ParseQuery(target)));
+
+                // Half-close so the browser sees the end of the page before the socket goes away. Best-effort:
+                // a peer that has already hung up is not a failure, the redirect is captured either way.
+                try { client.Client.Shutdown(SocketShutdown.Send); } catch { /* peer gone */ }
+            }
+            catch
+            {
+                // A connection that dies, stalls out its budget, or is cancelled mid-request is not the redirect.
+                // The accept loop stays up for the one that is.
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reads until the end of the request head (the blank line after the headers) and returns it without that
+    /// terminator, or null when the peer closed first or ran past <see cref="MaxRequestHeadBytes"/>. Latin-1
+    /// keeps the bytes intact through the decode: a request head is ASCII by spec, and percent-encoding in the
+    /// query is decoded as UTF-8 later by the query parser.
+    /// </summary>
+    private static async Task<string?> ReadRequestHeadAsync(NetworkStream stream, CancellationToken ct)
+    {
+        byte[] buffer = new byte[1024];
+        string head = string.Empty;
+        while (head.Length < MaxRequestHeadBytes)
+        {
+            int read = await stream.ReadAsync(buffer.AsMemory(), ct).ConfigureAwait(false);
+            if (read == 0)
+                return null;
+
+            head += Encoding.Latin1.GetString(buffer, 0, read);
+            int end = head.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+            if (end >= 0)
+                return head[..end];
+        }
+
+        return null;
+    }
+
+    /// <summary>Pulls the request target out of the request line (<c>GET /?code=... HTTP/1.1</c>), rejecting a
+    /// head that does not open with one so a garbage connection is dropped rather than answered.</summary>
+    private static bool TryParseTarget(string head, out string target)
+    {
+        int lineEnd = head.IndexOf("\r\n", StringComparison.Ordinal);
+        string requestLine = lineEnd >= 0 ? head[..lineEnd] : head;
+        string[] parts = requestLine.Split(' ');
+        target = parts.Length == 3 ? parts[1] : string.Empty;
+        return target.Length > 0;
+    }
+
+    private static IReadOnlyDictionary<string, string> ParseQuery(string target)
+    {
+        int mark = target.IndexOf('?');
+        NameValueCollection parsed = HttpUtility.ParseQueryString(mark >= 0 ? target[mark..] : string.Empty);
         Dictionary<string, string> query = new(StringComparer.Ordinal);
         foreach (string? key in parsed.AllKeys)
         {
@@ -62,60 +194,11 @@ public sealed class HttpLoopbackListener : ILoopbackListener
                 query[key] = parsed[key] ?? string.Empty;
         }
 
-        byte[] body = Encoding.UTF8.GetBytes(completionPage);
-        context.Response.ContentType = "text/html";
-        context.Response.ContentLength64 = body.Length;
-        context.Response.OutputStream.Write(body, 0, body.Length);
-        context.Response.Close();
-
-        return new LoopbackResult(RedirectUri.ToString(), query);
-    }
-
-    /// <summary>
-    /// Binds the listener and returns the redirect Uri. A caller-supplied fixed port is bound directly. For an
-    /// OS-assigned ephemeral port (<paramref name="port"/> == 0) a free port is probed on a throwaway socket then
-    /// bound, and because that probe-release-bind gap is a race (another process can grab the port in between),
-    /// the bind is retried across fresh ports up to <see cref="MaxBindAttempts"/> times, mirroring
-    /// <c>LiveSocketSupport.TryBindServer</c>. The final attempt's bind failure propagates.
-    /// </summary>
-    private static Uri Bind(HttpListener listener, int port)
-    {
-        if (port != 0)
-        {
-            Uri fixedUri = new($"http://127.0.0.1:{port}/");
-            listener.Prefixes.Add(fixedUri.ToString());
-            listener.Start();
-            return fixedUri;
-        }
-
-        for (int attempt = 0; ; attempt++)
-        {
-            Uri candidate = new($"http://127.0.0.1:{ProbeFreePort()}/");
-            listener.Prefixes.Add(candidate.ToString());
-            try
-            {
-                listener.Start();
-                return candidate;
-            }
-            catch (HttpListenerException) when (attempt < MaxBindAttempts - 1)
-            {
-                // Lost the probe-to-bind race, so drop the dead prefix and try a fresh port.
-                listener.Prefixes.Remove(candidate.ToString());
-            }
-        }
-    }
-
-    private static int ProbeFreePort()
-    {
-        TcpListener probe = new(IPAddress.Loopback, 0);
-        probe.Start();
-        int freePort = ((IPEndPoint)probe.LocalEndpoint).Port;
-        probe.Stop();
-        return freePort;
+        return query;
     }
 
     public void Dispose()
     {
-        try { listener.Close(); } catch { /* best-effort teardown */ }
+        try { listener.Dispose(); } catch { /* best-effort teardown */ }
     }
 }

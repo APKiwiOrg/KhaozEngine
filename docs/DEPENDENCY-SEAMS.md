@@ -804,8 +804,8 @@ through `KhaozEngineMetal.Register()` under `GpuBackendKind.MetalNative`, which 
 `metal-native` and `mtl-native` tokens, so the backend is selectable by name
 (`KE_GRAPHICS_BACKEND=metal-native`) and a machine that cannot run it arrives through the reported fallback.
 Neither `IGpuDevice` nor `IGpuCommandList` has an unbuilt member left: it creates devices headless and windowed,
-compiles GLSL through SPIR-V to MSL, builds pipelines from a per-program binding table read out of the emitted
-MSL, records and submits against an `MTLSharedEvent` timeline, draws, dispatches, and presents through a
+compiles GLSL through SPIR-V to MSL, builds pipelines from a per-program binding table whose indices it AUTHORED
+into that MSL, records and submits against an `MTLSharedEvent` timeline, draws, dispatches, and presents through a
 `CAMetalLayer`. **Since 17.40.0 the OS probe selects it on macOS**, and a process that has not referenced the
 package arrives at the incumbent through the reported fallback. The `metal-native` CI leg verifies the
 incumbent's committed `metal` goldens on the same real GPU as a guest in that family, which is the continuous
@@ -885,21 +885,45 @@ one file rather than a second file, because the SPIRV-Cross replacement
 ([#462](https://github.com/APKiwiOrg/KhaozEngine/issues/462)) has to stay one seat. The two pins are separate
 because they freeze different option sets and drift independently.
 
-The HLSL half runs one step the MSL half does not: `Internal/HlslRegisterRemap` installs the register
-numbering the Direct3D 11 backend binds against, per `(stage, set, binding)`, between parsing and emitting.
-SPIRV-Cross on its own emits the module's raw `Binding` decoration as the register index, which is not that
-numbering, so 18.0.0 had to make explicit what `Veldrid.SPIRV` had been doing inside the library. Metal needs
-no equivalent: it READS its indices out of the emitted MSL rather than agreeing with them in advance.
+BOTH HALVES INSTALL A NUMBERING between parsing and emitting, and that is the seam's own shape rather than a
+detail of either backend. SPIRV-Cross left to itself numbers a resource from a counter of its own: the module's
+raw `Binding` decoration on the HLSL path, and a per-stage running count over whatever that stage declares on
+the MSL path. Neither is what a backend binds against, so the engine states the number instead of accepting it.
+
+- `Internal/HlslRegisterRemap` installs the register numbering the Direct3D 11 backend binds against, per
+  `(stage, set, binding)`. 18.0.0 had to make explicit what `Veldrid.SPIRV` had been doing inside the library.
+- `Internal/MslIndexRemap` installs the `[[buffer(n)]]`, `[[texture(n)]]` and `[[sampler(n)]]` indices the
+  native Metal backend binds against, through `spvc_compiler_msl_add_resource_binding`
+  ([#693](https://github.com/APKiwiOrg/KhaozEngine/issues/693)). Until 18.0.0 the Metal backend READ its indices
+  back out of the emitted MSL and joined each argument to a declared element through that stage's SPIR-V
+  decorations, because the outgoing `libveldrid-spirv` exported no entry point that could pin one. That parse
+  and that join are deleted.
+
+The two rules are deliberately the same rule. Walk every resource the program declares in ascending
+`(set, binding)`, take the next index from the counter its register file or argument table chooses, and run the
+counters across the WHOLE program rather than per set or per stage, so one element has one number in every stage
+that reads it. Each pin records which numbering its emission carries (`registers=perFile`, `indices=authored`),
+because the numbering is in the bytes and in no SPIRV-Cross option, so a cache key would not otherwise move when
+it changed.
+
+The MSL half asks one question after the emission that the HLSL half does not: `spvc_compiler_msl_is_resource_used`,
+per `(stage, set, binding)`, which is how the backend knows which elements a stage actually carries an argument
+for. An element with no argument in a stage is not bound for that stage. It also refuses an emission needing one
+of SPIRV-Cross's own helper buffers (`spvc_compiler_msl_needs_*`), because those are numbered from the top of
+the buffer table, where decision M-B2 pins the vertex streams, and carry no `(set, binding)` for anything to see
+them by.
 
 - `KhaozEngine.Gpu.D3D11` reaches both halves, because DXBC is a function of both.
 - `KhaozEngine.Gpu.Metal` reaches both halves too, and that is the Direct3D 11 shape rather than the Vulkan one:
   its sources are GLSL and Metal consumes MSL. It reaches one member more than its Direct3D 11 sibling,
-  `Internal/SpirvResourceDecorations`, which is the `(id, set, binding)` walk its binding table joins on
-  (section 2.2b). That walk was written in the test project as a measurement and promoted into
-  `KhaozEngine.Gpu/Internal` when the ruling took the id join, so the grant that already carried the toolchain
-  carries it as well rather than a second grant existing for it. `KhaozEngine.Gpu`'s own
-  `Internal/MslBindingOrder` reads it too, from inside the package rather than across the seam, which is what
-  lets `ShaderValidation` join an emitted Metal argument back to its declared `(set, binding)`.
+  `Internal/MslIndexRemap`, whose scheme it calls a second time to derive its own binding table from the
+  reflected layouts. One rule, called from both sides, rather than two derivations to keep in step.
+  `Internal/SpirvResourceDecorations`, the `(id, set, binding)` walk the deleted id join used, is no longer
+  reached from this backend at all, and `MetalShaderArchitectureTests` asserts its absence.
+  `KhaozEngine.Gpu`'s own `Internal/MslBindingOrder` still reads it, from inside the package rather than across
+  the seam, which is what lets `ShaderValidation` join an emitted Metal argument back to its declared
+  `(set, binding)`. That is its last shipped caller and it leaves with
+  [#604](https://github.com/APKiwiOrg/KhaozEngine/issues/604).
 - `KhaozEngine.Gpu.Vulkan` reaches the FRONT END ONLY, because Vulkan consumes SPIR-V and
   `vkCreateShaderModule` takes the bytes verbatim, so nothing on that backend's shader path is cross-compiled.
 
@@ -1134,9 +1158,12 @@ measured here, and it is what the sample-all-textures-in-binding-order disciplin
 own incident record has two texture-space mis-binds in it, a model pass reading the normal texture through the
 albedo sampler and a crease term reading depth data.
 
-**The engine's own native Metal backend (`GpuBackendKind.MetalNative`) does not have the defect**, because it
-binds at the index read out of each stage's own emission rather than at a counted one. All three shapes read
-correct bytes there. The measurement is
+**The engine's own native Metal backend (`GpuBackendKind.MetalNative`) does not have the defect**, and since
+`18.0.0` it cannot: it AUTHORS the index (`Internal/MslIndexRemap`, row 10, #693) rather than reading one back
+out of the emission, so the writer's number and the reader's number are the same number by construction instead
+of by agreement. The constructed counter-example above, a fragment reading set 1 alone, is emitted at
+`buffer(1)` now, which is where a declaration-order count always said it was. All three shapes read correct
+bytes there. The measurement is
 `../KhaozEngine.Render.Tests/Gpu/MetalTwoUniformBufferGpuTests.cs`, three pixel-readback `[GpuFact]`s plus a
 device-free row pinning the two numbers against each other, and section 2.3a of
 `design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md` carries the values and the reasoning.
@@ -1152,7 +1179,11 @@ across sets. The argument that kept it while the incumbent shipped is spent: `Gp
 retired token now and builds nothing, so a pipeline written to the native backend's binding cannot be read by
 anything that counts. What keeps the rule is that lifting it MOVES GOLDENS on all three backends, so it is its
 own work with its own gates, tracked at https://github.com/APKiwiOrg/KhaozEngine/issues/604. That issue is
-UNBLOCKED as of `18.0.0`, which is exactly the trigger it named.
+UNBLOCKED as of `18.0.0`, which is exactly the trigger it named, and row 10 has since done the NUMBERING half of
+it: two uniform buffers in one layout get two distinct authored `[[buffer(n)]]` indices, device-free, over every
+shape. What #604 still owns is the SHIPPED VALIDATION that enforces the old constraint. `MslBindingOrder.CheckStage`
+is already inert (the authored indices satisfy it by construction) and `MslBindingOrder.CheckPrefix` still throws,
+so the two come out together with the shaders they block, in one change.
 
 The engine-wide rule for any new render path: the pipeline reads exactly ONE uniform buffer, at set 0
 binding 0. Fold everything any stage needs from a UBO - the vertex's ViewProj / bone palette / per-instance

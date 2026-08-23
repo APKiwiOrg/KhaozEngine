@@ -83,6 +83,60 @@ package leave too and NO Veldrid package is left anywhere in the graph. BREAKING
   SPIRV-Cross has both back ends, so keeping them would have cost two lines. What they cost instead is a false
   stop: with no OpenGL or GLES backend left anywhere in the engine, a shader that emits fine for both shipped
   targets and trips a GLSL back end would be refused for a device nobody can run it on.
+- **The native Metal backend AUTHORS its MSL argument indices, and the parse that used to read them is
+  deleted.** Row 10 of the removal program, and what decision M-B1 was waiting for
+  ([#693](https://github.com/APKiwiOrg/KhaozEngine/issues/693),
+  [#462](https://github.com/APKiwiOrg/KhaozEngine/issues/462)). Metal carries no binding decorations, so the
+  index a resource lands at is a fact about the emission and nothing else. The engine used to DISCOVER that
+  fact: it parsed each emitted entry point's `[[buffer(n)]]` attributes and joined every argument back to a
+  declared element through that stage's own SPIR-V `DescriptorSet` and `Binding` decorations. It STATES the
+  fact now, through `spvc_compiler_msl_add_resource_binding`, which the outgoing `libveldrid-spirv` exported no
+  entry point for and which arrived with the toolchain swap. `MslIndexRemap` is the new seat and its rule is the
+  HLSL half's word for word: walk every resource the program declares in ascending `(set, binding)`, take the
+  next index from the counter its argument table chooses, and run the three counters across the WHOLE program so
+  one element has one index in both stages of a pair. Vertex streams are unaffected, still pinned at the top of
+  the buffer table counting down from 30 (M-B2), and resource indices still grow from 0.
+  What came out with it: `MetalShaderIndexTable`'s parse of the argument list, the id join behind it,
+  `MetalMslStageJoin`, `MetalMslArgument` and `MetalMslEntryPoint`'s whole argument reader. `MetalMslEntryPoint`
+  keeps the entry-point NAME, which SPIRV-Cross still chooses (M-S5). `SpirvResourceDecorations` stays in
+  `KhaozEngine.Gpu` with one shipped caller left, `MslBindingOrder`, and leaves with it.
+- **No shipped program moved a single byte of MSL**, which is the measurement rather than the hope. The authored
+  scheme walks the reflected layouts with a counter per argument table, which is precisely the arithmetic
+  `MetalShaderIndexTableTests` had been asserting the emission already agreed with on all 159 arguments, so all
+  78 MSL artefacts hash exactly as before and neither the byte-equality table nor the shader corpus moved. What
+  DID move is the shape that used to break the agreement: a fragment reading only a set-1 buffer while set 0
+  declares one it never mentions was emitted at `buffer(0)` and is now emitted at `buffer(1)`, which is where a
+  declaration-order count always said it was.
+- **`MslCrossCompilePin.Identity` gained an `indices=authored` token**, for the same reason the HLSL pin gained
+  `registers=perFile`: the numbering is not a SPIRV-Cross option, so nothing else in the MSL cache key moves when
+  it changes, and a warm entry written under the old numbering would otherwise be served under the new one with
+  every resource one slot out.
+- **The MSL cache payload is format 2 and no longer stores an index.** A table entry is a `(set, binding, stage)`
+  triple now. Where an element landed is a pure function of the layouts the payload already carries, so storing
+  it would only create a second authority able to disagree with the scheme, and `MetalShaderIndexTable.FromCache`
+  recomputes it through the same `Build` the emission path uses. The structural refusals are unchanged.
+- **An emission needing a SPIRV-Cross helper buffer is refused by name.** SPIRV-Cross adds buffer arguments of
+  its own for swizzle emulation, runtime array lengths and tessellation output, numbered from the top of the
+  argument table, which is where M-B2 pins the vertex streams. They carry no `(set, binding)`, so they are in no
+  layout and no binding table. The deleted parse rejected them by accident, because their names are not the
+  `_<id>` shape the id join needed, and `SpirvCrossCompile` now asks `spvc_compiler_msl_needs_*` directly.
+  Nothing shipped needs one.
+- **`MslBindingOrder.CheckStage` is inert, and its facts are inverted rather than deleted.** The check enforced
+  that a stage's emitted indices follow binding order, and the authored scheme makes that true by construction,
+  so it cannot fire on any input. The four negative rows that used to prove it (the water fragment's lifted
+  depth read, the FFT column pass's lifted foam read, the row pass's lowered uniform read, the attributed
+  fragment) now assert that the perturbed source is ACCEPTED, with the reason.
+  `MslBindingOrder.CheckPrefix` is untouched and still live, because it tests a property of the shader rather
+  than of the numbering. Deleting both is
+  [#604](https://github.com/APKiwiOrg/KhaozEngine/issues/604), deliberately its own change, since that
+  validation and the shaders it blocks have to move together.
+- **`MetalMslIdJoinSpikeTests` is repointed rather than retired.** It measured a join the binding path no longer
+  runs, and the parse plus the decoration walk it used are exactly the instrument that can check whether the
+  emission honoured the authored table. Both moved into it as a test oracle, and
+  `MetalMslAuthoredIndexTests.EveryShippedProgram_IsEmittedAtTheIndicesTheEngineAuthored` now walks 43 programs
+  and 165 emitted arguments, resolves each one to its declared element through the decorations, and asserts the
+  index it carries is the one the shipped table holds, in both directions. Device-free, on every leg.
+  `MetalIndexSpaceAgreementTests` pins the kind-to-argument-table rule the emitter and the binder each state.
 - **The `Newtonsoft.Json` 9.0.1 CVE override (NU1903) is gone**, along with the
   `Veldrid.SPIRV -> Veldrid -> NativeLibraryLoader -> Microsoft.Extensions.DependencyModel` chain that dragged
   the vulnerable version in. Nothing in the tree references `Newtonsoft.Json` any more.

@@ -47,7 +47,8 @@ and that reasoning is what makes the code readable. Nothing selects it any more.
 > one-encoder-at-a-time lifecycle, and a submit that flushes the pending setup batch, then signals, attaches
 > the handler and commits under one lock.
 > Row 9 added the shader path: `CreateShadersFromSpirv` and `CreateComputeShaderFromSpirv` compile GLSL to
-> `MTLLibrary` and `MTLFunction` per stage, and read the per-program binding table out of the emitted MSL. See
+> `MTLLibrary` and `MTLFunction` per stage, and build the per-program binding table from the indices the engine
+> authored into that MSL. See
 > [The shader path, and where a binding index comes from](#the-shader-path-and-where-a-binding-index-comes-from).
 > Row 12 added framebuffers and the deferred render pass: `CreateFramebuffer`, `SetFramebuffer`, both clears and
 > both scissor members. A recording can bind a target and clear it, and the clear lands on the attachment it
@@ -95,7 +96,7 @@ KhaozEngineMetal.Register();   // unconditionally, on every OS, once at startup
 next row has to mean it. Everything else in the assembly is internal: the Objective-C interop layer, the
 device and its queue, the provider, the machine probe and its device-free decision half, the completion
 timeline and the fence on it, the command list with its encoder lifecycle and the submit path, the shader path
-with its emission parse, its binding table and the disk cache in front of both, the resource layouts and sets a
+with its authored binding table and the disk cache in front of it, the resource layouts and sets a
 pipeline binds through, the two
 pipeline types and the vertex-stream numbering behind them, the framebuffer and the pass schedule behind it,
 the bind records and the argument batch that flushes them, the draw and dispatch path with the
@@ -504,37 +505,38 @@ entry-point name is READ rather than assumed for the same family of reason: the 
 layer this backend does not have, and a wrong name is not a compile error at all, it is a library that builds
 and a nil function, so that is a separate refusal with its own message.
 
-**Metal has no binding decorations, so where a resource landed is a fact about the emitted text.** There is no
-`register(t3)` and no `layout(binding = 3)` on the far side: the cross-compiler assigns each resource an index
-of its own, per stage, in an order that follows first reference rather than the shader's declarations. Counting
-declarations on the CPU and hoping the two agree is what produced three recorded incidents in this engine (a
-model pass reading the normal texture through the albedo sampler, a crease term reading depth data, and the
-splat terrain reading one uniform buffer's bytes through another). The MECHANISM behind the last of those three
-was measured against this backend in 2026-08, and it is the count: for a fragment function that reads set 1
-alone, the emission puts the buffer at `buffer(0)` and a declaration-order count puts it at `buffer(1)`, so the
-incumbent wrote it at an index the function does not read. What the measured shape then produces is an
-ALL-ZERO read, because it leaves the fragment's `buffer(0)` unbound. The incident's own symptom, one buffer's
-bytes arriving through another, needs the earlier buffer bound to the reading stage, so it is a sibling of the
-measured shape rather than the measured shape, and it stays unreproduced rather than refuted. This backend
-reads correct bytes for the program that was measured (`MetalTwoUniformBufferGpuTests`). So this backend does
-not count. It reads each
-stage's emitted entry point, takes the SPIR-V id each argument's name spells, and resolves that id to a
-`(set, binding)` through that stage's own `DescriptorSet` and `Binding` decorations. Decorations survive the
-debug-info stripping that removes names, and each stage's ids are read from that stage's own module, which is
-why this works where a name-keyed join does not.
+**Metal has no binding decorations, so where a resource landed is a fact about the emitted text. This backend
+AUTHORS that fact.** There is no `register(t3)` and no `layout(binding = 3)` on the far side. Left to itself the
+cross-compiler assigns each resource an index of its own, per stage, in an order that follows first reference
+rather than the shader's declarations, and counting declarations on the CPU and hoping the two agree is what
+produced three recorded incidents in this engine (a model pass reading the normal texture through the albedo
+sampler, a crease term reading depth data, and the splat terrain reading one uniform buffer's bytes through
+another). Since `18.0.0` the engine states the index before the emission instead
+([#693](https://github.com/APKiwiOrg/KhaozEngine/issues/693)): `MslIndexRemap` walks every resource the program
+declares in ascending `(set, binding)`, hands each one the next index from the counter its argument table
+chooses, runs the three counters across the whole program so one element has one index in both stages, and
+installs the result through `spvc_compiler_msl_add_resource_binding`. The binding table is then BUILT from that
+same scheme over the reflected layouts, so the writer's number and the reader's number are one number rather
+than two that agree.
+
+**What that deleted.** The parse of each entry point's argument list, and the SPIR-V id join behind it that
+resolved every `_<id>` argument name to a declared element through that stage's own decorations. Both were the
+right mechanism while the outgoing `libveldrid-spirv` exported no entry point that could pin an index, and both
+are gone from the binding path. They survive in `MetalMslAuthoredIndexTests` as the test oracle that checks the
+emission really did honour the authored table, over every shipped program, device-free.
+The ENTRY-POINT NAME is still read out of the emission, because SPIRV-Cross still chooses it.
 
 **An element with no entry for a stage is NOT bound for that stage**, and that is correct rather than a gap: the
-cross-compiler omits an argument a stage does not reference, and binding one anyway is the off-by-one.
+cross-compiler omits an argument a stage does not reference, and binding one anyway is the off-by-one. Which
+elements those are is asked of `spvc_compiler_msl_is_resource_used` after the emission rather than inferred from
+a text nothing reads any more.
 
-**The parse never falls back to a count.** An argument name that is not the expected shape, an id with no
-decorations in that stage's module, a `(set, binding)` outside the declared layout array, a kind that does not
-match its index space, or two arguments landing on one element: each throws at shader-set creation, naming the
-program, the stage and the argument. Two more throw earlier, where the arguments are read off the emitted text:
-an index attribute that never closes, and an index that is not a number. Neither is reachable from anything the
-cross-compiler emits today, and they throw rather than skip the argument because a dropped argument is one the
-five refusals above can never see, so its element would read as unreferenced by that stage and simply not be
-bound. This all happens with no device involved, so a shader whose emission cannot be read fails on a CI leg
-that has no GPU rather than as a wrong pixel on one that does.
+**Nothing falls back to a count.** A `(set, binding)` outside the declared layout array, a binding outside that
+set's elements, or two entries landing on one `(set, binding, stage)`: each throws at shader-set creation,
+naming the program and the stage. So does an emission needing one of SPIRV-Cross's own helper buffers, which are
+numbered from the top of the buffer table where the vertex streams are pinned and carry no `(set, binding)` for
+anything to see them by. All of it happens with no device involved, so a shader the backend cannot number fails
+on a CI leg that has no GPU rather than as a wrong pixel on one that does.
 
 **The emission is pinned twice and neither pin covers the numbering.** One pin freezes the cross-compile options
 and one freezes `MTLCompileOptions` (`languageVersion` 3.2, fast math on, `preserveInvariance` off, all measured
@@ -555,7 +557,10 @@ engine's own half, GLSL to SPIR-V and then SPIR-V to MSL, and that is what is ca
 `<local-app-data>/KhaozEngine/metal-msl/<engine version>/`, keyed on the shader sources, all three pinned option
 sets, the engine version, the `Silk.NET.Shaderc` and `Silk.NET.SPIRV.Cross` versions that emitted it and the
 module version ids of the two assemblies that PRODUCE the payload, holding every stage's MSL, every stage's
-entry-point name, the binding table read off that emission and a compute kernel's workgroup size. Over the
+entry-point name, the `(set, binding, stage)` triples each stage's emission carries an argument for and a
+compute kernel's workgroup size. The INDICES are not in the payload since format 2: they are a pure function of
+the layouts it already holds, so storing them would only create a second authority able to disagree with the
+scheme. Over the
 shipped corpus of 42 programs that is 333 KiB and turns 3,443 ms of cold emission into
 13 ms.
 

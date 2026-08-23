@@ -9963,9 +9963,11 @@ across the shipped set of 42 programs when measured. One file per program lands 
 `<local-app-data>/KhaozEngine/metal-msl/<engine version>/`, keyed on the shader sources, the pinned compile
 options, the engine version, the `Silk.NET.Shaderc` and `Silk.NET.SPIRV.Cross` versions that emitted the MSL
 and the module version ids of the two engine assemblies that produce the payload, and holds every stage's
-emitted MSL, its entry-point name, the binding table read off that emission and a compute kernel's workgroup
-size. A warm start reads all 42 back in 13 ms from 333 KiB. Those two module ids are in the key
-because four of those fields are read OUT of the emission by engine code the pinned options do not cover, so
+emitted MSL, its entry-point name, which resources each stage's emission carries an argument for and a compute
+kernel's workgroup size. A warm start reads all 42 back in 13 ms from 333 KiB. The binding INDICES are not in
+the payload: since `18.0.0` the engine authors them, so they are a pure function of the layouts the payload
+already holds and are recomputed on every read. Those two module ids are in the key
+because several of those fields are read OUT of the emission by engine code the pinned options do not cover, so
 within one engine version an edit to any of them would otherwise keep serving the payload the previous build
 wrote. It costs an engine DEVELOPER one re-emission of the corpus per rebuild, about 3.4 seconds, and costs a
 consumer of a release nothing at all, since a release's assemblies are built once. The `Silk.NET.Shaderc` and
@@ -10003,7 +10005,7 @@ unbound slot. Disposing the LAYOUT or the SET and then using it throws `ObjectDi
 owns anything native and the call would otherwise quietly work.
 
 **A pipeline is where this backend checks your layouts against your shader**, and it is the one refusal that can
-surprise you. The binding table is keyed on `(set, binding, stage)` read out of the shader's own decorations, so
+surprise you. The binding table is keyed on `(set, binding, stage)` against the shader's own reflection, so
 `GpuPipelineDescription.ResourceLayouts` has to be the same SHAPE as what the shader reflects: the same number
 of sets, the same number of elements in each, and the same `GpuResourceKind` at each position. A disagreement
 throws at `CreateGraphicsPipeline` naming the counts, which is the same declaration every other backend already

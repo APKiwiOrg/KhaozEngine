@@ -84,7 +84,7 @@ went stale inside one release and `GpuBackendKindAppendAuditTests` records it.
 | M-A5 | Passes | Any command illegal inside a render encoder (dispatch, blit, copy, mip generation, resolve) ENDS the encoder first. One invariant, one helper, one device-free test. On Vulkan that was a chosen discipline and here it is the API's rule | Both, converged |
 | M-A6 | Viewport | `SetFramebuffer` emits the full viewport and the full scissor ON A FRAMEBUFFER CHANGE ONLY, reproducing W6's identity guard exactly, and the scissor flush stays gated on the bound pipeline's `ScissorTestEnabled` the way the incumbent gates it, because that is the seam's own rasterizer state and D3D11 honours it too. `ClipSpaceYInverted` is false with no viewport trick at all | Both, converged |
 | M-A7 | Viewport | The plural `setViewports:count:` and `setScissorRects:count:` forms are used unconditionally rather than behind the incumbent's `macOS_GPUFamily1_v3` feature-set test, at a count of 1, because the seam has no multi-viewport concept. One code path and no deprecated-enum read on the hot path | B |
-| M-B1 | Binding | **THE BINDING TABLE IS READ OFF THE EMITTED MSL, per program and per stage, and NOT counted on the CPU.** At shader-set creation the backend parses each stage's entry-point signature for its `[[buffer(n)]]`, `[[texture(n)]]` and `[[sampler(n)]]` attributes and its entry-point NAME. Resource-set activation binds through that table. Owning the numbering by pinning it into the emission is the better design and is NOT AVAILABLE: section 2.2 establishes that `libveldrid-spirv` exports no entry point that can pin a resource index. **ROW 1's SPIKE REFUTED THE NAME JOIN THIS RULING RESTS ON** (2.2a), and **2.2b RE-ADJUDICATES THE ROW ON THE SPIKE'S SECOND MEASUREMENT: the join is keyed on the SPIR-V ID, not on the name**, read out of each stage's own module through its `DescriptorSet` and `Binding` decorations, which survive the debug-info stripping that removes the names. 159 of 159 arguments resolve, with zero disagreements against the incumbent's arithmetic over the shipped set. The ruling's SHAPE is unchanged (the table is read off the emission, per program and per stage) and its KEY is what moved. #586's fallback is not taken and that issue is closed | A, B's route refuted on a fact, A's key refuted by measurement, then the ruling restored on a second key by measurement (2.2b) |
+| M-B1 | Binding | **AUTHORED AT `18.0.0` (2026-08-23, #693): the engine STATES each resource's MSL index through `spvc_compiler_msl_add_resource_binding` and BUILDS the table from that scheme, so the parse and the id join below are DELETED. See the addendum at the head of 12.2.** The ruling as it stood: **THE BINDING TABLE IS READ OFF THE EMITTED MSL, per program and per stage, and NOT counted on the CPU.** At shader-set creation the backend parses each stage's entry-point signature for its `[[buffer(n)]]`, `[[texture(n)]]` and `[[sampler(n)]]` attributes and its entry-point NAME. Resource-set activation binds through that table. Owning the numbering by pinning it into the emission is the better design and is NOT AVAILABLE: section 2.2 establishes that `libveldrid-spirv` exports no entry point that can pin a resource index. **ROW 1's SPIKE REFUTED THE NAME JOIN THIS RULING RESTS ON** (2.2a), and **2.2b RE-ADJUDICATES THE ROW ON THE SPIKE'S SECOND MEASUREMENT: the join is keyed on the SPIR-V ID, not on the name**, read out of each stage's own module through its `DescriptorSet` and `Binding` decorations, which survive the debug-info stripping that removes the names. 159 of 159 arguments resolve, with zero disagreements against the incumbent's arithmetic over the shipped set. The ruling's SHAPE is unchanged (the table is read off the emission, per program and per stage) and its KEY is what moved. #586's fallback is not taken and that issue is closed | A, B's route refuted on a fact, A's key refuted by measurement, then the ruling restored on a second key by measurement (2.2b) |
 | M-B2 | Binding | **Vertex STREAM buffers are pinned at the TOP of the buffer space (30 downward), not at `NonVertexBufferCount + i`.** `ResourceBindingModel.Improved`'s arithmetic assumes the CPU knows where the resource buffers landed, which is exactly the assumption M-B1 removes, so reproducing it would be unsound. Top-pinning cannot collide with any MSL index growing from 0, is invisible to the emitted MSL and therefore to every golden, and a pipeline declaring more than 31 combined bindings on one stage throws at creation with a named exception. **This row's argument depends on M-B1's table being the authority, so the fallback would have voided it and nobody re-adjudicated it at the time. 2.2b restores the row rather than changing it**, and its no-collision assertion is checkable in the form 8.3 states it | Judge, B's scheme forced by A's M-B1, restored by 2.2b |
 | M-B3 | Binding | `ResourceBindingModel` leaves the engine's vocabulary entirely. Its only reader in the vendored fork is the Metal backend, it exists to manage a collision M-B2 removes, and nothing in `KhaozEngine.Gpu.Metal` names the concept | Both, converged |
 | M-B4 | Binding | The one-uniform-buffer-per-pipeline shader invariant **STAYS IN FORCE**, and this phase does not lift it, weaken it, or ship a shader change on the strength of a hypothesis about it. What this phase adds is a MEASUREMENT (MM6) whose result is recorded either way, and a named seat from which a later change could lift it. Section 2.3 | Judge, B's discipline, A's over-claim rejected |
@@ -462,7 +462,8 @@ So what this changes about the fallback is its standing, not its choice. #586 ke
 and it now rests on a measurement (zero disagreements over the shipped set, with the condition for a
 disagreement counted directly and also zero) instead of on the absence of an alternative. The alternative
 exists, it is complete, and the thing that makes it unnecessary today is a property of the shader set rather
-than of the mechanism. `KhaozEngine.Render.Tests/Gpu/MetalMslIdJoinSpikeTests.cs` asserts both halves, so the
+than of the mechanism. `KhaozEngine.Render.Tests/Gpu/MetalMslIdJoinSpikeTests.cs` asserts both halves (renamed
+`MetalMslAuthoredIndexTests.cs` at `18.0.0`, when #693 repointed it at the authored table), so the
 first shipped shader to enter that shape turns the leg red naming the program, which is the moment the fallback
 stops being safe and this measurement stops being a footnote. Four controls guard against the vacuity a
 100 per cent result invites: the positional `layouts[set].Elements[binding]` assumption is checked rather than
@@ -520,6 +521,7 @@ the free Linux leg, before any device runs.
 
 **And 2.2a's account of WHEN (a) goes wrong is incomplete, which sharpens that.** That paragraph names one
 condition, a stage skipping a same-kind element ahead of a referenced one, and `MetalMslIdJoinSpikeTests`
+(`MetalMslAuthoredIndexTests` since `18.0.0`)
 counts it as `SameKindGapAhead`. The load-bearing counter is the other one, `IndexDiffersFromIncumbent`, which
 also catches an emission ORDERING an element differently from its declaration position with nothing skipped at
 all. The gap condition is a strict subset of it. That second shape is what all three recorded incidents
@@ -631,7 +633,8 @@ rest safe.
 **What would reopen this.** The trigger 2.2 named is unchanged and is now cheaper to act on: a direct
 SPIRV-Cross binding, through MF2 or through the closing act, at which point the table is authored, both parses
 are deleted and the `_<id>` convention stops being load-bearing. Three things would reopen it earlier, and each
-has a test in front of it rather than a reader. `MetalMslIdJoinSpikeTests` going red on the join means the
+has a test in front of it rather than a reader. `MetalMslIdJoinSpikeTests` (`MetalMslAuthoredIndexTests` since
+`18.0.0`) going red on the join means the
 emission moved and the mechanism needs re-reading rather than the number updating. The same test going red on
 incumbent agreement means a shipped shader entered the shape the old fallback would have got wrong, which is
 this ruling being vindicated rather than a regression. And `MetalMslNameJoinSpikeTests` going red would mean a
@@ -3051,6 +3054,40 @@ targets. That is what "the same engine-owned mirrors" in the paragraph above has
 
 ### 12.2 #462 is not taken, and 2.2 is why (M-S2)
 
+> **ADDENDUM 2026-08-23, `18.0.0`: #462 WAS TAKEN, AND M-B1 IS AUTHORED RATHER THAN READ.** Row 8 of the Veldrid
+> removal program ([#691](https://github.com/APKiwiOrg/KhaozEngine/issues/691)) replaced `Veldrid.SPIRV` with
+> `Silk.NET.Shaderc` plus `Silk.NET.SPIRV.Cross`, which binds SPIRV-Cross's own C API directly, and row 10
+> ([#693](https://github.com/APKiwiOrg/KhaozEngine/issues/693)) used the seat this section says does not exist:
+> `spvc_compiler_msl_add_resource_binding`, per `(stage, set, binding)`, installed between parsing and emitting.
+> Everything below is CORRECT about `libveldrid-spirv` and is kept as the reason the ruling was right at the
+> time. What changed is the library, not the reasoning.
+>
+> **What M-B1 means now.** `KhaozEngine.Gpu/Internal/MslIndexRemap` assigns every resource the program declares
+> an index by walking the reflected resources in ascending `(set, binding)` and taking the next value from the
+> counter its argument table chooses, with the three counters running across the WHOLE program rather than per
+> set or per stage. `MetalShaderIndexTable` is built from that same scheme over the reflected layouts, so the
+> table is a pure function of the reflection and needs no emission to read. `MslCrossCompilePin.Identity` carries
+> an `indices=authored` token, and the MSL cache payload (format 2) stores `(set, binding, stage)` triples with
+> no index, because an index it stored could disagree with the scheme and nothing would notice.
+>
+> **What came out.** `MetalShaderIndexTable`'s parse of the emitted argument list, the SPIR-V id join 2.2b built,
+> `MetalMslStageJoin`, `MetalMslArgument`, and `MetalMslEntryPoint`'s argument reader. M-S5 survives untouched:
+> the entry-point NAME is still read out of the emission, because SPIRV-Cross still chooses it.
+> `SpirvResourceDecorations` stays in `KhaozEngine.Gpu` with exactly one shipped caller left, `MslBindingOrder`,
+> and leaves with [#604](https://github.com/APKiwiOrg/KhaozEngine/issues/604).
+>
+> **M-B2 is unaffected and its argument is strengthened.** Vertex streams stay pinned at the top of the buffer
+> table counting down from 30, resource indices still grow from 0, and the collision assertion still compares the
+> two at pipeline creation. What changed is that the engine now KNOWS where the resource buffers went rather than
+> having read it, which is the assumption `ResourceBindingModel.Improved` needed and M-B1 had removed.
+>
+> **Measured: no shipped program moved a byte of MSL.** The authored scheme is the same walk the incumbent's
+> per-kind declaration-order arithmetic does, which `MetalShaderIndexTableTests` had been asserting the emission
+> already agreed with on all 159 arguments, so all 78 MSL artefacts hash exactly as before. The shape that used
+> to separate the two, a fragment reading set 1 alone while set 0 declares a buffer it never mentions, is emitted
+> at `buffer(1)` now instead of `buffer(0)`. Section 2.3a's recorded values are about the deleted incumbent and
+> stand as history.
+
 #566 banks that the shader back end grows an MSL target via the direct SPIRV-Cross migration, deliberately
 deferred to this phase. **That input does not survive contact with the library.** `libveldrid-spirv` exports
 three non-incidental C entry points, `CompileGlslToSpirv`, `CrossCompile` and `FreeResult`, and none of them
@@ -3257,7 +3294,11 @@ TOOLCHAIN: everything that decides what SPIRV-Cross emits. But four of the paylo
 toolchain at all, they are READ out of the emission by engine code that no pin covers: the entry-point name and
 the argument list (`MetalMslEntryPoint.Parse`), the binding table (`MetalShaderIndexTable.Build` on top of
 `SpirvResourceDecorations.Read`), the reflected layouts (`SpirvCrossCompile`'s reflect) and a compute kernel's
-workgroup size (`SpirvLocalSize.Parse`). Within one engine version, editing any of those four and re-running
+workgroup size (`SpirvLocalSize.Parse`). (**2026-08-23, `18.0.0`:** two of those four are gone. The argument
+list is not parsed and the binding table is not joined, because #693 authors the indices, so what the payload
+carries of them is the `(set, binding, stage)` triples alone and the indices are recomputed from the layouts on
+every read. The argument in this addendum is unchanged and still binds the two that remain, which is why the
+module version ids stay in the key.) Within one engine version, editing any of those four and re-running
 serves the OLD payload out of the cache, silently, which is the wrong-pixel-no-error class 2.2b exists to close
 arriving through the cache rather than through a bind. The branch's own planted-entry test is the proof that it is
 reachable rather than theoretical: a hit answers with a stored table for two sources the emitter would refuse

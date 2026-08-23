@@ -98,10 +98,11 @@ namespace KhaozEngine.Render2D
             // is left to process teardown (this is a tooling/test-only snapshot helper). Matches baseline behaviour.
             // The headless half of the 18.0.0 registration. AppWindow does this for a windowed game and there is
             // no AppWindow here, so a snapshot tool would otherwise have to know that KhaozEngine.Gpu builds no
-            // device of its own any more. Registers this platform's native backend only, and only when nothing
-            // is registered for the kind the selector resolves to, so a harness that seated its own provider
-            // (the GPU test suite does) keeps it.
-            GpuBackends.RegisterPlatformDefaultIfUnregistered();
+            // device of its own any more. Registers the kind the selector resolves to
+            // (KE_GRAPHICS_BACKEND decides it here, since a headless host stores no player preference) plus
+            // this platform's own as the fallback target, and only where nothing is registered already, so a
+            // harness that seated its own provider (the GPU test suite does) keeps it.
+            GpuBackends.RegisterResolvedIfUnregistered();
             GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
             IGpuDevice gd = gpu.GpuDevice;
             var f = gd.Factory;

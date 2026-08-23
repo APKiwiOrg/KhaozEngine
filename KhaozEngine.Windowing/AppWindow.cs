@@ -464,10 +464,10 @@ namespace KhaozEngine.Windowing
             GpuWindowHandle handle = BuildHandle(_window);
             // The one engine-owned registration, since 18.0.0. KhaozEngine.Gpu builds no device of its own any
             // more, so a windowed game with no backend registered would throw at the very next line. This is
-            // what makes a repin need no startup line in the game: it registers THIS platform's native backend
-            // only, and only when nothing is registered for the kind the selector resolves to, so a host that
-            // registered its own provider keeps it.
-            GpuBackends.RegisterPlatformDefaultIfUnregistered();
+            // what makes a repin need no startup line in the game. The preference is handed in rather than left
+            // out: the next line asks for whatever it and KE_GRAPHICS_BACKEND resolve to, so registering blind
+            // to it would leave the kind that WAS asked for missing. Nothing already registered is touched.
+            GpuBackends.RegisterResolvedIfUnregistered(backendPreference);
             _gpu = GpuDeviceContext.CreateForWindow(handle, (uint)width, (uint)height,
                 syncToVerticalBlank: presentMode == PresentMode.Vsync, preferredBackend: backendPreference);
             _device = _gpu.GpuDevice;

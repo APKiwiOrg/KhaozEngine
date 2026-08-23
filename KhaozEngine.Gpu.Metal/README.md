@@ -25,7 +25,7 @@ and that reasoning is what makes the code readable. Nothing selects it any more.
 > DECISION on 2026-08-22, ahead of the field-evidence gates the rollout still had open, and the dated addendum
 > in section 17 of the design records which of them remain open as issues. Since 18.0.0 the package rides the
 > `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas, and `AppWindow` and both snapshot hosts call
-> `GpuBackends.RegisterPlatformDefaultIfUnregistered()`, so a repinned game needs no new call. A game that
+> `GpuBackends.RegisterResolvedIfUnregistered()`, so a repinned game needs no new call. A game that
 > references `KhaozEngine.Gpu` outside the umbrellas still calls `KhaozEngineMetal.Register()` itself, and a
 > default with no registered provider throws `GpuBackendProviderMissingException` rather than falling back.
 > `GpuBackendKind.Metal` is a RETIRED token: `KE_GRAPHICS_BACKEND=metal` or a stored user preference naming it

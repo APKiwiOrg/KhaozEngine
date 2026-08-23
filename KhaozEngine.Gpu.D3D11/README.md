@@ -19,7 +19,7 @@ makes the code readable. Nothing selects it any more.
 > field-evidence gates the rollout still had open, and the dated addendum in section 17 of the design records
 > which of them remain open as issues. Since 18.0.0 the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas
 > carry this package, and `AppWindow` plus both snapshot hosts call
-> `GpuBackends.RegisterPlatformDefaultIfUnregistered()`, so a repinned game needs no new call. A game that
+> `GpuBackends.RegisterResolvedIfUnregistered()`, so a repinned game needs no new call. A game that
 > references `KhaozEngine.Gpu` outside the umbrellas still calls `KhaozEngineD3D11.Register()` itself, and a
 > default with nothing registered throws `GpuBackendProviderMissingException` rather than falling back to
 > anything. `GpuBackendKind.Direct3D11` named the Veldrid backend that 18.0.0 deleted and is a RETIRED token
@@ -60,7 +60,7 @@ times, its telemetry session header and its golden images under the wrong name.
 
 Since 17.40.0 the case where nobody named it is different, because the OS probe answers `Direct3D11Native` on
 Windows, and since 18.0.0 nobody has to make the call: the `Game2D` and `Game3D` umbrellas carry this package,
-and `AppWindow` plus both snapshot hosts call `GpuBackends.RegisterPlatformDefaultIfUnregistered()` before they
+and `AppWindow` plus both snapshot hosts call `GpuBackends.RegisterResolvedIfUnregistered()` before they
 create anything. A default with no provider registered at all throws `GpuBackendProviderMissingException` too,
 since `GpuBackendSource.DefaultProviderMissing` was retired with the backend it used to fall back to.
 

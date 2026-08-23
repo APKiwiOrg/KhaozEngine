@@ -9233,7 +9233,7 @@ Four things a game has to know:
 
 - **A repinned game boots with no new call of its own.** The three native packages ship in the
   `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.0.0, and `AppWindow` (plus both snapshot
-  hosts) calls `GpuBackends.RegisterPlatformDefaultIfUnregistered()` at boot, so the platform's own backend is
+  hosts) calls `GpuBackends.RegisterResolvedIfUnregistered()` at boot, so the platform's own backend is
   registered before the first device. A game that references `KhaozEngine.Gpu` directly, outside the umbrellas,
   registers the one it wants itself (`KhaozEngineMetal.Register()` and its two siblings). A default with no
   registered provider now throws `GpuBackendProviderMissingException` naming the package and the call, because

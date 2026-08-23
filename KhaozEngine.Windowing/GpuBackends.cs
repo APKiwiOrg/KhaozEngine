@@ -34,8 +34,13 @@ namespace KhaozEngine.Windowing
     {
         /// <summary>
         /// Register the native backend for the running operating system: Metal on macOS, Direct3D 11 on
-        /// Windows, Vulkan on Linux and everything else. Returns the kind that was registered, or null on an
-        /// operating system none of the three supports.
+        /// Windows, Vulkan on Linux and everything else. Returns the kind it registered, and never null:
+        /// <see cref="GpuBackendSelector.ProbeOS"/> has a Vulkan CATCH-ALL arm rather than a Linux arm, so an
+        /// operating system none of the three recognizes still resolves to (and registers) Vulkan. The nullable
+        /// return is kept because it is the same shape
+        /// <see cref="RegisterResolvedIfUnregistered(GpuBackendKind?)"/> answers with, where null is a real
+        /// answer, and collapsing one of the pair to a plain <see cref="GpuBackendKind"/> would leave two
+        /// registration entry points a caller has to read differently.
         /// <para>
         /// Idempotent and thread-safe, and <c>AppWindow</c> calls it at boot, so an ordinary windowed game
         /// needs no startup line of its own. A headless host (a snapshot or bake tool, a server-side renderer)
@@ -91,20 +96,83 @@ namespace KhaozEngine.Windowing
         }
 
         /// <summary>
-        /// <see cref="RegisterPlatformDefault"/> unless a provider is already registered for the backend
-        /// <see cref="GpuBackendSelector"/> would resolve to, in which case nothing happens and the answer is
-        /// null. This is what <c>AppWindow</c> calls at boot.
+        /// Register what this process actually needs to boot, without disturbing anything a host registered
+        /// itself: a provider for the backend <see cref="GpuBackendSelector"/> RESOLVES to with
+        /// <paramref name="userPreference"/> in the chain, and a provider for this platform's own kind, which is
+        /// where a failed request falls back to. Returns the resolved kind when this call registered a provider
+        /// for it, otherwise the platform kind when it registered that one, and null when both were already
+        /// registered. This is what <c>AppWindow</c> calls at boot.
         /// <para>
-        /// The guard is what keeps an explicit host registration authoritative. A host that registered its own
-        /// provider for this platform's kind (a wrapper that counts allocations, a fake in a test) would
-        /// otherwise have it replaced by the stock one at window creation, silently, because registration is
-        /// last-writer-wins and <c>AppWindow</c> writes late.
+        /// IT REGISTERS FOR THE RESOLVED KIND, not for the platform's, and that is the whole point of the
+        /// member. A stored preference and <c>KE_GRAPHICS_BACKEND</c> both outrank the OS probe, so the kind a
+        /// game is about to ask for is routinely NOT this platform's default: a Windows player who chose
+        /// <see cref="GpuBackendKind.VulkanNative"/> from a settings screen, or a developer who pinned
+        /// <c>vulkan-native</c> on a Mac. Registering only the platform's own left both of those asking for a
+        /// backend whose package the umbrella already ships, and being told to add a package reference.
+        /// </para>
+        /// <para>
+        /// AND IT REGISTERS FOR THE PLATFORM'S KIND AS WELL, always, because that is where the fallback lands. A
+        /// resolved kind that fails on this machine is only survivable if the thing it falls back to has a
+        /// provider, and a boot that registered the requested backend alone would turn one refusal into two.
+        /// </para>
+        /// <para>
+        /// A PACKAGE THAT CANNOT RUN ON THIS OS IS NOT REGISTERED (see <see cref="CanRegisterHere"/>), so asking
+        /// for <c>d3d11-native</c> on a Mac leaves the Direct3D 11 kind unregistered rather than seating a
+        /// provider that answers no to everything. What that request gets is the ordinary missing-provider
+        /// throw, which is the honest answer: there is no Direct3D 11 on this machine to refuse it.
+        /// </para>
+        /// <para>
+        /// The per-kind guard is what keeps an explicit host registration authoritative. A host that registered
+        /// its own provider (a wrapper that counts allocations, a fake in a test) would otherwise have it
+        /// replaced by the stock one at window creation, silently, because registration is last-writer-wins and
+        /// <c>AppWindow</c> writes late.
         /// </para>
         /// </summary>
-        public static GpuBackendKind? RegisterPlatformDefaultIfUnregistered()
+        public static GpuBackendKind? RegisterResolvedIfUnregistered(GpuBackendKind? userPreference = null)
         {
-            GpuBackendKind resolved = GpuBackendSelector.Select();
-            return GpuBackendProviders.IsRegistered(resolved) ? null : RegisterPlatformDefault();
+            GpuBackendKind platform = GpuBackendSelector.ProbeOS(GpuBackendSelector.DetectOS());
+            GpuBackendKind resolved = GpuBackendSelector.Resolve(userPreference).Backend;
+
+            GpuBackendKind? registered = RegisterUnlessTaken(platform);
+            if (resolved != platform && RegisterUnlessTaken(resolved) is GpuBackendKind own) registered = own;
+            return registered;
+        }
+
+        /// <summary>
+        /// Whether this package can register a provider for <paramref name="backend"/> on the operating system
+        /// it is running on. True for <see cref="GpuBackendKind.VulkanNative"/> everywhere, since Vulkan is not
+        /// an OS-specific API and its package carries no platform guard, and for the OS-specific pair only on
+        /// their own platform. False for everything else, including the four kinds retired in 18.0.0.
+        /// <para>
+        /// It reads each package's own <c>IsPlatformSupported</c> rather than restating the mapping, so there is
+        /// one statement per package of which OS it belongs to and this cannot drift from it.
+        /// </para>
+        /// </summary>
+        internal static bool CanRegisterHere(GpuBackendKind backend) => backend switch
+        {
+            GpuBackendKind.MetalNative => Gpu.Metal.KhaozEngineMetal.IsPlatformSupported,
+            GpuBackendKind.Direct3D11Native => Gpu.D3D11.KhaozEngineD3D11.IsPlatformSupported,
+            GpuBackendKind.VulkanNative => true,
+            _ => false,
+        };
+
+        // Registers the stock provider for one kind, unless something is already registered for it or this
+        // operating system cannot run it. Returns the kind when it registered, null when it did not, so the
+        // caller can report which of its two candidates it actually seated.
+        static GpuBackendKind? RegisterUnlessTaken(GpuBackendKind backend)
+        {
+            if (GpuBackendProviders.IsRegistered(backend) || !CanRegisterHere(backend)) return null;
+
+            switch (backend)
+            {
+                case GpuBackendKind.MetalNative: Gpu.Metal.KhaozEngineMetal.Register(); return backend;
+                case GpuBackendKind.Direct3D11Native: Gpu.D3D11.KhaozEngineD3D11.Register(); return backend;
+                case GpuBackendKind.VulkanNative: Gpu.Vulkan.KhaozEngineVulkan.Register(); return backend;
+                // Unreachable through CanRegisterHere, which answers false for every other kind. Stated rather
+                // than left to a discard arm that would silently start registering nothing if a kind is appended
+                // to CanRegisterHere and forgotten here.
+                default: return null;
+            }
         }
     }
 }

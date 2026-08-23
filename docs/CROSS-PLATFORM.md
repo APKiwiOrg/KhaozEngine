@@ -112,7 +112,7 @@ caused it lives inside the client that then will not start. Two mechanisms, and 
 - **A default with no registered provider** takes that same fallback, added at 17.40.0 with the flip. Pinning a
   backend in `KE_GRAPHICS_BACKEND` and not registering it still THROWS `GpuBackendProviderMissingException`,
   which is the half that stops a soak session measuring one backend and filing the number under another. An
-  ordinary windowed game never sees either: `AppWindow` calls `GpuBackends.RegisterPlatformDefaultIfUnregistered()`
+  ordinary windowed game never sees either: `AppWindow` calls `GpuBackends.RegisterResolvedIfUnregistered()`
   at boot, and `Render2DSnapshot` / `Render3DSnapshot` do the same for a headless host.
 - **`CreateHeadless()` falls back as well since 17.40.0**, in both of the ways a default can fail: the
   unregistered provider above, and a REGISTERED provider that refuses this machine. A pinned backend still

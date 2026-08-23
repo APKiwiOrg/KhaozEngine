@@ -65,7 +65,7 @@ What it owns today:
   registered provider throws the same exception, because there is no incumbent left to create instead, and
   `GpuBackendSource.DefaultProviderMissing` is retired with the fallback it reported. An ordinary game never
   meets either: the `Game2D` and `Game3D` umbrellas carry the three backend packages and `AppWindow` plus both
-  snapshot hosts call `GpuBackends.RegisterPlatformDefaultIfUnregistered()` at boot. A stored `UserPreference`
+  snapshot hosts call `GpuBackends.RegisterResolvedIfUnregistered()` at boot. A stored `UserPreference`
   still falls back and reports `FallbackAfterFailure`, the signal a game clears the preference on, and a
   preference naming a RETIRED member takes the same report after being redirected onto that API's native
   backend. An incapable MACHINE is the other case entirely: the provider's own `IsSupported()` functional probe

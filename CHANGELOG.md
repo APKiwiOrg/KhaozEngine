@@ -48,7 +48,7 @@ toolchain that turns the engine's one GLSL source into SPIR-V and cross-compiles
 - **The `Game2D` and `Game3D` umbrellas carry the three backend packages.** They used to be opt-in and in no
   umbrella, which was correct while `KhaozEngine.Gpu` could still build a device and is wrong now that it
   cannot. A repinned game therefore needs NO new call of its own: `AppWindow` and both snapshot hosts
-  (`Render2DSnapshot`, `Render3DSnapshot`) call `GpuBackends.RegisterPlatformDefaultIfUnregistered()` before the
+  (`Render2DSnapshot`, `Render3DSnapshot`) call `GpuBackends.RegisterResolvedIfUnregistered()` before the
   first device. A game that references `KhaozEngine.Gpu` directly, outside the umbrellas, still registers the
   backend it wants (`KhaozEngineMetal.Register()`, `KhaozEngineD3D11.Register()`, `KhaozEngineVulkan.Register()`).
 - **A default with no registered provider is now a hard failure.** It throws

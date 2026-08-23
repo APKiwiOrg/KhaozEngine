@@ -90,7 +90,7 @@ reasoning is what makes the code readable. Nothing selects it any more.
 > DECISION on 2026-08-22, ahead of the field-evidence gates the rollout still had open, and the dated addendum
 > in section 17 of the design records which of them remain open as issues. Since 18.0.0 the package is CARRIED
 > by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas rather than being opt-in, and `AppWindow` plus
-> both snapshot hosts call `GpuBackends.RegisterPlatformDefaultIfUnregistered()`, so a repinned game needs no
+> both snapshot hosts call `GpuBackends.RegisterResolvedIfUnregistered()`, so a repinned game needs no
 > new call of its own. A game that references `KhaozEngine.Gpu` outside the umbrellas still calls
 > `KhaozEngineVulkan.Register()` itself. `GpuBackendKind.Vulkan` is a RETIRED token: an environment variable or
 > a stored user preference naming it is redirected onto `VulkanNative` with a WARN, reported as

@@ -10,7 +10,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     ///
     /// <para><b>THIS TYPE CREATES NO NATIVE OBJECT AT ALL, AND THAT IS THE HEADLINE OF DECISION V-A1.</b> There is
     /// no <c>VkFramebuffer</c> here and no <c>VkRenderPass</c> anywhere in this backend, so there is no cache for
-    /// either and no invalidation of either on a resize. The incumbent creates three render passes per framebuffer
+    /// either and no invalidation of either on a resize. The incumbent created three render passes per framebuffer
     /// with no cache and no dedup across framebuffers of identical format, one <c>VkFramebuffer</c> per swapchain
     /// image, and rebuilds all of it on every resize. Dynamic rendering deletes both caches and the invalidation
     /// problem with them: <c>IGpuFramebuffer.Outputs</c> is already <c>VkPipelineRenderingCreateInfo</c>'s input

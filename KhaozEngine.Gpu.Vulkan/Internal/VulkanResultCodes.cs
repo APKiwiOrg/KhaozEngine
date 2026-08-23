@@ -8,7 +8,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// go with the results worth explaining.
     /// <para>
     /// THE INCUMBENT'S <c>VulkanUtil.CheckResult</c> IS <c>[Conditional("DEBUG")]</c>, and that single attribute
-    /// is why this type exists. A Release build of the incumbent checks nothing: <c>vkQueueSubmit</c> can return
+    /// is why this type exists. A Release build of the incumbent checked nothing: <c>vkQueueSubmit</c> can return
     /// <c>VK_ERROR_DEVICE_LOST</c> and the call site carries on as though it succeeded, so a device-loss latch
     /// built on that shape would never fire in the only configuration anybody ships. Issue #427 asks for exactly
     /// that latch, and it can only be honest if the check underneath it is unconditional. Nothing in this package

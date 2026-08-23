@@ -162,7 +162,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 _layouts?.TransitionTo(buffer, VulkanTransferPlan.Tracked(source, level, 1, 0, layers),
                     ImageLayout.TransferDstOptimal);
 
-                // LINEAR, which is what averages four texels into one and is what the incumbent selects for every
+                // LINEAR, which is what averages four texels into one and is what the incumbent selected for every
                 // format this seam can express. A mip chain is a colour texture by construction: the usage bit
                 // that reaches here is GenerateMipmaps, which VulkanViewPolicy only grants a sampled view.
                 sink.BlitImage(buffer, source.Image,

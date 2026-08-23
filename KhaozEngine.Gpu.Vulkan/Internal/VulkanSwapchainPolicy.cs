@@ -7,7 +7,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <summary>
     /// DECISION V-W1 AND V-W2 AS A PURE FUNCTION: what format, what colour space, what present mode, how many
     /// images and what extent a swapchain is created with, reproduced from the incumbent except in the two places
-    /// the incumbent is wrong.
+    /// the incumbent was wrong.
     ///
     /// <para><b>REPRODUCED EXACTLY, BECAUSE IT IS VISIBLE ONLY TO A HUMAN EYE AND CHANGING IT BUYS NOTHING THIS
     /// PHASE IS MEASURING.</b> Phase 2 took the flip-model swapchain off the table for its v1 on the grounds that
@@ -32,10 +32,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// where it is exercised and is correct where it is not. Reproducing a bug a different device WOULD reach is
     /// not parity.</para>
     ///
-    /// <para><b>DEPARTURE TWO (V-W2): THE sRGB FALLBACK'S THROW IS REACHABLE HERE.</b> The incumbent means to
-    /// refuse a surface that offers no sRGB format when sRGB was requested, and its check compares a variable it
-    /// has already set to <c>VK_FORMAT_UNDEFINED</c> against an sRGB format, so the condition is never true and
-    /// the throw is dead code. That shape is not copied. <see cref="ChooseFormat"/> refuses for real, which is
+    /// <para><b>DEPARTURE TWO (V-W2): THE sRGB FALLBACK'S THROW IS REACHABLE HERE.</b> The incumbent meant to
+    /// refuse a surface that offers no sRGB format when sRGB was requested, and its check compared a variable it
+    /// had already set to <c>VK_FORMAT_UNDEFINED</c> against an sRGB format, so the condition was never true and
+    /// the throw was dead code. That shape is not copied. <see cref="ChooseFormat"/> refuses for real, which is
     /// the only way the request means anything.</para>
     ///
     /// <para>Everything here is pure and takes a <see cref="VulkanSurfaceReport"/>, so every value the create-info
@@ -158,8 +158,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </para>
         /// </summary>
         /// <exception cref="NotSupportedException">sRGB was requested and the surface offers no sRGB format. THIS
-        /// THROW IS THE DEPARTURE: the incumbent means to make it and cannot, because it compares a variable it
-        /// has already set to <c>VK_FORMAT_UNDEFINED</c> against an sRGB format.</exception>
+        /// THROW IS THE DEPARTURE: the incumbent meant to make it and could not, because it compared a variable it
+        /// had already set to <c>VK_FORMAT_UNDEFINED</c> against an sRGB format.</exception>
         /// <exception cref="ArgumentException">The surface reported no formats at all, which is a surface nothing
         /// can present to.</exception>
         internal static VulkanSurfaceFormatPair ChooseFormat(IReadOnlyList<VulkanSurfaceFormatPair> formats,
@@ -202,7 +202,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (srgb)
             {
-                // DEPARTURE TWO. The throw the incumbent intends and cannot reach.
+                // DEPARTURE TWO. The throw the incumbent intended and could not reach.
                 throw new NotSupportedException(
                     "An sRGB swapchain was asked for and this surface offers no sRGB format. The native Vulkan "
                     + "backend refuses rather than silently presenting through a linear format, because a request "

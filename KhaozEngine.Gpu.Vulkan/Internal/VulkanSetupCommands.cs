@@ -151,7 +151,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <summary>How many batches this buffer has flushed. A reading rather than a gate: V-M10's whole claim is
-        /// that this number stays far below the texture count, and the incumbent's equivalent is one per texture
+        /// that this number stays far below the texture count, and the incumbent's equivalent was one per texture
         /// created.</summary>
         internal int FlushCount { get; private set; }
 

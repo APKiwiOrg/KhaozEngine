@@ -19,7 +19,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// throws rather than guessing.</para>
     ///
     /// <para><b>ONE MAPPING DIVERGES FROM THE INCUMBENT ON PURPOSE, and it is a defect there rather than a
-    /// decision.</b> The incumbent maps <c>PixelFormat.R16_G16_Float</c> to
+    /// decision.</b> The incumbent mapped <c>PixelFormat.R16_G16_Float</c> to
     /// <c>VK_FORMAT_R16G16B16A16_SFLOAT</c> (<c>VkFormats.VdToVkPixelFormat</c>, the
     /// <c>R16_G16_Float</c> arm), a FOUR-channel format for a two-channel request. It is invisible in the shipped
     /// engine because the one texture that uses the format is the distortion offset target, which is written and
@@ -36,7 +36,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     {
         /// <summary>
         /// The <c>VkFormat</c> for a pixel format. <paramref name="depthStencil"/> asks for the DEPTH reading,
-        /// which is what the incumbent passes when the texture carries
+        /// which is what the incumbent passed when the texture carries
         /// <see cref="GpuTextureUsage.DepthStencil"/>: it turns a single-channel float into a real depth format
         /// and leaves everything else alone. Reproduced from <c>VkFormats.VdToVkPixelFormat</c>.
         /// </summary>
@@ -44,7 +44,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             GpuPixelFormat.R8UNorm => Format.R8Unorm,
             GpuPixelFormat.R32Float => depthStencil ? Format.D32Sfloat : Format.R32Sfloat,
-            // See the class note: the incumbent answers R16G16B16A16Sfloat here and that is its bug, not its
+            // See the class note: the incumbent answered R16G16B16A16Sfloat here and that is its bug, not its
             // contract.
             GpuPixelFormat.R16G16Float => Format.R16G16Sfloat,
             GpuPixelFormat.R8G8B8A8UNorm => Format.R8G8B8A8Unorm,
@@ -226,7 +226,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// The view type for a texture. Reproduced from <c>VkTextureView</c>: a cubemap is
         /// <c>VK_IMAGE_VIEW_TYPE_CUBE</c> at one logical layer and <c>CUBE_ARRAY</c> above it, and everything else
         /// is a 2D view at one layer and a 2D array above it. The seam expresses no 1D and no 3D texture at all, so
-        /// those two arms of the incumbent's switch have no reachable caller here.
+        /// those two arms of the incumbent's switch had no reachable caller here.
         /// <para>
         /// WITH ONE DEPARTURE FROM THE INCUMBENT, and it is the point of #666. <paramref name="arrayView"/> is
         /// <see cref="GpuTextureDescription.IsArray"/>, so a texture the seam asked for as an ARRAY takes
@@ -283,7 +283,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <summary>The border colour. The seam exposes none, so this is the one value the engine's Veldrid path
-        /// hardcodes (<c>SamplerBorderColor.TransparentBlack</c>) run through
+        /// hardcoded (<c>SamplerBorderColor.TransparentBlack</c>) run through
         /// <c>VkFormats.VdToVkSamplerBorderColor</c>.</summary>
         internal static BorderColor TransparentBlackBorder => BorderColor.FloatTransparentBlack;
 

@@ -21,7 +21,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// RESET CANNOT UNSIGNAL ANYTHING, and that is not a compromise. The counter is device-wide and monotonic, so
     /// there is nothing to wind back and nothing that would want to be: a reset fence is re-armed by its next
     /// submission with a strictly HIGHER value than the one it just held, which is exactly the fresh target the
-    /// seam asks for. The incumbent's Veldrid fence has real per-object state to clear, and this is the same
+    /// seam asks for. The incumbent's Veldrid fence had real per-object state to clear, and this is the same
     /// contract reached with less.
     /// </para>
     /// <para>

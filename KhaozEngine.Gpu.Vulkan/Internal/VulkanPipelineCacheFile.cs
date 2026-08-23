@@ -79,7 +79,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// any other file-backed cache. Work-breakdown row 13
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/523).
     ///
-    /// <para><b>WHY IT EXISTS AT ALL.</b> The incumbent passes <c>VkPipelineCache.Null</c> at BOTH pipeline
+    /// <para><b>WHY IT EXISTS AT ALL.</b> The incumbent passed <c>VkPipelineCache.Null</c> at BOTH pipeline
     /// creation sites, so every launch recompiles every pipeline from SPIR-V, across the shipped graphics
     /// programs and compute kernels and considerably more pipeline permutations than programs, because everything
     /// except viewport and scissor is baked into the pipeline object (see

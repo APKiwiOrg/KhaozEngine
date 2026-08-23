@@ -71,7 +71,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <summary>
         /// <c>vkCmdClearAttachments</c> over one colour attachment, INSIDE an open render pass instance. What a
-        /// clear that arrives after rendering has begun costs, which is what the incumbent does in the same
+        /// clear that arrives after rendering has begun costs, which is what the incumbent did in the same
         /// situation and what the deferred begin exists to avoid for the common case.
         /// </summary>
         /// <param name="commandBuffer">The buffer being recorded into.</param>

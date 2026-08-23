@@ -12,7 +12,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// would otherwise carry them apart.</para>
     ///
     /// <para><b>IT DELIBERATELY DOES NOT CARRY THE DEVICE.</b> Reaching the device from a wrapper is the reference
-    /// cycle the incumbent does not have either, and it is what would let a resource call back into a lifecycle it
+    /// cycle the incumbent did not have either, and it is what would let a resource call back into a lifecycle it
     /// is a child of.</para>
     /// </summary>
     /// <param name="Api">The twelve native resource calls.</param>

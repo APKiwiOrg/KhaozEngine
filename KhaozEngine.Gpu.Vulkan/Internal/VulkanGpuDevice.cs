@@ -499,7 +499,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <remarks>
         /// THE OFF-TIMELINE WRITE (V-M8, section 9.2), which is the device-level half of the split. On a
         /// RING-BACKED uniform buffer it reaches EVERY segment, so a value written once at load time or when a
-        /// setting changes persists for the buffer's life exactly as it does on the Veldrid leg, where the buffer
+        /// setting changes persists for the buffer's life exactly as it did on the Veldrid leg, where the buffer
         /// has one copy. It NEVER BLOCKS: a segment an earlier frame is still reading takes the bytes as a pending
         /// patch that the frame boundary opening that segment replays, so a caller already holding the submit lock
         /// is legal.
@@ -533,8 +533,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// list's teardown drain, then the block suballocator's chunks, then a second drain, then the timeline
         /// semaphore, then the liveness flip, then <c>vkDestroyDevice</c>, then the instance lease.
         /// <para>
-        /// The incumbent destroys its memory manager and its pools and only THEN waits, which destroys objects the
-        /// GPU may still be reading. Waiting first is the whole fix, and it is why the wait was written here at
+        /// The incumbent destroyed its memory manager and its pools and only THEN waited, which destroyed objects
+        /// the GPU may still have been reading. Waiting first is the whole fix, and it is why the wait was written here at
         /// row 4 rather than left to whichever later row added the first destroyable resource: a teardown order
         /// established once is an order every later row inherits. This row is the first to add to it, and it slots
         /// its two entries into the WINDOW BETWEEN THE WAIT AND THE FLIP, which is the only window in which

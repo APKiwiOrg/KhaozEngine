@@ -31,7 +31,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     ///
     /// <para><b>THIS IS NOT A SEAM CONTRACT CHANGE.</b> Rule 2 is honoured AS WRITTEN and no seam member is added:
     /// the portable contract still says a dependent dispatch chain needs <c>End</c>, <c>Submit</c> and
-    /// <c>WaitForIdle</c>, because the Veldrid legs still need the drain and a consumer that drops it because this
+    /// <c>WaitForIdle</c>, because the Veldrid legs needed the drain and a consumer that drops it because this
     /// backend tolerates the chain breaks on Metal. What this is, is EVIDENCE for the automatic-hazard seam
     /// capability (https://github.com/APKiwiOrg/KhaozEngine/issues/461).</para>
     ///

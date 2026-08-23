@@ -27,7 +27,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <c>VulkanDescriptorPoolTests</c> churns sets in a loop and asserts the pool count does not
     /// grow.</para>
     ///
-    /// <para><b>THE ALLOCATION WALK ASKS ABOUT ALL SEVEN TYPES TOO.</b> The incumbent's walk compares
+    /// <para><b>THE ALLOCATION WALK ASKS ABOUT ALL SEVEN TYPES TOO.</b> The incumbent's walk compared
     /// <c>StorageBufferCount &gt;= counts.SamplerCount</c>, a transposed term that admits a set with more storage
     /// buffers than samplers into a pool that cannot hold it, and then fails inside
     /// <c>vkAllocateDescriptorSets</c> where the message says nothing about budgets.
@@ -68,7 +68,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>How many <c>VkDescriptorPool</c>s exist. THE number the churn test turns on: a free path that
         /// forgets a type makes this grow forever under a workload that allocates and frees the same sets.
         /// <para>
-        /// It starts at ZERO rather than at one. The incumbent creates a pool in its constructor, so a device that
+        /// It starts at ZERO rather than at one. The incumbent created a pool in its constructor, so a device that
         /// never builds a resource set still holds one, and here the first pool is created by the first
         /// allocation that needs it.
         /// </para></summary>

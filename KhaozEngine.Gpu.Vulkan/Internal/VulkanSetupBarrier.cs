@@ -25,9 +25,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// The destination of a resting-layout transition is <c>ALL_COMMANDS</c> with memory read and write, because
     /// the resource has no consumer yet: it was created a moment ago and the backend cannot know whether the first
     /// thing to touch it is a sampler, an attachment write or a compute store. Narrowing that would be guessing.
-    /// The incumbent's defect is the opposite shape and worth keeping distinct: its transition helper is a long
-    /// if/else over layout PAIRS which ends in a debug assertion, and in Release it silently emits <c>NONE</c> on
-    /// both sides for a pair it does not handle, which is not conservative at all. Every barrier below names both
+    /// The incumbent's defect was the opposite shape and worth keeping distinct: its transition helper was a long
+    /// if/else over layout PAIRS ending in a debug assertion, and in Release it silently emitted <c>NONE</c> on
+    /// both sides for a pair it did not handle, which is not conservative at all. Every barrier below names both
     /// stage masks and both access masks explicitly, and there is no unhandled pair, because there are three.</para>
     ///
     /// <para><b>THE CLEAR VALUES ARE THE INCUMBENT'S, EXACTLY (V-M10).</b> Transparent black for a colour target

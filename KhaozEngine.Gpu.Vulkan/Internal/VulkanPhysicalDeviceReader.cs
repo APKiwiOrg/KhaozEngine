@@ -89,7 +89,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             // TWO NAMES OFF ONE READ, deliberately. The raw one is what the capability seam carries and the
             // substituted one is what a log line prints, and collapsing them would either put "unnamed device
-            // 0x…" into a capability the incumbent answers "" for, or put an empty string into a rejection
+            // 0x…" into a capability the incumbent answered "" for, or put an empty string into a rejection
             // message nobody could act on.
             string reportedName = ReadReportedDeviceName(&properties);
             string name = ReadDeviceName(&properties);
@@ -217,7 +217,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         //
         // NOTHING HERE READS bufferImageGranularity, and that is deliberate rather than an omission: linear and
         // optimal allocations never share a chunk (V-M2), so the constraint is satisfied structurally and there is
-        // no arithmetic to feed. The incumbent reads it and rounds every non-dedicated request by it.
+        // no arithmetic to feed. The incumbent read it and rounded every non-dedicated request by it.
         static VulkanMemoryFacts ReadMemory(Vk vk, PhysicalDevice device, PhysicalDeviceProperties* properties)
         {
             PhysicalDeviceMemoryProperties memory;
@@ -338,7 +338,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
                 Result queried = vk.GetPhysicalDeviceImageFormatProperties(
                     device,
-                    // THE DEPTH FLAG DOES NOT REACH HERE, deliberately: the incumbent passes its own depthFormat
+                    // THE DEPTH FLAG DOES NOT REACH HERE, deliberately: the incumbent passed its own depthFormat
                     // argument to the USAGE bits alone and maps the format with the default. See VulkanMsaaLimit.
                     VulkanFormats.ToVkFormat(format, depthStencil: false),
                     ImageType.Type2D,

@@ -107,7 +107,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// THE HOLE THIS CLOSES IS WORSE THAN THE DIRECT3D 11 ONE. There, <c>KE_D3D11_ADAPTER</c> guards against a
     /// runner image growing a paravirtual adapter. Here the Linux leg pins lavapipe through
     /// <c>VK_ICD_FILENAMES</c> and <c>VK_DRIVER_FILES</c>, a LOADER-level pin the workflow has already had to
-    /// repair once when an image moved the ICD manifest, and the incumbent then takes device zero
+    /// repair once when an image moved the ICD manifest, and the incumbent then took device zero
     /// unconditionally. <c>KE_VULKAN_DEVICE=llvmpipe</c> is the belt to that brace, and without it a runner that
     /// enumerates anything before lavapipe silently changes the rasterizer under the golden gate.
     /// </para>
@@ -247,7 +247,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// taken and, when that is not index zero, says so as a SUBSTITUTION in as many words.
         /// <para>
         /// That distinction is the whole reason this line exists on the default path where the D3D11 equivalent
-        /// stays quiet. A soak session comparing this backend against the incumbent has to be able to tell "this
+        /// stays quiet. A soak session comparing this backend against the incumbent had to be able to tell "this
         /// run chose device 1" from "device 0 could not run the backend and device 1 was substituted", because
         /// those are different machines from the measurement's point of view and only one of them is comparable
         /// with an incumbent run that took device zero unconditionally.

@@ -12,8 +12,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     ///
     /// <para><b>THE DEVICE'S SHARED PAIR DOES NOT OWN ITS SAMPLER.</b> A consumer that disposes the object it got
     /// from <c>IGpuDevice.PointSampler</c> destroys nothing, because the device hands out the same two for the
-    /// process's life and destroys them itself at teardown. That is the rule the Veldrid path and the Direct3D 11
-    /// backend both apply to their own shared pairs, and it is why <c>ownsSampler</c> exists at all.</para>
+    /// process's life and destroys them itself at teardown. That is the rule the Direct3D 11 backend applies to
+    /// its own shared pair too, and it is why <c>ownsSampler</c> exists at all.</para>
     ///
     /// <para><b>DISPOSAL IS ONE TERMINAL RETIRE (V-F9)</b>, with nothing to free underneath it: a sampler owns no
     /// memory, so the entry is a single <c>vkDestroySampler</c> that allocates nothing and retires nothing.</para>
@@ -28,7 +28,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="owner">The device's resource seam, timeline and retire list.</param>
         /// <param name="description">The seam's description.</param>
         /// <param name="deviceSamplerAnisotropy">Whether the device enabled the <c>samplerAnisotropy</c> feature.
-        /// False degrades an anisotropic request to trilinear, exactly as the engine's Veldrid path does, and
+        /// False degrades an anisotropic request to trilinear, exactly as the engine's Veldrid path did, and
         /// asking for anisotropy without the feature is a validation error rather than a slow path.</param>
         /// <param name="ownsSampler">False for a device-owned shared sampler, so handing one to a consumer that
         /// disposes it does not destroy the device's own.</param>

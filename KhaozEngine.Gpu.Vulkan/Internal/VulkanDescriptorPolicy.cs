@@ -11,7 +11,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// seam was designed against a Vulkan-shaped API: <c>IGpuResourceLayout</c> IS a
     /// <c>VkDescriptorSetLayout</c>, <c>IGpuResourceSet</c> IS a <c>VkDescriptorSet</c> written once at creation,
     /// and <see cref="GpuResourceLayoutElement.Dynamic"/> IS the dynamic uniform buffer. Nothing here is a
-    /// translation layer working around an impedance mismatch, and the incumbent maps the same way, so this is a
+    /// translation layer working around an impedance mismatch, and the incumbent mapped the same way, so this is a
     /// PORT. What is new is V-D4 below and the enforcement in
     /// <c>VulkanRecordingUnreachabilityTests</c>.</para>
     ///

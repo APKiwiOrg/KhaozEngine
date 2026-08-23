@@ -13,8 +13,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// counter all sit above this line, which is what makes them decidable under <c>dotnet test</c> on a machine
     /// with no Vulkan loader and no window (MV9).
     ///
-    /// <para><b>EVERY RESULT IS MAPPED RATHER THAN CHECKED-AND-DISCARDED (V-W7).</b> The incumbent ignores
-    /// <c>vkQueuePresentKHR</c>'s result entirely, so it can never learn that the surface it presents to changed
+    /// <para><b>EVERY RESULT IS MAPPED RATHER THAN CHECKED-AND-DISCARDED (V-W7).</b> The incumbent ignored
+    /// <c>vkQueuePresentKHR</c>'s result entirely, so it could never learn that the surface it presented to changed
     /// underneath it, and it treats <c>VK_SUBOPTIMAL_KHR</c> as a plain success because Vulkan's success codes are
     /// zero and positive. Both distinctions are the whole content of the boundary above, so they arrive there as
     /// separate outcomes rather than as a <c>VkResult</c> somebody has to remember to read correctly.</para>

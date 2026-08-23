@@ -124,7 +124,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 tiling: ImageTiling.Optimal,
                 usage: VulkanFormats.ToImageUsage(spec.Usage),
                 sharingMode: SharingMode.Exclusive,
-                // UNDEFINED, not PREINITIALIZED. See the class note: the incumbent's choice describes a
+                // UNDEFINED, not PREINITIALIZED. See the class note: the incumbent's choice described a
                 // host-written linear image, and every image here is transitioned out of this layout by the setup
                 // buffer before anything reads it (V-F8).
                 initialLayout: ImageLayout.Undefined);
@@ -175,7 +175,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 image: new Image(spec.Image),
                 viewType: VulkanFormats.ToViewType(spec.Cubemap, spec.ArrayLayers, spec.ArrayView),
                 format: VulkanFormats.ToVkFormat(spec.Format, spec.DepthStencil),
-                // IDENTITY SWIZZLE, which is what the incumbent leaves the components at by never touching them.
+                // IDENTITY SWIZZLE, which is what the incumbent left the components at by never touching them.
                 // A swizzle here would silently reorder every channel of every sampled read.
                 components: new ComponentMapping(
                     ComponentSwizzle.Identity, ComponentSwizzle.Identity,
@@ -214,7 +214,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 anisotropyEnable: spec.AnisotropyEnable,
                 maxAnisotropy: spec.MaxAnisotropy,
                 // NO COMPARISON SAMPLER ANYWHERE. The seam cannot ask for one and the engine's shadow path does
-                // manual PCF, which is why the incumbent's compareEnable is driven by a nullable that is always
+                // manual PCF, which is why the incumbent's compareEnable was driven by a nullable that was always
                 // null on this engine's call sites.
                 compareEnable: false,
                 compareOp: CompareOp.Never,

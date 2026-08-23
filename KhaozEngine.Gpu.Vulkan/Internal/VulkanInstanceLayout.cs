@@ -21,7 +21,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// on a developer machine with both and fails on a container with one.
     /// </para>
     /// <para>
-    /// <b>ONE LAYER, AND ONLY UNDER THE KNOB.</b> The incumbent additionally requests
+    /// <b>ONE LAYER, AND ONLY UNDER THE KNOB.</b> The incumbent additionally requested
     /// <c>VK_LAYER_LUNARG_standard_validation</c>, removed from the SDK in 2020, and passes layers to
     /// <c>vkCreateDevice</c>, which modern loaders ignore. Neither happens here.
     /// </para>

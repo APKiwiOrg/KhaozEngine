@@ -159,7 +159,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// software subresource layout (V-C7) and the IMAGE side's own level and layer.
         /// <para>
         /// THE STAGING SIDE DECIDES THE BUFFER TERMS AND THE IMAGE SIDE DECIDES THE SUBRESOURCE, which is the split
-        /// the incumbent makes at both of its call sites and the one that is easy to get backwards: the row length
+        /// the incumbent made at both of its call sites and the one that is easy to get backwards: the row length
         /// and image height are the STAGING mip's dimensions in TEXELS, and the level and layer named in
         /// <c>imageSubresource</c> are the IMAGE's, which need not be the same numbers.
         /// </para>
@@ -185,7 +185,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <paramref name="width"/> by <paramref name="height"/>, down into level <paramref name="level"/> at half
         /// those dimensions floored to at least one.
         /// <para>
-        /// EVERY ARRAY LAYER IN ONE BLIT, from layer 0, which is what the incumbent does and is what makes a
+        /// EVERY ARRAY LAYER IN ONE BLIT, from layer 0, which is what the incumbent did and is what makes a
         /// cubemap's six faces one call per level rather than six. The layer count is the ACTUAL one, six per
         /// logical layer on a cubemap.
         /// </para>

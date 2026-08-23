@@ -340,7 +340,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <para>
         /// THE RENDER PASS INSTANCE CLOSES FIRST (V-A4), and if the pass recorded clears that no draw consumed,
         /// they are flushed through a begin and end pair on the way out (V-A3). That is the clear-only case, which
-        /// the incumbent forces at two sites and a golden depends on. Sealing a buffer with an instance still open
+        /// the incumbent forced at two sites and a golden depends on. Sealing a buffer with an instance still open
         /// is a call the driver refuses.
         /// </para>
         /// <para>

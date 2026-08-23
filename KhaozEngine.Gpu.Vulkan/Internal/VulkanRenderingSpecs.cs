@@ -30,13 +30,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     ///
     /// <para><b>THE HEIGHT IS NEGATIVE AND THAT IS THE POINT.</b> <see cref="ForFramebuffer"/> answers
     /// <c>y = height</c> with <c>height = -height</c>, which is what makes Vulkan's clip space match Direct3D's.
-    /// The incumbent reports <c>ClipSpaceYInverted = false</c> for exactly this reason, <c>GpuClip.Correct</c>
+    /// The incumbent reported <c>ClipSpaceYInverted = false</c> for exactly this reason, <c>GpuClip.Correct</c>
     /// negates clip-space Y only when that flag is set, and every matrix the engine builds therefore assumes the
     /// flip has already happened in the viewport. Getting it wrong does not throw and does not fail to render. It
     /// renders every golden upside down.</para>
     ///
     /// <para><b>AND IT NEEDS NO EXTENSION AND NO CONDITIONAL AT THE 1.3 FLOOR.</b> A negative viewport height is
-    /// core in Vulkan 1.1. The incumbent still tests for <c>VK_KHR_maintenance1</c> because it targets 1.0, and
+    /// core in Vulkan 1.1. The incumbent still tested for <c>VK_KHR_maintenance1</c> because it targeted 1.0, and
     /// this backend's own probe refuses anything below 1.3, so there is no branch here to get wrong either.</para>
     /// </summary>
     /// <param name="X">Left edge in pixels.</param>
@@ -90,7 +90,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <paramref name="Stencil"/> IS CARRIED SEPARATELY BECAUSE DYNAMIC RENDERING SPLITS THE PLANES. A render pass
     /// instance takes a <c>pDepthAttachment</c> and a <c>pStencilAttachment</c> as two structures over one view,
     /// where a <c>VkRenderPass</c> took one attachment description with one aspect-wide load op. The seam's
-    /// <c>ClearDepthStencil</c> carries no stencil VALUE, and the incumbent clears the stencil plane to zero
+    /// <c>ClearDepthStencil</c> carries no stencil VALUE, and the incumbent cleared the stencil plane to zero
     /// alongside the depth, so a combined format clears both here too. Leaving the stencil plane out would leave
     /// it holding whatever the last pass left, which is the determinism rule V-A6 states for a store applied to a
     /// load.

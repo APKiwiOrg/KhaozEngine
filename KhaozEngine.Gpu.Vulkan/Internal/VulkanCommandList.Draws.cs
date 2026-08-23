@@ -35,7 +35,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// RECORDS ONLY. No native call until a draw, which is the same shape a resource-set bind takes and for
         /// the same reasons: a rebind of what is already recorded costs nothing, several rebinds between two draws
         /// collapse to one emission, and the flush cuts ONE <c>vkCmdBindVertexBuffers</c> per contiguous run of
-        /// dirty slots. The incumbent emits at the call with no guard, so a renderer that rebinds one mesh's
+        /// dirty slots. The incumbent emitted at the call with no guard, so a renderer that rebinds one mesh's
         /// buffer before each of its draws pays a native call per draw for a state change that did not happen.
         /// <para>
         /// A RECORD MADE OUTSIDE A RECORDING IS DISCARDED RATHER THAN REFUSED, exactly as a resource-set bind is,
@@ -108,7 +108,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <para>
         /// THAT BARRIER IS NOT A CONTRACT CHANGE AND MUST NOT BE READ AS ONE. The seam's compute rule 2 is
         /// honoured as written: chaining dependent dispatches inside one list still needs <c>End</c>,
-        /// <c>Submit</c> and <c>WaitForIdle</c> on the PORTABLE contract, because the Veldrid legs need the drain
+        /// <c>Submit</c> and <c>WaitForIdle</c> on the PORTABLE contract, because the Veldrid legs needed the drain
         /// and a consumer that drops it because this backend tolerates the chain breaks on Metal. See
         /// <see cref="VulkanComputeHazards"/>.
         /// </para>

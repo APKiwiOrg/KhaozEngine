@@ -35,7 +35,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// needs the second, and a vertex buffer answers the second and never the first.
     /// </para>
     /// <para>
-    /// THE USAGE IS CARRIED RATHER THAN GUESSED, which is the whole of the narrowed barrier. The incumbent emits
+    /// THE USAGE IS CARRIED RATHER THAN GUESSED, which is the whole of the narrowed barrier. The incumbent emitted
     /// one global <c>VkMemoryBarrier</c> whose destination is <c>VertexAttributeRead</c> at <c>VertexInput</c> for
     /// every upload it makes, so an index buffer, an indirect argument buffer and a storage buffer are all
     /// synchronised as though they were vertex attributes. See <see cref="VulkanUploadBarrier"/>.

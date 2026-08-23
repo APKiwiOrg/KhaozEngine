@@ -7,7 +7,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// every type above the seam names no Silk.NET type.
     /// <para>
     /// SEVEN IS THE POOL'S NUMBER RATHER THAN VULKAN'S. Vulkan has eleven core descriptor types, and these are
-    /// the seven the incumbent's pool counts. A pool that counts a type it can never hand out is harmless while a
+    /// the seven the incumbent's pool counted. A pool that counts a type it can never hand out is harmless while a
     /// pool that fails to count one it does hand out is an allocation failure nobody can explain. The layout
     /// policy of <see cref="VulkanDescriptorPolicy"/> can produce only five of them today (V-D4 turns every
     /// uniform buffer dynamic, and a dynamic structured buffer is refused), and the other two are still counted,
@@ -103,7 +103,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
     /// <summary>
     /// What one <c>VkDescriptorPool</c> is created with: how many sets it can hand out and how many descriptors
-    /// of each type it holds. Decision V-D3's whole departure from the incumbent lives in these numbers being
+    /// of each type it holds. Decision V-D3's whole departure from the incumbent lived in these numbers being
     /// computed from demand rather than being the constants 1000 and 100.
     /// </summary>
     /// <param name="MaxSets"><c>VkDescriptorPoolCreateInfo.maxSets</c>.</param>

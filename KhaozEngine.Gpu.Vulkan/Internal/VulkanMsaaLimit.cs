@@ -20,12 +20,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// by construction rather than by luck.</para>
     ///
     /// <para><b>THE DESIGN DOCUMENT DESCRIBES THE WRONG CALL AND THE INCUMBENT IS THE AUTHORITY.</b> Section 13
-    /// says the incumbent's shape is "a per-format <c>vkGetPhysicalDeviceFormatProperties</c> read reduced to the
+    /// says the incumbent's shape was "a per-format <c>vkGetPhysicalDeviceFormatProperties</c> read reduced to the
     /// highest supported bit". It is not: <c>VkGraphicsDevice.GetSampleCountLimit</c> calls
     /// <c>vkGetPhysicalDeviceImageFormatProperties</c> and reduces the <c>sampleCounts</c> field of the
     /// <c>VkImageFormatProperties</c> it returns, which is a different query with a different answer (it takes the
     /// image type, the tiling and the USAGE, and a format's sample counts genuinely differ by usage). Reproducing
-    /// what the incumbent does is the decision, so the call below is the image-format one and the design doc
+    /// what the incumbent did is the decision, so the call below is the image-format one and the design doc
     /// carries a corrected-in-flight note. This paragraph is why re-reading the source before writing was made
     /// this row's own obligation.</para>
     ///

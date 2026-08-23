@@ -40,7 +40,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// </para>
     /// <para>
     /// <b><see cref="CreatePool"/> TAKES NO FLAGS, AND THAT IS THE STRUCTURAL ASSERTION</b> that decision V-R2
-    /// asked for. The incumbent creates one pool per list with <c>VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT</c>,
+    /// asked for. The incumbent created one pool per list with <c>VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT</c>,
     /// which tells the driver every buffer must be individually resettable and pushes it onto the slower per-buffer
     /// allocator. This backend resets the WHOLE POOL instead, which is the documented fast path and returns memory
     /// to the pool's arena in one operation. There is no parameter through which that flag could be asked for, so

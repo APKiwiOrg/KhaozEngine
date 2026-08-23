@@ -61,7 +61,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <para>
         /// A STAGING TEXTURE IS WRITTEN DIRECTLY INSTEAD, through its own persistent mapping and its own software
         /// subresource layout, because it has no image to copy into and its memory is host-visible by construction.
-        /// That is what the incumbent does too, and refusing it here would be a divergence bought for nothing.
+        /// That is what the incumbent did too, and refusing it here would be a divergence bought for nothing.
         /// </para>
         /// <para>
         /// AN ARRAY LAYER THE TEXTURE DOES NOT HAVE IS REFUSED HERE, by name, on both arms and before anything is

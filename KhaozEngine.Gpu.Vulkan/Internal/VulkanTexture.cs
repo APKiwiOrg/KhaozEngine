@@ -17,7 +17,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     ///
     /// <para><b>IT IS ALSO ASSIGNED ITS CANONICAL RESTING LAYOUT AT CREATION (V-F7)</b>, and the device's setup
     /// command buffer records the first-ever transition into it, plus the creation-time clear a render target
-    /// gets. NO QUEUE SUBMIT HAPPENS HERE (V-M10): the incumbent issues a whole <c>vkQueueSubmit</c> per render
+    /// gets. NO QUEUE SUBMIT HAPPENS HERE (V-M10): the incumbent issued a whole <c>vkQueueSubmit</c> per render
     /// target and per sampled texture created, which is two hundred submissions to load a scene with two hundred
     /// textures.</para>
     ///

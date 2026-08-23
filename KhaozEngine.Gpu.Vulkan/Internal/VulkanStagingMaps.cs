@@ -28,7 +28,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// Veldrid path both read it and a zero would turn a stride into a division by nothing.</para>
     ///
     /// <para><b>SUBRESOURCE 0, ALWAYS.</b> The seam's <c>Map</c> takes a resource and a mode and nothing else, and
-    /// the Veldrid path it mirrors defaults the subresource to 0 at the same call. The rest of the layout table
+    /// the Veldrid path it mirrors defaulted the subresource to 0 at the same call. The rest of the layout table
     /// exists because a COPY writes every subresource, not because a map can name one.</para>
     ///
     /// <para><b>ONE PER DEVICE, AND NOT THREAD-SAFE BY ITSELF.</b> The device's <c>Map</c> and <c>Unmap</c> take

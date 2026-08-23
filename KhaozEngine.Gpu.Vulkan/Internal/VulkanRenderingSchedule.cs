@@ -21,7 +21,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// for emission.</description></item>
     /// <item><description><b><see cref="ClearColourTarget"/> and <see cref="ClearDepthStencil"/>.</b> Before the
     /// instance opens, the value is stored as pending and becomes <c>loadOp = CLEAR</c> (V-A2). After it has
-    /// opened, it is a <c>vkCmdClearAttachments</c> immediately, which is what the incumbent does in the same
+    /// opened, it is a <c>vkCmdClearAttachments</c> immediately, which is what the incumbent did in the same
     /// situation.</description></item>
     /// <item><description><b><see cref="PrepareDraw"/>, which the first draw of a pass calls.</b> Begin the
     /// instance with <c>loadOp = CLEAR</c> and the pending value per attachment that has one, <c>LOAD</c> for the
@@ -61,7 +61,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// schedule collapses repeated marks.</para>
     ///
     /// <para><b>ONE VIEWPORT AND ONE SCISSOR, AT INDEX 0, AND A NON-ZERO INDEX IS REFUSED.</b> The seam's
-    /// <c>SetScissorRect</c> carries an output index because Veldrid models one scissor per colour target, and the
+    /// <c>SetScissorRect</c> carries an output index because Veldrid modelled one scissor per colour target, and the
     /// native Direct3D 11 backend refuses a non-zero one for the same reason this does: nothing in the engine
     /// passes one, a Vulkan viewport is not per-attachment in the first place, and honouring an index would mean
     /// enabling <c>multiViewport</c> and matching the pipeline's viewport count to the attachment count for a

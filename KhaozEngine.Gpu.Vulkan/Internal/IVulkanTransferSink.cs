@@ -73,7 +73,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="image">The image, on both sides of the blit.</param>
         /// <param name="region">The source and destination levels and their extents.</param>
         /// <param name="linear">The filter. <c>VK_FILTER_LINEAR</c> is what averages four texels into one and is
-        /// what the incumbent selects for every format this seam can express.</param>
+        /// what the incumbent selected for every format this seam can express.</param>
         void BlitImage(ulong commandBuffer, ulong image, in ImageBlit region, bool linear);
 
         /// <summary><c>vkCmdResolveImage</c> of ONE region, with the multisampled

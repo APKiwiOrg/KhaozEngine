@@ -28,7 +28,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// which is the one way to spend the cost that seam was shaped to avoid, so the sink is a parameter and the row
     /// that owns a real sink calls in with its own.</para>
     ///
-    /// <para><b>BOTH BARRIERS ARE OVER THE WRITTEN RANGE.</b> The incumbent emits a GLOBAL
+    /// <para><b>BOTH BARRIERS ARE OVER THE WRITTEN RANGE.</b> The incumbent emitted a GLOBAL
     /// <c>VkMemoryBarrier</c> instead, one of them, which makes every access of its class wait rather than the one
     /// buffer that was written, and names <c>VertexAttributeRead</c> at <c>VertexInput</c> whatever the destination
     /// is. See <see cref="VulkanUploadBarrier"/> for what that gets wrong in both directions at once.</para>

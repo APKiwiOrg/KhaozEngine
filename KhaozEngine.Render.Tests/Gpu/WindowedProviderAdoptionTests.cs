@@ -107,11 +107,12 @@ namespace KhaozEngine.Tests.Gpu
             {
                 GpuBackendSelection selection = GpuBackendSelector.Resolve();
                 Assert.Equal(NativeKind, selection.Backend);
-                // IncumbentFor rather than ProbeOS, which is what this row asserted until the 17.40.0 flip. The
-                // Windows probe ANSWERS Direct3D11Native now, so the old assertion was false on Windows while
-                // saying nothing about the property it was written for: the fallback is armed when the requested
-                // kind differs from the backend a failure falls back TO, and that backend is the incumbent.
-                Assert.NotEqual(NativeKind, GpuBackendSelector.IncumbentFor(GpuBackendSelector.DetectOS()));
+                // The fallback is ARMED only when the requested kind differs from the backend a failure falls
+                // back TO, which since 18.0.0 is the platform default itself. So this row exercises the probe
+                // path on every OS except Windows, where Direct3D11Native IS the default and there is nothing to
+                // fall back to. The assertion is written that way round rather than skipped, because the
+                // interesting half is that the support probe ran at all.
+                if (GpuBackendSelector.ProbeOS(GpuBackendSelector.DetectOS()) == NativeKind) return;
 
                 using GpuDeviceContext ctx =
                     GpuDeviceContext.CreateForWindow(default, 640, 480, syncToVerticalBlank: true);

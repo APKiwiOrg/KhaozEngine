@@ -12,8 +12,8 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// The property worth stating plainly, because everything else here serves it: a FORGOTTEN registration and an
     /// INCAPABLE machine must never produce the same outcome. The first throws, the second falls back and reports
-    /// itself. Collapsing them is how a soak session measures the incumbent backend and files the numbers under the
-    /// new one, which is precisely the attribution the whole rollout depends on.
+    /// itself. Collapsing them is how a soak session measures one backend and files the numbers under another,
+    /// which is precisely the attribution the whole rollout depended on.
     /// </para>
     /// </summary>
     public sealed class GpuBackendProvidersTests
@@ -31,29 +31,21 @@ namespace KhaozEngine.Tests.Gpu
         // --- which kinds go through the registry at all ---
 
         /// <summary>
-        /// The four backends the engine builds itself never consult the registry, so registering a provider for
-        /// one cannot hijack a path that already works. Spelled out member by member rather than enumerated,
-        /// deliberately: enumerating would make this test fail the moment a provider-backed member is APPENDED,
-        /// which is the correct behaviour for that member and the wrong reason for a red build.
+        /// EVERY kind goes through the registry since 18.0.0. The four members that used to be built in place by
+        /// the Veldrid incumbent are retired, and the three native backends have always been provider-backed, so
+        /// there is no "built-in" arm left for a kind to fall into. Stated as a walk over the whole enum plus a
+        /// value no member will take, because the rule is now membership-free: the answer does not depend on
+        /// which kind is asked, which is exactly what makes a forgotten registration impossible to mistake for a
+        /// path that already works.
         /// </summary>
         [Fact]
-        public void RequiresProvider_IsFalse_ForEveryBackendTheEngineBuildsItself()
+        public void RequiresProvider_IsTrue_ForEveryKind()
         {
-            Assert.False(GpuBackendProviders.RequiresProvider(GpuBackendKind.Metal));
-            Assert.False(GpuBackendProviders.RequiresProvider(GpuBackendKind.Vulkan));
-            Assert.False(GpuBackendProviders.RequiresProvider(GpuBackendKind.Direct3D11));
-            Assert.False(GpuBackendProviders.RequiresProvider(GpuBackendKind.OpenGL));
-        }
+            foreach (GpuBackendKind kind in Enum.GetValues<GpuBackendKind>())
+            {
+                Assert.True(GpuBackendProviders.RequiresProvider(kind));
+            }
 
-        /// <summary>
-        /// The forward-compatible half, and the reason the rule is stated as "everything the built-in path does not
-        /// build". An APPENDED kind is provider-backed with no edit to this package, so the failure mode of
-        /// forgetting is an exception naming the missing registration, rather than the new kind falling into the
-        /// Veldrid creation switch whose discard arm asks for a METAL device on Windows.
-        /// </summary>
-        [Fact]
-        public void RequiresProvider_IsTrue_ForAnAppendedBackend()
-        {
             Assert.True(GpuBackendProviders.RequiresProvider(AppendedKind));
             Assert.True(GpuBackendProviders.RequiresProvider(SentinelKind));
         }
@@ -210,7 +202,7 @@ namespace KhaozEngine.Tests.Gpu
             using (Registered(SentinelKind, provider))
             {
                 string? reason = GpuDeviceContext.PreflightProvider(
-                    SentinelKind, allowFallback: true, pinnedByEnvironment: true, out _, out _);
+                    SentinelKind, allowFallback: true, out _);
                 Assert.NotNull(reason);
                 Assert.Contains("no support", reason);
             }
@@ -219,7 +211,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(GpuBackendSelector.IsBackendSupported(SentinelKind));
             Assert.Throws<GpuBackendProviderMissingException>(
                 () => GpuDeviceContext.PreflightProvider(
-                    SentinelKind, allowFallback: true, pinnedByEnvironment: true, out _, out _));
+                    SentinelKind, allowFallback: true, out _));
         }
 
         /// <summary>
@@ -233,16 +225,15 @@ namespace KhaozEngine.Tests.Gpu
             using (Registered(SentinelKind, provider))
             {
                 Assert.Null(GpuDeviceContext.PreflightProvider(
-                    SentinelKind, allowFallback: true, pinnedByEnvironment: true, out IGpuBackendProvider? found, out _));
+                    SentinelKind, allowFallback: true, out IGpuBackendProvider? found));
                 Assert.Same(provider, found);
             }
         }
 
         /// <summary>
         /// A caller that named one backend outright is not asking to be given a different one, so there is nothing
-        /// to fall back to and therefore nothing to probe for. Identical to how the Veldrid path treats the
-        /// explicit-backend overload, and it is what keeps the "retry as X" lever honest: it tries, and a real
-        /// failure propagates.
+        /// to fall back to and therefore nothing to probe for. That is what keeps the "retry as X" lever honest:
+        /// it tries, and a real failure propagates.
         /// </summary>
         [Fact]
         public void Preflight_SkipsTheProbeEntirely_WhenFallbackIsNotAllowed()
@@ -251,25 +242,26 @@ namespace KhaozEngine.Tests.Gpu
             using (Registered(SentinelKind, provider))
             {
                 Assert.Null(GpuDeviceContext.PreflightProvider(
-                    SentinelKind, allowFallback: false, pinnedByEnvironment: true, out _, out _));
+                    SentinelKind, allowFallback: false, out _));
                 Assert.Equal(0, provider.SupportProbes);
             }
         }
 
-        /// <summary>A missing provider throws even where a fallback WOULD have been allowed, for a backend the
-        /// caller NAMED. That is the half a silent fallback would have eaten, and 17.40.0 narrowed the rule to
-        /// exactly this case: see <c>NativeDefaultTests</c> for the defaulted one, which falls back.</summary>
+        /// <summary>A missing provider throws even where a fallback WOULD have been allowed, and since 18.0.0 that
+        /// is the rule for every provenance rather than for a NAMED backend alone. 17.40.0 let a DEFAULTED one
+        /// fall back to the platform's Veldrid incumbent, and there is no incumbent left to fall back to, so a
+        /// wiring gap is a wiring gap whoever asked. See <c>NativeDefaultTests</c>.</summary>
         [Fact]
-        public void Preflight_ThrowsForAMissingNamedProvider_EvenWhenFallbackIsAllowed()
+        public void Preflight_ThrowsForAMissingProvider_EvenWhenFallbackIsAllowed()
             => Assert.Throws<GpuBackendProviderMissingException>(
                 () => GpuDeviceContext.PreflightProvider(
-                    SentinelKind, allowFallback: true, pinnedByEnvironment: true, out _, out _));
+                    SentinelKind, allowFallback: true, out _));
 
         // --- the creation path itself, end to end and still device-free ---
 
         /// <summary>
         /// The public path a consumer actually calls, on a backend whose provider was never registered. It throws
-        /// before it touches the window handle or anything Veldrid, which is why this runs with a default handle
+        /// before it touches the window handle or any device at all, which is why this runs with a default handle
         /// on a machine that has no such backend at all.
         /// </summary>
         [Fact]

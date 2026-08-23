@@ -15,6 +15,16 @@
   <ItemGroup>
     <!-- 2D runtime + the (now Render3D-free) game-loop framework -->
     <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
+    <!-- The three engine-owned native GPU backends. They stopped being opt-in in 18.0.0, when the Veldrid
+         backend KhaozEngine.Gpu used to build itself was deleted: a seam with no built-in implementation left
+         means an umbrella that carries Gpu without a backend carries a stack that cannot create a device.
+         Declared here as well as ridden transitively through Windowing, so this file says out loud what the
+         umbrella ships. Carrying all three (not just the build machine's) is what makes one package restore on
+         every platform, and a foreign one is inert: each is platform-guarded, its interop sits behind NoInlining
+         bodies the JIT never compiles off its platform, and only the running platform's is REGISTERED. -->
+    <ProjectReference Include="../KhaozEngine.Gpu.Metal/KhaozEngine.Gpu.Metal.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gpu.D3D11/KhaozEngine.Gpu.D3D11.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gpu.Vulkan/KhaozEngine.Gpu.Vulkan.csproj" />
     <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
     <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
     <ProjectReference Include="../KhaozEngine.Audio/KhaozEngine.Audio.csproj" />

@@ -19,6 +19,15 @@
     <PackageReference Include="Silk.NET.Input.Glfw" />
     <PackageReference Include="Silk.NET.GLFW" />
     <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
+    <!-- The three engine-owned native GPU backends, for GpuBackends.RegisterPlatformDefault(). They stopped
+         being opt-in in 18.0.0, when the Veldrid backend KhaozEngine.Gpu used to build itself was deleted: a
+         seam with no built-in implementation left means a consumer that references no backend package has no
+         device at all, so "pay for what you use" had nothing to protect any more. This is the lowest package
+         above the seam that every windowed host and every in-repo headless host already carries, which is why
+         the registration helper lives here rather than in a fourth package of its own. -->
+    <ProjectReference Include="../KhaozEngine.Gpu.Metal/KhaozEngine.Gpu.Metal.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gpu.D3D11/KhaozEngine.Gpu.D3D11.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gpu.Vulkan/KhaozEngine.Gpu.Vulkan.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>

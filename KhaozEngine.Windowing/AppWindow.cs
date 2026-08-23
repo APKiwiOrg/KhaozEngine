@@ -49,7 +49,7 @@ namespace KhaozEngine.Windowing
 
     /// <summary>
     /// Owns the Silk.NET window + input + frame loop (GLFW natives bundled per-RID, so no <c>brew install sdl2</c>), the engine GPU
-    /// device (<see cref="IGpuDevice"/>, backend GPU types hidden behind the KhaozEngine.Gpu seam), and presentation. The Veldrid
+    /// device (<see cref="IGpuDevice"/>, backend GPU types hidden behind the KhaozEngine.Gpu seam), and presentation. The
     /// swapchain comes from the native window handle via <see cref="GpuDeviceContext.CreateForWindow(in GpuWindowHandle, uint, uint, bool)"/>, on the backend
     /// <see cref="GpuBackendSelector"/> picked, which <see cref="BackendSelection"/> reports with its provenance. Each frame pumps
     /// Silk input into an engine-native <see cref="InputState"/>, clears the swapchain, runs the callback, and presents.
@@ -130,18 +130,17 @@ namespace KhaozEngine.Windowing
         BackgroundThrottlePolicy _backgroundThrottle = BackgroundThrottlePolicy.Default;
         // Runtime display state. PresentMode/WindowMode start from the ctor; _windowedSize is the size to restore
         // when leaving a fullscreen mode; _windowedPos is the windowed position to restore (null = leave it where
-        // the OS put it, until the first MoveTo); _warnedMetalVsync dedups the one-time Metal-vsync-needs-a-cap warning.
+        // the OS put it, until the first MoveTo).
         PresentMode _presentMode;
         WindowMode _windowMode = WindowMode.Windowed;
         Vector2D<int> _windowedSize;
         Vector2D<int>? _windowedPos;
-        bool _warnedMetalVsync;
 
         /// <summary>
         /// Software frame-rate cap in Hz for <see cref="Run(Action{Frame})"/>, paced by a monotonic-clock <see cref="FrameLimiter"/>
         /// independent of the swapchain's vsync, so a game can pin the render rate to an integer multiple of its fixed
-        /// tick (e.g. 60/120 for a 30 Hz tick) - the deterministic cap where vsync does not throttle (notably the
-        /// Veldrid Metal path). Settable any time, and takes effect next frame.
+        /// tick (e.g. 60/120 for a 30 Hz tick) - the deterministic cap where vsync does not throttle. Settable
+        /// any time, and takes effect next frame.
         /// <para>Setting a positive value is an explicit fixed cap. Setting <c>0</c> (or negative) is an explicit
         /// <see cref="Windowing.FrameCap.Uncapped"/> free-run. The GETTER returns the RESOLVED effective base cap the
         /// loop paces to (0 = uncapped) - so with the default <see cref="Windowing.FrameCap.Auto"/> it reflects the
@@ -376,16 +375,12 @@ namespace KhaozEngine.Windowing
         }
 
         /// <summary>Resolve <see cref="_requestedCap"/> for the live backend + present mode into the effective base
-        /// cap the loop paces to (0 = uncapped), then re-evaluate the Metal-vsync warning against it. Called from the
-        /// ctor (once the device exists), the cap setters, and the present-mode setter. The default
-        /// <see cref="Windowing.FrameCap.Auto"/> resolves to a real cap on the incumbent Metal backend + vsync (the
-        /// live display refresh, or <see cref="Windowing.FrameCap.DefaultMetalAutoCapHz"/>) so the warning path
-        /// never fires for it. Only an explicit uncapped choice on that backend + vsync still warns.</summary>
+        /// cap the loop paces to (0 = uncapped). Called from the ctor (once the device exists), the cap setters,
+        /// and the present-mode setter. The default <see cref="Windowing.FrameCap.Auto"/> resolves to 0 on every
+        /// live backend since 18.0.0, because vsync throttles the CPU on all three
+        /// (<see cref="Windowing.FrameCap.Resolve"/> carries the measurement).</summary>
         void ApplyFrameCap()
-        {
-            _effectiveBaseCapHz = _requestedCap.Resolve(Backend, _presentMode, DisplayRefreshHz());
-            WarnIfMetalVsyncUncapped();
-        }
+            => _effectiveBaseCapHz = _requestedCap.Resolve(Backend, _presentMode, DisplayRefreshHz());
 
         /// <summary>The live display's refresh rate in Hz for the window's current monitor (0 when unknown / headless).
         /// AppWindow is the only class that touches the Silk monitor statics. The pure cap math is
@@ -404,22 +399,6 @@ namespace KhaozEngine.Windowing
             }
         }
 
-        /// <summary>One-time warning for vsync plus an effective free-run (resolved base cap 0) on the INCUMBENT
-        /// Veldrid Metal backend, whose present does not throttle the CPU from vsync alone. It does NOT fire on
-        /// <c>MetalNative</c>, measured at rollout gate 5 as throttling from vsync like the other two native
-        /// backends (M-W3, the three legs are in <see cref="DisplaySettings.RequiresFrameCapWarning"/>). Fires
-        /// only when a consumer forces uncapped + vsync (<see cref="Windowing.FrameCap.Auto"/> resolves positive
-        /// there). Pure decision via that same predicate, written to <c>Console.Error</c> for bare hosts, deduped.</summary>
-        void WarnIfMetalVsyncUncapped()
-        {
-            if (_warnedMetalVsync) return;
-            if (!DisplaySettings.RequiresFrameCapWarning(Backend, _presentMode, _effectiveBaseCapHz)) return;
-            _warnedMetalVsync = true;
-            Console.Error.WriteLine(
-                "[KhaozEngine] PresentMode.Vsync with an explicit uncapped frame rate is not known to throttle the " +
-                "CPU on this Metal backend. Use FrameCap.Auto (the default) or set FrameCapHz (e.g. your tick " +
-                "rate x2, like 60 or 120) for a deterministic cap on macOS.");
-        }
 
         /// <summary>Create a window with vsync present and the backend-aware <see cref="Windowing.FrameCap.Auto"/>
         /// frame cap (a real cap on Metal + vsync, uncapped where vsync throttles - see <see cref="FrameCap"/>).</summary>
@@ -469,7 +448,7 @@ namespace KhaozEngine.Windowing
             {
                 Size = new Vector2D<int>(width, height),
                 Title = title,
-                // We drive the GPU ourselves via Veldrid; Silk must not create a GL/Vulkan context.
+                // We drive the GPU ourselves through KhaozEngine.Gpu; Silk must not create a GL/Vulkan context.
                 API = GraphicsAPI.None,
                 // Born HIDDEN. On Windows the taskbar button is created when the window is first shown and is
                 // keyed to whatever icon the window has at that instant; if we show it before SetIcon runs, the
@@ -483,6 +462,12 @@ namespace KhaozEngine.Windowing
             _window.Initialize(); // creates the native window WITHOUT starting the loop; the handle is valid after this.
 
             GpuWindowHandle handle = BuildHandle(_window);
+            // The one engine-owned registration, since 18.0.0. KhaozEngine.Gpu builds no device of its own any
+            // more, so a windowed game with no backend registered would throw at the very next line. This is
+            // what makes a repin need no startup line in the game: it registers THIS platform's native backend
+            // only, and only when nothing is registered for the kind the selector resolves to, so a host that
+            // registered its own provider keeps it.
+            GpuBackends.RegisterPlatformDefaultIfUnregistered();
             _gpu = GpuDeviceContext.CreateForWindow(handle, (uint)width, (uint)height,
                 syncToVerticalBlank: presentMode == PresentMode.Vsync, preferredBackend: backendPreference);
             _device = _gpu.GpuDevice;
@@ -532,7 +517,7 @@ namespace KhaozEngine.Windowing
                     return new GpuWindowHandle(GpuWindowKind.Wayland, wl.Surface, wl.Display);
                 throw new NotSupportedException("No X11 or Wayland native handle on this Linux session.");
             }
-            throw new NotSupportedException("Unsupported windowing platform for the Silk -> Veldrid bridge.");
+            throw new NotSupportedException("Unsupported windowing platform for the Silk to GPU bridge.");
         }
 
         public bool Exists => !_window.IsClosing;

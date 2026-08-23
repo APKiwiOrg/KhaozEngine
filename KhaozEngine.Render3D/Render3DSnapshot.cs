@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Render3D
 {
@@ -21,6 +22,12 @@ namespace KhaozEngine.Render3D
         {
             // No-arg CreateHeadless uses the exact options the 3D snapshot needs (no depth, no sync, Improved
             // binding, depth-range 0..1, standard clip-Y) so the golden image stays pixel-identical.
+            // The headless half of the 18.0.0 registration. AppWindow does this for a windowed game and there is
+            // no AppWindow here, so a snapshot tool would otherwise have to know that KhaozEngine.Gpu builds no
+            // device of its own any more. Registers this platform's native backend only, and only when nothing
+            // is registered for the kind the selector resolves to, so a harness that seated its own provider
+            // (the GPU test suite does) keeps it.
+            GpuBackends.RegisterPlatformDefaultIfUnregistered();
             using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
             IGpuDevice gd = gpu.GpuDevice;
             var f = gd.Factory;

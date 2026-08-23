@@ -60,12 +60,17 @@ namespace KhaozEngine.Gpu.Vulkan
         /// Safe to call on every operating system, and meant to be called unconditionally: registering says a
         /// provider EXISTS, which is a fact about the app's wiring, while whether the machine can run it is a
         /// separate question answered by <see cref="GpuBackendSelector.IsBackendSupported"/> through the
-        /// provider's own functional probe. Decision V-I4 keeps those two apart on purpose, and here the reason
-        /// bites harder than it did on Direct3D 11: a native request that fails falls back to the incumbent
-        /// Vulkan backend (<see cref="GpuBackendSelector.IncumbentFor"/>) and reports
+        /// provider's own functional probe. Decision V-I4 keeps those two apart on purpose: a request that
+        /// fails on a machine falls back to the platform default and reports
         /// <see cref="GpuBackendSource.FallbackAfterFailure"/>, which in a log line looks a great deal like a
-        /// forgotten registration. A forgotten registration for a backend the caller NAMED throws instead, and since 17.40.0 a forgotten one for the DEFAULT falls back like an incapable machine, because the probe answers a provider-backed kind everywhere now and a game that never referenced the package made no wiring mistake. Telling the two apart is what the
-        /// whole soak measurement rests on, and NAMING the backend is what keeps them apart.
+        /// forgotten registration, and a forgotten registration throws. Telling the two apart is what the whole
+        /// soak measurement rests on.
+        /// </para>
+        /// <para>
+        /// A WINDOWED GAME NEEDS NO CALL TO THIS since 18.0.0. <c>AppWindow</c> registers the running platform's
+        /// backend at boot through <c>GpuBackends.RegisterPlatformDefault()</c>, and this package ships in the
+        /// <c>KhaozEngine.Game2D</c> and <c>KhaozEngine.Game3D</c> umbrellas. This member is for a custom or
+        /// headless host, and for a process that wants a backend other than its own platform's.
         /// </para>
         /// </summary>
         public static void Register() => GpuBackendProviders.Register(GpuBackendKind.VulkanNative, _provider);

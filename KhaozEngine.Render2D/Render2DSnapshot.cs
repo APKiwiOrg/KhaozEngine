@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
+using KhaozEngine.Windowing;
 using KhaozEngine.Render2D.Internal;
 
 namespace KhaozEngine.Render2D
@@ -95,6 +96,12 @@ namespace KhaozEngine.Render2D
             // NOTE: the context is intentionally NOT disposed here, as in the original inline CreateMetal path,
             // tearing down the Metal device after this 2D font/texture pass crashes in the backend. The device
             // is left to process teardown (this is a tooling/test-only snapshot helper). Matches baseline behaviour.
+            // The headless half of the 18.0.0 registration. AppWindow does this for a windowed game and there is
+            // no AppWindow here, so a snapshot tool would otherwise have to know that KhaozEngine.Gpu builds no
+            // device of its own any more. Registers this platform's native backend only, and only when nothing
+            // is registered for the kind the selector resolves to, so a harness that seated its own provider
+            // (the GPU test suite does) keeps it.
+            GpuBackends.RegisterPlatformDefaultIfUnregistered();
             GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
             IGpuDevice gd = gpu.GpuDevice;
             var f = gd.Factory;

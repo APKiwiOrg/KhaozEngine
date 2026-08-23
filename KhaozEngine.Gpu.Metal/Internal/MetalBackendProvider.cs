@@ -33,10 +33,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <see cref="GpuBackendProviderMissingException"/> from the registry, before this type is reached at all. An
     /// incapable MACHINE is answered by the probe and raises a <see cref="NotSupportedException"/> quoting what
     /// the device was missing. There was a third until row 15, for a capability of the PACKAGE that had not
-    /// landed, and nothing is left for it to describe. A native request that fails falls back to the incumbent
-    /// (<see cref="GpuBackendSelector.IncumbentFor"/>) and reports
-    /// <see cref="GpuBackendSource.FallbackAfterFailure"/>, which in a log line looks a great deal like a
-    /// forgotten registration. A forgotten registration for a backend the caller NAMED throws instead, and since 17.40.0 a forgotten one for the DEFAULT falls back like an incapable machine, because the probe answers a provider-backed kind everywhere now and a game that never referenced the package made no wiring mistake.
+    /// landed, and nothing is left for it to describe. A request that fails on a machine falls back to the
+    /// platform default and reports <see cref="GpuBackendSource.FallbackAfterFailure"/>, which in a log line
+    /// looks a great deal like a forgotten registration. A forgotten registration throws instead, and telling
+    /// the two apart is what the whole soak measurement rests on.
     /// </para>
     /// </summary>
     internal sealed class MetalBackendProvider : IGpuBackendProvider

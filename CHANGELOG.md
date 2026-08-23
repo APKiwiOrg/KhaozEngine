@@ -5,6 +5,111 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.0.0
+
+18.0.0 deletes the Veldrid incumbent GPU backend. The engine's own Metal, Direct3D 11 and Vulkan backends are
+the only backends now, on every platform, and this is rows 4, 5 and 6 of the Veldrid removal program
+([#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)). `Veldrid.SPIRV` STAYS: it is still the shader
+toolchain that turns the engine's one GLSL source into SPIR-V and cross-compiles it, and swapping it for
+`Silk.NET.Shaderc` plus `Silk.NET.SPIRV.Cross` is the next release's program
+([#691](https://github.com/APKiwiOrg/KhaozEngine/issues/691)). BREAKING, hence the major: four
+`GpuBackendKind` members no longer name anything that can create a device.
+
+- **The Veldrid backend is deleted** (`VeldridGpuDevice`, `VeldridGpuCommandList`, `VeldridResources`,
+  `VeldridMap`, `VeldridMetalCommandQueue`, 1247 lines in `KhaozEngine.Gpu/Internal` alone, plus the vendored
+  `vendor/veldrid` fork: its README and the three `4.9.104` nupkgs, which is where the immediate-context mode
+  and the second-recorder guardrail lived). `KhaozEngine.Gpu` builds NO device of its own any more. It keeps
+  the seam (the
+  interfaces, the selector, the provenance, the capabilities, the counters, the retire queue, the shader
+  validation) and the shader path, which is the only Veldrid it still references: `Veldrid.SPIRV` plus the
+  `Veldrid` base package, because SPIRV-Cross reflection hands back description types defined there.
+  [#687](https://github.com/APKiwiOrg/KhaozEngine/issues/687).
+- **`GpuBackendKind.Metal`, `.Vulkan`, `.Direct3D11` and `.OpenGL` are RETIRED, not removed and not
+  repointed.** The enum is append-only because games persist a player's chosen backend, so the four members are
+  kept forever and answer `GpuBackendSelector.IsRetired`. What happens depends on who names one:
+  - A `KE_GRAPHICS_BACKEND` token (`metal`, `vulkan`, `d3d11`, `direct3d11`, `gl`, `opengl`) RESOLVES to that
+    API's native backend and logs a WARN naming the retirement, the release and the token to move to.
+    `GpuBackendSelector.NativeReplacementFor` is the map: Metal to `MetalNative`, Vulkan to `VulkanNative`,
+    Direct3D11 to `Direct3D11Native`, and `OpenGL` to the platform's own default, because the engine never had
+    an OpenGL implementation of its own.
+  - A STORED user preference naming one takes the same redirect and reports
+    `GpuBackendSource.FallbackAfterFailure`, which is the signal a game already clears a stored choice on.
+  - NAMING one in CODE throws the new `GpuBackendRetiredException`. Repointing the member at its native sibling
+    was ruled out by name in the design: it would move every tester's stored choice onto a different
+    implementation with no rebuild signal and no player notice.
+  `GpuBackendSelector.IsBackendSupported` answers false for all four, so a settings picker never offers one.
+  [#688](https://github.com/APKiwiOrg/KhaozEngine/issues/688).
+- **`GpuBackendSelector.IncumbentFor` is GONE**, and with it the one-release opt-out 17.40.0 shipped.
+  `GpuBackendSelector.ProbeOS` is the single map now (macOS to `MetalNative`, Windows to `Direct3D11Native`,
+  Linux and everything else to `VulkanNative`) and it is also what every fallback lands on: a failed device
+  creation, a stored preference for a retired member and an unrecognized override all end up at the platform's
+  own backend. There is exactly one default per platform, which is what makes the "nothing to fall back TO when
+  the request already IS the default" guard a complete statement rather than a first approximation.
+- **The `Game2D` and `Game3D` umbrellas carry the three backend packages.** They used to be opt-in and in no
+  umbrella, which was correct while `KhaozEngine.Gpu` could still build a device and is wrong now that it
+  cannot. A repinned game therefore needs NO new call of its own: `AppWindow` and both snapshot hosts
+  (`Render2DSnapshot`, `Render3DSnapshot`) call `GpuBackends.RegisterPlatformDefaultIfUnregistered()` before the
+  first device. A game that references `KhaozEngine.Gpu` directly, outside the umbrellas, still registers the
+  backend it wants (`KhaozEngineMetal.Register()`, `KhaozEngineD3D11.Register()`, `KhaozEngineVulkan.Register()`).
+- **A default with no registered provider is now a hard failure.** It throws
+  `GpuBackendProviderMissingException` naming the package and the one call, where 17.40.0 fell back to the
+  platform's incumbent with a WARN. `GpuBackendSource.DefaultProviderMissing` (ordinal 5) is retired with that
+  fallback and is never produced again. The number stays, because the enum is append-only and a 17.40.0 capture
+  that recorded a 5 still has to read back as what it meant.
+- **The three incumbent CI legs are deleted** (`metal`, `direct3d11`, `vulkan`), leaving `cross-platform-gpu.yml`
+  a three-leg matrix, one per engine-owned backend.
+  [#689](https://github.com/APKiwiOrg/KhaozEngine/issues/689). The tiers were RE-DECIDED at the delete against
+  measured full-suite durations from run 32579723071, and they did not move: `metal-native` stays `always` at
+  4m31s on hosted `macos-26`, which is cheaper than the other legs' golden subsets, and `direct3d11-native`
+  (25m43s) and `vulkan-native` (26m36s) stay `scheduled`, because promoting either would take the push gate from
+  roughly 8 minutes to roughly 26 for the one trigger whose job is fast feedback. The delete also shortened the
+  matrix's own wall clock: the slowest leg was `direct3d11` at 37m41s and is now `vulkan-native` at 26m36s, and a
+  full dispatch drops about 63 minutes of runner time. The Vulkan validation gate is unchanged, `strict` on the
+  native leg's scheduled full suite and `sync` in the separate golden-and-compute job.
+- **The three incumbent golden families are deleted with the backend that produced them**: 120 committed grids,
+  40 scenes across `metal`, `direct3d11` and `vulkan`. Each native kind has owned the family named after itself
+  since 17.41.0, seeded as a byte-identical copy, so nothing that a run compares against moved. The copy guard
+  that asserted the seeding (`GoldenFamilyCopyGoldenTests`) goes too, with the families it compared, and so do
+  the incumbent parity suites (`NativeVsVeldridCapabilityParityTests` and its Metal and Vulkan siblings,
+  `MetalMslIncumbentParityTests`, `VulkanSpirvIncumbentParityTests`, `VeldridMapTests`,
+  `VeldridLockdownTests`). No test in the repo compares two independent implementations of one API any more,
+  which is the real cost of the delete and is written down as risk R7 in `docs/DEPENDENCY-SEAMS.md`.
+- **The one-layer-array phantom-slice emulation is gone.** The incumbent could not express a one-layer array at
+  all and padded one with a second, never-addressed slice that it still counted. The three native backends
+  create the array type directly, so nothing pads any more. The two seam paths that name SUBRESOURCES keep the
+  behaviour the padding forced, because it is right anyway: `CopyTexture` (and `GpuReadback.ToRgba` with it)
+  narrows to the logical subresources when a side pads, and an `UpdateTexture` aimed past the last layer is
+  refused rather than accepted silently.
+- **`OpenListTrackingGpuDevice` stays**, and it is the device-free stand-in that survives the delete. The
+  nesting rule it asserts came from the incumbent's immediate-context mode, where a nested `Begin` silently
+  wiped the open recording's bindings ([#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423)), but the
+  rule outlived its cause: `GpuRecording` enforces it on every backend, and the tracker asserts the shape on any
+  machine rather than leaving it to a WARP leg.
+- **The `Newtonsoft.Json` CVE override STAYS.** It arrives through `Veldrid.SPIRV` to `Veldrid` to
+  `NativeLibraryLoader` to `Microsoft.Extensions.DependencyModel`, and `Veldrid.SPIRV` depends on the `Veldrid`
+  base assembly, so deleting the incumbent BACKEND does not take the transitive chain with it. The override
+  leaves with the toolchain in the next release, not with this one.
+- **Docs follow the delete.** `docs/CROSS-PLATFORM.md` is the three-leg matrix, `docs/DEPENDENCY-SEAMS.md`
+  states risk R7 and keeps the ONE-uniform-buffer-per-pipeline rule as a shipped-content constraint rather than
+  a live hazard (the defect was the incumbent's buffer numbering, measured 2026-08-11, and it is gone with it),
+  `docs/RENDER-PIPELINE.md` drops the Veldrid node from the container map, `docs/SECURITY-BASELINE.md` names the
+  platform graphics driver and `libveldrid-spirv` as the residual native surface, and the root `README.md`,
+  `docs/USING-KHAOZENGINE.md`, `AGENTS.md`, `docs/INDEX.md` and every affected package README follow. Every
+  remaining Veldrid sentence in the tree is either about `Veldrid.SPIRV` or deliberately written as history.
+- Closes [#687](https://github.com/APKiwiOrg/KhaozEngine/issues/687),
+  [#688](https://github.com/APKiwiOrg/KhaozEngine/issues/688),
+  [#689](https://github.com/APKiwiOrg/KhaozEngine/issues/689). Absorbs
+  [#540](https://github.com/APKiwiOrg/KhaozEngine/issues/540), which asked for the Veldrid Vulkan leg, its
+  extension list and the CI libvulkan symlink step to retire together: all three are deleted here.
+
+**Consumer note (Ruinborne, the only game that names a `GpuBackendKind`).** Its graphics-settings picker carries
+three incumbent rows, and they go: drop the `Metal` / `Vulkan` / `Direct3D11` rows and their label keys, and
+offer what `GpuBackendSelector.SupportedBackends()` returns, which is the three native kinds. A PERSISTED
+setting naming a retired member must be mapped or dropped in the game's own settings load, before the value
+reaches the engine, because passing one back as a preference gets a redirect plus a WARN and passing one to an
+explicit-backend `Create*` call throws `GpuBackendRetiredException`. The backend packages themselves need no
+`<PackageReference>`: the `Game3D` umbrella carries all three, and `AppWindow` registers the platform's own.
+
 ## 17.41.0
 
 17.41.0 gives the three native backends their own golden families, rows 2 and 3 of the Veldrid removal program

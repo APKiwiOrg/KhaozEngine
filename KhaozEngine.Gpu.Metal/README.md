@@ -1,8 +1,12 @@
 # KhaozEngine.Gpu.Metal
 
-The engine's own native Metal backend for the [KhaozEngine.Gpu](../KhaozEngine.Gpu) seam. Opt-in and in NO
-umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or `WorldStore.Sqlite`,
-and nothing that does not want the Objective-C interop ever carries it.
+The engine's own native Metal backend for the [KhaozEngine.Gpu](../KhaozEngine.Gpu) seam. Carried by the
+`KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.0.0, so a repinned game gets it without adding
+anything. It was opt-in and in no umbrella while the deleted Veldrid incumbent still shipped.
+
+**"The incumbent" below always means the Veldrid Metal backend, deleted in 18.0.0.** Many passages keep it in
+the present tense because they document the behaviour this backend was built to reproduce or to diverge from,
+and that reasoning is what makes the code readable. Nothing selects it any more.
 
 > **Status: it creates a device, HEADLESS OR WINDOWED, with a TIMELINE and REAL RESOURCES that RECORDS AND
 > SUBMITS, IT DRAWS, and IT PRESENTS.** Rows 1 to 7 of the work breakdown are done:
@@ -19,10 +23,13 @@ and nothing that does not want the Objective-C interop ever carries it.
 > **THE DEFAULT ON MACOS SINCE 17.40.0.** The OS probe answers `GpuBackendKind.MetalNative` there now, so a game that
 > references this package and calls `Register()` gets it without naming anything. The flip was taken by
 > DECISION on 2026-08-22, ahead of the field-evidence gates the rollout still had open, and the dated addendum
-> in section 17 of the design records which of them remain open as issues. This package stays OPT-IN as a
-> package, in no umbrella: a game that does not reference it falls back to `GpuBackendKind.Metal` with a WARN naming the
-> missing registration rather than failing to boot. `GpuBackendKind.Metal`, which goes through Veldrid, stays selectable
-> by `KE_GRAPHICS_BACKEND=metal` for ONE release and is removed in the next one.
+> in section 17 of the design records which of them remain open as issues. Since 18.0.0 the package rides the
+> `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas, and `AppWindow` and both snapshot hosts call
+> `GpuBackends.RegisterPlatformDefaultIfUnregistered()`, so a repinned game needs no new call. A game that
+> references `KhaozEngine.Gpu` outside the umbrellas still calls `KhaozEngineMetal.Register()` itself, and a
+> default with no registered provider throws `GpuBackendProviderMissingException` rather than falling back.
+> `GpuBackendKind.Metal` is a RETIRED token: `KE_GRAPHICS_BACKEND=metal` or a stored user preference naming it
+> is redirected onto `MetalNative` with a WARN, and naming it in CODE throws `GpuBackendRetiredException`.
 > The macOS flip is the one with the largest blast radius of the three, because macOS is the fleet's
 > DEVELOPMENT platform: every windowed playtest, capture, editor session and local golden run moved with it.
 > A local BAKE was the sharp edge, and it stayed sharp for one release. This backend was a GUEST in the
@@ -59,9 +66,9 @@ and nothing that does not want the Objective-C interop ever carries it.
 > whole transfer family, which leaves `IGpuCommandList` with no unbuilt member at all. See [Draws, dispatches
 > and transfers: the backend renders](#draws-dispatches-and-transfers-the-backend-renders).
 > Row 16 finished what the device says about itself: the whole `GpuCapabilities` set at ZERO permitted
-> differences from the Veldrid Metal backend, every `GpuDeviceCounters` channel a device with no swapchain has,
-> and a frame capture that takes this backend's own queue pointer. See [What the device reports about
-> itself](#what-the-device-reports-about-itself).
+> differences from the deleted Veldrid Metal backend, every `GpuDeviceCounters` channel a device with no
+> swapchain has, and a frame capture that takes this backend's own queue pointer. See [What the device
+> reports about itself](#what-the-device-reports-about-itself).
 > Row 15 made it WINDOWED: the `CAMetalLayer`, the drawable, the present, the queued resize and a vsync toggle
 > that always applies, so `IGpuDevice` has no unbuilt member left. See [The swapchain: a layer, a drawable, and
 > a present that cannot be skipped silently](#the-swapchain-a-layer-a-drawable-and-a-present-that-cannot-be-skipped-silently).
@@ -106,9 +113,9 @@ those bodies are `NoInlining` so the JIT never compiles one.
 
 ## What the probe asks (M-N4)
 
-The incumbent Veldrid Metal backend's own support check creates a device inside a bare catch. That is the FLOOR
-of this probe rather than the whole of it. On top of it, four reads, each cheap here and expensive anywhere
-later:
+The deleted Veldrid Metal backend's own support check created a device inside a bare catch. That is still the
+FLOOR of this probe rather than the whole of it. On top of it, four reads, each cheap here and expensive
+anywhere later:
 
 - **a device exists and reports a name**, which is what `GpuCapabilities.DeviceName` parity depends on under a
   zero-permitted-difference bar.
@@ -144,7 +151,7 @@ submit order the observable order by construction.
 **`KE_METAL_DEVICE`** picks a different one. It takes a zero-based index into `MTLCopyAllDevices()`, a
 case-insensitive substring of a device name, or `discrete`, `integrated` or `low-power`. Unset, the DEFAULT is
 `MTLCreateSystemDefaultDevice()` rather than element zero of the enumeration, and that is a decision rather than
-a shortcut: the incumbent Veldrid Metal backend calls that function, `GpuCapabilities.DeviceName` is compared
+a shortcut: the deleted Veldrid Metal backend called that function, `GpuCapabilities.DeviceName` was compared
 against it under a zero-permitted-difference bar, and taking the array's first element instead would swap the
 GPU underneath the one gate that has to isolate the backend swap. An ordinary run therefore never enumerates at
 all.
@@ -209,11 +216,11 @@ because a queue executes in enqueue order.
 
 ## What the device reports about itself
 
-**`GpuCapabilities` is at ZERO permitted differences from the Veldrid Metal backend**, which is a stricter bar
-than the native Direct3D 11 backend's and is the right one here: the incumbent Metal backend has no capability
-defect to correct. A test creates both devices in one process and compares every member, and it carries a
-reflection check that the comparison covers the whole struct, so a member added later cannot weaken the
-assertion by being forgotten.
+**`GpuCapabilities` was held at ZERO permitted differences from the deleted Veldrid Metal backend**, which was a
+stricter bar than the native Direct3D 11 backend's and the right one here: that Metal backend had no capability
+defect to correct. While both shipped, a test created both devices in one process and compared every member,
+carrying a reflection check that the comparison covered the whole struct, so a member added later could not
+weaken the assertion by being forgotten.
 
 Seven of the nine members are CONSTANTS, because the incumbent answers them with constants too. Metal's clip
 space already matches the engine's, so `ClipSpaceYInverted` is false with no viewport correction anywhere.
@@ -240,12 +247,12 @@ three, which is literally true rather than a placeholder.
 
 **`GpuDeviceDiagnostics.SoftwareAdapter` is FALSE with confidence rather than null**, because Apple ships no
 software Metal rasterizer at all. That is a different fact from "nobody asked", which is what null means and
-what the Veldrid Metal path correctly reports, since it cannot answer. `DeviceLossReason` is the latch above.
+what the Veldrid Metal path correctly reported, unable to answer. `DeviceLossReason` is the latch above.
 
 **A Metal GPU frame capture takes this backend's queue directly.** `GpuFrameCapture.ArmNext(path)` writes the
 next frame to an Xcode `.gputrace`, and on this backend the capture names the `MTLCommandQueue` the device
 created rather than reaching into Veldrid's private field by reflection, which is what the Veldrid Metal path
-still has to do. `MTL_CAPTURE_ENABLED=1` must be in the environment BEFORE the process launches, the same
+had to do. `MTL_CAPTURE_ENABLED=1` must be in the environment BEFORE the process launches, the same
 process-launch rule the validation variables have. Without it the capture asks Metal whether the destination is
 supported, gets no, and does nothing. That guard is not decoration: starting a capture in a process where
 capture was never enabled raises an Objective-C exception, which is a process abort rather than a caught error.
@@ -303,15 +310,15 @@ sides, so a buffer write is a `memcpy` with no staging path, no flush and no inv
 and no `MTLHeap`: `newBufferWithLength:options:` IS the allocation.
 
 **A buffer that declares BOTH `UniformBuffer` and a structured usage throws at creation, and that is a
-deliberate divergence rather than a gap.** Both Veldrid backends accept the combination and nothing in this
+deliberate divergence rather than a gap.** Both deleted Veldrid backends accepted it and nothing in this
 engine creates it. A uniform buffer on this backend is rebased per frame by the uniform ring, and a structured
 binding of the same buffer would read whichever segment that frame happened to land on. Create two buffers.
 
 **A staging texture is not a texture.** It is a Shared `MTLBuffer` carrying the incumbent's SOFTWARE
 subresource layout, byte for byte, because that is what every golden reads back through. `Map` reports the row
-pitch and size for subresource 0 out of that arithmetic, which a checked-in 232-row table pins against
-Veldrid's own functions with no device in the room. `Unmap` is a no-op, as it is in the incumbent, because a
-Shared buffer's pointer needs no unmapping.
+pitch and size for subresource 0 out of that arithmetic, which a checked-in 232-row table pins against the
+numbers Veldrid's own functions produced, with no device in the room. `Unmap` is a no-op, as it was in the
+incumbent, because a Shared buffer's pointer needs no unmapping.
 
 **`Map` waits, where the incumbent does not.** `MTLGraphicsDevice.MapCore` hands back `contents()` immediately,
 which is correct today only because every engine caller drains first, so the seam's guarantee rests on a
@@ -390,8 +397,8 @@ a CPU write racing a GPU read.
 **A record-time uniform write LANDS THE MOMENT IT IS MADE, which is the ring's one consequence for a
 renderer.** It records no command, so it is not ordered against the draws in the same list: two writes to the
 same range inside one frame leave the second value for every draw of that frame, including the draws recorded
-between them. The Veldrid Metal backend orders the same write against the draws, so this is a real difference
-between the two Metal backends, and it is measured on both in one process by the engine's
+between them. The deleted Veldrid Metal backend ordered the same write against the draws, so this was a real
+difference between the two Metal backends, and it was measured on both in one process by the engine's
 `RecordTimeUniformRewriteGpuTests`. Per-draw and per-pass uniforms are addressed by dynamic offset rather than by
 rewriting one range, which is what the engine's renderers do and what makes the ring possible at all.
 
@@ -493,7 +500,7 @@ size read out of the module, because MSL does not carry it and `dispatchThreadgr
 
 **One library per STAGE is forced, not chosen.** SPIRV-Cross emits each stage as its own translation unit and
 names both entry points `main0`, so compiling the two texts together is a duplicate-symbol error. The
-entry-point name is READ rather than assumed for the same family of reason: the incumbent gets it from a Veldrid
+entry-point name is READ rather than assumed for the same family of reason: the incumbent got it from a Veldrid
 layer this backend does not have, and a wrong name is not a compile error at all, it is a library that builds
 and a nil function, so that is a separate refusal with its own message.
 
@@ -669,7 +676,7 @@ no rasterizer depth-clip enable, so the seam's `false` becomes `-setDepthClipMod
 `RasterizerDescription.DepthClipEnable` and Vulkan from the inverse of `depthClampEnable`. This backend shipped
 reproducing the incumbent's rule instead, which derived the mode from the DEPTH TEST and read the seam's flag
 nowhere at all, and `17.39.0` corrected both Metal paths together
-([#598](https://github.com/APKiwiOrg/KhaozEngine/issues/598)): the vendored Veldrid fork carries the identical
+([#598](https://github.com/APKiwiOrg/KhaozEngine/issues/598)): the vendored Veldrid fork carried the identical
 change as `4.9.104`. Fixing only this one would have left the native leg disagreeing with the `metal` grids the
 incumbent baked. Neither moved a committed golden.
 
@@ -799,11 +806,11 @@ AFTER the pass opened ends the pass and goes back on the pending array, because 
 there is no cheaper shape available. A framebuffer plus a clear plus an `End` with no draw at all still clears,
 through a begin and end pair with nothing between them.
 
-**The clear lands on the attachment you NAME, and that is a deliberate difference from the Veldrid Metal
-backend.** That one writes every clear into `colorAttachments[0]`, so a framebuffer with more than one colour
-target clears only its first, and the engine's own model pass clears three attachments of `ModelFB` and ships a
-comment describing the collapse. The two attachments that were never cleared load a freshly created
-`StorageModePrivate` texture nothing has written, which is undefined rather than stable. A
+**The clear lands on the attachment you NAME, and that was a deliberate difference from the deleted Veldrid
+Metal backend.** That one wrote every clear into `colorAttachments[0]`, so a framebuffer with more than one
+colour target cleared only its first, and the engine's own model pass clears three attachments of `ModelFB`
+and shipped a comment describing the collapse. The two attachments that were never cleared loaded a freshly
+created `StorageModePrivate` texture nothing had written, which was undefined rather than stable. A
 `KE_METAL_CLEAR=attachment0` switch reproduced the collapse for rollout gate 1's A/B and was removed at that
 gate with the losing branch, so there is nothing to set: the clear lands where you asked, always. The A/B's
 answer is worth carrying, because it says what the goldens can and cannot see. The suite passed in BOTH
@@ -816,7 +823,7 @@ tile-based GPU and is deliberately not taken here: it leaves contents undefined,
 across runs.
 
 **The viewport and the scissor are emitted on a framebuffer CHANGE only.** There is no `SetViewport` on the GPU
-seam at all: the engine gets one because Veldrid's own `SetFramebuffer` auto-applies a full viewport and a full
+seam at all: the engine gets one because Veldrid's own `SetFramebuffer` auto-applied a full viewport and a full
 scissor, inside an identity guard. Both halves are reproduced. A backend that never emits rasterises nothing,
 and one that emits on every bind silently restores the full scissor and renders the next draw outside the
 rectangle the caller set. The scissor is additionally gated on the bound pipeline's `ScissorTestEnabled`: Metal
@@ -856,8 +863,8 @@ standalone render pass whose one colour attachment is the multisampled source at
 `storeAction = MultisampleResolve`, with the destination as its resolve texture. Metal's resolve store action
 does not also store the multisampled attachment, so the source is undefined afterwards. This diverges from
 Direct3D 11's `ResolveSubresource` and Vulkan's `vkCmdResolveImage`, which both leave the source alone, and it
-is reproduced from the Veldrid Metal backend rather than fixed: the engine re-clears its MSAA render targets at
-the start of the next frame's pass, discarding is the bandwidth-correct answer on Apple's tile-based
+is reproduced from the deleted Veldrid Metal backend rather than fixed: the engine re-clears its MSAA render
+targets at the start of the next frame's pass, discarding is the bandwidth-correct answer on Apple's tile-based
 architecture, and the committed `metal` goldens were baked under it. **If you need the source preserved, copy it
 before resolving.** A consumer relying on the source surviving a resolve is relying on behaviour this backend
 does not have.
@@ -868,18 +875,18 @@ command that interrupts a pass opens a different encoder kind. So a resolve issu
 boundary, which discards the pipeline state, every argument-table entry, the viewport, the scissor and every
 vertex stream, and the next draw pays a full re-activation. What it does NOT do is force out a pass that
 collected clears and saw no draw: those clears stay owed until a draw, a framebuffer change or `End`, so
-clearing a target and resolving it with nothing drawn resolves its PRE-CLEAR contents. That is the Veldrid Metal
-backend's behaviour reproduced rather than smoothed.
+clearing a target and resolving it with nothing drawn resolves its PRE-CLEAR contents. That is the deleted
+Veldrid Metal backend's behaviour reproduced rather than smoothed.
 
 **`CopyBuffer` requires both offsets to be multiples of four, and refuses by name when they are not.** macOS
 requires that of the underlying copy. The SIZE is padded up for you, which lands inside the destination's own
 allocation by construction. An unaligned OFFSET throws rather than being routed through an embedded compute
-shader the way the Veldrid backend does, because no shipped call site in the engine produces one and a
+shader the way the Veldrid backend did, because no shipped call site in the engine produces one and a
 device-free test over every call site is what keeps that true. Align the offset, or use the device-level
 `UpdateBuffer`, which is a plain copy with no blit behind it.
 
 Since 17.40.0 that refusal is **not this backend's alone**. The offset half of the rule moved up to the seam, so
-Veldrid, `KhaozEngine.Gpu.Vulkan` and `KhaozEngine.Gpu.D3D11` refuse the same offsets in the same words, and a
+`KhaozEngine.Gpu.Vulkan` and `KhaozEngine.Gpu.D3D11` refuse the same offsets in the same words, and a
 call that works on a developer's Windows machine no longer fails on a player's Mac
 ([#602](https://github.com/APKiwiOrg/KhaozEngine/issues/602)). The SIZE padding stays local, because Metal is the
 only backend that needs it.
@@ -897,7 +904,7 @@ drawable, and hands back a device whose `SwapchainFramebuffer` is the same objec
 `Present()` presents the drawable the frame rendered into, applies anything a resize or a vsync change queued,
 and acquires the drawable the next frame will use.
 
-**The layer configuration is the Veldrid Metal backend's, field for field, with one exception.** `device`,
+**The layer configuration is the deleted Veldrid Metal backend's, field for field, with one exception.** `device`,
 `pixelFormat` (`BGRA8Unorm`, or its sRGB sibling if the seam ever grows a way to ask), `framebufferOnly = true`,
 and `drawableSize` from the host view's frame.
 

@@ -37,10 +37,14 @@ These graph rules are not just prose. Headless architecture tests in `KhaozEngin
   seam/backend home, and any new one must be added to the allowlist deliberately), the layering invariants
   (`Primitives` is the zero-dependency leaf, `Simulation` may reference `Determinism` and nothing else, the
   Foundation umbrella stays GPU-free, `App` never references `Gui`), the locked ProjectReference membership of the four umbrellas, opt-in backends staying out of
-  every umbrella's transitive closure, `Render3D` staying seams-only, and the native Direct3D 11 backend
+  every umbrella's transitive closure, the INVERSE rule for the three native GPU backends (every umbrella that
+  carries `Gpu` must carry all three, since 18.0.0), `Render3D` staying seams-only, and each native backend
   declaring no `Veldrid` package of its own.
 - `GpuPublicApiTests.cs` - reflection guards that walk the public and protected surface of `KhaozEngine.Gpu` and
-  fail if any Veldrid type leaks through it, proving the GPU seam keeps Veldrid contained. The same walk runs
+  fail if any Veldrid type leaks through it, proving the GPU seam keeps the SHADER TOOLCHAIN contained. That is
+  the whole of what the rule guards since 18.0.0: the incumbent backend was deleted and `Veldrid.SPIRV` (with
+  the `Veldrid` base assembly its reflection types live in) is the only Veldrid left in the graph, confined to
+  `KhaozEngine.Gpu`. The same walk runs
   over `KhaozEngine.Gpu.D3D11` for `Veldrid`, `Vortice` and `SharpGen`, since a Direct3D type in a public
   signature would load a Windows-only assembly on a platform that has none. A third guard reads that assembly's
   own references and fails on any `Veldrid` one, which is the only way to catch a Veldrid type crossing through
@@ -53,7 +57,7 @@ this doc cannot silently drift apart.
 
 | Area | Seam (dependency-free) | Backend(s) | Third-party library |
 |---|---|---|---|
-| GPU / rendering | `KhaozEngine.Gpu` (`GpuDeviceContext` + `GpuInterfaces`, `GpuBackendSelector`, `GpuBackendProviders` / `IGpuBackendProvider` for a backend that ships outside this package, and `GpuRecording`, the mandatory open-recording gate described below) | (in-package) `Internal/VeldridGpuDevice`, which is all four Veldrid legs including Metal, plus THREE engine-owned native backends that ship outside it, each opt-in and in no umbrella: `KhaozEngine.Gpu.D3D11` (`KhaozEngineD3D11.Register()`), `KhaozEngine.Gpu.Vulkan` (`KhaozEngineVulkan.Register()`) and `KhaozEngine.Gpu.Metal` (`KhaozEngineMetal.Register()`), and any other registered out-of-package provider | Veldrid (+ Veldrid.SPIRV, Vortice.Direct3D11) in the seam. Vortice.Direct3D11 + Vortice.D3DCompiler in the D3D11 backend and Silk.NET.Vulkan (+ its KHR and EXT extension packages) in the Vulkan one. The Metal backend declares NO third-party binding at all: its Objective-C interop is engine-owned `libobjc` and `Metal.framework` P/Invoke. None of the three declares a Veldrid package of its own |
+| GPU / rendering | `KhaozEngine.Gpu` (`GpuDeviceContext` + `GpuInterfaces`, `GpuBackendSelector`, `GpuBackendProviders` / `IGpuBackendProvider`, and `GpuRecording`, the mandatory open-recording gate described below). It builds NO device of its own since 18.0.0 | THREE engine-owned native backends, all of which ship outside the seam and all of which are carried by the `Game2D` / `Game3D` umbrellas since 18.0.0: `KhaozEngine.Gpu.D3D11` (`KhaozEngineD3D11.Register()`), `KhaozEngine.Gpu.Vulkan` (`KhaozEngineVulkan.Register()`) and `KhaozEngine.Gpu.Metal` (`KhaozEngineMetal.Register()`), plus any other registered out-of-package provider. `KhaozEngine.Windowing.GpuBackends` registers the running platform's one, and `AppWindow` calls it at boot | Veldrid.SPIRV (+ the `Veldrid` base assembly its reflection types live in) in the seam, as the SHADER TOOLCHAIN and nothing else, plus Vortice.Direct3D11 for the driver-threading probe. Vortice.Direct3D11 + Vortice.D3DCompiler in the D3D11 backend and Silk.NET.Vulkan (+ its KHR and EXT extension packages) in the Vulkan one. The Metal backend declares NO third-party binding at all: its Objective-C interop is engine-owned `libobjc` and `Metal.framework` P/Invoke. None of the three declares a Veldrid package of its own |
 | 3D physics | `KhaozEngine.Physics` (`IPhysicsWorld`, value-type shapes/poses/queries, and since the floating-origin release also the default-method `Origin` / `CanRebase` / `Rebase(newOrigin)`, so an existing implementer keeps compiling and correctly reports that it cannot rebase - the seam learns a plain `Vector3`, never a frame type, and keeps its zero project references) | `KhaozEngine.Physics.Bepu` (`BepuPhysicsWorld`, which overrides all three: bulk direct pose writes plus broadphase refits over every allocated body set and the statics, so sleeping bodies, contacts and constraints all survive a shift) | BepuPhysics v2 |
 | Netcode transport | `KhaozEngine.Netcode` (`INetTransport` incl. the default-method `Stats` -> `NetTransportStats`, `LoopbackTransport`) + `Netcode.Abstractions` | `KhaozEngine.Netcode.LiteNetLib` (fills `Stats` via `EnableStatistics`) | LiteNetLib |
 | Persistence | `KhaozEngine.WorldStore` (`IWorldStore`, `InMemoryWorldStore`) | `WorldStore.Sqlite`, `WorldStore.SqlServer` | Microsoft.Data.Sqlite / SqlClient |
@@ -845,6 +849,18 @@ would scatter the eventual SPIRV-Cross replacement across every backend package 
 The edge stays in `KhaozEngine.Gpu` behind internal helpers plus `InternalsVisibleTo`, which is where it already
 belongs: this package owns `ShaderValidation`, which uses precisely that static API with no device in existence.
 
+**THE RULE OUTLIVED THE BACKEND IT WAS WRITTEN AGAINST, and that is the point.** It was risk R7 of the removal
+design: an engine that deletes the Veldrid incumbent and then lets `Veldrid.SPIRV` creep back out across three
+backend packages has swapped one containment problem for a worse one, because the toolchain edge is the harder
+of the two to see. `18.0.0` deleted the incumbent
+([#687](https://github.com/APKiwiOrg/KhaozEngine/issues/687)) and left the toolchain exactly where it was, one
+seat in `KhaozEngine.Gpu`, so the swap that replaces it
+([#462](https://github.com/APKiwiOrg/KhaozEngine/issues/462), row 8 of
+[#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)) stays a change to one half of one file. The two
+guards below are what hold it, and they are now the ONLY reason a `Veldrid` reference is remarkable anywhere:
+with no incumbent left, every other Veldrid edge the engine ever had is gone, and these two are what keep the
+last one from spreading.
+
 **AND THAT SEAM IS TWO MEMBERS NOW RATHER THAN ONE, which is decision V-S3** (section 12.3 of
 [design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md](design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md), landed
 by [#526](https://github.com/APKiwiOrg/KhaozEngine/issues/526)). `Internal/SpirvFrontEnd` is the glslang half
@@ -905,12 +921,11 @@ and would be invisible to every public-surface scan there is.
 `GpuPublicApiTests.NativeGpuBackend_ReferencesNoVeldridAssembly`
 reflects over the built assembly's references and closes exactly that gap, which is why the helper's whole
 contract is expressed in engine mirrors (`CrossCompiledPair` / `ShaderReflection` over `GpuVertexElement` and
-`GpuResourceLayoutDescription`). Both are theories over `KhaozEngine.Gpu.D3D11` and `KhaozEngine.Gpu.Vulkan`,
-so a third native backend joins them by adding one row each.
+`GpuResourceLayoutDescription`). Both are theories over all three native backend packages.
 
 The same `InternalsVisibleTo` carries the other internal the backend needs, `IGpuDeviceLifecycle`: a natively
-created device implements it to get the same disposal latch the Veldrid wrapper has, so a resource wrapper
-disposed after the device no-ops instead of calling into freed driver objects.
+created device implements it to get the disposal latch the deleted Veldrid wrapper introduced, so a resource
+wrapper disposed after the device no-ops instead of calling into freed driver objects.
 
 ### The shared-internal seam: four types all three backends now sit on
 
@@ -946,14 +961,15 @@ It reaches nothing else internal to `KhaozEngine.Gpu`.
 
 The pattern is applied at the granularity the dependency warrants:
 
-1. **Separate opt-in backend package** (the strongest split): GPU, physics, netcode transport, persistence,
-   the commerce wallet. The third-party reference lives in its own package so consumers pick it explicitly.
-   Physics, worldstore, commerce SQL and the native Direct3D 11 GPU backends are genuinely opt-in (excluded
-   from umbrellas). The Veldrid binding still ships inside `KhaozEngine.Gpu` because rendering is not optional
-   for a windowed game and every consumer needs SOME device out of the box, and the LiteNetLib transport
-   backend is deliberately bundled into the `Server` umbrella because a server needs a real transport out of
-   the box. `KhaozEngine.Gpu.D3D11` is the first GPU backend to leave the seam package, which it can because it
-   is an ALTERNATIVE implementation of a backend that already works rather than the only way to get a device.
+1. **Separate backend package** (the strongest split): GPU, physics, netcode transport, persistence,
+   the commerce wallet. The third-party reference lives in its own package. Physics, worldstore and commerce
+   SQL are genuinely opt-in (excluded from umbrellas). The three native GPU backends are NOT, and that is the
+   `18.0.0` change: they were opt-in while `KhaozEngine.Gpu` still built a Veldrid device of its own, and
+   deleting it made them the only implementations there are, so the `Game2D` and `Game3D` umbrellas carry all
+   three. The LiteNetLib transport backend is bundled into the `Server` umbrella for the same shape of reason,
+   because a server needs a real transport out of the box. The split still buys what it always did: the D3D11
+   interop is not in a Linux server head's graph, because the `Foundation` and `Server` umbrellas carry no
+   `Gpu` at all.
 2. **Seam + default + null, one package** (audio): the contract, the real OpenAL backend, and a no-op
    `Null*` backend live together. The null backend keeps audio headless-testable and lets a server run with
    no device, while still being one `add` for a game that wants sound.
@@ -979,9 +995,10 @@ windowed frame loop, both snapshot hosts, the preview, the offscreen 2D captures
 retire barrier, the mip generates and every readback.
 
 **Why the gate is at the seam and not in a backend.** The backends genuinely disagree about a second concurrent
-recording, and each disagreement is structural for that backend rather than an oversight: the Veldrid Direct3D11
-leg refuses it, the three engine-owned native backends each tolerate N recordings for three different reasons,
-and the Veldrid Metal and Vulkan legs silently produce half a frame. A seam whose behaviour changes when a
+recording, and each disagreement is structural for that backend rather than an oversight: the three
+engine-owned native backends each tolerate N recordings for three different reasons, and the Veldrid legs the
+gate was written against disagreed three more ways (the Direct3D11 one refused it, and the Metal and Vulkan
+ones silently produced half a frame). A seam whose behaviour changes when a
 failed device creation falls back to another backend is not a seam, so the rule is enforced above all of them,
 where it reads the same everywhere and is provable with no GPU at all. That makes it the first place in this
 document where the seam constrains its own callers rather than only its implementers.
@@ -1039,11 +1056,13 @@ so the bound holds identically on a Veldrid backend with no ring at all and on a
 presents. `ValveDrains` and the now-public `SealedBatchCount` are the two members that let a caller see it working.
 The frame-counted factory needed none of this, since a frame count is already a bound.
 
-## GPU-backend invariant: ONE uniform buffer per pipeline (Metal via Veldrid/SPIRV-Cross)
+## GPU-backend invariant: ONE uniform buffer per pipeline (history, and why the rule is kept)
 
-**MEASURED 2026-08-11: this is the INCUMBENT'S BUFFER NUMBERING, not a property of Metal.** The rule below is
-KEPT and still binds every new render path, for the reason at the end of this section, but what it is a fact
-ABOUT changed, so read the mechanism before designing around it.
+**MEASURED 2026-08-11: this was the VELDRID INCUMBENT'S BUFFER NUMBERING, not a property of Metal.** That
+backend was deleted in `18.0.0` ([#687](https://github.com/APKiwiOrg/KhaozEngine/issues/687)), so the defect
+below no longer exists anywhere in the engine. The rule is KEPT and still binds every new render path, for the
+reason at the end of this section, but it is a shipped-content constraint now rather than a live hazard, so
+read the mechanism before designing around it.
 
 **The mechanism.** Veldrid's `MTLResourceLayout` numbers a buffer by counting every buffer element declared in
 the preceding sets, and SPIRV-Cross numbers only the arguments the stage it is emitting actually REFERENCES.
@@ -1084,11 +1103,11 @@ vertex shape measured above does not reproduce it today. That narrows what is cu
 refuting the record, and the rule below keeps covering it either way.
 
 **THE RULE IS UNCHANGED AND STILL BINDING**, and the measurement is not a licence to start spreading uniforms
-across sets. `GpuBackendKind.Metal` is still selectable and still ships, so a pipeline written to the native
-backend's binding would be correct there and read zeros on the incumbent, which is the same argument that keeps
-the sample-textures-in-binding-order discipline. Lifting it is its own work with its own gates on all three
-backends, tracked at https://github.com/APKiwiOrg/KhaozEngine/issues/604 and triggered by the retirement of the
-Veldrid Metal leg rather than by this measurement.
+across sets. The argument that kept it while the incumbent shipped is spent: `GpuBackendKind.Metal` is a
+retired token now and builds nothing, so a pipeline written to the native backend's binding cannot be read by
+anything that counts. What keeps the rule is that lifting it MOVES GOLDENS on all three backends, so it is its
+own work with its own gates, tracked at https://github.com/APKiwiOrg/KhaozEngine/issues/604. That issue is
+UNBLOCKED as of `18.0.0`, which is exactly the trigger it named.
 
 The engine-wide rule for any new render path: the pipeline reads exactly ONE uniform buffer, at set 0
 binding 0. Fold everything any stage needs from a UBO - the vertex's ViewProj / bone palette / per-instance
@@ -1178,27 +1197,27 @@ inclusive under clipping: clip and clamp rasterize those identically. The fourth
 where the modes differ for a sprite crossing EITHER plane: clipping drops the outside fragments, clamping keeps
 them and pins their depth to the limit, and at the FAR plane those clamped-to-1 fragments then pass the pass's
 LessEqual test against a background depth of 1. No golden scene has a billboard crossing either plane. Both
-Metal legs ran the full suite green on the committed grids.
+Both Metal legs of the day ran the full suite green on the committed grids.
 
 ## GPU seam contract: a `CopyBuffer` offset is a multiple of four on every backend (17.40.0)
 
 **The question this settles.** `IGpuCommandList.CopyBuffer(src, srcOffsetBytes, dst, dstOffsetBytes, sizeInBytes)`
-had no stated constraint on either offset, and the four backends did not agree about one. macOS requires both
-offsets of `copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:` to be multiples of four, so
-`KhaozEngine.Gpu.Metal` refused an unaligned offset by name from the day it shipped, while Veldrid, native
+had no stated constraint on either offset, and the four backends of the day did not agree about one. macOS
+requires both offsets of `copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:` to be multiples of four,
+so `KhaozEngine.Gpu.Metal` refused an unaligned offset by name from the day it shipped, while Veldrid, native
 Vulkan and native Direct3D 11 all took it. The same public call therefore succeeded on three backends and threw
 on the fourth ([#602](https://github.com/APKiwiOrg/KhaozEngine/issues/602)). The seam now carries the strictest
-backend's requirement as its own contract, and all four refuse identically.
+backend's requirement as its own contract, and every backend refuses identically.
 
 **Where the rule lives.** `KhaozEngine.Gpu/Internal/GpuCopyAlignment.cs`, internal, reached by the three native
-backend packages across the `InternalsVisibleTo` seam they already sit on and by the incumbent wrapper inside
-`KhaozEngine.Gpu` itself. One helper means one wording: the exception is an `ArgumentOutOfRangeException` whose
+backend packages across the `InternalsVisibleTo` seam they already sit on. The Veldrid wrapper inside
+`KhaozEngine.Gpu` reached it too until `18.0.0` deleted it. One helper means one wording: the exception is an `ArgumentOutOfRangeException` whose
 `ParamName` is the seam's own `srcOffsetBytes` or `dstOffsetBytes` and whose message names the side the bad
 offset came from, whichever backend answered. `MetalCopyAlignment` keeps its name and its SIZE half, which is
 Metal's alone (only Metal needs the size aligned, and it pads the size up rather than refusing it), and forwards
 its offset half here.
 
-**Why the seam tightened instead of Metal loosening.** The other direction exists: the incumbent routes an
+**Why the seam tightened instead of Metal loosening.** The other direction existed: the incumbent routed an
 unaligned copy through an embedded compute shader and a dedicated compute pipeline, and native Metal could have
 reproduced that. It was declined for the same reason section 9.3 declined it originally, and rounding at the
 helper was declined for a stronger one. An offset selects WHICH bytes come back, so rounding one UP hands the
@@ -1209,7 +1228,7 @@ start is still legal to READ, just not to copy from, so a caller who genuinely n
 **What it cost in this repository: nothing, and that is measured rather than assumed.** All five in-repo
 `GpuReadback.ReadBuffer<T>` callers leave `srcOffsetBytes` at its default of 0, and
 `MetalCopyBufferCallSiteTests` sweeps every `CopyBuffer` call site in shipped source mechanically and finds no
-unaligned offset anywhere. It is a behaviour change for a CONSUMER that passed one on Veldrid, Vulkan or
+unaligned offset anywhere. It was a behaviour change for a CONSUMER that passed one on Veldrid, Vulkan or
 Direct3D 11, where the call used to be taken.
 
 **Why it landed before the Veldrid removal rather than after.** Deleting the incumbent would have narrowed the
@@ -1218,10 +1237,10 @@ present is what makes a green suite evidence that nothing ever leaned on the tol
 incumbent enforces the new rule too and every golden still passes through it
 (`docs/design/VELDRID-REMOVAL-DESIGN-2026-08-22.md` section 6, row 1 of section 7).
 
-**Where it is pinned.** `KhaozEngine.Render.Tests/Gpu/CopyBufferOffsetContractTests.cs` drives all four
-implementations side by side with no device, which is the only place the agreement itself can be asserted, and
-`CopyBufferOffsetGpuTests.cs` runs the same contract on whatever device the host resolves, so the five-leg
-matrix checks it on four real drivers rather than on four fakes.
+**Where it is pinned.** `KhaozEngine.Render.Tests/Gpu/CopyBufferOffsetContractTests.cs` drives every
+implementation side by side with no device, which is the only place the agreement itself can be asserted, and
+`CopyBufferOffsetGpuTests.cs` runs the same contract on whatever device the host resolves, so the three-leg
+matrix checks it on three real drivers rather than on three fakes.
 
 ## Adding a new backend
 
@@ -1231,7 +1250,10 @@ To swap or add a backend for a seam that already has the separate-package split:
 2. Implement the seam interface (`IPhysicsWorld`, `INetTransport`, `IWorldStore`, ...). Keep it the **only**
    assembly that references the library.
 3. Leave it out of the umbrella metapackages (`Foundation`/`Game2D`/`Game3D`/`Server`) unless it is
-   non-optional, so it stays opt-in like `Physics.Bepu` / `Netcode.LiteNetLib` / `WorldStore.Sqlite`.
+   non-optional, so it stays opt-in like `Physics.Bepu` / `WorldStore.Sqlite`. A GPU backend is the exception
+   since `18.0.0`: `KhaozEngine.Gpu` builds no device of its own, so `Game2D` and `Game3D` carry all three
+   native backends and `ArchitectureTests.NativeGpuBackends_AreCarriedByEveryUmbrellaThatCarriesGpu` asserts
+   it.
 4. Headless test against the contract; for backends with a real device, gate device tests as the existing
    ones are.
 5. Run the full doc sweep (this table, the package catalog in `../README.md` and `../AGENTS.md`) so the
@@ -1241,7 +1263,7 @@ To swap or add a backend for a seam that already has the separate-package split:
 
 | Seam | Contract | Backend |
 |---|---|---|
-| GPU | `../KhaozEngine.Gpu/GpuDeviceContext.cs`, `GpuInterfaces.cs`, `GpuBackendSelector.cs` | `../KhaozEngine.Gpu/Internal/VeldridGpuDevice.cs` |
+| GPU | `../KhaozEngine.Gpu/GpuDeviceContext.cs`, `GpuInterfaces.cs`, `GpuBackendSelector.cs`, `GpuBackendProviders.cs` | `../KhaozEngine.Gpu.Metal/`, `../KhaozEngine.Gpu.D3D11/`, `../KhaozEngine.Gpu.Vulkan/`, registered through `../KhaozEngine.Windowing/GpuBackends.cs` |
 | Physics | `../KhaozEngine.Physics/IPhysicsWorld.cs` | `../KhaozEngine.Physics.Bepu/BepuPhysicsWorld.cs` |
 | Netcode | `../KhaozEngine.Netcode/` (`INetTransport`, `LoopbackTransport`) | `../KhaozEngine.Netcode.LiteNetLib/` |
 | Connect-time gate | `../KhaozEngine.Netcode/IConnectionAuthenticator.cs`, `HandshakeToken.cs` | `../KhaozEngine.Netcode/ConnectionGate.cs` (the three decorators + `Wrap` / `BuildToken`), forwarded from `../KhaozEngine.NetWorld/ProtocolHandshake.cs` and `VersionCheckingAuthenticator.cs` |

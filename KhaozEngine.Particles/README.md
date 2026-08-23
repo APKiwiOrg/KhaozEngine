@@ -1,7 +1,7 @@
 # KhaozEngine.Particles
 
 Pure, deterministic, headless-testable particle simulation for the MonoGame-free 5.x stack
-(`System.Numerics` + BCL only, no Veldrid/MonoGame, no project refs).
+(`System.Numerics` + BCL only, no graphics API, no project refs).
 
 - `ParticleSystem` - capacity-bounded pool. `Emit` a burst, `Update(dt)` to age/integrate/interpolate/recycle.
   Dead particles are swap-removed so `Active` is a contiguous `ReadOnlySpan<Particle>` of the live prefix.

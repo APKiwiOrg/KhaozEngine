@@ -35,12 +35,12 @@
 # This file is per-repo and is NOT part of the verbatim template layer.
 
 832 CHANGELOG.md
-311 docs/USING-KHAOZENGINE.md
+310 docs/USING-KHAOZENGINE.md
 33 README.md
 33 KhaozEngine.NetWorld/README.md
 26 docs/SECURITY-BASELINE.md
 25 KhaozEngine.Gui/README.md
-24 KhaozEngine.Render3D/README.md
+23 KhaozEngine.Render3D/README.md
 21 KhaozEngine.Updates/README.md
 20 KhaozEngine.Windowing/README.md
 14 docs/UPDATER.md
@@ -51,7 +51,6 @@
 11 AGENTS.md
 10 KhaozEngine.Replication/README.md
 9 KhaozEngine.Benchmarks/README.md
-8 docs/CROSS-PLATFORM.md
 8 KhaozEngine.Gui.Tests/Gui/Fixtures/RuinbornePlayChangelog.md
 8 KhaozEngine.App/README.md
 6 tools/proxy-authoring/README.md
@@ -60,16 +59,17 @@
 6 NOTICE.md
 6 KhaozEngine.Render2D/README.md
 6 KhaozEngine.Locomotion/README.md
-6 KhaozEngine.Diagnostics/README.md
 5 docs/design/WATER-STYLIZED-OCEAN-DESIGN-2026-07-25.md
 5 docs/design/WATER-SAMPLING-FRAME-DESIGN-2026-07-26.md
 5 docs/design/GPU-COMPUTE-DESIGN-2026-07-26.md
 5 docs/design/FFT-OCEAN-DESIGN-2026-07-26.md
 5 docs/PHYSICS-PIPELINE.md
+5 docs/CROSS-PLATFORM.md
 5 KhaozEngine.Platform/README.md
 5 KhaozEngine.Physics/README.md
 5 KhaozEngine.Gpu/README.md
 5 KhaozEngine.Game/README.md
+5 KhaozEngine.Diagnostics/README.md
 5 KhaozEngine.Audio/README.md
 4 docs/design/WATER-SHORE-DESIGN-2026-07-27.md
 4 docs/RENDER-PIPELINE.md

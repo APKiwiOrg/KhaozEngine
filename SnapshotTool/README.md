@@ -11,7 +11,8 @@ See [`../KhaozEngine.Snapshot/README.md`](../KhaozEngine.Snapshot/README.md) for
 ## Requirements
 
 - .NET 10.
-- A GPU device (Veldrid/Metal). The captures run offscreen (no window) but still need a real device, so
+- A GPU device (the platform's own engine backend, Metal on this Mac). The captures run offscreen (no window)
+  but still need a real device, so
   this runs on a dev box, not in headless CI.
 
 ## Run

@@ -95,8 +95,7 @@ one, and it refuses a layer that is not the size the set declares.
 **A slot past the last layer is not clamped to the last layer.** The tile-ground fragment clamps a corner slot to
 `0..63`, which is the uniform block's `TintTiling[64]` bound rather than the set's layer count, so a hand-built
 mesh naming a slot the set does not carry samples a layer that is not there. The three native backends
-hardware-clamp the layer index and read layer 0, and the incumbent Veldrid backend reads whatever the slice
-holds. A set built by `Build` cannot reach it (every set carries at least the reserved trailing layer, and the
+hardware-clamp the layer index and read layer 0, and they are the only backends since 18.0.0. A set built by `Build` cannot reach it (every set carries at least the reserved trailing layer, and the
 mesher only ever emits a slot `SlotOf` gave it), so this is about hand-built sets and hand-built meshes:
 [#675](https://github.com/APKiwiOrg/KhaozEngine/issues/675).
 

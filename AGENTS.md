@@ -142,11 +142,12 @@ exception is the trivial-change case below.
   touches a personal machine any more. `ci.yml` builds, tests, packs and publishes on **x64**
   `ubuntu-latest` (x64 is load-bearing, the test suite needs x64-only natives like `libveldrid-spirv`,
   which ships linux-x64 but not linux-arm64), and the path-gated `cross-platform-gpu.yml` matrix runs
-  FIVE blocking golden legs: Metal on hosted `macos-26` (pinned to the number, not to `macos-latest`,
-  so an image promotion cannot move the GPU under a golden gate), two Windows/WARP D3D11 legs and two
-  Linux/lavapipe Vulkan legs, each pair being the Veldrid incumbent plus the engine's own native
-  backend, which OWNS its own golden family from 17.41.0 (it was a guest in the incumbent's until then,
-  and the new family is a byte-identical copy). That matrix also carries the engine's only
+  THREE blocking golden legs since 18.0.0, one per engine-owned backend: `metal-native` on hosted
+  `macos-26` (pinned to the number, not to `macos-latest`, so an image promotion cannot move the GPU
+  under a golden gate), `direct3d11-native` on Windows/WARP and `vulkan-native` on Linux/lavapipe. The
+  three incumbent legs were deleted with the backend they tested, and each native leg owns the golden
+  family named after itself (seeded from the incumbent's as a byte-identical copy in 17.41.0). That matrix
+  also carries the engine's only
   Vulkan validation gate, in two tiers: `strict` on the native leg's scheduled full suite, and `sync`
   in a separate golden-and-compute job, which is the one instrument in CI that can see a missing
   barrier a software rasterizer orders correctly anyway. `docs/CROSS-PLATFORM.md` is the living doc for
@@ -308,8 +309,9 @@ exception is the trivial-change case below.
   and CI generally need the env var. When it cannot read, it says `BACKLOG: UNKNOWN` or `STALE MIRROR` and
   names the fix. **It never says `0`**, deliberately, because a count is only ever printed when it was
   actually read (the full case is in the `ledger.sh` header).
-- net10.0, MonoGame-free: Silk.NET (windowing + input, GLFW natives bundled per-RID), Veldrid behind
-  `KhaozEngine.Gpu` (GPU), Silk.NET.OpenAL (audio), xUnit (tests).
+- net10.0, MonoGame-free: Silk.NET (windowing + input, GLFW natives bundled per-RID), the engine's own
+  Metal / Direct3D 11 / Vulkan backends behind `KhaozEngine.Gpu` (GPU, with `Veldrid.SPIRV` kept as the
+  shader toolchain), Silk.NET.OpenAL (audio), xUnit (tests).
 
 ### Agent build workaround: .buildhome (unreadable ~/.gitconfig)
 

@@ -1,6 +1,8 @@
 # KhaozEngine.Gpu
 
-The GPU backend seam for the custom MonoGame-free stack: Veldrid contained behind an engine-owned layer.
+The GPU backend seam for the custom MonoGame-free stack: the graphics APIs contained behind an engine-owned
+layer. Since 18.0.0 this package builds NO device of its own, and the engine's three backend packages are the
+only implementations.
 
 What it owns today:
 
@@ -9,8 +11,12 @@ What it owns today:
   stored preference and hands it back as a `GpuBackendKind`, so renumbering repoints every saved graphics
   setting. `Direct3D11Native` (17.30.0), `VulkanNative` (17.32.0) and `MetalNative` (17.35.0) are those three
   APIs through the engine's own backends (`KhaozEngine.Gpu.D3D11`, `KhaozEngine.Gpu.Vulkan`,
-  `KhaozEngine.Gpu.Metal`) rather than through Veldrid, and each is a separate member so a session log, a
-  telemetry header and a frame time each name the implementation that actually ran.
+  `KhaozEngine.Gpu.Metal`), and each is a separate member so a session log, a telemetry header and a frame time
+  each name the implementation that actually ran. **`Metal`, `Vulkan`, `Direct3D11` and `OpenGL` are RETIRED in
+  18.0.0**: they named the deleted Veldrid backend, `GpuBackendSelector.IsRetired` answers for them,
+  `NativeReplacementFor` maps each onto the live backend for its API, and naming one in code throws
+  `GpuBackendRetiredException`. They are kept forever, because the enum is append-only and games have persisted
+  them.
   `GpuBackendKinds.IsDirect3D11(kind)` (17.30.0), `GpuBackendKinds.IsVulkan(kind)` (17.32.0) and
   `GpuBackendKinds.IsMetal(kind)` (17.35.0) are the family predicates for anything that talks to that API or
   reports on its driver, and each answers true for both of its implementations.
@@ -18,10 +24,10 @@ What it owns today:
   (`metal`/`metal-native`/`vulkan`/`vulkan-native`/`d3d11`/`d3d11-native`/`gl`, case-insensitive, plus the
   `mtl-native`, `vk-native`, `direct3d11`, `direct3d11-native` and `opengl` aliases) and otherwise probes the
   OS. **Since 17.40.0 every arm of that probe answers the ENGINE'S OWN backend**: macOS -> `MetalNative`,
-  Windows -> `Direct3D11Native`, Linux and everything else -> `VulkanNative`. The three Veldrid incumbents are
-  an explicit opt-out for ONE release, reached by naming `metal` / `d3d11` / `vulkan`, and are removed in the
-  next one. `IncumbentFor(OSPlatformKind)` (17.40.0) is that frozen incumbent map, and it is what a failed
-  device creation falls back TO. `Select(string?, OSPlatformKind)` is the pure, headless-testable overload.
+  Windows -> `Direct3D11Native`, Linux and everything else -> `VulkanNative`, and since 18.0.0 those are the
+  only backends. A `metal` / `d3d11` / `vulkan` / `gl` token names a retired member and RESOLVES to that API's
+  native backend with a WARN. `IncumbentFor` is deleted, so `ProbeOS` is the single map and is what a failed
+  device creation, a stored preference for a retired member and an unrecognized override all fall back TO. `Select(string?, OSPlatformKind)` is the pure, headless-testable overload.
 - **`GpuBackendSelection` / `GpuBackendSource`** (17.21.0) - the same choice, reported with its provenance.
   `Resolve()` and the pure `Resolve(string?, OSPlatformKind)` return `GpuBackendSelection(Backend, Source,
   RequestedOverride)`, where `Source` is `OsProbe`, `EnvironmentOverride`, or `UnrecognizedOverride`, and
@@ -41,13 +47,12 @@ What it owns today:
   override if it does not parse) while still carrying its raw text for the warning. With a null preference the
   behaviour is identical to before.
 - **`IsBackendSupported` / `SupportedBackends()`** (17.23.0) - which backends this machine can actually run, as
-  a FUNCTIONAL probe (Veldrid loads the library, creates an instance, enumerates devices, checks the required
-  Vulkan surface extensions), cached for the process lifetime. **A settings UI must offer only what
-  `SupportedBackends()` returns.** Since 17.40.0 that list carries each API's native implementation ahead of its
-  incumbent, so a picker that maps only the three Veldrid kinds will render the default as an unknown row. A
-  native kind appears ONLY where its provider is registered, so a game that has not referenced the native
-  package sees exactly the list it saw before. `OpenGL` always reports unsupported: there is no windowed GL
-  device path.
+  a FUNCTIONAL probe run by the backend's own provider (it loads the library, creates an instance, enumerates
+  devices, checks the required Vulkan surface extensions), cached for the process lifetime. **A settings UI must
+  offer only what `SupportedBackends()` returns.** Since 18.0.0 that list is the three native kinds, and every
+  retired member answers false, so a picker that maps only the three retired Veldrid kinds renders the default
+  as an unknown row. A kind appears ONLY where its provider is registered, which the `Game2D` / `Game3D`
+  umbrellas and `AppWindow` take care of for an ordinary game.
   Necessary but NOT sufficient, so it is paired with the creation fallback below rather than trusted alone.
 - **`GpuBackendProviders` / `IGpuBackendProvider`** (17.30.0) - the registry for a backend that ships in its own opt-in
   package, which this package cannot reference without a cycle. The consuming app registers it with one explicit
@@ -56,14 +61,14 @@ What it owns today:
   reference, so a package reference alone would not guarantee self-registration ever runs, and that failure is
   silent and machine-dependent. **A missing registration for a backend the caller NAMED throws
   `GpuBackendProviderMissingException` and never falls back**, because a run that quietly used a different
-  backend would file its measurements under the wrong name. Since 17.40.0 that is narrowed to a backend
-  `KE_GRAPHICS_BACKEND` PINNED (`GpuBackendSelection.WasPinnedByEnvironment`, which is the property `WasNamed`
-  became): everything else falls back to `IncumbentFor` with a WARN instead, because the probe answers a
-  provider-backed kind on every platform now and a game that never referenced the native package has made no
-  wiring mistake. A stored `UserPreference` falls back too and reports `FallbackAfterFailure`, the signal a game
-  clears the preference on, since a settings screen may offer a native row and a later build that dropped the
-  package would otherwise throw at boot with the setting that caused it unreachable from inside the game. A
-  DEFAULTED one reports `DefaultProviderMissing` instead, which no game should clear anything for. An incapable MACHINE is the other case entirely: the provider's own `IsSupported()` functional probe
+  backend would file its measurements under the wrong name. Since 18.0.0 a DEFAULTED backend with no
+  registered provider throws the same exception, because there is no incumbent left to create instead, and
+  `GpuBackendSource.DefaultProviderMissing` is retired with the fallback it reported. An ordinary game never
+  meets either: the `Game2D` and `Game3D` umbrellas carry the three backend packages and `AppWindow` plus both
+  snapshot hosts call `GpuBackends.RegisterPlatformDefaultIfUnregistered()` at boot. A stored `UserPreference`
+  still falls back and reports `FallbackAfterFailure`, the signal a game clears the preference on, and a
+  preference naming a RETIRED member takes the same report after being redirected onto that API's native
+  backend. An incapable MACHINE is the other case entirely: the provider's own `IsSupported()` functional probe
   answers `IsBackendSupported`, and it reports through the ordinary `FallbackAfterFailure` path. A provider that
   CREATES successfully and then hands back nothing, or hands back a device whose own `Backend` disagrees with the
   selection, **throws too and never falls back**: that is a bug in the provider, and the fallback shape says
@@ -88,8 +93,8 @@ What it owns today:
 - **`GpuNoUsableBackendException`** (17.40.0) - the DOUBLE FALL: the requested backend failed, the engine fell
   back, and the fallback failed too, so there is no device. It carries `RequestedBackend`, `FallbackBackend` and
   both failures, and its message names both backends and both reasons in the order they were tried. The FIRST
-  failure is `InnerException`, because on a native backend and its Veldrid twin the two usually share one
-  underlying cause and the one worth reading is the first, and the fallback's own exception is on
+  failure is `InnerException`, because on a native backend and its deleted Veldrid twin the two usually shared
+  one underlying cause and the one worth reading is the first, and the fallback's own exception is on
   `FallbackFailure` so neither stack has to be reconstructed from a log. A backend NAMED outright never reaches
   it: naming one turns fallback off, so its failure propagates alone.
 - **`GpuThreadingCaps` / `GpuThreadingDiagnostics`** (17.22.0) - the graphics driver's multi-threading
@@ -100,9 +105,9 @@ What it owns today:
   logs. All three are pure, so a game's debug overlay shows exactly what the log says.
   - **Why it exists.** A driver reporting `DriverCommandLists=FALSE` cannot build deferred-context command lists,
     so the D3D11 runtime emulates them by recording every call into a token stream and replaying it. That is a
-    fixed cost on every recorded command, and Veldrid adds an extra `VSUnsetConstantBuffer` before each partial
-    constant-buffer bind on exactly this flag. The two compound, and the result reads as "this machine is just
-    slow". `GpuDeviceContext` logs an INFO line per created device and a WARN when the flag is false.
+    fixed cost on every recorded command, and the deleted Veldrid incumbent added an extra
+    `VSUnsetConstantBuffer` before each partial constant-buffer bind on exactly this flag. The emulation alone
+    reads as "this machine is just slow". `GpuDeviceContext` logs an INFO line per created device and a WARN when the flag is false.
   - **Null means no answer**, and that covers three cases on purpose: not a Direct3D11 device, not Windows, or the
     query failed. None of them tells you anything about the driver, so none of them warns.
   - **A hard no-op off Windows and off D3D11.** The guard returns before touching the device and before naming any
@@ -158,15 +163,14 @@ What it owns today:
     report the software-adapter flag is a different fact from one that reports false, and a capture that cannot
     tell those apart cannot say whether its performance numbers are comparable with another capture's.
   - The `IGpuDevice` member is DEFAULT-IMPLEMENTED, so it was appended without breaking any implementer, and the
-    default is the honest one: no answers. Everything on the Veldrid path takes it, which is correct rather than
-    a gap, since Veldrid exposes neither the DXGI adapter flag nor a device-removal reason. The native
-    Direct3D 11 backend is what fills it.
+    default is the honest one: no answers. The Metal and Vulkan backends take it, which is correct rather than a
+    gap, since neither API answers either question. The native Direct3D 11 backend is what fills it.
 - **`GpuDeviceCounters`** (17.32.0, `AcquireWaitCount` / `AcquireWaitMs` added 17.34.0) - the soak counters a
   device keeps about itself, cumulative since creation and read LIVE, on `IGpuDevice.Counters`,
   `GpuDeviceContext.Counters` and `AppWindow.Counters`. `FramesBegun`, `DrainCount` / `DrainMs`,
   `BackpressureStallCount` / `BackpressureStallMs`, `OffTimelineDeferred` / `OffTimelineOutstanding`, and
-  `AcquireWaitCount` / `AcquireWaitMs`. The two NATIVE backends fill it: Direct3D 11 all nine fields, and Vulkan
-  all nine as its subsystems land.
+  `AcquireWaitCount` / `AcquireWaitMs`. All three native backends fill it, and they are the only backends since
+  18.0.0.
   - **The acquire pair is the one reading that separates the two acquire models.** `AcquireWaitCount` is present
     boundaries that BLOCKED waiting for the presentation engine to hand back the next swapchain image, and it is
     a READING rather than a count of calls: the native Vulkan backend probes with a zero timeout first and records
@@ -176,7 +180,7 @@ What it owns today:
     what answers "did anybody look".
   - **`HasValue` is the whole point, because absent is not zero.** Zero stalls is the PASSING result of a field
     soak, so a backend that keeps no counters must not report the same numbers as one that counted and found
-    nothing. The default value answers false and is what Metal and the incumbent Veldrid paths give. The
+    nothing. The default value answers false, which no live backend gives any more. The
     `IGpuDevice` member is DEFAULT-IMPLEMENTED, so it was appended without breaking any implementer.
   - **Cumulative rather than per frame**, which is what makes it usable from a capture. A telemetry session writes
     a row on its own cadence, so a per-frame reading sampled a few times a second reports the frames it happened
@@ -209,40 +213,15 @@ What it owns today:
   optimizations, which can cost performance, so nothing turns it on by default. The flag value is taken from
   Vortice's enum as a compile-time constant, so it cannot drift and no Vortice type is named in the emitted code
   (the assembly stays unloaded off Windows, as the threading probe requires).
-- **Direct3D11 immediate-context recording** (17.23.1) - KhaozEngine creates every Direct3D11 device through
-  its Veldrid fork's `D3D11DeviceOptions.UseImmediateContext` mode. It records commands directly on the D3D11
-  immediate context rather than creating and executing a deferred context per `IGpuCommandList`. This is
-  deliberately D3D11-only: Metal, Vulkan, and OpenGL use their existing Veldrid factories unchanged. The fork
-  serializes a list from `Begin` through `Submit`, which matches KhaozEngine's single render-thread command
-  sequence. It addresses the large D3D11 encoding cost observed in the field even when
-  `DriverCommandLists=TRUE`. The vendored fork is `4.9.103` since 17.27.0, which adds the second-recorder
-  guardrail described below. `4.9.102` before it, since 17.26.0, fixed
-  `SmallFixedOrDynamicArray` reading pool garbage for a resource set with more than five dynamic offsets (every
-  backend, not just this mode). `4.9.101` before it, since 17.24.0, added immediate-context hazard fixes plus
-  Direct3D11 bind batching (dirty tracking flushed at draw and dispatch time, an offsets-only rebind fast path,
-  bound-record dedup, a pipeline-switch drain). The hazard fixes make a foreign-thread `Reset`, which both
-  `Swapchain.Resize` and `CommandList.Dispose` issue, a silent no-op rather than a `SynchronizationLockException`
-  that also clobbers the render thread's in-flight recording, and make the immediate-context lock outermost, which
-  kills a reachable two-thread deadlock. Resizing during recording stays unsafe regardless, because `Resize` still
-  disposes the framebuffer the render thread has bound, so resize between frames and never during one. No API
-  change: see `vendor/veldrid/README.md`.
-- **What the fork rejects, and the one residual.** Both nesting cases now throw, and they are different guards. A
-  second `Begin` on the SAME `IGpuCommandList` has thrown since `4.9.101`. A second `Begin` on a DIFFERENT one,
-  while the first still holds the immediate context, throws as of `4.9.103`
-  ([#428](https://github.com/APKiwiOrg/KhaozEngine/issues/428)). Before that it ran `ClearState` on the live
-  context and silently wiped the open recording's bindings, which is exactly the corruption behind
-  [#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423). The guardrail was held back for four fork releases
-  because the windowed `GameApp3D` path forced that second list open (`AppWindow.Run` opened the frame's command
-  list before calling back into the app), so adopting it would have converted a corrupted frame into a hard throw
-  on Windows. The frame loop now has a pre-record phase and the ocean prime runs there
-  ([#429](https://github.com/APKiwiOrg/KhaozEngine/issues/429)), so no engine-shipped windowed host opens a nested
-  list any more, and the two ship together in 17.27.0 with the cause removed first. One residual remains by
-  design: a host driving a `Render3DSurface` off a raw `AppWindow.Run(onFrame)` without passing `onPrepare` still
-  nests, because the surface's safety-net `Scene3D.PrepareFrame` then runs inside the frame's recording. That
-  residual is now refused on every backend rather than on that one leg (see **`GpuRecording`** below), which is
-  the intended trade. The rule for engine code is unchanged either way: do not open a command
-  list while another is recording on Direct3D11, and put work that needs its own list in `Scene3D.PrepareFrame` or
-  the loop's pre-record phase.
+- **The Direct3D11 nesting rule, kept from the incumbent (history).** The engine used to create every
+  Direct3D11 device through a vendored Veldrid fork in `D3D11DeviceOptions.UseImmediateContext` mode, which
+  recorded straight onto the immediate context. Opening a second command list while one was recording then ran
+  `ClearState` on the live context and silently wiped the open recording's bindings, which is the corruption
+  behind [#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423), and the fork grew a guardrail that threw
+  instead ([#428](https://github.com/APKiwiOrg/KhaozEngine/issues/428)). The fork and its backend were deleted in
+  18.0.0 along with `vendor/veldrid`, and the RULE outlived them: do not open a command list while another is
+  recording, and put work that needs its own list in `Scene3D.PrepareFrame` or the loop's pre-record phase. It is
+  enforced on every backend now, by `GpuRecording` below, rather than by one leg's fork.
 - **`GpuRecording` / `GpuRecordingScope` / `GpuNestedRecordingException`** - the seam's open-recording register,
   and where the portable one-open-recording-per-device contract on `IGpuCommandList.Begin` is enforced rather
   than described ([#424](https://github.com/APKiwiOrg/KhaozEngine/issues/424)).
@@ -282,12 +261,12 @@ What it owns today:
   whenever `ArrayLayers > 1` and a caller that only passes a layer count is unchanged. The flag names the
   2D-array case only: a cubemap (`GpuTextureUsage.Cubemap`) keeps its own layer-count rule, and a MULTISAMPLED
   ARRAY is refused by the constructor (`ArgumentOutOfRangeException` on `IsArray && SampleCount > 1`), because no
-  backend agrees on which type it takes. The three native backends create the array type directly. The incumbent
-  Veldrid backend cannot express a one-layer array at all, so it creates a second, never-addressed slice and
-  keeps the seam's logical layer count at one. Nothing samples that slice, but Veldrid counts it, so the two
-  paths that name subresources handle it: `CopyTexture` (and with it `GpuReadback.ToRgba`) narrows to the logical
+  backend agrees on which type it takes. The three native backends create the array type directly, and they are the
+  only backends since 18.0.0. The deleted Veldrid incumbent could not express a one-layer array at all and
+  padded one with a second, never-addressed slice that it still COUNTED, so the two paths that name subresources
+  handle padding and keep doing so: `CopyTexture` (and with it `GpuReadback.ToRgba`) narrows to the logical
   subresources when a side pads, and an `UpdateTexture` aimed at the phantom layer is refused rather than
-  accepted silently. That refusal is uniform across all four backends only since 17.40.0: native Direct3D 11 and
+  accepted silently. That refusal was made uniform in 17.40.0: native Direct3D 11 and
   native Vulkan took the call in silence until then, because neither API rejects a subresource index past the end
   of the resource (#695). A `GpuTextureUsage.Staging` texture is never padded, having no view to fix.
 - **`GpuWindowHandle`** - a native window handle (kind + handle/display) the windowing layer hands over, so
@@ -302,13 +281,12 @@ What it owns today:
   provider-backed backend nobody registered. It is how a caller brings up TWO backends in one process (a parity
   comparison, or replacing one implementation with another under the same measurements) without reaching around
   this class to `GpuBackendProviders` and creating a device outside the process-wide creation gate below.
-  **Creation falls back** to the platform's Veldrid incumbent (`GpuBackendSelector.IncumbentFor`) when the
-  requested backend fails, rather
-  than propagating, so a stored preference the machine cannot run cannot leave a player with a client that will
+  **Creation falls back** to the platform's own default (`GpuBackendSelector.ProbeOS`, the single map since
+  `IncumbentFor` was deleted with the incumbent) when the requested backend fails, rather than propagating, so a stored preference the machine cannot run cannot leave a player with a client that will
   not start. It WARNs, reports `GpuBackendSource.FallbackAfterFailure` with `Selection.RequestedBackend`, and
   **never clears the game's stored setting, which the game must do itself** (file IO is not this package's job).
   The retry reuses the same `GpuWindowHandle`, so no second window is created. Skipped entirely when the request
-  already IS that incumbent. **`CreateHeadless()` falls back too since 17.40.0**, on the same two guards and with
+  already IS that default, which is a complete statement since 18.0.0 because there is one default per platform. **`CreateHeadless()` falls back too since 17.40.0**, on the same two guards and with
   the same WARN, because the probe answers a provider-backed kind everywhere now and a `Render2DSnapshot.Capture`
   that worked before a repin must not throw after it. The one thing that never falls back on either path is a
   backend `KE_GRAPHICS_BACKEND` PINNED, which is how every soak session and each of the five cross-platform GPU
@@ -317,7 +295,7 @@ What it owns today:
   `AdapterDescription` (the adapter the device runs on, empty when the backend reports none, since 17.24.0 - the
   same value as `Capabilities.DeviceName`, which stays the single source, and on Direct3D11 it is exactly the
   DXGI adapter description), `InjectedModules` (the overlay scan result, since 17.24.0),
-  `Capabilities`, and the engine-owned `IGpuDevice`. The raw Veldrid device is private to the context (the
+  `Capabilities`, and the engine-owned `IGpuDevice`. No backend object reaches the public surface (the
   transitional accessor that used to be here is gone, and `Capabilities` is read once so the context's copy and
   the device's cannot drift). Device creation and disposal are serialized process-wide behind a single static gate, on
   every backend: concurrent device creation races the Vulkan loader's dispatch setup (observed as
@@ -326,8 +304,8 @@ What it owns today:
   interleaving of concurrent create/dispose calls across threads.
 - **`IGpuDevice.SyncToVerticalBlank`** (settable, since 9.24.0) - flip vsync on a live windowed device: it
   reconfigures the main swapchain in place (no recreate, no leaked swapchain, size + depth preserved; on Metal it
-  reaches `CAMetalLayer.displaySyncEnabled`). A no-op mirrored value on a headless device (Veldrid throws setting
-  it with no main swapchain). `AppWindow.PresentMode` routes through it for runtime present-mode switching.
+  reaches `CAMetalLayer.displaySyncEnabled`). A no-op mirrored value on a headless device, which has no
+  swapchain to reconfigure. `AppWindow.PresentMode` routes through it for runtime present-mode switching.
 - **Completion fences** - `IGpuResourceFactory.CreateFence()` makes an unsignaled `IGpuFence`,
   `IGpuDevice.Submit(cl, fence)` signals it once the GPU has finished that submission, and `IGpuFence.Signaled`
   polls it without blocking (`Reset()` returns it for reuse). There is no blocking wait on the seam: the point of a
@@ -381,13 +359,13 @@ What it owns today:
     `BeginFrame` is the pair that frees things, and neither drains. An EMPTY flush stays a no-op even
     mid-recording: there is no drain and no disposal to protect, and refusing it would break the teardown a
     capture does after the seam refuses it mid-frame (#424).
-  - **Gate on `GpuCapabilities.SupportsCompletionFences`, and expect two backends to say no.** Metal and Vulkan
-    report true. Direct3D11 and OpenGL report FALSE even though Veldrid hands out a `Fence` on them, because on
-    those backends it is a `ManualResetEvent` set on the CPU as the submit call returns, which is a submit receipt
-    and says nothing about the GPU. `CreateFence()` throws there rather than return a fence that lies. A caller
-    that cannot get one keeps whatever it did before. The opt-in `KhaozEngine.Gpu.D3D11` native backend is the
-    exception among the Direct3D 11 paths and reports TRUE, on a real device-wide completion counter, but its
-    device is not creatable yet so nothing reaches that answer today.
+  - **Gate on `GpuCapabilities.SupportsCompletionFences`, which all three native backends answer true.** The
+    native Direct3D 11 backend answers true on a real device-wide completion counter, which was its one permitted
+    capability difference from the deleted incumbent: that incumbent handed out a fence on Direct3D11 and OpenGL
+    that was a `ManualResetEvent` set on the CPU as the submit call returned, a submit receipt saying nothing
+    about the GPU, so those members reported FALSE. Keep the gate: `CreateFence()` throws on a backend that
+    answers false rather than return a fence that lies, and a caller that cannot get one keeps whatever it did
+    before.
 - **A shader source is compiled to SPIR-V once per process** (since 17.37.0,
   [#640](https://github.com/APKiwiOrg/KhaozEngine/issues/640)) - `CreateShadersFromSpirv` and
   `CreateComputeShaderFromSpirv` go through a process-wide memo in front of glslang, keyed on the source, the stage
@@ -439,31 +417,35 @@ What it owns today:
   stage/target. BOTH ALSO CHECK THE METAL BINDING ORDER (17.36.0, and `ValidateCompute` alone since 16.3.0),
   which is not a compile failure anywhere and is the one shader bug that renders a wrong picture instead of
   throwing. Metal has no binding decorations, so the cross-compiler assigns each resource an index of its own in
-  first-reference order while the Veldrid Metal backend binds a resource set by counting the layout in binding
-  order, and a helper function that reads binding 1 before anything reads binding 0 silently swaps the two on
+  first-reference order while the deleted Veldrid Metal backend bound a resource set by counting the layout in
+  binding order, and a helper function that reads binding 1 before anything reads binding 0 silently swaps the two on
   Metal with Vulkan and Direct3D11 perfectly correct. Two checks run over the emitted Metal:
   - **Index order, per stage, over buffers AND textures AND samplers.** Each emitted argument is joined back to
     the `(set, binding)` you declared through that stage's own SPIR-V decorations, so a swap between two
     resources OF THE SAME KIND is caught as well (two storage buffers are both `device T&` in Metal, which is
     why the 16.3.0 kind comparison could not see it). The message names both `layout(set=, binding=)` pairs and
     the slot they collided on.
-  - **The prefix property, for a pair.** Veldrid counts one slot per kind across the whole layout while the
+  - **The prefix property, for a pair.** The incumbent counted one slot per kind across the whole layout while the
     cross-compiler numbers each stage densely from 0, so every stage's resources must be a PREFIX of the
     layout's, per index space. A vertex-only texture placed after a fragment-only one cannot be made to work at
     any binding number, and no reordering inside the shader bodies fixes it.
 
-  Both constrain the INCUMBENT Veldrid Metal backend (`GpuBackendKind.Metal`) alone, which the exception
-  message says as well: the engine's own native Metal backend binds at the index read out of each stage's
-  emission, and Vulkan and Direct3D11 honour the decorations, so a rejected shader renders correctly on all
-  three and the rejection can land on a shader that looks fine on every device you own.
+  Both constrained the INCUMBENT Veldrid Metal backend alone, which the exception message says as well: the
+  engine's own native Metal backend binds at the index read out of each stage's emission, and Vulkan and
+  Direct3D11 honour the decorations, so a rejected shader renders correctly on all three and the rejection can
+  land on a shader that looks fine on every device you own. With the incumbent deleted in 18.0.0 the constraint
+  binds no live backend, and this half of the validator stays armed until
+  [#604](https://github.com/APKiwiOrg/KhaozEngine/issues/604) retires it, because the shipped shaders were
+  authored under it.
 
   Both degrade rather than false-positive: an index space carrying an argument the join cannot resolve is
   dropped silently instead of guessed at. The engine's own shader-source tests use this to validate every
   embedded production shader, and games can validate their custom shaders the same way in their own fast test
   suites.
 
-This is the ONLY package meant to reference Veldrid, and the containment is complete: the resource, command and
-device surface is the engine-owned `IGpuDevice` / `IGpuResourceFactory` / `IGpuCommandList` interface set, the
-backend implementation lives in `Internal/`, and no Veldrid type reaches the public API (asserted by reflection in
-`GpuPublicApiTests` here and `VeldridLockdownTests` for the consumer packages). Swapping the backend is a new
-`IGpuDevice` implementation, not a consumer-visible change.
+This package builds NO device since 18.0.0, and the containment is complete: the resource, command and device
+surface is the engine-owned `IGpuDevice` / `IGpuResourceFactory` / `IGpuCommandList` interface set, the backend
+implementations are the three sibling packages, and no third-party type reaches the public API (asserted by
+reflection in `GpuPublicApiTests` here, and by `ArchitectureTests.ThirdPartyHomes`, which maps `Veldrid` and
+`Veldrid.SPIRV` to this package alone and to the shader toolchain alone). Adding a backend is a new
+`IGpuDevice` implementation behind an `IGpuBackendProvider`, not a consumer-visible change.

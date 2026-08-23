@@ -2,7 +2,8 @@
 
 A high-level (container / "Level 2") map of the path from a C# draw call to pixels on screen. Not line-by-line:
 the boxes name the real types so you can jump into the code, but the detail stops at the layer boundaries. For
-the GPU strategy rationale (Veldrid, author-once GLSL) see [CROSS-PLATFORM.md](CROSS-PLATFORM.md).
+the GPU strategy rationale (the engine-owned backends, author-once GLSL) see
+[CROSS-PLATFORM.md](CROSS-PLATFORM.md).
 
 ## The flow
 
@@ -24,18 +25,17 @@ flowchart TD
         SB["SpriteBatch: batch quads into<br/>per-frame ring-buffered growable vertex buffers"]
     end
 
-    subgraph gpu["KhaozEngine.Gpu - the backend seam (nothing above touches Veldrid)"]
+    subgraph gpu["KhaozEngine.Gpu - the backend seam (nothing above touches a graphics API)"]
         DEV["GpuDeviceContext<br/>opaque device / buffers / pipelines / command list"]
         SEL["GpuBackendSelector<br/>KE_GRAPHICS_BACKEND override > user preference > OS probe"]
         CAP["GpuCapabilities -> GpuClip<br/>clip-Y flip + depth range from the live device"]
     end
 
-    VEL["Veldrid (contained behind the seam)"]
 
-    subgraph back["Backend, chosen at runtime"]
-        MTL["Metal (Mac / iOS)"]
-        D3D["D3D11 (Windows)"]
-        VK["Vulkan (Win / Linux / Android)"]
+    subgraph back["Engine-owned backend, chosen at runtime"]
+        MTL["KhaozEngine.Gpu.Metal (macOS)"]
+        D3D["KhaozEngine.Gpu.D3D11 (Windows)"]
+        VK["KhaozEngine.Gpu.Vulkan (Linux and everything else)"]
     end
 
     subgraph hw["GPU"]
@@ -56,8 +56,7 @@ flowchart TD
     SB --> DEV
     SEL --> DEV
     CAP --> DEV
-    DEV --> VEL
-    VEL --> MTL & D3D & VK
+    DEV --> MTL & D3D & VK
     MTL & D3D & VK --> VS
     VS --> RAS --> FS --> FB --> SCREEN
     LOOP -. Present() .-> FB
@@ -94,7 +93,7 @@ flowchart LR
    so a 3D game's `OnDraw3D` runs in the prepare phase and its recording in the record phase.
 2. `Scene3D` accumulates draws as instances keyed by `MeshHandle` (geometry was uploaded once via `LoadMesh`);
    `SpriteBatch` packs quads into per-frame ring-buffered vertex buffers (rotated so a frame's write never races
-   the GPU still reading an earlier, in-flight frame's copy). Nothing here references Veldrid.
+   the GPU still reading an earlier, in-flight frame's copy). Nothing here references a graphics API.
 3. Before anything is recorded, `Scene3D.PrepareFrame()` runs the frame's pre-recording phase: the subsystems
    whose per-frame GPU work needs a command list of their OWN (the FFT ocean's priming dispatch, which is a
    compute read-after-write and so needs a submit plus a device wait) do it here, where no frame list is open.
@@ -107,7 +106,7 @@ flowchart LR
 5. `GpuBackendSelector` picked the backend at startup (`KE_GRAPHICS_BACKEND` override, then the game's stored
    user preference, then the OS probe, with a fallback if that backend cannot create a device), and `GpuCapabilities`
    /`GpuClip` fold per-backend clip-Y and depth-range differences in so the renderers stay backend-agnostic.
-6. The seam drives **Veldrid**, which targets the chosen native backend (Metal / D3D11 / Vulkan). Shaders were
+6. The seam drives the chosen engine-owned backend (`KhaozEngine.Gpu.Metal` / `.D3D11` / `.Vulkan`). Shaders were
    cross-compiled from one SPIR-V blob at load, so the same GLSL runs everywhere.
 7. The GPU runs the vertex shader (world x view x proj), rasterizes to triangles + fragments, runs the fragment
    shader (lit / cel / textured), and writes the framebuffer. `AppWindow` calls `Present()` to put the
@@ -157,6 +156,6 @@ that pass on all three backends").
 | Terrain splat pipeline | `KhaozEngine.Render3D/Internal/ShaderSources.cs` (`SplatFrag`), `Scene3D.cs` (`LoadSplatMaterial`), `KhaozEngine.Terrain.Render3D/TerrainScene3D.cs` (`LoadTerrainMaterial`) |
 | 2D batching | `KhaozEngine.Render2D/SpriteBatch.cs` + `Render2DSurface.cs` |
 | The backend seam | `KhaozEngine.Gpu/GpuDeviceContext.cs`, `GpuBackendSelector.cs`, `GpuCapabilities.cs`, `GpuClip.cs` |
-| Veldrid binding | `KhaozEngine.Gpu/Internal/VeldridGpuDevice.cs` |
+| Backend implementations | `KhaozEngine.Gpu.Metal/`, `KhaozEngine.Gpu.D3D11/`, `KhaozEngine.Gpu.Vulkan/` |
 | Shader source | `KhaozEngine.Render3D/Internal/ShaderSources.cs`, `KhaozEngine.Render2D/SpriteBatch.cs` |
 | Geometry sources | `KhaozEngine.Render3D/MeshPrimitives.cs`, `MeshBuilder.cs`, `GltfLoader` |

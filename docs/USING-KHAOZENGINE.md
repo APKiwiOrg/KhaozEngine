@@ -1,7 +1,8 @@
 # Using KhaozEngine - the consumer contract
 
 This is the authoritative guide to what KhaozEngine does and **how it must be used** by the games that depend
-on it. The engine is **MonoGame-free**: Silk.NET windowing/input, Veldrid behind `KhaozEngine.Gpu` for the GPU,
+on it. The engine is **MonoGame-free**: Silk.NET windowing/input, the engine's own Metal / Direct3D 11 / Vulkan
+backends behind `KhaozEngine.Gpu` for the GPU,
 Silk.NET.OpenAL for audio, `System.Numerics` math throughout. Read the [Hard rules](#hard-rules) first. The rest
 is reference.
 
@@ -214,12 +215,14 @@ desktop head and ships as `WinExe`.
 ### Publishing (self-contained, single-file)
 
 Publish each game **self-contained** for its RID (`dotnet publish -c Release -r <rid> --self-contained`): the
-game ships its own pinned .NET runtime plus the native libs (GLFW, Veldrid's backend, OpenAL) so a runtime or
+game ships its own pinned .NET runtime plus the native libs (GLFW, the platform's own graphics loader, the
+`libveldrid-spirv` shader toolchain, OpenAL) so a runtime or
 native-lib CVE is patched by re-publishing, not by waiting on an engine package bump. See
 [SECURITY-BASELINE.md](SECURITY-BASELINE.md).
 
 If you also single-file publish (`PublishSingleFile=true`), the native libs **must stay loose** next to the
-exe. KhaozEngine reaches GLFW/Veldrid/OpenAL through native libraries the runtime locates by probing the apphost
+exe. KhaozEngine reaches GLFW, the graphics loaders, `libveldrid-spirv` and OpenAL through native libraries the
+runtime locates by probing the apphost
 directory. .NET's default for single-file is `IncludeNativeLibrariesForSelfExtract=true`, which packs them into
 the self-extracting exe where Silk.NET's loader can't find them, so the game dies at boot with *"Couldn't find a
 suitable window platform (GlfwPlatform - not applicable)"*. Foundation therefore defaults
@@ -286,11 +289,12 @@ initial window mode (also applied on a custom factory window).
 by default, so a client no longer free-runs a whole core plus the GPU out of the box.
 
 - **`FrameCap.Auto` is the default cap** (`GameAppOptions.FrameCap`, and the plain `new AppWindow(title, w, h)` ctor).
-  It is backend-aware: on the incumbent **`GpuBackendKind.Metal` + vsync** (where the Veldrid present does not throttle
-  the CPU and a Mac client would otherwise free-run well above the refresh) it resolves to a real cap - the **display
-  refresh rate** when known, else `FrameCap.DefaultMetalAutoCapHz` (120). Everywhere else it stays **uncapped**,
-  because vsync throttles there: **D3D11 / Vulkan**, their two native backends, and (measured 2026-08-11) the engine's
-  own **`MetalNative`**, whose present blocks the CPU in the drawable acquire for the whole vertical-blank wait. With `PresentMode.Immediate` (any backend) it stays uncapped, respecting the lowest-latency intent. A
+  **Since 18.0.0 it resolves to uncapped on every live backend**, and that is a measurement rather than a
+  simplification. The question the arm asks is whether the backend's present throttles the CPU from vsync alone,
+  and the only backend that ever answered no was the Veldrid Metal incumbent, deleted in 18.0.0. `D3D11Native`
+  and `VulkanNative` throttle, and (measured 2026-08-11) so does the engine's own **`MetalNative`**, whose
+  present blocks the CPU in the drawable acquire for the whole vertical-blank wait. With `PresentMode.Immediate`
+  (any backend) it stays uncapped, respecting the lowest-latency intent. A
   consumer-set value always wins: `FrameCap.Uncapped` is an intentional free-run (the pre-10.96 default) and
   `FrameCap.Hz(n)` / a positive `FrameCapHz` is a fixed cap. A positive `GameAppOptions.FrameCapHz` overrides
   `FrameCap`. `FrameCap.Resolve(backend, present, displayRefreshHz)` is the pure, headless-tested resolver.
@@ -329,19 +333,18 @@ app.Display.ApplyDisplay(s);
 
 `PresentMode` reconfigures the live swapchain's `SyncToVerticalBlank` in place (no recreate). `WindowMode` /
 `Resize` drive the window and the swapchain follows the new framebuffer via the resize hook, so the HiDPI
-framebuffer semantics are unchanged (the backbuffer always tracks the physical drawable). **Mac/Metal caveat:**
-setting vsync engages `CAMetalLayer.displaySyncEnabled`, but the Veldrid Metal present still does not throttle the
-CPU from vsync alone. That is measured on `GpuBackendKind.Metal`, the Veldrid one, and applies to it alone. The
+framebuffer semantics are unchanged (the backbuffer always tracks the physical drawable). **Mac/Metal caveat,
+now history:** setting vsync engages `CAMetalLayer.displaySyncEnabled`, and the Veldrid Metal present did not
+throttle the CPU from vsync alone. That was measured on `GpuBackendKind.Metal` and applied to it alone. The
 engine's own `MetalNative` was measured on 2026-08-11 and its present DOES throttle: the drawable acquire blocks
 once per frame for 15.175 ms of a 16.669 ms frame, a display pinned to 120 Hz paces it at 120 fps, and turning
-vsync off mid-session free-runs past 700 fps with visible tearing. So the capped arm is the incumbent's alone, and
-vsync with no software cap is a healthy configuration on `MetalNative`. The engine handles this by default now -
-`FrameCap.Auto` (the default cap) resolves to a real cap on the incumbent Metal + vsync, so you no longer have to
-branch on `GameApp.Backend` to set one. `GameApp`/`AppWindow` emit a
-one-time warning (`Console.Error`) ONLY when you explicitly force an uncapped free-run (`FrameCap.Uncapped` /
-`FrameCapHz = 0`) with vsync on the incumbent Metal backend. The resolved auto default never trips it, and neither
-does `MetalNative` in any configuration. The window-mode policy is the pure
-`WindowModePlanner.Compute`, the auto-cap resolver is the pure `FrameCap.Resolve`, and the Metal-warning rule is the
+vsync off mid-session free-runs past 700 fps with visible tearing. The incumbent was deleted in 18.0.0, so vsync
+with no software cap is a healthy configuration on every live backend and `FrameCap.Auto` resolves to uncapped
+everywhere. Nothing branches on `GameApp.Backend` to set a cap. `GameApp`/`AppWindow` keep the one-time warning
+(`Console.Error`) and the `DisplaySettings.RequiresFrameCapWarning` rule behind it, which no live backend trips,
+because a future backend whose present free-runs under vsync puts an arm back rather than changing public API.
+The window-mode policy is the pure
+`WindowModePlanner.Compute`, the auto-cap resolver is the pure `FrameCap.Resolve`, and the warning rule is the
 pure `DisplaySettings.RequiresFrameCapWarning` (fed the resolved cap) - all headless-unit-tested.
 
 **Runtime window placement (since 9.26.0).** `IDisplaySettings` also exposes the window position + monitor, so a
@@ -1998,7 +2001,7 @@ unaffected.
 ## Render3D (`KhaozEngine.Render3D`)
 
 Stylized 3D. `Render3DSurface(window)` owns a `Scene3D`; `GameApp3D.Surface3D`/`Scene` give you one. The GPU
-backend (Veldrid) never appears in the API.
+backend never appears in the API.
 
 ```csharp
 var scene = Surface3D.Scene;
@@ -3138,9 +3141,10 @@ engine has, and the windowed A/B below is the only thing standing between you an
 The GPU path exists on a specific binding shape because the naive GPU design fails on Metal. **The
 GPU-backend rule (know it if you write custom Render3D code):** a pipeline reads exactly ONE uniform buffer,
 at set 0 binding 0, and a second one can read all-zero with no error anywhere. Textures in a second set are
-fine. The cause was measured in 2026-08: it is Veldrid's buffer NUMBERING rather than anything about Metal,
-and what mis-binds is a stage that references fewer buffers than the declared layout array puts before them.
-The rule stands until the Veldrid Metal leg retires, because that leg still ships. Read
+fine. The cause was measured in 2026-08: it was the Veldrid incumbent's buffer NUMBERING rather than anything about
+Metal, and what mis-bound was a stage that references fewer buffers than the declared layout array puts before
+them. That backend was deleted in 18.0.0, so the defect is gone, but the rule is KEPT and still binds every new
+render path, because the shipped content was authored against it. Read
 `docs/DEPENDENCY-SEAMS.md`'s "ONE uniform buffer per pipeline" section before designing around it, since the
 exact scope matters and this summary is deliberately the conservative version of it. So GPU skinning folds
 EVERYTHING into one combined per-draw UBO (`SkinnedModelVert`):
@@ -5353,7 +5357,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.41.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.0.0" />
 ```
 
 ```csharp
@@ -8963,8 +8967,8 @@ The fullscreen post-process blits are **not** itemized in the draw-call count - 
 the Pass-timings **post** row instead.
 
 **The pass-timing caveat (read it).** The per-pass numbers are **CPU encode time** (wall-clock spent recording a
-pass's commands), **not** true GPU execution time, and Veldrid 4.9.0 exposes no timestamp-query API to measure
-the latter. The full explanation, and why a whole-frame GPU-time number was rejected, is in *Per-pass frame
+pass's commands), **not** true GPU execution time, and the `KhaozEngine.Gpu` seam exposes no timestamp-query
+API to measure the latter. The full explanation, and why a whole-frame GPU-time number was rejected, is in *Per-pass frame
 timing* below. The turn-key HUD is the zero-config path. The two sections that follow are the manual building
 blocks (custom rows, a recorder, a bespoke overlay) for a game that wants more than the default panel.
 
@@ -9131,9 +9135,10 @@ rather than captured at creation,
 because a device loss happens at an arbitrary moment long after the device was made. `info.WithGpu(device)` fills
 them for you. The `AppWindow`-shaped overload gained a five-value sibling that takes the diagnostics as its last
 argument, and the original four-value overload is unchanged and leaves both fields `null`. **The native
-Direct3D 11 backend is the only thing that reports either fact today.** Veldrid exposes neither the DXGI adapter
-flag nor a removal reason, so every backend on the Veldrid path leaves both `null`, which is the honest answer
-rather than a gap.
+Direct3D 11 backend is the only thing that reports either fact today.** The Metal and Vulkan backends leave
+both `null`, which is the honest answer rather than a gap: neither API hands out a DXGI-style software-adapter
+flag or a removal reason, and `MetalNative` reports `SoftwareAdapter` as false rather than null only because
+Apple ships no software Metal rasterizer.
 
 **A fallback says what failed, not only that it fell back.** `requestedBackend` is the backend that was asked
 for and did not work, set only on a `FallbackAfterFailure` source and null otherwise. It matters most on a
@@ -9170,13 +9175,12 @@ golden stays byte-stable.
 
 **What this measures, and what it does NOT measure (read this before trusting the numbers).** Each bracket times
 CPU wall-clock spent *recording* (encoding) that pass's graphics-API calls into the command list - it is NOT
-true GPU execution time. The GPU pipeline runs asynchronously behind the command list Veldrid records into, so
-a cheap-to-encode pass can still be GPU-expensive (or vice versa); this meter cannot see that. The engine's
-pinned GPU abstraction, **Veldrid 4.9.0, exposes no timestamp-query API at all** (no `QueryPool`, no per-command-list
-timestamp write/resolve - confirmed by inspecting its full public surface), so true per-pass GPU timestamps are
-out of scope until a future Veldrid upgrade adds one. A whole-frame GPU-time number (Tier 2) was considered and
-rejected: the only device-level synchronization Veldrid exposes is `IGpuDevice.WaitForIdle()` (a full CPU/GPU
-stall) and a non-blocking `Fence.Signaled` poll that is unwired in `KhaozEngine.Gpu` today - inserting a
+true GPU execution time. The GPU pipeline runs asynchronously behind the command list the backend records into, so
+a cheap-to-encode pass can still be GPU-expensive (or vice versa) and this meter cannot see that. The
+`KhaozEngine.Gpu` seam **exposes no timestamp-query API at all** (no query pool, no per-command-list timestamp
+write/resolve), so true per-pass GPU timestamps are out of scope until the seam gains one. A whole-frame GPU-time number (Tier 2) was considered and
+rejected: the only device-level synchronization the seam exposes is `IGpuDevice.WaitForIdle()` (a full CPU/GPU
+stall) and a non-blocking fence poll - inserting a
 `WaitForIdle()` every frame to time it would destroy the CPU/GPU pipelining that gives good frame pacing (a
 "Heisenberg timer" that changes the very thing it measures), and the fence-poll alternative only yields a noisy
 lower bound, not an honest whole-frame GPU duration, so it was not shipped either. Present/blit (swapping the
@@ -9214,41 +9218,58 @@ Scene3D render-path GPU tests.
 
 ---
 
-## The engine's own backends are the default (17.40.0)
+## The engine's own backends are the only backends (default in 17.40.0, sole in 18.0.0)
 
-macOS boots on `MetalNative`, Windows on `Direct3D11Native`, Linux and everything else on `VulkanNative`. The
-three Veldrid incumbents remain as an explicit OPT-OUT for ONE release and are removed in the next one, so a
-game that wants an incumbent back sets `KE_GRAPHICS_BACKEND=metal`, `=d3d11` or `=vulkan`, or stores that
-`GpuBackendKind` as its graphics-settings preference. Both still outrank the default exactly as they did.
+macOS boots on `MetalNative`, Windows on `Direct3D11Native`, Linux and everything else on `VulkanNative`.
+17.40.0 made those three the default and kept the Veldrid incumbents as a one-release opt-out. 18.0.0 deleted
+the incumbent backend, so there is nothing to opt out to: the three engine-owned backends are the only
+implementations the engine has, and `GpuBackendKind.Metal`, `.Vulkan`, `.Direct3D11` and `.OpenGL` are RETIRED
+tokens rather than live choices.
 
 The flip was taken by DECISION on 2026-08-22, ahead of the field-evidence gates the three native rollouts still
 had open. Each design's rollout record in `docs/design/` carries a dated addendum naming what remains open.
 
 Four things a game has to know:
 
-- **Repinning without taking a native backend package still boots.** The native packages are in no umbrella and
-  the engine cannot reference them, so a backend nobody PINNED with no registered provider falls back to that
-  platform's incumbent with a WARN and reports the new `GpuBackendSource.DefaultProviderMissing`. Pinning one in
-  `KE_GRAPHICS_BACKEND` and not registering it still throws, unchanged.
-- **A settings picker needs native rows.** `GpuBackendSelector.SupportedBackends()` now returns up to six
-  kinds, each API's native implementation ahead of its incumbent, and a picker that maps only the three Veldrid
-  kinds will render the default as an unknown or blank row.
+- **A repinned game boots with no new call of its own.** The three native packages ship in the
+  `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.0.0, and `AppWindow` (plus both snapshot
+  hosts) calls `GpuBackends.RegisterPlatformDefaultIfUnregistered()` at boot, so the platform's own backend is
+  registered before the first device. A game that references `KhaozEngine.Gpu` directly, outside the umbrellas,
+  registers the one it wants itself (`KhaozEngineMetal.Register()` and its two siblings). A default with no
+  registered provider now throws `GpuBackendProviderMissingException` naming the package and the call, because
+  there is no incumbent left to fall back to.
+- **A settings picker offers three rows, and maps the retired four.** `GpuBackendSelector.SupportedBackends()`
+  returns the live kinds only, and `IsBackendSupported` answers false for every retired member. A picker that
+  still lists `Metal` / `Vulkan` / `Direct3D11` shows a row that cannot be selected, and a stored preference
+  naming one is redirected (see below) rather than honoured.
 - **The boot line says `(default)`.** It said `(OS probe)`, which was fine while a native backend could only be
   reached by naming it and every native session therefore read as an override.
-- **Golden families did not move in 17.40.0, and moved in 17.41.0 without moving a byte.** The flip shipped
-  with each native kind still a guest in its incumbent's family, so a run on the new default compared against
-  the same committed grids, and the one consequence on a developer Mac was that a bare `KE_UPDATE_GOLDENS=1`
-  was refused: the default was a guest of the family it would have overwritten, and a bake had to name
-  `KE_GRAPHICS_BACKEND=metal`. Row 2 of the Veldrid removal ended that in 17.41.0. Each native kind now owns
-  the family named after itself, seeded as a byte-identical copy of the incumbent's, so a bare local run reads
-  `metal-native` rather than `metal` and may bake it. The bytes it compares against are the same bytes.
+- **Each native kind owns the golden family named after itself.** 17.40.0 flipped the default with each native
+  kind still a guest in its incumbent's family. Row 2 of the Veldrid removal ended that in 17.41.0, seeding
+  `metal-native`, `d3d11-native` and `vulkan-native` as byte-identical copies, so a bare local run reads
+  `metal-native` rather than `metal` and may bake it. 18.0.0 deleted the incumbent families with the backend
+  that produced them.
 
-`GpuBackendSelector.IncumbentFor(OSPlatformKind)` is the frozen map of what the probe used to answer (macOS to
-`Metal`, Windows to `Direct3D11`, else `Vulkan`). It is the fallback target, and it is deleted whole with the
-incumbents next release. `GpuBackendSelection.WasPinnedByEnvironment` says whether `KE_GRAPHICS_BACKEND` pinned
-the backend, which is what decides throw-versus-fall-back above. A stored preference is deliberately not pinned:
-a player can store a native kind now, and a later build that dropped the package would otherwise throw at boot
-with the setting that caused it unreachable from inside the game.
+`GpuBackendSelector.IncumbentFor(OSPlatformKind)` is GONE in 18.0.0, along with the incumbent it mapped to.
+`GpuBackendSelector.ProbeOS` is the single map now, and it is also what a fallback lands on: a failed device
+creation, a stored preference for a retired member and an unrecognized override all end up at the platform's
+own native backend. `GpuBackendSelection.WasPinnedByEnvironment` still says whether `KE_GRAPHICS_BACKEND`
+pinned the backend. A stored preference is deliberately not pinned, so a player's saved choice can be
+redirected at boot instead of throwing with the setting that caused it unreachable from inside the game.
+
+**The four retired members, and what happens to each caller.** `GpuBackendSelector.IsRetired(kind)` answers for
+`Metal`, `Vulkan`, `Direct3D11` and `OpenGL`. They are kept forever, because the enum is append-only and games
+have persisted them as a player's saved choice.
+
+- A `KE_GRAPHICS_BACKEND` token naming one (`metal`, `vulkan`, `d3d11`, `direct3d11`, `gl`, `opengl`) resolves
+  to that API's native backend with a WARN. `GpuBackendSelector.NativeReplacementFor` is the map: Metal to
+  `MetalNative`, Vulkan to `VulkanNative`, Direct3D11 to `Direct3D11Native`, and `OpenGL` to the platform's own
+  default, because the engine never had an OpenGL implementation and is not gaining one.
+- A STORED preference naming one takes the same redirect, and reports
+  `GpuBackendSource.FallbackAfterFailure`, which is the signal a game already clears a stored choice on.
+- NAMING one in code throws `GpuBackendRetiredException`. Repointing the member at its native sibling was ruled
+  out by name in the removal design: it would move every tester's stored choice onto a different implementation
+  with no rebuild signal and no player notice.
 
 ---
 
@@ -9257,33 +9278,33 @@ with the setting that caused it unreachable from inside the game.
 `KE_GRAPHICS_BACKEND` overrides the OS probe (`metal` / `metal-native` / `vulkan` / `vulkan-native` / `d3d11` /
 `d3d11-native` / `gl`, case-insensitive, aliases `mtl-native`, `vk-native`, `direct3d11`, `direct3d11-native`
 and `opengl`). `d3d11-native`, `vulkan-native` (17.32.0) and `metal-native` (17.35.0) name the engine's own
-implementations of those three APIs rather than the Veldrid ones,
-and each is a separate value precisely so a session log, a telemetry header and a frame time say which of the
-two ran. The unsuffixed `d3d11`, `vulkan` and `metal` keep pointing at the Veldrid implementations, which is what makes
-an A/B between the two implementations of any of the three one environment variable away. **Since 17.40.0 that
-is also the OPT-OUT, and it lasts one release**: the suffixed kinds are what the OS probe answers now, and the
-unsuffixed ones are removed with the Veldrid backends in the next release. NAMING any of the three without
-referencing its package and calling its `Register()` throws saying so and never falls back, because a run that
-quietly used a different implementation would report its measurements under the wrong name. DEFAULTING to one
-without the package is a different case and falls back to the incumbent with a WARN reporting
-`GpuBackendSource.DefaultProviderMissing`, because a game that never asked for the package has made no wiring
-mistake and has no stored choice to clear.
+implementations of those three APIs, and they are the only implementations left since 18.0.0. The unsuffixed
+`d3d11`, `vulkan`, `metal` and `gl` named the Veldrid backend, which the same release deleted, so a token
+naming one of them RESOLVES to that API's native backend and logs the retirement WARN rather than failing the
+run. NAMING a native backend without referencing its package and calling its `Register()` throws
+`GpuBackendProviderMissingException` and never falls back, because a run that quietly used a different
+implementation would report its measurements under the wrong name. DEFAULTING to one without the package
+throws the same exception since 18.0.0, where it used to fall back to the incumbent and report
+`GpuBackendSource.DefaultProviderMissing`: there is no second implementation to reach for, and the umbrellas
+carry the packages so an ordinary game never meets it.
 
-Because each pair is two separate values, code that cares about the API rather than the implementation asks
+Because each API had two members, code that cares about the API rather than the implementation asks
 `kind.IsDirect3D11()`, `kind.IsVulkan()` or `kind.IsMetal()` (the `GpuBackendKinds` extensions, 17.30.0, 17.32.0
-and 17.35.0), which are true for both implementations of their API. Use them for anything that talks to that API
-or reports on its driver, and plain equality against `GpuBackendKind.Direct3D11` / `GpuBackendKind.Vulkan` /
-`GpuBackendKind.Metal` for anything that means Veldrid's implementation specifically.
+and 17.35.0), which are true for both members of their API. Use them for anything that talks to that API
+or reports on its driver. A plain equality against `GpuBackendKind.Direct3D11` / `GpuBackendKind.Vulkan` /
+`GpuBackendKind.Metal` now only ever matches a value read back out of an old capture or an old stored setting,
+because no live device reports one.
 
-`IsMetal()` is the one with no reader in the engine today, and the reason is worth knowing if you are choosing
-between it and an equality. It was written for the software frame-cap pair in `KhaozEngine.Windowing`,
-`FrameCap.Resolve` and `DisplaySettings.RequiresFrameCapWarning`, which apply a real cap and warn when a consumer
-has not set one, because vsync alone does not throttle the CPU on the Veldrid Metal present. Whether the engine's
-own Metal backend needed the same cap was an open measurement, so both sites covered BOTH implementations as the
-conservative arm. It was measured on 2026-08-11: the native present throttles, so both sites went back to an
-equality against `GpuBackendKind.Metal`. The lesson generalizes to your own code. Ask which question you mean.
-"Is this the Metal API" is the family predicate. "Does this implementation behave the way I measured" is an
-equality, however much the two look alike at the call site.
+`IsMetal()` has no reader in the engine today, and the reason is worth knowing if you are choosing between it
+and an equality. It was written for the software frame-cap pair in `KhaozEngine.Windowing`, `FrameCap.Resolve`
+and `DisplaySettings.RequiresFrameCapWarning`, which apply a real cap and warn when a consumer has not set one.
+The only backend that ever needed that cap was the Veldrid Metal present, which did not throttle the CPU from
+vsync alone. Whether the engine's own Metal backend needed it too was an open measurement until 2026-08-11,
+when rollout gate 5 measured that the native present throttles. With the incumbent deleted in 18.0.0 both sites
+resolve to no cap on every live backend, and the parameters stay on the signature so a future backend that
+free-runs under vsync puts an arm back rather than changing public API. The lesson generalizes to your own
+code. Ask which question you mean. "Is this the Metal API" is the family predicate. "Does this implementation
+behave the way I measured" is an equality, however much the two look alike at the call site.
 
 The trap is what happens when the override is wrong. A typo, a variable set in the wrong shell,
 or a launcher that drops the environment all fall back to the OS probe, and the run looks completely normal. If
@@ -9380,19 +9401,20 @@ instance, enumerates physical devices, and for Vulkan checks the required surfac
 for the process lifetime, so a settings screen may call it freely. `IsBackendSupported(kind)` asks about one.
 `OpenGL` is never offered, because there is no windowed GL device path.
 
-**Since 17.40.0 the list carries each API's NATIVE implementation ahead of its incumbent**, in the order
-`MetalNative`, `Metal`, `VulkanNative`, `Vulkan`, `Direct3D11Native`, `Direct3D11`. A native kind appears only
-where its provider is registered, so a game that has not referenced the native package sees exactly the three
-rows it saw before. **Map every kind you can be handed.** A picker written against the three Veldrid kinds will
-render the machine's DEFAULT as an unknown or blank row, which reads to a player as a broken settings screen.
+**Since 18.0.0 the list carries exactly the three native kinds**, in the order `MetalNative`, `VulkanNative`,
+`Direct3D11Native`. A kind appears only where its provider is registered, and the retired members are never
+offered, because `IsBackendSupported` answers false for every one of them. **Map every kind you can be
+handed.** A picker written against the three retired Veldrid kinds renders the machine's DEFAULT as an unknown
+or blank row, which reads to a player as a broken settings screen.
 
 ### The fallback contract (this is the whole safety story)
 
 Probing is necessary but NOT sufficient. A broken or partial driver can report support and still fail at device
 creation. So creation is also wrapped: if the requested backend fails, the engine falls back to the platform's
-Veldrid incumbent (`GpuBackendSelector.IncumbentFor`, which is what the OS probe answered before 17.40.0),
-WARNs, and boots anyway rather than leaving the player with a client that will not start and a setting they
-cannot reach to fix.
+own default (`GpuBackendSelector.ProbeOS`, the single map since `IncumbentFor` was deleted with the incumbent in
+18.0.0), WARNs, and boots anyway rather than leaving the player with a client that will not start and a setting
+they cannot reach to fix. When the request already IS that default there is nothing to fall back to, and the
+engine throws `GpuNoUsableBackendException` naming both backends and both reasons.
 
 **The engine reports the fallback. It never clears your setting.** Writing a setting is file IO, which
 `KhaozEngine.Gpu` does not do. Two obligations on the consuming game, and skipping the first one means the
@@ -9427,7 +9449,7 @@ twin of `AfterFallback` below.
 at that point and the app cannot render, and the exception carries `RequestedBackend`, `FallbackBackend`, the
 first failure as its `InnerException` and the fallback's own on `FallbackFailure`, with both reasons in the
 message in the order they were tried. The first failure is the inner one deliberately: on a native backend and
-its Veldrid twin the two usually share one underlying cause, and the one worth reading is the first. A backend
+its deleted Veldrid twin the two usually shared one underlying cause, and the one worth reading is the first. A backend
 named outright never reaches it, because naming one turns fallback off.
 
 `GpuBackendSelector.AfterFallback(selection, fallbackBackend)` is the pure helper that builds that report, for a
@@ -9435,9 +9457,9 @@ consumer driving its own retry through `GpuDeviceContext.CreateForWindow(handle,
 explicit-backend overload: exactly that backend, no resolution and no fallback). Retrying needs no new window,
 since `GpuWindowHandle` is a readonly struct of native pointers carrying no device state.
 
-The fallback is skipped when the requested backend already IS the incumbent it would fall back to, which is
-every call that names the incumbent outright. A default boot is no longer such a call, so the native default
-has a fallback where the incumbent default never needed one. **`CreateHeadless()` falls back too since
+The fallback is skipped when the requested backend already IS the platform default it would fall back to, and
+since 18.0.0 that guard is a complete statement rather than a first approximation, because there is exactly one
+default per platform. **`CreateHeadless()` falls back too since
 17.40.0**, on the same two guards and with the same WARN, in both of the ways a default can fail: an
 unregistered provider, and a REGISTERED provider that refuses this machine. Without the second one a
 `Render2DSnapshot.Capture` or `Render3DSnapshot.Capture` that worked before a repin would throw after it. A
@@ -9512,9 +9534,11 @@ Registering a provider yourself is the same one call, with the backend named:
 GpuBackendProviders.Register(GpuBackendKind.Direct3D11Native, myProvider);   // IGpuBackendProvider
 ```
 
-`Direct3D11Native` is the first provider-backed kind. Registering a provider under a built-in kind (Metal,
-Vulkan, Direct3D11, OpenGL) has no effect, because the built-in Veldrid path serves those regardless of what is
-registered.
+`Direct3D11Native` was the first provider-backed kind, and since 18.0.0 every live kind is provider-backed.
+Registering a provider under one of the four RETIRED kinds (Metal, Vulkan, Direct3D11, OpenGL) cannot make one
+selectable: `IsBackendSupported` answers false for them whatever the registry holds, and a stored preference or
+an environment token naming one is redirected onto that API's native backend before creation reads the registry
+at all.
 
 `IGpuBackendProvider` has three members: `IsSupported()` (the functional probe, which must never throw),
 `CreateForWindow(in GpuWindowedDeviceRequest)` and `CreateHeadless()`. Both creation calls return a
@@ -9523,10 +9547,11 @@ run inside the engine's process-wide device-creation gate, so a provider needs n
 
 ### The native Direct3D 11 package (`KhaozEngine.Gpu.D3D11`, 17.30.0)
 
-Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
+Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.0.0, so a game on either one
+already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.41.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.0.0" />
 ```
 
 ```csharp
@@ -9558,10 +9583,11 @@ that up front is what routes it through the reported fallback instead of a crash
 
 ### The native Vulkan package (`KhaozEngine.Gpu.Vulkan`, 17.32.0)
 
-Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
+Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.0.0, so a game on either one
+already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.41.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.0.0" />
 ```
 
 ```csharp
@@ -9602,10 +9628,10 @@ bind**, so a storage texture a dispatch wrote and a later draw samples needs no 
 rule already says (both in one list, the texture created `Storage | Sampled`). **Compute rule 2 is unchanged and
 you must still honour it**: this backend additionally orders a dependent-dispatch chain inside one list, which is
 a backend property and not a contract change, and code that drops the `End` plus `Submit` plus `WaitForIdle`
-because it works here breaks on Metal. **Since 17.40.0 the Linux default IS `GpuBackendKind.VulkanNative`**, so
-referencing the package and calling `Register()` is what a Linux head boots on, and a head that does not gets
-`GpuBackendKind.Vulkan` through Veldrid with a WARN. That incumbent stays selectable by
-`KE_GRAPHICS_BACKEND=vulkan` for ONE release and is removed in the next.
+because it works here breaks on Metal. **Since 17.40.0 the Linux default IS `GpuBackendKind.VulkanNative`**, and since 18.0.0 it is the only Vulkan
+implementation the engine has. The umbrellas carry the package and `AppWindow` registers it, so a Linux head
+boots on it with no call of its own. `KE_GRAPHICS_BACKEND=vulkan` names the retired incumbent and resolves here
+with a WARN.
 
 **The `vulkan-native` CI leg exists now and is blocking**, verifying the shared `vulkan` goldens on lavapipe with
 `KE_VULKAN_DEVICE=llvmpipe` pinned, and its scheduled full suite runs under `KE_VULKAN_VALIDATION=strict` with a
@@ -9766,8 +9792,8 @@ KE_VULKAN_ACQUIRE=stall       # the incumbent's shape, restored exactly, for the
 ```
 
 The default acquires with a binary semaphore that the frame's submit waits on, so the GPU does the waiting and
-the CPU does not block. `stall` acquires with a fence and blocks the CPU on it, which is what the Veldrid Vulkan
-backend does. The index comes back synchronously in both, so only the synchronisation moves, not the timing of
+the CPU does not block. `stall` acquires with a fence and blocks the CPU on it, which is what the deleted Veldrid
+Vulkan backend did. The index comes back synchronously in both, so only the synchronisation moves, not the timing of
 the acquire itself.
 
 Two things to know before using it. **It is not usable with `KE_VULKAN_VALIDATION`**, and that is a documented
@@ -9799,10 +9825,11 @@ is no recovery path: a lost device stays lost, which is what the liveness token 
 
 ### The native Metal package (`KhaozEngine.Gpu.Metal`, 17.35.0)
 
-Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
+Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.0.0, so a game on either one
+already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.41.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.0.0" />
 ```
 
 ```csharp
@@ -9830,8 +9857,8 @@ live too: `GpuDeviceContext.CreateForWindow` builds a real one over a Cocoa `NSW
 `SwapchainFramebuffer`, `SyncToVerticalBlank`, `ResizeSwapchain` and `Present` all work and `IGpuDevice` has no
 refusing member left either.
 
-**The swapchain behaves like the Veldrid Metal backend's in configuration and unlike it in four places, all of
-them visible from your frame loop.** A frame whose drawable came back nil (a minimised or zero-sized window is
+**The swapchain was built to behave like the deleted Veldrid Metal backend's in configuration and unlike it in
+four places, all of them visible from your frame loop.** A frame whose drawable came back nil (a minimised or zero-sized window is
 the ordinary cause) renders into a device-owned ORPHAN TARGET at the current size and is submitted and completed
 like any other frame with only its PRESENT skipped, so it counts into `GpuDeviceCounters.FramesBegun` and the
 first skip WARNs once per device. The incumbent instead reports its framebuffer unrenderable and silently
@@ -9858,8 +9885,8 @@ every pipeline built against the window survives every resize.
 open, because it opens a render encoder of its own, so a resolve issued mid-pass costs a full re-activation of
 the pipeline state, the argument tables, the viewport, the scissor and every vertex stream on the next draw. And
 it does NOT force out a pass that collected clears and saw no draw, so clearing a target and resolving it with
-nothing drawn resolves its pre-clear contents. Both are the Veldrid Metal backend's behaviour reproduced rather
-than smoothed, and the package README carries the whole of it.
+nothing drawn resolves its pre-clear contents. Both reproduce the deleted Veldrid Metal backend's behaviour rather
+than smoothing it, and the package README carries the whole of it.
 
 **A resource-set bind RECORDS and the next draw emits it**, which is worth knowing only because of what it
 means for a per-draw dynamic offset. Re-binding the same set with the same offset costs nothing at all, so a
@@ -9877,11 +9904,11 @@ Metal is the one backend where it is not written in the shader. There is no `reg
 `layout(binding = 3)` on the far side: the cross-compiler assigns each resource an index of its own, per stage,
 following first reference rather than declaration order. The native backend reads those indices out of the
 emitted text and resolves each one back to your declared `(set, binding)` through the shader's own SPIR-V
-decorations, so what it binds is where the resource actually went. The Veldrid Metal backend counts declarations
+decorations, so what it binds is where the resource actually went. The deleted Veldrid Metal backend counted declarations
 instead, which is why the engine's shaders still sample every texture up front in binding order and why
 `ShaderValidation.ValidatePair` and `ValidateCompute` both reject a shader whose emitted index order disagrees
 with its binding order (see "It also checks the Metal binding order" under device-free shader validation). Keep
-both habits: that backend ships and stays selectable.
+both habits: the shipped shaders were authored under that constraint.
 
 A shader whose emission cannot be read fails at `CreateShadersFromSpirv` with a message naming the program, the
 stage and the offending argument, and it fails with no device involved, so it surfaces in a headless test run
@@ -9943,8 +9970,8 @@ left empty for a shader that references nothing, because such a shader still ref
 And your vertex layouts have to cover every attribute the vertex function declares, because Metal validates the
 pipeline against the compiled function and says which attribute is missing.
 
-**Disposing a shader set or a pipeline and then using it is refused by name on this backend, where the Veldrid
-legs are quieter about it.** Creating a pipeline from a disposed `IGpuShaderSet`, or binding a disposed
+**Disposing a shader set or a pipeline and then using it is refused by name on this backend, where the deleted Veldrid
+legs were quieter about it.** Creating a pipeline from a disposed `IGpuShaderSet`, or binding a disposed
 `IGpuPipeline` or `IGpuComputePipeline` through `SetPipeline` or `SetComputePipeline`, throws
 `ObjectDisposedException` rather than proceeding. That is not defensiveness for its own sake: disposal here
 releases real Objective-C objects, so the alternative is a later draw setting a released pipeline state on a
@@ -9959,8 +9986,8 @@ it is mentioned only because a Metal frame capture shows those indices and they 
 0 and 1.
 
 **One creation the other backends accept is refused here, deliberately.** A buffer declaring both
-`GpuBufferUsage.UniformBuffer` and either structured usage throws at creation on `MetalNative`. Both Veldrid
-backends accept the combination and nothing in this engine creates it: a uniform buffer on this backend is
+`GpuBufferUsage.UniformBuffer` and either structured usage throws at creation on `MetalNative`. The deleted
+Veldrid backends accepted the combination and nothing in this engine creates it: a uniform buffer on this backend is
 rebased per frame by the uniform ring, and a structured binding of the same buffer would read whichever frame
 segment it landed on. Create two buffers.
 
@@ -9968,9 +9995,9 @@ segment it landed on. Create two buffers.
 write lands when you make it, not when the list is submitted.** A record-time `IGpuCommandList.UpdateBuffer` to a
 uniform buffer on `MetalNative` is a memcpy into that frame's own segment, so two writes to the SAME range inside
 one frame leave the second value for every draw of that frame, including the draws you recorded between them.
-`GpuBackendKind.Metal`, through Veldrid, orders the write against the draws instead, so this is a real difference
-between the two Metal backends rather than a note about Metal. It is measured on both, one machine and one
-process, by `RecordTimeUniformRewriteGpuTests`. Address per-draw or per-pass uniforms by dynamic offset
+The deleted `GpuBackendKind.Metal` ordered the write against the draws instead, so this was a real difference
+between the two Metal backends rather than a note about Metal, measured on both in one machine and one process
+by `RecordTimeUniformRewriteGpuTests` while both shipped. Address per-draw or per-pass uniforms by dynamic offset
 (`GpuBufferRange` plus the offset overload of `SetGraphicsResourceSet`), which is what the engine's own renderers
 do, or re-upload a whole CPU mirror whose already-recorded slots keep the bytes they had.
 
@@ -9980,15 +10007,15 @@ the world rather than the package: this operating system, this machine, or a han
 `NSWindow` with a content view. `GpuBackendKind.MetalNative` and its `metal-native`
 and `mtl-native` tokens exist, so the kind is nameable via `KE_GRAPHICS_BACKEND=metal-native`: a registered
 process answers the machine probe for it, and an unregistered one that NAMED it throws the provider-missing
-exception rather than falling back. **Since 17.40.0 `ProbeOS` answers `MetalNative` on macOS**, so a game that
-calls `Register()` boots on this backend without naming anything, and one that does not gets
-`GpuBackendKind.Metal` through Veldrid with a WARN. That incumbent stays selectable by
-`KE_GRAPHICS_BACKEND=metal` for one release and is removed in the next.
+exception rather than falling back. **Since 17.40.0 `ProbeOS` answers `MetalNative` on macOS**, and since 18.0.0 it is the only Metal
+implementation the engine has. The umbrellas carry the package and `AppWindow` registers it, so a Mac head
+boots on it without naming anything. `KE_GRAPHICS_BACKEND=metal` names the retired incumbent and resolves here
+with a WARN.
 
 **Four environment variables steer it, and none is on by default.** `KE_METAL_DEVICE` picks which GPU: a
 zero-based index into `MTLCopyAllDevices()`, a case-insensitive substring of a device name, or `discrete`,
-`integrated` or `low-power`. Unset, it takes `MTLCreateSystemDefaultDevice()`, which is the same device the
-incumbent Metal backend uses, so a capability comparison between the two is meaningful by construction and an
+`integrated` or `low-power`. Unset, it takes `MTLCreateSystemDefaultDevice()`, which was the same device the
+incumbent Metal backend took, so the capability comparison between the two was meaningful by construction and an
 ordinary run never enumerates at all. Metal has exactly one classification flag (`-isLowPower`) and no discrete
 flag, so `discrete` means "not low-power" and `integrated` and `low-power` are the same predicate under two
 names. A request nothing matches WARNS with the full enumeration and falls back rather than failing, and the
@@ -10077,8 +10104,8 @@ so an ungated copy would be a CPU write into the one segment the GPU may be read
 right trade at a depth that exists for measuring.
 
 **This backend clears the colour attachment you NAMED, and there is no knob for the other behaviour.** The
-Veldrid Metal backend writes every clear into `colorAttachments[0]`, so a framebuffer with more than one colour
-target clears only its first, and `ModelRenderer.BeginModelPass` reaches exactly that with `ModelFB`'s three
+deleted Veldrid Metal backend wrote every clear into `colorAttachments[0]`, so a framebuffer with more than one
+colour target cleared only its first, and `ModelRenderer.BeginModelPass` reaches exactly that with `ModelFB`'s three
 attachments. That is the one deliberate rendering change this backend makes. A `KE_METAL_CLEAR=attachment0`
 switch existed to put a run back on the incumbent's behaviour for rollout gate 1's A/B, and it was removed at
 that gate along with the losing branch, so nothing you can set changes where a clear lands.
@@ -10086,31 +10113,32 @@ that gate along with the losing branch, so nothing you can set changes where a c
 **A Metal command-buffer failure is reported now, which it was not before.** Every command buffer's status and
 error are read when it finishes, in every configuration, and the first failure latches its
 `MTLCommandBufferError` code and the driver's own description, makes every later release a no-op, and lands in
-the telemetry session header's `deviceLossReason` field. The Veldrid Metal path cannot do this: it reads
-`status` in one place and never reads `error`, so a device loss there is invisible to the engine and to
+the telemetry session header's `deviceLossReason` field. The deleted Veldrid Metal path could not do this: it read
+`status` in one place and never read `error`, so a device loss there was invisible to the engine and to
 telemetry.
 
-**`GpuCapabilities` off a `MetalNative` device is identical to the Veldrid Metal backend's, member for member.**
-There are no permitted differences at all, a test compares both devices in one process, and it carries a
-reflection check that the comparison covers the whole struct so a member added later cannot slip past it. Seven
-of the nine members are constants of what the incumbent answers, `MaxMsaaSampleCount` reproduces its walk over
+**`GpuCapabilities` off a `MetalNative` device was pinned identical to the Veldrid Metal backend's, member for
+member, while both shipped.** There were no permitted differences at all, a test compared both devices in one
+process, and it carried a reflection check that the comparison covered the whole struct so a member added later
+could not slip past it. Seven of the nine members are constants of what the incumbent answered, `MaxMsaaSampleCount` reproduces its walk over
 `-supportsTextureSampleCount:` from 32 downward, and `DeviceName` is the device's own `-name` untouched. The
-practical consequence for a consumer is that `AntiAliasing.ResolveFor` clamps to the same number on both Metal
-paths, so a scene renders at the same sample count whichever one is selected.
+practical consequence for a consumer is that `AntiAliasing.ResolveFor` clamps to the number the incumbent
+clamped to, so a scene repinned onto 18.0.0 renders at the sample count it always did.
 
-**`GpuDeviceCounters.HasValue` is true on a `MetalNative` device and false on the Veldrid Metal path**, which is
-the difference between a capture that carries GPU columns and one that carries none. Every channel is
+**`GpuDeviceCounters.HasValue` is true on a `MetalNative` device, where it was false on the deleted Veldrid
+Metal path**, which is the difference between a capture that carries GPU columns and one that carries none. Every channel is
 cumulative since the device was created, so a window is the difference between two sampled rows.
 `BackpressureStallCount` here counts the uniform ring's segment acquire alone, so a non-zero reading is
 unambiguously about `KE_METAL_FRAMES_IN_FLIGHT`, where the same field on `VulkanNative` also folds in a command
 list waiting on its own oldest buffer slot. `FramesBegun` and the acquire pair belong to the present boundary,
 so a headless device reports zero for all three, truthfully rather than as a placeholder.
 `GpuDeviceDiagnostics.SoftwareAdapter` is `false` with confidence rather than null, because Apple ships no
-software Metal rasterizer, and the Veldrid Metal path correctly reports null there because it cannot answer.
+software Metal rasterizer, where the deleted Veldrid Metal path correctly reported null because it could not
+answer.
 
 **`GpuFrameCapture.ArmNext(path)` works on `MetalNative` too, and it needs no reflection to do it.** The
-capture names the `MTLCommandQueue` this backend created, where the Veldrid Metal path has to find Veldrid's
-private queue field by reflection and skips the capture if it has moved. `MTL_CAPTURE_ENABLED=1` must be in the
+capture names the `MTLCommandQueue` this backend created, where the deleted Veldrid Metal path had to find a
+private queue field by reflection and skipped the capture when it moved. `MTL_CAPTURE_ENABLED=1` must be in the
 environment BEFORE the process launches, the same process-launch rule the validation variables have:
 
 ```bash
@@ -10153,7 +10181,7 @@ needs its own list goes in the frame's pre-record phase (`AppWindow.Run(onFrame,
 
 This is a real portability rule, not defensive style. Backends disagree about what a second recording means:
 
-- The Veldrid Direct3D11 leg **rejects** it. The vendored fork's guardrail throws on a second recorder.
+- The deleted Veldrid Direct3D11 leg **rejected** it. Its vendored fork's guardrail threw on a second recorder.
 - With Direct3D11 in immediate-context mode a command list **is** the device's immediate context, and `Begin`
   calls `ClearState` on it, so opening a second list wipes the state the first one already recorded. That is the
   ocean-pass corruption of 17.26.0, and it looked like a rendering bug somewhere else entirely.
@@ -10178,8 +10206,8 @@ Each list owns its own `VkCommandPool`s, which is the externally-synchronised ob
 asks a caller to keep per thread, and image-layout tracking is list-local against a canonical resting layout, so
 nothing shared is read or written during recording at all. That is the same property the Direct3D 11 command
 stream buys by touching no device state, obtained from the API's own threading model plus the barrier design
-instead of from an engine-owned buffer. It is still not a promise of the interface: the same code on Metal, on
-either Veldrid backend or on the immediate Direct3D 11 driver is a half-recorded or corrupted frame, and a
+instead of from an engine-owned buffer. It is still not a promise of the interface: the same code on Metal or on the
+immediate Direct3D 11 driver is a half-recorded or corrupted frame, and a
 machine that falls back after a failed device creation swaps the backend under your code without telling it.
 
 `End()` seals the list. Submitting one that was never ended is a half-recorded frame, and a backend is free to
@@ -10277,9 +10305,8 @@ number, and again only the first can make it refuse something the other backends
 
 **A uniform buffer may not also be something else there either.** Creating a buffer as
 `GpuBufferUsage.UniformBuffer | GpuBufferUsage.StructuredBufferReadOnly` (or with either read-write structured
-bit, or with the vertex, index or indirect bits) is legal on the seam and is accepted by
-`GpuBackendKind.Vulkan`, the Veldrid Vulkan backend. `GpuBackendKind.VulkanNative` REFUSES it at creation, with
-a message saying so. A uniform buffer there is ring-backed: it holds one copy of itself per frame in flight, and
+bit, or with the vertex, index or indirect bits) is legal on the seam and was accepted by the deleted Veldrid
+Vulkan backend. `GpuBackendKind.VulkanNative` REFUSES it at creation, with a message saying so. A uniform buffer there is ring-backed: it holds one copy of itself per frame in flight, and
 the frame's base offset is supplied at the bind as the dynamic uniform descriptor's offset. No other binding
 carries that base, so the vertex, index, indirect or storage read would address the first copy while the uniform
 read addressed the current one, and one frame's data would be read as another's with nothing thrown. Create two
@@ -10309,8 +10336,8 @@ Four things reach you, and only the last two can make `GpuBackendKind.VulkanNati
 backends accept.
 
 **Creating textures does not submit anything to the queue, so a load no longer costs one submission per
-texture.** On the Veldrid Vulkan backend a texture constructor clears a render target or transitions a sampled
-texture and issues a whole `vkQueueSubmit` for it, which is two hundred submissions to load a scene with two
+texture.** On the deleted Veldrid Vulkan backend a texture constructor cleared a render target or transitioned a sampled
+texture and issued a whole `vkQueueSubmit` for it, which was two hundred submissions to load a scene with two
 hundred textures. Here both are appended to one device-owned setup command buffer and flushed at the next
 `Submit` or at the next device-level read. Nothing about how you create a texture changes, and you do not have to
 flush it yourself: `IGpuDevice.Map`, `IGpuDevice.WaitForIdle` and both `Submit` overloads all flush first, which
@@ -10320,8 +10347,8 @@ is why a render target created and immediately read back still sees its cleared 
 backends did it silently.** Direct3D 11's `Map(READ)` on the immediate context blocks by definition. Vulkan has
 to be explicit, so the native backend waits on the device timeline before returning the pointer and counts that
 wait into `GpuDeviceCounters.DrainCount` and `DrainMs`. A `GpuMapMode.Write` map does not wait, matching the
-Veldrid leg. `MappedData.RowPitch` and `MappedData.SizeInBytes` mean exactly what they mean there, because the
-subresource arithmetic behind them is reproduced from it byte for byte.
+deleted Veldrid leg. `MappedData.RowPitch` and `MappedData.SizeInBytes` mean exactly what they meant there,
+because the subresource arithmetic behind them was reproduced from it byte for byte.
 
 **A sample count above the device's `GpuCapabilities.MaxMsaaSampleCount` is REFUSED at texture creation rather
 than rounded down to one.** `AntiAliasing.ResolveFor` is the one place a request is meant to be clamped, so a
@@ -10476,10 +10503,10 @@ GpuTelemetryChannels.AppendTo(row, Window.Counters);    // appends nothing at al
 _recorder.Sample(elapsedSeconds, row);
 ```
 
-**`HasValue` is false on the backends that keep no counters, and that is not the same as zero.** The two NATIVE
-backends answer true: Direct3D 11 since 17.32.0, and the native Vulkan backend since 17.34.0. Metal and the
-incumbent Veldrid paths have neither a fence drain nor a segment ring to count, so they answer the default and
-`AppendTo` writes no columns for them. That matters because ZERO STALLS IS THE GOOD RESULT: a capture full of
+**`HasValue` is false on a backend that keeps no counters, and that is not the same as zero.** All three native
+backends answer true: Direct3D 11 since 17.32.0, native Vulkan since 17.34.0 and native Metal since 17.35.0.
+The deleted Veldrid paths had neither a fence drain nor a segment ring to count, so they answered the default
+and `AppendTo` wrote no columns for them. That matters because ZERO STALLS IS THE GOOD RESULT: a capture full of
 zeros from a backend that never looked would read exactly like a clean run.
 
 **The acquire pair is what tells the two acquire models apart, and on a machine at a pinned refresh rate it is
@@ -10538,24 +10565,21 @@ the array type and drops the multisampling). Build the multisampled target as a 
 it into an array layer instead. Every multisampled render target the engine makes is already single-layer, so
 this refuses a shape nothing was building.
 
-**One backend emulates it, and the emulation is contained rather than invisible.** The three native backends
-(`KhaozEngine.Gpu.Metal`, `.Vulkan`, `.D3D11`) create the array type directly. The incumbent Veldrid backend has
-no way to express a one-layer array at all, so it creates a second slice that is never uploaded to, never
-sampled and never named by a slot. Nothing samples the phantom, so it cannot reach a picture. Veldrid does COUNT
-it, though, so the two seam paths that name SUBRESOURCES rather than texels have to know about it, and both do:
+**Nothing emulates it any more.** The three native backends (`KhaozEngine.Gpu.Metal`, `.Vulkan`, `.D3D11`)
+create the array type directly, and they are the only backends since 18.0.0. The deleted Veldrid incumbent had
+no way to express a one-layer array at all, so it padded one with a second slice that was never uploaded to,
+never sampled and never named by a slot, and the two seam paths that name SUBRESOURCES rather than texels had
+to know about the padding. Both keep the behaviour the padding forced, because it is the right behaviour
+anyway:
 
-- `GpuReadback.ToRgba` works. A whole-resource copy names every subresource on both sides, so a two-slice source
-  against the one-slice staging texture the readback allocates used to be refused here (`Source and destination
-  Textures are not compatible to be copied`) and to succeed on the natives. The copy narrows to the LOGICAL
-  subresources whenever a side pads, so the readback is backend-independent again.
-- `UpdateTexture(..., arrayLayer: 1)` on a one-layer array raises `ArgumentOutOfRangeException`, on the
-  incumbent as well as on all three natives. Writing to the phantom writes to memory nothing reads. 17.39.0
-  closed the incumbent's silent accept, and 17.40.0 closed the same hole on native Direct3D 11 and native
-  Vulkan, where the API itself never objects: `UpdateSubresource` drops an out-of-range subresource index
-  without an `HRESULT` and a recorded `vkCmdCopyBufferToImage` carries no result code at all (#695).
+- `GpuReadback.ToRgba` narrows a whole-resource copy to the LOGICAL subresources whenever a side pads, so the
+  readback is backend-independent.
+- `UpdateTexture(..., arrayLayer: 1)` on a one-layer array raises `ArgumentOutOfRangeException` on all three
+  natives. 17.39.0 closed the incumbent's silent accept and 17.40.0 closed the same hole on native Direct3D 11
+  and native Vulkan, where the API itself never objects: `UpdateSubresource` drops an out-of-range subresource
+  index without an `HRESULT` and a recorded `vkCmdCopyBufferToImage` carries no result code at all (#695).
 
-What is left is one slice of memory. A STAGING texture is never padded at all, since it has no view and nothing
-binds it to a shader.
+A STAGING texture is never padded at all, since it has no view and nothing binds it to a shader.
 
 ---
 
@@ -10564,9 +10588,9 @@ binds it to a shader.
 A Direct3D11 driver reports whether it can build deferred-context command lists itself. When it cannot
 (`DriverCommandLists=FALSE`), the D3D11 runtime emulates them: it records every call into a token stream and
 replays it on the immediate context at submit time, so there is a fixed cost on every single recorded command.
-Veldrid compounds it by issuing an extra `VSUnsetConstantBuffer` before each partial constant-buffer bind, which
-it gates on exactly this flag. The two together can cost an order of magnitude of frame rate on hardware that is
-otherwise fine, and from the outside it just reads as "this machine is slow".
+The deleted Veldrid incumbent compounded it by issuing an extra `VSUnsetConstantBuffer` before each partial
+constant-buffer bind, gated on exactly this flag. Emulation alone can cost an order of magnitude of frame rate
+on hardware that is otherwise fine, and from the outside it just reads as "this machine is slow".
 
 `GpuDeviceContext` reads the flag once at device creation and logs it next to the backend line above:
 
@@ -10631,9 +10655,8 @@ falls between the adapter line and the overlay line. This session's overlay line
 `RTSSHooks64.dll` is a match.
 
 **`GPU adapter` is logged on EVERY backend**, unlike the D3D11 threading line above it. On Direct3D11 it is exactly
-the DXGI adapter description (Veldrid reads `IDXGIAdapter::GetDesc().Description` into
-`GraphicsDevice.DeviceName`), so no Vortice interop is involved, but an adapter name means something on Metal and
-Vulkan too. `GpuDeviceContext.AdapterDescription` and `AppWindow.AdapterDescription` return it, and it is the
+the DXGI adapter description the backend reads out of `IDXGIAdapter::GetDesc().Description`, and an adapter name
+means something on Metal and Vulkan too. `GpuDeviceContext.AdapterDescription` and `AppWindow.AdapterDescription` return it, and it is the
 same value as `Capabilities.DeviceName`, which stays the single source. It is named again because "adapter
 description" is what a reader chasing a Direct3D11 problem goes looking for.
 
@@ -11769,9 +11792,9 @@ KE_SPIRV_CACHE=off KE_METAL_MSL_CACHE=off      # native Metal
 KE_SPIRV_CACHE=off KE_D3D11_SHADER_CACHE=off   # native Direct3D 11
 ```
 
-The incumbent Veldrid backends and the native Vulkan one need only `KE_SPIRV_CACHE=off`, because nothing on
-those paths sits in front of the compiler (the Vulkan disk cache holds pipelines, which is after it).
-`cross-platform-gpu.yml`'s `disableGpuDiskCache` dispatch sets all four together for this reason.
+The native Vulkan backend needs only `KE_SPIRV_CACHE=off`, because nothing on that path sits in front of the
+compiler (the Vulkan disk cache holds pipelines, which is after it). `cross-platform-gpu.yml`'s
+`disableGpuDiskCache` dispatch sets them together for this reason.
 
 The cache holds 512 distinct modules and then stops inserting, which is far above what any engine-owned run
 reaches. If your game GENERATES shader sources at runtime rather than shipping them as constants, that bound is
@@ -11780,8 +11803,8 @@ the one to know about: past it, compilation behaves exactly as it did before thi
 ### It also checks the Metal binding order (17.36.0)
 
 This is the half that is not a compile failure anywhere. Metal has no binding decorations: the cross-compiler
-assigns each resource an index of its own, per stage, in FIRST-REFERENCE order, while the Veldrid Metal backend
-binds a resource set by counting the layout in binding order. Where those two disagree Metal reads the wrong
+assigns each resource an index of its own, per stage, in FIRST-REFERENCE order, while the deleted Veldrid Metal
+backend bound a resource set by counting the layout in binding order. Where those two disagree Metal reads the wrong
 resource and returns zero rather than failing, with Vulkan and Direct3D 11 perfectly correct, so the symptom is
 a wrong picture on one backend and there is nothing in the GLSL that looks wrong. This engine shipped that bug
 three times before the guard existed, and found it by image golden or bisect every time.
@@ -11796,18 +11819,19 @@ your GLSL:
   happen in binding order, hoisting a first touch into `main` when a helper function defined above it reaches a
   later binding first. Note that a first reference is not a sample. `textureSize(sampler2D(Tex, Samp), 0)` names
   the texture and counts.
-- **The prefix property, for a pair only.** Veldrid counts one slot per kind across the WHOLE layout while the
-  cross-compiler numbers each stage densely from 0 over only what that stage declares, so every stage's
+- **The prefix property, for a pair only.** The incumbent counted one slot per kind across the WHOLE layout
+  while the cross-compiler numbers each stage densely from 0 over only what that stage declares, so every stage's
   resources must be a PREFIX of the layout's, per index space. A vertex-only texture placed after a fragment-only
   one cannot be made to work at any binding number, and no reordering inside the shader bodies fixes it. Order
   your `GpuResourceLayoutDescription` so the resources both stages read come first.
 
-**It is the INCUMBENT Veldrid Metal backend's constraint, and only that one**, which the exception message says
+**It was the INCUMBENT Veldrid Metal backend's constraint, and only that one**, which the exception message says
 as well. The engine's own native Metal backend (`GpuBackendKind.MetalNative`) binds at the index read out of each
 stage's emission rather than at a counted one, and Vulkan and Direct3D 11 honour the decorations, so a shader
-rejected here draws correctly on all three. Expect the rejection on a shader that looks fine on every device you
-own. The constraint (and this half of the validator) retires with the Veldrid Metal leg, tracked at
-https://github.com/APKiwiOrg/KhaozEngine/issues/604.
+rejected here draws correctly on all three. With the incumbent deleted in 18.0.0 the constraint no longer binds
+any live backend, and this half of the validator is still armed until
+https://github.com/APKiwiOrg/KhaozEngine/issues/604 retires it. Expect the rejection on a shader that looks fine
+on every device you own.
 
 Both degrade rather than false-positive. An index space carrying an argument the join cannot resolve is dropped
 silently instead of guessed at, so the guard can miss a swap but will not fail a correct shader.
@@ -11881,7 +11905,7 @@ samples needs `Sampled` as well. A storage buffer is `GpuBufferUsage.StructuredB
 `srcOffsetBytes` and both offsets of `IGpuCommandList.CopyBuffer` are refused with an
 `ArgumentOutOfRangeException` when they are not, naming the side the bad one came from. macOS requires it of
 `copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:`, so before 17.40.0 the same call was taken on
-Veldrid, Vulkan and Direct3D 11 and threw on Metal, which is a difference a game would only meet on a player's
+Vulkan and Direct3D 11 and threw on Metal, which is a difference a game would only meet on a player's
 Mac ([#602](https://github.com/APKiwiOrg/KhaozEngine/issues/602)). The seam takes the strictest backend's rule
 rather than papering over it, because rounding an offset would hand back a different slice than the one asked
 for. The SIZE is unconstrained. If you genuinely need an unaligned start, map the buffer and read from there:
@@ -11981,10 +12005,9 @@ near-free), and run the operation's cheap no-op checks first so nothing drains u
 actually be disposed. Teardown order is latched by `GpuDeviceContext.Dispose`: after the device itself
 is disposed, `WaitForIdle` is a safe no-op AND disposing any resource the device created is a safe
 no-op (device destruction already freed all child objects), so a wrapper that outlives its device at
-teardown can neither drain nor destroy against a dead device. Veldrid's deferred-disposal path was
-evaluated as a non-stalling alternative and rejected:
-under Mesa's threaded queue its disposal flush can lose a wakeup and hang the process, so the engine
-drains instead. The engine's own renderers follow this rule for resize-driven render target replacement
+teardown can neither drain nor destroy against a dead device. The incumbent's deferred-disposal path was
+evaluated as a non-stalling alternative and rejected: under Mesa's threaded queue its disposal flush
+could lose a wakeup and hang the process, so the engine drains instead. The engine's own renderers follow this rule for resize-driven render target replacement
 (`RenderResources`, `Render3DPreview.Resize`), which has no frame boundary left to reach. A custom
 renderer or content-streaming system built directly on `KhaozEngine.Gpu` should follow the same rule for
 anything it frees outside of full teardown, or hand the resource to a `GpuRetireQueue` (below) and never
@@ -12015,11 +12038,11 @@ encoded after it ran against a deliberately idled GPU. On a 400 frame load-draw-
 go from 396 to 0 and the frame cost from 1.909 to 0.376 ms.
 
 **On a backend with no GPU-completion fence the old behaviour is kept exactly.** Gate:
-`GpuCapabilities.SupportsCompletionFences`, true on Metal and Vulkan, false on Direct3D11 and OpenGL
-(Veldrid signals their `Fence` from the CPU as the submit call returns, so it is a submit receipt and
-not a completion signal). The opt-in `KhaozEngine.Gpu.D3D11` native backend reports TRUE, on a real
-device-wide completion counter, but its device is not creatable yet so nothing reaches that answer
-today. Where the flag is false, a batch waits out three frame boundaries and is destroyed behind a
+`GpuCapabilities.SupportsCompletionFences`, true on all three native backends since 18.0.0. The
+retired members answered false on Direct3D11 and OpenGL, because the incumbent signalled their fence
+from the CPU as the submit call returned, which is a submit receipt rather than a completion signal.
+The native Direct3D 11 backend answers TRUE on a real device-wide completion counter, which was its
+one permitted capability difference from the incumbent. Where the flag is false, a batch waits out three frame boundaries and is destroyed behind a
 single drain, which is what every backend did before. `Scene3D.RetiredResourceCount` is the observable
 either way: a healthy streaming world shows a small number that returns to 0 shortly after a burst.
 Expect it to sit HIGHER on the fence path than it used to, because the CPU is no longer being stalled

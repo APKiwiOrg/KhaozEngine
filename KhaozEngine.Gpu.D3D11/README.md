@@ -1,8 +1,12 @@
 # KhaozEngine.Gpu.D3D11
 
-The engine's own native Direct3D 11 backend for the [KhaozEngine.Gpu](../KhaozEngine.Gpu) seam. Opt-in and in
-NO umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or
-`WorldStore.Sqlite`, and nothing that does not want the Direct3D interop ever carries it.
+The engine's own native Direct3D 11 backend for the [KhaozEngine.Gpu](../KhaozEngine.Gpu) seam. Carried by the
+`KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.0.0, so a game on either umbrella already has
+it, and a consumer that references `KhaozEngine.Gpu` outside them adds this package explicitly.
+
+**"The incumbent" below always means the Veldrid Direct3D 11 backend, deleted in 18.0.0.** Many passages keep
+it in the present tense because they document the behaviour this backend was built to reproduce or to diverge
+from, and that reasoning is what makes the code readable. Nothing selects it any more.
 
 > **Status: DEVICE CREATION IS REAL.** `CreateForWindow` and `CreateHeadless` build a device on Windows: the
 > adapter choice, the `ID3D11Device` and its versioned context, one device state and one emitter context, the
@@ -10,22 +14,25 @@ NO umbrella: a consumer adds this package explicitly, the same pattern as `Physi
 > capability read, the device-loss latch and the debug-layer pump. Everything the sixteen rows before it built is
 > joined up and reachable.
 >
-> **THE DEFAULT ON WINDOWS SINCE 17.40.0.** The OS probe answers `GpuBackendKind.Direct3D11Native` there now, so a game that
-> references this package and calls `Register()` gets it without naming anything. The flip was taken by
-> DECISION on 2026-08-22, ahead of the field-evidence gates the rollout still had open, and the dated addendum
-> in section 17 of the design records which of them remain open as issues. This package stays OPT-IN as a
-> package, in no umbrella: a game that does not reference it falls back to `GpuBackendKind.Direct3D11` with a WARN naming the
-> missing registration rather than failing to boot. `GpuBackendKind.Direct3D11`, which goes through Veldrid, stays selectable
-> by `KE_GRAPHICS_BACKEND=d3d11` for ONE release and is removed in the next one.
+> **THE DEFAULT ON WINDOWS SINCE 17.40.0.** The OS probe answers `GpuBackendKind.Direct3D11Native` there now, so a
+> game gets it without naming anything. The flip was taken by DECISION on 2026-08-22, ahead of the
+> field-evidence gates the rollout still had open, and the dated addendum in section 17 of the design records
+> which of them remain open as issues. Since 18.0.0 the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas
+> carry this package, and `AppWindow` plus both snapshot hosts call
+> `GpuBackends.RegisterPlatformDefaultIfUnregistered()`, so a repinned game needs no new call. A game that
+> references `KhaozEngine.Gpu` outside the umbrellas still calls `KhaozEngineD3D11.Register()` itself, and a
+> default with nothing registered throws `GpuBackendProviderMissingException` rather than falling back to
+> anything. `GpuBackendKind.Direct3D11` named the Veldrid backend that 18.0.0 deleted and is a RETIRED token
+> now: a `KE_GRAPHICS_BACKEND=d3d11` token or a stored user preference is redirected onto `Direct3D11Native`
+> with a WARN, and naming the kind in code throws `GpuBackendRetiredException`.
 >
 > It is also still reachable by naming it anywhere: `KE_GRAPHICS_BACKEND=direct3d11-native`, or an
 > explicit `GpuBackendKind.Direct3D11Native`. The `direct3d11-native` CI leg exists now and is blocking: it
-> verifies the 36 shared `direct3d11` goldens on a pinned WARP adapter and runs the WARP parity `[GpuFact]` on
+> verifies the 36 `direct3d11` goldens on a pinned WARP adapter and runs the WARP parity `[GpuFact]` on
 > its full-suite triggers. Its first recorded evidence, and the five rollout gates that decide the default flip,
 > are https://github.com/APKiwiOrg/KhaozEngine/issues/460, where gate M1 is still open. What was checked before that leg existed still holds
 > and is the whole of the device-free story: this compiles under CA1416, the construction and teardown ORDER are
 > what they claim, and every subsystem below is green against its own device-free tests.
-> `GpuBackendKind.Direct3D11` remains a working Direct3D 11 backend for one more release.
 
 ## Opting in
 
@@ -52,14 +59,16 @@ another backend. A run that quietly used a backend other than the one it was ASK
 times, its telemetry session header and its golden images under the wrong name.
 
 Since 17.40.0 the case where nobody named it is different, because the OS probe answers `Direct3D11Native` on
-Windows. A game that has not referenced this package has not asked for anything, so it falls back to
-`GpuBackendKind.Direct3D11` with a WARN naming the missing registration rather than failing to boot.
+Windows, and since 18.0.0 nobody has to make the call: the `Game2D` and `Game3D` umbrellas carry this package,
+and `AppWindow` plus both snapshot hosts call `GpuBackends.RegisterPlatformDefaultIfUnregistered()` before they
+create anything. A default with no provider registered at all throws `GpuBackendProviderMissingException` too,
+since `GpuBackendSource.DefaultProviderMissing` was retired with the backend it used to fall back to.
 
 ## What the machine probe checks
 
 `GpuBackendSelector.IsBackendSupported(GpuBackendKind.Direct3D11Native)` routes to this package's own
-functional probe (Veldrid cannot answer for a backend it does not implement). The probe creates a throwaway
-feature level 11_0 device on the default hardware adapter, falling back to WARP, and reads
+functional probe (the deleted Veldrid incumbent could not answer for a backend it did not implement). The probe
+creates a throwaway feature level 11_0 device on the default hardware adapter, falling back to WARP, and reads
 `D3D11_FEATURE_D3D11_OPTIONS` off it. Two features are hard requirements:
 
 - **`ConstantBufferOffsetting`** - every constant-buffer bind goes through `*SetConstantBuffers1` with an
@@ -110,8 +119,8 @@ rather than as the order the sections of this file happen to come in.
 refuses a caller holding the submit lock by name. Then the pump, the swapchain, the shared samplers and the fence
 subsystem are released, all while the liveness token still says the device is alive, because every one of those
 releases reads that token and no-ops when it says dead. The token is flipped LAST, and the `ID3D11Device` and its
-context are released after that. Flipping it first (which is what the Veldrid wrapper does, correctly, since
-destroying a Veldrid device frees its children) would silently skip every release and leave the device alive
+context are released after that. Flipping it first (which is what the Veldrid wrapper did, correctly, since
+destroying a Veldrid device freed its children) would silently skip every release and leave the device alive
 holding a swapchain nobody can reach.
 
 ## Platform boundary
@@ -221,7 +230,7 @@ one set of caches.
 
 **There is no `SetViewport` on the seam, so `SetFramebuffer` carries the viewport (decision W6).** A framebuffer
 CHANGE replays as `OMSetRenderTargets` plus `RSSetViewports(1, full)` plus `RSSetScissorRects(1, full)`, exactly
-what Veldrid's base `SetFramebuffer` auto-applies. A redundant re-bind of the framebuffer already bound emits
+what Veldrid's base `SetFramebuffer` auto-applied. A redundant re-bind of the framebuffer already bound emits
 NOTHING, and that is a correctness rule rather than a saved call: the shipped sequence `SetFramebuffer(fb)`,
 `SetScissorRect(...)`, draw, `SetFramebuffer(fb)`, draw would otherwise have its live scissor silently replaced
 by the full one and the second draw would render outside the intended rectangle. A later explicit
@@ -411,9 +420,9 @@ assertion with it. Every value-typed call argument is a local or a `stackalloc`.
 outside compute, and `OMSetRenderTargetsAndUnorderedAccessViews` is deliberately not implemented here. The
 emitter inherits that refusal from `D3D11NativeCallName` rather than re-deciding it.
 
-**So is a non-zero scissor rectangle index, and that one IS a difference from the incumbent.**
+**So is a non-zero scissor rectangle index, and that one WAS a difference from the deleted incumbent.**
 `RSSetScissorRects` takes a count and always starts at rectangle 0, so honouring an index means tracking the
-whole array and re-issuing every rectangle below it. Veldrid keeps that array and this backend does not. Every
+whole array and re-issuing every rectangle below it. Veldrid kept that array and this backend does not. Every
 shipped call site passes zero and no shipped shader writes `SV_ViewportArrayIndex`, so the path is refused
 loudly rather than scissoring the wrong output silently.
 
@@ -529,10 +538,10 @@ wires the latch, and a null one (every device-free test) still throws.
 
 ## Completion fences, and a `WaitForIdle` that drains
 
-**This backend reports `SupportsCompletionFences = true`, and it is the one capability where it differs from
-`GpuBackendKind.Direct3D11`.** Veldrid's Direct3D 11 fence is a `ManualResetEvent` set the instant
-`ExecuteCommandList` returns, which is a submit receipt rather than a completion signal, so the incumbent
-reports false, `GpuRetireBarrier.TryCreate` hands back null there and the retire queue keeps a frame-count
+**This backend reports `SupportsCompletionFences = true`, which was its one permitted capability difference
+from the deleted incumbent.** Veldrid's Direct3D 11 fence was a `ManualResetEvent` set the instant
+`ExecuteCommandList` returned, which was a submit receipt rather than a completion signal, so the incumbent
+reported false, `GpuRetireBarrier.TryCreate` handed back null there and the retire queue kept a frame-count
 fallback. Here the fence is a value on a device-wide monotonic counter that the GPU advances, so the flag is
 honest and the fenced paths downstream become live.
 
@@ -564,7 +573,7 @@ submit signals too, because a later fence's value covers earlier work only if th
 its own. A submit the drivers reject signals nothing, and a fence handed to a submit with no sink is refused
 rather than left unarmed for something to wait on forever.
 
-**`WaitForIdle` is a real fence drain**, replacing the empty method body the Veldrid Direct3D 11 path has. It
+**`WaitForIdle` is a real fence drain**, replacing the empty method body the Veldrid Direct3D 11 path had. It
 signals a fresh point, flushes the context ONCE so the driver actually has that signal, and then waits for the
 GPU to reach it. The submit lock is held for the signal and the flush and released before the wait, so a drain
 never blocks the submission that would let it finish. The wait itself is `ID3D11Fence.SetEventOnCompletion` on
@@ -646,9 +655,8 @@ already freed every child object, so a wrapper disposed afterwards must do nothi
 implements `IDeviceLiveness`, which is the READ half the fence subsystem was built against: a fence asks whether
 the device is dead so it can answer signalled, and it has no business flipping the token, so `MarkDead` stays off
 that interface and the device's teardown remains its only caller. Both types live in `KhaozEngine.Gpu` as of
-#531's extraction, shared with the other two native backends and with the Veldrid wrappers. WHERE in teardown
-the flip happens is still this backend's own decision and is unchanged: it flips LAST, because every release
-above it reads the token.
+#531's extraction, shared with the other two native backends. WHERE in teardown the flip happens is still this
+backend's own decision and is unchanged: it flips LAST, because every release above it reads the token.
 
 ## Per-frame memory: the constant-buffer ring
 
@@ -658,11 +666,12 @@ it holds one segment per frame, and `SizeInBytes` stays the logical size the sea
 `UpdateBuffer` is then a memcpy at `mapped + frameBase + offset`: no staging buffer, no copy command, no stall
 and no whole-buffer requirement.
 
-The problem it removes is measured rather than theoretical. Veldrid puts a partial write to a default-usage
-constant buffer on a pooled staging path whose map blocks until the GPU is done with the buffer being recycled,
-and only a whole-buffer write from offset 0 escapes it, because Direct3D 11 forbids a partial box on a constant
-buffer. Zero renderer sites pass `GpuBufferUsage.Dynamic`, so every per-frame uniform buffer in the engine takes
-that path by construction. A reporting client paid 22 of those blocking maps a frame at 12 to 17 ms a pass.
+The problem it removes is measured rather than theoretical. Veldrid put a partial write to a default-usage
+constant buffer on a pooled staging path whose map blocked until the GPU was done with the buffer being
+recycled, and only a whole-buffer write from offset 0 escaped it, because Direct3D 11 forbids a partial box on a
+constant buffer. Zero renderer sites pass `GpuBufferUsage.Dynamic`, so every per-frame uniform buffer in the
+engine took that path by construction. A reporting client paid 22 of those blocking maps a frame at 12 to 17 ms
+a pass.
 
 **The frame's base is applied AT BIND, never baked into a resource set.** That is what keeps
 `CreateResourceSet`'s pinned `GpuBufferRange` valid across the 68 call sites that build one at load time: a set
@@ -713,12 +722,12 @@ is the resolution of https://github.com/APKiwiOrg/KhaozEngine/issues/484 and it 
 uniform writes here.
 
 The off-timeline (device-level) write reaches all `FramesInFlight` segments, so a value written ONCE persists for
-the buffer's life exactly as the same call persists it on the Veldrid leg, where the buffer has one copy. Reaching
-the current segment alone was the shipped shape for one release, and it was a defect rather than a documentation
-problem: a load-time write held only until the frame index wrapped back round, so two frames out of every three
-bound memory nothing had ever written, intermittently, with nothing thrown and nothing logged. The splat-params
-tail of `ModelRenderer`'s uniform buffer is the shipped consumer that writes that way, and it works here now with
-no renderer change.
+the buffer's life exactly as the same call persisted it on the deleted Veldrid leg, where the buffer had one
+copy. Reaching the current segment alone was the shipped shape for one release, and it was a defect rather than
+a documentation problem: a load-time write held only until the frame index wrapped back round, so two frames out
+of every three bound memory nothing had ever written, intermittently, with nothing thrown and nothing logged.
+The splat-params tail of `ModelRenderer`'s uniform buffer is the shipped consumer that writes that way, and it
+works here now with no renderer change.
 
 The record-time write is unchanged and still lands in the current segment alone, meaning the one the next `Submit`
 will bind and the one any open recording is already writing, deliberately not the one executing on the GPU. The
@@ -739,7 +748,7 @@ again. In the GPU-bound steady state the frame thread submits again for every fr
 one non-current segment is always in flight and "wait until they are all free" is never satisfiable: the writer
 chases the pipeline forever, burning a core. A deferral waits on a frame boundary that is going to happen anyway.
 
-**What you get is EVENTUAL CONSISTENCY, which is exactly the persistence the Veldrid leg gives.** When the call
+**What you get is EVENTUAL CONSISTENCY, which is exactly the persistence the Veldrid leg gave.** When the call
 returns, every segment either already holds the write or holds a pending patch its next acquire applies, so any
 segment BOUND after the call carries the value. The window in which an in-flight segment still holds the old bytes
 is unobservable through the seam, because that segment is not bound again until it has been acquired, and
@@ -805,7 +814,7 @@ Owning the FXC call is what buys the three things below.
 option set every HLSL emission in the engine runs under, with the citation from the Veldrid fork behind it, and a
 device-free test hashes the emitted HLSL of all 34 shipped graphics programs and 8 compute kernels against a
 checked-in table. The table is baked from THIS path, so what it pins is drift away from that bake rather than
-agreement with the incumbent Veldrid path. Agreement was measured once, at review time on 2026-08-03: all 34
+agreement with the deleted Veldrid path. Agreement was measured once, at review time on 2026-08-03: all 34
 graphics programs emitted byte-identical HLSL under both, which is what lets the committed Direct3D 11 goldens
 carry over without a rebake. The table is what keeps that true afterwards. One program's hashes moving is a
 shader edit. Thirty moving at once is an option drift, which is exactly what the table exists to catch. `KE_UPDATE_HLSL_HASHES=1` re-bakes the table, which is a test-maintenance knob for a deliberate shader
@@ -876,12 +885,12 @@ same build.
 **The swapchain framebuffer's identity NEVER changes, and a resize swaps its views underneath it (W2).** It is
 `D3D11SwapchainFramebuffer`, a different type from the offscreen `D3D11Framebuffer`: the offscreen one aggregates
 views that already live on engine textures and never changes, this one wraps a backbuffer the runtime hands back
-and takes away again. The incumbent disposes the depth texture and the whole framebuffer and builds a new object
-on every resize, which is why `VeldridGpuDevice.ResizeSwapchain` re-wraps only on a reference change, a workaround
-whose comment names the Windows black screen after going fullscreen, maximising or drag-resizing. Owning the
-wrapper deletes that workaround's reason to exist, and it makes Direct3D 11 behave the way Metal already does,
-which is the behaviour the rest of the engine was written against. `Outputs` is fixed at construction and a resize
-never touches it, so every pipeline built against the swapchain survives every resize.
+and takes away again. The incumbent disposed the depth texture and the whole framebuffer and built a new object
+on every resize, which is why `VeldridGpuDevice.ResizeSwapchain` re-wrapped only on a reference change, a
+workaround whose comment named the Windows black screen after going fullscreen, maximising or drag-resizing.
+Owning the wrapper removed that workaround's reason to exist, and it makes Direct3D 11 behave the way Metal
+already does, which is the behaviour the rest of the engine was written against. `Outputs` is fixed at
+construction and a resize never touches it, so every pipeline built against the swapchain survives every resize.
 
 Stable identity has one consequence worth knowing: W6's guard compares framebuffer REFERENCES, so what makes a
 resize visible to the context is the single `ClearState` at the head of the next submit, whose reset clears the
@@ -955,12 +964,13 @@ branches are unreachable and carrying them would mean shipping a fallback nothin
 **And the device's shared sampler pair is WRAP on all three axes, which is a fifth hardcode (G1).** It comes
 from `D3D11SharedSamplers`, not from the engine's `GpuSamplerDescription.Point` / `.Linear` statics, because
 those statics default every axis to CLAMP while the incumbent's built-in pair (Veldrid's
-`SamplerDescription.Point` / `.Linear`, which `GraphicsDevice.PointSampler` and `LinearSampler` are built from)
-wraps. Same names, opposite behaviour, and renderers assume wrap: `ModelRenderer` says so in writing. Building
+`SamplerDescription.Point` / `.Linear`, which `GraphicsDevice.PointSampler` and `LinearSampler` were built from)
+wrapped. Same names, opposite behaviour, and renderers assume wrap: `ModelRenderer` says so in writing. Building
 the pair from the statics is what moved `scene3d_texbillboard` (worst 0.393) and `scene3d_particles_flipbook`
 (worst 0.359) on CI run 30963173087, both scenes whose sampling leaves [0,1] by design.
-`NativeVsVeldridCapabilityParityTests` now compares the pair against the incumbent's built-ins field by field,
-device-free, so a drift fails on every OS rather than only on a Windows golden.
+`NativeVsVeldridCapabilityParityTests` compared the pair against the incumbent's built-ins field by field and
+device-free, so a drift failed on every OS rather than only on a Windows golden. That test was deleted with the
+incumbent in 18.0.0, and the WRAP hardcode it guarded is now stated here and in `D3D11SharedSamplers` alone.
 
 **`KE_D3D11_ADAPTER=warp|hardware|<index>|<name substring>` pins the adapter (G2).** Unset leaves DXGI to pick.
 A request that cannot be honoured WARNs and falls back to the default enumeration, never fails, and the warning

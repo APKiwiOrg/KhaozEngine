@@ -26,7 +26,8 @@ thin seams:
 | Native lib | Reached via | What it parses / handles |
 |---|---|---|
 | Silk.NET + GLFW (natives bundled per-RID) | `KhaozEngine.Windowing` (`AppWindow` only) | OS window + input events |
-| Veldrid | `KhaozEngine.Gpu` (the only graphics-API-aware layer) | GPU command submission (Metal/D3D11/Vulkan) |
+| The platform graphics driver (Metal, Direct3D 11, Vulkan) | `KhaozEngine.Gpu.Metal` / `.D3D11` / `.Vulkan`, behind `KhaozEngine.Gpu` (the only graphics-API-aware layer) | GPU command submission |
+| `libveldrid-spirv` (via `Veldrid.SPIRV`) | `KhaozEngine.Gpu` shader path | GLSL to SPIR-V compile and SPIR-V cross-compile at load |
 | Silk.NET.OpenAL | `KhaozEngine.Audio` | audio device output |
 
 These are the residual surface: a memory-safety bug in one of them is reachable from a game, so they
@@ -166,7 +167,8 @@ The posture is defense in depth: no single control is the whole story.
    the threat model. They are primitives the game wires up, not automatic guarantees.
 
 3. **Patched dependencies via self-contained publish.** Each game ships as a self-contained build: its
-   own pinned .NET runtime plus the native libs (GLFW, Veldrid's backend, OpenAL) for its RID. That is
+   own pinned .NET runtime plus the native libs (GLFW, the platform's graphics loader, `libveldrid-spirv`,
+   OpenAL) for its RID. That is
    what makes the residual native surface patchable: when a runtime or native-lib CVE lands, the game
    re-publishes a self-contained build to pick up the fix and ships it (the signed updater is the
    delivery mechanism). Adoption path: a game bumps its `KhaozEngine.*` pin and re-publishes; the runtime

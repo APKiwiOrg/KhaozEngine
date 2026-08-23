@@ -28,10 +28,10 @@ Windowing + input foundation for the custom MonoGame-free stack.
   free-runs a whole core plus the GPU out of the box.
   - `FrameCap` is the frame-cap intent: `Auto` (the default - and `default(FrameCap)`), `Uncapped`, or `Hz(n)`.
     `AppWindow.FrameCap` (and the plain `new AppWindow(title, w, h)` ctor) default to `Auto`. `FrameCap.Resolve(backend,
-    present, displayRefreshHz)` is pure: on the incumbent **`GpuBackendKind.Metal` + vsync** (where the Veldrid present
-    does not throttle the CPU) it resolves to the display refresh, else `FrameCap.DefaultMetalAutoCapHz` (120).
-    Everywhere else it stays uncapped, because vsync throttles there or `Immediate` asked for a free-run: **D3D11 /
-    Vulkan**, their native backends, and the engine's own **`MetalNative`**, measured on 2026-08-11 as blocking the CPU
+    present, displayRefreshHz)` is pure, and since 18.0.0 it resolves to UNCAPPED on every live backend. The only
+    backend whose present did not throttle the CPU from vsync alone was the Veldrid Metal incumbent, deleted in
+    18.0.0, so what is left is **D3D11Native / VulkanNative**, and the engine's own **`MetalNative`**, measured on
+    2026-08-11 as blocking the CPU
     in the drawable acquire for the whole vertical-blank wait. A consumer-set value always wins. `AppWindow.FrameCapHz`
     setter is the explicit int form (positive = fixed, 0 = intentional `Uncapped`), and its getter returns the RESOLVED
     effective cap. The one-time Metal-vsync warning (`Console.Error`, via the pure
@@ -48,10 +48,11 @@ Windowing + input foundation for the custom MonoGame-free stack.
   `AppWindow` implements (also surfaced on `GameApp.Display`):
   - `AppWindow.PresentMode` is now a get/set property (was construction-only). Setting it reconfigures the live
     swapchain's vsync in place via `IGpuDevice.SyncToVerticalBlank` - no recreate. On Metal it engages
-    `CAMetalLayer.displaySyncEnabled`. On the VELDRID Metal backend that does not cap the CPU, so pair vsync with a
-    `FrameCapHz` there (the setter warns once, `Console.Error`, if you select vsync with no cap on that backend, see
-    `DisplaySettings.RequiresFrameCapWarning`). The engine's own `MetalNative` was measured on 2026-08-11 and its
-    present does throttle from vsync alone, so it needs no cap and never warns.
+    `CAMetalLayer.displaySyncEnabled`. The deleted Veldrid Metal backend did not cap the CPU that way and needed a
+    `FrameCapHz` paired with vsync. `MetalNative` was measured on 2026-08-11 and its present does throttle from
+    vsync alone, so it needs no cap and never warns. The one-time `Console.Error` warning and the
+    `DisplaySettings.RequiresFrameCapWarning` rule behind it stay, unarmed on every live backend, for a future
+    backend that free-runs.
   - `AppWindow.WindowMode` (`WindowMode { Windowed, BorderlessFullscreen, ExclusiveFullscreen }`) switches how the
     window occupies the display; `AppWindow.Resize(w, h)` sets the windowed size in logical points. The swapchain
     follows the new framebuffer via the existing `FramebufferResize` hook, so HiDPI is unchanged (the backbuffer
@@ -93,7 +94,7 @@ Windowing + input foundation for the custom MonoGame-free stack.
     (`SoftwareAdapter`) and why the device was lost if it has been (`DeviceLossReason`). Unlike the three above
     it is read LIVE through to the device on every access rather than captured at creation, because a device loss
     happens at an arbitrary moment long afterwards. Both members are nullable and null means "nobody answered",
-    which is what every backend on the Veldrid path says. Hand it to
+    which is what the Metal and Vulkan backends say, since neither API answers either question. Hand it to
     `TelemetrySessionInfo.WithGpu`'s five-value overload for a windowed game's session header.
   - `Counters` (a `GpuDeviceCounters`, since 17.32.0) - the live soak counters of this window's device, cumulative
     since it was created: time spent waiting for the GPU to go idle, frame boundaries that blocked on a uniform

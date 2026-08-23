@@ -42,7 +42,7 @@ referenced directly or via `Game2D`/`Game3D`/`Server`:
   default, which hard-aborts at boot on Windows 10 builds with partial shadow-stack support.
   A build-log message surfaces the default so it is not silent.
 - `IncludeNativeLibrariesForSelfExtract=false` (unless pinned) when single-file publishing, so
-  the GLFW/Veldrid/OpenAL natives stay loose next to the apphost where the loader can find them
+  the GLFW, graphics-loader and OpenAL natives stay loose next to the apphost where the loader can find them
   (bundling them self-extracting breaks boot with "GlfwPlatform - not applicable").
 
 Both are overridable by setting the property in your game head.

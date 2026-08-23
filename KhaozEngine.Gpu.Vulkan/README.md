@@ -1,8 +1,12 @@
 # KhaozEngine.Gpu.Vulkan
 
-The engine's own native Vulkan backend for the [KhaozEngine.Gpu](../KhaozEngine.Gpu) seam. Opt-in and in NO
-umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or `WorldStore.Sqlite`,
-and nothing that does not want the Vulkan binding ever carries it.
+The engine's own native Vulkan backend for the [KhaozEngine.Gpu](../KhaozEngine.Gpu) seam. Since 18.0.0 it is
+CARRIED by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas, so a game on either of them has it
+without adding anything, and a game that references `KhaozEngine.Gpu` on its own adds this package explicitly.
+
+**"The incumbent" below always means the Veldrid Vulkan backend, deleted in 18.0.0.** Many passages keep it in
+the present tense because they document the behaviour this backend was built to reproduce or to diverge from,
+and that reasoning is what makes the code readable. Nothing selects it any more.
 
 > **Status: BUILT, CONTINUOUSLY EXERCISED, AND THE DEFAULT ON LINUX SINCE 17.40.0. Registration, probe, headless and
 > windowed devices, the completion timeline, the memory allocator, the command list's lifecycle, the uniform
@@ -84,10 +88,13 @@ and nothing that does not want the Vulkan binding ever carries it.
 > **THE DEFAULT ON LINUX SINCE 17.40.0.** The OS probe answers `GpuBackendKind.VulkanNative` there now, so a game that
 > references this package and calls `Register()` gets it without naming anything. The flip was taken by
 > DECISION on 2026-08-22, ahead of the field-evidence gates the rollout still had open, and the dated addendum
-> in section 17 of the design records which of them remain open as issues. This package stays OPT-IN as a
-> package, in no umbrella: a game that does not reference it falls back to `GpuBackendKind.Vulkan` with a WARN naming the
-> missing registration rather than failing to boot. `GpuBackendKind.Vulkan`, which goes through Veldrid, stays selectable
-> by `KE_GRAPHICS_BACKEND=vulkan` for ONE release and is removed in the next one.
+> in section 17 of the design records which of them remain open as issues. Since 18.0.0 the package is CARRIED
+> by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas rather than being opt-in, and `AppWindow` plus
+> both snapshot hosts call `GpuBackends.RegisterPlatformDefaultIfUnregistered()`, so a repinned game needs no
+> new call of its own. A game that references `KhaozEngine.Gpu` outside the umbrellas still calls
+> `KhaozEngineVulkan.Register()` itself. `GpuBackendKind.Vulkan` is a RETIRED token: an environment variable or
+> a stored user preference naming it is redirected onto `VulkanNative` with a WARN, reported as
+> `GpuBackendSource.FallbackAfterFailure`, and naming it in code throws `GpuBackendRetiredException`.
 >
 > Two of the five rollout gates are still open and still carry an instrument: gate 3's `sync` validation job and
 > gate 5's human windowed pass, which no CI leg can stand in for. The flip did not close them.
@@ -160,26 +167,27 @@ KE_GRAPHICS_BACKEND=vulkan-native   # or the shorter vk-native
 ```
 
 The whole token is matched, so a typo'd suffix is an unrecognized override with its own loud diagnostic rather
-than a silent run on the incumbent implementation under the new name. **`vulkan` still means Veldrid's Vulkan,
-and since the 17.40.0 flip it is the OPT-OUT rather than the default**: it is the kill switch every structural
-decision in the design leans on, so an A/B between the two implementations is one environment variable away. It
-lasts ONE release. The Veldrid implementations are removed by the removal program
-([#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)) in the release after that, and the token then
-parses to a member whose implementation is gone, because the enum is append-only.
+than a silent run on another backend under the new name. **`vulkan` used to mean Veldrid's Vulkan, and from the
+17.40.0 flip it was the OPT-OUT rather than the default**: it was the kill switch every structural decision in
+the design leaned on, so an A/B between the two implementations was one environment variable away. That lasted
+one release. The removal program ([#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)) deleted the
+Veldrid implementations in 18.0.0, and `vulkan` is a RETIRED token now: `GpuBackendSelector.IsRetired` names
+it, `NativeReplacementFor` maps it onto `VulkanNative`, and an environment variable or a stored user preference
+naming it is redirected there with a WARN rather than parsing to a member with nothing behind it.
 
 Naming the backend today reaches a real device on both paths, headless and windowed, on any machine whose probe
 answers yes. A machine whose probe answers no arrives through the reported fallback rather than as a crash: the
-creation path catches, WARNs with the message and boots on the incumbent, reporting
-`GpuBackendSource.FallbackAfterFailure`. Since 17.40.0 the Linux default IS `GpuBackendKind.VulkanNative`, so
-naming it is no longer how most sessions reach it, and `GpuBackendSelector.SupportedBackends()` offers the
-native kind to a player wherever this package is registered, ahead of the incumbent row it is the one-release
-opt-out from.
+creation path catches, WARNs with the message and boots on whatever `GpuBackendSelector.ProbeOS` answers for
+the machine, reporting `GpuBackendSource.FallbackAfterFailure`. Since 17.40.0 the Linux default IS
+`GpuBackendKind.VulkanNative`, so naming it is no longer how most sessions reach it, and
+`GpuBackendSelector.SupportedBackends()` offers the native kind to a player wherever this package is
+registered, with no incumbent row left beside it since 18.0.0.
 
 `VulkanNative` OWNS the committed `vulkan-native` golden family from `17.41.0`. It was a GUEST in the
 incumbent's `vulkan` family until then (decision V-I3), held to the incumbent's already-committed reference
 grids, unmodified, on the same rasterizer at the same tolerance, with `KE_UPDATE_GOLDENS` refused on it. Row 2
 of the Veldrid removal ([#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683)) promoted it, because the
-incumbent that owns `vulkan` is being deleted and a family whose owner is gone is a set of references nothing
+incumbent that owned `vulkan` was deleted and a family whose owner is gone is a set of references nothing
 may ever re-bake. The new family was seeded as a byte-identical COPY of `vulkan` rather than baked, so the
 guest-era agreement between the two implementations survives as committed bytes, and `KE_UPDATE_GOLDENS` writes
 `vulkan-native` and nothing else.
@@ -205,8 +213,8 @@ engine-side latching strict-only by design while leaving the tier something that
 matters because rollout gate 3 and the VMA decline above are both read off that job being green.
 
 Code that cares about the API rather than the implementation asks `kind.IsVulkan()`, true for both members.
-Plain equality against `GpuBackendKind.Vulkan` is the right question only when Veldrid's implementation
-specifically is meant.
+The enum is append-only, so the retired `GpuBackendKind.Vulkan` member is still there, but nothing selects it
+any more, and plain equality against it asks about a retired token rather than about a live backend.
 
 ## The instance, the device and the queue
 
@@ -271,7 +279,7 @@ and holds the native destroy until the counter passes it. Today that list drains
 frame-boundary drain arrives with row 17's `Present` path, which is the only thing that can call it. That makes
 "mid-life resource disposal racing queued async work" structurally impossible on this backend rather than merely
 conventionally avoided. The engine's own `WaitForIdle` calls stay where they are, because they are the seam's
-contract and the Veldrid leg still needs them.
+contract.
 
 ## The memory allocator, and the condition attached to declining VMA
 
@@ -377,7 +385,7 @@ to the offset and `stride` to the ceiling and leaves the arithmetic otherwise un
 
 **BACKEND-DIVERGENT CREATION FAILURE: a uniform buffer combined with any other bindable usage throws here.**
 `UniformBuffer | StructuredBufferReadOnly` (or either read-write structured bit, or the vertex, index or
-indirect bits) is legal on the seam and is ACCEPTED by `GpuBackendKind.Vulkan`, the Veldrid leg. It is refused at
+indirect bits) is legal on the seam and was ACCEPTED by the Veldrid leg that 18.0.0 deleted. It is refused at
 creation on this backend, because only the dynamic uniform descriptor carries the ring's per-frame base: a
 vertex bind, an index bind, an indirect argument read and a storage descriptor all address byte zero, so they
 would read the first segment while the uniform bind read the current one. Nothing about that is an error at run
@@ -389,8 +397,8 @@ is adopted wholesale from [#484](https://github.com/APKiwiOrg/KhaozEngine/issues
 because it cost a consumer defect to learn once on the other backend: a load-time write that reached the current
 segment alone held only until the frame index wrapped, so two frames out of every three bound memory nothing had
 ever written, intermittently, with nothing thrown and nothing logged. The off-timeline write reaches all
-`FramesInFlight` segments, so a value written once persists for the buffer's life exactly as it does on the
-Veldrid leg where the buffer has one copy.
+`FramesInFlight` segments, so a value written once persists for the buffer's life exactly as it did on the
+Veldrid leg, where the buffer had one copy.
 
 **And that write NEVER BLOCKS.** A segment an earlier frame is still reading does not receive the copy: the byte
 range and a private copy of the data are queued as a PENDING PATCH, and the frame boundary that next opens that
@@ -603,7 +611,7 @@ distortion offset target and it is written and sampled through red and green alo
 here because the reproduced staging arithmetic sizes that format at four bytes per texel.
 
 **And one more consumer-visible divergence beside the ring's.** `GpuBufferUsage.Dynamic` does NOT make a buffer
-CPU-mappable here, where it does on the Veldrid leg. The only dynamic buffers this engine creates are uniform
+CPU-mappable here, where it did on the Veldrid leg. The only dynamic buffers this engine creates are uniform
 buffers, which are ring-backed and host-visible for a better reason, so a dynamic vertex buffer lives in
 device-local memory and is written through the staging path like any other. Read back by copying into a
 `GpuBufferUsage.Staging` buffer, which is what `GpuReadback.ReadBuffer` already does.
@@ -839,7 +847,7 @@ no pass to end".
 
 **`SetFramebuffer` emits a viewport and a scissor ON A CHANGE ONLY, and the viewport's height is NEGATIVE.**
 There is no `SetViewport` on the seam: the engine gets a viewport because Veldrid's base
-`CommandList.SetFramebuffer` auto-calls `SetFullViewports` and `SetFullScissorRects`, wrapped in an identity
+`CommandList.SetFramebuffer` auto-called `SetFullViewports` and `SetFullScissorRects`, wrapped in an identity
 guard, and both halves have to be reproduced. A backend that does not emit rasterises nothing, and one that emits
 unconditionally silently restores the full scissor over a live one, which is golden-visible. The negative height
 (`y = y + height`, `height = -height`) is what makes Vulkan's clip space match Direct3D's, which is why
@@ -847,7 +855,7 @@ unconditionally silently restores the full scissor over a live one, which is gol
 assumes the flip already happened in the viewport. Getting it wrong does not throw and does not fail to render.
 It renders every golden upside down.
 
-**A non-zero scissor index is refused by name.** The seam carries an output index because Veldrid models one
+**A non-zero scissor index is refused by name.** The seam carries an output index because Veldrid used one
 scissor per colour target, nothing in the engine passes a non-zero one, and honouring it would mean enabling
 `multiViewport` and matching every pipeline's viewport count to its attachment count for a shape no shipped
 renderer has. The native Direct3D 11 backend refuses the same index for the same reason.
@@ -1185,8 +1193,8 @@ frame: a texture already in the layout it is asked for emits nothing.
 resource an earlier dispatch in the same list WROTE gets one read-after-write barrier before it, driven by a set
 of written resources rather than by a barrier per dispatch, so a run of independent dispatches is not serialised.
 **That is not a contract change.** The seam's rule 2 still says a portable consumer separates dependent dispatches
-with `End`, `Submit` and `WaitForIdle`, because the Veldrid legs need the drain and a consumer that drops it here
-breaks on Metal. It is evidence for the automatic-hazard seam capability
+with `End`, `Submit` and `WaitForIdle`, because a consumer that drops it here breaks on Metal. It is evidence
+for the automatic-hazard seam capability
 ([#461](https://github.com/APKiwiOrg/KhaozEngine/issues/461)), which after this row has two of three backends able
 to answer yes.
 
@@ -1404,13 +1412,13 @@ reported name, the `samplerAnisotropy` bit the feature chain settled, and the `R
 behind `SupportsShadowMaps`. So every rule that decides what the engine believes about the device is a plain
 `[Fact]` on a machine with no Vulkan loader.
 
-**The parity bar is ZERO permitted differences, and it is stricter than the Direct3D 11 backend's for a reason
-rather than by preference.** That backend exempts `SupportsCompletionFences`, because Veldrid's Direct3D 11 fence
-is a CPU-side submit receipt and the native one is real, so the incumbent's answer is a defect the native backend
-corrects. Nothing here is in that position: `VeldridMap.SupportsCompletionFences` already answers true for
-`GraphicsBackend.Vulkan`. A difference `NativeVsVeldridVulkanCapabilityParityTests` finds is therefore a bug in
-this backend until proven otherwise, and that test carries the reflection check that holds its comparer against
-every public member of `GpuCapabilities`, so a member appended later cannot make the assertion quietly weaker.
+**The parity bar was ZERO permitted differences, and it was stricter than the Direct3D 11 backend's for a reason
+rather than by preference.** That backend exempted `SupportsCompletionFences`, because Veldrid's Direct3D 11
+fence was a CPU-side submit receipt and the native one is real, so the incumbent's answer was a defect the native
+backend corrects. Nothing here was in that position: `VeldridMap.SupportsCompletionFences` already answered true
+for `GraphicsBackend.Vulkan`, so a difference `NativeVsVeldridVulkanCapabilityParityTests` found was a bug in
+this backend until proven otherwise, and that test carried the reflection check holding its comparer against
+every public member of `GpuCapabilities`. The bar was met, and it went away with the incumbent in 18.0.0.
 
 **The device name the seam carries is the driver's own, and it is not the one the log prints.**
 `VulkanDeviceFacts.DeviceName` substitutes `unnamed device 0x…` when a driver reports nothing readable, because a
@@ -1426,7 +1434,7 @@ assertable device-free. Asking for the depth-stencil attachment bit instead, whi
 suggests, is not a stricter question but a structurally false one: `R32_SFLOAT` is a colour format and no driver
 reports that bit for it. The pass wants this pair anyway, since `ShadowMapRenderer` creates the atlas as
 `R32Float` with `RenderTarget | Sampled` and hangs a separate depth-stencil off it, and it is also the parity
-answer, since `VeldridMap.SupportsShadowMaps` asks `GetPixelFormatSupport` for the same two.
+answer, since `VeldridMap.SupportsShadowMaps` asked `GetPixelFormatSupport` for the same two.
 
 **`MaxMsaaSampleCount` is a real driver reading**, since row 15
 ([#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525)) reproduced the incumbent's own
@@ -1532,10 +1540,10 @@ is the right failure direction, and it constrains the row that wires the validat
 
 ## The Linux loader, measured locally rather than assumed
 
-`.github/workflows/cross-platform-gpu.yml` carries a step titled "Symlink libdl / libvulkan for Veldrid
-(Linux)". It exists because Veldrid's Vulkan binding P/Invokes the bare names `libdl` and `libvulkan`, while
+`.github/workflows/cross-platform-gpu.yml` used to carry a step titled "Symlink libdl / libvulkan for Veldrid
+(Linux)". It existed because Veldrid's Vulkan binding P/Invoked the bare names `libdl` and `libvulkan`, while
 modern Ubuntu ships only the versioned `libdl.so.2` and `libvulkan.so.1` with no unversioned development
-symlink, so the device init throws `DllNotFoundException` before anything renders. Silk.NET is supposed to
+symlink, so the device init threw `DllNotFoundException` before anything rendered. Silk.NET is supposed to
 resolve through `Silk.NET.Core`'s native-context search, which includes the versioned soname, and therefore to
 need no such step. That was asserted by a design draft and would have been expensive to discover in the
 swapchain row, so it was checked here first.
@@ -1554,12 +1562,10 @@ physical devices: 1
 vkDestroyInstance: OK
 ```
 
-So the native Vulkan CI leg needs no symlink step of its own. The existing one stays where it is, and it stays
-scoped to the OS rather than to the incumbent leg, which is a distinction worth stating because the step now
-looks dead on the native leg and is not: the capability-parity test creates a VELDRID Vulkan device beside the
-native one on whichever leg it runs, so a native leg without the symlink fails that test at device creation.
-The step retires with the Veldrid Vulkan leg itself, in phase 4 and not before
-([#540](https://github.com/APKiwiOrg/KhaozEngine/issues/540)).
+So the native Vulkan CI leg needs no symlink step of its own, and it has none: the step went away with the
+Veldrid Vulkan leg in 18.0.0, along with the capability-parity test that created a VELDRID Vulkan device beside
+the native one on whichever leg it ran and was the reason the step had to stay scoped to the OS rather than to
+the incumbent leg ([#540](https://github.com/APKiwiOrg/KhaozEngine/issues/540)).
 
 Two caveats on how far that carries, because the run above did NOT happen in CI. It was one local container,
 not a workflow leg, so what it establishes is that Silk.NET's native-context search finds a versioned soname
@@ -1591,7 +1597,7 @@ That is asserted TWO ways, and the second one is the load-bearing half:
 `GpuPublicApiTests.GpuVulkanPublicApi_DoesNotLeakBackendTypes` adds the third rule: no `Silk` type on the
 externally visible surface either. Not for load-path reasons, which V-P1 removes, but for the seam's own: a
 `Silk.NET.Vulkan` type in a public signature makes a consumer that merely reads that signature compile against
-the Vulkan binding, which turns an opt-in backend package into a second GPU vocabulary the engine would then
+the Vulkan binding, which turns a backend package into a second GPU vocabulary the engine would then
 owe stability to.
 
 `GpuPublicApiTests.GpuVulkanPublicSurface_IsExactlyTheApprovedMembers` is the fourth, and it catches what none

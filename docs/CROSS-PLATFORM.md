@@ -543,6 +543,22 @@ Software rasterizers on the runners (no real GPU):
   adapter is present. The leg does not ride that accident: it pins `KE_D3D11_ADAPTER=warp`, so the rasterizer
   under the Windows family is stated rather than inherited from the runner image.
 
+**The Linux natives have to sit NEXT TO the assemblies, not under `runtimes/`.** Silk.NET resolving through its
+own native-context search cuts both ways. `Silk.NET.Core`'s path resolver asks
+`Microsoft.DotNet.PlatformAbstractions` for the current runtime identifier and then probes
+`runtimes/<rid>/native` under the app base, and on Linux that identifier is the DISTRO rid
+(`ubuntu.24.04-x64` on the runner), never the portable `linux-x64` the packages actually ship under. Both
+bridges between the two are gone: deps.json has carried no rid fallback graph since .NET 8, and the resolver's
+own guess only understands rids beginning `osx` or `win`. macOS and Windows therefore resolve out of `runtimes/`
+and Linux cannot, which is how `18.0.0`'s shaderc front end threw `Could not load from any of the possible
+library names` on every Linux test that compiles a shader
+([#691](https://github.com/APKiwiOrg/KhaozEngine/issues/691)) while the other two legs loaded the same package
+fine. `Directory.Build.targets` copies the host rid's native assets flat into the output on Linux builds, which
+is the first place the resolver looks, and the leg asserts they arrived in a step of its own straight after the
+build, because the failure otherwise reads as a shader bug rather than a packaging one. The same hole on the
+CONSUMER side, where no repo-local target reaches, is
+[#722](https://github.com/APKiwiOrg/KhaozEngine/issues/722).
+
 Net result: **all three legs are blocking, none of them informational** - `metal-native` (macOS),
 `direct3d11-native` (Windows/WARP) and `vulkan-native` (Linux/lavapipe). The RASTERIZERS are long validated,
 with months of green runs behind them under the Veldrid incumbent that used to share each one. The three

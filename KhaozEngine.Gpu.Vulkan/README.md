@@ -696,8 +696,10 @@ about what lavapipe, NVIDIA or AMD report. In the order they fire: only `Uniform
 ring-backed, so a storage buffer never becomes dynamic. A device-free test computes the count for all 33 shipped
 `CreateResourceLayout` sites grouped into all 33 shipped pipelines and asserts every one is at or under 8, so a
 breaking combination fails on the free Linux leg rather than on a player's machine (the heaviest shipped
-pipeline spends exactly ONE, which is the engine's own one-uniform-buffer-per-pipeline convention arriving as
-seven descriptors of headroom). Pipeline-layout creation counts them and refuses above the device's actual limit
+pipeline spends TWO, which is six descriptors of headroom: every pipeline spent exactly one until
+[#604](https://github.com/APKiwiOrg/KhaozEngine/issues/604) retired the engine's
+one-uniform-buffer-per-pipeline convention and the splat and skinned pipelines each took a second). Pipeline-layout creation counts them and
+refuses above the device's actual limit
 by name. And `IsSupported()` reads the limit, so a machine below what the engine needs falls back rather than
 throwing partway into a run.
 
@@ -929,13 +931,16 @@ not compared: they disagree in shipped code and Vulkan binds by number. **`Sprit
 block at `set = 1` with its texture and sampler at `set = 0`**, so "the UBO set comes first" is false in shipped
 code and this test is the only thing that would catch a layout array reordered by a well-meaning refactor.
 
-**Two things this backend must NOT "fix", both stated because they will be proposed.** The Direct3D 11 backend's
+**One thing this backend must NOT "fix", stated because it will be proposed, and one that expired.** The Direct3D 11 backend's
 holed-signature sinks stay: SPIRV-Cross drops an unread vertex input and a holed `TEXCOORD` sequence miscompiles
 under FXC on WARP, both incidents were tolerated by Metal and Vulkan, and that leg ships indefinitely, so
-removing a sink because Vulkan tolerates it corrupts WARP. And the Metal-driven shader-shape invariant stays,
-one uniform buffer per pipeline at set 0 binding 0 with per-mesh textures at set 1 and up: Vulkan has no such
-limit and a Vulkan-only author would naturally spread uniforms across sets, which breaks a phase-4 backend that
-is not here to defend itself. The Metal-only shader validation check is in the same category.
+removing a sink because Vulkan tolerates it corrupts WARP. The second one has since expired: the Metal-driven
+shader-shape invariant, one uniform buffer per pipeline at set 0 binding 0, was written because a Vulkan-only
+author would naturally spread uniforms across sets and break a backend that was not there yet to defend itself.
+That backend arrived, authors its own argument indices, and binds every multi-buffer shape correctly, so the
+invariant retired with [#604](https://github.com/APKiwiOrg/KhaozEngine/issues/604) along with the
+pair-wide half of the Metal-only shader validation check. Per-mesh textures at set 1 and up is still the
+convention every shipped pass follows, and the sample-in-binding-order discipline is untouched.
 
 ## Pipelines: no render pass, two dynamic states, and a disk cache that validates its own header
 

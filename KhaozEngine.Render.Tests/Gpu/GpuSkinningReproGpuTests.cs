@@ -196,9 +196,10 @@ void main() { o = vec4(1.0, 1.0, 1.0, 1.0); }";
         //   buffer at an index the emitted fragment function does not read, so a real material UBO there would read
         //   all zero on GpuBackendKind.Metal, silently. It costs THIS row nothing because U is only ever
         //   `Tint * 1e-30`, which is why the row still passes and why the layer, not a pixel, is what found it
-        //   (#621). So the fold is still the fix for the BONE read, and the set-1 half of the recommendation waits
-        //   on the incumbent leg retiring. MslBindingOrder.CheckPrefix rejects the shape mechanically in the
-        //   meantime, so it cannot reach a shipped shader by accident. ----
+        //   (#621). So the fold was the fix for the BONE read on the incumbent, and the set-1 half of the
+        //   recommendation was waiting on that leg retiring. It has: the leg went in 18.0.0 and #604 lifted the
+        //   rule, unfolding the shipped skinned pipeline into two buffers in set 0. What this row
+        //   preserves is the measurement, on a backend nothing runs any more. ----
         const string TwoUboVert = @"#version 450
 layout(set=0, binding=0) uniform VBlock { mat4 Mvp; mat4 bones[128]; };  // the vertex's ONLY resource buffer, at set 0
 layout(location=0) in vec2 Pos;

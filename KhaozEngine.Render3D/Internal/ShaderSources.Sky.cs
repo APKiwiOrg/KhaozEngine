@@ -75,7 +75,8 @@ void main() {
         // no position still lands on-screen). NDC is rebuilt from gl_FragCoord (upper-left on EVERY backend) + the
         // render size (Res.xy = 1/width,1/height) - the same backend-independent convention DecalFrag uses, NOT an
         // interpolated vertex NDC (which would flip on Vulkan against the geometry). The single UBO holds the colours
-        // + projected-sun params + render size; one uniform buffer per set (Metal mis-binds a second). No texture.
+        // + projected-sun params + render size, which is everything this pass reads. It satisfied the
+        // one-uniform-buffer rule (retired by #604) without having to fold anything. No texture.
         public const string SkyFrag = @"#version 450
 layout(set=0, binding=0) uniform Sky {
     vec4 Horizon;     // rgb gradient at the horizon (bottom)

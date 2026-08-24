@@ -86,7 +86,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// <see cref="SkyMath.ProjectSunToNdc"/>): the world-anchored point-at-infinity projection (default, needs
         /// <paramref name="projection"/>) or the legacy stylized backdrop. The projection is done ENTIRELY on the CPU
         /// and the result rides in the existing <see cref="SkyUbo.SunNdc"/> slot, so the GPU UBO layout and the GLSL
-        /// <c>SkyFrag</c> are unchanged (one uniform buffer per pipeline, no shader edit). The render size derives the
+        /// <c>SkyFrag</c> are unchanged (it rides the existing single UBO, so no shader edit). The render size derives the
         /// aspect (keeps the disc round) and the 1/size the shader uses to rebuild NDC from gl_FragCoord.</summary>
         public static SkyUbo PackUbo(SkySettings sky, Matrix4x4 view, Matrix4x4 projection, Vector3 lightDirection,
             int renderWidth, int renderHeight)

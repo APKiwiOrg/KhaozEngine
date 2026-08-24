@@ -61,9 +61,10 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 Misc;          // x=patternParam (pattern-owned), y=edgeErosion (0..1), z/w reserved (zero)
         }
 
-        /// <summary>The single per-frame uniform block for the decal pass (Frame, set 0 binding 2). ONE uniform buffer
-        /// per pipeline - Metal (via Veldrid/SPIRV-Cross) mis-binds a second UBO, so the RAW inverse view-projection and
-        /// the time/quality value share this one block. Mirrors <see cref="BeamRenderer"/>'s FrameUniforms. 80 bytes.</summary>
+        /// <summary>The single per-frame uniform block for the decal pass (Frame, set 0 binding 2). The retired
+        /// Veldrid Metal backend mis-bound a second UBO, so the RAW inverse view-projection and the time/quality
+        /// value were folded into this one block. #604 lifted that rule, and the block is still everything this
+        /// pass reads. Mirrors <see cref="BeamRenderer"/>'s FrameUniforms. 80 bytes.</summary>
         [StructLayout(LayoutKind.Sequential)]
         struct FrameUniforms
         {
@@ -120,7 +121,7 @@ namespace KhaozEngine.Render3D.Rendering
             _gd = gd;
             var f = gd.Factory;
             _shaders = f.CreateShadersFromSpirv(ShaderSources.DecalVert, ShaderSources.DecalFrag);
-            // Still ONE uniform buffer (the Metal invariant), and the extra TEXTURE is fine. NormalTex is appended last so
+            // Still ONE uniform buffer (the Metal invariant when this was written, retired by #604), and the extra TEXTURE is fine. NormalTex is appended last so
             // the existing bindings do not renumber. Only the void-fallback path reads it, to reject a near-vertical
             // face as "not this decal's ground" - the Y band alone cannot tell the top of a cliff from a terrain dip.
             _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(

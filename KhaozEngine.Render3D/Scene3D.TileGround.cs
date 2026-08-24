@@ -83,7 +83,8 @@ namespace KhaozEngine.Render3D
 
             Vector4[] tail = TileGroundMaterialConfig.BuildParams(layers, baseSpecStrength);
             // Combined UBO: frame uniforms (re-synced each frame in the tile-ground pass) + these params appended.
-            // One uniform buffer for the whole pipeline, because Metal mis-binds a second one (see ModelRenderer).
+            // One uniform buffer for the whole pipeline, which the retired one-uniform-buffer rule once required
+            // and #604 no longer does. This pass keeps the shape on purpose (#727).
             TileGroundUniformBuffer ubo = _model.CreateTileGroundParamsUbo(tail);
 
             // A material that overrides the sampler gets its own, owned and disposed with the material. Otherwise

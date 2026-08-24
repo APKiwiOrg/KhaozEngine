@@ -434,26 +434,22 @@ What it owns today:
   throwing. Metal has no binding decorations, so the cross-compiler assigns each resource an index of its own in
   first-reference order while the deleted Veldrid Metal backend bound a resource set by counting the layout in
   binding order, and a helper function that reads binding 1 before anything reads binding 0 silently swaps the two on
-  Metal with Vulkan and Direct3D11 perfectly correct. Two checks run over the emitted Metal:
+  Metal with Vulkan and Direct3D11 perfectly correct. One check runs over the emitted Metal, per stage:
   - **Index order, per stage, over buffers AND textures AND samplers.** Each emitted argument is joined back to
     the `(set, binding)` you declared through that stage's own SPIR-V decorations, so a swap between two
     resources OF THE SAME KIND is caught as well (two storage buffers are both `device T&` in Metal, which is
     why the 16.3.0 kind comparison could not see it). The message names both `layout(set=, binding=)` pairs and
-    the slot they collided on.
-  - **The prefix property, for a pair.** The incumbent counted one slot per kind across the whole layout while the
-    cross-compiler numbers each stage densely from 0, so every stage's resources must be a PREFIX of the
-    layout's, per index space. A vertex-only texture placed after a fragment-only one cannot be made to work at
-    any binding number, and no reordering inside the shader bodies fixes it.
+    the slot they collided on. Since 18.0.0 the engine AUTHORS each Metal argument index by walking the
+    reflected layout in binding order, and the native Metal backend binds against that same scheme, so this
+    confirms the authored scheme reached the emission rather than constraining how the shader is written.
 
-  Both constrained the INCUMBENT Veldrid Metal backend alone, which the exception message says as well: the
-  engine's own native Metal backend binds at the index read out of each stage's emission, and Vulkan and
-  Direct3D11 honour the decorations, so a rejected shader renders correctly on all three and the rejection can
-  land on a shader that looks fine on every device you own. With the incumbent deleted in 18.0.0 the constraint
-  binds no live backend, and this half of the validator stays armed until
-  [#604](https://github.com/APKiwiOrg/KhaozEngine/issues/604) retires it, because the shipped shaders were
-  authored under it.
+  **A second, pair-wide check lived here until #604.** It required every stage's resources to be a PREFIX of
+  the layout's per index space, which is what the retired Veldrid Metal backend's one-counter-per-kind count
+  over the whole layout needed. It served the engine's one-uniform-buffer-per-pipeline rule and retired with it
+  ([#604](https://github.com/APKiwiOrg/KhaozEngine/issues/604)), so a pipeline whose two stages read disjoint
+  uniform buffers validates clean now.
 
-  Both degrade rather than false-positive: an index space carrying an argument the join cannot resolve is
+  It degrades rather than false-positives: an index space carrying an argument the join cannot resolve is
   dropped silently instead of guessed at. The engine's own shader-source tests use this to validate every
   embedded production shader, and games can validate their custom shaders the same way in their own fast test
   suites.

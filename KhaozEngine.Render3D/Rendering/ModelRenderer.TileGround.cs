@@ -24,9 +24,10 @@ namespace KhaozEngine.Render3D.Rendering
         /// this runs once from the constructor and only the pipeline is rebuilt when the MRT changes.</summary>
         void CreateTileGroundResources(IGpuResourceFactory factory)
         {
-            // ONE descriptor set, ONE uniform buffer, for the same reason the splat pass has one: Veldrid/SPIRV-Cross
-            // on Metal mis-binds a SECOND uniform buffer in a pipeline (the second reads the first buffer's bytes).
-            // The per-material params therefore ride in the same combined buffer, appended after the frame block.
+            // ONE descriptor set, ONE uniform buffer. The splat pass was built the same way, because the retired
+            // Veldrid Metal backend mis-bound a SECOND uniform buffer in a pipeline (the second read the first
+            // buffer's bytes). #604 lifted that rule and unfolded the splat pass. This one keeps its shape (#727),
+            // so the per-material params still ride in the same combined buffer, appended after the frame block.
             // The textures are declared in the order the fragment samples them, with the SHADOW MAP LAST: Metal
             // wants the sample order to follow the binding order, which is what put the shadow map at the end of
             // the splat layout too.

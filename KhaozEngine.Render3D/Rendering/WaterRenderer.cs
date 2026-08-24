@@ -186,19 +186,23 @@ namespace KhaozEngine.Render3D.Rendering
             var f = gd.Factory;
             _shaders = f.CreateShadersFromSpirv(ShaderSources.WaterVert, ShaderSources.WaterFrag);
             _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
-                // ORDER IS LOAD-BEARING, and not for the usual reason. Veldrid numbered a backend's resource slots
+                // ORDER WAS LOAD-BEARING, and not for the usual reason. Veldrid numbered a backend's resource slots
                 // with one counter PER KIND over this whole list, binding each element to the stages in its mask,
-                // while the cross-compiler numbers each stage DENSELY over only the bindings that stage declares.
-                // Those agree only when every stage's resources are a PREFIX of this list. The vertex stage uses
+                // while the cross-compiler numbered each stage DENSELY over only the bindings that stage declares.
+                // Those agreed only when every stage's resources were a PREFIX of this list. The vertex stage uses
                 // the bathymetry field, the ocean map and the shared UBO and nothing else, so both of those
-                // textures have to precede the fragment-only scene depth and their samplers likewise; put the
-                // scene depth first instead and the vertex samples an unbound slot and reads zero, on Metal,
+                // textures had to precede the fragment-only scene depth and their samplers likewise. Put the
+                // scene depth first instead and the vertex sampled an unbound slot and read zero, on Metal,
                 // silently. That is also why the ocean is ONE array texture (displacement layers then derivative
                 // layers) rather than the two it reads as.
                 //
-                // Bathymetry leads the ocean for a SECOND reason on top of that: within a stage the numbering
-                // follows FIRST REFERENCE, and the vertex needs the depth before it sums the cascades because the
-                // shoaling taper is per cascade and applied inside that loop. See ShaderSources.WaterShore.cs.
+                // THAT BACKEND IS GONE (18.0.0) AND THE PREFIX RULE WITH IT (#604). The engine authors each Metal
+                // argument index off this list and the native backend binds against the same scheme, so a
+                // fragment-only element ahead of a vertex-read one is legal now. The order below is KEPT: moving it
+                // moves the emission on all three backends and buys nothing. Bathymetry leads the ocean for a
+                // SECOND reason anyway, one that never depended on the numbering: the vertex needs the depth before
+                // it sums the cascades, because the shoaling taper is per cascade and applied inside that loop.
+                // See ShaderSources.WaterShore.cs.
                 new GpuResourceLayoutElement("BathyTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("BathySamp", GpuResourceKind.Sampler, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("OceanMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
@@ -206,7 +210,7 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuResourceLayoutElement("DepthTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
                 // Dynamic-offset UBO read by BOTH stages (the vertex shader only needs ViewProj, folded into the
-                // same buffer per the one-UBO-per-set rule).
+                // same buffer under the one-UBO-per-set rule #604 retired, and left folded).
                 new GpuResourceLayoutElement("Water", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment, dynamic: true)));
             _ocean = new OceanFftProducer(gd);
             _bathymetry = new WaterBathymetryMap(gd);

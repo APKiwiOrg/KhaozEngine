@@ -733,17 +733,19 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
   textures are first SAMPLED, not by `binding=`, so sampling a higher-binding texture first makes a lower one read
   the wrong texture on Metal (untextured meshes came out flat-normal coloured). See the `ModelFrag` / `EdgeFrag` /
   `SplatFrag` comments.
-- **One uniform buffer per pipeline.** The rule was written against the Veldrid Metal backend, where a STAGE
-  referencing fewer buffers than the declared layout array puts before them made Veldrid's per-kind declaration
-  count and SPIRV-Cross's emission disagree: a fragment function reading set 1 alone was emitted at `buffer(0)`
-  and written at `buffer(1)`, so it read a slot nothing wrote. Measured 2026-08 on an M2 Max, two of the three
-  multi-uniform-buffer shapes bound correctly on that backend and only the third failed, and the engine's own
-  native Metal backend binds all three, because it binds at the index the emission chose rather than at a
-  counted one. **That backend was deleted in `18.0.0`, so the mis-binding is gone with it**, and the rule is
-  kept as a shipped-content constraint rather than a live hazard: the splat pipeline still appends its params
-  after the light arrays in one combined UBO, and changing that shape is a golden-moving change rather than a
-  free simplification. See `SplatVert` / `SplatFrag`, and `docs/DEPENDENCY-SEAMS.md`'s "ONE uniform buffer per
-  pipeline" section for the mechanism and the exact scope.
+- **One uniform buffer per pipeline, RETIRED.** The rule was written against the Veldrid Metal
+  backend, where a STAGE referencing fewer buffers than the declared layout array puts before them made
+  Veldrid's per-kind declaration count and SPIRV-Cross's emission disagree: a fragment function reading set 1
+  alone was emitted at `buffer(0)` and written at `buffer(1)`, so it read a slot nothing wrote. Measured 2026-08
+  on an M2 Max, two of the three multi-uniform-buffer shapes bound correctly on that backend and only the third
+  failed, and the engine's own native Metal backend binds all three, because it authors the index rather than
+  counting one. That backend was deleted in `18.0.0` and the rule was lifted by
+  [#604](https://github.com/APKiwiOrg/KhaozEngine/issues/604), which unfolded the splat and GPU-skinning
+  combined buffers and deleted the `MslBindingOrder.CheckPrefix` validation that enforced it. A new pipeline
+  spreads its uniform buffers however it reads best. Where you still meet a combined buffer (the tile-ground
+  pass, the skinned shadow pass) it is a shape kept on purpose rather than a constraint.
+  `docs/DEPENDENCY-SEAMS.md`'s "ONE uniform buffer per pipeline" section is the full history and the
+  measurement.
 - **A new render feature needs a pixel-READBACK assertion, not just "it did not throw".** Any `[GpuFact]` test
   runs on `metal-native` (every trigger) and on the other two legs (weekly and dispatch) regardless of its name,
   so this is no longer a naming trap, but the underlying lesson stands: the original splat tests asserted no

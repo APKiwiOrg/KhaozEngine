@@ -3169,27 +3169,25 @@ uploads 64 bytes per BONE, and a character has hundreds of times more vertices t
 more than a handful of skinned characters at once, this flag is the single largest per-frame upload lever the
 engine has, and the windowed A/B below is the only thing standing between you and it.
 
-The GPU path exists on a specific binding shape because the naive GPU design fails on Metal. **The
-GPU-backend rule (know it if you write custom Render3D code):** a pipeline reads exactly ONE uniform buffer,
-at set 0 binding 0, and a second one can read all-zero with no error anywhere. Textures in a second set are
-fine. The cause was measured in 2026-08: it was the Veldrid incumbent's buffer NUMBERING rather than anything about
-Metal, and what mis-bound was a stage that references fewer buffers than the declared layout array puts before
-them. That backend was deleted in 18.0.0, so the defect is gone, but the rule is KEPT and still binds every new
-render path, because the shipped content was authored against it. Read
-`docs/DEPENDENCY-SEAMS.md`'s "ONE uniform buffer per pipeline" section before designing around it, since the
-exact scope matters and this summary is deliberately the conservative version of it. Issue #604 is unfolding
-the shipped workarounds one pipeline at a time, and GPU skinning is one of the two done: it used to fold
-EVERYTHING into one combined per-draw UBO, `{ Mvp; Model; P; <frame lighting block>; bones[128] }`, and now
-reads two buffers in set 0. Binding 0 is the SHARED frame block, the same one the model pass binds, read by
-both stages. Binding 1 is `VBlock`, the per-draw `{ Model; P; bones[128] }` at that draw's dynamic offset,
-read by the vertex alone. Per-mesh material maps stay at set 1. The order matters and is the part still worth
-copying: the buffer BOTH stages read comes first, so every stage's usage is a prefix of the layout. The shadow
-depth pass still carries its own combined `{ LightMvp; bones[128] }`. See `docs/DEPENDENCY-SEAMS.md` (the "ONE
-uniform buffer per pipeline" invariant) and the offscreen acceptance repro `GpuSkinningReproGpuTests`
-variant 3. Separately: never have a vertex shader read a separate buffer at an index that came from a
-per-instance attribute (route that through a dynamic-offset UBO slot per draw, as GPU skinning does).
-Per-instance vertex ATTRIBUTES consumed directly (no indexed second buffer) are fine and used in production
-by the rigid instanced draws.
+The GPU path used to exist on a specific binding shape because the naive GPU design failed on Metal. **That
+rule is retired, and it is worth knowing it existed if you read older Render3D code.** Every pipeline was
+required to read exactly ONE uniform buffer at set 0 binding 0, because a second one could read all-zero with
+no error anywhere. The cause was measured in 2026-08: it was the Veldrid incumbent's buffer NUMBERING rather
+than anything about Metal, and what mis-bound was a stage referencing fewer buffers than the declared layout
+array put before them. That backend was deleted in 18.0.0 and the rule was lifted by issue #604, so a
+custom pipeline of yours may spread its uniform buffers across bindings and sets however its structure wants.
+`docs/DEPENDENCY-SEAMS.md`'s "ONE uniform buffer per pipeline" section is the full history if you meet a
+combined buffer and wonder why it is shaped like that. GPU skinning is one of the two passes the issue
+unfolded: it used to fold EVERYTHING into one combined per-draw UBO,
+`{ Mvp; Model; P; <frame lighting block>; bones[128] }`, and now reads two buffers in set 0. Binding 0 is the
+SHARED frame block, the same one the model pass binds, read by both stages. Binding 1 is `VBlock`, the per-draw
+`{ Model; P; bones[128] }` at that draw's dynamic offset, read by the vertex alone. Per-mesh material maps stay
+at set 1. The shadow depth pass still carries its own combined `{ LightMvp; bones[128] }`, which is a shape it
+keeps rather than one it needs. See the offscreen acceptance repro `GpuSkinningReproGpuTests` variant 3.
+Separately, and unaffected by any of this: never have a vertex shader read a separate buffer at an index that
+came from a per-instance attribute (route that through a dynamic-offset UBO slot per draw, as GPU skinning
+does). Per-instance vertex ATTRIBUTES consumed directly (no indexed second buffer) are fine and used in
+production by the rigid instanced draws.
 
 **Windowed A/B (why the flag ships off, and how to verify it).** The offscreen parity proof is necessary
 but not sufficient: the historical corruption was a WINDOWED swapchain fault, so turning the flag on for a
@@ -11869,31 +11867,25 @@ resource and returns zero rather than failing, with Vulkan and Direct3D 11 perfe
 a wrong picture on one backend and there is nothing in the GLSL that looks wrong. This engine shipped that bug
 three times before the guard existed, and found it by image golden or bisect every time.
 
-`ValidatePair` and `ValidateCompute` both run two checks over the emitted Metal, and both throw
+`ValidatePair` and `ValidateCompute` both run one check per stage over the emitted Metal, and it throws
 `ShaderValidationException` naming the offending `layout(set=, binding=)` pairs so the message is greppable in
 your GLSL:
 
 - **Index order, per stage, over buffers AND textures AND samplers.** Each emitted argument is joined back to
   the `(set, binding)` you wrote through that stage's own SPIR-V decorations, so a swap between two resources of
-  the SAME KIND is caught too. The fix is always the same shape: make the first reference to each resource
-  happen in binding order, hoisting a first touch into `main` when a helper function defined above it reaches a
-  later binding first. Note that a first reference is not a sample. `textureSize(sampler2D(Tex, Samp), 0)` names
-  the texture and counts.
-- **The prefix property, for a pair only.** The incumbent counted one slot per kind across the WHOLE layout
-  while the cross-compiler numbers each stage densely from 0 over only what that stage declares, so every stage's
-  resources must be a PREFIX of the layout's, per index space. A vertex-only texture placed after a fragment-only
-  one cannot be made to work at any binding number, and no reordering inside the shader bodies fixes it. Order
-  your `GpuResourceLayoutDescription` so the resources both stages read come first.
+  the SAME KIND is caught too. Since 18.0.0 the engine AUTHORS every Metal argument index by walking the
+  reflected layout in binding order, and the native Metal backend binds against that same scheme, so this is the
+  check that the authored scheme reached the emission rather than a constraint on how you write the shader.
 
-**It was the INCUMBENT Veldrid Metal backend's constraint, and only that one**, which the exception message says
-as well. The engine's own native Metal backend (`GpuBackendKind.MetalNative`) binds at the index read out of each
-stage's emission rather than at a counted one, and Vulkan and Direct3D 11 honour the decorations, so a shader
-rejected here draws correctly on all three. With the incumbent deleted in 18.0.0 the constraint no longer binds
-any live backend, and this half of the validator is still armed until
-https://github.com/APKiwiOrg/KhaozEngine/issues/604 retires it. Expect the rejection on a shader that looks fine
-on every device you own.
+**There was a second, pair-wide check here, and it is gone.** It required every stage's resources
+to be a PREFIX of the layout's per index space, which is what the retired Veldrid Metal backend's
+one-counter-per-kind-over-the-whole-layout numbering needed: a vertex-only texture placed after a fragment-only
+one could not be made to work at any binding number. That backend was deleted in 18.0.0 and the check retired
+with the one-uniform-buffer-per-pipeline rule it served
+(https://github.com/APKiwiOrg/KhaozEngine/issues/604). A layout whose two stages read disjoint resources
+validates clean now, and you can order your `GpuResourceLayoutDescription` however the pipeline reads best.
 
-Both degrade rather than false-positive. An index space carrying an argument the join cannot resolve is dropped
+It degrades rather than false-positives. An index space carrying an argument the join cannot resolve is dropped
 silently instead of guessed at, so the guard can miss a swap but will not fail a correct shader.
 
 **It stops at the cross-compile, and that is a real gap on Direct3D 11.** It produces HLSL and never compiles

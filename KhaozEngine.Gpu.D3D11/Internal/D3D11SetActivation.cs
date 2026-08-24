@@ -22,9 +22,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// lowest visible register to the highest and writes a null into each hole. That is safe because a file's
     /// registers in <c>[base, base + count)</c> belong to THIS set alone, so a null there unbinds nothing anyone
     /// else is using, and it is what keeps "one call per file per stage" true rather than nearly true. In shipped
-    /// layouts the holes do not arise anyway: the cross-compiler numbers each stage densely over only the bindings
-    /// that stage declares, so a renderer whose stage-visible resources are not a PREFIX of its layout is already
-    /// broken for another reason (see the comment on <c>WaterRenderer._layout</c>).
+    /// layouts the holes are rare: every renderer's stage-visible resources happen to be a PREFIX of its layout,
+    /// which was a hard requirement of the retired Veldrid Metal backend's numbering (see the comment on
+    /// <c>WaterRenderer._layout</c>) until #604 lifted it. Nothing stops a layout from carrying a
+    /// hole now, which is why the span walk fills one rather than assuming it away.
     /// </para>
     /// <para>
     /// THE OFFSETS-ONLY PATH SKIPS TEXTURES AND SAMPLERS ENTIRELY, which is the reason

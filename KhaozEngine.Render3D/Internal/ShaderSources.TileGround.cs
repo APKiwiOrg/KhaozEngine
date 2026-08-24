@@ -19,9 +19,11 @@ namespace KhaozEngine.Render3D.Internal
         //      interpolation cannot smear them. The fragment reads each back as int(x + 0.5), the same way the splat
         //      pass reads its packed values.
         //
-        //      ONE UNIFORM BUFFER, like the splat pass and for the same reason: Veldrid/SPIRV-Cross on Metal
-        //      mis-binds a SECOND uniform buffer in a set (it reads the first buffer's bytes), which is what zeroed
-        //      the per-layer tint and blacked out the terrain. So the per-material params ride in the SAME binding-0
+        //      ONE UNIFORM BUFFER, which this pass was built with because the retired Veldrid Metal backend
+        //      mis-bound a SECOND uniform buffer in a set (it read the first buffer's bytes), which is what zeroed
+        //      the per-layer tint and blacked out the terrain. That backend went in 18.0.0 and #604 lifted the rule,
+        //      unfolding the splat and skinned passes. This one KEEPS its combined buffer on purpose
+        //      (#727). So the per-material params ride in the SAME binding-0
         //      block, appended after the render origin (offset 1008): vec4 TintTiling[64] then vec4 Misc. The tail is
         //      unread by the vertex stage but declared so the block layout matches TileGroundFrag exactly.
         //

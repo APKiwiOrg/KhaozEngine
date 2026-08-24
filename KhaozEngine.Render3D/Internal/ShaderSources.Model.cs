@@ -305,10 +305,9 @@ void main() {
         //      engine's own Metal backend AUTHORS each index across the union of both stages and the emission is
         //      told what it chose, so all three agree by construction and the fold comes out
         //      (https://github.com/APKiwiOrg/KhaozEngine/issues/604). What the split does NOT do is give each stage
-        //      a buffer of its own: `U` is read by both, which keeps every stage's buffer usage a PREFIX of the
-        //      layout. That property is still enforced at cross-compile time by KhaozEngine.Gpu
-        //      MslBindingOrder.CheckPrefix, which #604 retires with the rule rather than with this shader, and it
-        //      is also the shape MM6 measured binding correctly on every backend. ----
+        //      a buffer of its own: `U` is read by both, and the vertex-only VBlock follows it. Nothing enforces
+        //      that ordering any more, since #604 also deleted MslBindingOrder.CheckPrefix, but it is the shape
+        //      MM6 measured binding correctly on every backend and there is no reason to move it. ----
         public const string SkinnedModelVert = @"#version 450
 layout(set=0, binding=0) uniform U {
     mat4 ViewProj;

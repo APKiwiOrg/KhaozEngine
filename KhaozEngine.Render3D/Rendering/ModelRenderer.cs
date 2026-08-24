@@ -254,11 +254,11 @@ namespace KhaozEngine.Render3D.Rendering
             _dissolveShaders = factory.CreateShadersFromSpirv(ShaderSources.ModelVert, ShaderSources.ModelDissolveFrag);
 
             // GPU-skinning layouts/shaders/default set. Set 0 declares the shared frame block FIRST, read by both
-            // stages, then the per-draw VBlock the vertex alone reads at its dynamic offset. The order is what
-            // keeps every stage's buffer usage a PREFIX of the layout, which ShaderValidation still enforces at
-            // cross-compile time (MslBindingOrder.CheckPrefix, retired by #604 along with the rest of the
-            // one-uniform-buffer rule): under that rule a buffer only ONE stage reads can only come after one
-            // both stages read. Set 1 is the per-mesh material maps + shadow map, fragment only. The default frag
+            // stages, then the per-draw VBlock the vertex alone reads at its dynamic offset. That order was
+            // REQUIRED when this split landed: MslBindingOrder.CheckPrefix wanted every stage's buffer usage to be
+            // a prefix of the layout, so a buffer only ONE stage reads could only come after one both stages read.
+            // #604 deleted that check with the rest of the one-uniform-buffer rule, so the order is now a shape
+            // kept rather than a constraint. Set 1 is the per-mesh material maps + shadow map, fragment only. The default frag
             // (set 1) set uses white/flat/rough defaults + the shadow map, so an untextured skinned mesh is lit
             // exactly like the CPU path's _defaultSet.
             _skinnedMainLayout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(

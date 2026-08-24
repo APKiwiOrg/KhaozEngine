@@ -204,8 +204,9 @@ namespace KhaozEngine.Tests.Render3D
         public void SkinnedPerDrawBlock_IsItsOwnVertexOnlyBufferAfterTheSharedFrameBlock()
         {
             // The #604 split, pinned as a shape rather than as an offset. `U` comes FIRST at set 0 binding 0 and is
-            // declared by every skinned stage, which is what keeps each stage's buffer usage a prefix of the layout
-            // (MslBindingOrder.CheckPrefix). `VBlock` follows it at binding 1 and is declared by the VERTEX alone:
+            // declared by every skinned stage, which kept each stage's buffer usage a prefix of the layout while
+            // MslBindingOrder.CheckPrefix still ran (#604 deleted it in the same program, so the order is a shape
+            // kept rather than a requirement). `VBlock` follows it at binding 1 and is declared by the VERTEX alone:
             // no fragment reads any of Model/P/bones, they arrive as interpolants. Folding either back would
             // reinstate the per-draw copy of the frame block the unfold deleted.
             foreach (var (name, src) in new[]

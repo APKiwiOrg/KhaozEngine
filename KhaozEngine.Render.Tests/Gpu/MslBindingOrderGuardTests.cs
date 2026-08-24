@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Render3D.Internal;
 using Xunit;
 
@@ -20,9 +22,12 @@ namespace KhaozEngine.Tests.Gpu
     /// than a loosening.
     /// </para>
     /// <para>
-    /// <b>THE PREFIX CASES ARE UNTOUCHED AND STILL LIVE.</b> <c>CheckPrefix</c> tests a property of the SHADER
-    /// (which elements each stage reads) rather than of the numbering, so it still throws. It is the piece #604
-    /// has to lift deliberately, in the same change that rewrites the shaders it blocks.
+    /// <b>AND THE PREFIX CHECK IS GONE.</b> <c>CheckPrefix</c> tested a property of the SHADER (which elements
+    /// each stage reads) rather than of the numbering, so it went on throwing after row 10 and was the last
+    /// mechanical enforcement of the one-uniform-buffer-per-pipeline rule. #604 retired both,
+    /// once the shaders it blocked had been rewritten. Its two cases are kept and inverted for the same reason
+    /// the first-reference ones are: a deleted row records nothing, and an inverted one says exactly which
+    /// refusal stopped happening.
     /// </para>
     /// <para>
     /// These are plain <c>[Fact]</c>s. The whole check is a text read of a cross-compile, so it runs in the fast
@@ -77,18 +82,24 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// THE PREFIX PROPERTY, which is a property of the LAYOUT and survives any amount of reordering inside
-        /// the shader bodies. Drop the water VERTEX's bathymetry tap (binding 0) and the vertex is left reading
-        /// the ocean map (binding 2) while the fragment still reads both, so the vertex's textures are no longer
-        /// a prefix of the layout's: Veldrid bound the ocean map at texture index 1 for every stage, the vertex's
-        /// emission numbers its one texture 0, and no binding number reconciles that.
+        /// THE PREFIX PROPERTY, RETIRED BY #604. Drop the water VERTEX's bathymetry tap (binding 0) and the vertex
+        /// is left reading the ocean map (binding 2) while the fragment still reads both, so the vertex's textures
+        /// are no longer a prefix of the layout's. That was a refusal until #604: the retired Veldrid
+        /// Metal backend bound the ocean map at texture index 1 for every stage, the vertex's emission numbered
+        /// its one texture 0, and no binding number reconciled the two.
+        /// <para>
+        /// NOTHING COUNTS OVER THE WHOLE LAYOUT ANY MORE. The index each element gets is authored from the
+        /// reflected layout and the native Metal backend binds against the same scheme, so an element a stage does
+        /// not read simply leaves a gap in that stage's indices and shifts nothing. The perturbed source is
+        /// ACCEPTED, and this row is where that shows.
+        /// </para>
         /// <para>
         /// The perturbation is one expression replaced by the fallback constant already sitting beside it, which
         /// is what a plausible "the depth field is off in the vertex" edit would look like.
         /// </para>
         /// </summary>
         [Fact]
-        public void TheWaterVertexIsRejectedIfItStopsReadingTheBathymetryTheFragmentStillReads()
+        public void TheWaterVertexThatStopsReadingTheBathymetry_IsAcceptedBecauseThePrefixCheckRetired()
         {
             const string tap = "textureLod(sampler2D(BathyTex, BathySamp), buv, 0.0).r : KE_BATHY_DEEP;";
             const string dropped = "KE_BATHY_DEEP : KE_BATHY_DEEP;";
@@ -99,13 +110,7 @@ namespace KhaozEngine.Tests.Gpu
             string broken = lf.Replace(tap, dropped);
             Assert.NotEqual(lf, broken);
 
-            var ex = Assert.Throws<ShaderValidationException>(
-                () => ShaderValidation.ValidatePair(broken, ShaderSources.WaterFrag, "WaterWithoutTheVertexBathyTap"));
-            Assert.Contains("WaterWithoutTheVertexBathyTap", ex.Message);
-            Assert.Contains("the vertex stage's texture resources are not a PREFIX", ex.Message);
-            Assert.Contains("reads layout(set=0, binding=2)", ex.Message);
-            Assert.Contains("never reads layout(set=0, binding=0)", ex.Message);
-
+            ShaderValidation.ValidatePair(broken, ShaderSources.WaterFrag, "WaterWithoutTheVertexBathyTap");
             ShaderValidation.ValidatePair(lf, ShaderSources.WaterFrag, "WaterUnmodified");
         }
 
@@ -116,40 +121,54 @@ namespace KhaozEngine.Tests.Gpu
         /// keyword only at the start of a line loses that entry point, and since an entry point the parse cannot
         /// find is SILENCE rather than a throw, such a shader would validate clean with no checks at all.
         /// <para>
-        /// THE PROOF IS A PREFIX VIOLATION SINCE 18.0.0, and it had to move. It used to be a reversed reference
-        /// order, which row 10 made legal, so a green run would then have proved nothing about whether the entry
-        /// point was found. A stage reading a LATER element while skipping an earlier one of the same kind is
-        /// still a refusal, so it still separates "the guard saw this function" from "the guard saw nothing".
+        /// THE PROOF IS THE RESOLVED ARGUMENT TABLE ITSELF, and it had to move twice. It was a reversed reference
+        /// order until row 10 made that legal, then a prefix violation until #604 retired that check, and with no
+        /// refusal left to provoke, an indirect proof has nothing to stand on: a green
+        /// <c>ValidatePair</c> is now exactly what a guard seeing NOTHING would also produce. So this asks
+        /// <c>CheckStage</c> directly and reads what it resolved. Non-null separates "found the entry point" from
+        /// "returned null and said nothing", and the resolved <c>(set, binding)</c> pairs separate "found it" from
+        /// "found something empty".
+        /// </para>
+        /// <para>
+        /// The emission is asserted to actually carry the attribute ahead of the keyword on the same line, because
+        /// otherwise this row would pass just as happily on a plain entry point and would be pinning nothing.
         /// </para>
         /// </summary>
         [Fact]
-        public void AFragmentDeclaringEarlyFragmentTestsIsStillChecked()
+        public void AFragmentDeclaringEarlyFragmentTestsIsStillFoundByTheParse()
         {
-            const string skipsA = "texture(sampler2D(B, S), vec2(0.5))";
-            const string readsBoth = "texture(sampler2D(A, S), vec2(0.5)) + texture(sampler2D(B, S), vec2(0.5))";
-            const string vert = @"#version 450
-layout(set=0, binding=0) uniform texture2D A;
-layout(set=0, binding=1) uniform texture2D B;
-layout(set=0, binding=2) uniform sampler S;
-layout(location=0) in vec3 P;
-void main() { gl_Position = vec4(P, 1.0) + textureLod(sampler2D(A, S), vec2(0.5), 0.0); }";
+            const string tag = "EarlyFragmentTests";
             const string frag = @"#version 450
 layout(early_fragment_tests) in;
 layout(set=0, binding=0) uniform texture2D A;
-layout(set=0, binding=1) uniform texture2D B;
-layout(set=0, binding=2) uniform sampler S;
+layout(set=0, binding=1) uniform sampler S;
 layout(location=0) out vec4 o;
-void main() { o = " + skipsA + @"; }";
+void main() { o = texture(sampler2D(A, S), vec2(0.5)); }";
 
-            var ex = Assert.Throws<ShaderValidationException>(
-                () => ShaderValidation.ValidatePair(vert, frag, "EarlyFragmentTestsSkippingA"));
-            Assert.Contains("EarlyFragmentTestsSkippingA", ex.Message);
-            Assert.Contains("the fragment stage's texture resources are not a PREFIX", ex.Message);
-            Assert.Contains("reads layout(set=0, binding=1)", ex.Message);
-            Assert.Contains("never reads layout(set=0, binding=0)", ex.Message);
+            byte[] vertSpirv = SpirvFrontEnd.ToSpirv(PositionOnlyVert, GpuShaderStages.Vertex, tag);
+            byte[] fragSpirv = SpirvFrontEnd.ToSpirv(frag, GpuShaderStages.Fragment, tag);
+            CrossCompiledPair msl = SpirvCrossCompile.VertexFragmentToMsl(vertSpirv, fragSpirv, tag);
 
-            ShaderValidation.ValidatePair(
-                vert, frag.Replace(skipsA, readsBoth), "EarlyFragmentTestsReadingBoth");
+            // The attribute really is on the entry point's own line, which is the whole reason BeginsADeclaration
+            // accepts a closing bracket as a place a declaration may start.
+            int at = msl.FragmentSource.IndexOf("fragment ", System.StringComparison.Ordinal);
+            Assert.True(at > 0, "the emitted fragment source declares no fragment entry point at all");
+            string beforeOnThatLine = msl.FragmentSource[(msl.FragmentSource.LastIndexOf('\n', at) + 1)..at].TrimEnd();
+            Assert.EndsWith("]]", beforeOnThatLine);
+
+            var bySpace = MslBindingOrder.CheckStage(fragSpirv, msl.FragmentSource, MslBindingOrder.Fragment, tag);
+            Assert.NotNull(bySpace);
+            Assert.Equal(new[] { (0u, 0u) }, Declared(bySpace!, "texture"));
+            Assert.Equal(new[] { (0u, 1u) }, Declared(bySpace!, "sampler"));
+        }
+
+        static (uint Set, uint Binding)[] Declared(
+            Dictionary<string, List<MslBoundResource>> bySpace, string space)
+        {
+            var declared = new List<(uint, uint)>();
+            foreach (MslBoundResource r in bySpace[space]) declared.Add((r.Set, r.Binding));
+            declared.Sort(static (a, b) => a.Item1 != b.Item1 ? a.Item1.CompareTo(b.Item1) : a.Item2.CompareTo(b.Item2));
+            return declared.ToArray();
         }
 
         // ---- 2. The compute guard, which could not see a same-kind swap before 17.36.0 -------------------
@@ -197,8 +216,9 @@ void main() { o = " + skipsA + @"; }";
         /// A RESOURCE NEITHER STAGE REFERENCES must not trip anything. The cross-compiler drops it from the
         /// emission entirely and Veldrid reflected an unreferenced separate texture as a <c>UniformBuffer</c> with
         /// no stages, so counting it would be counting a phantom. The guard sees only what the emission kept,
-        /// which makes this a clean pass rather than a false alarm (and, deliberately, a false NEGATIVE for the
-        /// real slot the dead element still consumes).
+        /// which makes this a clean pass rather than a false alarm. It used to cost a false NEGATIVE as well, for
+        /// the whole-layout slot the dead element still consumed, and that stopped mattering when the prefix
+        /// check retired: nothing counts across the whole layout any more.
         /// </summary>
         [Fact]
         public void ADeadStrippedResourceBetweenTwoLiveOnesValidatesClean()
@@ -254,8 +274,10 @@ void main() { o = texture(sampler2D(T[1], S), vec2(0.5)) + texture(sampler2D(T[0
             Assert.DoesNotContain("binding order", ex.Message);
         }
 
-        /// <summary>A stage that declares no resources at all is a prefix of anything, and the post stack's
-        /// fullscreen vertex is exactly that shape. Guards the degenerate end of the prefix check.</summary>
+        /// <summary>A stage that declares no resources at all, which is what the post stack's fullscreen vertex
+        /// is, leaves one side of the pair with nothing to resolve. Guards the degenerate end of the parse: a
+        /// dropped index space and an empty one must both come out silent rather than as arithmetic on
+        /// nothing.</summary>
         [Fact]
         public void AStageWithNoResourcesAtAllValidatesClean()
             => ShaderValidation.ValidatePair(PositionOnlyVert, @"#version 450

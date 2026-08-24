@@ -14,23 +14,32 @@ namespace KhaozEngine.Gpu.Internal
     internal readonly record struct MslBoundResource(string Space, int Index, uint Set, uint Binding);
 
     /// <summary>
-    /// THE METAL BINDING-ORDER GUARD, shared by <see cref="ShaderValidation.ValidatePair"/> and
-    /// <see cref="ShaderValidation.ValidateCompute"/>. Two independent checks, both device-free and both reading
-    /// only what a cross-compile already produced.
+    /// THE METAL INDEX-ORDER GUARD, run by <see cref="ShaderValidation.ValidatePair"/> and
+    /// <see cref="ShaderValidation.ValidateCompute"/> over every stage they cross-compile. One check, device-free,
+    /// reading only what a cross-compile already produced.
     ///
     /// <para>
-    /// <b>Why there is anything to check.</b> Metal has no binding decorations. The cross-compiler hands each
-    /// resource an index of its own within one of three argument tables, assigned in SPIR-V id order, which
-    /// follows where each resource is FIRST REFERENCED across the emitted function bodies. A backend that binds
-    /// a resource set by counting the layout's elements in BINDING order, one counter per kind, agrees with that
-    /// numbering only by luck, and where the two disagree Metal reads the wrong resource and returns zero rather
-    /// than failing: Vulkan and Direct3D11 stay perfectly correct because they honour the decorations. That is
-    /// the shape the engine shipped on Metal until <c>18.0.0</c>, and three separate shipped bugs of it are
-    /// recorded in <c>docs/design/FFT-OCEAN-DESIGN-2026-07-26.md</c>, every one found by an image golden or a
-    /// bisect rather than by a build failure. The native Metal backend binds at an AUTHORED index instead, so
-    /// what these two checks hold up now is the engine's own one-uniform-buffer-per-pipeline rule, which
-    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/604">#604</see> retires together with the
-    /// shaders it blocks.
+    /// <b>What it holds up.</b> Metal has no binding decorations, so a resource's identity on that backend is the
+    /// index it was handed in one of three argument tables. Since <c>18.0.0</c> the engine AUTHORS those indices:
+    /// <see cref="MslIndexRemap"/> walks the reflected layout in ascending <c>(set, binding)</c>, one counter per
+    /// table, <see cref="SpirvCrossCompile"/> installs that scheme on the emitter, and the native Metal backend
+    /// builds its binding table out of the same scheme. Writer and reader therefore carry the same number by
+    /// construction. This is the check that the construction HELD. Left to itself the cross-compiler numbers each
+    /// resource in SPIR-V id order, which follows where the stage FIRST REFERENCES it, and that agrees with a
+    /// layout walked in binding order only by luck. Metal answers a wrong index with zeroes rather than with an
+    /// error, while Vulkan and Direct3D11 stay perfectly correct because they honour the decorations, so the
+    /// symptom is a wrong picture on one backend with nothing wrong in the GLSL. Three separate shipped bugs of
+    /// that shape are recorded in <c>docs/design/FFT-OCEAN-DESIGN-2026-07-26.md</c>, every one found by an image
+    /// golden or a bisect rather than by a build failure.
+    /// </para>
+    /// <para>
+    /// <b>There used to be a second check here, and it is gone.</b> <c>CheckPrefix</c> required every stage's
+    /// resources to be a PREFIX of the layout's, per index space, which is what the retired Veldrid Metal
+    /// backend's one-counter-per-kind-over-the-whole-layout numbering needed. That backend left in <c>18.0.0</c>
+    /// and the rule it implied, one uniform buffer per pipeline, was retired with it
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/604">#604</see>). Shaders spread uniform
+    /// buffers across sets as their structure wants now, and both the emission and the binding table walk the
+    /// reflected layout, so there is nothing left for a prefix property to reconcile.
     /// </para>
     /// <para>
     /// <b>THE JOIN IS KEYED ON THE SPIR-V ID, PER STAGE.</b> Each emitted argument is named <c>_&lt;id&gt;</c>
@@ -60,17 +69,16 @@ namespace KhaozEngine.Gpu.Internal
 
         static readonly string[] Spaces = { "buffer", "texture", "sampler" };
 
-        /// <summary>WHAT THE CONSTRAINT PROTECTS, carried in every message this type throws. Without it the
-        /// rejection reads as a bug in the validator to anyone whose shader draws correctly on every device they
-        /// own, and it would read that way fairly: no backend the engine ships needs this shape rejected. What is
-        /// left is the engine's one-uniform-buffer rule, kept because lifting it moves goldens on all three
-        /// backends rather than because a device requires it, and retired by issue #604 together with the shaders
-        /// it blocks.</summary>
-        const string RuleClause =
-            "This enforces the engine's one-uniform-buffer-per-pipeline rule (issue #604) rather than a limit of "
-            + "any backend it ships. The native Metal backend binds at an authored index, and Vulkan and "
-            + "Direct3D11 honour the decorations, so all three render this correctly and a shader that looks fine "
-            + "on every device you tested can still be rejected here.";
+        /// <summary>WHERE TO LOOK WHEN THIS FIRES, carried in every message this type throws. The rejection is
+        /// almost certainly not about the shader: the engine authors every Metal argument index, so an emission
+        /// that disagrees with binding order is an emission the authored scheme did not reach, which is a
+        /// toolchain or install fault rather than something to fix in the GLSL.</summary>
+        const string AgreementClause =
+            "The engine AUTHORS every Metal argument index (MslIndexRemap, walked over the reflected layout in "
+            + "ascending (set, binding)) and the native Metal backend builds its binding table from the same "
+            + "scheme, so an emission whose indices are NOT in binding order is one the authored scheme did not "
+            + "reach. Look at the emitter's remap install before looking at the shader. Vulkan and Direct3D11 "
+            + "honour the decorations and are unaffected either way.";
 
         /// <summary>
         /// Check one cross-compiled Metal stage: within each index space, the arguments in Metal index order must
@@ -80,8 +88,9 @@ namespace KhaozEngine.Gpu.Internal
         /// <param name="msl">The emitted Metal source for that stage.</param>
         /// <param name="stage">Which stage, for the entry-point keyword and the error message.</param>
         /// <param name="tag">The shader's label, included in any error message.</param>
-        /// <returns>The resolved arguments per index space, for the pair-wide prefix check, or null when the
-        /// entry point could not be read at all.</returns>
+        /// <returns>The resolved arguments per index space, which <see cref="ShaderValidation.ValidateCompute"/>
+        /// reads to decide whether its kind-comparing fallback has anything left to do, or null when the entry
+        /// point could not be read at all.</returns>
         /// <exception cref="ShaderValidationException">A stage's Metal index order disagrees with its binding
         /// order.</exception>
         internal static Dictionary<string, List<MslBoundResource>>? CheckStage(
@@ -114,79 +123,10 @@ namespace KhaozEngine.Gpu.Internal
                         + $"decorations, so the cross-compiler numbers a stage's {space} arguments in "
                         + "FIRST-REFERENCE order while the resource layout is counted in binding order. Where the "
                         + "two disagree the wrong resource is bound to each slot, on Metal ONLY, and silently. "
-                        + "Make the first reference to each resource happen in binding order - hoist a first touch "
-                        + "into main when a helper function reaches a later binding first. "
-                        + RuleClause);
+                        + AgreementClause);
                 }
             }
             return bySpace;
-        }
-
-        /// <summary>
-        /// THE PREFIX PROPERTY, which is a constraint on the LAYOUT rather than on first-reference order and is
-        /// therefore not reachable by <see cref="CheckStage"/>. The rule counts a resource with one counter per
-        /// kind across the WHOLE layout and expects it at that number in every stage its mask names, while the
-        /// cross-compiler numbers each stage densely from 0 over only the bindings that stage declares. The two
-        /// agree only when every stage's resources are a PREFIX of the layout's, per index space. A vertex-only
-        /// texture placed after a fragment-only one cannot be made to work at any binding number.
-        /// <para>
-        /// WHAT IT CANNOT SEE: an element no stage references at all. That element still takes a slot in the
-        /// whole-layout count and still shifts everything after it, but it is absent from both stages' emissions
-        /// and from the reflection's kinds, so there is nothing sound to count. A false negative there is the
-        /// price of never firing on a correct shader.
-        /// </para>
-        /// </summary>
-        /// <exception cref="ShaderValidationException">One stage's resources are not a prefix of the layout's.
-        /// </exception>
-        internal static void CheckPrefix(Dictionary<string, List<MslBoundResource>>? vertex,
-            Dictionary<string, List<MslBoundResource>>? fragment, string tag)
-        {
-            if (vertex is null || fragment is null) return;
-
-            foreach (string space in Spaces)
-            {
-                // A space either stage dropped is a space whose full membership is unknown, so the union below
-                // would be missing entries and every conclusion drawn from it would be arithmetic on a guess.
-                if (!vertex.TryGetValue(space, out List<MslBoundResource>? vs)
-                    || !fragment.TryGetValue(space, out List<MslBoundResource>? fs)) continue;
-
-                var union = new List<(uint Set, uint Binding)>();
-                foreach (MslBoundResource r in vs) union.Add((r.Set, r.Binding));
-                foreach (MslBoundResource r in fs)
-                    if (!union.Contains((r.Set, r.Binding))) union.Add((r.Set, r.Binding));
-                union.Sort(static (a, b) => a.Set != b.Set ? a.Set.CompareTo(b.Set) : a.Binding.CompareTo(b.Binding));
-
-                RequirePrefix(union, vs, Vertex, space, tag);
-                RequirePrefix(union, fs, Fragment, space, tag);
-            }
-        }
-
-        static void RequirePrefix(List<(uint Set, uint Binding)> union, List<MslBoundResource> stageResources,
-            string stage, string space, string tag)
-        {
-            var used = new HashSet<(uint, uint)>();
-            foreach (MslBoundResource r in stageResources) used.Add((r.Set, r.Binding));
-
-            int skipped = -1;
-            for (int i = 0; i < union.Count; i++)
-            {
-                if (!used.Contains(union[i])) { if (skipped < 0) skipped = i; continue; }
-                if (skipped < 0) continue;
-
-                (uint set, uint binding) = union[i];
-                (uint missedSet, uint missedBinding) = union[skipped];
-                throw new ShaderValidationException(
-                    $"{tag}: the {stage} stage's {space} resources are not a PREFIX of the resource layout. It "
-                    + $"reads layout(set={set}, binding={binding}) but never reads "
-                    + $"layout(set={missedSet}, binding={missedBinding}), which comes before it in the {space} "
-                    + "index space. The layout is counted one slot per kind across the WHOLE of it while the "
-                    + "cross-compiler numbers each stage densely from 0 over only what that stage declares, so "
-                    + $"this stage reaches for a lower {space} index than the layout binds binding {binding} at, "
-                    + "and no binding number can reconcile the two. Reorder the layout so every resource this "
-                    + $"stage reads comes before the ones it does not, or give it a reference to binding "
-                    + $"{missedBinding} as well. "
-                    + RuleClause);
-            }
         }
 
         /// <summary>Resolve every entry-point resource argument to its declared <c>(set, binding)</c>, grouped by

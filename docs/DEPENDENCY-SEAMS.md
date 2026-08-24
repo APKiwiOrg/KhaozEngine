@@ -1160,40 +1160,48 @@ so the bound holds identically on a backend with no ring at all and on an offscr
 presents. `ValveDrains` and the now-public `SealedBatchCount` are the two members that let a caller see it working.
 The frame-counted factory needed none of this, since a frame count is already a bound.
 
-## GPU-backend invariant: ONE uniform buffer per pipeline (history, and why the rule is kept)
+## GPU-backend invariant: ONE uniform buffer per pipeline (RETIRED by #604, kept here as history)
 
-**MEASURED 2026-08-11: this was the VELDRID INCUMBENT'S BUFFER NUMBERING, not a property of Metal.** That
-backend was deleted in `18.0.0` ([#687](https://github.com/APKiwiOrg/KhaozEngine/issues/687)), so the defect
-below no longer exists anywhere in the engine. The rule is KEPT and still binds every new render path, for the
-reason at the end of this section, but it is a shipped-content constraint now rather than a live hazard, so
-read the mechanism before designing around it.
+**THE RULE IS GONE, AND NOTHING REPLACED IT.** For most of this engine's life every new render path was
+required to read exactly ONE uniform buffer, at set 0 binding 0, folding everything any stage needed (the
+vertex's ViewProj, bone palette and per-instance transforms AND the fragment's frame, lighting and shadow
+uniforms) into that single block and keeping per-mesh textures at set 1 and up. That rule was lifted by
+[#604](https://github.com/APKiwiOrg/KhaozEngine/issues/604). A shader may spread its uniform
+buffers across bindings and sets as its own structure wants. The emission and the binding table both walk the
+reflected layout, so there is nothing left for a pipeline-wide count to get wrong. The section is kept because
+several shipped pipelines still carry the SHAPE the rule produced, and reading their combined buffers as a
+current requirement is the mistake this record exists to prevent.
 
-**The mechanism.** Veldrid's `MTLResourceLayout` numbers a buffer by counting every buffer element declared in
-the preceding sets, and SPIRV-Cross numbers only the arguments the stage it is emitting actually REFERENCES.
-So a pipeline mis-binds when a stage references fewer buffers than the declared layout array puts before them:
-a fragment function that reads set 1 alone is emitted at `buffer(0)` while Veldrid writes it at `buffer(1)`,
-and the function reads a slot nothing wrote. All zero, silently, with no validation error, surfacing as
-garbage geometry or unlit/black shading rather than as a failure. It holds offscreen as well as windowed.
+**WHY IT EXISTED: THE VELDRID INCUMBENT'S BUFFER NUMBERING, measured 2026-08-11, and never a property of
+Metal.** Veldrid's `MTLResourceLayout` numbered a buffer by counting every buffer element declared in the
+preceding sets, and SPIRV-Cross numbered only the arguments the stage it was emitting actually REFERENCED. So a
+pipeline mis-bound when a stage referenced fewer buffers than the declared layout array put before them: a
+fragment function that read set 1 alone was emitted at `buffer(0)` while Veldrid wrote it at `buffer(1)`, and
+the function read a slot nothing wrote. All zero, silently, with no validation error, surfacing as garbage
+geometry or unlit/black shading rather than as a failure. It held offscreen as well as windowed. That backend
+was deleted in `18.0.0` ([#687](https://github.com/APKiwiOrg/KhaozEngine/issues/687)), so the defect no longer
+exists anywhere in the engine.
 
-**TWO SYMPTOMS COME OUT OF THAT ONE DISAGREEMENT, so match on the mechanism rather than on what you saw.**
-Which one you get depends on whether the earlier buffer is bound to the READING stage at the index the function
-ends up reading. Where nothing is bound there, the read is all zero, which is the shape measured above. Where
-the earlier buffer IS bound to that stage, the index holds real bytes and the function reads ANOTHER buffer's
-contents instead of nothing, which is the splat terrain's recorded signature. Same off-by-one either way.
+**TWO SYMPTOMS CAME OUT OF THAT ONE DISAGREEMENT, so a historical report matches on the mechanism rather than
+on what someone saw.** Which one you got depended on whether the earlier buffer was bound to the READING stage
+at the index the function ended up reading. Where nothing was bound there, the read was all zero, which is the
+shape measured above. Where the earlier buffer WAS bound to that stage, the index held real bytes and the
+function read ANOTHER buffer's contents instead of nothing, which is the splat terrain's recorded signature.
+Same off-by-one either way.
 
-**The narrower statement matters, because the broad one is false.** This section used to say that any pipeline
+**The narrower statement matters, because the broad one was false.** This section used to say that any pipeline
 reading more than one uniform buffer mis-binds, full stop. Measured on an Apple M2 Max, two shapes that the
-broad rule bound CORRECTLY on the incumbent: a vertex stage reading two uniform buffers at sets 0 and
-1, and a pipeline whose set-0 buffer is read by both stages with a fragment-only second buffer at set 1. The
-shape that fails is the one the shipped record failed in, each stage referencing exactly one of the two
-buffers. TEXTURES and samplers in a second set mapped fine in the shapes measured. Read that as a result about
-those shapes rather than as a property of the texture index space: the count runs PER index space, so the
-identical per-stage condition predicts a texture index disagreeing the same way. That prediction is not
-measured here, and it is what the sample-all-textures-in-binding-order discipline already guards. This engine's
-own incident record has two texture-space mis-binds in it, a model pass reading the normal texture through the
-albedo sampler and a crease term reading depth data.
+broad rule bound CORRECTLY on the incumbent: a vertex stage reading two uniform buffers at sets 0 and 1, and a
+pipeline whose set-0 buffer is read by both stages with a fragment-only second buffer at set 1. The shape that
+failed is the one the shipped record failed in, each stage referencing exactly one of the two buffers. TEXTURES
+and samplers in a second set mapped fine in the shapes measured. Read that as a result about those shapes
+rather than as a property of the texture index space: the count ran PER index space, so the identical per-stage
+condition predicts a texture index disagreeing the same way. That prediction is not measured here, and it is
+what the sample-all-textures-in-binding-order discipline already guards. This engine's own incident record has
+two texture-space mis-binds in it, a model pass reading the normal texture through the albedo sampler and a
+crease term reading depth data.
 
-**The engine's own native Metal backend (`GpuBackendKind.MetalNative`) does not have the defect**, and since
+**The engine's own native Metal backend (`GpuBackendKind.MetalNative`) never had the defect**, and since
 `18.0.0` it cannot: it AUTHORS the index (`Internal/MslIndexRemap`, row 10, #693) rather than reading one back
 out of the emission, so the writer's number and the reader's number are the same number by construction instead
 of by agreement. The constructed counter-example above, a fragment reading set 1 alone, is emitted at
@@ -1205,59 +1213,51 @@ device-free row pinning the two numbers against each other, and section 2.3a of
 
 **One historical signature is NOT explained by that mechanism and was not reproduced.** The original
 vertex-stage report is a bone-palette array losing everything past element 0 rather than a second buffer
-reading all zero, and it was recorded under an older Veldrid and SPIRV-Cross pin. The two-uniform-buffer
-vertex shape measured above does not reproduce it today. That narrows what is currently reproducible without
-refuting the record, and the rule below keeps covering it either way.
+reading all zero, and it was recorded under an older Veldrid and SPIRV-Cross pin. The two-uniform-buffer vertex
+shape measured above does not reproduce it today. That narrows what is currently reproducible without refuting
+the record. The offscreen repro is kept either way, as
+`GpuSkinningReproGpuTests.FoldMatrixIntoBoneBuffer_VertexReadsOneResource_ReadsEveryBone` (variant 3), which is
+the split-stage layout the incumbent mis-bound and is now the record of a defect no shipped backend has.
 
-**THE RULE IS UNCHANGED AND STILL BINDING**, and the measurement is not a licence to start spreading uniforms
-across sets. The argument that kept it while the incumbent shipped is spent: `GpuBackendKind.Metal` is a
-retired token now and builds nothing, so a pipeline written to the native backend's binding cannot be read by
-anything that counts. What keeps the rule is that lifting it MOVES GOLDENS on all three backends, so it is its
-own work with its own gates, tracked at https://github.com/APKiwiOrg/KhaozEngine/issues/604. That issue is
-UNBLOCKED as of `18.0.0`, which is exactly the trigger it named, and row 10 has since done the NUMBERING half of
-it: two uniform buffers in one layout get two distinct authored `[[buffer(n)]]` indices, device-free, over every
-shape. What #604 still owns is the SHIPPED VALIDATION that enforces the old constraint. `MslBindingOrder.CheckStage`
-is already inert (the authored indices satisfy it by construction) and `MslBindingOrder.CheckPrefix` still throws,
-so the two come out together with the shaders they block, in one change.
+**WHEN IT WAS LIFTED, AND WHAT CAME OUT WITH IT.** The rule outlived the backend that needed it by one release,
+because the argument for keeping it was never the backend: it was that unfolding a combined buffer MOVES the
+emission on all three backends, so it is its own work with its own gates rather than a free simplification.
+#604 is that work, done across three commits in one branch.
 
-The engine-wide rule for any new render path: the pipeline reads exactly ONE uniform buffer, at set 0
-binding 0. Fold everything any stage needs from a UBO - the vertex's ViewProj / bone palette / per-instance
-transforms AND the fragment's frame/lighting/shadow uniforms - into that single buffer, declared
-identically in both stages (each stage uses its slice). Keep per-mesh TEXTURES at set 1 and up (fragment).
+- **The splat terrain pass.** It bound one buffer per material, the frame block at offset 0 with the material's
+  112 bytes appended, and re-uploaded the frame block into every loaded material's copy each frame. Now the
+  shared frame `U` sits at set 0 binding 0, read by both stages, and `SplatParams` is a FRAGMENT-only buffer at
+  set 1 binding 0. `SplatUniformBuffer` and the per-material frame re-sync are both gone with it.
+- **The GPU-skinning pass.** It read one 9472-byte per-draw slot, `{ Mvp; Model; P; <frame block>; bones[128] }`,
+  with a whole copy of the frame block re-packed into every visible draw's slot each frame and `Mvp` folded on
+  the CPU so the vertex needed no frame block. Now the shared frame `U` is at set 0 binding 0 and the per-draw
+  `VBlock` (`{ Model; P; bones[128] }`) is a VERTEX-only buffer at set 0 binding 1, which is the first shipped
+  layout in this engine with two uniform buffers in ONE set. The vertex reads `ViewProj` out of the frame block,
+  so pixel-parity with the CPU path is by construction.
+- **The shipped validation that enforced the rule.** `MslBindingOrder.CheckPrefix`, which required each stage's
+  resources to be a PREFIX of the layout's per index space, is deleted. `MslBindingOrder.CheckStage` STAYS and
+  is not part of what retired: it pins the agreement between the Metal index order an emission carries and the
+  binding order the layout is walked in, which is the property the authored-index scheme produces and the native
+  backend's binding table depends on.
 
-**Since 17.36.0 the shape this rule forbids is rejected STATICALLY rather than only written down here**:
-`MslBindingOrder.CheckPrefix`, run by `ShaderValidation.ValidatePair`, throws when one stage's resources are not
-a prefix of the layout's per index space, which is exactly the each-stage-references-a-different-buffer shape
-measured above (see the `KhaozEngine.Gpu` README and `USING-KHAOZENGINE.md` for the guard's two checks and what
-it deliberately stays silent about).
+**TWO PIPELINES DELIBERATELY KEEP THEIR COMBINED BUFFER, and neither is waiting on anything.** The tile-ground
+pass still appends its per-material params after the frame block in one binding-0 block
+([#727](https://github.com/APKiwiOrg/KhaozEngine/issues/727) is the record of that choice), and the skinned
+SHADOW pass still carries its own `{ LightMvp; bones[128] }` (#407), whose per-cascade palette re-upload the
+unfold left byte for byte as it was. The sky, decal, particle and distortion passes each read one uniform
+buffer too, and that is now a fact about how much those passes need rather than a rule they obey. Their frame
+blocks are described where they live: `../KhaozEngine.Render3D/Rendering/ParticleRenderer.cs` and
+`../KhaozEngine.Render3D/Rendering/DistortionRenderer.cs` are the two worth reading, because the reason their
+per-sprite values ride an instanced vertex-attribute stream instead of a second buffer is a bandwidth argument
+that survives #604 untouched.
 
-The model and splat-terrain passes follow this: the shadow-map matrix and the per-material splat params
-ride in the SAME frame UBO after the point-light arrays, so each pass binds exactly one uniform buffer
-(see the splat-params note in `../KhaozEngine.Render3D/Rendering/ModelRenderer.cs` and the `SplatVert`
-comment in `../KhaozEngine.Render3D/Internal/ShaderSources.cs`). The modern particle pass follows it too: its
-single set-0 frame UBO carries the clip-corrected ViewProj, the raw InvViewProj, the camera basis + eye, the
-effect time, and the soft-fade / quality params, while every per-sprite value rides an instanced
-vertex-attribute stream and the textures sit at set 0 bindings 1..5, sampled statically in binding order (the
-Metal rule): the scene depth texture + sampler at 1 and 2, then the flipbook motion sheet, atlas sheet, and
-atlas sampler at 3, 4, and 5 (motion precedes atlas so the static sample order supplies the warp vectors before
-the atlas taps that consume them). Procedural sprites bind 1x1 dummy atlas + neutral motion textures for the
-same static sample, so a procedural-only frame is byte-identical. Textures past the first UBO map fine. See
-`../KhaozEngine.Render3D/Rendering/ParticleRenderer.cs`. The sibling screen-space distortion pass follows the
-identical contract: one set-0 frame UBO (the same clip-corrected ViewProj + raw InvViewProj + camera basis +
-params block, with a half-to-full texel ratio folded in), every per-sprite value on an instanced vertex-attribute
-stream, and the scene depth texture + point sampler at set 0 bindings 1 and 2, writing a signed offset field that
-the post chain's fullscreen apply pass re-samples the resolved colour through as its FIRST pass (see
-`../KhaozEngine.Render3D/Rendering/DistortionRenderer.cs`). The vertex half of the fault plus the
-fold-into-one fix are proven offscreen by `GpuSkinningReproGpuTests` variant 3
-(`FoldMatrixIntoBoneBuffer_VertexReadsOneResource_ReadsEveryBone`). The SHIPPED GPU-skinning pass
-(`Scene3D.UseGpuSkinning`, `SkinnedModelVert`/`SkinnedModelFrag`) is the full instance: one combined
-per-draw UBO holding `{ Mvp; Model; P; <frame block>; bones[128] }` read by both stages (vertex =
-matrices+bones, fragment = the frame block for lighting), with material maps at set 1. An earlier attempt
-that kept the frame UBO fragment-only in a second binding/set rendered every skinned mesh black - the
-second-UBO tell - and is the reason this note now says "per pipeline", not "per vertex stage". **That black
-frame is the shape the 2026-08-11 measurement reproduced on the incumbent and the mechanism above explains
-exactly**: the fragment referenced only the second buffer, so it was emitted at `buffer(0)` and written at
-`buffer(1)`.
+**THE TEXTURE DISCIPLINE IS A DIFFERENT RULE AND IS UNCHANGED.** Sample textures in binding order, and keep the
+sampled order and the declared order the same. That is what `MslBindingOrder.CheckStage` and the
+sample-all-textures-up-front pattern in `SplatFrag` / `ModelFrag` / `EdgeFrag` are about, and nothing in #604
+touched it. The particle pass is the worked example: its textures sit at set 0 bindings 1 to 5, sampled
+statically in binding order, with the flipbook motion sheet ahead of the atlas so the warp vectors are supplied
+before the taps that consume them, and procedural-only frames bind 1x1 dummies so the static sample order is
+byte-identical.
 
 ## GPU seam contract: `DepthClipEnabled` binds on every backend, Metal included (17.39.0)
 

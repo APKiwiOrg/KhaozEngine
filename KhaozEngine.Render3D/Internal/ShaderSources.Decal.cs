@@ -77,8 +77,9 @@ void main() {
         public const string DecalFrag = @"#version 450
 layout(set=0, binding=0) uniform texture2D DepthTex;   // .r = linear depth (single-channel R32F)
 layout(set=0, binding=1) uniform sampler Samp;
-// ONE uniform buffer per pipeline (Metal via Veldrid/SPIRV-Cross mis-binds a second): the RAW inverse view-projection
-// and the time/quality value share this single Frame block, grown from 64 to 80 bytes.
+// ONE uniform buffer, which the retired Veldrid Metal backend needed (it mis-bound a second) and #604 no longer
+// requires: the RAW inverse view-projection and the time/quality value share this single Frame block, grown from
+// 64 to 80 bytes, and nothing here wants a second one.
 layout(set=0, binding=2) uniform Frame {
     mat4 InvViewProj;   // RAW (un-clip-corrected) inverse view-projection, shared by every decal this frame
     vec4 TimeQ;         // x = effect time seconds, y = quality (1 full / 0 reduced), z = maxRgb ceiling,

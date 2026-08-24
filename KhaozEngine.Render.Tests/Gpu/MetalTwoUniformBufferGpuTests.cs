@@ -52,10 +52,13 @@ namespace KhaozEngine.Tests.Gpu
     /// backend its name claims. What replaces the comparison is the device-free row at the end, which pins the
     /// two numberings against each other with no device at all.</para>
     ///
-    /// <para><b>NO SHADER CHANGES ON THE STRENGTH OF THIS (M-B4).</b> The invariant stays in force whatever these
-    /// two rows read. A pass authorises FILING its removal as work with its own gates on all three backends, and
-    /// nothing else, which is
-    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/604">#604</see>.</para>
+    /// <para><b>NO SHADER CHANGES ON THE STRENGTH OF THIS (M-B4).</b> The invariant stayed in force whatever these
+    /// two rows read. A pass authorised FILING its removal as work with its own gates on all three backends, and
+    /// nothing else, which is <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/604">#604</see>. That
+    /// work has since landed: the splat and GPU-skinning combined buffers were unfolded, the rule was
+    /// rewritten as history in <c>docs/DEPENDENCY-SEAMS.md</c>, and <c>MslBindingOrder.CheckPrefix</c> was
+    /// deleted. These rows are the measurement it was gated on, so they are what would go red first if the
+    /// backend stopped binding a second uniform buffer correctly.</para>
     ///
     /// <para><b>DORMANT OFF macOS RATHER THAN SKIPPED</b>, which is phase 3's row-19 lesson: under
     /// <c>KE_GPU_TESTS=1</c> the Vulkan and Direct3D 11 legs run this assembly in strict mode where a skip is a

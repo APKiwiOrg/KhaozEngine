@@ -78,8 +78,9 @@ void main() {
         //      per-instance attributes carry each sprite (locations 0..4, no holes, every attribute consumed,
         //      the D3D11 contiguous-input contract), the two-triangle quad comes from gl_VertexIndex like the
         //      decal pass. Billboarding, spin, and velocity-aligned stretch happen in the vertex stage from the
-        //      camera basis in the single Frame UBO (ONE uniform buffer per pipeline, declared identically in
-        //      both stages, the Metal contract). The fragment evaluates a procedural SDF/noise shape per sprite
+        //      camera basis in the single Frame UBO (one uniform buffer, declared identically in both stages,
+        //      which was the Metal contract until #604 retired it and is still all this pass reads). The
+        //      fragment evaluates a procedural SDF/noise shape per sprite
         //      and a soft depth fade against the reconstructed scene surface (the ground-decal texelFetch +
         //      RAW-InvViewProj recipe). Output is PREMULTIPLIED color with alpha scaled by (1 - additivity), so
         //      alpha and additive sprites composite correctly in one back-to-front sorted draw under a single

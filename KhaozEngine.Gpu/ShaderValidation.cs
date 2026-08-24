@@ -33,10 +33,13 @@ namespace KhaozEngine.Gpu
     /// <para>
     /// IT ALSO CHECKS THE METAL BINDING ORDER, which is not a compile failure anywhere and is the one class of
     /// shader bug that renders a wrong picture instead of throwing. Both entry points run
-    /// <see cref="Internal.MslBindingOrder"/> over the Metal emission: per stage, the arguments in Metal index
-    /// order must be the arguments in binding order, and for a pair each stage's resources must additionally be a
-    /// PREFIX of the layout's, per index space. Read that type for the mechanism and for what it deliberately
-    /// stays silent about.
+    /// <see cref="Internal.MslBindingOrder"/> over the Metal emission, per stage: the arguments in Metal index
+    /// order must be the arguments in binding order, which is what the authored index scheme produces and this
+    /// confirms. Read that type for the mechanism and for what it deliberately stays silent about. There was a
+    /// second, pair-wide check here, requiring each stage's resources to be a PREFIX of the
+    /// layout's. It served the one-uniform-buffer-per-pipeline rule and retired with it
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/604">#604</see>), so a layout whose two stages
+    /// read disjoint uniform buffers validates clean now.
     /// </para>
     /// <para>
     /// THE TARGETS ARE THE ONES THE ENGINE SHIPS, AND SINCE 18.0.0 THAT IS TWO: HLSL for the native Direct3D 11
@@ -86,11 +89,10 @@ namespace KhaozEngine.Gpu
             SpirvCrossCompile.VertexFragmentToHlsl(vertSpirv, fragSpirv, tag);
             CrossCompiledPair msl = SpirvCrossCompile.VertexFragmentToMsl(vertSpirv, fragSpirv, tag);
 
-            // Both stages first, then the pair-wide prefix property, so a per-stage swap (the common case,
-            // and the one with a one-line fix) is reported ahead of the layout-shaped constraint.
-            var vertex = MslBindingOrder.CheckStage(vertSpirv, msl.VertexSource, MslBindingOrder.Vertex, tag);
-            var fragment = MslBindingOrder.CheckStage(fragSpirv, msl.FragmentSource, MslBindingOrder.Fragment, tag);
-            MslBindingOrder.CheckPrefix(vertex, fragment, tag);
+            // One check per stage, and nothing pair-wide any more: the prefix property retired with the
+            // one-uniform-buffer rule it served (issue #604).
+            MslBindingOrder.CheckStage(vertSpirv, msl.VertexSource, MslBindingOrder.Vertex, tag);
+            MslBindingOrder.CheckStage(fragSpirv, msl.FragmentSource, MslBindingOrder.Fragment, tag);
         }
 
         /// <summary>

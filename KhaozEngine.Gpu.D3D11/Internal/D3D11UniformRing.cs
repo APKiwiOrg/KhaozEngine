@@ -30,7 +30,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// SEGMENTS ARE 256-ALIGNED, and that is a hard Direct3D requirement rather than a rounding habit.
     /// <c>*SetConstantBuffers1</c> counts in 16-byte constants and wants the first constant on a 16-constant
     /// boundary, so a frame base that was not a multiple of 256 bytes would be unbindable. Every real engine
-    /// stride is already 256-aligned (256, 768, 8448, 9472), and rounding the stride up here is what keeps that
+    /// stride is already 256-aligned (256, 768, 8448), and rounding the stride up here is what keeps that
     /// true for a buffer whose size is not.
     /// </para>
     /// <para>

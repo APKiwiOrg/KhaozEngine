@@ -284,34 +284,50 @@ void main() {
     oDepth = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);   // per-fragment NDC depth, see the note at the top
 }";
 
-        // ---- GPU skinning (opt-in, Scene3D.UseGpuSkinning). The whole skinned pipeline reads EXACTLY ONE uniform
-        //      buffer, a combined per-draw block at set 0 binding 0, read by BOTH stages (the proven model-pipeline
-        //      shape - one UBO in vertex+fragment + textures). The block folds the per-draw matrices the VERTEX needs
-        //      (Mvp = Model*clip-corrected-ViewProj; Model; P packing Tint/Emissive/SpecParams) AND the per-frame
-        //      lighting the FRAGMENT needs (the frame UBO layout, mirrored exactly) AND the bone palette, per draw
-        //      (the frame fields are duplicated into every slot - the cost of the one-buffer rule). A SECOND uniform
-        //      buffer anywhere in the pipeline - a second vertex buffer, OR a fragment-only UBO whether in this set or
-        //      a separate set 1 - mis-binds on Metal/Veldrid/SPIRV-Cross and reads zero (measured, see
-        //      DEPENDENCY-SEAMS.md and GpuSkinningReproGpuTests variant 3). Material TEXTURES map fine in a second set,
-        //      so the per-mesh maps live at set 1. The 4-bone blend + position/normal/tangent deform mirror
-        //      SkinningMath.SkinVertex exactly, so a GPU-skinned draw is pixel-parity with the CPU path. Both stages
-        //      declare the identical block. The vertex uses Mvp/Model/P/bones, the fragment uses the frame fields. ----
+        // ---- GPU skinning (opt-in, Scene3D.UseGpuSkinning). TWO uniform buffers, split by update frequency. The
+        //      SHARED per-frame block `U` is at set 0 binding 0, read by BOTH stages, and is the very same buffer
+        //      (and the very same declaration) the model pass binds. The per-draw block `VBlock` follows it at set 0
+        //      binding 1, VERTEX only, dynamic-offset: this draw's Model, its P column-packed Tint/Emissive/
+        //      SpecParams, and its composed bone palette. Material TEXTURES are at set 1, fragment only. The 4-bone
+        //      blend + position/normal/tangent deform mirror SkinningMath.SkinVertex exactly, and the position now
+        //      goes through ViewProj * (Model * skinnedLocal) exactly as ModelVert does, so a GPU-skinned draw is
+        //      pixel-parity with the CPU path by construction rather than by a folded matrix that reproduces it.
+        //
+        //      HISTORY, because the shape this replaced was load-bearing for a long time. The whole pipeline used to
+        //      read EXACTLY ONE uniform buffer: a combined per-draw block that carried Mvp (Model * clip-corrected
+        //      ViewProj, folded on the CPU so the vertex needed no frame block at all), Model, P, a COPY of the
+        //      entire frame block for the fragment, and only then the palette. The frame fields were re-packed into
+        //      every draw's slot each frame, which was the price. The retired Veldrid Metal backend numbered a
+        //      pipeline's uniform buffers by per-kind DECLARATION ORDER, so a stage referencing fewer of them than
+        //      the declared array put before it read an index nothing had written, and a second buffer anywhere in
+        //      this pipeline came back zero (GpuSkinningReproGpuTests variant 3 is the offscreen record of that
+        //      failure and is kept). That backend went in 18.0.0. Vulkan and Direct3D 11 honour the decorations, the
+        //      engine's own Metal backend AUTHORS each index across the union of both stages and the emission is
+        //      told what it chose, so all three agree by construction and the fold comes out
+        //      (https://github.com/APKiwiOrg/KhaozEngine/issues/604). What the split does NOT do is give each stage
+        //      a buffer of its own: `U` is read by both, which keeps every stage's buffer usage a PREFIX of the
+        //      layout. That property is still enforced at cross-compile time by KhaozEngine.Gpu
+        //      MslBindingOrder.CheckPrefix, which #604 retires with the rule rather than with this shader, and it
+        //      is also the shape MM6 measured binding correctly on every backend. ----
         public const string SkinnedModelVert = @"#version 450
-layout(set=0, binding=0) uniform VBlock {
-    mat4 Mvp;              // Model * clip-corrected ViewProj (folded per draw): gl_Position = Mvp * skinnedLocal
-    mat4 Model;            // world transform (for worldPos + world normal/tangent the fragment lights with)
-    mat4 P;                // columns: [0]=Tint, [1]=Emissive, [2]=SpecParams (per-draw constants, packed row-major)
-    mat4 ViewProj;         // --- frame block (offset 192): mirrors the frame UBO layout so WriteFrameUniformsTo fills it ---
+layout(set=0, binding=0) uniform U {
+    mat4 ViewProj;
     vec4 LightDir; vec4 LightColor; vec4 Ambient; vec4 Params;
     vec4 FillDir; vec4 FillColor; vec4 CameraPos;
     vec4 PointPosRadius[16];
     vec4 PointColorIntensity[16];
-    mat4 ShadowMat[4];         // per-cascade world->light-clip for the cascaded shadow atlas
+    mat4 ShadowMat[4];         // per-cascade world->light-clip for the cascaded shadow atlas (unused by this stage)
     vec4 ShadowParams;         // x=cascadeCount, y=strength, z=constBias, w=slopeBias
     vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
-    mat4 bones[128];       // offset 1200: this draw's composed palette (inverseBind*jointWorld), padded/validated to <=128
+};
+// This draw's own block, selected by the per-draw dynamic offset. Declared here and NOT in either skinned
+// fragment, because no fragment stage reads any of it (the per-draw constants reach it as interpolants).
+layout(set=0, binding=1) uniform VBlock {
+    mat4 Model;            // world transform (for worldPos + world normal/tangent the fragment lights with)
+    mat4 P;                // columns: [0]=Tint, [1]=Emissive, [2]=SpecParams (per-draw constants, packed row-major)
+    mat4 bones[128];       // offset 128: this draw's composed palette (inverseBind*jointWorld), padded/validated to <=128
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
@@ -359,7 +375,7 @@ void main() {
         tLocal = vec4(td, Tangent.w);
     }
     vec4 world = Model * localPos;
-    gl_Position = Mvp * localPos;
+    gl_Position = ViewProj * world;   // ModelVert's own composition, not a CPU-folded Mvp (see the note above)
     vNormalW = normalize(mat3(Model) * nLocal);
     vColor = Color;
     vWorldPos = world.xyz;
@@ -371,15 +387,12 @@ void main() {
     vDynamic = P[3].x;   // dynamic-geometry decal mask (issue #235): GPU-skinned draws default to 1 (see PackSkinnedMainSlot)
 }";
 
-        // Skinned fragment: byte-for-byte ModelFrag lighting. It reads the frame fields from the SAME combined VBlock
-        // (set 0 binding 0) the vertex reads - one uniform buffer for the whole pipeline (the only Metal-safe shape).
-        // Both stages declare the identical block. The fragment ignores Mvp/Model/P/bones. Material maps at set 1
-        // (set-1 TEXTURES map fine on Metal). Sample order (Albedo first, ShadowMap last) preserves the first-sample rule.
+        // Skinned fragment: byte-for-byte ModelFrag lighting, off byte-for-byte ModelFrag's frame block, which since
+        // #604 is the SHARED per-frame buffer at set 0 binding 0 rather than a copy folded into the per-draw slot.
+        // It declares nothing of VBlock (set 0 binding 1), because it reads nothing of it: the per-draw constants
+        // arrive as interpolants. Material maps at set 1. Sample order (Albedo first, ShadowMap last) is preserved.
         public const string SkinnedModelFrag = @"#version 450
-layout(set=0, binding=0) uniform VBlock {
-    mat4 Mvp;
-    mat4 Model;
-    mat4 P;
+layout(set=0, binding=0) uniform U {
     mat4 ViewProj;
     vec4 LightDir;
     vec4 LightColor;
@@ -395,7 +408,6 @@ layout(set=0, binding=0) uniform VBlock {
     vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
-    mat4 bones[128];
 };
 layout(set=1, binding=0) uniform texture2D Albedo;
 layout(set=1, binding=1) uniform texture2D NormalMap;
@@ -444,13 +456,11 @@ void main() {
     oDepth = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);   // per-fragment NDC depth, see the note at the top
 }";
 
-        // Skinned CharDissolve variant: reads the frame fields from the same combined VBlock (set 0 binding 0),
-        // material maps at set 1. Identical noise-thresholded alpha clip + emissive edge.
+        // Skinned CharDissolve variant: the same shared frame block at set 0 binding 0 the plain skinned fragment
+        // reads, material maps at set 1. Identical noise-thresholded alpha clip + emissive edge, and RenderOrigin
+        // (the last member of the block) is the one member only this variant reads.
         public const string SkinnedModelDissolveFrag = @"#version 450
-layout(set=0, binding=0) uniform VBlock {
-    mat4 Mvp;
-    mat4 Model;
-    mat4 P;
+layout(set=0, binding=0) uniform U {
     mat4 ViewProj;
     vec4 LightDir;
     vec4 LightColor;
@@ -466,7 +476,6 @@ layout(set=0, binding=0) uniform VBlock {
     vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
-    mat4 bones[128];
 };
 layout(set=1, binding=0) uniform texture2D Albedo;
 layout(set=1, binding=1) uniform texture2D NormalMap;

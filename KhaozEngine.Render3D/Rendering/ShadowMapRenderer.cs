@@ -42,7 +42,8 @@ namespace KhaozEngine.Render3D.Rendering
 
         // GPU-skinning shadow mirror: the skinned depth vertex reads ONE combined UBO at set 0 laid out as
         // { mat4 LightMvp; mat4 bones[128] } (see ShaderSources.SkinnedShadowDepthVert), one 256-byte-aligned slot per
-        // (caster,cascade) selected by a per-draw dynamic offset. Same fold-matrix one-vertex-buffer shape as the model pass.
+        // (caster,cascade) selected by a per-draw dynamic offset. The model pass carried the same shape until #604
+        // split its frame block out into the shared buffer, and #407 is the standing follow-up for this one.
         internal static readonly uint SkinnedDepthSlotBytes =
             Align256((1u + (uint)SkinningMath.MaxBonesPerDraw) * 64);   // (1+128)*64=8256 -> 8448
         static uint Align256(uint n) => (n + 255u) & ~255u;
@@ -396,8 +397,9 @@ namespace KhaozEngine.Render3D.Rendering
             cl.DrawIndexed((uint)indexCount, 1, 0, baseVertex, drawIndex);
         }
 
-        // ---- GPU-skinning shadow casters (opt-in). Mirror the model pass's fold-matrix combined-UBO binding. Each
-        //      caster gets ONE slot per cascade (its LightMvp folds that cascade's column-transformed matrix). ----
+        // ---- GPU-skinning shadow casters (opt-in). Still ONE combined UBO here, the shape the model pass carried
+        //      until #604. Each caster gets ONE slot per cascade (its LightMvp folds that cascade's
+        //      column-transformed matrix), so the palette is re-packed once per cascade. ----
 
         /// <summary>Ensure the combined skinned-depth UBO holds at least <paramref name="slotCount"/> slots (each
         /// <see cref="SkinnedDepthSlotBytes"/>), growing geometrically + retiring the old buffer + its window set.

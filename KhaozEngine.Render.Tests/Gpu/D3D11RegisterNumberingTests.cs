@@ -69,13 +69,18 @@ namespace KhaozEngine.Tests.Gpu
                 new[] { U("U"), T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"),
                     S("ShadowSamp") },
                 "b0 t0 t1 t2 s0 t3 s1"),
-            ("ModelRenderer._skinnedVertexLayout", new[] { U("VBlock", dynamic: true) }, "b0"),
+            // The only shipped layout with TWO uniform buffers in it, since #604 unfolded the skinned pipeline's
+            // combined block into a shared frame block and a per-draw one.
+            ("ModelRenderer._skinnedMainLayout", new[] { U("U"), U("VBlock", dynamic: true) }, "b0 b1"),
             ("ModelRenderer._skinnedFragLayout",
                 new[] { T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"),
                     S("ShadowSamp") },
                 "t0 t1 t2 s0 t3 s1"),
-            ("ModelRenderer._splatLayout",
-                new[] { U("U"), T("AlbedoArray"), T("NormalArray"), S("Sampler"), T("ShadowMap"), S("ShadowSamp") },
+            // The splat pass's two, also since #604: the shared frame block on its own, then the material.
+            ("ModelRenderer._splatFrameLayout", new[] { U("U") }, "b0"),
+            ("ModelRenderer._splatMaterialLayout",
+                new[] { U("SplatParams"), T("AlbedoArray"), T("NormalArray"), S("Sampler"), T("ShadowMap"),
+                    S("ShadowSamp") },
                 "b0 t0 t1 s0 t2 s1"),
 
             // The only two layouts in the engine that reach the u file at all, and the only ones that mix a
@@ -234,8 +239,8 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// ACROSS layouts, the flattening follows the PIPELINE ARRAY, per file. Shown on the two shipped
-        /// multi-layout pipelines, which are <c>SpriteBatch</c> and the skinned model pass.
+        /// ACROSS layouts, the flattening follows the PIPELINE ARRAY, per file. Shown on the three shipped
+        /// multi-layout pipelines: <c>SpriteBatch</c>, the skinned model pass and the splat pass.
         /// </summary>
         [Fact]
         public void AcrossLayouts_TheShippedPipelinesFlattenInArrayOrder()
@@ -250,22 +255,35 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal("t0 s0", Absolute(sprite, 0));
             Assert.Equal("b0", Absolute(sprite, 1));
 
-            // The skinned model pass: a vertex UBO at set 0 and the material textures and samplers at set 1.
-            using var skinnedVertex = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
-                U("VBlock", dynamic: true)));
+            // The skinned model pass: the shared frame block and the per-draw block at set 0, the material
+            // textures and samplers at set 1.
+            using var skinnedMain = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
+                U("U"), U("VBlock", dynamic: true)));
             using var skinnedFrag = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"), S("ShadowSamp")));
-            D3D11ResourceLayout[] skinned = { skinnedVertex, skinnedFrag };
+            D3D11ResourceLayout[] skinned = { skinnedMain, skinnedFrag };
 
-            Assert.Equal("b0", Absolute(skinned, 0));
+            Assert.Equal("b0 b1", Absolute(skinned, 0));
             Assert.Equal("t0 t1 t2 s0 t3 s1", Absolute(skinned, 1));
+
+            // The splat pass, which is where a shipped pipeline really does accumulate a base ACROSS its sets: set
+            // 0 is the shared frame block at b0 and set 1's own params buffer lands at b1 because of it.
+            using var splatFrame = new D3D11ResourceLayout(new GpuResourceLayoutDescription(U("U")));
+            using var splatMaterial = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
+                U("SplatParams"), T("AlbedoArray"), T("NormalArray"), S("Sampler"), T("ShadowMap"), S("ShadowSamp")));
+            D3D11ResourceLayout[] splat = { splatFrame, splatMaterial };
+
+            Assert.Equal("b0", Absolute(splat, 0));
+            Assert.Equal("b1 t0 t1 s0 t2 s1", Absolute(splat, 1));
         }
 
         /// <summary>
-        /// The accumulation itself, which NO shipped pipeline exercises. Every multi-layout pipeline the engine
-        /// declares today uses disjoint kinds across its sets, so every set's base happens to be zero and a
-        /// backend that ignored the base entirely would pass every golden. This case is synthetic on purpose: it
-        /// is the only thing standing between "the bases are added" and a silent revert to zero.
+        /// The accumulation over MORE THAN TWO sets and over every register file at once, which no shipped
+        /// pipeline exercises. The splat pass above is the one shipped case that accumulates a base at all (one
+        /// file, two sets), and until #604 there was none: every multi-layout pipeline used disjoint kinds across
+        /// its sets, so every base happened to be zero and a backend that ignored the base entirely would have
+        /// passed every golden. This case stays synthetic on purpose, because it is still the only thing standing
+        /// between "the bases are added, in all four files, at any depth" and a silent revert to zero.
         /// </summary>
         [Fact]
         public void AcrossLayouts_ABaseAccumulatesPerFile()

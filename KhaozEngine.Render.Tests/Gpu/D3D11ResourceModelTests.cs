@@ -332,8 +332,8 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(1040u, 80u)]   // PixelPostProcess.PaletteBufferBytes. Was 65
         [InlineData(1120u, 80u)]   // the splat combined UBO, retired by #604. Was 70, which dropped splat terrain
         [InlineData(8256u, 528u)]  // (1 + 128) * 64 unaligned. Was 516
-        [InlineData(8448u, 528u)]  // ShadowMapRenderer.SkinnedDepthSlotBytes
-        [InlineData(9472u, 592u)]  // ModelRenderer.SkinnedMainSlotBytes
+        [InlineData(8448u, 528u)]  // ShadowMapRenderer.SkinnedDepthSlotBytes and ModelRenderer.SkinnedMainSlotBytes
+        [InlineData(9472u, 592u)]  // the skinned main slot before #604, which is now 8448 like the depth one
         public void AWindowSize_IsCountedInConstantsWithAMinimum(uint sizeBytes, uint expected)
             => Assert.Equal(expected, D3D11ConstantRange.ConstantCount(sizeBytes));
 

@@ -42,9 +42,11 @@ namespace KhaozEngine.Tests.Gpu
         const uint FrameUboBytes = 1008;
         // ShadowMapRenderer: MaxCascades (4) 256-byte dynamic slots.
         const uint ShadowCascadeUboBytes = 4 * 256;
-        // One GPU-skinned draw starts each growable UBO at its minimum eight slots.
-        const uint SkinnedMainUboBytes = 8 * 9472;
-        const uint SkinnedShadowUboBytes = 8 * 8448;
+        // One GPU-skinned draw starts each growable UBO at its minimum eight slots. Both slot sizes round to 8448
+        // since #604 shrank the main slot to { Model; P; bones[128] }, so the two buffers are now the SAME SIZE and
+        // this one constant covers both. That is why the skinned row below counts two destinations rather than
+        // asserting the uniqueness the other rows can (see AssertOneWholeWritePerBuffer).
+        const uint SkinnedSlotUboBytes = 8 * 8448;
         // WaterRenderer: min four planes of SlotBytes (768), the 256-aligned round-up of the 672-byte payload.
         const uint WaterUboBytes = 4 * 768;
         // OverlayMeshRenderer / SpriteBatch: both start at eight 256-byte dynamic-offset slots.
@@ -71,6 +73,40 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(hits[0].IsWholeBuffer,
                 $"{what}: the upload covered [{hits[0].Offset}, {hits[0].Offset + hits[0].Bytes}) of {size} bytes. " +
                 "Only a whole-buffer write from offset 0 avoids a staging copy on a Direct3D 11 constant buffer.");
+        }
+
+        /// <summary>As <see cref="AssertOneWholeBufferWrite"/>, but for a SIZE that identifies more than one
+        /// destination. The two GPU-skinning slot buffers are exactly that since #604 shrank the main slot to the
+        /// depth slot's size: each is still written once and wholly, and there is no size left to tell them apart
+        /// with, so what is asserted is that <paramref name="expectedBuffers"/> distinct buffers of that size were
+        /// each written exactly once. The count is stated so a buffer disappearing from the frame fails here
+        /// rather than passing as a tidier version of the same assertion.</summary>
+        static void AssertOneWholeWritePerBuffer(RecordingGpuCommandList rec, uint size, int expectedBuffers,
+            string what)
+        {
+            List<RecordingGpuCommandList.Upload> hits = rec.ToBuffersOfSize(size);
+            Assert.True(hits.Count > 0, $"{what}: no {size}-byte destination was written this frame at all");
+
+            var perBuffer = new Dictionary<IGpuBuffer, int>();
+            foreach (RecordingGpuCommandList.Upload u in hits)
+            {
+                perBuffer[u.Buffer] = perBuffer.TryGetValue(u.Buffer, out int n) ? n + 1 : 1;
+                Assert.True(u.IsWholeBuffer,
+                    $"{what}: an upload covered [{u.Offset}, {u.Offset + u.Bytes}) of {size} bytes. Only a "
+                    + "whole-buffer write from offset 0 avoids a staging copy on a Direct3D 11 constant buffer.");
+            }
+
+            Assert.True(perBuffer.Count == expectedBuffers,
+                $"{what}: expected {expectedBuffers} distinct {size}-byte destinations this frame, got "
+                + $"{perBuffer.Count}. The sizes collide by construction here, so a missing buffer looks like a "
+                + "passing assertion unless the count is checked.");
+            foreach ((IGpuBuffer buffer, int writes) in perBuffer)
+            {
+                Assert.True(writes == 1,
+                    $"{what}: one {size}-byte destination was written {writes} times. A run of per-slot writes to "
+                    + "a uniform buffer is what the D3D11 encode decay was made of (see the class remarks). Pack "
+                    + "every slot and upload the buffer once.");
+            }
         }
 
         /// <summary>As <see cref="AssertOneWholeBufferWrite"/>, but for a destination a frame legitimately writes
@@ -143,7 +179,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
-        public void A_shadowed_gpu_skinned_frame_uploads_the_main_and_shadow_slot_buffers_once_each()
+        public void A_shadowed_gpu_skinned_frame_uploads_both_slot_buffers_once_each()
         {
             using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
             IGpuDevice gd = gpu.GpuDevice;
@@ -183,8 +219,7 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.False(scene.ShadowPassSkippedLastFrame,
                 "a GPU-skinned caster must keep the depth pass dirty so the shadow-slot upload is exercised");
-            AssertOneWholeBufferWrite(rec, SkinnedMainUboBytes, "skinned main UBO");
-            AssertOneWholeBufferWrite(rec, SkinnedShadowUboBytes, "skinned shadow UBO");
+            AssertOneWholeWritePerBuffer(rec, SkinnedSlotUboBytes, 2, "skinned main + shadow slot UBOs");
         }
 
         [GpuFact]

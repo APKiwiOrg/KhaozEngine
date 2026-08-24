@@ -203,11 +203,11 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// Opt-in GPU skinning: when true, skinned draws are deformed on the GPU (the vertex shader blends the bone
-        /// palette) instead of on the CPU. Default <b>OFF</b>. The design is the fold-matrix binding proven by
-        /// <c>GpuSkinningReproGpuTests</c>: the skinned vertex reads ONE combined resource buffer at set 0
-        /// (<c>{ Mvp; Model; params; bones[128] }</c>, per-draw dynamic offset) and a skinned <c>ModelFrag</c> variant
-        /// reads frame + material data at set 1 (fragment only), sidestepping the Metal/Veldrid/SPIRV-Cross
-        /// two-vertex-buffer mis-bind that pulled the old GPU path. The rest-pose vertex buffer uploads once at load.
+        /// palette) instead of on the CPU. Default <b>OFF</b>. Set 0 binding 0 is the shared frame block both stages
+        /// read, binding 1 the per-draw <c>{ Model; P; bones[128] }</c> the vertex reads at its dynamic offset, and
+        /// set 1 the per-mesh material maps the fragment reads. Until #604 the frame block and a CPU-folded
+        /// <c>Mvp</c> rode in that per-draw block too, so the pipeline read one buffer, which is what the retired
+        /// Veldrid Metal backend needed (<c>GpuSkinningReproGpuTests</c>). The rest-pose vertex buffer uploads once at load.
         /// Only the per-draw palette + matrices upload each frame, so the CPU cost is a palette pack, not a full
         /// vertex deform - the win at MMO crowd scale. Rendering is pixel-parity with the CPU path (the shader mirrors
         /// <see cref="SkinningMath.SkinVertex"/>), and the shadow depth pass mirrors the flag. It ships OFF because the
@@ -1699,8 +1699,8 @@ namespace KhaozEngine.Render3D
             // shader blend exactly. A draw that is camera-culled AND (shadows off, or outside the shadow ortho
             // volume too) is skipped entirely here - no skin, no upload, no draw in either pass. See
             // ClassifySkinnedVisibility for why this can never drop a caster whose shadow would have been visible.
-            // UseGpuSkinning (opt-in, default off) swaps the CPU deform for the GPU fold-matrix path: no per-frame
-            // vertex skin/upload, only the per-draw combined-UBO slots (matrices + palette). Both paths share the exact
+            // UseGpuSkinning (opt-in, default off) swaps the CPU deform for the GPU palette path: no per-frame
+            // vertex skin/upload, only the per-draw UBO slots (world matrix, packed constants, palette). Both paths share the
             // same visibility classification + counters, so DrawnSkinnedInstances / CulledSkinnedInstances match.
             var skinnedItems = _skinnedInstances.Items;
             _cpuSkinnedVerts.Clear();
@@ -1910,9 +1910,9 @@ namespace KhaozEngine.Render3D
             // shadow-visible - see ClassifySkinnedVisibility), so it must NOT also draw here.
             if (UseGpuSkinning)
             {
-                // GPU path: fold each visible-main draw's slot (Mvp = world * this frame's ViewProj, packed after
-                // SetFrameUniforms so _frame.ViewProj is current), then draw through the skinned pipeline (rest-pose
-                // buffer at slot 0, combined UBO window at set 0, material at set 1). Pack all, then bind + draw.
+                // GPU path: pack each visible-main draw's per-draw slot (its world matrix, packed constants and bone
+                // palette), then draw through the skinned pipeline (rest-pose buffer at vertex slot 0, set 0 =
+                // shared frame block + this draw's window, material at set 1). Pack all, then bind + draw.
                 if (_gpuSkinnedDraws.Count > 0)
                 {
                     var boneSpan = CollectionsMarshal.AsSpan(_boneMatrices);
@@ -1923,7 +1923,7 @@ namespace KhaozEngine.Render3D
                         if (!dr.VisibleMain) continue;
                         _model.PackSkinnedMainSlot(dr.Slot, dr.World, dr.Tint, dr.Emissive, dr.SpecParams,
                             boneSpan.Slice(dr.BoneSpanStart, dr.BoneCount));
-                        // header (Mvp/Model/P) + the per-draw frame block + this mesh's bones = the palette-only upload.
+                        // header (Model/P) + this mesh's bones: 1072 bytes less than before #604 took the frame block out.
                         _frameStats.AddSkinnedUniformUpload((long)(ModelRenderer.SkinnedBonesOffset + (uint)dr.BoneCount * 64));
                         packedMainSlots = true;
                     }

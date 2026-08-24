@@ -41,8 +41,8 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(256u, 256u)]
         [InlineData(257u, 512u)]
         [InlineData(768u, 768u)]
-        [InlineData(8448u, 8448u)]     // ShadowMapRenderer.SkinnedDepthSlotBytes
-        [InlineData(9472u, 9472u)]     // ModelRenderer.SkinnedMainSlotBytes
+        [InlineData(8448u, 8448u)]     // ShadowMapRenderer.SkinnedDepthSlotBytes and ModelRenderer.SkinnedMainSlotBytes
+        [InlineData(9472u, 9472u)]     // the skinned main slot before #604 took the folded frame block out of it
         public void TheStrideIsTheSizeRoundedUpTo256(uint sizeInBytes, uint expected)
             => Assert.Equal(expected, MetalRingStride.SegmentStrideFor(sizeInBytes));
 
@@ -65,7 +65,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(768ul, MetalRingStride.TotalBytesFor(256, 3));
             Assert.Equal(256ul, MetalRingStride.TotalBytesFor(256, 1));
             Assert.Equal(4096ul, MetalRingStride.TotalBytesFor(256, 16));
-            Assert.Equal(3ul * 9472, MetalRingStride.TotalBytesFor(ModelRenderer.SkinnedMainSlotBytes, 3));
+            Assert.Equal(3ul * 8448, MetalRingStride.TotalBytesFor(ModelRenderer.SkinnedMainSlotBytes, 3));
         }
 
         [Fact]

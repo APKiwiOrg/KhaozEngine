@@ -10,9 +10,11 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
 {
-    // On-device proof of the opt-in GPU skinning path (Scene3D.UseGpuSkinning), built on the fold-matrix binding the
-    // spike proved (GpuSkinningReproGpuTests variant 3): the skinned vertex reads ONE combined resource buffer at set
-    // 0 ({Mvp;Model;P;bones[128]}), a skinned ModelFrag variant reads frame+material at set 1 (fragment only). These
+    // On-device proof of the opt-in GPU skinning path (Scene3D.UseGpuSkinning). Set 0 binding 0 is the shared frame
+    // block both stages read, binding 1 the per-draw {Model;P;bones[128]} the vertex reads at its dynamic offset,
+    // material maps at set 1 for the fragment. That is the #604 unfold of the fold-matrix binding the spike proved
+    // (GpuSkinningReproGpuTests variant 3), which folded the frame block and a CPU-computed Mvp into every draw's
+    // slot so the pipeline read one buffer. These
     // render the SAME posed tube through both paths and assert pixel parity within the golden tolerance, that the GPU
     // reads EVERY bone (a bent pose deforms, not just bones[0]), the rest-pose identity check (palette=identity must
     // render the undeformed mesh - the check that caught the old attempt's corruption), multi-character same-mesh

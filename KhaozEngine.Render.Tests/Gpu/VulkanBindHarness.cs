@@ -137,10 +137,11 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// A set over an ARBITRARY description and arbitrary resources, for the shapes no shipped renderer has and
-        /// the positional rule still has to hold for: SEVERAL dynamic descriptors in one set, and a uniform buffer
-        /// sitting after a texture in binding order. The heaviest shipped pipeline spends exactly one dynamic
-        /// uniform descriptor, so the multi-entry case is precisely the one the shipped table cannot reach and
-        /// precisely the one an off-by-one in a positional array shows up in.
+        /// the positional rule still has to hold for: THREE OR MORE dynamic descriptors in one set, and a uniform
+        /// buffer sitting after a texture in binding order. Since #604 unfolded the skinned pipeline's combined
+        /// block, <c>Model.skinnedMain</c> does carry two uniform buffers in one set, so the shipped table reaches
+        /// the two-entry case on its own now. Everything past two is still only reachable here, and a positional
+        /// array's off-by-one is exactly what shows up in it.
         /// </summary>
         internal VulkanResourceSet CustomSet(in GpuResourceLayoutDescription description,
             params IGpuBindableResource[] resources)

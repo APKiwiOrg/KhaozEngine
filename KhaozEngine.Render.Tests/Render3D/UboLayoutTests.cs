@@ -198,6 +198,47 @@ namespace KhaozEngine.Tests.Render3D
             Assert.DoesNotContain("TintTiling", ShaderSources.SplatVert);
         }
 
+        // ---- GPU-skinning per-draw block (ModelRenderer.SkinnedBonesOffset / SkinnedMainSlotBytes) ----
+
+        [Fact]
+        public void SkinnedPerDrawBlock_IsItsOwnVertexOnlyBufferAfterTheSharedFrameBlock()
+        {
+            // The #604 split, pinned as a shape rather than as an offset. `U` comes FIRST at set 0 binding 0 and is
+            // declared by every skinned stage, which is what keeps each stage's buffer usage a prefix of the layout
+            // (MslBindingOrder.CheckPrefix). `VBlock` follows it at binding 1 and is declared by the VERTEX alone:
+            // no fragment reads any of Model/P/bones, they arrive as interpolants. Folding either back would
+            // reinstate the per-draw copy of the frame block the unfold deleted.
+            foreach (var (name, src) in new[]
+            {
+                ("SkinnedModelVert", ShaderSources.SkinnedModelVert),
+                ("SkinnedModelFrag", ShaderSources.SkinnedModelFrag),
+                ("SkinnedModelDissolveFrag", ShaderSources.SkinnedModelDissolveFrag),
+            })
+            {
+                Assert.True(src.Contains("layout(set=0, binding=0) uniform U {"),
+                    $"{name} no longer opens on the shared frame block at set 0 binding 0. Every skinned stage "
+                    + "declares it, which is what makes the vertex-only VBlock at binding 1 legal.");
+            }
+
+            Assert.Contains("layout(set=0, binding=1) uniform VBlock {", ShaderSources.SkinnedModelVert);
+            Assert.DoesNotContain("VBlock", ShaderSources.SkinnedModelFrag);
+            Assert.DoesNotContain("VBlock", ShaderSources.SkinnedModelDissolveFrag);
+            Assert.DoesNotContain("mat4 Mvp;", ShaderSources.SkinnedModelVert);
+        }
+
+        [Fact]
+        public void SkinnedPerDrawBlock_PutsThePaletteWhereTheCsHeaderEnds()
+        {
+            // The C# packer writes the bone palette at SkinnedBonesOffset into each slot, and the GLSL block puts
+            // it after exactly SkinnedHeaderMats mat4s. Assert the two halves agree by arithmetic, and that the
+            // GLSL comment quotes the same number, so a header matrix added on one side alone trips here rather
+            // than smearing every draw's palette.
+            Assert.Equal(ModelRenderer.SkinnedHeaderMats * 64, ModelRenderer.SkinnedBonesOffset);
+            Assert.Contains("mat4 bones[" + SkinningMath.MaxBonesPerDraw + "];       // offset "
+                + ModelRenderer.SkinnedBonesOffset, ShaderSources.SkinnedModelVert);
+            Assert.Equal(8448u, ModelRenderer.SkinnedMainSlotBytes);   // 128 + 128*64 = 8320, aligned up to 256
+        }
+
         // ---- Post-process UBOs (PixelPostProcess) ----
 
         [Fact]
@@ -382,15 +423,20 @@ namespace KhaozEngine.Tests.Render3D
         public void AllFrameUboShaders_DeclareCascadedShadowTail()
         {
             // The cascaded shadow tail (mat4 ShadowMat[4] + vec4 ShadowParams + vec4 ShadowParams2 + vec4
-            // ShadowNormalOffsets) rides in the frame UBO after the light arrays, in ALL FOUR shaders that declare the
-            // `U` block (both stages of model, splat and tile ground). If any one drops or mis-sizes a member, the
-            // block layout diverges and every member after it lands at the wrong offset in that stage.
+            // ShadowNormalOffsets) rides in the frame UBO after the light arrays, in EVERY shader that declares the
+            // `U` block: both stages of model, splat and tile ground, and since #604 the three skinned stages too
+            // (they read the same shared block rather than a copy folded into the per-draw slot). If any one drops
+            // or mis-sizes a member, the block layout diverges and every member after it lands at the wrong offset
+            // in that stage.
             string mats = "mat4 ShadowMat[" + ModelRenderer.MaxCascades + "];";
             foreach (var (name, src) in new[]
             {
                 ("ModelVert", ShaderSources.ModelVert), ("ModelFrag", ShaderSources.ModelFrag),
                 ("SplatVert", ShaderSources.SplatVert), ("SplatFrag", ShaderSources.SplatFrag),
                 ("TileGroundVert", ShaderSources.TileGroundVert), ("TileGroundFrag", ShaderSources.TileGroundFrag),
+                ("SkinnedModelVert", ShaderSources.SkinnedModelVert),
+                ("SkinnedModelFrag", ShaderSources.SkinnedModelFrag),
+                ("SkinnedModelDissolveFrag", ShaderSources.SkinnedModelDissolveFrag),
             })
             {
                 Assert.True(src.Contains(mats),
@@ -400,7 +446,7 @@ namespace KhaozEngine.Tests.Render3D
                 Assert.True(src.Contains("vec4 ShadowParams2;"),
                     $"{name} lost 'vec4 ShadowParams2;': the shadow tail dropped from the frame UBO block. Fix ShaderSources.{name}.");
                 Assert.True(src.Contains("vec4 ShadowNormalOffsets;"),
-                    $"{name} lost 'vec4 ShadowNormalOffsets;': the per-cascade normal-offset vec4 dropped from the frame UBO block; the splat params tail now lands at the wrong offset. Fix ShaderSources.{name}.");
+                    $"{name} lost 'vec4 ShadowNormalOffsets;': the per-cascade normal-offset vec4 dropped from the frame UBO block, so the render origin after it lands at the wrong offset in that stage. Fix ShaderSources.{name}.");
             }
         }
 

@@ -236,11 +236,11 @@ namespace KhaozEngine.Tests.Gpu
         public void UnderValidation_ASwitchToAPipelineWithFewerSets_BindsOnlyWhatItDeclares()
         {
             using var harness = new VulkanBindHarness();
-            VulkanResourceSet vertex = harness.Set("Model.skinnedVertex");
+            VulkanResourceSet main = harness.Set("Model.skinnedMain");
             VulkanResourceSet material = harness.Set("Model.skinnedFrag");
             VulkanResourceSet post = harness.Set("Pixel.blit");
 
-            VulkanBoundPipeline skinned = harness.PipelineFor(vertex, material);
+            VulkanBoundPipeline skinned = harness.PipelineFor(main, material);
             VulkanBoundPipeline blit = harness.PipelineFor(post);
             Assert.Equal(2, skinned.SetLayouts.Length);
             Assert.Single(blit.SetLayouts);
@@ -250,7 +250,7 @@ namespace KhaozEngine.Tests.Gpu
             var records = new VulkanBindRecords(PipelineBindPoint.Graphics, assertsBoundSetLayouts: true);
 
             records.SetPipelineLayout(skinned.Layout, skinned.SetLayouts);
-            records.Record(0, vertex, 0);
+            records.Record(0, main, 0);
             records.Record(1, material, 0);
             records.Flush(ref sink);
             binds.Clear();
@@ -281,11 +281,11 @@ namespace KhaozEngine.Tests.Gpu
         public void UnderValidation_TheSetAWiderLayoutDeclaresAgain_IsBoundOnTheWayBack()
         {
             using var harness = new VulkanBindHarness();
-            VulkanResourceSet vertex = harness.Set("Model.skinnedVertex");
+            VulkanResourceSet main = harness.Set("Model.skinnedMain");
             VulkanResourceSet material = harness.Set("Model.skinnedFrag");
             VulkanResourceSet post = harness.Set("Pixel.blit");
 
-            VulkanBoundPipeline skinned = harness.PipelineFor(vertex, material);
+            VulkanBoundPipeline skinned = harness.PipelineFor(main, material);
             VulkanBoundPipeline blit = harness.PipelineFor(post);
 
             var binds = new List<VulkanRecordedBind>();
@@ -293,7 +293,7 @@ namespace KhaozEngine.Tests.Gpu
             var records = new VulkanBindRecords(PipelineBindPoint.Graphics, assertsBoundSetLayouts: true);
 
             records.SetPipelineLayout(skinned.Layout, skinned.SetLayouts);
-            records.Record(0, vertex, 0);
+            records.Record(0, main, 0);
             records.Record(1, material, 0);
             records.Flush(ref sink);
 
@@ -305,12 +305,12 @@ namespace KhaozEngine.Tests.Gpu
             // Back to the skinned pipeline. Set 0 is re-recorded because the post pass overwrote it, and set 1 is
             // not: it is still the material set the switch away disturbed.
             records.SetPipelineLayout(skinned.Layout, skinned.SetLayouts);
-            records.Record(0, vertex, 0);
+            records.Record(0, main, 0);
             records.Flush(ref sink);
 
             VulkanRecordedBind bind = Assert.Single(binds);
             Assert.Equal(0u, bind.FirstSet);
-            Assert.Equal(new[] { vertex.DescriptorSet, material.DescriptorSet }, bind.Sets);
+            Assert.Equal(new[] { main.DescriptorSet, material.DescriptorSet }, bind.Sets);
             Assert.False(records.IsDirty(1));
         }
 

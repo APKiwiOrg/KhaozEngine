@@ -241,8 +241,9 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
 - GPU skinning (opt-in, `Scene3D.UseGpuSkinning`, default OFF): the vertex shader blends the bone palette instead of
   the CPU (`SkinningMath.SkinVertex`), so the rest-pose vertex buffer uploads once at load and only the per-draw
   palette + matrices upload each frame - the win at MMO crowd scale. Pixel-parity with the CPU path, same culling +
-  shadow pass. Built on the fold-matrix binding (one combined per-draw UBO read by both stages, material maps at set
-  1) that sidesteps the Metal one-uniform-buffer-per-pipeline limit (see `docs/DEPENDENCY-SEAMS.md`). The packed
+  shadow pass. Set 0 binding 0 is the shared frame block both stages read, binding 1 the per-draw
+  `{ Model; P; bones[128] }` the vertex reads at its dynamic offset, material maps at set 1. It was one combined
+  buffer with the frame block copied into every draw's slot until issue #604 unfolded it. The packed
   main and shadow slot buffers upload once per pass, avoiding D3D11's partial-uniform staging path. Ships OFF
   pending a windowed A/B against CPU skinning (the Showcase 3D room's F key + HUD). See `docs/USING-KHAOZENGINE.md`.
 - Per-pass timing: `Scene3D.EnableTiming` (default `false`, no cost when off - a single `bool` check, no

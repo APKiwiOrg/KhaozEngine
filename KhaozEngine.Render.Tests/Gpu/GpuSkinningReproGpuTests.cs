@@ -29,9 +29,15 @@ namespace KhaozEngine.Tests.Gpu
     // Variant 3 pins down the REAL blocker: a pipeline whose VERTEX stage reads a SECOND resource buffer (the frame/
     // material UBO at set 0 + bones at set 1) reproduces the historical corruption OFFSCREEN (only the first bones
     // survive), for uniform AND storage bones and 1 or 2 vertex buffers - the SAME Metal two-UBO mis-bind the
-    // splat-params note documents. It also proves the FIX: fold the matrix into the bone buffer so the vertex reads
+    // splat-params note documented. It also proves the FIX: fold the matrix into the bone buffer so the vertex reads
     // exactly ONE resource buffer at set 0. So the historical bug is NOT windowed-specific (it repros offscreen) and
     // NOT a bone-read bug. It is a multi-buffer binding bug, fixable but needing a skinned-specific binding layout.
+    //
+    // THE SHIPPED PIPELINE NO LONGER HAS THAT SHAPE, and this file is kept anyway as the offscreen record of the
+    // failure (https://github.com/APKiwiOrg/KhaozEngine/issues/604 says so in as many words). The backend that
+    // mis-bound retired in 18.0.0, and the skinned pipeline's frame block came back out of the per-draw slot into
+    // the shared buffer, so its vertex stage really does read two uniform buffers today. What it does NOT do is
+    // put the two in DIFFERENT STAGES, which is the shape variant 3 below still reproduces on the incumbent.
     // Skipped unless KE_GPU_TESTS is set.
     public sealed class GpuSkinningReproGpuTests
     {
@@ -181,7 +187,9 @@ void main() { o = vec4(1.0, 1.0, 1.0, 1.0); }";
         //   buffer (the combined { Mvp; bones[128] }) AT SET 0, with every other UBO/texture at set 1+ read ONLY by
         //   the fragment. Then all 8 bones read correctly. Shipping this in the engine requires the material + frame
         //   UBO moved off set 0 for the skinned pipeline (a skinned-specific fragment + material layout), because the
-        //   shared ModelFrag reads the material at set 0 - see the spike report.
+        //   shared ModelFrag reads the material at set 0 - see the spike report. (The engine has since unfolded the
+        //   fold: #604 put the frame block back in a shared buffer and the vertex reads two. This row records the
+        //   measurement that made the fold necessary at the time, not the shape shipped today.)
         //   AND THAT LAST SENTENCE HAS A CAVEAT THE SPIKE COULD NOT SEE, added after MM6 measured the same shape
         //   (2.3a of docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md, issue #604). "Every other UBO read ONLY
         //   by the fragment, at set 1+" is precisely the split-stage layout the INCUMBENT mis-binds: it writes that

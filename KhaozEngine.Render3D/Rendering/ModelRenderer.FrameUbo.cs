@@ -135,7 +135,8 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>This frame's packed frame block, for the callers that embed it in a larger contiguous upload
-        /// (the GPU-skinning combined slot). Repacks only when a setter has moved since the last read.</summary>
+        /// (the tile-ground material's combined UBO, the last one left). Repacks only when a setter has moved since
+        /// the last read.</summary>
         internal ReadOnlySpan<byte> FrameImage
         {
             get
@@ -154,9 +155,10 @@ namespace KhaozEngine.Render3D.Rendering
         public void WriteFrameUniformsTo(IGpuCommandList cl, IGpuBuffer dst) => WriteFrameUniformsTo(cl, dst, 0);
 
         /// <summary>As <see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer)"/>, but writes the frame block at an
-        /// arbitrary <paramref name="baseOffset"/> into <paramref name="dst"/> (must be 256-aligned for a UBO region).
-        /// The GPU-skinning combined slot embeds the frame block at <see cref="SkinnedFrameOffset"/> within each
-        /// per-draw slot, so the skinned fragment reads this frame's lighting from its one bound buffer.</summary>
+        /// arbitrary <paramref name="baseOffset"/> into <paramref name="dst"/> (must be 256-aligned for a UBO region),
+        /// for a destination that carries the block somewhere other than its start. The GPU-skinning per-draw slot
+        /// used to be exactly that, embedding a copy of the block in every slot, until #604 pointed the skinned
+        /// pipeline at the shared buffer instead.</summary>
         /// <remarks>ONE upload of the whole <see cref="UboBytes"/> block (header, both full fixed-size point-light
         /// arrays so a previous frame's lights never leak past the active count, the shadow tail which is always
         /// written so the Off render stays byte-stable, then the render origin). See <see cref="_frameImage"/> for

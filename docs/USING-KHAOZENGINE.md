@@ -3177,11 +3177,14 @@ Metal, and what mis-bound was a stage that references fewer buffers than the dec
 them. That backend was deleted in 18.0.0, so the defect is gone, but the rule is KEPT and still binds every new
 render path, because the shipped content was authored against it. Read
 `docs/DEPENDENCY-SEAMS.md`'s "ONE uniform buffer per pipeline" section before designing around it, since the
-exact scope matters and this summary is deliberately the conservative version of it. So GPU skinning folds
-EVERYTHING into one combined per-draw UBO (`SkinnedModelVert`):
-`{ Mvp; Model; P; <frame lighting block>; bones[128] }`, read by both stages (the vertex uses the matrices
-+ bones, the fragment uses the frame block for lighting), with the per-mesh material maps at set 1. The
-shadow depth pass mirrors the same one-buffer vertex binding. See `docs/DEPENDENCY-SEAMS.md` (the "ONE
+exact scope matters and this summary is deliberately the conservative version of it. Issue #604 is unfolding
+the shipped workarounds one pipeline at a time, and GPU skinning is one of the two done: it used to fold
+EVERYTHING into one combined per-draw UBO, `{ Mvp; Model; P; <frame lighting block>; bones[128] }`, and now
+reads two buffers in set 0. Binding 0 is the SHARED frame block, the same one the model pass binds, read by
+both stages. Binding 1 is `VBlock`, the per-draw `{ Model; P; bones[128] }` at that draw's dynamic offset,
+read by the vertex alone. Per-mesh material maps stay at set 1. The order matters and is the part still worth
+copying: the buffer BOTH stages read comes first, so every stage's usage is a prefix of the layout. The shadow
+depth pass still carries its own combined `{ LightMvp; bones[128] }`. See `docs/DEPENDENCY-SEAMS.md` (the "ONE
 uniform buffer per pipeline" invariant) and the offscreen acceptance repro `GpuSkinningReproGpuTests`
 variant 3. Separately: never have a vertex shader read a separate buffer at an index that came from a
 per-instance attribute (route that through a dynamic-offset UBO slot per draw, as GPU skinning does).
@@ -3191,7 +3194,7 @@ by the rigid instanced draws.
 **Windowed A/B (why the flag ships off, and how to verify it).** The offscreen parity proof is necessary
 but not sufficient: the historical corruption was a WINDOWED swapchain fault, so turning the flag on for a
 game must be gated on a windowed check. The Showcase's 3D room does this - press **F** to flip
-`UseGpuSkinning` live on the walking avatar. The HUD shows the active path (`CPU` / `GPU (fold-matrix)`) and
+`UseGpuSkinning` live on the walking avatar. The HUD shows the active path (`CPU` / `GPU (vertex-shader palette)`) and
 the skinned draw/cull counts. Watch for any difference in the character between the two paths (lighting,
 silhouette, deformation, shadow). If a windowed run of your game looks identical both ways across your
 skinned content, GPU skinning is safe to leave on for that game.

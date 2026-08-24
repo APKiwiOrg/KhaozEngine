@@ -95,8 +95,8 @@ namespace KhaozEngine.Tests.Gpu
         [Theory]
         [InlineData(256u, 256u)]
         [InlineData(768u, 768u)]
-        [InlineData(8448u, 8448u)]     // ShadowMapRenderer.SkinnedDepthSlotBytes
-        [InlineData(9472u, 9472u)]     // ModelRenderer.SkinnedMainSlotBytes
+        [InlineData(8448u, 8448u)]     // ShadowMapRenderer.SkinnedDepthSlotBytes and ModelRenderer.SkinnedMainSlotBytes
+        [InlineData(9472u, 9472u)]     // the skinned main slot before #604 took the folded frame block out of it
         [InlineData(16u, 256u)]
         [InlineData(272u, 512u)]
         public void ASegmentStride_IsTheBufferRoundedToTheDynamicOffsetAlignment(ulong size, ulong expected)

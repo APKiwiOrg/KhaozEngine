@@ -10,7 +10,7 @@ namespace KhaozEngine.Tests.Gpu
     // Device-free CPU-cost micro-harness contrasting the two skinning paths' per-frame CPU work for a crowd of N
     // same-mesh characters (the MMO case the feature targets):
     //   CPU path  = compose the palette + run SkinningMath.SkinVertex over EVERY vertex (the deform), each frame.
-    //   GPU path  = compose the palette + pack the per-draw combined slot (Mvp fold + a bone-palette memcpy). The
+    //   GPU path  = compose the palette + pack the per-draw slot (a two-matrix header + a bone-palette memcpy). The
     //               GPU does the per-vertex deform, so the CPU touches O(bones), not O(vertices).
     // Both paths share the bone-palette compose, so the delta is the per-vertex deform (CPU-only) vs the palette
     // pack (GPU). For a real character mesh (vertices >> bones) the GPU path's CPU cost is a small fraction. A plain
@@ -35,16 +35,14 @@ namespace KhaozEngine.Tests.Gpu
             var palette = new Matrix4x4[Bones];
             for (int b = 0; b < Bones; b++) palette[b] = SkinningMath.Compose(mesh.RestPose[b], mesh.InverseBind[b]);
 
-            Matrix4x4 vp = Matrix4x4.CreateLookAt(new Vector3(4, 4, 5), new Vector3(0, 0, 2), Vector3.UnitY)
-                         * Matrix4x4.CreatePerspectiveFieldOfView(1.0f, 1f, 0.1f, 100f);
             Matrix4x4 model = Matrix4x4.CreateTranslation(1f, 0f, 0f);
 
             var cpuDst = new ModelVertex[src.Length];        // reused deform target (per character)
-            var packScratch = new Matrix4x4[3 + Bones];      // Mvp/Model/P + bones (mirrors PackSkinnedMainSlot)
+            var packScratch = new Matrix4x4[2 + Bones];      // Model/P + bones (mirrors PackSkinnedMainSlot)
 
             // Warm up the JIT for both paths.
             CpuDeform(src, palette, cpuDst, 4);
-            GpuPack(palette, packScratch, model, vp, 4);
+            GpuPack(palette, packScratch, model, 4);
 
             _out.WriteLine($"vertices={src.Length}, bones={Bones}, frames/measure={Frames}");
             _out.WriteLine("N     CPU skin-loop ms/frame    GPU pack ms/frame    speedup");
@@ -52,7 +50,7 @@ namespace KhaozEngine.Tests.Gpu
             foreach (int n in Ns)
             {
                 double cpuMs = TimeMs(() => { for (int f = 0; f < Frames; f++) CpuDeform(src, palette, cpuDst, n); }) / Frames;
-                double gpuMs = TimeMs(() => { for (int f = 0; f < Frames; f++) GpuPack(palette, packScratch, model, vp, n); }) / Frames;
+                double gpuMs = TimeMs(() => { for (int f = 0; f < Frames; f++) GpuPack(palette, packScratch, model, n); }) / Frames;
                 _out.WriteLine($"{n,-4}  {cpuMs,20:0.0000}    {gpuMs,17:0.0000}    {(gpuMs > 0 ? cpuMs / gpuMs : 0),6:0.0}x");
                 lastCpu = cpuMs; lastGpu = gpuMs;
             }
@@ -70,16 +68,17 @@ namespace KhaozEngine.Tests.Gpu
                     dst[v] = SkinningMath.SkinVertex(src[v], palette);
         }
 
-        // GPU path per-frame CPU work: fold Mvp + copy the palette into the combined slot scratch, for n characters
-        // (the GPU shader does the per-vertex deform, so the CPU never touches a vertex).
-        static void GpuPack(Matrix4x4[] palette, Matrix4x4[] scratch, in Matrix4x4 model, in Matrix4x4 vp, int n)
+        // GPU path per-frame CPU work: write the two-matrix header and copy the palette into the per-draw slot
+        // scratch, for n characters (the GPU shader does the per-vertex deform, so the CPU never touches a vertex).
+        // The Mvp fold this used to open with (model * viewProj, per character per frame) went with #604: the
+        // vertex reads ViewProj out of the shared frame block now, so it is not CPU work any more.
+        static void GpuPack(Matrix4x4[] palette, Matrix4x4[] scratch, in Matrix4x4 model, int n)
         {
             for (int c = 0; c < n; c++)
             {
-                scratch[0] = model * vp;   // Mvp fold
-                scratch[1] = model;
-                scratch[2] = Matrix4x4.Identity;   // packed Tint/Emissive/SpecParams
-                for (int b = 0; b < palette.Length; b++) scratch[3 + b] = palette[b];
+                scratch[0] = model;
+                scratch[1] = Matrix4x4.Identity;   // packed Tint/Emissive/SpecParams
+                for (int b = 0; b < palette.Length; b++) scratch[2 + b] = palette[b];
             }
         }
 

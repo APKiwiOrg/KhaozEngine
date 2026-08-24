@@ -35,7 +35,7 @@ namespace KhaozEngine.Showcase
         // The chrome's status line: the GPU-skinning A/B readout while an animated character is loaded (else null,
         // so the chrome shows no status). Same content the old ad-hoc OnDrawUi HUD drew, now in the shared spot.
         public string? StatusLine => _animated
-            ? $"Skinning: {(_scene.UseGpuSkinning ? "GPU (fold-matrix)" : "CPU")}   [F]   drawn {_scene.DrawnSkinnedInstances} / culled {_scene.CulledSkinnedInstances}"
+            ? $"Skinning: {(_scene.UseGpuSkinning ? "GPU (vertex-shader palette)" : "CPU")}   [F]   drawn {_scene.DrawnSkinnedInstances} / culled {_scene.CulledSkinnedInstances}"
             : null;
 
         // distance-cull ring for instanced props around the focus point (matches TerrainWalkSample's PropDrawRadius).
@@ -403,7 +403,7 @@ namespace KhaozEngine.Showcase
             if (Manager!.Input.WasPressed(Key.F))
             {
                 _scene.UseGpuSkinning = !_scene.UseGpuSkinning;
-                _hud.Toast($"[skinning] UseGpuSkinning = {_scene.UseGpuSkinning} ({(_scene.UseGpuSkinning ? "GPU fold-matrix" : "CPU")})");
+                _hud.Toast($"[skinning] UseGpuSkinning = {_scene.UseGpuSkinning} ({(_scene.UseGpuSkinning ? "GPU vertex-shader palette" : "CPU")})");
             }
 
             // Physics world ticks once per frame before movement so newly-streamed props are registered.

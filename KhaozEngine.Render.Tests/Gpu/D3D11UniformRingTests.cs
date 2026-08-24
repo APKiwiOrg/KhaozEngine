@@ -95,7 +95,7 @@ namespace KhaozEngine.Tests.Gpu
         /// A SEGMENT IS THE BUFFER ROUNDED UP TO 256 BYTES, and that is a hard Direct3D requirement rather than a
         /// rounding habit: <c>*SetConstantBuffers1</c> wants its first constant on a 16-constant boundary, so a
         /// frame base that was not a multiple of 256 would be unbindable. Every real engine stride is already
-        /// 256-aligned (256, 768, 8448, 9472) and the round-up is what keeps the rule true for one that is not.
+        /// 256-aligned (256, 768, 8448) and the round-up is what keeps the rule true for one that is not.
         /// </summary>
         [Theory]
         [InlineData(256u, 256u)]

@@ -38,8 +38,9 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class D3D11RingOffTimelineTests
     {
         // ModelRenderer's shape, scaled to the smallest thing that still has both halves: a head rewritten every
-        // frame and a tail written once at load, in one uniform buffer. The real one is a 9472-byte frame block
-        // followed by the splat params, and nothing about the defect depends on the sizes.
+        // frame and a tail written once at load, in one uniform buffer. The shipped one is a 1008-byte frame block
+        // followed by a tile-ground material's params, and nothing about the defect depends on the sizes. The splat
+        // pass had the same shape when this was written and no longer does (#604).
         const uint HeadBytes = 256;
         const uint TailBytes = 256;
         const uint BufferBytes = HeadBytes + TailBytes;
@@ -81,10 +82,11 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// THE #484 REGRESSION, NAMED FOR THE SHAPE THAT FOUND IT. <c>ModelRenderer.CreateSplatParamsUbo</c>
-        /// creates one uniform buffer of frame block plus splat params, writes the params ONCE at load through
+        /// THE #484 REGRESSION, NAMED FOR THE SHAPE THAT FOUND IT. <c>ModelRenderer.CreateTileGroundParamsUbo</c>
+        /// creates one uniform buffer of frame block plus material params, writes the params ONCE at load through
         /// the device-level <c>UpdateBuffer</c>, and rewrites only the frame block each frame. Under the ring as
-        /// it shipped, the params were read as never-written memory on two frames out of every three.
+        /// it shipped, the params were read as never-written memory on two frames out of every three. The splat
+        /// pass is what actually found it, in the same shape, before #604 unfolded that one.
         /// <para>
         /// Seven frames is more than two full wraps of three segments, so a value that survived only until the
         /// index came back round would be caught on the fourth frame rather than passing by luck. The per-frame
@@ -99,7 +101,7 @@ namespace KhaozEngine.Tests.Gpu
             byte[] tail = Pattern((int)TailBytes, seed: 0x40);
             byte[] head = Pattern((int)HeadBytes, seed: 0x90);
 
-            // Load time: one device-level write of the params tail, exactly as CreateSplatParamsUbo does it.
+            // Load time: one device-level write of the params tail, exactly as CreateTileGroundParamsUbo does it.
             harness.Allocator.UpdateBuffer(harness.Ring, HeadBytes, tail);
 
             for (int frame = 0; frame < 7; frame++)

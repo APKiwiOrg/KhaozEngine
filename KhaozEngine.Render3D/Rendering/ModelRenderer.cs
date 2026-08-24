@@ -32,8 +32,10 @@ namespace KhaozEngine.Render3D.Rendering
         internal const uint LightArrayBytes = MaxPointLights * 16;    // vec4 stride is 16 in std140
         internal const uint LightArraysBytes = 2 * LightArrayBytes;   // both point-light arrays = 512
         // The cascaded shadow tail (mat4 ShadowMat[4] + vec4 ShadowParams + vec4 ShadowParams2 + vec4 ShadowNormalOffsets)
-        // rides in the SAME frame UBO after the light arrays (a SECOND UBO in the set mis-binds on Metal, see the
-        // splat-params note below), so both the model and splat passes read the cascade atlas from their one bound UBO.
+        // rides in the SAME frame UBO after the light arrays, so every pass that binds this block reads the cascade
+        // atlas out of it. It went there because a second uniform buffer in a set mis-bound on the retired Veldrid
+        // Metal backend, and it STAYS there because it is genuinely per-frame data the shadow-receiving passes all
+        // want, which is the half #604 does not change.
         // ShadowParams = (cascadeCount, strength[0=inactive], constBias, slopeBias). ShadowParams2 = (texelStep =
         // 1/perCascadeResolution, maxDistance, borderFrac, cascadeBlendFrac), ShadowNormalOffsets = per-cascade
         // normal-offset world size (texel-world-size_i x ShadowNormalOffset, CPU-baked so it is extent-aware per cascade).
@@ -42,9 +44,9 @@ namespace KhaozEngine.Render3D.Rendering
         // Camera-relative rendering (design doc 2026-07-27, section 9): the render origin every GPU-bound world
         // position this frame was reduced by, so a fragment can reconstruct the ABSOLUTE position for world-anchored
         // texturing and noise (terrain triplanar UVs, the model dissolve pattern). Lighting, eye vectors and depth
-        // stay render-relative: those are differences and the origin cancels. It rides at the END of the SAME frame
-        // UBO rather than in a second one, because a second uniform buffer in a set mis-binds on Metal (the note
-        // below), which is also why the splat params tail follows it rather than the shadow tail.
+        // stay render-relative: those are differences and the origin cancels. Per-frame like the shadow tail, so it
+        // rides at the END of the same block. It is the LAST member of the frame block now that the splat params
+        // have their own buffer (#604), which is why nothing follows it here.
         internal const uint RenderOriginBytes = 16;                                            // one vec4, w unused
         internal const uint RenderOriginOffset = ShadowTailOffset + ShadowTailBytes;           // 992
         internal const uint UboBytes = RenderOriginOffset + RenderOriginBytes;                 // 1008
@@ -150,12 +152,9 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuPipeline _dissolvePipeline = null!;
         readonly IGpuShaderSet _dissolveShaders;
 
-        // Splat-terrain pipeline (5-layer texture-array PBR, weights in vertex Color, triplanar). Shares _ubo
-        // (frame uniforms) and the instance buffer; its own layout/sampler/shaders/pipeline.
-        readonly IGpuResourceLayout _splatLayout;  // U (frame + params, one UBO) + AlbedoArray + NormalArray + Sampler
-        readonly IGpuSampler _terrainSampler;   // wrap + anisotropic (trilinear fallback); OWNED here (dispose it)
-        readonly IGpuShaderSet _splatShaders;
-        IGpuPipeline _splatPipeline = null!;    // rebuilt by SetOutputs alongside _pipeline (set via BuildPipelines)
+        // Shared by the splat (ModelRenderer.Splat.cs) and tile-ground (ModelRenderer.TileGround.cs) ground passes:
+        // wrap + anisotropic (trilinear fallback), OWNED here, so it is disposed once for both.
+        readonly IGpuSampler _terrainSampler;
 
         // The key-light shadow map. Owned here so its stable texture handle can be bound into every material set
         // (the model + splat fragments sample it at set=0, binding 5/6). Allocated at a fixed resolution for the
@@ -177,8 +176,10 @@ namespace KhaozEngine.Render3D.Rendering
 
         // GPU-skinning path (Scene3D.UseGpuSkinning). The vertex reads ONE combined resource buffer at set 0
         // ({Mvp,Model,P,bones[128]}, per-draw dynamic offset). The fragment reads frame+material at set 1 (fragment
-        // ONLY), so the vertex stage references no second resource buffer (the Metal one-buffer-per-vertex-stage
-        // invariant, proven by GpuSkinningReproGpuTests variant 3). The rest-pose SkinnedVertex buffer is the mesh's
+        // ONLY), so the vertex stage references no second resource buffer. That shape was forced by the retired
+        // Veldrid Metal backend's numbering (GpuSkinningReproGpuTests variant 3 is the offscreen record of the
+        // failure) and is KEPT for now: unfolding it is #604's second half, a change of its own with its own golden
+        // run, and the splat pass went first. The rest-pose SkinnedVertex buffer is the mesh's
         // own vertex buffer, uploaded ONCE at load - no per-frame vertex deform. Palette + per-draw matrices are all
         // that upload each frame (the GPU does the skinning).
         readonly IGpuResourceLayout _skinnedVertexLayout;   // set 0: combined VBlock (dynamic UBO), VERTEX only
@@ -250,9 +251,10 @@ namespace KhaozEngine.Render3D.Rendering
             _dissolveShaders = factory.CreateShadersFromSpirv(ShaderSources.ModelVert, ShaderSources.ModelDissolveFrag);
 
             // GPU-skinning layouts/shaders/default set. Set 0 is the ONE combined VBlock (dynamic UBO, binding 0),
-            // read by BOTH stages: the vertex reads Mvp/Model/P/bones, the fragment reads the folded frame block. One
-            // uniform buffer for the whole pipeline is the only Metal-safe shape (a second UBO anywhere reads zero).
-            // Set 1 is the per-mesh material maps + shadow map, fragment only (set-1 TEXTURES map fine on Metal). The
+            // read by BOTH stages: the vertex reads Mvp/Model/P/bones, the fragment reads the folded frame block.
+            // One uniform buffer for the whole pipeline was the only shape the retired Veldrid Metal backend bound
+            // correctly, and it is kept pending #604's skinned unfold (see the field block above).
+            // Set 1 is the per-mesh material maps + shadow map, fragment only. The
             // default frag (set 1) set uses white/flat/rough defaults + the shadow map, so an untextured skinned mesh
             // is lit exactly like the CPU path's _defaultSet.
             _skinnedVertexLayout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
@@ -270,20 +272,6 @@ namespace KhaozEngine.Render3D.Rendering
                 _skinnedFragLayout, _white, _flatNormal, _defaultRough, _sampler,
                 _shadowMap.ShadowTexture, _shadowMap.ShadowSampler));
 
-            // ONE descriptor set, ONE uniform buffer: the splat material's combined UBO carries the frame uniforms
-            // (re-synced each frame, see WriteFrameUniformsTo) PLUS the per-material splat params appended at offset
-            // UboBytes (see SplatVert/SplatFrag). Metal (via Veldrid/SPIRV-Cross) mis-binds a SECOND uniform buffer
-            // in a pipeline (the second reads the first buffer's bytes), which zeroed the per-layer tint and blacked
-            // out the terrain; folding the params into the one frame UBO matches the model pass's proven shape
-            // (1 UBO + textures + sampler). Layout/sampler/shaders are sample-count-independent (built once).
-            _splatLayout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
-                new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("AlbedoArray", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("NormalArray", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("Sampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("ShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("ShadowSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
-
             // Tileable detail textures REPEAT across the world, so wrap addressing; anisotropic for grazing ground
             // (CreateSampler falls back to trilinear when the backend lacks anisotropy). 16x anisotropy + a +1 mip
             // LOD bias tame the shimmer/"fuzz" a high-frequency noisy albedo (e.g. grass) throws off at distance and
@@ -292,9 +280,10 @@ namespace KhaozEngine.Render3D.Rendering
             _terrainSampler = factory.CreateSampler(new GpuSamplerDescription(
                 GpuSamplerFilter.Anisotropic, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, maximumAnisotropy: 16, mipLodBias: 1));
 
-            _splatShaders = factory.CreateShadersFromSpirv(ShaderSources.SplatVert, ShaderSources.SplatFrag);
-
-            // Tile-ground layout + shaders (ModelRenderer.TileGround.cs). Same one-UBO shape, one albedo array.
+            // The two ground passes' layouts + shaders, each in its own partial. The splat pass splits its uniforms
+            // across two sets (ModelRenderer.Splat.cs, #604). The tile-ground pass still carries the combined
+            // frame+params buffer the splat pass used to (ModelRenderer.TileGround.cs).
+            CreateSplatResources(factory);
             CreateTileGroundResources(factory);
 
             // Build the model + splat + tile-ground pipelines from the MRT outputs (rebuilt by SetOutputs when MSAA changes).
@@ -387,20 +376,9 @@ namespace KhaozEngine.Render3D.Rendering
                 Outputs = modelOutputs,
             });
 
-            _splatPipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
-            {
-                BlendFactor = Vector4.Zero,
-                BlendAttachments = new[] { GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend },
-                DepthStencil = GpuDepthStencilState.DepthOnlyLessEqual,
-                Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
-                Topology = GpuPrimitiveTopology.TriangleList,
-                ResourceLayouts = new[] { _splatLayout },
-                ShaderSet = _splatShaders,
-                VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
-                Outputs = modelOutputs,
-            });
-
-            // Tile ground: the same two vertex layouts, its own shaders + resource layout (ModelRenderer.TileGround.cs).
+            // The two ground pipelines: the same two vertex layouts, each with its own shaders + resource layouts
+            // (ModelRenderer.Splat.cs and ModelRenderer.TileGround.cs).
+            BuildSplatPipeline(factory, modelOutputs, vertexLayout, instanceLayout);
             BuildTileGroundPipeline(factory, modelOutputs, vertexLayout, instanceLayout);
 
             // GPU-skinning pipelines. ONE vertex buffer slot: the rest-pose SkinnedVertex stream (Position/Normal/
@@ -486,30 +464,6 @@ namespace KhaozEngine.Render3D.Rendering
                 _layout, _ubo, albedo ?? _white, normal ?? _flatNormal, roughness ?? _defaultRough, _sampler,
                 _shadowMap.ShadowTexture, _shadowMap.ShadowSampler));
 
-        /// <summary>Create a splat material's combined UBO: <see cref="UboBytes"/> of frame uniforms (re-synced each
-        /// frame via <see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer)"/>) followed by the per-material <paramref name="data"/> at
-        /// offset <see cref="UboBytes"/>. One uniform buffer holds both, so the splat pipeline binds a single UBO
-        /// (see SplatVert/SplatFrag). Owned by Scene3D; shared by every chunk using this material.</summary>
-        public SplatUniformBuffer CreateSplatParamsUbo(in SplatParamsData data)
-        {
-            var ubo = _gd.Factory.CreateBuffer(new GpuBufferDescription(UboBytes + SplatParamsData.SizeInBytes, GpuBufferUsage.UniformBuffer));
-            _gd.UpdateBuffer(ubo, UboBytes, in data);
-            return new SplatUniformBuffer(ubo, in data, UboBytes);
-        }
-
-        /// <summary>Build a splat-terrain material resource set: the combined frame+params UBO + the two 5-layer
-        /// texture arrays (albedo, tangent-space normal) + the shared terrain (wrap/anisotropic) sampler. Shared
-        /// across every chunk using this material; owned by Scene3D, NOT per mesh.</summary>
-        public IGpuResourceSet CreateSplatMaterialSet(IGpuBuffer combinedUbo, IGpuTexture albedoArray, IGpuTexture normalArray) =>
-            CreateSplatMaterialSet(combinedUbo, albedoArray, normalArray, _terrainSampler);
-
-        /// <summary>As above, but binds an explicit <paramref name="sampler"/> instead of the shared default one
-        /// (used by a material that overrides its <see cref="TerrainSamplerConfig"/>). The caller owns that sampler.</summary>
-        public IGpuResourceSet CreateSplatMaterialSet(IGpuBuffer combinedUbo, IGpuTexture albedoArray, IGpuTexture normalArray, IGpuSampler sampler) =>
-            _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
-                _splatLayout, combinedUbo, albedoArray, normalArray, sampler,
-                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler));
-
         /// <summary>Create a wrap-addressed terrain sampler from <paramref name="cfg"/> (anisotropy/trilinear/point +
         /// mip LOD bias). The caller owns and disposes it. Mirrors the shared default sampler this renderer builds at
         /// construction, so <see cref="TerrainSamplerConfig.Default"/> reproduces it exactly.</summary>
@@ -518,27 +472,10 @@ namespace KhaozEngine.Render3D.Rendering
                 cfg.Filter, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap,
                 maximumAnisotropy: cfg.MaximumAnisotropy, mipLodBias: cfg.MipLodBias));
 
-        /// <summary>Bind the splat-terrain pipeline for the splat pass (call once before the splat draw loop). Each
-        /// material's combined UBO must already hold this frame's uniforms (<see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer)"/>).</summary>
-        public void BindSplatPass(IGpuCommandList cl) => cl.SetPipeline(_splatPipeline);
-
         /// <summary>Bind the CharDissolve pipeline variant for the skinned draws that carry a dissolve threshold (the
         /// SpecParams.z/.w channels drive the noise alpha-clip + emissive edge). Same material sets + frame UBO as
         /// <see cref="BindPass"/>; switch back with <see cref="BindPass"/> for non-dissolving draws.</summary>
         public void BindDissolvePass(IGpuCommandList cl) => cl.SetPipeline(_dissolvePipeline);
-
-        /// <summary>Draw one splat-terrain mesh run through the splat pipeline, reusing the shared instance buffer
-        /// (terrain instances are identity-transform, white-tint). <paramref name="splatSet"/> carries the material's
-        /// combined UBO + texture arrays + sampler. <see cref="BindSplatPass"/> must be bound.</summary>
-        public void DrawSplatMeshInstanced(IGpuCommandList cl, IGpuBuffer vb, IGpuBuffer ib, int indexCount,
-            GpuIndexFormat indexFormat, uint instanceStart, uint instanceCount, IGpuResourceSet splatSet)
-        {
-            cl.SetGraphicsResourceSet(0, splatSet);
-            cl.SetVertexBuffer(0, vb);
-            cl.SetVertexBuffer(1, _instanceBuffer!);
-            cl.SetIndexBuffer(ib, indexFormat);
-            cl.DrawIndexed((uint)indexCount, instanceCount, 0, 0, instanceStart);
-        }
 
         /// <summary>Ensure the persistent instance buffer holds at least <paramref name="instances"/>.Length
         /// instances, then upload <paramref name="instances"/> starting at offset 0. Geometric 2x growth.</summary>
@@ -776,8 +713,9 @@ namespace KhaozEngine.Render3D.Rendering
             _white.Dispose(); _flatNormal.Dispose(); _defaultRough.Dispose(); // _sampler is the device built-in (non-owning); do not dispose it.
             _shaders.Dispose();
             _dissolvePipeline.Dispose(); _dissolveShaders.Dispose();
-            _splatPipeline.Dispose(); _splatLayout.Dispose(); _splatShaders.Dispose();
-            DisposeTileGroundResources(); _terrainSampler.Dispose();  // the tile-ground sets bind that sampler too
+            DisposeSplatResources();
+            DisposeTileGroundResources();
+            _terrainSampler.Dispose();  // shared by both ground passes' sets, so it is freed after them
             _skinnedPipeline.Dispose(); _skinnedDissolvePipeline.Dispose();
             _skinnedShaders.Dispose(); _skinnedDissolveShaders.Dispose();
             _skinnedDefaultFragSet.Dispose(); _skinnedVertexLayout.Dispose(); _skinnedFragLayout.Dispose();

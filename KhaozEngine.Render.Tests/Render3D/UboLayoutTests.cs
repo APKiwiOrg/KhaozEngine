@@ -87,7 +87,8 @@ namespace KhaozEngine.Tests.Render3D
         public void AllFrameUboShaders_DeclareTheRenderOriginTail()
         {
             // Camera-relative rendering appends `vec4 RenderOrigin` to the END of the frame block, so a shader that
-            // misses it reads the splat params (or, on the skinned pipeline, the bone palette) 16 bytes early. It is
+            // misses it reads whatever follows (the tile-ground params, or the skinned pipeline's bone palette) 16
+            // bytes early, and disagrees with every other stage about the block. It is
             // declared in EVERY shader that declares the block, whether or not that stage reads it, exactly like the
             // shadow tail above.
             foreach (var (name, src) in new[]
@@ -185,15 +186,16 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void SplatTail_AppendsAtUboBytesOffset_PerGlslComment()
+        public void SplatParams_AreTheirOwnFragmentOnlyBlockAtSetOne()
         {
-            // SplatVert/SplatFrag document "per-material params appended (offset 688)" and the renderer writes the
-            // params tail at UboBytes (ModelRenderer.CreateSplatParamsUbo -> UpdateBuffer at UboBytes). Assert the
-            // C# append offset equals the value quoted in the SplatVert GLSL comment; if UboBytes drifts, that
-            // comment (the other half, in ShaderSources.SplatVert) and the append offset disagree.
-            string glslOffset = "(offset " + ModelRenderer.UboBytes + ")";
-            Assert.True(ShaderSources.SplatVert.Contains(glslOffset),
-                $"SplatVert no longer documents '{glslOffset}': the splat params append offset drifted from ModelRenderer.UboBytes ({ModelRenderer.UboBytes}). Fix the ShaderSources.SplatVert comment or the UBO size.");
+            // The params used to be APPENDED to the frame block, so this pinned the append offset against
+            // ModelRenderer.UboBytes. #604 gave them their own buffer, and what is worth pinning now is the split
+            // itself: the block is declared at set 1 binding 0, in the FRAGMENT alone. Re-declaring it in SplatVert
+            // would put a second buffer in the vertex stage for no reason, and folding it back into `U` would
+            // reinstate the per-material frame re-sync the unfold deleted.
+            Assert.Contains("layout(set=1, binding=0) uniform SplatParams {", ShaderSources.SplatFrag);
+            Assert.DoesNotContain("SplatParams", ShaderSources.SplatVert);
+            Assert.DoesNotContain("TintTiling", ShaderSources.SplatVert);
         }
 
         // ---- Post-process UBOs (PixelPostProcess) ----
@@ -345,15 +347,14 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void SplatShaders_DeclareTintTilingArray_SizedByLayerCount()
+        public void SplatFrag_DeclaresTintTilingArray_SizedByLayerCount()
         {
-            // The per-material params tail begins with TintTiling[LayerCount]. Build the GLSL spelling from the C#
+            // The per-material params block begins with TintTiling[LayerCount]. Build the GLSL spelling from the C#
             // SplatMaterialConfig.LayerCount so bumping the layer count without editing the shader trips. The other
-            // half lives in ShaderSources.SplatVert/Frag (the `U` block tail).
+            // half lives in the SplatParams block of ShaderSources.SplatFrag, and only there since #604: the vertex
+            // stage reads no per-material data.
             string tintTiling = "vec4 TintTiling[" + SplatMaterialConfig.LayerCount + "];";
 
-            Assert.True(ShaderSources.SplatVert.Contains(tintTiling),
-                $"SplatVert lost '{tintTiling}': the splat layer count drifted from SplatMaterialConfig.LayerCount ({SplatMaterialConfig.LayerCount}). Fix ShaderSources.SplatVert or the constant.");
             Assert.True(ShaderSources.SplatFrag.Contains(tintTiling),
                 $"SplatFrag lost '{tintTiling}': drifted from SplatMaterialConfig.LayerCount ({SplatMaterialConfig.LayerCount}). Fix ShaderSources.SplatFrag or the constant.");
         }
@@ -383,7 +384,7 @@ namespace KhaozEngine.Tests.Render3D
             // The cascaded shadow tail (mat4 ShadowMat[4] + vec4 ShadowParams + vec4 ShadowParams2 + vec4
             // ShadowNormalOffsets) rides in the frame UBO after the light arrays, in ALL FOUR shaders that declare the
             // `U` block (both stages of model, splat and tile ground). If any one drops or mis-sizes a member, the
-            // block layout diverges and the shadow tail / per-material params tail land at the wrong offset there.
+            // block layout diverges and every member after it lands at the wrong offset in that stage.
             string mats = "mat4 ShadowMat[" + ModelRenderer.MaxCascades + "];";
             foreach (var (name, src) in new[]
             {
@@ -393,7 +394,7 @@ namespace KhaozEngine.Tests.Render3D
             })
             {
                 Assert.True(src.Contains(mats),
-                    $"{name} lost '{mats}': the cascaded shadow matrices dropped or mis-sized in the frame UBO block; the splat params tail now lands at the wrong offset. Fix ShaderSources.{name} or ModelRenderer.MaxCascades.");
+                    $"{name} lost '{mats}': the cascaded shadow matrices dropped or mis-sized in the frame UBO block, so every member after them lands at the wrong offset. Fix ShaderSources.{name} or ModelRenderer.MaxCascades.");
                 Assert.True(src.Contains("vec4 ShadowParams;"),
                     $"{name} lost 'vec4 ShadowParams;': the shadow tail dropped from the frame UBO block. Fix ShaderSources.{name}.");
                 Assert.True(src.Contains("vec4 ShadowParams2;"),

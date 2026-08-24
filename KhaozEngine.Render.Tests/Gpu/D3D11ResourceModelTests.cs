@@ -330,7 +330,7 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(768u, 48u)]    // WaterRenderer.SlotBytes
         [InlineData(1008u, 64u)]   // ModelRenderer.UboBytes. Was 63, which dropped the whole model pass
         [InlineData(1040u, 80u)]   // PixelPostProcess.PaletteBufferBytes. Was 65
-        [InlineData(1120u, 80u)]   // the splat combined UBO. Was 70, which dropped splat terrain
+        [InlineData(1120u, 80u)]   // the splat combined UBO, retired by #604. Was 70, which dropped splat terrain
         [InlineData(8256u, 528u)]  // (1 + 128) * 64 unaligned. Was 516
         [InlineData(8448u, 528u)]  // ShadowMapRenderer.SkinnedDepthSlotBytes
         [InlineData(9472u, 592u)]  // ModelRenderer.SkinnedMainSlotBytes
@@ -383,7 +383,7 @@ namespace KhaozEngine.Tests.Gpu
             (string Window, uint Bytes)[] windows =
             {
                 ("ModelRenderer frame UBO", ModelRenderer.UboBytes),
-                ("ModelRenderer splat combined UBO", ModelRenderer.UboBytes + SplatParamsData.SizeInBytes),
+                ("ModelRenderer splat params UBO", SplatParamsData.SizeInBytes),
                 ("ModelRenderer skinned main slot", ModelRenderer.SkinnedMainSlotBytes),
                 ("ShadowMapRenderer skinned depth slot", ShadowMapRenderer.SkinnedDepthSlotBytes),
                 ("ShadowMapRenderer cascade slot", 256u),          // private const, ShadowMapRenderer.cs:41

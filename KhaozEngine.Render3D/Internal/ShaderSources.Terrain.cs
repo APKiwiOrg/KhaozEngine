@@ -8,12 +8,17 @@ namespace KhaozEngine.Render3D.Internal
     internal static partial class ShaderSources
     {
 
-        // ---- Splat-terrain vertex shader. Identical to ModelVert, except the per-frame UBO (binding 0) carries the
-        //      per-material splat params appended after the point-light arrays - so the splat pipeline binds exactly
-        //      ONE uniform buffer. (Veldrid/SPIRV-Cross on Metal mis-binds a SECOND uniform buffer in a set: it reads
-        //      the first buffer's bytes, which zeroed the per-layer tint and blacked out the terrain. One UBO total
-        //      sidesteps it.) The params tail is unused by the vertex stage but declared so the block layout matches
-        //      SplatFrag exactly. ----
+        // ---- Splat-terrain vertex shader. Identical to ModelVert: it reads the SHARED per-frame block at set 0
+        //      binding 0, and that is the only uniform buffer this stage references.
+        //
+        //      HISTORY, because the shape it replaced was load-bearing for a long time. The per-material splat
+        //      params used to be APPENDED to this same block, so the whole splat pipeline bound exactly one uniform
+        //      buffer. The retired Veldrid Metal backend numbered a pipeline's buffers by per-kind DECLARATION
+        //      ORDER, so a stage referencing fewer buffers than the declared array put before it read an index
+        //      nothing was written to: the per-layer tint came back zero and the terrain rendered black. That
+        //      backend went in 18.0.0, and the engine's own Metal, Direct3D 11 and Vulkan backends all bind at the
+        //      index the emission chose, so the params are their own fragment-only block at set 1 now
+        //      (https://github.com/APKiwiOrg/KhaozEngine/issues/604). ----
         public const string SplatVert = @"#version 450
 layout(set=0, binding=0) uniform U {
     mat4 ViewProj;
@@ -26,9 +31,6 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
-    vec4 TintTiling[5];   // per-material params appended (offset 1008): xyz = tint, w = tiles/metre
-    vec4 Roughness;       // x..w = roughness for layers 0..3
-    vec4 Misc;            // x = layer4 roughness, y = triplanarSharpness, z = projectionMode, w = baseSpecStrength
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
@@ -72,15 +74,21 @@ void main() {
     vTangent = vec4(mat3(Model) * Tangent.xyz, Tangent.w);
 }";
 
-        // ---- Splat-terrain fragment shader. Pairs with SplatVert. Reads two 5-layer texture arrays (albedo,
-        //      tangent-space normal) + a shared sampler; the per-material params (per-layer tint/tiling/roughness +
-        //      globals) ride in the SAME UBO as the frame uniforms (binding 0, appended after the light arrays), so
-        //      the pipeline binds ONE uniform buffer (see SplatVert). Blends the five layers by the per-vertex
-        //      weights, tiles each in WORLD space with triplanar projection (no per-vertex tangent), and lights with
-        //      the SAME key+fill+ambient+point-light+cel model as ModelFrag - via the shared LightingCommonGlsl block
-        //      (single-sourced, not hand-duplicated), which both fragments splice in and call. Writes the same 3 MRT
-        //      targets (geometric normal to attachment 1 for the edge pass). Sample the two arrays in binding order
-        //      (Albedo then Normal) - the Metal SPIRV-Cross first-sample-order constraint. ----
+        // ---- Splat-terrain fragment shader. Pairs with SplatVert. Reads the SHARED per-frame block at set 0
+        //      binding 0 and the PER-MATERIAL params (per-layer tint/tiling/roughness + globals) as their own
+        //      fragment-only block at set 1 binding 0, alongside that material's two 5-layer texture arrays
+        //      (albedo, tangent-space normal) and the shared sampler. The two-set split replaced the combined
+        //      block the retired Veldrid Metal backend's numbering forced (see the SplatVert note and
+        //      https://github.com/APKiwiOrg/KhaozEngine/issues/604), and it is the shape section 2.3a of
+        //      docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md measured as binding correctly everywhere:
+        //      set 0 read by both stages, a fragment-only second buffer at set 1.
+        //      Blends the five layers by the per-vertex weights, tiles each in WORLD space with triplanar
+        //      projection (no per-vertex tangent), and lights with the SAME key+fill+ambient+point-light+cel model
+        //      as ModelFrag, via the shared LightingCommonGlsl block (single-sourced, not hand-duplicated) which
+        //      both fragments splice in and call. Writes the same 3 MRT targets (geometric normal to attachment 1
+        //      for the edge pass). The two arrays are still sampled in binding order (Albedo then Normal), which is
+        //      no longer a Metal constraint (the native backend authors its own indices) and stays as the engine's
+        //      own convention. ----
         public const string SplatFrag = @"#version 450
 layout(set=0, binding=0) uniform U {
     mat4 ViewProj;
@@ -93,15 +101,19 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
-    vec4 TintTiling[5];   // xyz = tint, w = tiles/metre (offset 1008)
+};
+// The material's own uniforms, written ONCE at load and never re-uploaded. Declared here and NOT in SplatVert,
+// because the vertex stage reads none of them (SplatParamsData is the C# mirror of this block, 112 bytes).
+layout(set=1, binding=0) uniform SplatParams {
+    vec4 TintTiling[5];   // xyz = tint, w = tiles/metre
     vec4 Roughness;       // x..w = roughness for layers 0..3
     vec4 Misc;            // x = layer4 roughness, y = triplanarSharpness, z = projectionMode, w = baseSpecStrength
 };
-layout(set=0, binding=1) uniform texture2DArray AlbedoArray;
-layout(set=0, binding=2) uniform texture2DArray NormalArray;
-layout(set=0, binding=3) uniform sampler Samp;
-layout(set=0, binding=4) uniform texture2D ShadowMap;    // key-light depth map (R32F); sampled LAST, after the terrain arrays (Metal first-sample-order rule)
-layout(set=0, binding=5) uniform sampler ShadowSamp;     // clamp/linear sampler for the shadow-map PCF taps
+layout(set=1, binding=1) uniform texture2DArray AlbedoArray;
+layout(set=1, binding=2) uniform texture2DArray NormalArray;
+layout(set=1, binding=3) uniform sampler Samp;
+layout(set=1, binding=4) uniform texture2D ShadowMap;    // key-light depth map (R32F), sampled LAST, after the terrain arrays
+layout(set=1, binding=5) uniform sampler ShadowSamp;     // clamp/linear sampler for the shadow-map PCF taps
 // Declare ONLY the interpolants this fragment reads, as a CONTIGUOUS 0..4 block (no gap). SplatVert emits these
 // same five at 0..4 and the fragment-unused vUv/vSpecParams/vTangent at 5..7 (which this shader does not declare).
 // A hole in the pixel-input semantics (e.g. declaring vUv@3 but never using it) makes FXC/WARP miscompile and the
@@ -204,7 +216,7 @@ void main() {
     const float SPLAT_SPEC_EXP_ROUGH  = 8.0;  // exponent at roughness 1 (broad highlight)
     float specStrength = Misc.w * (1.0 - rough);
     float specExp = max(mix(SPLAT_SPEC_EXP_SMOOTH, SPLAT_SPEC_EXP_ROUGH, rough), 1.0);
-    // Key-light shadow: sampled AFTER the terrain arrays (Metal first-sample-order: ShadowMap is binding 4, last).
+    // Key-light shadow: sampled AFTER the terrain arrays, ShadowMap being the last texture of set 1.
     // Terrain RECEIVES shadows identically to models via the same shared helper. keyShadow == 1 when the map is off.
     float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
     float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);

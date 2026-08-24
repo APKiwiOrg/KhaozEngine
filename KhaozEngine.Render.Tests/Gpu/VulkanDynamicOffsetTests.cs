@@ -53,7 +53,7 @@ namespace KhaozEngine.Tests.Gpu
                 shapes.Add((name, harness.Set(name)));
             }
 
-            Assert.Equal(34, shapes.Count);   // 34 since R5 added the tile-ground layout
+            Assert.Equal(35, shapes.Count);   // 35 since #604 split the splat pipeline's layout in two
 
             for (int segment = 0; segment < harness.Rings.FramesInFlight; segment++)
             {

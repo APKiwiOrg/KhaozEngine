@@ -7,10 +7,12 @@ using Xunit;
 namespace KhaozEngine.Tests.Terrain
 {
     // Regression net for the splat-terrain RENDER path (not just "does it throw"). The 7.64.0 splat material put a
-    // second uniform buffer (per-material params) in the pipeline; Veldrid/SPIRV-Cross on Metal mis-binds a second
-    // UBO so the per-layer tint read garbage and the terrain rendered ~black / flat primary colours. The fix folds
-    // the params into the single frame UBO. This test renders a procedurally-textured chunk top-down and asserts the
-    // ground is lit and looks textured, so a regression to the black/primary output fails here.
+    // second uniform buffer (per-material params) in the pipeline, and the Veldrid Metal backend mis-bound it, so
+    // the per-layer tint read garbage and the terrain rendered near-black or flat primary colours. That was folded
+    // into the single frame UBO then, and UNFOLDED back into two buffers when the backend retired
+    // (https://github.com/APKiwiOrg/KhaozEngine/issues/604), which puts this test back on the shape it was written
+    // against. It renders a procedurally-textured chunk top-down and asserts the ground is lit and looks textured,
+    // so a regression to the black/primary output fails here.
     public sealed class TexturedTerrainRenderGpuTests
     {
         [GpuFact]

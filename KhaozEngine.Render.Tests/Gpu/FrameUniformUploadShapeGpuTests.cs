@@ -50,8 +50,9 @@ namespace KhaozEngine.Tests.Gpu
         // OverlayMeshRenderer / SpriteBatch: both start at eight 256-byte dynamic-offset slots.
         const uint OverlayUboBytes = 8 * 256;
         const uint ViewProjUboBytes = 8 * 256;
-        // ModelRenderer.CreateSplatParamsUbo: the frame block plus the material's retained params tail.
-        const uint SplatCombinedUboBytes = FrameUboBytes + 112;
+        // ModelRenderer.CreateSplatParamsUbo: the material's params ALONE, since #604 split the frame block back
+        // out into the shared buffer. Written once at load, so a rendered frame must not touch it at all.
+        const uint SplatParamsUboBytes = 112;
 
         static void AssertOneWholeBufferWrite(RecordingGpuCommandList rec, uint size, string what)
         {
@@ -263,7 +264,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
-        public void A_splat_terrain_frame_uploads_the_combined_material_block_in_one_whole_write()
+        public void A_splat_terrain_frame_uploads_the_shared_frame_block_and_no_per_material_one()
         {
             using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
             IGpuDevice gd = gpu.GpuDevice;
@@ -305,7 +306,17 @@ namespace KhaozEngine.Tests.Gpu
             gd.Submit(real);
             gd.WaitForIdle();
 
-            AssertOneWholeBufferWrite(rec, SplatCombinedUboBytes, "splat combined material UBO");
+            // The frame block goes up ONCE, into the shared model UBO the splat pipeline now binds at set 0.
+            AssertOneWholeBufferWrite(rec, FrameUboBytes, "shared frame UBO, splat frame");
+
+            // And the material's own buffer is not written during the frame at all. That is the unfold's whole
+            // point: before #604 this frame re-uploaded a 1120-byte copy of the frame block per loaded splat
+            // material, and the per-material cost was linear in the number of terrain materials on screen.
+            List<RecordingGpuCommandList.Upload> perMaterial = rec.ToBuffersOfSize(SplatParamsUboBytes);
+            Assert.True(perMaterial.Count == 0,
+                $"the splat material's params buffer was written {perMaterial.Count} time(s) during the frame. It "
+                + "holds load-time constants and nothing re-supplies them, so a per-frame write to it means the "
+                + "frame block has been folded back in (issue #604).");
         }
 
         [GpuFact]

@@ -78,10 +78,15 @@ namespace KhaozEngine.Tests.Gpu
                 ["Model.skinnedVertex"] = L(U("VBlock", VF, dynamic: true)),
                 ["Model.skinnedFrag"] = L(T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"),
                     T("ShadowMap"), S("ShadowSamp")),
-                ["Model.splat"] = L(U("U", VF), T("AlbedoArray"), T("NormalArray"), S("Sampler"), T("ShadowMap"),
-                    S("ShadowSamp")),
+                // Render3D/Rendering/ModelRenderer.Splat.cs:44 and :53. TWO sets since #604: the shared frame
+                // block, then everything the material owns. It is the only shipped pipeline with a uniform buffer
+                // in both of its sets, which is what makes it the heaviest one below.
+                ["Model.splatFrame"] = L(U("U", VF)),
+                ["Model.splatMaterial"] = L(U("SplatParams", F), T("AlbedoArray"), T("NormalArray"), S("Sampler"),
+                    T("ShadowMap"), S("ShadowSamp")),
                 // Render3D/Rendering/ModelRenderer.TileGround.cs:33. Albedo only, so one array where the splat
-                // layout has two, and the shadow map stays last.
+                // material layout has two, and the shadow map stays last. Still the combined frame+params buffer
+                // the splat pass carried until #604.
                 ["Model.tileGround"] = L(U("U", VF), T("AlbedoArray"), S("Sampler"), T("ShadowMap"), S("ShadowSamp")),
 
                 // Render3D/Rendering/OceanFftProducer.cs:506 and :510, both compute
@@ -135,8 +140,11 @@ namespace KhaozEngine.Tests.Gpu
         /// set with two dynamic uniform buffers is legal everywhere, and a pipeline combining several sets is
         /// where a ceiling is really reached.
         /// <para>
-        /// Only two shipped families use more than one layout, and BOTH split the uniform buffer into one set and
-        /// pure texture and sampler resources into the other, so neither places a uniform buffer in both.
+        /// Three shipped families use more than one layout. The skinned pair and SpriteBatch each split ONE uniform
+        /// buffer into one set with pure texture and sampler resources in the other, so they place a uniform buffer
+        /// in one set only. The splat pipeline does not: since #604 its set 0 is the shared frame block and its
+        /// set 1 carries the material's own params buffer as well as its textures, which is the first shipped
+        /// pipeline to spend two.
         /// </para>
         /// </summary>
         internal static IReadOnlyList<(string Pipeline, string[] Slots)> ShippedPipelines { get; } =
@@ -155,7 +163,7 @@ namespace KhaozEngine.Tests.Gpu
             ("GroundDecalRenderer", ["GroundDecal"]),
             ("ModelRenderer", ["Model"]),
             ("ModelRenderer dissolve", ["Model"]),
-            ("ModelRenderer splat", ["Model.splat"]),
+            ("ModelRenderer splat", ["Model.splatFrame", "Model.splatMaterial"]),
             ("ModelRenderer tile ground", ["Model.tileGround"]),
             ("OceanFftProducer row", ["OceanFft.row"]),
             ("OceanFftProducer col", ["OceanFft.col"]),
@@ -190,9 +198,11 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void EveryShippedPipeline_StaysWithinTheRequiredMinimumDynamicUniformBuffers()
         {
-            // 34 since R5 added the tile-ground layout and pipeline. Both counts move together whenever a
-            // renderer gains a pipeline, and are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(34, ShippedLayouts.Count);
+            // 35 layouts since #604 split the splat pipeline's one layout into a frame set and a material set.
+            // 34 PIPELINES, unchanged by that: a pipeline gained a slot rather than a pipeline being added, which
+            // is why the two numbers came apart here for the first time. Both are stated so an emptied table
+            // cannot pass by agreeing with itself.
+            Assert.Equal(35, ShippedLayouts.Count);
             Assert.Equal(34, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
@@ -212,22 +222,25 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// AND THE HEADROOM IS PINNED so a change to it is visible rather than silent. Every shipped pipeline
-        /// spends exactly ONE, which is the engine's own one-uniform-buffer-per-pipeline convention (a Metal
-        /// constraint documented in <c>ModelRenderer</c>, <c>WaterRenderer</c> and <c>GroundDecalRenderer</c>)
-        /// arriving here as seven descriptors of headroom.
+        /// AND THE HEADROOM IS PINNED so a change to it is visible rather than silent. Every shipped pipeline spent
+        /// exactly ONE until <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/604">#604</see>, which was
+        /// the engine's own one-uniform-buffer-per-pipeline convention (the retired Veldrid Metal backend's
+        /// numbering, documented in <c>ModelRenderer</c>, <c>WaterRenderer</c> and <c>GroundDecalRenderer</c>)
+        /// arriving here as seven descriptors of headroom. The splat pipeline raised it to TWO when its frame and
+        /// material uniforms were split across its two sets, which leaves six.
         /// <para>
         /// RAISING THIS NUMBER IS FINE UP TO <see cref="VulkanDescriptorLimits.SpecRequiredMinimum"/>. Update it
-        /// with the pipeline that raised it, and re-read the Metal note before going past two.
+        /// with the pipeline that raised it. This is a per-PIPELINE-LAYOUT sum, so a pipeline binding several sets
+        /// that each carry a uniform buffer is the shape that moves it.
         /// </para>
         /// </summary>
         [Fact]
-        public void TheHeaviestShippedPipeline_SpendsExactlyOneDynamicUniformDescriptor()
+        public void TheHeaviestShippedPipeline_SpendsTwoDynamicUniformDescriptors()
         {
             int heaviest = ShippedPipelines.Max(
                 p => p.Slots.Sum(slot => VulkanDescriptorPolicy.DynamicUniformCount(ShippedLayouts[slot])));
 
-            Assert.Equal(1, heaviest);
+            Assert.Equal(2, heaviest);
         }
 
         /// <summary>

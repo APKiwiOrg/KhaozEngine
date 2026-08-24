@@ -8,15 +8,21 @@ namespace KhaozEngine.Render3D.Rendering
     /// <summary>
     /// A TILE-GROUND MATERIAL'S COMBINED UNIFORM BUFFER AND ITS CPU MIRROR: the frame block at offset 0, the
     /// material's params tail (per-layer tint + tiling, then the misc vector) appended at <c>frameBytes</c>, and one
-    /// whole-buffer upload per frame. The sibling of <see cref="SplatUniformBuffer"/>, which carries the full
-    /// rationale: the pipeline binds ONE uniform buffer, so the per-frame re-sync of a block smaller than the buffer
-    /// was a PARTIAL write, and Veldrid sends a partial write to a non-Dynamic uniform buffer down a staging route
-    /// that blocks the calling thread on D3D11
+    /// whole-buffer upload per frame. The pipeline binds ONE uniform buffer, so the per-frame re-sync of a block
+    /// smaller than the buffer was a PARTIAL write, and a partial write to a non-Dynamic uniform buffer went down a
+    /// staging route that blocked the calling thread on D3D11
     /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/408">#408</see>). Retaining the load-time params
     /// on the CPU is what lets the whole buffer be rebuilt and uploaded in one command.
     /// <para>
     /// The tail is 64 layer vectors plus the misc vector, which is over a kilobyte of it, so this is the buffer in
     /// the engine that gains the most from not writing a partial head into it every frame.
+    /// </para>
+    /// <para>
+    /// THE SPLAT PASS HAD THE IDENTICAL SHAPE and no longer does. Both combined blocks existed because the retired
+    /// Veldrid Metal backend mis-bound a second uniform buffer in a pipeline, and
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/604">#604</see> unfolded the splat one into a
+    /// shared frame set plus a load-time params buffer, which dissolved its mirror entirely. This is the last
+    /// combined ground UBO, and it is a candidate for the same treatment rather than a rule anything else copies.
     /// </para>
     /// </summary>
     internal sealed class TileGroundUniformBuffer : IDisposable

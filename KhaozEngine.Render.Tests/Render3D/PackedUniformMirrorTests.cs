@@ -23,20 +23,21 @@ namespace KhaozEngine.Tests.Render3D
     /// </summary>
     public sealed class PackedUniformMirrorTests
     {
-        // ---- The splat material's combined UBO: frame block at 0, the retained params appended after it ----
+        // ---- The tile-ground material's combined UBO: frame block at 0, the retained params appended after it ----
+        //
+        // The splat material had the IDENTICAL shape and these two cases were written against it. #604 unfolded that
+        // one into a shared frame set plus a load-time params buffer, which left no mirror to test, so they were
+        // retargeted onto the remaining combined ground UBO rather than deleted: the mechanism they pin is #408's,
+        // not the splat pass's, and it is still shipped here.
 
         const uint FrameBytes = 1008;   // ModelRenderer.UboBytes
 
-        static SplatParamsData DistinctParams() => new()
+        static Vector4[] DistinctParams()
         {
-            TintTiling0 = new Vector4(1f, 2f, 3f, 4f),
-            TintTiling1 = new Vector4(5f, 6f, 7f, 8f),
-            TintTiling2 = new Vector4(9f, 10f, 11f, 12f),
-            TintTiling3 = new Vector4(13f, 14f, 15f, 16f),
-            TintTiling4 = new Vector4(17f, 18f, 19f, 20f),
-            Roughness = new Vector4(21f, 22f, 23f, 24f),
-            Misc = new Vector4(25f, 26f, 27f, 28f),
-        };
+            var p = new Vector4[TileGroundMaterialConfig.ParamsBytes / 16];
+            for (int i = 0; i < p.Length; i++) p[i] = new Vector4(i * 4 + 1, i * 4 + 2, i * 4 + 3, i * 4 + 4);
+            return p;
+        }
 
         static byte[] Ramp(int n, byte seed)
         {
@@ -46,13 +47,13 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void A_splat_upload_is_the_frame_block_followed_by_the_material_params()
+        public void A_ground_upload_is_the_frame_block_followed_by_the_material_params()
         {
             using var gd = new FakeGpuDevice();
             IGpuBuffer buffer = gd.Factory.CreateBuffer(new GpuBufferDescription(
-                FrameBytes + SplatParamsData.SizeInBytes, GpuBufferUsage.UniformBuffer));
-            SplatParamsData p = DistinctParams();
-            using var mirror = new SplatUniformBuffer(buffer, in p, FrameBytes);
+                FrameBytes + TileGroundMaterialConfig.ParamsBytes, GpuBufferUsage.UniformBuffer));
+            Vector4[] p = DistinctParams();
+            using var mirror = new TileGroundUniformBuffer(buffer, p, FrameBytes);
 
             var rec = new RecordingGpuCommandList(new NullGpuCommandList()) { CapturePayloads = true };
             byte[] frame = Ramp((int)FrameBytes, 3);
@@ -64,20 +65,20 @@ namespace KhaozEngine.Tests.Render3D
 
             // The concatenation of the two partial writes this replaced: the per-frame block at 0 and the
             // load-time params at FrameBytes.
-            var expected = new byte[FrameBytes + SplatParamsData.SizeInBytes];
+            var expected = new byte[FrameBytes + TileGroundMaterialConfig.ParamsBytes];
             frame.CopyTo(expected, 0);
-            MemoryMarshal.Write(expected.AsSpan((int)FrameBytes), in p);
+            MemoryMarshal.AsBytes<Vector4>(p).CopyTo(expected.AsSpan((int)FrameBytes));
             Assert.Equal(expected, u.Data);
         }
 
         [Fact]
-        public void A_later_splat_upload_replaces_the_frame_head_and_keeps_the_params_tail()
+        public void A_later_ground_upload_replaces_the_frame_head_and_keeps_the_params_tail()
         {
             using var gd = new FakeGpuDevice();
             IGpuBuffer buffer = gd.Factory.CreateBuffer(new GpuBufferDescription(
-                FrameBytes + SplatParamsData.SizeInBytes, GpuBufferUsage.UniformBuffer));
-            SplatParamsData p = DistinctParams();
-            using var mirror = new SplatUniformBuffer(buffer, in p, FrameBytes);
+                FrameBytes + TileGroundMaterialConfig.ParamsBytes, GpuBufferUsage.UniformBuffer));
+            Vector4[] p = DistinctParams();
+            using var mirror = new TileGroundUniformBuffer(buffer, p, FrameBytes);
 
             var rec = new RecordingGpuCommandList(new NullGpuCommandList()) { CapturePayloads = true };
             mirror.Upload(rec, Ramp((int)FrameBytes, 3));
@@ -89,8 +90,8 @@ namespace KhaozEngine.Tests.Render3D
 
             // The tail is the thing the material has to RETAIN for a whole write to be possible at all: nothing
             // re-supplies it per frame, so a mirror that let it rot would upload a valid-looking block of zeros.
-            var tail = new byte[SplatParamsData.SizeInBytes];
-            MemoryMarshal.Write(tail, in p);
+            var tail = new byte[TileGroundMaterialConfig.ParamsBytes];
+            MemoryMarshal.AsBytes<Vector4>(p).CopyTo(tail);
             Assert.Equal(tail, bytes[(int)FrameBytes..]);
         }
 

@@ -41,7 +41,8 @@ namespace KhaozEngine.Tests.Gpu
             => ShaderValidation.ValidatePair(ShaderSources.SplatVert, ShaderSources.SplatFrag, "Splat");
 
         // The tile-world ground pass (tile-world design section 7.5): one albedo array, four corner material
-        // slots per triangle. Same one-UBO and gap-free-interpolant shape as the splat pair it sits beside.
+        // slots per triangle. Same gap-free-interpolant shape as the splat pair it sits beside, and still the
+        // combined one-UBO shape the splat pair left behind in #604.
         [Fact]
         public void TileGround()
             => ShaderValidation.ValidatePair(ShaderSources.TileGroundVert, ShaderSources.TileGroundFrag, "TileGround");

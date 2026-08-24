@@ -41,16 +41,16 @@ namespace KhaozEngine.Render3D
                 TextureUploads.CreateSplatArrays(_gd, w, h, mips, layers, "Scene3D.LoadSplatMaterial");
 
             var data = SplatMaterialConfig.BuildParams(layers, triplanarSharpness, projection, baseSpecStrength);
-            // Combined UBO: frame uniforms (re-synced each frame in the splat pass) + these params appended. One
-            // uniform buffer for the whole splat pipeline (Metal mis-binds a second UBO; see ModelRenderer).
+            // The material's OWN uniform buffer, holding these params alone and written once, here. The frame
+            // uniforms are not in it: the pipeline reads those from the renderer's shared block at set 0 (#604).
             var ubo = _model.CreateSplatParamsUbo(in data);
 
             // A material that overrides the sampler gets its own (owned, disposed with the material); otherwise the
             // set binds the renderer's shared default sampler and nothing extra is owned here.
             IGpuSampler? ownedSampler = sampler.HasValue ? _model.CreateTerrainSampler(sampler.Value) : null;
             var set = ownedSampler is null
-                ? _model.CreateSplatMaterialSet(ubo.Buffer, albedo, normal)
-                : _model.CreateSplatMaterialSet(ubo.Buffer, albedo, normal, ownedSampler);
+                ? _model.CreateSplatMaterialSet(ubo, albedo, normal)
+                : _model.CreateSplatMaterialSet(ubo, albedo, normal, ownedSampler);
             _splatMaterials.Add(new SplatMaterialEntry(albedo, normal, ubo, set, ownedSampler));
             return new SplatMaterialHandle(_splatMaterials.Count - 1);
         }
@@ -81,13 +81,11 @@ namespace KhaozEngine.Render3D
             get { int n = 0; foreach (var m in _splatMaterials) if (m != null) n++; return n; }
         }
 
-        // Splat-terrain pass: same uploaded instance buffer, the dedicated 5-layer texture-array pipeline. Each
-        // material's combined UBO holds frame + params in one buffer, so re-sync this frame's uniforms into every
-        // loaded material's UBO before drawing (usually one terrain material).
+        // Splat-terrain pass: same uploaded instance buffer, the dedicated 5-layer texture-array pipeline. Nothing
+        // is re-synced first, unlike the tile-ground sibling below: since #604 the frame block comes from the
+        // renderer's shared buffer, already uploaded this frame, and each material's params are load-time constants.
         void DrawSplatRuns(IGpuCommandList cl)
         {
-            for (int i = 0; i < _splatMaterials.Count; i++)
-                if (_splatMaterials[i] is { } syncSm) _model.WriteFrameUniformsTo(cl, syncSm.Ubo);
             bool splatBound = false;
             foreach (var run in _runs)
             {
@@ -115,16 +113,16 @@ namespace KhaozEngine.Render3D
             _splatMaterials.Clear();
         }
 
-        /// <summary>A loaded splat-terrain material: the two 5-layer texture arrays (albedo, normal), the combined
-        /// frame+params UBO (frame portion re-synced each frame), and the resource set. Owned by Scene3D; shared by
-        /// every mesh that uses it.</summary>
+        /// <summary>A loaded splat-terrain material: the two 5-layer texture arrays (albedo, normal), the params UBO
+        /// (written once at load), and the set 1 resource set. Owned by Scene3D and shared by every mesh that
+        /// uses it.</summary>
         sealed class SplatMaterialEntry : IDisposable
         {
             public readonly IGpuTexture AlbedoArray, NormalArray;
-            public readonly SplatUniformBuffer Ubo;
+            public readonly IGpuBuffer Ubo;
             public readonly IGpuResourceSet Set;
             readonly IGpuSampler? _ownedSampler;   // non-null only when the material overrode the shared sampler
-            public SplatMaterialEntry(IGpuTexture albedo, IGpuTexture normal, SplatUniformBuffer ubo, IGpuResourceSet set, IGpuSampler? ownedSampler = null)
+            public SplatMaterialEntry(IGpuTexture albedo, IGpuTexture normal, IGpuBuffer ubo, IGpuResourceSet set, IGpuSampler? ownedSampler = null)
             { AlbedoArray = albedo; NormalArray = normal; Ubo = ubo; Set = set; _ownedSampler = ownedSampler; }
             public void Dispose() { Set.Dispose(); AlbedoArray.Dispose(); NormalArray.Dispose(); Ubo.Dispose(); _ownedSampler?.Dispose(); }
         }

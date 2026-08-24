@@ -75,7 +75,17 @@ namespace KhaozEngine.Gpu
             // Nothing to fall back TO when the request already IS this platform's default. Falling back onto the
             // backend that just refused would warn about a change that is not one, then fail again for the same
             // reason.
-            bool canFallBack = allowFallback && selection.Backend != fallback;
+            //
+            // AND NOTHING TO FALL BACK FOR WHEN KE_GRAPHICS_BACKEND PINNED IT (#719), which is the guard the
+            // headless path has carried since 17.40.0 and this one had not. A pin is the one provenance that
+            // means "measure THIS backend or fail loudly", and the windowed host is what a soak actually runs, so
+            // the half that was missing the guard was the half that mattered: a KE_GRAPHICS_BACKEND=vulkan-native
+            // soak on a Mac with no loader used to boot on MetalNative and report it, quietly, in the one place a
+            // reader trusts to name the backend they pinned. One flag decides it for both arms below, so a pinned
+            // request skips the support probe in PreflightProvider exactly as the headless one does, and the
+            // catch's filter goes false so a provider's own exception comes out whole.
+            bool canFallBack = allowFallback && !selection.WasPinnedByEnvironment
+                && selection.Backend != fallback;
 
             string? failure = PreflightProvider(selection, canFallBack,
                 out IGpuBackendProvider? provider);
@@ -189,8 +199,11 @@ namespace KhaozEngine.Gpu
         /// </para>
         /// <para>
         /// Returns null when creation should be attempted, or the reason to warn with and fall back on. With
-        /// <paramref name="allowFallback"/> false there is nothing to fall back to, so the probe is skipped
-        /// entirely and a real failure throws.
+        /// <paramref name="allowFallback"/> false there is no fallback to route to, whether because the caller
+        /// named the backend outright, because the request already IS the platform default, or because
+        /// <c>KE_GRAPHICS_BACKEND</c> pinned it, so the probe is skipped entirely and a real failure throws.
+        /// That last one is why a pinned request reaches its provider even on a machine the probe would refuse:
+        /// what comes out is then the provider's own reason rather than a redirect (#719).
         /// </para>
         /// </summary>
         internal static string? PreflightProvider(GpuBackendSelection selection, bool allowFallback,
@@ -310,12 +323,17 @@ namespace KhaozEngine.Gpu
         /// <summary>
         /// The one headless creation path, and the way it is allowed to end somewhere else.
         /// <para>
-        /// THE HEADLESS PATH IS STRICTER THAN THE WINDOWED ONE, deliberately. A headless run that quietly
-        /// changed backend would file its golden images under a backend that never rendered them, and each of
-        /// the cross-platform GPU legs pins its backend in <c>KE_GRAPHICS_BACKEND</c> and then captures goldens
-        /// through here. So a PINNED backend still propagates everything, exactly as it always did, and so does
-        /// the explicitly-named <see cref="CreateHeadless(GpuBackendKind)"/> overload, which turns fallback off
-        /// outright.
+        /// A PINNED BACKEND PROPAGATES EVERYTHING, and this path has said so since 17.40.0. A headless run that
+        /// quietly changed backend would file its golden images under a backend that never rendered them, and
+        /// each of the cross-platform GPU legs pins its backend in <c>KE_GRAPHICS_BACKEND</c> and then captures
+        /// goldens through here. The explicitly-named <see cref="CreateHeadless(GpuBackendKind)"/> overload turns
+        /// fallback off outright, which is the second lever and the blunter one.
+        /// </para>
+        /// <para>
+        /// THIS PATH IS NO LONGER THE STRICT ONE OF THE PAIR. It read that way for two releases, because the
+        /// windowed entry above was missing the pin guard, so the same variable meant "measure this or fail" for
+        /// a golden capture and "prefer this" for the windowed host a soak actually runs. #719 closed that, and
+        /// the two paths now refuse a fallback on the same three conditions.
         /// </para>
         /// </summary>
         static GpuDeviceContext CreateHeadless(GpuBackendSelection selection, bool allowFallback)

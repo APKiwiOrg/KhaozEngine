@@ -115,7 +115,9 @@ caused it lives inside the client that then will not start. Two mechanisms, and 
   requested backend, the failure, and what it fell back to. The retry reuses the same `GpuWindowHandle` (a
   readonly struct of native pointers, no device state), so no second window is created. There is exactly one
   default per platform since `18.0.0`, so "nothing to fall back TO when the request already IS the default" is
-  the only case the fallback skips.
+  a complete statement rather than a first approximation. It is one of two cases the fallback skips. The other
+  is a backend pinned in `KE_GRAPHICS_BACKEND`: since #719 a pinned request is not probed and its creation
+  failure propagates, so a soak session measures the backend it named or does not start.
 - **A STORED PREFERENCE with no registered provider** takes that same fallback, and it is the only provenance
   that may. A settings file outlives the build that wrote it and the machine it was written on (a profile synced
   across machines, or a game that dropped its explicit registrations after the player had picked a backend), and
@@ -128,8 +130,8 @@ caused it lives inside the client that then will not start. Two mechanisms, and 
   be asked for and this platform's own as the fallback target, and `Render2DSnapshot` / `Render3DSnapshot` do
   the same for a headless host.
 - **`CreateHeadless()` falls back as well since 17.40.0**, in both of the ways a request can fail: the
-  unregistered provider above, and a REGISTERED provider that refuses this machine. A pinned backend still
-  propagates everything there, which is what keeps each of the three legs below capturing goldens under the name
+  unregistered provider above, and a REGISTERED provider that refuses this machine. A pinned backend propagates
+  everything on that path too, which is what keeps each of the three legs below capturing goldens under the name
   it pinned.
 
 The fallback is REPORTED, never repaired: `Source` becomes `FallbackAfterFailure`, `Backend` is what actually

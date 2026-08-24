@@ -304,8 +304,9 @@ What it owns today:
   already IS that default, which is a complete statement since 18.0.0 because there is one default per platform. **`CreateHeadless()` falls back too since 17.40.0**, on the same two guards and with
   the same WARN, because the probe answers a provider-backed kind everywhere now and a `Render2DSnapshot.Capture`
   that worked before a repin must not throw after it. The one thing that never falls back on either path is a
-  backend `KE_GRAPHICS_BACKEND` PINNED, which is how every soak session and each of the five cross-platform GPU
-  legs selects, and a fallback that fails as well throws `GpuNoUsableBackendException` naming both attempts. Exposes `Backend`, `Selection` (the
+  backend `KE_GRAPHICS_BACKEND` PINNED, which is how every soak session and each cross-platform GPU leg selects:
+  its provider is not even probed, and a creation failure comes out as the provider raised it (the windowed half
+  of that was missing until #719). A fallback that fails as well throws `GpuNoUsableBackendException` naming both attempts. Exposes `Backend`, `Selection` (the
   full `GpuBackendSelection`, since 17.21.0), `ThreadingCaps` (the D3D11 driver threading caps, since 17.22.0),
   `AdapterDescription` (the adapter the device runs on, empty when the backend reports none, since 17.24.0 - the
   same value as `Capabilities.DeviceName`, which stays the single source, and on Direct3D11 it is exactly the

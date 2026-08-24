@@ -25,10 +25,13 @@ namespace KhaozEngine.Tests.Gpu
     /// creation on the platform's default backend.
     /// </para>
     /// <para>
-    /// Registry and environment are both process-wide, hence the non-parallel collection: the backend is named
-    /// through <c>KE_GRAPHICS_BACKEND</c> (which reaches the provider path with fallback still allowed on every
-    /// OS, unlike naming a backend in the call signature, which turns fallback off) and the fake is registered
-    /// under the REAL appended kind.
+    /// Registry and environment are both process-wide, hence the non-parallel collection: the backend is asked
+    /// for as a STORED PREFERENCE, which reaches the provider path with the fallback still allowed, and the fake
+    /// is registered under the REAL appended kind. The other two levers cannot serve here. Naming a backend in
+    /// the call signature turns fallback off, and since #719 so does a <c>KE_GRAPHICS_BACKEND</c> pin, which is
+    /// what these rows used to use. <c>KE_GRAPHICS_BACKEND</c> is CLEARED for the duration instead, because each
+    /// cross-platform GPU leg sets it and a leg's own pin would outrank the preference and disarm the fallback
+    /// on that leg alone.
     /// </para>
     /// </summary>
     [Collection("GraphicsBackendGlobalState")]
@@ -49,11 +52,11 @@ namespace KhaozEngine.Tests.Gpu
             var device = new RecordingGpuDevice(GpuBackendKind.Direct3D11);
             var provider = new FakeBackendProvider(NativeKind) { Supported = true, Device = device };
 
-            using (new EnvScope(GpuBackendSelector.EnvVarName, "d3d11-native"))
+            using (new EnvScope(GpuBackendSelector.EnvVarName, null))
             using (new BackendProviderScope(NativeKind, provider))
             {
                 ArgumentException ex = Assert.Throws<ArgumentException>(
-                    () => GpuDeviceContext.CreateForWindow(default, 640, 480, syncToVerticalBlank: true));
+                    () => GpuDeviceContext.CreateForWindow(default, 640, 480, true, (GpuBackendKind?)NativeKind));
 
                 // The adoption guard, named by its own parameter, not something a driver threw.
                 Assert.Equal("selection", ex.ParamName);
@@ -78,11 +81,11 @@ namespace KhaozEngine.Tests.Gpu
         {
             var provider = new FakeBackendProvider(NativeKind) { Supported = true, ReturnsNothing = true };
 
-            using (new EnvScope(GpuBackendSelector.EnvVarName, "d3d11-native"))
+            using (new EnvScope(GpuBackendSelector.EnvVarName, null))
             using (new BackendProviderScope(NativeKind, provider))
             {
                 InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
-                    () => GpuDeviceContext.CreateForWindow(default, 640, 480, syncToVerticalBlank: true));
+                    () => GpuDeviceContext.CreateForWindow(default, 640, 480, true, (GpuBackendKind?)NativeKind));
 
                 Assert.Contains("returned no device", ex.Message);
                 Assert.Contains(NativeKind.ToString(), ex.Message);
@@ -92,21 +95,22 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// The setup both tests above depend on, asserted separately so a red there cannot be read as "the
-        /// fallback was never reachable anyway". Fallback IS allowed on this call: the backend arrives from the
-        /// environment rather than from the call signature, the kind differs from the one a failure falls back
-        /// TO, and the provider answers the support probe with yes, so creation is attempted and its failure
-        /// would have had somewhere to fall back to.
+        /// fallback was never reachable anyway". Fallback IS allowed on this call: the backend arrives as a
+        /// stored preference rather than from the call signature or a <c>KE_GRAPHICS_BACKEND</c> pin, the kind
+        /// differs from the one a failure falls back TO, and the provider answers the support probe with yes, so
+        /// creation is attempted and its failure would have had somewhere to fall back to.
         /// </summary>
         [Fact]
-        public void CreateForWindow_ThroughTheEnvironment_LeavesTheFallbackArmed()
+        public void CreateForWindow_ThroughAStoredPreference_LeavesTheFallbackArmed()
         {
             var provider = new FakeBackendProvider(NativeKind) { Supported = true };
 
-            using (new EnvScope(GpuBackendSelector.EnvVarName, "d3d11-native"))
+            using (new EnvScope(GpuBackendSelector.EnvVarName, null))
             using (new BackendProviderScope(NativeKind, provider))
             {
-                GpuBackendSelection selection = GpuBackendSelector.Resolve();
+                GpuBackendSelection selection = GpuBackendSelector.Resolve((GpuBackendKind?)NativeKind);
                 Assert.Equal(NativeKind, selection.Backend);
+                Assert.False(selection.WasPinnedByEnvironment);
                 // The fallback is ARMED only when the requested kind differs from the backend a failure falls
                 // back TO, which since 18.0.0 is the platform default itself. So this row exercises the probe
                 // path on every OS except Windows, where Direct3D11Native IS the default and there is nothing to
@@ -115,7 +119,7 @@ namespace KhaozEngine.Tests.Gpu
                 if (GpuBackendSelector.ProbeOS(GpuBackendSelector.DetectOS()) == NativeKind) return;
 
                 using GpuDeviceContext ctx =
-                    GpuDeviceContext.CreateForWindow(default, 640, 480, syncToVerticalBlank: true);
+                    GpuDeviceContext.CreateForWindow(default, 640, 480, true, (GpuBackendKind?)NativeKind);
 
                 // Probed rather than taken on trust, which is what the fallback-allowed path does and the
                 // named-backend path does not.

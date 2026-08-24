@@ -9452,8 +9452,15 @@ Probing is necessary but NOT sufficient. A broken or partial driver can report s
 creation. So creation is also wrapped: if the requested backend fails, the engine falls back to the platform's
 own default (`GpuBackendSelector.ProbeOS`, the single map since `IncumbentFor` was deleted with the incumbent in
 18.0.0), WARNs, and boots anyway rather than leaving the player with a client that will not start and a setting
-they cannot reach to fix. When the request already IS that default there is nothing to fall back to, and the
-engine throws `GpuNoUsableBackendException` naming both backends and both reasons.
+they cannot reach to fix. When the request already IS that default there is nothing to fall back to, so the
+failure comes out exactly as the provider raised it.
+
+**A backend pinned in `KE_GRAPHICS_BACKEND` is exempt, on this path as well as the headless one (#719).** A pin
+means measure THIS backend or fail loudly, so a pinned request that cannot be created propagates its provider's
+own exception instead of warning and booting on the platform default, and the support probe is not consulted
+either. The windowed path did not honour that for two releases, which made the pin mean one thing for a golden
+capture and another for the host a soak session actually runs. Every other provenance still falls back, a
+stored preference included, which is what the rest of this section is about.
 
 **The engine reports the fallback. It never clears your setting.** Writing a setting is file IO, which
 `KhaozEngine.Gpu` does not do. Two obligations on the consuming game, and skipping the first one means the
@@ -9500,13 +9507,13 @@ since `GpuWindowHandle` is a readonly struct of native pointers carrying no devi
 
 The fallback is skipped when the requested backend already IS the platform default it would fall back to, and
 since 18.0.0 that guard is a complete statement rather than a first approximation, because there is exactly one
-default per platform. **`CreateHeadless()` falls back too since
-17.40.0**, on the same two guards and with the same WARN, in both of the ways a default can fail: an
+default per platform. It is skipped for a `KE_GRAPHICS_BACKEND` pin as well, on both paths since #719.
+**`CreateHeadless()` falls back too since
+17.40.0**, on the same guards and with the same WARN, in both of the ways a default can fail: an
 unregistered provider, and a REGISTERED provider that refuses this machine. Without the second one a
-`Render2DSnapshot.Capture` or `Render3DSnapshot.Capture` that worked before a repin would throw after it. A
-backend pinned in `KE_GRAPHICS_BACKEND` still propagates everything on that path, and so does the
-explicitly named `CreateHeadless(GpuBackendKind)` overload below, because a headless run that quietly changed
-backend would file its golden images under a backend that never rendered them.
+`Render2DSnapshot.Capture` or `Render3DSnapshot.Capture` that worked before a repin would throw after it. The
+explicitly named `CreateHeadless(GpuBackendKind)` overload below propagates everything as well, because a
+headless run that quietly changed backend would file its golden images under a backend that never rendered them.
 
 `GpuDeviceContext.CreateHeadless(backend)` (17.32.0) is the headless twin of that explicit-backend overload:
 

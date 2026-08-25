@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Numerics;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Netcode;
 using Xunit;
@@ -158,18 +160,163 @@ public class TileMoveSimulatorTests
         Assert.Equal(new TileCoord(0, 6, 0), s.Tile);
     }
 
+    // Four RUN ticks is two whole steps, so the second click lands on a step BOUNDARY (StepTicks back at zero)
+    // rather than part way through one. That is the case this test is about and the reason it still reads the way
+    // it always did: nothing is in flight to splice, the avatar is drawn exactly on its tile, and the click starts
+    // a step of its own from there. The mid-step case is the sibling below.
     [Fact]
     public void A_second_walk_command_replaces_the_route_from_where_the_player_stands()
     {
         TileMoveSimulator sim = Sim(Bake(FlatWorld()));
         TileMoveState s = TileMoveState.At(new TileCoord(0, 0, 0), TileDirection.N);
         s = Run(sim, s, TileCommand.WalkTo(new TileCoord(0, 8, 0), TileMoveMode.Run), 4);
+        Assert.Equal(0, s.StepTicks);
         s = sim.Step(s, TileCommand.WalkTo(new TileCoord(4, 2, 0), TileMoveMode.Walk), Dt);
         Assert.Equal(TileMoveMode.Walk, s.Mode);
         Assert.Equal(4, s.StepTotal);
         // One, not zero: the command reset step progress and then this same tick advanced the new step by one.
         Assert.Equal(1, s.StepTicks);
         Assert.Equal(new TileCoord(4, 2, 0), s.Route.End);
+    }
+
+    // Walks two ticks into a four tick step heading north out of (5, 5), which leaves the avatar drawn half way
+    // between (5, 5) and (5, 6) with the step still in flight. Every mid-step test below starts here.
+    static TileMoveState HalfWayNorth(TileMoveSimulator sim, TileCoord start)
+    {
+        TileMoveState s = TileMoveState.At(start, TileDirection.N);
+        s = sim.Step(s, TileCommand.WalkTo(new TileCoord(start.X, start.Z + 4, 0), TileMoveMode.Walk), Dt);
+        s = sim.Step(s, TileCommand.Continue(TileMoveMode.Walk), Dt);
+        return s;
+    }
+
+    // The re-click stutter, and the whole shape of the fix. A WalkTo arriving MID-STEP used to re-path from the
+    // tile being LEFT and reset step progress, which drags the presented position back toward the departed tile
+    // before setting off again: a visible hitch on every direction change while moving, and client-predicted, so
+    // both heads produce it identically and no correction ever cleans it up. The step in progress is never
+    // abandoned now.
+    //
+    // Progress is measured as a dot product ALONG the step's own direction rather than as a raw coordinate,
+    // because that is the quantity the presenter glides on and the one a yank makes run backwards. The lateral
+    // component is pinned too: the old semantic moved the avatar sideways onto the new route's first step in the
+    // same tick, which no amount of forward progress would have caught.
+    [Fact]
+    public void A_re_click_mid_step_never_walks_the_avatar_back_toward_the_tile_it_left()
+    {
+        TileMoveSimulator sim = Sim(Bake(FlatWorld()));
+        var start = new TileCoord(5, 5, 0);
+        var origin = new Vector2(start.X, start.Z);
+        var along = new Vector2(0f, 1f);                 // the step in flight is north, into (5, 6)
+
+        TileMoveState s = HalfWayNorth(sim, start);
+        Assert.Equal(new TileCoord(5, 6, 0), s.Route.Next);
+        Assert.Equal(2, s.StepTicks);
+        float progress = Vector2.Dot(s.Position - origin, along);
+        Assert.Equal(0.5f, progress, 5);
+
+        // The re-click, due east, then the two remaining ticks of the step it landed in.
+        var drawn = new List<Vector2>();
+        s = sim.Step(s, TileCommand.WalkTo(new TileCoord(9, 5, 0), TileMoveMode.Walk), Dt);
+        drawn.Add(s.Position);
+        s = sim.Step(s, TileCommand.Continue(TileMoveMode.Walk), Dt);
+        drawn.Add(s.Position);
+
+        foreach (Vector2 p in drawn)
+        {
+            float now = Vector2.Dot(p - origin, along);
+            Assert.True(now >= progress, $"drawn at {p}, which is {progress - now} of a tile back down the step");
+            progress = now;
+            Assert.Equal(origin.X, p.X, 5);              // and never sideways off the step under way
+        }
+
+        // The step committed exactly as it would have without the click, and the new route carries on from there.
+        Assert.Equal(1f, progress, 5);
+        Assert.Equal(new TileCoord(5, 6, 0), s.Tile);
+        Assert.Equal(new TileCoord(9, 5, 0), s.Route.End);
+    }
+
+    [Fact]
+    public void A_spliced_walk_still_lands_on_the_tile_the_second_click_named()
+    {
+        TileMoveSimulator sim = Sim(Bake(FlatWorld()));
+        TileMoveState s = HalfWayNorth(sim, new TileCoord(5, 5, 0));
+
+        // The tile being ENTERED heads the spliced route, so the in-flight step is a step of the new walk rather
+        // than a leftover of the old one, and the mode change still waits for the next step to start.
+        s = sim.Step(s, TileCommand.WalkTo(new TileCoord(9, 5, 0), TileMoveMode.Run), Dt);
+        Assert.Equal(new TileCoord(5, 6, 0), s.Route.Tiles[0]);
+        Assert.Equal(TileMoveMode.Run, s.Mode);
+        Assert.Equal(4, s.StepTotal);
+        Assert.Equal(3, s.StepTicks);
+
+        for (int i = 0; i < 40 && !s.Route.IsIdle; i++) s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+        Assert.Equal(new TileCoord(9, 5, 0), s.Tile);
+        Assert.True(s.Route.IsIdle);
+    }
+
+    [Fact]
+    public void Two_instances_replaying_a_mid_step_re_click_stay_byte_identical()
+    {
+        TileWorldDocument doc = FlatWorld();
+        TileMoveSimulator a = Sim(Bake(doc)), b = Sim(Bake(doc));
+        TileMoveState sa = TileMoveState.At(new TileCoord(5, 5, 0), TileDirection.N);
+        TileMoveState sb = sa;
+        for (int i = 0; i < 40; i++)
+        {
+            // Two clicks, the second landing two ticks into a four tick step, plus a run toggle straddling it.
+            // The splice is a function of the state and the command alone, so a replay of the same stream from
+            // the same seed reproduces it, which is what prediction reconciles against rather than snapping.
+            TileCommand c = i switch
+            {
+                0 => TileCommand.WalkTo(new TileCoord(5, 9, 0), TileMoveMode.Walk),
+                2 => TileCommand.WalkTo(new TileCoord(9, 5, 0), TileMoveMode.Walk),
+                < 9 => TileCommand.Continue(TileMoveMode.Walk),
+                _ => TileCommand.Continue(TileMoveMode.Run),
+            };
+            sa = a.Step(sa, c, Dt);
+            sb = b.Step(sb, c, Dt);
+            Assert.Equal(sa, sb);
+        }
+        Assert.Equal(new TileCoord(9, 5, 0), sa.Tile);
+    }
+
+    [Fact]
+    public void The_route_cap_counts_the_step_the_splice_inherited()
+    {
+        // The committed step is a step of the SPLICED route, not a free one, so the cap covers the whole thing.
+        // Counted off the new path alone it would hand a player one extra tile of walk for every re-click, which
+        // a head could ratchet by clicking again every step.
+        TileCollisionMap map = Bake(FlatWorld());
+        var sim = new TileMoveSimulator(map, Ticks, null, new TileMoveOptions { MaxRouteSteps = 3 });
+        var goal = new TileCoord(20, 0, 0);
+        TileMoveState s = TileMoveState.At(new TileCoord(0, 0, 0), TileDirection.N);
+        s = sim.Step(s, TileCommand.WalkTo(new TileCoord(0, 20, 0), TileMoveMode.Walk), Dt);
+        Assert.Equal(3, s.Route.Tiles.Count);
+
+        s = sim.Step(s, TileCommand.WalkTo(goal, TileMoveMode.Walk), Dt);
+        Assert.Equal(3, s.Route.Tiles.Count);
+        // The inherited step heads it, and the two tiles left are the pathfinder's own first two FROM that tile,
+        // compared against a fresh search rather than against literals so the BFS tie-break stays its business.
+        var entering = new TileCoord(0, 1, 0);
+        Assert.Equal(entering, s.Route.Tiles[0]);
+        TilePath after = TilePathfinder.FindPath(map, 0, entering, goal, 1, sim.MaxPathRadius);
+        Assert.Equal(after.Tiles[0], s.Route.Tiles[1]);
+        Assert.Equal(after.Tiles[1], s.Route.End);
+        Assert.NotEqual(goal, s.Route.End);
+    }
+
+    [Fact]
+    public void A_cross_plane_goal_arriving_mid_step_is_still_dropped_whole()
+    {
+        TileMoveSimulator sim = Sim(Bake(FlatWorld()));
+        TileMoveState s = HalfWayNorth(sim, new TileCoord(5, 5, 0));
+
+        TileMoveState dropped = sim.Step(s, TileCommand.WalkTo(new TileCoord(9, 5, 1), TileMoveMode.Run), Dt);
+
+        // Indistinguishable from a tick that carried no command, mode included, which is the same answer the
+        // standing case gives. The splice never becomes a way for a refused click to change the route.
+        Assert.Equal(sim.Step(s, TileCommand.Continue(TileMoveMode.Walk), Dt), dropped);
+        Assert.Equal(new TileCoord(5, 9, 0), dropped.Route.End);
+        Assert.Equal(TileMoveMode.Walk, dropped.Mode);
     }
 
     [Fact]

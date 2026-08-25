@@ -8401,6 +8401,14 @@ never shortens that step, it makes the one after it a run. A client that sent `T
 played out would hold run for exactly one tick and then quietly drop back to a walk, because `None` is `Continue`
 at walk.
 
+**The step in progress is never abandoned.** A `WalkTo` or an `Interact` arriving part way through a step keeps
+that step's progress, its tick total and the tile it is entering, paths the new route from THAT tile, and splices
+it behind, so the step in flight commits as it would have and the new walk carries on from where the foot lands. A
+click on a step boundary, standing included, starts from the tile stood on as before. Nothing to do on a head: the
+simulator both heads run owns it, so a direction change while moving is predicted without the avatar sliding back
+toward the tile it was leaving. The route cap counts the inherited step, so re-clicking every step cannot walk a
+player further than one click's worth.
+
 **`CorrectionCount` and `SnapCount` are the health readout.** A clean session over a map both heads baked
 identically costs ZERO corrections, because both replay the same commands over the same tiles. `SnapCount` counts
 the reconciliations that CUT rather than glided, which means the two heads were on different SQUARES.

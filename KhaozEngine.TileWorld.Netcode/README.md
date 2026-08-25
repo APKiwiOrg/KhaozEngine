@@ -61,7 +61,9 @@ SERVE, which filters a viewer's area of interest to the viewer's own plane.
 
 - **`TileMoveSimulator`** - the ONE discrete stepper both heads run, pure over its inputs and integer-only.
   `Accepts` is THE definition of whether a command applies at all, `Step` advances one tick, `BeginWalk` and
-  `BeginInteract` are the two route starts.
+  `BeginInteract` are the two route starts. The step in progress is never abandoned: a click arriving part way
+  through a step keeps that step, paths from the tile it is ENTERING and splices the new walk behind it, so a
+  direction change while moving never drags the avatar back toward the tile it was leaving.
 - **`TileMovementSystem`** - runs the simulator over every OWNED player entity inside a cell's own fixed tick,
   skipping ghosts and migrating entities so no player is stepped twice in one tick.
 - **`TileReach`** / **`TileActionQueue`** / **`TilePendingAction`** / **`TileActionKind`** - the OSRS reach rule and

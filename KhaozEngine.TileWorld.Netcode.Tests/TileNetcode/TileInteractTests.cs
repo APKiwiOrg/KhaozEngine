@@ -1,3 +1,4 @@
+using System.Numerics;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Netcode;
 using Xunit;
@@ -276,6 +277,62 @@ public class TileInteractTests
 
         Assert.True(sim.Accepts(s, TileCommand.Interact(1, TileMoveMode.Run)));
         Assert.False(sim.Accepts(s, TileCommand.WalkTo(new TileCoord(5, 14, 2), TileMoveMode.Run)));
+    }
+
+    // The interaction half of the re-click splice. An Interact arriving part way through a step used to reset that
+    // step and route from the tile being LEFT, so clicking a booth while already walking dragged the avatar back
+    // toward the tile it had half left. It splices now exactly as a WalkTo does: the reach search runs from the
+    // tile being ENTERED, the step in flight keeps its progress and commits, and the walk to the booth carries on
+    // from there. The arrival turn still lands, through FaceTarget at the commit rather than here.
+    [Fact]
+    public void An_interact_arriving_mid_step_splices_behind_the_step_in_flight()
+    {
+        (TileMoveSimulator sim, long booth) = World();
+        TileMoveState s = TileMoveState.At(new TileCoord(5, 10, 0), TileDirection.N);
+        s = sim.Step(s, TileCommand.WalkTo(new TileCoord(5, 14, 0), TileMoveMode.Walk), Dt);
+        s = sim.Step(s, TileCommand.Continue(TileMoveMode.Walk), Dt);
+        Assert.Equal(new TileCoord(5, 11, 0), s.Route.Next);
+        Assert.Equal(2, s.StepTicks);
+        Assert.Equal(new Vector2(5f, 10.5f), s.Position);
+
+        s = sim.Step(s, TileCommand.Interact(booth, TileMoveMode.Walk), Dt);
+
+        // Forward along the step it was already taking, not back toward (5, 10), and the step keeps the cadence
+        // and the progress it began with rather than restarting on the click.
+        Assert.Equal(new Vector2(5f, 10.75f), s.Position);
+        Assert.Equal(3, s.StepTicks);
+        Assert.Equal(4, s.StepTotal);
+        Assert.Equal(new TileCoord(5, 11, 0), s.Route.Tiles[0]);
+        Assert.Equal(booth, s.InteractTarget);
+        // Routed from (5, 11) rather than from (5, 10): the reach tile the walk picks is the one nearest THAT.
+        Assert.Equal(new TileCoord(9, 10, 0), s.Route.End);
+
+        for (int i = 0; i < 40 && !s.Route.IsIdle; i++) s = sim.Step(s, TileCommand.Continue(TileMoveMode.Walk), Dt);
+        Assert.Equal(new TileCoord(9, 10, 0), s.Tile);
+        Assert.Equal(booth, s.InteractTarget);
+        Assert.Equal(TileDirection.E, s.Facing);
+    }
+
+    // The other half, and the one a splice could quietly get wrong: a target that cannot be reached at all. The
+    // route is still dropped and the pending target still cleared, which is what the server answers with a
+    // CannotReach, but the step already in flight commits first rather than being yanked back.
+    [Fact]
+    public void An_unreachable_interact_mid_step_still_finishes_the_step_before_it_stands()
+    {
+        // The booth walled in on all four cardinals has no reach tile at all, so TryNearest refuses outright.
+        (TileMoveSimulator sim, long booth) = World((9, 10), (11, 10), (10, 9), (10, 11));
+        TileMoveState s = TileMoveState.At(new TileCoord(5, 10, 0), TileDirection.N);
+        s = sim.Step(s, TileCommand.WalkTo(new TileCoord(5, 14, 0), TileMoveMode.Walk), Dt);
+        s = sim.Step(s, TileCommand.Continue(TileMoveMode.Walk), Dt);
+
+        s = sim.Step(s, TileCommand.Interact(booth, TileMoveMode.Walk), Dt);
+        Assert.Equal(0, s.InteractTarget);
+        Assert.Equal(new Vector2(5f, 10.75f), s.Position);
+        Assert.Equal(new TileCoord(5, 11, 0), s.Route.Next);
+
+        s = sim.Step(s, TileCommand.Continue(TileMoveMode.Walk), Dt);
+        Assert.Equal(new TileCoord(5, 11, 0), s.Tile);
+        Assert.True(s.Route.IsIdle);
     }
 
     [Fact]

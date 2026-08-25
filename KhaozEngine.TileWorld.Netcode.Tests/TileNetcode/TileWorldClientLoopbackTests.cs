@@ -93,6 +93,44 @@ public class TileWorldClientLoopbackTests
         Assert.Equal(0, h.Client.SnapCount);
     }
 
+    // Changing direction while already moving is the commonest thing a player does, and the splice that answers it
+    // belongs in a loopback test rather than only in a simulator one: the client predicts the splice a whole tick
+    // before the server applies it, so a splice depending on anything beyond the state and the command would show
+    // up here as a correction, and two heads resolving the inherited step differently would show up as a cut.
+    [Fact]
+    public void A_re_click_mid_step_costs_no_correction_and_no_snap()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), clientPhase: 0.13f);
+        h.Frames(4);
+        Assert.True(h.Client.IsJoined);
+
+        // Walk, because a four tick step leaves a wide window to click inside. A run would too, at two ticks, but
+        // the wide one is what makes the click reliably land part way through rather than on a boundary.
+        h.Client.Queue(TileCommand.WalkTo(new TileCoord(10, 18, 0), TileMoveMode.Walk));
+
+        int progressAtClick = -1;
+        for (int i = 0; i < 60 && progressAtClick < 0; i++)
+        {
+            h.Frames(1);
+            TileMoveState p = h.Client.Prediction.PredictedState;
+            if (p.Route.IsIdle || p.StepTicks == 0) continue;
+            progressAtClick = p.StepTicks;
+            h.Client.Queue(TileCommand.WalkTo(new TileCoord(18, 10, 0), TileMoveMode.Walk));
+        }
+        // The whole point of the test is that the click lands on a state with progress to inherit. A boundary
+        // click exercises the old path and would pass for the wrong reason.
+        Assert.InRange(progressAtClick, 1, 3);
+
+        h.Frames(400);
+
+        Assert.True(h.Server.TryGetPlayerState(0, out TileMoveState server));
+        Assert.Equal(new TileCoord(18, 10, 0), server.Tile);
+        Assert.Equal(new TileCoord(18, 10, 0), h.Client.Prediction.PredictedState.Tile);
+        Assert.Equal(0, h.Client.CorrectionCount);
+        Assert.Equal(0, h.Client.SnapCount);
+    }
+
     // The blocker sits on the tile the client's OWN pathfinder picks as the first step of the walk, which is what
     // makes the two heads step different ways on the very first tick. Further down the route it would cost nothing
     // at all, and the test below pins that as the deliberate property it is.

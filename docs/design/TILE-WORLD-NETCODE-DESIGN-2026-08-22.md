@@ -146,12 +146,22 @@ Interact), `TileCoord Goal`, `TileMoveMode Mode`, `long Target` (net id or objec
 `TileMoveSimulator : ITickSimulator<TileMoveState, TileCommand>` owns the shared inputs (the collision map, the
 document for footprints, the tick counts) and is the ONE stepper both heads run:
 
-- `WalkTo`: `FindPath(map, plane, state.Tile, goal)` into a new `Route`, mode taken from the command, and the tick
+- `WalkTo`: `FindPath(map, plane, from, goal)` into a new `Route`, mode taken from the command, and the tick
   that carries the command COUNTS as the first tick of the first step, so a click never costs a tick of standing
   still. An unreachable goal walks to the nearest reachable tile, the OSRS rule `FindPath` already implements. A
-  goal on another plane is dropped whole rather than pathed on the player's own plane.
-- `Interact`: `TileReach.TryNearest(map, footprint, plane, state.Tile, ...)` picks the reach tile, routes to it, and
-  records the target so arrival faces it and raises the action. A target on ANOTHER plane is dropped whole, the same
+  goal on another plane is dropped whole rather than pathed on the player's own plane. **`from` is not always
+  `state.Tile`.** The step in progress is never abandoned, which is OSRS's own rule: a click arriving with
+  `StepTicks` above zero keeps that progress, its total and the tile the step is entering, paths from THAT tile,
+  and splices the result behind it, so the in-flight step commits exactly as it would have and the new walk
+  continues from where the foot lands. Pathing from `state.Tile`, the tile being LEFT, drags the drawn position
+  back toward it first, which is a visible stutter on every direction change while moving and is predicted on both
+  heads, so no correction ever cleans it up. A click on a step BOUNDARY (progress at zero, standing included) has
+  nothing in flight and starts from the tile stood on. The route cap counts the spliced step, so a re-click every
+  step cannot ratchet a route past `MaxRouteSteps`.
+- `Interact`: `TileReach.TryNearest(map, footprint, plane, from, ...)` picks the reach tile, routes to it, and
+  records the target so arrival faces it and raises the action. `from` is the same tile `WalkTo` paths from, so a
+  booth clicked while already walking splices the same way and the unreachable answer still finishes the step in
+  flight before it stands. A target on ANOTHER plane is dropped whole, the same
   answer `WalkTo` gives a cross-plane goal, and the target is resolved BEFORE anything is written so the tick reads
   exactly as if no command had arrived. A target on the player's OWN plane with no reachable reach tile is the other
   answer: the route is dropped and the pending target cleared, which is the state a `CannotReach` accompanies. The

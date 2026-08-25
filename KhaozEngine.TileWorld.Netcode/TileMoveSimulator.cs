@@ -8,8 +8,8 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// The ONE discrete stepper both heads run. Pure over its inputs and integer-only, so a client replay of the same
 /// commands over the same collision map reproduces the server's state exactly, which is what lets prediction snap
 /// only on a genuine disagreement.
-/// <para>Order inside one tick: a WalkTo or Interact command replaces the route (and resets step progress), then
-/// step progress advances, and a step COMMITS when it fills. A commit re-checks <see cref="TileCollision.CanStep"/>
+/// <para>Order inside one tick: a WalkTo or Interact command replaces the route, then step progress advances, and a
+/// step COMMITS when it fills. A commit re-checks <see cref="TileCollision.CanStep"/>
 /// against the live map, so a blocker that appeared mid-route is caught at the moment the foot lands: the route is
 /// re-pathed ONCE from the current tile to the same end, and if that also fails the route is dropped and the player
 /// stands. The tick a route with a pending interaction empties ALSO turns the player toward the target, so the whole
@@ -17,6 +17,17 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// <para>The tick that carries a command is a FULL tick: it starts the walk and advances step progress by one, so
 /// a click never costs a tick of standing still. That is the rule the step-cadence tests pin, and it is why a
 /// freshly issued route reads one tick into its first step rather than zero.</para>
+/// <para>THE STEP IN PROGRESS IS NEVER ABANDONED, which is OSRS's rule and the one a re-click while moving is
+/// judged by. A WalkTo or an Interact arriving part way through a step (<see cref="TileMoveState.StepTicks"/>
+/// above zero, so the avatar is drawn between two tiles) keeps that progress, its total, and the tile it is
+/// entering. The new route is pathed from THAT tile and SPLICED behind it, so the step in flight commits exactly
+/// as it would have and the new walk continues from where the foot lands. Re-pathing from
+/// <see cref="TileMoveState.Tile"/> instead, which names the tile being LEFT, drags the drawn position back toward
+/// it before setting off: a visible stutter on every direction change while moving, and predicted, so both heads
+/// produce it and no correction ever cleans it up. A command arriving on a step BOUNDARY (progress at zero,
+/// standing included) has nothing in flight and starts its step from the tile stood on, as it always did. The
+/// route cap counts the spliced step, the mode still lands at the start of the NEXT step, and a cross-plane goal
+/// is still dropped whole.</para>
 /// <para>Mode rides on EVERY command, <see cref="TileCommandKind.None"/> included, because the wire frame is a
 /// fixed size and carries <see cref="TileCommand.Mode"/> whatever the kind. A toggle takes effect at the START of
 /// the next step: the step already under way keeps the total it was stamped with, so holding run halfway through a
@@ -143,9 +154,13 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         return Advance(s);
     }
 
-    /// <summary>Paths from where the player stands to <paramref name="goal"/> and starts walking it. An
-    /// unreachable goal walks to the nearest reachable tile, the rule <see cref="TilePathfinder"/> already
-    /// implements. A goal the player already stands on just stands.
+    /// <summary>Paths to <paramref name="goal"/> and starts walking it. An unreachable goal walks to the nearest
+    /// reachable tile, the rule <see cref="TilePathfinder"/> already implements. A goal the player already stands
+    /// on just stands.
+    /// <para>The walk is pathed from the tile the player is ENTERING when a step is in flight, and from the tile
+    /// they stand on otherwise, and the in-flight case splices rather than restarting (see the type doc). Step
+    /// progress and its total survive a splice untouched, so the step under way keeps both its cadence and its
+    /// destination.</para>
     /// <para>A goal on ANOTHER PLANE is refused, the same answer <see cref="TileCommandKind.Interact"/> gives a
     /// target on another plane: the state comes back untouched, route, step progress and mode all as they were.
     /// Planes are separate walkable surfaces with no step between them, so pathing the goal on the player's plane
@@ -153,24 +168,46 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     /// <param name="state">The state to re-route.</param>
     /// <param name="goal">The tile clicked.</param>
     /// <param name="mode">Walk or run, which decides how many ticks each step of the new route takes.</param>
-    /// <returns>The state carrying the new route, with step progress reset to the start of a step, or the state
-    /// unchanged when <paramref name="goal"/> is on another plane.</returns>
+    /// <returns>The state carrying the new route, or the state unchanged when <paramref name="goal"/> is on
+    /// another plane.</returns>
     public TileMoveState BeginWalk(in TileMoveState state, TileCoord goal, TileMoveMode mode)
     {
         TileMoveState s = state;
         if (!Accepts(s, TileCommand.WalkTo(goal, mode))) return s;
         s.Mode = mode;
-        s.StepTicks = 0;
-        s.StepTotal = StepTicks.For(mode);
-        TilePath path = TilePathfinder.FindPath(Map, s.Tile.Plane, s.Tile, goal, AgentSize, MaxPathRadius);
-        s.Route = RouteFor(path);
+        bool splice = StepInFlight(s, out TileCoord from);
+        if (!splice)
+        {
+            s.StepTicks = 0;
+            s.StepTotal = StepTicks.For(mode);
+        }
+        TilePath path = TilePathfinder.FindPath(Map, s.Tile.Plane, from, goal, AgentSize, MaxPathRadius);
+        s.Route = splice ? SplicedRouteFor(from, path.Tiles) : RouteFor(path);
         return s;
+    }
+
+    // Whether a step is part way through, which is the whole trigger for the splice. Progress ABOVE ZERO is the
+    // test rather than a live route: a route whose step has not started yet draws the avatar exactly on its tile,
+    // so re-pathing from there moves nothing on screen and the ordinary path is correct for it.
+    //
+    // The entering tile is the route's next, which is where a spliced walk has to be pathed FROM. A route never
+    // changes plane, so it carries the player's own and no plane check is repeated here.
+    static bool StepInFlight(in TileMoveState state, out TileCoord entering)
+    {
+        if (state.Route.IsIdle || state.StepTicks == 0) { entering = state.Tile; return false; }
+        entering = state.Route.Next;
+        return true;
     }
 
     // Routes to a reach tile of the target and remembers it, so the arrival tick faces the target and raises the
     // action. An unknown target, or a same-plane one with no reachable tile at all, drops the route and clears the
     // target: the server answers that case with a CannotReach game message, and the client pre-checks the same map
     // on click.
+    //
+    // A click arriving MID-STEP splices exactly as a WalkTo does: the reach search runs from the tile being
+    // ENTERED and the route it produces is spliced behind that tile. The dropped-route answers splice too, down to
+    // a route of just the step in flight, because "cannot reach" is not a reason to yank the avatar back onto the
+    // tile it is walking off. Both then reach the same standing state one commit later.
     //
     // A target on ANOTHER PLANE is not that case. It is refused the way BeginWalk refuses a cross-plane goal, with
     // the state untouched, and that is why acceptance is asked BEFORE the first write. Mode, cadence, route and
@@ -188,21 +225,28 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         int plane = 0;
         bool resolved = targets is not null && targets.TryGetFootprint(target, out footprint, out plane);
 
+        bool splice = StepInFlight(s, out TileCoord from);
+
         s.Mode = mode;
-        s.StepTicks = 0;
-        s.StepTotal = StepTicks.For(mode);
+        if (!splice)
+        {
+            s.StepTicks = 0;
+            s.StepTotal = StepTicks.For(mode);
+        }
         s.InteractTarget = 0;
-        s.Route = TileRoute.None;
+        s.Route = splice ? SplicedRouteFor(from, Array.Empty<TileCoord>()) : TileRoute.None;
 
         if (!resolved) return s;
-        if (!TileReach.TryNearest(Map, footprint, plane, s.Tile, AgentSize, MaxPathRadius,
+        if (!TileReach.TryNearest(Map, footprint, plane, from, AgentSize, MaxPathRadius,
                 out TileCoord reachTile, out TilePath path))
             return s;
 
         // The target is remembered on a WALK, so the arrival tick can act on it, and a zero step interaction faces
-        // the target here because no step will ever run to set the facing for it.
+        // the target here because no step will ever run to set the facing for it. A SPLICED route always has the
+        // step in flight left to walk, so it is never idle here and its turn falls to FaceTarget at the commit,
+        // which is the same member the ordinary walked arrival goes through.
         s.InteractTarget = target;
-        s.Route = RouteFor(path);
+        s.Route = splice ? SplicedRouteFor(from, path.Tiles) : RouteFor(path);
         if (s.Route.IsIdle) s.Facing = TileReach.FacingToward(Map, footprint, plane, reachTile);
         return s;
     }
@@ -303,5 +347,22 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         var cut = new TileCoord[MaxRouteSteps];
         for (int i = 0; i < MaxRouteSteps; i++) cut[i] = tiles[i];
         return new TileRoute(cut, 0);
+    }
+
+    // The route a click landing mid-step produces: the tile the step in flight is entering, then the walk pathed
+    // from that tile. Built at index 0, so the step already part way through stays the CURRENT step and its
+    // progress keeps counting toward the same destination it was counting toward before the click.
+    //
+    // The cap counts the inherited step, which is why this does not simply defer to RouteFor. Counted off the new
+    // walk alone, every re-click would hand the player one tile of walk the cap never charged for, and a head
+    // clicking once a step would ratchet a route arbitrarily far past MaxRouteSteps. The ctor pins the cap at one
+    // or more, so there is always room for the inherited step itself.
+    TileRoute SplicedRouteFor(TileCoord entering, IReadOnlyList<TileCoord> after)
+    {
+        int keep = Math.Min(after.Count, MaxRouteSteps - 1);
+        var spliced = new TileCoord[keep + 1];
+        spliced[0] = entering;
+        for (int i = 0; i < keep; i++) spliced[i + 1] = after[i];
+        return new TileRoute(spliced, 0);
     }
 }

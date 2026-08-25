@@ -13,7 +13,10 @@ staged. The rule was the deleted Metal backend's per-stage declaration-order buf
 property of Metal (measured by MM6, `MetalTwoUniformBufferGpuTests`), so with 18.0.0 shipping no backend
 that numbers that way, the two shipped workarounds are unfolded and the enforcement is deleted. The release
 also makes the windowed create path honour a `KE_GRAPHICS_BACKEND` pin
-([#719](https://github.com/APKiwiOrg/KhaozEngine/issues/719)).
+([#719](https://github.com/APKiwiOrg/KhaozEngine/issues/719)), and carries two tile-world movement fixes
+Grimhollow's playtests found: a click arriving mid-step no longer restarts that step, and a `TilePresenter`
+pose names the tile CENTRE rather than its corner ([#730](https://github.com/APKiwiOrg/KhaozEngine/issues/730)).
+**Both change what a consumer draws**, so read their two bullets before repinning.
 
 - **The rule is retired in code.** `MslBindingOrder.CheckPrefix`, which required every stage's resources to
   be a prefix of the layout's per index space, is deleted, so `ShaderValidation.ValidatePair` no longer
@@ -51,6 +54,29 @@ also makes the windowed create path honour a `KE_GRAPHICS_BACKEND` pin
   support probe as well as disarming the creation catch, so the caller gets the provider's own exception
   rather than a preflight redirect. A stored preference, an unrecognized override and the plain OS default
   all still fall back exactly as before.
+- **BEHAVIOUR: a tile click arriving MID-STEP now splices instead of restarting the step in progress.**
+  `TileMoveSimulator.BeginWalk` and `BeginInteract` used to re-path from `TileMoveState.Tile`, which names the
+  tile being LEFT, and reset step progress, so a direction change while walking dragged the drawn position back
+  toward the departed tile before setting off. It was client-predicted, so both heads produced the stutter
+  identically and no correction ever cleaned it up. The step in progress is never abandoned now, which is
+  OSRS's rule: a command landing with `StepTicks` above zero keeps that progress, its total and the tile the
+  step is entering, paths the new route from THAT tile, and splices it behind, so the in-flight step commits
+  exactly as it would have and the new walk carries on from where the foot lands. A command landing on a step
+  boundary, standing included, is unchanged. The route cap counts the inherited step, so re-clicking every step
+  cannot ratchet a route past `MaxRouteSteps`. The mode still takes effect at the start of the next step, a
+  cross-plane goal is still dropped whole, the arrival turn still fires when the spliced route empties, and the
+  splice is a function of the state and the command alone, so replay determinism is intact. A consumer feels
+  this without changing any code: clicks while moving stop hitching. A head that worked around it by suppressing
+  clicks mid-step should stop doing that.
+- **BEHAVIOUR: a `TilePose` names the tile CENTRE, so every drawn position moves half a tile on each axis**
+  ([#730](https://github.com/APKiwiOrg/KhaozEngine/issues/730)). `TilePresenter.Pose` and `LocalPose` converted
+  through `TileWorldSpace` at the tile CORNER while the tile's ground quad spans `x..x+1` and
+  `TileObjectProps.AnchorPosition` centres a 1x1 prop at `x + 0.5`, so an avatar stood half a tile diagonally
+  off every prop it walked up to and off the middle of the ground it occupied. The presenter adds the half tile
+  itself now, in TILE units ahead of `TileWorldSpace`, so the z half goes through the same negation the
+  coordinate does. Glide, prediction smoothing and yaw are unchanged, because the offset is constant along a
+  step. **A consumer that centred the pose itself must delete that compensation at the repin, or its avatars
+  move a whole tile.** Grimhollow's `CentredPose` shim is exactly that and goes when it adopts.
 
 ## 18.0.0
 

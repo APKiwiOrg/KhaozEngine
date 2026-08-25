@@ -140,9 +140,29 @@ public sealed class ClientPrediction<TState, TCommand>
         }
     }
 
-    private float InterTickFraction => settings.TickSeconds > 0f
+    /// <summary>
+    /// How far <see cref="RenderedState"/> has eased from the previous tick's position toward the current one, 0 at
+    /// the instant of a <see cref="Predict"/> and 1 once a whole tick has been advanced. Exposed for a presentation
+    /// layer that has to REBUILD the interpolated position rather than take it: a discrete-lattice head (tile
+    /// movement) draws its own curve between two lattice points and needs the phase this layer is at to line its
+    /// curve up with the one here.
+    /// </summary>
+    public float InterTickFraction => settings.TickSeconds > 0f
         ? MathF.Min(1f, secondsSinceLastPredict / settings.TickSeconds)
         : 1f;
+
+    /// <summary>
+    /// The decaying reconciliation offset currently folded into <see cref="RenderedState"/>, on the planar axes.
+    /// Zero on a session that has never mispredicted, which on a deterministic lattice is the ordinary case.
+    /// <para>Exposed so a presentation layer can SUBTRACT it, take the interpolation apart, and put it back
+    /// unchanged. A layer that redraws the interpolated position without lifting this off first would put the
+    /// correction through whatever transform it applies, and a correction that is scaled or clamped stops decaying
+    /// the way this class decays it, which is the whole reason a misprediction does not pop.</para>
+    /// <para>The vertical half (<see cref="IPredictedState{TSelf}.Vertical"/>) is deliberately not exposed
+    /// alongside it: nothing has needed to take the vertical apart, and an unused public read is a promise with no
+    /// caller to keep it honest.</para>
+    /// </summary>
+    public Vector2 RenderOffset => renderOffset;
 
     public void Reset(in TState initialState)
     {

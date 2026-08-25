@@ -36,22 +36,29 @@ public sealed class TilePresenter
     /// <summary>Builds a presenter for a world's tile size and plane height.</summary>
     /// <param name="tileSize">Metres per tile. Must be positive.</param>
     /// <param name="planeHeight">Metres between two planes. Zero is legal, and draws every plane flat.</param>
+    /// <param name="glide">How long the body may lag its committed tile. Omitted is
+    /// <see cref="TileGlideWindow.WholeStep"/>, the full-step glide this package always drew. A client hands its own
+    /// <see cref="TileWorldClient.Glide"/> here, see the type doc.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="tileSize"/> is zero or negative, which would
     /// collapse the whole world onto the origin.</exception>
-    public TilePresenter(float tileSize, float planeHeight)
+    public TilePresenter(float tileSize, float planeHeight, TileGlideWindow glide = default)
     {
         if (tileSize <= 0f)
             throw new ArgumentOutOfRangeException(nameof(tileSize), tileSize, "A tile is at least some metres wide.");
         TileSize = tileSize;
         PlaneHeight = planeHeight;
+        Glide = glide;
     }
 
     /// <summary>Builds a presenter from a loaded document, which is where the real numbers live. A head builds one
     /// of these the moment it has the world file, and replaces the placeholder the client started with.</summary>
     /// <param name="document">The loaded world.</param>
+    /// <param name="glide">How long the body may lag its committed tile, <see cref="TileWorldClient.Glide"/> on a
+    /// head that has a client. Omitted is <see cref="TileGlideWindow.WholeStep"/>.</param>
     /// <exception cref="ArgumentNullException"><paramref name="document"/> is null.</exception>
-    public TilePresenter(TileWorldDocument document)
-        : this((document ?? throw new ArgumentNullException(nameof(document))).TileSize, document.PlaneHeight) { }
+    public TilePresenter(TileWorldDocument document, TileGlideWindow glide = default)
+        : this((document ?? throw new ArgumentNullException(nameof(document))).TileSize, document.PlaneHeight,
+            glide) { }
 
     /// <summary>Metres per tile.</summary>
     public float TileSize { get; }
@@ -59,6 +66,16 @@ public sealed class TilePresenter
     /// <summary>Metres between two planes. A plane INDEX times this is the height the pose draws at, which is why
     /// <see cref="TileMoveState.Vertical"/> can stay document-free.</summary>
     public float PlaneHeight { get; }
+
+    /// <summary>
+    /// How long the drawn body may lag the tile it is committed to. <see cref="TileGlideWindow.WholeStep"/> unless a
+    /// caller passed one, which draws the full-step glide this package has always drawn.
+    /// <para>It lives on the PRESENTER rather than being handed to each call because that is what makes the local
+    /// player and every remote agree by construction: one presenter serves <see cref="Pose"/> and
+    /// <see cref="LocalPose"/> both, so there is no second copy of the number to set differently and no way for the
+    /// local body to snap while the remotes slide.</para>
+    /// </summary>
+    public TileGlideWindow Glide { get; }
 
     /// <summary>
     /// Where a state draws: the glide from <see cref="TileMoveState.StepFrom"/> INTO
@@ -72,6 +89,9 @@ public sealed class TilePresenter
     /// draws exactly where its owner draws it with nothing guessed and nothing reconstructed from the tile it was
     /// last seen on. A state with no step in flight draws on its tile centre, whatever
     /// <paramref name="extraTicks"/> says.</para>
+    /// <para><see cref="Glide"/> remaps the fraction on the way through, so a windowed presenter draws the body onto
+    /// its committed tile within the window's seconds and holds it there for the rest of the step. On the default
+    /// <see cref="TileGlideWindow.WholeStep"/> the fraction is not touched at all.</para>
     /// </summary>
     /// <param name="state">The state to draw.</param>
     /// <param name="extraTicks">Ticks elapsed since the state was sampled. Negative is treated as zero.</param>
@@ -82,6 +102,7 @@ public sealed class TilePresenter
         if (state.IsStepping && state.StepTotal > 0)
         {
             float f = Math.Clamp((state.StepTicks + Math.Max(0f, extraTicks)) / state.StepTotal, 0f, 1f);
+            f = TileGlideWindow.Remap(f, Glide.FractionOf(state.StepTotal));
             // In FLOAT, for the reason TileMoveState.Position differences in float: the fields are public, and two
             // hand-written coordinates a world apart would overflow an int subtraction.
             tileX = state.StepFrom.X + ((float)state.Tile.X - state.StepFrom.X) * f;
@@ -96,6 +117,18 @@ public sealed class TilePresenter
     /// override rather than from the tile, because that override is the whole point of the prediction layer: it is
     /// a continuous position over a discrete lattice, and rounding it back to a tile here would throw away every
     /// frame of smoothing the layer just computed.
+    /// <para>On the default <see cref="TileGlideWindow.WholeStep"/> that override is drawn verbatim, which is what
+    /// this method has always done. A WINDOWED presenter has to take the rendered position apart first, because the
+    /// window remaps the STEP interpolation and nothing else: the decaying correction offset is lifted off, the step
+    /// is re-placed at the remapped fraction, and the offset goes straight back on. Remapping the rendered position
+    /// whole would put the correction through the same multiplier and swallow it, so a misprediction would cut
+    /// instead of decaying and the one thing the prediction layer smooths would stop being smoothed.</para>
+    /// <para>The fraction is rebuilt from the state and the layer's inter-tick phase rather than measured off the
+    /// drawn point, and that is what keeps a corner continuous. Measured off the point, the fraction would be taken
+    /// against whichever step is in flight NOW while the eased point is still on the one before it, so every turn
+    /// would jump. Rebuilt, the tick a step commits reads as a small NEGATIVE fraction, which the remap clamps onto
+    /// <see cref="TileMoveState.StepFrom"/>: exactly where the previous step's remap had already parked the
+    /// body.</para>
     /// </summary>
     /// <param name="prediction">The client's prediction for the local player.</param>
     /// <exception cref="ArgumentNullException"><paramref name="prediction"/> is null.</exception>
@@ -103,9 +136,29 @@ public sealed class TilePresenter
     {
         ArgumentNullException.ThrowIfNull(prediction);
         TileMoveState r = prediction.RenderedState;
-        Vector2 planar = r.HasRenderOverride ? r.RenderPosition : r.Position;
-        float plane = r.HasRenderOverride ? r.RenderVertical : r.Vertical;
+        bool eased = r.HasRenderOverride;
+        Vector2 planar = eased ? r.RenderPosition : r.Position;
+        float plane = eased ? r.RenderVertical : r.Vertical;
+        if (!Glide.CoversWholeStep(r.StepTotal)) planar = Windowed(prediction, r, eased);
         return new TilePose(Centre(planar.X, plane * PlaneHeight, planar.Y), Yaw(r.Facing));
+    }
+
+    // The local player's step, re-placed at the window's fraction, with the correction offset put back unchanged.
+    // Split out so LocalPose reads as the one-line pass-through it still is on the default window.
+    //
+    // The fraction is the CONTINUOUS one the drawn body is at, which is a tick behind the state: the layer eases from
+    // the previous tick's position to this one, so at phase p through the tick the body is at (StepTicks - 1 + p)
+    // ticks of the step. That trailing tick is the layer's, not the window's, and it is why a head measures its
+    // catch-up as the window plus one tick.
+    Vector2 Windowed(ClientPrediction<TileMoveState, TileCommand> prediction, in TileMoveState r, bool eased)
+    {
+        Vector2 offset = eased ? prediction.RenderOffset : Vector2.Zero;
+        if (!r.IsStepping || r.StepTotal == 0) return new Vector2(r.Tile.X, r.Tile.Z) + offset;
+        float phase = eased ? prediction.InterTickFraction : 1f;
+        float f = TileGlideWindow.Remap((r.StepTicks - 1f + phase) / r.StepTotal, Glide.FractionOf(r.StepTotal));
+        return new Vector2(
+            r.StepFrom.X + ((float)r.Tile.X - r.StepFrom.X) * f,
+            r.StepFrom.Z + ((float)r.Tile.Z - r.StepFrom.Z) * f) + offset;
     }
 
     // A tile point as a world position on the tile CENTRE, which is the one place the half tile is added. In TILE

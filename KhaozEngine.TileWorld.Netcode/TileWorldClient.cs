@@ -78,10 +78,12 @@ public sealed partial class TileWorldClient : IDisposable
                 HardSnapDistance: 0.5f, CorrectionRate: 8f, CorrectionDeadZone: 0.01f));
         View = new ClientReplicationView(registry ?? TileProtocol.CreateRegistry());
         World = new World();
+        Glide = new TileGlideWindow(config.GlideWindowSeconds, config.TickSeconds);
         // A placeholder until the head has the world file. One metre tiles and the document default plane height
         // are the only honest guess available before a document is loaded, and Presenter is settable for exactly
-        // this reason.
-        Presenter = new TilePresenter(1f, TileWorldDocument.DefaultPlaneHeight);
+        // this reason. The glide window is NOT a guess, so the placeholder carries the real one: a head that never
+        // replaces the presenter still draws the window its config asked for.
+        Presenter = new TilePresenter(1f, TileWorldDocument.DefaultPlaneHeight, Glide);
         clock = new FixedTickHost(config.TickSeconds);
         onCommandTick = OnCommandTick;
         net = new NetClient(transport, connectToken);
@@ -106,8 +108,19 @@ public sealed partial class TileWorldClient : IDisposable
     public TileMoveSimulator Simulator { get; }
 
     /// <summary>The tile-to-view bridge. Replace it once the world document is loaded, so it carries the real tile
-    /// size and plane height instead of the placeholder the constructor installed.</summary>
+    /// size and plane height instead of the placeholder the constructor installed. Hand <see cref="Glide"/> to the
+    /// replacement (<c>new TilePresenter(document, client.Glide)</c>) or it draws the full-step glide whatever the
+    /// config asked for, because a presenter's window is its own.</summary>
     public TilePresenter Presenter { get; set; }
+
+    /// <summary>
+    /// <see cref="TileWorldClientConfig.GlideWindowSeconds"/> composed with the tick length, which is what a
+    /// presenter needs to turn a step's TICK count into a duration. Hand it to every
+    /// <see cref="TilePresenter"/> this head builds, so the local player and the remotes are drawn against the same
+    /// number: the local pose and the remote pose read the presenter's copy, and there is nothing else to keep in
+    /// step.
+    /// </summary>
+    public TileGlideWindow Glide { get; }
 
     /// <summary>
     /// The run toggle this client is holding, which rides on EVERY command rather than on the click that started a

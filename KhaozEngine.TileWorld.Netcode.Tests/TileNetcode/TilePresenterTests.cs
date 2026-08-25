@@ -136,5 +136,6 @@ public class TilePresenterTests
         var p = new TilePresenter(doc);
         Assert.Equal(1.5f, p.TileSize);
         Assert.Equal(5f, p.PlaneHeight);
+        Assert.Equal(TileGlideWindow.WholeStep, p.Glide);
     }
 }

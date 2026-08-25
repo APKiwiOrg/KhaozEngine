@@ -60,7 +60,10 @@ public sealed partial class TileWorldClient : IDisposable
     /// <exception cref="ArgumentNullException"><paramref name="transport"/>, <paramref name="config"/> or
     /// <paramref name="map"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="config"/> asks for a tick of zero seconds or
-    /// less.</exception>
+    /// less, or names a <see cref="TileWorldClientConfig.GlideWindowSeconds"/> that is negative or not a number.
+    /// The glide window's refusal is thrown by <see cref="TileGlideWindow"/>'s own constructor, so it names the
+    /// parameter <c>seconds</c> rather than <c>config</c>: read that as the config property that fed it, since a
+    /// caller of this constructor never wrote a <c>seconds</c> argument.</exception>
     public TileWorldClient(INetTransport transport, TileWorldClientConfig config, TileCollisionMap map,
         ITileTargets? targets = null, byte[]? connectToken = null, ReplicationRegistry? registry = null)
     {

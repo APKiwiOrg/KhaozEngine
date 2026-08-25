@@ -153,7 +153,12 @@ public sealed class ClientPrediction<TState, TCommand>
 
     /// <summary>
     /// The decaying reconciliation offset currently folded into <see cref="RenderedState"/>, on the planar axes.
-    /// Zero on a session that has never mispredicted, which on a deterministic lattice is the ordinary case.
+    /// Zero on a session that has never mispredicted, which on a deterministic lattice is the ordinary case, and
+    /// zeroed again by <see cref="Reset"/>.
+    /// <para>A misprediction is not the only way to a non-zero one. <see cref="Reseed"/>'s QUIET resume, a reconnect
+    /// whose displacement lands inside <see cref="PredictionSettings.HardSnapDistance"/>, re-anchors that
+    /// displacement into this field on purpose so the avatar glides onto the resume position instead of cutting to
+    /// it. Nothing mispredicted, and the offset is non-zero from the frame the seed lands.</para>
     /// <para>Exposed so a presentation layer can SUBTRACT it, take the interpolation apart, and put it back
     /// unchanged. A layer that redraws the interpolated position without lifting this off first would put the
     /// correction through whatever transform it applies, and a correction that is scaled or clamped stops decaying

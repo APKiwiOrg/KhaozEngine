@@ -39,23 +39,30 @@ tile to render metres and negates z on the way, is consulted in exactly ONE file
 never touches it. Planes do not shard: a cell holds every plane of its region, and what separates two floors is the
 SERVE, which filters a viewer's area of interest to the viewer's own plane.
 
-**The GLIDE WINDOW bounds visual-truth divergence, and a game gets to pick it.** Committing at the start of a step
-puts the rules ahead of the picture, and `TileWorldClientConfig.GlideWindowSeconds` is how far ahead a game will
-let them get: **the drawn body never diverges from the committed tile by more than the window, plus the offset its
-own drawing path already carried**. So a design that reads committed tiles (combat, a boss's telegraphs, anything
-that answers "where is that player") is reading what the player can see, and there is no true-tile metagame to
-learn from watching bodies instead. In SECONDS, so a walk and a run catch up at the same wall-clock rate. The
-default is the full-step glide, which is the widest the bound can be and what the package drew before the knob
-existed.
+**The DRAWN BODY CHASES its committed tile, and the lag that leaves is the bound a game designs against.**
+Committing at the start of a step puts the rules ahead of the picture, and `TileChase` is how the picture catches
+up: the drawn body pursues its committed tile continuously, halving the remaining distance every
+`TileWorldClientConfig.ChaseHalfLifeSeconds`. Continuous rather than on a schedule, which is the whole point.
+Anything that crosses the step on a schedule has to FINISH, and finishing before the next commit is a rest gap
+that reads as a metronome at run cadence, while not finishing early is a constant slide. A chase has no schedule,
+so the body is still closing when the next tile commits, has its fastest motion right after each commit, and
+settles onto the last tile of a route without overshooting.
 
-Read the second half of that bound before building on the first. The window is the part a game controls, and it
-is not the whole number. The LOCAL player is drawn from the state the prediction layer is holding, so its
-divergence is the window plus whatever is left of a decaying correction offset after a misprediction, which is
-zero on the ordinary deterministic case. A REMOTE is drawn off the delayed timeline
+**The invariant: steady-state lag plus settle.** While a body is moving it lags its committed tile by
+`speed * halfLife / ln 2` on average, and when it stops it converges onto that tile. At the default 0.07 s and a
+1/6 s tick with `TileStepTicks(4, 2)` that is **0.15 tiles walking and 0.30 running**, both inside the half tile a
+full-step glide averages, and a stopped body is within 3 per cent after 0.35 s and exactly on its tile after about
+0.7 s. So a design that reads committed tiles (combat, a boss's telegraphs, anything that answers "where is that
+player") is reading what the player can see, and there is no true-tile metagame to learn from watching bodies
+instead. In SECONDS, so a walk and a run catch up at the same wall-clock rate: a share of the step would make the
+walking catch-up take twice as long as the running one.
+
+Read the second half of that bound before building on the first. A REMOTE is drawn off the delayed timeline
 `TileWorldClientConfig.InterpolationDelayTicks` names, which defaults to two ticks and is a whole tick each: at a
-quarter-second tick that is half a second on top, longer than an entire walking step. So a design that sets a
-120 ms window and then reads other players' tiles is working against a bound five times the one it asked for.
-Tighten `InterpolationDelayTicks` too, or size the design against the sum.
+1/6 s tick that is 0.33 s on top, which is MORE than the chase's own term at run cadence. So a design that sets a
+70 ms half life and then reads other players' tiles is working against a bound several times the one it asked for.
+Tighten `InterpolationDelayTicks` too, or size the design against the sum. The LOCAL player has no second term:
+its chase target is the committed tile itself, so its divergence is exactly the lag plus the settle.
 
 ## The types
 
@@ -134,16 +141,19 @@ Tighten `InterpolationDelayTicks` too, or size the design against the sum.
   for everybody else, and its OWN command tick, phase-offset from the server's rather than driven by snapshot
   arrival. `Queue` on a click, `Tick` on the command clock, `Poll` once a frame, `AdvancePresentation` before
   drawing.
-- **`TilePresenter`** / **`TilePose`** - the pure bridge from a tile state plus a step fraction to a world position
-  and a yaw: the glide from `StepFrom` into `Tile`, which needs no route, so a remote's replicated state draws
-  exactly where its owner draws it. The only file in the package that consults `TileWorldSpace`. A pose names the
-  tile CENTRE, half a tile in from the corner on each axis, which is the middle of that tile's ground quad and the
+- **`TilePresenter`** / **`TilePose`** - the pure map from a tile point to a world position and a yaw, and the only
+  file in the package that consults `TileWorldSpace`. `PoseAt(tilePlanar, planeIndex, facing)` is what a chased
+  body is drawn through, and `Pose(state)` is the RULES' answer, the committed tile's centre with nothing smoothed
+  (a minimap, an editor, a debug overlay: NOT an avatar, which would cut a whole tile per commit). Holds no state
+  and no tuning, so replacing it when the document loads cannot change how anything moves. A pose names the tile
+  CENTRE, half a tile in from the corner on each axis, which is the middle of that tile's ground quad and the
   point a 1x1 `TileObjectProps` prop is anchored at, so a head draws at `pose.Position` without re-centring it.
-- **`TileGlideWindow`** - how long the DRAWN body may lag the tile it is already committed to, in SECONDS. A
-  presenter carries one and both `Pose` and `LocalPose` read it, so the local player and every remote agree by
-  construction. `TileWorldClientConfig.GlideWindowSeconds` is where a game sets it and `TileWorldClient.Glide` is
-  that number composed with the tick length, which is what a head hands the presenter it builds from the document
-  (`new TilePresenter(document, client.Glide)`). See the invariant above.
+- **`TileChase`** - one body's drawn position, pursuing the tile it is committed to and halving the remaining gap
+  every `ChaseHalfLifeSeconds`. Stateful, so one is built per body: `TileWorldClient` owns the local player's and
+  every remote's, built from the one config number, and a game builds its own for a pet or a mount off
+  `TileWorldClient.ChaseHalfLifeSeconds`. Exponential, so it is frame-rate independent by construction, and first
+  order, so it cannot overshoot. Every discontinuity (teleport, hard snap, the seed, a remote that reappears more
+  than one step away) resets it rather than being pursued. See the invariant above.
 - **`TileClientMessageHandler`** - the delegate an opaque server message arrives on.
 
 **Persistence**
@@ -218,7 +228,7 @@ client.Poll();                                     // once a frame
 client.Tick(dt);                                   // the command clock, one command per whole tick
 client.AdvancePresentation(dt);                    // the render clock, before drawing
 
-TilePose me = client.Presenter.LocalPose(client.Prediction);
+TilePose me = client.LocalPose;
 foreach (long id in client.RemoteNetIds)
     if (client.TryGetRemotePose(id, out TilePose them)) Draw(id, them);
 ```

@@ -8231,9 +8231,11 @@ asked about a player (reach, region, occupancy, what a click resolves against) i
 committed to rather than the one they are half off. On a 250 ms tick that is the whole difference between a click
 that feels immediate and one that feels like a wait. Three things follow for a consumer:
 
-- **Draw from the pose, never from the tile.** `TilePresenter.Pose` and `LocalPose` are the glide, so they are
-  already right. Reading `state.Tile` and drawing on it puts the avatar a step ahead of itself. `IsStepping`
-  (`StepFrom != Tile`) is the question to ask if a head needs to know whether a body is between tiles.
+- **Draw bodies from the client's poses, never from the tile.** `client.LocalPose` and
+  `client.TryGetRemotePose` carry the chase, so they are already right. Reading `state.Tile` and drawing on it
+  puts the avatar a step ahead of itself, and so does `TilePresenter.Pose`, which is deliberately the rules'
+  answer rather than the body's. `IsStepping` (`StepFrom != Tile`) is the question to ask if a head needs to know
+  whether a body is between tiles.
 - **An interaction resolves as the LAST step starts.** `TileWorldServer.OnInteract` fires while the avatar is
   still drawn walking that tile in, and a same-plane target that cannot be reached at all is refused on the tick
   of the click itself. A handler that wants to wait for the body can, but the tile is the player's from that tick
@@ -8398,7 +8400,7 @@ client.Poll();
 client.Tick(dt);
 client.AdvancePresentation(dt);
 
-TilePose me = client.Presenter.LocalPose(client.Prediction);
+TilePose me = client.LocalPose;
 Draw(playerMesh, me.Position, me.Yaw);
 foreach (long netId in client.RemoteNetIds)
     if (client.TryGetRemotePose(netId, out TilePose pose)) Draw(remoteMesh, pose.Position, pose.Yaw);
@@ -8412,54 +8414,63 @@ which is the forward compatibility the wire wants and also the trap. The compone
 the owner route and the display name all keep working, and nothing anywhere says a thing.
 
 `Presenter` starts as a placeholder and is REPLACED once the document is loaded
-(`client.Presenter = new TilePresenter(document, client.Glide)`), so it carries the world's real tile size and
-plane height. Pass `client.Glide` with the document or the replacement draws the full-step glide whatever the
-config asked for, see the glide window below. `TilePose.Yaw` is the engine's model-yaw convention, the value
+(`client.Presenter = new TilePresenter(document)`), so it carries the world's real tile size and plane height.
+It is a pure map from a tile point to a world position and carries no tuning of its own, so replacing it cannot
+change how anything MOVES. `TilePose.Yaw` is the engine's model-yaw convention, the value
 `Matrix4x4.CreateRotationY` wants for a +z-forward mesh, the same one `CharacterFacing.YawOf` and
 `TileObjectProps.YawRadians` produce.
 
-**The glide window bounds how far the drawn body may lag its committed tile, in SECONDS.** Because the step
-commits its tile at the START, the body spends the rest of that step walking into a tile the rules already treat
-as the player's. `TileWorldClientConfig.GlideWindowSeconds` is how long that is allowed to take: the body covers
-the whole step in the window's seconds and then waits on its tile for the rest of the step.
+**The drawn body CHASES its committed tile, halving the remaining distance every `ChaseHalfLifeSeconds`.**
+Because the step commits its tile at the START, the body spends the rest of that step catching up to a tile the
+rules already treat as the player's, and the chase is how it catches up: a continuous pursuit rather than a
+crossing on a schedule, so the motion has a crisp attack at each commit, never rests between commits, and settles
+onto the last tile of a route without overshooting it.
 
 ```csharp
 var config = new TileWorldClientConfig
 {
-    TickSeconds = 0.25f,
+    TickSeconds = 1f / 6f,
     StepTicks = new TileStepTicks(walk: 4, run: 2),
-    GlideWindowSeconds = 0.12f,          // the body is on its tile within 120 ms of the commit
+    ChaseHalfLifeSeconds = 0.07f,        // the default: half the remaining gap every 70 ms
 };
 ...
-client.Presenter = new TilePresenter(document, client.Glide);
+client.Presenter = new TilePresenter(document);
+TilePose me = client.LocalPose;                                 // the local player
+client.TryGetRemotePose(netId, out TilePose them);              // everybody else
 ```
 
-- **Seconds, not a share of the step**, so a walk and a run catch up at the same wall-clock rate. A share would
-  make the walking catch-up take twice as long as the running one, and the two would not read as one game.
-- **The default is the full-step glide** (`float.PositiveInfinity`, and `TileGlideWindow.WholeStep` is the
-  presenter's `default`), so this is invisible until a game sets it. Any window at or above the step's own
-  duration is the same untouched path. Zero puts the body on its tile the tick the step commits.
-- **One presenter, so the local player and every remote agree.** `client.Glide` is the config number composed
-  with the tick length, and both `Pose` (remotes) and `LocalPose` (the local player) read it off the presenter
-  they are called on. There is no second copy to set differently.
-- **It is presentation only.** The simulation, the replay, the reconciliation and the wire never see it, so the
-  two heads stay byte-identical whatever a client sets. The correction-offset decay, teleport cuts and hard
-  snaps are untouched too: the window remaps the step interpolation and nothing else.
-- **The bound is on the state's own timeline, and each path adds the offset it always had on top.** The local
-  player is placed from the state the prediction layer is holding, so its catch-up is the window itself, plus
-  whatever is left of a decaying correction offset after a misprediction (zero on the ordinary deterministic
-  case). A remote rides the `InterpolationDelayTicks` timeline, which is a whole tick per delay tick and defaults
-  to two of them. So the catch-up a head measures is the window plus that path's offset, and for remotes that is
-  much the larger half.
+- **One number, both paths.** `TileWorldClient` builds the local player's chase and every remote's from this one
+  config value, so they cannot be set apart. Read it back off `client.ChaseHalfLifeSeconds` to build a
+  `TileChase` for a body of your own (a pet, a follower, a mount) and it moves on the same curve.
+- **Seconds, not a share of the step**, so a walk and a run feel like one game. A share would make the walking
+  catch-up take twice as long as the running one.
+- **Frame-rate independent by construction.** The factor is `2^(-dt / halfLife)` and the exponent is additive, so
+  30 fps and 144 fps draw the same body at the same wall-clock instants. Do not reach for a per-frame "close a
+  fixed share of the gap": that one is not.
+- **Zero draws the body on its committed tile the instant the tile commits**, which is the strictest reading of
+  the invariant below and what a game asks for when it wants no visual truth gap at all.
+- **Discontinuities cut, they are not chased.** A teleport, a hard snap, the first snapshot, and a remote seen
+  more than one step from where it was all place the body outright on the frame the snapshot lands. Nothing
+  slides across the tiles in between.
+- **It is presentation only.** The simulation, the replay, the reconciliation and the wire never read it, so two
+  clients drawing at different half lives still replay byte-identically. `TileMoveState.StepFrom` is still on the
+  state and still on the wire, it is simply not what the body is drawn between any more.
+- **`TilePresenter.Pose(state)` is the RULES' answer**, the committed tile's centre with nothing smoothed: right
+  for a minimap, an editor or a debug overlay, and wrong for an avatar, which cuts a whole tile per commit if you
+  draw it that way. Draw bodies through `client.LocalPose` and `client.TryGetRemotePose`.
 
-The invariant is the reason to reach for it, more than the feel: **the drawn body never diverges from the
-committed tile by more than the window, plus the offset its own drawing path already carried**, so a combat or
-boss design that reads committed tiles is reading what the player sees, and there is no true-tile metagame to
-learn. Size the design against the sum rather than against the window alone. At the default
-`InterpolationDelayTicks = 2` and a quarter-second tick, a remote's real divergence is the window plus half a
-second, which is longer than a whole walking step: a design that sets a 120 ms window and reads other players'
-tiles off it is working with a bound five times the one it named. Tighten `InterpolationDelayTicks` too, or budget
-for the sum.
+The invariant is the reason to reach for it, more than the feel: **while a body is moving it lags its committed
+tile by `speed * halfLife / ln 2`, and when it stops it converges onto that tile**. At the default and a 1/6 s
+tick with `TileStepTicks(4, 2)` that is 0.15 tiles walking and 0.30 running, both inside the half tile a
+full-step glide averages, and a stopped body is within 3 per cent of its tile after 0.35 s and exactly on it after
+about 0.7 s. So a combat or boss design that reads committed tiles is reading what the player sees, and there is
+no true-tile metagame to learn from watching bodies instead.
+
+**Add the delay before you size a design on that.** A REMOTE is drawn off the `InterpolationDelayTicks` timeline,
+a whole tick per delay tick and two by default: at a 1/6 s tick that is 0.33 s on top, which is more than the
+chase's own term. Tighten `InterpolationDelayTicks` too, or budget for the sum. The LOCAL player has no second
+term: its chase target is the committed tile itself, with no correction offset folded in, so its divergence is
+exactly the lag plus the settle.
 
 **A pose names the tile CENTRE**, half a tile in from the corner on each axis, which is the middle of the tile's
 own ground quad and the point `TileObjectProps.AnchorPosition` puts a 1x1 prop on, so an avatar and the thing it

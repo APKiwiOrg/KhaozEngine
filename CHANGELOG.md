@@ -17,9 +17,9 @@ also makes the windowed create path honour a `KE_GRAPHICS_BACKEND` pin
 Grimhollow's playtests ruled on: a tile step commits its tile when it STARTS rather than when it ends, and a
 `TilePresenter` pose names the tile CENTRE rather than its corner
 ([#730](https://github.com/APKiwiOrg/KhaozEngine/issues/730)). **Both change what a consumer draws**, and the
-first also changes when a click is answered, so read their two bullets before repinning. Riding on the first is
-a configurable GLIDE WINDOW in seconds, which bounds how far the drawn body may lag its committed tile and
-leaves that lag exactly where it was until a game sets the knob.
+first also changes when a click is answered, so read their two bullets before repinning. Riding on the first is a
+DAMPED CHASE: the drawn body pursues its committed tile continuously, closing the gap by half every
+`ChaseHalfLifeSeconds`, which is what the movement feel finally landed on after two rejected rounds.
 
 - **The rule is retired in code.** `MslBindingOrder.CheckPrefix`, which required every stage's resources to
   be a prefix of the layout's per index space, is deleted, so `ShaderValidation.ValidatePair` no longer
@@ -117,62 +117,76 @@ leaves that lag exactly where it was until a game sets the knob.
     `A_replay_from_a_basis_taken_one_tick_either_side_lands_on_the_same_state` proves the three
     N-1 / N / N+1 reconcile orderings produce byte-identical states).
 - **BEHAVIOUR: a `TilePose` names the tile CENTRE, so every drawn position moves half a tile on each axis**
-  ([#730](https://github.com/APKiwiOrg/KhaozEngine/issues/730)). `TilePresenter.Pose` and `LocalPose` converted
+  ([#730](https://github.com/APKiwiOrg/KhaozEngine/issues/730)). Every `TilePresenter` entry point converted
   through `TileWorldSpace` at the tile CORNER while the tile's ground quad spans `x..x+1` and
   `TileObjectProps.AnchorPosition` centres a 1x1 prop at `x + 0.5`, so an avatar stood half a tile diagonally
   off every prop it walked up to and off the middle of the ground it occupied. The presenter adds the half tile
   itself now, in TILE units ahead of `TileWorldSpace`, so the z half goes through the same negation the
-  coordinate does. Glide, prediction smoothing and yaw are unchanged, because the offset is constant along a
-  step. **A consumer that centred the pose itself must delete that compensation at the repin, or its avatars
+  coordinate does. Prediction smoothing and yaw are unchanged, because the offset is constant along a step.
+  **A consumer that centred the pose itself must delete that compensation at the repin, or its avatars
   move a whole tile.** Grimhollow's `CentredPose` shim is exactly that and goes when it adopts.
-- **A GLIDE WINDOW, in seconds, bounds how far the drawn body may lag the tile it is committed to.** The
-  lead-commit above made the simulation lead the picture by a whole step, and the playtest verdict was that the
-  snap is right and the full-step glide is not: the avatar spends the step visibly not there. `TileGlideWindow`
-  is the knob, and the invariant it buys is the point of it: **the visual position never diverges from the
-  committed tile by more than the window, plus the offset its own drawing path already carried**, so combat and
-  boss design read committed tiles with no true-tile metagame available to a player who watches the body instead.
-  **Read that second term before sizing a design on the first**, it is the larger half for remotes: see the last
-  sub-bullet. New API, all of it presentation:
-  - **`TileGlideWindow(seconds, tickSeconds)`**, and `TileWorldClientConfig.GlideWindowSeconds` is where a game
-    sets it. The body covers the whole step in the window's seconds and then WAITS on its tile for the rest of
-    the step. **SECONDS rather than a share of the step**, because a run is a shorter step than a walk: a share
-    would make the walking catch-up take twice as long as the running one, and the two would not read as one
-    game. Linear inside the window, flat after it, no curve: an ease-out would spend its last frames crawling
-    the final centimetres, which is the "still not there" the window exists to remove.
-  - **The default changes nothing.** `TileGlideWindow.WholeStep` is `default`, `GlideWindowSeconds` defaults to
-    `float.PositiveInfinity`, and any window at or above the step's own duration takes the untouched full-step
-    path, so a consumer that repins and sets nothing draws byte-identical poses. Zero puts the body on its tile
-    the tick the step commits.
-  - **`TilePresenter` carries the window** (`new TilePresenter(document, client.Glide)`, and
-    `TileWorldClient.Glide` is the config number composed with the tick length). One presenter serves `Pose` and
-    `LocalPose` both, which is what makes the local player and every remote agree by construction. **A head that
-    builds its presenter from the document must pass `client.Glide`** or that presenter draws the full step
-    whatever the config asked for. The client's own placeholder presenter already carries it.
-  - **The remap touches the STEP interpolation and nothing else.** The correction-offset decay, teleport cuts
-    (nothing to glide, `StepFrom` is already `Tile`), hard snaps and `TileMoveState.Position` are all exactly as
-    they were, and determinism is untouched because presentation reads state and never writes it. `LocalPose`
-    takes the rendered position apart to keep that true: it lifts the decaying correction offset off, re-places
-    the step at the remapped fraction, and puts the offset back unchanged. Remapping the rendered position whole
-    would put the correction through the same multiplier and swallow it, so a misprediction would cut instead of
-    easing. The fraction it rebuilds is measured FROM THE COMMIT, `(StepTicks + phase) / StepTotal`, which is the
-    same expression `Pose` evaluates for a remote out of the step's ticks and the ticks since its sample: one
-    state and one sub-tick offset draw the same point down either path.
-  - **Two new `ClientPrediction` reads**, `InterTickFraction` and `RenderOffset`, are what that decomposition
-    needs: the phase the layer's easing is at, and the offset folded into `RenderedState`. Additive, and nothing
-    in the layer's own behaviour moved.
-  - **`TilePresenter`'s two-argument constructor is gone**, replaced by the three-argument one with the window
-    defaulted. Source-compatible, and BINARY-breaking: a consumer that rebinds without recompiling will not find
-    the old entry point. Accepted rather than overloaded because nothing in this fleet ships against a
-    prebuilt engine assembly, every consumer vendors the nupkgs and rebuilds from the feed, but it is a break and
-    it is a minor bump, so it is said here rather than left to be discovered.
-  - **The bound is measured on the state's own timeline**, and each presentation path adds an offset of its own,
-    both of them pre-existing. The local player is placed from the state the prediction layer is holding, so its
-    term is whatever is left of a decaying correction offset after a misprediction, which is zero on the ordinary
-    deterministic case. A remote rides the `InterpolationDelayTicks` timeline, a whole tick per delay tick and
-    two of them by default: at a quarter-second tick that is half a second on top of the window, longer than a
-    whole walking step. **A design that sets a 120 ms window and reads other players' tiles off it is working
-    with a bound five times the one it named.** Tighten `InterpolationDelayTicks` alongside the window, or size
-    the design against the sum. Neither offset is new and neither moved.
+- **A DAMPED CHASE draws the body: it pursues its committed tile continuously, halving the remaining gap every
+  `ChaseHalfLifeSeconds`.** The lead-commit above made the simulation lead the picture by a whole step, and this
+  is the third and settled answer to what the picture should do about it. The first two were both ruled out by
+  playtest. A full-step linear glide is a constant slide that reads as OSRS. Crossing the step in a fixed number
+  of seconds and then holding the body on its tile is a metronome at run cadence: the body hops and then stands,
+  and the rest gap is structural rather than a tuning miss, because any crossing shorter than the step leaves one
+  and any crossing that fills the step is the slide again. Measured through the real client wiring at a 1/6 s tick
+  and 60 fps, a 0.1 s crossing spent 157 of a 12 tile run's 220 frames drawing the body at a bit-identical
+  position, in runs of 14, once per commit.
+  - **`TileChase`** is the type: one per body, stepped with the frame's `dt`, closing the gap by
+    `2^(-dt / halfLife)`. Continuous motion mid route (there is no schedule to finish, so the body is still
+    closing when the next tile commits), a crisp attack at every commit (the velocity is highest right after the
+    target jumps), and a smooth settle onto the last tile with no overshoot, which is structural: the gap is
+    SCALED by a factor in (0, 1], so the drawn point converges on the target and cannot pass it.
+  - **Frame-rate independent by construction**, because the exponent is additive: two frames of half a `dt` land
+    where one frame of `dt` does, so 30 fps and 144 fps draw the same body at the same wall-clock instants
+    (pinned to within 1e-4 tiles over a 60 sample route).
+  - **`TileWorldClientConfig.ChaseHalfLifeSeconds`** is the knob, and it **defaults to 0.07 s**
+    (`TileChase.DefaultHalfLifeSeconds`) rather than to a sentinel that would preserve the old glide. There is no
+    old glide worth preserving: it is the feel the ruling rejected, and a default that shipped it would leave
+    every consumer opted out of the answer. Sized against the RUN, which is where the metronome was reported: at
+    a 1/6 s tick and `TileStepTicks(4, 2)` a running step is 4.8 half lives, so the gap is still 3.7 per cent of
+    its post-commit size when the next tile commits and there is no rest gap to read as a beat. Zero draws the
+    body on its committed tile the instant the tile commits, which is the strictest reading of the invariant.
+  - **The invariant is restated, and it is a different shape now: STEADY-STATE LAG plus SETTLE.** The drawn body
+    lags its committed tile by `speed * halfLife / ln 2` on average while it is moving, which at the default and
+    a 1/6 s tick is **0.15 tiles walking and 0.30 running**, both well inside the 0.5 a full-step glide averages.
+    When the body stops it converges onto the tile, within 3 per cent after five half lives (0.35 s) and exactly
+    on it after about ten (0.7 s). So a design that reads committed tiles is reading what the player sees, with
+    no true-tile metagame worth learning, and a STANDING player is drawn exactly on their tile rather than merely
+    near it. **A remote adds `InterpolationDelayTicks` on top, unchanged**: at the default two ticks and a 1/6 s
+    tick that is 0.33 s of extra divergence, which is more than the chase's own term. Size a design against the
+    sum, or tighten the delay alongside the half life.
+  - **Discontinuities RESET the chase rather than being pursued.** A teleport (an authoritative epoch advance), a
+    hard snap, the prediction seed, and a remote first seen or seen again more than one Chebyshev step from where
+    it was all place the body outright, on the frame the snapshot lands. Chasing across one would slide the
+    avatar over every tile in the gap while the head's camera had already been warped by the teleport event.
+  - **The chase target is the bare committed tile, and the prediction layer's correction offset is deliberately
+    not in it.** That offset keeps `ClientPrediction.RenderedState` continuous across a rebase, and the position
+    it keeps continuous is the step-fraction glide, which nothing draws any more. Adding it to the chase's OUTPUT
+    is a pop followed by a reversal, the rubber band. Folding it into the chase's TARGET looks like the fix, and
+    is not: the offset takes up the POSITION delta while the target moves by the TILE delta, and on a lattice the
+    two are not equal, so the ordinary sub-tile correction (the authority agrees about the tile and disagrees
+    about how far through the step the body is) would push the drawn body a fraction of a tile PAST its committed
+    tile, in the opposite direction to the correction, and bring it back. Chasing the bare tile has neither
+    failure and loses nothing: the chase IS the smoother, a correction big enough to matter moves the tile, and
+    one big enough to cut is a hard snap. Pinned by a test in which a sub-tile correction leaves the drawn body
+    bit-identical for 90 frames.
+  - **`TilePresenter` is a pure pose mapper**, and the smoothing lives on the client because it is
+    STATEFUL. `TilePresenter.PoseAt(tilePlanar, planeIndex, facing)` is the new mapping a chased point is drawn
+    through, `TilePresenter.Pose(state)` now returns the state's COMMITTED TILE centre (the rules' answer, for a
+    minimap or a debug overlay) and has lost its `extraTicks` parameter, and `TilePresenter.LocalPose(prediction)`
+    is gone. **A head draws the local player through `client.LocalPose` and remotes through
+    `client.TryGetRemotePose` as before**, and builds its presenter as `new TilePresenter(document)` with no knob
+    to pass, so a presenter replaced when the document loads can no longer silently lose the feel.
+  - **`TileWorldClient.ChaseHalfLifeSeconds`** is the one number both paths were built from, exposed so a game can
+    build a `TileChase` for a body of its own (a pet, a follower, a mount) and have it move on the same curve as
+    the players around it.
+  - **`TileMoveState.StepFrom` is untouched**, on the state and on the wire: the simulator and the reconcile both
+    need it, it is simply not what the body is drawn between any more. The simulation, the replay, the
+    reconciliation and the wire never read the half life, so two clients drawing at different half lives still
+    replay byte-identically and this stays the one movement number outside the determinism contract.
 
 ## 18.0.0
 

@@ -143,9 +143,12 @@ public sealed class ClientPrediction<TState, TCommand>
     /// <summary>
     /// How far <see cref="RenderedState"/> has eased from the previous tick's position toward the current one, 0 at
     /// the instant of a <see cref="Predict"/> and 1 once a whole tick has been advanced. Exposed for a presentation
-    /// layer that has to REBUILD the interpolated position rather than take it: a discrete-lattice head (tile
-    /// movement) draws its own curve between two lattice points and needs the phase this layer is at to line its
-    /// curve up with the one here.
+    /// layer that has to REBUILD the interpolated position rather than take it, and needs the phase this layer is
+    /// at to line its own curve up with the one here.
+    /// <para>The tile stack used to be that caller and is not any more: a tile body is drawn by a
+    /// <c>TileChase</c> pursuing the tile the simulation committed it to, which replaces the interpolated position
+    /// rather than redrawing it. This read stays because the phase is the general answer for any head that does
+    /// redraw the curve.</para>
     /// </summary>
     public float InterTickFraction => settings.TickSeconds > 0f
         ? MathF.Min(1f, secondsSinceLastPredict / settings.TickSeconds)

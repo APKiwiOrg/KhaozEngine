@@ -32,8 +32,11 @@ public class TileInteractTests
     // simulator that never turns on arrival passes by accident. Coming in from (9, 14) the walk arrives on the reach
     // tile at (10, 11) with a DIAGONAL last step, and no reach direction is ever diagonal, so this is the case that
     // holds the rule up.
+    //
+    // The turn lands on the tick the LAST step starts, which is what the lead commit buys: the player owns the reach
+    // tile from that tick, so the facing is written and the action is due while the body is still walking in.
     [Fact]
-    public void An_interact_routes_to_a_reach_tile_and_faces_the_target_on_arrival()
+    public void An_interact_routes_to_a_reach_tile_and_faces_the_target_as_the_last_step_starts()
     {
         (TileMoveSimulator sim, long booth) = World();
         TileMoveState s = TileMoveState.At(new TileCoord(9, 14, 0), TileDirection.N);
@@ -47,6 +50,13 @@ public class TileInteractTests
         Assert.Equal(new TileCoord(10, 11, 0), s.Tile);
         Assert.Equal(booth, s.InteractTarget);
         Assert.Equal(TileDirection.S, s.Facing);
+        // Turned toward the booth with the last step still in flight, which is exactly the state the server raises
+        // the interaction from. That step runs SE out of (9, 12) while the facing says S, so the two disagree for
+        // the whole of the glide: reading the origin back off Facing would draw this player walking out of the wrong
+        // tile, which is why it is a field of its own.
+        Assert.True(s.IsStepping);
+        Assert.Equal(new TileCoord(9, 12, 0), s.StepFrom);
+        Assert.Equal(TileDirection.SE, TileRoute.Direction(s.StepFrom, s.Tile));
     }
 
     // The due-west approach, kept for what it pins that the case above cannot: TryNearest's scoring reaches the
@@ -101,27 +111,30 @@ public class TileInteractTests
         s = sim.Step(s, TileCommand.Interact(booth.Id, TileMoveMode.Run), Dt);
         Assert.Equal(new TileCoord(9, 10, 0), s.Route.End);
         for (int i = 0; i < 3; i++) s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
-        Assert.Equal(new TileCoord(2, 10, 0), s.Tile);
+        Assert.Equal(new TileCoord(3, 10, 0), s.Tile);
 
-        // One tree in the way so the next step fails and a re-path runs, and a sealed column so the re-path cannot
-        // reach the booth at all. What is left reachable nearest the reach tile is (4, 10), so the re-path returns a
-        // live two step route that ends four tiles short of anywhere the booth can be acted on.
-        doc.AddObject("tree", 3, 10, 0, 0);
+        // One tree in the way so the next step to be STARTED fails and a re-path runs, and a sealed column so the
+        // re-path cannot reach the booth at all. It goes on (4, 10), the tile after the one already committed: a
+        // step is never rewound once it started, so a tree on (3, 10) would simply be walked into. What is left
+        // reachable nearest the reach tile is then (4, 9), so the re-path returns a live route that ends five tiles
+        // short of anywhere the booth can be acted on.
+        doc.AddObject("tree", 4, 10, 0, 0);
         for (int z = 0; z < TileRegion.Size; z++) doc.AddObject("tree", 5, z, 0, 0);
         TileCollisionBaker.Rebake(map, doc, TileMoveSimulatorTests.Catalogs,
             new TileRect(2, 0, 5, TileRegion.Size), 0);
 
         for (int i = 0; i < 20 && !s.Route.IsIdle; i++) s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
-        Assert.Equal(new TileCoord(4, 10, 0), s.Tile);
+        Assert.Equal(new TileCoord(4, 9, 0), s.Tile);
         // Dropped by the same guard that declines the turn: a walk that ended off the reach set is not an arrival,
         // and the server reads this field to tell the two apart.
         Assert.Equal(0, s.InteractTarget);
         Assert.False(TileReach.Contains(map, TileFootprint.Of(TileMoveSimulatorTests.Catalogs.Archetype("bank_booth")!,
             10, 10, 0), 0, s.Tile));
-        // The last step of the re-path, which came up onto (4, 10) from (4, 9) because the tree at (3, 10) denies the
-        // diagonal into it. Unguarded, FacingToward would have written W here: no footprint tile touches (4, 10), so
-        // it takes its fallback.
-        Assert.Equal(TileDirection.N, s.Facing);
+        // The direction of the last step the re-path actually took, kept rather than overwritten. Unguarded,
+        // FacingToward would have written W here: no footprint tile touches (4, 9), so it takes its fallback and
+        // the player would stand looking away from a booth they never got to.
+        Assert.Equal(TileRoute.Direction(s.StepFrom, s.Tile), s.Facing);
+        Assert.NotEqual(TileDirection.W, s.Facing);
     }
 
     [Fact]
@@ -279,30 +292,31 @@ public class TileInteractTests
         Assert.False(sim.Accepts(s, TileCommand.WalkTo(new TileCoord(5, 14, 2), TileMoveMode.Run)));
     }
 
-    // The interaction half of the re-click splice. An Interact arriving part way through a step used to reset that
+    // The interaction half of the re-click rule. An Interact arriving part way through a step used to reset that
     // step and route from the tile being LEFT, so clicking a booth while already walking dragged the avatar back
-    // toward the tile it had half left. It splices now exactly as a WalkTo does: the reach search runs from the
-    // tile being ENTERED, the step in flight keeps its progress and commits, and the walk to the booth carries on
-    // from there. The arrival turn still lands, through FaceTarget at the commit rather than here.
+    // toward the tile it had half left. The reach search runs from TileMoveState.Tile now, which IS the tile being
+    // entered, so the step in flight keeps its progress and its cadence and the walk to the booth carries on from
+    // where the foot lands. The arrival turn still lands, through FaceTarget when the last step starts.
     [Fact]
-    public void An_interact_arriving_mid_step_splices_behind_the_step_in_flight()
+    public void An_interact_arriving_mid_step_routes_from_the_tile_being_entered()
     {
         (TileMoveSimulator sim, long booth) = World();
         TileMoveState s = TileMoveState.At(new TileCoord(5, 10, 0), TileDirection.N);
         s = sim.Step(s, TileCommand.WalkTo(new TileCoord(5, 14, 0), TileMoveMode.Walk), Dt);
         s = sim.Step(s, TileCommand.Continue(TileMoveMode.Walk), Dt);
-        Assert.Equal(new TileCoord(5, 11, 0), s.Route.Next);
+        Assert.Equal(new TileCoord(5, 11, 0), s.Tile);
         Assert.Equal(2, s.StepTicks);
         Assert.Equal(new Vector2(5f, 10.5f), s.Position);
 
         s = sim.Step(s, TileCommand.Interact(booth, TileMoveMode.Walk), Dt);
 
-        // Forward along the step it was already taking, not back toward (5, 10), and the step keeps the cadence
-        // and the progress it began with rather than restarting on the click.
+        // Forward along the step it was already taking, not back toward (5, 10), and the step keeps the cadence,
+        // the progress and the destination it began with rather than restarting on the click.
         Assert.Equal(new Vector2(5f, 10.75f), s.Position);
         Assert.Equal(3, s.StepTicks);
         Assert.Equal(4, s.StepTotal);
-        Assert.Equal(new TileCoord(5, 11, 0), s.Route.Tiles[0]);
+        Assert.Equal(new TileCoord(5, 11, 0), s.Tile);
+        Assert.Equal(new TileCoord(5, 10, 0), s.StepFrom);
         Assert.Equal(booth, s.InteractTarget);
         // Routed from (5, 11) rather than from (5, 10): the reach tile the walk picks is the one nearest THAT.
         Assert.Equal(new TileCoord(9, 10, 0), s.Route.End);
@@ -313,11 +327,12 @@ public class TileInteractTests
         Assert.Equal(TileDirection.E, s.Facing);
     }
 
-    // The other half, and the one a splice could quietly get wrong: a target that cannot be reached at all. The
-    // route is still dropped and the pending target still cleared, which is what the server answers with a
-    // CannotReach, but the step already in flight commits first rather than being yanked back.
+    // The other half: a target that cannot be reached at all. The route is dropped and the pending target cleared,
+    // which is what the server answers with a CannotReach, and the answer is due on THIS tick rather than one step
+    // later: the click was resolved against the tile the player is committed to, so there is nothing left to wait
+    // for. The step in flight is not yanked back for it either, it simply finishes.
     [Fact]
-    public void An_unreachable_interact_mid_step_still_finishes_the_step_before_it_stands()
+    public void An_unreachable_interact_mid_step_answers_at_once_and_still_finishes_the_step()
     {
         // The booth walled in on all four cardinals has no reach tile at all, so TryNearest refuses outright.
         (TileMoveSimulator sim, long booth) = World((9, 10), (11, 10), (10, 9), (10, 11));
@@ -327,11 +342,14 @@ public class TileInteractTests
 
         s = sim.Step(s, TileCommand.Interact(booth, TileMoveMode.Walk), Dt);
         Assert.Equal(0, s.InteractTarget);
+        Assert.True(s.Route.IsIdle);                         // the refusal is complete on the click's own tick
         Assert.Equal(new Vector2(5f, 10.75f), s.Position);
-        Assert.Equal(new TileCoord(5, 11, 0), s.Route.Next);
+        Assert.True(s.IsStepping);
+        Assert.Equal(new TileCoord(5, 11, 0), s.Tile);
 
         s = sim.Step(s, TileCommand.Continue(TileMoveMode.Walk), Dt);
         Assert.Equal(new TileCoord(5, 11, 0), s.Tile);
+        Assert.False(s.IsStepping);
         Assert.True(s.Route.IsIdle);
     }
 

@@ -61,15 +61,17 @@ public sealed class TilePresenter
     public float PlaneHeight { get; }
 
     /// <summary>
-    /// Where a state draws. <paramref name="extraTicks"/> is the fraction of a tick elapsed since the state was
-    /// SAMPLED, which is what glides a remote between snapshots: the sample carries the step progress at its own
-    /// instant, and the presenter carries it forward from there. Clamped at the end of the step, so a sample that
-    /// went overdue (a lost snapshot, a stalled server) parks on the destination tile instead of walking off it.
-    /// <para>A state with no route draws on its tile centre, whatever <paramref name="extraTicks"/> says. That is
-    /// the standing case AND the observer case: a remote's route is owner-only, so a raw replicated state has none
-    /// and would stand still. <see cref="TileWorldClient"/> is what rebuilds a one-step route for a remote before
-    /// it gets here, and this method deliberately does not guess one, because a guessed direction draws a player
-    /// walking somewhere they are not.</para>
+    /// Where a state draws: the glide from <see cref="TileMoveState.StepFrom"/> INTO
+    /// <see cref="TileMoveState.Tile"/>, which the simulation already owns. <paramref name="extraTicks"/> is the
+    /// fraction of a tick elapsed since the state was SAMPLED, which is what glides a remote between snapshots: the
+    /// sample carries the step progress at its own instant, and the presenter carries it forward from there.
+    /// Clamped at the end of the step, so a sample that went overdue (a lost snapshot, a stalled server) parks on
+    /// the tile instead of walking past it.
+    /// <para>The ROUTE is not consulted, and that is what makes an observer's pose honest. A remote's route is
+    /// owner-only, but the pair of tiles this glides between rides the everyone channel, so a raw replicated state
+    /// draws exactly where its owner draws it with nothing guessed and nothing reconstructed from the tile it was
+    /// last seen on. A state with no step in flight draws on its tile centre, whatever
+    /// <paramref name="extraTicks"/> says.</para>
     /// </summary>
     /// <param name="state">The state to draw.</param>
     /// <param name="extraTicks">Ticks elapsed since the state was sampled. Negative is treated as zero.</param>
@@ -77,12 +79,13 @@ public sealed class TilePresenter
     public TilePose Pose(in TileMoveState state, float extraTicks = 0f)
     {
         float tileX = state.Tile.X, tileZ = state.Tile.Z;
-        if (!state.Route.IsIdle && state.StepTotal > 0)
+        if (state.IsStepping && state.StepTotal > 0)
         {
             float f = Math.Clamp((state.StepTicks + Math.Max(0f, extraTicks)) / state.StepTotal, 0f, 1f);
-            TileCoord next = state.Route.Next;
-            tileX += (next.X - state.Tile.X) * f;
-            tileZ += (next.Z - state.Tile.Z) * f;
+            // In FLOAT, for the reason TileMoveState.Position differences in float: the fields are public, and two
+            // hand-written coordinates a world apart would overflow an int subtraction.
+            tileX = state.StepFrom.X + ((float)state.Tile.X - state.StepFrom.X) * f;
+            tileZ = state.StepFrom.Z + ((float)state.Tile.Z - state.StepFrom.Z) * f;
         }
         return new TilePose(Centre(tileX, state.Tile.Plane * PlaneHeight, tileZ), Yaw(state.Facing));
     }

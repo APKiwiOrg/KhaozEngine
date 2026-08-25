@@ -15,10 +15,16 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// <para>The authoritative part is INTEGER. A step commits by changing <see cref="Tile"/>, and progress through a
 /// step is a tick COUNT out of a tick TOTAL. Nothing accumulates a float, so replaying the same commands from the
 /// same state lands on byte-identical output on any machine, which server-authoritative movement depends on.</para>
-/// <para><see cref="Position"/> is DERIVED: the tile plus the fraction of the current step already spent, in TILE
-/// units. <see cref="Vertical"/> is the PLANE INDEX as a float rather than a height in metres, so the state stays
-/// document-free and the simulator can produce it without loading a world. <c>TilePresenter</c> multiplies by the
-/// document's plane height on the way to the view.</para>
+/// <para>A STEP COMMITS ITS TILE WHEN IT STARTS. <see cref="Tile"/> names the tile the step is walking INTO from the
+/// moment the step begins, and <see cref="StepFrom"/> names the one it is leaving, so the simulation owns the
+/// destination for the whole of the walk into it and the drawn body arrives afterwards. Every rules question (reach,
+/// region, occupancy, what a click resolves against) is therefore answered about the tile the player is committed to
+/// rather than the one they are half off, which is what makes a 250 ms tick feel immediate. The body is at most one
+/// step behind the answer, never a whole tile, because the commit and the glide start on the same tick.</para>
+/// <para><see cref="Position"/> is DERIVED: the glide from <see cref="StepFrom"/> to <see cref="Tile"/> by the
+/// fraction of the current step already spent, in TILE units. <see cref="Vertical"/> is the PLANE INDEX as a float
+/// rather than a height in metres, so the state stays document-free and the simulator can produce it without loading
+/// a world. <c>TilePresenter</c> multiplies by the document's plane height on the way to the view.</para>
 /// <para>Those units are the LATTICE's, not the world's, which matters one level out. Reconciliation measures its
 /// position error as a single magnitude over both, so a one-plane difference reads as exactly one tile of error,
 /// while <see cref="PredictionSettings.HardSnapDistance"/> defaults to 100 (documented in WORLD units). A tile
@@ -34,9 +40,19 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// </summary>
 public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquatable<TileMoveState>
 {
-    /// <summary>The tile the player stands on. A step COMMITS by changing this, never by fractions, so this field
-    /// alone answers every rules question (reach, region, occupancy) with no rounding.</summary>
+    /// <summary>The tile the player OWNS. A step COMMITS by changing this, never by fractions, so this field alone
+    /// answers every rules question (reach, region, occupancy) with no rounding. It changes on the tick a step
+    /// STARTS, so while a step is in flight this is the tile being walked INTO and the drawn body is somewhere
+    /// between <see cref="StepFrom"/> and here.</summary>
     public TileCoord Tile;
+
+    /// <summary>The tile the step in flight is walking OUT of, equal to <see cref="Tile"/> whenever the body stands
+    /// still (standing, spawned, teleported, hard snapped, or the tick a glide finishes). The glide's origin is its
+    /// own field rather than derived from <see cref="Facing"/> because the two come apart exactly where it matters:
+    /// <c>TileMoveSimulator</c>'s arrival turn rewrites the facing toward an interaction target on the tick the LAST
+    /// step starts, while that step's glide still has its whole run left, so a facing-derived origin would send the
+    /// body off in the direction of a booth it is not walking from.</summary>
+    public TileCoord StepFrom;
 
     /// <summary>The direction the player faces. Set by the step taken, or by an interaction's target on the tick the
     /// walk to it ends, a zero step walk included, which is why it is its own field rather than read back off the
@@ -50,8 +66,10 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
     /// so a toggle can neither shorten nor stretch a step already in progress.</summary>
     public TileMoveMode Mode;
 
-    /// <summary>Ticks already spent in the current step. Always below <see cref="StepTotal"/>, because the tick that
-    /// would reach it is the tick that commits the step and resets this to zero.</summary>
+    /// <summary>Ticks already spent gliding into <see cref="Tile"/>. Always below <see cref="StepTotal"/> in a state
+    /// the simulator produced, because the tick that would reach it is the tick the body lands: that tick pulls
+    /// <see cref="StepFrom"/> up to <see cref="Tile"/> and resets this to zero, and starts the next step if the route
+    /// has one. Zero whenever <see cref="StepFrom"/> equals <see cref="Tile"/>.</summary>
     public byte StepTicks;
 
     /// <summary>Ticks the CURRENT step takes, stamped from configuration when the step started. Carried on the
@@ -79,21 +97,31 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
     /// <summary>Presentation only, see the type doc.</summary>
     public bool HasRenderOverride;
 
-    /// <summary>A standing state on one tile, facing one way, with no route. <see cref="StepTotal"/> starts at 1
-    /// rather than 0 so the fraction maths is never dividing by a zero total on a freshly placed player.</summary>
+    /// <summary>A standing state on one tile, facing one way, with no route and no step in flight. Used by every
+    /// discontinuous placement there is (spawn, rejoin, teleport, a record restored from the store), which is why it
+    /// is the one place <see cref="StepFrom"/> is seeded: a placement has no tile to have come from, so the body is
+    /// on its tile rather than gliding onto it. <see cref="StepTotal"/> starts at 1 rather than 0 so the fraction
+    /// maths is never dividing by a zero total on a freshly placed player.</summary>
     public static TileMoveState At(TileCoord tile, TileDirection facing) => new()
     {
         Tile = tile,
+        StepFrom = tile,
         Facing = facing,
         Mode = TileMoveMode.Walk,
         Route = TileRoute.None,
         StepTotal = 1,
     };
 
-    /// <summary>The fraction of the current step already spent, 0 when standing. The single place an integer tick
-    /// count turns into a float, and it is read only: nothing ever writes the result back.</summary>
+    /// <summary>True while the drawn body is between <see cref="StepFrom"/> and <see cref="Tile"/>. THE definition of
+    /// "a step is in flight", asked by the simulator before it starts one and by the presenter before it glides, so
+    /// the two cannot disagree. Note it is NOT the same question as a live route: a route empties on the tick its
+    /// last step STARTS, so an idle route with a step still in flight is the ordinary end of every walk.</summary>
+    public readonly bool IsStepping => !StepFrom.Equals(Tile);
+
+    /// <summary>The fraction of the current step already spent, 0 when the body stands on its tile. The single place
+    /// an integer tick count turns into a float, and it is read only: nothing ever writes the result back.</summary>
     public readonly float StepFraction =>
-        Route.IsIdle || StepTotal == 0 ? 0f : (float)StepTicks / StepTotal;
+        !IsStepping || StepTotal == 0 ? 0f : (float)StepTicks / StepTotal;
 
     /// <inheritdoc/>
     /// <remarks>A diagonal step covers sqrt(2) tiles in the same tick count as a cardinal one, which is the tile
@@ -104,10 +132,15 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
     {
         get
         {
-            if (Route.IsIdle) return new Vector2(Tile.X, Tile.Z);
-            TileCoord next = Route.Next;
+            if (!IsStepping) return new Vector2(Tile.X, Tile.Z);
             float f = StepFraction;
-            return new Vector2(Tile.X + (next.X - Tile.X) * f, Tile.Z + (next.Z - Tile.Z) * f);
+            // Differenced in FLOAT rather than in int. The two tiles are one step apart in anything this package
+            // builds, and the decoder clamps a frame that says otherwise, but the fields are public and an int
+            // subtraction of two hand-written coordinates a world apart would overflow into a position on the far
+            // side of the map rather than merely a distant one.
+            return new Vector2(
+                StepFrom.X + ((float)Tile.X - StepFrom.X) * f,
+                StepFrom.Z + ((float)Tile.Z - StepFrom.Z) * f);
         }
     }
 
@@ -140,7 +173,7 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
     /// the comparison a reconciliation uses to decide whether the prediction was right, so folding a smoothed
     /// render position into it would make every smoothed frame read as a misprediction.</summary>
     public readonly bool Equals(TileMoveState other) =>
-        Tile.Equals(other.Tile) && Facing == other.Facing && Mode == other.Mode
+        Tile.Equals(other.Tile) && StepFrom.Equals(other.StepFrom) && Facing == other.Facing && Mode == other.Mode
         && StepTicks == other.StepTicks && StepTotal == other.StepTotal
         && Route.Equals(other.Route) && Epoch == other.Epoch && InteractTarget == other.InteractTarget;
 
@@ -149,7 +182,8 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
 
     /// <summary>Hashes the same simulation fields <see cref="Equals(TileMoveState)"/> compares.</summary>
     public readonly override int GetHashCode() =>
-        HashCode.Combine(Tile, Facing, Mode, StepTicks, StepTotal, Route, Epoch, InteractTarget);
+        HashCode.Combine(HashCode.Combine(Tile, StepFrom), Facing, Mode, StepTicks, StepTotal, Route, Epoch,
+            InteractTarget);
 
     /// <summary>Equality operator over <see cref="Equals(TileMoveState)"/>.</summary>
     public static bool operator ==(TileMoveState a, TileMoveState b) => a.Equals(b);

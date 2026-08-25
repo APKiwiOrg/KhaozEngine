@@ -80,11 +80,13 @@ public class TilePresenterTests
         }
     }
 
+    // The glide runs from the tile the step left INTO the tile the state already names, and the route is not
+    // consulted: a remote's route is owner-only, so a pose that needed one could never draw an observer honestly.
     [Fact]
-    public void A_mid_step_state_sits_between_the_two_tiles()
+    public void A_mid_step_state_sits_between_the_departed_tile_and_the_committed_one()
     {
-        TileMoveState s = TileMoveState.At(new TileCoord(0, 0, 0), TileDirection.N);
-        s.Route = new TileRoute(new[] { new TileCoord(0, 1, 0) }, 0);
+        TileMoveState s = TileMoveState.At(new TileCoord(0, 1, 0), TileDirection.N);
+        s.StepFrom = new TileCoord(0, 0, 0);
         s.StepTotal = 4;
         s.StepTicks = 2;
         // Centred, so the walk from tile (0, 0) to tile (0, 1) runs from tile-space 0.5 to 1.5 and the half way
@@ -92,6 +94,11 @@ public class TilePresenterTests
         Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1f, 1f), P.Pose(s).Position);
         Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1.25f, 1f), P.Pose(s, extraTicks: 1f).Position);
         Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1.5f, 1f), P.Pose(s, extraTicks: 9f).Position);
+
+        // A route pointing somewhere else cannot move the pose, and the clamp parks the overdue sample on the tile
+        // the state named rather than carrying it past.
+        s.Route = new TileRoute(new[] { new TileCoord(5, 5, 0) }, 0);
+        Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1f, 1f), P.Pose(s).Position);
     }
 
     [Fact]

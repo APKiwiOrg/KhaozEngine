@@ -15,34 +15,59 @@ public class TileMoveStateTests
         return new TileRoute(list, 0);
     }
 
+    // A step in flight, spelled the way the simulator spells it: the tile is already the one being walked INTO and
+    // StepFrom is the one being left, so the drawn position runs from StepFrom up to Tile rather than from Tile
+    // toward a route tile.
+    static TileMoveState Stepping(TileCoord from, TileCoord into, byte ticks, byte total)
+    {
+        TileMoveState s = TileMoveState.At(into, TileRoute.Direction(from, into));
+        s.StepFrom = from;
+        s.StepTicks = ticks;
+        s.StepTotal = total;
+        return s;
+    }
+
     [Fact]
-    public void An_idle_state_sits_exactly_on_its_tile()
+    public void A_state_with_no_step_in_flight_sits_exactly_on_its_tile()
     {
         TileMoveState s = TileMoveState.At(new TileCoord(3, 7, 0), TileDirection.N);
         Assert.Equal(new Vector2(3f, 7f), s.Position);
         Assert.Equal(0f, s.Vertical);
         Assert.True(s.Route.IsIdle);
+        // A placement seeds the glide origin onto the tile itself, which is what says "standing" in one field.
+        Assert.Equal(s.Tile, s.StepFrom);
+        Assert.False(s.IsStepping);
+        Assert.Equal(0f, s.StepFraction);
     }
 
     [Fact]
-    public void Position_interpolates_toward_the_next_route_tile_by_step_fraction()
+    public void Position_glides_from_the_departed_tile_into_the_committed_one_by_step_fraction()
     {
-        TileMoveState s = TileMoveState.At(new TileCoord(3, 7, 0), TileDirection.N);
-        s.Route = RouteOf((3, 8));
-        s.StepTotal = 4;
-        s.StepTicks = 1;
+        TileMoveState s = Stepping(new TileCoord(3, 7, 0), new TileCoord(3, 8, 0), ticks: 1, total: 4);
+        Assert.True(s.IsStepping);
         Assert.Equal(new Vector2(3f, 7.25f), s.Position);
         s.StepTicks = 3;
         Assert.Equal(new Vector2(3f, 7.75f), s.Position);
+        // The fraction filling puts the body exactly on the tile the state already named, which is the only place
+        // the glide can end. The simulator normalizes rather than parking here, but a decoded frame may say it.
+        s.StepTicks = 4;
+        Assert.Equal(new Vector2(3f, 8f), s.Position);
+    }
+
+    // The ROUTE is not consulted at all, which is what lets an observer draw a remote correctly off a snapshot that
+    // deliberately carries no route. A route pointing somewhere else entirely cannot move the drawn position.
+    [Fact]
+    public void Position_ignores_the_route_and_reads_only_the_two_tiles_of_the_step()
+    {
+        TileMoveState s = Stepping(new TileCoord(3, 7, 0), new TileCoord(3, 8, 0), ticks: 2, total: 4);
+        s.Route = RouteOf((9, 9), (9, 10));
+        Assert.Equal(new Vector2(3f, 7.5f), s.Position);
     }
 
     [Fact]
     public void Position_on_a_diagonal_moves_on_both_axes()
     {
-        TileMoveState s = TileMoveState.At(new TileCoord(0, 0, 0), TileDirection.NE);
-        s.Route = RouteOf((1, 1));
-        s.StepTotal = 2;
-        s.StepTicks = 1;
+        TileMoveState s = Stepping(new TileCoord(0, 0, 0), new TileCoord(1, 1, 0), ticks: 1, total: 2);
         Assert.Equal(new Vector2(0.5f, 0.5f), s.Position);
     }
 
@@ -53,12 +78,26 @@ public class TileMoveStateTests
         Assert.Equal(2f, s.Vertical);
     }
 
+    // The glide origin is SIMULATION state, so two states that differ only in it are two different states. Left out
+    // of equality, a reconciliation would accept a basis whose body is walking out of a different tile than the
+    // prediction's and the two heads would draw the same step from two places.
+    [Fact]
+    public void The_glide_origin_is_compared_by_equality()
+    {
+        TileMoveState a = Stepping(new TileCoord(3, 7, 0), new TileCoord(3, 8, 0), ticks: 1, total: 4);
+        TileMoveState b = a;
+        b.StepFrom = new TileCoord(4, 8, 0);
+        Assert.NotEqual(a, b);
+        Assert.NotEqual(a.GetHashCode(), b.GetHashCode());
+    }
+
     [Fact]
     public void WithRenderState_only_touches_the_presentation_fields()
     {
         TileMoveState s = TileMoveState.At(new TileCoord(3, 7, 0), TileDirection.N);
         TileMoveState r = s.WithRenderState(new Vector2(3.4f, 7.1f), 0.5f);
         Assert.Equal(s.Tile, r.Tile);
+        Assert.Equal(s.StepFrom, r.StepFrom);
         Assert.Equal(s.Facing, r.Facing);
         Assert.True(r.HasRenderOverride);
         Assert.Equal(new Vector2(3.4f, 7.1f), r.RenderPosition);

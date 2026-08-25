@@ -5,6 +5,53 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.1.0
+
+18.1.0 retires the one-uniform-buffer-per-pipeline shader rule
+([#604](https://github.com/APKiwiOrg/KhaozEngine/issues/604)), the closing act the Veldrid removal left
+staged. The rule was the deleted Metal backend's per-stage declaration-order buffer numbering, never a
+property of Metal (measured by MM6, `MetalTwoUniformBufferGpuTests`), so with 18.0.0 shipping no backend
+that numbers that way, the two shipped workarounds are unfolded and the enforcement is deleted. The release
+also makes the windowed create path honour a `KE_GRAPHICS_BACKEND` pin
+([#719](https://github.com/APKiwiOrg/KhaozEngine/issues/719)).
+
+- **The rule is retired in code.** `MslBindingOrder.CheckPrefix`, which required every stage's resources to
+  be a prefix of the layout's per index space, is deleted, so `ShaderValidation.ValidatePair` no longer
+  refuses a pair whose stages read disjoint uniform buffers. A shader may spread its uniform buffers across
+  bindings and sets as its structure wants. `MslBindingOrder.CheckStage` is unchanged and still pins the
+  agreement between the Metal index order an emission carries and the binding order the layout is walked in,
+  which the authored-index scheme (`MslIndexRemap`) produces and the native Metal backend's binding table
+  depends on.
+- **The splat terrain's per-material combined uniform block is unfolded** (first #604 unfold). The splat
+  pipeline binds the shared frame UBO at set 0 (both stages) and the material's own 112-byte `SplatParams`
+  buffer at set 1 (fragment only, written once at load) instead of one 1120-byte buffer per material
+  carrying both. A frame no longer re-uploads the frame block into every loaded splat material, and the
+  internal `SplatUniformBuffer` CPU mirror is gone with the partial write it existed to avoid (#408).
+  Pixels unchanged on all three backends at the existing golden tolerance.
+- **The GPU-skinning combined UBO is unfolded** (second #604 unfold). The skinned pipeline reads the shared
+  frame block at set 0 binding 0 (both stages) and the per-draw `{ Model; P; bones[128] }` at binding 1
+  (vertex only, dynamic offset), taking the per-draw slot from 9472 to 8448 bytes and dropping the per-draw
+  re-pack of the 1008-byte frame block. The CPU-folded `Mvp` goes with it: the skinned vertex composes
+  `ViewProj * (Model * skinnedLocal)` exactly as `ModelVert` does, which makes pixel parity with the CPU
+  skinning path structural. `GpuSkinningReproGpuTests` variant 3 stays as the offscreen record of the
+  original incumbent failure.
+- **The prose rule is history now.** `docs/DEPENDENCY-SEAMS.md`'s "ONE uniform buffer per pipeline" section
+  records what the rule was, the measured mechanism and when it was lifted, and names the two pipelines that
+  keep a combined buffer on purpose (tile ground,
+  [#727](https://github.com/APKiwiOrg/KhaozEngine/issues/727), and the skinned shadow slot,
+  [#407](https://github.com/APKiwiOrg/KhaozEngine/issues/407), whose engine-side blocker this release
+  discharges). `docs/CROSS-PLATFORM.md`, `docs/USING-KHAOZENGINE.md`, the `KhaozEngine.Gpu` and
+  `KhaozEngine.Gpu.Vulkan` READMEs and the in-source notes follow it, and the Vulkan README's stale
+  descriptor headroom is corrected: the heaviest shipped pipeline spends TWO dynamic uniform descriptors.
+- **`GpuDeviceContext.CreateForWindow` no longer falls back for a backend pinned in `KE_GRAPHICS_BACKEND`**
+  ([#719](https://github.com/APKiwiOrg/KhaozEngine/issues/719)). The headless path has honoured
+  `GpuBackendSelection.WasPinnedByEnvironment` since 17.40.0 and the windowed one never did, so a pinned
+  soak whose backend failed to create warned once and then silently measured the platform default, on the
+  host a soak actually runs. One flag drives both arms of the windowed path now: a pinned request skips the
+  support probe as well as disarming the creation catch, so the caller gets the provider's own exception
+  rather than a preflight redirect. A stored preference, an unrecognized override and the plain OS default
+  all still fall back exactly as before.
+
 ## 18.0.0
 
 18.0.0 deletes the Veldrid incumbent GPU backend. The engine's own Metal, Direct3D 11 and Vulkan backends are

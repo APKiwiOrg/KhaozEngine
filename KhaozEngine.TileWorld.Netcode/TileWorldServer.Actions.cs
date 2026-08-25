@@ -6,10 +6,16 @@ using KhaozEngine.Sharding;
 namespace KhaozEngine.TileWorld.Netcode;
 
 /// <summary>
-/// The action half of <see cref="TileWorldServer"/>: what happens to a pending click at the end of the walk it
-/// started. Ordered, refused or raised, once per tick, after movement and handoff have both run. See the other
-/// partials for construction (<c>TileWorldServer.cs</c>), the tick order (<c>TileWorldServer.Tick.cs</c>) and the
-/// session lifecycle (<c>TileWorldServer.Sessions.cs</c>).
+/// The action half of <see cref="TileWorldServer"/>: what happens to a pending click when the walk it started
+/// runs out of route. Ordered, refused or raised, once per tick, after movement and handoff have both run. See the
+/// other partials for construction (<c>TileWorldServer.cs</c>), the tick order (<c>TileWorldServer.Tick.cs</c>) and
+/// the session lifecycle (<c>TileWorldServer.Sessions.cs</c>).
+/// <para>THAT MOMENT IS THE START OF THE WALK'S LAST STEP, not the end of it. A step commits its tile when it
+/// starts (<see cref="TileMoveState"/>), so a route empties while the drawn body still has that step to walk, and
+/// an interaction therefore resolves a step sooner than the picture arrives. Nothing here had to change for it: the
+/// arrival test is the state's own idle-route-plus-pending-target pair, and the simulator moved when that pair
+/// comes true. It is the point of the reversal rather than a side effect of it, because a click answered when the
+/// player is committed to the reach tile is what makes a 250 ms tick feel immediate.</para>
 /// </summary>
 public sealed partial class TileWorldServer
 {
@@ -19,14 +25,18 @@ public sealed partial class TileWorldServer
     static readonly Comparison<(long issuedTick, int slot)> OldestFirst = (a, b) =>
         a.issuedTick != b.issuedTick ? a.issuedTick.CompareTo(b.issuedTick) : a.slot.CompareTo(b.slot);
 
-    // Resolves every pending action whose walk has ENDED. The arrival test is the state's own, not a second reach
-    // computation: TileMoveSimulator routes an interact to a reach tile and keeps InteractTarget for exactly as long
-    // as that walk is alive, dropping it the moment the route is replaced, cannot be rebuilt, or ends anywhere but
-    // ON a reach tile of a target that still resolves (TileMoveSimulator.FaceTarget, both doors). So a route that
-    // has emptied with the target still on it IS the arrival, and the same pair of fields answers the abandonment
-    // and the failure without the server re-deriving anything the simulator already decided. Re-deriving it here
-    // would put a SECOND copy of the reach rule on the server, and the one that disagreed would be invisible until
-    // a player stood one tile off the thing they clicked, or a whole map away from it.
+    // Resolves every pending action whose walk has run out of route, which is the tick its LAST step was committed.
+    // The arrival test is the state's own, not a second reach computation: TileMoveSimulator routes an interact to a
+    // reach tile and keeps InteractTarget for exactly as long as that walk is alive, dropping it the moment the
+    // route is replaced, cannot be rebuilt, or ends anywhere but ON a reach tile of a target that still resolves
+    // (TileMoveSimulator.FaceTarget, both doors). So a route that has emptied with the target still on it IS the
+    // arrival, and the same pair of fields answers the abandonment and the failure without the server re-deriving
+    // anything the simulator already decided. Re-deriving it here would put a SECOND copy of the reach rule on the
+    // server, and the one that disagreed would be invisible until a player stood one tile off the thing they
+    // clicked, or a whole map away from it.
+    //
+    // A ZERO STEP click is the same test with no walk in it, and it now includes the click made while gliding INTO
+    // a reach tile: that tile is already committed, so BeginInteract answers it on the click's own tick.
     //
     // The arrival TURN is the simulator's too, on the tick the route empties with a target pending, so nothing here
     // writes state.Facing. A write here would be idempotent at best and a second definition of the facing rule at
@@ -62,9 +72,9 @@ public sealed partial class TileWorldServer
                 // Still walking to it, which is the ordinary answer and the one this loop gives most of the time.
                 if (TickCount - pending.IssuedTick <= maxActionAgeTicks) continue;
                 // Past the cap: a walk this old is not converging. The case is a dynamic blocker that keeps moving
-                // into the player's way, because a failed commit re-paths toward the SAME route end and pays a tick
-                // that advances nothing, so the route is rebuilt rather than emptied and the arrival test is never
-                // reached. Without the cap that action outlives the session.
+                // into the player's way, because a step the map refuses to START re-paths toward the SAME route end
+                // and pays a tick that advances nothing, so the route is rebuilt rather than emptied and the arrival
+                // test is never reached. Without the cap that action outlives the session.
                 //
                 // The state's own record of the target goes with the queue entry, or the player would still be
                 // turned toward the thing they were just refused if the walk later ended on a reach tile of it. The

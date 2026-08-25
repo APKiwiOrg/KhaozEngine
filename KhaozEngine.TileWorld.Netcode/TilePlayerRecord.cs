@@ -38,8 +38,10 @@ public sealed class TilePlayerRecord
     public byte[]? Game { get; set; }
 
     /// <summary>Builds a record from a live state. A route in progress is deliberately NOT persisted: a rejoining
-    /// player stands on the tile they reached, which is where the server placed them. An empty blob is stored as
-    /// null, so a "no game state" record encodes identically whether the hook returned null or an empty array.</summary>
+    /// player stands on the tile they were COMMITTED to, which is the tile the server had already decided they were
+    /// on, so a player logging out mid step reappears on the far side of that step rather than back where it
+    /// started. An empty blob is stored as null, so a "no game state" record encodes identically whether the hook
+    /// returned null or an empty array.</summary>
     public static TilePlayerRecord From(in TileMoveState state, byte[]? game = null) => new()
     {
         TileX = state.Tile.X,

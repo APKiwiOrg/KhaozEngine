@@ -168,8 +168,10 @@ public sealed partial class TileWorldServer : IDisposable
     public event Action<float>? OnBeforeTick;
 
     /// <summary>Raised as (slot, playerNetId, target) when a validated interaction resolves, which is the tick the
-    /// player is standing on a reach tile of the thing they clicked. The engine knows nothing about what an
-    /// interaction DOES, so this is where a game takes over.</summary>
+    /// player becomes COMMITTED to a reach tile of the thing they clicked. That is the tick their walk's last step
+    /// starts, so a game's handler runs while the avatar is still drawn walking the last tile in, which is
+    /// deliberate: the tile is the simulation's from that tick and the picture catches up within one step. The
+    /// engine knows nothing about what an interaction DOES, so this is where a game takes over.</summary>
     public event Action<int, long, long>? OnInteract;
 
     /// <summary>The one-deep pending action per player. The test seam for the abandonment rule, which is a
@@ -331,6 +333,11 @@ public sealed partial class TileWorldServer : IDisposable
 
     // Tile coordinates ARE the plane the shard grid runs on, so the accessor hands the host the tile itself. The
     // plane is deliberately not folded in: a cell holds every plane of its region (see TileCells).
+    //
+    // The tile is the COMMITTED one, so authority crosses a cell boundary on the tick the step over it starts
+    // rather than the tick the body lands. That is the right end to hand over at: every rules question about the
+    // player is already being answered about the destination tile, so the cell that owns the answers is the cell
+    // that owns the entity. The overlap margin is what makes the half step either side of the line uneventful.
     static bool PositionOf(World world, Entity entity, out float x, out float y)
     {
         if (world.TryGet(entity, out TileMoveState s)) { x = s.Tile.X; y = s.Tile.Z; return true; }

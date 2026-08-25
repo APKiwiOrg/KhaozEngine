@@ -128,8 +128,9 @@ public sealed partial class TileWorldServer
         host.ProcessHandoffs();
         host.SyncGhosts();
 
-        // 4. Resolve any pending action whose player now stands on a reach tile, and refuse any that cannot get
-        //    there. See TileWorldServer.Actions.cs.
+        // 4. Resolve any pending action whose player is now COMMITTED to a reach tile, which is the tick their
+        //    walk's last step started rather than the tick their body gets there, and refuse any that cannot get
+        //    there at all. See TileWorldServer.Actions.cs.
         ResolveActions();
 
         // 5. Serve each client its home-cell area of interest, filtered to its own plane.

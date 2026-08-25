@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using KhaozEngine.Ecs;
 using KhaozEngine.Netcode;
 using KhaozEngine.Replication;
@@ -33,8 +34,9 @@ public sealed partial class TileWorldClient : IDisposable
     readonly NetClient net;
     readonly FixedTickHost clock;
     readonly Action<long> onCommandTick;
-    readonly Dictionary<long, RemoteSample> remoteSamples = new();
+    readonly Dictionary<long, RemoteBody> remoteBodies = new();
     readonly List<long> goneRemotes = new();
+    readonly TileChase localChase;
     TileCommand queued;
     double presentationClock;
     bool seeded;
@@ -60,10 +62,10 @@ public sealed partial class TileWorldClient : IDisposable
     /// <exception cref="ArgumentNullException"><paramref name="transport"/>, <paramref name="config"/> or
     /// <paramref name="map"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="config"/> asks for a tick of zero seconds or
-    /// less, or names a <see cref="TileWorldClientConfig.GlideWindowSeconds"/> that is negative or not a number.
-    /// The glide window's refusal is thrown by <see cref="TileGlideWindow"/>'s own constructor, so it names the
-    /// parameter <c>seconds</c> rather than <c>config</c>: read that as the config property that fed it, since a
-    /// caller of this constructor never wrote a <c>seconds</c> argument.</exception>
+    /// less, or names a <see cref="TileWorldClientConfig.ChaseHalfLifeSeconds"/> that is negative, infinite or not
+    /// a number. The half life's refusal is thrown by <see cref="TileChase"/>'s own constructor, so it names the
+    /// parameter <c>halfLifeSeconds</c> rather than <c>config</c>: read that as the config property that fed it,
+    /// since a caller of this constructor never wrote a <c>halfLifeSeconds</c> argument.</exception>
     public TileWorldClient(INetTransport transport, TileWorldClientConfig config, TileCollisionMap map,
         ITileTargets? targets = null, byte[]? connectToken = null, ReplicationRegistry? registry = null)
     {
@@ -81,19 +83,18 @@ public sealed partial class TileWorldClient : IDisposable
                 HardSnapDistance: 0.5f, CorrectionRate: 8f, CorrectionDeadZone: 0.01f));
         View = new ClientReplicationView(registry ?? TileProtocol.CreateRegistry());
         World = new World();
-        Glide = new TileGlideWindow(config.GlideWindowSeconds, config.TickSeconds);
+        localChase = new TileChase(config.ChaseHalfLifeSeconds);
         // A placeholder until the head has the world file. One metre tiles and the document default plane height
         // are the only honest guess available before a document is loaded, and Presenter is settable for exactly
-        // this reason. The glide window is NOT a guess, so the placeholder carries the real one: a head that never
-        // replaces the presenter still draws the window its config asked for.
-        Presenter = new TilePresenter(1f, TileWorldDocument.DefaultPlaneHeight, Glide);
+        // this reason. The chase is NOT on the presenter, so replacing the presenter cannot lose the feel the way
+        // it could lose the old glide window: the half life lives on the client and the presenter is a pure map.
+        Presenter = new TilePresenter(1f, TileWorldDocument.DefaultPlaneHeight);
         clock = new FixedTickHost(config.TickSeconds);
         onCommandTick = OnCommandTick;
         net = new NetClient(transport, connectToken);
     }
 
-    /// <summary>The local player's prediction. <see cref="ClientPrediction{TState,TCommand}.RenderedState"/> is
-    /// what to draw, through <see cref="TilePresenter.LocalPose"/>, and
+    /// <summary>The local player's prediction. <see cref="LocalPose"/> is what to DRAW, and
     /// <see cref="ClientPrediction{TState,TCommand}.PredictedState"/> is what the rules see.</summary>
     public ClientPrediction<TileMoveState, TileCommand> Prediction { get; }
 
@@ -110,20 +111,66 @@ public sealed partial class TileWorldClient : IDisposable
     /// the same map and the same cadence, which is what makes a misprediction a real disagreement.</summary>
     public TileMoveSimulator Simulator { get; }
 
-    /// <summary>The tile-to-view bridge. Replace it once the world document is loaded, so it carries the real tile
-    /// size and plane height instead of the placeholder the constructor installed. Hand <see cref="Glide"/> to the
-    /// replacement (<c>new TilePresenter(document, client.Glide)</c>) or it draws the full-step glide whatever the
-    /// config asked for, because a presenter's window is its own.</summary>
+    /// <summary>The tile-to-view bridge, a pure map from a tile point to a world position. Replace it once the
+    /// world document is loaded (<c>new TilePresenter(document)</c>), so it carries the real tile size and plane
+    /// height instead of the placeholder the constructor installed. It carries no tuning of its own, so replacing
+    /// it cannot change how anything MOVES.</summary>
     public TilePresenter Presenter { get; set; }
 
     /// <summary>
-    /// <see cref="TileWorldClientConfig.GlideWindowSeconds"/> composed with the tick length, which is what a
-    /// presenter needs to turn a step's TICK count into a duration. Hand it to every
-    /// <see cref="TilePresenter"/> this head builds, so the local player and the remotes are drawn against the same
-    /// number: the local pose and the remote pose read the presenter's copy, and there is nothing else to keep in
-    /// step.
+    /// <see cref="TileWorldClientConfig.ChaseHalfLifeSeconds"/>, the one number the local player's chase and every
+    /// remote's were built with. Read it to build a <see cref="TileChase"/> for a body of the game's own (a pet, a
+    /// follower, a mount) so it moves on the same curve as the players around it.
     /// </summary>
-    public TileGlideWindow Glide { get; }
+    public float ChaseHalfLifeSeconds => config.ChaseHalfLifeSeconds;
+
+    /// <summary>
+    /// Where to DRAW the local player: the <see cref="TileChase"/> chasing the tile prediction has committed them
+    /// to, placed through <see cref="Presenter"/>. Call it once a frame, after
+    /// <see cref="AdvancePresentation"/>, which is what steps the chase.
+    /// <para><b>The chase target is the COMMITTED TILE and nothing else</b>, and the prediction layer's decaying
+    /// <see cref="ClientPrediction{TState,TCommand}.RenderOffset"/> is deliberately not in it. That is the whole
+    /// composition, and it is worth reading once, because the two shapes that look more careful are both worse.
+    /// The offset exists to keep the layer's own rendered POSITION continuous across a rebase, and that position
+    /// is the step-fraction glide between <see cref="TileMoveState.StepFrom"/> and
+    /// <see cref="TileMoveState.Tile"/>, which is exactly the curve the chase replaced and which nothing draws any
+    /// more.</para>
+    /// <para>Adding it to the chase's OUTPUT is the rubber band: the offset jumps the whole correction in one
+    /// frame and then unwinds it, a pop followed by a reversal. Folding it into the TARGET looks like the fix,
+    /// because at a rebase the tile's jump and the offset's jump would cancel, but on a LATTICE they do not: the
+    /// offset takes up the POSITION delta while the target moves by the TILE delta, and the two are equal only
+    /// when a rebase happens to move both by the same amount. The case that shows it is the ordinary sub-tile
+    /// correction, where the authority agrees about the tile and disagrees about how far through the step the body
+    /// is: the target must not move at all, and a corrected target would push the drawn body a fraction of a tile
+    /// PAST its committed tile, in the opposite direction to the correction, and then bring it back. Chasing the
+    /// bare tile has neither failure. It cannot pop (the target moves only when the tile does, and the chase
+    /// smooths that by construction), it cannot rubber band (there is no second decaying term to reverse), and the
+    /// correction is not lost: the chase IS the smoother, and it smooths the only quantity being drawn. A
+    /// correction big enough to matter changes the tile, and one big enough to CUT is a hard snap, which resets
+    /// the chase outright.</para>
+    /// <para>The VERTICAL is the prediction layer's own eased plane, untouched: a step never changes plane, so the
+    /// only thing that moves it is a teleport, which cuts on both axes together.</para>
+    /// </summary>
+    public TilePose LocalPose
+    {
+        get
+        {
+            TileMoveState r = Prediction.RenderedState;
+            return Presenter.PoseAt(localChase.Drawn, r.HasRenderOverride ? r.RenderVertical : r.Vertical, r.Facing);
+        }
+    }
+
+    // Where the local body is trying to be, in tile units: the CENTRE of the tile the simulation has committed it
+    // to. The presenter adds the half tile, so a bare lattice coordinate is that centre here. See LocalPose for
+    // why the reconciliation offset is not part of this.
+    Vector2 LocalTarget
+    {
+        get
+        {
+            TileCoord tile = Prediction.PredictedState.Tile;
+            return new Vector2(tile.X, tile.Z);
+        }
+    }
 
     /// <summary>
     /// The run toggle this client is holding, which rides on EVERY command rather than on the click that started a
@@ -201,7 +248,7 @@ public sealed partial class TileWorldClient : IDisposable
     public event TileClientMessageHandler? OnGameMessage;
 
     /// <summary>Net ids of the remotes currently drawn. The local player is never among them.</summary>
-    public IReadOnlyCollection<long> RemoteNetIds => remoteSamples.Keys;
+    public IReadOnlyCollection<long> RemoteNetIds => remoteBodies.Keys;
 
     /// <summary>
     /// Latest-wins intent for the NEXT command tick, called from a click handler. A second click before the tick
@@ -301,21 +348,26 @@ public sealed partial class TileWorldClient : IDisposable
     }
 
     /// <summary>
-    /// Advances the render clocks: the prediction's inter-tick easing for the local player, and the delayed remote
-    /// timeline for everybody else. Call it once per frame, after <see cref="Poll"/> and before drawing.
-    /// <para>The remote timeline is resampled HERE rather than on snapshot arrival, so a remote advances with the
-    /// frame rate instead of once per packet. That is the whole difference between a remote that glides and one
-    /// that hops four times a second.</para>
+    /// Advances the render clocks: the prediction's correction decay and the local player's chase, then the
+    /// delayed remote timeline and every remote's chase. Call it once per frame, after <see cref="Poll"/> and
+    /// before drawing.
+    /// <para>Every chase is stepped HERE, on the frame clock, which is what makes a body move smoothly above the
+    /// tick rate without anything interpolating between two lattice points. The remote timeline is resampled here
+    /// rather than on snapshot arrival for the same reason: a remote resampled once per packet hops at the tick
+    /// rate whatever the frame rate.</para>
+    /// <para>The prediction layer goes FIRST, so the correction offset the local chase's target carries is the
+    /// current one rather than the previous frame's.</para>
     /// </summary>
     /// <param name="dt">Seconds since the last frame. Negative is treated as zero.</param>
     public void AdvancePresentation(float dt)
     {
-        presentationClock += Math.Max(0f, dt);
+        float step = Math.Max(0f, dt);
+        presentationClock += step;
         Prediction.AdvancePresentation(dt);
+        localChase.Advance(LocalTarget, step);
         if (LocalNetId < 0) return;
-        double renderTime = RenderTime;
-        View.InterpolateAt(World, renderTime, excludeNetId: LocalNetId);
-        RefreshRemoteSamples(renderTime);
+        View.InterpolateAt(World, RenderTime, excludeNetId: LocalNetId);
+        RefreshRemoteBodies(step);
     }
 
     // Where the remote timeline is right now: the render clock, less the delay that buys room for a lost snapshot.
@@ -336,7 +388,7 @@ public sealed partial class TileWorldClient : IDisposable
     /// </summary>
     public void Dispose()
     {
-        remoteSamples.Clear();
+        remoteBodies.Clear();
         goneRemotes.Clear();
         liveRemotes.Clear();
     }

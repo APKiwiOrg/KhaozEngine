@@ -80,41 +80,42 @@ public class TilePresenterTests
         }
     }
 
-    // The glide runs from the tile the step left INTO the tile the state already names, and the route is not
-    // consulted: a remote's route is owner-only, so a pose that needed one could never draw an observer honestly.
+    // Pose is the RULES' answer, not the body's: the tile the simulation has committed the player to, whatever the
+    // step in flight says. The step pair is deliberately not read here (a body is drawn by a TileChase pursuing
+    // this point, see TileChaseTests), and neither is the route: a remote's route is owner-only, so a pose that
+    // needed one could never place an observer honestly.
     [Fact]
-    public void A_mid_step_state_sits_between_the_departed_tile_and_the_committed_one()
+    public void A_pose_names_the_committed_tile_whatever_the_step_in_flight_says()
     {
         TileMoveState s = TileMoveState.At(new TileCoord(0, 1, 0), TileDirection.N);
         s.StepFrom = new TileCoord(0, 0, 0);
         s.StepTotal = 4;
         s.StepTicks = 2;
-        // Centred, so the walk from tile (0, 0) to tile (0, 1) runs from tile-space 0.5 to 1.5 and the half way
-        // point is 1.0. The offset is constant along the step, so the glide itself is unchanged.
-        Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1f, 1f), P.Pose(s).Position);
-        Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1.25f, 1f), P.Pose(s, extraTicks: 1f).Position);
-        Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1.5f, 1f), P.Pose(s, extraTicks: 9f).Position);
+        // Tile (0, 1) centred is tile-space z 1.5, and it reads that from the tick the step COMMITS rather than
+        // from the tick the body would have arrived: this is where the rules say the player is.
+        Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1.5f, 1f), P.Pose(s).Position);
+        s.StepTicks = 0;
+        Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1.5f, 1f), P.Pose(s).Position);
 
-        // A route pointing somewhere else cannot move the pose, and the clamp parks the overdue sample on the tile
-        // the state named rather than carrying it past.
+        // A route pointing somewhere else cannot move the pose either.
         s.Route = new TileRoute(new[] { new TileCoord(5, 5, 0) }, 0);
-        Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1f, 1f), P.Pose(s).Position);
+        Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1.5f, 1f), P.Pose(s).Position);
     }
 
+    // PoseAt is the mapping a chased body goes through, so it takes a CONTINUOUS tile point rather than a lattice
+    // one and centres it exactly as a whole tile is centred. Pinned against Pose at a whole coordinate, so the two
+    // entry points cannot drift apart, and at a fractional one, where the centring must still be the same half
+    // tile rather than a rounded lattice cell.
     [Fact]
-    public void The_local_pose_reads_the_predictions_rendered_override()
+    public void PoseAt_centres_a_continuous_tile_point_the_same_way_a_whole_tile_is_centred()
     {
-        var sim = new TileMoveSimulator(
-            TileMoveSimulatorTests.Bake(TileMoveSimulatorTests.FlatWorld()), new TileStepTicks(4, 2));
-        var pred = new ClientPrediction<TileMoveState, TileCommand>(
-            sim, new PredictionSettings(0.25f, 64, 0.5f, 8f, 0.01f));
-        pred.Reset(TileMoveState.At(new TileCoord(2, 2, 0), TileDirection.E));
-        pred.Predict(TileCommand.WalkTo(new TileCoord(2, 6, 0), TileMoveMode.Run));
-        pred.AdvancePresentation(0.125f);
-        TilePose pose = P.LocalPose(pred);
-        // Past the CENTRE of tile (2, 2), which is where a standing pose would be, so the local path is centred
-        // too. Measured against the corner instead, the half tile alone would satisfy this.
-        Assert.True(pose.Position.Z < TileWorldSpace.WorldZ(2.5f, 1f));  // already gliding north (world -z)
+        TileMoveState s = TileMoveState.At(new TileCoord(4, 7, 2), TileDirection.W);
+        Assert.Equal(P.Pose(s), P.PoseAt(new Vector2(4f, 7f), 2f, TileDirection.W));
+        Assert.Equal(TileWorldSpace.ToWorld(4.75f, 6f, 7.25f, 1f),
+            P.PoseAt(new Vector2(4.25f, 6.75f), 2f, TileDirection.W).Position);
+        // A fractional plane is legal: it is what a prediction layer's eased vertical hands in.
+        Assert.Equal(TileWorldSpace.ToWorld(4.5f, 4.5f, 7.5f, 1f),
+            P.PoseAt(new Vector2(4f, 7f), 1.5f, TileDirection.W).Position);
     }
 
     [Fact]
@@ -136,6 +137,5 @@ public class TilePresenterTests
         var p = new TilePresenter(doc);
         Assert.Equal(1.5f, p.TileSize);
         Assert.Equal(5f, p.PlaneHeight);
-        Assert.Equal(TileGlideWindow.WholeStep, p.Glide);
     }
 }

@@ -31,19 +31,18 @@ public sealed record TileWorldClientConfig
     /// <para>It does not touch the local player, who is predicted rather than interpolated.</para></summary>
     public float InterpolationDelayTicks { get; init; } = 2f;
 
-    /// <summary>How long the DRAWN body may lag the tile it is already committed to, in SECONDS. Presentation only:
-    /// nothing on the simulation path reads it, so the two heads replay identically whatever it says and this is the
-    /// one movement number that is NOT part of the determinism contract above.
-    /// <para><see cref="float.PositiveInfinity"/>, the default, is the full-step glide the tile stack has always
-    /// drawn, so the knob is invisible until a game reaches for it. A smaller number makes the body catch up to its
-    /// tile in that many seconds and then wait there for the rest of the step, and zero puts it on the tile the tick
-    /// the step commits. In SECONDS rather than a share of the step so a walk and a run catch up at the same
-    /// wall-clock rate, which is what a player reads as one consistent feel: see
-    /// <see cref="TileGlideWindow"/>.</para>
-    /// <para><see cref="TileWorldClient.Glide"/> is this number composed with <see cref="TickSeconds"/>, and it is
-    /// what a head hands the <see cref="TilePresenter"/> it builds from the world document. A presenter built
-    /// without one draws the full step.</para></summary>
-    public float GlideWindowSeconds { get; init; } = float.PositiveInfinity;
+    /// <summary>Seconds for the DRAWN body to halve its remaining distance to the tile it is already committed to.
+    /// Presentation only: nothing on the simulation path reads it, so the two heads replay identically whatever it
+    /// says and this is the one movement number that is NOT part of the determinism contract above.
+    /// <para>The body PURSUES its committed tile continuously rather than crossing the step on a schedule, which is
+    /// what stops it resting between commits. See <see cref="TileChase"/> for the curve, the frame-rate
+    /// independence and the invariant, and <see cref="TileChase.DefaultHalfLifeSeconds"/> for why the default is
+    /// the number it is. SECONDS rather than a share of the step, so a walk and a run feel like one game rather
+    /// than two. Zero draws the body on its committed tile the instant the tile commits.</para>
+    /// <para>ONE number for the whole head: <see cref="TileWorldClient"/> builds the local player's chase and every
+    /// remote's from it, so they cannot be set apart. A game with a body of its own to draw reads it back off
+    /// <see cref="TileWorldClient.ChaseHalfLifeSeconds"/>.</para></summary>
+    public float ChaseHalfLifeSeconds { get; init; } = TileChase.DefaultHalfLifeSeconds;
 
     /// <summary>Planes the world has. A walk goal naming one it does not is refused before the command is sent,
     /// the same bound the server applies before it steps and the command encoder applies on the wire.</summary>

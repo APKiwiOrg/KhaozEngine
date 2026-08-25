@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Text;
 using KhaozEngine.Ecs;
 using KhaozEngine.Replication;
@@ -13,9 +14,11 @@ namespace KhaozEngine.Tests.TileNetcode;
 
 public class TileReplicationTests
 {
+    // A player mid step: committed to (4, 9), still walking out of (3, 8), with two more steps routed behind it.
     static TileMoveState Walking()
     {
         TileMoveState s = TileMoveState.At(new TileCoord(4, 9, 1), TileDirection.NE);
+        s.StepFrom = new TileCoord(3, 8, 1);
         s.Mode = TileMoveMode.Run;
         s.StepTotal = 2;
         s.StepTicks = 1;
@@ -51,6 +54,7 @@ public class TileReplicationTests
         TileMoveState got = client.Get<TileMoveState>(e);
 
         Assert.Equal(sent.Tile, got.Tile);
+        Assert.Equal(sent.StepFrom, got.StepFrom);
         Assert.Equal(sent.Facing, got.Facing);
         Assert.Equal(sent.Mode, got.Mode);
         Assert.Equal(sent.StepTicks, got.StepTicks);
@@ -62,6 +66,49 @@ public class TileReplicationTests
 
         // The route rides TileRouteState, never the move state, so what lands in the component itself is standing.
         Assert.True(got.Route.IsIdle);
+        // The step in flight survives it, though, which is the whole reason the glide's two tiles ride the everyone
+        // channel: a decoded state draws in exactly the place its owner draws it, with no route at all.
+        Assert.Equal(sent.Position, got.Position);
+    }
+
+    // The glide's origin has no plane of its own on the wire: a step never changes plane, so it takes the tile's.
+    // A second plane byte would be a way to spell a state the simulator cannot produce.
+    [Fact]
+    public void The_glide_origin_takes_the_tiles_own_plane()
+    {
+        ReplicationRegistry reg = TileProtocol.CreateRegistry();
+        (World server, _) = Spawn(1, Walking());
+        var client = new World();
+        new ClientReplicationView(reg).Apply(client, SnapshotWriter.WriteFiltered(server, reg,
+            new HashSet<long> { 1 }, ReplicationChannels.Replicate, ownerNetId: 1));
+        Entity e = client.Query().With<TileMoveState>().Entities().First();
+        TileMoveState got = client.Get<TileMoveState>(e);
+        Assert.Equal(got.Tile.Plane, got.StepFrom.Plane);
+    }
+
+    // A pair of tiles that is not one step apart is not a step, so the decoder stands the player on its tile rather
+    // than gliding it across the gap. Reading it verbatim would draw an avatar walking over every tile between the
+    // two, and feed a position that far out to the reconcile error and the hard-snap gate.
+    [Theory]
+    [InlineData(4, 9)]            // the tile itself: already standing
+    [InlineData(40, 90)]          // a teleport's worth away
+    [InlineData(int.MinValue, int.MinValue)]   // and the pair that overflows an int subtraction
+    public void A_glide_origin_that_is_not_one_step_from_the_tile_is_read_as_standing(int fromX, int fromZ)
+    {
+        TileMoveState sent = Walking();
+        sent.StepFrom = new TileCoord(fromX, fromZ, 1);
+        ReplicationRegistry reg = TileProtocol.CreateRegistry();
+        (World server, _) = Spawn(1, sent);
+
+        var client = new World();
+        new ClientReplicationView(reg).Apply(client, SnapshotWriter.WriteFiltered(server, reg,
+            new HashSet<long> { 1 }, ReplicationChannels.Replicate, ownerNetId: 1));
+        TileMoveState got = client.Get<TileMoveState>(client.Query().With<TileMoveState>().Entities().First());
+
+        Assert.False(got.IsStepping);
+        Assert.Equal(got.Tile, got.StepFrom);
+        Assert.Equal(0, got.StepTicks);            // and no progress, so it cannot compare unequal to a prediction
+        Assert.Equal(new Vector2(4f, 9f), got.Position);
     }
 
     [Fact]
@@ -251,7 +298,8 @@ public class TileReplicationTests
         w.Write(1L);                                 // net id
 
         w.Write(TileProtocol.TileMoveStateTypeId);
-        byte[] move = MoveBytes(5, 6, plane: 0, facing: 200, mode: 200, stepTicks: 250, stepTotal: 2);
+        byte[] move = MoveBytes(5, 6, plane: 0, fromX: 5, fromZ: 5,
+            facing: 200, mode: 200, stepTicks: 250, stepTotal: 2);
         w.Write7BitEncodedInt(move.Length);
         w.Write(move);
 
@@ -271,18 +319,16 @@ public class TileReplicationTests
         Assert.Contains(got.Facing, TileDirections.All);
         Assert.True(got.Mode is TileMoveMode.Walk or TileMoveMode.Run);
         Assert.True(got.StepTotal >= 1);
-        Assert.All(client.Get<TileRouteState>(e).Remaining!, d => Assert.Contains(d, TileDirections.All));
 
-        // StepTicks has to be asserted the way the OWNER will hold this state: with the route merged back in to
-        // build a reconcile basis. A replicated move state always decodes idle, and StepFraction short-circuits on
-        // an idle route, so asserting it here without the merge passes with the clamp deleted. Unclamped, 250 ticks
-        // into a 2 tick step reads as a step fraction of 125 and a position 125 tiles out, straight into the
-        // reconcile error and the hard-snap gate.
-        Assert.True(got.StepTicks < got.StepTotal);
-        got.Route = TileRoute.FromSteps(got.Tile, client.Get<TileRouteState>(e).Remaining);
-        Assert.False(got.Route.IsIdle);
+        // Unclamped, 250 ticks into a 2 tick step reads as a step fraction of 125 and a position 125 tiles out,
+        // straight into the reconcile error and the hard-snap gate. The glide's origin is a real step away from the
+        // tile here, so the fraction is live rather than short-circuited and the clamp is what holds it in range.
+        Assert.True(got.IsStepping);
+        Assert.True(got.StepTicks <= got.StepTotal);
         Assert.InRange(got.StepFraction, 0f, 1f);
-        Assert.Equal(0.5f, got.StepFraction);
+        Assert.Equal(1f, got.StepFraction);
+        Assert.Equal(new Vector2(5f, 6f), got.Position);
+        Assert.All(client.Get<TileRouteState>(e).Remaining!, d => Assert.Contains(d, TileDirections.All));
     }
 
     [Fact]
@@ -390,13 +436,16 @@ public class TileReplicationTests
         return ms.ToArray();
     }
 
-    static byte[] MoveBytes(int x, int z, byte plane, byte facing, byte mode, byte stepTicks, byte stepTotal)
+    static byte[] MoveBytes(int x, int z, byte plane, int fromX, int fromZ, byte facing, byte mode, byte stepTicks,
+        byte stepTotal)
     {
         using var ms = new MemoryStream();
         using var w = new BinaryWriter(ms);
         w.Write(x);
         w.Write(z);
         w.Write(plane);
+        w.Write(fromX);
+        w.Write(fromZ);
         w.Write(facing);
         w.Write(mode);
         w.Write(stepTicks);

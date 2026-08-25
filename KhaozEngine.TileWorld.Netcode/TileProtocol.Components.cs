@@ -29,10 +29,10 @@ public static partial class TileProtocol
 
     /// <summary>Cap on a replicated route, in steps, and the ONE definition of that number: it is also the ceiling
     /// on <see cref="TileMoveOptions.MaxRouteSteps"/>, which is where the cap is actually enforced. The SIMULATOR
-    /// truncates a longer pathfinder result, identically on both heads and in both of its route builders (RouteFor,
-    /// and SplicedRouteFor, which caps the NEW path one step lower so the inherited step in flight fits under the
-    /// same limit), so a route that reaches this encoder is already within the cap and the walk ends at the
-    /// truncated route's last tile (as far as one click carries).
+    /// truncates a longer pathfinder result, identically on both heads and in its one route builder, so a route
+    /// that reaches this encoder is already within the cap and the walk ends at the truncated route's last tile (as
+    /// far as one click carries). The cap counts the steps STILL TO TAKE from the tile the player is committed to,
+    /// so a step already in flight is not in it: it was charged when it was routed and committed when it started.
     /// <para>The encoder therefore REFUSES a longer route rather than truncating one. Truncating on the wire loses
     /// more than the tail: <see cref="TileRoute.End"/> is the DESTINATION, so a route shortened here would tell the
     /// owner it is walking somewhere it was never routed to, and it would keep saying so, with a different wrong
@@ -58,8 +58,10 @@ public static partial class TileProtocol
     /// smooth motion an observer sees comes from the step fraction the state already carries, not from the
     /// replication layer.</para>
     /// <para>The route is NOT part of <see cref="TileMoveState"/>'s encoding. It rides
-    /// <see cref="TileRouteState"/> on the owner-only channel, so an observer's snapshot carries a tile plus step
-    /// progress and nothing else. The presentation fields are never written at all, on either component.</para>
+    /// <see cref="TileRouteState"/> on the owner-only channel, so an observer's snapshot carries the step it is
+    /// TAKING and nothing about the walk beyond it: the tile it is committed to, the tile it is leaving, and how
+    /// far through. That pair is enough to draw the body exactly where its owner draws it, which is why an observer
+    /// needs no route and no guess. The presentation fields are never written at all, on either component.</para>
     /// <para>Every reader here is hostile-safe in one of two ways. A field whose whole byte range is meaningful is
     /// CLAMPED, because there is no such thing as a malformed one. A field with a declared length is CHECKED
     /// against the component's OWN framed payload, and a frame that lies about it throws, which
@@ -110,13 +112,24 @@ public static partial class TileProtocol
         return s;
     }
 
-    // 25 fixed bytes. The plane rides in one byte, matching the command frame, so the two agree about what a plane
+    // 33 fixed bytes. The plane rides in one byte, matching the command frame, so the two agree about what a plane
     // index can be and a world deeper than 256 planes fails in one place rather than two.
+    //
+    // StepFrom rides WITHOUT a plane of its own, and that is a rule rather than a saving: a step never changes
+    // plane, so the glide's two tiles always share one, and a second plane byte would be a way to express a state
+    // the simulator cannot produce and the presenter would have to defend against.
+    //
+    // It rides at all because an OBSERVER needs it. A remote's route is owner-only, so before this pair the only
+    // way to draw a walking remote was to remember the tile it was last seen on and glide from there, which cost a
+    // whole step of extra latency and could not tell a step from a teleport without a second rule. The pair says
+    // where the body is outright.
     static void WriteMove(TileMoveState v, BinaryWriter w)
     {
         w.Write(v.Tile.X);
         w.Write(v.Tile.Z);
         w.Write((byte)v.Tile.Plane);
+        w.Write(v.StepFrom.X);
+        w.Write(v.StepFrom.Z);
         w.Write((byte)v.Facing);
         w.Write((byte)v.Mode);
         w.Write(v.StepTicks);
@@ -133,6 +146,7 @@ public static partial class TileProtocol
     {
         int x = r.ReadInt32(), z = r.ReadInt32();
         int plane = r.ReadByte();
+        int fromX = r.ReadInt32(), fromZ = r.ReadInt32();
         byte facing = r.ReadByte();
         var s = TileMoveState.At(new TileCoord(x, z, plane),
             facing <= (byte)TileDirection.NE ? (TileDirection)facing : TileDirection.S);
@@ -142,12 +156,24 @@ public static partial class TileProtocol
         s.StepTotal = r.ReadByte();
         s.Epoch = r.ReadUInt32();
         s.InteractTarget = r.ReadInt64();
+        // At() seeded StepFrom onto the tile, which is what a frame naming anything but a STEP falls back to. A pair
+        // that is not one tile apart is not a step: a teleport, a plane change, or a lie. Gliding between them would
+        // walk the avatar over every tile in the gap, and it is a lie that costs, because Position is fed straight
+        // to the reconcile error and the hard-snap gate. Measured in LONG for the reason TileWorldServer.GoalInRange
+        // is: nothing bounds a replicated tile's X and Z, so two coordinates int.MinValue apart make an int
+        // subtraction wrap and Math.Abs throw, out of a client's apply loop.
+        long dx = (long)x - fromX, dz = (long)z - fromZ;
+        if (Math.Max(Math.Abs(dx), Math.Abs(dz)) == 1) s.StepFrom = new TileCoord(fromX, fromZ, plane);
         if (s.StepTotal == 0) s.StepTotal = 1;   // a hostile 0 would divide by zero in StepFraction
-        // The step counter is the OTHER half of that division, and TileMoveState documents it as always below the
-        // total. Left unclamped, a 250 against a total of 2 rides the wire intact and reads as a step fraction of
-        // 125 the moment the owner merges its route back in to build a reconcile basis: a position 125 tiles out,
-        // fed straight to the reconcile error and the hard-snap gate. It is harmless only while the route is idle.
-        if (s.StepTicks >= s.StepTotal) s.StepTicks = (byte)(s.StepTotal - 1);
+        // The step counter is the OTHER half of that division, and a step never spends more ticks than its total.
+        // Left unclamped, a 250 against a total of 2 rides the wire intact and reads as a step fraction of 125: a
+        // position 125 tiles out, fed straight to the reconcile error and the hard-snap gate.
+        if (s.StepTicks > s.StepTotal) s.StepTicks = s.StepTotal;
+        // A state whose glide has no origin to run from has no progress either, which is the invariant the
+        // simulator normalizes to on the tick a body lands. Left alone, a frame could hand the owner a reconcile
+        // basis that stands exactly where its prediction does and compares unequal to it, so every snapshot would
+        // report a correction that moved nothing.
+        if (!s.IsStepping) s.StepTicks = 0;
         return s;
     }
 

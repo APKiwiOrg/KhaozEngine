@@ -128,8 +128,9 @@ public sealed partial class TileWorldClient : IDisposable
     /// Where to DRAW the local player: the <see cref="TileChase"/> chasing the tile prediction has committed them
     /// to, placed through <see cref="Presenter"/>. Call it once a frame, after
     /// <see cref="AdvancePresentation"/>, which is what steps the chase.
-    /// <para><b>The chase target is the COMMITTED TILE and nothing else</b>, and the prediction layer's decaying
-    /// <see cref="ClientPrediction{TState,TCommand}.RenderOffset"/> is deliberately not in it. That is the whole
+    /// <para><b>The chase target is the COMMITTED TILE and nothing else</b>, and the decaying reconciliation offset
+    /// the prediction layer folds into its own
+    /// <see cref="ClientPrediction{TState,TCommand}.RenderedState"/> is deliberately not in it. That is the whole
     /// composition, and it is worth reading once, because the two shapes that look more careful are both worse.
     /// The offset exists to keep the layer's own rendered POSITION continuous across a rebase, and that position
     /// is the step-fraction glide between <see cref="TileMoveState.StepFrom"/> and

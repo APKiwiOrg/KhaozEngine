@@ -70,17 +70,6 @@ reconciliation rebase/snap never registers as movement - a clean steady value fo
 or a locomotion blend, unlike differencing `RenderedState.Position` (which carries the decaying render offset
 and wobbles under lag). Zero until the first `Predict`; zeroed by `Reset` / `Reseed`.
 
-`InterTickFraction` and `RenderOffset` are the two halves `RenderedState` is built from, exposed for a
-presentation layer that has to TAKE THAT SUM APART rather than draw it: the phase this layer's easing is at, and
-the decaying correction offset folded in on top of it. A layer that transforms the rendered position whole puts
-the correction through that transform too, and a correction that is scaled or clamped stops decaying the way this
-class decays it, which is the whole reason a misprediction does not pop. So lift the offset off first, transform
-the interpolation, and put the offset back unchanged. (The tile stack no longer needs either read: a tile body is
-drawn by a `TileChase` pursuing its committed tile, which replaces the interpolated position outright rather than
-redrawing it. They stay because the decomposition is the general answer for any head that DOES redraw it.) The
-vertical offset is deliberately not exposed alongside them: nothing has needed to take the vertical apart, and an
-unused public read is a promise with no caller to keep it honest.
-
 On a mid-session **reconnect**, call `Reseed(basis)` (not `Reset`) when the first post-reconnect snapshot lands.
 It re-seeds the predicted state to the authoritative basis but keeps the command sequence counter **monotonic**:
 the fresh server has already advanced its per-connection ack from the commands sent in the join gap, so a `Reset`

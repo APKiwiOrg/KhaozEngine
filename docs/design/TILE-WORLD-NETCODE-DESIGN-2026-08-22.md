@@ -345,8 +345,9 @@ are covered by the same predicate as a teleport. Chasing across one of those wou
 tile in the gap, and it would do it while the head's camera had already been warped by the teleport event.
 
 **The composition with the prediction layer's correction, which is the one subtle thing here.** The local body's
-chase target is the BARE committed tile. `ClientPrediction.RenderOffset` is deliberately not in it, and that is
-the third of three candidate shapes rather than an oversight:
+chase target is the BARE committed tile. The decaying reconciliation offset `ClientPrediction` folds into its own
+`RenderedState` is deliberately not in it, and that is the third of three candidate shapes rather than an
+oversight:
 
 1. `chase(tile) + offset`. The offset jumps the whole correction into the drawn position in a single frame and
    then unwinds it. A pop followed by a reversal: the rubber band, exactly.

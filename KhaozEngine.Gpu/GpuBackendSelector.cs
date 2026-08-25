@@ -112,8 +112,15 @@ namespace KhaozEngine.Gpu
         /// It splits decision I2 along the line I2 was aimed at: the SOAK SESSION. A pinned provider-backed kind
         /// with no registered provider still throws, because a session that set the variable to measure the
         /// native backend must never quietly measure a different implementation and file the number under that name,
-        /// and the same reasoning covers the five cross-platform GPU legs, each of which pins its backend this
-        /// way and captures goldens headlessly.
+        /// and the same reasoning covers each cross-platform GPU leg, every one of which pins its backend this
+        /// way before capturing goldens.
+        /// </para>
+        /// <para>
+        /// IT ALSO REFUSES THE FALLBACK, on the windowed and the headless creation path alike since #719. A
+        /// creation failure on a pinned backend comes out whole rather than landing on the platform default with
+        /// <see cref="GpuBackendSource.FallbackAfterFailure"/>, which is the same promise read at the other end:
+        /// the run measures what was pinned or it does not run. The windowed half was missing that guard for two
+        /// releases, and the windowed half is the one a soak session actually boots.
         /// </para>
         /// <para>
         /// EVERY OTHER PROVENANCE FALLS BACK, and <see cref="GpuBackendSource.UserPreference"/> is the one that

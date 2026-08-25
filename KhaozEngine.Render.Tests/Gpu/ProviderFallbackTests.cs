@@ -20,6 +20,13 @@ namespace KhaozEngine.Tests.Gpu
     /// to prevent.
     /// </para>
     /// <para>
+    /// AND THE WINDOWED PATH CAUGHT UP IN #719. It honoured the pin nowhere for two releases, so the same
+    /// variable meant "measure this or fail" for a headless capture and merely "prefer this" for the windowed
+    /// host a soak session actually boots. The pinned rows below are the windowed twins of the two headless ones
+    /// above, and the rows that still WANT a fallback ask for it through a stored preference, which is the
+    /// highest-ranking provenance that still has one.
+    /// </para>
+    /// <para>
     /// In <c>GraphicsBackendGlobalState</c> because every row mutates the provider registry, the environment, or
     /// both. That collection disables parallelization outright, so the one row here that builds a real device is
     /// serialized against the whole pool exactly as it would be in <c>NativeDeviceLifecycle</c>, and it goes
@@ -40,6 +47,11 @@ namespace KhaozEngine.Tests.Gpu
         /// 18.0.0, so falling back onto it would warn about a change that is not one). A row that hardcoded
         /// <c>d3d11-native</c> therefore passed on every Mac and went red on the <c>direct3d11-native</c> CI leg,
         /// where that token IS the default and the provider's own exception came out raw.
+        /// <para>
+        /// The PINNED rows want one too, for the opposite reason: on a platform where the requested kind is the
+        /// default there is nothing to fall back to anyway, so the row would pass without the guard it is there
+        /// to hold.
+        /// </para>
         /// </summary>
         static (GpuBackendKind Kind, string Token) NonDefaultNative()
             => GpuBackendSelector.ProbeOS(GpuBackendSelector.DetectOS()) == GpuBackendKind.Direct3D11Native
@@ -122,33 +134,102 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// A window handle no swapchain source exists for, which every backend refuses before it touches a
+        /// driver. It is how the rows below stay device-free while still reaching a REAL provider: whatever the
+        /// fallback lands on refuses this handle instead of building a device, so the double fall is reproducible
+        /// on a machine that has a perfectly good driver. Never read on the pinned rows, where the fake provider
+        /// throws first.
+        /// </summary>
+        static GpuWindowHandle Unbuildable() => new((GpuWindowKind)99, new IntPtr(0x1234));
+
+        /// <summary>
+        /// THE WINDOWED HALF OF THE PIN (#719), which is the half that was missing. A pinned backend whose
+        /// provider refuses hands the caller that refusal, exactly as the headless row above does, instead of
+        /// warning and booting on the platform default. This is the path the pin was written for: a soak session
+        /// runs the windowed host, so the guard that only the headless path carried was the one nobody was
+        /// measuring through.
+        /// <para>
+        /// Not a fallback that happens to have nowhere to go. The kind is non-default and its provider is
+        /// registered, so every other condition for a fallback is met and the pin is the only thing refusing it.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void CreateForWindow_ForAnEnvironmentPinnedBackend_PropagatesTheProvidersFailure()
+        {
+            (GpuBackendKind requested, string token) = NonDefaultNative();
+            var boom = new NotSupportedException("no usable loader on this machine");
+            var provider = new FakeBackendProvider(requested) { CreationThrows = boom };
+
+            using (new EnvScope(GpuBackendSelector.EnvVarName, token))
+            using (new BackendProviderScope(requested, provider))
+            {
+                NotSupportedException thrown = Assert.Throws<NotSupportedException>(
+                    () => GpuDeviceContext.CreateForWindow(Unbuildable(), 640, 480, syncToVerticalBlank: true));
+
+                Assert.Same(boom, thrown);
+                Assert.Equal(1, provider.WindowedCreations);
+            }
+        }
+
+        /// <summary>
+        /// The PREFLIGHT arm of that same guard, and the one a partial fix would leave behind. The support probe
+        /// is what turns "this machine cannot" into a fallback with nothing thrown at all, so a windowed pin that
+        /// honoured the creation catch and not the probe would still land on the default whenever the probe
+        /// answered no, which is precisely the missing-Vulkan-loader case the pin exists for. Under a pin the
+        /// probe is not consulted, the creation is attempted, and the provider's own refusal is what comes out.
+        /// </summary>
+        [Fact]
+        public void CreateForWindow_ForAnEnvironmentPinnedBackend_SkipsTheSupportProbe()
+        {
+            (GpuBackendKind requested, string token) = NonDefaultNative();
+            var boom = new NotSupportedException("the adapter is below this backend's feature floor");
+            var provider = new FakeBackendProvider(requested) { Supported = false, CreationThrows = boom };
+
+            using (new EnvScope(GpuBackendSelector.EnvVarName, token))
+            using (new BackendProviderScope(requested, provider))
+            {
+                NotSupportedException thrown = Assert.Throws<NotSupportedException>(
+                    () => GpuDeviceContext.CreateForWindow(Unbuildable(), 640, 480, syncToVerticalBlank: true));
+
+                Assert.Same(boom, thrown);
+                Assert.Equal(0, provider.SupportProbes);
+                Assert.Equal(1, provider.WindowedCreations);
+            }
+        }
+
+        /// <summary>
         /// THE DOUBLE FALL, which is the case that used to lose the first failure entirely. The requested backend
         /// fails, the engine falls back, and the fallback fails too, so there is no device and the app cannot
         /// render. What comes out names BOTH attempts, because the two failures usually share one underlying
         /// cause and the one worth reading is the first.
         /// <para>
-        /// Device-free and deterministic on every OS: the fallback is made to fail by handing in a window whose
-        /// <see cref="GpuWindowKind"/> no swapchain source exists for, which every backend refuses before any
-        /// driver is touched. That stands in for the real double fall (a machine with no working driver at all)
-        /// without needing such a machine. The fallback's exception TYPE is deliberately not pinned: each native
-        /// backend refuses a foreign window handle in its own words, and this row is about neither failure being
-        /// lost rather than about which type either one is.
+        /// Device-free and deterministic on every OS: the fallback is made to fail with <see cref="Unbuildable"/>,
+        /// standing in for the real double fall (a machine with no working driver at all) without needing such a
+        /// machine. The fallback's exception TYPE is deliberately not pinned: each native backend refuses a
+        /// foreign window handle in its own words, and this row is about neither failure being lost rather than
+        /// about which type either one is.
+        /// </para>
+        /// <para>
+        /// Asked for as a STORED PREFERENCE since #719, where it used to be pinned in the environment. A pin
+        /// refuses the fallback outright now, so it can no longer reach the second attempt this row is about, and
+        /// the preference is the highest-ranking provenance that still falls back. The environment is CLEARED
+        /// rather than left alone for the same reason: each cross-platform GPU leg sets that variable, and a
+        /// leg's own pin would outrank the preference and disarm the fallback on that leg alone.
         /// </para>
         /// </summary>
         [Fact]
         public void CreateForWindow_ReportsBothFailures_WhenTheFallbackFailsToo()
         {
             GpuBackendKind fallbackTo = GpuBackendSelector.ProbeOS(GpuBackendSelector.DetectOS());
-            (GpuBackendKind requested, string token) = NonDefaultNative();
+            GpuBackendKind requested = NonDefaultNative().Kind;
             var boom = new InvalidOperationException("device creation returned a hard failure");
             var provider = new FakeBackendProvider(requested) { CreationThrows = boom };
-            var unbuildable = new GpuWindowHandle((GpuWindowKind)99, new IntPtr(0x1234));
 
-            using (new EnvScope(GpuBackendSelector.EnvVarName, token))
+            using (new EnvScope(GpuBackendSelector.EnvVarName, null))
             using (new BackendProviderScope(requested, provider))
             {
                 GpuNoUsableBackendException ex = Assert.Throws<GpuNoUsableBackendException>(
-                    () => GpuDeviceContext.CreateForWindow(unbuildable, 640, 480, syncToVerticalBlank: true));
+                    () => GpuDeviceContext.CreateForWindow(Unbuildable(), 640, 480, true, (GpuBackendKind?)requested));
 
                 Assert.Equal(requested, ex.RequestedBackend);
                 Assert.Equal(fallbackTo, ex.FallbackBackend);
@@ -171,19 +252,23 @@ namespace KhaozEngine.Tests.Gpu
         /// so there is a reason and no exception behind it. The inner exception then has to be the fallback's
         /// own, because carrying null would leave a reader with an exception whose InnerException says the first
         /// attempt never happened.
+        /// <para>
+        /// The pair to the pinned probe row above, and the reason that one is a change in behaviour rather than
+        /// a change everywhere: a stored preference that fails its probe still falls back, still without anything
+        /// being thrown, which is what keeps a player off a saved choice this machine cannot run.
+        /// </para>
         /// </summary>
         [Fact]
         public void CreateForWindow_UsesTheFallbackFailureAsTheInner_WhenTheRequestNeverThrew()
         {
-            (GpuBackendKind requested, string token) = NonDefaultNative();
+            GpuBackendKind requested = NonDefaultNative().Kind;
             var provider = new FakeBackendProvider(requested) { Supported = false };
-            var unbuildable = new GpuWindowHandle((GpuWindowKind)99, new IntPtr(0x1234));
 
-            using (new EnvScope(GpuBackendSelector.EnvVarName, token))
+            using (new EnvScope(GpuBackendSelector.EnvVarName, null))
             using (new BackendProviderScope(requested, provider))
             {
                 GpuNoUsableBackendException ex = Assert.Throws<GpuNoUsableBackendException>(
-                    () => GpuDeviceContext.CreateForWindow(unbuildable, 640, 480, syncToVerticalBlank: true));
+                    () => GpuDeviceContext.CreateForWindow(Unbuildable(), 640, 480, true, (GpuBackendKind?)requested));
 
                 Assert.Same(ex.FallbackFailure, ex.InnerException);
                 Assert.Contains("this machine reports no support for it", ex.Message);

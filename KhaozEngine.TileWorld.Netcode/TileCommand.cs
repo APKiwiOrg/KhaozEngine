@@ -54,7 +54,8 @@ public readonly record struct TileCommand(TileCommandKind Kind, TileCoord Goal, 
     public static TileCommand WalkTo(TileCoord goal, TileMoveMode mode) =>
         new(TileCommandKind.WalkTo, goal, mode, 0);
 
-    /// <summary>Route to a reach tile of <paramref name="target"/> and interact on arrival.</summary>
+    /// <summary>Route to a reach tile of <paramref name="target"/> and interact as the walk COMMITS to it, which is
+    /// the tick the last step starts and not the tick the drawn body gets there.</summary>
     public static TileCommand Interact(long target, TileMoveMode mode) =>
         new(TileCommandKind.Interact, default, mode, target);
 }

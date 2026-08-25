@@ -49,7 +49,11 @@ SERVE, which filters a viewer's area of interest to the viewer's own plane.
   `ReplicationRegistry` carry the same type verbatim. `Position` is DERIVED in TILE units, the glide from
   `StepFrom` into `Tile`, and `Vertical` is the plane INDEX, so the state needs no world document. `IsStepping`
   (`StepFrom != Tile`) is the one definition of "a step is in flight", and it is NOT the same question as a live
-  route: a route empties on the tick its last step starts.
+  route: a route empties on the tick its last step starts. The direction the body is WALKING is
+  `TileRoute.Direction(StepFrom, Tile)`, never `Facing`: `Facing` is where the player is LOOKING, and the arrival
+  turn writes it toward an interaction target on the tick the last step STARTS, so on every walked interaction the
+  two disagree for the whole of that step and a locomotion blend taken off `Facing` walks the avatar sideways into
+  the booth. Ask `IsStepping` first, because `Direction` throws on a standing body's identical pair.
 - **`TileRoute`** - the walk in progress as the tiles after the start plus the index of the next one. A value, so
   reconciliation replays it rather than mutating it, and advancing is one integer. Equality compares the REMAINING
   tiles, so a route rebuilt from its wire form equals the one the server holds.
@@ -57,8 +61,8 @@ SERVE, which filters a viewer's area of interest to the viewer's own plane.
   Its own component because it is owner-only (plus Persist and Migrate): an observer does not need it, and the
   owner does, since a reconciliation basis without its route stands the player still.
 - **`TileCommand`** / **`TileCommandKind`** - one tick of intent: `None` (keep going), `WalkTo` (path to a goal and
-  walk it) or `Interact` (route to a reach tile of a target, face it, act on arrival). The MODE rides on every
-  command, `None` included, so the run toggle lives on the tick stream rather than on the click.
+  walk it) or `Interact` (route to a reach tile of a target, face it, act as the last step commits). The MODE
+  rides on every command, `None` included, so the run toggle lives on the tick stream rather than on the click.
 - **`TileMoveMode`** - walk or run, a two-value selector rather than a speed.
 - **`TileStepTicks`** - ticks per step, per mode. Both heads must hold the same pair, or a step commits a tick
   apart and every step reads as a misprediction.

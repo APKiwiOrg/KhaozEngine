@@ -260,9 +260,11 @@ which is the form that stays correct when the target itself is solid. `TileReach
 reasoning, so the direction is not flipped back later.
 
 Server side, `TileActionQueue` holds at most one pending action per player: `(target, kind, issuedTick)`. On each
-tick after movement, a pending action whose player stands on a reach tile of the target, on its plane, is
-validated and raised through `TileWorldServer.OnInteract(playerNetId, target)`, then cleared. The facing is already
-correct by then, written by the simulator on the arrival tick, so the server never owns the turn. Reissuing a command
+tick after movement, a pending action whose player is COMMITTED to a reach tile of the target, on its plane, is
+validated and raised through `TileWorldServer.OnInteract(playerNetId, target)`, then cleared. Under 5.1's lead
+commit that is the tick the walk's LAST step starts, so the handler runs while the avatar is still drawn walking
+that tile in. The facing is already correct by then, written by the simulator on the same tick the step commits, so
+the server never owns the turn. Reissuing a command
 (another click) replaces the pending action, OSRS style, and an applied `WalkTo` CLEARS it, because the simulator
 clears the state's own pending target on a walk and the queue and the state are two records of one intent. In SP2 the only consumer of `OnInteract` is a log line,
 and the Grimhollow client shows a localized "nothing interesting happens". When `TileReach` returns no reachable

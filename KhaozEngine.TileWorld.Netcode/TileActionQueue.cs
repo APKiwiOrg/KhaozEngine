@@ -6,7 +6,8 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// already on the wire-free server state before a second one exists and adding one is not a shape change.</summary>
 public enum TileActionKind : byte
 {
-    /// <summary>Raise <c>TileWorldServer.OnInteract</c> once the player stands on a reach tile of the target.</summary>
+    /// <summary>Raise <c>TileWorldServer.OnInteract</c> once the player is COMMITTED to a reach tile of the target,
+    /// which is the tick their walk's last step starts rather than the tick the body finishes walking it.</summary>
     Interact = 0,
 }
 

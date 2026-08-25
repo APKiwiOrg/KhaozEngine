@@ -68,7 +68,9 @@ first also changes when a click is answered, so read their two bullets before re
     the same pair, so neither consults the route any more. `IsStepping` (`StepFrom != Tile`) is the one
     definition of "a step is in flight". The glide's origin is a FIELD rather than something derived from
     `Facing`, because the arrival turn rewrites `Facing` toward an interaction target while the last step's
-    glide still has its whole run left.
+    glide still has its whole run left. **A head that animates off `Facing` wants
+    `TileRoute.Direction(StepFrom, Tile)` instead**, which is the direction the body is actually walking, and the
+    two disagree for a whole step on every walked interaction.
   - **An interaction resolves a step sooner.** A route empties as its LAST step is committed, so
     `TileWorldServer.OnInteract` (and the arrival turn) fire while the avatar is still drawn walking that tile
     in. A same-plane target that cannot be reached at all is answered on the tick of the click itself, mid-glide
@@ -88,15 +90,30 @@ first also changes when a click is answered, so read their two bullets before re
     own because a step never changes plane. There is no compatibility machinery, deliberately: 18.1.0 is staged
     and unreleased, so no tagged engine carries the old layout. The decoder clamps a pair that is not one tile
     apart to standing, in long arithmetic, so a crafted frame cannot glide an avatar across a map.
+  - **`TileWorldServer.SetPlayerState` validates the origin, and a teleport normalizes it.** A written state whose
+    `StepFrom` is neither `Tile` nor one step from it on the same plane is refused at the door by the same rule the
+    decoder clamps a frame with, because it names a step in flight the simulator cannot produce: the server would
+    hold a phantom step while the decoder handed the owner the same state clamped back to standing. `teleport: true`
+    additionally forces `StepFrom` onto `Tile` at zero progress, so a ONE TILE teleport cuts rather than gliding.
+    **A caller that builds a state by copying the live one and changing `Tile` must move `StepFrom` with it**, or
+    build the placement with `TileMoveState.At`, which seeds the origin onto the tile.
   - **A remote costs a step less latency.** Both tiles of the step ride the everyone channel, so
     `TileWorldClient` hands a remote's replicated state straight to the presenter instead of remembering the
     tile it was last seen on and gliding a step behind it. `GlideFrom` and its teleport-versus-step rule are
     deleted.
   - **A blocker that lands on a tile a step has already committed to does not rewind that step.** The map was
     asked before the tile flipped and the answer was yes. The next step is where the new blocker is felt.
-  - Unchanged: the cadence (a body still crosses a tile every 2 ticks running and 4 walking), the mode landing
-    at the start of the next step, a cross-plane goal dropped whole, and replay determinism (both heads run the
-    same stepper, and the three N-1 / N / N+1 reconcile orderings still produce byte-identical states).
+  - **A cadence toggle arriving on the tick a body LANDS now takes effect one step later.** The mode rule is
+    unchanged and this is it applied correctly: the step already under way keeps the total it was stamped with.
+    What moved is that there is no step-BOUNDARY state any more, because the landing tick commits the next step
+    at zero progress, so a click carrying a run toggle that lands there finds a step in flight instead of a
+    standing player. The old model read that state as standing, re-stamped `StepTotal` and sped up the very next
+    step, which was the exception rather than the rule. Anyone tuning run feel against a metronome will see it.
+  - Unchanged: the cadence itself (a body still crosses a tile every 2 ticks running and 4 walking), a mode
+    change landing at the start of the next step, a cross-plane goal dropped whole, and replay determinism (both
+    heads run the same stepper, and the new
+    `A_replay_from_a_basis_taken_one_tick_either_side_lands_on_the_same_state` proves the three
+    N-1 / N / N+1 reconcile orderings produce byte-identical states).
 - **BEHAVIOUR: a `TilePose` names the tile CENTRE, so every drawn position moves half a tile on each axis**
   ([#730](https://github.com/APKiwiOrg/KhaozEngine/issues/730)). `TilePresenter.Pose` and `LocalPose` converted
   through `TileWorldSpace` at the tile CORNER while the tile's ground quad spans `x..x+1` and

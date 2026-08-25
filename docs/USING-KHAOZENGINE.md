@@ -8229,7 +8229,7 @@ tick the step begins, and the remaining ticks glide the DRAWN body into it from 
 being left. So the rules run a little ahead of the picture, by strictly less than one step, and every question
 asked about a player (reach, region, occupancy, what a click resolves against) is answered about the tile they are
 committed to rather than the one they are half off. On a 250 ms tick that is the whole difference between a click
-that feels immediate and one that feels like a wait. Two things follow for a consumer:
+that feels immediate and one that feels like a wait. Three things follow for a consumer:
 
 - **Draw from the pose, never from the tile.** `TilePresenter.Pose` and `LocalPose` are the glide, so they are
   already right. Reading `state.Tile` and drawing on it puts the avatar a step ahead of itself. `IsStepping`
@@ -8238,6 +8238,12 @@ that feels immediate and one that feels like a wait. Two things follow for a con
   still drawn walking that tile in, and a same-plane target that cannot be reached at all is refused on the tick
   of the click itself. A handler that wants to wait for the body can, but the tile is the player's from that tick
   and the rules should treat it that way.
+- **Animate off `TileRoute.Direction(StepFrom, Tile)`, not off `Facing`.** The two are different questions and
+  they come apart on every walked interaction: `Facing` is where the player is LOOKING, and the arrival turn
+  writes it toward the target on the tick the last step STARTS, while that step's glide still has its whole run
+  ahead of it. A locomotion blend or a footfall direction taken off `Facing` therefore walks the avatar sideways
+  for a full step into everything it clicks. Ask `IsStepping` first: `Direction` throws on a pair that is not
+  adjacent, and a standing body's pair is the same tile twice.
 
 It is a sibling and not a layer: `KhaozEngine.TileWorld.Netcode` has no path to `KhaozEngine.NetWorld` at all (an
 architecture test proves it), so a tile server carries none of the float locomotion stack. What the two share is

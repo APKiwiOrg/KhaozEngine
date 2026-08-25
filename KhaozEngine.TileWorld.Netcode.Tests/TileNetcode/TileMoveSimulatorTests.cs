@@ -438,7 +438,7 @@ public class TileMoveSimulatorTests
         TileMoveState dropped = sim.Step(s, TileCommand.WalkTo(new TileCoord(9, 5, 1), TileMoveMode.Run), Dt);
 
         // Indistinguishable from a tick that carried no command, mode included, which is the same answer the
-        // standing case gives. The splice never becomes a way for a refused click to change the route.
+        // standing case gives. A step in flight never becomes a way for a refused click to change the route.
         Assert.Equal(sim.Step(s, TileCommand.Continue(TileMoveMode.Walk), Dt), dropped);
         Assert.Equal(new TileCoord(5, 9, 0), dropped.Route.End);
         Assert.Equal(TileMoveMode.Walk, dropped.Mode);

@@ -100,10 +100,10 @@ public class TileWorldClientLoopbackTests
         Assert.Equal(0, h.Client.SnapCount);
     }
 
-    // Changing direction while already moving is the commonest thing a player does, and the splice that answers it
-    // belongs in a loopback test rather than only in a simulator one: the client predicts the splice a whole tick
-    // before the server applies it, so a splice depending on anything beyond the state and the command would show
-    // up here as a correction, and two heads resolving the inherited step differently would show up as a cut.
+    // Changing direction while already moving is the commonest thing a player does, and the answer belongs in a
+    // loopback test rather than only in a simulator one: the client predicts the re-click a whole tick before the
+    // server applies it, so a re-click depending on anything beyond the state and the command would show up here
+    // as a correction, and two heads resolving the step in flight differently would show up as a cut.
     [Fact]
     public void A_re_click_mid_step_costs_no_correction_and_no_snap()
     {
@@ -125,8 +125,8 @@ public class TileWorldClientLoopbackTests
             progressAtClick = p.StepTicks;
             h.Client.Queue(TileCommand.WalkTo(new TileCoord(18, 10, 0), TileMoveMode.Walk));
         }
-        // The whole point of the test is that the click lands on a state with progress to inherit. A boundary
-        // click exercises the old path and would pass for the wrong reason.
+        // The whole point of the test is that the click lands with the body genuinely between two tiles. A click on
+        // a step that has just started draws on its origin tile and would pass for the wrong reason.
         Assert.InRange(progressAtClick, 1, 3);
 
         h.Frames(400);

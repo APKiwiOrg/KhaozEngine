@@ -150,7 +150,13 @@ public sealed partial class TileWorldClient : IDisposable
     /// correction big enough to matter changes the tile, and one big enough to CUT is a hard snap, which resets
     /// the chase outright.</para>
     /// <para>The VERTICAL is the prediction layer's own eased plane, untouched: a step never changes plane, so the
-    /// only thing that moves it is a teleport, which cuts on both axes together.</para>
+    /// only thing that moves it is a teleport. An authoritative epoch advance cuts BOTH axes, because that is the
+    /// <see cref="ClientPrediction{TState,TCommand}.Reconcile"/> branch which zeroes both correction offsets. A
+    /// teleport the SEED reports does not, and that is that layer's own rule rather than an oversight: the seed
+    /// has already placed the avatar with no glide, so it does not force the cut. The planar chase still snaps on
+    /// it here, while the vertical eases off an offset the seed zeroed a moment earlier, and nothing in this
+    /// client can observe the difference (a step never changes plane, and
+    /// <see cref="ClientPrediction{TState,TCommand}.Reseed"/> is deliberately never called).</para>
     /// </summary>
     public TilePose LocalPose
     {

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Netcode;
 using KhaozEngine.TileWorld;
@@ -16,6 +18,7 @@ public class TileGlideWindowTests
 {
     const float Tick = 0.25f;
     const float PlaneMetres = 3f;
+    const float Frame = 1f / 60f;
 
     // A quarter-second window against a quarter-second tick: a quarter of a four-tick walking step, and half of a
     // two-tick running one.
@@ -112,19 +115,76 @@ public class TileGlideWindowTests
     }
 
     // Local and remote read the SAME window off the SAME presenter, so the local player cannot snap while the
-    // remotes slide. Seeded rather than ticked, so the prediction layer sits fully on its current tick (its
-    // inter-tick easing is at 1 and its correction offset at zero) and the two paths are asking about the same
-    // instant of the same step.
+    // remotes slide. Asserted where it can actually FAIL: the layer is left genuinely mid-tick, at every phase from
+    // the instant of a command tick to the end of one, rather than parked at the phase of 1 a bare Reset leaves it
+    // at. Parked there the local reconstruction collapses to StepTicks / StepTotal, which is the same expression the
+    // remote path evaluates at zero extra ticks, and the two agree for arithmetic reasons rather than for the reason
+    // the test is about.
     [Fact]
     public void The_local_pose_and_a_remote_pose_agree_under_the_same_window()
     {
+        var phases = new List<float>();
         foreach (byte ticks in new byte[] { 0, 1, 2, 3 })
-        {
-            TileMoveState s = Stepping(4, ticks);
-            ClientPrediction<TileMoveState, TileCommand> pred = Prediction();
-            pred.Reset(s);
-            Assert.Equal(Windowed.Pose(s).Position, Windowed.LocalPose(pred).Position);
-        }
+            foreach (float phase in new[] { 0f, 0.2f, 0.5f, 0.9f, 1f })
+            {
+                ClientPrediction<TileMoveState, TileCommand> pred = Prediction();
+                pred.Reset(Stepping(4, ticks));
+                // A real tick, so the layer's phase runs from 0 again, and then part of a tick of frames on top.
+                pred.Predict(TileCommand.Continue(TileMoveMode.Walk));
+                pred.AdvancePresentation(phase * Tick);
+                phases.Add(pred.InterTickFraction);
+
+                // The same state and the same sub-tick offset, down the two paths.
+                TileMoveState s = pred.PredictedState;
+                Assert.Equal(Windowed.Pose(s, pred.InterTickFraction).Position, Windowed.LocalPose(pred).Position);
+            }
+
+        // The phase really did vary, or the agreement above is the vacuous one.
+        Assert.Equal(new[] { 0f, 0.2f, 0.5f, 0.9f, 1f }, phases.Distinct().Order());
+    }
+
+    // Important 1 of the branch review: a window inside ONE TICK of the step's own duration. The local fraction used
+    // to be measured a tick behind the state, the way the prediction layer's own easing is, which meant it topped out
+    // at (StepTotal - 1) / StepTotal and never reached 1. The body stopped short of its committed tile and then
+    // jumped forward onto the next step's StepFrom at every commit.
+    //
+    // The band is not exotic. At the engine's own TileStepTicks(4, 2) and a quarter-second tick the RUN sits in it for
+    // every window between 0.25 s and 0.5 s, so a game tuning by feel lands there by walking into it.
+    [Theory]
+    // Run cadence, a 0.45 s window on a two-tick (0.5 s) step: 0.481 tiles of forward pop per commit, measured.
+    [InlineData(0.45f, 4, 2, TileMoveMode.Run)]
+    // One-tick cadence, where (StepTotal - 1) / StepTotal is ZERO, so any window shorter than the step removed the
+    // local glide entirely and teleported the body a whole tile every tick: 1.000 tiles, measured.
+    [InlineData(0.20f, 1, 1, TileMoveMode.Walk)]
+    [InlineData(0.05f, 1, 1, TileMoveMode.Walk)]
+    public void A_window_within_one_tick_of_the_step_glides_the_local_body_instead_of_popping_it(
+        float window, int walk, int run, TileMoveMode mode)
+    {
+        (float worst, int commits) = WalkNorth(Tick, new TileStepTicks((byte)walk, (byte)run), mode, window);
+
+        // The walk really did commit tiles, or there is no commit for a pop to happen at.
+        Assert.True(commits >= 4, $"expected several step commits, saw {commits}");
+        float bound = Bound(window);
+        Assert.True(worst < bound,
+            $"a frame moved the body {worst} tiles against a bound of {bound}, which is a pop rather than a glide");
+    }
+
+    // Minor 2 of the review, which the fix above is what closes. FractionOf divides the window by the float product
+    // StepTotal * TickSeconds, and a game that writes the whole step as a decimal ("three 35 ms ticks is 105 ms")
+    // lands a hair UNDER that product rather than on it, so the window takes the windowed path instead of the
+    // untouched full-step one. That used to put it at the very worst point of the band above.
+    [Fact]
+    public void A_window_a_float_hair_under_the_whole_step_still_lands_the_body_on_its_tile()
+    {
+        var edge = new TileGlideWindow(0.105f, 0.035f);
+        Assert.Equal(0.99999994f, edge.FractionOf(3));
+        Assert.False(edge.CoversWholeStep(3));
+
+        (float worst, int commits) = WalkNorth(0.035f, new TileStepTicks(3, 3), TileMoveMode.Walk, 0.105f);
+        Assert.True(commits >= 4, $"expected several step commits, saw {commits}");
+        float bound = Bound(0.105f);
+        Assert.True(worst < bound,
+            $"a frame moved the body {worst} tiles against a bound of {bound}, which is a pop rather than a glide");
     }
 
     // The window remaps the STEP and nothing else. A decaying correction offset rides through it untouched, which
@@ -256,7 +316,6 @@ public class TileGlideWindowTests
         pred.Reset(TileMoveState.At(new TileCoord(2, 2, 0), TileDirection.N));
         pred.Predict(TileCommand.WalkTo(new TileCoord(6, 8, 0), TileMoveMode.Walk));
 
-        const float Frame = 1f / 60f;
         int turns = 0, commits = 0;
         TileDirection facing = pred.PredictedState.Facing;
         TileCoord tile = pred.PredictedState.Tile;
@@ -281,8 +340,48 @@ public class TileGlideWindowTests
         Assert.True(worst < 0.11f, $"a frame moved the body {worst} tiles, which is a jump rather than a glide");
     }
 
-    static ClientPrediction<TileMoveState, TileCommand> Prediction() =>
-        new(new TileMoveSimulator(TileMoveSimulatorTests.Bake(TileMoveSimulatorTests.FlatWorld()),
-                new TileStepTicks(4, 2)),
-            new PredictionSettings(Tick, 64, 0.5f, 8f, 0.01f));
+    // The most a single frame may move a windowed body along a STRAIGHT route, which is the window's own crossing
+    // rate: the window covers one whole tile in its seconds, so a frame covers Frame / window of a tile. Two frames'
+    // worth, not one, because a command tick fired off an accumulator lands on the first frame at or past the tick
+    // rather than exactly on it: the state advances a whole tick while the rendered phase was a fraction of a frame
+    // short of one, and that remainder is drawn in the same frame. A POP is nothing like either number. The ones this
+    // bound was written against were a third to a whole tile, five to fifteen times over it.
+    static float Bound(float window) => 2f * Frame / window;
+
+    static ClientPrediction<TileMoveState, TileCommand> Prediction() => Prediction(Tick, new TileStepTicks(4, 2));
+
+    static ClientPrediction<TileMoveState, TileCommand> Prediction(float tick, TileStepTicks steps) =>
+        new(new TileMoveSimulator(TileMoveSimulatorTests.Bake(TileMoveSimulatorTests.FlatWorld()), steps),
+            new PredictionSettings(tick, 64, 0.5f, 8f, 0.01f));
+
+    // Walks a windowed local body due north for twenty-four command ticks, sampled every frame, and reports the worst
+    // single-frame movement and the number of tiles it committed. STRAIGHT on purpose, so a step is exactly one tile
+    // and the caller's bound is the window's own crossing rate with nothing to allow for a diagonal.
+    //
+    // The command tick is fired off an accumulator rather than off a frame count, which is what a real head's tick
+    // host does: the frame rate and the tick rate are unrelated numbers, and a cadence they do not divide evenly is
+    // exactly the case a fixed "every N frames" loop cannot reach.
+    static (float Worst, int Commits) WalkNorth(float tick, TileStepTicks steps, TileMoveMode mode, float window)
+    {
+        ClientPrediction<TileMoveState, TileCommand> pred = Prediction(tick, steps);
+        var presenter = new TilePresenter(1f, PlaneMetres, new TileGlideWindow(window, tick));
+        pred.Reset(TileMoveState.At(new TileCoord(2, 2, 0), TileDirection.N));
+        pred.Predict(TileCommand.WalkTo(new TileCoord(2, 40, 0), mode));
+
+        Vector3 previous = presenter.LocalPose(pred).Position;
+        TileCoord tile = pred.PredictedState.Tile;
+        float worst = 0f, accumulated = 0f;
+        int commits = 0;
+        for (int frame = 0; frame < (int)(24 * tick / Frame); frame++)
+        {
+            pred.AdvancePresentation(Frame);
+            accumulated += Frame;
+            if (accumulated >= tick) { accumulated -= tick; pred.Predict(TileCommand.Continue(mode)); }
+            Vector3 now = presenter.LocalPose(pred).Position;
+            worst = MathF.Max(worst, (now - previous).Length());
+            previous = now;
+            if (!pred.PredictedState.Tile.Equals(tile)) { commits++; tile = pred.PredictedState.Tile; }
+        }
+        return (worst, commits);
+    }
 }

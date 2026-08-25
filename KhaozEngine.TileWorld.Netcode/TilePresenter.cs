@@ -126,9 +126,9 @@ public sealed class TilePresenter
     /// <para>The fraction is rebuilt from the state and the layer's inter-tick phase rather than measured off the
     /// drawn point, and that is what keeps a corner continuous. Measured off the point, the fraction would be taken
     /// against whichever step is in flight NOW while the eased point is still on the one before it, so every turn
-    /// would jump. Rebuilt, the tick a step commits reads as a small NEGATIVE fraction, which the remap clamps onto
-    /// <see cref="TileMoveState.StepFrom"/>: exactly where the previous step's remap had already parked the
-    /// body.</para>
+    /// would jump. Rebuilt, it runs from zero to one across the step, so the tick a step commits reads as zero on the
+    /// new step, which is <see cref="TileMoveState.StepFrom"/>: exactly the tile the previous step's fraction of one
+    /// had already parked the body on.</para>
     /// </summary>
     /// <param name="prediction">The client's prediction for the local player.</param>
     /// <exception cref="ArgumentNullException"><paramref name="prediction"/> is null.</exception>
@@ -139,23 +139,33 @@ public sealed class TilePresenter
         bool eased = r.HasRenderOverride;
         Vector2 planar = eased ? r.RenderPosition : r.Position;
         float plane = eased ? r.RenderVertical : r.Vertical;
-        if (!Glide.CoversWholeStep(r.StepTotal)) planar = Windowed(prediction, r, eased);
+        if (!Glide.CoversWholeStep(r.StepTotal)) planar = Windowed(prediction, r);
         return new TilePose(Centre(planar.X, plane * PlaneHeight, planar.Y), Yaw(r.Facing));
     }
 
     // The local player's step, re-placed at the window's fraction, with the correction offset put back unchanged.
     // Split out so LocalPose reads as the one-line pass-through it still is on the default window.
     //
-    // The fraction is the CONTINUOUS one the drawn body is at, which is a tick behind the state: the layer eases from
-    // the previous tick's position to this one, so at phase p through the tick the body is at (StepTicks - 1 + p)
-    // ticks of the step. That trailing tick is the layer's, not the window's, and it is why a head measures its
-    // catch-up as the window plus one tick.
-    Vector2 Windowed(ClientPrediction<TileMoveState, TileCommand> prediction, in TileMoveState r, bool eased)
+    // The fraction is the step's OWN progress carried through the tick by the layer's inter-tick phase, which is the
+    // same expression Pose builds for a remote out of StepTicks and the ticks elapsed since its sample. Read here as a
+    // sub-tick clock rather than as the origin of the layer's easing, and that is deliberate: measured a tick further
+    // back, as the layer's own easing is, the fraction tops out at (StepTotal - 1) / StepTotal and never reaches 1, so
+    // a window inside one tick of the step's duration leaves the body short of its tile and then jumps it onto the
+    // next step's StepFrom at the commit. Measured on a real predicted walk that is half a tile every step at run
+    // cadence and a whole tile at a one-tick one. Measured from the commit instead, the catch-up the head draws is the
+    // window itself rather than the window plus a tick, and it is the same catch-up a remote is drawn with.
+    //
+    // The prediction layer is not bypassed by any of this. Its correction offset rides through unchanged below, and
+    // its phase is what keeps the motion smooth above the tick rate. What the window replaces is only where along
+    // the step the body sits.
+    Vector2 Windowed(ClientPrediction<TileMoveState, TileCommand> prediction, in TileMoveState r)
     {
-        Vector2 offset = eased ? prediction.RenderOffset : Vector2.Zero;
+        // RenderedState always carries the render override (it ends in WithRenderState unconditionally), so there is
+        // no un-eased local pose to fall back to and no second phase convention to pick between.
+        Vector2 offset = prediction.RenderOffset;
         if (!r.IsStepping || r.StepTotal == 0) return new Vector2(r.Tile.X, r.Tile.Z) + offset;
-        float phase = eased ? prediction.InterTickFraction : 1f;
-        float f = TileGlideWindow.Remap((r.StepTicks - 1f + phase) / r.StepTotal, Glide.FractionOf(r.StepTotal));
+        float f = TileGlideWindow.Remap((r.StepTicks + prediction.InterTickFraction) / r.StepTotal,
+            Glide.FractionOf(r.StepTotal));
         return new Vector2(
             r.StepFrom.X + ((float)r.Tile.X - r.StepFrom.X) * f,
             r.StepFrom.Z + ((float)r.Tile.Z - r.StepFrom.Z) * f) + offset;

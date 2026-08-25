@@ -16,11 +16,15 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// step, so the divergence between the picture and the committed tile is bounded by the window rather than by the
 /// step. Everything about the simulation is untouched: this is read on the way to a view and written to nothing, so
 /// no replay, no reconciliation and no server tick can see it.</para>
-/// <para>The bound is measured on the state's OWN timeline. Both presentation paths carry a timeline offset that
-/// predates this type and is unchanged by it: the local player is drawn through the prediction layer's inter-tick
-/// easing, which trails the command tick by up to one tick, and a remote rides the delayed timeline
-/// <see cref="TileWorldClientConfig.InterpolationDelayTicks"/> names. So what a head actually draws is the window
-/// plus its path's own offset, and the window is what it CAN control.</para>
+/// <para>The bound is measured on the state's OWN timeline, and each drawing path adds an offset of its own that
+/// predates this type and is unchanged by it. The LOCAL player is placed from the state the prediction layer is
+/// holding, so its catch-up is the window itself, and what rides on top is whatever is left of a decaying
+/// reconciliation offset after a misprediction (bounded by
+/// <see cref="KhaozEngine.Netcode.PredictionSettings.HardSnapDistance"/>, and zero on the deterministic lattice's
+/// ordinary case). A REMOTE is drawn off the delayed timeline
+/// <see cref="TileWorldClientConfig.InterpolationDelayTicks"/> names, which is a whole tick per delay tick and by
+/// default the widest of the three. So what a head actually draws is the window plus its path's own offset, and the
+/// window is what it CAN control.</para>
 /// </summary>
 public readonly record struct TileGlideWindow
 {
@@ -74,11 +78,11 @@ public readonly record struct TileGlideWindow
     // one thing this is a contract about (the instant the body IS on its tile). A game that wants a curve has the
     // window itself to tune, which changes when the body arrives rather than how it dawdles on the way.
     //
-    // A NEGATIVE fraction is real on the local path and is clamped rather than extrapolated: the prediction layer's
-    // inter-tick easing trails the command tick, so on the tick a step commits the rendered timeline has not reached
-    // the commit yet. Clamped, it draws on StepFrom, which is where the PREVIOUS step's remap had already parked it,
-    // so the two steps meet continuously. Extrapolated through a small window it would fling the body a whole
-    // multiplied step backwards.
+    // Both callers hand in a fraction already inside [0, 1] (the remote path clamps its own, and the local one builds
+    // it from a tick count and a phase that cannot go negative), so the clamp here is a guard rather than a branch
+    // either path relies on. It is kept because the alternative is extrapolation: divided by a small window, a
+    // fraction a hair either side of the range would fling the body a whole multiplied step past the tiles it is
+    // meant to be between, and a guard is cheaper than the invariant it would cost to prove that can never happen.
     internal static float Remap(float fraction, float window)
     {
         // Covers the step (and NaN, and infinity): today's linear glide, byte for byte, with nothing recomputed.

@@ -100,7 +100,9 @@ SERVE, which filters a viewer's area of interest to the viewer's own plane.
   arrival. `Queue` on a click, `Tick` on the command clock, `Poll` once a frame, `AdvancePresentation` before
   drawing.
 - **`TilePresenter`** / **`TilePose`** - the pure bridge from a tile state plus a step fraction to a world position
-  and a yaw. The only file in the package that consults `TileWorldSpace`.
+  and a yaw. The only file in the package that consults `TileWorldSpace`. A pose names the tile CENTRE, half a tile
+  in from the corner on each axis, which is the middle of that tile's ground quad and the point a 1x1
+  `TileObjectProps` prop is anchored at, so a head draws at `pose.Position` without re-centring it.
 - **`TileClientMessageHandler`** - the delegate an opaque server message arrives on.
 
 **Persistence**

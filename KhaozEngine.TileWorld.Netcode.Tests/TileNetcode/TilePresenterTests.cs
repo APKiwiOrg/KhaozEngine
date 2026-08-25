@@ -11,12 +11,37 @@ public class TilePresenterTests
 {
     static readonly TilePresenter P = new(tileSize: 1f, planeHeight: 3f);
 
+    // A pose names the tile CENTRE: tile (4, 7) spans 4..5 and 7..8, the same span its ground quad covers and the
+    // same one a 1x1 prop is centred in, so the presenter adds half a tile on each axis. The half tile is added
+    // in TILE units, before TileWorldSpace, so the z half goes through the negation with the coordinate it belongs
+    // to. Drawn on the corner instead, an avatar stands half a tile diagonally off every prop it walks up to.
     [Fact]
     public void A_standing_state_maps_to_its_tile_centre_line_through_TileWorldSpace()
     {
         TilePose pose = P.Pose(TileMoveState.At(new TileCoord(4, 7, 2), TileDirection.N));
-        Assert.Equal(TileWorldSpace.ToWorld(4f, 6f, 7f, 1f), pose.Position);
+        Assert.Equal(TileWorldSpace.ToWorld(4.5f, 6f, 7.5f, 1f), pose.Position);
         Assert.Equal(MathF.PI, pose.Yaw, 5);
+    }
+
+    // The centring against the two things it has to agree with, rather than against a literal half: the ground
+    // quad's own span and the prop anchor's own centre. TileObjectProps lives in KhaozEngine.TileWorld.Render3D
+    // and referencing it would drag the 3D renderer into this package's test graph, which is what CI selects test
+    // projects by, so the anchor's formula is restated here for a 1x1 object and pinned against the pose.
+    [Fact]
+    public void A_pose_lands_on_the_same_point_a_one_by_one_prop_on_that_tile_is_anchored_at()
+    {
+        var tile = new TileCoord(4, 7, 0);
+        const float TileSize = 1f;
+        // TileObjectProps.AnchorPosition for a 1x1: WorldX(o.X + sizeX / 2f), WorldZ(o.Z + sizeZ / 2f).
+        float propX = TileWorldSpace.WorldX(tile.X + 1 / 2f, TileSize);
+        float propZ = TileWorldSpace.WorldZ(tile.Z + 1 / 2f, TileSize);
+
+        TilePose pose = P.Pose(TileMoveState.At(tile, TileDirection.N));
+        Assert.Equal(propX, pose.Position.X, 5);
+        Assert.Equal(propZ, pose.Position.Z, 5);
+        // And inside the tile's own ground quad, which spans x..x+1 and z..z+1 in tile units.
+        Assert.InRange(TileWorldSpace.TileX(pose.Position.X, TileSize), tile.X, tile.X + 1);
+        Assert.InRange(TileWorldSpace.TileZ(pose.Position.Z, TileSize), tile.Z, tile.Z + 1);
     }
 
     // The four cardinals, spelled out, so a reader can see the convention without deriving it. Tile SOUTH is the
@@ -62,9 +87,11 @@ public class TilePresenterTests
         s.Route = new TileRoute(new[] { new TileCoord(0, 1, 0) }, 0);
         s.StepTotal = 4;
         s.StepTicks = 2;
-        Assert.Equal(TileWorldSpace.ToWorld(0f, 0f, 0.5f, 1f), P.Pose(s).Position);
-        Assert.Equal(TileWorldSpace.ToWorld(0f, 0f, 0.75f, 1f), P.Pose(s, extraTicks: 1f).Position);
-        Assert.Equal(TileWorldSpace.ToWorld(0f, 0f, 1f, 1f), P.Pose(s, extraTicks: 9f).Position);
+        // Centred, so the walk from tile (0, 0) to tile (0, 1) runs from tile-space 0.5 to 1.5 and the half way
+        // point is 1.0. The offset is constant along the step, so the glide itself is unchanged.
+        Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1f, 1f), P.Pose(s).Position);
+        Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1.25f, 1f), P.Pose(s, extraTicks: 1f).Position);
+        Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1.5f, 1f), P.Pose(s, extraTicks: 9f).Position);
     }
 
     [Fact]
@@ -78,7 +105,9 @@ public class TilePresenterTests
         pred.Predict(TileCommand.WalkTo(new TileCoord(2, 6, 0), TileMoveMode.Run));
         pred.AdvancePresentation(0.125f);
         TilePose pose = P.LocalPose(pred);
-        Assert.True(pose.Position.Z < TileWorldSpace.WorldZ(2f, 1f));   // already gliding north (world -z)
+        // Past the CENTRE of tile (2, 2), which is where a standing pose would be, so the local path is centred
+        // too. Measured against the corner instead, the half tile alone would satisfy this.
+        Assert.True(pose.Position.Z < TileWorldSpace.WorldZ(2.5f, 1f));  // already gliding north (world -z)
     }
 
     [Fact]
@@ -86,7 +115,8 @@ public class TilePresenterTests
     {
         var ground = new TilePresenter(tileSize: 2f, planeHeight: 4f);
         TilePose pose = ground.Pose(TileMoveState.At(new TileCoord(3, 5, 1), TileDirection.E));
-        Assert.Equal(TileWorldSpace.ToWorld(3f, 4f, 5f, 2f), pose.Position);
+        // Centred, and the half tile scales with the tile size: a metre on each axis for a two metre tile.
+        Assert.Equal(TileWorldSpace.ToWorld(3.5f, 4f, 5.5f, 2f), pose.Position);
         Assert.Equal(MathF.PI / 2f, pose.Yaw, 5);
     }
 

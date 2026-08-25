@@ -5,7 +5,8 @@ using KhaozEngine.Netcode;
 namespace KhaozEngine.TileWorld.Netcode;
 
 /// <summary>Where to draw something, and which way it faces.</summary>
-/// <param name="Position">World position in metres.</param>
+/// <param name="Position">World position in metres, on the tile CENTRE. See <see cref="TilePresenter"/> for the
+/// convention and why the half tile is the presenter's to add.</param>
 /// <param name="Yaw">Facing as a rotation about +Y in radians, ready for a <c>Matrix4x4.CreateRotationY(yaw)</c>
 /// model transform on a +z-forward mesh: tile SOUTH is 0, east +pi/2, north pi and west -pi/2. That is the engine's
 /// one model-yaw convention, the same <c>CharacterFacing.YawOf</c> produces and the same hand
@@ -19,6 +20,13 @@ public readonly record struct TilePose(Vector3 Position, float Yaw);
 /// tile z counts NORTH while render z counts south, so a render-space sign that leaked into a shard boundary, a
 /// reach test or a route would be an off-by-one nobody could see until a player walked into it. Keeping the
 /// negation in one file is what makes that impossible rather than merely unlikely.
+/// <para>A POSE NAMES THE TILE CENTRE. Tile (x, z) spans x..x+1 and z..z+1, which is the span its ground quad
+/// covers and the span <c>TileObjectProps.AnchorPosition</c> centres a 1x1 prop in, so half a tile is added on
+/// each axis before the world conversion. Added in TILE units, ahead of <see cref="TileWorldSpace"/>, so the half
+/// tile goes through the same z negation the tile coordinate does and lands on the same side of the tile the
+/// ground quad and the props do. Drawn on the CORNER instead, an avatar stands half a tile diagonally off every
+/// prop it walks up to and off the middle of the ground it occupies, which is what a consumer then re-centres in
+/// a shim of its own.</para>
 /// <para>Nothing here holds state or touches a GPU. It is a function of a <see cref="TileMoveState"/> plus a
 /// fraction of a tick, so a head can call it from a render thread, a test can call it with no device, and two
 /// callers asking about the same state get the same answer.</para>
@@ -76,9 +84,7 @@ public sealed class TilePresenter
             tileX += (next.X - state.Tile.X) * f;
             tileZ += (next.Z - state.Tile.Z) * f;
         }
-        return new TilePose(
-            TileWorldSpace.ToWorld(tileX, state.Tile.Plane * PlaneHeight, tileZ, TileSize),
-            Yaw(state.Facing));
+        return new TilePose(Centre(tileX, state.Tile.Plane * PlaneHeight, tileZ), Yaw(state.Facing));
     }
 
     /// <summary>
@@ -96,10 +102,15 @@ public sealed class TilePresenter
         TileMoveState r = prediction.RenderedState;
         Vector2 planar = r.HasRenderOverride ? r.RenderPosition : r.Position;
         float plane = r.HasRenderOverride ? r.RenderVertical : r.Vertical;
-        return new TilePose(
-            TileWorldSpace.ToWorld(planar.X, plane * PlaneHeight, planar.Y, TileSize),
-            Yaw(r.Facing));
+        return new TilePose(Centre(planar.X, plane * PlaneHeight, planar.Y), Yaw(r.Facing));
     }
+
+    // A tile point as a world position on the tile CENTRE, which is the one place the half tile is added. In TILE
+    // units, before TileWorldSpace, so the z half tile is negated with the coordinate it belongs to rather than
+    // being added to a world metre and landing on the wrong side of the tile. A smoothed position goes through the
+    // same offset as a lattice one, so a correction decays toward the centre it was drawn from.
+    Vector3 Centre(float tileX, float heightMetres, float tileZ) =>
+        TileWorldSpace.ToWorld(tileX + 0.5f, heightMetres, tileZ + 0.5f, TileSize);
 
     /// <summary>
     /// The yaw a facing draws at, in the ENGINE's model-yaw convention: the value a head hands straight to

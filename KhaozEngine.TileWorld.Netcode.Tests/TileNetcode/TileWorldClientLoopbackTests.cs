@@ -17,6 +17,13 @@ public class TileWorldClientLoopbackTests
     const float Frame = 0.05f;
     static readonly TileStepTicks Ticks = new(walk: 4, run: 2);
 
+    // A pose names the tile CENTRE, so the half tile comes back off on the way to a tile coordinate. The tests
+    // below are all about WHICH TILES a remote was drawn on, which the centring does not move, so they read the
+    // same numbers they always did with the offset undone here rather than in every assertion.
+    static float DrawnTileX(float worldX) => TileWorldSpace.TileX(worldX, 1f) - 0.5f;
+
+    static float DrawnTileZ(float worldZ) => TileWorldSpace.TileZ(worldZ, 1f) - 0.5f;
+
     sealed class Harness : IDisposable
     {
         public readonly TileWorldServer Server;
@@ -418,7 +425,7 @@ public class TileWorldClientLoopbackTests
         {
             h.Frames(1);
             if (!h.Client.TryGetRemotePose(remote, out TilePose pose)) continue;
-            float tileZ = TileWorldSpace.TileZ(pose.Position.Z, 1f);
+            float tileZ = DrawnTileZ(pose.Position.Z);
             drawn.Add(tileZ);
             if (tileZ <= 10.001f || tileZ >= 10.999f) continue;
             sawTheGlide = true;
@@ -459,7 +466,7 @@ public class TileWorldClientLoopbackTests
             {
                 h.Frames(1);
                 if (h.Client.TryGetRemotePose(remote, out TilePose pose))
-                    drawn.Add((TileWorldSpace.TileX(pose.Position.X, 1f), TileWorldSpace.TileZ(pose.Position.Z, 1f)));
+                    drawn.Add((DrawnTileX(pose.Position.X), DrawnTileZ(pose.Position.Z)));
             }
         }
 
@@ -498,7 +505,7 @@ public class TileWorldClientLoopbackTests
         {
             h.Frames(1);
             if (h.Client.TryGetRemotePose(remote, out TilePose pose))
-                drawn.Add(TileWorldSpace.TileZ(pose.Position.Z, 1f));
+                drawn.Add(DrawnTileZ(pose.Position.Z));
         }
 
         // Every frame drew it on one tile or the other, never on the ten tiles between them.
@@ -536,7 +543,7 @@ public class TileWorldClientLoopbackTests
         {
             h.Frames(1);
             if (h.Client.TryGetRemotePose(remote, out TilePose pose))
-                drawn.Add((pose.Position.Y, TileWorldSpace.TileZ(pose.Position.Z, 1f)));
+                drawn.Add((pose.Position.Y, DrawnTileZ(pose.Position.Z)));
         }
 
         Assert.NotEmpty(drawn);

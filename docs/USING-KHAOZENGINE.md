@@ -8395,6 +8395,10 @@ the owner route and the display name all keep working, and nothing anywhere says
 `TilePose.Yaw` is the engine's model-yaw convention, the value `Matrix4x4.CreateRotationY` wants for a
 +z-forward mesh, the same one `CharacterFacing.YawOf` and `TileObjectProps.YawRadians` produce.
 
+**A pose names the tile CENTRE**, half a tile in from the corner on each axis, which is the middle of the tile's
+own ground quad and the point `TileObjectProps.AnchorPosition` puts a 1x1 prop on, so an avatar and the thing it
+walks up to sit on the same grid. Draw at `pose.Position` directly and do not re-centre it.
+
 **Run rides the tick stream, not the click.** `RunMode` is carried on EVERY command, `TileCommand.Continue`
 included, and the simulator applies it at the START of the next step. Holding run halfway through a walking step
 never shortens that step, it makes the one after it a run. A client that sent `TileCommand.None` while a route

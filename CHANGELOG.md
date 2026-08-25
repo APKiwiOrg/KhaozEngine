@@ -183,6 +183,12 @@ DAMPED CHASE: the drawn body pursues its committed tile continuously, closing th
   - **`TileWorldClient.ChaseHalfLifeSeconds`** is the one number both paths were built from, exposed so a game can
     build a `TileChase` for a body of its own (a pet, a follower, a mount) and have it move on the same curve as
     the players around it.
+  - **`TileWorldClient.AdvancePresentation` refuses a frame time that is not a finite positive number of
+    seconds.** The clamp it used returns NaN for a NaN input, and the presentation clock ACCUMULATES, so one bad
+    frame took the remote render timeline out for the rest of the session rather than for a frame. An infinite dt
+    is refused in the same breath, since `2^(-inf / h)` is zero and would land every body on its target like a
+    teleport nobody ordered. Negative, zero, infinite and NaN all advance nothing now, and the sanitized value is
+    what the prediction layer's own presentation advance is handed too, so one guard covers both render clocks.
   - **`TileMoveState.StepFrom` is untouched**, on the state and on the wire: the simulator and the reconcile both
     need it, it is simply not what the body is drawn between any more. The simulation, the replay, the
     reconciliation and the wire never read the half life, so two clients drawing at different half lives still

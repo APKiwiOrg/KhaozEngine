@@ -369,12 +369,20 @@ public sealed partial class TileWorldClient : IDisposable
     /// because the VERTICAL <see cref="LocalPose"/> draws is that layer's own eased plane and is read after this
     /// returns.</para>
     /// </summary>
-    /// <param name="dt">Seconds since the last frame. Negative is treated as zero.</param>
+    /// <param name="dt">Seconds since the last frame. Anything that is not a finite positive number of seconds
+    /// (negative, zero, infinite, or not a number) is treated as zero and advances nothing.</param>
     public void AdvancePresentation(float dt)
     {
-        float step = Math.Max(0f, dt);
+        // The one clock here that ACCUMULATES is the reason this is a finiteness test rather than a clamp.
+        // Math.Max(0f, NaN) is NaN under IEEE, so a single NaN frame would take presentationClock, and with it the
+        // remote render timeline, out for the rest of the session rather than for a frame. An infinite dt is
+        // refused in the same breath: 2^(-inf / h) is zero, so it would land every body exactly on its target and
+        // read as a teleport nobody ordered. Both mean the caller handed over a broken frame clock, and the honest
+        // answer to a frame that took no valid amount of time is to draw the previous one again. The sanitized
+        // value is what the prediction layer is handed too, so one guard covers both render clocks.
+        float step = float.IsFinite(dt) && dt > 0f ? dt : 0f;
         presentationClock += step;
-        Prediction.AdvancePresentation(dt);
+        Prediction.AdvancePresentation(step);
         localChase.Advance(LocalTarget, step);
         if (LocalNetId < 0) return;
         View.InterpolateAt(World, RenderTime, excludeNetId: LocalNetId);

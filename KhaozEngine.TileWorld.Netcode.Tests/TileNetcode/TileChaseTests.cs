@@ -585,6 +585,40 @@ public class TileChaseTests
         Assert.True(chase.IsPlaced);
     }
 
+    /// <summary>
+    /// A frame time that is not a finite duration advances nothing, and poisons nothing either. The client's
+    /// presentation clock ACCUMULATES, so a single NaN dt would take the remote render timeline out for the rest
+    /// of the session rather than for a frame, and an infinite dt would drive every chase's <c>2^(-dt / h)</c> to
+    /// zero and land every body on its target like a teleport nobody ordered. Both bodies are checked, because
+    /// the local one is drawn off the chase alone and the remote one off the clock as well.
+    /// </summary>
+    [Fact]
+    public void A_frame_time_that_is_not_a_finite_duration_advances_nothing_and_poisons_nothing()
+    {
+        using var loop = new Loop();
+        loop.Join();
+        long remote = loop.Server.SpawnPlayer(slot: 1, "remote", "Rem");
+        loop.Server.SetPlayerState(1, TileMoveState.At(new TileCoord(12, 10, 0), TileDirection.N));
+        loop.Frames(20);
+        loop.Client.Queue(TileCommand.WalkTo(new TileCoord(10, 30, 0), TileMoveMode.Run));
+        loop.Server.Enqueue(1, 0, TileCommand.WalkTo(new TileCoord(12, 30, 0), TileMoveMode.Run));
+        loop.Frames(20);
+
+        Assert.True(loop.Client.TryGetRemotePose(remote, out TilePose beforeRemote));
+        Vector3 beforeLocal = loop.LocalDrawn;
+        loop.Client.AdvancePresentation(float.NaN);
+        loop.Client.AdvancePresentation(float.PositiveInfinity);
+
+        Assert.Equal(beforeLocal, loop.LocalDrawn);
+        Assert.True(loop.Client.TryGetRemotePose(remote, out TilePose afterRemote));
+        Assert.Equal(beforeRemote.Position, afterRemote.Position);
+        // And the clock is still a clock rather than a NaN: both bodies keep moving on the frames that follow.
+        loop.Frames(30);
+        Assert.True(loop.Client.TryGetRemotePose(remote, out TilePose movedRemote));
+        Assert.True(movedRemote.Position.Z != beforeRemote.Position.Z, "the remote render timeline stopped");
+        Assert.NotEqual(beforeLocal, loop.LocalDrawn);
+    }
+
     // A frame in which no time passed moves nothing, which is the honest answer and also what keeps a head that
     // draws twice in one frame from drawing two different positions.
     [Fact]

@@ -159,11 +159,11 @@ public static partial class TileProtocol
         // At() seeded StepFrom onto the tile, which is what a frame naming anything but a STEP falls back to. A pair
         // that is not one tile apart is not a step: a teleport, a plane change, or a lie. Gliding between them would
         // walk the avatar over every tile in the gap, and it is a lie that costs, because Position is fed straight
-        // to the reconcile error and the hard-snap gate. Measured in LONG for the reason TileWorldServer.GoalInRange
-        // is: nothing bounds a replicated tile's X and Z, so two coordinates int.MinValue apart make an int
-        // subtraction wrap and Math.Abs throw, out of a client's apply loop.
-        long dx = (long)x - fromX, dz = (long)z - fromZ;
-        if (Math.Max(Math.Abs(dx), Math.Abs(dz)) == 1) s.StepFrom = new TileCoord(fromX, fromZ, plane);
+        // to the reconcile error and the hard-snap gate. TileMoveState.IsStepOrigin is the ONE statement of what an
+        // origin may be, shared with TileWorldServer's door so a hostile frame and a hand-built state are measured
+        // by the same rule, in long arithmetic for the same overflow reason.
+        var from = new TileCoord(fromX, fromZ, plane);
+        if (TileMoveState.IsStepOrigin(from, s.Tile)) s.StepFrom = from;
         if (s.StepTotal == 0) s.StepTotal = 1;   // a hostile 0 would divide by zero in StepFraction
         // The step counter is the OTHER half of that division, and a step never spends more ticks than its total.
         // Left unclamped, a 250 against a total of 2 rides the wire intact and reads as a step fraction of 125: a

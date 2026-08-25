@@ -335,7 +335,7 @@ public class TileWorldServerTickTests
         Assert.True(refused.Route.IsIdle);
     }
 
-    // The fourth refusal, the one delegated to TileRoute.RemainingSteps, is the one that has to happen before the
+    // The last refusal, the one delegated to TileRoute.RemainingSteps, is the one that has to happen before the
     // first write rather than between the two. It runs on the ROUTE rather than the tile, and taken after the state
     // was written it left the entity holding a route the simulator cannot walk: TileMoveSimulator.Advance asks
     // TileRoute.Direction for the step between two tiles that are not adjacent on the very next tick, and that throw
@@ -371,6 +371,92 @@ public class TileWorldServerTickTests
         Assert.True(s.TryGetPlayerState(0, out TileMoveState standing));
         Assert.Equal(new TileCoord(10, 10, 0), standing.Tile);
         Assert.True(standing.Route.IsIdle);
+    }
+
+    // The state door is the ONE write path that does not run through the simulator, so it is the only way a glide
+    // origin the stepper could never have produced can exist at all. The reachable form is the natural admin-move
+    // idiom: copy the live state, change Tile, keep mode, epoch and pending target. The server then reads a phantom
+    // step in flight and cannot start the next route step for a whole StepTotal, while the DECODER clamps the same
+    // state back to standing on its way to the owner, so the two heads hold different states for the length of the
+    // phantom step and every snapshot in it reports a correction that moves nothing.
+    [Fact]
+    public void SetPlayerState_refuses_a_step_origin_the_simulator_could_not_have_produced()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(10, 10, 0));
+        s.SpawnPlayer(0, "a", "Ari");
+        s.SpawnPlayer(1, "b", "Bo");
+
+        // The copied-state idiom with no step progress at all: the origin is left ten tiles behind the new tile.
+        // Zero ticks do not make it standing, because IsStepping is the tile PAIR and nothing else.
+        TileMoveState moved = TileMoveState.At(new TileCoord(10, 10, 0), TileDirection.S);
+        moved.Tile = new TileCoord(20, 10, 0);
+        Assert.Equal(0, (int)moved.StepTicks);
+        ArgumentException far = Assert.Throws<ArgumentException>(() => s.SetPlayerState(0, moved));
+        Assert.Contains("StepFrom", far.Message);
+
+        // The same gap taken mid-glide, which is what a copy made while the player was walking looks like.
+        TileMoveState progressed = moved;
+        progressed.StepTicks = 2;
+        progressed.StepTotal = 4;
+        Assert.Throws<ArgumentException>(() => s.SetPlayerState(0, progressed));
+
+        // An origin on ANOTHER plane, which no step produces because a step never changes plane. It is unspellable
+        // on the wire (StepFrom rides without a plane byte of its own), so this door is the only place a hand-built
+        // one can be caught.
+        TileMoveState crossPlane = TileMoveState.At(new TileCoord(10, 10, 0), TileDirection.S);
+        crossPlane.StepFrom = new TileCoord(10, 10, 1);
+        Assert.Throws<ArgumentException>(() => s.SetPlayerState(0, crossPlane));
+
+        // What the door must NOT refuse: a real step in flight. Zero progress is legal on one, because the tick a
+        // body lands is the tick the next step commits, so a landing tick carries an origin and no ticks yet.
+        TileMoveState stepping = TileMoveState.At(new TileCoord(10, 11, 0), TileDirection.N);
+        stepping.StepFrom = new TileCoord(10, 10, 0);
+        stepping.StepTotal = 4;
+        s.SetPlayerState(0, stepping);
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState accepted));
+        Assert.Equal(new TileCoord(10, 10, 0), accepted.StepFrom);
+        Assert.True(accepted.IsStepping);
+
+        // And the tick runs on, for everybody else as well.
+        s.Enqueue(1, 0, TileCommand.WalkTo(new TileCoord(10, 14, 0), TileMoveMode.Run));
+        s.Tick(Dt);
+        s.Tick(Dt);
+        Assert.Equal(2, s.TickCount);
+        Assert.True(s.TryGetPlayerState(1, out TileMoveState walker));
+        Assert.Equal(new TileCoord(10, 12, 0), walker.Tile);
+    }
+
+    // A teleport CUTS, and the epoch alone does not make it cut. An origin one step from the destination is a
+    // perfectly legal step, so a ONE TILE teleport built by copying a state that was mid-glide rides the wire
+    // intact and gets glided in like an ordinary step, which is the one thing the flag exists to stop. Every other
+    // caller in the tree happens to pass TileMoveState.At, which seeds the origin onto the tile, so nothing
+    // exercised the other idiom until this.
+    [Fact]
+    public void A_one_tile_teleport_cuts_whatever_origin_it_was_handed()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(10, 10, 0));
+        s.SpawnPlayer(0, "a", "Ari");
+        s.Enqueue(0, seq: 0, TileCommand.WalkTo(new TileCoord(10, 14, 0), TileMoveMode.Walk));
+        s.Tick(Dt);
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState walking));
+        Assert.True(walking.IsStepping);
+
+        // Copy the mid-glide state and move the tile one on, the admin idiom that keeps mode, epoch and target.
+        TileMoveState placed = walking;
+        placed.Tile = walking.Tile.Offset(1, 0);
+        placed.Route = TileRoute.None;
+        Assert.True(placed.IsStepping);   // the origin is Chebyshev-1 from the new tile, so it IS a legal step
+        s.SetPlayerState(0, placed, teleport: true);
+
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState after));
+        Assert.Equal(placed.Tile, after.Tile);
+        Assert.Equal(after.Tile, after.StepFrom);
+        Assert.False(after.IsStepping);
+        Assert.Equal(0, (int)after.StepTicks);
+        Assert.Equal(new Vector2(after.Tile.X, after.Tile.Z), after.Position);
+        Assert.Equal(walking.Epoch + 1u, after.Epoch);
     }
 
     // Two actions coming ready on the SAME tick resolve oldest CLICK first, which is what TilePendingAction's

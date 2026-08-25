@@ -66,10 +66,13 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
     /// so a toggle can neither shorten nor stretch a step already in progress.</summary>
     public TileMoveMode Mode;
 
-    /// <summary>Ticks already spent gliding into <see cref="Tile"/>. Always below <see cref="StepTotal"/> in a state
-    /// the simulator produced, because the tick that would reach it is the tick the body lands: that tick pulls
-    /// <see cref="StepFrom"/> up to <see cref="Tile"/> and resets this to zero, and starts the next step if the route
-    /// has one. Zero whenever <see cref="StepFrom"/> equals <see cref="Tile"/>.</summary>
+    /// <summary>Ticks already spent gliding into <see cref="Tile"/>. NEVER above <see cref="StepTotal"/> in a state
+    /// the simulator produced, and below it in every state whose step still has ticks to run, because the tick that
+    /// reaches the total is the tick the body lands: that tick pulls <see cref="StepFrom"/> up to <see cref="Tile"/>
+    /// and resets this to zero, and starts the next step if the route has one. The one produced state where the two
+    /// are EQUAL is a cadence of a single tick, where a standing player's step both starts and spends its only tick
+    /// on the one tick, so the fraction reads as filled while the step is still in flight. Zero whenever
+    /// <see cref="StepFrom"/> equals <see cref="Tile"/>.</summary>
     public byte StepTicks;
 
     /// <summary>Ticks the CURRENT step takes, stamped from configuration when the step started. Carried on the
@@ -117,6 +120,26 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
     /// the two cannot disagree. Note it is NOT the same question as a live route: a route empties on the tick its
     /// last step STARTS, so an idle route with a step still in flight is the ordinary end of every walk.</summary>
     public readonly bool IsStepping => !StepFrom.Equals(Tile);
+
+    // THE rule for what a glide's origin may be, stated once and asked by both doors a state can arrive through
+    // from outside the simulator: TileProtocol's decoder, of an attacker-controlled frame, and
+    // TileWorldServer.SetPlayerState, of a hand-built state. An origin is either the tile itself (nothing in
+    // flight) or exactly one Chebyshev step from it on the same plane, because those are the only two shapes the
+    // stepper produces: Start writes StepFrom = Tile before flipping Tile to an adjacent tile, and every landing
+    // normalizes the pair back together. Anything else is a step no route could contain, and a Position lerped
+    // along it walks the avatar over every tile in the gap.
+    //
+    // The plane is part of the rule rather than assumed: a step never changes plane, so an origin one floor down
+    // is as unproducible as one a map away, and TileCoord equality counts it as a step in flight.
+    //
+    // Measured in LONG for the reason TileWorldServer.GoalInRange is: nothing bounds a replicated or hand-written
+    // tile's X and Z, so two coordinates int.MinValue apart make an int subtraction wrap and Math.Abs throw.
+    internal static bool IsStepOrigin(TileCoord from, TileCoord tile)
+    {
+        if (from.Plane != tile.Plane) return false;
+        long dx = (long)tile.X - from.X, dz = (long)tile.Z - from.Z;
+        return Math.Max(Math.Abs(dx), Math.Abs(dz)) <= 1;
+    }
 
     /// <summary>The fraction of the current step already spent, 0 when the body stands on its tile. The single place
     /// an integer tick count turns into a float, and it is read only: nothing ever writes the result back.</summary>

@@ -8224,6 +8224,21 @@ The SIBLING of the section above, for a world made of tiles rather than of metre
 `TileDirection` facing and a `TileMoveMode`, and a step COMMITS every N ticks along a deterministic `TileRoute`.
 Click, walk at once, the server is right when the two disagree.
 
+**A step commits its tile when it STARTS.** `TileMoveState.Tile` is the tile the simulation OWNS: it flips on the
+tick the step begins, and the remaining ticks glide the DRAWN body into it from `TileMoveState.StepFrom`, the tile
+being left. So the rules run a little ahead of the picture, by strictly less than one step, and every question
+asked about a player (reach, region, occupancy, what a click resolves against) is answered about the tile they are
+committed to rather than the one they are half off. On a 250 ms tick that is the whole difference between a click
+that feels immediate and one that feels like a wait. Two things follow for a consumer:
+
+- **Draw from the pose, never from the tile.** `TilePresenter.Pose` and `LocalPose` are the glide, so they are
+  already right. Reading `state.Tile` and drawing on it puts the avatar a step ahead of itself. `IsStepping`
+  (`StepFrom != Tile`) is the question to ask if a head needs to know whether a body is between tiles.
+- **An interaction resolves as the LAST step starts.** `TileWorldServer.OnInteract` fires while the avatar is
+  still drawn walking that tile in, and a same-plane target that cannot be reached at all is refused on the tick
+  of the click itself. A handler that wants to wait for the body can, but the tile is the player's from that tick
+  and the rules should treat it that way.
+
 It is a sibling and not a layer: `KhaozEngine.TileWorld.Netcode` has no path to `KhaozEngine.NetWorld` at all (an
 architecture test proves it), so a tile server carries none of the float locomotion stack. What the two share is
 the generic middle: `Netcode` (transport, prediction, the connect gate), `Replication`, `Sharding`, `Simulation`
@@ -8406,12 +8421,11 @@ played out would hold run for exactly one tick and then quietly drop back to a w
 at walk.
 
 **The step in progress is never abandoned.** A `WalkTo` or an `Interact` arriving part way through a step keeps
-that step's progress, its tick total and the tile it is entering, paths the new route from THAT tile, and splices
-it behind, so the step in flight commits as it would have and the new walk carries on from where the foot lands. A
-click on a step boundary, standing included, starts from the tile stood on as before. Nothing to do on a head: the
+that step's progress, its tick total and its destination, and paths the new route from `Tile`, which IS the tile
+the step in flight is entering, so the new walk carries on from where the foot lands. Nothing to do on a head: the
 simulator both heads run owns it, so a direction change while moving is predicted without the avatar sliding back
-toward the tile it was leaving. The route cap counts the inherited step, so re-clicking every step cannot walk a
-player further than one click's worth.
+toward the tile it was leaving. The route cap counts the steps still to take from the committed tile, so one click
+carries a player at most `MaxRouteSteps` further and re-clicking cannot ratchet that.
 
 **`CorrectionCount` and `SnapCount` are the health readout.** A clean session over a map both heads baked
 identically costs ZERO corrections, because both replay the same commands over the same tiles. `SnapCount` counts

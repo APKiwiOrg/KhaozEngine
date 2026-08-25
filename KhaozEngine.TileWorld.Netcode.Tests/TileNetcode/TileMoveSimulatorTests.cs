@@ -359,6 +359,49 @@ public class TileMoveSimulatorTests
         Assert.Equal(new TileCoord(9, 5, 0), sa.Tile);
     }
 
+    // The reconcile replay, at the simulator level and for the case that moved. A client rebases on the newest
+    // authoritative state it has and replays every command it has sent since, so the tick that basis was taken on
+    // is a property of the NETWORK rather than of the walk: a snapshot arriving a tick early or a tick late has to
+    // replay onto the same state, or a healthy walk snaps for no reason. Committing at the START of a step moves
+    // which tick each commit lands on, so this is re-proved rather than assumed. Three bases, N-1, N and N+1,
+    // replayed to the same end and compared against the straight-line run byte for byte.
+    [Fact]
+    public void A_replay_from_a_basis_taken_one_tick_either_side_lands_on_the_same_state()
+    {
+        TileCollisionMap map = Bake(FlatWorld());
+        // A stream with the awkward parts in it: a click, a re-click landing mid step, and a run toggle straddling
+        // a step boundary, which is exactly the window the two heads can disagree in.
+        static TileCommand At(int tick) => tick switch
+        {
+            0 => TileCommand.WalkTo(new TileCoord(5, 12, 0), TileMoveMode.Walk),
+            6 => TileCommand.WalkTo(new TileCoord(24, 5, 0), TileMoveMode.Walk),
+            < 11 => TileCommand.Continue(TileMoveMode.Walk),
+            _ => TileCommand.Continue(TileMoveMode.Run),
+        };
+        const int End = 24;
+
+        var straight = new TileMoveSimulator(map, Ticks);
+        var basis = new TileMoveState[End + 1];
+        TileMoveState s = TileMoveState.At(new TileCoord(5, 5, 0), TileDirection.N);
+        basis[0] = s;
+        for (int tick = 0; tick < End; tick++)
+        {
+            s = straight.Step(s, At(tick), Dt);
+            basis[tick + 1] = s;
+        }
+        Assert.True(s.IsStepping);                           // the run ends mid step, so the glide is in the compare
+
+        foreach (int taken in new[] { 9, 10, 11 })
+        {
+            var replay = new TileMoveSimulator(map, Ticks);
+            TileMoveState r = basis[taken];
+            for (int tick = taken; tick < End; tick++) r = replay.Step(r, At(tick), Dt);
+            Assert.Equal(s, r);
+            Assert.Equal(s.StepFrom, r.StepFrom);            // compared explicitly, not only through Equals
+            Assert.Equal(s.Position, r.Position);
+        }
+    }
+
     [Fact]
     public void The_route_cap_counts_the_steps_still_to_take_from_the_committed_tile()
     {

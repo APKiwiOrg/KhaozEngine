@@ -8,6 +8,13 @@ deterministic `TileRoute`. Nothing accumulates a float, so the same commands rep
 byte-identical output on both heads, which is what lets the client show a walk before the server has confirmed it
 and correct only on a genuine disagreement.
 
+**A step commits its tile when it STARTS.** `TileMoveState.Tile` names the tile the simulation OWNS, from the tick
+the step into it begins, and `TileMoveState.StepFrom` names the one being left. The remaining ticks of the step
+glide the DRAWN body from one to the other, so the rules run ahead of the picture by strictly less than one step
+and a click is always answered against the tile the player is committed to. That is what makes a 250 ms tick feel
+immediate rather than laggy, and it is why an interaction resolves as the walk's LAST step starts rather than when
+the avatar gets there. Draw through `TilePresenter`, never off `Tile`.
+
 A SIBLING of `KhaozEngine.NetWorld`, never a dependent of it. The two movement stacks share the generic layers
 (`Netcode`, `Replication`, `Sharding`, `Simulation`, `WorldStore`) and nothing else, so a tile server never carries
 the float locomotion stack and this package has no path to `NetWorld` at all. An architecture test proves it rather
@@ -36,10 +43,13 @@ SERVE, which filters a viewer's area of interest to the viewer's own plane.
 
 **State and commands**
 
-- **`TileMoveState`** - one player's tile, facing, mode, step progress (a tick COUNT out of a tick TOTAL), route,
-  teleport epoch and interaction target. Both an `IPredictedState<TileMoveState>` and an ECS `IComponent`, so
-  `ClientPrediction` and `ReplicationRegistry` carry the same type verbatim. `Position` is DERIVED in TILE units
-  and `Vertical` is the plane INDEX, so the state needs no world document.
+- **`TileMoveState`** - one player's committed tile, the tile the step in flight is walking out of (`StepFrom`),
+  facing, mode, step progress (a tick COUNT out of a tick TOTAL), route, teleport epoch and interaction target.
+  Both an `IPredictedState<TileMoveState>` and an ECS `IComponent`, so `ClientPrediction` and
+  `ReplicationRegistry` carry the same type verbatim. `Position` is DERIVED in TILE units, the glide from
+  `StepFrom` into `Tile`, and `Vertical` is the plane INDEX, so the state needs no world document. `IsStepping`
+  (`StepFrom != Tile`) is the one definition of "a step is in flight", and it is NOT the same question as a live
+  route: a route empties on the tick its last step starts.
 - **`TileRoute`** - the walk in progress as the tiles after the start plus the index of the next one. A value, so
   reconciliation replays it rather than mutating it, and advancing is one integer. Equality compares the REMAINING
   tiles, so a route rebuilt from its wire form equals the one the server holds.
@@ -53,7 +63,8 @@ SERVE, which filters a viewer's area of interest to the viewer's own plane.
 - **`TileStepTicks`** - ticks per step, per mode. Both heads must hold the same pair, or a step commits a tick
   apart and every step reads as a misprediction.
 - **`TileMoveOptions`** - the pathfinder knobs both heads must agree on: `AgentSize`, `MaxPathRadius` and
-  `MaxRouteSteps`, the longest route one click may produce.
+  `MaxRouteSteps`, the longest route one click may produce, counted in the steps still to take from the tile the
+  player is committed to.
 - **`TileIdentity`** - the cosmetic display name, replicated to everyone in interest. Never a rules input.
 - **`PendingTileCommand`** - the command drained for a player this tick, ECS-only and never replicated.
 
@@ -61,9 +72,11 @@ SERVE, which filters a viewer's area of interest to the viewer's own plane.
 
 - **`TileMoveSimulator`** - the ONE discrete stepper both heads run, pure over its inputs and integer-only.
   `Accepts` is THE definition of whether a command applies at all, `Step` advances one tick, `BeginWalk` and
-  `BeginInteract` are the two route starts. The step in progress is never abandoned: a click arriving part way
-  through a step keeps that step, paths from the tile it is ENTERING and splices the new walk behind it, so a
-  direction change while moving never drags the avatar back toward the tile it was leaving.
+  `BeginInteract` are the two route starts. A step commits its tile at its START, after the `CanStep` re-check, so
+  a blocker is felt when the step would begin rather than when the foot lands. The step in progress is never
+  abandoned either, and it needs no special case for it: a route is always pathed from `Tile`, which is the tile
+  the step in flight is entering, so a direction change while moving never drags the avatar back toward the tile
+  it was leaving. The route cap counts the steps still to take from that tile.
 - **`TileMovementSystem`** - runs the simulator over every OWNED player entity inside a cell's own fixed tick,
   skipping ghosts and migrating entities so no player is stepped twice in one tick.
 - **`TileReach`** / **`TileActionQueue`** / **`TilePendingAction`** / **`TileActionKind`** - the OSRS reach rule and
@@ -100,9 +113,10 @@ SERVE, which filters a viewer's area of interest to the viewer's own plane.
   arrival. `Queue` on a click, `Tick` on the command clock, `Poll` once a frame, `AdvancePresentation` before
   drawing.
 - **`TilePresenter`** / **`TilePose`** - the pure bridge from a tile state plus a step fraction to a world position
-  and a yaw. The only file in the package that consults `TileWorldSpace`. A pose names the tile CENTRE, half a tile
-  in from the corner on each axis, which is the middle of that tile's ground quad and the point a 1x1
-  `TileObjectProps` prop is anchored at, so a head draws at `pose.Position` without re-centring it.
+  and a yaw: the glide from `StepFrom` into `Tile`, which needs no route, so a remote's replicated state draws
+  exactly where its owner draws it. The only file in the package that consults `TileWorldSpace`. A pose names the
+  tile CENTRE, half a tile in from the corner on each axis, which is the middle of that tile's ground quad and the
+  point a 1x1 `TileObjectProps` prop is anchored at, so a head draws at `pose.Position` without re-centring it.
 - **`TileClientMessageHandler`** - the delegate an opaque server message arrives on.
 
 **Persistence**
@@ -188,8 +202,8 @@ The two heads run the SAME `TileMoveSimulator` over the SAME tiles. Four things 
 of them turns every step into a correction:
 
 1. **`TickSeconds`.** The server's tick length and the client's command tick are one number.
-2. **`StepTicks`.** A step that fills on tick 4 for one head and tick 5 for the other commits its tile a tick
-   apart.
+2. **`StepTicks`.** A step that fills on tick 4 for one head and tick 5 for the other starts the next one a tick
+   apart, and a step commits its tile as it starts, so the two heads own different tiles for a whole tick.
 3. **`Move`** (`TileMoveOptions`): the agent size, the path radius and `MaxRouteSteps`. The route cap is enforced
    in the SIMULATOR rather than on the wire, so both heads truncate the same pathfinder result to the same tiles
    and a long click ends on the same destination.

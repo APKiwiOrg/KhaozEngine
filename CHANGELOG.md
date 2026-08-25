@@ -13,10 +13,11 @@ staged. The rule was the deleted Metal backend's per-stage declaration-order buf
 property of Metal (measured by MM6, `MetalTwoUniformBufferGpuTests`), so with 18.0.0 shipping no backend
 that numbers that way, the two shipped workarounds are unfolded and the enforcement is deleted. The release
 also makes the windowed create path honour a `KE_GRAPHICS_BACKEND` pin
-([#719](https://github.com/APKiwiOrg/KhaozEngine/issues/719)), and carries two tile-world movement fixes
-Grimhollow's playtests found: a click arriving mid-step no longer restarts that step, and a `TilePresenter`
-pose names the tile CENTRE rather than its corner ([#730](https://github.com/APKiwiOrg/KhaozEngine/issues/730)).
-**Both change what a consumer draws**, so read their two bullets before repinning.
+([#719](https://github.com/APKiwiOrg/KhaozEngine/issues/719)), and carries two tile-world movement changes
+Grimhollow's playtests ruled on: a tile step commits its tile when it STARTS rather than when it ends, and a
+`TilePresenter` pose names the tile CENTRE rather than its corner
+([#730](https://github.com/APKiwiOrg/KhaozEngine/issues/730)). **Both change what a consumer draws**, and the
+first also changes when a click is answered, so read their two bullets before repinning.
 
 - **The rule is retired in code.** `MslBindingOrder.CheckPrefix`, which required every stage's resources to
   be a prefix of the layout's per index space, is deleted, so `ShaderValidation.ValidatePair` no longer
@@ -54,23 +55,48 @@ pose names the tile CENTRE rather than its corner ([#730](https://github.com/APK
   support probe as well as disarming the creation catch, so the caller gets the provider's own exception
   rather than a preflight redirect. A stored preference, an unrecognized override and the plain OS default
   all still fall back exactly as before.
-- **BEHAVIOUR: a tile click arriving MID-STEP now splices instead of restarting the step in progress.**
-  `TileMoveSimulator.BeginWalk` and `BeginInteract` used to re-path from `TileMoveState.Tile`, which names the
-  tile being LEFT, and reset step progress, so a direction change while walking dragged the drawn position back
-  toward the departed tile before setting off. It was client-predicted, so both heads produced the stutter
-  identically and no correction ever cleaned it up. The step in progress is never abandoned now, which is
-  OSRS's rule: a command landing with `StepTicks` above zero keeps that progress, its total and the tile the
-  step is entering, paths the new route from THAT tile, and splices it behind, so the in-flight step commits
-  exactly as it would have and the new walk carries on from where the foot lands. A command landing on a step
-  boundary, standing included, is unchanged. The route cap counts the inherited step, so re-clicking every step
-  cannot ratchet a route past `MaxRouteSteps`. The mode still takes effect at the start of the next step, a
-  cross-plane goal is still dropped whole, the arrival turn still fires when the spliced route empties, and the
-  splice is a function of the state and the command alone, so replay determinism is intact. One timing
-  consequence: an unreachable same-plane interact arriving mid-step finishes the step in flight before it
-  stands, so its `CannotReach` answer lands when that step commits, up to one step later than a standing
-  click's. A consumer feels
-  this without changing any code: clicks while moving stop hitching. A head that worked around it by suppressing
-  clicks mid-step should stop doing that.
+- **BEHAVIOUR: a tile step COMMITS ITS TILE WHEN IT STARTS, so the simulation leads the drawn body.**
+  `TileMoveState.Tile` used to name the tile being LEFT for the whole of a step and flip on the tick the body
+  arrived, so the authoritative tile TRAILED the picture and every rules question (reach, region, occupancy,
+  what a click resolves against) was answered about a tile the player was already half off. It flips on the
+  tick the step STARTS now, after the same `CanStep` check, and the remaining ticks glide the drawn body into
+  it. The simulation is ahead of the picture by strictly less than one step, which is the Grimhollow playtest
+  ruling and OSRS's own rule: on a 250 ms tick, snappy gameplay comes from answering a click against where the
+  player is GOING. The consequences, all of them the point rather than side effects:
+  - **A new field, `TileMoveState.StepFrom`**, the tile a step in flight is walking out of, equal to `Tile`
+    whenever the body stands still. `Position` is the glide from it into `Tile`, and `TilePresenter.Pose` reads
+    the same pair, so neither consults the route any more. `IsStepping` (`StepFrom != Tile`) is the one
+    definition of "a step is in flight". The glide's origin is a FIELD rather than something derived from
+    `Facing`, because the arrival turn rewrites `Facing` toward an interaction target while the last step's
+    glide still has its whole run left.
+  - **An interaction resolves a step sooner.** A route empties as its LAST step is committed, so
+    `TileWorldServer.OnInteract` (and the arrival turn) fire while the avatar is still drawn walking that tile
+    in. A same-plane target that cannot be reached at all is answered on the tick of the click itself, mid-glide
+    included, because the click is resolved against a tile the player already owns. A game handler that assumed
+    the avatar had arrived should read `IsStepping` if it cares.
+  - **A click arriving MID-STEP no longer restarts the step in progress**, which is the other playtest fix and
+    is now a property of the model rather than a special case: a route is always pathed from `Tile`, and that
+    tile is the one the step in flight is entering, so a direction change while walking continues from where the
+    foot lands with the step's progress, cadence and destination all untouched. The old code re-pathed from the
+    tile being left and reset progress, which dragged the drawn position backwards, client-predicted, so both
+    heads produced the stutter and no correction cleaned it up. A consumer feels this without changing any code:
+    clicks while moving stop hitching. A head that worked around it by suppressing clicks mid-step should stop.
+  - **The route cap counts the steps still to take from the committed tile.** A step in flight is not in the
+    route any more (it popped when it started), so `MaxRouteSteps` is spent on the walk ahead and no route ever
+    carries more than the cap. Re-clicking every step cannot ratchet one past it.
+  - **The move component grew from 25 to 33 bytes**, carrying `StepFrom` beside the tile, with no plane of its
+    own because a step never changes plane. There is no compatibility machinery, deliberately: 18.1.0 is staged
+    and unreleased, so no tagged engine carries the old layout. The decoder clamps a pair that is not one tile
+    apart to standing, in long arithmetic, so a crafted frame cannot glide an avatar across a map.
+  - **A remote costs a step less latency.** Both tiles of the step ride the everyone channel, so
+    `TileWorldClient` hands a remote's replicated state straight to the presenter instead of remembering the
+    tile it was last seen on and gliding a step behind it. `GlideFrom` and its teleport-versus-step rule are
+    deleted.
+  - **A blocker that lands on a tile a step has already committed to does not rewind that step.** The map was
+    asked before the tile flipped and the answer was yes. The next step is where the new blocker is felt.
+  - Unchanged: the cadence (a body still crosses a tile every 2 ticks running and 4 walking), the mode landing
+    at the start of the next step, a cross-plane goal dropped whole, and replay determinism (both heads run the
+    same stepper, and the three N-1 / N / N+1 reconcile orderings still produce byte-identical states).
 - **BEHAVIOUR: a `TilePose` names the tile CENTRE, so every drawn position moves half a tile on each axis**
   ([#730](https://github.com/APKiwiOrg/KhaozEngine/issues/730)). `TilePresenter.Pose` and `LocalPose` converted
   through `TileWorldSpace` at the tile CORNER while the tile's ground quad spans `x..x+1` and

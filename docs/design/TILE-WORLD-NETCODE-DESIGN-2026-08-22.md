@@ -1,6 +1,8 @@
 # Tile-world netcode: click-to-walk on a 250 ms tick, server-authoritative, sharded by region (2026-08-22)
 
-Status: R1 SHIPPED in engine 17.40.0, R2 next. The package is `KhaozEngine.TileWorld.Netcode`. Where this
+Status: R1 SHIPPED in engine 17.40.0, R2 next. **Section 5's step model was REVERSED in 18.1.0 by a playtest
+ruling: a step commits its tile when it STARTS. Read section 5.1 before section 5.** The package is
+`KhaozEngine.TileWorld.Netcode`. Where this
 document and the shipped code disagree, the code's own type docs win: the tick that carries a command is a FULL
 step tick, the run mode rides every command and applies at the next step start, a cross-plane command is dropped
 whole, `TileReach` tests the step OUTWARD from the footprint, and the arrival turn happens in the simulator so both
@@ -129,6 +131,10 @@ Two engine changes outside the package:
 
 ## 5. State, commands and the simulator
 
+> **Superseded in part by section 5.1.** Everything below is the model as designed and as shipped in 17.40.0. The
+> commit MOMENT was reversed in 18.1.0: a step commits its tile when it STARTS, `TileMoveState` gained `StepFrom`,
+> and the splice this section describes was deleted rather than adapted. The rest of the section still holds.
+
 `TileMoveState : IPredictedState<TileMoveState>`: `TileCoord Tile` (x, z, plane), `TileDirection Facing`,
 `TileMoveMode Mode` (Walk, Run), `byte StepTicks` (ticks spent in the current step), `TileRoute Route` (an immutable
 tile array plus the index of the next tile, `TileRoute.None` when idle), `uint TeleportEpoch`, and the pending
@@ -181,6 +187,57 @@ document for footprints, the tick counts) and is the ONE stepper both heads run:
 Remote players replicate `TileMoveState` as an extension component with `discreteSample: true`, and the presenter
 (section 9) glides them across a step over its tick count from the previous sample, so a remote at run speed is
 seen stepping every second snapshot with motion in between.
+
+## 5.1 The reversal: a step commits its tile when it STARTS (18.1.0)
+
+Section 5 above is the model as designed and as shipped in 17.40.0, and it is kept because the reasoning behind
+every other decision in it still holds. One thing in it was WRONG, and Grimhollow's playtests are what found it:
+the tile committed at the END of a step, so `TileMoveState.Tile` named the tile being LEFT for the whole of that
+step and the authoritative tile TRAILED the drawn body. It leads now.
+
+**The ruling.** Fast, snappy gameplay under a slow tick comes from answering a click against where the player is
+GOING, not where they are half off. That is OSRS's own rationale: a 250 ms tick is long enough that a step spans
+several frames, so which end of the step the simulation is allowed to act on decides whether a click feels
+immediate or feels like a wait. Trailing, a player who clicks a booth as they take the last step toward it waits
+that whole step before anything happens, and everything the rules ask about them in the meantime is answered about
+a square they have visibly left.
+
+**What changed.** On the tick a step starts, `CanStep` is checked from the tile stood on, then `Tile` flips to the
+step's target, `StepFrom` records the tile being left, `Facing` takes the step's direction and the route pops. The
+remaining ticks of the step glide the DRAWN body from `StepFrom` into `Tile`. `Position` and `TilePresenter.Pose`
+are that glide, and neither reads the route any more.
+
+**The trade, stated plainly.** The simulation is AHEAD of the picture, by strictly less than one step: the commit
+and the glide start on the same tick, so the lead is at most (StepTotal - 1) / StepTotal of a tile and it is zero
+at the moment the body lands. That is a bounded, always-forward disagreement between the rules and the picture,
+and it buys a step of responsiveness on every click. The alternative shapes were both worse. Committing at the end
+(the old model) trails by the same amount in the direction that costs latency. Committing at the start but drawing
+the body on the committed tile would teleport the avatar a tile per step, which is the thing the glide exists to
+avoid.
+
+**Why `StepFrom` is a field rather than a derivation.** The obvious saving is to read the glide's origin back off
+`Facing`, since a step sets the facing to its own direction. It breaks exactly where it matters: `FaceTarget`
+overwrites `Facing` toward an interaction target on the tick the LAST step starts, and under the lead commit that
+tick is the START of a glide with its whole run still ahead of it. A derived origin would send the body off in the
+direction of the booth instead of along the step. So the origin rides the state, and it rides the wire with it
+(`WriteMove`, 33 bytes now), which turns out to be the bigger win: an observer's snapshot says where a remote's
+body is outright, so the client stopped reconstructing a glide from the tile a remote was last seen on and stopped
+paying a step of latency for it.
+
+**Consequences that are the point.** An interaction resolves as the last step STARTS, so `OnInteract` fires a step
+sooner and a same-plane target that cannot be reached at all is refused on the tick of the click. A cell handoff
+follows the committed tile, so authority crosses at the start of the step over the boundary. A persisted record
+names the committed tile. The re-click rule from earlier in 18.1.0 stopped being a special case: a route is always
+pathed from `Tile`, which is the tile the step in flight is entering, so the splice and its second route builder
+were deleted rather than adapted, and the route cap now counts the steps still to take from the committed tile.
+
+**Consequence that is a trade, not a bug.** A blocker landing on a tile a step has ALREADY committed to does not
+rewind that step. The map was asked before the tile flipped and it said yes. Rewinding would mean a tile the
+simulation owns can be taken back from it, which is the whole property the reversal exists to establish.
+
+**Determinism is untouched.** Both heads run the same stepper over the same map, the commit is a pure function of
+state plus command, and the reconcile replay lands byte-identically from a basis taken a tick either side of the
+commit (`A_replay_from_a_basis_taken_one_tick_either_side_lands_on_the_same_state`).
 
 ## 6. Reach and the action seam
 

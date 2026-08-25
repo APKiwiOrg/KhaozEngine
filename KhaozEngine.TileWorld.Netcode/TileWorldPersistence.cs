@@ -68,7 +68,9 @@ public sealed record TileWorldPersistenceConfig
 /// against it: a record naming a plane or a region the running world no longer has is quarantined and its player
 /// placed at the configured spawn, rather than reaching the host's door and throwing out of <see cref="Update"/>.
 /// The refusals mirror <see cref="TileWorldServer.SetPlayerState"/>'s own, which is the point: the binding refuses
-/// exactly what the door would.</para>
+/// exactly what the door would over anything a record can spell. The door's step-origin and step-progress refusals
+/// have no mirror here on purpose: a record carries neither field, and the state it builds through
+/// <see cref="TileMoveState.At"/> is always standing.</para>
 /// <para>The route is not persisted, deliberately. A player who logs out mid-walk logs back in standing on the tile
 /// they had reached, which is where the server had already committed them. Persisting a route would restore a walk
 /// nobody asked for, against a world that may have changed under it.</para>

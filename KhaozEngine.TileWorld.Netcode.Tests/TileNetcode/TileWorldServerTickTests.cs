@@ -450,6 +450,8 @@ public class TileWorldServerTickTests
         Assert.True(placed.IsStepping);   // the origin is Chebyshev-1 from the new tile, so it IS a legal step
         s.SetPlayerState(0, placed, teleport: true);
 
+        // In memory is the right place to look: the door writes the normalized state, so the wire never sees
+        // the stale origin at all, and the codec round trip is covered by the I1 protocol tests.
         Assert.True(s.TryGetPlayerState(0, out TileMoveState after));
         Assert.Equal(placed.Tile, after.Tile);
         Assert.Equal(after.Tile, after.StepFrom);
@@ -457,6 +459,54 @@ public class TileWorldServerTickTests
         Assert.Equal(0, (int)after.StepTicks);
         Assert.Equal(new Vector2(after.Tile.X, after.Tile.Z), after.Position);
         Assert.Equal(walking.Epoch + 1u, after.Epoch);
+    }
+
+    // The FAR half of the same idiom, and the reason the door normalizes a teleport BEFORE validating: a
+    // teleport across the map copied from a mid-glide state carries an origin that is not a legal step, and a
+    // door that validated the raw state first threw on the exact placement the flag exists for.
+    [Fact]
+    public void A_far_teleport_is_never_refused_for_the_stale_origin_it_was_handed()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(10, 10, 0));
+        s.SpawnPlayer(0, "a", "Ari");
+        s.Enqueue(0, seq: 0, TileCommand.WalkTo(new TileCoord(10, 14, 0), TileMoveMode.Walk));
+        s.Tick(Dt);
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState walking));
+        Assert.True(walking.IsStepping);
+
+        TileMoveState placed = walking;
+        placed.Tile = walking.Tile.Offset(3, 3);
+        placed.Route = TileRoute.None;
+        Assert.False(TileMoveState.IsStepOrigin(placed.StepFrom, placed.Tile));
+        s.SetPlayerState(0, placed, teleport: true);
+
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState after));
+        Assert.Equal(placed.Tile, after.Tile);
+        Assert.Equal(after.Tile, after.StepFrom);
+        Assert.False(after.IsStepping);
+    }
+
+    // A legal origin with impossible progress is the same class of simulator-unproducible pair the origin
+    // refusal closes, so the door refuses it on the same terms. The teleport form of the same state is fine,
+    // because the teleport normalizes progress away before the validation runs.
+    [Fact]
+    public void The_door_refuses_progress_at_or_past_the_steps_total()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(10, 10, 0));
+        s.SpawnPlayer(0, "a", "Ari");
+        s.Enqueue(0, seq: 0, TileCommand.WalkTo(new TileCoord(10, 14, 0), TileMoveMode.Walk));
+        s.Tick(Dt);
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState walking));
+        Assert.True(walking.IsStepping);
+
+        TileMoveState tampered = walking;
+        tampered.StepTicks = 250;
+        Assert.Throws<ArgumentException>(() => s.SetPlayerState(0, tampered));
+        s.SetPlayerState(0, tampered, teleport: true);
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState after));
+        Assert.Equal(0, (int)after.StepTicks);
     }
 
     // Two actions coming ready on the SAME tick resolve oldest CLICK first, which is what TilePendingAction's

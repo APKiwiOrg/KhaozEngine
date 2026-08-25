@@ -222,31 +222,36 @@ public sealed partial class TileWorldServer : IDisposable
     /// <param name="teleport">Advance the teleport epoch, for a placement the client must not interpolate. It also
     /// forces <see cref="TileMoveState.StepFrom"/> onto <see cref="TileMoveState.Tile"/> at zero progress, so a
     /// one-tile teleport CUTS rather than gliding: an origin one step out is a legal step, so a placement copied
-    /// from a state that was mid-glide would otherwise be walked in like an ordinary step.</param>
+    /// from a state that was mid-glide would otherwise be walked in like an ordinary step. The normalization runs
+    /// AHEAD of the validation, so a teleport is never refused for the origin or progress it was handed.</param>
     /// <exception cref="ArgumentException"><paramref name="state"/> stands on a plane at or above
     /// <see cref="TileWorldServerConfig.PlaneCount"/>, on a region the collision map has not loaded, carries a
-    /// route longer than <see cref="TileMoveOptions.MaxRouteSteps"/>, or names a
+    /// route longer than <see cref="TileMoveOptions.MaxRouteSteps"/>, names a
     /// <see cref="TileMoveState.StepFrom"/> that is neither <see cref="TileMoveState.Tile"/> itself nor one step
-    /// from it on the same plane, which is a step in flight the simulator could not have produced. A route whose
-    /// tiles are not adjacent to each other is refused too, by <see cref="TileRoute.RemainingSteps"/>, with its own
-    /// message.</exception>
+    /// from it on the same plane, or carries mid-step progress at or past its own
+    /// <see cref="TileMoveState.StepTotal"/>, both shapes a step in flight the simulator could not have produced
+    /// and neither reachable through a teleport, which is normalized first. A route whose tiles are not adjacent
+    /// to each other is refused too, by <see cref="TileRoute.RemainingSteps"/>, with its own message.</exception>
     public void SetPlayerState(int slot, in TileMoveState state, bool teleport = false)
     {
-        TileDirection[] steps = ValidatePlayerState(state);
-        if (!netIdBySlot.TryGetValue(slot, out long netId)) return;
-        if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) return;
         TileMoveState next = state;
         if (teleport)
         {
-            next.Epoch = (cell.World.TryGet(e, out TileMoveState old) ? old.Epoch : 0u) + 1u;
             // A teleport CUTS, and the epoch alone does not make it cut. An origin one step from the destination is
             // a legal step, so a one-tile teleport built by copying a mid-glide state rides the wire intact and the
             // presenter GLIDES the placement instead of cutting it, which is the one thing the teleport flag exists
-            // to prevent. Normalized here rather than refused, because the caller has already said the placement is
-            // discontinuous, and a discontinuous placement has no tile to have come from.
+            // to prevent. Normalized here, BEFORE the validation, because the caller has already said the placement
+            // is discontinuous and a discontinuous placement has no tile to have come from: validated first, the
+            // origin refusal would throw on the exact admin idiom the flag serves, a live state copied with only
+            // its Tile moved.
             next.StepFrom = next.Tile;
             next.StepTicks = 0;
         }
+        TileDirection[] steps = ValidatePlayerState(next);
+        if (!netIdBySlot.TryGetValue(slot, out long netId)) return;
+        if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) return;
+        if (teleport)
+            next.Epoch = (cell.World.TryGet(e, out TileMoveState old) ? old.Epoch : 0u) + 1u;
         cell.World.Set(e, next);
         cell.World.Set(e, new TileRouteState { Remaining = steps });
     }
@@ -359,6 +364,11 @@ public sealed partial class TileWorldServer : IDisposable
                 $"StepFrom {state.StepFrom} is not a tile a step into {state.Tile} could have come from. A glide's "
               + "origin is either the tile itself (nothing in flight) or one step from it on the same plane, which "
               + "is all TileMoveSimulator ever produces.", nameof(state));
+        if (state.StepTicks != 0 && state.StepTicks >= state.StepTotal)
+            throw new ArgumentException(
+                $"StepTicks {state.StepTicks} is not below StepTotal {state.StepTotal}. Progress the simulator "
+              + "shows between ticks is always below the step's total, because a step that fills commits and "
+              + "resets inside the same Advance.", nameof(state));
         if (state.Route.Remaining > config.Move.MaxRouteSteps)
             throw new ArgumentException(
                 $"A route is capped at {config.Move.MaxRouteSteps} steps and this one carries {state.Route.Remaining}."

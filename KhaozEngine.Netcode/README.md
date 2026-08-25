@@ -70,6 +70,16 @@ reconciliation rebase/snap never registers as movement - a clean steady value fo
 or a locomotion blend, unlike differencing `RenderedState.Position` (which carries the decaying render offset
 and wobbles under lag). Zero until the first `Predict`; zeroed by `Reset` / `Reseed`.
 
+`InterTickFraction` and `RenderOffset` are the two halves `RenderedState` is built from, exposed for a
+presentation layer that has to REBUILD the interpolated position rather than take it. A discrete-lattice head is
+the case they exist for (`KhaozEngine.TileWorld.Netcode`'s glide window redraws the curve between two lattice
+points): it needs the phase this layer's easing is at, so its curve lines up with the one here, and it needs to
+lift the decaying correction offset off before it transforms anything and put it back unchanged afterwards. A
+layer that transformed the rendered position whole would put the correction through that transform too, and a
+correction that is scaled or clamped stops decaying the way this class decays it, which is the whole reason a
+misprediction does not pop. The vertical offset is deliberately not exposed alongside them: nothing has needed to
+take the vertical apart, and an unused public read is a promise with no caller to keep it honest.
+
 On a mid-session **reconnect**, call `Reseed(basis)` (not `Reset`) when the first post-reconnect snapshot lands.
 It re-seeds the predicted state to the authoritative basis but keeps the command sequence counter **monotonic**:
 the fresh server has already advanced its per-connection ack from the commands sent in the join gap, so a `Reset`

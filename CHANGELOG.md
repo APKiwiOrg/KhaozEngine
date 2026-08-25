@@ -17,7 +17,9 @@ also makes the windowed create path honour a `KE_GRAPHICS_BACKEND` pin
 Grimhollow's playtests ruled on: a tile step commits its tile when it STARTS rather than when it ends, and a
 `TilePresenter` pose names the tile CENTRE rather than its corner
 ([#730](https://github.com/APKiwiOrg/KhaozEngine/issues/730)). **Both change what a consumer draws**, and the
-first also changes when a click is answered, so read their two bullets before repinning.
+first also changes when a click is answered, so read their two bullets before repinning. Riding on the first is
+a configurable GLIDE WINDOW in seconds, which bounds how far the drawn body may lag its committed tile and
+leaves that lag exactly where it was until a game sets the knob.
 
 - **The rule is retired in code.** `MslBindingOrder.CheckPrefix`, which required every stage's resources to
   be a prefix of the layout's per index space, is deleted, so `ShaderValidation.ValidatePair` no longer
@@ -123,6 +125,41 @@ first also changes when a click is answered, so read their two bullets before re
   coordinate does. Glide, prediction smoothing and yaw are unchanged, because the offset is constant along a
   step. **A consumer that centred the pose itself must delete that compensation at the repin, or its avatars
   move a whole tile.** Grimhollow's `CentredPose` shim is exactly that and goes when it adopts.
+- **A GLIDE WINDOW, in seconds, bounds how far the drawn body may lag the tile it is committed to.** The
+  lead-commit above made the simulation lead the picture by a whole step, and the playtest verdict was that the
+  snap is right and the full-step glide is not: the avatar spends the step visibly not there. `TileGlideWindow`
+  is the knob, and the invariant it buys is the point of it: **the visual position never diverges from the
+  committed tile by more than the window**, so combat and boss design read committed tiles with no true-tile
+  metagame available to a player who watches the body instead. New API, all of it presentation:
+  - **`TileGlideWindow(seconds, tickSeconds)`**, and `TileWorldClientConfig.GlideWindowSeconds` is where a game
+    sets it. The body covers the whole step in the window's seconds and then WAITS on its tile for the rest of
+    the step. **SECONDS rather than a share of the step**, because a run is a shorter step than a walk: a share
+    would make the walking catch-up take twice as long as the running one, and the two would not read as one
+    game. Linear inside the window, flat after it, no curve: an ease-out would spend its last frames crawling
+    the final centimetres, which is the "still not there" the window exists to remove.
+  - **The default changes nothing.** `TileGlideWindow.WholeStep` is `default`, `GlideWindowSeconds` defaults to
+    `float.PositiveInfinity`, and any window at or above the step's own duration takes the untouched full-step
+    path, so a consumer that repins and sets nothing draws byte-identical poses. Zero puts the body on its tile
+    the tick the step commits.
+  - **`TilePresenter` carries the window** (`new TilePresenter(document, client.Glide)`, and
+    `TileWorldClient.Glide` is the config number composed with the tick length). One presenter serves `Pose` and
+    `LocalPose` both, which is what makes the local player and every remote agree by construction. **A head that
+    builds its presenter from the document must pass `client.Glide`** or that presenter draws the full step
+    whatever the config asked for. The client's own placeholder presenter already carries it.
+  - **The remap touches the STEP interpolation and nothing else.** The correction-offset decay, teleport cuts
+    (nothing to glide, `StepFrom` is already `Tile`), hard snaps and `TileMoveState.Position` are all exactly as
+    they were, and determinism is untouched because presentation reads state and never writes it. `LocalPose`
+    takes the rendered position apart to keep that true: it lifts the decaying correction offset off, re-places
+    the step at the remapped fraction, and puts the offset back unchanged. Remapping the rendered position whole
+    would put the correction through the same multiplier and swallow it, so a misprediction would cut instead of
+    easing.
+  - **Two new `ClientPrediction` reads**, `InterTickFraction` and `RenderOffset`, are what that decomposition
+    needs: the phase the layer's easing is at, and the offset folded into `RenderedState`. Additive, and nothing
+    in the layer's own behaviour moved.
+  - **The bound is measured on the state's own timeline**, and each presentation path adds its own pre-existing
+    offset on top: the local player is drawn through the prediction layer's inter-tick easing, which trails the
+    command tick by up to one tick, and a remote rides the `InterpolationDelayTicks` timeline. So a head reads
+    its real catch-up as the window plus that path's offset. Neither offset is new and neither moved.
 
 ## 18.0.0
 

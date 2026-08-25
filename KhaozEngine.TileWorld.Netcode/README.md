@@ -24,7 +24,7 @@ GPU-free and headless. The whole test suite runs both heads in one process over 
 
 In the `KhaozEngine.Server` umbrella.
 
-## Two invariants worth reading before the API
+## Three invariants worth reading before the API
 
 **Tick length and step ticks are CONFIGURATION, never constants.** A tile game's whole sense of pace is those
 numbers, and the engine has no business picking either. `TileWorldServerConfig.TickSeconds` and
@@ -38,6 +38,14 @@ floats, so a cell is exactly a region and a crossing is exactly a region crossin
 tile to render metres and negates z on the way, is consulted in exactly ONE file, `TilePresenter.cs`. Server code
 never touches it. Planes do not shard: a cell holds every plane of its region, and what separates two floors is the
 SERVE, which filters a viewer's area of interest to the viewer's own plane.
+
+**The GLIDE WINDOW bounds visual-truth divergence, and a game gets to pick it.** Committing at the start of a step
+puts the rules ahead of the picture, and `TileWorldClientConfig.GlideWindowSeconds` is how far ahead a game will
+let them get: **the drawn body never diverges from the committed tile by more than the window**. So a design that
+reads committed tiles (combat, a boss's telegraphs, anything that answers "where is that player") is reading what
+the player can see, and there is no true-tile metagame to learn from watching bodies instead. In SECONDS, so a
+walk and a run catch up at the same wall-clock rate. The default is the full-step glide, which is the widest the
+bound can be and what the package drew before the knob existed.
 
 ## The types
 
@@ -121,6 +129,11 @@ SERVE, which filters a viewer's area of interest to the viewer's own plane.
   exactly where its owner draws it. The only file in the package that consults `TileWorldSpace`. A pose names the
   tile CENTRE, half a tile in from the corner on each axis, which is the middle of that tile's ground quad and the
   point a 1x1 `TileObjectProps` prop is anchored at, so a head draws at `pose.Position` without re-centring it.
+- **`TileGlideWindow`** - how long the DRAWN body may lag the tile it is already committed to, in SECONDS. A
+  presenter carries one and both `Pose` and `LocalPose` read it, so the local player and every remote agree by
+  construction. `TileWorldClientConfig.GlideWindowSeconds` is where a game sets it and `TileWorldClient.Glide` is
+  that number composed with the tick length, which is what a head hands the presenter it builds from the document
+  (`new TilePresenter(document, client.Glide)`). See the invariant above.
 - **`TileClientMessageHandler`** - the delegate an opaque server message arrives on.
 
 **Persistence**

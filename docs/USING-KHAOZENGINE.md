@@ -8412,9 +8412,47 @@ which is the forward compatibility the wire wants and also the trap. The compone
 the owner route and the display name all keep working, and nothing anywhere says a thing.
 
 `Presenter` starts as a placeholder and is REPLACED once the document is loaded
-(`client.Presenter = new TilePresenter(document)`), so it carries the world's real tile size and plane height.
-`TilePose.Yaw` is the engine's model-yaw convention, the value `Matrix4x4.CreateRotationY` wants for a
-+z-forward mesh, the same one `CharacterFacing.YawOf` and `TileObjectProps.YawRadians` produce.
+(`client.Presenter = new TilePresenter(document, client.Glide)`), so it carries the world's real tile size and
+plane height. Pass `client.Glide` with the document or the replacement draws the full-step glide whatever the
+config asked for, see the glide window below. `TilePose.Yaw` is the engine's model-yaw convention, the value
+`Matrix4x4.CreateRotationY` wants for a +z-forward mesh, the same one `CharacterFacing.YawOf` and
+`TileObjectProps.YawRadians` produce.
+
+**The glide window bounds how far the drawn body may lag its committed tile, in SECONDS.** Because the step
+commits its tile at the START, the body spends the rest of that step walking into a tile the rules already treat
+as the player's. `TileWorldClientConfig.GlideWindowSeconds` is how long that is allowed to take: the body covers
+the whole step in the window's seconds and then waits on its tile for the rest of the step.
+
+```csharp
+var config = new TileWorldClientConfig
+{
+    TickSeconds = 0.25f,
+    StepTicks = new TileStepTicks(walk: 4, run: 2),
+    GlideWindowSeconds = 0.12f,          // the body is on its tile within 120 ms of the commit
+};
+...
+client.Presenter = new TilePresenter(document, client.Glide);
+```
+
+- **Seconds, not a share of the step**, so a walk and a run catch up at the same wall-clock rate. A share would
+  make the walking catch-up take twice as long as the running one, and the two would not read as one game.
+- **The default is the full-step glide** (`float.PositiveInfinity`, and `TileGlideWindow.WholeStep` is the
+  presenter's `default`), so this is invisible until a game sets it. Any window at or above the step's own
+  duration is the same untouched path. Zero puts the body on its tile the tick the step commits.
+- **One presenter, so the local player and every remote agree.** `client.Glide` is the config number composed
+  with the tick length, and both `Pose` (remotes) and `LocalPose` (the local player) read it off the presenter
+  they are called on. There is no second copy to set differently.
+- **It is presentation only.** The simulation, the replay, the reconciliation and the wire never see it, so the
+  two heads stay byte-identical whatever a client sets. The correction-offset decay, teleport cuts and hard
+  snaps are untouched too: the window remaps the step interpolation and nothing else.
+- **The bound is on the state's own timeline.** Each path adds the offset it always had on top: the local player
+  is drawn through the prediction layer's inter-tick easing, which trails the command tick by up to one tick,
+  and a remote rides the `InterpolationDelayTicks` timeline. So the catch-up a head measures is the window plus
+  that path's offset.
+
+The invariant is the reason to reach for it, more than the feel: **the drawn body never diverges from the
+committed tile by more than the window**, so a combat or boss design that reads committed tiles is reading what
+the player sees, and there is no true-tile metagame to learn.
 
 **A pose names the tile CENTRE**, half a tile in from the corner on each axis, which is the middle of the tile's
 own ground quad and the point `TileObjectProps.AnchorPosition` puts a 1x1 prop on, so an avatar and the thing it

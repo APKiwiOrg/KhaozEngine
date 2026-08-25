@@ -239,6 +239,60 @@ simulation owns can be taken back from it, which is the whole property the rever
 state plus command, and the reconcile replay lands byte-identically from a basis taken a tick either side of the
 commit (`A_replay_from_a_basis_taken_one_tick_either_side_lands_on_the_same_state`).
 
+## 5.2 The invariant: a glide window bounds visual-truth divergence (18.1.0)
+
+The reversal above left the picture a whole step behind the rules, and the playtest verdict on that was split: the
+snap is right, the full-step glide is not. A body that spends the entire step walking into a tile it already owns
+reads as a walk that never arrives, which is the OSRS feel the product ruling explicitly did not want.
+
+**The invariant, which is the reason the knob exists and not merely how it is tuned.** The drawn body never
+diverges from the committed tile by more than the GLIDE WINDOW. That is a contract for design above it, not a
+rendering preference: combat and boss behaviour read committed tiles, and the window is what guarantees the tile
+they read is the tile a player can see the body on. Without a bound, watching bodies instead of tiles is a
+strictly better source of truth than the game's own model, which is the OSRS true-tile metagame arriving by
+construction. With one, that metagame is worth at most the window, and a game that sets the window small enough
+does not have one at all.
+
+**Why the window is in SECONDS.** The obvious shape is a fraction of the step, and it is wrong: a run is a shorter
+step than a walk, so the same fraction makes the walking catch-up take twice as long as the running one. A player
+reads that as two different games. In seconds the body reaches its tile the same wall-clock time after the commit
+whatever it is moving at, and the number a designer tunes is the number the invariant is stated in, which is what
+makes the invariant checkable at all.
+
+**Why the default is the whole step.** The window bounds an existing divergence rather than introducing one, so
+the widest bound is the behaviour that already shipped. `TileGlideWindow.WholeStep` is the default and takes the
+untouched path, byte for byte, so the knob is invisible until a game reaches for it and nothing a consumer draws
+moves on the repin.
+
+**Where it applies, and where it deliberately does not.** Everywhere a drawn pose interpolates `StepFrom` into
+`Tile`: `TilePresenter.Pose` (which is also the remote path) and `TilePresenter.LocalPose`. It lives on the
+PRESENTER rather than on each call, so one object serves both and the local player cannot snap while remotes
+slide. It does not touch the correction-offset decay, teleport cuts (`StepFrom` is already `Tile`, so there is no
+glide), hard snaps, or `TileMoveState.Position`, which is simulation. Determinism is untouched for the structural
+reason rather than by care: presentation reads state and writes none.
+
+**The one piece of machinery it needed.** `LocalPose` draws the prediction layer's rendered position, which is the
+step interpolation, the layer's inter-tick easing and a decaying correction offset added together. The window
+remaps the step and nothing else, so `LocalPose` takes that sum apart (`ClientPrediction.InterTickFraction` and
+`RenderOffset` are the two reads added for it), re-places the step at the remapped fraction and puts the offset
+back unchanged. Two cheaper shapes were tried on paper and rejected: remapping the rendered position whole puts
+the correction through the multiplier and swallows it, so a misprediction cuts instead of easing, and measuring
+the fraction by projecting the drawn point onto the current step jumps at every corner, because the eased point is
+still on the step BEFORE the one being projected onto. Rebuilding the fraction from the state instead makes the
+tick a step commits read as a small negative fraction, which clamps onto `StepFrom`: exactly where the previous
+step's remap had already parked the body, so the two steps meet continuously
+(`A_windowed_local_pose_stays_continuous_across_a_step_commit_and_a_turn`).
+
+**What the bound is measured against.** The state's own timeline. Both presentation paths carry a timeline offset
+that predates the window and is unchanged by it: the local player trails the command tick by up to one tick
+through the prediction layer's easing, and a remote rides the `InterpolationDelayTicks` delayed timeline. So a
+head's real catch-up is the window plus its path's offset, and the window is the half a game controls.
+
+**No curve.** Linear inside the window, flat after it. An ease-out would spend its last frames crawling the final
+centimetres, which is the "still not there" the window exists to remove, and it would blur the one instant the
+invariant is about: the moment the body IS on its tile. A game that wants a different feel tunes the window, which
+changes when the body arrives rather than how it dawdles on the way.
+
 ## 6. Reach and the action seam
 
 `TileReach` is a pure function over the collision map and a footprint. The reach set of an N x M footprint on a

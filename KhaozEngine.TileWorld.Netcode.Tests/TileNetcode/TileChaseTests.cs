@@ -447,7 +447,7 @@ public class TileChaseTests
         Assert.True(lagBefore > TileChase.SettleTiles * 10f,
             $"the body was only {lagBefore} tiles from its committed tile before the snap");
         // The frame the snap lands on draws the body ON the corrected tile, exactly. The planar axes are the
-        // chase's, which is what the reset touches; the vertical is the prediction layer's own and is not this.
+        // chase's, which is what the reset touches. The vertical is the prediction layer's own and is not this.
         TilePose target = loop.Client.Presenter.Pose(loop.Client.Prediction.PredictedState);
         Vector3 drawn = loop.LocalDrawn;
         Assert.Equal(target.Position.X, drawn.X);

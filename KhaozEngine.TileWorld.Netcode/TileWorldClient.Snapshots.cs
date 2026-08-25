@@ -156,7 +156,7 @@ public sealed partial class TileWorldClient
     {
         pose = default;
         if (netId == LocalNetId || !remoteSamples.TryGetValue(netId, out RemoteSample sample)) return false;
-        pose = Presenter.Pose(sample.Glide, (float)Math.Max(0d, (RenderTime - sample.At) / config.TickSeconds));
+        pose = Presenter.Pose(sample.State, (float)Math.Max(0d, (RenderTime - sample.At) / config.TickSeconds));
         return true;
     }
 
@@ -178,15 +178,16 @@ public sealed partial class TileWorldClient
         for (int i = 0; i < goneRemotes.Count; i++) remoteSamples.Remove(goneRemotes[i]);
     }
 
-    // One remote, one frame. The whole method is about answering a question the wire deliberately does not: a
-    // remote's ROUTE is owner-only, so its replicated state names the tile it is on and how far through a step it
-    // is, and nothing at all about where the step is going.
+    // One remote, one frame. The replicated state says where the body is outright: the tile the remote is
+    // committed to, the tile it is walking out of, and how far through. So there is nothing to reconstruct here,
+    // and nothing to guess. All this does is STAMP a changed sample with the render-timeline instant it was first
+    // seen at, which is what the presenter measures its sub-tick carry-forward from.
     //
-    // The answer is to draw a remote ONE STEP BEHIND, between the tile it left and the tile it is on now, rather
-    // than to guess the tile it is heading for. A guess is wrong every time a walk turns a corner or ends, and it
-    // is wrong in the worst way: the avatar is drawn walking onto ground the player never walked onto, and then
-    // has to be snatched back. The cost of the honest answer is one step of extra latency on top of the
-    // interpolation delay, which is the same trade the delay itself already makes.
+    // It used to be the other way round. The everyone channel carried a tile and step progress and nothing about
+    // where the step was GOING, so the only honest answer was to draw a remote ONE STEP BEHIND, between the tile it
+    // was last seen on and the tile it is on now, at a whole step of extra latency, with a second rule to tell a
+    // step from a teleport. Committing at the START of a step is what made the pair of tiles a fact the server can
+    // simply send, and that whole reconstruction went with it.
     void SampleRemote(Entity e, ref NetId id)
     {
         long netId = id.Value;
@@ -194,87 +195,21 @@ public sealed partial class TileWorldClient
         if (!World.TryGet(e, out TileMoveState now)) return;
         liveRemotes.Add(netId);
 
-        if (!remoteSamples.TryGetValue(netId, out RemoteSample prev))
-        {
-            // First sight of this remote. It draws on its tile centre until it is seen to leave it, because there
-            // is no earlier tile to have come from.
-            remoteSamples[netId] = new RemoteSample(Standing(now), now.Tile, sampleTime);
-            return;
-        }
-
-        if (now.Tile != prev.Tile)
-        {
-            // A step committed, and only now is the tile it went to a fact. The glide starts over from the tile
-            // the remote just left, at whatever step progress the new state carries, which is zero on the commit
-            // tick, so the drawn position is continuous with where the previous glide finished.
-            remoteSamples[netId] = new RemoteSample(GlideFrom(prev.Tile, now), now.Tile, sampleTime);
-            return;
-        }
-
-        // Same tile as last time. Step progress that ADVANCED carries the glide forward. Progress that fell back to
-        // zero without the tile changing is the route ending or a re-path around a blocker, and re-stamping the
-        // glide there would drag the remote back to the tile the last step started on. Left alone, the glide runs
-        // out against its own clamp and parks on the tile the remote is standing on.
-        if (now.StepTicks <= prev.Glide.StepTicks)
-        {
-            // A turn on the spot still has to reach the screen. TileMoveSimulator.BeginInteract sets Facing with NO
-            // tile change and no step progress for a zero-step interact, which is the ordinary click on the thing
-            // you are already standing next to, so a receiver that only resampled on movement would draw that
-            // player facing their last step until they next walked. The glide's tile pair and its stamp are kept,
-            // so the facing turns and the motion does not restart.
-            if (now.Facing != prev.Glide.Facing)
-            {
-                TileMoveState turned = prev.Glide;
-                turned.Facing = now.Facing;
-                remoteSamples[netId] = new RemoteSample(turned, prev.Tile, prev.At);
-            }
-            return;
-        }
-
-        TileMoveState glide = prev.Glide;
-        glide.StepTicks = now.StepTicks;
-        glide.StepTotal = now.StepTotal;
-        glide.Facing = now.Facing;
-        remoteSamples[netId] = new RemoteSample(glide, now.Tile, sampleTime);
-    }
-
-    // A one-step route from the tile just left to the tile just reached, which is the shape TilePresenter glides
-    // along. A pair that is not one step apart is not a step at all: a teleport, a plane change, or a remote that
-    // left the area of interest and came back somewhere else. Those CUT, because sliding an avatar across the
-    // distance between them would draw it walking over every tile in between.
-    static TileMoveState GlideFrom(TileCoord from, in TileMoveState now)
-    {
-        // The step measurement is in LONG for the reason TileWorldServer.GoalInRange is: ReadMove bounds every
-        // replicated field except a tile's X and Z, so two snapshots placing one remote int.MinValue apart would
-        // make this subtraction int.MinValue and Math.Abs would throw out of SampleRemote, out of
-        // RefreshRemoteSamples, and out of the CLIENT'S RENDER LOOP. That is exactly the failure the reader's own
-        // doc promises a corrupt frame can never cause.
-        long dx = (long)now.Tile.X - from.X, dz = (long)now.Tile.Z - from.Z;
-        if (from.Plane != now.Tile.Plane || Math.Max(Math.Abs(dx), Math.Abs(dz)) != 1)
-            return Standing(now);
-        TileMoveState s = now;
-        s.Tile = from;
-        s.Route = new TileRoute(new[] { now.Tile }, 0);
-        return s;
-    }
-
-    // A remote drawn on its tile centre. The replicated state already arrives with an idle route (the codec never
-    // writes one), and this says so rather than relying on it.
-    static TileMoveState Standing(in TileMoveState now)
-    {
-        TileMoveState s = now;
-        s.Route = TileRoute.None;
-        return s;
+        // An unchanged sample KEEPS its stamp, which is the whole reason the previous one is compared rather than
+        // overwritten every frame: re-stamping would restart the carry-forward on every frame and freeze the
+        // remote on the instant of its last snapshot. Equality is the simulation's own, so a turn on the spot
+        // counts as a change (BeginInteract writes Facing with no tile change and no progress, which is the
+        // ordinary click on the thing you are already standing next to) while a re-render of the same tick does
+        // not.
+        if (remoteSamples.TryGetValue(netId, out RemoteSample prev) && prev.State.Equals(now)) return;
+        remoteSamples[netId] = new RemoteSample(now, sampleTime);
     }
 
     /// <summary>
-    /// One remote's drawing state. <paramref name="Glide"/> is what <see cref="TilePresenter.Pose"/> is handed: a
-    /// synthetic state standing on the tile the remote LEFT, carrying a one-step route to the tile it is on now.
-    /// <paramref name="Tile"/> is the raw replicated tile the next frame compares against, which the glide itself
-    /// cannot answer because it stands on the PREVIOUS one. The step counter the next frame compares against needs
-    /// no field beside it: every site here copies the replicated one into the glide, so <c>Glide.StepTicks</c> IS
-    /// that value. <paramref name="At"/> is the render-timeline instant the glide was stamped at, which is what
-    /// the fraction of a tick since then is measured from.
+    /// One remote's drawing state. <paramref name="State"/> is the replicated state verbatim, which is what
+    /// <see cref="TilePresenter.Pose"/> is handed: the tile the remote is committed to and the one its body is
+    /// still walking out of. <paramref name="At"/> is the render-timeline instant that state was first seen at,
+    /// which is what the fraction of a tick since then is measured from.
     /// </summary>
-    readonly record struct RemoteSample(TileMoveState Glide, TileCoord Tile, double At);
+    readonly record struct RemoteSample(TileMoveState State, double At);
 }

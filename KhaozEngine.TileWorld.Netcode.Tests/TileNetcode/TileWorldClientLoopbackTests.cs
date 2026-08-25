@@ -402,14 +402,13 @@ public class TileWorldClientLoopbackTests
         Assert.Equal(new TileCoord(20, 20, 0), h.Client.Prediction.PredictedState.Tile);
     }
 
-    // The remote presentation is deliberately ONE STEP BEHIND, and this is what says so. The everyone channel
-    // carries the tile a remote is on and how far through a step it is, never where the step is GOING (the route
-    // is owner-only), so the only non-guessing glide runs from the tile the remote was seen to leave to the tile
-    // it is on now. The tempting alternative, extrapolating forward along Facing, fails here twice over: Facing
-    // names the step already TAKEN, so during this one step it would drag the remote south out of the tile it is
-    // standing on, and it would never draw the honest in-between position at all.
+    // A remote is drawn between the two tiles of the step it is TAKING, both of which ride the everyone channel
+    // now. The route is still owner-only, and still not needed: the pair says where the body is outright, so the
+    // receiver reconstructs nothing and guesses nothing. The tempting alternative, extrapolating forward along
+    // Facing, fails here twice over: Facing is rewritten toward an interaction target while a step is in flight,
+    // and it would never draw the honest in-between position at all.
     [Fact]
-    public void A_remote_is_drawn_between_the_tile_it_left_and_the_tile_it_stands_on()
+    public void A_remote_is_drawn_between_the_tile_it_left_and_the_tile_it_is_committed_to()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
         using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
@@ -429,8 +428,9 @@ public class TileWorldClientLoopbackTests
             drawn.Add(tileZ);
             if (tileZ <= 10.001f || tileZ >= 10.999f) continue;
             sawTheGlide = true;
-            // Mid glide, and the remote is being drawn on ground it has ALREADY walked: the server committed the
-            // step that ends this glide before the client ever started drawing it.
+            // Mid glide, and the tile the body is walking into is one the server committed before the client ever
+            // started drawing the walk into it. That is the lead commit seen end to end: the authority owns the
+            // destination, the picture catches up.
             Assert.True(h.Server.TryGetPlayerState(1, out TileMoveState live));
             Assert.Equal(new TileCoord(12, 11, 0), live.Tile);
         }
@@ -440,10 +440,10 @@ public class TileWorldClientLoopbackTests
         Assert.Equal(11f, drawn[^1], 3);                            // and it parks on the tile it is standing on
     }
 
-    // The corner is where a forward guess gives itself away. Facing is written at COMMIT, so on the first tick of
-    // the north leg it still names the east step just taken, and a receiver extrapolating along it would draw the
-    // remote past x = 16, out of the corridor it walked, and then snatch it back. The honest glide only ever runs
-    // between two tiles the remote was seen on, so every drawn point lies on the walked path.
+    // The corner is where a forward guess gives itself away. A receiver extrapolating along Facing, or along the
+    // last step's direction, would draw the remote past x = 16, out of the corridor it walked, and then snatch it
+    // back. The glide only ever runs between the two tiles of the step actually being taken, so every drawn point
+    // lies on the walked path.
     [Fact]
     public void At_a_corner_the_glide_follows_the_step_actually_taken()
     {
@@ -488,7 +488,8 @@ public class TileWorldClientLoopbackTests
 
     // Two tiles that are not one step apart are not a step: a teleport, a plane change, or a remote that left the
     // interest set and came back somewhere else. Sliding between them would draw the avatar walking over every
-    // tile in the gap, so the glide CUTS and the remote appears on its tile.
+    // tile in the gap, so the glide CUTS and the remote appears on its tile. The state itself says so now, because
+    // every discontinuous placement goes through TileMoveState.At and seeds the glide origin onto the tile.
     [Fact]
     public void A_remote_that_reappears_more_than_one_step_away_cuts_to_its_tile()
     {
@@ -514,12 +515,12 @@ public class TileWorldClientLoopbackTests
         Assert.Equal(20f, drawn[^1], 3);
     }
 
-    // The OTHER half of the cut rule, and the half nothing reached: a pair of tiles that IS one step apart in x and
-    // z but sits on two different planes. Gliding between those would draw the avatar walking one tile sideways and
-    // one storey down through the floor it is standing on, so the plane clause cuts it exactly as a teleport is
-    // cut. The VIEWER moves with the remote on purpose: the serve is plane filtered, so a remote that changed floor
-    // on its own would leave the viewer's interest set and be resampled as a first sighting rather than reach
-    // GlideFrom at all.
+    // The OTHER half of the cut rule: a pair of tiles that IS one step apart in x and z but sits on two different
+    // planes. Gliding between those would draw the avatar walking one tile sideways and one storey down through the
+    // floor it is standing on. The wire cannot even spell it now, because the glide's origin takes the tile's own
+    // plane, and a teleport seeds the origin onto the tile besides. The VIEWER moves with the remote on purpose:
+    // the serve is plane filtered, so a remote that changed floor on its own would leave the viewer's interest set
+    // and be resampled as a first sighting rather than as a step at all.
     [Fact]
     public void A_remote_that_changes_plane_one_step_away_cuts_rather_than_gliding_between_floors()
     {

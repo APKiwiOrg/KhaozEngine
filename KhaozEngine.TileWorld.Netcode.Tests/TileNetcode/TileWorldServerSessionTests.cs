@@ -62,7 +62,7 @@ public class TileWorldServerSessionTests
             s.Tick(Dt);
             s.Tick(Dt);
             Assert.True(s.TryGetPlayerState(0, out TileMoveState st));
-            Assert.Equal(new TileCoord(4, 5, 0), st.Tile);
+            Assert.Equal(new TileCoord(4, 6, 0), st.Tile);
         }
     }
 
@@ -202,12 +202,15 @@ public class TileWorldServerSessionTests
         Assert.Equal(TileDirection.E, st.Facing);
     }
 
+    // The first booth is four steps off rather than one, because a walk resolves its action the tick its LAST
+    // step starts: a one step walk would raise the near interaction on the tick the click arrived, before the
+    // second click was ever enqueued, and the test would be about nothing.
     [Fact]
     public void A_second_click_replaces_the_pending_action_so_only_the_last_one_fires()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
-        TileObject near = doc.AddObject("bank_booth", 7, 10, 0, 0);
-        TileObject far = doc.AddObject("bank_booth", 14, 10, 0, 0);
+        TileObject near = doc.AddObject("bank_booth", 10, 10, 0, 0);
+        TileObject far = doc.AddObject("bank_booth", 18, 10, 0, 0);
         var hub = new InMemoryTransportHub();
         using var s = new TileWorldServer(hub.Server, TileWorldServerTickTests.Config(new TileCoord(5, 10, 0)),
             TileMoveSimulatorTests.Bake(doc), new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs),

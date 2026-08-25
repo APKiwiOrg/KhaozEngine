@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using KhaozEngine.Netcode;
 using KhaozEngine.Sharding;
 using KhaozEngine.TileWorld;
@@ -47,7 +48,10 @@ public class TileWorldServerTickTests
         s.Tick(Dt);
         s.Tick(Dt);
         Assert.True(s.TryGetPlayerState(0, out TileMoveState st));
-        Assert.Equal(new TileCoord(10, 11, 0), st.Tile);
+        // Two run ticks is one whole step of BODY, and the tile is a step ahead of it: the step into (10, 12) was
+        // committed on the tick the body landed on (10, 11).
+        Assert.Equal(new Vector2(10f, 11f), st.Position);
+        Assert.Equal(new TileCoord(10, 12, 0), st.Tile);
         Assert.Equal(2, s.TickCount);
         Assert.Equal(2, st.StepTotal);
     }
@@ -65,9 +69,11 @@ public class TileWorldServerTickTests
         s.Tick(Dt);
         s.Tick(Dt);
         Assert.Equal(3, tilesSeen.Count);
+        // The first hook runs before the walk is ever drained, so it sees the spawn tile. The second sees the tile
+        // committed on tick one, and the third the tile committed as the body landed on it.
         Assert.Equal(new TileCoord(1, 1, 0), tilesSeen[0]);
-        Assert.Equal(new TileCoord(1, 1, 0), tilesSeen[1]);
-        Assert.Equal(new TileCoord(1, 2, 0), tilesSeen[2]);
+        Assert.Equal(new TileCoord(1, 2, 0), tilesSeen[1]);
+        Assert.Equal(new TileCoord(1, 3, 0), tilesSeen[2]);
     }
 
     // The whole tick body runs once per WHOLE TickSeconds, through the server's own accumulator, so a caller on a
@@ -98,7 +104,8 @@ public class TileWorldServerTickTests
         Assert.True(frames.TryGetPlayerState(0, out TileMoveState a));
         Assert.True(whole.TryGetPlayerState(0, out TileMoveState b));
         Assert.Equal(b, a);
-        Assert.Equal(new TileCoord(10, 12, 0), a.Tile);
+        Assert.Equal(new TileCoord(10, 13, 0), a.Tile);
+        Assert.Equal(new Vector2(10f, 12f), a.Position);
     }
 
     // The same rule at the sub-tick end, on a frame length that is exact in binary so nothing here turns on float
@@ -179,7 +186,8 @@ public class TileWorldServerTickTests
         for (int i = 0; i < 6; i++) s.Tick(Dt);   // one command, then five starved ticks
 
         Assert.True(s.TryGetPlayerState(0, out TileMoveState st));
-        Assert.Equal(new TileCoord(10, 13, 0), st.Tile);
+        Assert.Equal(new TileCoord(10, 14, 0), st.Tile);
+        Assert.Equal(new Vector2(10f, 13f), st.Position);
         Assert.Equal(TileMoveMode.Run, st.Mode);
         Assert.Equal(2, st.StepTotal);
     }
@@ -288,7 +296,7 @@ public class TileWorldServerTickTests
         for (int i = 0; i < 4; i++) s.Tick(Dt);
         Assert.True(s.TryGetPlayerState(0, out TileMoveState later));
         Assert.Equal(new TileCoord(20, 10, 0), later.Route.End);
-        Assert.Equal(new TileCoord(12, 10, 0), later.Tile);
+        Assert.Equal(new TileCoord(13, 10, 0), later.Tile);
     }
 
     // SetPlayerState is a door, so what it cannot accept is refused THERE. A route over the cap would otherwise be
@@ -321,7 +329,7 @@ public class TileWorldServerTickTests
         s.Tick(Dt);
         Assert.Equal(2, s.TickCount);
         Assert.True(s.TryGetPlayerState(1, out TileMoveState other));
-        Assert.Equal(new TileCoord(10, 11, 0), other.Tile);
+        Assert.Equal(new TileCoord(10, 12, 0), other.Tile);
         Assert.True(s.TryGetPlayerState(0, out TileMoveState refused));
         Assert.Equal(new TileCoord(10, 10, 0), refused.Tile);
         Assert.True(refused.Route.IsIdle);
@@ -359,7 +367,7 @@ public class TileWorldServerTickTests
         s.Tick(Dt);
         Assert.Equal(2, s.TickCount);
         Assert.True(s.TryGetPlayerState(1, out TileMoveState walker));
-        Assert.Equal(new TileCoord(10, 11, 0), walker.Tile);
+        Assert.Equal(new TileCoord(10, 12, 0), walker.Tile);
         Assert.True(s.TryGetPlayerState(0, out TileMoveState standing));
         Assert.Equal(new TileCoord(10, 10, 0), standing.Tile);
         Assert.True(standing.Route.IsIdle);

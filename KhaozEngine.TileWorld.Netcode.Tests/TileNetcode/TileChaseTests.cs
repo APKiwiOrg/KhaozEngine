@@ -346,6 +346,114 @@ public class TileChaseTests
         Assert.All(drawn, p => Assert.Equal(resting, p));
     }
 
+    /// <summary>
+    /// The complementary case, and the one the chase alone now carries: a correction that MOVES the committed
+    /// tile. The target jumps a whole tile with no hard snap behind it, so the body has to close that tile on the
+    /// chase's own curve rather than cutting to it.
+    /// <para>Reachable at ordinary cadence. A one-tick skew between the two heads is a quarter of a tile of
+    /// position error at walk cost, well inside <see cref="PredictionSettings.HardSnapDistance"/>, while the two
+    /// heads' <see cref="TileMoveState.Tile"/> differ by one. The shape is built directly here, with the same long
+    /// step total the sub-tile test uses so no replay depth can push the error over the snap distance: the
+    /// authority owns tile (10, 11) a quarter of the way in while the client is standing on (10, 10), so the
+    /// position error is about 0.25 and the TARGET moves a whole tile.</para>
+    /// <para>What is asserted is the CURVE rather than merely that the body moved. Every frame leaves exactly
+    /// <c>2^(-frame / h)</c> of the gap before it, which is the same arithmetic an ordinary step is drawn with, so
+    /// a tile-moving correction is indistinguishable from movement. A cut would land the whole tile in one frame,
+    /// and a correction drawn through the prediction layer's own SmoothDamp would close it on a different curve at
+    /// a different rate.</para>
+    /// </summary>
+    [Fact]
+    public void A_correction_that_moves_the_committed_tile_eases_at_the_half_life()
+    {
+        using var loop = new Loop();
+        loop.Join();
+        int teleports = 0;
+        loop.Client.Teleported += () => teleports++;
+        loop.Frames(60);                                            // settle the chase exactly onto tile (10, 10)
+        Assert.Equal(10f, DrawnTileZ(loop.LocalDrawn.Z), 5);
+
+        TileMoveState ahead = TileMoveState.At(new TileCoord(10, 11, 0), TileDirection.N);
+        ahead.StepFrom = new TileCoord(10, 10, 0);
+        ahead.StepTotal = 100;
+        ahead.StepTicks = 25;                                       // position z 10.25, a quarter tile of error
+        loop.Server.SetPlayerState(0, ahead);
+
+        var gaps = new List<float>();
+        float worstFrame = 0f, previous = DrawnTileZ(loop.LocalDrawn.Z);
+        for (int i = 0; i < 60; i++)
+        {
+            loop.Step();
+            float drawn = DrawnTileZ(loop.LocalDrawn.Z);
+            worstFrame = MathF.Max(worstFrame, MathF.Abs(drawn - previous));
+            previous = drawn;
+            if (loop.Client.Prediction.PredictedState.Tile.Z == 11) gaps.Add(11f - drawn);
+        }
+
+        // A real gliding correction that moved the TILE, with nothing cutting behind it. Without these the curve
+        // assertions below would pass on a client that simply walked there.
+        Assert.True(loop.Client.CorrectionCount > 0, "the two heads never disagreed, so nothing was corrected");
+        Assert.Equal(0, loop.Client.SnapCount);
+        Assert.Equal(0, teleports);
+        Assert.Equal(new TileCoord(10, 11, 0), loop.Client.Prediction.PredictedState.Tile);
+        Assert.True(gaps.Count > 30, $"only {gaps.Count} frames ran after the committed tile moved");
+
+        // It EASED: a whole tile of gap was still open on the frame the correction landed, and the frame that
+        // closed the most of it closed no more than the chase itself can.
+        float perFrame = MathF.Pow(2f, -Frame / H);
+        Assert.Equal(perFrame, gaps[0], 3);
+        Assert.True(worstFrame <= 1f - perFrame + 1e-4f,
+            $"a frame moved the body {worstFrame} tiles against a chase bound of {1f - perFrame}");
+        // And it eased on the CHASE's curve, every frame of it, down to where float noise starts to matter.
+        for (int i = 1; i < gaps.Count && gaps[i - 1] > 0.01f; i++)
+        {
+            Assert.True(MathF.Abs(gaps[i] / gaps[i - 1] - perFrame) < 0.01f,
+                $"frame {i} left {gaps[i] / gaps[i - 1]} of the gap before it, against the chase's {perFrame}");
+        }
+    }
+
+    /// <summary>
+    /// A HARD SNAP resets the chase, and the frame it lands on draws the body AT its corrected tile rather than
+    /// starting a pursuit toward it. That a hidden tree cuts a walk exactly once, and that a cut step is not a
+    /// teleport, is pinned in the loopback suite. What is pinned here is the POSE, which is the half the reset
+    /// exists for and the half no assertion covered.
+    /// <para>A hard snap is the client having walked somewhere the server never let it go, so the body is drawn a
+    /// good fraction of a tile from where the rules now say it is. Chasing that gap would slide the avatar back
+    /// across ground it never covered, at the moment the head most needs the picture to agree with the rules.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void A_hard_snap_draws_the_body_on_its_corrected_tile_the_same_frame()
+    {
+        TileWorldDocument serverDoc = TileMoveSimulatorTests.FlatWorld();
+        serverDoc.AddObject("tree", 10, 11, 0, 0);                  // only the SERVER knows about this
+        using var loop = new Loop(serverDoc);
+        loop.Join();
+        int teleports = 0;
+        loop.Client.Teleported += () => teleports++;
+
+        loop.Client.Queue(TileCommand.WalkTo(new TileCoord(10, 18, 0), TileMoveMode.Run));
+        float lagBefore = 0f;
+        for (int i = 0; i < 200 && loop.Client.SnapCount == 0; i++)
+        {
+            lagBefore = MathF.Abs(loop.Client.Presenter.Pose(loop.Client.Prediction.PredictedState).Position.Z
+                - loop.LocalDrawn.Z);
+            loop.Step();
+        }
+
+        Assert.Equal(1, loop.Client.SnapCount);
+        Assert.Equal(0, teleports);                                 // a cut step is not a teleport
+        // Not vacuous: the frame before the snap had the body a real distance behind its own committed tile, so
+        // what follows is a statement about the snap rather than about a body that was never anywhere else.
+        Assert.True(lagBefore > TileChase.SettleTiles * 10f,
+            $"the body was only {lagBefore} tiles from its committed tile before the snap");
+        // The frame the snap lands on draws the body ON the corrected tile, exactly. The planar axes are the
+        // chase's, which is what the reset touches; the vertical is the prediction layer's own and is not this.
+        TilePose target = loop.Client.Presenter.Pose(loop.Client.Prediction.PredictedState);
+        Vector3 drawn = loop.LocalDrawn;
+        Assert.Equal(target.Position.X, drawn.X);
+        Assert.Equal(target.Position.Z, drawn.Z);
+    }
+
     // ---------------------------------------------------------------------------------------------------------
     // One knob, both paths.
     // ---------------------------------------------------------------------------------------------------------

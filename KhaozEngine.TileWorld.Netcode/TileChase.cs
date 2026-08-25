@@ -101,9 +101,11 @@ public sealed class TileChase
     /// <see cref="Drawn"/>. The first call PLACES the body rather than chasing from the origin, so a body's first
     /// frame is never a slide in from tile (0, 0).
     /// </summary>
-    /// <param name="target">Where the body is trying to be: the committed tile's centre in tile units, plus
-    /// whatever correction the drawing path folds in. See <see cref="TileWorldClient"/> for the local player's
-    /// composition and why the correction goes into the TARGET rather than onto the result.</param>
+    /// <param name="target">Where the body is trying to be: the committed tile's centre in tile units, and on the
+    /// shipped client paths nothing else. See <see cref="TileWorldClient.LocalPose"/> for why the prediction
+    /// layer's correction offset is deliberately NOT folded in. That offset is anchored to
+    /// <see cref="TileMoveState.Position"/>, not to <see cref="TileMoveState.Tile"/>, so adding it to a tile-frame
+    /// target pushes the body off a tile that never moved.</param>
     /// <param name="dt">Seconds since the previous advance. Zero and negative move nothing, which is the honest
     /// answer for a frame in which no time passed.</param>
     /// <returns>The new drawn position, the same value <see cref="Drawn"/> reads.</returns>

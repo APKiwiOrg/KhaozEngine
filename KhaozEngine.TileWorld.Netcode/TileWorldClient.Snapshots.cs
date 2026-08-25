@@ -146,8 +146,9 @@ public sealed partial class TileWorldClient
         // the two places instead of appearing at the new one. Teleport and hard snap are BOTH taken, because they
         // are different questions and each can fire without the other: a teleport is an authoritative epoch
         // advance ("you are somewhere else now"), a hard snap is a step the two heads disagreed about, and a
-        // reported seed teleport carries no snap at all. LocalTarget reads a zeroed offset in every one of those
-        // cases, so it is exactly the committed tile's centre.
+        // reported seed teleport carries no snap at all. LocalTarget is the committed tile's centre and nothing
+        // else (no correction offset is composed into it, see LocalPose), so snapping onto it draws the body
+        // exactly where the rules just put it.
         if (result.HardSnapApplied || result.Teleported) localChase.SnapTo(LocalTarget);
         // Raised rather than folded into SnapCount, because the two say different things to a head: a snap is "you
         // mispredicted a step", a teleport is "you are somewhere else now". See the event's own doc.

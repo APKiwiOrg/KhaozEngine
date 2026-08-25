@@ -355,8 +355,12 @@ public sealed partial class TileWorldClient : IDisposable
     /// tick rate without anything interpolating between two lattice points. The remote timeline is resampled here
     /// rather than on snapshot arrival for the same reason: a remote resampled once per packet hops at the tick
     /// rate whatever the frame rate.</para>
-    /// <para>The prediction layer goes FIRST, so the correction offset the local chase's target carries is the
-    /// current one rather than the previous frame's.</para>
+    /// <para>The local chase's target is the BARE committed tile (see <see cref="LocalPose"/>), so the prediction
+    /// layer's presentation advance writes nothing the target reads: that layer's correction offset is anchored to
+    /// <see cref="TileMoveState.Position"/> rather than to <see cref="TileMoveState.Tile"/>, and composing it into
+    /// a tile-frame target would push the body off a tile that never moved. The prediction call still goes FIRST,
+    /// because the VERTICAL <see cref="LocalPose"/> draws is that layer's own eased plane and is read after this
+    /// returns.</para>
     /// </summary>
     /// <param name="dt">Seconds since the last frame. Negative is treated as zero.</param>
     public void AdvancePresentation(float dt)

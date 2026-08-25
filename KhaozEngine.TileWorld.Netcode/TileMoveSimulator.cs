@@ -234,12 +234,14 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
             s.StepTotal = StepTicks.For(mode);
         }
         s.InteractTarget = 0;
-        s.Route = splice ? SplicedRouteFor(from, Array.Empty<TileCoord>()) : TileRoute.None;
 
-        if (!resolved) return s;
-        if (!TileReach.TryNearest(Map, footprint, plane, from, AgentSize, MaxPathRadius,
+        if (!resolved || !TileReach.TryNearest(Map, footprint, plane, from, AgentSize, MaxPathRadius,
                 out TileCoord reachTile, out TilePath path))
+        {
+            // Built only on this exit: the resolved-and-reachable path below replaces the route anyway.
+            s.Route = splice ? SplicedRouteFor(from, Array.Empty<TileCoord>()) : TileRoute.None;
             return s;
+        }
 
         // The target is remembered on a WALK, so the arrival tick can act on it, and a zero step interaction faces
         // the target here because no step will ever run to set the facing for it. A SPLICED route always has the

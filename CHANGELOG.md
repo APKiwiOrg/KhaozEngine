@@ -65,7 +65,10 @@ pose names the tile CENTRE rather than its corner ([#730](https://github.com/APK
   boundary, standing included, is unchanged. The route cap counts the inherited step, so re-clicking every step
   cannot ratchet a route past `MaxRouteSteps`. The mode still takes effect at the start of the next step, a
   cross-plane goal is still dropped whole, the arrival turn still fires when the spliced route empties, and the
-  splice is a function of the state and the command alone, so replay determinism is intact. A consumer feels
+  splice is a function of the state and the command alone, so replay determinism is intact. One timing
+  consequence: an unreachable same-plane interact arriving mid-step finishes the step in flight before it
+  stands, so its `CannotReach` answer lands when that step commits, up to one step later than a standing
+  click's. A consumer feels
   this without changing any code: clicks while moving stop hitching. A head that worked around it by suppressing
   clicks mid-step should stop doing that.
 - **BEHAVIOUR: a `TilePose` names the tile CENTRE, so every drawn position moves half a tile on each axis**

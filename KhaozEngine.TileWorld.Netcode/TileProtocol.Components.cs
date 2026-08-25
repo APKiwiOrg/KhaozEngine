@@ -29,8 +29,10 @@ public static partial class TileProtocol
 
     /// <summary>Cap on a replicated route, in steps, and the ONE definition of that number: it is also the ceiling
     /// on <see cref="TileMoveOptions.MaxRouteSteps"/>, which is where the cap is actually enforced. The SIMULATOR
-    /// truncates a longer pathfinder result, identically on both heads, so a route that reaches this encoder is
-    /// already within the cap and the walk ends at the truncated route's last tile (as far as one click carries).
+    /// truncates a longer pathfinder result, identically on both heads and in both of its route builders (RouteFor,
+    /// and SplicedRouteFor, which caps the NEW path one step lower so the inherited step in flight fits under the
+    /// same limit), so a route that reaches this encoder is already within the cap and the walk ends at the
+    /// truncated route's last tile (as far as one click carries).
     /// <para>The encoder therefore REFUSES a longer route rather than truncating one. Truncating on the wire loses
     /// more than the tail: <see cref="TileRoute.End"/> is the DESTINATION, so a route shortened here would tell the
     /// owner it is walking somewhere it was never routed to, and it would keep saying so, with a different wrong

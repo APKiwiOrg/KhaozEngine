@@ -41,11 +41,21 @@ SERVE, which filters a viewer's area of interest to the viewer's own plane.
 
 **The GLIDE WINDOW bounds visual-truth divergence, and a game gets to pick it.** Committing at the start of a step
 puts the rules ahead of the picture, and `TileWorldClientConfig.GlideWindowSeconds` is how far ahead a game will
-let them get: **the drawn body never diverges from the committed tile by more than the window**. So a design that
-reads committed tiles (combat, a boss's telegraphs, anything that answers "where is that player") is reading what
-the player can see, and there is no true-tile metagame to learn from watching bodies instead. In SECONDS, so a
-walk and a run catch up at the same wall-clock rate. The default is the full-step glide, which is the widest the
-bound can be and what the package drew before the knob existed.
+let them get: **the drawn body never diverges from the committed tile by more than the window, plus the offset its
+own drawing path already carried**. So a design that reads committed tiles (combat, a boss's telegraphs, anything
+that answers "where is that player") is reading what the player can see, and there is no true-tile metagame to
+learn from watching bodies instead. In SECONDS, so a walk and a run catch up at the same wall-clock rate. The
+default is the full-step glide, which is the widest the bound can be and what the package drew before the knob
+existed.
+
+Read the second half of that bound before building on the first. The window is the part a game controls, and it
+is not the whole number. The LOCAL player is drawn from the state the prediction layer is holding, so its
+divergence is the window plus whatever is left of a decaying correction offset after a misprediction, which is
+zero on the ordinary deterministic case. A REMOTE is drawn off the delayed timeline
+`TileWorldClientConfig.InterpolationDelayTicks` names, which defaults to two ticks and is a whole tick each: at a
+quarter-second tick that is half a second on top, longer than an entire walking step. So a design that sets a
+120 ms window and then reads other players' tiles is working against a bound five times the one it asked for.
+Tighten `InterpolationDelayTicks` too, or size the design against the sum.
 
 ## The types
 

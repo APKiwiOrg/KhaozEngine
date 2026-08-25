@@ -129,8 +129,10 @@ leaves that lag exactly where it was until a game sets the knob.
   lead-commit above made the simulation lead the picture by a whole step, and the playtest verdict was that the
   snap is right and the full-step glide is not: the avatar spends the step visibly not there. `TileGlideWindow`
   is the knob, and the invariant it buys is the point of it: **the visual position never diverges from the
-  committed tile by more than the window**, so combat and boss design read committed tiles with no true-tile
-  metagame available to a player who watches the body instead. New API, all of it presentation:
+  committed tile by more than the window, plus the offset its own drawing path already carried**, so combat and
+  boss design read committed tiles with no true-tile metagame available to a player who watches the body instead.
+  **Read that second term before sizing a design on the first**, it is the larger half for remotes: see the last
+  sub-bullet. New API, all of it presentation:
   - **`TileGlideWindow(seconds, tickSeconds)`**, and `TileWorldClientConfig.GlideWindowSeconds` is where a game
     sets it. The body covers the whole step in the window's seconds and then WAITS on its tile for the rest of
     the step. **SECONDS rather than a share of the step**, because a run is a shorter step than a walk: a share
@@ -152,14 +154,25 @@ leaves that lag exactly where it was until a game sets the knob.
     takes the rendered position apart to keep that true: it lifts the decaying correction offset off, re-places
     the step at the remapped fraction, and puts the offset back unchanged. Remapping the rendered position whole
     would put the correction through the same multiplier and swallow it, so a misprediction would cut instead of
-    easing.
+    easing. The fraction it rebuilds is measured FROM THE COMMIT, `(StepTicks + phase) / StepTotal`, which is the
+    same expression `Pose` evaluates for a remote out of the step's ticks and the ticks since its sample: one
+    state and one sub-tick offset draw the same point down either path.
   - **Two new `ClientPrediction` reads**, `InterTickFraction` and `RenderOffset`, are what that decomposition
     needs: the phase the layer's easing is at, and the offset folded into `RenderedState`. Additive, and nothing
     in the layer's own behaviour moved.
-  - **The bound is measured on the state's own timeline**, and each presentation path adds its own pre-existing
-    offset on top: the local player is drawn through the prediction layer's inter-tick easing, which trails the
-    command tick by up to one tick, and a remote rides the `InterpolationDelayTicks` timeline. So a head reads
-    its real catch-up as the window plus that path's offset. Neither offset is new and neither moved.
+  - **`TilePresenter`'s two-argument constructor is gone**, replaced by the three-argument one with the window
+    defaulted. Source-compatible, and BINARY-breaking: a consumer that rebinds without recompiling will not find
+    the old entry point. Accepted rather than overloaded because nothing in this fleet ships against a
+    prebuilt engine assembly, every consumer vendors the nupkgs and rebuilds from the feed, but it is a break and
+    it is a minor bump, so it is said here rather than left to be discovered.
+  - **The bound is measured on the state's own timeline**, and each presentation path adds an offset of its own,
+    both of them pre-existing. The local player is placed from the state the prediction layer is holding, so its
+    term is whatever is left of a decaying correction offset after a misprediction, which is zero on the ordinary
+    deterministic case. A remote rides the `InterpolationDelayTicks` timeline, a whole tick per delay tick and
+    two of them by default: at a quarter-second tick that is half a second on top of the window, longer than a
+    whole walking step. **A design that sets a 120 ms window and reads other players' tiles off it is working
+    with a bound five times the one it named.** Tighten `InterpolationDelayTicks` alongside the window, or size
+    the design against the sum. Neither offset is new and neither moved.
 
 ## 18.0.0
 

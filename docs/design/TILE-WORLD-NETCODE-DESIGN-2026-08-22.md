@@ -246,12 +246,23 @@ snap is right, the full-step glide is not. A body that spends the entire step wa
 reads as a walk that never arrives, which is the OSRS feel the product ruling explicitly did not want.
 
 **The invariant, which is the reason the knob exists and not merely how it is tuned.** The drawn body never
-diverges from the committed tile by more than the GLIDE WINDOW. That is a contract for design above it, not a
-rendering preference: combat and boss behaviour read committed tiles, and the window is what guarantees the tile
-they read is the tile a player can see the body on. Without a bound, watching bodies instead of tiles is a
-strictly better source of truth than the game's own model, which is the OSRS true-tile metagame arriving by
-construction. With one, that metagame is worth at most the window, and a game that sets the window small enough
-does not have one at all.
+diverges from the committed tile by more than the GLIDE WINDOW plus the offset its own drawing path already
+carried. That is a contract for design above it, not a rendering preference: combat and boss behaviour read
+committed tiles, and the bound is what guarantees the tile they read is the tile a player can see the body on.
+Without a bound, watching bodies instead of tiles is a strictly better source of truth than the game's own model,
+which is the OSRS true-tile metagame arriving by construction. With one, that metagame is worth at most the bound,
+and a game that sets it small enough does not have one at all.
+
+**State the second term, every time the first one is stated.** The window is the half a game controls and it is
+not the whole number, and a design that reads the invariant as the window alone is sized against something
+narrower than what ships. The LOCAL player is placed from the state the prediction layer is holding, so its term
+is whatever is left of a decaying correction offset after a misprediction, zero on the deterministic lattice's
+ordinary case. A REMOTE rides the `InterpolationDelayTicks` delayed timeline, a whole tick per delay tick, two of
+them by default: at a quarter-second tick that is half a second on top of the window, longer than an entire
+walking step. A boss telegraph built on a 120 ms window and read against other players' bodies is therefore built
+on a bound five times the one the designer named, on exactly the bodies the anti-metagame argument is about. The
+fix is to tighten `InterpolationDelayTicks` alongside the window, or to size the design against the sum. Section
+5.2 is what Grimhollow's combat contract cites, so the sum is what it states.
 
 **Why the window is in SECONDS.** The obvious shape is a fraction of the step, and it is wrong: a run is a shorter
 step than a walk, so the same fraction makes the walking catch-up take twice as long as the running one. A player
@@ -279,14 +290,40 @@ back unchanged. Two cheaper shapes were tried on paper and rejected: remapping t
 the correction through the multiplier and swallows it, so a misprediction cuts instead of easing, and measuring
 the fraction by projecting the drawn point onto the current step jumps at every corner, because the eased point is
 still on the step BEFORE the one being projected onto. Rebuilding the fraction from the state instead makes the
-tick a step commits read as a small negative fraction, which clamps onto `StepFrom`: exactly where the previous
-step's remap had already parked the body, so the two steps meet continuously
+tick a step commits read as fraction zero on the new step, which is `StepFrom`: exactly the tile the previous
+step's fraction of one had already parked the body on, so the two steps meet continuously
 (`A_windowed_local_pose_stays_continuous_across_a_step_commit_and_a_turn`).
 
-**What the bound is measured against.** The state's own timeline. Both presentation paths carry a timeline offset
-that predates the window and is unchanged by it: the local player trails the command tick by up to one tick
-through the prediction layer's easing, and a remote rides the `InterpolationDelayTicks` delayed timeline. So a
-head's real catch-up is the window plus its path's offset, and the window is the half a game controls.
+**Where the rebuilt fraction is measured FROM, which the first cut got wrong.** From the commit. The first
+implementation measured it a tick further back, `(StepTicks - 1 + phase) / StepTotal`, on the reasoning that the
+prediction layer's easing runs a tick behind the command tick and the drawn body should follow it. That is true of
+the layer and wrong for the window, because it makes the fraction top out at `(StepTotal - 1) / StepTotal` and
+never reach 1. Any window inside one tick of the step's duration then leaves the body short of its tile and jumps
+it forward onto the next step's `StepFrom` at the commit. Measured on a real predicted walk that is 0.481 tiles
+per step at run cadence with a 0.45 s window, and a whole tile every tick at a one-tick cadence, where the ceiling
+is zero and the local glide vanishes entirely. The band is not exotic: at `TileStepTicks(4, 2)` and a
+quarter-second tick, the run sits in it for every window between 0.25 s and 0.5 s, so a game tuning by feel walks
+into it. Measured from the commit the fraction spans 0 to 1 across the step for every window and every cadence,
+and it is the same expression `Pose` builds for a remote out of `StepTicks` and its extra ticks, so the two paths
+agree by construction instead of by resemblance. The trade taken deliberately: the local catch-up is now the
+window on the render timeline rather than the window plus a tick, which is the timeline the invariant is about
+anyway.
+
+**What that alignment costs, and where it was already being paid** ([#732](https://github.com/APKiwiOrg/KhaozEngine/issues/732)).
+The simulator spends the click tick on the step itself, the "a click never costs a tick of standing still" rule, so
+the first tick of a freshly clicked route reads `StepTicks = 1` at the instant that step commits rather than zero.
+A fraction measured from the commit therefore starts that one step at `1 / StepTotal` instead of at zero, and the
+window remaps it up: a whole tile in a single frame at a 0.25 s window and `TileStepTicks(4, 2)`, once per clicked
+route. `TilePresenter.Pose` has always done this, so a remote already jumped a quarter tile at the start of a walk
+before windows existed and a whole one with a window, and what changed is that the local body now does the same
+instead of being smoothed out of it by the trailing tick. It is not an invariant break: the body lands EARLY, on
+the tile the rules already committed it to, so the divergence the invariant bounds only narrows. Closing it means
+closing it on both paths, because putting the local path back a tick is what caused the per-step pop above.
+
+**What the bound is measured against.** The state's own timeline. Each presentation path carries an offset of its
+own that predates the window and is unchanged by it, spelled out under the invariant above: for the local player a
+decaying correction offset, for a remote the `InterpolationDelayTicks` delayed timeline. So a head's real catch-up
+is the window plus its path's offset, and the window is the half a game controls.
 
 **No curve.** Linear inside the window, flat after it. An ease-out would spend its last frames crawling the final
 centimetres, which is the "still not there" the window exists to remove, and it would blur the one instant the

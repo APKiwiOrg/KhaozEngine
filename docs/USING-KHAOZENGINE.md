@@ -8445,14 +8445,21 @@ client.Presenter = new TilePresenter(document, client.Glide);
 - **It is presentation only.** The simulation, the replay, the reconciliation and the wire never see it, so the
   two heads stay byte-identical whatever a client sets. The correction-offset decay, teleport cuts and hard
   snaps are untouched too: the window remaps the step interpolation and nothing else.
-- **The bound is on the state's own timeline.** Each path adds the offset it always had on top: the local player
-  is drawn through the prediction layer's inter-tick easing, which trails the command tick by up to one tick,
-  and a remote rides the `InterpolationDelayTicks` timeline. So the catch-up a head measures is the window plus
-  that path's offset.
+- **The bound is on the state's own timeline, and each path adds the offset it always had on top.** The local
+  player is placed from the state the prediction layer is holding, so its catch-up is the window itself, plus
+  whatever is left of a decaying correction offset after a misprediction (zero on the ordinary deterministic
+  case). A remote rides the `InterpolationDelayTicks` timeline, which is a whole tick per delay tick and defaults
+  to two of them. So the catch-up a head measures is the window plus that path's offset, and for remotes that is
+  much the larger half.
 
 The invariant is the reason to reach for it, more than the feel: **the drawn body never diverges from the
-committed tile by more than the window**, so a combat or boss design that reads committed tiles is reading what
-the player sees, and there is no true-tile metagame to learn.
+committed tile by more than the window, plus the offset its own drawing path already carried**, so a combat or
+boss design that reads committed tiles is reading what the player sees, and there is no true-tile metagame to
+learn. Size the design against the sum rather than against the window alone. At the default
+`InterpolationDelayTicks = 2` and a quarter-second tick, a remote's real divergence is the window plus half a
+second, which is longer than a whole walking step: a design that sets a 120 ms window and reads other players'
+tiles off it is working with a bound five times the one it named. Tighten `InterpolationDelayTicks` too, or budget
+for the sum.
 
 **A pose names the tile CENTRE**, half a tile in from the corner on each axis, which is the middle of the tile's
 own ground quad and the point `TileObjectProps.AnchorPosition` puts a 1x1 prop on, so an avatar and the thing it

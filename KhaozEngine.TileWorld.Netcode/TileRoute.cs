@@ -55,8 +55,13 @@ public readonly struct TileRoute : IEquatable<TileRoute>
     /// <summary>Number of steps still to take. The length of the wire form, and the length equality compares.</summary>
     public int Remaining => IsIdle ? 0 : Tiles.Count - Index;
 
-    /// <summary>The tile the current step is entering. Throws rather than answering the start tile, because a
-    /// silently plausible answer here would show up as a player sliding into a tile nobody routed them to.</summary>
+    /// <summary>The tile the NEXT step will enter. Throws rather than answering the start tile, because a
+    /// silently plausible answer here would show up as a player sliding into a tile nobody routed them to.
+    /// <para>NOT the tile a step in flight is entering: that is <see cref="TileMoveState.Tile"/>, because a step
+    /// commits its tile and <see cref="Advanced"/>s the route on the tick it STARTS. An overlay highlighting the
+    /// walk ahead therefore starts at <c>state.Tile</c> and continues through <see cref="Tiles"/> from
+    /// <see cref="Index"/>, which is a connected path. Starting it here instead leaves a hole exactly where the
+    /// body is walking.</para></summary>
     /// <exception cref="InvalidOperationException">The route is idle.</exception>
     public TileCoord Next => IsIdle
         ? throw new InvalidOperationException("An idle TileRoute has no next tile. Check IsIdle first.")

@@ -20,7 +20,11 @@ Grimhollow's playtests ruled on: a tile step commits its tile when it STARTS rat
 first also changes when a click is answered, so read their two bullets before repinning. Riding on the first is
 the presentation the lead commit asks for: the drawn body GLIDES its whole step linearly into the tile the rules
 have already committed it to, which is the OSRS model, has no knob, and leaves a lag the game makes VISIBLE with a
-true-tile marker rather than the engine making it small.
+true-tile marker rather than the engine making it small. Riding on that in turn is
+`TileWorldClient.TryGetLatestRemoteTile` ([#736](https://github.com/APKiwiOrg/KhaozEngine/issues/736)), which
+closes the one-sided half of that legibility: a REMOTE's committed tile is now readable off the freshest snapshot
+this client holds rather than only off the delayed render timeline, so a rule about another player is as honest as
+one about your own.
 
 - **The rule is retired in code.** `MslBindingOrder.CheckPrefix`, which required every stage's resources to
   be a prefix of the layout's per index space, is deleted, so `ShaderValidation.ValidatePair` no longer
@@ -141,9 +145,10 @@ true-tile marker rather than the engine making it small.
   - **THE INVARIANT: the drawn body lags its committed tile by up to one STEP.** Half a tile on average, zero at
     the instant it lands, never ahead. Combat, reach, occupancy and what a click resolves against are all answered
     about the committed tile, so a design that reads committed tiles is reading something a player watching the
-    avatar cannot see. **A REMOTE adds `InterpolationDelayTicks` on top, unchanged**: two ticks by default, a
-    whole tick each, which at a 1/6 s tick is 0.33 s more than the step's own term. Size such a design against the
-    SUM.
+    avatar cannot see. **A REMOTE's BODY adds `InterpolationDelayTicks` on top, unchanged**: two ticks by default,
+    a whole tick each, which at a 1/6 s tick is 0.33 s more than the step's own term. Size a design that DRAWS
+    other players against the SUM. Its committed TILE need not pay that second half, see
+    `TryGetLatestRemoteTile` below.
   - **The mitigation for that lag is VISIBILITY, and it is the game's to draw.** Making the lag smaller is the
     wrong axis: at any lag the invisible truth is still invisible, and the motion has to be distorted to buy it.
     Making it legible costs the motion nothing. So a head draws a TRUE-TILE MARKER on the committed tile and a
@@ -154,8 +159,9 @@ true-tile marker rather than the engine making it small.
     facing)` is the continuous form every other entry point here goes through.
   - **`TileWorldClient.TryGetRemoteTile(netId, out tile)` is new**: the tile a remote is committed to, off its
     replicated state, on that remote's own delayed timeline. `TryGetRemotePose` is that remote's BODY and the two
-    differ by a step by design. A remote's ROUTE stays unavailable, because it is owner-only on the wire, so a
-    path highlight is a local-player overlay only.
+    differ by a step by design. **`TryGetLatestRemoteTile` is the other half of this pair**, added later in the
+    same release, and it is the one a RULE reads. See its own bullet below. A remote's ROUTE stays unavailable,
+    because it is owner-only on the wire, so a path highlight is a local-player overlay only.
   - **The local player's reads were already there and are now documented as load-bearing.**
     `client.Prediction.PredictedState` carries the committed `Tile` and the remaining `Route`, allocation-free per
     frame and never a snapshot stale (it is the client's own prediction, so the tile moves a tick before the
@@ -183,6 +189,32 @@ true-tile marker rather than the engine making it small.
     heads replay byte-identically whatever anybody draws. `TileMoveState.StepFrom` is on the state and on the wire
     because the simulator, the reconcile and an observer's snapshot all need it, and it is also exactly what the
     body is drawn between.
+- **`TileWorldClient.TryGetLatestRemoteTile` is new: a remote's committed tile, honestly, off the FRESHEST
+  snapshot rather than the delayed timeline** ([#736](https://github.com/APKiwiOrg/KhaozEngine/issues/736), R0 of
+  the tile combat program). `TryGetRemoteTile` reads whatever the fixed-delay interpolation wrote into the world
+  at the delayed render time, so the committed tile a client held for a remote was behind
+  `InterpolationDelayTicks` as well as behind the transport. Fine for an overlay drawn ON the body, wrong for any
+  rule asked about the remote, and combat is being built on exactly that read. The new one captures the tiles in
+  `OnSnapshot` at the one instant the world holds the newest applied server state, before the next
+  `AdvancePresentation` overwrites it.
+  - **`TryGetRemoteTile` is UNCHANGED**, name, timeline and all. It agrees with `TryGetRemotePose` because both
+    resample the same delayed timeline, and that agreement is the property an overlay drawn on a body needs, so
+    changing its meaning would have been a silent behaviour change that broke the read it is good at. Its doc
+    gained the paragraph saying which of the pair answers which question. **Draw off `TryGetRemoteTile`, RULE off
+    `TryGetLatestRemoteTile`.**
+  - **The overload reports the answer's AGE in ticks.** `TryGetLatestRemoteTile(netId, out tile, out ticksOld)`
+    gives client wall clock since that snapshot was applied, divided by `TickSeconds`, so an overlay can fade or
+    hide a marker it can no longer stand behind. Under one tick in a healthy session, climbing without bound
+    through a starvation. It does NOT include the one-way latency the snapshot spent in flight, which no client
+    can see without an RTT estimate this package does not keep, so it is a LOWER bound.
+  - **Measured in loopback** at a 1/6 s tick with the default two tick delay: the new read stays within one
+    snapshot interval of the tile the server has committed, while `TryGetRemoteTile` runs 2 to 3 ticks behind it.
+    Both refuse an unknown id and the local player, both are allocation free, and neither extrapolates.
+  - **[#696](https://github.com/APKiwiOrg/KhaozEngine/issues/696) is closed as superseded** by the same
+    verification. Its premise was the one-step-behind remote reconstruction, which the lead commit above deleted
+    when it put `StepFrom` on the everyone channel. The drawn body now lags max 1.4 ticks and mean 0.95 at BOTH
+    cadences, which is a pure time delay rather than the step-quantized cost that issue was about. The package
+    README's known-limit bullet is rewritten to that.
 
 ## 18.0.0
 

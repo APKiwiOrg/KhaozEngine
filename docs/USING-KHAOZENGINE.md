@@ -8460,9 +8460,11 @@ client.TryGetRemotePose(netId, out TilePose them);              // everybody els
 **THE INVARIANT, and it is the thing to design against: the drawn body LAGS its committed tile by up to one
 step.** Half a tile on average, zero at the instant it lands, and never ahead. Combat, reach, occupancy and what
 a click resolves against are all answered about the committed tile, so a player reading the avatar alone is
-reading something the rules moved on from. **A REMOTE adds `InterpolationDelayTicks` on top**, a whole tick per
-delay tick and two by default: at a 1/6 s tick that is 0.33 s more. Size a design that reads other players'
-tiles against the SUM.
+reading something the rules moved on from. **A REMOTE's BODY adds `InterpolationDelayTicks` on top**, a whole
+tick per delay tick and two by default: at a 1/6 s tick that is 0.33 s more. Size a design that draws other
+players against the SUM. Its committed TILE need not pay that second half: `TryGetLatestRemoteTile` reads the
+newest applied snapshot rather than the delayed timeline, so a rule about a remote is behind the transport and
+one snapshot interval only. See the two-reads bullet below for which to use where.
 
 **The mitigation is VISIBILITY, and it is yours to draw.** Do not try to shrink the lag: that was tried twice and
 the motion is worse both times. Draw the truth instead, so the lead is something the player reads rather than
@@ -8483,8 +8485,10 @@ for (int i = me.Route.Index; i < me.Route.Tiles.Count; i++)
     Draw(routeMesh, step.Position, step.Yaw);
 }
 
-// And for another player, the same marker, on that player's own delayed timeline.
-if (client.TryGetRemoteTile(netId, out TileCoord theirs))
+// And for another player, the same marker. TWO reads, and which one you want depends on what the
+// marker is FOR. See the two bullets below: this is the one place in the tile client where picking
+// the wrong read is silent and wrong rather than obviously broken.
+if (client.TryGetRemoteTile(netId, out TileCoord theirs))          // agrees with their drawn body
     Draw(markerMesh, client.Presenter.PoseAt(theirs).Position, 0f);
 ```
 
@@ -8502,8 +8506,37 @@ if (client.TryGetRemoteTile(netId, out TileCoord theirs))
 - **`PoseAt(tile)` takes the tile's own plane**, so a marker on an upper floor draws at the right height, and it
   lands on exactly the centre a standing body draws on. Pass a `TileDirection` for a marker that has a facing,
   otherwise the yaw is 0 and costs nothing to ignore.
+- **A REMOTE HAS TWO TILE READS, and they answer different questions.** `TryGetRemoteTile` reads the DELAYED
+  render timeline, the same one `TryGetRemotePose` draws the body off, so the two agree with each other and both
+  sit `InterpolationDelayTicks` behind what the server has committed. `TryGetLatestRemoteTile` reads the newest
+  APPLIED snapshot, so it is behind by the transport latency plus at most one snapshot interval and nothing else.
+  Pick by what the read is for:
+
+  ```csharp
+  // An overlay drawn ON the body: a marker under a walking remote, a nameplate anchor, a debug view of
+  // what is on screen. Use the delayed read, because it cannot disagree with the body it sits under.
+  if (client.TryGetRemoteTile(netId, out TileCoord drawn))
+      Draw(markerMesh, client.Presenter.PoseAt(drawn).Position, 0f);
+
+  // A RULE: is that monster adjacent, what did I just click, is my target still in reach. Use the honest
+  // read, and fade or hide the marker when the answer has gone stale rather than drawing a confident ring
+  // on a tile the remote left.
+  if (client.TryGetLatestRemoteTile(netId, out TileCoord tile, out float ticksOld))
+  {
+      float confidence = MathF.Max(0f, 1f - ticksOld / 4f);
+      if (confidence > 0f) Draw(targetRing, client.Presenter.PoseAt(tile).Position, 0f, confidence);
+  }
+  ```
+
+  `ticksOld` is client wall clock since that snapshot was applied, in command ticks. It sits under one tick in a
+  healthy session and climbs without bound while snapshots are not arriving, which is the case worth drawing
+  differently. It does NOT include the one-way latency the snapshot spent in flight, which no client can see
+  without an RTT estimate this package does not keep, so it is a LOWER bound and a threshold on it wants headroom
+  for the link. Both reads are allocation free, both answer false for an unknown id and for the local player, and
+  neither ever extrapolates: a starved read keeps answering the last thing the server said and tells you how old
+  that is.
 - **A remote's ROUTE is not available, deliberately.** It is owner-only on the wire, so no client can highlight
-  another player's path. `TryGetRemoteTile` gives you their committed tile and that is the whole of it.
+  another player's path. The two tile reads above give you their committed tile and that is the whole of it.
 - **`TilePresenter.Pose(state)` is the BODY**, `TilePresenter.PoseAt(tile)` is the RULES. Mixing them up draws
   the marker on the avatar and makes the lead invisible again, which is the one failure this whole section
   exists to prevent.

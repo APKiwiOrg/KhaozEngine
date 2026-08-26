@@ -51,17 +51,26 @@ measurements.
 **THE INVARIANT: the drawn body lags its committed tile by up to one STEP.** Half a tile on average, zero at the
 instant it lands, never ahead. Combat, reach, occupancy and what a click resolves against are all answered about
 the committed tile, so a design that reads committed tiles is reading something a player watching the avatar
-cannot see. A REMOTE adds the delayed timeline `TileWorldClientConfig.InterpolationDelayTicks` names on top, two
-ticks by default and a whole tick each: at a 1/6 s tick that is 0.33 s more. Size a design that reads other
-players' tiles against the SUM.
+cannot see. A REMOTE's BODY adds the delayed timeline `TileWorldClientConfig.InterpolationDelayTicks` names on
+top, two ticks by default and a whole tick each: at a 1/6 s tick that is 0.33 s more. Size a design that DRAWS
+other players against the SUM. Its committed TILE need not pay that second half, see the two reads below.
 
 **The mitigation is VISIBILITY, and it is the game's to draw.** Shrinking the lag is the wrong axis and was tried
 twice: at any lag the invisible truth is still invisible, and the motion has to be distorted to buy it. Drawing
 the truth costs the motion nothing. So this package's job is to leave the reads clean, and they are:
 `client.Prediction.PredictedState` gives the local player's committed `Tile` and remaining `Route` with no
-allocation and nothing a snapshot stale, `client.TryGetRemoteTile(netId, out tile)` gives another player's,
-and `TilePresenter.PoseAt(tile)` maps any of them onto the same centre a standing body draws on. A remote's route
-is owner-only on the wire, so a path highlight is a local-player overlay only.
+allocation and nothing a snapshot stale, and `TilePresenter.PoseAt(tile)` maps any tile onto the same centre a
+standing body draws on. A remote's route is owner-only on the wire, so a path highlight is a local-player overlay
+only.
+
+**A remote's committed tile has TWO reads, and picking the wrong one is silent.**
+`client.TryGetRemoteTile(netId, out tile)` is on the DELAYED render timeline, so it agrees with the body
+`TryGetRemotePose` draws and both sit `InterpolationDelayTicks` behind the server. That agreement is exactly what
+an overlay drawn ON the body wants and exactly what a RULE must not have.
+`client.TryGetLatestRemoteTile(netId, out tile, out ticksOld)` is on the newest APPLIED snapshot, so it trails by
+the transport latency plus at most one snapshot interval, and it reports how old the answer is in ticks so an
+overlay can fade a stale marker rather than draw a confident one. Both are allocation free, both refuse an unknown
+id and the local player, and neither extrapolates. `docs/USING-KHAOZENGINE.md` carries the worked example.
 
 ## The types
 
@@ -140,7 +149,12 @@ is owner-only on the wire, so a path highlight is a local-player overlay only.
   for everybody else, and its OWN command tick, phase-offset from the server's rather than driven by snapshot
   arrival. `Queue` on a click, `Tick` on the command clock, `Poll` once a frame, `AdvancePresentation` before
   drawing. `LocalPose` and `TryGetRemotePose` are the BODIES to draw. `Prediction.PredictedState` (its `Tile` and
-  its `Route`) and `TryGetRemoteTile` are the RULES, which is what the true-tile overlay reads.
+  its `Route`) is the RULES for the local player, which is what the true-tile overlay reads. A REMOTE has two tile
+  reads and they answer different questions: `TryGetRemoteTile` is on the delayed render timeline, so it agrees
+  with the body `TryGetRemotePose` draws and is right for an overlay drawn ON that body, while
+  `TryGetLatestRemoteTile` is on the newest applied snapshot, so it is right for anything the RULES will answer.
+  Its overload also reports how many ticks old the answer is, for an overlay that fades a stale marker rather than
+  lying with it.
 - **`TilePresenter`** / **`TilePose`** - the pure map from a tile point to a world position and a yaw, and the only
   file in the package that consults `TileWorldSpace`. Two answers, and mixing them up is the one mistake here.
   `Pose(state, extraTicks)` is the BODY: the linear glide from `StepFrom` into `Tile` by the step's own tick
@@ -288,10 +302,14 @@ so a game's own tokens can never collide with them.
   `pollRate * MaxCommandsPerSecond * TickSeconds` messages per second. It is the `RateLimiter` contract the rest of
   the engine's servers run on, and the fleet-wide unit defect is
   [#681](https://github.com/APKiwiOrg/KhaozEngine/issues/681).
-- **A remote is drawn one step behind.** A remote's route is owner-only, so an observer's snapshot carries a tile
-  plus step progress, and the client glides the remote from the tile it LEFT to the tile it is on now.
-  Replicating the step direction so a remote glides toward the tile it is entering is
-  [#696](https://github.com/APKiwiOrg/KhaozEngine/issues/696).
+- **A remote's BODY is drawn `InterpolationDelayTicks` behind.** Not a step behind: the one-step-behind
+  reconstruction went with the lead commit in 18.1.0, which put `StepFrom` on the everyone channel, so an observer
+  is handed the step's two tiles and glides FORWARD into the committed one. What is left is the delay itself,
+  measured in this package's loopback at max 1.4 ticks and mean 0.95 at BOTH cadences, which is what a pure time
+  delay looks like against a step-quantized one.
+  [#696](https://github.com/APKiwiOrg/KhaozEngine/issues/696) is closed with those numbers. The delay is the price
+  of surviving a lost snapshot, so shrinking it is a trade rather than a fix, and it applies to the BODY: a rule
+  about a remote reads `TryGetLatestRemoteTile`, which is not held behind it.
 - **Snapshots are FULL, not per-client deltas.** Every serve writes the viewer's whole area of interest.
   Per-client deltas need an ack channel and a capability handshake the tile wire does not have, which is
   [#699](https://github.com/APKiwiOrg/KhaozEngine/issues/699). The cost of BUILDING each full snapshot is

@@ -411,13 +411,16 @@ presenter says.
 
 **The overlay reads, which section 5.2 delegates here.** The ruling makes the visual-truth lag legible rather than
 small, and the marker and the route highlight that do it are a consumer overlay, so what this package owes is
-reads that need no forking around. There are four, and all of them are on the shipped surface:
+reads that need no forking around. There were four when this document shipped and there are five now, all of them
+on the shipped surface (the fifth is R0 of `TILE-COMBAT-ACTORS-DESIGN-2026-08-27.md`, which found that the remote
+row below answers only the DRAWING half of the question):
 
 | the overlay wants | the read | notes |
 |---|---|---|
 | the local player's committed tile | `client.Prediction.PredictedState.Tile` | the client's OWN prediction, so it moves a tick before the server could report it. Never a snapshot stale. |
 | the remaining route | `PredictedState.Route`, indexed from `Route.Index` to `Tiles.Count` | `Tiles` is an `IReadOnlyList`, so INDEX it: a `foreach` boxes an enumerator every frame. The walk starts at `state.Tile`, not at `Route.Next`, because a step pops the route as it commits. |
-| a remote's committed tile | `client.TryGetRemoteTile(netId, out tile)` | on that remote's own delayed timeline. Its ROUTE is owner-only on the wire, so a path highlight is local-player only, deliberately. |
+| a remote's tile, to draw ON its body | `client.TryGetRemoteTile(netId, out tile)` | on that remote's own delayed timeline, so it agrees with the body `TryGetRemotePose` draws and both sit `InterpolationDelayTicks` behind the server. Its ROUTE is owner-only on the wire, so a path highlight is local-player only, deliberately. |
+| a remote's tile, to ASK A RULE about | `client.TryGetLatestRemoteTile(netId, out tile, out ticksOld)` | on the newest APPLIED snapshot, so it trails by the transport plus at most one snapshot interval and not by the delay. `ticksOld` is the answer's age, for an overlay that fades a stale marker. Added by R0 of the combat design. |
 | any of them as a world position | `client.Presenter.PoseAt(tile)` | the tile's own plane, on the same centre a standing body draws on. `Pose(state)` is the BODY and would put the marker back on the avatar. |
 
 `PredictedState` returns the struct by value and `TileRoute` holds the pathfinder's list by reference, so the

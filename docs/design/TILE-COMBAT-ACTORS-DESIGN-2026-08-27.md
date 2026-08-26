@@ -884,6 +884,17 @@ possibly part-superseded by the round-four presenter), then delivers whatever re
 `TryGetRemoteTile`'s contract, and re-verifies Grimhollow's declined true-tile-for-remotes decision at
 `HollowmereSession.Draw.cs:62-65` against the new read. Small round, its own review, no combat types in it.
 
+**R0 LANDED, as a SIBLING read rather than a change of meaning.** `TryGetLatestRemoteTile` answers off the newest
+applied snapshot (captured in `TileWorldClient.OnSnapshot` at the one instant `World` holds it, before
+`AdvancePresentation` overwrites it with the delayed timeline), with an overload reporting the answer's age in
+ticks for R2's fade. `TryGetRemoteTile` keeps its name, its timeline and its agreement with `TryGetRemotePose`,
+which is the property an overlay drawn ON a body needs and the one a change of meaning would have destroyed. No
+consumer called it, so the sibling costs nothing anyone has to migrate. #696 was verified superseded and closed
+with the loopback numbers: the drawn body lags max 1.4 ticks and mean 0.95 at BOTH cadences, which is the delay
+alone rather than a step-quantized reconstruction. Grimhollow's decline at `HollowmereSession.Draw.cs:62-65` still
+stands for the MARKER it is about (a marker under a remote wants the delayed read, and drawing the honest tile
+there would disagree with the body under it), and R2 reads the honest one for the combat overlay instead.
+
 **R1, engine.** Actors, the combat seam, the wire, the tests, one minor version. Task shape:
 
 1. `TileActor`, `TileHealth`, `TileCombatState`, `SpawnActor` / `DespawnActor`, and the registry entry for id 19.

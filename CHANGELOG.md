@@ -17,9 +17,10 @@ also makes the windowed create path honour a `KE_GRAPHICS_BACKEND` pin
 Grimhollow's playtests ruled on: a tile step commits its tile when it STARTS rather than when it ends, and a
 `TilePresenter` pose names the tile CENTRE rather than its corner
 ([#730](https://github.com/APKiwiOrg/KhaozEngine/issues/730)). **Both change what a consumer draws**, and the
-first also changes when a click is answered, so read their two bullets before repinning. Riding on the first is a
-DAMPED CHASE: the drawn body pursues its committed tile continuously, closing the gap by half every
-`ChaseHalfLifeSeconds`, which is what the movement feel finally landed on after two rejected rounds.
+first also changes when a click is answered, so read their two bullets before repinning. Riding on the first is
+the presentation the lead commit asks for: the drawn body GLIDES its whole step linearly into the tile the rules
+have already committed it to, which is the OSRS model, has no knob, and leaves a lag the game makes VISIBLE with a
+true-tile marker rather than the engine making it small.
 
 - **The rule is retired in code.** `MslBindingOrder.CheckPrefix`, which required every stage's resources to
   be a prefix of the layout's per index space, is deleted, so `ShaderValidation.ValidatePair` no longer
@@ -125,74 +126,63 @@ DAMPED CHASE: the drawn body pursues its committed tile continuously, closing th
   coordinate does. Prediction smoothing and yaw are unchanged, because the offset is constant along a step.
   **A consumer that centred the pose itself must delete that compensation at the repin, or its avatars
   move a whole tile.** Grimhollow's `CentredPose` shim is exactly that and goes when it adopts.
-- **A DAMPED CHASE draws the body: it pursues its committed tile continuously, halving the remaining gap every
-  `ChaseHalfLifeSeconds`.** The lead-commit above made the simulation lead the picture by a whole step, and this
-  is the third and settled answer to what the picture should do about it. The first two were both ruled out by
-  playtest. A full-step linear glide is a constant slide that reads as OSRS. Crossing the step in a fixed number
-  of seconds and then holding the body on its tile is a metronome at run cadence: the body hops and then stands,
-  and the rest gap is structural rather than a tuning miss, because any crossing shorter than the step leaves one
-  and any crossing that fills the step is the slide again. Measured through the real client wiring at a 1/6 s tick
-  and 60 fps, a 0.1 s crossing spent 157 of a 12 tile run's 220 frames drawing the body at a bit-identical
-  position, in runs of 14, once per commit.
-  - **`TileChase`** is the type: one per body, stepped with the frame's `dt`, closing the gap by
-    `2^(-dt / halfLife)`. Continuous motion mid route (there is no schedule to finish, so the body is still
-    closing when the next tile commits), a crisp attack at every commit (the velocity is highest right after the
-    target jumps), and a smooth settle onto the last tile with no overshoot, which is structural: the gap is
-    SCALED by a factor in (0, 1], so the drawn point converges on the target and cannot pass it.
-  - **Frame-rate independent by construction**, because the exponent is additive: two frames of half a `dt` land
-    where one frame of `dt` does, so 30 fps and 144 fps draw the same body at the same wall-clock instants
-    (pinned to within 1e-4 tiles over a 60 sample route).
-  - **`TileWorldClientConfig.ChaseHalfLifeSeconds`** is the knob, and it **defaults to 0.07 s**
-    (`TileChase.DefaultHalfLifeSeconds`) rather than to a sentinel that would preserve the old glide. There is no
-    old glide worth preserving: it is the feel the ruling rejected, and a default that shipped it would leave
-    every consumer opted out of the answer. Sized against the RUN, which is where the metronome was reported: at
-    a 1/6 s tick and `TileStepTicks(4, 2)` a running step is 4.8 half lives, so the gap is still 3.7 per cent of
-    its post-commit size when the next tile commits and there is no rest gap to read as a beat. Zero draws the
-    body on its committed tile the instant the tile commits, which is the strictest reading of the invariant.
-  - **The invariant is restated, and it is a different shape now: STEADY-STATE LAG plus SETTLE.** The drawn body
-    lags its committed tile by `speed * halfLife / ln 2` on average while it is moving, which at the default and
-    a 1/6 s tick is **0.15 tiles walking and 0.30 running**, both well inside the 0.5 a full-step glide averages.
-    When the body stops it converges onto the tile, within 3 per cent after five half lives (0.35 s) and exactly
-    on it after about ten (0.7 s). So a design that reads committed tiles is reading what the player sees, with
-    no true-tile metagame worth learning, and a STANDING player is drawn exactly on their tile rather than merely
-    near it. **A remote adds `InterpolationDelayTicks` on top, unchanged**: at the default two ticks and a 1/6 s
-    tick that is 0.33 s of extra divergence, which is more than the chase's own term. Size a design against the
-    sum, or tighten the delay alongside the half life.
-  - **Discontinuities RESET the chase rather than being pursued.** A teleport (an authoritative epoch advance), a
-    hard snap, the prediction seed, and a remote first seen or seen again more than one Chebyshev step from where
-    it was all place the body outright, on the frame the snapshot lands. Chasing across one would slide the
-    avatar over every tile in the gap while the head's camera had already been warped by the teleport event.
-  - **The chase target is the bare committed tile, and the prediction layer's correction offset is deliberately
-    not in it.** That offset keeps `ClientPrediction.RenderedState` continuous across a rebase, and the position
-    it keeps continuous is the step-fraction glide, which nothing draws any more. Adding it to the chase's OUTPUT
-    is a pop followed by a reversal, the rubber band. Folding it into the chase's TARGET looks like the fix, and
-    is not: the offset takes up the POSITION delta while the target moves by the TILE delta, and on a lattice the
-    two are not equal, so the ordinary sub-tile correction (the authority agrees about the tile and disagrees
-    about how far through the step the body is) would push the drawn body a fraction of a tile PAST its committed
-    tile, in the opposite direction to the correction, and bring it back. Chasing the bare tile has neither
-    failure and loses nothing: the chase IS the smoother, a correction big enough to matter moves the tile, and
-    one big enough to cut is a hard snap. Pinned by a test in which a sub-tile correction leaves the drawn body
-    bit-identical for 90 frames.
-  - **`TilePresenter` is a pure pose mapper**, and the smoothing lives on the client because it is
-    STATEFUL. `TilePresenter.PoseAt(tilePlanar, planeIndex, facing)` is the new mapping a chased point is drawn
-    through, `TilePresenter.Pose(state)` now returns the state's COMMITTED TILE centre (the rules' answer, for a
-    minimap or a debug overlay) and has lost its `extraTicks` parameter, and `TilePresenter.LocalPose(prediction)`
-    is gone. **A head draws the local player through `client.LocalPose` and remotes through
-    `client.TryGetRemotePose` as before**, and builds its presenter as `new TilePresenter(document)` with no knob
-    to pass, so a presenter replaced when the document loads can no longer silently lose the feel.
-  - **`TileWorldClient.ChaseHalfLifeSeconds`** is the one number both paths were built from, exposed so a game can
-    build a `TileChase` for a body of its own (a pet, a follower, a mount) and have it move on the same curve as
-    the players around it.
+- **The drawn body GLIDES its whole step, linearly, and the lag that leaves is the invariant.** The lead-commit
+  above made the simulation lead the picture, and the picture walks in behind it: from `StepFrom` into `Tile` at a
+  constant speed over the step's own tick count, arriving exactly as the next step commits. That is the OSRS model
+  and it is what 18.1.0 ships. Both paths run it: the local player through
+  `ClientPrediction.RenderedState` (the same glide eased between command ticks, with the decaying correction
+  offset folded in) and a remote off the `InterpolationDelayTicks` timeline through
+  `TilePresenter.Pose(state, extraTicks)`.
+  - **There is NO knob, and there deliberately is none.** The glide's duration is the step's own `StepTicks`
+    total, which the simulator stamps on the state and puts on the wire, so the local body and every remote are
+    drawn on one curve by construction and a game drawing a body of its own gets the same curve from
+    `TilePresenter.Pose`. Frame-rate independent for the same reason: the fraction is an integer tick count over
+    an integer total and the local easing is a plain lerp of it, so nothing accumulates per frame.
+  - **THE INVARIANT: the drawn body lags its committed tile by up to one STEP.** Half a tile on average, zero at
+    the instant it lands, never ahead. Combat, reach, occupancy and what a click resolves against are all answered
+    about the committed tile, so a design that reads committed tiles is reading something a player watching the
+    avatar cannot see. **A REMOTE adds `InterpolationDelayTicks` on top, unchanged**: two ticks by default, a
+    whole tick each, which at a 1/6 s tick is 0.33 s more than the step's own term. Size such a design against the
+    SUM.
+  - **The mitigation for that lag is VISIBILITY, and it is the game's to draw.** Making the lag smaller is the
+    wrong axis: at any lag the invisible truth is still invisible, and the motion has to be distorted to buy it.
+    Making it legible costs the motion nothing. So a head draws a TRUE-TILE MARKER on the committed tile and a
+    HIGHLIGHT over the remaining route, and this release's job was to leave those reads clean.
+  - **`TilePresenter.PoseAt` is public, in two overloads**, and it is the mapping an overlay goes through.
+    `PoseAt(tile)` places a whole `TileCoord` on the same centre a standing body draws on, taking the tile's own
+    plane, which is the call a marker and each highlighted route tile make. `PoseAt(tilePlanar, planeIndex,
+    facing)` is the continuous form every other entry point here goes through.
+  - **`TileWorldClient.TryGetRemoteTile(netId, out tile)` is new**: the tile a remote is committed to, off its
+    replicated state, on that remote's own delayed timeline. `TryGetRemotePose` is that remote's BODY and the two
+    differ by a step by design. A remote's ROUTE stays unavailable, because it is owner-only on the wire, so a
+    path highlight is a local-player overlay only.
+  - **The local player's reads were already there and are now documented as load-bearing.**
+    `client.Prediction.PredictedState` carries the committed `Tile` and the remaining `Route`, allocation-free per
+    frame and never a snapshot stale (it is the client's own prediction, so the tile moves a tick before the
+    server could report it). One gotcha is now written down: `TileRoute.Tiles` is an `IReadOnlyList`, so a
+    highlight INDEXES it from `Route.Index` rather than `foreach`ing, which would box an enumerator every frame.
+    And `TileRoute.Next` is the tile the NEXT step will enter, not the one in flight (a step pops the route as it
+    commits, so the in-flight tile is `state.Tile`) - its doc said otherwise and now says this.
+  - **Discontinuities CUT, and one layer decides it.** A teleport (an authoritative epoch advance) and a hard snap
+    both zero `ClientPrediction`'s correction offsets, so `LocalPose`, which is nothing but `RenderedState`, is on
+    the corrected position on the frame the snapshot lands. A remote first seen, or seen more than one Chebyshev
+    step from where it was, is stamped afresh and drawn on its new tile. Nothing slides across the tiles between.
   - **`TileWorldClient.AdvancePresentation` refuses a frame time that is not a finite positive number of
     seconds.** The clamp it used returns NaN for a NaN input, and the presentation clock ACCUMULATES, so one bad
     frame took the remote render timeline out for the rest of the session rather than for a frame. An infinite dt
-    is refused in the same breath, since `2^(-inf / h)` is zero and would land every body on its target like a
-    teleport nobody ordered. Negative, zero, infinite and NaN all advance nothing now, and the sanitized value is
-    what the prediction layer's own presentation advance is handed too, so one guard covers both render clocks.
-  - **`TileMoveState.StepFrom` is untouched**, on the state and on the wire: the simulator and the reconcile both
-    need it, it is simply not what the body is drawn between any more. The simulation, the replay, the
-    reconciliation and the wire never read the half life, so two clients drawing at different half lives still
-    replay byte-identically and this stays the one movement number outside the determinism contract.
+    is refused in the same breath, since it would carry the render time past every buffered sample at once and
+    park every remote on its newest one. Negative, zero, infinite and NaN all advance nothing, and the sanitized
+    value is what the prediction layer's own presentation advance is handed too, so one guard covers both render
+    clocks.
+  - **`TilePresenter` is a pure pose mapper and holds no tuning**, so a presenter replaced when the document loads
+    (`new TilePresenter(document)`) cannot change how anything MOVES. `Pose(state, extraTicks)` is the BODY,
+    `PoseAt(tile)` is the RULES, `LocalPose(prediction)` is the body for a caller holding its own
+    `ClientPrediction`, and `client.LocalPose` is that call already wired. **A head draws the local player through
+    `client.LocalPose` and remotes through `client.TryGetRemotePose`**, as before.
+  - Presentation reads state and writes none, and no part of the simulation path reads a drawn position, so two
+    heads replay byte-identically whatever anybody draws. `TileMoveState.StepFrom` is on the state and on the wire
+    because the simulator, the reconcile and an observer's snapshot all need it, and it is also exactly what the
+    body is drawn between.
 
 ## 18.0.0
 

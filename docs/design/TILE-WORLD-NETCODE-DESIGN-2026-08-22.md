@@ -239,145 +239,96 @@ simulation owns can be taken back from it, which is the whole property the rever
 state plus command, and the reconcile replay lands byte-identically from a basis taken a tick either side of the
 commit (`A_replay_from_a_basis_taken_one_tick_either_side_lands_on_the_same_state`).
 
-## 5.2 The invariant: a damped chase bounds visual-truth divergence (18.1.0)
+## 5.2 The invariant, and the four rounds it took to settle the drawn body (18.1.0)
 
-The reversal above left the picture a whole step behind the rules, and the question of what the picture should do
-about it took three rounds to settle. The first two are recorded here because the third is only defensible against
-them.
+The reversal above left the picture behind the rules, and the question of what the picture should do about it went
+FOUR rounds inside this one unreleased version. All four are recorded, because the answer is round one and a
+reader who only sees round one will re-invent rounds two and three from the same reasoning that produced them the
+first time. Rounds two and three are not bad ideas that were dismissed. They were built, shipped inside 18.1.0,
+measured, and rejected at the owner's hand.
 
 **Round one, the full-step linear glide.** The body crosses the step at a constant speed over the step's whole
-duration. Playtest verdict: it feels like OSRS, a body permanently sliding half a tile behind the truth. That is
-the game the ruling explicitly did not want.
+duration, arriving exactly as the next step commits. Playtest verdict: it reads as runescape, a body permanently
+sliding half a tile behind the truth.
 
 **Round two, the glide window.** Cross the whole step in a fixed number of SECONDS and then hold the body on its
-tile for the rest of the step, with the seconds as the knob. Playtest verdict: correct as designed, and stuttery
-when moving around. It is a metronome, and the flaw is STRUCTURAL rather than a tuning miss. Any window shorter
-than the step finishes early and leaves a REST GAP before the next commit, and any window at or above the step is
-round one again. There is no value of the knob between the two failures. Measured through the real client wiring
-at a 1/6 s tick, `TileStepTicks(4, 2)` and 60 fps, a 0.1 s window spent 157 of a twelve tile run's 220 frames
-drawing the body at a bit-identical position, in runs of 14 frames, once per commit: six moving frames then
-fourteen dead ones, twelve times over.
+tile for the rest of the step, with the seconds as the knob, so a game could dial the lag down as far as it liked.
+Playtest verdict: correct as designed, and a stutter when moving around. The flaw is STRUCTURAL rather than a
+tuning miss. Any window shorter than the step finishes early and leaves a REST GAP before the next commit, and any
+window at or above the step is round one again. There is no value of the knob between the two failures. Measured
+through the real client wiring at a 1/6 s tick, `TileStepTicks(4, 2)` and 60 fps, the shipped 0.1 s window spent
+**157 of a twelve tile run's 220 frames drawing the body at a bit-identical position, in runs of 14 frames, once
+per commit**: six moving frames then fourteen dead ones, twelve times over, 71 per cent of the route standing
+still.
 
-**Round three, the damped chase, which is what ships.** The drawn body PURSUES its committed tile rather than
-crossing to it on a schedule: every frame it closes the remaining gap by `2^(-dt / halfLife)`, so the gap halves
-every half life and never reaches zero while the target keeps moving. `TileChase` is the type, one per body,
-stepped with the frame's `dt`.
+**Round three, the damped chase.** The body PURSUES its committed tile rather than crossing to it on a schedule:
+every frame it closes the remaining gap by `2^(-dt / halfLife)`. That answers the stutter completely and by
+construction rather than by tuning, because a chase has no schedule to finish, so the body is still closing when
+the next tile commits and no frame rests. It is frame-rate independent (the exponent is additive), cannot
+overshoot (the gap is scaled by a factor in (0, 1], so the target is the expression's fixed point), has a crisp
+attack at each commit and settles onto the last tile of a route without ringing. Its steady-state lag is
+`speed * halfLife / ln 2`, which at the shipped 0.07 s and a 1/6 s tick is 0.15 tiles walking and 0.30 running,
+both TIGHTER than round one's half tile. Playtest verdict: bad. Ruled at the owner's hand, on the feel, against
+numbers that were better than round one's on every axis anybody had thought to measure.
 
-**Why the shape answers all four things the ruling asked for.** Continuous motion mid route, because there is no
-schedule to finish: the body is still closing when the next tile commits, so no frame rests. A crisp attack,
-because the velocity is proportional to the gap and the gap is largest immediately after a commit. A smooth settle
-onto the final tile, because that same proportionality tapers the arrival instead of cutting it. And it is neither
-of the rejected feels: not the constant slide (the speed varies by more than an order of magnitude within a step)
-and not a hop (the speed is never zero and never discontinuous).
+**Round four, the ruling: round one was right, and it is the deliberate final answer.** The full-step linear glide
+returns, the window and the chase are both deleted outright (18.1.0 is unreleased, so there is nothing to shim and
+the chase deleted the window on exactly that argument), and there is no knob left. The glide's duration is the
+step's own tick count and nothing configures it.
 
-**No overshoot, structurally.** The gap is SCALED by a factor in (0, 1] rather than the position being lerped
-toward the target, so the target is the expression's fixed point: the drawn point converges onto it and cannot
-pass it, whatever the frame rate and whatever the target does. First order, one state variable, no velocity
-carried, nothing that can ring.
+**Why VISIBILITY beats TIGHTNESS, which is the thing worth writing down.** Rounds two and three attacked the same
+axis: the drawn body lags the committed tile, so make the lag smaller. That axis does not converge, and the two
+rounds are the evidence. Round three took the lag from half a tile to 0.15, kept continuous motion, and still felt
+wrong, because the problem was never the SIZE of the lag. It is that the lag is INVISIBLE. A player reading the
+avatar cannot see which tile the next click will be answered from, so at any lag they are guessing, and every
+tightening buys that guess a little accuracy at the cost of distorting the one thing the player CAN see, the
+motion. Round one's motion is the honest one: a constant speed between two lattice points, which is the motion the
+step actually is.
 
-**Frame-rate independent by construction.** The exponent is additive, so two frames of half a `dt` land exactly
-where one frame of `dt` does. 30 fps and 144 fps draw the same body at the same wall-clock instants (pinned to
-within 1e-4 tiles over a 60 sample route, each rate advancing in its own frames cut short at each sample instant).
-A per-frame "close a fixed share of the gap" would be off by more than a tile over the same route, which is the
-mistake this form exists to make impossible.
+So the lag is made LEGIBLE instead of small. The game draws a TRUE-TILE MARKER on the committed tile and a
+HIGHLIGHT over the remaining route, and the player reads the lead rather than learning it. That costs the motion
+nothing, it scales (a marker is as readable at one step of lag as at a tenth of one), and it is the same answer
+OSRS reached for the same reason. It is a CONSUMER-side overlay, deliberately: an engine-drawn marker would need
+a mesh, a material and an art direction none of which are the engine's to choose. What the engine owes is clean
+reads, and section 9 lists them.
 
-**THE INVARIANT, restated in the shape the chase gives it: steady-state lag plus settle.** While the body is
-moving, it lags its committed tile by `speed * halfLife / ln 2` on average. That falls out of integrating the
-decaying gap over one step period and is independent of the step SIZE, which is why one number in seconds means
-the same thing to a walk and to a run. When the target stops, the body converges onto the tile: 2^-n of the gap
-remains after n half lives, so three per cent after five and, once the residual falls under `TileChase.SettleTiles`
-(a thousandth of a tile), exactly nothing.
+**THE INVARIANT, in the shape the glide gives it: the drawn body lags its committed tile by up to one STEP.** Half
+a tile on average, exactly zero at the instant the body lands, and never ahead. Every rules question (combat,
+reach, region, occupancy, what a click resolves against) is answered about `TileMoveState.Tile`, which the body is
+still walking into. That is the trade the reversal in 5.1 bought and it is not smoothed away.
 
-Worked at the default `ChaseHalfLifeSeconds = 0.07` and a 1/6 s tick with `TileStepTicks(4, 2)`:
+**State the second term, every time the first one is stated.** The step above is the LOCAL player's whole
+divergence. A REMOTE is drawn off the `InterpolationDelayTicks` delayed timeline, a whole tick per delay tick and
+two by default: at a 1/6 s tick that is 0.33 s on top, which is more than the step's own term at run cadence. A
+boss telegraph built on the step alone and read against other players' bodies is built against something narrower
+than what ships. The fix is to tighten `InterpolationDelayTicks` alongside it, or to size the design against the
+sum. This section is what Grimhollow's combat contract cites, so the sum is what it states.
 
-| | step | speed | steady-state lag | settle to 3% | exactly on the tile |
-|---|---|---|---|---|---|
-| walk | 0.667 s | 1.5 tiles/s | **0.151 tiles** | 0.35 s | about 0.7 s |
-| run | 0.333 s | 3.0 tiles/s | **0.303 tiles** | 0.35 s | about 0.7 s |
+**Where the state lives: nowhere, which is the point.** Round three's chase was STATEFUL, so it needed a per-body
+instance on the client, a construction path for the local player and another for each remote, a discontinuity rule
+of its own to keep in step with the prediction layer's, and a knob threaded through the config. The glide is a
+function of the state, so all of that is gone. `TilePresenter` is a pure map again: `Pose(state, extraTicks)` is
+the BODY, `PoseAt(tile)` is the RULES, and `LocalPose(prediction)` is the body for a caller holding its own
+prediction. The local player's glide IS `ClientPrediction.RenderedState`, so the reconciliation offset, the
+inter-tick easing and the teleport and hard-snap cuts are all decided in ONE layer instead of two agreeing. That
+also means the composition problem round three had to solve does not exist here: the offset is anchored to
+`TileMoveState.Position`, which is exactly what this draws, so a rebase keeps the drawn position continuous and
+the offset decays off it, which is the whole reason a misprediction does not pop.
 
-Both are inside the 0.5 tiles a full-step linear glide averages, so the chase is a TIGHTER bound than the feel it
-replaced as well as a better one. And the settle half matters as much as the lag half for design above it: a
-STANDING player is drawn exactly on their tile rather than merely near it, so anything that reads a stationary
-player's tile is reading what the viewer sees, exactly.
+**Discontinuities CUT.** A teleport (an authoritative epoch advance) and a hard snap both zero
+`ClientPrediction`'s correction offsets, so the local body is on the corrected position on the frame the snapshot
+lands, with nothing here to reset. A remote first seen, or seen more than one Chebyshev step from where it was, is
+stamped afresh and drawn on its new tile. Nothing slides across the tiles in between.
 
-**State the second term, every time the first one is stated.** The lag above is the half a game controls, and it
-is not the whole number for a REMOTE. A remote is drawn off the `InterpolationDelayTicks` delayed timeline, a
-whole tick per delay tick and two of them by default: at a 1/6 s tick that is 0.33 s on top, which is MORE than
-the chase's own term at run cadence. A boss telegraph built on the chase's lag alone and read against other
-players' bodies is built against something narrower than what ships. The fix is to tighten `InterpolationDelayTicks`
-alongside the half life, or to size the design against the sum. Section 5.2 is what Grimhollow's combat contract
-cites, so the sum is what it states. The LOCAL player has no second term at all any more, which is a change from
-the window: it is drawn from a chase whose target is the committed tile itself, with no correction offset folded
-in (see below), so its divergence is exactly the lag plus the settle.
-
-**Why the knob is a half life in SECONDS.** Same argument the window's seconds had, and it survives the change of
-shape. A run is a shorter step than a walk, so a knob expressed as a share of the step would make the walking
-catch-up take twice as long as the running one, and a player reads that as two different games. In seconds the
-curve against the wall clock is the same one whatever the body is doing, which is also what makes the invariant
-above checkable: the number a designer tunes is the number the bound is stated in.
-
-**Why the default is 0.07 s rather than a sentinel that preserves the old glide.** The window defaulted to "no
-window" on the argument that a knob should be invisible until a game reaches for it, and that argument does not
-transfer. The window BOUNDED an existing divergence, so the widest bound was the shipped behaviour. The chase
-REPLACES the drawing curve, and the curve it replaces is the one the ruling rejected, so a sentinel default would
-ship the rejected feel and leave every consumer opted out of the answer. The number is sized against the RUN,
-because run cadence is where the metronome was reported: 0.333 s is 4.8 half lives, so the gap is still 3.7 per
-cent of its post-commit size when the next tile commits and there is no rest gap to read as a beat. A walking step
-is twice that, so a walk arrives and plants inside its step, which is the right difference between the two gaits
-rather than an accident. Zero is still available and still means the strictest reading of the invariant: the body
-is on its committed tile the instant the tile commits.
-
-**Where the state lives, and why the presenter went back to being pure.** A chase is STATEFUL, and the presenter
-was not: it is a function from a tile point to a world position, callable from a render thread, with no device and
-no history. So the chase lives per body on the client, exactly where each path already keeps its per-body
-presentation state: the local player's beside the prediction layer, each remote's beside that remote's
-interpolation entry. Both are constructed from the one `TileWorldClientConfig.ChaseHalfLifeSeconds`, so the local
-body and every remote share one curve by construction rather than by two call sites agreeing. `TilePresenter`
-gained `PoseAt`, which is the mapping a chased point is drawn through, and lost `LocalPose` and its window: a
-head draws through `TileWorldClient.LocalPose` and `TryGetRemotePose`, and a presenter replaced when the document
-loads can no longer silently lose the feel the way it could lose a window.
-
-**Discontinuities RESET the chase rather than being pursued.** A teleport (an authoritative epoch advance), a hard
-snap, the prediction seed, and a remote first seen or seen again more than one Chebyshev step from where it was
-all place the body outright on the frame the snapshot lands. The remote test is `TileMoveState.IsStepOrigin`, the
-same rule the wire decoder and `SetPlayerState` are held to, so a plane change and a reappearance across the map
-are covered by the same predicate as a teleport. Chasing across one of those would slide the avatar over every
-tile in the gap, and it would do it while the head's camera had already been warped by the teleport event.
-
-**The composition with the prediction layer's correction, which is the one subtle thing here.** The local body's
-chase target is the BARE committed tile. The decaying reconciliation offset `ClientPrediction` folds into its own
-`RenderedState` is deliberately not in it, and that is the third of three candidate shapes rather than an
-oversight:
-
-1. `chase(tile) + offset`. The offset jumps the whole correction into the drawn position in a single frame and
-   then unwinds it. A pop followed by a reversal: the rubber band, exactly.
-2. `chase(tile + offset)`. Looks like the careful fix, on the reasoning that at a rebase the tile's jump and the
-   offset's jump cancel. They only cancel when the rebase moves the tile and the position by the same amount, and
-   on a LATTICE it does not: the offset takes up the POSITION delta while the target moves by the TILE delta. The
-   case that exposes it is the ordinary sub-tile correction, where the authority agrees about which tile the
-   player owns and disagrees only about how far through the step the body is. The tile does not move, so the
-   target should not move, but the offset does, and the body would be pushed a fraction of a tile PAST its
-   committed tile, in the opposite direction to the correction, and then brought back.
-3. `chase(tile)`. Neither failure. The target moves only when the tile does, and the chase smooths that by
-   construction, so there is nothing to pop and no second decaying term to reverse.
-
-Nothing is lost by dropping the offset, and that is the load-bearing claim. The offset exists to smooth a
-correction, and the position it smooths is the step-fraction glide between `StepFrom` and `Tile`, which is the
-curve the chase replaced and which nothing draws any more. The chase IS the smoother now, and it smooths the only
-quantity being drawn. A correction big enough to matter changes the committed tile, which the chase then smooths
-at its own half life. A correction big enough to CUT is a hard snap, which resets the chase outright. What is left
-in between is sub-tile, and sub-tile is precisely the case where the right answer is to draw nothing at all
-(`A_sub_tile_correction_glides_without_moving_the_drawn_body_at_all` pins it as 90 bit-identical frames). The
-vertical is untouched by all of this and still rides the prediction layer's eased plane: a step never changes
-plane, so the only thing that moves it is a teleport, which cuts on both axes together.
-
-**`StepFrom` stays.** It is still on the state and still on the wire, because the simulator and the reconcile both
-need it and because it is what makes a remote's snapshot say where the body is going. It is simply not what the
-body is DRAWN between any more.
+**`StepFrom` is what the body is drawn between.** It rides the state and the wire because the simulator and the
+reconcile need it, and because it is what makes a remote's snapshot say where that body is going rather than where
+it has been. Round three left it on the wire and stopped drawing between the two tiles. This draws between them
+again, which is what it was added for.
 
 **Determinism is untouched, structurally rather than by care.** Presentation reads state and writes none, and no
-part of the simulation path reads the half life, so two clients drawing at different half lives still replay
-byte-identically. It remains the one movement number outside the client-server determinism contract.
+part of the simulation path reads a drawn position, so two heads replay byte-identically. With the knob gone there
+is no longer even a movement number outside the client-server determinism contract: `InterpolationDelayTicks` is
+the only presentation setting left, and it moves nothing but which sample a remote is read from.
 
 ## 6. Reach and the action seam
 
@@ -457,6 +408,21 @@ position and yaw through `TileWorldSpace`, for the local player from `ClientPred
 from the view's samples, gliding a remote across a step over that step's tick count. Nothing in the client touches
 the GPU, so the whole of it is headless-testable, and the Grimhollow head only feeds it clicks and draws what the
 presenter says.
+
+**The overlay reads, which section 5.2 delegates here.** The ruling makes the visual-truth lag legible rather than
+small, and the marker and the route highlight that do it are a consumer overlay, so what this package owes is
+reads that need no forking around. There are four, and all of them are on the shipped surface:
+
+| the overlay wants | the read | notes |
+|---|---|---|
+| the local player's committed tile | `client.Prediction.PredictedState.Tile` | the client's OWN prediction, so it moves a tick before the server could report it. Never a snapshot stale. |
+| the remaining route | `PredictedState.Route`, indexed from `Route.Index` to `Tiles.Count` | `Tiles` is an `IReadOnlyList`, so INDEX it: a `foreach` boxes an enumerator every frame. The walk starts at `state.Tile`, not at `Route.Next`, because a step pops the route as it commits. |
+| a remote's committed tile | `client.TryGetRemoteTile(netId, out tile)` | on that remote's own delayed timeline. Its ROUTE is owner-only on the wire, so a path highlight is local-player only, deliberately. |
+| any of them as a world position | `client.Presenter.PoseAt(tile)` | the tile's own plane, on the same centre a standing body draws on. `Pose(state)` is the BODY and would put the marker back on the avatar. |
+
+`PredictedState` returns the struct by value and `TileRoute` holds the pathfinder's list by reference, so the
+whole overlay costs no allocation per frame. `TryGetRemoteTile` and the `TileCoord` overload of `PoseAt` were
+added by the ruling: everything else was already there and was simply never written down as load-bearing.
 
 ## 10. Protocol and the connect gate
 

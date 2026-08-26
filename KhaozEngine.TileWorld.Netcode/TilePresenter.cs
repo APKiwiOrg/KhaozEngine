@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Netcode;
 
 namespace KhaozEngine.TileWorld.Netcode;
 
@@ -14,7 +15,7 @@ namespace KhaozEngine.TileWorld.Netcode;
 public readonly record struct TilePose(Vector3 Position, float Yaw);
 
 /// <summary>
-/// The pure bridge from a tile point to a view, and THE ONLY PLACE in this package that consults
+/// The pure bridge from a tile state to a view, and THE ONLY PLACE in this package that consults
 /// <see cref="TileWorldSpace"/>. Everything else here, the server especially, runs entirely in tile coordinates:
 /// tile z counts NORTH while render z counts south, so a render-space sign that leaked into a shard boundary, a
 /// reach test or a route would be an off-by-one nobody could see until a player walked into it. Keeping the
@@ -26,11 +27,18 @@ public readonly record struct TilePose(Vector3 Position, float Yaw);
 /// ground quad and the props do. Drawn on the CORNER instead, an avatar stands half a tile diagonally off every
 /// prop it walks up to and off the middle of the ground it occupies, which is what a consumer then re-centres in
 /// a shim of its own.</para>
-/// <para>Nothing here holds state or touches a GPU, and the SMOOTHING is deliberately not here either: a body's
-/// drawn point is chased toward its committed tile by a <see cref="TileChase"/>, which is stateful and lives per
-/// body on <see cref="TileWorldClient"/>, and <see cref="PoseAt"/> is handed the answer. So this type is a
-/// function of its arguments, a head can call it from a render thread, a test can call it with no device, and two
-/// callers asking about the same point get the same answer.</para>
+/// <para>THE BODY GLIDES THE WHOLE STEP, LINEARLY. <see cref="Pose"/> runs from <see cref="TileMoveState.StepFrom"/>
+/// into <see cref="TileMoveState.Tile"/> by <see cref="TileMoveState.StepTicks"/> over
+/// <see cref="TileMoveState.StepTotal"/>, at a constant speed, arriving exactly as the next step commits. That is
+/// the OSRS model, and it is the ruled answer rather than a first draft of one: see
+/// <c>docs/design/TILE-WORLD-NETCODE-DESIGN-2026-08-22.md</c> section 5.2 for the two shapes that were tried
+/// against it and rejected. Its known cost is that the drawn body lags the tile the rules have committed it to,
+/// by half a tile on average, and the answer to that is VISIBILITY rather than tightness: a head draws a
+/// true-tile marker and a route highlight off <see cref="PoseAt(TileCoord, TileDirection)"/>, so the lead is
+/// legible instead of being something a player has to learn.</para>
+/// <para>Nothing here holds state or touches a GPU. It is a function of a <see cref="TileMoveState"/> plus a
+/// fraction of a tick, so a head can call it from a render thread, a test can call it with no device, and two
+/// callers asking about the same state get the same answer.</para>
 /// </summary>
 public sealed class TilePresenter
 {
@@ -62,41 +70,98 @@ public sealed class TilePresenter
     public float PlaneHeight { get; }
 
     /// <summary>
-    /// THE mapping, and the one both drawn paths go through: a point in TILE units plus a plane index becomes a
-    /// world position on the tile centre, and a facing becomes a model yaw.
-    /// <para><paramref name="tilePlanar"/> is a <see cref="TileChase.Drawn"/> for a body being drawn, which is why
-    /// it is a continuous point rather than a <see cref="TileCoord"/>: the chase sits between tiles for most of a
-    /// walk. <see cref="TileWorldClient.LocalPose"/> and <see cref="TileWorldClient.TryGetRemotePose"/> are the two
-    /// callers the engine ships, and a game drawing a body of its own calls this with its own chase.</para>
+    /// Where a state's BODY draws: the linear glide from <see cref="TileMoveState.StepFrom"/> INTO
+    /// <see cref="TileMoveState.Tile"/>, which the simulation already owns. <paramref name="extraTicks"/> is the
+    /// fraction of a tick elapsed since the state was SAMPLED, which is what glides a remote between snapshots: the
+    /// sample carries the step progress at its own instant, and the presenter carries it forward from there.
+    /// Clamped at the end of the step, so a sample that went overdue (a lost snapshot, a stalled server) parks on
+    /// the tile instead of walking past it.
+    /// <para>The ROUTE is not consulted, and that is what makes an observer's pose honest. A remote's route is
+    /// owner-only, but the pair of tiles this glides between rides the everyone channel, so a raw replicated state
+    /// draws exactly where its owner draws it with nothing guessed and nothing reconstructed from the tile it was
+    /// last seen on. A state with no step in flight draws on its tile centre, whatever
+    /// <paramref name="extraTicks"/> says.</para>
+    /// <para>This is the BODY's answer, not the RULES'. A step commits its tile when it STARTS, so the tile the
+    /// simulation has committed this player to is <see cref="TileMoveState.Tile"/> and the body drawn here is up to
+    /// one step behind it. An overlay that has to show where the player IS (a true-tile marker, a minimap dot, a
+    /// server-side tool) reads <c>state.Tile</c> and maps it with
+    /// <see cref="PoseAt(TileCoord, TileDirection)"/>.</para>
     /// </summary>
-    /// <param name="tilePlanar">Where the body is, in tile units on the lattice (x, z).</param>
+    /// <param name="state">The state to draw.</param>
+    /// <param name="extraTicks">Ticks elapsed since the state was sampled. Negative is treated as zero.</param>
+    /// <returns>The world position and yaw to draw at.</returns>
+    public TilePose Pose(in TileMoveState state, float extraTicks = 0f)
+    {
+        float tileX = state.Tile.X, tileZ = state.Tile.Z;
+        if (state.IsStepping && state.StepTotal > 0)
+        {
+            float f = Math.Clamp((state.StepTicks + Math.Max(0f, extraTicks)) / state.StepTotal, 0f, 1f);
+            // In FLOAT, for the reason TileMoveState.Position differences in float: the fields are public, and two
+            // hand-written coordinates a world apart would overflow an int subtraction.
+            tileX = state.StepFrom.X + ((float)state.Tile.X - state.StepFrom.X) * f;
+            tileZ = state.StepFrom.Z + ((float)state.Tile.Z - state.StepFrom.Z) * f;
+        }
+        return PoseAt(new Vector2(tileX, tileZ), state.Tile.Plane, state.Facing);
+    }
+
+    /// <summary>
+    /// Where the LOCAL player's BODY draws: <see cref="ClientPrediction{TState,TCommand}.RenderedState"/>, which
+    /// already carries the inter-tick easing of the same <see cref="TileMoveState.Position"/> glide plus whatever
+    /// is left of a decaying correction offset. Read from the render override rather than from the tile, because
+    /// that override is the whole point of the prediction layer: it is a continuous position over a discrete
+    /// lattice, and rounding it back to a tile here would throw away every frame of smoothing the layer just
+    /// computed.
+    /// <para><see cref="TileWorldClient.LocalPose"/> is this call with the client's own prediction and presenter
+    /// already in hand, and is what a head normally uses. This overload is for a head holding a
+    /// <see cref="ClientPrediction{TState,TCommand}"/> of its own.</para>
+    /// </summary>
+    /// <param name="prediction">The client's prediction for the local player.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="prediction"/> is null.</exception>
+    public TilePose LocalPose(ClientPrediction<TileMoveState, TileCommand> prediction)
+    {
+        ArgumentNullException.ThrowIfNull(prediction);
+        TileMoveState r = prediction.RenderedState;
+        return PoseAt(r.HasRenderOverride ? r.RenderPosition : r.Position,
+            r.HasRenderOverride ? r.RenderVertical : r.Vertical, r.Facing);
+    }
+
+    /// <summary>
+    /// THE mapping, and the one every other entry point here goes through: a point in TILE units plus a plane index
+    /// becomes a world position on the tile centre, and a facing becomes a model yaw.
+    /// <para>Public because it is what an OVERLAY needs. A true-tile marker maps
+    /// <c>client.Prediction.PredictedState.Tile</c>, a route highlight maps each remaining
+    /// <see cref="TileRoute.Tiles"/> entry from <see cref="TileRoute.Index"/> on, and both want a whole
+    /// <see cref="TileCoord"/> rather than a state: use the <see cref="PoseAt(TileCoord, TileDirection)"/>
+    /// overload for those. This one takes a CONTINUOUS point, because a body between two tiles is not on the
+    /// lattice.</para>
+    /// </summary>
+    /// <param name="tilePlanar">Where the point is, in tile units on the lattice (x, z).</param>
     /// <param name="planeIndex">Which plane, as an INDEX rather than a height. Fractional is legal and is what a
     /// prediction layer's eased vertical hands in.</param>
-    /// <param name="facing">The direction the body faces.</param>
+    /// <param name="facing">The direction to face.</param>
     /// <returns>The world position and yaw to draw at.</returns>
     public TilePose PoseAt(Vector2 tilePlanar, float planeIndex, TileDirection facing) =>
         new(Centre(tilePlanar.X, planeIndex * PlaneHeight, tilePlanar.Y), Yaw(facing));
 
     /// <summary>
-    /// Where a state says the body IS: the centre of <see cref="TileMoveState.Tile"/>, the tile the simulation has
-    /// committed it to, with nothing smoothed. This is the RULES' answer, so it is what a minimap, an editor, a
-    /// server-side tool or a debug overlay wants.
-    /// <para>It is NOT what an avatar draws at. A body drawn straight off this cuts a whole tile at every commit,
-    /// because a step commits its tile when it STARTS. Draw a body through <see cref="TileWorldClient.LocalPose"/>
-    /// or <see cref="TileWorldClient.TryGetRemotePose"/>, both of which run a <see cref="TileChase"/> onto exactly
-    /// this point. Note the pair is not consulted either: <see cref="TileMoveState.StepFrom"/> is still on the
-    /// state and still on the wire (the simulator and the reconcile both need it), it is simply not what the body
-    /// is drawn between any more.</para>
+    /// A whole TILE's centre, which is the RULES' answer about where a player is and the one an overlay draws on.
+    /// The tile carries its own plane, so this is the call a true-tile marker and a route highlight make, once per
+    /// tile, with no state and no glide involved.
+    /// <para>Never draw a BODY through this: a step commits its tile when it STARTS, so a body drawn straight on
+    /// its committed tile cuts a whole tile at every commit. Bodies go through
+    /// <see cref="TileWorldClient.LocalPose"/> and <see cref="TileWorldClient.TryGetRemotePose"/>.</para>
     /// </summary>
-    /// <param name="state">The state to place.</param>
-    /// <returns>The committed tile's centre and the state's facing.</returns>
-    public TilePose Pose(in TileMoveState state) =>
-        PoseAt(new Vector2(state.Tile.X, state.Tile.Z), state.Tile.Plane, state.Facing);
+    /// <param name="tile">The tile to place.</param>
+    /// <param name="facing">The direction to face, <see cref="TileDirection.S"/> for a marker that has no facing
+    /// of its own (yaw 0, so a head that ignores the yaw pays nothing for it).</param>
+    /// <returns>The tile centre's world position, and the yaw of <paramref name="facing"/>.</returns>
+    public TilePose PoseAt(TileCoord tile, TileDirection facing = TileDirection.S) =>
+        PoseAt(new Vector2(tile.X, tile.Z), tile.Plane, facing);
 
     // A tile point as a world position on the tile CENTRE, which is the one place the half tile is added. In TILE
     // units, before TileWorldSpace, so the z half tile is negated with the coordinate it belongs to rather than
-    // being added to a world metre and landing on the wrong side of the tile. A chased position goes through the
-    // same offset as a lattice one, so a body converges onto the centre it is drawn from.
+    // being added to a world metre and landing on the wrong side of the tile. A glided position goes through the
+    // same offset as a lattice one, so a body converges onto the centre it is drawn toward.
     Vector3 Centre(float tileX, float heightMetres, float tileZ) =>
         TileWorldSpace.ToWorld(tileX + 0.5f, heightMetres, tileZ + 0.5f, TileSize);
 

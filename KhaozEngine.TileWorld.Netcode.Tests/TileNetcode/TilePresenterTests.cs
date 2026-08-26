@@ -80,32 +80,60 @@ public class TilePresenterTests
         }
     }
 
-    // Pose is the RULES' answer, not the body's: the tile the simulation has committed the player to, whatever the
-    // step in flight says. The step pair is deliberately not read here (a body is drawn by a TileChase pursuing
-    // this point, see TileChaseTests), and neither is the route: a remote's route is owner-only, so a pose that
-    // needed one could never place an observer honestly.
+    // THE glide, pinned at its three defining points. The body runs from StepFrom INTO Tile, linearly, by the
+    // step's own tick count: nothing at the start of the step, half way at half the ticks, and exactly on the
+    // committed tile when the last tick lands. That is the whole curve, and it is the OSRS model the feel
+    // iteration ruled on (see TileGlideTests for the four rounds and why this one won).
+    //
+    // Note the fraction-zero case: the body draws on the tile it is LEAVING while the simulation has already
+    // committed it to the next one. That is the lead commit working as designed, not a bug, and it is exactly the
+    // gap the game-side true-tile marker exists to make visible.
     [Fact]
-    public void A_pose_names_the_committed_tile_whatever_the_step_in_flight_says()
+    public void The_body_glides_linearly_from_the_departed_tile_into_the_committed_one()
+    {
+        TileMoveState s = TileMoveState.At(new TileCoord(0, 1, 0), TileDirection.N);
+        s.StepFrom = new TileCoord(0, 0, 0);
+        s.StepTotal = 4;
+        // Centred, so the walk from tile (0, 0) into tile (0, 1) runs from tile-space z 0.5 to 1.5.
+        s.StepTicks = 0;
+        Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 0.5f, 1f), P.Pose(s).Position);
+        s.StepTicks = 2;
+        Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1f, 1f), P.Pose(s).Position);
+        // The last tick of a step is the tick that lands: the simulator pulls StepFrom up to Tile there, so the
+        // fraction reaching 1 is spelled as a standing state. Both spellings draw on the committed tile.
+        s.StepTicks = 4;
+        Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1.5f, 1f), P.Pose(s).Position);
+        Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1.5f, 1f),
+            P.Pose(TileMoveState.At(new TileCoord(0, 1, 0), TileDirection.N)).Position);
+
+        // The ROUTE is not consulted, at any fraction: a remote's route is owner-only, so a pose that needed one
+        // could never place an observer honestly.
+        s.StepTicks = 2;
+        s.Route = new TileRoute(new[] { new TileCoord(5, 5, 0) }, 0);
+        Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1f, 1f), P.Pose(s).Position);
+    }
+
+    // extraTicks is what carries a REMOTE forward between snapshots: the sample holds the step progress at its own
+    // instant and the presenter adds the fraction of a tick since. Clamped at the end of the step, so a sample
+    // that went overdue (a lost snapshot, a stalled server) parks on the committed tile rather than walking past
+    // it into ground nobody routed it over.
+    [Fact]
+    public void Extra_ticks_carry_the_glide_forward_and_clamp_at_the_committed_tile()
     {
         TileMoveState s = TileMoveState.At(new TileCoord(0, 1, 0), TileDirection.N);
         s.StepFrom = new TileCoord(0, 0, 0);
         s.StepTotal = 4;
         s.StepTicks = 2;
-        // Tile (0, 1) centred is tile-space z 1.5, and it reads that from the tick the step COMMITS rather than
-        // from the tick the body would have arrived: this is where the rules say the player is.
-        Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1.5f, 1f), P.Pose(s).Position);
-        s.StepTicks = 0;
-        Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1.5f, 1f), P.Pose(s).Position);
-
-        // A route pointing somewhere else cannot move the pose either.
-        s.Route = new TileRoute(new[] { new TileCoord(5, 5, 0) }, 0);
-        Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1.5f, 1f), P.Pose(s).Position);
+        Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1.25f, 1f), P.Pose(s, extraTicks: 1f).Position);
+        Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1.5f, 1f), P.Pose(s, extraTicks: 9f).Position);
+        // Negative is treated as zero rather than walking the body backwards out of its step.
+        Assert.Equal(P.Pose(s).Position, P.Pose(s, extraTicks: -3f).Position);
     }
 
-    // PoseAt is the mapping a chased body goes through, so it takes a CONTINUOUS tile point rather than a lattice
-    // one and centres it exactly as a whole tile is centred. Pinned against Pose at a whole coordinate, so the two
-    // entry points cannot drift apart, and at a fractional one, where the centring must still be the same half
-    // tile rather than a rounded lattice cell.
+    // PoseAt is the mapping every other entry point here goes through, so it takes a CONTINUOUS tile point rather
+    // than a lattice one and centres it exactly as a whole tile is centred. Pinned at a whole coordinate against a
+    // standing pose, so the two entry points cannot drift apart, and at a fractional one, where the centring must
+    // still be the same half tile rather than a rounded lattice cell.
     [Fact]
     public void PoseAt_centres_a_continuous_tile_point_the_same_way_a_whole_tile_is_centred()
     {
@@ -116,6 +144,59 @@ public class TilePresenterTests
         // A fractional plane is legal: it is what a prediction layer's eased vertical hands in.
         Assert.Equal(TileWorldSpace.ToWorld(4.5f, 4.5f, 7.5f, 1f),
             P.PoseAt(new Vector2(4f, 7f), 1.5f, TileDirection.W).Position);
+    }
+
+    // The TileCoord overload is the OVERLAY's call: a true-tile marker and a route highlight place whole tiles,
+    // one call per tile, with no state and no glide. It has to land on the same point a standing body does, or a
+    // marker sits off the avatar it is marking, and it has to take the tile's own plane rather than plane 0, or a
+    // marker on an upper floor draws through the ground.
+    [Fact]
+    public void PoseAt_places_a_whole_tile_on_the_same_centre_a_standing_body_draws_on()
+    {
+        var tile = new TileCoord(4, 7, 2);
+        Assert.Equal(P.Pose(TileMoveState.At(tile, TileDirection.S)).Position, P.PoseAt(tile).Position);
+        Assert.Equal(TileWorldSpace.ToWorld(4.5f, 6f, 7.5f, 1f), P.PoseAt(tile).Position);
+        // A marker with no facing of its own takes yaw 0, so a head that ignores the yaw pays nothing for it.
+        Assert.Equal(0f, P.PoseAt(tile).Yaw);
+        Assert.Equal(MathF.PI / 2f, P.PoseAt(tile, TileDirection.E).Yaw, 5);
+    }
+
+    // The RULES' tile and the BODY are different points mid step, and an overlay that mixes them up draws the
+    // marker on the avatar and calls the lead invisible. This is the pair the true-tile marker exists to show: a
+    // whole tile apart at the start of the step, meeting exactly when the body lands.
+    [Fact]
+    public void The_committed_tile_and_the_drawn_body_are_a_whole_step_apart_at_the_start_of_a_step()
+    {
+        TileMoveState s = TileMoveState.At(new TileCoord(0, 1, 0), TileDirection.N);
+        s.StepFrom = new TileCoord(0, 0, 0);
+        s.StepTotal = 4;
+        s.StepTicks = 0;
+        Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 1.5f, 1f), P.PoseAt(s.Tile).Position);
+        Assert.Equal(TileWorldSpace.ToWorld(0.5f, 0f, 0.5f, 1f), P.Pose(s).Position);
+        s.StepTicks = 4;
+        Assert.Equal(P.PoseAt(s.Tile).Position, P.Pose(s).Position);
+    }
+
+    // The LOCAL player draws off the prediction layer's rendered override, which is the same StepFrom-to-Tile
+    // glide eased between command ticks with the decaying correction offset folded in. Read from the override
+    // rather than from the tile, because rounding a continuous position back to a lattice cell here would throw
+    // away every frame of smoothing the layer just computed.
+    [Fact]
+    public void The_local_pose_reads_the_predictions_rendered_override()
+    {
+        var sim = new TileMoveSimulator(
+            TileMoveSimulatorTests.Bake(TileMoveSimulatorTests.FlatWorld()), new TileStepTicks(4, 2));
+        var pred = new ClientPrediction<TileMoveState, TileCommand>(
+            sim, new PredictionSettings(0.25f, 64, 0.5f, 8f, 0.01f));
+        pred.Reset(TileMoveState.At(new TileCoord(2, 2, 0), TileDirection.E));
+        pred.Predict(TileCommand.WalkTo(new TileCoord(2, 6, 0), TileMoveMode.Run));
+        pred.AdvancePresentation(0.125f);
+        TilePose pose = P.LocalPose(pred);
+        // Past the CENTRE of tile (2, 2), which is where a standing pose would be, so the local path is centred
+        // too. Measured against the corner instead, the half tile alone would satisfy this.
+        Assert.True(pose.Position.Z < TileWorldSpace.WorldZ(2.5f, 1f));  // already gliding north (world -z)
+        // And SHORT of the tile the simulation already committed it to, which is the lead the marker shows.
+        Assert.True(pose.Position.Z > P.PoseAt(pred.PredictedState.Tile).Position.Z);
     }
 
     [Fact]

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Numerics;
 using KhaozEngine.Ecs;
 using KhaozEngine.Netcode;
 using KhaozEngine.Replication;
@@ -20,10 +19,10 @@ public sealed partial class TileWorldClient
     const float CorrectionEpsilon = 1e-4f;
 
     readonly HashSet<long> liveRemotes = new();
-    // The captures RefreshRemoteBodies would otherwise close over, hoisted so the ECS callback can be cached
+    // The captures RefreshRemoteSamples would otherwise close over, hoisted so the ECS callback can be cached
     // instead of rebuilt every frame. Live only for the duration of one refresh, which nothing re-enters.
     RefAction<NetId>? sampleRemotes;
-    float sampleDt;
+    double sampleTime;
 
     /// <summary>
     /// Pumps the transport and applies whatever arrived. Call it once per frame, BEFORE drawing and before
@@ -134,36 +133,32 @@ public sealed partial class TileWorldClient
             // burn a number this rewinds, and the server refuses the re-used one as stale.
             seeded = true;
             Prediction.Reset(basis);
-            localChase.SnapTo(LocalTarget);
             return;
         }
 
         ReconciliationResult result = Prediction.Reconcile((int)serverTick, basis, ackSeq);
         if (result.PositionError > CorrectionEpsilon) CorrectionCount++;
         if (result.HardSnapApplied) SnapCount++;
-        // A CUT is not chased across. Both of these zero the prediction layer's own offsets and place the avatar
-        // outright, so the chase has to land on the same frame or the body would slide across the ground between
-        // the two places instead of appearing at the new one. Teleport and hard snap are BOTH taken, because they
-        // are different questions and each can fire without the other: a teleport is an authoritative epoch
-        // advance ("you are somewhere else now"), a hard snap is a step the two heads disagreed about, and a
-        // reported seed teleport carries no snap at all. LocalTarget is the committed tile's centre and nothing
-        // else (no correction offset is composed into it, see LocalPose), so snapping onto it draws the body
-        // exactly where the rules just put it.
-        if (result.HardSnapApplied || result.Teleported) localChase.SnapTo(LocalTarget);
+        // A CUT places the local body outright, and it is the PREDICTION LAYER that does it: a teleport (an
+        // authoritative epoch advance) and a hard snap both zero that layer's correction offsets, so
+        // RenderedState, which is the only thing LocalPose draws, is on the corrected position on the very frame
+        // the snapshot lands. There is nothing to reset here, which is the shape's own dividend: one place decides
+        // what a discontinuity does to the local body rather than two agreeing about it.
+        //
         // Raised rather than folded into SnapCount, because the two say different things to a head: a snap is "you
         // mispredicted a step", a teleport is "you are somewhere else now". See the event's own doc.
         if (result.Teleported) Teleported?.Invoke();
     }
 
     /// <summary>
-    /// Where a remote draws right now: its own <see cref="TileChase"/>, pursuing the tile the remote's replicated
-    /// state is committed to. False for an unknown net id and for the local player, who is drawn through
+    /// Where a remote's BODY draws right now: its own sample, glided from <see cref="TileMoveState.StepFrom"/>
+    /// into <see cref="TileMoveState.Tile"/> and carried forward across the fraction of a tick that has passed
+    /// since the sample was taken. False for an unknown net id and for the local player, who is drawn through
     /// <see cref="LocalPose"/> instead.
-    /// <para>The chase runs on the frame clock (see <see cref="AdvancePresentation"/>), so this is a plain read
-    /// and calling it twice in a frame answers twice the same. The remote's own DELAY is unchanged and is not the
-    /// chase's doing: a remote's state is read off the timeline
-    /// <see cref="TileWorldClientConfig.InterpolationDelayTicks"/> holds behind live, so the divergence a viewer
-    /// measures is the delay plus the chase's steady-state lag.</para>
+    /// <para>A remote lags its own committed tile by the same step the local body does, and by
+    /// <see cref="TileWorldClientConfig.InterpolationDelayTicks"/> on top of it: it is read off a timeline held
+    /// that far behind live, which is what buys room for a lost snapshot. Size a design that reads other players'
+    /// tiles against the SUM, not against the step alone.</para>
     /// </summary>
     /// <param name="netId">The remote's net id.</param>
     /// <param name="pose">Where and which way to draw it.</param>
@@ -171,45 +166,62 @@ public sealed partial class TileWorldClient
     public bool TryGetRemotePose(long netId, out TilePose pose)
     {
         pose = default;
-        if (netId == LocalNetId || !remoteBodies.TryGetValue(netId, out RemoteBody? body)) return false;
-        pose = Presenter.PoseAt(body.Chase.Drawn, body.State.Tile.Plane, body.State.Facing);
+        if (netId == LocalNetId || !remoteSamples.TryGetValue(netId, out RemoteSample sample)) return false;
+        pose = Presenter.Pose(sample.State, (float)Math.Max(0d, (RenderTime - sample.At) / config.TickSeconds));
         return true;
     }
 
-    // Rebuilds the per-remote draw states off whatever InterpolateAt just wrote into the world, and steps each
-    // remote's chase by the frame's dt. Called every frame from AdvancePresentation rather than on snapshot
-    // arrival, because the delayed timeline advances with the FRAME and a remote resampled once per packet hops at
-    // the tick rate whatever the frame rate.
-    void RefreshRemoteBodies(float dt)
+    /// <summary>
+    /// The tile a remote is COMMITTED to, straight off its replicated state, with nothing glided and nothing
+    /// carried forward. False for an unknown net id and for the local player, whose committed tile is
+    /// <c>Prediction.PredictedState.Tile</c>.
+    /// <para>This is the RULES' answer for that remote, on that remote's own delayed timeline, and it is what an
+    /// overlay draws: a true-tile marker over another player, or a debug view of where the server thinks everyone
+    /// is. <see cref="TryGetRemotePose"/> is the BODY, and the two differ by up to one step by design (see
+    /// <see cref="LocalPose"/>). Map it with
+    /// <see cref="TilePresenter.PoseAt(TileCoord, TileDirection)"/>.</para>
+    /// <para>The remote's ROUTE is deliberately not available: it is owner-only on the wire, so no client can
+    /// highlight another player's path. A route highlight is a LOCAL-player overlay only.</para>
+    /// </summary>
+    /// <param name="netId">The remote's net id.</param>
+    /// <param name="tile">The tile the remote's replicated state is committed to.</param>
+    /// <returns>True when this client is tracking <paramref name="netId"/> as a remote.</returns>
+    public bool TryGetRemoteTile(long netId, out TileCoord tile)
+    {
+        tile = default;
+        if (netId == LocalNetId || !remoteSamples.TryGetValue(netId, out RemoteSample sample)) return false;
+        tile = sample.State.Tile;
+        return true;
+    }
+
+    // Rebuilds the per-remote draw states off whatever InterpolateAt just wrote into the world. Called every frame
+    // from AdvancePresentation rather than on snapshot arrival, because the delayed timeline advances with the
+    // FRAME and a remote resampled once per packet hops at the tick rate whatever the frame rate.
+    void RefreshRemoteSamples(double renderTime)
     {
         sampleRemotes ??= SampleRemote;
-        sampleDt = dt;
+        sampleTime = renderTime;
         liveRemotes.Clear();
         World.ForEach(sampleRemotes);
         // Every live remote was just written into the map, so equal counts means nothing went stale and the prune
-        // can be skipped, which is the ordinary frame. A pruned remote takes its chase with it, so one that comes
-        // back is a first sighting and CUTS onto its tile rather than sliding in from wherever it left.
-        if (remoteBodies.Count == liveRemotes.Count) return;
+        // can be skipped, which is the ordinary frame.
+        if (remoteSamples.Count == liveRemotes.Count) return;
         goneRemotes.Clear();
-        foreach (long netId in remoteBodies.Keys)
+        foreach (long netId in remoteSamples.Keys)
             if (!liveRemotes.Contains(netId)) goneRemotes.Add(netId);
-        for (int i = 0; i < goneRemotes.Count; i++) remoteBodies.Remove(goneRemotes[i]);
+        for (int i = 0; i < goneRemotes.Count; i++) remoteSamples.Remove(goneRemotes[i]);
     }
 
-    // One remote, one frame: decide whether the tile it now names is a STEP or a DISCONTINUITY, then advance its
-    // chase onto that tile.
+    // One remote, one frame. The replicated state says where the body is outright: the tile the remote is
+    // committed to, the tile it is walking out of, and how far through. So there is nothing to reconstruct here,
+    // and nothing to guess. All this does is STAMP a changed sample with the render-timeline instant it was first
+    // seen at, which is what the presenter measures its sub-tick carry-forward from.
     //
-    // The replicated state says where the body is outright, so there is nothing to reconstruct and nothing to
-    // guess. It used to be otherwise: the everyone channel carried a tile and step progress and nothing about
-    // where the step was GOING, so the only honest answer was to draw a remote ONE STEP BEHIND, at a whole step of
-    // extra latency, with a second rule to tell a step from a teleport. Committing at the START of a step is what
-    // made the destination a fact the server can simply send.
-    //
-    // The discontinuity test is the state type's own IsStepOrigin, which is the rule the wire decoder and
-    // SetPlayerState are both held to: same plane, at most one Chebyshev step. So a teleport, a plane change and a
-    // remote that left the interest set and came back somewhere else all CUT, and only a real step is pursued. The
-    // epoch is taken as well, as a HIGH-WATER MARK for the reason ClientPrediction takes it that way: a server
-    // teleport that happens to land one tile away is a cut, not a step.
+    // It used to be the other way round. The everyone channel carried a tile and step progress and nothing about
+    // where the step was GOING, so the only honest answer was to draw a remote ONE STEP BEHIND, between the tile it
+    // was last seen on and the tile it is on now, at a whole step of extra latency, with a second rule to tell a
+    // step from a teleport. Committing at the START of a step is what made the pair of tiles a fact the server can
+    // simply send, and that whole reconstruction went with it.
     void SampleRemote(Entity e, ref NetId id)
     {
         long netId = id.Value;
@@ -217,35 +229,21 @@ public sealed partial class TileWorldClient
         if (!World.TryGet(e, out TileMoveState now)) return;
         liveRemotes.Add(netId);
 
-        Vector2 target = new(now.Tile.X, now.Tile.Z);
-        if (!remoteBodies.TryGetValue(netId, out RemoteBody? body))
-        {
-            body = new RemoteBody(new TileChase(config.ChaseHalfLifeSeconds), now);
-            remoteBodies[netId] = body;
-            body.Chase.SnapTo(target);
-        }
-        else if (now.Epoch > body.Epoch || !TileMoveState.IsStepOrigin(body.State.Tile, now.Tile))
-        {
-            body.Chase.SnapTo(target);
-        }
-        body.State = now;
-        if (now.Epoch > body.Epoch) body.Epoch = now.Epoch;
-        body.Chase.Advance(target, sampleDt);
+        // An unchanged sample KEEPS its stamp, which is the whole reason the previous one is compared rather than
+        // overwritten every frame: re-stamping would restart the carry-forward on every frame and freeze the
+        // remote on the instant of its last snapshot. Equality is the simulation's own, so a turn on the spot
+        // counts as a change (BeginInteract writes Facing with no tile change and no progress, which is the
+        // ordinary click on the thing you are already standing next to) while a re-render of the same tick does
+        // not.
+        if (remoteSamples.TryGetValue(netId, out RemoteSample prev) && prev.State.Equals(now)) return;
+        remoteSamples[netId] = new RemoteSample(now, sampleTime);
     }
 
     /// <summary>
-    /// One remote's drawing state. <see cref="State"/> is the replicated state verbatim, which is where the tile,
-    /// the plane and the facing come from. <see cref="Chase"/> is that remote's own pursuer, one per body, so two
-    /// remotes never share a drawn position. <see cref="Epoch"/> is the teleport high-water mark, held here rather
-    /// than read off <see cref="State"/> so a momentary dip to zero cannot read as a fresh advance on the way back
-    /// up (see <c>ClientPrediction</c>, which holds it the same way and for the same reason).
-    /// <para>A CLASS rather than a record struct, deliberately: the chase is stateful and is stepped in place
-    /// every frame, and a struct would have it copied out of the dictionary, advanced, and thrown away.</para>
+    /// One remote's drawing state. <paramref name="State"/> is the replicated state verbatim, which is what
+    /// <see cref="TilePresenter.Pose"/> is handed: the tile the remote is committed to and the one its body is
+    /// still walking out of. <paramref name="At"/> is the render-timeline instant that state was first seen at,
+    /// which is what the fraction of a tick since then is measured from.
     /// </summary>
-    sealed class RemoteBody(TileChase chase, TileMoveState state)
-    {
-        public readonly TileChase Chase = chase;
-        public TileMoveState State = state;
-        public uint Epoch = state.Epoch;
-    }
+    readonly record struct RemoteSample(TileMoveState State, double At);
 }

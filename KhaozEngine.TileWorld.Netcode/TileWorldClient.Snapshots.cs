@@ -24,6 +24,17 @@ public sealed partial class TileWorldClient
     RefAction<NetId>? sampleRemotes;
     double sampleTime;
 
+    // The freshest committed tile this client holds per remote, off the newest APPLIED snapshot rather than off
+    // the delayed render timeline the bodies ride. See TryGetLatestRemoteTile for what that buys and what it
+    // costs. Its own scratch, rather than RefreshRemoteSamples', because the two passes run at different moments
+    // (one per snapshot, one per frame) and sharing the set would make an interleaving that never happens today
+    // into a bug the day it does.
+    readonly Dictionary<long, LatestTile> latestTiles = new();
+    readonly HashSet<long> liveLatest = new();
+    readonly List<long> goneLatest = new();
+    RefAction<NetId>? captureLatest;
+    double latestAt;
+
     /// <summary>
     /// Pumps the transport and applies whatever arrived. Call it once per frame, BEFORE drawing and before
     /// <see cref="AdvancePresentation"/>, so a frame draws the newest snapshot rather than the previous one.
@@ -112,6 +123,11 @@ public sealed partial class TileWorldClient
             return;
         }
 
+        // THE HONEST READ's capture, and this is the ONE instant it can be taken. Apply has just written the newest
+        // server state for every entity in the snapshot into World, and the next AdvancePresentation overwrites all
+        // of it with the delayed timeline's answer, so a pass taken anywhere else reads the delayed value back.
+        CaptureLatestTiles();
+
         // Remotes ride a DELAYED timeline, so the sample is buffered here at its arrival time and read back later,
         // at a render time two ticks behind (see AdvancePresentation). The local player is excluded from the buffer
         // on purpose: it is predicted rather than interpolated, and buffering it would clobber the replicated value
@@ -175,10 +191,14 @@ public sealed partial class TileWorldClient
     /// The tile a remote is COMMITTED to, straight off its replicated state, with nothing glided and nothing
     /// carried forward. False for an unknown net id and for the local player, whose committed tile is
     /// <c>Prediction.PredictedState.Tile</c>.
-    /// <para>This is the RULES' answer for that remote, on that remote's own delayed timeline, and it is what an
-    /// overlay draws: a true-tile marker over another player, or a debug view of where the server thinks everyone
-    /// is. <see cref="TryGetRemotePose"/> is the BODY, and the two differ by up to one step by design (see
-    /// <see cref="LocalPose"/>). Map it with
+    /// <para>THE DELAYED TIMELINE IS WHAT THIS READS, and it is the half of the pair to be careful with.
+    /// <see cref="TryGetRemotePose"/> is the remote's BODY and this is the tile that body is walking into, both
+    /// resampled at the same delayed render time, so the two agree with each other and neither agrees with the
+    /// server: both are additionally <see cref="TileWorldClientConfig.InterpolationDelayTicks"/> behind what the
+    /// server has committed. That AGREEMENT is the whole reason to pick this read, and it makes it the right one
+    /// for an overlay drawn ON the body (a marker under a walking remote, a debug view of the drawn world). For a
+    /// RULE, ask <see cref="TryGetLatestRemoteTile(long, out TileCoord)"/> instead, which answers off the newest
+    /// applied snapshot and is not held behind the delay. Map either one with
     /// <see cref="TilePresenter.PoseAt(TileCoord, TileDirection)"/>.</para>
     /// <para>The remote's ROUTE is deliberately not available: it is owner-only on the wire, so no client can
     /// highlight another player's path. A route highlight is a LOCAL-player overlay only.</para>
@@ -192,6 +212,95 @@ public sealed partial class TileWorldClient
         if (netId == LocalNetId || !remoteSamples.TryGetValue(netId, out RemoteSample sample)) return false;
         tile = sample.State.Tile;
         return true;
+    }
+
+    /// <summary>
+    /// The tile a remote is committed to on the FRESHEST server state this client holds, which is a different
+    /// question from <see cref="TryGetRemoteTile"/> and the one a rule should be asking. This one is read off the
+    /// newest APPLIED snapshot. That one is read off the delayed render timeline the bodies ride, so it is
+    /// additionally <see cref="TileWorldClientConfig.InterpolationDelayTicks"/> behind. False for an unknown net id
+    /// and for the local player, exactly as <see cref="TryGetRemoteTile"/> is.
+    /// <para>WHICH ONE TO USE. Draw an overlay that has to agree with the BODY it sits under (a nameplate anchor, a
+    /// marker that tracks a walking remote) off <see cref="TryGetRemoteTile"/>, because the body and that read come
+    /// off one timeline and cannot disagree. Ask anything the RULES will answer (is that monster adjacent, what did
+    /// I just click, is my target still in reach) off THIS one, because the delayed read is the truth from a moment
+    /// that has already passed and a rule built on it is wrong by construction. Measured in this package's
+    /// loopback at a 1/6 s tick with the default two tick delay, the delayed read runs up to 2 ticks behind the
+    /// server's own committed tile where this one runs behind by the transport latency plus at most one snapshot
+    /// interval.</para>
+    /// <para>The remote's ROUTE is deliberately not available on either read: it is owner-only on the wire, so no
+    /// client can highlight another player's path. A route highlight is a LOCAL-player overlay only.</para>
+    /// <para>A remote is known to this read from the snapshot that first carried it, which is up to one call before
+    /// <see cref="RemoteNetIds"/> lists it (that collection is rebuilt in <see cref="AdvancePresentation"/>). So
+    /// iterate <see cref="RemoteNetIds"/> and accept that this may answer for an id it does not yet hold, rather
+    /// than treating the two as one set.</para>
+    /// </summary>
+    /// <param name="netId">The remote's net id.</param>
+    /// <param name="tile">The tile the newest applied server state has the remote committed to.</param>
+    /// <returns>True when this client holds a server state for <paramref name="netId"/> as a remote.</returns>
+    public bool TryGetLatestRemoteTile(long netId, out TileCoord tile)
+        => TryGetLatestRemoteTile(netId, out tile, out _);
+
+    /// <summary>
+    /// <see cref="TryGetLatestRemoteTile(long, out TileCoord)"/> plus how OLD the answer is, so an overlay can fade
+    /// or hide a marker it can no longer stand behind rather than drawing a confident ring on a stale tile.
+    /// <para><paramref name="ticksOld"/> is wall clock on this client's own presentation clock since the snapshot
+    /// that produced the answer was applied, divided by <see cref="TileWorldClientConfig.TickSeconds"/>. In a
+    /// healthy session it sits under one tick and never settles, because it climbs between snapshots and drops on
+    /// each one. It climbs without bound while snapshots are not arriving, which is the case worth drawing
+    /// differently.</para>
+    /// <para>It does NOT include the one-way latency the snapshot spent in flight, which no client can see without
+    /// an RTT estimate this package does not keep. So it is a LOWER bound on the true age, and a threshold built on
+    /// it wants headroom for the link. It also only advances as fast as <see cref="AdvancePresentation"/> is
+    /// called: a head that stopped driving its render clock reads zero here, and is reading a frozen delayed
+    /// timeline through the other read at the same moment.</para>
+    /// </summary>
+    /// <param name="netId">The remote's net id.</param>
+    /// <param name="tile">The tile the newest applied server state has the remote committed to.</param>
+    /// <param name="ticksOld">Command ticks of client wall clock since that state was applied, zero when false.</param>
+    /// <returns>True when this client holds a server state for <paramref name="netId"/> as a remote.</returns>
+    public bool TryGetLatestRemoteTile(long netId, out TileCoord tile, out float ticksOld)
+    {
+        tile = default;
+        ticksOld = 0f;
+        if (netId == LocalNetId || !latestTiles.TryGetValue(netId, out LatestTile latest)) return false;
+        tile = latest.Tile;
+        // Max rather than a raw subtract for the same reason AdvancePresentation sanitizes its dt: the clock only
+        // moves forward, so a negative here would mean it stopped being a clock, and an age below zero is not an
+        // answer any caller can use.
+        ticksOld = (float)Math.Max(0d, (presentationClock - latest.At) / config.TickSeconds);
+        return true;
+    }
+
+    // Every remote in the snapshot Apply has just finished writing, stamped with the client clock. Full-state
+    // snapshots are what make one pass do both jobs: World now carries exactly what the server sent, so anything
+    // this pass does not see has left the viewer's area of interest and is pruned here rather than a frame later.
+    //
+    // The stamp is REFRESHED on every snapshot even when the tile did not change, which is the opposite of what
+    // SampleRemote does with its own, and the difference is the two questions. This one is "when did the server
+    // last tell me this", which is freshness. That one is "when did this state first appear", which is where the
+    // glide measures its carry-forward from, and re-stamping it would freeze a remote on its last snapshot.
+    void CaptureLatestTiles()
+    {
+        captureLatest ??= CaptureLatest;
+        latestAt = presentationClock;
+        liveLatest.Clear();
+        World.ForEach(captureLatest);
+        // Equal counts means nothing left, which is the ordinary snapshot, so the prune can be skipped.
+        if (latestTiles.Count == liveLatest.Count) return;
+        goneLatest.Clear();
+        foreach (long netId in latestTiles.Keys)
+            if (!liveLatest.Contains(netId)) goneLatest.Add(netId);
+        for (int i = 0; i < goneLatest.Count; i++) latestTiles.Remove(goneLatest[i]);
+    }
+
+    void CaptureLatest(Entity e, ref NetId id)
+    {
+        long netId = id.Value;
+        if (netId == LocalNetId) return;
+        if (!World.TryGet(e, out TileMoveState now)) return;
+        liveLatest.Add(netId);
+        latestTiles[netId] = new LatestTile(now.Tile, latestAt);
     }
 
     // Rebuilds the per-remote draw states off whatever InterpolateAt just wrote into the world. Called every frame
@@ -246,4 +355,13 @@ public sealed partial class TileWorldClient
     /// which is what the fraction of a tick since then is measured from.
     /// </summary>
     readonly record struct RemoteSample(TileMoveState State, double At);
+
+    /// <summary>
+    /// One remote's freshest committed tile. <paramref name="Tile"/> is straight off the newest applied snapshot,
+    /// and <paramref name="At"/> is the client-clock instant that snapshot was applied, which is what
+    /// <see cref="TryGetLatestRemoteTile(long, out TileCoord, out float)"/> measures the answer's age from. Only
+    /// the tile is kept: everything else on the state is presentation, and the delayed timeline is where
+    /// presentation is read.
+    /// </summary>
+    readonly record struct LatestTile(TileCoord Tile, double At);
 }

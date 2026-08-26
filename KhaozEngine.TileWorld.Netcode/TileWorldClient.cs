@@ -359,5 +359,8 @@ public sealed partial class TileWorldClient : IDisposable
         remoteSamples.Clear();
         goneRemotes.Clear();
         liveRemotes.Clear();
+        latestTiles.Clear();
+        goneLatest.Clear();
+        liveLatest.Clear();
     }
 }

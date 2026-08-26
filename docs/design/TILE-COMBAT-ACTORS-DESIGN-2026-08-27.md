@@ -782,6 +782,12 @@ There is still no client-side pre-check, and there should not be one. `ClickRout
 match the server's is how the two drift. A stale comment at `Grimhollow.Server/SoloServerHost.cs:179-180` claims a
 client pre-check exists. It does not, and it should be corrected while this round is in the file.
 
+**Auto-retaliate (ruled ON, section 13.1) lives here, in the command stream.** When a `CombatEvent` hit names the
+owned player as its target while the predicted state's `CombatTarget` is zero, the session queues
+`Attack(attacker)` exactly as if the player had clicked the attacker. The server never fabricates player intent,
+the command replays like any click, and turning the behaviour off later is the absence of that one queue call
+behind a setting.
+
 ### 8.5 Presentation
 
 **Health bars are a style swap, not new rendering.** The engine's `Nameplate` already carries
@@ -840,6 +846,7 @@ Engine, `KhaozEngine.TileWorld.Netcode`:
 | `TileProtocol` | registers `TileHealth` at extension id 19, adds `ServerFrameCombat = 3` and its codec as `TileProtocol.Combat.cs`. Ids 20 to 23 stay free below `FirstGameTypeId`. |
 | `TileWorldClient` | gains `CombatEvent`, `RemoteEntered`, `RemoteLeft`, and a `TileRemoteTargets` it builds for its own simulator. |
 | `TileServerReason` | unchanged. An unreachable attack answers the existing `ke:cannot-reach`, because it is the same fact. |
+| `TileWorldServer.Sessions.cs` | gains the combat logout delay (ruled in, section 13.3): a leaving player whose last combat event is within the configured window is not removed, their entity LINGERS attackable until the window lapses and then persists and drains normally. The window is `TileWorldServerConfig` surface with the game choosing the number. |
 | `TileActionQueue` | unchanged. Combat does not queue: the lock lives on the state and re-fires on a cooldown, which is a different shape from a one-shot pending action. |
 | `TileReach` | unchanged. Section 6.3 is why. |
 | `TilePresenter` | unchanged. An actor is posed exactly as a remote player is. |
@@ -865,9 +872,17 @@ Game, Grimhollow:
 
 ## 10. Rounds
 
-Two rounds, in the SDD shape this program already runs (a plan under `docs/superpowers/plans/`, then per-task
+Three rounds, in the SDD shape this program already runs (a plan under `docs/superpowers/plans/`, then per-task
 brief, report and review under `.superpowers/sdd/<date>-<slug>/`, no task started before its predecessors are green
 and committed).
+
+**R0, the remote pipeline (ruled first, section 13.2).** Before combat exists, a remote's committed tile becomes
+honestly readable client-side, because the monster's true tile must be as legible as the player's own and today
+`TryGetRemoteTile` sits behind `InterpolationDelayTicks`. The round STARTS by verifying what of
+[#696](https://github.com/APKiwiOrg/KhaozEngine/issues/696) still holds (this document already flags its text as
+possibly part-superseded by the round-four presenter), then delivers whatever remains of the honest read, updates
+`TryGetRemoteTile`'s contract, and re-verifies Grimhollow's declined true-tile-for-remotes decision at
+`HollowmereSession.Draw.cs:62-65` against the new read. Small round, its own review, no combat types in it.
 
 **R1, engine.** Actors, the combat seam, the wire, the tests, one minor version. Task shape:
 
@@ -876,7 +891,8 @@ and committed).
 3. `ITileActorBehaviour`, `TileActorIntent`, `TileActorContext`, `TileWanderBehaviour`.
 4. `TileCommandKind.Attack`, `TileEntityTargets`, `TileRemoteTargets`, `TileMoveState.CombatTarget`, the simulator's
    attack case and the follow.
-5. `ITileCombatRules`, `ResolveCombat` (tick step 4b), `OnDied`.
+5. `ITileCombatRules`, `ResolveCombat` (tick step 4b), `OnDied`, and the combat logout linger in
+   `TileWorldServer.Sessions.cs` (section 13.3).
 6. `ServerFrameCombat`, its codec, `TileWorldClient.CombatEvent`, `RemoteEntered` / `RemoteLeft`.
 7. The doc sweep: README catalog, the package README's type list and known limits, `docs/USING-KHAOZENGINE.md`,
    `docs/DEPENDENCY-SEAMS.md` if any edge moved, `CHANGELOG.md`.
@@ -971,31 +987,24 @@ Grimhollow: a headless capture of a monster standing in Hollowmere, and a window
   allocation affordable. The pool is the answer when a profile says so, and this round is what produces the
   profile.
 
-## 13. Open questions for the owner
+## 13. Open questions, resolved by the owner (2026-08-27)
 
-Three, and only these three. Everything else in this document is decided.
+Three were left open when this document was drafted. All three were ruled the same day, and the rulings are
+folded into sections 8.4, 10 and 9 respectively. Recorded here so the fork and its answer stay together.
 
-1. **Does a player AUTO-RETALIATE?** A monster that attacks an idle player either provokes an automatic
-   counterattack (OSRS's default) or does nothing until the player clicks it. It is a gameplay fork with no
-   technically better answer: on costs one line in the client's command stream, off makes every fight an explicit
-   commitment. It changes how the first fight FEELS more than anything else in section 8.2, so it wants a ruling
-   before R2 rather than a coin toss inside it.
-2. **The monster's true tile is not honestly readable client-side, and the #25 legibility promise is one-sided
-   because of it.** The player can read their OWN committed tile from their own prediction, which is what
-   `TrueTileMarker` draws and why it is honest. A monster's committed tile can only be read through
-   `TryGetRemoteTile`, which sits behind `InterpolationDelayTicks`, and Grimhollow already declined to draw
-   anything off it for exactly that reason (`HollowmereSession.Draw.cs:62-65`). So the player can see the tile they
-   will be judged on and cannot see the tile the monster will be judged on. Four ways out, and the choice is the
-   owner's because it is the combat contract's own promise: lower `InterpolationDelayTicks` (which
-   `Grimhollow/docs/ENGINE-INTEGRATION.md:335-341` already flags as the knob, and which costs the absorption of a
-   lost snapshot), do [#696](https://github.com/APKiwiOrg/KhaozEngine/issues/696) first, accept it on the grounds
-   that cardinal adjacency against a 1x1 monster is coarse enough that a two-tick-stale tile rarely changes the
-   answer, or draw the marker on the monster's DRAWN tile and accept that it can be a tile off. The third is the
-   cheapest and the second is the most correct.
-3. **Is there a combat logout delay?** Death teleports a player to the spawn (ruling 4), so disconnecting mid-fight
-   is currently a free escape from it. OSRS answers this with a delay before a player in combat may log out.
-   Whether Grimhollow wants one is a design call, and it touches the session lifecycle
-   (`TileWorldServer.Sessions.cs`) rather than anything in sections 5 to 8, so it is cheap to add later and cheaper
-   to decide now.
+1. **A player AUTO-RETALIATES.** A monster that attacks an idle player provokes an automatic counterattack,
+   OSRS's default. Mechanism in section 8.4: when a `CombatEvent` hit lands on the owned player while their
+   `CombatTarget` is zero, the client queues `Attack(attacker)`, one line in the command stream, and the server
+   never invents player intent. A later settings screen may expose it as a toggle.
+2. **The remote pipeline gets fixed FIRST.** The monster's true tile must be honestly readable client-side
+   before combat ships, so the one-sided legibility gap closes rather than being accepted: the #25 promise is
+   the contract's own, and combat is being built on it. This is round R0 in section 10, starting from
+   [#696](https://github.com/APKiwiOrg/KhaozEngine/issues/696) whose text this document already flags as
+   possibly part-superseded (the round verifies before it builds). The cheap acceptance argument (cardinal
+   adjacency is coarse) was considered and declined by the owner.
+3. **There IS a combat logout delay.** A player in combat (a combat event touched them within the window) who
+   disconnects is not removed at once: the entity LINGERS in world until the window lapses, still attackable,
+   then persists and leaves through the ordinary drain. Section 9's `TileWorldServer.Sessions.cs` row carries
+   it, R1 task 5 builds it, and the window length is a game config beside the other combat numbers.
 
 

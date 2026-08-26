@@ -258,8 +258,8 @@ tuning miss. Any window shorter than the step finishes early and leaves a REST G
 window at or above the step is round one again. There is no value of the knob between the two failures. Measured
 through the real client wiring at a 1/6 s tick, `TileStepTicks(4, 2)` and 60 fps, the shipped 0.1 s window spent
 **157 of a twelve tile run's 220 frames drawing the body at a bit-identical position, in runs of 14 frames, once
-per commit**: six moving frames then fourteen dead ones, twelve times over, 71 per cent of the route standing
-still.
+per commit**: six moving frames then fourteen dead ones per step, eleven full dead runs plus a tail the route's
+end truncates, 71 per cent of the route standing still.
 
 **Round three, the damped chase.** The body PURSUES its committed tile rather than crossing to it on a schedule:
 every frame it closes the remaining gap by `2^(-dt / halfLife)`. That answers the stutter completely and by

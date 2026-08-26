@@ -8496,7 +8496,9 @@ if (client.TryGetRemoteTile(netId, out TileCoord theirs))
   the destination. The tile the step in flight is entering is `Tile`, NOT `Route.Next`: a step pops the route as
   it commits, so `Route.Next` is already the step AFTER the one being walked. A route therefore empties as its
   last step commits, and a body still walking that final tile in has `Route.IsIdle` and `IsStepping` both true.
-  Start the highlight at `Tile` and it is a connected path from the marker to the goal.
+  The true-tile marker covers `Tile` and the route loop covers the rest: drawn together they are a connected
+  path from the marker to the goal, and a route loop drawn WITHOUT the marker leaves a hole on exactly the tile
+  the body is walking into.
 - **`PoseAt(tile)` takes the tile's own plane**, so a marker on an upper floor draws at the right height, and it
   lands on exactly the centre a standing body draws on. Pass a `TileDirection` for a marker that has a facing,
   otherwise the yaw is 0 and costs nothing to ignore.

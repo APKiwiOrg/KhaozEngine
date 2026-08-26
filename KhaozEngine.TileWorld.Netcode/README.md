@@ -146,7 +146,8 @@ is owner-only on the wire, so a path highlight is a local-player overlay only.
   `Pose(state, extraTicks)` is the BODY: the linear glide from `StepFrom` into `Tile` by the step's own tick
   count, carried forward by the fraction of a tick since the state was sampled and clamped at the end of the step.
   `PoseAt(tile)` is the RULES: a whole tile's centre, with no glide, which is what a true-tile marker, a route
-  highlight, a minimap or an editor draws on. `LocalPose(prediction)` is the body for a caller holding its own
+  highlight, a minimap or an editor draws on. The `PoseAt(planar, vertical, facing)` overload takes a smoothed
+  or fractional position for the same mapping when the caller already holds one. `LocalPose(prediction)` is the body for a caller holding its own
   `ClientPrediction`, and `client.LocalPose` is that call already wired. Holds no state and no tuning, so
   replacing it when the document loads cannot change how anything moves. A pose names the tile CENTRE, half a
   tile in from the corner on each axis, which is the middle of that tile's ground quad and the point a 1x1

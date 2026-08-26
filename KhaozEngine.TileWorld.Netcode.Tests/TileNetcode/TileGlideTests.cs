@@ -14,32 +14,13 @@ namespace KhaozEngine.Tests.TileNetcode;
 /// <see cref="TilePresenter"/> in <see cref="TilePresenterTests"/>. What is pinned HERE is what the client does
 /// with it, which the arithmetic says nothing about: whether a discontinuity cuts, whether a correction pops, and
 /// what a frame clock that has stopped being a clock does to the session.
-/// <para>THE DECISION LOG THIS FILE REPLACES. A step commits its tile when it STARTS (18.1.0), so the simulation
-/// leads the drawn body and the question of what the picture should do about it went four rounds:</para>
-/// <list type="number">
-/// <item>The full-step linear glide, this. Playtest verdict: it reads as runescape.</item>
-/// <item>A GLIDE WINDOW, crossing the whole step in a fixed number of seconds and then holding the body on its
-/// tile. Playtest verdict: a stutter. Measured through this same wiring at a 1/6 s tick,
-/// <c>TileStepTicks(4, 2)</c> and 60 fps, the shipped 0.1 s window spent 157 of a twelve tile run's 220 frames
-/// drawing the body at a BIT-IDENTICAL position, in runs of 14 frames, once per commit. Structural rather than a
-/// tuning miss: any window shorter than the step leaves a rest gap and any window at or above it is round
-/// one.</item>
-/// <item>A DAMPED CHASE, the body pursuing its committed tile and halving the gap every half life. It answered
-/// the stutter (no schedule to finish, so no frame rests) and was ruled BAD at the owner's hand.</item>
-/// <item>The ruling: round one was right. The OSRS model is the deliberate final answer, and the fix for its
-/// known weakness is not a tighter curve. Both tightenings were TRIED, and the second one measured well and
-/// still felt wrong.</item>
-/// </list>
-/// <para>THE WEAKNESS, AND WHY VISIBILITY BEATS TIGHTNESS. The glide's cost is that the drawn body lags the tile
-/// the rules have committed it to, by half a tile on average, INVISIBLY: a player reading the avatar cannot see
-/// which tile the game will answer their next click against. Rounds two and three both attacked that by shrinking
-/// the lag, and shrinking it is the wrong axis, because at any lag a player can feel the invisible truth is still
-/// invisible and the motion has to be distorted to buy it. Making the truth VISIBLE costs the motion nothing: the
-/// game draws a true-tile marker on the committed tile and a highlight over the remaining route, so the lead is
-/// something the player READS rather than something they have to learn. That is a consumer-side overlay, and this
-/// package's job is to leave the reads clean (see <see cref="TilePresenter.PoseAt(TileCoord, TileDirection)"/>,
-/// <see cref="TileWorldClient.TryGetRemoteTile"/>, and the route on
-/// <see cref="ClientPrediction{TState,TCommand}.PredictedState"/>).</para>
+/// <para>WHY THIS SHAPE lives ONCE, in section 5.2 of docs/design/TILE-WORLD-NETCODE-DESIGN-2026-08-22.md: the
+/// four-round feel iteration behind the glide, the measured stutter that killed the window, the chase that
+/// measured well and still felt wrong, and the ruling that VISIBILITY beats tightness (the game draws a
+/// true-tile marker and a route highlight on the reads this package leaves clean, see
+/// <see cref="TilePresenter.PoseAt(TileCoord, TileDirection)"/>, <see cref="TileWorldClient.TryGetRemoteTile"/>
+/// and the route on <see cref="ClientPrediction{TState,TCommand}.PredictedState"/>). Do not restate the
+/// measurement here, point at 5.2.</para>
 /// <para>The stutter-refusal test round three carried is retired with the chase it defended. A full-step glide
 /// cannot rest mid route BY CONSTRUCTION: it is still moving on the last tick of every step, so there is no
 /// schedule to finish early and no gap to wait out. That is asserted once, below, and needs no tuning to hold.
@@ -207,7 +188,10 @@ public class TileGlideTests
     /// The complementary case, and the one the glide has to get right on its own: a correction the layer does NOT
     /// cut. A sub-tile disagreement (the authority agrees about which tile the player owns and disagrees only
     /// about how far through the step the body is) must be absorbed CONTINUOUSLY, with no frame jumping the whole
-    /// correction and no frame reversing.
+    /// correction. A BACKWARD correction legitimately reverses the drawn motion once (the authority moved the
+    /// body back while the replayed step marches forward), so the honest bound is not "never reverses" but
+    /// "travels no more than the correction explains": one back and forth of the disagreement, and nothing that
+    /// oscillates.
     /// <para>This is where the glide and the chase genuinely differ, and it is worth being explicit rather than
     /// carrying round three's assertion across. Under the chase the right answer was that the drawn body does not
     /// move AT ALL, because the chase's target was the bare tile and the tile had not moved. Under the glide the
@@ -216,7 +200,7 @@ public class TileGlideTests
     /// it. Pinned as a bound on the per-frame delta rather than as bit-identity.</para>
     /// </summary>
     [Fact]
-    public void A_sub_tile_correction_is_absorbed_without_a_pop_or_a_reversal()
+    public void A_sub_tile_correction_is_absorbed_without_a_pop_and_travels_only_what_it_explains()
     {
         using var loop = new Loop();
         loop.Join();
@@ -233,7 +217,7 @@ public class TileGlideTests
         loop.Server.SetPlayerState(0, ahead);
 
         int snaps = loop.Client.SnapCount, corrections = loop.Client.CorrectionCount;
-        (float travelled, float worst) = loop.Trace(90);
+        (float travelled, float worst, float net) = loop.Trace(90);
 
         Assert.True(loop.Client.CorrectionCount > corrections, "no reconciliation happened at all");
         Assert.Equal(snaps, loop.Client.SnapCount);                 // it GLIDED rather than cutting
@@ -245,6 +229,13 @@ public class TileGlideTests
         // near the wrong one.
         Assert.True(worst < travelled * 0.25f,
             $"one frame moved the body {worst} tiles of a {travelled} tile correction, which is a pop");
+        // The disagreement is 0.1 tiles by construction (the authority at 90 of 100 against a client at the
+        // step's end), and the honest motion is one ease back and one walk forward, so the whole trace can
+        // explain at most about two crossings of it plus the net move. A decay that OSCILLATES crosses the
+        // ground again every swing and breaks this, which is what the unsigned pair above cannot see.
+        Assert.True(travelled < 0.25f + net,
+            $"the body travelled {travelled} tiles for a net move of {net}, more than one back and forth of a "
+          + "0.1 tile correction explains");
     }
 
     /// <summary>
@@ -271,7 +262,7 @@ public class TileGlideTests
         loop.Server.SetPlayerState(0, ahead);
 
         int snaps = loop.Client.SnapCount;
-        (float travelled, float worst) = loop.Trace(90);
+        (float travelled, float worst, float net) = loop.Trace(90);
 
         Assert.Equal(new TileCoord(10, 11, 0), loop.Client.Prediction.PredictedState.Tile);
         Assert.Equal(snaps, loop.Client.SnapCount);                 // no cut behind it
@@ -282,6 +273,9 @@ public class TileGlideTests
         Assert.True(worst < travelled * 0.25f,
             $"one frame moved the body {worst} tiles of a {travelled} tile correction, which is a pop");
         Assert.True(worst < 0.2f, $"a single frame moved the body {worst} tiles, most of the tile the rules moved");
+        // Same reversal bound as the sub-tile case: one standing body, one unwinding line, no ground crossed twice.
+        Assert.True(travelled < net * 1.1f + 0.001f,
+            $"the body travelled {travelled} tiles for a net move of {net}, which is a reversal");
     }
 
     // ---------------------------------------------------------------------------------------------------------
@@ -311,6 +305,9 @@ public class TileGlideTests
         Vector3 beforeLocal = loop.LocalDrawn;
         loop.Client.AdvancePresentation(float.NaN);
         loop.Client.AdvancePresentation(float.PositiveInfinity);
+        loop.Client.AdvancePresentation(float.NegativeInfinity);
+        loop.Client.AdvancePresentation(-0.016f);
+        loop.Client.AdvancePresentation(0f);
 
         Assert.Equal(beforeLocal, loop.LocalDrawn);
         Assert.True(loop.Client.TryGetRemotePose(remote, out TilePose afterRemote));
@@ -349,7 +346,9 @@ public class TileGlideTests
         // The committed tile is where the RULES have the player, and it is ahead of the drawn body: that gap is
         // what the marker exists to show.
         Vector3 marker = loop.Client.Presenter.PoseAt(now.Tile).Position;
-        Assert.True(Vector3.Distance(marker, loop.LocalDrawn) > 0f,
+        // A tenth of a tile, not merely non-zero: the documented average lead is half a tile, so a lead the
+        // player could not see would pass a float-noise bound and fail this one.
+        Assert.True(Vector3.Distance(marker, loop.LocalDrawn) > 0.1f,
             "the marker and the body coincided, so the lead was not visible at all");
         // The remaining route, indexed, in walk order, ending on the goal the click named.
         var remaining = new List<TileCoord>();
@@ -362,7 +361,7 @@ public class TileGlideTests
         TileCoord previous = now.Tile;
         foreach (TileCoord t in remaining)
         {
-            Assert.True(TileMoveState.At(t, TileDirection.S).Tile.Plane == previous.Plane);
+            Assert.Equal(previous.Plane, t.Plane);
             Assert.True(Math.Max(Math.Abs(t.X - previous.X), Math.Abs(t.Z - previous.Z)) == 1,
                 $"route tile {t} is not one step from {previous}");
             previous = t;
@@ -469,13 +468,16 @@ public class TileGlideTests
 
         public Vector3 LocalDrawn => Client.LocalPose.Position;
 
-        // Runs count frames and reports how far the drawn body travelled in TOTAL and the largest single frame of
-        // it. Both correction tests state their bound as a ratio of the two, which says "no frame took most of
-        // this in one go" at whatever size the disagreement happens to be, rather than freezing a magnitude.
-        public (float Travelled, float Worst) Trace(int count)
+        // Runs count frames and reports how far the drawn body travelled in TOTAL, the largest single frame of
+        // it, and the NET displacement start to end. The correction tests bound worst as a ratio of travelled
+        // ("no frame took most of this in one go" at whatever size the disagreement happens to be), and bound
+        // travelled against net, because a rubber band walks the same ground twice: total path length near the
+        // net move is what "no reversal" actually asserts, and an unsigned sum alone cannot see it.
+        public (float Travelled, float Worst, float Net) Trace(int count)
         {
             float travelled = 0f, worst = 0f;
-            Vector3 previous = LocalDrawn;
+            Vector3 start = LocalDrawn;
+            Vector3 previous = start;
             for (int i = 0; i < count; i++)
             {
                 Step();
@@ -484,7 +486,7 @@ public class TileGlideTests
                 if (d > worst) worst = d;
                 previous = LocalDrawn;
             }
-            return (travelled, worst);
+            return (travelled, worst, Vector3.Distance(start, previous));
         }
 
         public void Dispose() { Client.Dispose(); Server.Dispose(); }

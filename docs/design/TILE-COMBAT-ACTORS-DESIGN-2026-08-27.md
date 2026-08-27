@@ -377,18 +377,43 @@ So the simulator holds TWO target resolvers, both `ITileTargets`:
 
 ```
 public TileMoveSimulator(TileCollisionMap map, TileStepTicks stepTicks,
-    ITileTargets? targets = null, ITileTargets? combatTargets = null, TileMoveOptions? options = null)
+    ITileTargets? targets = null, TileMoveOptions? options = null, ITileTargets? combatTargets = null)
 ```
+
+`combatTargets` is APPENDED LAST rather than placed beside `targets`, which is the shipped shape and not the one
+first drafted here. Every existing call site passes `options` positionally as the fourth argument (the server builds
+two simulators, the client one), so inserting ahead of it would be a source break in an additive release. Appended
+last, every one of those calls still means what it said.
 
 `targets` is the document space (`TileDocumentTargets`, unchanged). `combatTargets` is the entity space, and it has
 one implementation per head, exactly as sub-project 2's target seam does:
 
-- **Server: `TileEntityTargets`** over the `ShardHost`. `TryGetFootprint(netId, ...)` is
-  `host.TryGetOwner(netId, out cell, out e)`, then the entity's committed `TileMoveState.Tile`, then
-  `new TileRect(tile.X, tile.Z, 1, 1)` and `tile.Plane`. It reads THROUGH on every call, which is the same contract
-  and the same reasoning `TileDocumentTargets` states at `TileDocumentTargets.cs:10-13`: a thing can move or stop
-  existing between the click and the arrival, and a cached footprint would hand the reach rules a rect the world no
-  longer has. For a moving target that contract stops being a nicety and becomes the mechanism.
+- **Server: `TileEntityTargets`** over the live cells. `Refresh(IReadOnlyList<CellSim>)` walks every cell's OWNED
+  entities once and fills a `Dictionary<long, TileCoord>` keyed by net id, and `TryGetFootprint(netId, ...)` is a
+  keyed lookup into that map, answering `new TileRect(tile.X, tile.Z, 1, 1)` and `tile.Plane`. Ghosts and migrating
+  mirrors are excluded by construction rather than by a check, so a border mirror never answers under the owned
+  entity's net id.
+- **It SNAPSHOTS ONCE PER TICK rather than reading through, and that is the one place it deliberately differs from
+  `TileDocumentTargets`.** An authored object cannot move within a tick, so reading it through is free and correct.
+  An entity moves on every tick, and the follow that consults this runs INSIDE `TileMovementSystem`'s pass over a
+  cell's archetypes, so a read-through resolver would answer with the target's tile from before or after its own
+  step depending on the ECS iteration order. That is not cosmetic: an attacker that saw its target's POST-step tile
+  would re-path on the same tick the target commits, which collapses the one-tick miss window section 6.4's trace
+  depends on and changes how a chase resolves.
+- **The snapshot is what makes step 2 order-independent in FACT rather than in claim.** Every read the follow makes
+  inside a tick is a keyed lookup into a map that was fully built before the pass began, so no archetype order can
+  reach a decision, and `Refresh` itself is order-independent for the same reason in miniature: every write is keyed
+  on a unique net id, so a different walk order writes the same map. A read-through resolver would instead need the
+  movement pass to PROMISE an order, which is a convention rather than a structure.
+- **The client half is still by construction, for one whole reconcile, and the same argument carries it.**
+  `OnSnapshot` captures the honest tiles once and then hands `ClientPrediction.Reconcile` the basis, and the replay
+  runs every pending command in ONE loop with nothing writing that capture in between, so all of them resolve the
+  target to the same tile and replaying the same reconcile twice gives the same state twice. Both heads therefore
+  hold the seam still for exactly as long as they need it still: the server for a tick, the client for a reconcile.
+- **The price, stated plainly: `Step` is no longer a pure function of state plus command.** The same state and the
+  same `Attack` give two different routes if the resolver moved between the two calls. The simulator still holds no
+  state of its own, so the property that actually matters is unchanged and it is the CALLER that owns the seam's
+  stillness. That is why the stillness is spelled out on both heads above rather than left implicit.
 - **Client: `TileRemoteTargets`** over `TileWorldClient`, resolving through the honest read R0 landed,
   `TryGetLatestRemoteTile` (`TileWorldClient.Snapshots.cs:209`), and the local player's own prediction for its
   own net id. The delayed `TryGetRemoteTile` stays what an on-body overlay reads and is never a rules input,
@@ -472,11 +497,12 @@ Section 12 defers larger footprints with that as the reason.
 
 ### 6.4 One tick, stated deterministically
 
-Two steps are added to `RunOneTick` (`TileWorldServer.Tick.cs:96`), in bold:
+Three steps are added to `RunOneTick` (`TileWorldServer.Tick.cs:96`), in bold:
 
 | # | Step |
 |---|---|
 | 0 | `OnBeforeTick`, the head's own systems |
+| **0c** | **`combatTargets.Refresh(liveCells)`, the entity target space snapshotted for the whole tick** |
 | 0b | snapshot `tickSlots` |
 | 1 | drain ONE command per player slot, `Admit` it, write `PendingTileCommand` |
 | **1b** | **actor decisions: every spawner ticks, then every live actor's behaviour runs and writes `PendingTileCommand`** |
@@ -487,6 +513,10 @@ Two steps are added to `RunOneTick` (`TileWorldServer.Tick.cs:96`), in bold:
 | 5 | serve each client its plane-filtered area of interest |
 | 6 | `AdvanceTick`, `TickCount++` |
 
+`0c` is named for what it IS rather than for where it sits: it runs immediately after `OnBeforeTick`, ahead of the
+slot snapshot, so a head's own spawns are in it. What is NOT in it is anything step 1b spawns on this tick, which is
+harmless in R1 because nothing can hold a lock on an entity that did not exist last tick.
+
 **Every step is order-independent within itself, and that is the determinism argument rather than an ordering
 imposed on the ECS pass.** Taking them one at a time:
 
@@ -494,9 +524,12 @@ imposed on the ECS pass.** Taking them one at a time:
   they stood before ANY movement this tick, so no actor's decision can depend on another entity having already
   moved. The ECS iteration order over the archetype therefore cannot reach a decision. The RNG is per actor and
   seeded per actor, so one actor's wander cannot perturb another's.
-- **2 reads only the baked map.** Actors do not occupy tiles (section 12 defers it with the reason), so no entity's
-  step depends on another entity's step. The step commit is a pure function of state plus command plus map, which
-  is the property `TileMoveSimulator.cs:38-40` already claims.
+- **2 reads only the baked map and the 0c snapshot.** Actors do not occupy tiles (section 12 defers it with the
+  reason), so no entity's step depends on another entity's step, and the follow's target tile is a keyed lookup into
+  a map built before the pass began, so no entity's CHASE depends on another entity's step either. The step commit
+  is a pure function of state plus command plus map plus that snapshot. It is NOT a pure function of state plus
+  command alone any more, which is the price section 6.1 states: the simulator holds no state of its own and the
+  caller owns the seam's stillness.
 - **4b is TWO PHASES: roll, then apply.** The roll phase reads every combatant's state as it stands at the START of
   the phase and produces a list of outcomes. The apply phase subtracts them all. So no hit's accuracy or damage can
   depend on another hit having landed, and the pass is order-independent for OUTCOMES. The ORDER of the rolls still

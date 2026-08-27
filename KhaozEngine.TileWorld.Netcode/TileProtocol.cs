@@ -61,7 +61,7 @@ public static partial class TileProtocol
         if (s < 0) return false;
 
         byte kind = data[5];
-        if (kind > (byte)TileCommandKind.Interact) return false;
+        if (kind > (byte)TileCommandKind.Attack) return false;
         byte mode = data[15];
         if (mode > (byte)TileMoveMode.Run) return false;
         int plane = data[14];

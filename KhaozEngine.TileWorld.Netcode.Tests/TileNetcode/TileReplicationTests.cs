@@ -452,6 +452,10 @@ public class TileReplicationTests
         w.Write(stepTotal);
         w.Write(1u);      // epoch
         w.Write(2L);      // interact target
+        // The move payload went from 33 bytes to 41 when TileMoveState gained CombatTarget, and a hand-rolled frame
+        // that stops at 33 now runs the decoder off the end of its own payload. Nothing is clamped on the way in:
+        // every 64 bit pattern is a legal net id, so there is no malformed value here to reject.
+        w.Write(3L);      // combat target
         w.Flush();
         return ms.ToArray();
     }

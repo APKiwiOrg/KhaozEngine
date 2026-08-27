@@ -46,6 +46,10 @@ public sealed partial class TileWorldServer : IDisposable
     readonly ReplicationRegistry registry;
     readonly TileMoveSimulator simulator;
     readonly TileMoveSimulator actorSimulator;
+    // The entity target space both simulators chase through, refreshed ONCE at the top of every tick. Owned here
+    // rather than handed in, because the tick body is the only thing that may refresh it and the snapshot boundary
+    // is the property the follow's determinism rests on. See TileEntityTargets.
+    readonly TileEntityTargets combatTargets = new();
     readonly TileActionQueue actions = new();
     readonly RemoteCommandQueue<TileCommand> commands;
     readonly NetIdAllocator allocator = new();
@@ -120,11 +124,12 @@ public sealed partial class TileWorldServer : IDisposable
         this.registry = registry ?? TileProtocol.CreateRegistry();
         maxActionAgeTicks =
             (long)config.Move.MaxRouteSteps * (Math.Max(config.StepTicks.Walk, config.StepTicks.Run) + 1);
-        simulator = new TileMoveSimulator(map, config.StepTicks, targets, config.Move);
+        simulator = new TileMoveSimulator(map, config.StepTicks, targets, config.Move, combatTargets);
         // A SECOND instance rather than a second stepper. Nothing about TileMoveSimulator is stateful, so this costs
         // its options and nothing else, and it is what keeps a chasing actor's pathfinder scratch at 3 KB instead of
-        // 83 KB. Same map, same cadence, same target seam: only the knobs differ.
-        actorSimulator = new TileMoveSimulator(map, config.StepTicks, targets, config.ActorMove);
+        // 83 KB. Same map, same cadence, same TWO target seams: only the knobs differ. Both get the combat resolver,
+        // because a player chasing a monster and a monster chasing a player are the same follow over the same space.
+        actorSimulator = new TileMoveSimulator(map, config.StepTicks, targets, config.ActorMove, combatTargets);
         Actors = new TileActorHost(this);
         // The queue's own neutral is never what a starved player is stepped with: Admit replaces it with a Continue
         // at the player's CURRENT mode, because TileCommand.None is a run toggled off. It is supplied because the

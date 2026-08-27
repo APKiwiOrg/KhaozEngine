@@ -1,7 +1,7 @@
 namespace KhaozEngine.TileWorld.Netcode;
 
-/// <summary>What one tick's command asks for. Three values, and the wire form is one byte, because a tile world's
-/// entire input vocabulary is where to go and what to touch.</summary>
+/// <summary>What one tick's command asks for. Four values, and the wire form is one byte, because a tile world's
+/// entire input vocabulary is where to go, what to touch and what to fight.</summary>
 public enum TileCommandKind : byte
 {
     /// <summary>Keep doing what you are doing. The command a client sends while a route plays out, and what makes
@@ -18,6 +18,18 @@ public enum TileCommandKind : byte
     /// arrival. The target rather than a tile is sent because a thing can move between the click and the
     /// arrival.</summary>
     Interact = 2,
+
+    /// <summary>Lock onto <see cref="TileCommand.Target"/> as a NET ID, chase it while it moves, and swing at it
+    /// whenever the cooldown is ready and it is in reach. Replaces any interaction already pending, and is itself
+    /// replaced by a <see cref="WalkTo"/>, which is how a player disengages.
+    /// <para>A KIND of its own is mandatory rather than tidy, and the reason is that the two id spaces OVERLAP
+    /// EXACTLY. <c>TileObject.Id</c> is a document-wide counter starting at 1 and a net id is
+    /// <c>(nodeId &lt;&lt; 48) | counter</c> with the counter starting at 1 and node 0 for a single server, so
+    /// object id 7 and the seventh spawned entity are the same 64 bits. A single target field with a single
+    /// resolver could not tell which space a click meant, and the failure mode is silent: clicking a barrel would
+    /// sometimes attack a player. The kind is the discriminator, and it is the only one available without widening
+    /// the frame or tagging the ids.</para></summary>
+    Attack = 3,
 }
 
 /// <summary>
@@ -34,7 +46,9 @@ public enum TileCommandKind : byte
 /// must be the player's own, or the command is dropped at apply.</param>
 /// <param name="Mode">Walk or run. Carried on every kind, so the run toggle rides the tick stream rather than the
 /// click, and a change takes effect at the start of the next step.</param>
-/// <param name="Target">The interaction target id for <see cref="TileCommandKind.Interact"/>, otherwise 0.</param>
+/// <param name="Target">The interaction target id for <see cref="TileCommandKind.Interact"/>, or the combat
+/// target's NET ID for <see cref="TileCommandKind.Attack"/>, otherwise 0. One field over two id spaces that
+/// overlap exactly, which is why <see cref="Kind"/> is what tells them apart.</param>
 public readonly record struct TileCommand(TileCommandKind Kind, TileCoord Goal, TileMoveMode Mode, long Target)
 {
     /// <summary>Keep walking the current route, or keep standing, at <paramref name="mode"/>. THE factory a client
@@ -58,4 +72,10 @@ public readonly record struct TileCommand(TileCommandKind Kind, TileCoord Goal, 
     /// the tick the last step starts and not the tick the drawn body gets there.</summary>
     public static TileCommand Interact(long target, TileMoveMode mode) =>
         new(TileCommandKind.Interact, default, mode, target);
+
+    /// <summary>Lock onto <paramref name="netId"/> and chase it. Unlike <see cref="Interact"/> this routes nothing
+    /// up front: the FOLLOW inside the stepper re-paths every tick the target's committed tile moved, which is what
+    /// makes a chase a chase rather than a one-shot walk to where something used to be.</summary>
+    public static TileCommand Attack(long netId, TileMoveMode mode) =>
+        new(TileCommandKind.Attack, default, mode, netId);
 }

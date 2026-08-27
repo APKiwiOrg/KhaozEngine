@@ -101,6 +101,12 @@ public sealed partial class TileWorldServer
         float dt = config.TickSeconds;
         OnBeforeTick?.Invoke(dt);
 
+        // 0c. The entity target space, snapshotted ONCE. Everything for the rest of this tick resolves a net id to
+        //     the same tile: the actor decisions in 1b, the follow inside the movement pass in 2, and a player's own
+        //     Attack acceptance in 1. Taken after OnBeforeTick so a head's own spawns are in it. See
+        //     TileEntityTargets for why a read-through resolver would let the ECS iteration order decide a fight.
+        combatTargets.Refresh(liveCells);
+
         // Snapshotted, because everything below may add or drop a player and a dictionary cannot be enumerated
         // while it changes. It is also what makes the serve iterate exactly the players the drain routed.
         tickSlots.Clear();
@@ -209,6 +215,14 @@ public sealed partial class TileWorldServer
                 // resolves on the player's own plane with no reachable tile, both DO reach the queue, because
                 // CannotReach is exactly their answer.
                 if (simulator.Accepts(state, cmd)) actions.Issue(slot, cmd.Target, TickCount);
+                return cmd;
+
+            case TileCommandKind.Attack:
+                // An attack ABANDONS a pending interaction, exactly as a walk does and for the same reason: the
+                // simulator clears the state's own InteractTarget on one, and an entry that outlived it would fire
+                // the moment the CHASE happened to pass a reach tile of the thing the player walked away from. Only
+                // an APPLIED attack clears, so a cross-plane target abandons nothing.
+                if (simulator.Accepts(state, cmd)) actions.Clear(slot);
                 return cmd;
 
             default:

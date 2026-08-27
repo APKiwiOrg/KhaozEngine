@@ -48,7 +48,10 @@ public sealed partial class TileWorldClient : IDisposable
     /// <param name="map">The baked collision map, from the same world files the server baked.</param>
     /// <param name="targets">Resolves interaction targets, null on a head with no interactions wired. When it is
     /// null an <see cref="TileCommandKind.Interact"/> is still sent and still answered by the server, it is simply
-    /// not predicted, which reads as the click taking one round trip to land.</param>
+    /// not predicted, which reads as the click taking one round trip to land. This is the OBJECT space only. The
+    /// second seam, the ENTITY space a <see cref="TileCommandKind.Attack"/> names, is not a parameter: the client
+    /// builds its own <see cref="TileRemoteTargets"/> over itself, because the only honest answer to "where is that
+    /// entity" on a client is the client's own newest snapshot.</param>
     /// <param name="connectToken">The token the door reads, from <see cref="TileProtocol.BuildConnectToken"/>.
     /// Null presents an empty token, which only a server with no gate admits.</param>
     /// <param name="registry">The replication registry both heads share, the mirror of
@@ -72,7 +75,9 @@ public sealed partial class TileWorldClient : IDisposable
 
         this.config = config;
         queued = TileCommand.Continue(RunMode);
-        Simulator = new TileMoveSimulator(map, config.StepTicks, targets, config.Move);
+        // TileRemoteTargets reads Prediction and LocalNetId LAZILY, so handing it `this` from inside the constructor
+        // is safe: nothing calls the resolver before construction returns.
+        Simulator = new TileMoveSimulator(map, config.StepTicks, targets, config.Move, new TileRemoteTargets(this));
         Prediction = new ClientPrediction<TileMoveState, TileCommand>(Simulator,
             config.Prediction ?? new PredictionSettings(config.TickSeconds, MaxPendingCommands: 64,
                 HardSnapDistance: 0.5f, CorrectionRate: 8f, CorrectionDeadZone: 0.01f));

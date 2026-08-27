@@ -35,13 +35,22 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// the next step: the step already under way keeps the total it was stamped with, so holding run halfway through a
 /// walking step never shortens that step, it only makes the one after it a run. A client sends
 /// <see cref="TileCommand.Continue"/> carrying the run state it is holding, on every tick.</para>
+/// <para>A LOCKED COMBAT TARGET IS CHASED ON EVERY TICK, by the follow at the top of <c>Advance</c>. That is one
+/// more thing the tick does than an interaction, which routes once at the click and never again: a chase re-paths
+/// whenever the target's committed tile moves out from under the route it already has, drops its route on the tick
+/// it arrives in reach, and clears the lock when the target stops resolving or turns up on another plane. The whole
+/// of it lives here rather than in the server, because a target followed anywhere else is a second movement
+/// authority the client cannot predict.</para>
 /// <para>Nothing here is stateful. Every answer comes from the state handed in plus the map, so one instance is
 /// shared by every player on a server and by the prediction and reconcile paths on a client, and replaying a tick
-/// twice gives the same state twice.</para>
+/// twice gives the same state twice. The two TARGET SEAMS are the caller's to keep still: the combat resolver a
+/// server hands over is refreshed once per tick and answers the same tile for the whole of it, which is what keeps
+/// a movement pass order-independent. This class holds no state of its own either way.</para>
 /// </summary>
 public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileCommand>
 {
     readonly ITileTargets? targets;
+    readonly ITileTargets? combatTargets;
 
     /// <summary>Builds a stepper over a baked collision map and a step cadence. A <see cref="TileStepTicks"/>
     /// with EITHER count zero (which is what an unset field or a decoded blank gives) falls back to
@@ -50,12 +59,16 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     /// <param name="stepTicks">Ticks per step, per mode.</param>
     /// <param name="targets">Resolves interaction targets, null on a head that has no interactions wired.</param>
     /// <param name="options">Pathfinder knobs, null for the defaults.</param>
+    /// <param name="combatTargets">Resolves combat targets in the ENTITY space, null on a head with no combat
+    /// wired. Deliberately a SECOND seam rather than a second lookup inside the first: object ids and net ids
+    /// overlap exactly, so one resolver could not tell which space a target named. Appended last rather than placed
+    /// beside <paramref name="targets"/> so an existing positional call keeps meaning what it said.</param>
     /// <exception cref="ArgumentNullException"><paramref name="map"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="options"/> asks for an agent smaller than
     /// one tile, for a path radius outside the range <see cref="TilePathfinder.FindPath"/> accepts, or for a route
     /// cap outside 1..<see cref="TileProtocol.MaxRouteSteps"/>.</exception>
     public TileMoveSimulator(TileCollisionMap map, TileStepTicks stepTicks, ITileTargets? targets = null,
-        TileMoveOptions? options = null)
+        TileMoveOptions? options = null, ITileTargets? combatTargets = null)
     {
         ArgumentNullException.ThrowIfNull(map);
         TileMoveOptions o = options ?? new TileMoveOptions();
@@ -75,6 +88,7 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         // check as a StepTotal of zero, which commits a tile every tick.
         StepTicks = stepTicks.Walk == 0 || stepTicks.Run == 0 ? TileStepTicks.Default : stepTicks;
         this.targets = targets;
+        this.combatTargets = combatTargets;
         AgentSize = o.AgentSize;
         MaxPathRadius = o.MaxPathRadius;
         MaxRouteSteps = o.MaxRouteSteps;
@@ -110,8 +124,9 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     /// </summary>
     /// <param name="state">The state the command would be applied to. Only its tile's plane is consulted.</param>
     /// <param name="command">The command to weigh.</param>
-    /// <returns>False for a cross-plane walk goal or a resolved cross-plane interaction target, true otherwise,
-    /// <see cref="TileCommandKind.None"/> included (its mode is always applied).</returns>
+    /// <returns>False for a cross-plane walk goal, a resolved cross-plane interaction target or a resolved
+    /// cross-plane combat target, true otherwise, <see cref="TileCommandKind.None"/> included (its mode is always
+    /// applied).</returns>
     public bool Accepts(in TileMoveState state, in TileCommand command) => command.Kind switch
     {
         TileCommandKind.WalkTo => command.Goal.Plane == state.Tile.Plane,
@@ -119,6 +134,13 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
             targets is null
             || !targets.TryGetFootprint(command.Target, out _, out int plane)
             || plane == state.Tile.Plane,
+        // A distinct out name because the arms of a switch expression share one scope. The rule is the interaction's
+        // rule over the OTHER seam: a target this head cannot resolve at all is accepted and answered later, and one
+        // resolved on another plane is refused outright.
+        TileCommandKind.Attack =>
+            combatTargets is null
+            || !combatTargets.TryGetFootprint(command.Target, out _, out int combatPlane)
+            || combatPlane == state.Tile.Plane,
         _ => true,
     };
 
@@ -142,9 +164,16 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
             case TileCommandKind.WalkTo when Accepts(s, command):
                 s = BeginWalk(s, command.Goal, command.Mode);
                 s.InteractTarget = 0;
+                // A WALK BREAKS A FIGHT, which is how a player disengages and is the same rule OSRS uses. Both
+                // targets go for one reason: each is a record of an intent the player has visibly replaced, and one
+                // that outlived the walk would keep steering the route back at something they walked away from.
+                s.CombatTarget = 0;
                 break;
             case TileCommandKind.Interact:
                 s = BeginInteract(s, command.Target, command.Mode);
+                break;
+            case TileCommandKind.Attack:
+                s = BeginAttack(s, command.Target, command.Mode);
                 break;
             // The run toggle rides on every command, so holding run is a property of the TICK rather than of the
             // click that started the route. StepTotal is deliberately not re-stamped: the step already under way
@@ -212,6 +241,10 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
 
         s.Mode = mode;
         s.InteractTarget = 0;
+        // The other half of the mutual exclusion BeginAttack states: an interaction and a fight are two records of
+        // one intent, and a lock left set here would have the follow re-path the interaction's own route on this very
+        // tick, since the follow runs inside the Advance below.
+        s.CombatTarget = 0;
 
         if (!resolved || !TileReach.TryNearest(Map, footprint, plane, s.Tile, AgentSize, MaxPathRadius,
                 out TileCoord reachTile, out TilePath path))
@@ -230,6 +263,78 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         return s;
     }
 
+    // Sets the lock and nothing else. Unlike BeginInteract this routes NOTHING here, because a chase is not a walk
+    // to where something is: the FOLLOW inside Advance runs on this tick and on every tick after it, and it is what
+    // paths, re-paths and stops. Doing it here as well would path twice on the click's own tick.
+    //
+    // The two targets clear each other for the reason TileActionQueue gives about its own pair, and a cross-plane
+    // target is refused with the state UNTOUCHED, the same answer BeginWalk and BeginInteract give: mode, cadence,
+    // route and both targets have to survive a click the player cannot even see.
+    TileMoveState BeginAttack(in TileMoveState state, long target, TileMoveMode mode)
+    {
+        TileMoveState s = state;
+        if (!Accepts(s, TileCommand.Attack(target, mode))) return s;
+        s.Mode = mode;
+        s.InteractTarget = 0;
+        s.CombatTarget = target;
+        return s;
+    }
+
+    // THE CHASE, one tick of it, and it lives in the stepper for the reason TileMoveState.CombatTarget's doc gives:
+    // anywhere else is a second movement authority a client cannot predict.
+    //
+    // Rule 5 is what keeps the pathfinding budget honest, and the memo it needs is already on the state. The route's
+    // END is a reach tile of wherever the target stood when this last re-pathed, so "the target's committed tile
+    // changed" is exactly "the route end is no longer in the target's reach set", and a stationary target therefore
+    // costs ZERO FindPath calls per tick. Nothing new is stored for it.
+    //
+    // The step in flight is never abandoned here either. Dropping the ROUTE is not abandoning a STEP: a step was
+    // committed when it started and its tile is not in the route any more.
+    TileMoveState Follow(in TileMoveState state)
+    {
+        TileMoveState s = state;
+        if (s.CombatTarget == 0) return s;
+
+        // 2. A target that no longer resolves is dead, despawned or out of this head's view. This is the free half
+        //    of death handling: the seam's contract already says an id stops resolving the moment the thing it
+        //    named stops existing, so nothing has to tell the follow that its target died.
+        if (combatTargets is null
+            || !combatTargets.TryGetFootprint(s.CombatTarget, out TileRect footprint, out int plane))
+        {
+            s.CombatTarget = 0;
+            return s;
+        }
+
+        // 3. Reach never crosses planes, and the rest of the package refuses cross-plane rather than coercing, so a
+        //    fight broken by a staircase is broken rather than chased through the floor.
+        if (plane != s.Tile.Plane)
+        {
+            s.CombatTarget = 0;
+            return s;
+        }
+
+        // 4. An attacker in range does not shuffle.
+        if (TileReach.Contains(Map, footprint, plane, s.Tile))
+        {
+            s.Route = TileRoute.None;
+            return s;
+        }
+
+        // 5. Re-path only when the target moved out from under the route we already have.
+        if (!s.Route.IsIdle && TileReach.Contains(Map, footprint, plane, s.Route.End)) return s;
+
+        if (!TileReach.TryNearest(Map, footprint, plane, s.Tile, AgentSize, MaxPathRadius, out _, out TilePath path))
+        {
+            // Cannot get there at all. The lock clears and the body stands. The server turns this into the same
+            // TileServerReason.CannotReach an unreachable interaction gets, because it is the same fact.
+            s.CombatTarget = 0;
+            s.Route = TileRoute.None;
+            return s;
+        }
+        s.Route = RouteFor(path);
+        return s;
+    }
+
     // One tick of movement, in the order the model demands: the body finishes the step it is walking, and the tile
     // it lands on is the tile that was committed when that step STARTED, so the only thing left to decide is
     // whether the next step starts now.
@@ -238,9 +343,11 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     // standing still" rule. Landing spends the tick on the glide that just finished, so the step it starts is left
     // at zero progress and the next tick is its first. Starting from a STANDING state spends the tick on the new
     // step itself, so it counts one immediately, and a freshly clicked route therefore reads one tick in.
+    // The chase runs FIRST, before anything about this tick's step is decided, so a route it drops or rebuilds is
+    // the route the step below reads. See Follow.
     TileMoveState Advance(in TileMoveState state)
     {
-        TileMoveState s = state;
+        TileMoveState s = Follow(state);
         if (s.StepTotal == 0) s.StepTotal = StepTicks.For(s.Mode);
 
         if (s.IsStepping)

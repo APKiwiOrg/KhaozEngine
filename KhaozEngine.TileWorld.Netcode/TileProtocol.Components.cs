@@ -123,7 +123,7 @@ public static partial class TileProtocol
         return s;
     }
 
-    // 33 fixed bytes. The plane rides in one byte, matching the command frame, so the two agree about what a plane
+    // 41 fixed bytes. The plane rides in one byte, matching the command frame, so the two agree about what a plane
     // index can be and a world deeper than 256 planes fails in one place rather than two.
     //
     // StepFrom rides WITHOUT a plane of its own, and that is a rule rather than a saving: a step never changes
@@ -147,6 +147,7 @@ public static partial class TileProtocol
         w.Write(v.StepTotal);
         w.Write(v.Epoch);
         w.Write(v.InteractTarget);
+        w.Write(v.CombatTarget);
     }
 
     // Every byte here is attacker controlled, and a byte cast into an enum is not validated by the runtime, so the
@@ -167,6 +168,10 @@ public static partial class TileProtocol
         s.StepTotal = r.ReadByte();
         s.Epoch = r.ReadUInt32();
         s.InteractTarget = r.ReadInt64();
+        // No clamp, and it needs none: every 64 bit pattern is a legal net id value, so there is no malformed one to
+        // reject. An id naming nothing simply stops resolving, which is the case the follow's rule 2 already handles
+        // by clearing the lock, on both heads, on the first tick the resolver answers false.
+        s.CombatTarget = r.ReadInt64();
         // At() seeded StepFrom onto the tile, which is what a frame naming anything but a STEP falls back to. A pair
         // that is not one tile apart is not a step: a teleport, a plane change, or a lie. Gliding between them would
         // walk the avatar over every tile in the gap, and it is a lie that costs, because Position is fed straight

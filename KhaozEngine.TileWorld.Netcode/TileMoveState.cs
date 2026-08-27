@@ -91,6 +91,21 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
     /// the route is replaced, so a target can never outlive the walk that was chasing it.</summary>
     public long InteractTarget;
 
+    /// <summary>The entity this state is locked onto and chasing, 0 when not fighting. A NET ID, from the entity
+    /// space, never an object id: the two spaces overlap exactly, which is why the command kind is the
+    /// discriminator (see <see cref="TileCommandKind.Attack"/>).
+    /// <para>It lives HERE, on the state, and costs 8 bytes on every entity's every snapshot, rather than on a
+    /// component present only on entities actually fighting. That was weighed and rejected on the package's
+    /// founding property: <see cref="TileMoveSimulator"/> is an
+    /// <see cref="KhaozEngine.Netcode.ITickSimulator{TState,TCommand}"/> and sees the state and the command and
+    /// nothing else, so a target held anywhere else cannot be followed inside the one stepper both heads run.
+    /// Following it elsewhere means a SECOND movement authority the client cannot predict, and a client that cannot
+    /// predict its own approach pays a round trip on every re-path of every chase.</para>
+    /// <para>Mutually exclusive with <see cref="InteractTarget"/>, each clearing the other, for the reason
+    /// <c>TileActionQueue</c> gives about its own pair: two records of one intent, where the one that outlives the
+    /// other fires against something the player visibly walked away from.</para></summary>
+    public long CombatTarget;
+
     /// <summary>Presentation only, see the type doc.</summary>
     public Vector2 RenderPosition;
 
@@ -198,15 +213,18 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
     public readonly bool Equals(TileMoveState other) =>
         Tile.Equals(other.Tile) && StepFrom.Equals(other.StepFrom) && Facing == other.Facing && Mode == other.Mode
         && StepTicks == other.StepTicks && StepTotal == other.StepTotal
-        && Route.Equals(other.Route) && Epoch == other.Epoch && InteractTarget == other.InteractTarget;
+        && Route.Equals(other.Route) && Epoch == other.Epoch && InteractTarget == other.InteractTarget
+        && CombatTarget == other.CombatTarget;
 
     /// <inheritdoc/>
     public readonly override bool Equals(object? obj) => obj is TileMoveState s && Equals(s);
 
     /// <summary>Hashes the same simulation fields <see cref="Equals(TileMoveState)"/> compares.</summary>
+    /// <remarks><see cref="HashCode.Combine{T1, T2, T3, T4, T5, T6, T7, T8}"/> takes at most eight arguments, so the
+    /// ninth field regroups the existing call rather than being appended to it.</remarks>
     public readonly override int GetHashCode() =>
-        HashCode.Combine(HashCode.Combine(Tile, StepFrom), Facing, Mode, StepTicks, StepTotal, Route, Epoch,
-            InteractTarget);
+        HashCode.Combine(HashCode.Combine(Tile, StepFrom), HashCode.Combine(Facing, Mode, StepTicks, StepTotal),
+            Route, Epoch, InteractTarget, CombatTarget);
 
     /// <summary>Equality operator over <see cref="Equals(TileMoveState)"/>.</summary>
     public static bool operator ==(TileMoveState a, TileMoveState b) => a.Equals(b);

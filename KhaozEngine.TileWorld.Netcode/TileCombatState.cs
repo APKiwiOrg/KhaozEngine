@@ -26,7 +26,8 @@ public struct TileCombatState : IComponent
     public byte CooldownRemaining;
 
     /// <summary>Net id of the last entity to land damage on this one, 0 when nothing has. What a retaliating
-    /// behaviour reads.</summary>
+    /// behaviour reads, and what a <see cref="TileActorIntentKind.Break"/> clears: an actor that broke off a fight
+    /// must not be handed the same attacker back by the retaliation rule the moment it is home again.</summary>
     public long LastDamagedBy;
 
     /// <summary>The server tick that damage landed on, so a behaviour can age it out rather than retaliating

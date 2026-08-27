@@ -15,7 +15,10 @@ public enum TileActorIntentKind : byte
     Attack = 2,
 
     /// <summary>Drop the target and go home. The engine turns this into a walk to the spawner's home tile and
-    /// restores the actor to full health when it ARRIVES, not when it breaks.</summary>
+    /// restores the actor to full health when it ARRIVES, not when it breaks.
+    /// <para>DROPPING THE TARGET DROPS THE DAMAGE RECORD WITH IT (<see cref="TileCombatState.LastDamagedBy"/> and
+    /// <see cref="TileCombatState.LastDamagedTick"/>), because a break that left it set would have a retaliating
+    /// behaviour re-acquire the same attacker on the first tick the actor was back inside its leash.</para></summary>
     Break = 3,
 }
 

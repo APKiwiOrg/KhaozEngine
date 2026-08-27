@@ -49,6 +49,16 @@ public class TileWanderBehaviourTests
     static int Chebyshev(TileCoord a, TileCoord b) =>
         Math.Max(Math.Abs(a.X - b.X), Math.Abs(a.Z - b.Z));
 
+    // A hit landing on an actor, written where the combat pass will write it: the damage record on TileCombatState.
+    static void Damage(TileWorldServer s, long netId, long attacker)
+    {
+        Assert.True(s.Host.TryGetOwner(netId, out CellSim cell, out Entity e));
+        Assert.True(cell.World.TryGet(e, out TileCombatState combat));
+        combat.LastDamagedBy = attacker;
+        combat.LastDamagedTick = s.TickCount;
+        cell.World.Set(e, combat);
+    }
+
     // The same stream from the same three numbers, a different stream from a different actor, and no dependence on
     // System.Random's sequence, which is not stable across runtimes and would make the reproducibility golden fail on
     // an upgrade rather than on a regression.
@@ -188,7 +198,8 @@ public class TileWanderBehaviourTests
     }
 
     // Full restore on ARRIVAL rather than on the break, so a monster dragged out and abandoned is not instantly
-    // healthy where the player left it.
+    // healthy where the player left it. This one drags with a latched command and never damages the actor, so it
+    // pins the arrival rule alone. The damaged case is the test below it, and it is a different failure.
     [Fact]
     public void An_actor_dragged_past_its_leash_breaks_walks_home_and_heals_on_arrival()
     {
@@ -225,6 +236,45 @@ public class TileWanderBehaviourTests
         Assert.Equal(0L, home.CombatTarget);
         Assert.True(s.TryGetHealth(actor, out TileHealth healed));
         Assert.Equal(30, healed.Current);
+    }
+
+    // The case the test above cannot reach, because it drags with a latched command and never damages the actor. A
+    // player drags a monster by HITTING it, so the damage record is fresh when the leash fires, and a break that
+    // dropped only the target left the retaliation rule to re-acquire the same attacker the moment the actor was
+    // back inside its radius. The heal is then lost for that break permanently, because acquiring a target clears
+    // the Returning flag the restore is gated on.
+    [Fact]
+    public void An_actor_dragged_past_its_leash_after_real_combat_stops_retaliating_and_heals_at_home()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(30, 32, 0));
+        TileActorSpawner spawner = s.Actors.Add(Rat with { WanderRadius = 0 }, new TileCoord(30, 30, 0));
+        long player = s.SpawnPlayer(0, "a", "Ari");
+        s.Tick(Dt);
+        long actor = spawner.ActorNetId;
+        Assert.True(s.SetHealth(actor, new TileHealth { Current = 4, Max = 30 }));
+
+        // Dragged out and hit on every tick of the drag, which is what a player dragging a monster does.
+        for (int i = 0; i < 60; i++)
+        {
+            s.Actors.Command(actor, TileCommand.WalkTo(new TileCoord(30, 46, 0), TileMoveMode.Run));
+            Damage(s, actor, player);
+            s.Tick(Dt);
+            if (s.TryGetActorState(actor, out TileMoveState dragged)
+                && Chebyshev(dragged.Tile, new TileCoord(30, 30, 0)) > Rat.LeashRadius) break;
+        }
+        Assert.True(s.TryGetActorState(actor, out TileMoveState outside));
+        Assert.True(Chebyshev(outside.Tile, new TileCoord(30, 30, 0)) > Rat.LeashRadius);
+
+        // Hands off entirely. Nobody touches it again, so nothing may pull it back into the fight.
+        for (int i = 0; i < 200; i++) s.Tick(Dt);
+
+        Assert.True(s.TryGetActorState(actor, out TileMoveState home));
+        Assert.True(s.TryGetHealth(actor, out TileHealth healed));
+        // One assertion over all three, because the three wrong answers are one failure: an actor that re-acquired
+        // its attacker is standing beside it, still fighting, still hurt.
+        Assert.True(home.Tile.Equals(new TileCoord(30, 30, 0)) && home.CombatTarget == 0L && healed.Current == 30,
+            $"the actor is at {home.Tile} targeting {home.CombatTarget} at {healed.Current} of {healed.Max}");
     }
 
     // The seam itself: a game's own behaviour drives the actor, and the context it is handed is the read-only view

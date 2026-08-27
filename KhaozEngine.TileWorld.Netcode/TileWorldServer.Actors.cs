@@ -177,6 +177,19 @@ public sealed partial class TileWorldServer
         return host.TryGetOwner(netId, out CellSim cell, out Entity e) && cell.World.TryGet(e, out combat);
     }
 
+    // Writes one entity's server-only combat state. INTERNAL while its readers are, unlike the public read beside
+    // it: the two writers are the leash break, which drops the damage record so a broken fight cannot be re-acquired
+    // from a stale one, and the combat pass, which stamps the cooldown and the record itself. A game reaches the
+    // numbers through its rules seam rather than through the component, so widening this is a decision to take when
+    // something outside the assembly actually needs it.
+    internal bool SetCombatState(long netId, in TileCombatState combat)
+    {
+        if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) return false;
+        if (!cell.World.IsAlive(e)) return false;
+        cell.World.Set(e, combat);
+        return true;
+    }
+
     // Both writes are UNCONDITIONAL and both are the same fix, which is why they are one method. Neither component
     // is on a replication channel, so a Migrate capture rebuilds the entity without either and the actor falls out
     // of TileMovementSystem's three-component query. See TileActorHost's doc for why an optimisation that skipped

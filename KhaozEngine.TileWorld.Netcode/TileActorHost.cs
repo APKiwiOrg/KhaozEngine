@@ -180,12 +180,32 @@ public sealed class TileActorHost
             case TileActorIntentKind.Break:
                 // A WalkTo is what BREAKS the lock, on the state, through the one stepper. Nothing here clears
                 // CombatTarget by hand, because a second place that cleared it is a second definition of the rule.
+                //
+                // THE DAMAGE RECORD IS THE OTHER HALF OF THE FIGHT, and dropping it is the same act rather than a
+                // second one. Nothing else ages LastDamagedBy, so a break that left it set had the retaliation rule
+                // re-acquire the SAME attacker on the first tick the actor was back inside its radius, which is
+                // inside the window for any leash the walk home fits in. That re-acquire also clears Returning, so
+                // the arrival restore never fired and the heal was lost for that break. A player who stopped
+                // attacking got the monster back anyway.
+                ForgetAttacker(netId);
                 if (spawner is null) return TileCommand.Continue(mode);
                 spawner.Returning = true;
                 return TileCommand.WalkTo(spawner.Home, mode);
             default:
                 return TileCommand.Continue(mode);
         }
+    }
+
+    // Drops the damage record, which is what makes a break a break rather than a pause. Read first and written only
+    // when it holds something, so a leash that fires on every tick of a walk home costs one component read per tick
+    // rather than a write into the archetype.
+    void ForgetAttacker(long netId)
+    {
+        if (!server.TryGetCombatState(netId, out TileCombatState combat)) return;
+        if (combat.LastDamagedBy == 0L && combat.LastDamagedTick == 0L) return;
+        combat.LastDamagedBy = 0L;
+        combat.LastDamagedTick = 0L;
+        server.SetCombatState(netId, combat);
     }
 
     // The arrival half of a leash break: full health when it is HOME with nothing left to walk, never when it broke.

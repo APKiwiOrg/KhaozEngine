@@ -457,6 +457,49 @@ public class TileWanderBehaviourTests
         return 0;
     }
 
+    // Spec 6.4: a behaviour is handed its target's COMMITTED TILE as it stood before anything moved this tick, out
+    // of the same per-tick snapshot the follow and a player's Attack acceptance read. Without it a game behaviour
+    // holds a bare net id and cannot ask how far its target is, whether it is still on this plane, or whether to
+    // break off, and the 0c snapshot names this pass as a consumer that was not reading it.
+    [Fact]
+    public void A_behaviour_is_handed_its_targets_tile_as_it_stood_before_the_tick()
+    {
+        var hub = new InMemoryTransportHub();
+        var scripted = new ScriptedBehaviour();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(30, 34, 0),
+            behaviour: scripted);
+        TileActorSpawner spawner = s.Actors.Add(Rat with { WanderRadius = 0, LeashRadius = 40 },
+            new TileCoord(30, 30, 0));
+        long player = s.SpawnPlayer(0, "a", "Ari");
+        s.Tick(Dt);
+
+        // No target, nothing to resolve, and the tile is left at its default rather than at some plausible lie.
+        TileActorContext idle = Assert.Single(scripted.Seen);
+        Assert.Equal(0L, idle.CombatTarget);
+        Assert.False(idle.TargetResolved);
+        Assert.Equal(default, idle.TargetTile);
+
+        scripted.Next = TileActorIntent.Attack(player);
+        s.Tick(Dt);
+
+        // The target walks, and every tick the behaviour is handed the tile the player was committed to at the
+        // START of that tick, which is what makes the decision independent of who the ECS stepped first.
+        s.Enqueue(0, seq: 0, TileCommand.WalkTo(new TileCoord(30, 44, 0), TileMoveMode.Walk));
+        int resolved = 0;
+        for (int i = 0; i < 20; i++)
+        {
+            Assert.True(s.TryGetPlayerState(0, out TileMoveState before));
+            scripted.Seen.Clear();
+            s.Tick(Dt);
+            TileActorContext seen = Assert.Single(scripted.Seen);
+            Assert.Equal(player, seen.CombatTarget);
+            Assert.True(seen.TargetResolved);
+            Assert.Equal(before.Tile, seen.TargetTile);
+            resolved++;
+        }
+        Assert.Equal(20, resolved);
+    }
+
     // The seam itself: a game's own behaviour drives the actor, and the context it is handed is the read-only view
     // the spec names, with tick-START tiles.
     [Fact]

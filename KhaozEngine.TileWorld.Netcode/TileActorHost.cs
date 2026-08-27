@@ -182,6 +182,12 @@ public sealed class TileActorHost
         // The last of those three is a home that moves with the actor, which is no home at all. The final fallback
         // is only reached for an actor whose spawn this host never saw, which nothing in this package produces.
         TileCoord home = spawner?.Home ?? (homeByActor.TryGetValue(netId, out TileCoord born) ? born : state.Tile);
+        // The target's tile out of THIS tick's snapshot, which is the whole reason step 0c runs before this pass:
+        // spec 6.4 hands a behaviour its target's committed tile as it stood before anything moved, and the follow
+        // in the movement pass and a player's own Attack acceptance read the same map. An unresolved target is
+        // reported rather than papered over, because "gone" is a decision a behaviour is entitled to make.
+        TileCoord targetTile = default;
+        bool targetResolved = state.CombatTarget != 0L && server.TryGetTargetTile(state.CombatTarget, out targetTile);
 
         var context = new TileActorContext(
             NetId: netId,
@@ -190,6 +196,8 @@ public sealed class TileActorHost
             Definition: spawner?.Definition ?? FallbackDefinition,
             Health: health,
             CombatTarget: state.CombatTarget,
+            TargetTile: targetTile,
+            TargetResolved: targetResolved,
             LastDamagedBy: combat.LastDamagedBy,
             LastDamagedTick: combat.LastDamagedTick,
             Walking: !state.Route.IsIdle || state.IsStepping,

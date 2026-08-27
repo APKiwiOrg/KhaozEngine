@@ -51,6 +51,9 @@ public readonly record struct TileActorIntent(TileActorIntentKind Kind, TileCoor
 /// The read-only view a behaviour decides from, handed in by the engine. Every tile on it is a TICK-START tile: the
 /// actor's own and its target's as they stood before anything moved this tick, so no actor's decision can depend on
 /// another entity having already moved and the ECS iteration order cannot reach a decision.
+/// <para>The target's tile comes from the tick's own snapshot rather than from a read through to the world, and that
+/// is what makes the guarantee true rather than intended: the snapshot is taken before this pass runs, so a
+/// behaviour asking how far away its target is gets the same answer whatever order the actors were decided in.</para>
 /// </summary>
 /// <param name="NetId">The actor's net id.</param>
 /// <param name="Tile">The actor's committed tile as of the start of this tick.</param>
@@ -61,6 +64,14 @@ public readonly record struct TileActorIntent(TileActorIntentKind Kind, TileCoor
 /// <param name="Definition">What it was built from.</param>
 /// <param name="Health">Its health right now.</param>
 /// <param name="CombatTarget">The net id it is locked onto, 0 when it is not fighting.</param>
+/// <param name="TargetTile">Its target's committed tile as of the start of this tick, resolved through the SAME
+/// per-tick snapshot the follow inside the movement pass and a player's own Attack acceptance resolve through, so
+/// every reader of one tick agrees about where a target is. Default when <paramref name="TargetResolved"/> is
+/// false.</param>
+/// <param name="TargetResolved">False when the actor holds no target, and false when it holds one this tick's
+/// snapshot does not answer for, which is what a dead, despawned or mid-handoff target reads as. That is the same
+/// answer the follow acts on, so a behaviour that breaks off on it agrees with the stepper rather than fighting
+/// it.</param>
 /// <param name="LastDamagedBy">The net id that last landed damage on it, 0 when nothing has.</param>
 /// <param name="LastDamagedTick">The tick that damage landed on.</param>
 /// <param name="Walking">True while it has a live route or a step in flight. A behaviour that re-rolled a
@@ -74,6 +85,8 @@ public readonly record struct TileActorContext(
     TileActorDefinition Definition,
     TileHealth Health,
     long CombatTarget,
+    TileCoord TargetTile,
+    bool TargetResolved,
     long LastDamagedBy,
     long LastDamagedTick,
     bool Walking,

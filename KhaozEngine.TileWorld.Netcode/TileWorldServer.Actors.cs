@@ -184,6 +184,19 @@ public sealed partial class TileWorldServer
         return host.TryGetOwner(netId, out CellSim cell, out Entity e) && cell.World.TryGet(e, out combat);
     }
 
+    // One entity's tile out of THIS TICK's combat target snapshot, which is what step 0c exists to make one answer.
+    // False for an id the snapshot does not hold, which is what a dead, despawned or mid-handoff target reads as,
+    // the same answer the follow acts on. Internal because it is the SNAPSHOT rather than the world: a public read
+    // would be a second way to ask where something is, answering differently depending on when in the tick it was
+    // called, which is exactly the drift TileEntityTargets exists to remove.
+    internal bool TryGetTargetTile(long netId, out TileCoord tile)
+    {
+        tile = default;
+        if (!combatTargets.TryGetFootprint(netId, out TileRect footprint, out int plane)) return false;
+        tile = new TileCoord(footprint.X, footprint.Z, plane);
+        return true;
+    }
+
     // Writes one entity's server-only combat state. INTERNAL while its readers are, unlike the public read beside
     // it: the two writers are the leash break, which drops the damage record so a broken fight cannot be re-acquired
     // from a stale one, and the combat pass, which stamps the cooldown and the record itself. A game reaches the

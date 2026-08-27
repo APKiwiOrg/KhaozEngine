@@ -365,6 +365,98 @@ public class TileWanderBehaviourTests
         Assert.Equal(TileMoveMode.Run, later.Mode);
     }
 
+    // The walk home is ONE route rather than a fresh one per tick. Break is re-decided on every tick the actor is
+    // outside its leash, and TileMoveSimulator.BeginWalk calls FindPath unconditionally, so the walk back paid one
+    // pathfind per tick per leashed actor. Section 5.4 gives the chase an explicit rule against exactly that cost
+    // (Follow re-paths only when the route end left the target's reach set) and the leash walk had no equivalent.
+    //
+    // MEASURED IN BYTES, because the STATE is identical either way: a route re-pathed from the tile the actor is
+    // committed to has the same tiles as the tail it replaced, and the command component is reset to Continue by the
+    // movement pass before any reader can see what was issued. The cost is the whole finding, so the cost is what is
+    // pinned, against a control that walks the same distance under one latched command and therefore paths exactly
+    // once by construction. A FindPath at the actor path radius of 12 allocates a 25 by 25 scratch, so a per-tick
+    // re-path is kilobytes a tick against a control of a few hundred bytes.
+    [Fact]
+    public void The_walk_home_after_a_leash_break_is_pathed_once_rather_than_once_a_tick()
+    {
+        // Warmed once each, so the measurement is not paying for the first JIT of the pathfinder or the server.
+        WalkHomeUnderOneCommand();
+        WalkHomeUnderTheLeash();
+
+        long control = Measure(WalkHomeUnderOneCommand);
+        long leashed = Measure(WalkHomeUnderTheLeash);
+
+        // A FindPath at the actor path radius of 12 allocates about 4 KB, and the walk under test is 36 ticks
+        // outside the leash, so the budget is four pathfinds of headroom against a re-path that would spend 36.
+        // Measured: 525032 bytes against 376320 before the fix, and 376320 against 376320 after it, which is the
+        // same walk costing the same bytes.
+        Assert.True(leashed - control < 20_000,
+            $"the leash walk home allocated {leashed} bytes against {control} for the same walk under one command");
+    }
+
+    static long Measure(Func<int> workload)
+    {
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        workload();
+        return GC.GetAllocatedBytesForCurrentThread() - before;
+    }
+
+    // The control: an actor whose leash is far too big to fire, dragged out and then walked home by ONE latched
+    // command. Every tick after that one is a Continue, so the walk costs exactly one FindPath.
+    static int WalkHomeUnderOneCommand()
+    {
+        var home = new TileCoord(30, 30, 0);
+        (TileWorldServer s, long actor) = DraggedOut(Rat with { WanderRadius = 0, LeashRadius = 40 }, home);
+        using (s)
+        {
+            s.Actors.Command(actor, TileCommand.WalkTo(home, TileMoveMode.Walk));
+            return TicksHome(s, actor, home);
+        }
+    }
+
+    // The case under test: the same drag and the same walk, decided by the leash instead.
+    static int WalkHomeUnderTheLeash()
+    {
+        var home = new TileCoord(30, 30, 0);
+        (TileWorldServer s, long actor) = DraggedOut(Rat with { WanderRadius = 0, LeashRadius = 2 }, home);
+        using (s)
+        {
+            return TicksHome(s, actor, home);
+        }
+    }
+
+    // Dragged to 11 tiles out: past the leash of 8, and still inside the actor simulator's path radius of 12, so the
+    // whole walk home is one route the pathfinder can plan in one go.
+    static (TileWorldServer Server, long Actor) DraggedOut(TileActorDefinition definition, TileCoord home)
+    {
+        var hub = new InMemoryTransportHub();
+        TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(5, 5, 0));
+        TileActorSpawner spawner = s.Actors.Add(definition, home);
+        s.Tick(Dt);
+        long actor = spawner.ActorNetId;
+        for (int i = 0; i < 200; i++)
+        {
+            s.Actors.Command(actor, TileCommand.WalkTo(new TileCoord(30, 44, 0), TileMoveMode.Walk));
+            s.Tick(Dt);
+            if (s.TryGetActorState(actor, out TileMoveState dragged) && Chebyshev(dragged.Tile, home) >= 11) break;
+        }
+        Assert.True(s.TryGetActorState(actor, out TileMoveState outside));
+        Assert.True(Chebyshev(outside.Tile, home) >= 11, $"the drag left it at {outside.Tile}");
+        return (s, actor);
+    }
+
+    static int TicksHome(TileWorldServer s, long actor, TileCoord home)
+    {
+        for (int i = 0; i < 200; i++)
+        {
+            s.Tick(Dt);
+            if (s.TryGetActorState(actor, out TileMoveState st) && st.Tile.Equals(home) && st.Route.IsIdle)
+                return i + 1;
+        }
+        Assert.Fail("the actor never got home");
+        return 0;
+    }
+
     // The seam itself: a game's own behaviour drives the actor, and the context it is handed is the read-only view
     // the spec names, with tick-START tiles.
     [Fact]

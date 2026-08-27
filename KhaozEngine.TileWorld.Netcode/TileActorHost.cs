@@ -219,9 +219,19 @@ public sealed class TileActorHost
                 // An actor with no spawner still walks home, because it has one now. What it does NOT get is the
                 // arrival restore: the fire-once flag lives on the spawner, and a head that builds actors itself
                 // owns their health the way it owns their respawn.
-                if (spawner is null) return TileCommand.WalkTo(home, mode);
-                spawner.Returning = true;
-                return TileCommand.WalkTo(spawner.Home, mode);
+                if (spawner is not null) spawner.Returning = true;
+                // ALREADY WALKING THERE. Break is re-decided on every tick the actor is outside its leash, and a
+                // WalkTo re-paths through TilePathfinder.FindPath unconditionally, so re-issuing it costs one path
+                // per tick per leashed actor for the whole walk home. This is the leash's version of the rule
+                // TileMoveSimulator.Follow rule 5 gives the chase, and the memo is the same one: the route's END is
+                // where the actor is headed, so "already going home" is a question the state already answers.
+                //
+                // The LOCK has to be gone for the skip to be sound, because the WalkTo is what clears one and a
+                // Continue clears nothing. That only differs from the ordinary case when something latched an
+                // Attack onto an actor that was already walking home, and there the route must be re-issued.
+                if (state.CombatTarget == 0L && !state.Route.IsIdle && state.Route.End.Equals(home))
+                    return TileCommand.Continue(mode);
+                return TileCommand.WalkTo(home, mode);
             default:
                 return TileCommand.Continue(mode);
         }

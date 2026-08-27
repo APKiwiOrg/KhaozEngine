@@ -277,12 +277,12 @@ public static partial class TileProtocol
     // CLAMPED rather than checked, which is the other half of this file's hostile-frame rule: every bit pattern of a
     // ushort is a meaningful value, so there is no malformed frame here, only an inconsistent pair. Current above
     // Max would draw a health bar past its own track, and would make a fraction over one out of a division nothing
-    // guards. The cast is the language rather than the design: Math.Min promotes a ushort pair to int.
+    // guards.
     static TileHealth ReadHealth(BinaryReader r)
     {
         ushort current = r.ReadUInt16();
         ushort max = r.ReadUInt16();
-        return new TileHealth { Current = (ushort)Math.Min(current, max), Max = max };
+        return new TileHealth { Current = Math.Min(current, max), Max = max };
     }
 
     // Eighteen bytes, and the ONE codec here whose bytes never come off a socket: TileCombatState is registered on

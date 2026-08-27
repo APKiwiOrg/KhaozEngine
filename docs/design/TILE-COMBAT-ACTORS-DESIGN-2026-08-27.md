@@ -278,7 +278,11 @@ it needs to do anything else. Shipping both costs one interface.
 ### 5.3 What a migrated actor loses, and the fix
 
 Section 3 named it: `PendingTileCommand` is not on any replication channel, so a handoff drops it and the actor
-falls out of `TileMovementSystem`'s query. There are two candidate fixes and only one of them is right.
+falls out of `TileMovementSystem`'s query. Task 1's review sharpened the list: the `TileActor` TAG itself is
+dropped by a handoff capture too, and an untagged migrated actor does not merely stop moving, it falls back to
+the PLAYER simulator branch in `TileMovementSystem` and its per-call path scratch. So the host's per-tick
+re-add below covers BOTH the tag and the command, and the host iterates its own net ids rather than an ECS
+query on the tag, which is why a momentarily untagged actor cannot escape it. There are two candidate fixes and only one of them is right.
 
 **Rejected: register `PendingTileCommand` on the `Migrate` channel.** It would work, and it would also put a
 per-tick-mutated command on a channel whose contract is durable state, and it would make the component's own doc

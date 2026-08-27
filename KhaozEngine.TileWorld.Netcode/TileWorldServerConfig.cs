@@ -95,6 +95,15 @@ public sealed record TileWorldServerConfig
     /// the day multi-tile actors land.</summary>
     public TileMoveOptions ActorMove { get; init; } = new() { MaxPathRadius = 12 };
 
+    /// <summary>How many ticks a player who was in combat keeps their entity in world after the session drops. Zero,
+    /// the default, removes them at once. A game picks the number, because it is a combat number and the engine owns
+    /// none of those: an engine default here would be exactly the constant this design refuses to have.
+    /// <para>While it runs, the body LINGERS: still stepped, still served to everyone in interest, still attackable,
+    /// and only then persisted and drained through the ordinary leave path. That is what stops a losing fight being
+    /// escaped by pulling the plug. An operator <see cref="TileWorldServer.Kick"/> and a
+    /// <see cref="TileWorldServer.BeginDrain"/> both bypass it, because neither is the player's decision.</para></summary>
+    public int CombatLogoutTicks { get; init; }
+
     /// <summary>Synchronous ban check over a verified account id, consulted at the door. Null admits everyone the
     /// authenticator admits. A head backs this with whatever store it keeps, which is why it is a delegate rather
     /// than an interface the engine would then have to define a schema for.</summary>

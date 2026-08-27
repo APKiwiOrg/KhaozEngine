@@ -21,12 +21,13 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// it. The connection lifecycle, residency and rate-limiting plumbing here is therefore a re-implementation rather
 /// than an extraction, which is a known and accepted cost. When the two servers are seen to converge, the generic
 /// core comes out of BOTH of them rather than out of the shipping one alone.</para>
-/// <para>Partial across five files, because "the world ticks", "connections come and go" and "a click resolves"
-/// are three separate seams and one file for all of them would grow past the size ratchet as each filled in. This
-/// file is construction, the host, the player index and state access. <c>TileWorldServer.Tick.cs</c> is the tick
-/// order and the serve, <c>TileWorldServer.Sessions.cs</c> the session lifecycle and the persistence-host surface,
-/// <c>TileWorldServer.Actions.cs</c> the pending-action resolution, and <c>TileWorldServer.Actors.cs</c> the actor
-/// lifecycle and the <see cref="TileActorHost"/> this file constructs.</para>
+/// <para>Partial across six files, because "the world ticks", "connections come and go", "a click resolves" and "a
+/// swing lands" are separate seams and one file for all of them would grow past the size ratchet as each filled in.
+/// This file is construction, the host, the player index and state access. <c>TileWorldServer.Tick.cs</c> is the
+/// tick order and the serve, <c>TileWorldServer.Sessions.cs</c> the session lifecycle and the persistence-host
+/// surface, <c>TileWorldServer.Actions.cs</c> the pending-action resolution, <c>TileWorldServer.Actors.cs</c> the
+/// actor lifecycle and the <see cref="TileActorHost"/> this file constructs, and
+/// <c>TileWorldServer.Combat.cs</c> the hit pipeline and death.</para>
 /// </summary>
 public sealed partial class TileWorldServer : IDisposable
 {
@@ -294,7 +295,9 @@ public sealed partial class TileWorldServer : IDisposable
         // wrong: NetServer drops the OLDEST event when a host stops keeping up, so a lost Left followed by a
         // recycled seat lands here, and a throw out of Poll would take the session pump down for every player on
         // the server.
-        if (netIdBySlot.ContainsKey(slot)) OnLeave(slot);
+        // FORCED, because a seat being recycled by a new connection is not the outgoing player's decision either: a
+        // combat linger held here would leave the old body in world with the new player's slot bound over it.
+        if (netIdBySlot.ContainsKey(slot)) OnLeave(slot, force: true);
         // Belt and braces for the same seat, since OnLeave forgets both per-slot queues on the way out and the
         // branch above is the only path that runs it: a stale command high-water mark rejects every sequence number
         // the new player sends and freezes them, and a stale action fires against a player who clicked nothing.

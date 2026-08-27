@@ -56,14 +56,14 @@ public sealed partial class TileWorldServer
     /// <para>The order inside one tick is the head's own systems, then drain ONE command per player into its owning
     /// cell, then the actor step (every spawner ticks and every live actor's command and tag are written), then step
     /// every cell (which is where movement and the arrival facing happen), then authority handoff and border
-    /// ghosting, then the action queue, then serve every client its area of interest. It is not
+    /// ghosting, then the action queue, then combat, then serve every client its area of interest. It is not
     /// arbitrary. Commands are routed BEFORE the step so a click takes effect on the tick it arrived rather than
     /// the one after. The actor step sits between the two for both halves of that reason: it is after the drain so
     /// a behaviour reads the tick's player commands, and before the step so an actor's decision moves it on this
     /// tick rather than the next. Handoff runs after the step, because a step is what carries a player over a region boundary,
     /// and ghosting after handoff so the border mirrors reflect the new owners. Actions resolve after both, so an
-    /// arrival and its action land on the same tick. The serve is last, so a client sees the whole tick and never
-    /// half of it.</para>
+    /// arrival and its action land on the same tick. Combat resolves after those, so a swing is judged on where
+    /// both bodies ended the tick. The serve is last, so a client sees the whole tick and never half of it.</para>
     /// </summary>
     /// <param name="dt">Seconds elapsed since the last call. Negative is treated as zero.</param>
     public void Tick(float dt)
@@ -92,6 +92,9 @@ public sealed partial class TileWorldServer
             drainClosed = true;
             CloseDrainedSessions();
         }
+        // Same rule and the same reason as the close above: releasing a lingering session removes it from the player
+        // index, which the tick body iterates. See ExpireLingeringSessions in TileWorldServer.Sessions.cs.
+        ExpireLingeringSessions();
     }
 
     // ONE whole tick, always at exactly TickSeconds. Every cell is fed the same one tick's worth, so the cell
@@ -131,7 +134,18 @@ public sealed partial class TileWorldServer
             if (!netIdBySlot.TryGetValue(slot, out long netId)) continue;
             if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) continue;
             if (!cell.World.TryGet(e, out TileMoveState state)) continue;
-            cell.World.Set(e, new PendingTileCommand { Command = Admit(cmd, arrived, state, slot) });
+            TileCommand admitted = Admit(cmd, arrived, state, slot);
+            cell.World.Set(e, new PendingTileCommand { Command = admitted });
+            // The lock this player will hold going INTO the movement pass, unless this tick's own command is what
+            // breaks it. A WalkTo or an Interact is the player DISENGAGING, which is not a failure to reach and must
+            // not produce a notice. An Attack is watched by the target it NAMES rather than by the one on the state,
+            // because the click's own tick is the commonest tick for a lock to be refused on: the simulator sets the
+            // lock and the follow can clear it again inside that same Advance. See ReportBrokenLocks in
+            // TileWorldServer.Combat.cs.
+            if (admitted.Kind == TileCommandKind.Attack) watchedLocks.Add((slot, admitted.Target));
+            else if (state.CombatTarget != 0 && admitted.Kind != TileCommandKind.WalkTo
+                && admitted.Kind != TileCommandKind.Interact)
+                watchedLocks.Add((slot, state.CombatTarget));
         }
 
         // 1b. Every spawner ticks, then every live actor's command and tag are written. BEFORE the movement pass, so
@@ -152,6 +166,11 @@ public sealed partial class TileWorldServer
         //    walk's last step started rather than the tick their body gets there, and refuse any that cannot get
         //    there at all. See TileWorldServer.Actions.cs.
         ResolveActions();
+
+        // 4b. Roll, then apply, then die. After movement and handoff, so a swing is judged on where both bodies
+        //     ended the tick, and before the serve, so a death and the blow that caused it ship together.
+        ResolveCombat();
+        ReportBrokenLocks();
 
         // 5. Serve each client its home-cell area of interest, filtered to its own plane.
         long serveEpoch = ++interestServeEpoch;

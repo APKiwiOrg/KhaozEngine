@@ -33,4 +33,14 @@ public struct TileCombatState : IComponent
     /// <summary>The server tick that damage landed on, so a behaviour can age it out rather than retaliating
     /// against something that hit it a minute ago.</summary>
     public long LastDamagedTick;
+
+    /// <summary>The <see cref="TileMoveState.CombatTarget"/> the combat pass last saw on this entity, so a CHANGE is
+    /// detectable without a second pass. Server-only bookkeeping, never a rules input.</summary>
+    public long TargetSeen;
+
+    /// <summary>The tick <see cref="TargetSeen"/> was first seen, which is what the roll order is taken on: oldest
+    /// lock first, net id breaking the tie. The same shape and the same reasoning <c>ResolveActions</c> uses for its
+    /// own <c>(IssuedTick, slot)</c> sort, because two attackers coming ready on one tick is a gameplay decision
+    /// rather than a detail.</summary>
+    public long TargetSinceTick;
 }

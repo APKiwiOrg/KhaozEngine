@@ -40,6 +40,11 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
     // The slots to close when a drain completes. Snapshotted, because closing one removes it from the player index
     // and a dictionary cannot be enumerated while it changes.
     readonly List<int> drainScratch = new();
+    // Slots whose player is lingering after a combat logout, and the tick each one is released on. Expired from
+    // Tick rather than from RunOneTick, for the same reason the drain's close is: releasing a session mutates the
+    // player index the tick body is iterating.
+    readonly Dictionary<int, long> lingerUntilTick = new();
+    readonly List<int> lingerScratch = new();
 
     /// <summary>Raised as (slot, accountId) once a connection has a player entity, which is the point a game may
     /// start reading and writing that player. Raised from <see cref="SpawnPlayer"/>, so it fires for a headless
@@ -189,8 +194,19 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
     // transport then surfaces a Left event for the same slot on a later poll, which calls it a second time. The
     // TryGetValue guard is what stops PlayerLeaving double-firing (and a persistence layer double-saving), and
     // every Remove below is already a no-op on a missing key.
-    void OnLeave(int slot)
+    void OnLeave(int slot, bool force = false)
     {
+        // A player who was in combat is NOT removed at once: the body lingers in world, still stepped, still served
+        // and still attackable, until the window lapses. That is what stops a losing fight being escaped by pulling
+        // the plug. FORCED for an operator kick, for a drain and for a seat being recycled by a new connection,
+        // because none of those is the leaving player's decision.
+        if (!force && config.CombatLogoutTicks > 0 && !lingerUntilTick.ContainsKey(slot)
+            && netIdBySlot.TryGetValue(slot, out long lingering) && IsInCombat(lingering))
+        {
+            lingerUntilTick[slot] = TickCount + config.CombatLogoutTicks;
+            return;
+        }
+        lingerUntilTick.Remove(slot);
         if (netIdBySlot.TryGetValue(slot, out long netId))
         {
             // Read before the despawn, because this IS the last moment the state exists. Both halves are required:
@@ -217,6 +233,30 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
         // A surviving pending action would fire against a player who never clicked anything.
         commands.Forget(slot);
         actions.Forget(slot);
+    }
+
+    // In combat means holding a lock, or having been damaged inside the window. Both facts are already on the state
+    // and the server-only combat component, so the linger needs no third record of them.
+    bool IsInCombat(long netId)
+    {
+        if (TryGetActorState(netId, out TileMoveState state) && state.CombatTarget != 0) return true;
+        return TryGetCombatState(netId, out TileCombatState combat) && combat.LastDamagedTick != 0
+            && TickCount - combat.LastDamagedTick <= config.CombatLogoutTicks;
+    }
+
+    // Released from Tick, once each, through the ordinary leave path, so PlayerLeaving is raised and a persistence
+    // layer files the final state exactly as it would for a player who logged out cleanly.
+    void ExpireLingeringSessions()
+    {
+        if (lingerUntilTick.Count == 0) return;
+        lingerScratch.Clear();
+        foreach (KeyValuePair<int, long> entry in lingerUntilTick)
+            if (TickCount >= entry.Value) lingerScratch.Add(entry.Key);
+        for (int i = 0; i < lingerScratch.Count; i++)
+        {
+            lingerUntilTick.Remove(lingerScratch[i]);
+            OnLeave(lingerScratch[i], force: true);
+        }
     }
 
     /// <summary>
@@ -263,14 +303,18 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
 
     /// <summary>Closes one session with a reason token and despawns its player. The notice goes out BEFORE the
     /// disconnect, so the client learns why rather than seeing an unexplained drop, and the player is released
-    /// synchronously rather than on the poll that observes the transport catching up.</summary>
+    /// synchronously rather than on the poll that observes the transport catching up.
+    /// <para>Immediate even for a player mid fight: <see cref="TileWorldServerConfig.CombatLogoutTicks"/> is
+    /// deliberately bypassed here, and by the drain that closes through this, because an operator close is not the
+    /// leaving player's decision and a body left standing for it would outlive the ban or the shutdown that caused
+    /// it.</para></summary>
     /// <param name="slot">The connection slot to close. An unknown slot is a no-op.</param>
     /// <param name="reasonToken">A <see cref="TileServerReason"/> token, or a game's own.</param>
     public void Kick(int slot, string reasonToken)
     {
         SendNotice(slot, reasonToken);
         net.Disconnect(slot);
-        OnLeave(slot);
+        OnLeave(slot, force: true);
     }
 
     /// <summary>Sends an opaque game message to one client, reliably and in order with that client's snapshots.

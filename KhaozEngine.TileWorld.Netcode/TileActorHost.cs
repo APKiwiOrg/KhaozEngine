@@ -69,6 +69,21 @@ public sealed class TileActorHost
     public void Command(long netId, in TileCommand command) => nextCommand[netId] = command;
 
     /// <summary>
+    /// Drops any unspent latch for <paramref name="netId"/>. <see cref="TileWorldServer.DespawnActor"/> calls it,
+    /// because a latch for an actor that no longer exists would otherwise sit in the dictionary forever: net ids
+    /// are never recycled, so nothing else would ever read or replace it, and combat makes death-before-the-next-tick
+    /// the routine case rather than the rare one.
+    /// </summary>
+    /// <param name="netId">The despawned actor's net id.</param>
+    public void Forget(long netId) => nextCommand.Remove(netId);
+
+    /// <summary>
+    /// How many latched commands are waiting for their tick. The observable that pins the latch lifecycle: spent
+    /// once by the tick that applies it, pruned by a despawn, so a healthy host trends to zero between commands.
+    /// </summary>
+    public int PendingCommandCount => nextCommand.Count;
+
+    /// <summary>
     /// Tick step 1b. Every spawner ticks in add order, then every live actor in spawn order gets its command and its
     /// tag written. Called by <see cref="TileWorldServer"/> between the player command drain and the movement pass.
     /// </summary>

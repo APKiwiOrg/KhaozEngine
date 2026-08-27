@@ -115,6 +115,7 @@ public sealed partial class TileWorldServer
     public bool DespawnActor(long netId)
     {
         if (!actorNetIds.Remove(netId)) return false;
+        Actors.Forget(netId);
         if (host.TryGetOwner(netId, out CellSim cell, out Entity e) && cell.World.IsAlive(e))
         {
             cell.UnregisterOwned(netId);

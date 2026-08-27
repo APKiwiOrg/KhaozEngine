@@ -210,5 +210,24 @@ public class TileActorHostTests
         Assert.Equal(new TileCoord(24, 20, 0), st.Tile);
         Assert.Equal(TileMoveMode.Run, st.Mode);
         Assert.True(st.Route.IsIdle);
+        // SPENT once, observably: a latch that survived its own application would still be counted here, which
+        // is exactly what a TryGetValue in place of the Remove produces, and what this line turns red.
+        Assert.Equal(0, s.Actors.PendingCommandCount);
+    }
+
+    [Fact]
+    public void Despawning_an_actor_prunes_its_unspent_latch()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(5, 5, 0));
+        long actor = s.SpawnActor(new TileCoord(20, 20, 0), new TileActorSpawn(30, 10, TileDirection.S));
+
+        // Latched and never ticked, the shape combat's deaths make routine: the actor dies at step 4b with a
+        // command already latched for a next tick it will not see. Net ids are never recycled, so without the
+        // despawn prune this entry would live for the rest of the server.
+        s.Actors.Command(actor, TileCommand.WalkTo(new TileCoord(20, 24, 0), TileMoveMode.Run));
+        Assert.Equal(1, s.Actors.PendingCommandCount);
+        Assert.True(s.DespawnActor(actor));
+        Assert.Equal(0, s.Actors.PendingCommandCount);
     }
 }

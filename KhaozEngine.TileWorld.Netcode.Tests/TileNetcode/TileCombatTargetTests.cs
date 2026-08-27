@@ -135,6 +135,67 @@ public class TileCombatTargetTests
         Assert.Equal(42L, s.CombatTarget);
     }
 
+    // A SELF TARGET, which is the one case rule 4's reach test cannot answer on its own: a tile is never in its own
+    // reach set, so the old rule 4 read "out of range", rule 5 pathed to a cardinal neighbour, the footprint moved
+    // with the body, and the route end was out of reach again on the next tick. Measured on the server before the
+    // fix, on this very world: a player attacking its own net id left (10,10,0) and crossed 10 distinct tiles in 30
+    // seconds, ending on (1,10,0) at the map edge, one FindPath per tick the whole way. Rule 5's memo can never hit
+    // for a self target, so that is exactly the section 5.4 budget the rule was written to protect, spent forever.
+    //
+    // The simulator cannot refuse this in Accepts. It sees a TileMoveState and a TileCommand and neither carries a
+    // net id, so the only place that knows enough is rule 4, and the rule it needs there is the general one: a body
+    // standing INSIDE the footprint is as close to it as it can get. The lock therefore HOLDS and nothing moves,
+    // which is the same answer any other in-reach target gets. Whether a swing lands from that tile is the cooldown
+    // seam's question, and that lands in task 5.
+    [Fact]
+    public void A_self_attack_stands_rather_than_walking_away_forever()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = TileWorldServerTickTests.Server(
+            TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(10, 10, 0));
+        long netId = s.SpawnPlayer(0, "a", "Ari");
+        s.Enqueue(0, 0, TileCommand.Attack(netId, TileMoveMode.Run));
+
+        var visited = new HashSet<TileCoord>();
+        for (int i = 0; i < 120; i++)                       // 30 seconds at a 250 ms tick, the measured window
+        {
+            s.Tick(Dt);
+            Assert.True(s.TryGetPlayerState(0, out TileMoveState each));
+            visited.Add(each.Tile);
+        }
+
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState st));
+        Assert.Single(visited);
+        Assert.Equal(new TileCoord(10, 10, 0), st.Tile);
+        Assert.True(st.Route.IsIdle);
+        Assert.False(st.IsStepping);
+        Assert.Equal(netId, st.CombatTarget);
+    }
+
+    // The general form of the same rule, which is why the fix is a footprint test rather than a net id comparison:
+    // two ENTITIES on one tile answer it too. Actors do not occupy tiles this round (section 12 defers it), so an
+    // attacker sharing its target's tile is reachable content rather than a hypothetical, and the answer is the same
+    // one an adjacent attacker gets: drop the route, hold the lock, stand. The facing is left alone deliberately,
+    // because a tile you are standing on has no direction to face.
+    [Fact]
+    public void An_attacker_standing_on_a_1x1_target_holds_the_lock_and_stands()
+    {
+        (TileMoveSimulator sim, FakeTargets targets) = Sim();
+        targets.Tiles[42L] = new TileCoord(10, 10, 0);
+        TileMoveState s = TileMoveState.At(new TileCoord(10, 10, 0), TileDirection.N);
+
+        s = sim.Step(s, TileCommand.Attack(42L, TileMoveMode.Run), Dt);
+        Assert.Equal(42L, s.CombatTarget);
+        Assert.True(s.Route.IsIdle);
+
+        for (int i = 0; i < 12; i++) s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+        Assert.Equal(new TileCoord(10, 10, 0), s.Tile);
+        Assert.Equal(TileDirection.N, s.Facing);
+        Assert.Equal(42L, s.CombatTarget);
+        Assert.True(s.Route.IsIdle);
+        Assert.False(s.IsStepping);
+    }
+
     // Rule 5: re-path only when the target's committed tile CHANGED, and the memo is the route's own END rather than
     // a new field. A stationary target therefore costs ZERO pathfinding per tick, which is what keeps section 5.4's
     // CPU budget honest.

@@ -313,8 +313,19 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
             return s;
         }
 
-        // 4. An attacker in range does not shuffle.
-        if (TileReach.Contains(Map, footprint, plane, s.Tile))
+        // 4. An attacker in range does not shuffle, and a body standing INSIDE the footprint counts as in range: it
+        //    is as close to the target as it can get. That half is not pedantry. A tile is never in its OWN reach
+        //    set, so without it the one case that reaches here today, an Attack naming the attacker's own net id,
+        //    reads as out of range, paths to a cardinal neighbour, and finds the footprint has moved with the body
+        //    on the next tick, forever. This is the only place that can refuse it: Accepts sees a TileMoveState and
+        //    a TileCommand, neither of which carries a net id, so the simulator cannot know a target IS the
+        //    attacker. Stated as a footprint test rather than as a self check because it is the general rule, and
+        //    it is the answer a larger footprint will want when section 12's deferral lands.
+        //
+        //    Standing on the target therefore drops the route, HOLDS the lock and moves nothing, exactly as an
+        //    adjacent attacker does. Whether a swing lands from that tile is the cooldown seam's question, which is
+        //    task 5's. Nothing here writes Facing either: a tile the body is standing on has no direction to face.
+        if (footprint.Contains(s.Tile.X, s.Tile.Z) || TileReach.Contains(Map, footprint, plane, s.Tile))
         {
             s.Route = TileRoute.None;
             return s;

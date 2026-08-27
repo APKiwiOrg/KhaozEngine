@@ -87,8 +87,7 @@ public sealed class TileActorHost
     /// Tick step 1b. Every spawner ticks in add order, then every live actor in spawn order gets its command and its
     /// tag written. Called by <see cref="TileWorldServer"/> between the player command drain and the movement pass.
     /// </summary>
-    /// <param name="tickCount">The server tick this is running for, for a behaviour that ages a decision.</param>
-    public void Tick(long tickCount)
+    public void Tick()
     {
         for (int i = 0; i < spawners.Count; i++) TickSpawner(spawners[i]);
 
@@ -129,6 +128,13 @@ public sealed class TileActorHost
         // Zero is the per-cell cap refusing at the door. The spawner keeps its state and tries again on the next
         // tick, which is the right answer for a transient condition: a cell over its budget is usually not over it a
         // moment later, and stranding the spawner would need an operator to notice.
-        if (netId != 0) spawner.Alive(netId);
+        if (netId == 0) return;
+        spawner.Alive(netId);
+        // The definition's cadence is LIVE FROM THE FIRST TICK. A spawn writes TileMoveState.At, whose mode is Walk,
+        // and the fallback below is Continue at whatever mode the state already holds, so without this latch a
+        // running actor would walk until something else commanded it. Latched rather than written onto the state,
+        // because the command stream is where a cadence belongs on both kinds of entity: it is how a player's run
+        // toggle reaches the stepper too.
+        Command(netId, TileCommand.Continue(d.StepMode));
     }
 }

@@ -135,7 +135,7 @@ public sealed partial class TileWorldServer
         //     drain, so both kinds of entity reach the stepper with the tick's commands already on them. The pass
         //     reads tick-START tiles for every actor, so no actor's decision can depend on another having moved and
         //     the ECS iteration order cannot reach a decision.
-        Actors.Tick(TickCount);
+        Actors.Tick();
 
         // 2. Every cell runs the movement system (wired the moment the host creates one), then one fixed sub-tick.
         host.Tick(dt, maxTicksPerFrame: 1);

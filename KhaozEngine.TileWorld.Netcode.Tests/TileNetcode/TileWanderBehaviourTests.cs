@@ -104,25 +104,92 @@ public class TileWanderBehaviourTests
         Assert.Equal(new TileActorRandom(0x9E3779B97F4A7C15UL).NextUInt64(), new TileActorRandom(0UL).NextUInt64());
     }
 
+    // The radius bound is the property the goal's construction guarantees, so on its own it pins almost nothing: an
+    // actor that moved once in 400 ticks and then stood still satisfies it. What actually has to hold is that it
+    // keeps picking new destinations, that it PAUSES between them rather than walking continuously, and that the
+    // destinations are the seeded stream's rather than any plausible sequence, which is what the literal pins.
     [Fact]
     public void An_idle_actor_wanders_and_never_leaves_its_wander_radius()
     {
         var hub = new InMemoryTransportHub();
         using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(5, 5, 0));
-        TileActorSpawner spawner = s.Actors.Add(Rat, new TileCoord(30, 30, 0));
+        var home = new TileCoord(30, 30, 0);
+        TileActorSpawner spawner = s.Actors.Add(Rat, home);
 
         var visited = new HashSet<TileCoord>();
+        var arrivals = new List<TileCoord>();
+        TileCoord standingOn = home;
+        int walkingTicks = 0;
+        int pausedTicks = 0;
         for (int i = 0; i < 400; i++)
         {
             s.Tick(Dt);
-            if (s.TryGetActorState(spawner.ActorNetId, out TileMoveState st)) visited.Add(st.Tile);
+            if (!s.TryGetActorState(spawner.ActorNetId, out TileMoveState st)) continue;
+            visited.Add(st.Tile);
+            if (!st.Route.IsIdle || st.IsStepping)
+            {
+                walkingTicks++;
+                continue;
+            }
+            pausedTicks++;
+            if (!st.Tile.Equals(standingOn))
+            {
+                arrivals.Add(st.Tile);
+                standingOn = st.Tile;
+            }
         }
 
-        Assert.True(visited.Count > 1, "an idle actor eventually moves");
         foreach (TileCoord tile in visited)
-            Assert.True(Chebyshev(tile, new TileCoord(30, 30, 0)) <= Rat.WanderRadius,
-                $"{tile} is outside the wander radius");
+            Assert.True(Chebyshev(tile, home) <= Rat.WanderRadius, $"{tile} is outside the wander radius");
+        Assert.True(arrivals.Count >= 3, $"it kept choosing destinations, it reached {arrivals.Count}");
+        Assert.True(walkingTicks > 0 && pausedTicks > 0,
+            $"it walked on {walkingTicks} ticks and stood on {pausedTicks}");
+        // The first destination BY VALUE, which is the wander's own golden: it fails if the two coordinate draws
+        // swap, if the pause roll moves relative to them, or if the goal stops being composed around home.
+        Assert.Equal(new TileCoord(32, 27, 0), arrivals[0]);
     }
+
+    // One actor's rolls cannot shift another's. It holds by construction (the stream is For(Seed, netId, tick), the
+    // behaviour is stateless and the pass writes only per-netId components), and every other determinism test here
+    // runs ONE actor, so nothing in the suite would notice a future shared-scratch optimisation that broke it. The
+    // same actor, alone and with company, has to walk the same tiles.
+    [Fact]
+    public void A_second_actor_does_not_perturb_the_first_ones_wander()
+    {
+        var hubA = new InMemoryTransportHub();
+        var hubB = new InMemoryTransportHub();
+        using TileWorldServer alone = Server(TileMoveSimulatorTests.FlatWorld(), hubA.Server, new TileCoord(5, 5, 0),
+            seed: 21);
+        using TileWorldServer crowded = Server(TileMoveSimulatorTests.FlatWorld(), hubB.Server,
+            new TileCoord(5, 5, 0), seed: 21);
+        var firstHome = new TileCoord(30, 30, 0);
+        var secondHome = new TileCoord(50, 50, 0);
+        // Added first in both, so it is the same actor under the same net id: net ids are what the streams are keyed
+        // on, so spawning the pair in the other order is a different pair of actors rather than the same two.
+        TileActorSpawner solo = alone.Actors.Add(Rat, firstHome);
+        TileActorSpawner first = crowded.Actors.Add(Rat, firstHome);
+        TileActorSpawner second = crowded.Actors.Add(Rat, secondHome);
+
+        var withoutCompany = new List<TileCoord>();
+        var withCompany = new List<TileCoord>();
+        var companion = new List<TileCoord>();
+        for (int i = 0; i < 300; i++)
+        {
+            alone.Tick(Dt);
+            crowded.Tick(Dt);
+            if (alone.TryGetActorState(solo.ActorNetId, out TileMoveState a)) withoutCompany.Add(a.Tile);
+            if (crowded.TryGetActorState(first.ActorNetId, out TileMoveState b)) withCompany.Add(b.Tile);
+            if (crowded.TryGetActorState(second.ActorNetId, out TileMoveState c)) companion.Add(c.Tile);
+        }
+
+        Assert.Equal(withoutCompany, withCompany);
+        // And the companion draws its OWN stream rather than sharing one: compared as offsets from home, because
+        // two actors on one stream would trace the same shape from different tiles.
+        Assert.NotEqual(Offsets(withCompany, firstHome), Offsets(companion, secondHome));
+    }
+
+    static List<TileCoord> Offsets(List<TileCoord> tiles, TileCoord home) =>
+        tiles.ConvertAll(t => new TileCoord(t.X - home.X, t.Z - home.Z, t.Plane));
 
     // Reproducibility: two servers from the same seed running the same script produce the same wander, which is what
     // a replay and a golden both depend on.

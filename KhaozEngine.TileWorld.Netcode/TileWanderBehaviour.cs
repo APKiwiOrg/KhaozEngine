@@ -27,7 +27,9 @@ public sealed class TileWanderBehaviour : ITileActorBehaviour
     /// <param name="meanPauseTicks">Mean ticks an idle actor waits before it picks somewhere to wander to. A per
     /// tick roll rather than a countdown, so the behaviour keeps no per-actor state: the pause is randomised with
     /// this as its mean rather than bounded inside a band, and <see cref="TileActorContext.Walking"/> is what stops
-    /// an actor re-rolling a destination it is still walking to.</param>
+    /// an actor re-rolling a destination it is still walking to. It is a mean on OPEN GROUND and a floor anywhere
+    /// else: a destination that comes back blocked, outside the baked map or equal to the tile the actor is already
+    /// on is dropped and re-rolled next tick, so on a cluttered map the pauses observed are longer than this.</param>
     /// <param name="retaliateWindowTicks">How recent a damaging hit has to be to provoke a counterattack, so an
     /// actor does not retaliate against something that hit it a minute ago.</param>
     /// <exception cref="ArgumentNullException"><paramref name="map"/> is null.</exception>

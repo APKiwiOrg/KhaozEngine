@@ -29,7 +29,12 @@ public sealed record TileActorDefinition
     /// actor that never swings, which is a legitimate content decision (a critter, a training dummy).</summary>
     public byte AttackTicks { get; init; } = 10;
 
-    /// <summary>How far from home an idle actor may wander, in tiles. Read by <c>TileWanderBehaviour</c>.</summary>
+    /// <summary>How far from home an idle actor may wander, in tiles. Read by <c>TileWanderBehaviour</c>.
+    /// <para>It bounds the DESTINATION, not the path. A route between two tiles inside the radius can still bulge
+    /// outside it to get around an obstruction, so on anything but open ground an actor is briefly further out than
+    /// this number. Keep it below <see cref="LeashRadius"/> and the leash catches the excursion. Nothing enforces
+    /// that at the door, because a definition with a wander wider than its leash is content that breaks off in the
+    /// middle of its own wander, which is legible in play rather than a bug to refuse.</para></summary>
     public int WanderRadius { get; init; } = 4;
 
     /// <summary>How far from home an actor may be dragged before it BREAKS: drops its target, walks home, and

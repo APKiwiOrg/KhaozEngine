@@ -277,6 +277,31 @@ public class TileWanderBehaviourTests
             $"the actor is at {home.Tile} targeting {home.CombatTarget} at {healed.Current} of {healed.Max}");
     }
 
+    // The other half of the mode-lifetime contract, with a behaviour installed: a latch outranks the behaviour on
+    // its own tick and the mode it left behind outranks the definition's cadence afterwards, so a scripted event
+    // that runs one actor somewhere does not need to re-latch on every tick to keep it running.
+    [Fact]
+    public void A_latched_commands_mode_survives_the_behaviours_own_ticks()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(5, 5, 0));
+        TileActorSpawner spawner = s.Actors.Add(Rat with { WanderRadius = 0 }, new TileCoord(30, 30, 0));
+        s.Tick(Dt);
+        long actor = spawner.ActorNetId;
+
+        s.Actors.Command(actor, TileCommand.WalkTo(new TileCoord(30, 36, 0), TileMoveMode.Run));
+        s.Tick(Dt);
+        Assert.True(s.TryGetActorState(actor, out TileMoveState onTheLatch));
+        Assert.Equal(TileMoveMode.Run, onTheLatch.Mode);
+
+        s.Tick(Dt);
+        Assert.True(s.TryGetActorState(actor, out TileMoveState next));
+        Assert.Equal(TileMoveMode.Run, next.Mode);
+        for (int i = 0; i < 4; i++) s.Tick(Dt);
+        Assert.True(s.TryGetActorState(actor, out TileMoveState later));
+        Assert.Equal(TileMoveMode.Run, later.Mode);
+    }
+
     // The seam itself: a game's own behaviour drives the actor, and the context it is handed is the read-only view
     // the spec names, with tick-START tiles.
     [Fact]

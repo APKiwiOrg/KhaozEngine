@@ -12,4 +12,11 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// legal and means an actor that never swings on its own, which is a spawner-shaped decision rather than a broken
 /// one.</param>
 /// <param name="Facing">Which way the body starts facing. Cosmetic until it takes its first step.</param>
-public readonly record struct TileActorSpawn(ushort MaxHealth, byte AttackTicks, TileDirection Facing);
+/// <param name="Mode">The cadence the actor is STANDING at, written onto its move state at spawn rather than
+/// carried by a command. That is what makes a definition's <see cref="TileActorDefinition.StepMode"/> live from the
+/// first tick without spending a latch on the spawn tick: the actor pass falls back to
+/// <see cref="TileCommand.Continue"/> at the mode the actor already holds, so the cadence rides the state until
+/// something deliberately replaces it. Defaults to <see cref="TileMoveMode.Walk"/>, which is what
+/// <see cref="TileMoveState.At"/> would have written anyway.</param>
+public readonly record struct TileActorSpawn(ushort MaxHealth, byte AttackTicks, TileDirection Facing,
+    TileMoveMode Mode = TileMoveMode.Walk);

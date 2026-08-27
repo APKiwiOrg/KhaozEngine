@@ -12,8 +12,10 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// lets a head take direct control of one actor (a scripted event, a boss phase, a test) without replacing the
 /// behaviour for all of them. Otherwise <see cref="Behaviour"/> decides, and a null one (the default) answers
 /// <see cref="TileCommand.Continue"/> so an unwired server's actors stand exactly where they were put. Either way
-/// the command's MODE is the spawner's <see cref="TileActorDefinition.StepMode"/>, which is how a definition's
-/// cadence stays live on every tick rather than only on the one a spawn latch would have covered.</para>
+/// the command's MODE is the one the actor is already standing at, which a spawn stamps from its definition's
+/// <see cref="TileActorDefinition.StepMode"/>: the cadence is live from the first tick without a latch, and a
+/// latched command's own mode outlives the tick it was spent on rather than being overwritten at the next step
+/// boundary by a definition restated per tick.</para>
 /// <para>An intent names a tile or a target and never a route, so everything about HOW an actor gets somewhere stays
 /// in the one stepper both kinds of entity run and an actor can never move in a way a player could not.</para>
 /// <para>BOTH COMPONENT WRITES ARE UNCONDITIONAL, EVERY TICK, FOR EVERY LIVE ACTOR, and that is a rule rather than
@@ -133,7 +135,12 @@ public sealed class TileActorHost
             long netId = tickActors[i];
             if (!server.TryGetActorState(netId, out TileMoveState state)) continue;
             spawnerByActor.TryGetValue(netId, out TileActorSpawner? spawner);
-            TileMoveMode mode = spawner?.Definition.StepMode ?? state.Mode;
+            // THE MODE THE ACTOR IS ALREADY STANDING AT, never a per-tick restatement of the definition's. The
+            // definition's cadence is written onto the state at spawn, so this IS that cadence until something
+            // deliberately replaces it, and a latched command's mode therefore outlives the tick it was spent on
+            // exactly as Command's doc promises. Restating the definition here overwrote a latched run at the next
+            // step boundary, which is the one thing that doc names as the failure it avoids.
+            TileMoveMode mode = state.Mode;
 
             // A LATCHED command outranks the behaviour, which is what lets a head take direct control of one actor
             // (a scripted event, a boss phase, a test) without replacing the behaviour for all of them.
@@ -247,7 +254,8 @@ public sealed class TileActorHost
     void TrySpawn(TileActorSpawner spawner)
     {
         TileActorDefinition d = spawner.Definition;
-        long netId = server.SpawnActor(spawner.Home, new TileActorSpawn(d.MaxHealth, d.AttackTicks, TileDirection.S));
+        long netId = server.SpawnActor(spawner.Home,
+            new TileActorSpawn(d.MaxHealth, d.AttackTicks, TileDirection.S, d.StepMode));
         // Zero is the per-cell cap refusing at the door. The spawner keeps its state and tries again on the next
         // tick, which is the right answer for a transient condition: a cell over its budget is usually not over it a
         // moment later, and stranding the spawner would need an operator to notice.
@@ -260,11 +268,11 @@ public sealed class TileActorHost
         // because the actor pass is a loop over net ids and ids are never recycled, so an entry can only ever be
         // replaced by the same spawner's next actor or dropped when that actor is gone.
         spawnerByActor[netId] = spawner;
-        // The definition's cadence is LIVE FROM THE FIRST TICK, carried by the mode the actor pass falls back to
-        // (the spawner's StepMode) rather than by a latch spent on the spawn tick. A spawn writes TileMoveState.At,
-        // whose mode is Walk, so without that fallback a running actor would walk until something else commanded it
-        // and a definition's StepMode would be a field nothing ever read. It rides the command stream either way,
-        // which is where a cadence belongs on both kinds of entity: it is how a player's run toggle reaches the
-        // stepper too.
+        // The definition's cadence is LIVE FROM THE FIRST TICK, written onto the spawned STATE (the fourth argument
+        // above) rather than latched on the spawn tick. A latch there would outrank the behaviour on the one tick
+        // its actor was born, and a per-tick restatement of the definition would overwrite a head's own latched
+        // mode. Stamping the state costs neither: the actor stands at its cadence from the tick it exists, the
+        // fallback is Continue at whatever mode it is holding, and the mode still rides the command stream from
+        // there, which is where a cadence belongs on both kinds of entity.
     }
 }

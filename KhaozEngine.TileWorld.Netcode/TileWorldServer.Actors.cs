@@ -74,6 +74,9 @@ public sealed partial class TileWorldServer
             throw new ArgumentOutOfRangeException(nameof(spec), spec.MaxHealth,
                 "An actor's MaxHealth must be above zero: one at zero is dead on the tick it exists.");
         TileMoveState state = TileMoveState.At(at, spec.Facing);
+        // The cadence goes on the STATE rather than into a command, so an actor stands at its definition's mode from
+        // the tick it exists and the actor pass has a mode to fall back to that nothing has to keep re-stating.
+        state.Mode = spec.Mode;
         // The same door a written player state comes through, and deliberately the same one: a plane the world does
         // not have and a region the map never loaded both leave an entity nobody can see and that can never step,
         // whether the entity has a connection behind it or not. A freshly placed state has no route, so the array

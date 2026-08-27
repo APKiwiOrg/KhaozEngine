@@ -15,6 +15,9 @@ public sealed record TileActorDefinition
     public required ushort MaxHealth { get; init; }
 
     /// <summary>Walk or run: which entry of the server's <see cref="TileStepTicks"/> this actor's steps take.
+    /// Written onto the actor's move state at spawn (<see cref="TileActorSpawn.Mode"/>), so it is live from the
+    /// first tick and then rides the command stream. A head that latches a different mode on one actor keeps it:
+    /// this is the cadence an actor STARTS at, not one restated over it every tick.
     /// <para>A MODE rather than a tick count, and that is a consequence of there being exactly ONE actor simulator.
     /// <see cref="TileStepTicks"/> is a property of a <see cref="TileMoveSimulator"/> instance rather than of a
     /// state, so a per-definition tick count would need a per-definition simulator. The mode is the cadence knob

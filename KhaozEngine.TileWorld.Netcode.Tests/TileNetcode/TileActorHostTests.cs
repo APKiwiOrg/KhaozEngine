@@ -215,10 +215,40 @@ public class TileActorHostTests
         Assert.Equal(0, s.Actors.PendingCommandCount);
     }
 
-    // The definition's cadence is LIVE FROM THE FIRST TICK, which is what the actor pass falling back to the
-    // SPAWNER'S StepMode buys. A spawn writes TileMoveState.At, whose mode is Walk, so a fallback at whatever mode
-    // the state already holds would leave a running actor walking until something else commanded it, and a
-    // definition's StepMode would be a field nothing ever read.
+    // The same contract on a SPAWNED actor, which is the only case a definition's StepMode is in play on, and with
+    // no behaviour wired at all, which is the default configuration. A per-tick write of the definition's cadence
+    // overwrote a latched mode at the next step boundary, so a head that latched a run got one tick of it.
+    [Fact]
+    public void A_latched_commands_mode_outranks_the_spawners_cadence_until_something_replaces_it()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(5, 5, 0));
+        TileActorSpawner spawner = s.Actors.Add(Rat, new TileCoord(20, 20, 0));
+        Assert.Null(s.Actors.Behaviour);
+        s.Tick(Dt);
+        long actor = spawner.ActorNetId;
+        Assert.True(s.TryGetActorState(actor, out TileMoveState spawned));
+        Assert.Equal(TileMoveMode.Walk, spawned.Mode);
+
+        s.Actors.Command(actor, TileCommand.WalkTo(new TileCoord(20, 26, 0), TileMoveMode.Run));
+        s.Tick(Dt);
+        Assert.True(s.TryGetActorState(actor, out TileMoveState onTheLatch));
+        Assert.Equal(TileMoveMode.Run, onTheLatch.Mode);
+
+        // The tick AFTER the latch was spent, and four more. The fallback is Continue at the mode the step left the
+        // actor in, so a head wanting one run does not have to re-latch it on every tick to keep it.
+        s.Tick(Dt);
+        Assert.True(s.TryGetActorState(actor, out TileMoveState next));
+        Assert.Equal(TileMoveMode.Run, next.Mode);
+        for (int i = 0; i < 4; i++) s.Tick(Dt);
+        Assert.True(s.TryGetActorState(actor, out TileMoveState later));
+        Assert.Equal(TileMoveMode.Run, later.Mode);
+    }
+
+    // The definition's cadence is LIVE FROM THE FIRST TICK, which is what stamping it onto the spawned STATE buys.
+    // TileMoveState.At writes Walk, so without that stamp a running actor would walk until something else commanded
+    // it and a definition's StepMode would be a field nothing ever read. It costs no latch either, which the last
+    // line pins: a latch on the spawn tick would outrank the behaviour on the one tick its actor was born.
     [Fact]
     public void A_spawned_actor_steps_at_its_definitions_mode_from_the_first_tick()
     {

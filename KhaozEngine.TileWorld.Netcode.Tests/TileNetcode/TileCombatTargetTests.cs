@@ -60,9 +60,13 @@ public class TileCombatTargetTests
         Assert.False(TileProtocol.TryDecodeCommand(frame, planeCount: 4, out _, out _));
     }
 
-    // CombatTarget joins equality, which is what makes a mispredicted target a RECONCILE rather than a silent
-    // divergence, and it joins the wire, which is what makes it 41 payload bytes instead of 33. The delta is
-    // measured against an entity carrying no move state at all, so the 44 is the framed cost section 5.4 budgets.
+    // CombatTarget joins equality, for the value type's own contract and for the one non-test consumer of it, the
+    // interpolation-sample dedupe in TileWorldClient.Snapshots.cs. It is NOT what catches a mispredicted target:
+    // ClientPrediction.Reconcile never calls Equals and gates on position error alone, and what stops a wrong lock
+    // from persisting is the unconditional rebase onto the authoritative basis on every snapshot.
+    //
+    // It joins the wire too, which is what makes it 41 payload bytes instead of 33. The delta is measured against an
+    // entity carrying no move state at all, so the 44 is the framed cost section 5.4 budgets.
     [Fact]
     public void The_combat_target_joins_equality_and_the_wire()
     {
@@ -99,17 +103,39 @@ public class TileCombatTargetTests
     // Two records of one intent, each clearing the other, for the reason TileActionQueue gives about its own pair:
     // the one that outlives the other fires against something the player visibly walked away from. A WalkTo
     // therefore BREAKS a fight, which is how a player disengages and is the same rule OSRS uses.
+    //
+    // All THREE arms are driven here, over both seams at once, because the Interact arm is the one that would
+    // otherwise be a live bug rather than a stale comment: the follow runs at the top of the same Advance, so a lock
+    // surviving a click on a booth would re-path the interaction's own route on the click's own tick.
     [Fact]
     public void The_combat_and_interact_targets_are_mutually_exclusive_and_a_walk_breaks_the_fight()
     {
-        (TileMoveSimulator sim, FakeTargets targets) = Sim();
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        TileObject booth = doc.AddObject("bank_booth", 10, 16, 0, 0);
+        var targets = new FakeTargets();
+        var sim = new TileMoveSimulator(TileMoveSimulatorTests.Bake(doc), Ticks,
+            new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs), null, targets);
         targets.Tiles[42L] = new TileCoord(20, 20, 0);
         TileMoveState s = TileMoveState.At(new TileCoord(10, 10, 0), TileDirection.N);
-        s.InteractTarget = 7L;
+        s.InteractTarget = booth.Id;
 
         s = sim.Step(s, TileCommand.Attack(42L, TileMoveMode.Walk), Dt);
         Assert.Equal(42L, s.CombatTarget);
         Assert.Equal(0L, s.InteractTarget);
+
+        // The other half, and the one the brief never asked for: clicking the booth mid fight drops the fight.
+        s = sim.Step(s, TileCommand.Interact(booth.Id, TileMoveMode.Walk), Dt);
+        Assert.Equal(0L, s.CombatTarget);
+        Assert.Equal(booth.Id, s.InteractTarget);
+        Assert.False(s.Route.IsIdle);
+        TileCoord boothRouteEnd = s.Route.End;
+
+        s = sim.Step(s, TileCommand.Attack(42L, TileMoveMode.Walk), Dt);
+        Assert.Equal(42L, s.CombatTarget);
+        Assert.Equal(0L, s.InteractTarget);
+        // The chase re-routes off the booth walk on the click's own tick, which is the follow running at the top of
+        // this very Advance.
+        Assert.NotEqual(boothRouteEnd, s.Route.End);
 
         s = sim.Step(s, TileCommand.WalkTo(new TileCoord(10, 14, 0), TileMoveMode.Walk), Dt);
         Assert.Equal(0L, s.CombatTarget);

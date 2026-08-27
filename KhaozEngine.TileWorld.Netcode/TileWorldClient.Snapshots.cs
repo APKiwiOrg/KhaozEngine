@@ -126,6 +126,13 @@ public sealed partial class TileWorldClient
         // THE HONEST READ's capture, and this is the ONE instant it can be taken. Apply has just written the newest
         // server state for every entity in the snapshot into World, and the next AdvancePresentation overwrites all
         // of it with the delayed timeline's answer, so a pass taken anywhere else reads the delayed value back.
+        //
+        // IT MUST ALSO RUN BEFORE THE RECONCILE BELOW, and that is a second, independent reason it sits here rather
+        // than a presentation detail: TileRemoteTargets resolves a combat target out of this capture, and
+        // ClientPrediction.Reconcile replays every pending command in ONE loop with nothing writing the capture in
+        // between, so every replayed command resolves the target to the SAME tile and replaying one reconcile twice
+        // gives the same state twice. That is the whole of the client's half of the follow's determinism. Moved
+        // after the reconcile, every replay would chase where the target stood one snapshot ago.
         CaptureLatestTiles();
 
         // Remotes ride a DELAYED timeline, so the sample is buffered here at its arrival time and read back later,
@@ -346,6 +353,11 @@ public sealed partial class TileWorldClient
         // counts as a change (BeginInteract writes Facing with no tile change and no progress, which is the
         // ordinary click on the thing you are already standing next to) while a re-render of the same tick does
         // not.
+        //
+        // CombatTarget joined that equality when the combat seam landed, and nothing here had to move for it. A pair
+        // of states differing ONLY in the lock has equal StepTicks, so it belongs to a remote that is standing, and a
+        // standing pose reads no fraction of a tick: the stamp this dedupe protects is only ever spent on a glide.
+        // So the extra re-stamp such a change costs is a restart of a carry-forward nobody is drawing.
         if (remoteSamples.TryGetValue(netId, out RemoteSample prev) && prev.State.Equals(now)) return;
         remoteSamples[netId] = new RemoteSample(now, sampleTime);
     }

@@ -105,6 +105,10 @@ public sealed partial class TileWorldServer
         //     the same tile: the actor decisions in 1b, the follow inside the movement pass in 2, and a player's own
         //     Attack acceptance in 1. Taken after OnBeforeTick so a head's own spawns are in it. See
         //     TileEntityTargets for why a read-through resolver would let the ECS iteration order decide a fight.
+        //
+        //     What is NOT in it is anything 1b spawns, since the spawner pass runs after this: a monster built by a
+        //     spawner on this tick does not resolve until the next one. Harmless while a lock can only name an
+        //     entity a click or a behaviour already saw, which means an entity that existed last tick.
         combatTargets.Refresh(liveCells);
 
         // Snapshotted, because everything below may add or drop a player and a dictionary cannot be enumerated

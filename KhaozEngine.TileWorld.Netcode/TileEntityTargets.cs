@@ -23,6 +23,14 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// <para>Ghosts and migrating mirrors are excluded by construction rather than by a check:
 /// <see cref="Refresh"/> reads a cell's OWNED entities, so a border mirror of an entity another cell simulates is
 /// never in the map and cannot answer with a tick-stale tile under the same net id.</para>
+/// <para>WHAT AN EXCLUDED ENTITY GETS IS "gone", not "held", and that is worth knowing before a networked link
+/// lands. An id this map does not hold does not resolve, and the follow reads a target that does not resolve as
+/// dead, despawned or out of view, so it CLEARS the lock. A ghost is only ever a mirror of something its owning
+/// cell is already following, so nothing is lost there. A MIGRATING entity is a different case: with the in-process
+/// link the whole migrate, ack and release handshake completes inside one <c>ShardHost.ProcessHandoffs</c> call, so
+/// nothing is ever <see cref="Migrating"/> when this runs and the window is zero. A networked <c>ICellLink</c>
+/// spans calls by design, and then a target mid-handoff is unresolvable for a tick or more and a fight would break
+/// silently whenever the target crossed a region boundary.</para>
 /// </summary>
 public sealed class TileEntityTargets : ITileTargets
 {
@@ -40,6 +48,10 @@ public sealed class TileEntityTargets : ITileTargets
     /// Snapshots every owned entity's COMMITTED tile, once, at the top of a server tick. Everything that asks this
     /// resolver for the rest of that tick gets the same answer, which is the property the follow's determinism rests
     /// on. Allocation-free after the first call: the map is cleared and refilled and the callback is cached.
+    /// <para>ONE THREAD AT A TIME, per instance. The cached callback reads the cell being walked out of a field, so
+    /// two threads refreshing one instance would read each other's world. That is the price of not allocating a
+    /// closure per cell per tick, and it is the right trade for something a server tick calls once: a caller wanting
+    /// concurrent refreshes wants an instance each.</para>
     /// </summary>
     /// <param name="cells">The live cells to walk. The server passes its own list rather than
     /// <c>ShardHost.Cells</c>, whose enumerator boxes once per call.</param>

@@ -67,6 +67,10 @@ public sealed class TileActorSpawner
     /// <summary>Ticks still to wait while <see cref="State"/> is <see cref="TileActorSpawnerState.Waiting"/>.</summary>
     public int TicksUntilRespawn { get; private set; }
 
+    /// <summary>True while this spawner's actor is walking home after a leash break, which is what makes the full
+    /// restore happen on ARRIVAL rather than on the break. Cleared by the arrival and by acquiring a new target.</summary>
+    public bool Returning { get; internal set; }
+
     // Driven by TileActorHost alone. Internal rather than public because the state machine is only coherent when one
     // caller owns it: a head that armed a Waiting by hand would have the host overwrite it on the next tick.
     internal void Alive(long netId)

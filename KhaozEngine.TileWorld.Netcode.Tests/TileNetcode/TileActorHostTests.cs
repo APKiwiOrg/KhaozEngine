@@ -215,9 +215,9 @@ public class TileActorHostTests
         Assert.Equal(0, s.Actors.PendingCommandCount);
     }
 
-    // The definition's cadence is LIVE FROM THE FIRST TICK, which is what the latch TrySpawn leaves behind buys. A
-    // spawn writes TileMoveState.At, whose mode is Walk, and the fallback command is Continue at whatever mode the
-    // state already holds, so without the latch a running actor would walk until something else commanded it and a
+    // The definition's cadence is LIVE FROM THE FIRST TICK, which is what the actor pass falling back to the
+    // SPAWNER'S StepMode buys. A spawn writes TileMoveState.At, whose mode is Walk, so a fallback at whatever mode
+    // the state already holds would leave a running actor walking until something else commanded it, and a
     // definition's StepMode would be a field nothing ever read.
     [Fact]
     public void A_spawned_actor_steps_at_its_definitions_mode_from_the_first_tick()
@@ -230,8 +230,8 @@ public class TileActorHostTests
 
         Assert.True(s.TryGetActorState(spawner.ActorNetId, out TileMoveState st));
         Assert.Equal(TileMoveMode.Run, st.Mode);
-        // Spent by the very tick that spawned it, exactly as any other latch is: the spawner pass runs ahead of the
-        // actor pass inside one Tick, so the fresh latch is consumed rather than left waiting for the next one.
+        // And it costs no latch to do it: a spawn leaves nothing waiting, so the cadence cannot be one tick of a
+        // command that something else then replaces.
         Assert.Equal(0, s.Actors.PendingCommandCount);
     }
 

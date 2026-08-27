@@ -8,6 +8,14 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// <see cref="PendingTileCommand"/> and its <see cref="TileActor"/> tag written. Driven by
 /// <see cref="TileWorldServer"/>'s own tick body, BEFORE the movement pass, so anything decided here moves on the
 /// same tick and ships in the same tick's snapshot.
+/// <para>WHERE THE COMMAND COMES FROM, in order. A LATCHED <see cref="Command"/> outranks everything, which is what
+/// lets a head take direct control of one actor (a scripted event, a boss phase, a test) without replacing the
+/// behaviour for all of them. Otherwise <see cref="Behaviour"/> decides, and a null one (the default) answers
+/// <see cref="TileCommand.Continue"/> so an unwired server's actors stand exactly where they were put. Either way
+/// the command's MODE is the spawner's <see cref="TileActorDefinition.StepMode"/>, which is how a definition's
+/// cadence stays live on every tick rather than only on the one a spawn latch would have covered.</para>
+/// <para>An intent names a tile or a target and never a route, so everything about HOW an actor gets somewhere stays
+/// in the one stepper both kinds of entity run and an actor can never move in a way a player could not.</para>
 /// <para>BOTH COMPONENT WRITES ARE UNCONDITIONAL, EVERY TICK, FOR EVERY LIVE ACTOR, and that is a rule rather than
 /// an implementation detail. Neither <see cref="PendingTileCommand"/> nor <see cref="TileActor"/> is registered for
 /// replication, so a cell handoff rebuilds the entity from its Migrate capture without either of them and the actor
@@ -25,6 +33,11 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// </summary>
 public sealed class TileActorHost
 {
+    // What an actor with no spawner is decided against. Real numbers rather than zeroes, so a head that spawned one
+    // straight through TileWorldServer.SpawnActor gets a monster that wanders and leashes instead of one that stands
+    // in place forever wondering why its radii are zero.
+    static readonly TileActorDefinition FallbackDefinition = new() { Id = "ke:unspawned", MaxHealth = 1 };
+
     readonly TileWorldServer server;
     readonly List<TileActorSpawner> spawners = new();
     // Latched intent for the NEXT tick, latest wins, exactly as TileWorldClient.Queue is for a player. Keyed by net
@@ -34,6 +47,10 @@ public sealed class TileActorHost
     // The actor list snapshotted per tick, because writing a command can spawn or despawn and a live collection
     // cannot be walked across one.
     readonly List<long> tickActors = new();
+    // netId -> the spawner that built it, so the decision pass can hand a behaviour its definition and its home. An
+    // actor spawned straight through TileWorldServer.SpawnActor has no entry, and is handed a home equal to its own
+    // tile plus the fallback definition, so a head that spawns outside a spawner still gets a decision.
+    readonly Dictionary<long, TileActorSpawner> spawnerByActor = new();
 
     /// <summary>Binds a host to the server it drives.</summary>
     /// <param name="server">The server that owns the actors.</param>
@@ -43,6 +60,24 @@ public sealed class TileActorHost
 
     /// <summary>The spawners, in the order they were added, which is the order they fire in.</summary>
     public IReadOnlyList<TileActorSpawner> Spawners => spawners;
+
+    /// <summary>The decisions, and NULL by default. A null behaviour leaves every actor standing still unless
+    /// something latches a command on it, which is the right default for a head that has not wired one yet, and it
+    /// is deliberately not the engine's own: an engine that installed <see cref="TileWanderBehaviour"/> on every
+    /// server would be picking a game's monster behaviour for it, which is the same line the engine refuses to cross
+    /// with a combat number. Set it to <see cref="TileWanderBehaviour"/> for the engine's own, or to a game
+    /// implementation that dispatches on <see cref="TileActorDefinition.Kind"/>.</summary>
+    public ITileActorBehaviour? Behaviour { get; set; }
+
+    /// <summary>The seed every actor's per-tick random stream is derived from. Two servers built with the same seed
+    /// and driven with the same commands produce the same wander, which is what a replay depends on.</summary>
+    public int Seed { get; set; }
+
+    /// <summary>The spawner that built one actor.</summary>
+    /// <param name="netId">The actor's net id.</param>
+    /// <param name="spawner">Its spawner, null when it was built outside one.</param>
+    public bool TryGetSpawnerOf(long netId, out TileActorSpawner spawner) =>
+        spawnerByActor.TryGetValue(netId, out spawner!);
 
     /// <summary>Adds an authored spawn point and returns it, so a caller can read its state later. It spawns on the
     /// next tick rather than now, which keeps every actor's first tick the same tick.</summary>
@@ -97,11 +132,76 @@ public sealed class TileActorHost
         {
             long netId = tickActors[i];
             if (!server.TryGetActorState(netId, out TileMoveState state)) continue;
+            spawnerByActor.TryGetValue(netId, out TileActorSpawner? spawner);
+            TileMoveMode mode = spawner?.Definition.StepMode ?? state.Mode;
+
+            // A LATCHED command outranks the behaviour, which is what lets a head take direct control of one actor
+            // (a scripted event, a boss phase, a test) without replacing the behaviour for all of them.
             TileCommand command = nextCommand.Remove(netId, out TileCommand latched)
                 ? latched
-                : TileCommand.Continue(state.Mode);
+                : Decide(netId, state, spawner, mode, server.TickCount);
+
             server.WriteActorCommand(netId, command);
+            RestoreOnArrival(netId, state, spawner);
         }
+    }
+
+    TileCommand Decide(long netId, in TileMoveState state, TileActorSpawner? spawner, TileMoveMode mode, long tick)
+    {
+        if (Behaviour is null) return TileCommand.Continue(mode);
+
+        // Both reads answer false for an entity that carries neither component, which leaves the out parameter at
+        // default, which is exactly the right view to hand a behaviour for one.
+        server.TryGetCombatState(netId, out TileCombatState combat);
+        server.TryGetHealth(netId, out TileHealth health);
+
+        var context = new TileActorContext(
+            NetId: netId,
+            Tile: state.Tile,
+            Home: spawner?.Home ?? state.Tile,
+            Definition: spawner?.Definition ?? FallbackDefinition,
+            Health: health,
+            CombatTarget: state.CombatTarget,
+            LastDamagedBy: combat.LastDamagedBy,
+            LastDamagedTick: combat.LastDamagedTick,
+            Walking: !state.Route.IsIdle || state.IsStepping,
+            Tick: tick,
+            Rng: TileActorRandom.For(Seed, netId, tick));
+
+        TileActorIntent intent = Behaviour.Decide(context);
+        switch (intent.Kind)
+        {
+            case TileActorIntentKind.WalkTo:
+                if (spawner is not null) spawner.Returning = false;
+                return TileCommand.WalkTo(intent.Tile, mode);
+            case TileActorIntentKind.Attack:
+                if (spawner is not null) spawner.Returning = false;
+                return TileCommand.Attack(intent.Target, mode);
+            case TileActorIntentKind.Break:
+                // A WalkTo is what BREAKS the lock, on the state, through the one stepper. Nothing here clears
+                // CombatTarget by hand, because a second place that cleared it is a second definition of the rule.
+                if (spawner is null) return TileCommand.Continue(mode);
+                spawner.Returning = true;
+                return TileCommand.WalkTo(spawner.Home, mode);
+            default:
+                return TileCommand.Continue(mode);
+        }
+    }
+
+    // The arrival half of a leash break: full health when it is HOME with nothing left to walk, never when it broke.
+    // Gated on the flag rather than on the tile alone, so a monster whose home is where the fight is does not heal
+    // every tick, and the flag is cleared here so it fires exactly once per break.
+    // ARRIVED means COMMITTED TO THE TILE, not "the step animation finished", which is the same definition the
+    // pending-action pass uses (a walk resolves on the tick its last step STARTS). It also has to be, because this
+    // reads the TICK-START state: a gate on the step being over would first be true on the tick after the one every
+    // other reader of the server already sees the actor standing at home on.
+    void RestoreOnArrival(long netId, in TileMoveState state, TileActorSpawner? spawner)
+    {
+        if (spawner is null || !spawner.Returning) return;
+        if (!state.Tile.Equals(spawner.Home) || !state.Route.IsIdle) return;
+        spawner.Returning = false;
+        if (server.TryGetHealth(netId, out TileHealth health) && health.Current < health.Max)
+            server.SetHealth(netId, new TileHealth { Current = health.Max, Max = health.Max });
     }
 
     void TickSpawner(TileActorSpawner spawner)
@@ -113,7 +213,10 @@ public sealed class TileActorHost
                 return;
             case TileActorSpawnerState.Alive:
                 if (!server.TryGetActorState(spawner.ActorNetId, out _))
+                {
+                    spawnerByActor.Remove(spawner.ActorNetId);
                     spawner.Wait(spawner.Definition.RespawnDelayTicks);
+                }
                 return;
             case TileActorSpawnerState.Waiting:
                 if (spawner.TickDown()) TrySpawn(spawner);
@@ -130,11 +233,18 @@ public sealed class TileActorHost
         // moment later, and stranding the spawner would need an operator to notice.
         if (netId == 0) return;
         spawner.Alive(netId);
-        // The definition's cadence is LIVE FROM THE FIRST TICK. A spawn writes TileMoveState.At, whose mode is Walk,
-        // and the fallback below is Continue at whatever mode the state already holds, so without this latch a
-        // running actor would walk until something else commanded it. Latched rather than written onto the state,
-        // because the command stream is where a cadence belongs on both kinds of entity: it is how a player's run
-        // toggle reaches the stepper too.
-        Command(netId, TileCommand.Continue(d.StepMode));
+        // A fresh actor is never mid leash-break, and a spawner reused after a respawn would otherwise hand its new
+        // actor the old one's flag and heal it on its first arrival home.
+        spawner.Returning = false;
+        // The index the decision pass reads a definition and a home out of. Keyed by net id rather than walked,
+        // because the actor pass is a loop over net ids and ids are never recycled, so an entry can only ever be
+        // replaced by the same spawner's next actor or dropped when that actor is gone.
+        spawnerByActor[netId] = spawner;
+        // The definition's cadence is LIVE FROM THE FIRST TICK, carried by the mode the actor pass falls back to
+        // (the spawner's StepMode) rather than by a latch spent on the spawn tick. A spawn writes TileMoveState.At,
+        // whose mode is Walk, so without that fallback a running actor would walk until something else commanded it
+        // and a definition's StepMode would be a field nothing ever read. It rides the command stream either way,
+        // which is where a cadence belongs on both kinds of entity: it is how a player's run toggle reaches the
+        // stepper too.
     }
 }

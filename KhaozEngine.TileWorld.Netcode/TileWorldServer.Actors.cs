@@ -145,6 +145,38 @@ public sealed partial class TileWorldServer
         return true;
     }
 
+    /// <summary>One entity's health by net id, players included.</summary>
+    /// <param name="netId">The entity's net id.</param>
+    /// <param name="health">Its health, default when no cell owns the id or it carries none.</param>
+    public bool TryGetHealth(long netId, out TileHealth health)
+    {
+        health = default;
+        return host.TryGetOwner(netId, out CellSim cell, out Entity e) && cell.World.TryGet(e, out health);
+    }
+
+    /// <summary>Writes one entity's health. The engine owns health MECHANICALLY and owns none of its meaning, so
+    /// this is the door a game's own skill core writes <see cref="TileHealth.Max"/> through, and the one a heal goes
+    /// through. Nothing is clamped here: a caller that writes a <see cref="TileHealth.Current"/> above
+    /// <see cref="TileHealth.Max"/> gets exactly that, and the wire codec clamps it on the way to a viewer.</summary>
+    /// <param name="netId">The entity's net id.</param>
+    /// <param name="health">The health to write.</param>
+    /// <returns>False when no cell owns the id.</returns>
+    public bool SetHealth(long netId, in TileHealth health)
+    {
+        if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) return false;
+        cell.World.Set(e, health);
+        return true;
+    }
+
+    /// <summary>One entity's server-only combat state by net id.</summary>
+    /// <param name="netId">The entity's net id.</param>
+    /// <param name="combat">Its combat state, default when no cell owns the id or it carries none.</param>
+    public bool TryGetCombatState(long netId, out TileCombatState combat)
+    {
+        combat = default;
+        return host.TryGetOwner(netId, out CellSim cell, out Entity e) && cell.World.TryGet(e, out combat);
+    }
+
     // Both writes are UNCONDITIONAL and both are the same fix, which is why they are one method. Neither component
     // is on a replication channel, so a Migrate capture rebuilds the entity without either and the actor falls out
     // of TileMovementSystem's three-component query. See TileActorHost's doc for why an optimisation that skipped

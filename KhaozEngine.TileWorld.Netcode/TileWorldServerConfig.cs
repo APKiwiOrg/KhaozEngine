@@ -86,6 +86,15 @@ public sealed record TileWorldServerConfig
     /// carry and a client predicts the same truncation.</summary>
     public TileMoveOptions Move { get; init; } = new();
 
+    /// <summary>Simulator knobs for ACTORS, which are deliberately not the player's. The default drops
+    /// <see cref="TileMoveOptions.MaxPathRadius"/> from 64 to 12, because
+    /// <c>TilePathfinder.FindPath</c> allocates its scratch per call at <c>(2r+1)^2</c> entries: at 64 that is about
+    /// 83 KB of Gen0 per call and at 12 it is about 3 KB, a 26-fold saving on the one path a chasing actor runs most
+    /// often. Size it against the LEASH rather than against a player's click, since an actor never legitimately
+    /// paths further than its leash. This is also where a larger <see cref="TileMoveOptions.AgentSize"/> would go
+    /// the day multi-tile actors land.</summary>
+    public TileMoveOptions ActorMove { get; init; } = new() { MaxPathRadius = 12 };
+
     /// <summary>Synchronous ban check over a verified account id, consulted at the door. Null admits everyone the
     /// authenticator admits. A head backs this with whatever store it keeps, which is why it is a delegate rather
     /// than an interface the engine would then have to define a schema for.</summary>

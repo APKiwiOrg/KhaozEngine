@@ -25,6 +25,10 @@ public sealed partial class TileWorldServer
     // the TileActor tag is on no replication channel and a Migrate capture therefore drops it.
     readonly List<long> actorNetIds = new();
 
+    /// <summary>The spawner list and the actor tick, driven from this server's own tick body at step 1b. A head adds
+    /// its authored spawn points here and never has to call anything per tick.</summary>
+    public TileActorHost Actors { get; }
+
     /// <summary>Raised with the new actor's net id once the entity exists and every component is on it, so a game
     /// may attach its own there (a kind discriminator, a stat record). The mirror of <see cref="PlayerJoined"/> for
     /// something with no account and no connection.</summary>
@@ -137,6 +141,19 @@ public sealed partial class TileWorldServer
         if (!cell.World.TryGet(e, out state)) return false;
         cell.World.TryGet(e, out TileRouteState route);
         state = TileProtocol.AssembleMoveState(state, route);
+        return true;
+    }
+
+    // Both writes are UNCONDITIONAL and both are the same fix, which is why they are one method. Neither component
+    // is on a replication channel, so a Migrate capture rebuilds the entity without either and the actor falls out
+    // of TileMovementSystem's three-component query. See TileActorHost's doc for why an optimisation that skipped
+    // this for an idle actor would reintroduce the bug at a region boundary.
+    internal bool WriteActorCommand(long netId, in TileCommand command)
+    {
+        if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) return false;
+        if (!cell.World.IsAlive(e)) return false;
+        cell.World.Set(e, new TileActor());
+        cell.World.Set(e, new PendingTileCommand { Command = command });
         return true;
     }
 

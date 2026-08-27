@@ -4,10 +4,14 @@ using KhaozEngine.Sharding;
 namespace KhaozEngine.TileWorld.Netcode;
 
 /// <summary>
-/// Runs <see cref="TileMoveSimulator"/> over every OWNED player entity inside the cell's own fixed tick, so
-/// authority follows the cell that owns the entity and the per-cell fan-out stays free of shared mutable state.
-/// One instance is added to each cell's world, and the simulator behind it is shared by all of them because
-/// nothing about it is stateful.
+/// Runs <see cref="TileMoveSimulator"/> over every OWNED entity, player and actor alike, inside the cell's own
+/// fixed tick, so authority follows the cell that owns the entity and the per-cell fan-out stays free of shared
+/// mutable state. One instance is added to each cell's world, and the simulators behind it are shared by all of
+/// them because nothing about one is stateful.
+/// <para>WHICH simulator an entity is stepped through is the <see cref="TileActor"/> TAG, so an actor runs the
+/// same stepper as a player over its own options rather than a movement rule of its own. The tag rather than the
+/// absence of a connection slot, because nothing inside a cell knows about slots and net ids deliberately know
+/// nothing about connections.</para>
 /// <para>A <see cref="Ghost"/> is a read-only mirror of an entity another cell simulates, and a
 /// <see cref="Migrating"/> entity has already been captured and sent to its destination. Stepping either would
 /// simulate one player twice in one tick, in two cells, from two copies of its state, so both are skipped.</para>
@@ -23,11 +27,27 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// </summary>
 public sealed class TileMovementSystem : ISystem
 {
-    readonly TileMoveSimulator simulator;
+    readonly TileMoveSimulator players;
+    readonly TileMoveSimulator actors;
 
-    /// <summary>Steps every owned player through <paramref name="simulator"/>.</summary>
+    /// <summary>Steps every owned entity through one simulator, players and actors alike. The shape that shipped
+    /// before actors existed, kept because it is still the right one for a head with no actors.</summary>
     /// <param name="simulator">The one stepper both heads run. Shared across every cell, since it holds no state.</param>
-    public TileMovementSystem(TileMoveSimulator simulator) => this.simulator = simulator;
+    public TileMovementSystem(TileMoveSimulator simulator) : this(simulator, simulator)
+    {
+    }
+
+    /// <summary>Steps players through <paramref name="players"/> and <see cref="TileActor"/>s through
+    /// <paramref name="actors"/>. Two instances rather than two systems, so the <see cref="Ghost"/> and
+    /// <see cref="Migrating"/> skip stays in ONE place and one pass still walks the archetype once. The simulator is
+    /// stateless, so a second instance costs nothing but its options.</summary>
+    /// <param name="players">The stepper a player entity runs, and the one a client predicts against.</param>
+    /// <param name="actors">The stepper an actor entity runs, tuned to a leash-sized path radius.</param>
+    public TileMovementSystem(TileMoveSimulator players, TileMoveSimulator actors)
+    {
+        this.players = players;
+        this.actors = actors;
+    }
 
     /// <inheritdoc/>
     public void Update(World world, float dt)
@@ -35,6 +55,11 @@ public sealed class TileMovementSystem : ISystem
         world.ForEach((Entity e, ref TileMoveState state, ref TileRouteState route, ref PendingTileCommand pending) =>
         {
             if (world.Has<Ghost>(e) || world.Has<Migrating>(e)) return;
+
+            // The pick is the TAG rather than the absence of a slot, because nothing in a cell knows about slots and
+            // net ids deliberately know nothing about connections. An actor that crossed a region boundary this tick
+            // has already had its tag written back by step 1b, which runs before this pass.
+            TileMoveSimulator simulator = world.Has<TileActor>(e) ? actors : players;
 
             TileMoveState s = simulator.Step(
                 TileProtocol.AssembleMoveState(state, route), pending.Command, dt);

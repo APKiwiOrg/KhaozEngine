@@ -26,7 +26,7 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// file is construction, the host, the player index and state access. <c>TileWorldServer.Tick.cs</c> is the tick
 /// order and the serve, <c>TileWorldServer.Sessions.cs</c> the session lifecycle and the persistence-host surface,
 /// <c>TileWorldServer.Actions.cs</c> the pending-action resolution, and <c>TileWorldServer.Actors.cs</c> the actor
-/// lifecycle.</para>
+/// lifecycle and the <see cref="TileActorHost"/> this file constructs.</para>
 /// </summary>
 public sealed partial class TileWorldServer : IDisposable
 {
@@ -45,6 +45,7 @@ public sealed partial class TileWorldServer : IDisposable
     readonly ShardHost host;
     readonly ReplicationRegistry registry;
     readonly TileMoveSimulator simulator;
+    readonly TileMoveSimulator actorSimulator;
     readonly TileActionQueue actions = new();
     readonly RemoteCommandQueue<TileCommand> commands;
     readonly NetIdAllocator allocator = new();
@@ -120,6 +121,11 @@ public sealed partial class TileWorldServer : IDisposable
         maxActionAgeTicks =
             (long)config.Move.MaxRouteSteps * (Math.Max(config.StepTicks.Walk, config.StepTicks.Run) + 1);
         simulator = new TileMoveSimulator(map, config.StepTicks, targets, config.Move);
+        // A SECOND instance rather than a second stepper. Nothing about TileMoveSimulator is stateful, so this costs
+        // its options and nothing else, and it is what keeps a chasing actor's pathfinder scratch at 3 KB instead of
+        // 83 KB. Same map, same cadence, same target seam: only the knobs differ.
+        actorSimulator = new TileMoveSimulator(map, config.StepTicks, targets, config.ActorMove);
+        Actors = new TileActorHost(this);
         // The queue's own neutral is never what a starved player is stepped with: Admit replaces it with a Continue
         // at the player's CURRENT mode, because TileCommand.None is a run toggled off. It is supplied because the
         // queue requires one, and it is the right value for a slot with no player behind it.
@@ -400,7 +406,7 @@ public sealed partial class TileWorldServer : IDisposable
     {
         if (!wiredCells.Add(cell.Coord)) return;
         liveCells.Add(cell);
-        cell.World.AddSystem(new TileMovementSystem(simulator));
+        cell.World.AddSystem(new TileMovementSystem(simulator, actorSimulator));
     }
 
     /// <inheritdoc/>

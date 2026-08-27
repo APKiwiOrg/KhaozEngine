@@ -54,10 +54,13 @@ public sealed partial class TileWorldServer
     /// did not step, and the next call would overwrite it with the starvation neutral before any simulator saw it.
     /// Running the whole body per tick is what keeps a drain welded to the step it feeds.</para>
     /// <para>The order inside one tick is the head's own systems, then drain ONE command per player into its owning
-    /// cell, then step every cell (which is where movement and the arrival facing happen), then authority handoff
-    /// and border ghosting, then the action queue, then serve every client its area of interest. It is not
+    /// cell, then the actor step (every spawner ticks and every live actor's command and tag are written), then step
+    /// every cell (which is where movement and the arrival facing happen), then authority handoff and border
+    /// ghosting, then the action queue, then serve every client its area of interest. It is not
     /// arbitrary. Commands are routed BEFORE the step so a click takes effect on the tick it arrived rather than
-    /// the one after. Handoff runs after the step, because a step is what carries a player over a region boundary,
+    /// the one after. The actor step sits between the two for both halves of that reason: it is after the drain so
+    /// a behaviour reads the tick's player commands, and before the step so an actor's decision moves it on this
+    /// tick rather than the next. Handoff runs after the step, because a step is what carries a player over a region boundary,
     /// and ghosting after handoff so the border mirrors reflect the new owners. Actions resolve after both, so an
     /// arrival and its action land on the same tick. The serve is last, so a client sees the whole tick and never
     /// half of it.</para>
@@ -120,6 +123,13 @@ public sealed partial class TileWorldServer
             if (!cell.World.TryGet(e, out TileMoveState state)) continue;
             cell.World.Set(e, new PendingTileCommand { Command = Admit(cmd, arrived, state, slot) });
         }
+
+        // 1b. Every spawner ticks, then every live actor's command and tag are written. BEFORE the movement pass, so
+        //     an actor's decision moves it on this tick and ships in this tick's snapshot, and AFTER the player
+        //     drain, so both kinds of entity reach the stepper with the tick's commands already on them. The pass
+        //     reads tick-START tiles for every actor, so no actor's decision can depend on another having moved and
+        //     the ECS iteration order cannot reach a decision.
+        Actors.Tick(TickCount);
 
         // 2. Every cell runs the movement system (wired the moment the host creates one), then one fixed sub-tick.
         host.Tick(dt, maxTicksPerFrame: 1);

@@ -54,6 +54,12 @@ public sealed record TileWorldServerConfig
     /// two different tiles.</summary>
     public int MaxGoalRadius { get; init; } = TilePathfinder.DefaultMaxRadius;
 
+    /// <summary>How many server-owned actors one cell may hold. A cell is a REGION (see <see cref="TileCells"/>),
+    /// so this is the per-region monster budget and it multiplies by the resident regions to give the world's.
+    /// Enforced as a refusal at <see cref="TileWorldServer.SpawnActor"/>, which answers 0 rather than throwing so a
+    /// spawner cannot take a tick down with it.</summary>
+    public int MaxActorsPerCell { get; init; } = 64;
+
     /// <summary>Inbound message budget per connection, spent per POLL rather than per wall-clock second. The token
     /// bucket is topped up once per <see cref="TileWorldServer.Poll"/> with <c>MaxCommandsPerSecond * TickSeconds</c>
     /// tokens, so a head admits that many messages per poll and its sustained ceiling is

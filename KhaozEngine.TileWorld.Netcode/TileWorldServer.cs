@@ -21,11 +21,12 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// it. The connection lifecycle, residency and rate-limiting plumbing here is therefore a re-implementation rather
 /// than an extraction, which is a known and accepted cost. When the two servers are seen to converge, the generic
 /// core comes out of BOTH of them rather than out of the shipping one alone.</para>
-/// <para>Partial across four files, because "the world ticks", "connections come and go" and "a click resolves"
+/// <para>Partial across five files, because "the world ticks", "connections come and go" and "a click resolves"
 /// are three separate seams and one file for all of them would grow past the size ratchet as each filled in. This
 /// file is construction, the host, the player index and state access. <c>TileWorldServer.Tick.cs</c> is the tick
 /// order and the serve, <c>TileWorldServer.Sessions.cs</c> the session lifecycle and the persistence-host surface,
-/// and <c>TileWorldServer.Actions.cs</c> the pending-action resolution.</para>
+/// <c>TileWorldServer.Actions.cs</c> the pending-action resolution, and <c>TileWorldServer.Actors.cs</c> the actor
+/// lifecycle.</para>
 /// </summary>
 public sealed partial class TileWorldServer : IDisposable
 {

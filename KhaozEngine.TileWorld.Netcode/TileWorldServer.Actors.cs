@@ -103,6 +103,10 @@ public sealed partial class TileWorldServer
         // second is the localization rule: a player's display name is a verified fact the connect token produced,
         // and a monster's name is PROSE the server owns no catalog for.
         actorNetIds.Add(netId);
+        // The tile it was BORN on, recorded before anything else can see the actor, because this is the one place
+        // that knows it without asking the world. It is what a behaviour is handed as HOME for an actor no spawner
+        // built, and a home read off the actor's current tile instead is a home that moves with it.
+        Actors.NoteSpawn(netId, at);
         OnActorSpawned?.Invoke(netId);
         return netId;
     }

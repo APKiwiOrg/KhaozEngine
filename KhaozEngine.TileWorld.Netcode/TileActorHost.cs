@@ -37,7 +37,8 @@ public sealed class TileActorHost
 {
     // What an actor with no spawner is decided against. Real numbers rather than zeroes, so a head that spawned one
     // straight through TileWorldServer.SpawnActor gets a monster that wanders and leashes instead of one that stands
-    // in place forever wondering why its radii are zero.
+    // in place forever wondering why its radii are zero. Both radii are measured from the tile it was born on (see
+    // homeByActor), which is what makes them mean anything at all.
     static readonly TileActorDefinition FallbackDefinition = new() { Id = "ke:unspawned", MaxHealth = 1 };
 
     readonly TileWorldServer server;
@@ -50,9 +51,15 @@ public sealed class TileActorHost
     // cannot be walked across one.
     readonly List<long> tickActors = new();
     // netId -> the spawner that built it, so the decision pass can hand a behaviour its definition and its home. An
-    // actor spawned straight through TileWorldServer.SpawnActor has no entry, and is handed a home equal to its own
-    // tile plus the fallback definition, so a head that spawns outside a spawner still gets a decision.
+    // actor spawned straight through TileWorldServer.SpawnActor has no entry, and is handed the fallback definition
+    // plus the home below, so a head that spawns outside a spawner still gets a decision.
     readonly Dictionary<long, TileActorSpawner> spawnerByActor = new();
+    // netId -> the tile every actor was BORN on, written once by the spawn and never again. A home re-evaluated per
+    // tick would be the actor's own current tile, which makes the leash test Chebyshev(Tile, Tile), permanently
+    // false, and the wander an unbounded random walk around wherever the actor drifted to rather than a radius
+    // around anything. A spawner's own Home wins where there is one: this is what answers for the actors there is
+    // not.
+    readonly Dictionary<long, TileCoord> homeByActor = new();
 
     /// <summary>Binds a host to the server it drives.</summary>
     /// <param name="server">The server that owns the actors.</param>
@@ -106,13 +113,23 @@ public sealed class TileActorHost
     public void Command(long netId, in TileCommand command) => nextCommand[netId] = command;
 
     /// <summary>
-    /// Drops any unspent latch for <paramref name="netId"/>. <see cref="TileWorldServer.DespawnActor"/> calls it,
-    /// because a latch for an actor that no longer exists would otherwise sit in the dictionary forever: net ids
-    /// are never recycled, so nothing else would ever read or replace it, and combat makes death-before-the-next-tick
-    /// the routine case rather than the rare one.
+    /// Drops everything this host remembers about <paramref name="netId"/>: any unspent latch, and the tile it was
+    /// born on. <see cref="TileWorldServer.DespawnActor"/> calls it, because either entry for an actor that no
+    /// longer exists would otherwise sit in its dictionary forever: net ids are never recycled, so nothing else
+    /// would ever read or replace them, and combat makes death-before-the-next-tick the routine case rather than the
+    /// rare one.
     /// </summary>
     /// <param name="netId">The despawned actor's net id.</param>
-    public void Forget(long netId) => nextCommand.Remove(netId);
+    public void Forget(long netId)
+    {
+        nextCommand.Remove(netId);
+        homeByActor.Remove(netId);
+    }
+
+    // The birth tile, recorded by TileWorldServer.SpawnActor for EVERY actor, spawner or not. A spawner's own Home
+    // outranks it in the decision pass, so the entry is only ever read for an actor a head built itself, and it is
+    // written for both because the spawn door is the one place that knows the tile without asking the world.
+    internal void NoteSpawn(long netId, TileCoord at) => homeByActor[netId] = at;
 
     /// <summary>
     /// How many latched commands are waiting for their tick. The observable that pins the latch lifecycle: spent
@@ -161,11 +178,15 @@ public sealed class TileActorHost
         // default, which is exactly the right view to hand a behaviour for one.
         server.TryGetCombatState(netId, out TileCombatState combat);
         server.TryGetHealth(netId, out TileHealth health);
+        // A spawner's authored tile, or the tile this actor was born on, and NEVER the tile it is standing on now.
+        // The last of those three is a home that moves with the actor, which is no home at all. The final fallback
+        // is only reached for an actor whose spawn this host never saw, which nothing in this package produces.
+        TileCoord home = spawner?.Home ?? (homeByActor.TryGetValue(netId, out TileCoord born) ? born : state.Tile);
 
         var context = new TileActorContext(
             NetId: netId,
             Tile: state.Tile,
-            Home: spawner?.Home ?? state.Tile,
+            Home: home,
             Definition: spawner?.Definition ?? FallbackDefinition,
             Health: health,
             CombatTarget: state.CombatTarget,
@@ -195,7 +216,10 @@ public sealed class TileActorHost
                 // the arrival restore never fired and the heal was lost for that break. A player who stopped
                 // attacking got the monster back anyway.
                 ForgetAttacker(netId);
-                if (spawner is null) return TileCommand.Continue(mode);
+                // An actor with no spawner still walks home, because it has one now. What it does NOT get is the
+                // arrival restore: the fire-once flag lives on the spawner, and a head that builds actors itself
+                // owns their health the way it owns their respawn.
+                if (spawner is null) return TileCommand.WalkTo(home, mode);
                 spawner.Returning = true;
                 return TileCommand.WalkTo(spawner.Home, mode);
             default:
@@ -242,6 +266,7 @@ public sealed class TileActorHost
                 if (!server.TryGetActorState(spawner.ActorNetId, out _))
                 {
                     spawnerByActor.Remove(spawner.ActorNetId);
+                    homeByActor.Remove(spawner.ActorNetId);
                     spawner.Wait(spawner.Definition.RespawnDelayTicks);
                 }
                 return;

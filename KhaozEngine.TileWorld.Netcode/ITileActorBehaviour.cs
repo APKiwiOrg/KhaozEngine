@@ -55,7 +55,9 @@ public readonly record struct TileActorIntent(TileActorIntentKind Kind, TileCoor
 /// <param name="NetId">The actor's net id.</param>
 /// <param name="Tile">The actor's committed tile as of the start of this tick.</param>
 /// <param name="Home">Its spawner's authored tile, and the origin the leash and the wander radius are measured
-/// from. Equal to <paramref name="Tile"/> for an actor spawned without a spawner.</param>
+/// from. An actor spawned without a spawner is handed the tile it was BORN on, captured once at its spawn: a home
+/// re-read from the actor's own current tile every tick makes the leash unfireable and the wander an unbounded
+/// random walk.</param>
 /// <param name="Definition">What it was built from.</param>
 /// <param name="Health">Its health right now.</param>
 /// <param name="CombatTarget">The net id it is locked onto, 0 when it is not fighting.</param>

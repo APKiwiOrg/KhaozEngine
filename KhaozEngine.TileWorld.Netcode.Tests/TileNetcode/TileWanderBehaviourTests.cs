@@ -277,6 +277,47 @@ public class TileWanderBehaviourTests
             $"the actor is at {home.Tile} targeting {home.CombatTarget} at {healed.Current} of {healed.Max}");
     }
 
+    // An actor built straight through SpawnActor has no spawner, and its HOME is the tile it was born on, captured
+    // once. Re-evaluated per tick it was the actor's own current tile, which makes the leash test
+    // Chebyshev(Tile, Tile), permanently false, and turns the wander into an unbounded random walk that drifts off
+    // across the map. The fallback definition's radii are real numbers precisely so this case still wanders and
+    // still leashes.
+    [Fact]
+    public void An_actor_with_no_spawner_wanders_around_the_tile_it_was_born_on()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(5, 5, 0));
+        var born = new TileCoord(30, 30, 0);
+        long actor = s.SpawnActor(born, new TileActorSpawn(30, 10, TileDirection.S));
+
+        int farthest = 0;
+        for (int i = 0; i < 600; i++)
+        {
+            s.Tick(Dt);
+            if (s.TryGetActorState(actor, out TileMoveState st))
+                farthest = Math.Max(farthest, Chebyshev(st.Tile, born));
+        }
+
+        Assert.True(farthest > 0, "an actor with no spawner still wanders");
+        // The fallback definition's WanderRadius, which is the default one on TileActorDefinition.
+        Assert.True(farthest <= 4, $"it wandered {farthest} tiles from the tile it was born on");
+
+        // And the leash can fire at all, which is the other half of a home that does not move: dragged past the
+        // fallback definition's LeashRadius of 10, it breaks and walks back. The full restore is the spawner's.
+        for (int i = 0; i < 60; i++)
+        {
+            s.Actors.Command(actor, TileCommand.WalkTo(new TileCoord(30, 46, 0), TileMoveMode.Run));
+            s.Tick(Dt);
+            if (s.TryGetActorState(actor, out TileMoveState dragged) && Chebyshev(dragged.Tile, born) > 10) break;
+        }
+        Assert.True(s.TryGetActorState(actor, out TileMoveState outside));
+        Assert.True(Chebyshev(outside.Tile, born) > 10, $"the drag left it at {outside.Tile}");
+
+        for (int i = 0; i < 200; i++) s.Tick(Dt);
+        Assert.True(s.TryGetActorState(actor, out TileMoveState back));
+        Assert.True(Chebyshev(back.Tile, born) <= 4, $"it did not walk home, it is at {back.Tile}");
+    }
+
     // The other half of the mode-lifetime contract, with a behaviour installed: a latch outranks the behaviour on
     // its own tick and the mode it left behind outranks the definition's cadence afterwards, so a scripted event
     // that runs one actor somewhere does not need to re-latch on every tick to keep it running.

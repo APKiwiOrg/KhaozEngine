@@ -69,7 +69,8 @@ only.
 an overlay drawn ON the body wants and exactly what a RULE must not have.
 `client.TryGetLatestRemoteTile(netId, out tile, out ticksOld)` is on the newest APPLIED snapshot, so it trails by
 the transport latency plus at most one snapshot interval, and it reports how old the answer is in ticks so an
-overlay can fade a stale marker rather than draw a confident one. Both are allocation free, both refuse an unknown
+overlay can fade a stale marker rather than draw a confident one. That age is a LOWER bound on the truth, because
+no client can see the one-way flight time, so a threshold built on it wants headroom. Both are allocation free, both refuse an unknown
 id and the local player, and neither extrapolates. `docs/USING-KHAOZENGINE.md` carries the worked example.
 
 ## The types

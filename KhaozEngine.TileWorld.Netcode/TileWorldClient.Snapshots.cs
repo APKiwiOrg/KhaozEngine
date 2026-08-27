@@ -231,9 +231,11 @@ public sealed partial class TileWorldClient
     /// <para>The remote's ROUTE is deliberately not available on either read: it is owner-only on the wire, so no
     /// client can highlight another player's path. A route highlight is a LOCAL-player overlay only.</para>
     /// <para>A remote is known to this read from the snapshot that first carried it, which is up to one call before
-    /// <see cref="RemoteNetIds"/> lists it (that collection is rebuilt in <see cref="AdvancePresentation"/>). So
-    /// iterate <see cref="RemoteNetIds"/> and accept that this may answer for an id it does not yet hold, rather
-    /// than treating the two as one set.</para>
+    /// <see cref="RemoteNetIds"/> lists it (that collection is rebuilt in <see cref="AdvancePresentation"/>). The
+    /// departure direction skews the same way: this read's store is pruned on the snapshot that dropped the remote
+    /// while <see cref="RemoteNetIds"/> rebuilds later, so between the two calls that collection can still list an
+    /// id this read already refuses. So iterate <see cref="RemoteNetIds"/> and accept that the two are never one
+    /// set in either direction.</para>
     /// </summary>
     /// <param name="netId">The remote's net id.</param>
     /// <param name="tile">The tile the newest applied server state has the remote committed to.</param>

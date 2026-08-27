@@ -385,13 +385,16 @@ one implementation per head, exactly as sub-project 2's target seam does:
   and the same reasoning `TileDocumentTargets` states at `TileDocumentTargets.cs:10-13`: a thing can move or stop
   existing between the click and the arrival, and a cached footprint would hand the reach rules a rect the world no
   longer has. For a moving target that contract stops being a nicety and becomes the mechanism.
-- **Client: `TileRemoteTargets`** over `TileWorldClient`, resolving through `TryGetRemoteTile`
-  (`TileWorldClient.Snapshots.cs:189`) and the local player's own prediction for its own net id.
+- **Client: `TileRemoteTargets`** over `TileWorldClient`, resolving through the honest read R0 landed,
+  `TryGetLatestRemoteTile` (`TileWorldClient.Snapshots.cs:209`), and the local player's own prediction for its
+  own net id. The delayed `TryGetRemoteTile` stays what an on-body overlay reads and is never a rules input,
+  which is the two-reads split R0 exists for.
 
-**The two heads therefore resolve the same target to DIFFERENT tiles, by design, and that is the one place this
-design knowingly spends the invariant.** A client's remote tile sits behind `InterpolationDelayTicks`
-(`Grimhollow/docs/ENGINE-INTEGRATION.md:335-341`), so a client predicting its own approach to a moving monster
-paths toward a tile the server has already left. That is not a new class of disagreement: it is exactly the
+**The two heads still resolve the same target to slightly DIFFERENT tiles, and the residue is accepted.** With
+R0 the client's rules-side read trails the server by transport latency plus at most one snapshot interval
+rather than by `InterpolationDelayTicks`, so the window shrank from two to three ticks to usually under one,
+and what remains is the one-way latency no client can see. A client predicting its own approach to a moving
+monster can therefore still path toward a tile the server has just left. That is not a new class of disagreement: it is exactly the
 "two heads saw different blockers" case sub-project 2's reconcile snap exists for
 (`TILE-WORLD-NETCODE-DESIGN-2026-08-22.md` section 5, `Repath`). The first step of an approach is almost always
 identical on both heads because two tiles a step apart usually share a first step, so the responsiveness the lead

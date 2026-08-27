@@ -21,7 +21,6 @@ namespace KhaozEngine.Tests.TileNetcode;
 /// <para>The delayed read's own agreement with the drawn body is asserted in
 /// <see cref="TileGlideTests"/>, next to the glide it belongs to, and is not restated here.</para>
 /// </summary>
-[Collection("AllocSensitive")]  // one test below measures per-call allocation, see the collection's own doc
 public class TileRemoteReadTests
 {
     const float Tick = 1f / 6f;
@@ -215,42 +214,8 @@ public class TileRemoteReadTests
         Assert.True(staleAge > 10f, $"the age only reached {staleAge} ticks over two seconds of starvation");
     }
 
-    /// <summary>
-    /// The steady-state read costs nothing. R2 calls it once per drawn actor per frame, and a read that allocated
-    /// would put the combat overlay's cost on the GC rather than on the frame.
-    /// </summary>
-    [Fact]
-    public void The_latest_read_allocates_nothing_on_the_steady_path()
-    {
-        using var loop = new Loop();
-        loop.Join();
-        long remote = loop.Server.SpawnPlayer(slot: 1, "remote", "Rem");
-        loop.Server.SetPlayerState(1, TileMoveState.At(new TileCoord(12, 10, 0), TileDirection.N));
-        loop.Frames(30);
-        loop.Server.Enqueue(1, 0, TileCommand.WalkTo(new TileCoord(12, 60, 0), TileMoveMode.Run));
-        loop.Frames(20);
-
-        // Warm up the JIT on both shapes before anything is measured.
-        for (int i = 0; i < 200; i++)
-        {
-            loop.Client.TryGetLatestRemoteTile(remote, out _);
-            loop.Client.TryGetLatestRemoteTile(remote, out _, out _);
-        }
-
-        const int iterations = 20000;
-        int hits = 0;
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < iterations; i++)
-        {
-            if (loop.Client.TryGetLatestRemoteTile(remote, out _, out _)) hits++;
-            if (loop.Client.TryGetLatestRemoteTile(9999, out _, out _)) hits++;
-        }
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-
-        Assert.Equal(iterations, hits);   // sanity: the loop actually read a live remote every time
-        Assert.True(allocated < 4096,
-            $"the read allocated {allocated} bytes over {iterations * 2} calls, which is not a free read");
-    }
+    // The allocation tests live in TileRemoteReadAllocationTests below, in the AllocSensitive collection, so
+    // the five behavioural tests here keep the assembly's parallelism.
 
     // ---------------------------------------------------------------------------------------------------------
     // Harness.
@@ -261,7 +226,7 @@ public class TileRemoteReadTests
     // bug a real client's independent clock runs into. Its own copy rather than a shared one, matching what
     // TileGlideTests and TileWorldClientLoopbackTests already do: each file's harness carries the cadence and the
     // world its own subject needs, and one shared harness would grow a parameter per caller.
-    sealed class Loop : IDisposable
+    internal sealed class Loop : IDisposable
     {
         public readonly TileWorldServer Server;
         public readonly TileWorldClient Client;
@@ -311,4 +276,56 @@ public class TileRemoteReadTests
 
         public void Dispose() { Client.Dispose(); Server.Dispose(); }
     }
+}
+
+/// <summary>
+/// The allocation half of the remote reads, serialized in the AllocSensitive collection so byte counting is not
+/// disturbed by parallel test threads, and split from <see cref="TileRemoteReadTests"/> so the behavioural tests
+/// there keep the assembly's parallelism.
+/// </summary>
+[Collection("AllocSensitive")]
+public class TileRemoteReadAllocationTests
+{
+    /// <summary>
+    /// The steady-state read costs nothing. R2 calls it once per drawn actor per frame, and a read that allocated
+    /// would put the combat overlay's cost on the GC rather than on the frame.
+    /// </summary>
+    [Fact]
+    public void The_latest_read_allocates_nothing_on_the_steady_path()
+    {
+        using var loop = new TileRemoteReadTests.Loop();
+        loop.Join();
+        long remote = loop.Server.SpawnPlayer(slot: 1, "remote", "Rem");
+        loop.Server.SetPlayerState(1, TileMoveState.At(new TileCoord(12, 10, 0), TileDirection.N));
+        loop.Frames(30);
+        loop.Server.Enqueue(1, 0, TileCommand.WalkTo(new TileCoord(12, 60, 0), TileMoveMode.Run));
+        loop.Frames(20);
+
+        // Warm up the JIT on both shapes before anything is measured.
+        for (int i = 0; i < 200; i++)
+        {
+            loop.Client.TryGetLatestRemoteTile(remote, out _);
+            loop.Client.TryGetLatestRemoteTile(remote, out _, out _);
+        }
+
+        const int iterations = 20000;
+        int hits = 0;
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < iterations; i++)
+        {
+            if (loop.Client.TryGetLatestRemoteTile(remote, out _, out _)) hits++;
+            if (loop.Client.TryGetLatestRemoteTile(9999, out _, out _)) hits++;
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.Equal(iterations, hits);   // sanity: the loop actually read a live remote every time
+        Assert.True(allocated < 4096,
+            $"the read allocated {allocated} bytes over {iterations * 2} calls, which is not a free read");
+    }
+
+    // The CAPTURE half has no allocation test, deliberately. A bracket around whole loopback frames measured
+    // about 1.1 KB per frame of legitimate transport and snapshot-apply allocation, which swamps anything a
+    // reshaped capture could add at this harness's scale, so such a test pins the transport's habits rather
+    // than the capture's. The capture's allocation freedom is a review-verified property of its code shape
+    // (one pre-sized dictionary, struct values, no LINQ), not a measured one.
 }

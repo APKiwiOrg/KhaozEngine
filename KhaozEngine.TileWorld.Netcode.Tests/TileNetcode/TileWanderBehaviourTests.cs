@@ -82,6 +82,28 @@ public class TileWanderBehaviourTests
         Assert.Equal(0, TileActorRandom.For(1, 1L, 1L).Next(1));
     }
 
+    // The stream BY VALUE, which is the whole reason System.Random was rejected. Self-consistency, inequality against
+    // another net id and a range check all pass unchanged if someone swaps a mixing constant, reorders a shift or
+    // rewrites how the three inputs compose, so none of them is the pin. These literals are the shipped stream: a
+    // change here is either a regression or a deliberate break of every replay recorded against it, and a deliberate
+    // one re-bakes the numbers in the same commit that breaks them.
+    [Fact]
+    public void TileActorRandom_reproduces_its_recorded_sequence()
+    {
+        TileActorRandom r = TileActorRandom.For(7, 42L, 100L);
+        Assert.Equal(0x502211C85648C6FFUL, r.NextUInt64());
+        Assert.Equal(0xF1B54C2CC79EE3ACUL, r.NextUInt64());
+        Assert.Equal(0x64F26C1A2E3E83EAUL, r.NextUInt64());
+        Assert.Equal(0x0FD1A5F71EBC9148UL, r.NextUInt64());
+
+        // A second seed pins the DERIVATION rather than the step: three inputs composed differently would produce a
+        // stream that is still splitmix64 and still passes every assertion above.
+        Assert.Equal(0x82B63280D7717E41UL, TileActorRandom.For(1, 1L, 1L).NextUInt64());
+
+        // The zero-seed substitution is part of the stream too, so it is pinned rather than described.
+        Assert.Equal(new TileActorRandom(0x9E3779B97F4A7C15UL).NextUInt64(), new TileActorRandom(0UL).NextUInt64());
+    }
+
     [Fact]
     public void An_idle_actor_wanders_and_never_leaves_its_wander_radius()
     {

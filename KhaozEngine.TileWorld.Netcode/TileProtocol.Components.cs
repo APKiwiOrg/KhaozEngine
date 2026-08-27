@@ -22,9 +22,17 @@ public static partial class TileProtocol
     /// <summary>Extension id of <see cref="TileIdentity"/>.</summary>
     public const ushort TileIdentityTypeId = ReplicationRegistry.FirstExtensionTypeId + 2;
 
+    /// <summary>Extension id of <see cref="TileHealth"/>, four payload bytes on the default channels.</summary>
+    public const ushort TileHealthTypeId = ReplicationRegistry.FirstExtensionTypeId + 3;
+
+    /// <summary>Extension id of <see cref="TileCombatState"/>, registered on the MIGRATE channel alone so it
+    /// survives a region handoff and reaches no client at all.</summary>
+    public const ushort TileCombatStateTypeId = ReplicationRegistry.FirstExtensionTypeId + 4;
+
     /// <summary>The first id a GAME may register, with room left below it for this package to add a component
     /// without silently colliding with a game that already shipped. Everything from
-    /// <see cref="ReplicationRegistry.FirstExtensionTypeId"/> up to here belongs to the tile netcode.</summary>
+    /// <see cref="ReplicationRegistry.FirstExtensionTypeId"/> up to here belongs to the tile netcode. Ids 21 to 23
+    /// are the tile netcode's remaining free window.</summary>
     public const ushort FirstGameTypeId = ReplicationRegistry.FirstExtensionTypeId + 8;
 
     /// <summary>Cap on a replicated route, in steps, and the ONE definition of that number: it is also the ceiling
@@ -78,6 +86,9 @@ public static partial class TileProtocol
         reg.Register<TileRouteState>(TileRouteStateTypeId, WriteRoute, ReadRoute,
             channels: ReplicationChannels.Default | ReplicationChannels.OwnerOnly);
         reg.Register<TileIdentity>(TileIdentityTypeId, WriteIdentity, ReadIdentity);
+        reg.Register<TileHealth>(TileHealthTypeId, WriteHealth, ReadHealth);
+        reg.Register<TileCombatState>(TileCombatStateTypeId, WriteCombat, ReadCombat,
+            channels: ReplicationChannels.Migrate);
         registerExtensions?.Invoke(reg);
         return reg;
     }
@@ -254,4 +265,43 @@ public static partial class TileProtocol
             throw new InvalidDataException($"A replicated display name declares {declared} bytes the frame does not hold.");
         return new TileIdentity { DisplayName = Encoding.UTF8.GetString(text) };
     }
+
+    // Four bytes, both fields whole. No length prefix and nothing declared, so there is no lie a frame can tell
+    // about its own size here and nothing for a reader to check.
+    static void WriteHealth(TileHealth v, BinaryWriter w)
+    {
+        w.Write(v.Current);
+        w.Write(v.Max);
+    }
+
+    // CLAMPED rather than checked, which is the other half of this file's hostile-frame rule: every bit pattern of a
+    // ushort is a meaningful value, so there is no malformed frame here, only an inconsistent pair. Current above
+    // Max would draw a health bar past its own track, and would make a fraction over one out of a division nothing
+    // guards. The cast is the language rather than the design: Math.Min promotes a ushort pair to int.
+    static TileHealth ReadHealth(BinaryReader r)
+    {
+        ushort current = r.ReadUInt16();
+        ushort max = r.ReadUInt16();
+        return new TileHealth { Current = (ushort)Math.Min(current, max), Max = max };
+    }
+
+    // Eighteen bytes, and the ONE codec here whose bytes never come off a socket: TileCombatState is registered on
+    // the Migrate channel alone, so the only thing that ever encodes or decodes it is a cell handoff inside one
+    // server process. Nothing is clamped for that reason, and the day it gains a Replicate bit is the day it needs
+    // the same treatment ReadMove gives its enums.
+    static void WriteCombat(TileCombatState v, BinaryWriter w)
+    {
+        w.Write(v.AttackTicks);
+        w.Write(v.CooldownRemaining);
+        w.Write(v.LastDamagedBy);
+        w.Write(v.LastDamagedTick);
+    }
+
+    static TileCombatState ReadCombat(BinaryReader r) => new()
+    {
+        AttackTicks = r.ReadByte(),
+        CooldownRemaining = r.ReadByte(),
+        LastDamagedBy = r.ReadInt64(),
+        LastDamagedTick = r.ReadInt64(),
+    };
 }

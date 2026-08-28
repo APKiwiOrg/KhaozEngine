@@ -243,6 +243,9 @@ public sealed partial class TileWorldServer
     /// arriving would silently drop out of a run.</item>
     /// <item>A goal farther than <see cref="TileWorldServerConfig.MaxGoalRadius"/> becomes Continue at the mode the
     /// COMMAND carried, so the walk is refused while the toggle the same frame carried still applies.</item>
+    /// <item>An <see cref="TileCommandKind.Attack"/> naming target 0 becomes Continue the same way. Zero is
+    /// <see cref="TileMoveState.CombatTarget"/>'s own value for NOT fighting, so it is a malformed command rather
+    /// than a click at an entity that went away, and the two do not get the same answer.</item>
     /// <item>Everything else is passed through VERBATIM, cross-plane commands included. The simulator drops those
     /// whole, identically on both heads, and rewriting one here would apply a mode the client's own prediction
     /// did not.</item>
@@ -279,6 +282,15 @@ public sealed partial class TileWorldServer
                 return cmd;
 
             case TileCommandKind.Attack:
+                // TARGET 0 IS NOT AN ID THE WORLD FAILED TO HOLD, it is TileMoveState.CombatTarget's own value for
+                // NOT FIGHTING, so an Attack carrying it is a malformed command rather than a click at something
+                // that went away. Past this point it is watched, and the clicked branch of ReportBrokenLocks
+                // deliberately skips the resolution test, so every crafted frame would be answered with a
+                // CannotReach naming an id no world can ever hold, and would spend the player's pending interaction
+                // on the way. Refused the way an out-of-range walk goal is rather than dropped on the wire: the
+                // frame is otherwise well formed, so the run toggle it carried still applies and its sequence is
+                // still acknowledged, which is the answer a client can predict.
+                if (cmd.Target == 0) return TileCommand.Continue(cmd.Mode);
                 // An attack ABANDONS a pending interaction, exactly as a walk does and for the same reason: the
                 // simulator clears the state's own InteractTarget on one, and an entry that outlived it would fire
                 // the moment the CHASE happened to pass a reach tile of the thing the player walked away from. Only

@@ -312,11 +312,14 @@ public sealed partial class TileWorldClient : IDisposable
 
     // The client half of TileWorldServer.Admit, and it has to be the same rule to the letter. A goal beyond the
     // reach bound becomes Continue at the mode the COMMAND carried, so the walk is refused while the run toggle
-    // that rode in with it still applies. Everything else passes through untouched, a cross-plane goal included:
+    // that rode in with it still applies, and an Attack naming target 0 becomes Continue for the reason the server
+    // gives: zero is CombatTarget's own "not fighting" value, so it is a malformed command rather than a click at
+    // something that went away. Everything else passes through untouched, a cross-plane goal included:
     // the simulator drops that one whole on both heads, and rewriting it here would apply a mode the server never
     // did. Queue already refused the cross-plane click, so this is the backstop for a command built elsewhere.
     TileCommand Admit(in TileCommand cmd) =>
-        cmd.Kind == TileCommandKind.WalkTo && !GoalInRange(Prediction.PredictedState, cmd.Goal)
+        (cmd.Kind == TileCommandKind.WalkTo && !GoalInRange(Prediction.PredictedState, cmd.Goal))
+        || (cmd.Kind == TileCommandKind.Attack && cmd.Target == 0)
             ? TileCommand.Continue(cmd.Mode)
             : cmd;
 

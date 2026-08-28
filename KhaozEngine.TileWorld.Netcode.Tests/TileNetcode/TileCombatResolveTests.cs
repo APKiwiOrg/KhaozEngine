@@ -407,6 +407,8 @@ public class TileCombatResolveTests
 
         var deaths = new List<(long dead, long killer, int slot)>();
         s.OnDied += (dead, killer, slot) => deaths.Add((dead, killer, slot));
+        var refused = new List<long>();
+        s.OnCannotReach += (_, target) => refused.Add(target);
 
         s.Tick(Dt);
 
@@ -424,6 +426,47 @@ public class TileCombatResolveTests
         Assert.Equal(50, survivor.Current);
         Assert.True(s.TryGetActorState(monster, out TileMoveState killerState));
         Assert.Equal(player, killerState.CombatTarget);
+        // AND NOT A WORD TO THE PLAYER ABOUT IT. Their lock was cleared by the death, and the engine is the thing
+        // that cleared it, so ReportBrokenLocks skips a player who died this tick: telling them they could not
+        // reach the fight they were just killed in would be a second, wrong explanation for the same tick. Delete
+        // that guard and this tick fires a CannotReach naming the killer.
+        Assert.Empty(refused);
+    }
+
+    // THE ORDER OF 4b'S TWO HALVES, which nothing else in the suite can see. The death guard above is the only
+    // thing that makes ReportBrokenLocks order-dependent on ResolveCombat, and it only bites when the lock is
+    // ALREADY gone before the roll runs: here the follow clears it in step 2, because the target is walled in, and
+    // the killer lands the blow in 4b. Reported after the roll, the death list holds this player and the notice is
+    // suppressed. Moved ahead of the roll for tidiness, nothing has died yet, the lock is gone all the same, and
+    // the player is told they could not reach a fight they died in.
+    [Fact]
+    public void The_broken_lock_report_follows_the_roll_so_a_player_killed_on_the_same_tick_hears_nothing()
+    {
+        var hub = new InMemoryTransportHub();
+        var rules = new FixedRules { Damage = 50 };
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        doc.AddObject("tree", 30, 29, 0, 0);
+        doc.AddObject("tree", 30, 31, 0, 0);
+        doc.AddObject("tree", 29, 30, 0, 0);
+        doc.AddObject("tree", 31, 30, 0, 0);
+        using TileWorldServer s = Server(doc, hub.Server, new TileCoord(20, 20, 0), rules);
+        long player = s.SpawnPlayer(0, "a", "Ari");
+        Assert.True(s.SetHealth(player, new TileHealth { Current = 40, Max = 40 }));
+        long walled = s.SpawnActor(new TileCoord(30, 30, 0), new TileActorSpawn(100, 4, TileDirection.S));
+        long killer = s.SpawnActor(new TileCoord(20, 21, 0), new TileActorSpawn(100, 4, TileDirection.S));
+        Lock(s, killer, player);
+        var deaths = new List<long>();
+        s.OnDied += (dead, _, _) => deaths.Add(dead);
+        var refused = new List<long>();
+        s.OnCannotReach += (_, target) => refused.Add(target);
+
+        s.Enqueue(0, seq: 0, TileCommand.Attack(walled, TileMoveMode.Run));
+        s.Tick(Dt);
+
+        Assert.Equal(new[] { player }, deaths);
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState st));
+        Assert.Equal(0L, st.CombatTarget);
+        Assert.Empty(refused);
     }
 
     // THE ROLL ORDER ITSELF, which spec 6.4 pins at (TargetSinceTick, netId) ascending and which nothing else in
@@ -595,5 +638,50 @@ public class TileCombatResolveTests
         Assert.True(s.TryGetPlayerState(0, out TileMoveState after));
         Assert.Equal(0L, after.CombatTarget);
         Assert.Empty(refused);
+    }
+
+    // TARGET 0 IS NOT AN ID THE WORLD FAILED TO HOLD, it is TileMoveState.CombatTarget's own value for NOT
+    // FIGHTING, so an Attack carrying it is a malformed command rather than a stale click. Admit refuses it, and
+    // this is what says the refusal reaches all three answers. Without it the clicked branch of ReportBrokenLocks,
+    // which deliberately skips the resolution test, answers every crafted frame with a CannotReach naming an id no
+    // world can ever hold, once per frame, forever, and each one also spends the player's pending interaction.
+    [Fact]
+    public void An_attack_naming_target_zero_is_refused_and_answers_nothing()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        TileObject booth = doc.AddObject("bank_booth", 10, 10, 0, 0);
+        var hub = new InMemoryTransportHub();
+        var rules = new FixedRules();
+        using TileWorldServer s = Server(doc, hub.Server, new TileCoord(2, 10, 0), rules);
+        s.SpawnPlayer(0, "a", "Ari");
+        var refused = new List<long>();
+        s.OnCannotReach += (_, target) => refused.Add(target);
+
+        // A long walk-in to a pending interaction, which is the WORK an admitted Attack spends: it ABANDONS one. A
+        // refusal that only silenced the notice would still let a crafted frame drop the interaction the player is
+        // walking to, once per frame, for nothing.
+        s.Enqueue(0, seq: 0, TileCommand.Interact(booth.Id, TileMoveMode.Walk));
+        s.Tick(Dt);
+        Assert.Equal(1, s.Actions.PendingCount);
+
+        for (int i = 0; i < 5; i++)
+        {
+            s.Enqueue(0, seq: i + 1, TileCommand.Attack(0, TileMoveMode.Run));
+            s.Tick(Dt);
+        }
+
+        Assert.Empty(refused);
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState st));
+        Assert.Equal(0L, st.CombatTarget);
+        Assert.Equal(1, s.Actions.PendingCount);
+        // Refused the way an out-of-range walk goal is, at the mode the COMMAND carried, so the run toggle a
+        // crafted frame rode in with still applies and the click itself achieves nothing.
+        Assert.Equal(TileMoveMode.Run, st.Mode);
+
+        // NARROW, and this is the line that says so. An Attack naming an id the world merely does not HOLD is a
+        // stale click at a monster that went away, and it still gets the CannotReach the test above pins.
+        s.Enqueue(0, seq: 6, TileCommand.Attack(4242L, TileMoveMode.Run));
+        s.Tick(Dt);
+        Assert.Equal(new[] { 4242L }, refused);
     }
 }

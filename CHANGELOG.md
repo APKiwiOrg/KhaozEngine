@@ -216,6 +216,18 @@ one about your own.
     cadences, which is a pure time delay rather than the step-quantized cost that issue was about. The package
     README's known-limit bullet is rewritten to that.
 
+- The tile-ground pass no longer binds a combined frame+params uniform buffer. The shared frame block is at
+  set 0 binding 0 as it is for every other pass, and the material's `TileGroundParams` (`vec4 TintTiling[64]`
+  plus `Misc`) is a fragment-only buffer at set 1 binding 0, written once at load. Pixels are unchanged on
+  every backend at the existing golden tolerance ([#727](https://github.com/APKiwiOrg/KhaozEngine/issues/727),
+  the last #604 unfold).
+- `TileGroundUniformBuffer` is deleted with the per-frame whole-buffer re-upload it existed for, and
+  `DrawTileGroundRuns` no longer walks every loaded ground material to re-sync the frame block: a frame costs
+  one frame-UBO write however many tile-ground materials are loaded, drawn or not.
+- The skinned shadow pass's `{ LightMvp; bones[128] }` (#407) is now the only combined uniform buffer in the
+  engine. The Vulkan shipped-layout table is 36 rows over the same 34 pipelines, and tile ground is the third
+  pipeline spending two dynamic uniform descriptors, which leaves the pinned ceiling where it was.
+
 ## 18.0.0
 
 18.0.0 deletes the Veldrid incumbent GPU backend. The engine's own Metal, Direct3D 11 and Vulkan backends are

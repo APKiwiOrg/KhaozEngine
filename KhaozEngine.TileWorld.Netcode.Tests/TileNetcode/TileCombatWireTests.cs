@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using KhaozEngine.Netcode;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Netcode;
 using Xunit;
@@ -337,5 +338,82 @@ public class TileCombatWireTests
             $"the approach reconciled cheaply, corrections were {h.Client.CorrectionCount}");
         Assert.True(h.Server.TryGetPlayerState(0, out TileMoveState server));
         Assert.Equal(server.Tile, h.Client.Prediction.PredictedState.Tile);
+    }
+
+    // THE RECOVERY, and what it recovers from is a world left permanently wrong rather than one tick wrong. The
+    // despawn a death owes an actor is held from step 4b until step 5b, and the WHOLE serve loop sits between the
+    // two, so one client's send failing loses that reap. A head that catches and keeps ticking, which is the normal
+    // shape for a server loop, then has a corpse standing at zero health forever: it holds a slot against the cell's
+    // actor cap, its spawner never respawns it because the id still answers, and every viewer in range is served it
+    // on every tick. Draining the list at the top of the next combat pass is what gets the despawn back.
+    [Fact]
+    public void A_send_that_throws_out_of_the_serve_still_reaps_the_corpse_on_the_next_tick()
+    {
+        ThrowOnceTransport link = null!;
+        using var h = new TileCombatHarness(TileMoveSimulatorTests.FlatWorld(), new TileCoord(20, 20, 0),
+            wrapServer: inner => link = new ThrowOnceTransport(inner));
+        h.Server.CombatRules = new FlatRules { Damage = 60, Ticks = 4 };
+        h.Frames(8);
+        Assert.True(h.Server.SetHealth(h.Client.LocalNetId, new TileHealth { Current = 100, Max = 100 }));
+        long actor = h.Server.SpawnActor(new TileCoord(20, 24, 0), new TileActorSpawn(100, 4, TileDirection.S));
+        h.Frames(8);
+
+        // ARMED FROM THE DEATH ITSELF rather than after a fixed number of sends, because the window is one specific
+        // tick's serve. OnDied is raised in phase 3 of the pass that killed the actor, so the next send is that same
+        // tick's snapshot, which is exactly where the reap now sits behind.
+        long killed = 0;
+        h.Server.OnDied += (dead, _, _) => { killed = dead; link.ArmThrow = true; };
+
+        h.Client.Queue(TileCommand.Attack(actor, TileMoveMode.Run));
+        Assert.Throws<InvalidOperationException>(() => h.Frames(200));
+        Assert.Equal(actor, killed);
+        Assert.True(link.Threw, "the link failed inside the serve rather than somewhere else");
+
+        // The tick that threw never reached 5b, so the corpse is still standing right now. That much is true under
+        // either behaviour and is not the failure: the failure is that it is still standing a tick later.
+        Assert.True(h.Server.TryGetActorState(actor, out _));
+        Assert.True(h.Server.TryGetHealth(actor, out TileHealth corpse));
+        Assert.Equal(0, corpse.Current);
+
+        h.Frames(8);
+        Assert.False(h.Server.TryGetActorState(actor, out _));
+        Assert.False(h.Server.TryGetHealth(actor, out _));
+        Assert.DoesNotContain(actor, h.Client.RemoteNetIds);
+    }
+
+    // A server transport that fails ONE send and then behaves, which is the recoverable error a real link hands a
+    // server loop. It wraps rather than replaces the hub's own endpoint, so everything either head sends outside the
+    // armed window still arrives and the test is about the reap rather than about a dead session.
+    sealed class ThrowOnceTransport : INetTransport
+    {
+        readonly INetTransport inner;
+
+        public ThrowOnceTransport(INetTransport inner) => this.inner = inner;
+
+        /// <summary>Set to fail the very next send, once. Cleared by the throw it causes.</summary>
+        public bool ArmThrow;
+
+        /// <summary>Whether the armed send ever actually happened, so a test cannot pass on a throw that never
+        /// fired.</summary>
+        public bool Threw { get; private set; }
+
+        public void Poll() => inner.Poll();
+
+        public bool TryDequeueEvent(out NetEvent ev) => inner.TryDequeueEvent(out ev);
+
+        public void Send(NetConnectionId target, ReadOnlySpan<byte> payload, NetChannelReliability reliability)
+        {
+            if (ArmThrow)
+            {
+                ArmThrow = false;
+                Threw = true;
+                throw new InvalidOperationException("the link failed mid serve");
+            }
+            inner.Send(target, payload, reliability);
+        }
+
+        public void Disconnect(NetConnectionId connection) => inner.Disconnect(connection);
+
+        public void Dispose() => inner.Dispose();
     }
 }

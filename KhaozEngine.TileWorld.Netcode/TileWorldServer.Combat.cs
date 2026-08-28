@@ -88,7 +88,16 @@ public sealed partial class TileWorldServer
         // tick rather than only from the moment a roll happened. ReportBrokenLocks reads it below, and the early
         // return under it would otherwise leave the previous tick's dead in the list.
         died.Clear();
-        deadActors.Clear();
+        // DRAINED rather than cleared, and the difference between the two words is a corpse that lives forever.
+        // deadActors is filled in phase 3 and spent by the reap at step 5b, which is a whole serve loop away, so a
+        // throw out of any client's send loses that reap. Clearing here would then DISCARD a despawn the world is
+        // still owed: the corpse stands at zero health for good, holding a slot against the cell's actor cap, keeping
+        // its spawner Alive because the id still answers, and shipping to every viewer in range on every tick, with
+        // nothing raised, logged or counted. Draining costs one no-op call on a healthy tick, since 5b already
+        // emptied the list, and it leaves 5b the only reap site that ever runs on one, so the deferral's own argument
+        // below is untouched. The recovery is at the TOP of the pass rather than beside phase 0's guards, so the
+        // corpse is out of the world before this tick's roll order is built.
+        ReapDeadActors();
 
         // PHASE 0, per combatant: stamp the lock, run the cooldown down, and decide who is eligible. Built from two
         // ORDERED lists rather than from a dictionary enumeration, because a hash layout must never reach a
@@ -222,6 +231,10 @@ public sealed partial class TileWorldServer
     // a second piece of per-slot state. Here the corpse simply ships in one more snapshot at zero health, which is
     // what presentation wants anyway (the monster is drawn dead on the tick it died, then leaves), it makes the step
     // 4b comment true as written, and it costs no new state at all.
+    //
+    // CALLED FROM TWO PLACES, and the second one is a recovery rather than a second reap site. Step 5b runs it on
+    // every healthy tick and empties the list. The top of the next ResolveCombat runs it again, which does nothing at
+    // all unless a tick threw between 4b and 5b, in which case it is what stops the lost despawn being lost forever.
     //
     // IT DOES NOT RESURRECT THE GHOST-KILL BUG. Nothing between phase 3 and here can target or resolve a corpse:
     // step 1b's actor decisions and step 4b's rolls both ran earlier in this tick, and this runs before the next

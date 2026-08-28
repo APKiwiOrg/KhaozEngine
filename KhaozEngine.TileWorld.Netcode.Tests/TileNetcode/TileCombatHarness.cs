@@ -26,11 +26,21 @@ internal sealed class TileCombatHarness : IDisposable
     readonly INetTransport clientTransport;
     float serverAccum;
 
+    /// <param name="doc">The world the two heads bake.</param>
+    /// <param name="spawn">Where a joining player starts.</param>
+    /// <param name="clientPhase">How far the client's clock leads the server's, which is the whole point of the
+    /// harness.</param>
+    /// <param name="config">A server config, or the family default.</param>
+    /// <param name="wrapServer">Wraps the SERVER's transport before the server is built, which is the only way a
+    /// test can make the serve itself fail: a send is the one thing inside the serve loop a test owns. The client's
+    /// transport is never wrapped, so a failing link here is the server's own send failing rather than a broken hub.
+    /// </param>
     public TileCombatHarness(TileWorldDocument doc, TileCoord spawn, float clientPhase = 0.06f,
-        TileWorldServerConfig? config = null)
+        TileWorldServerConfig? config = null, Func<INetTransport, INetTransport>? wrapServer = null)
     {
         hub = new InMemoryTransportHub();
-        Server = new TileWorldServer(hub.Server, config ?? TileWorldServerTickTests.Config(spawn),
+        INetTransport serverTransport = wrapServer is null ? hub.Server : wrapServer(hub.Server);
+        Server = new TileWorldServer(serverTransport, config ?? TileWorldServerTickTests.Config(spawn),
             TileMoveSimulatorTests.Bake(doc),
             new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs), new AllowAllAuthenticator(),
             TileProtocol.CreateRegistry());

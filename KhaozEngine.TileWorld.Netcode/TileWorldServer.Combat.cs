@@ -47,16 +47,22 @@ public sealed partial class TileWorldServer
     /// has not wired combat: the cooldown still runs down and no roll is ever asked for.</summary>
     public ITileCombatRules? CombatRules { get; set; }
 
-    /// <summary>Ticks on which an entity holding a combat target and ready to swing carried no
-    /// <see cref="TileHealth"/> at all, and was therefore skipped.
+    /// <summary>How often the combat pass skipped a combatant that carried no <see cref="TileHealth"/> at all, in
+    /// EITHER of the two roles: an ATTACKER holding a target and ready to swing, and a TARGET a swing was being
+    /// rolled at.
     /// <para>THE SIGNAL FOR ONE WIRING MISTAKE, and it is the commonest one this package has: a player is spawned
     /// WITHOUT health, deliberately, because what a player's <see cref="TileHealth.Max"/> should be belongs to the
     /// game's own skill core. A game that never calls <see cref="SetHealth"/> for a player therefore has one who
-    /// can neither swing nor be hit, and every guard involved is silent. This is what makes that visible. It climbs
-    /// once per tick per such attacker while the lock is held, so a healthy head leaves it at zero and a non-zero
-    /// reading names exactly one fix: write the health on join.</para>
-    /// <para>A combatant at ZERO health is not counted. That one is a corpse, which is an ordinary outcome rather
-    /// than a mistake, and counting it would bury the signal under every death in the world.</para></summary>
+    /// can neither swing nor be hit, and every guard involved is silent. This is what makes that visible, and it
+    /// covers both roles because a head reads only one of them: the attacker half fires the moment that player
+    /// clicks attack, and the target half is what climbs when they never do and a monster simply chews on them.</para>
+    /// <para>It counts SKIPS rather than ticks, so a healthless player swinging and being swung at on one tick adds
+    /// two, and a pack rolling at one adds one per attacker. That is the right shape for a signal: a healthy head
+    /// leaves it at zero, and any non-zero reading at all names exactly one fix, which is to write the health on
+    /// join. Nothing should read it as a statistic.</para>
+    /// <para>A combatant at ZERO health is not counted, in either role. That one is a corpse, which is an ordinary
+    /// outcome rather than a mistake, and counting it would bury the signal under every death in the world.</para>
+    /// </summary>
     public long SkippedHealthlessCombatantCount { get; private set; }
 
     /// <summary>Raised as (dead net id, killer net id, slot) for every entity whose health reached zero this tick,
@@ -137,7 +143,8 @@ public sealed partial class TileWorldServer
             if (state.CombatTarget == 0 || combat.CooldownRemaining != 0) continue;
             // COUNTED, and only for an ABSENT component. Everything that reaches this line wants to swing and is off
             // cooldown, so a missing TileHealth here is a game that never wrote one, which is silent in every other
-            // way. A zero is a corpse and stays uncounted. See SkippedHealthlessCombatantCount.
+            // way. A zero is a corpse and stays uncounted. The roll phase below counts the TARGET side of the same
+            // mistake. See SkippedHealthlessCombatantCount.
             if (!cell.World.TryGet(e, out TileHealth health))
             {
                 SkippedHealthlessCombatantCount++;
@@ -159,8 +166,20 @@ public sealed partial class TileWorldServer
             (long _, long attacker, long target) = rollOrder[i];
             if (!TryGetActorState(attacker, out TileMoveState attackerState)) continue;
             if (!TryGetActorState(target, out TileMoveState targetState)) continue;
+            // NOT a second count site for the attacker. Phase 0 read this same entity's health to put it in the roll
+            // order and counted it there if it was missing, and nothing between the two passes removes a component,
+            // so an absence here is unreachable rather than uncounted. Counting it would double one tick's reading.
             if (!TryGetHealth(attacker, out TileHealth attackerHealth) || attackerHealth.Current == 0) continue;
-            if (!TryGetHealth(target, out TileHealth targetHealth) || targetHealth.Current == 0) continue;
+            // COUNTED, and only for an ABSENT component, exactly as phase 0 counts the attacker side. This is the
+            // OTHER half of the contract TileHealth and SetHealth both state: a player with no health can neither
+            // swing NOR be hit. The attacker half is silent for the head that needs this most, because the player
+            // being killed by the wiring mistake is the player least likely to be clicking attack.
+            if (!TryGetHealth(target, out TileHealth targetHealth))
+            {
+                SkippedHealthlessCombatantCount++;
+                continue;
+            }
+            if (targetHealth.Current == 0) continue;
 
             var footprint = new TileRect(targetState.Tile.X, targetState.Tile.Z, 1, 1);
             if (!TileReach.Contains(simulator.Map, footprint, targetState.Tile.Plane, attackerState.Tile)) continue;

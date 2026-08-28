@@ -338,6 +338,53 @@ public class TileCombatResolveTests
         s.Tick(Dt);
         Assert.Single(rules.Rolls);
         Assert.Equal(1, s.SkippedHealthlessCombatantCount);
+
+        // THE WITNESS, and without it the four ticks above assert nothing at all. FixedRules.Ticks is 4, so the swing
+        // that landed a moment ago wrote a cooldown of 4, and phase 0's cooldown check sits AHEAD of the health
+        // check: the first three of those ticks are refused before the guard this test is named for is ever reached.
+        // Only the fourth reaches it. One tick fewer, or a different Ticks, and this passes green without the branch
+        // ever running. A cooldown sitting at zero says the guard WAS reached, and a roll on the very next tick once
+        // the health is back says the zero health was the only thing refusing it.
+        Assert.True(s.TryGetCombatState(player, out TileCombatState ready));
+        Assert.Equal(0, ready.CooldownRemaining);
+
+        Assert.True(s.SetHealth(player, new TileHealth { Current = 30, Max = 30 }));
+        s.Tick(Dt);
+        Assert.Equal(2, rules.Rolls.Count);
+        Assert.Equal(1, s.SkippedHealthlessCombatantCount);
+    }
+
+    // THE OTHER ROLE, which is the one a head reads when its player never clicks back. Both contract sentences say a
+    // healthless player can neither swing NOR be hit, and the attacker-side count alone left the second half
+    // invisible: a player who is being chewed on by a monster and never swings is exactly the player who reads zero
+    // there, and they are the commonest victim of the mistake rather than a rare one.
+    [Fact]
+    public void A_target_with_no_health_at_all_is_skipped_and_counted()
+    {
+        var hub = new InMemoryTransportHub();
+        var rules = new FixedRules();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(20, 20, 0), rules);
+        long player = s.SpawnPlayer(0, "a", "Ari");
+        // The monster is the one holding the lock this time, and the player never swings back at all.
+        long monster = s.SpawnActor(new TileCoord(20, 21, 0), new TileActorSpawn(100, 4, TileDirection.S));
+        Lock(s, monster, player);
+
+        s.Tick(Dt);
+
+        Assert.Empty(rules.Rolls);
+        Assert.Equal(1, s.SkippedHealthlessCombatantCount);
+        // The monster was ready and adjacent, so the skip is the target's missing health rather than a fight that
+        // never got going: nothing was rolled and nothing paid a cooldown for it.
+        Assert.True(s.TryGetCombatState(monster, out TileCombatState idle));
+        Assert.Equal(0, idle.CooldownRemaining);
+
+        // And it stops the moment the game writes one, which is the fix the counter points at.
+        Assert.True(s.SetHealth(player, new TileHealth { Current = 30, Max = 30 }));
+        s.Tick(Dt);
+        Assert.Single(rules.Rolls);
+        Assert.Equal(1, s.SkippedHealthlessCombatantCount);
+        Assert.True(s.TryGetHealth(player, out TileHealth hurt));
+        Assert.Equal(25, hurt.Current);
     }
 
     // A PLAYER's death is the game's: OnDied names the slot, and the game answers it. The engine clears the dead

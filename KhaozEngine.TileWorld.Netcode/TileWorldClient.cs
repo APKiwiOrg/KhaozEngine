@@ -198,6 +198,23 @@ public sealed partial class TileWorldClient : IDisposable
     /// pending click at the same moment the server dropped the authoritative one.</summary>
     public event Action? CannotReach;
 
+    /// <summary>Raised once per swing this client was told about: the ones whose TARGET is in its own area of
+    /// interest, misses included. A miss carries <c>Landed = false</c> and <c>Amount = 0</c> and STILL draws a
+    /// hitsplat, because a fight with invisible misses reads as a broken fight.
+    /// <para>Never derive a fight from replicated health instead. Two hits on one tick collapse into one delta and a
+    /// miss moves health by zero, so a fight drawn from deltas shows fewer, larger, later hitsplats than the fight
+    /// the server ran.</para></summary>
+    public event Action<TileCombatEvent>? CombatEvent;
+
+    /// <summary>Raised with a remote's net id the first frame this client has a drawing state for it: it entered the
+    /// area of interest, or it was just spawned inside it. The diff is already computed every frame, so this costs
+    /// nothing and saves a head keeping its own copy of it.</summary>
+    public event Action<long>? RemoteEntered;
+
+    /// <summary>Raised with a remote's net id the frame it stops being drawn: it left the area of interest, it was
+    /// despawned, or it died. What a per-remote overlay stack (a nameplate, a hitsplat stack) prunes on.</summary>
+    public event Action<long>? RemoteLeft;
+
     /// <summary>
     /// Raised when the local player's position changed DISCONTINUOUSLY: the server moved them
     /// (<c>TileWorldServer.SetPlayerState</c> with <c>teleport: true</c>, so a respawn, an admin move or a fast
@@ -364,8 +381,10 @@ public sealed partial class TileWorldClient : IDisposable
         remoteSamples.Clear();
         goneRemotes.Clear();
         liveRemotes.Clear();
+        enteredRemotes.Clear();
         latestTiles.Clear();
         goneLatest.Clear();
         liveLatest.Clear();
+        decodedCombat.Clear();
     }
 }

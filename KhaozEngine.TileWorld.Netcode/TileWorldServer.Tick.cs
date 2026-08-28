@@ -21,6 +21,10 @@ public sealed partial class TileWorldServer
     const int MaxCatchUpTicks = 8;
 
     readonly List<int> tickSlots = new();
+    // The one viewer's worth of combat events the serve is building, reused across every client in a pass for the
+    // same reason the plane filter's scratch is: a fresh list per client per tick is the whole serve's allocation
+    // profile at a couple of hundred players homed in one cell.
+    readonly List<TileCombatEvent> viewerCombat = new();
     float tickAccumulator;
     // The serve's plane filter, reused across every client in a pass. planeByNetId is the map, and the three
     // fields under it are what the two delegates would otherwise capture, hoisted so the delegates can be cached
@@ -190,6 +194,11 @@ public sealed partial class TileWorldServer
                 ReplicationChannels.Replicate, netId);
             net.SendTo(slot, TileProtocol.EncodeSnapshotFrame(netId, lastAckBySlot[slot], TickCount, body),
                 NetChannelReliability.ReliableOrdered);
+            // The swings, after the snapshot and on the same reliable ordered channel, so a client applies the
+            // health this tick produced and then the events that explain it. Only the events whose TARGET this
+            // viewer can see, so an ordinary tick costs nothing and a fight on the far side of the world costs
+            // nothing either.
+            if (combatEvents.Count > 0) SendCombatTo(slot, interest);
         }
 
         // 6. Clear each cell's per-tick change tracking, so it does not accumulate on a long-running server. Exactly
@@ -198,6 +207,19 @@ public sealed partial class TileWorldServer
         //    once per tick for nothing.
         for (int i = 0; i < liveCells.Count; i++) liveCells[i].World.AdvanceTick();
         TickCount++;
+    }
+
+    // One viewer's slice of the tick's swings. The TARGET is what the interest set is asked about rather than the
+    // attacker, because a hitsplat is drawn on the thing being hit: a viewer who can see the target can see the
+    // splat, whether or not the attacker is anywhere in view. A frame is sent only when something survived the
+    // filter, so a viewer standing away from every fight pays one pass over a short list and no packet.
+    void SendCombatTo(int slot, HashSet<long> interest)
+    {
+        viewerCombat.Clear();
+        for (int i = 0; i < combatEvents.Count; i++)
+            if (interest.Contains(combatEvents[i].TargetNetId)) viewerCombat.Add(combatEvents[i]);
+        if (viewerCombat.Count == 0) return;
+        net.SendTo(slot, TileProtocol.EncodeCombat(viewerCombat), NetChannelReliability.ReliableOrdered);
     }
 
     /// <summary>

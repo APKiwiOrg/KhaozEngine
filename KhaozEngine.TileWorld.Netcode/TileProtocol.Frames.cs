@@ -50,6 +50,12 @@ public static partial class TileProtocol
     /// smuggled into the snapshot stream, where a client that dropped a snapshot would miss it.</summary>
     public const byte ServerFrameNotice = 2;
 
+    /// <summary>Server-to-client tag: the swings resolved on one tick. Its own frame family rather than a game
+    /// message, because the game-message envelope's <c>kind</c> is a number the GAME defines and the engine never
+    /// inspects, and these are the ENGINE's events about a pipeline the engine owns. Putting them there would mean
+    /// the engine reserving a game-owned number.</summary>
+    public const byte ServerFrameCombat = 3;
+
     /// <summary>The tag a decoder answers for an EMPTY frame, which is no tag at all. A real one is never 0xFF, so
     /// a demux switch gets a default case rather than an index into a zero-length span.</summary>
     public const byte NoFrameTag = 0xFF;

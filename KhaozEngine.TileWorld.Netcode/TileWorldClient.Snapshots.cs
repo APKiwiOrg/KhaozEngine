@@ -19,6 +19,11 @@ public sealed partial class TileWorldClient
     const float CorrectionEpsilon = 1e-4f;
 
     readonly HashSet<long> liveRemotes = new();
+    // One combat frame's worth of decoded events, reused for the life of the client: the decoder clears it, and
+    // nothing outside the raise loop below ever reads it.
+    readonly List<TileCombatEvent> decodedCombat = new();
+    // The arrivals one refresh found, collected inside the ECS pass and raised outside it. See SampleRemote.
+    readonly List<long> enteredRemotes = new();
     // The captures RefreshRemoteSamples would otherwise close over, hoisted so the ECS callback can be cached
     // instead of rebuilt every frame. Live only for the duration of one refresh, which nothing re-enters.
     RefAction<NetId>? sampleRemotes;
@@ -93,6 +98,10 @@ public sealed partial class TileWorldClient
                 return;
             case TileProtocol.ServerFrameNotice:
                 if (TileProtocol.TryDecodeNotice(data, out string reason)) OnNotice(reason);
+                return;
+            case TileProtocol.ServerFrameCombat:
+                if (TileProtocol.TryDecodeCombat(data, decodedCombat))
+                    for (int i = 0; i < decodedCombat.Count; i++) CombatEvent?.Invoke(decodedCombat[i]);
                 return;
         }
     }
@@ -320,14 +329,24 @@ public sealed partial class TileWorldClient
         sampleRemotes ??= SampleRemote;
         sampleTime = renderTime;
         liveRemotes.Clear();
+        enteredRemotes.Clear();
         World.ForEach(sampleRemotes);
+
+        goneRemotes.Clear();
         // Every live remote was just written into the map, so equal counts means nothing went stale and the prune
         // can be skipped, which is the ordinary frame.
-        if (remoteSamples.Count == liveRemotes.Count) return;
-        goneRemotes.Clear();
-        foreach (long netId in remoteSamples.Keys)
-            if (!liveRemotes.Contains(netId)) goneRemotes.Add(netId);
-        for (int i = 0; i < goneRemotes.Count; i++) remoteSamples.Remove(goneRemotes[i]);
+        if (remoteSamples.Count != liveRemotes.Count)
+        {
+            foreach (long netId in remoteSamples.Keys)
+                if (!liveRemotes.Contains(netId)) goneRemotes.Add(netId);
+            for (int i = 0; i < goneRemotes.Count; i++) remoteSamples.Remove(goneRemotes[i]);
+        }
+
+        // Both raised AFTER the iteration and after the prune, so a handler sees a settled view and may touch the
+        // world. Entered before left, because a head that keys per-remote state on the pair wants the arrival of a
+        // recycled slot ordered after the departure it replaces, and a net id is never recycled anyway.
+        for (int i = 0; i < enteredRemotes.Count; i++) RemoteEntered?.Invoke(enteredRemotes[i]);
+        for (int i = 0; i < goneRemotes.Count; i++) RemoteLeft?.Invoke(goneRemotes[i]);
     }
 
     // One remote, one frame. The replicated state says where the body is outright: the tile the remote is
@@ -358,7 +377,16 @@ public sealed partial class TileWorldClient
         // of states differing ONLY in the lock has equal StepTicks, so it belongs to a remote that is standing, and a
         // standing pose reads no fraction of a tick: the stamp this dedupe protects is only ever spent on a glide.
         // So the extra re-stamp such a change costs is a restart of a carry-forward nobody is drawing.
-        if (remoteSamples.TryGetValue(netId, out RemoteSample prev) && prev.State.Equals(now)) return;
+        if (remoteSamples.TryGetValue(netId, out RemoteSample prev))
+        {
+            if (prev.State.Equals(now)) return;
+        }
+        else
+        {
+            // COLLECTED rather than raised here. This runs inside an ECS ForEach, and a handler that spawned or
+            // despawned anything would be mutating the world mid iteration.
+            enteredRemotes.Add(netId);
+        }
         remoteSamples[netId] = new RemoteSample(now, sampleTime);
     }
 

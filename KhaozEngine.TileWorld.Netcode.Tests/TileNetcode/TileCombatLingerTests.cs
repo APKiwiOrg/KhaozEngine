@@ -83,6 +83,54 @@ public class TileCombatLingerTests
         Assert.Equal(0, s.PlayerCount);
     }
 
+    // THE WINDOW ENDING IN A KILL rather than in a lapse, which is the whole point of leaving the body attackable
+    // and is the one path nothing else covers. The death has to reach the game with the REAL slot (its connection
+    // is gone, its seat is not), the corpse must not be rolled against for the rest of the window, and the linger
+    // still has to expire on its own schedule and file the post-death state through the ordinary leave.
+    [Fact]
+    public void A_lingering_player_can_be_killed_and_the_window_still_expires_through_the_ordinary_leave()
+    {
+        var hub = new InMemoryTransportHub();
+        var rules = new FixedRules { Damage = 2, Ticks = 1 };
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(20, 21, 0), rules,
+            combatLogoutTicks: 8);
+        (int slot, long player) = Join(s, hub, "a", out INetTransport c);
+        Assert.True(s.SetHealth(player, new TileHealth { Current = 100, Max = 100 }));
+        long monster = s.SpawnActor(new TileCoord(20, 20, 0), new TileActorSpawn(100, 1, TileDirection.S));
+        Lock(s, monster, player);
+        for (int i = 0; i < 3; i++) s.Tick(Dt);
+
+        var deaths = new List<(long dead, long killer, int deadSlot)>();
+        var left = new List<string>();
+        s.OnDied += (dead, killer, deadSlot) => deaths.Add((dead, killer, deadSlot));
+        s.PlayerLeaving += (_, account, _) => left.Add(account);
+
+        hub.DisconnectClient(c);
+        s.Poll();
+        Assert.Equal(1, s.PlayerCount);
+
+        // The blow that finishes them, inside the window.
+        rules.Damage = 500;
+        s.Tick(Dt);
+
+        (long dead, long killerId, int deadSlot) = Assert.Single(deaths);
+        Assert.Equal(player, dead);
+        Assert.Equal(monster, killerId);
+        Assert.Equal(slot, deadSlot);
+        Assert.Empty(left);
+
+        // The corpse is not swung at again: the roll phase skips a target already at zero.
+        int rollsAtDeath = rules.Rolls.Count;
+        for (int i = 0; i < 3; i++) s.Tick(Dt);
+        Assert.Equal(rollsAtDeath, rules.Rolls.Count);
+
+        // And the window still lapses on its own schedule, through the same leave a lapsed window always uses.
+        for (int i = 0; i < 6; i++) s.Tick(Dt);
+        Assert.Equal(new[] { "a" }, left);
+        Assert.Equal(0, s.PlayerCount);
+        Assert.False(s.TryGetActorState(player, out _));
+    }
+
     // A FIGHT OF MISSES IS STILL A FIGHT. Ruling 13.3 says the window is held by "a combat event touched them", and
     // the player this rule exists to stop escaping is precisely the one being attacked who has NOT clicked back: no
     // lock of their own, and nothing on the record if only the damage counts. Every swing here misses, so no health

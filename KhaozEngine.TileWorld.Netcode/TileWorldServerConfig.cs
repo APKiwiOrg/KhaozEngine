@@ -104,7 +104,12 @@ public sealed record TileWorldServerConfig
     /// <see cref="TileWorldServer.BeginDrain"/> both bypass it, because neither is the player's decision.</para>
     /// <para>A RECONNECT by the same account inside the window ends the lingering body rather than being refused or
     /// seated beside it, so one account never holds two live entities. The player comes back where they left, into
-    /// the fight they left, which is what the window is for.</para></summary>
+    /// the fight they left, which is what the window is for.</para>
+    /// <para>ONE NUMBER, TWO JOBS, deliberately. It is the length of the window a leave is held for, and it is also
+    /// the LOOKBACK that decides whether a leaving player counts as being in a fight at all
+    /// (<see cref="TileCombatState.LastCombatTick"/> within this many ticks). Raising it therefore widens what
+    /// counts as combat as well as how long a body stands, which is the coherent reading of section 13.3's single
+    /// "window" and is worth knowing before tuning it.</para></summary>
     public int CombatLogoutTicks { get; init; }
 
     /// <summary>Synchronous ban check over a verified account id, consulted at the door. Null admits everyone the

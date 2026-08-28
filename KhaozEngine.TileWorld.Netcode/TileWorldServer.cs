@@ -172,7 +172,10 @@ public sealed partial class TileWorldServer : IDisposable
     /// <c>n</c> is looking at the world after <c>n + 1</c> ticks.</summary>
     public long TickCount { get; private set; }
 
-    /// <summary>Players currently joined.</summary>
+    /// <summary>Players currently in world. A body left LINGERING by
+    /// <see cref="TileWorldServerConfig.CombatLogoutTicks"/> is counted, because it is still stepped, still served
+    /// and still attackable: its connection is gone and its player is not. That is the number a game wants for a
+    /// population check as much as for a persistence pass, and the one the window would silently make wrong.</summary>
     public int PlayerCount => netIdBySlot.Count;
 
     /// <summary>Runs before movement each tick, for a head's own systems (npc brains, spawners, timed content).

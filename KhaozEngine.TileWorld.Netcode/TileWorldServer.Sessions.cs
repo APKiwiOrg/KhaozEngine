@@ -76,7 +76,10 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
     public long DroppedCommandCount { get; private set; }
 
     /// <summary>The slots with a live player, which is what a persistence pass iterates. The player index's own
-    /// key collection, so it reflects a join or a leave immediately and must not be enumerated across one.</summary>
+    /// key collection, so it reflects a join or a leave immediately and must not be enumerated across one.
+    /// <para>A slot held by a body LINGERING under <see cref="TileWorldServerConfig.CombatLogoutTicks"/> is in here,
+    /// and has to be: the body is still being stepped and hit, so a periodic save that skipped it would file a state
+    /// older than the fight that is still happening to it.</para></summary>
     public IReadOnlyCollection<int> JoinedSlots => netIdBySlot.Keys;
 
     /// <summary>True from the moment <see cref="BeginDrain"/> runs until the server is disposed. A drain is

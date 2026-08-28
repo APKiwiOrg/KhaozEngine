@@ -77,8 +77,8 @@ namespace KhaozEngine.Tests.Gpu
     /// <see cref="VulkanResourceFixture"/> are faked.
     /// <para>
     /// EVERY SHAPE IS BUILT FROM <see cref="VulkanDescriptorLimitTests.ShippedLayouts"/>, which is row 10's
-    /// transcription of all thirty-three shipped <c>CreateResourceLayout</c> sites with their source lines. A rig
-    /// that invented its own layouts would be pinning arithmetic nothing ships.
+    /// transcription of every shipped <c>CreateResourceLayout</c> site with its source line. A rig that invented
+    /// its own layouts would be pinning arithmetic nothing ships.
     /// </para>
     /// </summary>
     internal sealed class VulkanBindHarness : IDisposable

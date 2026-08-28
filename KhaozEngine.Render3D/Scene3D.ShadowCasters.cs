@@ -311,21 +311,23 @@ namespace KhaozEngine.Render3D
                 }
             }
 
-            // GPU-skinned casters (opt-in): one combined-UBO slot per (cascade, caster), folding that cascade's
-            // column-transformed matrix. Pack every slot first, then bind + draw per cascade (the same update-then-draw
-            // ordering the splat sync uses). A draw outside a cascade's ortho volume clips away.
+            // GPU-skinned casters (opt-in): one LIGHT-MATRIX slot per (cascade, caster), folding that cascade's
+            // column-transformed matrix, and nothing else. The caster's bones are NOT here: they were packed once
+            // per caster into the shared palette in PrepareGpuSkinnedFrame and uploaded before this pass, so every
+            // cascade below binds the SAME palette slot at the same offset (#407). That is what took the skinning
+            // half of a shadowed frame's uniform upload from (1 + bones) * 64 per caster per cascade to 64. Pack
+            // every slot first, then bind + draw per cascade (the same update-then-draw ordering the splat sync
+            // uses). A draw outside a cascade's ortho volume clips away.
             if (UseGpuSkinning && _gpuSkinnedDraws.Count > 0)
             {
-                var boneSpan = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_boneMatrices);
                 int gpuCount = _gpuSkinnedDraws.Count;
                 bool packedShadowSlots = false;
                 for (int c = 0; c < count; c++)
                     for (int d = 0; d < gpuCount; d++)
                     {
                         var dr = _gpuSkinnedDraws[d];
-                        _model.PackSkinnedShadowSlot((uint)(c * gpuCount + d), dr.World, _cascadeDepthVps[c],
-                            boneSpan.Slice(dr.BoneSpanStart, dr.BoneCount));
-                        _frameStats.AddSkinnedUniformUpload((long)(1 + dr.BoneCount) * 64);
+                        _model.PackSkinnedShadowSlot((uint)(c * gpuCount + d), dr.World, _cascadeDepthVps[c]);
+                        _frameStats.AddSkinnedUniformUpload(64);
                         packedShadowSlots = true;
                     }
                 if (packedShadowSlots) _model.UploadSkinnedShadowSlots(cl);
@@ -335,7 +337,8 @@ namespace KhaozEngine.Render3D
                     for (int d = 0; d < gpuCount; d++)
                     {
                         var dr = _gpuSkinnedDraws[d];
-                        _model.DrawGpuSkinnedShadowCaster(cl, dr.RestVb, dr.Ib, dr.IndexCount, dr.IndexFormat, (uint)(c * gpuCount + d));
+                        _model.DrawGpuSkinnedShadowCaster(cl, dr.RestVb, dr.Ib, dr.IndexCount, dr.IndexFormat,
+                            (uint)(c * gpuCount + d), dr.Slot);
                         _shadowPassSkinnedDraws++;
                         CountSkinnedDraw(dr.IndexCount);
                     }

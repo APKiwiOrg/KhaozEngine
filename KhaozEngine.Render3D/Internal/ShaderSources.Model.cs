@@ -284,11 +284,12 @@ void main() {
     oDepth = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);   // per-fragment NDC depth, see the note at the top
 }";
 
-        // ---- GPU skinning (opt-in, Scene3D.UseGpuSkinning). TWO uniform buffers, split by update frequency. The
+        // ---- GPU skinning (opt-in, Scene3D.UseGpuSkinning). THREE uniform buffers, split by update frequency. The
         //      SHARED per-frame block `U` is at set 0 binding 0, read by BOTH stages, and is the very same buffer
         //      (and the very same declaration) the model pass binds. The per-draw block `VBlock` follows it at set 0
-        //      binding 1, VERTEX only, dynamic-offset: this draw's Model, its P column-packed Tint/Emissive/
-        //      SpecParams, and its composed bone palette. Material TEXTURES are at set 1, fragment only. The 4-bone
+        //      binding 1, VERTEX only, dynamic-offset: this draw's Model and its P column-packed Tint/Emissive/
+        //      SpecParams. The per-CASTER `Palette` is at set 2 binding 0, VERTEX only, dynamic-offset, and is the
+        //      buffer the shadow depth pass binds too (#407). Material TEXTURES are at set 1, fragment only. The 4-bone
         //      blend + position/normal/tangent deform mirror SkinningMath.SkinVertex exactly, and the position now
         //      goes through ViewProj * (Model * skinnedLocal) exactly as ModelVert does, so a GPU-skinned draw is
         //      pixel-parity with the CPU path by construction rather than by a folded matrix that reproduces it.
@@ -326,7 +327,14 @@ layout(set=0, binding=0) uniform U {
 layout(set=0, binding=1) uniform VBlock {
     mat4 Model;            // world transform (for worldPos + world normal/tangent the fragment lights with)
     mat4 P;                // columns: [0]=Tint, [1]=Emissive, [2]=SpecParams (per-draw constants, packed row-major)
-    mat4 bones[128];       // offset 128: this draw's composed palette (inverseBind*jointWorld), padded/validated to <=128
+};
+// This CASTER's composed palette (inverseBind*jointWorld), padded/validated to <=128, in its own buffer at its own
+// per-caster dynamic offset (#407). Set 2 rather than another binding in set 0 because a set carries exactly ONE
+// dynamic offset and the palette is indexed per CASTER while the depth pass indexes VBlock per caster-cascade. The
+// same buffer and the same set are bound by SkinnedShadowDepthVert, so a caster's palette uploads once a frame and
+// the main pass and every cascade read it.
+layout(set=2, binding=0) uniform Palette {
+    mat4 bones[128];
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;

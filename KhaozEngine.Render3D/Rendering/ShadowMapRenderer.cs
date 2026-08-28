@@ -40,12 +40,13 @@ namespace KhaozEngine.Render3D.Rendering
         // One 256-byte-aligned dynamic slot per cascade in the rigid depth light UBO (each slot holds one mat4).
         const uint CascadeSlotBytes = 256;
 
-        // GPU-skinning shadow mirror: the skinned depth vertex reads ONE combined UBO at set 0 laid out as
-        // { mat4 LightMvp; mat4 bones[128] } (see ShaderSources.SkinnedShadowDepthVert), one 256-byte-aligned slot per
-        // (caster,cascade) selected by a per-draw dynamic offset. The model pass carried the same shape until #604
-        // split its frame block out into the shared buffer, and #407 is the standing follow-up for this one.
-        internal static readonly uint SkinnedDepthSlotBytes =
-            Align256((1u + (uint)SkinningMath.MaxBonesPerDraw) * 64);   // (1+128)*64=8256 -> 8448
+        // GPU-skinning shadow mirror: the skinned depth vertex reads { mat4 LightMvp } at set 0 (see
+        // ShaderSources.SkinnedShadowDepthVert), one 256-byte-aligned slot per (caster,cascade) selected by a per-draw
+        // dynamic offset, plus the SHARED per-caster bone palette at set 1. The palette used to be packed into every
+        // one of these slots, so a caster's whole palette was re-uploaded once per cascade for one changed matrix.
+        // #407 pulled it into SkinnedBonePalette, which the model pass owns and both passes bind: the slot is the
+        // matrix alone now, 8448 bytes down to 256, and the palette goes up once a frame instead of once per cascade.
+        internal static readonly uint SkinnedDepthSlotBytes = Align256(64);   // one mat4 -> 256
         static uint Align256(uint n) => (n + 255u) & ~255u;
 
         readonly IGpuDevice _gd;
@@ -76,17 +77,17 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuShaderSet _dissolveInvertedShaders;
         IGpuPipeline _dissolveInvertedPipeline = null!;   // rebuilt in EnsureLayout alongside _pipeline
 
-        // GPU-skinning depth pipeline (mirrors _pipeline for skinned casters) + its combined-UBO grow-with-retire buffer.
+        // GPU-skinning depth pipeline (mirrors _pipeline for skinned casters) + its light-matrix grow-with-retire buffer.
         readonly IGpuShaderSet _skinnedShaders;
-        readonly IGpuResourceLayout _skinnedLayout;   // set 0: combined { LightMvp; bones[128] } dynamic UBO, vertex only
+        readonly IGpuResourceLayout _skinnedLayout;   // set 0: { LightMvp } dynamic UBO, vertex only
+        readonly SkinnedBonePalette _bonePalette;     // set 1: the shared per-caster palette, OWNED BY ModelRenderer
         IGpuPipeline _skinnedPipeline = null!;         // rebuilt in EnsureLayout alongside _pipeline
         IGpuBuffer? _skinnedUbo; uint _skinnedSlots; IGpuResourceSet? _skinnedSet;
         // Persistent CPU image of the complete skinned-depth UBO. D3D11 takes its cheap UpdateSubresource route only
         // for a whole uniform-buffer write from offset 0, so every cascade/caster slot is packed here before one
         // upload records the entire buffer.
         byte[] _skinnedImage = Array.Empty<byte>();
-        readonly List<IDisposable> _retiredSkinned = new();   // grown-out combined UBOs/sets (a prior frame may still read them)
-        readonly Matrix4x4[] _skinnedScratch = new Matrix4x4[1 + SkinningMath.MaxBonesPerDraw];
+        readonly List<IDisposable> _retiredSkinned = new();   // grown-out light-matrix UBOs/sets (a prior frame may still read them)
 
         IGpuTexture _atlas = null!;             // R32F: all cascades' light-space depth side by side (the map the receivers sample)
         IGpuTexture _depthStencil = null!;      // depth-test buffer for the depth pass (never sampled), atlas-sized
@@ -109,9 +110,13 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>The current number of cascade columns in the atlas.</summary>
         public int CascadeCount => _cascadeCount;
 
-        public ShadowMapRenderer(IGpuDevice gd, int resolution, int cascadeCount)
+        // bonePalette is the frame's shared GPU-skinned bone palettes, created and disposed by ModelRenderer. This
+        // pass binds the same layout and the same set the model pass does, so a caster's palette is uploaded once
+        // and read by the main pass and every cascade (#407).
+        public ShadowMapRenderer(IGpuDevice gd, int resolution, int cascadeCount, SkinnedBonePalette bonePalette)
         {
             _gd = gd;
+            _bonePalette = bonePalette;
             var f = gd.Factory;
 
             _shaders = f.CreateShadersFromSpirv(ShaderSources.ShadowDepthVert, ShaderSources.ShadowDepthFrag);
@@ -130,8 +135,8 @@ namespace KhaozEngine.Render3D.Rendering
             _dissolveInvertedShaders = f.CreateShadersFromSpirv(ShaderSources.ShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveInvertedFrag);
             _dissolveSet = f.CreateResourceSet(new GpuResourceSetDescription(_layout, new GpuBufferRange(_lightUbo, 0, CascadeSlotBytes)));
 
-            // GPU-skinning depth shaders/layout (the fragment is the shared ShadowDepthFrag). Set 0 = combined
-            // { LightMvp; bones[128] } dynamic UBO, vertex only. The pipeline is built per layout in EnsureLayout.
+            // GPU-skinning depth shaders/layout (the fragment is the shared ShadowDepthFrag). Set 0 = { LightMvp }
+            // dynamic UBO, vertex only, and set 1 = the shared per-caster palette. Built per layout in EnsureLayout.
             _skinnedShaders = f.CreateShadersFromSpirv(ShaderSources.SkinnedShadowDepthVert, ShaderSources.ShadowDepthFrag);
             _skinnedLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("VBlock", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex, dynamic: true)));
@@ -194,8 +199,8 @@ namespace KhaozEngine.Render3D.Rendering
             _skinnedPipeline = BuildSkinnedPipeline(f, _fb.Outputs);
         }
 
-        // GPU-skinning depth pipeline: the rest-pose SkinnedVertex stream (locations 0..6) at slot 0, the combined
-        // { LightMvp; bones[128] } dynamic UBO at set 0. Front-face cull (the same second-depth trick as the rigid
+        // GPU-skinning depth pipeline: the rest-pose SkinnedVertex stream (locations 0..6) at slot 0, the
+        // { LightMvp } dynamic UBO at set 0 and the shared per-caster palette at set 1. Front-face cull (the same second-depth trick as the rigid
         // depth pass), scissor test on (per-column clip). Rebuilt with _pipeline whenever the layout reallocates.
         // depthClipEnabled stays TRUE here for the same reason as the rigid pipeline below: the NEAR plane is handled
         // in the vertex (SkinnedShadowDepthVert's pancake) and the far plane should still clip, which the flag cannot
@@ -217,7 +222,7 @@ namespace KhaozEngine.Render3D.Rendering
                 DepthStencil = GpuDepthStencilState.DepthOnlyLessEqual,
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.Front, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: true),
                 Topology = GpuPrimitiveTopology.TriangleList,
-                ResourceLayouts = new[] { _skinnedLayout },
+                ResourceLayouts = new[] { _skinnedLayout, _bonePalette.Layout },
                 ShaderSet = _skinnedShaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout },
                 Outputs = outputs,
@@ -397,13 +402,14 @@ namespace KhaozEngine.Render3D.Rendering
             cl.DrawIndexed((uint)indexCount, 1, 0, baseVertex, drawIndex);
         }
 
-        // ---- GPU-skinning shadow casters (opt-in). Still ONE combined UBO here, the shape the model pass carried
-        //      until #604. Each caster gets ONE slot per cascade (its LightMvp folds that cascade's
-        //      column-transformed matrix), so the palette is re-packed once per cascade. ----
+        // ---- GPU-skinning shadow casters (opt-in). Each caster still gets ONE slot per cascade, because its
+        //      LightMvp folds that cascade's own column-transformed matrix, but the slot is that matrix ALONE since
+        //      #407. The bones live once per caster in the shared SkinnedBonePalette, bound at set 1. ----
 
-        /// <summary>Ensure the combined skinned-depth UBO holds at least <paramref name="slotCount"/> slots (each
+        /// <summary>Ensure the skinned-depth light-matrix UBO holds at least <paramref name="slotCount"/> slots (each
         /// <see cref="SkinnedDepthSlotBytes"/>), growing geometrically + retiring the old buffer + its window set.
-        /// With cascades a caster needs one slot per cascade, so pass <c>casterCount * cascadeCount</c>.</summary>
+        /// With cascades a caster needs one slot per cascade, so pass <c>casterCount * cascadeCount</c>. The palette
+        /// is sized separately, once per caster, by <c>ModelRenderer.EnsureSkinnedBonePaletteCapacity</c>.</summary>
         public void EnsureSkinnedShadowCapacity(uint slotCount)
         {
             if (_skinnedUbo != null && _skinnedSlots >= slotCount) return;
@@ -420,15 +426,15 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>Pack one skinned caster's depth slot for one cascade: <c>LightMvp = model * cascadeDepthMat</c>
-        /// folded per draw + the composed <paramref name="bones"/> (uploaded raw, read column-major = transpose).
-        /// <paramref name="cascadeDepthMat"/> is the cascade's GPU-clip-corrected AND column-transformed matrix.
-        /// Uploads only the mesh's bones (indices validated at load).</summary>
-        public void PackSkinnedShadowSlot(uint slot, in Matrix4x4 model, in Matrix4x4 cascadeDepthMat, ReadOnlySpan<Matrix4x4> bones)
+        /// folded per draw, and nothing else. <paramref name="cascadeDepthMat"/> is the cascade's GPU-clip-corrected
+        /// AND column-transformed matrix. The caster's bones are NOT written here any more: they go up once a frame
+        /// through the shared palette (#407), which is why this slot is 64 bytes of payload rather than 8256.</summary>
+        public void PackSkinnedShadowSlot(uint slot, in Matrix4x4 model, in Matrix4x4 cascadeDepthMat)
         {
-            _skinnedScratch[0] = model * cascadeDepthMat;   // System.Numerics order: p * model * cascadeDepthMat
-            for (int b = 0; b < bones.Length; b++) _skinnedScratch[1 + b] = bones[b];
-            MemoryMarshal.AsBytes(_skinnedScratch.AsSpan(0, 1 + bones.Length)).CopyTo(
-                _skinnedImage.AsSpan(checked((int)(slot * SkinnedDepthSlotBytes)), checked((int)SkinnedDepthSlotBytes)));
+            Matrix4x4 lightMvp = model * cascadeDepthMat;   // System.Numerics order: p * model * cascadeDepthMat
+            MemoryMarshal.Write(
+                _skinnedImage.AsSpan(checked((int)(slot * SkinnedDepthSlotBytes)), checked((int)SkinnedDepthSlotBytes)),
+                in lightMvp);
         }
 
         /// <summary>Upload every packed GPU-skinned shadow slot in one whole-buffer write. Slots not selected by a
@@ -438,19 +444,24 @@ namespace KhaozEngine.Render3D.Rendering
 
         /// <summary>Bind cascade <paramref name="cascade"/> for the GPU-SKINNED caster draws: scissor to that cascade's
         /// atlas column and switch to the skinned depth pipeline. Call after the rigid caster runs, before the skinned
-        /// casters (<see cref="BeginDepthPass"/> must be bound). The skinned window set is bound per draw.</summary>
+        /// casters (<see cref="BeginDepthPass"/> must be bound). Both window sets are bound per draw.</summary>
         public void BindCascadeSkinned(IGpuCommandList cl, int cascade)
         {
             cl.SetPipeline(_skinnedPipeline);
             SetCascadeScissor(cl, cascade);
             cl.SetGraphicsResourceSet(0, _skinnedSet!, 0);   // rebound per draw with the slot's dynamic offset below
+            cl.SetGraphicsResourceSet(1, _bonePalette.Set, 0);   // likewise, with the caster's palette offset
         }
 
         /// <summary>Draw one GPU-skinned caster into the CURRENTLY-BOUND cascade: its rest-pose <paramref name="restVb"/>
-        /// at slot 0, the combined UBO window at set 0 selected by <paramref name="slot"/>'s dynamic offset. One instance.</summary>
-        public void DrawGpuSkinnedCaster(IGpuCommandList cl, IGpuBuffer restVb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, uint slot)
+        /// at slot 0, this (caster, cascade) pair's light-matrix window at set 0 selected by <paramref name="slot"/>'s
+        /// dynamic offset, and the shared palette at set 1 selected by <paramref name="paletteSlot"/>, which is the
+        /// CASTER index and therefore the same slot every cascade of this caster reads. One instance.</summary>
+        public void DrawGpuSkinnedCaster(IGpuCommandList cl, IGpuBuffer restVb, IGpuBuffer ib, int indexCount,
+            GpuIndexFormat indexFormat, uint slot, uint paletteSlot)
         {
             cl.SetGraphicsResourceSet(0, _skinnedSet!, slot * SkinnedDepthSlotBytes);
+            cl.SetGraphicsResourceSet(1, _bonePalette.Set, SkinnedBonePalette.OffsetFor(paletteSlot));
             cl.SetVertexBuffer(0, restVb);
             cl.SetIndexBuffer(ib, indexFormat);
             cl.DrawIndexed((uint)indexCount, 1, 0, 0, 0);

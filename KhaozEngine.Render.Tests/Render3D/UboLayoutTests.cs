@@ -198,7 +198,8 @@ namespace KhaozEngine.Tests.Render3D
             Assert.DoesNotContain("TintTiling", ShaderSources.SplatVert);
         }
 
-        // ---- GPU-skinning per-draw block (ModelRenderer.SkinnedBonesOffset / SkinnedMainSlotBytes) ----
+        // ---- GPU-skinning uniform split (ModelRenderer.SkinnedHeaderBytes / SkinnedMainSlotBytes,
+        //      SkinnedBonePalette.SlotBytes, ShadowMapRenderer.SkinnedDepthSlotBytes) ----
 
         [Fact]
         public void SkinnedPerDrawBlock_IsItsOwnVertexOnlyBufferAfterTheSharedFrameBlock()
@@ -207,8 +208,8 @@ namespace KhaozEngine.Tests.Render3D
             // declared by every skinned stage, which kept each stage's buffer usage a prefix of the layout while
             // MslBindingOrder.CheckPrefix still ran (#604 deleted it in the same program, so the order is a shape
             // kept rather than a requirement). `VBlock` follows it at binding 1 and is declared by the VERTEX alone:
-            // no fragment reads any of Model/P/bones, they arrive as interpolants. Folding either back would
-            // reinstate the per-draw copy of the frame block the unfold deleted.
+            // no fragment reads Model or P, they arrive as interpolants. Folding either back would reinstate the
+            // per-draw copy of the frame block the unfold deleted.
             foreach (var (name, src) in new[]
             {
                 ("SkinnedModelVert", ShaderSources.SkinnedModelVert),
@@ -228,16 +229,36 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void SkinnedPerDrawBlock_PutsThePaletteWhereTheCsHeaderEnds()
+        public void SkinnedBonePalette_IsOneSharedVertexOnlyBufferInBothSkinnedPipelines()
         {
-            // The C# packer writes the bone palette at SkinnedBonesOffset into each slot, and the GLSL block puts
-            // it after exactly SkinnedHeaderMats mat4s. Assert the two halves agree by arithmetic, and that the
-            // GLSL comment quotes the same number, so a header matrix added on one side alone trips here rather
-            // than smearing every draw's palette.
-            Assert.Equal(ModelRenderer.SkinnedHeaderMats * 64, ModelRenderer.SkinnedBonesOffset);
-            Assert.Contains("mat4 bones[" + SkinningMath.MaxBonesPerDraw + "];       // offset "
-                + ModelRenderer.SkinnedBonesOffset, ShaderSources.SkinnedModelVert);
-            Assert.Equal(8448u, ModelRenderer.SkinnedMainSlotBytes);   // 128 + 128*64 = 8320, aligned up to 256
+            // The #407 split. The palette left both per-draw slots for a buffer of its own, declared by the two
+            // skinned VERTEX stages and by nothing else, so a caster's bones upload once a frame and the main pass
+            // and every shadow cascade read that one upload. The two sets differ because the two pipelines put the
+            // palette at a different SLOT (2 in the model pair, 1 in the depth pipeline), which is legal precisely
+            // because a set layout carries no set number of its own.
+            Assert.Contains("layout(set=2, binding=0) uniform Palette {", ShaderSources.SkinnedModelVert);
+            Assert.Contains("layout(set=1, binding=0) uniform Palette {", ShaderSources.SkinnedShadowDepthVert);
+            Assert.DoesNotContain("Palette", ShaderSources.SkinnedModelFrag);
+            Assert.DoesNotContain("Palette", ShaderSources.SkinnedModelDissolveFrag);
+            Assert.DoesNotContain("Palette", ShaderSources.ShadowDepthFrag);
+
+            // Both vertex stages declare the SAME window, which is what makes one buffer and one set serve both.
+            string palette = "mat4 bones[" + SkinningMath.MaxBonesPerDraw + "];";
+            Assert.Contains(palette, ShaderSources.SkinnedModelVert);
+            Assert.Contains(palette, ShaderSources.SkinnedShadowDepthVert);
+            Assert.Equal((uint)SkinningMath.MaxBonesPerDraw * 64, SkinnedBonePalette.SlotBytes);
+        }
+
+        [Fact]
+        public void SkinnedSlots_HoldTheirMatricesAndNothingElse()
+        {
+            // What is LEFT in the two per-draw slots once the frame block (#604) and the palette (#407) are out:
+            // two matrices in the main one, one in the depth one. Both round to a single 256-byte dynamic slot,
+            // down from 8448 each, which is the whole of what #407 bought per draw.
+            Assert.Equal(ModelRenderer.SkinnedHeaderMats * 64, ModelRenderer.SkinnedHeaderBytes);
+            Assert.Equal(256u, ModelRenderer.SkinnedMainSlotBytes);          // 128 -> 256
+            Assert.Equal(256u, ShadowMapRenderer.SkinnedDepthSlotBytes);     // 64 -> 256
+            Assert.DoesNotContain("bones[", ShaderSources.SkinnedShadowDepthVert.Split("uniform Palette")[0]);
         }
 
         // ---- Post-process UBOs (PixelPostProcess) ----

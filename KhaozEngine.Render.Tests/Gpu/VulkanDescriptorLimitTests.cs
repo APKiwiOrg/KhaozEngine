@@ -51,9 +51,10 @@ namespace KhaozEngine.Tests.Gpu
         static GpuResourceLayoutDescription L(params GpuResourceLayoutElement[] elements) => new(elements);
 
         /// <summary>
-        /// EVERY SHIPPED <c>CreateResourceLayout</c> SITE, transcribed with its own source line. Thirty-three of
-        /// them, all in <c>KhaozEngine.Render2D</c> and <c>KhaozEngine.Render3D</c>: no other package declares a
-        /// layout at all, because every other renderer draws through those two.
+        /// EVERY SHIPPED <c>CreateResourceLayout</c> SITE, transcribed with its own source line. All of them are in
+        /// <c>KhaozEngine.Render2D</c> and <c>KhaozEngine.Render3D</c>: no other package declares a layout at all,
+        /// because every other renderer draws through those two. The count is asserted below rather than restated
+        /// here, so it cannot go stale.
         /// </summary>
         internal static IReadOnlyDictionary<string, GpuResourceLayoutDescription> ShippedLayouts { get; } =
             new Dictionary<string, GpuResourceLayoutDescription>(StringComparer.Ordinal)
@@ -72,7 +73,7 @@ namespace KhaozEngine.Tests.Gpu
                 // Render3D/Rendering/GroundDecalRenderer.cs:126
                 ["GroundDecal"] = L(T("DepthTex"), S("Samp"), U("Frame", F, dynamic: true), T("NormalTex")),
 
-                // Render3D/Rendering/ModelRenderer.cs:219, :264 and :267
+                // Render3D/Rendering/ModelRenderer.cs:225, :270 and :273
                 ["Model"] = L(U("U", VF), T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"),
                     T("ShadowMap"), S("ShadowSamp")),
                 // TWO uniform buffers in ONE set since #604 unfolded the combined skinned block: the shared frame
@@ -81,6 +82,11 @@ namespace KhaozEngine.Tests.Gpu
                 ["Model.skinnedMain"] = L(U("U", VF), U("VBlock", V, dynamic: true)),
                 ["Model.skinnedFrag"] = L(T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"),
                     T("ShadowMap"), S("ShadowSamp")),
+                // Render3D/Rendering/SkinnedBonePalette.cs:54. The one shipped layout used by TWO pipelines at
+                // DIFFERENT slots since #407: set 2 of the skinned model pair and set 1 of the skinned depth
+                // pipeline. A set layout carries no set number, so one declaration really does serve both, and it
+                // is what lets one palette upload feed the main pass and every shadow cascade.
+                ["SkinnedBonePalette"] = L(U("Palette", V, dynamic: true)),
                 // Render3D/Rendering/ModelRenderer.Splat.cs:41 and :48. TWO sets since #604: the shared frame
                 // block, then everything the material owns. One of the two ground pipelines that put a uniform
                 // buffer in BOTH of their sets, and one of the three that spend two uniform buffers in total.
@@ -118,7 +124,7 @@ namespace KhaozEngine.Tests.Gpu
                 ["Pixel.tone"] = L(T("Src"), S("Samp"), U("Tone", F)),
                 ["Pixel.apply"] = L(T("Src"), T("OffsetTex"), S("Samp"), U("Apply", F)),
 
-                // Render3D/Rendering/ShadowMapRenderer.cs:119 and :135
+                // Render3D/Rendering/ShadowMapRenderer.cs:125 and :141
                 ["Shadow"] = L(U("U", V, dynamic: true)),
                 ["Shadow.skinned"] = L(U("VBlock", V, dynamic: true)),
 
@@ -145,12 +151,14 @@ namespace KhaozEngine.Tests.Gpu
         /// set with two dynamic uniform buffers is legal everywhere, and a pipeline combining several sets is
         /// where a ceiling is really reached.
         /// <para>
-        /// Four shipped families use more than one layout, and THREE of them spend two uniform buffers since #604
-        /// and #727. SpriteBatch still splits ONE uniform buffer into one set with pure texture and sampler
-        /// resources in the other. The splat and tile-ground pipelines each put a uniform buffer in BOTH their sets
-        /// (the shared frame block, then the material's own params beside its textures). The skinned pair puts both
-        /// in ONE set, the shared frame block and then the per-draw block, with its material textures alone in the
-        /// other.
+        /// Five shipped families use more than one layout, and FOUR of them spend more than one uniform buffer.
+        /// SpriteBatch still splits ONE uniform buffer into one set with pure texture and sampler resources in the
+        /// other. The splat and tile-ground pipelines each put a uniform buffer in BOTH their sets (the shared frame
+        /// block, then the material's own params beside its textures). The skinned model pair carries THREE across
+        /// three sets since #407: the shared frame block and the per-draw header together in set 0, material
+        /// textures alone in set 1, the per-caster bone palette in set 2. The skinned depth pipeline carries two,
+        /// its light matrix and the very same palette layout, which is what makes one palette upload serve the main
+        /// pass and every cascade.
         /// </para>
         /// </summary>
         internal static IReadOnlyList<(string Pipeline, string[] Slots)> ShippedPipelines { get; } =
@@ -158,9 +166,9 @@ namespace KhaozEngine.Tests.Gpu
             // Render2D/SpriteBatch.cs:214, both the alpha and the additive pipeline through one Describe(blend).
             ("SpriteBatch", ["SpriteBatch.texture", "SpriteBatch.vp"]),
 
-            // Render3D/Rendering/ModelRenderer.cs:414 and :426.
-            ("ModelRenderer skinned", ["Model.skinnedMain", "Model.skinnedFrag"]),
-            ("ModelRenderer skinned dissolve", ["Model.skinnedMain", "Model.skinnedFrag"]),
+            // Render3D/Rendering/ModelRenderer.cs:407 and :419. THREE slots since #407 added the shared palette.
+            ("ModelRenderer skinned", ["Model.skinnedMain", "Model.skinnedFrag", "SkinnedBonePalette"]),
+            ("ModelRenderer skinned dissolve", ["Model.skinnedMain", "Model.skinnedFrag", "SkinnedBonePalette"]),
 
             // The rest, alphabetically. Every one is a single-set pipeline except the two ground passes, which
             // carry their own two-slot arrays below since #604 and #727.
@@ -187,7 +195,7 @@ namespace KhaozEngine.Tests.Gpu
             ("PixelPostProcess tone", ["Pixel.tone"]),
             ("PixelPostProcess apply", ["Pixel.apply"]),
             ("ShadowMapRenderer depth", ["Shadow"]),
-            ("ShadowMapRenderer skinned depth", ["Shadow.skinned"]),
+            ("ShadowMapRenderer skinned depth", ["Shadow.skinned", "SkinnedBonePalette"]),
             ("SkyRenderer", ["Sky"]),
             ("StarfieldRenderer", ["Starfield"]),
             ("TexturedBillboardRenderer", ["TexturedBillboard"]),
@@ -205,11 +213,13 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void EveryShippedPipeline_StaysWithinTheRequiredMinimumDynamicUniformBuffers()
         {
-            // 36 layouts: 35 after #604 split the splat pipeline's one layout into a frame set and a material set,
-            // and 36 after #727 did the same to the tile-ground pipeline. 34 PIPELINES, unchanged by either: a
-            // pipeline gained a slot rather than a pipeline being added, which is why the two numbers came apart.
-            // Both are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(36, ShippedLayouts.Count);
+            // 37 layouts: 35 after #604 split the splat pipeline's one layout into a frame set and a material set,
+            // 36 after #727 did the same to the tile-ground pipeline, and 37 after #407 gave the GPU-skinned bone
+            // palette a set of its own. 34 PIPELINES, unchanged by any of them: every time, pipelines gained a slot
+            // rather than a pipeline being added, which is why the two numbers came apart. #407 is also the first
+            // time ONE layout is shared by two pipelines at different slots, so it adds one entry and three slots.
+            // Both counts are stated so an emptied table cannot pass by agreeing with itself.
+            Assert.Equal(37, ShippedLayouts.Count);
             Assert.Equal(34, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
@@ -234,9 +244,11 @@ namespace KhaozEngine.Tests.Gpu
         /// the engine's own one-uniform-buffer-per-pipeline convention (the retired Veldrid Metal backend's
         /// numbering, documented in <c>ModelRenderer</c>, <c>WaterRenderer</c> and <c>GroundDecalRenderer</c>)
         /// arriving here as seven descriptors of headroom. The splat pipeline raised it to TWO when its frame and
-        /// material uniforms were split across its two sets, which leaves six, and the skinned pipeline joined it
-        /// at two when its per-draw block came out of the frame block into a second buffer, as did the tile-ground
-        /// pipeline at #727. Three pipelines sit at two now and the ceiling has not moved past it.
+        /// material uniforms were split across its two sets, and the skinned and tile-ground pipelines joined it
+        /// there at #604 and #727. <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/407">#407</see> then
+        /// raised it to THREE, on the skinned model pair alone: the shared frame block and the per-draw header in
+        /// set 0 plus the per-caster bone palette in a set of its own. The skinned DEPTH pipeline took the same
+        /// palette and sits at two with the other three. Five descriptors of headroom are left.
         /// <para>
         /// RAISING THIS NUMBER IS FINE UP TO <see cref="VulkanDescriptorLimits.SpecRequiredMinimum"/>. Update it
         /// with the pipeline that raised it. This is a per-PIPELINE-LAYOUT sum over EVERY uniform buffer, so both
@@ -244,12 +256,15 @@ namespace KhaozEngine.Tests.Gpu
         /// </para>
         /// </summary>
         [Fact]
-        public void TheHeaviestShippedPipeline_SpendsTwoDynamicUniformDescriptors()
+        public void TheHeaviestShippedPipeline_SpendsThreeDynamicUniformDescriptors()
         {
             int heaviest = ShippedPipelines.Max(
                 p => p.Slots.Sum(slot => VulkanDescriptorPolicy.DynamicUniformCount(ShippedLayouts[slot])));
 
-            Assert.Equal(2, heaviest);
+            Assert.Equal(3, heaviest);
+            Assert.True(heaviest < VulkanDescriptorLimits.SpecRequiredMinimum,
+                "the heaviest shipped pipeline is at the spec floor, so the next uniform buffer added to it cannot "
+                + "be created on a minimum-spec device at all.");
         }
 
         /// <summary>
@@ -365,21 +380,23 @@ namespace KhaozEngine.Tests.Gpu
         {
             var api = new FakeVulkanDescriptorApi();
             var setLayouts = new VulkanDescriptorSetLayoutCache(api);
-            var cache = new VulkanPipelineLayoutCache(api, maxDynamicUniformBuffers: 2);
+            var cache = new VulkanPipelineLayoutCache(api, maxDynamicUniformBuffers: 3);
 
             using var main = new VulkanResourceLayout(setLayouts, ShippedLayouts["Model.skinnedMain"]);
             using var fragment = new VulkanResourceLayout(setLayouts, ShippedLayouts["Model.skinnedFrag"]);
+            using var palette = new VulkanResourceLayout(setLayouts, ShippedLayouts["SkinnedBonePalette"]);
             using var extra = new VulkanResourceLayout(setLayouts, ShippedLayouts["Sky"]);
 
-            // The real shipped skinned pipeline: two dynamic uniforms, both in its first set since #604, and a
-            // texture-only second set. It fits a limit of 2 exactly, which is what makes the throw below a real
-            // boundary rather than a comfortable one.
-            ulong skinned = cache.GetOrCreate(new[] { main, fragment });
-            Assert.Equal(new ulong[] { main.SetLayout, fragment.SetLayout }, api.PipelineLayouts[skinned]);
+            // The real shipped skinned pipeline: two dynamic uniforms in its first set since #604, a texture-only
+            // second set, and the shared bone palette's third since #407. It fits a limit of 3 exactly, which is
+            // what makes the throw below a real boundary rather than a comfortable one.
+            ulong skinned = cache.GetOrCreate(new[] { main, fragment, palette });
+            Assert.Equal(new ulong[] { main.SetLayout, fragment.SetLayout, palette.SetLayout },
+                api.PipelineLayouts[skinned]);
 
-            // A third set carrying one more uniform buffer takes it over the same limit.
+            // A fourth set carrying one more uniform buffer takes it over the same limit.
             Assert.Throws<NotSupportedException>(
-                () => cache.GetOrCreate(new[] { main, fragment, extra }));
+                () => cache.GetOrCreate(new[] { main, fragment, palette, extra }));
         }
     }
 }

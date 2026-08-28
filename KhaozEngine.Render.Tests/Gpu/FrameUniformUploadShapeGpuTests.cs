@@ -42,11 +42,14 @@ namespace KhaozEngine.Tests.Gpu
         const uint FrameUboBytes = 1008;
         // ShadowMapRenderer: MaxCascades (4) 256-byte dynamic slots.
         const uint ShadowCascadeUboBytes = 4 * 256;
-        // One GPU-skinned draw starts each growable UBO at its minimum eight slots. Both slot sizes round to 8448
-        // since #604 shrank the main slot to { Model; P; bones[128] }, so the two buffers are now the SAME SIZE and
-        // this one constant covers both. That is why the skinned row below counts two destinations rather than
-        // asserting the uniqueness the other rows can (see AssertOneWholeWritePerBuffer).
-        const uint SkinnedSlotUboBytes = 8 * 8448;
+        // One GPU-skinned draw starts each growable UBO at its minimum eight slots. Both PER-DRAW slot sizes round
+        // to 256 now that #604 took the frame block and #407 the palette out of them, so the two buffers are the
+        // SAME SIZE and this one constant covers both. That is why the skinned row below counts two destinations
+        // rather than asserting the uniqueness the other rows can (see AssertOneWholeWritePerBuffer).
+        const uint SkinnedSlotUboBytes = 8 * 256;
+        // The palette they were carved out of: eight slots of SkinnedBonePalette.SlotBytes, ONE per caster whatever
+        // the cascade count. Unique by size, which is what lets its row assert per-buffer uniqueness.
+        const uint SkinnedPaletteUboBytes = 8 * 8192;
         // WaterRenderer: min four planes of SlotBytes (768), the 256-aligned round-up of the 672-byte payload.
         const uint WaterUboBytes = 4 * 768;
         // OverlayMeshRenderer / SpriteBatch: both start at eight 256-byte dynamic-offset slots.
@@ -220,6 +223,95 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(scene.ShadowPassSkippedLastFrame,
                 "a GPU-skinned caster must keep the depth pass dirty so the shadow-slot upload is exercised");
             AssertOneWholeWritePerBuffer(rec, SkinnedSlotUboBytes, 2, "skinned main + shadow slot UBOs");
+            AssertOneWholeBufferWrite(rec, SkinnedPaletteUboBytes, "skinned bone palette UBO");
+        }
+
+        /// <summary>
+        /// THE PALETTE COSTS THE SAME WHATEVER THE CASCADE COUNT, which is the whole of what #407 bought and is the
+        /// half no per-frame upload count can see on its own. Before it, a caster's bones were re-packed into every
+        /// (cascade, caster) depth slot AND into its main slot, so the skinning-uniform bytes of a shadowed frame
+        /// scaled with <c>cascadeCount</c>. Now the palette buffer takes ONE whole write per frame and the depth
+        /// slots carry a light matrix each, so the same scene at two cascades and at four records the same palette
+        /// upload byte for byte.
+        /// <para>
+        /// Two scenes rather than one re-configured, because <c>ShadowCascadeCount</c> is committed when the atlas
+        /// is built and cannot move on a live scene. Everything else about the two frames is identical.
+        /// </para>
+        /// </summary>
+        [GpuFact]
+        public void The_bone_palette_uploads_once_per_frame_whatever_the_cascade_count()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = gpu.GpuDevice;
+
+            (int Uploads, long Bytes, long SkinningBytes, int Drawn) two = SkinnedPaletteUploads(gd, cascades: 2);
+            (int Uploads, long Bytes, long SkinningBytes, int Drawn) four = SkinnedPaletteUploads(gd, cascades: 4);
+
+            Assert.Equal(1, two.Uploads);
+            Assert.Equal(1, four.Uploads);
+            Assert.Equal(two.Bytes, four.Bytes);
+
+            // Both frames drew all four casters, so the only term that can differ below is the per-cascade one.
+            Assert.Equal(4, two.Drawn);
+            Assert.Equal(4, four.Drawn);
+
+            // AND THE TWO FRAMES REALLY DID RUN AT DIFFERENT CASCADE COUNTS, which the equal palette upload above
+            // cannot show on its own: a scene that quietly clamped both runs to the same count would pass it. The
+            // frame's skinning-uniform total is what still scales, by exactly the 64-byte light matrix per (cascade,
+            // caster) that is all a depth slot holds now. Four casters, so the gap is 4 * 2 * 64 = 512 bytes.
+            Assert.Equal(512L, four.SkinningBytes - two.SkinningBytes);
+        }
+
+        /// <summary>Render one shadowed GPU-skinned frame at <paramref name="cascades"/> cascades and report how
+        /// many times the bone-palette buffer was written, how many bytes went into it, and the frame's whole
+        /// skinning-uniform total, and how many skinned instances the main pass drew.</summary>
+        static (int Uploads, long Bytes, long SkinningBytes, int Drawn) SkinnedPaletteUploads(
+            IGpuDevice gd, int cascades)
+        {
+            var f = gd.Factory;
+            using IGpuTexture finalTex = f.CreateTexture(GpuTextureDescription.Texture2D(
+                W, H, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+            using IGpuFramebuffer finalFB = f.CreateFramebuffer(null, finalTex);
+
+            // The cascade count is a CONSTRUCTION-time atlas knob (the atlas handle is bound into every material
+            // set), so it is seeded through the ctor seam rather than written on a live scene.
+            var shadows = new ShadowSettings { Mode = ShadowMode.ShadowMap, ShadowCascadeCount = cascades };
+            using var scene = new Scene3D(gd, finalFB.Outputs, shadows);
+            scene.UseGpuSkinning = true;
+            scene.Post.Starfield = false;
+            scene.Post.LightDirection = new Vector3(-0.55f, -0.8f, -0.25f);
+            scene.Camera.Frame(new Vector3(0f, 0.4f, 0f), new Vector3(6f, 4.5f, 6f));
+
+            MeshHandle floor = scene.LoadMesh(MeshPrimitives.Tile(10f, 0.1f));
+            SkinnedGltfMesh tube = SkinnedMeshBuilder.BuildTube(0.5f, 4f, 10, 10, 6, Axis.Z);
+            var casters = new SkinnedMeshHandle[4];
+            for (int i = 0; i < casters.Length; i++) casters[i] = scene.LoadSkinnedMesh(tube);
+
+            using IGpuCommandList real = f.CreateCommandList();
+            var rec = new RecordingGpuCommandList(real);
+
+            scene.Begin();
+            scene.Draw(floor, Matrix4x4.Identity);
+            // FOUR casters, all in shot, so the per-(cascade, caster) term below is wide enough to read.
+            for (int i = 0; i < casters.Length; i++)
+            {
+                scene.DrawSkinned(casters[i], tube.RestPose,
+                    Matrix4x4.CreateTranslation(-2.4f + i * 1.6f, 0.6f, 0f), Color.White);
+            }
+            scene.PrepareFrame();
+            rec.Begin();
+            scene.RenderInternal(rec, W, H, finalFB);
+            rec.End();
+            gd.Submit(real);
+            gd.WaitForIdle();
+
+            Assert.False(scene.ShadowPassSkippedLastFrame,
+                "the depth pass must have run, or the per-cascade half of this comparison proves nothing");
+
+            List<RecordingGpuCommandList.Upload> hits = rec.ToBuffersOfSize(SkinnedPaletteUboBytes);
+            long bytes = 0;
+            foreach (RecordingGpuCommandList.Upload u in hits) bytes += u.Bytes;
+            return (hits.Count, bytes, scene.LastFrameStats.SkinnedUniformUploadBytes, scene.DrawnSkinnedInstances);
         }
 
         [GpuFact]

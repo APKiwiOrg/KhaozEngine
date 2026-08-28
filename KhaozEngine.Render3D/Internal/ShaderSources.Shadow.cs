@@ -212,16 +212,22 @@ void main() {
     oDepth = vec4(max(vLightDepth, 0.0), 0.0, 0.0, 1.0);   // near-plane pancake, as ShadowDepthFrag
 }";
 
-        // Skinned shadow depth vertex (GPU skinning shadow-pass mirror). Reads ONE combined resource buffer at set 0
-        // ({ LightMvp; bones[128] }, LightMvp = Model * clip-corrected LightViewProj folded per draw), skins the vertex
-        // exactly like SkinnedModelVert, and projects into light-clip. The fragment is the shared ShadowDepthFrag (no
-        // resources). Reuses the ShadowDepthFrag output. The unread per-vertex inputs (Normal/Color/TexCoord/Tangent)
-        // are summed into a 1e-30 sink so SPIRV-Cross keeps the HLSL vertex-input signature gap-free (no FXC/WARP
-        // miscompile - the same trap ShadowDepthVert documents).
+        // Skinned shadow depth vertex (GPU skinning shadow-pass mirror). TWO vertex-only dynamic-offset buffers since
+        // #407: `VBlock` at set 0 holds this (caster, cascade) pair's LightMvp = Model * clip-corrected LightViewProj,
+        // folded per draw, and `Palette` at set 1 holds the CASTER's composed bones. They are separate sets because a
+        // set carries exactly one dynamic offset and the two are indexed differently: the matrix per caster-cascade,
+        // the palette per caster. The palette buffer and its set are the very ones SkinnedModelVert binds, so a
+        // caster's bones upload ONCE a frame and every cascade reads that upload instead of a copy of it. It skins the
+        // vertex exactly like SkinnedModelVert, then projects into light-clip. The fragment is the shared
+        // ShadowDepthFrag (no resources). Reuses the ShadowDepthFrag output. The unread per-vertex inputs
+        // (Normal/Color/TexCoord/Tangent) are summed into a 1e-30 sink so SPIRV-Cross keeps the HLSL vertex-input
+        // signature gap-free (no FXC/WARP miscompile - the same trap ShadowDepthVert documents).
         public const string SkinnedShadowDepthVert = @"#version 450
 layout(set=0, binding=0) uniform VBlock {
     mat4 LightMvp;         // Model * clip-corrected LightViewProj (folded per draw)
-    mat4 bones[128];       // this draw's composed palette (inverseBind*jointWorld)
+};
+layout(set=1, binding=0) uniform Palette {
+    mat4 bones[128];       // this CASTER's composed palette (inverseBind*jointWorld), shared with the main pass
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;

@@ -170,7 +170,7 @@ namespace KhaozEngine.Render3D
         readonly List<ModelRenderer.InstanceData> _cpuSkinnedInstances = new();
         readonly List<CpuSkinnedDraw> _cpuSkinnedDraws = new();
         // GPU-skinning path (UseGpuSkinning): per-frame draw list. No CPU deform - each entry carries its rest-pose
-        // buffers + the bone-palette slice + the per-draw matrices/material, packed into the combined UBO at draw time.
+        // buffers + the bone-palette slice + the per-draw matrices/material. See Scene3D.GpuSkinning.cs for the pack.
         readonly List<GpuSkinnedDraw> _gpuSkinnedDraws = new();
         Vector3 _billboardRight, _billboardUp;
         bool _billboardBasisValid;
@@ -204,10 +204,12 @@ namespace KhaozEngine.Render3D
         /// <summary>
         /// Opt-in GPU skinning: when true, skinned draws are deformed on the GPU (the vertex shader blends the bone
         /// palette) instead of on the CPU. Default <b>OFF</b>. Set 0 binding 0 is the shared frame block both stages
-        /// read, binding 1 the per-draw <c>{ Model; P; bones[128] }</c> the vertex reads at its dynamic offset, and
-        /// set 1 the per-mesh material maps the fragment reads. Until #604 the frame block and a CPU-folded
-        /// <c>Mvp</c> rode in that per-draw block too, so the pipeline read one buffer, which is what the retired
-        /// Veldrid Metal backend needed (<c>GpuSkinningReproGpuTests</c>). The rest-pose vertex buffer uploads once at load.
+        /// read, binding 1 the per-draw <c>{ Model; P }</c> the vertex reads at its dynamic offset, set 1 the
+        /// per-mesh material maps the fragment reads, and set 2 the caster's <c>{ bones[128] }</c>, a buffer the
+        /// SHADOW pass binds as well so a palette goes up once a frame rather than once per pass per cascade (#407).
+        /// Until #604 the frame block and a CPU-folded <c>Mvp</c> rode in that per-draw block too, so the pipeline
+        /// read one buffer, which is what the retired Veldrid Metal backend needed
+        /// (<c>GpuSkinningReproGpuTests</c>). The rest-pose vertex buffer uploads once at load.
         /// Only the per-draw palette + matrices upload each frame, so the CPU cost is a palette pack, not a full
         /// vertex deform - the win at MMO crowd scale. Rendering is pixel-parity with the CPU path (the shader mirrors
         /// <see cref="SkinningMath.SkinVertex"/>), and the shadow depth pass mirrors the flag. It ships OFF because the
@@ -1738,7 +1740,7 @@ namespace KhaozEngine.Render3D
                     if (UseGpuSkinning)
                     {
                         // Record the draw. The GPU deforms the rest-pose buffer. The palette lives at slot i of
-                        // _boneMatrices (submission index), packed into the combined UBO at the compacted slot below.
+                        // _boneMatrices (submission index), packed into the shared palette at the compacted slot.
                         _gpuSkinnedDraws.Add(new GpuSkinnedDraw(entry.Vb, entry.Ib, entry.IndexCount, entry.IndexFormat,
                             entry.SkinnedMaterialSet, i * cap, entry.InverseBind.Length, (uint)_gpuSkinnedDraws.Count,
                             ToRender(it.World), it.Tint, emissive, specParams, visibleMain, dissolving));   // reduced after the absolute classify
@@ -1760,15 +1762,9 @@ namespace KhaozEngine.Render3D
                         _cpuSkinnedDraws.Add(new CpuSkinnedDraw(entry.Ib, entry.IndexCount, entry.IndexFormat, baseVertex, entry.MaterialSet, dissolving, visibleMain));
                     }
                 }
-                if (UseGpuSkinning)
-                {
-                    if (_gpuSkinnedDraws.Count > 0)
-                    {
-                        _model.EnsureSkinnedMainCapacity((uint)_gpuSkinnedDraws.Count);
-                        // One skinned-depth slot per (cascade, caster): each cascade folds its own light matrix.
-                        if (shadowMapActive) _model.EnsureSkinnedShadowCapacity((uint)(_gpuSkinnedDraws.Count * Math.Max(1, _cascadeCount)));
-                    }
-                }
+                // Sizes the frame's three skinned destinations and uploads the ONE shared bone palette both passes
+                // read. See Scene3D.GpuSkinning.cs.
+                if (UseGpuSkinning) PrepareGpuSkinnedFrame(cl, shadowMapActive);
                 else if (_cpuSkinnedDraws.Count > 0)
                 {
                     _model.UploadCpuSkinned(cl, CollectionsMarshal.AsSpan(_cpuSkinnedVerts), CollectionsMarshal.AsSpan(_cpuSkinnedInstances));
@@ -1907,43 +1903,9 @@ namespace KhaozEngine.Render3D
             }
 
             // Skinned draws: an entry with VisibleMain false is drawn only into the shadow map (camera-culled,
-            // shadow-visible - see ClassifySkinnedVisibility), so it must NOT also draw here.
-            if (UseGpuSkinning)
-            {
-                // GPU path: pack each visible-main draw's per-draw slot (its world matrix, packed constants and bone
-                // palette), then draw through the skinned pipeline (rest-pose buffer at vertex slot 0, set 0 =
-                // shared frame block + this draw's window, material at set 1). Pack all, then bind + draw.
-                if (_gpuSkinnedDraws.Count > 0)
-                {
-                    var boneSpan = CollectionsMarshal.AsSpan(_boneMatrices);
-                    bool packedMainSlots = false;
-                    for (int d = 0; d < _gpuSkinnedDraws.Count; d++)
-                    {
-                        var dr = _gpuSkinnedDraws[d];
-                        if (!dr.VisibleMain) continue;
-                        _model.PackSkinnedMainSlot(dr.Slot, dr.World, dr.Tint, dr.Emissive, dr.SpecParams,
-                            boneSpan.Slice(dr.BoneSpanStart, dr.BoneCount));
-                        // header (Model/P) + this mesh's bones: 1072 bytes less than before #604 took the frame block out.
-                        _frameStats.AddSkinnedUniformUpload((long)(ModelRenderer.SkinnedBonesOffset + (uint)dr.BoneCount * 64));
-                        packedMainSlots = true;
-                    }
-                    if (packedMainSlots) _model.UploadSkinnedMainSlots(cl);
-                    bool dissolveBound = false;
-                    _model.BindSkinnedPass(cl);
-                    for (int d = 0; d < _gpuSkinnedDraws.Count; d++)
-                    {
-                        var dr = _gpuSkinnedDraws[d];
-                        if (!dr.VisibleMain) continue;
-                        if (dr.Dissolve != dissolveBound)   // switch pipelines only when the dissolve state changes
-                        {
-                            if (dr.Dissolve) _model.BindSkinnedDissolvePass(cl); else _model.BindSkinnedPass(cl);
-                            dissolveBound = dr.Dissolve;
-                        }
-                        _model.DrawGpuSkinned(cl, dr.RestVb, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.Slot, dr.SkinnedMaterialSet);
-                        CountSkinnedDraw(dr.IndexCount);
-                    }
-                }
-            }
+            // shadow-visible - see ClassifySkinnedVisibility), so it must NOT also draw here. The GPU path's loop
+            // lives in Scene3D.GpuSkinning.cs, beside the palette upload it depends on.
+            if (UseGpuSkinning) DrawGpuSkinnedMain(cl);
             else if (_cpuSkinnedDraws.Count > 0)
             {
                 // CPU path: the deformed geometry uploaded above, drawn through the rigid (no-bone) model pipeline.
@@ -2463,7 +2425,7 @@ namespace KhaozEngine.Render3D
         /// <summary>One GPU-skinned draw (built per frame in RenderInternal when <see cref="UseGpuSkinning"/> is on).
         /// Carries the mesh's rest-pose vertex + index buffers (uploaded once at load - the GPU deforms them), the
         /// set-1 material set, the composed bone-palette slice (offset into <c>_boneMatrices</c> + bone count), the
-        /// compacted combined-UBO slot, and the per-draw matrices/material the vertex shader folds. The shadow depth
+        /// compacted per-caster slot, and the per-draw matrices/material the vertex shader folds. The shadow depth
         /// pass packs + draws every entry (out-of-volume ones clip away). The main pass skips a
         /// <see cref="VisibleMain"/>-false entry (camera-culled, kept only as a shadow caster).</summary>
         readonly struct GpuSkinnedDraw
@@ -2474,7 +2436,7 @@ namespace KhaozEngine.Render3D
             public readonly IGpuResourceSet? SkinnedMaterialSet;
             public readonly int BoneSpanStart;   // into _boneMatrices (submission index * MaxBonesPerDraw)
             public readonly int BoneCount;
-            public readonly uint Slot;            // compacted combined-UBO slot (main + shadow share it)
+            public readonly uint Slot;            // compacted per-caster slot: the main header window AND the shared palette
             public readonly Matrix4x4 World;
             public readonly Vector4 Tint, Emissive, SpecParams;
             public readonly bool VisibleMain;

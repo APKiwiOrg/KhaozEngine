@@ -11,10 +11,11 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu
 {
     // On-device proof of the opt-in GPU skinning path (Scene3D.UseGpuSkinning). Set 0 binding 0 is the shared frame
-    // block both stages read, binding 1 the per-draw {Model;P;bones[128]} the vertex reads at its dynamic offset,
-    // material maps at set 1 for the fragment. That is the #604 unfold of the fold-matrix binding the spike proved
-    // (GpuSkinningReproGpuTests variant 3), which folded the frame block and a CPU-computed Mvp into every draw's
-    // slot so the pipeline read one buffer. These
+    // block both stages read, binding 1 the per-draw {Model;P} the vertex reads at its dynamic offset, material maps
+    // at set 1 for the fragment, and the caster's {bones[128]} at set 2, shared with the shadow depth pass (#407).
+    // That is the #604 unfold of the fold-matrix binding the spike proved (GpuSkinningReproGpuTests variant 3),
+    // which folded the frame block and a CPU-computed Mvp into every draw's slot so the pipeline read one buffer,
+    // plus #407 taking the palette out of what was left. These
     // render the SAME posed tube through both paths and assert pixel parity within the golden tolerance, that the GPU
     // reads EVERY bone (a bent pose deforms, not just bones[0]), the rest-pose identity check (palette=identity must
     // render the undeformed mesh - the check that caught the old attempt's corruption), multi-character same-mesh
@@ -178,7 +179,7 @@ namespace KhaozEngine.Tests.Gpu
 
         // ---- Multi-character same-mesh with the flag ON: two instances of one skinned mesh, each with its own palette
         //      (rest + bent), in one frame. Mirrors Render3DSkinnedMultiInstanceGpuTests but on the GPU path: each
-        //      draw selects its own combined-UBO slot via a per-draw dynamic offset, so the bent instance's arc must
+        //      draw selects its own per-draw slot via a dynamic offset, so the bent instance's arc must
         //      still contribute the pixels the rest instance does not cover (no slot bleed / garbage fill). ----
         [GpuFact]
         public void MultiInstance_SameMesh_FlagOn()
@@ -212,7 +213,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(opaqueBoth <= opaqueRest + bentContribRef + 0.1 * W * H,
                 $"garbage fill on the GPU path: opaqueBoth={opaqueBoth} >> union ~{opaqueRest + bentContribRef}");
             Assert.True(bentContribBoth >= 0.6 * bentContribRef,
-                $"instance 1 (bent) did not read its own combined-UBO slot: {bentContribBoth} px vs reference {bentContribRef} px");
+                $"instance 1 (bent) did not read its own per-draw slot: {bentContribBoth} px vs reference {bentContribRef} px");
 
             preview.Scene.UnloadSkinnedMesh(h);
         }

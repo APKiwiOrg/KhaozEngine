@@ -70,10 +70,11 @@ namespace KhaozEngine.Tests.Gpu
         const int ShadowedFramebufferBinds = 4;
         const int ShadowedDepthClears = 2;
 
-        // The same shadowed frame with GPU skinning on and one skinned caster added. The skinned main and shadow
-        // slot buffers are each packed and uploaded ONCE per pass (17.20.0), so this is +2 uploads over the
-        // rigid-only frame and NOT two per skinned draw, which is precisely the regression that shipped.
-        const int SkinnedUpdateBuffers = 10;
+        // The same shadowed frame with GPU skinning on and one skinned caster added. THREE skinned destinations
+        // since #407, each packed and uploaded ONCE for the whole frame: the main slot buffer, the shadow slot
+        // buffer (17.20.0 made both once-per-pass rather than once per skinned draw, which is the regression that
+        // shipped) and the shared bone palette, which is once per FRAME however many passes read it.
+        const int SkinnedUpdateBuffers = 11;
         const int SkinnedPipelineBinds = 11;
         const int SkinnedDrawIndexed = 10;
 
@@ -207,10 +208,12 @@ namespace KhaozEngine.Tests.Gpu
             AssertCount(tally, GpuCommandKind.SetPipeline, SkinnedPipelineBinds);
             AssertCount(tally, GpuCommandKind.DrawIndexed, SkinnedDrawIndexed);
 
-            // Adding a GPU-skinned caster costs exactly two more uploads for the whole frame: the main slot
-            // buffer once and the shadow slot buffer once. Not two per skinned draw, which is the shape 17.20.0
-            // removed and this number is here to stop coming back.
-            Assert.Equal(2, SkinnedUpdateBuffers - ShadowedUpdateBuffers);
+            // Adding a GPU-skinned caster costs exactly three more uploads for the whole frame: the main slot
+            // buffer once, the shadow slot buffer once, and the shared bone palette once. Not per skinned draw,
+            // which is the shape 17.20.0 removed, and not per cascade, which is the shape #407 removed. The palette
+            // is the only one of the three that a second cascade used to multiply, and it is now the one that
+            // cannot: it is written before either pass and read by both.
+            Assert.Equal(3, SkinnedUpdateBuffers - ShadowedUpdateBuffers);
         }
 
         /// <summary>

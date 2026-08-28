@@ -53,7 +53,9 @@ namespace KhaozEngine.Tests.Gpu
                 shapes.Add((name, harness.Set(name)));
             }
 
-            Assert.Equal(36, shapes.Count);   // 36 since #727 split the tile-ground layout, as #604 did the splat one
+            // 37 since #407 gave the GPU-skinned bone palette a layout of its own, after #727 split the tile-ground
+            // layout and #604 the splat one.
+            Assert.Equal(37, shapes.Count);
 
             for (int segment = 0; segment < harness.Rings.FramesInFlight; segment++)
             {

@@ -228,6 +228,21 @@ one about your own.
   engine. The Vulkan shipped-layout table is 36 rows over the same 34 pipelines, and tile ground is the third
   pipeline spending two dynamic uniform descriptors, which leaves the pinned ceiling where it was.
 
+- A GPU-skinned caster's bone palette is now ONE buffer, `SkinnedBonePalette`, with one 8192-byte slot per
+  caster, packed and uploaded once a frame before either pass draws. Both skinned pipelines bind the same
+  layout and the same resource set, at set 2 in the model pair and set 1 in the depth one, so the main pass
+  and every shadow cascade read one upload instead of re-packing the same bones per pass per cascade
+  ([#407](https://github.com/APKiwiOrg/KhaozEngine/issues/407)).
+- The two per-draw slots keep only what really is per draw: `{ Model; P }` in the main pass and `{ LightMvp }`
+  in the depth pass, 256 bytes each where both were 8448. At 24 casters, 48 bones and 4 cascades a frame's
+  skinning-uniform upload goes from 377,856 to 82,944 bytes, measured by `FrameUploadAttributionGpuTests` as
+  369 KB to 81 KB. Pixels are unchanged on every backend at the existing golden tolerance.
+- The skinned shadow pass was the last combined uniform buffer in the tree, so the retired
+  one-uniform-buffer rule's history section in `docs/DEPENDENCY-SEAMS.md` now records that none is left.
+  `ModelRenderer.SkinnedBonesOffset` is renamed `SkinnedHeaderBytes` (same 128 value, it is the whole payload
+  of a main slot now), and the GPU-skinned draw entry points take the caster's palette slot alongside their
+  own.
+
 ## 18.0.0
 
 18.0.0 deletes the Veldrid incumbent GPU backend. The engine's own Metal, Direct3D 11 and Vulkan backends are

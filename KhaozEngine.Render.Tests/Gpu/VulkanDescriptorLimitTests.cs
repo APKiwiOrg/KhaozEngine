@@ -82,15 +82,17 @@ namespace KhaozEngine.Tests.Gpu
                 ["Model.skinnedFrag"] = L(T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"),
                     T("ShadowMap"), S("ShadowSamp")),
                 // Render3D/Rendering/ModelRenderer.Splat.cs:41 and :48. TWO sets since #604: the shared frame
-                // block, then everything the material owns. It is the only shipped pipeline with a uniform buffer
-                // in both of its sets, and one of the two that spend two uniform buffers in total.
+                // block, then everything the material owns. One of the two ground pipelines that put a uniform
+                // buffer in BOTH of their sets, and one of the three that spend two uniform buffers in total.
                 ["Model.splatFrame"] = L(U("U", VF)),
                 ["Model.splatMaterial"] = L(U("SplatParams", F), T("AlbedoArray"), T("NormalArray"), S("Sampler"),
                     T("ShadowMap"), S("ShadowSamp")),
-                // Render3D/Rendering/ModelRenderer.TileGround.cs:33. Albedo only, so one array where the splat
-                // material layout has two, and the shadow map stays last. Still the combined frame+params buffer
-                // the splat pass carried until #604.
-                ["Model.tileGround"] = L(U("U", VF), T("AlbedoArray"), S("Sampler"), T("ShadowMap"), S("ShadowSamp")),
+                // Render3D/Rendering/ModelRenderer.TileGround.cs:47 and :55. The same two-set split since #727,
+                // which unfolded the last combined frame+params buffer in the tree. Albedo only, so one array
+                // where the splat material layout has two, and the shadow map stays last.
+                ["Model.tileGroundFrame"] = L(U("U", VF)),
+                ["Model.tileGroundMaterial"] = L(U("TileGroundParams", F), T("AlbedoArray"), S("Sampler"),
+                    T("ShadowMap"), S("ShadowSamp")),
 
                 // Render3D/Rendering/OceanFftProducer.cs:506 and :510, both compute
                 ["OceanFft.row"] = L(U("Params", C), Rw("H0Buf", C), Rw("WorkBuf", C)),
@@ -143,11 +145,12 @@ namespace KhaozEngine.Tests.Gpu
         /// set with two dynamic uniform buffers is legal everywhere, and a pipeline combining several sets is
         /// where a ceiling is really reached.
         /// <para>
-        /// Three shipped families use more than one layout, and TWO of them spend two uniform buffers since #604.
-        /// SpriteBatch still splits ONE uniform buffer into one set with pure texture and sampler resources in the
-        /// other. The splat pipeline puts a uniform buffer in BOTH its sets (the shared frame block, then the
-        /// material's own params beside its textures). The skinned pair puts both in ONE set, the shared frame
-        /// block and then the per-draw block, with its material textures alone in the other.
+        /// Four shipped families use more than one layout, and THREE of them spend two uniform buffers since #604
+        /// and #727. SpriteBatch still splits ONE uniform buffer into one set with pure texture and sampler
+        /// resources in the other. The splat and tile-ground pipelines each put a uniform buffer in BOTH their sets
+        /// (the shared frame block, then the material's own params beside its textures). The skinned pair puts both
+        /// in ONE set, the shared frame block and then the per-draw block, with its material textures alone in the
+        /// other.
         /// </para>
         /// </summary>
         internal static IReadOnlyList<(string Pipeline, string[] Slots)> ShippedPipelines { get; } =
@@ -159,7 +162,8 @@ namespace KhaozEngine.Tests.Gpu
             ("ModelRenderer skinned", ["Model.skinnedMain", "Model.skinnedFrag"]),
             ("ModelRenderer skinned dissolve", ["Model.skinnedMain", "Model.skinnedFrag"]),
 
-            // Everything else is a single-set pipeline.
+            // The rest, alphabetically. Every one is a single-set pipeline except the two ground passes, which
+            // carry their own two-slot arrays below since #604 and #727.
             ("BeamRenderer", ["Beam"]),
             ("DepthLineRenderer", ["DepthLine"]),
             ("DistortionRenderer", ["Distortion"]),
@@ -167,7 +171,7 @@ namespace KhaozEngine.Tests.Gpu
             ("ModelRenderer", ["Model"]),
             ("ModelRenderer dissolve", ["Model"]),
             ("ModelRenderer splat", ["Model.splatFrame", "Model.splatMaterial"]),
-            ("ModelRenderer tile ground", ["Model.tileGround"]),
+            ("ModelRenderer tile ground", ["Model.tileGroundFrame", "Model.tileGroundMaterial"]),
             ("OceanFftProducer row", ["OceanFft.row"]),
             ("OceanFftProducer col", ["OceanFft.col"]),
             ("OverlayMeshRenderer", ["OverlayMesh"]),
@@ -201,11 +205,11 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void EveryShippedPipeline_StaysWithinTheRequiredMinimumDynamicUniformBuffers()
         {
-            // 35 layouts since #604 split the splat pipeline's one layout into a frame set and a material set.
-            // 34 PIPELINES, unchanged by that: a pipeline gained a slot rather than a pipeline being added, which
-            // is why the two numbers came apart here for the first time. Both are stated so an emptied table
-            // cannot pass by agreeing with itself.
-            Assert.Equal(35, ShippedLayouts.Count);
+            // 36 layouts: 35 after #604 split the splat pipeline's one layout into a frame set and a material set,
+            // and 36 after #727 did the same to the tile-ground pipeline. 34 PIPELINES, unchanged by either: a
+            // pipeline gained a slot rather than a pipeline being added, which is why the two numbers came apart.
+            // Both are stated so an emptied table cannot pass by agreeing with itself.
+            Assert.Equal(36, ShippedLayouts.Count);
             Assert.Equal(34, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
@@ -231,7 +235,8 @@ namespace KhaozEngine.Tests.Gpu
         /// numbering, documented in <c>ModelRenderer</c>, <c>WaterRenderer</c> and <c>GroundDecalRenderer</c>)
         /// arriving here as seven descriptors of headroom. The splat pipeline raised it to TWO when its frame and
         /// material uniforms were split across its two sets, which leaves six, and the skinned pipeline joined it
-        /// at two when its per-draw block came out of the frame block into a second buffer.
+        /// at two when its per-draw block came out of the frame block into a second buffer, as did the tile-ground
+        /// pipeline at #727. Three pipelines sit at two now and the ceiling has not moved past it.
         /// <para>
         /// RAISING THIS NUMBER IS FINE UP TO <see cref="VulkanDescriptorLimits.SpecRequiredMinimum"/>. Update it
         /// with the pipeline that raised it. This is a per-PIPELINE-LAYOUT sum over EVERY uniform buffer, so both

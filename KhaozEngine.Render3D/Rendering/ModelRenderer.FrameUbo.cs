@@ -54,8 +54,8 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         // Cached this-frame uniforms (set in SetFrameUniforms), packed into _frameImage and uploaded by
-        // WriteFrameUniformsTo into the shared model UBO (which the splat pass binds too) and into each tile-ground
-        // material's combined UBO.
+        // WriteFrameUniformsTo into the shared model UBO, which every pass that reads the frame block binds: the
+        // model, splat, tile-ground and skinned pipelines all point at that one buffer.
         FrameUbo _frame;
         // Cached this-frame shadow tail (set in SetShadowUniforms, default = strength 0 = inactive). Part of the
         // same block, so every pass that binds it receives shadows from one upload.
@@ -67,8 +67,8 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>Set this frame's cascaded shadow tail (per-cascade RECEIVER matrices + PCF/bias/strength/fade
         /// params). Call after <see cref="SetFrameUniforms"/> when the shadow-map tier is active. Leave unset (or pass
         /// a zero-strength tail) for no shadows. The value is uploaded by
-        /// <see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer)"/> into the model UBO and each tile-ground
-        /// material UBO. <paramref name="receiverMats"/> are already GPU-clip-corrected by the caller (up to
+        /// <see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer)"/> into the one shared frame UBO every
+        /// shadow-receiving pass binds. <paramref name="receiverMats"/> are already GPU-clip-corrected by the caller (up to
         /// <see cref="MaxCascades"/> entries, the first <paramref name="cascadeCount"/> are read).
         /// <paramref name="cascadeBlend"/> is the inner-cascade cross-fade band width (fraction of cascade-local UV
         /// from each edge) that blends toward the next cascade's result near a hand-off. <paramref name="normalOffsets"/>
@@ -114,10 +114,9 @@ namespace KhaozEngine.Render3D.Rendering
         // had finished with the staging buffer it just recycled, so each partial write was a CPU/GPU sync point in
         // the middle of the pass encode. Only a write covering the WHOLE buffer from offset 0 takes the cheap
         // UpdateSubresource path. The model pass's own UBO is exactly UboBytes, so packing it into one write moves
-        // it off the staging route entirely, and since #604 the splat pass reads that same buffer rather than a
-        // per-material copy of it. A tile-ground material's combined UBO is larger (params tail), so it stays on the
-        // staging route but pays for one trip instead of five. Metal and Vulkan have no such split, they are simply
-        // issued fewer commands.
+        // it off the staging route entirely, and since #604 and #727 every other pass reads that same buffer rather
+        // than a per-material or per-draw copy of it, so there is no combined destination left to write partially
+        // at all. Metal and Vulkan have no such split, they are simply issued fewer commands.
         readonly byte[] _frameImage = new byte[UboBytes];
         bool _frameImageDirty = true;
 
@@ -134,9 +133,9 @@ namespace KhaozEngine.Render3D.Rendering
             _frameImageDirty = false;
         }
 
-        /// <summary>This frame's packed frame block, for the callers that embed it in a larger contiguous upload
-        /// (the tile-ground material's combined UBO, the last one left). Repacks only when a setter has moved since
-        /// the last read.</summary>
+        /// <summary>This frame's packed frame block, as the bytes the single upload carries. No shipped caller
+        /// embeds it in a larger contiguous upload any more: the tile-ground material's combined UBO was the last
+        /// one that did, until #727. Repacks only when a setter has moved since the last read.</summary>
         internal ReadOnlySpan<byte> FrameImage
         {
             get
@@ -147,11 +146,10 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>Upload the cached frame uniforms (header + the two point-light arrays) into <paramref name="dst"/>
-        /// at offset 0, whole. <paramref name="dst"/> is a buffer of exactly <see cref="UboBytes"/> (the model UBO,
-        /// which the splat pass also binds since #604 split its per-material params off into their own buffer). A
-        /// tile-ground material's combined UBO goes through the <see cref="TileGroundUniformBuffer"/> overload
-        /// instead, which rewrites the whole larger buffer from its CPU mirror so the write is never partial
-        /// (#408).</summary>
+        /// at offset 0, whole. <paramref name="dst"/> is a buffer of exactly <see cref="UboBytes"/>: the shared
+        /// model UBO, which the splat, tile-ground and skinned pipelines all bind at set 0 as well, since #604 and
+        /// #727 split every per-material and per-draw block off into its own buffer. There is no second overload
+        /// for a combined destination any more, because there is no combined destination.</summary>
         public void WriteFrameUniformsTo(IGpuCommandList cl, IGpuBuffer dst) => WriteFrameUniformsTo(cl, dst, 0);
 
         /// <summary>As <see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer)"/>, but writes the frame block at an
@@ -165,14 +163,6 @@ namespace KhaozEngine.Render3D.Rendering
         /// why this is a single write rather than five.</remarks>
         public void WriteFrameUniformsTo(IGpuCommandList cl, IGpuBuffer dst, uint baseOffset)
             => cl.UpdateBuffer(dst, baseOffset, FrameImage);
-
-        /// <summary>Re-sync this frame's block into a tile-ground material's COMBINED UBO, as ONE whole-buffer write.
-        /// The material's params sit past the frame block in a larger buffer, so writing the head alone was a
-        /// partial write and a blocking Map on D3D11 (#408), and the CPU mirror in
-        /// <see cref="TileGroundUniformBuffer"/> is what lets the whole buffer be rebuilt and uploaded in one
-        /// command. The splat pass had the identical shape until #604 split its params into their own buffer, which
-        /// leaves this the only combined ground UBO left. Its tail is 64 layer vectors plus one.</summary>
-        public void WriteFrameUniformsTo(IGpuCommandList cl, TileGroundUniformBuffer dst) => dst.Upload(cl, FrameImage);
 
         /// <summary>Pure, headless-testable packing of the host light list into the two fixed-size UBO arrays:
         /// copies up to <see cref="MaxPointLights"/> lights (extras are dropped - the host selects the N nearest),

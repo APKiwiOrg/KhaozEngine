@@ -416,7 +416,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// segment was the shipped shape for one release and it was a defect rather than a documentation problem:
         /// a load-time write reached one segment out of <see cref="FramesInFlight"/>, so two frames out of every
         /// three bound memory nothing had ever written, intermittently, with nothing thrown and nothing logged.
-        /// <c>ModelRenderer</c>'s splat-params tail is the shipped consumer that did exactly that.
+        /// A ground material's params in <c>ModelRenderer</c> are the shipped consumer that did exactly that,
+        /// as a tail inside the pass's combined buffer then and as a buffer of their own since #604 and #727.
         /// </para>
         /// <para>
         /// A RECORD-TIME WRITE IS UNCHANGED and still reaches the current segment alone (see

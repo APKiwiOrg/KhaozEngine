@@ -124,10 +124,13 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     renders that vertex BLACK**: write 1 for none. A mesh built for the model pipeline, where `Tangent` is a
     tangent frame, is not a tile-ground mesh.
   - **Constraints worth knowing.** Entries past the layer count are ZEROED rather than defaulted, so a mesh naming
-    a slot the set never filled renders black instead of borrowing another material's look. The pipeline binds one
-    uniform buffer (the shared frame block, then `vec4 TintTiling[64]` and a `Misc` vector), the albedo array, its
-    sampler, then the shadow map and its sampler LAST, which is the Metal binding-order rule the terrain pass
-    already pays. Tile ground CASTS shadows, like a model mesh and unlike the splat terrain.
+    a slot the set never filled renders black instead of borrowing another material's look. The pipeline binds TWO
+    sets, the same split the splat pipeline has: set 0 is the shared frame block both stages read, and set 1 is the
+    material's own `TileGroundParams` buffer (`vec4 TintTiling[64]` then a `Misc` vector, written once at load),
+    then the albedo array, its sampler, and the shadow map and its sampler LAST, which is the binding-order
+    convention the terrain pass established. Until 18.1.0 the frame block and the params rode in ONE buffer per
+    material, re-uploaded whole every frame, which is what #727 unfolded. Tile ground CASTS shadows, like a model
+    mesh and unlike the splat terrain.
   - **Lifetime.** The material is owned by the scene, shared by every mesh drawn with it, and unloading a mesh does
     not free it. `LoadTileGroundMaterial` builds its mip chain on a command list of its own, so it refuses
     mid-frame with `GpuNestedRecordingException` (load once per view construction or catalog change).

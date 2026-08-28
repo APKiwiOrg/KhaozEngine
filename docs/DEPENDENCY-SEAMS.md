@@ -1222,7 +1222,8 @@ the split-stage layout the incumbent mis-bound and is now the record of a defect
 **WHEN IT WAS LIFTED, AND WHAT CAME OUT WITH IT.** The rule outlived the backend that needed it by one release,
 because the argument for keeping it was never the backend: it was that unfolding a combined buffer MOVES the
 emission on all three backends, so it is its own work with its own gates rather than a free simplification.
-#604 is that work, done across three commits in one branch.
+#604 is that work, done across three commits in one branch, and #727 is the fourth unfold, done on its own
+branch afterwards for the same reason.
 
 - **The splat terrain pass.** It bound one buffer per material, the frame block at offset 0 with the material's
   112 bytes appended, and re-uploaded the frame block into every loaded material's copy each frame. Now the
@@ -1240,11 +1241,15 @@ emission on all three backends, so it is its own work with its own gates rather 
   binding order the layout is walked in, which is the property the authored-index scheme produces and the native
   backend's binding table depends on.
 
-**TWO PIPELINES DELIBERATELY KEEP THEIR COMBINED BUFFER, and neither is waiting on anything.** The tile-ground
-pass still appends its per-material params after the frame block in one binding-0 block
-([#727](https://github.com/APKiwiOrg/KhaozEngine/issues/727) is the record of that choice), and the skinned
-SHADOW pass still carries its own `{ LightMvp; bones[128] }` (#407), whose per-cascade palette re-upload the
-unfold left byte for byte as it was. The sky, decal, particle and distortion passes each read one uniform
+**AND THE TILE-GROUND PASS FOLLOWED, which is where the combined shape ran out.** It appended its per-material
+params after the frame block in one binding-0 block, exactly as the splat pass had, and
+[#727](https://github.com/APKiwiOrg/KhaozEngine/issues/727) gave it the same split: the shared frame `U` at set 0
+binding 0 and a fragment-only `TileGroundParams` at set 1 binding 0, written once at load.
+`TileGroundUniformBuffer` went with it, as `SplatUniformBuffer` had, and `DrawTileGroundRuns` no longer walks
+every loaded ground material to re-upload the frame block. **ONE PIPELINE DELIBERATELY KEEPS ITS COMBINED
+BUFFER, and it is not waiting on anything.** The skinned SHADOW pass still carries its own
+`{ LightMvp; bones[128] }` (#407), whose per-cascade palette re-upload the unfolds left byte for byte as it was.
+The sky, decal, particle and distortion passes each read one uniform
 buffer too, and that is now a fact about how much those passes need rather than a rule they obey. Their frame
 blocks are described where they live: `../KhaozEngine.Render3D/Rendering/ParticleRenderer.cs` and
 `../KhaozEngine.Render3D/Rendering/DistortionRenderer.cs` are the two worth reading, because the reason their

@@ -285,9 +285,9 @@ namespace KhaozEngine.Render3D.Rendering
             _terrainSampler = factory.CreateSampler(new GpuSamplerDescription(
                 GpuSamplerFilter.Anisotropic, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, maximumAnisotropy: 16, mipLodBias: 1));
 
-            // The two ground passes' layouts + shaders, each in its own partial. The splat pass splits its uniforms
-            // across two sets (ModelRenderer.Splat.cs, #604). The tile-ground pass still carries the combined
-            // frame+params buffer the splat pass used to (ModelRenderer.TileGround.cs).
+            // The two ground passes' layouts + shaders, each in its own partial and each splitting its uniforms
+            // across two sets the same way: the shared frame block at set 0, the material's own params beside its
+            // textures at set 1 (ModelRenderer.Splat.cs for #604, ModelRenderer.TileGround.cs for #727).
             CreateSplatResources(factory);
             CreateTileGroundResources(factory);
 

@@ -462,7 +462,7 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("sampleKeyShadow(ShadowMap, ShadowSamp", ShaderSources.TileGroundFrag);
         }
 
-        // ---- Tile-ground material params tail ----
+        // ---- Tile-ground material params block ----
 
         [Fact]
         public void TileGroundShaders_DeclarePointLightArrays_SizedByMaxPointLights()
@@ -485,8 +485,8 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void TileGroundParamsBytes_MatchesGlslTail_MaxMaterialsPlusMisc()
         {
-            // The tail in the TileGroundFrag `U` block is TintTiling[MaxMaterials] + Misc, and BuildParams returns
-            // exactly that many vec4. If the two drift, the params land at the wrong offset behind the frame block.
+            // The TileGroundParams block is TintTiling[MaxMaterials] + Misc, and BuildParams returns exactly that
+            // many vec4. If the two drift, the buffer created for the block is the wrong size for it.
             Assert.Equal((TileGroundMaterialConfig.MaxMaterials + 1) * 16, (int)TileGroundMaterialConfig.ParamsBytes);
             Assert.Equal(
                 (int)TileGroundMaterialConfig.ParamsBytes / 16,
@@ -494,28 +494,30 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void TileGroundShaders_DeclareTintTilingArray_SizedByMaxMaterials()
+        public void TileGroundFrag_DeclaresTintTilingArray_SizedByMaxMaterials()
         {
-            // Build the GLSL spelling from the C# constant, so raising MaxMaterials without editing both shaders
-            // trips here rather than reading past the array on the GPU. Other half in ShaderSources.TileGround.cs.
+            // Build the GLSL spelling from the C# constant, so raising MaxMaterials without editing the shader
+            // trips here rather than reading past the array on the GPU. The other half lives in the
+            // TileGroundParams block of ShaderSources.TileGroundFrag, and only there since #727: the vertex stage
+            // reads no per-material data.
             string tintTiling = "vec4 TintTiling[" + TileGroundMaterialConfig.MaxMaterials + "];";
 
-            Assert.True(ShaderSources.TileGroundVert.Contains(tintTiling),
-                $"TileGroundVert lost '{tintTiling}': drifted from TileGroundMaterialConfig.MaxMaterials ({TileGroundMaterialConfig.MaxMaterials}). Fix ShaderSources.TileGroundVert or the constant.");
             Assert.True(ShaderSources.TileGroundFrag.Contains(tintTiling),
                 $"TileGroundFrag lost '{tintTiling}': drifted from TileGroundMaterialConfig.MaxMaterials ({TileGroundMaterialConfig.MaxMaterials}). Fix ShaderSources.TileGroundFrag or the constant.");
         }
 
         [Fact]
-        public void TileGroundTail_AppendsAtUboBytesOffset_PerGlslComment()
+        public void TileGroundParams_AreTheirOwnFragmentOnlyBlockAtSetOne()
         {
-            // Same tripwire as the splat tail: the renderer writes the params at UboBytes
-            // (ModelRenderer.CreateTileGroundParamsUbo), and both shaders quote that offset in their block comment.
-            string glslOffset = "(offset " + ModelRenderer.UboBytes + ")";
-            Assert.True(ShaderSources.TileGroundVert.Contains(glslOffset),
-                $"TileGroundVert no longer documents '{glslOffset}': the params append offset drifted from ModelRenderer.UboBytes ({ModelRenderer.UboBytes}). Fix the ShaderSources.TileGroundVert comment or the UBO size.");
-            Assert.True(ShaderSources.TileGroundFrag.Contains(glslOffset),
-                $"TileGroundFrag no longer documents '{glslOffset}': the params append offset drifted from ModelRenderer.UboBytes ({ModelRenderer.UboBytes}). Fix the ShaderSources.TileGroundFrag comment or the UBO size.");
+            // The params used to be APPENDED to the frame block, so this pinned the append offset against
+            // ModelRenderer.UboBytes. #727 gave them their own buffer, the same split #604 gave the splat pass,
+            // and what is worth pinning now is the split itself: the block is declared at set 1 binding 0, in the
+            // FRAGMENT alone. Re-declaring it in TileGroundVert would put a second buffer in the vertex stage for
+            // no reason, and folding it back into `U` would reinstate the per-material frame re-sync the unfold
+            // deleted.
+            Assert.Contains("layout(set=1, binding=0) uniform TileGroundParams {", ShaderSources.TileGroundFrag);
+            Assert.DoesNotContain("TileGroundParams", ShaderSources.TileGroundVert);
+            Assert.DoesNotContain("TintTiling", ShaderSources.TileGroundVert);
         }
 
         [Fact]

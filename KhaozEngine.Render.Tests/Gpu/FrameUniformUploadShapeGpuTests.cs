@@ -354,6 +354,108 @@ namespace KhaozEngine.Tests.Gpu
                 + "frame block has been folded back in (issue #604).");
         }
 
+        /// <summary>
+        /// THE TILE-GROUND PASS COSTS THE SAME NUMBER OF UPLOADS WITH TWO MATERIALS LOADED AS WITH ONE, which is
+        /// the whole of what #727 bought and is asserted as a COUNT rather than by destination size on purpose.
+        /// The material's params buffer is <c>TileGroundMaterialConfig.ParamsBytes</c> = 1040 bytes, which is also
+        /// <c>PixelPostProcess.PaletteBufferBytes</c>, so size does not identify it and the helpers above would be
+        /// asserting about the palette half the time. The count does identify it: before the unfold this frame
+        /// wrote a 2048-byte copy of the frame block once per LOADED tile-ground material, so a second material
+        /// added a second upload whether or not anything was drawn with it.
+        /// </summary>
+        [GpuFact]
+        public void A_tile_ground_frame_costs_no_upload_per_loaded_material()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = gpu.GpuDevice;
+            var f = gd.Factory;
+
+            using IGpuTexture finalTex = f.CreateTexture(GpuTextureDescription.Texture2D(
+                W, H, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+            using IGpuFramebuffer finalFB = f.CreateFramebuffer(null, finalTex);
+
+            using var scene = new Scene3D(gd, finalFB.Outputs);
+            scene.Post.Starfield = false;
+            scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
+            scene.Camera.Frame(new Vector3(0f, 0.4f, 0f), new Vector3(6f, 4.5f, 6f));
+
+            Scene3D.TileGroundMaterialHandle mat = scene.LoadTileGroundMaterial(4, 4, FlatGroundLayers(4));
+            MeshHandle ground = scene.LoadMesh(TileGroundQuad(), mat);
+
+            using IGpuCommandList real = f.CreateCommandList();
+            var rec = new RecordingGpuCommandList(real);
+            RenderOneFrame(gd, scene, rec, real, finalFB, ground);
+            int withOneMaterial = rec.Uploads.Count;
+
+            // The frame block goes up ONCE, into the shared model UBO the tile-ground pipeline binds at set 0.
+            AssertOneWholeBufferWrite(rec, FrameUboBytes, "shared frame UBO, tile-ground frame");
+
+            // A SECOND loaded material, drawn with alongside the first. Before #727 this frame paid one more
+            // whole-buffer upload for it, in DrawTileGroundRuns, and the loop that did it walked every loaded
+            // material rather than every drawn one.
+            Scene3D.TileGroundMaterialHandle second = scene.LoadTileGroundMaterial(4, 4, FlatGroundLayers(4));
+            MeshHandle secondGround = scene.LoadMesh(TileGroundQuad(), second);
+
+            rec.Clear();
+            RenderOneFrame(gd, scene, rec, real, finalFB, ground, secondGround);
+
+            Assert.True(rec.Uploads.Count == withOneMaterial,
+                $"a tile-ground frame recorded {rec.Uploads.Count} uploads with two materials loaded and "
+                + $"{withOneMaterial} with one. The per-material frame re-sync #727 deleted is the shape that "
+                + "makes this number grow with the number of loaded ground materials.");
+
+            AssertOneWholeBufferWrite(rec, FrameUboBytes, "shared frame UBO, two tile-ground materials");
+        }
+
+        static void RenderOneFrame(IGpuDevice gd, Scene3D scene, RecordingGpuCommandList rec, IGpuCommandList real,
+            IGpuFramebuffer fb, params MeshHandle[] meshes)
+        {
+            scene.Begin();
+            foreach (MeshHandle mesh in meshes) scene.Draw(mesh, Matrix4x4.Identity, Color.White);
+            scene.PrepareFrame();
+            rec.Begin();
+            scene.RenderInternal(rec, W, H, fb);
+            rec.End();
+            gd.Submit(real);
+            gd.WaitForIdle();
+        }
+
+        /// <summary>A flat one-tile quad on the tile-ground vertex contract: the weights one-hot on corner slot 0,
+        /// the four slots in Uv.xy plus Tangent.xy, and Tangent.z the brightness jitter (1 = none, and 0 would
+        /// render it black).</summary>
+        static GltfMesh TileGroundQuad()
+        {
+            var w = new Vector4(1f, 0f, 0f, 0f);         // one-hot on corner slot 0
+            var uv = new Vector2(0f, 0f);                // slots 0 and 1
+            var tangent = new Vector4(0f, 0f, 1f, 0f);   // slots 2 and 3, then the jitter, then 0
+            const float e = 6f;
+            var verts = new[]
+            {
+                new ModelVertex(new Vector3(-e, 0, -e), Vector3.UnitY, w, uv, tangent),
+                new ModelVertex(new Vector3( e, 0, -e), Vector3.UnitY, w, uv, tangent),
+                new ModelVertex(new Vector3( e, 0,  e), Vector3.UnitY, w, uv, tangent),
+                new ModelVertex(new Vector3(-e, 0,  e), Vector3.UnitY, w, uv, tangent),
+            };
+            return new GltfMesh(verts, new ushort[] { 0, 1, 2, 0, 2, 3 });
+        }
+
+        /// <summary>Two flat single-colour tile-ground layers, the cheapest material the pipeline accepts that is
+        /// not the one-layer special case.</summary>
+        static List<TileGroundLayerImage> FlatGroundLayers(int size)
+        {
+            var layers = new List<TileGroundLayerImage>();
+            for (int i = 0; i < 2; i++)
+            {
+                var albedo = new byte[size * size * 4];
+                for (int p = 0; p < albedo.Length; p += 4)
+                {
+                    albedo[p] = (byte)(40 + i * 60); albedo[p + 1] = 110; albedo[p + 2] = 60; albedo[p + 3] = 255;
+                }
+                layers.Add(new TileGroundLayerImage { AlbedoRgba = albedo, TilesPerMetre = 0.25f });
+            }
+            return layers;
+        }
+
         [GpuFact]
         public void A_sprite_frame_writes_its_view_projection_slots_whole_once_per_begin()
         {

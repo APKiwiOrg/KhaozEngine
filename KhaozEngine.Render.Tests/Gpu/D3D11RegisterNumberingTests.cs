@@ -82,6 +82,12 @@ namespace KhaozEngine.Tests.Gpu
                 new[] { U("SplatParams"), T("AlbedoArray"), T("NormalArray"), S("Sampler"), T("ShadowMap"),
                     S("ShadowSamp") },
                 "b0 t0 t1 s0 t2 s1"),
+            // And the tile-ground pass's two, the same split at #727. One albedo array where the splat material
+            // has two, so its shadow map lands a t lower.
+            ("ModelRenderer._tileGroundFrameLayout", new[] { U("U") }, "b0"),
+            ("ModelRenderer._tileGroundMaterialLayout",
+                new[] { U("TileGroundParams"), T("AlbedoArray"), S("Sampler"), T("ShadowMap"), S("ShadowSamp") },
+                "b0 t0 s0 t1 s1"),
 
             // The only two layouts in the engine that reach the u file at all, and the only ones that mix a
             // read-write structured buffer with a storage texture. They are why the u counter is SHARED.
@@ -239,8 +245,9 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// ACROSS layouts, the flattening follows the PIPELINE ARRAY, per file. Shown on the three shipped
-        /// multi-layout pipelines: <c>SpriteBatch</c>, the skinned model pass and the splat pass.
+        /// ACROSS layouts, the flattening follows the PIPELINE ARRAY, per file. Shown on the four shipped
+        /// multi-layout pipelines: <c>SpriteBatch</c>, the skinned model pass, the splat pass and the tile-ground
+        /// pass.
         /// </summary>
         [Fact]
         public void AcrossLayouts_TheShippedPipelinesFlattenInArrayOrder()
@@ -275,15 +282,27 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal("b0", Absolute(splat, 0));
             Assert.Equal("b1 t0 t1 s0 t2 s1", Absolute(splat, 1));
+
+            // The tile-ground pass, the second shipped case of that same b accumulation since #727. Asserted
+            // separately rather than treated as the splat shape again, because its material set carries one albedo
+            // array instead of two and the t and s files therefore flatten differently.
+            using var groundFrame = new D3D11ResourceLayout(new GpuResourceLayoutDescription(U("U")));
+            using var groundMaterial = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
+                U("TileGroundParams"), T("AlbedoArray"), S("Sampler"), T("ShadowMap"), S("ShadowSamp")));
+            D3D11ResourceLayout[] ground = { groundFrame, groundMaterial };
+
+            Assert.Equal("b0", Absolute(ground, 0));
+            Assert.Equal("b1 t0 s0 t1 s1", Absolute(ground, 1));
         }
 
         /// <summary>
         /// The accumulation over MORE THAN TWO sets and over every register file at once, which no shipped
-        /// pipeline exercises. The splat pass above is the one shipped case that accumulates a base at all (one
-        /// file, two sets), and until #604 there was none: every multi-layout pipeline used disjoint kinds across
-        /// its sets, so every base happened to be zero and a backend that ignored the base entirely would have
-        /// passed every golden. This case stays synthetic on purpose, because it is still the only thing standing
-        /// between "the bases are added, in all four files, at any depth" and a silent revert to zero.
+        /// pipeline exercises. The two ground passes above are the shipped cases that accumulate a base at all
+        /// (one file, two sets), and until #604 and #727 there were none: every multi-layout pipeline used
+        /// disjoint kinds across its sets, so every base happened to be zero and a backend that ignored the base
+        /// entirely would have passed every golden. This case stays synthetic on purpose, because it is still the
+        /// only thing standing between "the bases are added, in all four files, at any depth" and a silent revert
+        /// to zero.
         /// </summary>
         [Fact]
         public void AcrossLayouts_ABaseAccumulatesPerFile()

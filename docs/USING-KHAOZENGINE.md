@@ -10503,9 +10503,11 @@ already-recorded bind to see the old value was never supported on any backend an
 
 **A one-shot write through `IGpuDevice.UpdateBuffer` IS preserved, the same as on every other backend.** A uniform
 buffer there holds one segment per frame in flight, and a device-level write reaches all of them, so a value
-written once at load time or when a setting changes persists for the buffer's life. Writing part of a uniform
-buffer once and the rest per frame is a normal thing to do and needs no special handling: the engine's own
-`ModelRenderer` does it for the splat-params tail of its terrain uniform buffer. The call does not block, ever,
+written once at load time or when a setting changes persists for the buffer's life. That is what the engine's own
+`ModelRenderer` does with a ground material's params, which go up once at load and are never rewritten. Writing
+part of a uniform buffer once and the rest per frame is a normal thing to do and needs no special handling
+either, and no shipped pass does it any more (#604 and #727 split both ground passes' combined frame-plus-params
+buffers in two). The call does not block, ever,
 including when an earlier frame is still reading a segment of that buffer: those segments take the write at their
 next frame boundary instead, so the value is in place before any of them is bound again. What it is NOT is a
 per-frame tool. It writes a whole-buffer-lifetime value, so for anything that changes every frame use the

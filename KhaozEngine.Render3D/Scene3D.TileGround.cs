@@ -82,17 +82,16 @@ namespace KhaozEngine.Render3D
             IGpuTexture albedo = TextureUploads.CreateAlbedoArray(_gd, w, h, mips, layers, "Scene3D.LoadTileGroundMaterial");
 
             Vector4[] tail = TileGroundMaterialConfig.BuildParams(layers, baseSpecStrength);
-            // Combined UBO: frame uniforms (re-synced each frame in the tile-ground pass) + these params appended.
-            // One uniform buffer for the whole pipeline, which the retired one-uniform-buffer rule once required
-            // and #604 no longer does. This pass keeps the shape on purpose (#727).
-            TileGroundUniformBuffer ubo = _model.CreateTileGroundParamsUbo(tail);
+            // The material's OWN uniform buffer, holding these params alone and written once, here. The frame
+            // uniforms are not in it: the pipeline reads those from the renderer's shared block at set 0 (#727).
+            IGpuBuffer ubo = _model.CreateTileGroundParamsUbo(tail);
 
             // A material that overrides the sampler gets its own, owned and disposed with the material. Otherwise
             // the set binds the renderer's shared default sampler and nothing extra is owned here.
             IGpuSampler? ownedSampler = sampler.HasValue ? _model.CreateTerrainSampler(sampler.Value) : null;
             IGpuResourceSet set = ownedSampler is null
-                ? _model.CreateTileGroundMaterialSet(ubo.Buffer, albedo)
-                : _model.CreateTileGroundMaterialSet(ubo.Buffer, albedo, ownedSampler);
+                ? _model.CreateTileGroundMaterialSet(ubo, albedo)
+                : _model.CreateTileGroundMaterialSet(ubo, albedo, ownedSampler);
             _tileGroundMaterials.Add(new TileGroundMaterialEntry(albedo, ubo, set, ownedSampler));
             return new TileGroundMaterialHandle(_tileGroundMaterials.Count - 1);
         }
@@ -118,13 +117,12 @@ namespace KhaozEngine.Render3D
             get { int n = 0; foreach (var m in _tileGroundMaterials) if (m != null) n++; return n; }
         }
 
-        // Tile-ground pass: same uploaded instance buffer, the dedicated albedo-array pipeline. Each material's
-        // combined UBO holds frame + params in one buffer, so re-sync this frame's uniforms into every loaded
-        // material's UBO before drawing, exactly as the splat pass does (usually one material per world).
+        // Tile-ground pass: same uploaded instance buffer, the dedicated albedo-array pipeline. Since #727 the
+        // frame block is the renderer's shared one, bound at set 0, so there is nothing to re-sync into a
+        // per-material buffer before drawing and a frame costs one frame-UBO write however many ground materials
+        // are loaded. The material's own params went up once, at load.
         void DrawTileGroundRuns(IGpuCommandList cl)
         {
-            for (int i = 0; i < _tileGroundMaterials.Count; i++)
-                if (_tileGroundMaterials[i] is { } syncTg) _model.WriteFrameUniformsTo(cl, syncTg.Ubo);
             bool groundBound = false;
             foreach (var run in _runs)
             {
@@ -153,15 +151,15 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>A loaded tile-ground material: the albedo texture array (one layer per catalog material), the
-        /// combined frame+params UBO (frame portion re-synced each frame), and the resource set. Owned by Scene3D
-        /// and shared by every mesh that uses it.</summary>
+        /// params UBO (written once at load, never re-uploaded), and the resource set. Owned by Scene3D and shared
+        /// by every mesh that uses it.</summary>
         sealed class TileGroundMaterialEntry : IDisposable
         {
             public readonly IGpuTexture AlbedoArray;
-            public readonly TileGroundUniformBuffer Ubo;
+            public readonly IGpuBuffer Ubo;
             public readonly IGpuResourceSet Set;
             readonly IGpuSampler? _ownedSampler;   // non-null only when the material overrode the shared sampler
-            public TileGroundMaterialEntry(IGpuTexture albedo, TileGroundUniformBuffer ubo, IGpuResourceSet set, IGpuSampler? ownedSampler = null)
+            public TileGroundMaterialEntry(IGpuTexture albedo, IGpuBuffer ubo, IGpuResourceSet set, IGpuSampler? ownedSampler = null)
             { AlbedoArray = albedo; Ubo = ubo; Set = set; _ownedSampler = ownedSampler; }
             public void Dispose() { Set.Dispose(); AlbedoArray.Dispose(); Ubo.Dispose(); _ownedSampler?.Dispose(); }
         }

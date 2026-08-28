@@ -118,6 +118,10 @@ public sealed class TileActorHost
     /// longer exists would otherwise sit in its dictionary forever: net ids are never recycled, so nothing else
     /// would ever read or replace them, and combat makes death-before-the-next-tick the routine case rather than the
     /// rare one.
+    /// <para>A DESPAWN HOOK, not a way to cancel a queued command. Called on a LIVE actor it drops the birth tile
+    /// as well as the latch, and a spawnerless actor with no birth tile falls through to the tile it is standing on
+    /// as its home, so a leash walk after that returns it to wherever it happened to be. There is no error and no
+    /// observable but the drift. Overwrite the latch with <see cref="Command"/> instead.</para>
     /// </summary>
     /// <param name="netId">The despawned actor's net id.</param>
     public void Forget(long netId)

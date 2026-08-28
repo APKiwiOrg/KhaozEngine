@@ -109,7 +109,11 @@ public sealed record TileWorldServerConfig
     /// the LOOKBACK that decides whether a leaving player counts as being in a fight at all
     /// (<see cref="TileCombatState.LastCombatTick"/> within this many ticks). Raising it therefore widens what
     /// counts as combat as well as how long a body stands, which is the coherent reading of section 13.3's single
-    /// "window" and is worth knowing before tuning it.</para></summary>
+    /// "window" and is worth knowing before tuning it.</para>
+    /// <para>ARMED ONCE, at the moment the link drops, and never re-armed by anything that happens inside it. So a
+    /// body still being hit when the deadline arrives vanishes mid fight rather than holding for another window.
+    /// That is the same single "window" read, stated out loud because the obvious alternative (each blow re-arming
+    /// it, which is what OSRS does) is a different game rule rather than a bug.</para></summary>
     public int CombatLogoutTicks { get; init; }
 
     /// <summary>Synchronous ban check over a verified account id, consulted at the door. Null admits everyone the

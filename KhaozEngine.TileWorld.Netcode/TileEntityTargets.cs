@@ -20,9 +20,11 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// collapses the one-tick miss window a fleeing target depends on and changes how a chase resolves. The snapshot is
 /// what makes the movement pass order-independent in fact rather than in claim, and it is also what makes the server
 /// match a client, whose own read is snapshot-stable within a tick by construction.</para>
-/// <para>Ghosts and migrating mirrors are excluded by construction rather than by a check:
-/// <see cref="Refresh"/> reads a cell's OWNED entities, so a border mirror of an entity another cell simulates is
-/// never in the map and cannot answer with a tick-stale tile under the same net id.</para>
+/// <para>Ghosts and migrating mirrors are excluded BY AN EXPLICIT CHECK, which is worth knowing rather than
+/// assuming: <see cref="Refresh"/> walks every entity in each cell, and the capture skips anything carrying
+/// <c>Ghost</c> or <c>Migrating</c> before it reads a tile. So a border mirror of an entity another cell simulates
+/// is never in the map and cannot answer with a tick-stale tile under the same net id, and that property lives in
+/// one line of code rather than in the shape of the walk.</para>
 /// <para>WHAT AN EXCLUDED ENTITY GETS IS "gone", not "held", and that is worth knowing before a networked link
 /// lands. An id this map does not hold does not resolve, and the follow reads a target that does not resolve as
 /// dead, despawned or out of view, so it CLEARS the lock. A ghost is only ever a mirror of something its owning

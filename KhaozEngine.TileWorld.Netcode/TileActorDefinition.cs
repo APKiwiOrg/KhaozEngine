@@ -42,7 +42,9 @@ public sealed record TileActorDefinition
     /// window is a walk home the pathfinder cannot plan in one go.</summary>
     public int LeashRadius { get; init; } = 10;
 
-    /// <summary>Ticks between the moment its actor is gone and the moment the spawner builds a new one.</summary>
+    /// <summary>Ticks the spawner waits before it builds a new actor, counted from the tick it NOTICES the old one
+    /// is gone rather than from the despawn itself, so the gap a content author sees is this number plus the one
+    /// tick the noticing costs.</summary>
     public int RespawnDelayTicks { get; init; } = 40;
 
     /// <summary>The one GAME-shaped hole: an opaque number the game reads to attach its own content. The engine

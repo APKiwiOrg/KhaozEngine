@@ -64,7 +64,7 @@ public sealed partial class TileWorldServer
     /// despawn every actor killed this tick owes. It is not
     /// arbitrary. Commands are routed BEFORE the step so a click takes effect on the tick it arrived rather than
     /// the one after. The actor step sits between the two for both halves of that reason: it is after the drain so
-    /// a behaviour reads the tick's player commands, and before the step so an actor's decision moves it on this
+    /// both kinds of entity carry the tick's commands, and before the step so an actor's decision moves it on this
     /// tick rather than the next. Handoff runs after the step, because a step is what carries a player over a region boundary,
     /// and ghosting after handoff so the border mirrors reflect the new owners. Actions resolve after both, so an
     /// arrival and its action land on the same tick. Combat resolves after those, so a swing is judged on where

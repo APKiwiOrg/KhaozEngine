@@ -305,8 +305,8 @@ that wires none of it ticks exactly as it did before. Its bullets are at the end
     clears the DEAD entity's lock and, for an actor, despawns it. It does not clear every other entity's target
     pointing at the corpse, because the target stops resolving the moment the entity is gone and the follow
     already handles that.
-- **The TICK IS EIGHT STEPS now, not six.** Step 1b is the actor pass, between the drain and the cell step: after
-  the drain so a behaviour reads this tick's player commands, before the step so an actor's decision moves it on
+- **The TICK IS EIGHT STEPS now, not five.** Step 1b is the actor pass, between the drain and the cell step: after
+  the drain so both kinds of entity carry the tick's commands, before the step so an actor's decision moves it on
   this tick rather than the next. Step 4b is combat, after movement and handoff so a swing is judged on where
   both bodies ENDED the tick. **Step 5b is the despawn a death owes an ACTOR, and it sits BEHIND the serve.** Run
   inside 4b it took the corpse out of the world before step 5 built each viewer's interest set from it, so the

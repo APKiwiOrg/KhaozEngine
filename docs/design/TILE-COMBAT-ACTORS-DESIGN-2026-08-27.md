@@ -509,7 +509,7 @@ Four steps are added to `RunOneTick` (`TileWorldServer.Tick.cs:96`), in bold:
 | 2 | `host.Tick(dt, maxTicksPerFrame: 1)`, movement for every entity through its own simulator |
 | 3 | `host.ProcessHandoffs()` then `host.SyncGhosts()` |
 | 4 | `ResolveActions()`, the interaction queue |
-| **4b** | **`ResolveCombat()`, roll then apply then die** |
+| **4b** | **`ResolveCombat()`, roll then apply then die, then `ReportBrokenLocks()`** |
 | 5 | serve each client its plane-filtered area of interest |
 | **5b** | **`ReapDeadActors()`, the despawn every actor killed at 4b owes** |
 | 6 | `AdvanceTick`, `TickCount++` |
@@ -517,6 +517,13 @@ Four steps are added to `RunOneTick` (`TileWorldServer.Tick.cs:96`), in bold:
 `0c` is named for what it IS rather than for where it sits: it runs immediately after `OnBeforeTick`, ahead of the
 slot snapshot, so a head's own spawns are in it. What is NOT in it is anything step 1b spawns on this tick, which is
 harmless in R1 because nothing can hold a lock on an entity that did not exist last tick.
+
+`ReportBrokenLocks` is the second half of `4b` and it FOLLOWS the roll, which is an ordering constraint rather than a
+tidy grouping. It skips a player who died on this tick, and the list it asks is the one `ResolveCombat` has just
+built, so moved ahead of the roll it finds an empty list and tells a player they could not reach the fight they were
+being killed in. The case that separates the two is a lock the FOLLOW broke in step 2 whose holder is then killed at
+`4b`: `TileCombatResolveTests.The_broken_lock_report_follows_the_roll_so_a_player_killed_on_the_same_tick_hears_nothing`
+is what goes red for either half of it.
 
 `5b` SITS BEHIND THE SERVE, and that placement is the whole reason section 7's `Killed` bit works. The despawn a
 death owes an actor ran inside 4b at first, which took the corpse out of the world before step 5 built each viewer's

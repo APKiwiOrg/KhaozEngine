@@ -355,7 +355,10 @@ public sealed partial class TileWorldServer
             // a handoff, which is not a failure to reach and is not the player's to be told about. A lock THIS
             // TICK's click asked for named an id the world never held on this tick, which is a click at a monster
             // that went away a moment ago, and CannotReach is exactly its answer: that is what the same click made
-            // as an Interact already gets (see Admit's Interact case), and the two clicks should not disagree.
+            // as an Interact already gets (see Admit's Interact case). The two agree on THAT case and on no other.
+            // A CROSS-PLANE click does disagree today, because the Interact case queues nothing for one while a
+            // cross-plane Attack is watched here and answered out loud. This is the better of the two answers, so
+            // closing the gap means giving the interaction one rather than taking this one away.
             if (!clicked && !combatTargets.TryGetFootprint(target, out _, out _)) continue;
             OnCannotReach?.Invoke(slot, target);
             SendNotice(slot, TileServerReason.CannotReach);

@@ -8347,7 +8347,7 @@ ticks and every live actor's decision becomes a command), then step every cell (
 then authority handoff and border ghosting, then the action queue, then COMBAT (roll, apply, die), then serve
 every client its plane-filtered area of interest, and last the despawn every actor killed this tick owes.
 Commands route before the step so a click lands on the tick it arrived on, the actor step sits between the two
-for both halves of that reason (after the drain so a behaviour reads this tick's player commands, before the step
+for both halves of that reason (after the drain so both kinds of entity carry the tick's commands, before the step
 so an actor's decision moves it on this tick rather than the next), handoff after the step because a step is what
 carries a player over a region boundary, combat after all of it so a swing is judged on where both bodies ended
 the tick, and the serve last so a client sees a whole tick and never half of one. The one thing that FOLLOWS the
@@ -8751,6 +8751,20 @@ derive a fight from replicated health instead: two hits on one tick collapse int
 health by zero, so a fight drawn from deltas shows fewer, larger, later hitsplats than the fight the server ran.
 `Killed` rides the blow that caused the death, so a client never has to notice an absence to know something died,
 and `RemoteLeft` follows one tick later when the corpse is reaped.
+
+**A health bar reads the replicated `TileHealth` off the client's own world, in two calls, and there is no
+convenience read for it.** That component is on the wire so a bar has something to read, and this is how it is
+read: `View` maps a net id to the entity mirroring it on this client, and `World` holds the components replicated
+onto that entity. Absent means what it means on the server, that nothing has written a health for that entity.
+This is the STATE read and the hitsplats above are the EVENTS, and the two are not interchangeable, for the reason
+the paragraph above gives.
+
+```csharp
+// The health bar. Its own read, not derived from CombatEvent, which is a per-swing event rather than a total.
+if (client.View.TryGetEntity(targetNetId, out Entity mirrored)
+    && client.World.TryGet(mirrored, out TileHealth hp))
+    DrawHealthBar(hp.Current, hp.Max);
+```
 
 **The one thing a consumer gets wrong first: a RULE reads `TryGetLatestRemoteTile`, never `TryGetRemoteTile`, and
 a BODY is drawn from the second, never the first.** The delayed read agrees with the body it sits under, which is

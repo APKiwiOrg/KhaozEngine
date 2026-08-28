@@ -226,13 +226,13 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
 - **`TileWorldServer`** (+ **`TileWorldServerConfig`**) - the authoritative server, a `ShardHost` whose cell grid is
   the tile region grid. `Poll` pumps the transport, `Tick` runs the world, and the seams are `OnBeforeTick`,
   `OnInteract`, `OnGameMessage`, `OnCannotReach`, `PlayerJoined` and `PlayerLeaving`. It is also the
-  `IPersistenceHost<TileMoveState>`. **The tick is EIGHT steps**, not six: the head's own systems, drain one
-  command per player, the actor step (1b), step every cell, authority handoff and border ghosting, the action
-  queue, combat (4b), serve every client its area of interest, then the despawn every actor killed this tick owes
-  (5b). The reap sits BEHIND the serve deliberately: a corpse taken out of the world at 4b is gone before each
-  viewer's interest set is built, so the killing blow would be filtered out of every frame and a head could only
-  learn a monster died by noticing an absence. A throw inside the serve does not lose the reap, which is drained
-  at the top of the next combat pass.
+  `IPersistenceHost<TileMoveState>`. **The tick is EIGHT steps**, not five, with the head's own systems ahead of
+  the first of them: drain one command per player, the actor step (1b), step every cell, authority handoff and
+  border ghosting, the action queue, combat (4b), serve every client its area of interest, then the despawn every
+  actor killed this tick owes (5b). The reap sits BEHIND the serve deliberately: a corpse taken out of the world at
+  4b is gone before each viewer's interest set is built, so the killing blow would be filtered out of every frame
+  and a head could only learn a monster died by noticing an absence. A throw inside the serve does not lose the
+  reap, which is drained at the top of the next combat pass.
 
   Actors are `Actors` (the `TileActorHost`), `SpawnActor`, `DespawnActor`, `TryGetActorState`, `ActorCount`,
   `ActorNetIds`, `OnActorSpawned` and `RefusedActorSpawnCount`. Combat is `CombatRules`, `OnCombatEvent`, `OnDied`,
@@ -301,6 +301,19 @@ client sees no hitsplat, and a fight simply never starts.
 attacker), and it counts the ABSENT component only, never an ordinary corpse at zero. Any non-zero reading at all
 names the same one fix, so watch it in a dev head. It is a counter rather than a `Debug.Assert` because CI runs
 Release.
+
+**Reading that health back on the CLIENT is two calls, and there is no convenience read for it.** `TileHealth` is
+replicated to every viewer that holds the entity in interest, which is the whole reason it costs four bytes per
+entity per snapshot, and a health bar takes it off this client's own mirrored world: `View` maps a net id to the
+entity mirroring it, `World` holds the components replicated onto that entity. Absent means what it means on the
+server, that nothing has written a health for that entity, so a bar is drawn for a combatant and not for a rock.
+The two tile reads (`TryGetRemoteTile`, `TryGetLatestRemoteTile`) have no counterpart here yet.
+
+```csharp
+if (client.View.TryGetEntity(targetNetId, out Entity mirrored)
+    && client.World.TryGet(mirrored, out TileHealth hp))
+    DrawHealthBar(hp.Current, hp.Max);
+```
 
 ## A server, in ten lines
 

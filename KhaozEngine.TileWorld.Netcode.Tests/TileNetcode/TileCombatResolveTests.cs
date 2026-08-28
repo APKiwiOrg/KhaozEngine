@@ -276,7 +276,11 @@ public class TileCombatResolveTests
     public void A_killed_player_raises_OnDied_with_its_slot_and_the_engine_clears_only_its_own_lock()
     {
         var hub = new InMemoryTransportHub();
-        var rules = new FixedRules { Damage = 500 };
+        // Lethal to the player and NOT to the monster, which is what leaves a SURVIVING attacker holding a lock on a
+        // corpse. A blow lethal either way is a mutual kill, and then the monster's lock is cleared by its own death
+        // rather than left alone, so the "only" in the name would go unpinned. The mutual kill has its own test
+        // above.
+        var rules = new FixedRules { Damage = 50 };
         using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(20, 21, 0), rules);
         long player = s.SpawnPlayer(0, "a", "Ari");
         Assert.True(s.SetHealth(player, new TileHealth { Current = 40, Max = 40 }));
@@ -289,17 +293,20 @@ public class TileCombatResolveTests
 
         s.Tick(Dt);
 
-        // The pair are locked onto each other and one blow is lethal either way, so BOTH die: that is the mutual
-        // kill the roll-then-apply test above pins. What THIS test is about is the player's half of it, which is
-        // why the death is picked out by name rather than by being the only one.
-        Assert.Equal(2, deaths.Count);
-        (long dead, long killerId, int slot) = Assert.Single(deaths, d => d.dead == player);
+        (long dead, long killerId, int slot) = Assert.Single(deaths);
         Assert.Equal(player, dead);
         Assert.Equal(monster, killerId);
         Assert.Equal(0, slot);
         // Still in the world: what happens to a dead player is the game's decision, through this event.
         Assert.True(s.TryGetPlayerState(0, out TileMoveState st));
         Assert.Equal(0L, st.CombatTarget);
+        // AND ONLY ITS OWN. The killer took the player's blow and lived, and its lock is left pointing at the
+        // corpse: the engine clears the DEAD entity's target and nothing else, because every other lock naming it
+        // stops resolving on the next tick and the follow already clears one that does not resolve.
+        Assert.True(s.TryGetHealth(monster, out TileHealth survivor));
+        Assert.Equal(50, survivor.Current);
+        Assert.True(s.TryGetActorState(monster, out TileMoveState killerState));
+        Assert.Equal(player, killerState.CombatTarget);
     }
 
     // THE ROLL ORDER ITSELF, which spec 6.4 pins at (TargetSinceTick, netId) ascending and which nothing else in

@@ -454,6 +454,12 @@ public class TileCombatResolveTests
         Assert.True(s.TryGetPlayerState(0, out TileMoveState st));
         Assert.Equal(0L, st.CombatTarget);
 
+        // ONCE PER BROKEN LOCK, not once per tick. The lock is already gone and this tick's command is not an
+        // Attack, so nothing is watched and there is nothing left to refuse. Without this the property is only ever
+        // argued for, and it is what goes red if the watch is ever moved somewhere that re-adds a cleared lock.
+        s.Tick(Dt);
+        Assert.Single(refused);
+
         // Now a reachable target, broken by the player's own walk. No notice.
         refused.Clear();
         long reachable = s.SpawnActor(new TileCoord(20, 25, 0), new TileActorSpawn(100, 4, TileDirection.S));
@@ -469,4 +475,41 @@ public class TileCombatResolveTests
         Assert.Empty(refused);
     }
 
+    // THE TWO WAYS A TARGET STOPS RESOLVING, which are not the same fact and must not get the same answer. A click
+    // naming an id the world no longer holds is a stale click from a client whose monster went away a moment ago,
+    // and it is refused out loud, exactly as the same click made as an Interact is: silence would leave that client
+    // showing a pending attack forever. A lock the player was ALREADY HOLDING when its target died stays silent,
+    // because a death is not a failure to reach.
+    [Fact]
+    public void A_click_at_a_target_that_is_gone_is_refused_and_a_held_lock_whose_target_dies_is_not()
+    {
+        var hub = new InMemoryTransportHub();
+        var rules = new FixedRules { Damage = 500 };
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(20, 20, 0), rules);
+        long player = s.SpawnPlayer(0, "a", "Ari");
+        Assert.True(s.SetHealth(player, new TileHealth { Current = 100, Max = 100 }));
+        long gone = s.SpawnActor(new TileCoord(25, 25, 0), new TileActorSpawn(100, 4, TileDirection.S));
+        Assert.True(s.DespawnActor(gone));
+        var refused = new List<long>();
+        s.OnCannotReach += (_, target) => refused.Add(target);
+
+        s.Enqueue(0, seq: 0, TileCommand.Attack(gone, TileMoveMode.Run));
+        s.Tick(Dt);
+        Assert.Equal(new[] { gone }, refused);
+
+        // The other half, over two ticks: the kill lands on the first (the lock is still held, so there is nothing
+        // to report), and the follow clears the lock on the second because the target no longer resolves. Neither
+        // tick may say a word.
+        refused.Clear();
+        long doomed = s.SpawnActor(new TileCoord(20, 21, 0), new TileActorSpawn(1, 4, TileDirection.S));
+        s.Enqueue(0, seq: 1, TileCommand.Attack(doomed, TileMoveMode.Run));
+        s.Tick(Dt);
+        Assert.False(s.TryGetActorState(doomed, out _), "the click's own tick killed it");
+        Assert.Empty(refused);
+
+        s.Tick(Dt);
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState after));
+        Assert.Equal(0L, after.CombatTarget);
+        Assert.Empty(refused);
+    }
 }

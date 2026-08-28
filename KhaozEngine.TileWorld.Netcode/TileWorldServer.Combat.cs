@@ -32,7 +32,11 @@ public sealed partial class TileWorldServer
     readonly List<(long netId, long killer)> died = new();
     // Players whose lock the movement pass may have broken, captured at the drain so a player's OWN disengaging walk
     // is never reported as a failure to reach. A list rather than a dictionary because it is enumerated.
-    readonly List<(int slot, long target)> watchedLocks = new();
+    //
+    // `clicked` is the entry's PROVENANCE: true for a lock this tick's own Attack command asked for, false for one
+    // the player was already holding. See ReportBrokenLocks, which is the only thing that can tell a stale click
+    // apart from a target that has since gone, and can only tell them apart with this.
+    readonly List<(int slot, long target, bool clicked)> watchedLocks = new();
 
     static readonly Comparison<(long sinceTick, long netId, long target)> OldestLockFirst = (a, b) =>
         a.sinceTick != b.sinceTick ? a.sinceTick.CompareTo(b.sinceTick) : a.netId.CompareTo(b.netId);
@@ -245,14 +249,20 @@ public sealed partial class TileWorldServer
     {
         for (int i = 0; i < watchedLocks.Count; i++)
         {
-            (int slot, long target) = watchedLocks[i];
+            (int slot, long target, bool clicked) = watchedLocks[i];
             if (!netIdBySlot.TryGetValue(slot, out long netId)) continue;
             // A player who died this tick had their lock cleared by the death rather than by a failure to reach, and
             // the engine is the thing that cleared it. Telling them they could not reach the fight they were just
             // killed in would be a second, wrong explanation for the same tick.
             if (AlreadyDead(netId)) continue;
             if (!TryGetActorState(netId, out TileMoveState state) || state.CombatTarget != 0) continue;
-            if (!combatTargets.TryGetFootprint(target, out _, out _)) continue;
+            // A target this tick's snapshot cannot resolve is two different facts, and only the provenance of the
+            // watch tells them apart. A lock the player was ALREADY HOLDING lost its target to a death, a despawn or
+            // a handoff, which is not a failure to reach and is not the player's to be told about. A lock THIS
+            // TICK's click asked for named an id the world never held on this tick, which is a click at a monster
+            // that went away a moment ago, and CannotReach is exactly its answer: that is what the same click made
+            // as an Interact already gets (see Admit's Interact case), and the two clicks should not disagree.
+            if (!clicked && !combatTargets.TryGetFootprint(target, out _, out _)) continue;
             OnCannotReach?.Invoke(slot, target);
             SendNotice(slot, TileServerReason.CannotReach);
         }

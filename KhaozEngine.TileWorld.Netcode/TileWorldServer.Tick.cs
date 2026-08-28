@@ -146,10 +146,10 @@ public sealed partial class TileWorldServer
             // because the click's own tick is the commonest tick for a lock to be refused on: the simulator sets the
             // lock and the follow can clear it again inside that same Advance. See ReportBrokenLocks in
             // TileWorldServer.Combat.cs.
-            if (admitted.Kind == TileCommandKind.Attack) watchedLocks.Add((slot, admitted.Target));
+            if (admitted.Kind == TileCommandKind.Attack) watchedLocks.Add((slot, admitted.Target, true));
             else if (state.CombatTarget != 0 && admitted.Kind != TileCommandKind.WalkTo
                 && admitted.Kind != TileCommandKind.Interact)
-                watchedLocks.Add((slot, state.CombatTarget));
+                watchedLocks.Add((slot, state.CombatTarget, false));
         }
 
         // 1b. Every spawner ticks, then every live actor's command and tag are written. BEFORE the movement pass, so

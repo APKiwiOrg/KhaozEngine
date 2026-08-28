@@ -20,7 +20,8 @@ public sealed partial class TileWorldClient
 
     readonly HashSet<long> liveRemotes = new();
     // One combat frame's worth of decoded events, reused for the life of the client: the decoder clears it, and
-    // nothing outside the raise loop below ever reads it.
+    // nothing outside the decode reads it. The raise loop copies out of it rather than walking it, because a
+    // handler that re-enters Poll decodes the next frame into this very list. See RaiseCombat.
     readonly List<TileCombatEvent> decodedCombat = new();
     // The arrivals one refresh found, collected inside the ECS pass and raised outside it. See SampleRemote.
     readonly List<long> enteredRemotes = new();
@@ -100,10 +101,27 @@ public sealed partial class TileWorldClient
                 if (TileProtocol.TryDecodeNotice(data, out string reason)) OnNotice(reason);
                 return;
             case TileProtocol.ServerFrameCombat:
-                if (TileProtocol.TryDecodeCombat(data, decodedCombat))
-                    for (int i = 0; i < decodedCombat.Count; i++) CombatEvent?.Invoke(decodedCombat[i]);
+                if (TileProtocol.TryDecodeCombat(data, decodedCombat)) RaiseCombat();
                 return;
         }
+    }
+
+    // The raise loop OWNS its events for the whole walk, which is why the frame is copied out of the decode buffer
+    // first. THE DRAIN IS RE-ENTRANT BY CONSTRUCTION: a handler may call Poll again (a head pumping the transport
+    // from inside a hitsplat handler is an odd thing to do and nothing stops it), the nested drain decodes the next
+    // combat frame into decodedCombat, and an outer loop walking that same list then raises the NEW frame's events
+    // from the index it had reached. Every swing after the current one is lost and one of the nested frame's is
+    // raised a second time in its place, which the counts hide: three lost and three duplicated still totals right.
+    //
+    // It is the standard the rest of this file already holds itself to (OnGameMessage hands out a slice of the
+    // frame's own array, OnNotice a fresh string, and latestTiles was given its own scratch rather than sharing
+    // RefreshRemoteSamples'). One array per combat frame is a fraction of the byte array the transport allocated for
+    // the same frame, and it is not paid at all on a tick that produced no combat or by a head with no subscriber.
+    void RaiseCombat()
+    {
+        if (CombatEvent is null || decodedCombat.Count == 0) return;
+        TileCombatEvent[] frame = decodedCombat.ToArray();
+        for (int i = 0; i < frame.Length; i++) CombatEvent?.Invoke(frame[i]);
     }
 
     // Every notice raises NoticeReceived, including the ones that also have a typed event of their own. A head that
@@ -345,8 +363,21 @@ public sealed partial class TileWorldClient
         // Both raised AFTER the iteration and after the prune, so a handler sees a settled view and may touch the
         // world. Entered before left, because a head that keys per-remote state on the pair wants the arrival of a
         // recycled slot ordered after the departure it replaces, and a net id is never recycled anyway.
-        for (int i = 0; i < enteredRemotes.Count; i++) RemoteEntered?.Invoke(enteredRemotes[i]);
-        for (int i = 0; i < goneRemotes.Count; i++) RemoteLeft?.Invoke(goneRemotes[i]);
+        //
+        // COPIED OUT for the reason RaiseCombat is: both lists are the client's, so a handler that re-enters
+        // AdvancePresentation refills them from a fresh pass and the arrivals still to come in the outer walk are
+        // simply dropped. The copy is only paid on a frame that actually had churn, which is not the ordinary frame,
+        // and not at all by a head with no subscriber.
+        if (RemoteEntered is not null && enteredRemotes.Count > 0)
+        {
+            long[] entered = enteredRemotes.ToArray();
+            for (int i = 0; i < entered.Length; i++) RemoteEntered?.Invoke(entered[i]);
+        }
+        if (RemoteLeft is not null && goneRemotes.Count > 0)
+        {
+            long[] gone = goneRemotes.ToArray();
+            for (int i = 0; i < gone.Length; i++) RemoteLeft?.Invoke(gone[i]);
+        }
     }
 
     // One remote, one frame. The replicated state says where the body is outright: the tile the remote is

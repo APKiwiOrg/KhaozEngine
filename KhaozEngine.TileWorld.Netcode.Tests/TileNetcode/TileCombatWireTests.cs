@@ -17,6 +17,15 @@ public class TileCombatWireTests
         public byte AttackTicks(long attackerNetId) => Ticks;
     }
 
+    // Every swing distinguishable from every other, which is what lets the re-entrancy test below see a clobber at
+    // all: with identical events a lost swing and a duplicated one cancel out and every count still matches.
+    sealed class RisingRules : ITileCombatRules
+    {
+        ushort next = 1;
+        public TileAttackOutcome Roll(in TileAttackContext context) => TileAttackOutcome.Hit(next++, 3);
+        public byte AttackTicks(long attackerNetId) => 1;
+    }
+
     static readonly TileCombatEvent[] Sample =
     {
         new(AttackerNetId: 0x0001_0000_0000_002AL, TargetNetId: 9L, Amount: 12, Kind: 3, Landed: true, Killed: false),
@@ -201,6 +210,80 @@ public class TileCombatWireTests
         Assert.NotEmpty(onServer);
         Assert.Empty(onClient);
         Assert.DoesNotContain(a, h.Client.RemoteNetIds);
+    }
+
+    // THE DRAIN IS RE-ENTRANT BY CONSTRUCTION: a head may pump the transport from inside a hitsplat handler, and
+    // nothing stops it. So the raise loop has to own its events for the length of the walk, or a nested drain decodes
+    // the next frame straight into the list the outer loop is still walking and every swing after the current one is
+    // replaced by whatever the last nested frame carried.
+    [Fact]
+    public void A_combat_handler_that_re_enters_Poll_still_sees_every_swing_exactly_once()
+    {
+        using var h = new TileCombatHarness(TileMoveSimulatorTests.FlatWorld(), new TileCoord(20, 20, 0));
+        h.Server.CombatRules = new RisingRules();
+        h.Frames(8);
+        // Two actors trading blows beside the client, so each tick's frame carries TWO events. A frame of ONE event
+        // cannot show this at all: the outer loop is never mid walk when the nested drain refills the list.
+        long a = h.Server.SpawnActor(new TileCoord(22, 20, 0), new TileActorSpawn(2000, 1, TileDirection.S));
+        long b = h.Server.SpawnActor(new TileCoord(22, 21, 0), new TileActorSpawn(2000, 1, TileDirection.S));
+        h.Frames(8);
+        h.Server.Actors.Command(a, TileCommand.Attack(b, TileMoveMode.Walk));
+        h.Server.Actors.Command(b, TileCommand.Attack(a, TileMoveMode.Walk));
+
+        var onServer = new List<TileCombatEvent>();
+        h.Server.OnCombatEvent += ev => onServer.Add(ev);
+        // Three combat frames piled into one inbox, which is a head whose own frames ran slower than the server's
+        // ticks. The client is deliberately not polled in between.
+        for (int i = 0; i < 3; i++)
+        {
+            h.Server.Poll();
+            h.Server.Tick(TileCombatHarness.Tick);
+        }
+
+        var seen = new List<TileCombatEvent>();
+        bool reentered = false;
+        h.Client.CombatEvent += ev =>
+        {
+            seen.Add(ev);
+            if (reentered) return;
+            reentered = true;
+            h.Client.Poll();
+        };
+        h.Client.Poll();
+
+        Assert.True(reentered, "the handler re-entered the drain");
+        Assert.True(onServer.Count >= 4,
+            $"the piled frames carried more than one event each, they carried {onServer.Count}");
+        // Every swing the server rolled, exactly once. Ordered rather than compared as sequences, because a nested
+        // drain legitimately raises the later frames first and that is not the property under test: what must not
+        // happen is a swing lost or a swing raised twice.
+        Assert.Equal(onServer.OrderBy(ev => ev.Amount), seen.OrderBy(ev => ev.Amount));
+    }
+
+    // The same ownership rule on the lifecycle pair, which is raised out of the presentation advance rather than out
+    // of the drain. Far less plausible than the combat one and the same one line.
+    [Fact]
+    public void A_RemoteEntered_handler_that_re_enters_the_presentation_advance_still_sees_every_arrival()
+    {
+        using var h = new TileCombatHarness(TileMoveSimulatorTests.FlatWorld(), new TileCoord(20, 20, 0));
+        h.Frames(8);
+        // Both spawned on ONE server tick, so ONE refresh has two arrivals to raise.
+        long a = h.Server.SpawnActor(new TileCoord(22, 20, 0), new TileActorSpawn(30, 4, TileDirection.S));
+        long b = h.Server.SpawnActor(new TileCoord(23, 20, 0), new TileActorSpawn(30, 4, TileDirection.S));
+
+        var entered = new List<long>();
+        bool reentered = false;
+        h.Client.RemoteEntered += id =>
+        {
+            entered.Add(id);
+            if (reentered) return;
+            reentered = true;
+            h.Client.AdvancePresentation(TileCombatHarness.Frame);
+        };
+        h.Frames(12);
+
+        Assert.True(reentered, "the handler re-entered the presentation advance");
+        Assert.Equal(new[] { a, b }, entered.OrderBy(id => id));
     }
 
     // The diff is already computed every frame inside RefreshRemoteSamples and was simply not surfaced. Surfacing it

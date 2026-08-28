@@ -76,12 +76,22 @@ namespace KhaozEngine.Tests.Gpu
                 new[] { T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"),
                     S("ShadowSamp") },
                 "t0 t1 t2 s0 t3 s1"),
+            // The shared per-caster bone palette (#407). One declaration, bound by BOTH skinned pipelines, at
+            // different slots: set 2 of the model pair and set 1 of the depth one. Layout-relative it is always b0,
+            // and the ACROSS-layouts row below is where the two pipelines' different bases show up.
+            ("SkinnedBonePalette._layout", new[] { U("Palette", dynamic: true) }, "b0"),
             // The splat pass's two, also since #604: the shared frame block on its own, then the material.
             ("ModelRenderer._splatFrameLayout", new[] { U("U") }, "b0"),
             ("ModelRenderer._splatMaterialLayout",
                 new[] { U("SplatParams"), T("AlbedoArray"), T("NormalArray"), S("Sampler"), T("ShadowMap"),
                     S("ShadowSamp") },
                 "b0 t0 t1 s0 t2 s1"),
+            // And the tile-ground pass's two, the same split at #727. One albedo array where the splat material
+            // has two, so its shadow map lands a t lower.
+            ("ModelRenderer._tileGroundFrameLayout", new[] { U("U") }, "b0"),
+            ("ModelRenderer._tileGroundMaterialLayout",
+                new[] { U("TileGroundParams"), T("AlbedoArray"), S("Sampler"), T("ShadowMap"), S("ShadowSamp") },
+                "b0 t0 s0 t1 s1"),
 
             // The only two layouts in the engine that reach the u file at all, and the only ones that mix a
             // read-write structured buffer with a storage texture. They are why the u counter is SHARED.
@@ -239,8 +249,10 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// ACROSS layouts, the flattening follows the PIPELINE ARRAY, per file. Shown on the three shipped
-        /// multi-layout pipelines: <c>SpriteBatch</c>, the skinned model pass and the splat pass.
+        /// ACROSS layouts, the flattening follows the PIPELINE ARRAY, per file. Shown on the five shipped
+        /// multi-layout pipelines: <c>SpriteBatch</c>, the skinned model pass, the skinned depth pass, the splat
+        /// pass and the tile-ground pass. The two skinned ones share one palette layout OBJECT at different slots,
+        /// which is the case that proves the base comes from the array rather than from the layout.
         /// </summary>
         [Fact]
         public void AcrossLayouts_TheShippedPipelinesFlattenInArrayOrder()
@@ -255,16 +267,30 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal("t0 s0", Absolute(sprite, 0));
             Assert.Equal("b0", Absolute(sprite, 1));
 
-            // The skinned model pass: the shared frame block and the per-draw block at set 0, the material
-            // textures and samplers at set 1.
+            // The skinned model pass: the shared frame block and the per-draw header at set 0, the material
+            // textures and samplers at set 1, the shared per-caster bone palette at set 2 since #407. Three sets,
+            // and the b file accumulates across all three, so the palette lands at b2.
             using var skinnedMain = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 U("U"), U("VBlock", dynamic: true)));
             using var skinnedFrag = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"), S("ShadowSamp")));
-            D3D11ResourceLayout[] skinned = { skinnedMain, skinnedFrag };
+            using var bonePalette = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
+                U("Palette", dynamic: true)));
+            D3D11ResourceLayout[] skinned = { skinnedMain, skinnedFrag, bonePalette };
 
             Assert.Equal("b0 b1", Absolute(skinned, 0));
             Assert.Equal("t0 t1 t2 s0 t3 s1", Absolute(skinned, 1));
+            Assert.Equal("b2", Absolute(skinned, 2));
+
+            // The skinned DEPTH pass takes the SAME palette layout object at a different slot, where the base in
+            // front of it is one buffer instead of two. That is the property a per-layout base would get wrong: a
+            // set layout carries no register base of its own, the pipeline array supplies it.
+            using var skinnedDepth = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
+                U("VBlock", dynamic: true)));
+            D3D11ResourceLayout[] depth = { skinnedDepth, bonePalette };
+
+            Assert.Equal("b0", Absolute(depth, 0));
+            Assert.Equal("b1", Absolute(depth, 1));
 
             // The splat pass, which is where a shipped pipeline really does accumulate a base ACROSS its sets: set
             // 0 is the shared frame block at b0 and set 1's own params buffer lands at b1 because of it.
@@ -275,15 +301,27 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal("b0", Absolute(splat, 0));
             Assert.Equal("b1 t0 t1 s0 t2 s1", Absolute(splat, 1));
+
+            // The tile-ground pass, the second shipped case of that same b accumulation since #727. Asserted
+            // separately rather than treated as the splat shape again, because its material set carries one albedo
+            // array instead of two and the t and s files therefore flatten differently.
+            using var groundFrame = new D3D11ResourceLayout(new GpuResourceLayoutDescription(U("U")));
+            using var groundMaterial = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
+                U("TileGroundParams"), T("AlbedoArray"), S("Sampler"), T("ShadowMap"), S("ShadowSamp")));
+            D3D11ResourceLayout[] ground = { groundFrame, groundMaterial };
+
+            Assert.Equal("b0", Absolute(ground, 0));
+            Assert.Equal("b1 t0 s0 t1 s1", Absolute(ground, 1));
         }
 
         /// <summary>
-        /// The accumulation over MORE THAN TWO sets and over every register file at once, which no shipped
-        /// pipeline exercises. The splat pass above is the one shipped case that accumulates a base at all (one
-        /// file, two sets), and until #604 there was none: every multi-layout pipeline used disjoint kinds across
-        /// its sets, so every base happened to be zero and a backend that ignored the base entirely would have
-        /// passed every golden. This case stays synthetic on purpose, because it is still the only thing standing
-        /// between "the bases are added, in all four files, at any depth" and a silent revert to zero.
+        /// The accumulation over every register file AT ONCE, which no shipped pipeline exercises. The two ground
+        /// passes above accumulate a base in one file over two sets, and the skinned model pass does it in one
+        /// file over three since #407, but until #604 and #727 there were none at all: every multi-layout pipeline
+        /// used disjoint kinds across its sets, so every base happened to be zero and a backend that ignored the
+        /// base entirely would have passed every golden. This case stays synthetic on purpose, because it is still
+        /// the only thing standing between "the bases are added, in all four files, at any depth" and a silent
+        /// revert to zero.
         /// </summary>
         [Fact]
         public void AcrossLayouts_ABaseAccumulatesPerFile()

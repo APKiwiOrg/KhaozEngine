@@ -331,9 +331,10 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(1008u, 64u)]   // ModelRenderer.UboBytes. Was 63, which dropped the whole model pass
         [InlineData(1040u, 80u)]   // PixelPostProcess.PaletteBufferBytes. Was 65
         [InlineData(1120u, 80u)]   // the splat combined UBO, retired by #604. Was 70, which dropped splat terrain
+        [InlineData(8192u, 512u)]  // SkinnedBonePalette.SlotBytes, 128 * 64 and already 256-aligned
         [InlineData(8256u, 528u)]  // (1 + 128) * 64 unaligned. Was 516
-        [InlineData(8448u, 528u)]  // ShadowMapRenderer.SkinnedDepthSlotBytes and ModelRenderer.SkinnedMainSlotBytes
-        [InlineData(9472u, 592u)]  // the skinned main slot before #604, which is now 8448 like the depth one
+        [InlineData(8448u, 528u)]  // both skinned slots between #604 and #407, when each still carried a palette
+        [InlineData(9472u, 592u)]  // the skinned main slot before #604, which #407 took the rest of the way to 256
         public void AWindowSize_IsCountedInConstantsWithAMinimum(uint sizeBytes, uint expected)
             => Assert.Equal(expected, D3D11ConstantRange.ConstantCount(sizeBytes));
 
@@ -386,6 +387,7 @@ namespace KhaozEngine.Tests.Gpu
                 ("ModelRenderer splat params UBO", SplatParamsData.SizeInBytes),
                 ("ModelRenderer skinned main slot", ModelRenderer.SkinnedMainSlotBytes),
                 ("ShadowMapRenderer skinned depth slot", ShadowMapRenderer.SkinnedDepthSlotBytes),
+                ("SkinnedBonePalette slot", SkinnedBonePalette.SlotBytes),
                 ("ShadowMapRenderer cascade slot", 256u),          // private const, ShadowMapRenderer.cs:41
                 ("WaterRenderer plane slot", WaterRenderer.SlotBytes),
                 ("PixelPostProcess palette", PixelPostProcess.PaletteBufferBytes),

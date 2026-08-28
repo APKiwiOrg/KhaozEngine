@@ -124,10 +124,13 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     renders that vertex BLACK**: write 1 for none. A mesh built for the model pipeline, where `Tangent` is a
     tangent frame, is not a tile-ground mesh.
   - **Constraints worth knowing.** Entries past the layer count are ZEROED rather than defaulted, so a mesh naming
-    a slot the set never filled renders black instead of borrowing another material's look. The pipeline binds one
-    uniform buffer (the shared frame block, then `vec4 TintTiling[64]` and a `Misc` vector), the albedo array, its
-    sampler, then the shadow map and its sampler LAST, which is the Metal binding-order rule the terrain pass
-    already pays. Tile ground CASTS shadows, like a model mesh and unlike the splat terrain.
+    a slot the set never filled renders black instead of borrowing another material's look. The pipeline binds TWO
+    sets, the same split the splat pipeline has: set 0 is the shared frame block both stages read, and set 1 is the
+    material's own `TileGroundParams` buffer (`vec4 TintTiling[64]` then a `Misc` vector, written once at load),
+    then the albedo array, its sampler, and the shadow map and its sampler LAST, which is the binding-order
+    convention the terrain pass established. Until 18.1.0 the frame block and the params rode in ONE buffer per
+    material, re-uploaded whole every frame, which is what #727 unfolded. Tile ground CASTS shadows, like a model
+    mesh and unlike the splat terrain.
   - **Lifetime.** The material is owned by the scene, shared by every mesh drawn with it, and unloading a mesh does
     not free it. `LoadTileGroundMaterial` builds its mip chain on a command list of its own, so it refuses
     mid-frame with `GpuNestedRecordingException` (load once per view construction or catalog change).
@@ -241,10 +244,12 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
 - GPU skinning (opt-in, `Scene3D.UseGpuSkinning`, default OFF): the vertex shader blends the bone palette instead of
   the CPU (`SkinningMath.SkinVertex`), so the rest-pose vertex buffer uploads once at load and only the per-draw
   palette + matrices upload each frame - the win at MMO crowd scale. Pixel-parity with the CPU path, same culling +
-  shadow pass. Set 0 binding 0 is the shared frame block both stages read, binding 1 the per-draw
-  `{ Model; P; bones[128] }` the vertex reads at its dynamic offset, material maps at set 1. It was one combined
-  buffer with the frame block copied into every draw's slot until issue #604 unfolded it. The packed
-  main and shadow slot buffers upload once per pass, avoiding D3D11's partial-uniform staging path. Ships OFF
+  shadow pass. Set 0 binding 0 is the shared frame block both stages read, binding 1 the per-draw `{ Model; P }`
+  the vertex reads at its dynamic offset, material maps at set 1, and the per-CASTER bone palette at set 2. It was
+  one combined buffer with the frame block copied into every draw's slot until issue #604 unfolded it, and it kept
+  the palette per draw until issue #407 gave it a buffer of its own that the shadow pass binds too, so a caster's
+  bones upload ONCE a frame instead of once per pass per cascade. All three packed buffers upload whole and once,
+  avoiding D3D11's partial-uniform staging path. Ships OFF
   pending a windowed A/B against CPU skinning (the Showcase 3D room's F key + HUD). See `docs/USING-KHAOZENGINE.md`.
 - Per-pass timing: `Scene3D.EnableTiming` (default `false`, no cost when off - a single `bool` check, no
   `Stopwatch` call, no allocation) brackets each render pass with a CPU `Stopwatch` and exposes the result as

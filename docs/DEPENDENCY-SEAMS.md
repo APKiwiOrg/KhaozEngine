@@ -1172,8 +1172,8 @@ uniforms) into that single block and keeping per-mesh textures at set 1 and up. 
 [#604](https://github.com/APKiwiOrg/KhaozEngine/issues/604). A shader may spread its uniform
 buffers across bindings and sets as its own structure wants. The emission and the binding table both walk the
 reflected layout, so there is nothing left for a pipeline-wide count to get wrong. The section is kept because
-several shipped pipelines still carry the SHAPE the rule produced, and reading their combined buffers as a
-current requirement is the mistake this record exists to prevent.
+several shipped pipelines still carry SHAPES the rule produced (a buffer both stages read placed first, for
+instance), and reading them as a current requirement is the mistake this record exists to prevent.
 
 **WHY IT EXISTED: THE VELDRID INCUMBENT'S BUFFER NUMBERING, measured 2026-08-11, and never a property of
 Metal.** Veldrid's `MTLResourceLayout` numbered a buffer by counting every buffer element declared in the
@@ -1225,7 +1225,8 @@ the split-stage layout the incumbent mis-bound and is now the record of a defect
 **WHEN IT WAS LIFTED, AND WHAT CAME OUT WITH IT.** The rule outlived the backend that needed it by one release,
 because the argument for keeping it was never the backend: it was that unfolding a combined buffer MOVES the
 emission on all three backends, so it is its own work with its own gates rather than a free simplification.
-#604 is that work, done across three commits in one branch.
+#604 is that work, done across three commits in one branch, and #727 is the fourth unfold, done on its own
+branch afterwards for the same reason.
 
 - **The splat terrain pass.** It bound one buffer per material, the frame block at offset 0 with the material's
   112 bytes appended, and re-uploaded the frame block into every loaded material's copy each frame. Now the
@@ -1234,21 +1235,38 @@ emission on all three backends, so it is its own work with its own gates rather 
 - **The GPU-skinning pass.** It read one 9472-byte per-draw slot, `{ Mvp; Model; P; <frame block>; bones[128] }`,
   with a whole copy of the frame block re-packed into every visible draw's slot each frame and `Mvp` folded on
   the CPU so the vertex needed no frame block. Now the shared frame `U` is at set 0 binding 0 and the per-draw
-  `VBlock` (`{ Model; P; bones[128] }`) is a VERTEX-only buffer at set 0 binding 1, which is the first shipped
-  layout in this engine with two uniform buffers in ONE set. The vertex reads `ViewProj` out of the frame block,
-  so pixel-parity with the CPU path is by construction.
+  `VBlock` is a VERTEX-only buffer at set 0 binding 1, which is the first shipped layout in this engine with two
+  uniform buffers in ONE set. The vertex reads `ViewProj` out of the frame block, so pixel-parity with the CPU
+  path is by construction. (`VBlock` was `{ Model; P; bones[128] }` when #604 landed. #407 later took the palette
+  out of it too, see below.)
 - **The shipped validation that enforced the rule.** `MslBindingOrder.CheckPrefix`, which required each stage's
   resources to be a PREFIX of the layout's per index space, is deleted. `MslBindingOrder.CheckStage` STAYS and
   is not part of what retired: it pins the agreement between the Metal index order an emission carries and the
   binding order the layout is walked in, which is the property the authored-index scheme produces and the native
   backend's binding table depends on.
 
-**TWO PIPELINES DELIBERATELY KEEP THEIR COMBINED BUFFER, and neither is waiting on anything.** The tile-ground
-pass still appends its per-material params after the frame block in one binding-0 block
-([#727](https://github.com/APKiwiOrg/KhaozEngine/issues/727) is the record of that choice), and the skinned
-SHADOW pass still carries its own `{ LightMvp; bones[128] }` (#407), whose per-cascade palette re-upload the
-unfold left byte for byte as it was. The sky, decal, particle and distortion passes each read one uniform
-buffer too, and that is now a fact about how much those passes need rather than a rule they obey. Their frame
+**AND THE TILE-GROUND PASS FOLLOWED, which is where the combined shape ran out.** It appended its per-material
+params after the frame block in one binding-0 block, exactly as the splat pass had, and
+[#727](https://github.com/APKiwiOrg/KhaozEngine/issues/727) gave it the same split: the shared frame `U` at set 0
+binding 0 and a fragment-only `TileGroundParams` at set 1 binding 0, written once at load.
+`TileGroundUniformBuffer` went with it, as `SplatUniformBuffer` had, and `DrawTileGroundRuns` no longer walks
+every loaded ground material to re-upload the frame block.
+
+**AND THE LAST COMBINED BUFFER WENT WITH THE SKINNED SHADOW PASS, which is the one unfold that was never about
+the frame block.** That pass read `{ LightMvp; bones[128] }`, one 8448-byte slot per (cascade, caster), so a
+caster's whole palette was re-uploaded once per cascade for one changed matrix, and the main pass re-packed the
+same bytes a fourth time into its own slot.
+[#407](https://github.com/APKiwiOrg/KhaozEngine/issues/407) split the palette into `SkinnedBonePalette`, one
+`{ bones[128] }` slot per CASTER in a buffer of its own, and both skinned pipelines bind it: at set 2 in the
+model pair and at set 1 in the depth one, from ONE layout object and ONE resource set. A caster's bones now go
+up once a frame and every reader takes them off that upload, which took a 24-caster, 48-bone, 4-cascade frame's
+skinning-uniform term from 377,856 bytes to 82,944. What is left in the two per-draw slots really is per draw:
+`{ Model; P }` and `{ LightMvp }`, 256 bytes each where both were 8448. It is also the reason a set could not
+simply gain a binding: `IGpuCommandList.SetGraphicsResourceSet` carries ONE dynamic offset per set bind, and the
+palette is indexed per caster while `{ LightMvp }` is indexed per caster-cascade.
+
+**NO COMBINED BUFFER IS LEFT IN THE TREE.** The sky, decal, particle and distortion passes each read one uniform
+buffer, and that is now a fact about how much those passes need rather than a rule they obey. Their frame
 blocks are described where they live: `../KhaozEngine.Render3D/Rendering/ParticleRenderer.cs` and
 `../KhaozEngine.Render3D/Rendering/DistortionRenderer.cs` are the two worth reading, because the reason their
 per-sprite values ride an instanced vertex-attribute stream instead of a second buffer is a bandwidth argument

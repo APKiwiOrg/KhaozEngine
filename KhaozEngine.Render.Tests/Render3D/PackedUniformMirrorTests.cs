@@ -16,85 +16,25 @@ namespace KhaozEngine.Tests.Render3D
     /// replaced used to carry. Both halves are needed: a packer that uploads the whole buffer with a slot at the
     /// wrong offset satisfies the shape guard perfectly and renders garbage.
     /// <para>
-    /// Device-free, on <see cref="FakeGpuDevice"/>, so the mirrors are covered on every push and every OS rather
+    /// Device-free, on <see cref="FakeGpuDevice"/>, so the packers are covered on every push and every OS rather
     /// than only on a leg with a GPU. See
     /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/408">#408</see>.
+    /// </para>
+    /// <para>
+    /// THE TWO GROUND-MIRROR CASES THAT USED TO OPEN THIS FILE ARE GONE, and they were deleted rather than
+    /// retargeted a second time. They were written against <c>SplatUniformBuffer</c>, retargeted onto
+    /// <c>TileGroundUniformBuffer</c> when
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/604">#604</see> unfolded the splat pass, and
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/727">#727</see> unfolded the tile-ground pass
+    /// too. What they pinned was a CPU mirror rebuilding a COMBINED frame-plus-params buffer so the per-frame
+    /// re-sync was a whole write instead of a partial one, and there is no combined buffer and no such mirror left
+    /// in the tree to point them at. A material's params are written once at load now, whole, from offset 0, which
+    /// is the cheap Direct3D 11 route by construction. The overlay proxies below are the packers that remain, and
+    /// they still pin the same #408 property for the destination that still has it.
     /// </para>
     /// </summary>
     public sealed class PackedUniformMirrorTests
     {
-        // ---- The tile-ground material's combined UBO: frame block at 0, the retained params appended after it ----
-        //
-        // The splat material had the IDENTICAL shape and these two cases were written against it. #604 unfolded that
-        // one into a shared frame set plus a load-time params buffer, which left no mirror to test, so they were
-        // retargeted onto the remaining combined ground UBO rather than deleted: the mechanism they pin is #408's,
-        // not the splat pass's, and it is still shipped here.
-
-        const uint FrameBytes = 1008;   // ModelRenderer.UboBytes
-
-        static Vector4[] DistinctParams()
-        {
-            var p = new Vector4[TileGroundMaterialConfig.ParamsBytes / 16];
-            for (int i = 0; i < p.Length; i++) p[i] = new Vector4(i * 4 + 1, i * 4 + 2, i * 4 + 3, i * 4 + 4);
-            return p;
-        }
-
-        static byte[] Ramp(int n, byte seed)
-        {
-            var b = new byte[n];
-            for (int i = 0; i < n; i++) b[i] = (byte)(seed + i);
-            return b;
-        }
-
-        [Fact]
-        public void A_ground_upload_is_the_frame_block_followed_by_the_material_params()
-        {
-            using var gd = new FakeGpuDevice();
-            IGpuBuffer buffer = gd.Factory.CreateBuffer(new GpuBufferDescription(
-                FrameBytes + TileGroundMaterialConfig.ParamsBytes, GpuBufferUsage.UniformBuffer));
-            Vector4[] p = DistinctParams();
-            using var mirror = new TileGroundUniformBuffer(buffer, p, FrameBytes);
-
-            var rec = new RecordingGpuCommandList(new NullGpuCommandList()) { CapturePayloads = true };
-            byte[] frame = Ramp((int)FrameBytes, 3);
-            mirror.Upload(rec, frame);
-
-            RecordingGpuCommandList.Upload u = Assert.Single(rec.Uploads);
-            Assert.True(u.IsWholeBuffer,
-                $"the combined UBO must go up whole: got [{u.Offset}, {u.Offset + u.Bytes}) of {buffer.SizeInBytes}");
-
-            // The concatenation of the two partial writes this replaced: the per-frame block at 0 and the
-            // load-time params at FrameBytes.
-            var expected = new byte[FrameBytes + TileGroundMaterialConfig.ParamsBytes];
-            frame.CopyTo(expected, 0);
-            MemoryMarshal.AsBytes<Vector4>(p).CopyTo(expected.AsSpan((int)FrameBytes));
-            Assert.Equal(expected, u.Data);
-        }
-
-        [Fact]
-        public void A_later_ground_upload_replaces_the_frame_head_and_keeps_the_params_tail()
-        {
-            using var gd = new FakeGpuDevice();
-            IGpuBuffer buffer = gd.Factory.CreateBuffer(new GpuBufferDescription(
-                FrameBytes + TileGroundMaterialConfig.ParamsBytes, GpuBufferUsage.UniformBuffer));
-            Vector4[] p = DistinctParams();
-            using var mirror = new TileGroundUniformBuffer(buffer, p, FrameBytes);
-
-            var rec = new RecordingGpuCommandList(new NullGpuCommandList()) { CapturePayloads = true };
-            mirror.Upload(rec, Ramp((int)FrameBytes, 3));
-            byte[] second = Ramp((int)FrameBytes, 200);
-            mirror.Upload(rec, second);
-
-            byte[] bytes = rec.Uploads[1].Data!;
-            Assert.Equal(second, bytes[..(int)FrameBytes]);
-
-            // The tail is the thing the material has to RETAIN for a whole write to be possible at all: nothing
-            // re-supplies it per frame, so a mirror that let it rot would upload a valid-looking block of zeros.
-            var tail = new byte[TileGroundMaterialConfig.ParamsBytes];
-            MemoryMarshal.AsBytes<Vector4>(p).CopyTo(tail);
-            Assert.Equal(tail, bytes[(int)FrameBytes..]);
-        }
-
         // ---- The overlay proxies: one slot per queued draw, all packed before the first draw is recorded ----
 
         const int OverlaySlotBytes = 256;

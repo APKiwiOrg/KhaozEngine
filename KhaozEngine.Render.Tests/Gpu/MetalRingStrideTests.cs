@@ -41,7 +41,8 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(256u, 256u)]
         [InlineData(257u, 512u)]
         [InlineData(768u, 768u)]
-        [InlineData(8448u, 8448u)]     // ShadowMapRenderer.SkinnedDepthSlotBytes and ModelRenderer.SkinnedMainSlotBytes
+        [InlineData(8192u, 8192u)]     // SkinnedBonePalette.SlotBytes, the largest slot the engine binds
+        [InlineData(8448u, 8448u)]     // both skinned slots between #604 and #407, when each still carried a palette
         [InlineData(9472u, 9472u)]     // the skinned main slot before #604 took the folded frame block out of it
         public void TheStrideIsTheSizeRoundedUpTo256(uint sizeInBytes, uint expected)
             => Assert.Equal(expected, MetalRingStride.SegmentStrideFor(sizeInBytes));
@@ -65,7 +66,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(768ul, MetalRingStride.TotalBytesFor(256, 3));
             Assert.Equal(256ul, MetalRingStride.TotalBytesFor(256, 1));
             Assert.Equal(4096ul, MetalRingStride.TotalBytesFor(256, 16));
-            Assert.Equal(3ul * 8448, MetalRingStride.TotalBytesFor(ModelRenderer.SkinnedMainSlotBytes, 3));
+            Assert.Equal(3ul * 8192, MetalRingStride.TotalBytesFor(SkinnedBonePalette.SlotBytes, 3));
         }
 
         [Fact]
@@ -117,14 +118,14 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// EVERY SHIPPED RESOURCE-SET SHAPE, against M-M4's invariant, device-free. The engine builds eight
-        /// <c>new GpuBufferRange(...)</c> resource sets over a uniform buffer, which are SEVEN distinct shapes
+        /// EVERY SHIPPED RESOURCE-SET SHAPE, against M-M4's invariant, device-free. The engine builds nine
+        /// <c>new GpuBufferRange(...)</c> resource sets over a uniform buffer, which are EIGHT distinct shapes
         /// (<c>SpriteBatch</c> builds the same one at construction and again after a grow), and every one of them
         /// is a slot array addressed by a per-draw dynamic offset. Each is swept across the capacities the
         /// renderer actually grows through, because the buffer's size and the largest offset both scale with the
         /// capacity and a single sample would pin one of them by accident.
         /// <para>
-        /// The same seven shapes the Vulkan sibling's row asserts, and the sizes are referenced by their own
+        /// The same eight shapes the Vulkan sibling's row asserts, and the sizes are referenced by their own
         /// constant wherever one is reachable, with the private literals hardcoded against the line that owns
         /// them.
         /// </para>
@@ -150,7 +151,8 @@ namespace KhaozEngine.Tests.Gpu
                 // FULL slot, which is the tight case where the window exactly fills the segment.
                 ("ShadowMapRenderer dissolve", 256u, 256u, new uint[] { (uint)ShadowMapRenderer.MaxCascades }),
 
-                // ShadowMapRenderer.cs, GpuBufferRange(_skinnedUbo, 0, SkinnedDepthSlotBytes).
+                // ShadowMapRenderer.cs, GpuBufferRange(_skinnedUbo, 0, SkinnedDepthSlotBytes). One per (cascade,
+                // caster), and 256 bytes rather than 8448 since #407 moved the palette out of it.
                 ("ShadowMapRenderer skinned depth", ShadowMapRenderer.SkinnedDepthSlotBytes,
                     ShadowMapRenderer.SkinnedDepthSlotBytes, new uint[] { 8, 16, 32, 64 }),
 
@@ -158,12 +160,17 @@ namespace KhaozEngine.Tests.Gpu
                 ("ModelRenderer skinned main", ModelRenderer.SkinnedMainSlotBytes,
                     ModelRenderer.SkinnedMainSlotBytes, new uint[] { 8, 16, 32, 64 }),
 
+                // SkinnedBonePalette.cs, GpuBufferRange(_ubo, 0, SlotBytes). ONE slot per caster, whatever the
+                // cascade count, and the widest window the engine binds at 8192 bytes.
+                ("SkinnedBonePalette per caster", SkinnedBonePalette.SlotBytes, SkinnedBonePalette.SlotBytes,
+                    new uint[] { 8, 16, 32, 64 }),
+
                 // WaterRenderer.cs, GpuBufferRange(_ubo, 0, SlotBytes). Capacity starts at 4 and doubles.
                 ("WaterRenderer per-plane", WaterRenderer.SlotBytes, WaterRenderer.SlotBytes,
                     new uint[] { 4, 8, 16, 32 }),
             };
 
-            Assert.Equal(7, sets.Length);
+            Assert.Equal(8, sets.Length);
 
             foreach ((string site, uint slotBytes, uint rangeBytes, uint[] capacities) in sets)
             {

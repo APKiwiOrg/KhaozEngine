@@ -3158,16 +3158,20 @@ only at MMO crowd scale, where the CPU skin loop (O(vertices x characters) per f
 scene (3,894 rigid instances, 24 characters at 13.6k vertices and 48 bones, four cascades at 2048) on one
 device, and the CPU path's per-frame upload is almost entirely the skinned vertex stream:
 
-| path | frame upload | instance stream | CPU-skinned stream | skinning uniforms | frame |
-|---|---|---|---|---|---|
-| CPU skinning (default) | 20,934 KB | 471 KB | 20,463 KB | 0 KB | 11.54 ms |
-| GPU skinning | 866 KB | 471 KB | 0 KB | 394 KB | 4.75 ms |
+| path | frame upload | instance stream | CPU-skinned stream | skinning uniforms |
+|---|---|---|---|---|
+| CPU skinning (default) | 20,934 KB | 471 KB | 20,463 KB | 0 KB |
+| GPU skinning | 553 KB | 471 KB | 0 KB | 81 KB |
 
-That is **24x** off the frame's upload and, on this harness, 2.4x off the frame. The reason the gap is that
-wide is the exponent: CPU skinning re-uploads 64 bytes per vertex per character per frame, GPU skinning
-uploads 64 bytes per BONE, and a character has hundreds of times more vertices than bones. If your game draws
-more than a handful of skinned characters at once, this flag is the single largest per-frame upload lever the
-engine has, and the windowed A/B below is the only thing standing between you and it.
+That is **37.9x** off the frame's upload, and on the harness it is several times off the frame's own
+milliseconds too (a machine-dependent number, so run the test rather than quoting one). The reason the upload
+gap is that wide is the exponent: CPU skinning re-uploads 64 bytes per vertex per character per frame, GPU
+skinning uploads 64 bytes per BONE, and a character has hundreds of times more vertices than bones. The
+skinning-uniform column shrank twice on the way here: 394 KB before #604 stopped copying the frame block into
+every draw's slot, 369 KB after it, and 81 KB once #407 made a caster's palette one upload the main pass and
+every cascade share. If your game draws more than a handful of skinned characters at once, this flag is the single
+largest per-frame upload lever the engine has, and the windowed A/B below is the only thing standing between you
+and it.
 
 The GPU path used to exist on a specific binding shape because the naive GPU design failed on Metal. **That
 rule is retired, and it is worth knowing it existed if you read older Render3D code.** Every pipeline was
@@ -3176,14 +3180,22 @@ no error anywhere. The cause was measured in 2026-08: it was the Veldrid incumbe
 than anything about Metal, and what mis-bound was a stage referencing fewer buffers than the declared layout
 array put before them. That backend was deleted in 18.0.0 and the rule was lifted by issue #604, so a
 custom pipeline of yours may spread its uniform buffers across bindings and sets however its structure wants.
-`docs/DEPENDENCY-SEAMS.md`'s "ONE uniform buffer per pipeline" section is the full history if you meet a
-combined buffer and wonder why it is shaped like that. GPU skinning is one of the two passes the issue
-unfolded: it used to fold EVERYTHING into one combined per-draw UBO,
-`{ Mvp; Model; P; <frame lighting block>; bones[128] }`, and now reads two buffers in set 0. Binding 0 is the
-SHARED frame block, the same one the model pass binds, read by both stages. Binding 1 is `VBlock`, the per-draw
-`{ Model; P; bones[128] }` at that draw's dynamic offset, read by the vertex alone. Per-mesh material maps stay
-at set 1. The shadow depth pass still carries its own combined `{ LightMvp; bones[128] }`, which is a shape it
-keeps rather than one it needs. See the offscreen acceptance repro `GpuSkinningReproGpuTests` variant 3.
+`docs/DEPENDENCY-SEAMS.md`'s "ONE uniform buffer per pipeline" section is the full history if you meet an old
+combined buffer in a dated document and wonder why it was shaped like that. GPU skinning is one of the passes the
+issue unfolded: it used to fold EVERYTHING into one combined per-draw UBO,
+`{ Mvp; Model; P; <frame lighting block>; bones[128] }`. It reads three buffers now. Set 0 binding 0 is the
+SHARED frame block, the same one the model pass binds, read by both stages. Set 0 binding 1 is `VBlock`, the
+per-draw `{ Model; P }` at that draw's dynamic offset, read by the vertex alone. Per-mesh material maps stay at
+set 1. Set 2 is `Palette`, the caster's `{ bones[128] }` at its own per-caster dynamic offset.
+
+That palette buffer is SHARED with the shadow depth pass, which binds the same layout and the same set at its own
+set 1 (issue #407). A caster's bones are packed and uploaded ONCE per frame and read by the main pass and by every
+shadow cascade, where each of those used to re-pack the whole palette into a slot of its own. At 24 casters, 48
+bones and 4 cascades that takes the frame's skinning-uniform upload from about 369 KB to about 81 KB. If you write
+your own skinned pipeline, the reason the palette needs a SET of its own rather than another binding is that
+`SetGraphicsResourceSet` carries one dynamic offset per set bind, and the palette is indexed per caster while the
+depth pass's light matrix is indexed per caster-cascade. See the offscreen acceptance repro
+`GpuSkinningReproGpuTests` variant 3.
 Separately, and unaffected by any of this: never have a vertex shader read a separate buffer at an index that
 came from a per-instance attribute (route that through a dynamic-offset UBO slot per draw, as GPU skinning
 does). Per-instance vertex ATTRIBUTES consumed directly (no indexed second buffer) are fine and used in
@@ -10729,9 +10741,11 @@ already-recorded bind to see the old value was never supported on any backend an
 
 **A one-shot write through `IGpuDevice.UpdateBuffer` IS preserved, the same as on every other backend.** A uniform
 buffer there holds one segment per frame in flight, and a device-level write reaches all of them, so a value
-written once at load time or when a setting changes persists for the buffer's life. Writing part of a uniform
-buffer once and the rest per frame is a normal thing to do and needs no special handling: the engine's own
-`ModelRenderer` does it for the splat-params tail of its terrain uniform buffer. The call does not block, ever,
+written once at load time or when a setting changes persists for the buffer's life. That is what the engine's own
+`ModelRenderer` does with a ground material's params, which go up once at load and are never rewritten. Writing
+part of a uniform buffer once and the rest per frame is a normal thing to do and needs no special handling
+either, and no shipped pass does it any more (#604 and #727 split both ground passes' combined frame-plus-params
+buffers in two). The call does not block, ever,
 including when an earlier frame is still reading a segment of that buffer: those segments take the write at their
 next frame boundary instead, so the value is in place before any of them is bound again. What it is NOT is a
 per-frame tool. It writes a whole-buffer-lifetime value, so for anything that changes every frame use the

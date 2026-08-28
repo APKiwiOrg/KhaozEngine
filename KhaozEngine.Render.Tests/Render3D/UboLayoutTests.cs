@@ -198,7 +198,8 @@ namespace KhaozEngine.Tests.Render3D
             Assert.DoesNotContain("TintTiling", ShaderSources.SplatVert);
         }
 
-        // ---- GPU-skinning per-draw block (ModelRenderer.SkinnedBonesOffset / SkinnedMainSlotBytes) ----
+        // ---- GPU-skinning uniform split (ModelRenderer.SkinnedHeaderBytes / SkinnedMainSlotBytes,
+        //      SkinnedBonePalette.SlotBytes, ShadowMapRenderer.SkinnedDepthSlotBytes) ----
 
         [Fact]
         public void SkinnedPerDrawBlock_IsItsOwnVertexOnlyBufferAfterTheSharedFrameBlock()
@@ -207,8 +208,8 @@ namespace KhaozEngine.Tests.Render3D
             // declared by every skinned stage, which kept each stage's buffer usage a prefix of the layout while
             // MslBindingOrder.CheckPrefix still ran (#604 deleted it in the same program, so the order is a shape
             // kept rather than a requirement). `VBlock` follows it at binding 1 and is declared by the VERTEX alone:
-            // no fragment reads any of Model/P/bones, they arrive as interpolants. Folding either back would
-            // reinstate the per-draw copy of the frame block the unfold deleted.
+            // no fragment reads Model or P, they arrive as interpolants. Folding either back would reinstate the
+            // per-draw copy of the frame block the unfold deleted.
             foreach (var (name, src) in new[]
             {
                 ("SkinnedModelVert", ShaderSources.SkinnedModelVert),
@@ -228,16 +229,36 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void SkinnedPerDrawBlock_PutsThePaletteWhereTheCsHeaderEnds()
+        public void SkinnedBonePalette_IsOneSharedVertexOnlyBufferInBothSkinnedPipelines()
         {
-            // The C# packer writes the bone palette at SkinnedBonesOffset into each slot, and the GLSL block puts
-            // it after exactly SkinnedHeaderMats mat4s. Assert the two halves agree by arithmetic, and that the
-            // GLSL comment quotes the same number, so a header matrix added on one side alone trips here rather
-            // than smearing every draw's palette.
-            Assert.Equal(ModelRenderer.SkinnedHeaderMats * 64, ModelRenderer.SkinnedBonesOffset);
-            Assert.Contains("mat4 bones[" + SkinningMath.MaxBonesPerDraw + "];       // offset "
-                + ModelRenderer.SkinnedBonesOffset, ShaderSources.SkinnedModelVert);
-            Assert.Equal(8448u, ModelRenderer.SkinnedMainSlotBytes);   // 128 + 128*64 = 8320, aligned up to 256
+            // The #407 split. The palette left both per-draw slots for a buffer of its own, declared by the two
+            // skinned VERTEX stages and by nothing else, so a caster's bones upload once a frame and the main pass
+            // and every shadow cascade read that one upload. The two sets differ because the two pipelines put the
+            // palette at a different SLOT (2 in the model pair, 1 in the depth pipeline), which is legal precisely
+            // because a set layout carries no set number of its own.
+            Assert.Contains("layout(set=2, binding=0) uniform Palette {", ShaderSources.SkinnedModelVert);
+            Assert.Contains("layout(set=1, binding=0) uniform Palette {", ShaderSources.SkinnedShadowDepthVert);
+            Assert.DoesNotContain("Palette", ShaderSources.SkinnedModelFrag);
+            Assert.DoesNotContain("Palette", ShaderSources.SkinnedModelDissolveFrag);
+            Assert.DoesNotContain("Palette", ShaderSources.ShadowDepthFrag);
+
+            // Both vertex stages declare the SAME window, which is what makes one buffer and one set serve both.
+            string palette = "mat4 bones[" + SkinningMath.MaxBonesPerDraw + "];";
+            Assert.Contains(palette, ShaderSources.SkinnedModelVert);
+            Assert.Contains(palette, ShaderSources.SkinnedShadowDepthVert);
+            Assert.Equal((uint)SkinningMath.MaxBonesPerDraw * 64, SkinnedBonePalette.SlotBytes);
+        }
+
+        [Fact]
+        public void SkinnedSlots_HoldTheirMatricesAndNothingElse()
+        {
+            // What is LEFT in the two per-draw slots once the frame block (#604) and the palette (#407) are out:
+            // two matrices in the main one, one in the depth one. Both round to a single 256-byte dynamic slot,
+            // down from 8448 each, which is the whole of what #407 bought per draw.
+            Assert.Equal(ModelRenderer.SkinnedHeaderMats * 64, ModelRenderer.SkinnedHeaderBytes);
+            Assert.Equal(256u, ModelRenderer.SkinnedMainSlotBytes);          // 128 -> 256
+            Assert.Equal(256u, ShadowMapRenderer.SkinnedDepthSlotBytes);     // 64 -> 256
+            Assert.DoesNotContain("bones[", ShaderSources.SkinnedShadowDepthVert.Split("uniform Palette")[0]);
         }
 
         // ---- Post-process UBOs (PixelPostProcess) ----
@@ -462,7 +483,7 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("sampleKeyShadow(ShadowMap, ShadowSamp", ShaderSources.TileGroundFrag);
         }
 
-        // ---- Tile-ground material params tail ----
+        // ---- Tile-ground material params block ----
 
         [Fact]
         public void TileGroundShaders_DeclarePointLightArrays_SizedByMaxPointLights()
@@ -485,8 +506,8 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void TileGroundParamsBytes_MatchesGlslTail_MaxMaterialsPlusMisc()
         {
-            // The tail in the TileGroundFrag `U` block is TintTiling[MaxMaterials] + Misc, and BuildParams returns
-            // exactly that many vec4. If the two drift, the params land at the wrong offset behind the frame block.
+            // The TileGroundParams block is TintTiling[MaxMaterials] + Misc, and BuildParams returns exactly that
+            // many vec4. If the two drift, the buffer created for the block is the wrong size for it.
             Assert.Equal((TileGroundMaterialConfig.MaxMaterials + 1) * 16, (int)TileGroundMaterialConfig.ParamsBytes);
             Assert.Equal(
                 (int)TileGroundMaterialConfig.ParamsBytes / 16,
@@ -494,28 +515,30 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void TileGroundShaders_DeclareTintTilingArray_SizedByMaxMaterials()
+        public void TileGroundFrag_DeclaresTintTilingArray_SizedByMaxMaterials()
         {
-            // Build the GLSL spelling from the C# constant, so raising MaxMaterials without editing both shaders
-            // trips here rather than reading past the array on the GPU. Other half in ShaderSources.TileGround.cs.
+            // Build the GLSL spelling from the C# constant, so raising MaxMaterials without editing the shader
+            // trips here rather than reading past the array on the GPU. The other half lives in the
+            // TileGroundParams block of ShaderSources.TileGroundFrag, and only there since #727: the vertex stage
+            // reads no per-material data.
             string tintTiling = "vec4 TintTiling[" + TileGroundMaterialConfig.MaxMaterials + "];";
 
-            Assert.True(ShaderSources.TileGroundVert.Contains(tintTiling),
-                $"TileGroundVert lost '{tintTiling}': drifted from TileGroundMaterialConfig.MaxMaterials ({TileGroundMaterialConfig.MaxMaterials}). Fix ShaderSources.TileGroundVert or the constant.");
             Assert.True(ShaderSources.TileGroundFrag.Contains(tintTiling),
                 $"TileGroundFrag lost '{tintTiling}': drifted from TileGroundMaterialConfig.MaxMaterials ({TileGroundMaterialConfig.MaxMaterials}). Fix ShaderSources.TileGroundFrag or the constant.");
         }
 
         [Fact]
-        public void TileGroundTail_AppendsAtUboBytesOffset_PerGlslComment()
+        public void TileGroundParams_AreTheirOwnFragmentOnlyBlockAtSetOne()
         {
-            // Same tripwire as the splat tail: the renderer writes the params at UboBytes
-            // (ModelRenderer.CreateTileGroundParamsUbo), and both shaders quote that offset in their block comment.
-            string glslOffset = "(offset " + ModelRenderer.UboBytes + ")";
-            Assert.True(ShaderSources.TileGroundVert.Contains(glslOffset),
-                $"TileGroundVert no longer documents '{glslOffset}': the params append offset drifted from ModelRenderer.UboBytes ({ModelRenderer.UboBytes}). Fix the ShaderSources.TileGroundVert comment or the UBO size.");
-            Assert.True(ShaderSources.TileGroundFrag.Contains(glslOffset),
-                $"TileGroundFrag no longer documents '{glslOffset}': the params append offset drifted from ModelRenderer.UboBytes ({ModelRenderer.UboBytes}). Fix the ShaderSources.TileGroundFrag comment or the UBO size.");
+            // The params used to be APPENDED to the frame block, so this pinned the append offset against
+            // ModelRenderer.UboBytes. #727 gave them their own buffer, the same split #604 gave the splat pass,
+            // and what is worth pinning now is the split itself: the block is declared at set 1 binding 0, in the
+            // FRAGMENT alone. Re-declaring it in TileGroundVert would put a second buffer in the vertex stage for
+            // no reason, and folding it back into `U` would reinstate the per-material frame re-sync the unfold
+            // deleted.
+            Assert.Contains("layout(set=1, binding=0) uniform TileGroundParams {", ShaderSources.TileGroundFrag);
+            Assert.DoesNotContain("TileGroundParams", ShaderSources.TileGroundVert);
+            Assert.DoesNotContain("TintTiling", ShaderSources.TileGroundVert);
         }
 
         [Fact]

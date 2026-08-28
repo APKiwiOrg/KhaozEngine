@@ -10,8 +10,9 @@ namespace KhaozEngine.Tests.Gpu
     // Device-free CPU-cost micro-harness contrasting the two skinning paths' per-frame CPU work for a crowd of N
     // same-mesh characters (the MMO case the feature targets):
     //   CPU path  = compose the palette + run SkinningMath.SkinVertex over EVERY vertex (the deform), each frame.
-    //   GPU path  = compose the palette + pack the per-draw slot (a two-matrix header + a bone-palette memcpy). The
-    //               GPU does the per-vertex deform, so the CPU touches O(bones), not O(vertices).
+    //   GPU path  = compose the palette + pack the per-draw slot (a two-matrix header) + copy the palette into its
+    //               own shared slot. The GPU does the per-vertex deform, so the CPU touches O(bones), not
+    //               O(vertices), and since #407 it touches the palette ONCE per caster rather than once per pass.
     // Both paths share the bone-palette compose, so the delta is the per-vertex deform (CPU-only) vs the palette
     // pack (GPU). For a real character mesh (vertices >> bones) the GPU path's CPU cost is a small fraction. A plain
     // [Fact] (no GPU) so it runs in the fast loop. The numbers print to the test output.
@@ -38,11 +39,12 @@ namespace KhaozEngine.Tests.Gpu
             Matrix4x4 model = Matrix4x4.CreateTranslation(1f, 0f, 0f);
 
             var cpuDst = new ModelVertex[src.Length];        // reused deform target (per character)
-            var packScratch = new Matrix4x4[2 + Bones];      // Model/P + bones (mirrors PackSkinnedMainSlot)
+            var headerScratch = new Matrix4x4[2];            // Model/P (mirrors PackSkinnedMainSlot)
+            var paletteScratch = new Matrix4x4[Bones];       // the shared slot (mirrors PackSkinnedBonePalette)
 
             // Warm up the JIT for both paths.
             CpuDeform(src, palette, cpuDst, 4);
-            GpuPack(palette, packScratch, model, 4);
+            GpuPack(palette, headerScratch, paletteScratch, model, 4);
 
             _out.WriteLine($"vertices={src.Length}, bones={Bones}, frames/measure={Frames}");
             _out.WriteLine("N     CPU skin-loop ms/frame    GPU pack ms/frame    speedup");
@@ -50,7 +52,7 @@ namespace KhaozEngine.Tests.Gpu
             foreach (int n in Ns)
             {
                 double cpuMs = TimeMs(() => { for (int f = 0; f < Frames; f++) CpuDeform(src, palette, cpuDst, n); }) / Frames;
-                double gpuMs = TimeMs(() => { for (int f = 0; f < Frames; f++) GpuPack(palette, packScratch, model, n); }) / Frames;
+                double gpuMs = TimeMs(() => { for (int f = 0; f < Frames; f++) GpuPack(palette, headerScratch, paletteScratch, model, n); }) / Frames;
                 _out.WriteLine($"{n,-4}  {cpuMs,20:0.0000}    {gpuMs,17:0.0000}    {(gpuMs > 0 ? cpuMs / gpuMs : 0),6:0.0}x");
                 lastCpu = cpuMs; lastGpu = gpuMs;
             }
@@ -68,17 +70,18 @@ namespace KhaozEngine.Tests.Gpu
                     dst[v] = SkinningMath.SkinVertex(src[v], palette);
         }
 
-        // GPU path per-frame CPU work: write the two-matrix header and copy the palette into the per-draw slot
-        // scratch, for n characters (the GPU shader does the per-vertex deform, so the CPU never touches a vertex).
-        // The Mvp fold this used to open with (model * viewProj, per character per frame) went with #604: the
-        // vertex reads ViewProj out of the shared frame block now, so it is not CPU work any more.
-        static void GpuPack(Matrix4x4[] palette, Matrix4x4[] scratch, in Matrix4x4 model, int n)
+        // GPU path per-frame CPU work: write the two-matrix header into the per-draw slot and copy the palette into
+        // its own shared slot, for n characters (the GPU shader does the per-vertex deform, so the CPU never touches
+        // a vertex). The Mvp fold this used to open with (model * viewProj, per character per frame) went with #604:
+        // the vertex reads ViewProj out of the shared frame block now, so it is not CPU work any more. The palette
+        // copy stays ONE per character however many passes read it, which is what #407 bought.
+        static void GpuPack(Matrix4x4[] palette, Matrix4x4[] header, Matrix4x4[] paletteSlot, in Matrix4x4 model, int n)
         {
             for (int c = 0; c < n; c++)
             {
-                scratch[0] = model;
-                scratch[1] = Matrix4x4.Identity;   // packed Tint/Emissive/SpecParams
-                for (int b = 0; b < palette.Length; b++) scratch[2 + b] = palette[b];
+                header[0] = model;
+                header[1] = Matrix4x4.Identity;   // packed Tint/Emissive/SpecParams
+                for (int b = 0; b < palette.Length; b++) paletteSlot[b] = palette[b];
             }
         }
 

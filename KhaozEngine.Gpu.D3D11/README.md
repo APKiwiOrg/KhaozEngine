@@ -730,8 +730,10 @@ the buffer's life exactly as the same call persisted it on the deleted Veldrid l
 copy. Reaching the current segment alone was the shipped shape for one release, and it was a defect rather than
 a documentation problem: a load-time write held only until the frame index wrapped back round, so two frames out
 of every three bound memory nothing had ever written, intermittently, with nothing thrown and nothing logged.
-The splat-params tail of `ModelRenderer`'s uniform buffer is the shipped consumer that writes that way, and it
-works here now with no renderer change.
+A ground material's params buffer in `ModelRenderer` is the shipped consumer that writes that way, written once
+at load and read every frame after, and it works here now with no renderer change. It was a tail inside a larger
+combined buffer when this was written, and is a buffer of its own since #604 and #727 unfolded the two ground
+passes, which changes nothing about the property.
 
 The record-time write is unchanged and still lands in the current segment alone, meaning the one the next `Submit`
 will bind and the one any open recording is already writing, deliberately not the one executing on the GPU. The

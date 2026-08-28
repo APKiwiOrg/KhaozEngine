@@ -19,13 +19,18 @@ namespace KhaozEngine.Render3D.Internal
         //      interpolation cannot smear them. The fragment reads each back as int(x + 0.5), the same way the splat
         //      pass reads its packed values.
         //
-        //      ONE UNIFORM BUFFER, which this pass was built with because the retired Veldrid Metal backend
-        //      mis-bound a SECOND uniform buffer in a set (it read the first buffer's bytes), which is what zeroed
-        //      the per-layer tint and blacked out the terrain. That backend went in 18.0.0 and #604 lifted the rule,
-        //      unfolding the splat and skinned passes. This one KEEPS its combined buffer on purpose
-        //      (#727). So the per-material params ride in the SAME binding-0
-        //      block, appended after the render origin (offset 1008): vec4 TintTiling[64] then vec4 Misc. The tail is
-        //      unread by the vertex stage but declared so the block layout matches TileGroundFrag exactly.
+        //      THE SHARED FRAME BLOCK AT SET 0 BINDING 0 is the only uniform buffer this stage reads, and it is the
+        //      same buffer the model pass binds.
+        //
+        //      HISTORY, because the shape it replaced outlived the backend that needed it. The per-material params
+        //      used to be APPENDED to this same block (vec4 TintTiling[64] then vec4 Misc, at offset 1008), so the
+        //      whole pipeline bound exactly one uniform buffer. The retired Veldrid Metal backend numbered a
+        //      pipeline's buffers by per-kind DECLARATION ORDER, so a stage referencing fewer of them than the
+        //      declared array put before it read an index nothing had written: the per-layer tint came back zero
+        //      and the ground rendered black. That backend went in 18.0.0, #604 unfolded the splat and skinned
+        //      passes, and this one followed as the last combined frame-plus-params buffer in the tree
+        //      (https://github.com/APKiwiOrg/KhaozEngine/issues/727). The params are their own fragment-only block
+        //      at set 1 now, so nothing per-material is declared here at all.
         //
         //      INTERPOLANT LAYOUT, and it is load-bearing on D3D11 (the FXC rule the terrain pass paid for): the
         //      fragment reads EVERY output this vertex declares, so the pixel-input semantics are gap-free from
@@ -49,8 +54,6 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
-    vec4 TintTiling[64];   // per-material params appended (offset 1008): xyz = tint, w = tiles/metre
-    vec4 Misc;             // x = baseSpecStrength, yzw reserved (0)
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
@@ -95,11 +98,14 @@ void main() {
         //      THE WEIGHTS RENORMALISE BY THEIR OWN SUM. There is no one-minus-sum fifth layer here (the splat pass's
         //      idiom does not apply): all four weights ride in Color and nothing is implied by the remainder.
         //
-        //      BINDINGS AND SAMPLE ORDER: 0 = the one UBO (frame block + params tail, see TileGroundVert),
-        //      1 = AlbedoArray, 2 = Samp, 3 = ShadowMap, 4 = ShadowSamp. The arrays are sampled in BINDING ORDER with
-        //      the shadow map LAST (the Metal SPIRV-Cross first-sample-order constraint the terrain pass paid for).
-        //      The blend loop always takes at least one albedo tap, because the renormalisation falls back to a
-        //      one-hot weight when the four sum to nothing, so the shadow map can never be the first sample.
+        //      BINDINGS AND SAMPLE ORDER, in TWO sets since #727. Set 0 binding 0 is the SHARED frame block, the
+        //      one the model pass binds, read by both stages. Everything the material owns is set 1: binding 0 the
+        //      TileGroundParams block (fragment only, written once at load), then 1 = AlbedoArray, 2 = Samp,
+        //      3 = ShadowMap, 4 = ShadowSamp. The arrays are still sampled in BINDING ORDER with the shadow map
+        //      LAST, which is no longer a Metal constraint (the native backend authors its own indices) and stays
+        //      as the engine's own convention. The blend loop always takes at least one albedo tap, because the
+        //      renormalisation falls back to a one-hot weight when the four sum to nothing, so the shadow map can
+        //      never be the first sample.
         //
         //      Every tap is a textureGrad with derivatives HOISTED into uniform control flow above the loop, because
         //      the taps run under a data-dependent branch. An implicit texture() there takes undefined derivatives
@@ -119,13 +125,18 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
-    vec4 TintTiling[64];   // xyz = tint, w = tiles/metre, one entry per catalog material (offset 1008)
+};
+// The material's own uniforms, written ONCE at load and never re-uploaded. Declared here and NOT in
+// TileGroundVert, because the vertex stage reads none of them (TileGroundMaterialConfig.BuildParams is the C#
+// side of this block, MaxMaterials + 1 vec4).
+layout(set=1, binding=0) uniform TileGroundParams {
+    vec4 TintTiling[64];   // xyz = tint, w = tiles/metre, one entry per catalog material
     vec4 Misc;             // x = baseSpecStrength, yzw reserved (0)
 };
-layout(set=0, binding=1) uniform texture2DArray AlbedoArray;  // one layer per catalog material, sampled FIRST
-layout(set=0, binding=2) uniform sampler Samp;
-layout(set=0, binding=3) uniform texture2D ShadowMap;    // key-light depth map (R32F), sampled LAST (Metal first-sample-order rule)
-layout(set=0, binding=4) uniform sampler ShadowSamp;     // clamp/linear sampler for the shadow-map PCF taps
+layout(set=1, binding=1) uniform texture2DArray AlbedoArray;  // one layer per catalog material, sampled FIRST
+layout(set=1, binding=2) uniform sampler Samp;
+layout(set=1, binding=3) uniform texture2D ShadowMap;    // key-light depth map (R32F), sampled LAST
+layout(set=1, binding=4) uniform sampler ShadowSamp;     // clamp/linear sampler for the shadow-map PCF taps
 // Declare the interpolants gap-free from location 0, in the order TileGroundVert emits them. This fragment reads
 // ALL of them, so there is no hole for FXC/WARP to miscompile (see the TileGroundVert note).
 layout(location=0) in vec3 vWorldPos;
@@ -197,7 +208,7 @@ void main() {
     // that pass would reach at roughness 0.5, so ground under this pipeline highlights like middling terrain.
     const float TILEGROUND_SPEC_EXP = 28.0;
     float specStrength = Misc.x;
-    // Key-light shadow: sampled AFTER the albedo array (Metal first-sample-order: ShadowMap is binding 3, last).
+    // Key-light shadow: sampled AFTER the albedo array, ShadowMap being the last texture of set 1.
     // Tile ground RECEIVES shadows identically to models and terrain, via the same shared helper.
     float ndlKeyForShadow = max(dot(Ngeo, -normalize(LightDir.xyz)), 0.0);
     float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);

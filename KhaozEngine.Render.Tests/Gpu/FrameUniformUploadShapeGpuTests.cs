@@ -42,11 +42,14 @@ namespace KhaozEngine.Tests.Gpu
         const uint FrameUboBytes = 1008;
         // ShadowMapRenderer: MaxCascades (4) 256-byte dynamic slots.
         const uint ShadowCascadeUboBytes = 4 * 256;
-        // One GPU-skinned draw starts each growable UBO at its minimum eight slots. Both slot sizes round to 8448
-        // since #604 shrank the main slot to { Model; P; bones[128] }, so the two buffers are now the SAME SIZE and
-        // this one constant covers both. That is why the skinned row below counts two destinations rather than
-        // asserting the uniqueness the other rows can (see AssertOneWholeWritePerBuffer).
-        const uint SkinnedSlotUboBytes = 8 * 8448;
+        // One GPU-skinned draw starts each growable UBO at its minimum eight slots. Both PER-DRAW slot sizes round
+        // to 256 now that #604 took the frame block and #407 the palette out of them, so the two buffers are the
+        // SAME SIZE and this one constant covers both. That is why the skinned row below counts two destinations
+        // rather than asserting the uniqueness the other rows can (see AssertOneWholeWritePerBuffer).
+        const uint SkinnedSlotUboBytes = 8 * 256;
+        // The palette they were carved out of: eight slots of SkinnedBonePalette.SlotBytes, ONE per caster whatever
+        // the cascade count. Unique by size, which is what lets its row assert per-buffer uniqueness.
+        const uint SkinnedPaletteUboBytes = 8 * 8192;
         // WaterRenderer: min four planes of SlotBytes (768), the 256-aligned round-up of the 672-byte payload.
         const uint WaterUboBytes = 4 * 768;
         // OverlayMeshRenderer / SpriteBatch: both start at eight 256-byte dynamic-offset slots.
@@ -220,6 +223,95 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(scene.ShadowPassSkippedLastFrame,
                 "a GPU-skinned caster must keep the depth pass dirty so the shadow-slot upload is exercised");
             AssertOneWholeWritePerBuffer(rec, SkinnedSlotUboBytes, 2, "skinned main + shadow slot UBOs");
+            AssertOneWholeBufferWrite(rec, SkinnedPaletteUboBytes, "skinned bone palette UBO");
+        }
+
+        /// <summary>
+        /// THE PALETTE COSTS THE SAME WHATEVER THE CASCADE COUNT, which is the whole of what #407 bought and is the
+        /// half no per-frame upload count can see on its own. Before it, a caster's bones were re-packed into every
+        /// (cascade, caster) depth slot AND into its main slot, so the skinning-uniform bytes of a shadowed frame
+        /// scaled with <c>cascadeCount</c>. Now the palette buffer takes ONE whole write per frame and the depth
+        /// slots carry a light matrix each, so the same scene at two cascades and at four records the same palette
+        /// upload byte for byte.
+        /// <para>
+        /// Two scenes rather than one re-configured, because <c>ShadowCascadeCount</c> is committed when the atlas
+        /// is built and cannot move on a live scene. Everything else about the two frames is identical.
+        /// </para>
+        /// </summary>
+        [GpuFact]
+        public void The_bone_palette_uploads_once_per_frame_whatever_the_cascade_count()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = gpu.GpuDevice;
+
+            (int Uploads, long Bytes, long SkinningBytes, int Drawn) two = SkinnedPaletteUploads(gd, cascades: 2);
+            (int Uploads, long Bytes, long SkinningBytes, int Drawn) four = SkinnedPaletteUploads(gd, cascades: 4);
+
+            Assert.Equal(1, two.Uploads);
+            Assert.Equal(1, four.Uploads);
+            Assert.Equal(two.Bytes, four.Bytes);
+
+            // Both frames drew all four casters, so the only term that can differ below is the per-cascade one.
+            Assert.Equal(4, two.Drawn);
+            Assert.Equal(4, four.Drawn);
+
+            // AND THE TWO FRAMES REALLY DID RUN AT DIFFERENT CASCADE COUNTS, which the equal palette upload above
+            // cannot show on its own: a scene that quietly clamped both runs to the same count would pass it. The
+            // frame's skinning-uniform total is what still scales, by exactly the 64-byte light matrix per (cascade,
+            // caster) that is all a depth slot holds now. Four casters, so the gap is 4 * 2 * 64 = 512 bytes.
+            Assert.Equal(512L, four.SkinningBytes - two.SkinningBytes);
+        }
+
+        /// <summary>Render one shadowed GPU-skinned frame at <paramref name="cascades"/> cascades and report how
+        /// many times the bone-palette buffer was written, how many bytes went into it, and the frame's whole
+        /// skinning-uniform total, and how many skinned instances the main pass drew.</summary>
+        static (int Uploads, long Bytes, long SkinningBytes, int Drawn) SkinnedPaletteUploads(
+            IGpuDevice gd, int cascades)
+        {
+            var f = gd.Factory;
+            using IGpuTexture finalTex = f.CreateTexture(GpuTextureDescription.Texture2D(
+                W, H, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+            using IGpuFramebuffer finalFB = f.CreateFramebuffer(null, finalTex);
+
+            // The cascade count is a CONSTRUCTION-time atlas knob (the atlas handle is bound into every material
+            // set), so it is seeded through the ctor seam rather than written on a live scene.
+            var shadows = new ShadowSettings { Mode = ShadowMode.ShadowMap, ShadowCascadeCount = cascades };
+            using var scene = new Scene3D(gd, finalFB.Outputs, shadows);
+            scene.UseGpuSkinning = true;
+            scene.Post.Starfield = false;
+            scene.Post.LightDirection = new Vector3(-0.55f, -0.8f, -0.25f);
+            scene.Camera.Frame(new Vector3(0f, 0.4f, 0f), new Vector3(6f, 4.5f, 6f));
+
+            MeshHandle floor = scene.LoadMesh(MeshPrimitives.Tile(10f, 0.1f));
+            SkinnedGltfMesh tube = SkinnedMeshBuilder.BuildTube(0.5f, 4f, 10, 10, 6, Axis.Z);
+            var casters = new SkinnedMeshHandle[4];
+            for (int i = 0; i < casters.Length; i++) casters[i] = scene.LoadSkinnedMesh(tube);
+
+            using IGpuCommandList real = f.CreateCommandList();
+            var rec = new RecordingGpuCommandList(real);
+
+            scene.Begin();
+            scene.Draw(floor, Matrix4x4.Identity);
+            // FOUR casters, all in shot, so the per-(cascade, caster) term below is wide enough to read.
+            for (int i = 0; i < casters.Length; i++)
+            {
+                scene.DrawSkinned(casters[i], tube.RestPose,
+                    Matrix4x4.CreateTranslation(-2.4f + i * 1.6f, 0.6f, 0f), Color.White);
+            }
+            scene.PrepareFrame();
+            rec.Begin();
+            scene.RenderInternal(rec, W, H, finalFB);
+            rec.End();
+            gd.Submit(real);
+            gd.WaitForIdle();
+
+            Assert.False(scene.ShadowPassSkippedLastFrame,
+                "the depth pass must have run, or the per-cascade half of this comparison proves nothing");
+
+            List<RecordingGpuCommandList.Upload> hits = rec.ToBuffersOfSize(SkinnedPaletteUboBytes);
+            long bytes = 0;
+            foreach (RecordingGpuCommandList.Upload u in hits) bytes += u.Bytes;
+            return (hits.Count, bytes, scene.LastFrameStats.SkinnedUniformUploadBytes, scene.DrawnSkinnedInstances);
         }
 
         [GpuFact]
@@ -352,6 +444,108 @@ namespace KhaozEngine.Tests.Gpu
                 $"the splat material's params buffer was written {perMaterial.Count} time(s) during the frame. It "
                 + "holds load-time constants and nothing re-supplies them, so a per-frame write to it means the "
                 + "frame block has been folded back in (issue #604).");
+        }
+
+        /// <summary>
+        /// THE TILE-GROUND PASS COSTS THE SAME NUMBER OF UPLOADS WITH TWO MATERIALS LOADED AS WITH ONE, which is
+        /// the whole of what #727 bought and is asserted as a COUNT rather than by destination size on purpose.
+        /// The material's params buffer is <c>TileGroundMaterialConfig.ParamsBytes</c> = 1040 bytes, which is also
+        /// <c>PixelPostProcess.PaletteBufferBytes</c>, so size does not identify it and the helpers above would be
+        /// asserting about the palette half the time. The count does identify it: before the unfold this frame
+        /// wrote a 2048-byte copy of the frame block once per LOADED tile-ground material, so a second material
+        /// added a second upload whether or not anything was drawn with it.
+        /// </summary>
+        [GpuFact]
+        public void A_tile_ground_frame_costs_no_upload_per_loaded_material()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = gpu.GpuDevice;
+            var f = gd.Factory;
+
+            using IGpuTexture finalTex = f.CreateTexture(GpuTextureDescription.Texture2D(
+                W, H, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+            using IGpuFramebuffer finalFB = f.CreateFramebuffer(null, finalTex);
+
+            using var scene = new Scene3D(gd, finalFB.Outputs);
+            scene.Post.Starfield = false;
+            scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
+            scene.Camera.Frame(new Vector3(0f, 0.4f, 0f), new Vector3(6f, 4.5f, 6f));
+
+            Scene3D.TileGroundMaterialHandle mat = scene.LoadTileGroundMaterial(4, 4, FlatGroundLayers(4));
+            MeshHandle ground = scene.LoadMesh(TileGroundQuad(), mat);
+
+            using IGpuCommandList real = f.CreateCommandList();
+            var rec = new RecordingGpuCommandList(real);
+            RenderOneFrame(gd, scene, rec, real, finalFB, ground);
+            int withOneMaterial = rec.Uploads.Count;
+
+            // The frame block goes up ONCE, into the shared model UBO the tile-ground pipeline binds at set 0.
+            AssertOneWholeBufferWrite(rec, FrameUboBytes, "shared frame UBO, tile-ground frame");
+
+            // A SECOND loaded material, drawn with alongside the first. Before #727 this frame paid one more
+            // whole-buffer upload for it, in DrawTileGroundRuns, and the loop that did it walked every loaded
+            // material rather than every drawn one.
+            Scene3D.TileGroundMaterialHandle second = scene.LoadTileGroundMaterial(4, 4, FlatGroundLayers(4));
+            MeshHandle secondGround = scene.LoadMesh(TileGroundQuad(), second);
+
+            rec.Clear();
+            RenderOneFrame(gd, scene, rec, real, finalFB, ground, secondGround);
+
+            Assert.True(rec.Uploads.Count == withOneMaterial,
+                $"a tile-ground frame recorded {rec.Uploads.Count} uploads with two materials loaded and "
+                + $"{withOneMaterial} with one. The per-material frame re-sync #727 deleted is the shape that "
+                + "makes this number grow with the number of loaded ground materials.");
+
+            AssertOneWholeBufferWrite(rec, FrameUboBytes, "shared frame UBO, two tile-ground materials");
+        }
+
+        static void RenderOneFrame(IGpuDevice gd, Scene3D scene, RecordingGpuCommandList rec, IGpuCommandList real,
+            IGpuFramebuffer fb, params MeshHandle[] meshes)
+        {
+            scene.Begin();
+            foreach (MeshHandle mesh in meshes) scene.Draw(mesh, Matrix4x4.Identity, Color.White);
+            scene.PrepareFrame();
+            rec.Begin();
+            scene.RenderInternal(rec, W, H, fb);
+            rec.End();
+            gd.Submit(real);
+            gd.WaitForIdle();
+        }
+
+        /// <summary>A flat one-tile quad on the tile-ground vertex contract: the weights one-hot on corner slot 0,
+        /// the four slots in Uv.xy plus Tangent.xy, and Tangent.z the brightness jitter (1 = none, and 0 would
+        /// render it black).</summary>
+        static GltfMesh TileGroundQuad()
+        {
+            var w = new Vector4(1f, 0f, 0f, 0f);         // one-hot on corner slot 0
+            var uv = new Vector2(0f, 0f);                // slots 0 and 1
+            var tangent = new Vector4(0f, 0f, 1f, 0f);   // slots 2 and 3, then the jitter, then 0
+            const float e = 6f;
+            var verts = new[]
+            {
+                new ModelVertex(new Vector3(-e, 0, -e), Vector3.UnitY, w, uv, tangent),
+                new ModelVertex(new Vector3( e, 0, -e), Vector3.UnitY, w, uv, tangent),
+                new ModelVertex(new Vector3( e, 0,  e), Vector3.UnitY, w, uv, tangent),
+                new ModelVertex(new Vector3(-e, 0,  e), Vector3.UnitY, w, uv, tangent),
+            };
+            return new GltfMesh(verts, new ushort[] { 0, 1, 2, 0, 2, 3 });
+        }
+
+        /// <summary>Two flat single-colour tile-ground layers, the cheapest material the pipeline accepts that is
+        /// not the one-layer special case.</summary>
+        static List<TileGroundLayerImage> FlatGroundLayers(int size)
+        {
+            var layers = new List<TileGroundLayerImage>();
+            for (int i = 0; i < 2; i++)
+            {
+                var albedo = new byte[size * size * 4];
+                for (int p = 0; p < albedo.Length; p += 4)
+                {
+                    albedo[p] = (byte)(40 + i * 60); albedo[p + 1] = 110; albedo[p + 2] = 60; albedo[p + 3] = 255;
+                }
+                layers.Add(new TileGroundLayerImage { AlbedoRgba = albedo, TilesPerMetre = 0.25f });
+            }
+            return layers;
         }
 
         [GpuFact]

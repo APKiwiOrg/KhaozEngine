@@ -226,9 +226,10 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// AND A SWITCH TO A PIPELINE DECLARING FEWER SETS DOES NOT CARRY THE SET IT DROPPED
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/625). This is the shipped transition every post-process
-        /// pass makes: the GPU-skinned model pipeline declares two sets and every <c>PixelPostProcess</c> pipeline
-        /// declares one, so set 1 is invalidated by the switch, still holds the material set, and is a slot the
-        /// incoming layout has no entry for at all. Binding it is not a redundant bind, it is a
+        /// pass makes: the GPU-skinned model pipeline declares three sets since #407 and every
+        /// <c>PixelPostProcess</c> pipeline declares one, so sets 1 and 2 are invalidated by the switch, still hold
+        /// the material set and the bone palette, and are slots the incoming layout has no entry for at all.
+        /// Binding them is not a redundant bind, it is a
         /// <c>vkCmdBindDescriptorSets</c> whose <c>firstSet</c> plus set count leaves the layout's
         /// <c>setLayoutCount</c>, and V-R7's draw-time assertion is what caught it on the vulkan-native leg.
         /// </summary>
@@ -238,11 +239,12 @@ namespace KhaozEngine.Tests.Gpu
             using var harness = new VulkanBindHarness();
             VulkanResourceSet main = harness.Set("Model.skinnedMain");
             VulkanResourceSet material = harness.Set("Model.skinnedFrag");
+            VulkanResourceSet palette = harness.Set("SkinnedBonePalette");
             VulkanResourceSet post = harness.Set("Pixel.blit");
 
-            VulkanBoundPipeline skinned = harness.PipelineFor(main, material);
+            VulkanBoundPipeline skinned = harness.PipelineFor(main, material, palette);
             VulkanBoundPipeline blit = harness.PipelineFor(post);
-            Assert.Equal(2, skinned.SetLayouts.Length);
+            Assert.Equal(3, skinned.SetLayouts.Length);
             Assert.Single(blit.SetLayouts);
 
             var binds = new List<VulkanRecordedBind>();
@@ -252,11 +254,12 @@ namespace KhaozEngine.Tests.Gpu
             records.SetPipelineLayout(skinned.Layout, skinned.SetLayouts);
             records.Record(0, main, 0);
             records.Record(1, material, 0);
+            records.Record(2, palette, 0);
             records.Flush(ref sink);
             binds.Clear();
 
-            // The post pass: a one-set pipeline, and a bind at set 0 alone. Set 1 is dirty from the switch and
-            // still records the material set, which is exactly the state the assertion fired on.
+            // The post pass: a one-set pipeline, and a bind at set 0 alone. Sets 1 and 2 are dirty from the switch
+            // and still record the material set and the palette, which is exactly the state the assertion fired on.
             records.SetPipelineLayout(blit.Layout, blit.SetLayouts);
             records.Record(0, post, 0);
             records.Flush(ref sink);
@@ -265,10 +268,12 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0u, bind.FirstSet);
             Assert.Equal(new[] { post.DescriptorSet }, bind.Sets);
 
-            // AND SET 1 STILL OWES A BIND rather than having been quietly cleaned on the way past. The record is
-            // the shadow of what should be bound and the one-set layout is only what stops it being bound now.
+            // AND SETS 1 AND 2 STILL OWE A BIND rather than having been quietly cleaned on the way past. The record
+            // is the shadow of what should be bound and the one-set layout is only what stops it being bound now.
             Assert.True(records.IsDirty(1));
+            Assert.True(records.IsDirty(2));
             Assert.Equal(material.DescriptorSet, records.RecordedSet(1));
+            Assert.Equal(palette.DescriptorSet, records.RecordedSet(2));
         }
 
         /// <summary>
@@ -283,9 +288,10 @@ namespace KhaozEngine.Tests.Gpu
             using var harness = new VulkanBindHarness();
             VulkanResourceSet main = harness.Set("Model.skinnedMain");
             VulkanResourceSet material = harness.Set("Model.skinnedFrag");
+            VulkanResourceSet palette = harness.Set("SkinnedBonePalette");
             VulkanResourceSet post = harness.Set("Pixel.blit");
 
-            VulkanBoundPipeline skinned = harness.PipelineFor(main, material);
+            VulkanBoundPipeline skinned = harness.PipelineFor(main, material, palette);
             VulkanBoundPipeline blit = harness.PipelineFor(post);
 
             var binds = new List<VulkanRecordedBind>();
@@ -295,6 +301,7 @@ namespace KhaozEngine.Tests.Gpu
             records.SetPipelineLayout(skinned.Layout, skinned.SetLayouts);
             records.Record(0, main, 0);
             records.Record(1, material, 0);
+            records.Record(2, palette, 0);
             records.Flush(ref sink);
 
             records.SetPipelineLayout(blit.Layout, blit.SetLayouts);
@@ -302,16 +309,17 @@ namespace KhaozEngine.Tests.Gpu
             records.Flush(ref sink);
             binds.Clear();
 
-            // Back to the skinned pipeline. Set 0 is re-recorded because the post pass overwrote it, and set 1 is
-            // not: it is still the material set the switch away disturbed.
+            // Back to the skinned pipeline. Set 0 is re-recorded because the post pass overwrote it, and sets 1 and
+            // 2 are not: they are still the material set and the palette the switch away disturbed.
             records.SetPipelineLayout(skinned.Layout, skinned.SetLayouts);
             records.Record(0, main, 0);
             records.Flush(ref sink);
 
             VulkanRecordedBind bind = Assert.Single(binds);
             Assert.Equal(0u, bind.FirstSet);
-            Assert.Equal(new[] { main.DescriptorSet, material.DescriptorSet }, bind.Sets);
+            Assert.Equal(new[] { main.DescriptorSet, material.DescriptorSet, palette.DescriptorSet }, bind.Sets);
             Assert.False(records.IsDirty(1));
+            Assert.False(records.IsDirty(2));
         }
 
         /// <summary>

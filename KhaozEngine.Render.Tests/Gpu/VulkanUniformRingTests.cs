@@ -95,7 +95,8 @@ namespace KhaozEngine.Tests.Gpu
         [Theory]
         [InlineData(256u, 256u)]
         [InlineData(768u, 768u)]
-        [InlineData(8448u, 8448u)]     // ShadowMapRenderer.SkinnedDepthSlotBytes and ModelRenderer.SkinnedMainSlotBytes
+        [InlineData(8192u, 8192u)]     // SkinnedBonePalette.SlotBytes, the largest slot the engine binds
+        [InlineData(8448u, 8448u)]     // both skinned slots between #604 and #407, when each still carried a palette
         [InlineData(9472u, 9472u)]     // the skinned main slot before #604 took the folded frame block out of it
         [InlineData(16u, 256u)]
         [InlineData(272u, 512u)]
@@ -192,8 +193,8 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// EVERY SHIPPED RESOURCE-SET SHAPE, against the invariant, device-free. The engine builds eight
-        /// <c>new GpuBufferRange(...)</c> resource sets over a uniform buffer, which are SEVEN distinct shapes
+        /// EVERY SHIPPED RESOURCE-SET SHAPE, against the invariant, device-free. The engine builds nine
+        /// <c>new GpuBufferRange(...)</c> resource sets over a uniform buffer, which are EIGHT distinct shapes
         /// (<c>SpriteBatch</c> builds the same one at construction and again after a grow), and every one of them
         /// is a slot array addressed by a per-draw dynamic offset. Each is swept across the capacities the renderer
         /// actually grows through, because the buffer's size and the largest offset both scale with the capacity
@@ -226,21 +227,27 @@ namespace KhaozEngine.Tests.Gpu
                 // the FULL slot, which is the tight case where the window exactly fills the segment.
                 ("ShadowMapRenderer dissolve", 256u, 256u, new uint[] { (uint)ShadowMapRenderer.MaxCascades }),
 
-                // ShadowMapRenderer.cs:417, GpuBufferRange(_skinnedUbo, 0, SkinnedDepthSlotBytes). Slots start at
-                // 8 and double.
+                // ShadowMapRenderer.cs:424, GpuBufferRange(_skinnedUbo, 0, SkinnedDepthSlotBytes). Slots start at
+                // 8 and double. One per (cascade, caster), and 256 bytes rather than 8448 since #407 moved the
+                // palette out of it.
                 ("ShadowMapRenderer skinned depth", ShadowMapRenderer.SkinnedDepthSlotBytes,
                     ShadowMapRenderer.SkinnedDepthSlotBytes, new uint[] { 8, 16, 32, 64 }),
 
-                // ModelRenderer.cs:664, GpuBufferRange(_skinnedMainUbo, 0, SkinnedMainSlotBytes).
+                // ModelRenderer.cs:653, GpuBufferRange(_skinnedMainUbo, 0, SkinnedMainSlotBytes).
                 ("ModelRenderer skinned main", ModelRenderer.SkinnedMainSlotBytes,
                     ModelRenderer.SkinnedMainSlotBytes, new uint[] { 8, 16, 32, 64 }),
+
+                // SkinnedBonePalette.cs:80, GpuBufferRange(_ubo, 0, SlotBytes). ONE slot per caster, whatever the
+                // cascade count, and the widest window the engine binds at 8192 bytes.
+                ("SkinnedBonePalette per caster", SkinnedBonePalette.SlotBytes, SkinnedBonePalette.SlotBytes,
+                    new uint[] { 8, 16, 32, 64 }),
 
                 // WaterRenderer.cs:276, GpuBufferRange(_ubo, 0, SlotBytes). Capacity starts at 4 and doubles.
                 ("WaterRenderer per-plane", WaterRenderer.SlotBytes, WaterRenderer.SlotBytes,
                     new uint[] { 4, 8, 16, 32 }),
             };
 
-            Assert.Equal(7, sets.Length);
+            Assert.Equal(8, sets.Length);
 
             foreach ((string site, uint slotBytes, uint rangeBytes, uint[] capacities) in sets)
             {

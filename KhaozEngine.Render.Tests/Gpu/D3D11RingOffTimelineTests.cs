@@ -16,8 +16,9 @@ namespace KhaozEngine.Tests.Gpu
     /// WHAT #484 WAS. The write reached the CURRENT segment alone, so a value written once at load time survived
     /// until the frame index wrapped back round and no further, and two frames out of every three bound memory
     /// nothing had ever written. Nothing threw, nothing logged, and the wrong pixels were several frames from
-    /// their cause. <c>ModelRenderer</c>'s splat-params tail is the shipped consumer that writes exactly that way,
-    /// and <see cref="TheSplatParamsShape_WrittenOnceAtLoad_ReadsBackInEveryFrame"/> is that shape pinned here.
+    /// their cause. A ground material's params buffer is the shipped consumer that writes exactly that way, once
+    /// at load and never again, and
+    /// <see cref="TheLoadTimeParamsShape_WrittenOnceAtLoad_ReadsBackInEveryFrame"/> is that shape pinned here.
     /// </para>
     /// <para>
     /// WHAT IT COSTS, AND WHY NOTHING HERE WAITS. Writing every segment means writing segments an earlier frame
@@ -37,10 +38,13 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class D3D11RingOffTimelineTests
     {
-        // ModelRenderer's shape, scaled to the smallest thing that still has both halves: a head rewritten every
-        // frame and a tail written once at load, in one uniform buffer. The shipped one is a 1008-byte frame block
-        // followed by a tile-ground material's params, and nothing about the defect depends on the sizes. The splat
-        // pass had the same shape when this was written and no longer does (#604).
+        // The shape that found #484, scaled to the smallest thing that still has both halves: a head rewritten
+        // every frame and a tail written once at load, in one uniform buffer. Nothing about the defect depends on
+        // the sizes. NO SHIPPED BUFFER CARRIES BOTH HALVES ANY MORE: it was the splat pass's combined
+        // frame+params UBO when this was written, then the tile-ground one, and #604 and #727 unfolded them both.
+        // What is still shipped is the tail half on its own, a params buffer written once at load and read every
+        // frame after, so the head write below is the synthetic part and it earns its place by proving the two do
+        // not disturb each other.
         const uint HeadBytes = 256;
         const uint TailBytes = 256;
         const uint BufferBytes = HeadBytes + TailBytes;
@@ -83,10 +87,13 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// THE #484 REGRESSION, NAMED FOR THE SHAPE THAT FOUND IT. <c>ModelRenderer.CreateTileGroundParamsUbo</c>
-        /// creates one uniform buffer of frame block plus material params, writes the params ONCE at load through
-        /// the device-level <c>UpdateBuffer</c>, and rewrites only the frame block each frame. Under the ring as
-        /// it shipped, the params were read as never-written memory on two frames out of every three. The splat
-        /// pass is what actually found it, in the same shape, before #604 unfolded that one.
+        /// and <c>CreateSplatParamsUbo</c> both write a material's params ONCE at load through the device-level
+        /// <c>UpdateBuffer</c> and never again. Under the ring as it shipped, those params were read as
+        /// never-written memory on two frames out of every three. Both buffers ALSO carried the frame block, with
+        /// a per-frame write to its head, when this was written: the splat pass is what actually found the defect,
+        /// and #604 and #727 unfolded the two combined buffers afterwards. The load-time write is what the ring
+        /// property is about and it is unchanged, so the head write below stays as the thing that proves a
+        /// record-time write elsewhere in a buffer disturbs no segment's tail.
         /// <para>
         /// Seven frames is more than two full wraps of three segments, so a value that survived only until the
         /// index came back round would be caught on the fourth frame rather than passing by luck. The per-frame
@@ -95,18 +102,21 @@ namespace KhaozEngine.Tests.Gpu
         /// </para>
         /// </summary>
         [Fact]
-        public void TheSplatParamsShape_WrittenOnceAtLoad_ReadsBackInEveryFrame()
+        public void TheLoadTimeParamsShape_WrittenOnceAtLoad_ReadsBackInEveryFrame()
         {
             using var harness = new D3D11RingHarness(sizeInBytes: BufferBytes, framesInFlight: Segments);
             byte[] tail = Pattern((int)TailBytes, seed: 0x40);
             byte[] head = Pattern((int)HeadBytes, seed: 0x90);
 
-            // Load time: one device-level write of the params tail, exactly as CreateTileGroundParamsUbo does it.
+            // Load time: one device-level write of the params, the call CreateTileGroundParamsUbo makes. At a
+            // non-zero offset here, which the shipped one no longer has, so the write is a strictly harder case
+            // than the shipped buffer's whole-buffer one rather than an easier one.
             harness.Allocator.UpdateBuffer(harness.Ring, HeadBytes, tail);
 
             for (int frame = 0; frame < 7; frame++)
             {
-                // The per-frame refresh, which touches the head alone (WriteFrameUniformsTo).
+                // A per-frame record-time write elsewhere in the same buffer, which is what the combined ground
+                // UBOs used to do to their frame block (WriteFrameUniformsTo).
                 harness.Ring.Write(0, head);
 
                 AssertCurrentSegmentCarriesTail(harness, tail, frame);
@@ -128,7 +138,7 @@ namespace KhaozEngine.Tests.Gpu
         /// </para>
         /// </summary>
         [Fact]
-        public void TheSplatParamsShape_WrittenWithThePipelineFull_ReadsBackInEveryFrame()
+        public void TheLoadTimeParamsShape_WrittenWithThePipelineFull_ReadsBackInEveryFrame()
         {
             using var harness = new D3D11RingHarness(sizeInBytes: BufferBytes, framesInFlight: Segments);
             byte[] tail = Pattern((int)TailBytes, seed: 0x40);

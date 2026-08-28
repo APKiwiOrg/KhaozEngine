@@ -743,9 +743,10 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
   failed, and the engine's own native Metal backend binds all three, because it authors the index rather than
   counting one. That backend was deleted in `18.0.0` and the rule was lifted by
   [#604](https://github.com/APKiwiOrg/KhaozEngine/issues/604), which unfolded the splat and GPU-skinning
-  combined buffers and deleted the `MslBindingOrder.CheckPrefix` validation that enforced it. A new pipeline
-  spreads its uniform buffers however it reads best. Where you still meet a combined buffer (the tile-ground
-  pass, the skinned shadow pass) it is a shape kept on purpose rather than a constraint.
+  combined buffers and deleted the `MslBindingOrder.CheckPrefix` validation that enforced it, then by
+  [#727](https://github.com/APKiwiOrg/KhaozEngine/issues/727), which unfolded the tile-ground one, and finally by
+  [#407](https://github.com/APKiwiOrg/KhaozEngine/issues/407), which unfolded the skinned shadow pass's and left no
+  combined buffer in the tree. A new pipeline spreads its uniform buffers however it reads best.
   `docs/DEPENDENCY-SEAMS.md`'s "ONE uniform buffer per pipeline" section is the full history and the
   measurement.
 - **A new render feature needs a pixel-READBACK assertion, not just "it did not throw".** Any `[GpuFact]` test

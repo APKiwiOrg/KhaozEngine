@@ -140,6 +140,31 @@ public class TileCombatWireTests
         Assert.Equal(200 - 6 * seen.Count, hp.Current);
     }
 
+    // The CLIENT half of the target-0 refusal, which the server-side test cannot see: Admit's two halves must
+    // match to the letter, and without the client clause a locally queued Attack(0) is predicted as accepted,
+    // clearing the predicted lock for the frames until the snapshot corrects it. CorrectionCount cannot see
+    // that flicker because the position never moves, so the predicted lock itself is the observable.
+    [Fact]
+    public void A_target_zero_attack_is_refused_by_the_client_too_so_the_predicted_lock_never_flickers()
+    {
+        using var h = new TileCombatHarness(TileMoveSimulatorTests.FlatWorld(), new TileCoord(20, 20, 0));
+        h.Server.CombatRules = new FlatRules { Damage = 6, Ticks = 4 };
+        h.Frames(8);
+        Assert.True(h.Server.SetHealth(h.Client.LocalNetId, new TileHealth { Current = 100, Max = 100 }));
+        long actor = h.Server.SpawnActor(new TileCoord(20, 24, 0), new TileActorSpawn(200, 4, TileDirection.S));
+        h.Frames(8);
+        h.Client.Queue(TileCommand.Attack(actor, TileMoveMode.Run));
+        h.Frames(30);
+        Assert.Equal(actor, h.Client.Prediction.PredictedState.CombatTarget);
+
+        h.Client.Queue(TileCommand.Attack(0, TileMoveMode.Run));
+        for (int i = 0; i < 12; i++)
+        {
+            h.Frames(1);
+            Assert.Equal(actor, h.Client.Prediction.PredictedState.CombatTarget);
+        }
+    }
+
     // A DEATH, END TO END, which is the one thing the Killed bit exists for: a head learns a monster died from the
     // blow that killed it rather than from noticing an absence, and an absence cannot be told apart from a walk out
     // of interest anyway. The count equality is the assertion that earns its keep here, and it is the one that goes

@@ -520,8 +520,8 @@ harmless in R1 because nothing can hold a lock on an entity that did not exist l
 
 `ReportBrokenLocks` is the second half of `4b` and it FOLLOWS the roll, which is an ordering constraint rather than a
 tidy grouping. It skips a player who died on this tick, and the list it asks is the one `ResolveCombat` has just
-built, so moved ahead of the roll it finds an empty list and tells a player they could not reach the fight they were
-being killed in. The case that separates the two is a lock the FOLLOW broke in step 2 whose holder is then killed at
+built, so moved ahead of the roll it reads the PREVIOUS tick's dead (the list is cleared inside `ResolveCombat`
+itself, not between ticks) and tells a player they could not reach the fight they were being killed in. The case that separates the two is a lock the FOLLOW broke in step 2 whose holder is then killed at
 `4b`: `TileCombatResolveTests.The_broken_lock_report_follows_the_roll_so_a_player_killed_on_the_same_tick_hears_nothing`
 is what goes red for either half of it.
 

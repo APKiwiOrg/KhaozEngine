@@ -279,7 +279,11 @@ public sealed partial class TileWorldServer : IDisposable
     /// interest snapshot around it. Released rather than refused, because it is reachable without any caller doing
     /// anything wrong: <c>NetServer</c> drops the OLDEST event when a host stops keeping up, so a lost Left
     /// followed by a recycled seat lands here, and a throw out of <see cref="Poll"/> would take the session pump
-    /// down for every other player on the server.</para></summary>
+    /// down for every other player on the server.</para>
+    /// <para>A body this ACCOUNT left lingering under <see cref="TileWorldServerConfig.CombatLogoutTicks"/> is
+    /// released the same way and just as early, whatever seat it holds, so a reconnect inside the window comes back
+    /// to one body rather than two. By account rather than by slot, because a lingering seat is one the session
+    /// layer has already freed and a rejoin is therefore normally handed a different one.</para></summary>
     /// <param name="slot">The connection slot to bind. Binding is by slot rather than by entity, because a slot is
     /// what survives the entity being handed between cells mid walk.</param>
     /// <param name="accountId">The verified account id, which is what persistence keys a record on, and what the
@@ -297,6 +301,14 @@ public sealed partial class TileWorldServer : IDisposable
         // the server.
         // FORCED, because a seat being recycled by a new connection is not the outgoing player's decision either: a
         // combat linger held here would leave the old body in world with the new player's slot bound over it.
+        //
+        // The account is asked FIRST, and it is a different question from the seat. A combat linger holds a seat the
+        // session layer has already released, so this account's own lingering body can be sitting on a DIFFERENT
+        // slot from the one its reconnect was handed, and the guard below would never see it. Two live entities for
+        // one account is what that costs, and the persistence layer, which keys everything on the account, then
+        // files the pre-drop record over the live session's. See ReleaseLingerFor for why the rejoin ends the body
+        // rather than being refused until the window lapses.
+        ReleaseLingerFor(accountId);
         if (netIdBySlot.ContainsKey(slot)) OnLeave(slot, force: true);
         // Belt and braces for the same seat, since OnLeave forgets both per-slot queues on the way out and the
         // branch above is the only path that runs it: a stale command high-water mark rejects every sequence number

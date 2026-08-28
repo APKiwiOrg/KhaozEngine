@@ -14,7 +14,9 @@ public class TileCombatResolveTests
 {
     const float Dt = 0.25f;
 
-    sealed class FixedRules : ITileCombatRules
+    // Internal, along with Server and Lock below, because TileCombatLingerTests pulls the same three in through a
+    // `using static` rather than keeping a second copy of them: one fixture for the whole combat family.
+    internal sealed class FixedRules : ITileCombatRules
     {
         public ushort Damage = 5;
         public bool Land = true;
@@ -31,16 +33,18 @@ public class TileCombatResolveTests
         public byte AttackTicks(long attackerNetId) => Ticks;
     }
 
-    static TileWorldServer Server(TileWorldDocument doc, INetTransport transport, TileCoord spawn,
-        ITileCombatRules rules, int combatLogoutTicks = 0)
+    internal static TileWorldServer Server(TileWorldDocument doc, INetTransport transport, TileCoord spawn,
+        ITileCombatRules rules, int combatLogoutTicks = 0, ITileActorBehaviour? behaviour = null)
     {
         var server = new TileWorldServer(transport,
             TileWorldServerTickTests.Config(spawn) with { CombatLogoutTicks = combatLogoutTicks },
             TileMoveSimulatorTests.Bake(doc),
             new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs), new AllowAllAuthenticator());
         server.CombatRules = rules;
-        // No behaviour is wired, which is the host's own default, so every actor below stands exactly where this
-        // test put it. Deciding what a monster does is task 4's subject, not this task's.
+        // No behaviour by default, which is the host's own default, so every actor below stands exactly where this
+        // test put it. Deciding what a monster does is task 4's subject, not this task's, and the one test that
+        // wants a decision (the retaliation consequence) passes one in.
+        server.Actors.Behaviour = behaviour;
         return server;
     }
 
@@ -53,7 +57,7 @@ public class TileCombatResolveTests
         return (a, b);
     }
 
-    static void Lock(TileWorldServer s, long attacker, long target)
+    internal static void Lock(TileWorldServer s, long attacker, long target)
     {
         Assert.True(s.Host.TryGetOwner(attacker, out CellSim cell, out Entity e));
         Assert.True(cell.World.TryGet(e, out TileMoveState state));
@@ -370,53 +374,4 @@ public class TileCombatResolveTests
         Assert.Empty(refused);
     }
 
-    // Section 13.3. A player in combat who disconnects is not removed at once: the entity LINGERS in world, still
-    // attackable, until the window lapses, and then persists and leaves through the ordinary drain.
-    //
-    // The leave is driven by DROPPING THE TRANSPORT rather than by Kick, because Kick forces an immediate close:
-    // an operator kick, a drain and a recycled seat all bypass the linger deliberately, since none of them is the
-    // leaving player's decision. A dropped link is the one path that lingers, and it is the path the rule exists
-    // for.
-    [Fact]
-    public void A_player_in_combat_who_leaves_lingers_attackable_and_then_drains_normally()
-    {
-        var hub = new InMemoryTransportHub();
-        var rules = new FixedRules { Damage = 2, Ticks = 1 };
-        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(20, 21, 0), rules,
-            combatLogoutTicks: 8);
-        INetTransport c = hub.CreateClient();
-        var client = new NetClient(c, Encoding.UTF8.GetBytes("a"));
-        client.Poll();
-        s.Poll();
-        int slot = Assert.Single(s.JoinedSlots);
-        Assert.True(s.TryGetPlayerNetId(slot, out long player));
-        Assert.True(s.SetHealth(player, new TileHealth { Current = 100, Max = 100 }));
-        long monster = s.SpawnActor(new TileCoord(20, 20, 0), new TileActorSpawn(100, 1, TileDirection.S));
-        Lock(s, monster, player);
-        // More than one tick, because a hit landing on tick zero is indistinguishable from never having been hit:
-        // LastDamagedTick is zero for both.
-        for (int i = 0; i < 3; i++) s.Tick(Dt);
-
-        var left = new List<string>();
-        s.PlayerLeaving += (_, account, _) => left.Add(account);
-
-        hub.DisconnectClient(c);
-        s.Poll();
-        Assert.Empty(left);
-        // The seat is still held, because the leave has been DEFERRED rather than run: the body is still stepped,
-        // still served and still in the player index.
-        Assert.Equal(1, s.PlayerCount);
-
-        // The entity is still there and still being hit.
-        Assert.True(s.TryGetHealth(player, out TileHealth before));
-        for (int i = 0; i < 4; i++) s.Tick(Dt);
-        Assert.True(s.TryGetHealth(player, out TileHealth during));
-        Assert.True(during.Current < before.Current, "the lingering body is still attackable");
-        Assert.Empty(left);
-
-        for (int i = 0; i < 8; i++) s.Tick(Dt);
-        Assert.Equal(new[] { "a" }, left);
-        Assert.False(s.TryGetHealth(player, out _));
-        Assert.Equal(0, s.PlayerCount);
-    }
 }

@@ -45,6 +45,10 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
     // player index the tick body is iterating.
     readonly Dictionary<int, long> lingerUntilTick = new();
     readonly List<int> lingerScratch = new();
+    // A SECOND scratch list rather than a share of the one above, because the two walks can nest: a game's own
+    // PlayerLeaving handler is free to seat someone, and a reclaim running inside an expiry would otherwise rewrite
+    // the list the expiry is still walking.
+    readonly List<int> reclaimScratch = new();
 
     /// <summary>Raised as (slot, accountId) once a connection has a player entity, which is the point a game may
     /// start reading and writing that player. Raised from <see cref="SpawnPlayer"/>, so it fires for a headless
@@ -242,6 +246,35 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
         if (TryGetActorState(netId, out TileMoveState state) && state.CombatTarget != 0) return true;
         return TryGetCombatState(netId, out TileCombatState combat) && combat.LastDamagedTick != 0
             && TickCount - combat.LastDamagedTick <= config.CombatLogoutTicks;
+    }
+
+    // ONE ACCOUNT, ONE LIVE BODY, and the linger is the only thing in the tree that can hold a seat the session
+    // layer has already let go of. NetServer releases the slot the moment the link drops (RemovePeer clears
+    // slotBySubject too), so during the window the account is invisible to the duplicate-session gate and a
+    // reconnect is handed the LOWEST free slot, which can be BELOW the one the lingering body sits on. SpawnPlayer's
+    // own seat-recycle guard cannot see that, because it guards the new SLOT and this is the same ACCOUNT on a
+    // different one.
+    //
+    // Ended rather than refused, and that is the ruling this reads out of 13.3. The window holds the SEAT so a
+    // losing fight cannot be escaped by pulling the plug, and a player who comes straight back has escaped nothing:
+    // they are seated where they left (the rejoin hint is their own stored tile) and the fight is still there.
+    // Refusing the rejoin until the window lapsed would lock a player out of their own fight, which is the opposite
+    // of what the ruling is for, and it would still have to answer this same question for the tick the window ends
+    // on. Ending the body cannot duplicate, because the leave runs BEFORE the new seat is built: PlayerLeaving files
+    // the pre-drop state and clears persistence's in-flight guard for the account, and the join that follows loads
+    // it. That is exactly the ordering NetServer.EndOlderSession already imposes on a duplicate session.
+    //
+    // An UNRELATED player still cannot end it, which is the linger's whole point.
+    void ReleaseLingerFor(string accountId)
+    {
+        if (lingerUntilTick.Count == 0) return;
+        reclaimScratch.Clear();
+        // accountIdBySlot still holds the lingering seat's account: the deferral returns from OnLeave ahead of every
+        // Remove below it, so the linger needs no second record of who it belongs to.
+        foreach (KeyValuePair<int, long> entry in lingerUntilTick)
+            if (accountIdBySlot.TryGetValue(entry.Key, out string? held) && held == accountId)
+                reclaimScratch.Add(entry.Key);
+        for (int i = 0; i < reclaimScratch.Count; i++) OnLeave(reclaimScratch[i], force: true);
     }
 
     // Released from Tick, once each, through the ordinary leave path, so PlayerLeaving is raised and a persistence

@@ -101,7 +101,10 @@ public sealed record TileWorldServerConfig
     /// <para>While it runs, the body LINGERS: still stepped, still served to everyone in interest, still attackable,
     /// and only then persisted and drained through the ordinary leave path. That is what stops a losing fight being
     /// escaped by pulling the plug. An operator <see cref="TileWorldServer.Kick"/> and a
-    /// <see cref="TileWorldServer.BeginDrain"/> both bypass it, because neither is the player's decision.</para></summary>
+    /// <see cref="TileWorldServer.BeginDrain"/> both bypass it, because neither is the player's decision.</para>
+    /// <para>A RECONNECT by the same account inside the window ends the lingering body rather than being refused or
+    /// seated beside it, so one account never holds two live entities. The player comes back where they left, into
+    /// the fight they left, which is what the window is for.</para></summary>
     public int CombatLogoutTicks { get; init; }
 
     /// <summary>Synchronous ban check over a verified account id, consulted at the door. Null admits everyone the

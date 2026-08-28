@@ -120,6 +120,10 @@ public sealed partial class TileWorldServer
         tickSlots.AddRange(netIdBySlot.Keys);
 
         // 1. One command per player per tick, routed to the cell that owns them.
+        //
+        //    The watch list is emptied HERE rather than after it is reported in 4b, so a tick that throws between
+        //    the two cannot leave an entry behind for the next tick to report as a freshly broken lock.
+        watchedLocks.Clear();
         foreach (int slot in tickSlots)
         {
             TileCommand cmd = commands.Dequeue(slot, out int ack);

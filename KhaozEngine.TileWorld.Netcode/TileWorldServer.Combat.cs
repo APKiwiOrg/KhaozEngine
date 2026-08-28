@@ -85,15 +85,22 @@ public sealed partial class TileWorldServer
             cell.World.TryGet(e, out TileCombatState combat);
 
             // A CHANGED target starts a new lock, and the tick it started is what the roll order is taken on.
+            bool moved = false;
             if (combat.TargetSeen != state.CombatTarget)
             {
                 combat.TargetSeen = state.CombatTarget;
                 combat.TargetSinceTick = TickCount;
+                moved = true;
             }
             // Runs down EVERY tick regardless of range and FLOORS at zero, which is what lets an attacker who spent
             // the wait walking swing on the first tick both conditions hold.
-            if (combat.CooldownRemaining > 0) combat.CooldownRemaining--;
-            cell.World.Set(e, combat);
+            if (combat.CooldownRemaining > 0) { combat.CooldownRemaining--; moved = true; }
+            // WRITTEN ONLY WHEN SOMETHING MOVED. World.Set is not free for a component nothing replicates: the
+            // first write is an archetype move, and every later one costs a change-tracking set insert plus a list
+            // append per entity per tick. Unconditional, this pass touched every combatant on every tick, so a world
+            // standing still still paid for one, and every player acquired the component on its first tick whether
+            // or not it ever fought. Guarded, an idle world costs two comparisons per entity and no writes at all.
+            if (moved) cell.World.Set(e, combat);
 
             if (state.CombatTarget == 0 || combat.CooldownRemaining != 0) continue;
             if (!cell.World.TryGet(e, out TileHealth health) || health.Current == 0) continue;
@@ -249,6 +256,8 @@ public sealed partial class TileWorldServer
             OnCannotReach?.Invoke(slot, target);
             SendNotice(slot, TileServerReason.CannotReach);
         }
-        watchedLocks.Clear();
+        // NOT cleared here. The tick body empties it before it fills it (step 1), so a tick that threw between the
+        // fill and this report cannot carry its entries into the next one and report a lock that was broken a tick
+        // ago. The tick is already broken at that point, and a stale notice is a second wrong thing on top of it.
     }
 }

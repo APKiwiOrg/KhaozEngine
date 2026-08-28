@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Text;
+using System.Linq;
 using KhaozEngine.Ecs;
 using KhaozEngine.Netcode;
 using KhaozEngine.Sharding;
@@ -300,6 +300,61 @@ public class TileCombatResolveTests
         // Still in the world: what happens to a dead player is the game's decision, through this event.
         Assert.True(s.TryGetPlayerState(0, out TileMoveState st));
         Assert.Equal(0L, st.CombatTarget);
+    }
+
+    // THE ROLL ORDER ITSELF, which spec 6.4 pins at (TargetSinceTick, netId) ascending and which nothing else in
+    // this file can see. The outcomes of one pass are order-independent by construction, so the order is
+    // load-bearing only for the stream a game's own RNG draws from, and the ONE observable of it is the sequence
+    // the events come back in.
+    //
+    // Three things had to be designed around, all of them reasons the reproducibility test below cannot catch a
+    // broken order. First, the two sort keys have to DISAGREE: every lock set before the first tick has
+    // TargetSinceTick 0, so the sort degenerates to net id ascending, which is already the insertion order because
+    // net ids are handed out monotonically and the pre-sort list is built in spawn order. So the OLDEST lock here
+    // belongs to the HIGHEST pair of net ids and the youngest to the lowest, and the expected sequence differs from
+    // the insertion order, from its reverse, and from net id ascending. Second, the observable has to be the event
+    // ORDER rather than the event SET, because FixedRules has no RNG. Third, it is asserted against a written-down
+    // sequence rather than against a second run of the same script, which would agree with itself whatever the
+    // order was.
+    //
+    // The younger lock is made young by SWITCHING a target rather than by locking late, which is what keeps all
+    // three attackers on one cadence: they all swung on tick 0, so they all come ready again on the same tick.
+    [Fact]
+    public void The_roll_order_is_oldest_lock_first_with_the_net_id_breaking_the_tie()
+    {
+        var hub = new InMemoryTransportHub();
+        var rules = new FixedRules { Damage = 1, Ticks = 2 };
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(5, 5, 0), rules);
+        // Spawned first, so it holds the LOWEST net id of the three attackers and comes first in the insertion
+        // order, and it is the one whose lock is restamped later.
+        long young = s.SpawnActor(new TileCoord(20, 20, 0), new TileActorSpawn(100, 2, TileDirection.S));
+        long firstTarget = s.SpawnActor(new TileCoord(20, 21, 0), new TileActorSpawn(100, 2, TileDirection.S));
+        long secondTarget = s.SpawnActor(new TileCoord(19, 20, 0), new TileActorSpawn(100, 2, TileDirection.S));
+        long oldLow = s.SpawnActor(new TileCoord(25, 20, 0), new TileActorSpawn(100, 2, TileDirection.S));
+        long oldLowTarget = s.SpawnActor(new TileCoord(25, 21, 0), new TileActorSpawn(100, 2, TileDirection.S));
+        long oldHigh = s.SpawnActor(new TileCoord(30, 20, 0), new TileActorSpawn(100, 2, TileDirection.S));
+        long oldHighTarget = s.SpawnActor(new TileCoord(30, 21, 0), new TileActorSpawn(100, 2, TileDirection.S));
+        Assert.True(young < oldLow && oldLow < oldHigh, "the youngest lock is on the lowest net id");
+
+        Lock(s, young, firstTarget);
+        Lock(s, oldLow, oldLowTarget);
+        Lock(s, oldHigh, oldHighTarget);
+
+        s.Tick(Dt);                                   // tick 0: all three lock on the same tick and all three swing
+        Assert.Equal(3, s.CombatEventsThisTick.Count);
+
+        // A CHANGED target starts a new lock, so this one is now the youngest while the other two keep theirs.
+        Lock(s, young, secondTarget);
+        s.Tick(Dt);                                   // tick 1: the restamp, and nobody is off cooldown
+        Assert.Empty(s.CombatEventsThisTick);
+
+        s.Tick(Dt);                                   // tick 2: all three ready again, now with disagreeing keys
+
+        Assert.Equal(new[] { oldLow, oldHigh, young },
+            s.CombatEventsThisTick.Select(ev => ev.AttackerNetId).ToArray());
+        // The same sequence the rolls were drawn in, which is the property a game's RNG actually rides on.
+        Assert.Equal(new[] { oldLow, oldHigh, young },
+            rules.Rolls.Skip(3).Select(r => r.AttackerNetId).ToArray());
     }
 
     // Two servers from the same seed running the same scripted commands produce the same event sequence, which is

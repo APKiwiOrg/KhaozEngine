@@ -975,6 +975,29 @@ R1 has no consumer until R2, which is the same trade sub-project 2 took and acce
 (`TILE-WORLD-NETCODE-DESIGN-2026-08-22.md` section 14): the value is proven by loopback tests that run both heads
 in one process.
 
+**R1 LANDED in 18.1.0**, all seven tasks, riding the staged version rather than cutting one. The shipped surface is
+the package README's type list and `docs/USING-KHAOZENGINE.md`'s actor and combat sections, so it is not restated
+here. What IS worth recording is that the round produced TWO deltas this section did not have, both of them
+structural rather than cosmetic:
+
+- **A death's despawn became its own tick step, 5b, BEHIND the serve.** Section 6.4's table had the despawn inside
+  4b, and there it takes the corpse out of the world before step 5 builds each viewer's interest set from it, so
+  the killing blow is filtered out of every frame and a head can only learn a monster died by noticing an absence.
+  Phase 3 now collects, 5b reaps, and 5b still runs before step 6, so the removal's change tracking is cleared on
+  the tick it happened. The list is DRAINED at the top of the next 4b rather than cleared, because a throw anywhere
+  in the serve loop would otherwise discard a despawn the world was still owed and leave a corpse standing forever
+  against the cell's actor cap. The table has the row and the reasoning now.
+- **The player health contract is written down, with a counter behind it.** Section 6.6 gives the engine the
+  mechanics and the game the meaning, and the consequence it does not state is that `SpawnPlayer` writes no
+  `TileHealth` at all, so a game that never calls `SetHealth` has players who can neither swing nor be hit with
+  nothing raised, logged or thrown. It surfaced as a task 6 test that was watching a fight which never started.
+  `TileWorldServer.SkippedHealthlessCombatantCount` counts the skip in BOTH roles (a counter rather than a
+  `Debug.Assert`, because CI runs Release), the absent component only and never a corpse at zero, and the sentence
+  is on `TileHealth` and `SetHealth` for the IDE and in both docs for the reader.
+
+Section 6.1 was rewritten in flight to the shipped snapshot semantics, and section 6.4 gained its `0c` row, both
+inside the round. The rest of the shipped-versus-specified deltas are in `docs/INDEX.md`'s row for this document.
+
 **R2, Grimhollow.** The skill core, the rules implementation, the content, the click routing, the presentation, and
 the feel round. One game version. The feel round is where two things get ruled: the attack cadence (section 8.2)
 and whether the approach to a moving target is predicted (section 6.1).

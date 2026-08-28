@@ -8307,7 +8307,7 @@ var config = new TileWorldServerConfig
 {
     TickSeconds = 0.25f,                                   // the GAME's number. There is no engine default.
     StepTicks   = new TileStepTicks(walk: 4, run: 2),      // ticks per step, per mode
-    Spawn       = new TileCoord(64, 64, plane: 0),
+    Spawn       = new TileCoord(64, 64, Plane: 0),
     InterestRadius = 15f,                                  // tiles a player sees other players
     MaxGoalRadius  = 64,                                   // farthest a single click may name
     IsBanned    = bans.IsBanned,
@@ -8342,11 +8342,17 @@ while (running)
 ```
 
 **The order inside one tick** is fixed and worth knowing, because a game's own systems have to fit into it: the
-`OnBeforeTick` hook, then drain ONE command per player into its owning cell, then step every cell (movement and
-the arrival facing), then authority handoff and border ghosting, then the action queue, then serve every client
-its plane-filtered area of interest. Commands route before the step so a click lands on the tick it arrived on,
-handoff after it because a step is what carries a player over a region boundary, and the serve last so a client
-sees a whole tick and never half of one.
+`OnBeforeTick` hook, then drain ONE command per player into its owning cell, then the ACTOR step (every spawner
+ticks and every live actor's decision becomes a command), then step every cell (movement and the arrival facing),
+then authority handoff and border ghosting, then the action queue, then COMBAT (roll, apply, die), then serve
+every client its plane-filtered area of interest, and last the despawn every actor killed this tick owes.
+Commands route before the step so a click lands on the tick it arrived on, the actor step sits between the two
+for both halves of that reason (after the drain so a behaviour reads this tick's player commands, before the step
+so an actor's decision moves it on this tick rather than the next), handoff after the step because a step is what
+carries a player over a region boundary, combat after all of it so a swing is judged on where both bodies ended
+the tick, and the serve last so a client sees a whole tick and never half of one. The one thing that FOLLOWS the
+serve is the actor despawn, held back so the corpse is still in the world when each viewer's interest set is
+built and the killing blow therefore reaches everyone watching the fight.
 
 **Shutdown is a drain, not a kill.** `BeginDrain(graceSeconds)` broadcasts the `ke:draining` notice at once, so
 every client has the whole grace to show a countdown, and the world keeps ticking through it so a player mid walk
@@ -8563,6 +8569,212 @@ identically costs ZERO corrections, because both replay the same commands over t
 the reconciliations that CUT rather than glided, which means the two heads were on different SQUARES.
 `DroppedClickCount` counts clicks refused before they were ever sent (another plane, an unloaded region), and
 `DroppedSnapshotCount` counts snapshots the decoder refused whole.
+
+### Server-owned actors
+
+An ACTOR is a player minus a connection. It carries `TileMoveState`, `TileRouteState` and `PendingTileCommand`,
+so it steps through the SAME `TileMoveSimulator` a player does and can never move in a way a player could not.
+Nothing about an actor is predicted: the client sees one as an ordinary remote entity.
+
+Wiring is three lines and a definition per monster.
+
+```csharp
+// One spawner per authored spawn point. The definition is what a spawn POINT is authored from, and the smaller
+// TileActorSpawn that SpawnActor takes is what ONE entity needs.
+var rat = new TileActorDefinition
+{
+    Id = "rat",                 // required, the game's own key
+    MaxHealth = 30,             // required, above zero or the door refuses the spawn
+    StepMode = TileMoveMode.Walk,
+    AttackTicks = 5,            // the swing cadence seeded onto TileCombatState
+    WanderRadius = 4,           // how far from home it picks a destination
+    LeashRadius = 10,           // how far from home it gives up and walks back
+    RespawnDelayTicks = 40,
+    Kind = 1,                   // the game's own discriminator, which the engine never reads
+};
+
+server.Actors.Add(rat, new TileCoord(70, 70, 0));          // the home tile, and the spawner's identity
+server.Actors.Behaviour = new TileWanderBehaviour(map);    // the shipped default: leash, chase, retaliate, wander
+server.Actors.Seed = 20260827;                             // fixes every actor's random stream
+```
+
+No constructor installs a behaviour, so an actor with `Behaviour` left null stands exactly where it was put. That
+is deliberate: the engine ships a default and never assumes it.
+
+**The seam is one method, and an intent names a TILE or a TARGET and never a route.** Everything about HOW an
+actor gets there stays inside the stepper.
+
+```csharp
+sealed class GuardBehaviour(ITileActorBehaviour fallback) : ITileActorBehaviour
+{
+    public TileActorIntent Decide(in TileActorContext context)
+    {
+        // ONE implementation dispatches on Definition.Kind. The engine must not learn what a goblin is.
+        if (context.Definition.Kind != 2) return fallback.Decide(context);
+
+        // Retaliate: LastDamagedBy is written by a swing that LANDED, a blocked zero included, never by a miss.
+        if (context.LastDamagedBy != 0 && context.Tick - context.LastDamagedTick < 40)
+            return TileActorIntent.Attack(context.LastDamagedBy);
+
+        // COPY THE STREAM TO A LOCAL. TileActorRandom is a mutating value type handed over an `in` parameter, so
+        // context.Rng.Next(10) called twice takes a DEFENSIVE COPY each time and hands back the identical number,
+        // silently and deterministically, because the advance lands on a copy the caller never sees.
+        TileActorRandom rng = context.Rng;
+        if (context.Walking || rng.Next(12) != 0) return TileActorIntent.Idle;
+
+        return TileActorIntent.WalkTo(new TileCoord(
+            context.Home.X + rng.Next(-2, 3),
+            context.Home.Z + rng.Next(-2, 3),
+            context.Home.Plane));
+    }
+}
+```
+
+Four things about the context are worth knowing before writing one:
+
+- **Every tile on it is a TICK-START tile**, the actor's own and its target's, resolved through the tick's own
+  target snapshot. So no actor's decision can depend on another entity having already moved, and the ECS
+  iteration order cannot reach a decision.
+- **`TargetResolved` is false for a target this tick's snapshot does not answer for**, which is what a dead,
+  despawned or mid-handoff entity reads as. That is the same answer the follow inside the stepper acts on, so a
+  behaviour that breaks off on it agrees with the stepper rather than fighting it.
+- **`Home` is the spawner's authored tile**, not the actor's current one. An actor built without a spawner is
+  handed the tile it was BORN on, captured once, because a home re-read from the actor's own tile every tick makes
+  the leash unfireable and the wander an unbounded random walk.
+- **One behaviour instance is SHARED by every actor**, exactly as a simulator is, so an implementation that keeps
+  per-actor state has to key it and prune it itself. `TileActorRandom` exists so the shipped default needs none.
+
+`TileActorIntentKind.Break` drops the target, walks home and restores the actor to full health when it ARRIVES,
+not when it breaks, and it drops the damage record with the target, because a break that left it set would have a
+retaliating behaviour re-acquire the same attacker on the first tick it was back inside its leash.
+
+Actors also carry their own pathfinder knobs. `TileWorldServerConfig.ActorMove` defaults to `MaxPathRadius = 12`
+against a player's 64, because `TilePathfinder.FindPath` allocates `(2r+1)^2` scratch entries per call, about
+83 KB of Gen0 at 64 and about 3 KB at 12, and the chase path is the one an actor runs most often. Size it against
+the LEASH, since an actor never legitimately paths further than that. `MaxActorsPerCell` (64 by default) is the
+per-REGION budget, since a cell is exactly a region, and `SpawnActor` answers 0 rather than throwing when a spawn
+is refused, so a spawner can never take a tick down with it.
+
+### Combat
+
+Combat is a FOLLOWED interaction rather than a system of its own. `TileCommandKind.Attack` names a NET ID,
+`TileMoveState.CombatTarget` carries the lock, and the chase therefore runs inside the ONE stepper both heads
+predict rather than in a second movement authority the client would pay a round trip on. Melee range is literally
+`TileReach.Contains` against a 1x1 rect, so cardinal adjacency, the no-diagonal rule and the wall-denied safespot
+all fall out of the reach rule the package already had.
+
+**Read the player health contract before anything else here.** A spawned PLAYER has no `TileHealth` at all. An
+actor gets one from its spawn spec, and nothing writes a player's, because `Max` is a number out of the game's own
+skill core and an engine default would be the engine picking a gameplay value. The component is kept ABSENT rather
+than zeroed on purpose, since a zero-health player would read as a corpse to every death check in the pass. Until
+the game writes one, **that player can neither swing nor be hit**, in silence: nothing is raised, logged or
+thrown, the client draws no hitsplat, and the fight simply never starts.
+
+```csharp
+server.PlayerJoined += (slot, accountId) =>
+{
+    // NOT OPTIONAL for a head with combat. On join, on level up, and on respawn.
+    if (server.TryGetPlayerNetId(slot, out long netId))
+        server.SetHealth(netId, new TileHealth { Current = 10, Max = 10 });
+};
+
+// The one reading that says the contract was missed. Zero on a healthy head, and any non-zero value at all names
+// exactly one fix. It counts SKIPS in both roles, so a healthless player swinging and being swung at on one tick
+// adds two, and a combatant at zero health (an ordinary corpse) is never counted.
+if (server.SkippedHealthlessCombatantCount > 0) log.Warn("a combatant has no TileHealth");
+```
+
+The rules seam is where the game plugs into the hit pipeline. The engine owns whether a swing is DUE (the
+cooldown) and whether it is LEGAL (adjacency). This owns what it DOES.
+
+```csharp
+sealed class MeleeRules : ITileCombatRules
+{
+    readonly Random rng = new(20260827);
+
+    public TileAttackOutcome Roll(in TileAttackContext context)
+    {
+        // Both tiles are the COMMITTED tiles after this tick's movement, and both healths are as the roll phase
+        // found them, BEFORE any of this tick's damage lands, so no roll can see another roll's result.
+        if (rng.Next(100) < 40) return TileAttackOutcome.Miss();
+        return TileAttackOutcome.Hit((ushort)rng.Next(1, 9), kind: 0);   // kind is the game's splat colour
+    }
+
+    // Ticks this attacker waits after a swing, landed or missed. Answering 0 falls back to the cadence the
+    // attacker's spawn seeded, and then to one tick, both as degenerate-input guards rather than as tuning.
+    public byte AttackTicks(long attackerNetId) => 4;
+}
+
+server.CombatRules = new MeleeRules();
+
+server.OnCombatEvent += e => game.AwardExperience(e.AttackerNetId, e.Amount);
+server.OnDied += (deadNetId, killerNetId, slot) =>
+{
+    // slot is the dead entity's connection slot, or -1 for anything that is not a player.
+    if (slot >= 0) game.RespawnPlayerInTown(slot);
+};
+```
+
+Build an outcome through `Hit` or `Miss`. The two fields are read INDEPENDENTLY, so a hand-built
+`new TileAttackOutcome(false, 50, 0)` is a miss that takes 50 health, and nothing enforces the pairing because the
+enforcement would have to live in a constructor a record struct cannot make private.
+
+Four rules the pipeline runs on:
+
+- **Roll, then apply, then die**, in that order and once per tick. So a mutual kill kills both rather than being
+  decided by whoever happened to be resolved first, and death is evaluated after every application.
+- **The roll order is fixed**: oldest lock first, net id breaking the tie. An implementation drawing from its own
+  RNG gets server-side reproducibility from that, which is all it needs, since the roll is NEVER predicted by a
+  client.
+- **A MISS is still an event and still draws a hitsplat.** A fight with invisible misses reads as a broken fight.
+  A hit that connected for ZERO damage is still a landed hit, and it still names its attacker on the target's
+  damage record, which is what a retaliating behaviour rides. A miss does not.
+- **`TileCombatEvent.Amount` is the ROLLED damage**, so an overkill reports more than was actually taken (a 3 hp
+  target hit for 50 produces an event of 50). That is the number a player expects on the splat, and it means a
+  game awarding experience straight from it over-awards on every killing blow. Read the target's health if what is
+  wanted is what was taken.
+
+On the client, an attack is a click like any other, and the swings arrive on their own event.
+
+```csharp
+// Attack takes a NET ID, and Interact takes an OBJECT id. They are separate command kinds because the two id
+// spaces overlap EXACTLY: object id 7 and the seventh spawned entity are the same 64 bits.
+if (clickedRemote is long netId) client.Queue(TileCommand.Attack(netId, client.RunMode));
+
+client.CombatEvent += e => hitsplats.Add(e.TargetNetId, e.Amount, e.Kind, e.Killed);   // Amount is 0 on a miss
+client.RemoteEntered += id => nameplates.Add(id);
+client.RemoteLeft    += id => { nameplates.Remove(id); hitsplats.Clear(id); };
+```
+
+`CombatEvent` carries every swing whose TARGET is in this client's area of interest, misses included. Do not
+derive a fight from replicated health instead: two hits on one tick collapse into one delta and a miss moves
+health by zero, so a fight drawn from deltas shows fewer, larger, later hitsplats than the fight the server ran.
+`Killed` rides the blow that caused the death, so a client never has to notice an absence to know something died,
+and `RemoteLeft` follows one tick later when the corpse is reaped.
+
+**The one thing a consumer gets wrong first: a RULE reads `TryGetLatestRemoteTile`, never `TryGetRemoteTile`, and
+a BODY is drawn from the second, never the first.** The delayed read agrees with the body it sits under, which is
+exactly what an overlay wants and exactly what a range check must not have. Picking the wrong one is silent.
+
+```csharp
+// Is my target still in reach? A RULE, so the honest read, and the age is what a stale answer is faded on.
+if (client.TryGetLatestRemoteTile(targetNetId, out TileCoord theirs, out float ticksOld))
+{
+    TileMoveState me = client.Prediction.PredictedState;
+    // The SAME rule the server ran: a 1x1 footprint, and the map both heads baked from the same world files.
+    bool inReach = TileReach.Contains(map, new TileRect(theirs.X, theirs.Z, 1, 1), theirs.Plane, me.Tile);
+    DrawTargetRing(client.Presenter.PoseAt(theirs), inReach, MathF.Max(0f, 1f - ticksOld / 4f));
+}
+```
+
+Two more knobs sit on the server config. `CombatLogoutTicks` (zero by default) is how long a player who was in
+combat keeps their body in world after the session drops: still stepped, still served, still attackable, and only
+then drained through the ordinary leave path, which is what stops a losing fight being escaped by pulling the
+plug. A reconnect by the same account inside the window ENDS the lingering body rather than being refused or
+seated beside it, so one account never holds two live entities. `Kick` and `BeginDrain` both bypass it, because
+neither is the player's decision. It is ONE number with TWO jobs, deliberately: it is the window's length, and it
+is also the lookback that decides whether a leaving player counts as being in a fight at all, so raising it widens
+both.
 
 ---
 

@@ -24,7 +24,11 @@ true-tile marker rather than the engine making it small. Riding on that in turn 
 `TileWorldClient.TryGetLatestRemoteTile` ([#736](https://github.com/APKiwiOrg/KhaozEngine/issues/736)), which
 closes the one-sided half of that legibility: a REMOTE's committed tile is now readable off the freshest snapshot
 this client holds rather than only off the delayed render timeline, so a rule about another player is as honest as
-one about your own.
+one about your own. Riding LAST is the engine half of that same program's R1
+([#736](https://github.com/APKiwiOrg/KhaozEngine/issues/736)): server-owned ACTORS and tick-based MELEE COMBAT,
+grown into `KhaozEngine.TileWorld.Netcode` rather than split into a sibling package. Every addition is optional
+and every new constructor parameter is appended with a default, so **nothing in that half is breaking** and a head
+that wires none of it ticks exactly as it did before. Its bullets are at the end of this entry.
 
 - **The rule is retired in code.** `MslBindingOrder.CheckPrefix`, which required every stage's resources to
   be a prefix of the layout's per index space, is deleted, so `ShaderValidation.ValidatePair` no longer
@@ -215,6 +219,155 @@ one about your own.
     when it put `StepFrom` on the everyone channel. The drawn body now lags max 1.4 ticks and mean 0.95 at BOTH
     cadences, which is a pure time delay rather than the step-quantized cost that issue was about. The package
     README's known-limit bullet is rewritten to that.
+- **Server-owned ACTORS: an actor is a player minus a connection**
+  ([#736](https://github.com/APKiwiOrg/KhaozEngine/issues/736), R1 of the tile combat program). It carries
+  `TileMoveState`, `TileRouteState` and `PendingTileCommand`, so it steps through the SAME `TileMoveSimulator` a
+  player does and can never move in a way a player could not. `TileActor` is the tag, ECS-only and never
+  replicated. Lifecycle is `TileActorDefinition` (id, max health, step mode, attack cadence, wander and leash
+  radii, respawn delay, and a game-owned `Kind` the engine never reads) into `TileActorSpawner` (one home tile,
+  one live actor, one respawn countdown, `TileActorSpawnerState`) into `TileActorHost`, reachable as
+  `server.Actors`. The door is `TileWorldServer.SpawnActor(TileCoord, TileActorSpawn)` and `DespawnActor`, with
+  `TryGetActorState`, `ActorCount`, `ActorNetIds`, `OnActorSpawned` and `RefusedActorSpawnCount` around it. A
+  refused spawn (zero max health, an off-map or off-plane tile, a cell already at `MaxActorsPerCell`) answers 0
+  rather than throwing, so a spawner can never take a tick down with it.
+  - **The host rewrites the tag and the pending command EVERY tick, and iterates its own net id list rather than
+    an ECS query on the tag.** A region handoff captures only the REGISTERED components, and neither `TileActor`
+    nor `PendingTileCommand` is one, so a crossing actor would otherwise arrive on the far side no longer an
+    actor. A query over the tag cannot see the one actor that most needs the write, which is why the list is the
+    iteration order.
+- **The behaviour seam is `ITileActorBehaviour`, one `Decide` per actor per tick, and `TileWanderBehaviour` is
+  the engine's shipped default** (leash, chase, retaliate, wander, in that order, stateless). Nothing installs
+  it: `Actors.Behaviour` is null by default, so an actor with no behaviour stands where it was put. A
+  `TileActorIntent` names a TILE (`WalkTo`), a TARGET (`Attack`), `Break` or `Idle`, and never a route, a step, a
+  facing or a tick, so everything about HOW an actor moves stays inside the stepper. `TileActorContext` is a
+  TICK-START view (its tile, its home, its definition, its health, its target's tile through the tick's own
+  target snapshot, its damage record, whether it is walking, the tick, and its own random stream), so no actor's
+  decision can depend on another having moved first and the ECS iteration order cannot reach a decision.
+  - **`TileActorRandom` is a splitmix64 VALUE type**, `For(seed, netId, tick)`, so a behaviour needs no per-actor
+    storage and a replay reproduces every draw. Deliberately not `System.Random`, whose sequence is not
+    guaranteed stable across .NET releases. It MUTATES and the context hands it over an `in` parameter, so
+    **copy it to a local and draw from the copy**: `context.Rng.Next(10)` called twice takes a defensive copy
+    each time and hands back the identical number, silently and deterministically. The sequence is pinned BY
+    VALUE by a test, so treat it as recorded output.
+  - `Break` drops the target, walks the actor home and restores it to full health when it ARRIVES rather than
+    when it breaks, and it drops the damage record with the target, because a break that left it set would have
+    a retaliating behaviour re-acquire the same attacker on the first tick it was back inside its leash.
+- **`TileCommandKind.Attack` is the fourth command kind, and its `Target` is a NET ID.** A kind of its own is
+  mandatory rather than tidy: a `TileObject.Id` is a document counter from 1 and a net id is
+  `(nodeId << 48) | counter` from 1, so object id 7 and the seventh spawned entity are the same 64 bits and one
+  resolver could not tell which space a click meant. The failure mode would have been silent, clicking a barrel
+  and sometimes attacking a player. `TileProtocol.TryDecodeCommand`'s kind ceiling moved to 3, and a kind of 4 is
+  still a refused frame.
+  - **`ITileTargets` now has THREE implementations across TWO id spaces.** `TileDocumentTargets` keeps the object
+    space, read through on every call. `TileEntityTargets` is the server's entity space, a per-tick SNAPSHOT over
+    the live cells refreshed once before anything moves, which is what makes the actor pass and the movement pass
+    order-independent in FACT rather than by an ordering imposed on the ECS: every read is a keyed lookup into a
+    map built before either pass began. `TileRemoteTargets` is the client's, over `TryGetLatestRemoteTile` for a
+    remote and the prediction for the local player, and the client builds its own rather than taking one, because
+    the only honest answer to where an entity is on a client is that client's newest snapshot. A `Ghost` or
+    `Migrating` entity is excluded and therefore reads as GONE, which is the answer the follow acts on
+    ([#738](https://github.com/APKiwiOrg/KhaozEngine/issues/738) is the networked-link case of that, zero window
+    in process today).
+  - **`TileMoveSimulator` takes a second `ITileTargets`, appended LAST** (`combatTargets`), so an existing
+    positional call keeps meaning exactly what it said. `TileMovementSystem` gained a two-simulator constructor
+    and picks on the `TileActor` tag, so an actor paths at its own radius while a player paths at the click's.
+    Its one-argument constructor still exists and still runs one simulator over everything.
+- **WIRE: `TileMoveState` grew `CombatTarget`, taking the move component from 33 to 41 payload bytes** (the same
+  component the lead commit above took from 25 to 33, so it moved twice inside this one version). It lives on the
+  STATE rather than on a fighting-only component because `TileMoveSimulator` is an `ITickSimulator` and sees the
+  state and the command and nothing else: a target held anywhere else could not be followed inside the one
+  stepper both heads run, and following it elsewhere means a SECOND movement authority the client cannot predict,
+  which costs a round trip on every re-path of every chase. It is in `Equals` and `GetHashCode`, and mutually
+  exclusive with `InteractTarget`, each clearing the other, with a `WalkTo` clearing both.
+  - **The FOLLOW runs at the top of every `Advance`.** While a lock is held it re-paths to a reach tile only when
+    the target's committed tile MOVED (the memo is the route's own end), stands when it is already in reach, and
+    clears the lock when the target stops resolving or has no reachable tile. A body standing INSIDE the target's
+    own footprint counts as in reach, so a self attack stands rather than walking to the map edge one `FindPath`
+    per tick. Nothing writes `Facing` from that case, because a tile the body stands on has no direction to face.
+- **The hit pipeline is `ITileCombatRules`, and it is the line between what the engine owns and what the game
+  does.** The engine owns whether a swing is DUE (the cooldown) and whether it is LEGAL (adjacency, which is
+  literally `TileReach.Contains` against a 1x1 rect, so the no-diagonal rule and the wall-denied safespot fall
+  out of the reach rule the package already had). The game owns what it DOES: `Roll(in TileAttackContext)`
+  returns a `TileAttackOutcome` (`Hit` / `Miss`, plus a game-owned `Kind` the engine never inspects), and
+  `AttackTicks(netId)` is the per-attacker cadence, falling back to the spawn-seeded value and then to one tick
+  as degenerate-input guards. Null rules mean nothing ever swings, which is the right default for a head that has
+  not wired combat.
+  - **Roll, then apply, then die**, once per tick, so a mutual kill kills both rather than being decided by
+    whichever attacker happened to be resolved first, and death is evaluated after every application. The roll
+    order is fixed at oldest lock first with the net id breaking the tie, which is the only cross-run
+    reproducibility an implementation drawing from its own RNG needs, since the roll is NEVER predicted by a
+    client.
+  - **A MISS is a first-class event.** It moves health by zero and still draws a hitsplat, because a fight with
+    invisible misses reads as a broken fight. A hit that connected for ZERO damage is a landed hit and still
+    names its attacker on the target's damage record, which is what a retaliation rides. A miss does not.
+  - `OnDied(dead, killer, slot)` fires for every entity that reached zero, with the slot being the dead entity's
+    connection slot or -1 for anything that is not a player. The engine's own half is deliberately small: it
+    clears the DEAD entity's lock and, for an actor, despawns it. It does not clear every other entity's target
+    pointing at the corpse, because the target stops resolving the moment the entity is gone and the follow
+    already handles that.
+- **The TICK IS EIGHT STEPS now, not six.** Step 1b is the actor pass, between the drain and the cell step: after
+  the drain so a behaviour reads this tick's player commands, before the step so an actor's decision moves it on
+  this tick rather than the next. Step 4b is combat, after movement and handoff so a swing is judged on where
+  both bodies ENDED the tick. **Step 5b is the despawn a death owes an ACTOR, and it sits BEHIND the serve.** Run
+  inside 4b it took the corpse out of the world before step 5 built each viewer's interest set from it, so the
+  killing blow was filtered out of every frame and a head could only learn a monster died by noticing an absence.
+  5b still runs before step 6, so the removal's change tracking is cleared on the tick it happened, and the list
+  is DRAINED at the top of the next 4b rather than cleared, so a throw inside the serve cannot discard a despawn
+  the world is still owed.
+- **PRESENTATION: swings ride their OWN frame.** `TileProtocol.ServerFrameCombat` (tag 3), with `EncodeCombat`,
+  `TryDecodeCombat` and `MaxCombatEvents`, carries a tick's `TileCombatEvent`s filtered to the ones whose TARGET
+  is in that viewer's area of interest, and a viewer whose slice is empty gets no packet at all. Explicit rather
+  than derived, and the temptation to derive it is worth closing off: the serve is a full snapshot, so a client
+  CAN diff health between two samples, and the diff is wrong twice, because two hits on one tick collapse into
+  one number and a miss is invisible. A fight drawn from health deltas shows fewer, larger, later hitsplats than
+  the fight the server ran. Its own frame family rather than a game message, because the game-message `kind` is a
+  number the GAME defines and these are the ENGINE's events about a pipeline the engine owns.
+  - **Three new client events**: `TileWorldClient.CombatEvent` per swing, and `RemoteEntered` / `RemoteLeft`, the
+    lifecycle pair a per-remote overlay stack (a nameplate, a hitsplat stack) is built and pruned on. The
+    remote diff was already computed every frame, so the pair costs one array on a frame that actually carries
+    churn and nothing otherwise. All three copy their list before raising, so a re-entrant handler loses nothing.
+  - `TileCombatEvent.Amount` is the ROLLED damage, so an OVERKILL reports more than was taken (a 3 hp target hit
+    for 50 produces an event of 50). That is the number a player expects on the splat, and it means a game
+    awarding experience straight off it over-awards on every killing blow. `Killed` rides the blow that caused
+    the death, so a client never has to notice an absence to know something died.
+- **Two new replicated components, at extension ids 19 and 20.** `TileHealth` (`Current`, `Max`, four payload
+  bytes on the default channels, so a health bar has something to read) and `TileCombatState` (the swing cadence,
+  the cooldown, the damage record, `LastCombatTick` and the lock-age pair `TargetSeen` / `TargetSinceTick` that
+  makes the roll order answerable), registered on the MIGRATE channel alone so it survives a handoff and reaches
+  no client at all. Ids 21 to 23 are the tile netcode's remaining free window below `FirstGameTypeId`, which is
+  unmoved, so no game's own registration shifts.
+- **THE PLAYER HEALTH CONTRACT, which is the first thing a game with combat will get wrong.** A spawned PLAYER
+  has NO `TileHealth`. An actor gets one from its spawn spec, and nothing writes a player's, because `Max` is a
+  number out of the game's own skill core and an engine default would be the engine picking a gameplay value. The
+  component is kept ABSENT rather than zeroed on purpose, since a zero-health player would read as a corpse to
+  every death check in the pass. **Until the game calls `TileWorldServer.SetHealth`, that player can neither
+  swing nor be hit**, and the combat pass skips them in BOTH roles in silence: nothing raised, logged or thrown,
+  no hitsplat, and a fight that simply never starts. `SkippedHealthlessCombatantCount` is the reading that says
+  so. It counts SKIPS rather than ticks, counts the absent component only and never an ordinary corpse at zero,
+  and is a counter rather than a `Debug.Assert` because CI runs Release. Any non-zero value at all names exactly
+  one fix. `TryGetHealth`, `SetHealth` and `TryGetCombatState` are the reads and the one write.
+- **Three new `TileWorldServerConfig` knobs, all defaulted so an existing head is untouched.**
+  `MaxActorsPerCell` (64) is the per-REGION monster budget, since a cell is exactly a region. `ActorMove` is the
+  actor's own `TileMoveOptions`, defaulting `MaxPathRadius` to 12 against a player's 64, because
+  `TilePathfinder.FindPath` allocates `(2r+1)^2` scratch entries per call, about 83 KB of Gen0 at 64 and about
+  3 KB at 12, and the chase is the path an actor runs most often. `CombatLogoutTicks` (0, off) is how long a
+  player who was in combat keeps their body in world after the session drops: still stepped, still served, still
+  attackable, then drained through the ordinary leave path, which is what stops a losing fight being escaped by
+  pulling the plug. A reconnect by the same account inside the window ENDS the lingering body rather than being
+  refused or seated beside it, so one account never holds two live entities. `Kick` and `BeginDrain` both bypass
+  it, because neither is the player's decision. It is ONE number with TWO jobs, deliberately: the window's length,
+  and the lookback that decides whether a leaving player counts as being in a fight at all.
+- **Nothing in the actors and combat half is a breaking change.** Every new constructor parameter is appended and
+  optional (`TileMoveSimulator`'s `combatTargets`, `TileActorSpawn`'s `Mode`), `TileMovementSystem`'s
+  one-argument constructor still exists, `TileWorldServer.CombatRules` and `TileActorHost.Behaviour` both default
+  to null and mean "off", and `CombatLogoutTicks` defaults to 0, which is the pre-existing leave behaviour
+  exactly. A head that adopts this version and wires none of it ticks as it did before.
+- **Known limits this round knowingly leaves**, each with its reason in section 12 of
+  `docs/design/TILE-COMBAT-ACTORS-DESIGN-2026-08-27.md`: both parties in a fight are 1x1 (`TileReach`'s set is
+  anchor tiles for a one-tile actor, and `AgentSize` is a property of the SIMULATOR rather than of the entity),
+  actors do NOT block movement (a dynamic entry in a collision map each head bakes for itself would make every
+  chase a correction storm), actors are not persisted across a restart, combat is MELEE only with
+  `TileCollisionFlags.ProjectileBlocked` still reserved and unset, and the roll is never predicted client-side.
 
 ## 18.0.0
 

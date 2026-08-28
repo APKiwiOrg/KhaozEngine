@@ -21,7 +21,9 @@ Pulls in:
 - `KhaozEngine.NetWorld` - the authoritative movement server + client glue + `WorldPersistence`.
 - `KhaozEngine.TileWorld.Netcode` - the tile movement stack (`TileWorldServer` / `TileWorldClient`,
   `TileMoveSimulator`, `TileWorldPersistence`), a SIBLING of `NetWorld` rather than a dependent, so a
-  tile server carries none of the float locomotion stack and a float server carries none of this.
+  tile server carries none of the float locomotion stack and a float server carries none of this. Also
+  server-owned actors (`TileActorHost`, `ITileActorBehaviour`) and tick-based melee combat
+  (`ITileCombatRules`), both of which ride the same stepper and the same reach rule as a player's walk.
 - `KhaozEngine.Physics` - the dependency-free physics seam (backend opt-in, see below).
 
 ```xml

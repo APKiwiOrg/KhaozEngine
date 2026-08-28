@@ -64,8 +64,9 @@ public sealed partial class TileWorldServer
     /// connection slot, or -1 for anything that is not a player.
     /// <para>The engine's own half of a death is small and deliberate: it clears the DEAD entity's own combat
     /// target, and for an ACTOR it despawns the entity so the spawner starts the respawn. That despawn happens
-    /// AFTER this tick's serve rather than inside this event, so the corpse ships in one last snapshot at zero
-    /// health and the blow that killed it reaches every viewer watching (see the reap in this file). A handler
+    /// AFTER this tick's serve rather than inside this event, so the blow that killed it reaches every viewer
+    /// watching, and a viewer homed in the corpse's own cell reads it in one last snapshot at zero health (see the
+    /// reap in this file, which qualifies that second half for a viewer one cell over). A handler
     /// reads a live entity either way. It does NOT clear every
     /// other entity's target pointing at the corpse, because it does not have to: the target stops resolving the
     /// moment the entity is gone and the follow already clears a target that does not resolve. One rule, one place.
@@ -231,6 +232,14 @@ public sealed partial class TileWorldServer
     // a second piece of per-slot state. Here the corpse simply ships in one more snapshot at zero health, which is
     // what presentation wants anyway (the monster is drawn dead on the tick it died, then leaves), it makes the step
     // 4b comment true as written, and it costs no new state at all.
+    //
+    // THAT ZERO-HEALTH FRAME IS SAME-CELL ONLY, and the Killed bit rather than the health is what the wire contract
+    // actually rests on. A viewer homed in the corpse's own cell is served the live entity and reads Current = 0. A
+    // viewer one cell over is served the corpse's GHOST, and ghosts are mirrored at step 3, before 4b applies the
+    // damage, so the last health that viewer ever reads is the value from before the killing blow. The one-tick ghost
+    // lag is pre-existing and is the same wherever this despawn runs, so it costs the deferral nothing: what it costs
+    // is a head that expects a zero-health frame everywhere. There is not one, and there does not need to be, because
+    // Killed is what says the monster died.
     //
     // CALLED FROM TWO PLACES, and the second one is a recovery rather than a second reap site. Step 5b runs it on
     // every healthy tick and empties the list. The top of the next ResolveCombat runs it again, which does nothing at

@@ -497,7 +497,7 @@ Section 12 defers larger footprints with that as the reason.
 
 ### 6.4 One tick, stated deterministically
 
-Three steps are added to `RunOneTick` (`TileWorldServer.Tick.cs:96`), in bold:
+Four steps are added to `RunOneTick` (`TileWorldServer.Tick.cs:96`), in bold:
 
 | # | Step |
 |---|---|
@@ -511,11 +511,27 @@ Three steps are added to `RunOneTick` (`TileWorldServer.Tick.cs:96`), in bold:
 | 4 | `ResolveActions()`, the interaction queue |
 | **4b** | **`ResolveCombat()`, roll then apply then die** |
 | 5 | serve each client its plane-filtered area of interest |
+| **5b** | **`ReapDeadActors()`, the despawn every actor killed at 4b owes** |
 | 6 | `AdvanceTick`, `TickCount++` |
 
 `0c` is named for what it IS rather than for where it sits: it runs immediately after `OnBeforeTick`, ahead of the
 slot snapshot, so a head's own spawns are in it. What is NOT in it is anything step 1b spawns on this tick, which is
 harmless in R1 because nothing can hold a lock on an entity that did not exist last tick.
+
+`5b` SITS BEHIND THE SERVE, and that placement is the whole reason section 7's `Killed` bit works. The despawn a
+death owes an actor ran inside 4b at first, which took the corpse out of the world before step 5 built each viewer's
+interest set from it, so the killing blow was filtered out of every frame and a head could only learn a monster died
+by noticing an absence, which is the one thing the flag exists to avoid. Held until every client has been served, the
+killing blow is still in interest when the set is built, and the corpse ships one more snapshot at zero health to a
+viewer homed in its own cell before it leaves. It still runs BEFORE step 6, so the removal's own change tracking is
+cleared on the tick it happened, exactly as it was at 4b. One qualification on the presentation half: a viewer in a
+NEIGHBOURING cell is served the corpse's ghost, mirrored at step 3 before 4b applies the damage, so the last health
+that viewer reads is the one before the killing blow and the `Killed` bit is the only thing that tells it the monster
+died. That one-tick ghost lag is pre-existing and is the same wherever the despawn runs.
+
+A tick that THROWS between 4b and 5b loses its reap, so the list is drained at the top of the next 4b rather than
+cleared. On a healthy tick 5b already emptied it and the drain does nothing, which leaves 5b the only reap site that
+ever runs on one.
 
 **Every step is order-independent within itself, and that is the determinism argument rather than an ordering
 imposed on the ECS pass.** Taking them one at a time:
@@ -643,7 +659,8 @@ Death is a two-sided split, and the split is the same one section 4 draws:
   moment the entity is gone, and step 2 of the follow already clears a target that does not resolve. One rule, one
   place.
 - **The engine, for an ACTOR:** despawn it and put its spawner into `Waiting(respawnDelay)`. That is engine work
-  because the spawner is engine-owned.
+  because the spawner is engine-owned. The despawn is the one half of a death that does NOT happen inside the pass:
+  it waits for step 5b, behind the serve, for the reason section 6.4 gives.
 - **The game, for a PLAYER:** `OnDied` fires with the slot, and Grimhollow answers it with
   `SetPlayerState(slot, TileMoveState.At(spawn, facing), teleport: true)` plus a write of `TileHealth.Current = Max`.
   The teleport flag advances `Epoch` (`TileMoveState.cs:86-88`), which zeroes the client's correction offsets and

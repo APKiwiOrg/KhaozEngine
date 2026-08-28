@@ -60,14 +60,18 @@ public sealed partial class TileWorldServer
     /// <para>The order inside one tick is the head's own systems, then drain ONE command per player into its owning
     /// cell, then the actor step (every spawner ticks and every live actor's command and tag are written), then step
     /// every cell (which is where movement and the arrival facing happen), then authority handoff and border
-    /// ghosting, then the action queue, then combat, then serve every client its area of interest. It is not
+    /// ghosting, then the action queue, then combat, then serve every client its area of interest, and last the
+    /// despawn every actor killed this tick owes. It is not
     /// arbitrary. Commands are routed BEFORE the step so a click takes effect on the tick it arrived rather than
     /// the one after. The actor step sits between the two for both halves of that reason: it is after the drain so
     /// a behaviour reads the tick's player commands, and before the step so an actor's decision moves it on this
     /// tick rather than the next. Handoff runs after the step, because a step is what carries a player over a region boundary,
     /// and ghosting after handoff so the border mirrors reflect the new owners. Actions resolve after both, so an
     /// arrival and its action land on the same tick. Combat resolves after those, so a swing is judged on where
-    /// both bodies ended the tick. The serve is last, so a client sees the whole tick and never half of it.</para>
+    /// both bodies ended the tick. The serve comes after all of it, so a client sees the whole tick and never half
+    /// of it. The one thing that follows the serve is the despawn a death owes an ACTOR, held back so the corpse is
+    /// still in the world when each viewer's interest set is built and the blow that killed it therefore reaches
+    /// everyone watching the fight.</para>
     /// </summary>
     /// <param name="dt">Seconds elapsed since the last call. Negative is treated as zero.</param>
     public void Tick(float dt)

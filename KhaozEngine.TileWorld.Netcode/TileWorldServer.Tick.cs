@@ -176,7 +176,10 @@ public sealed partial class TileWorldServer
         ResolveActions();
 
         // 4b. Roll, then apply, then die. After movement and handoff, so a swing is judged on where both bodies
-        //     ended the tick, and before the serve, so a death and the blow that caused it ship together.
+        //     ended the tick, and before the serve, so a death and the blow that caused it ship together. That
+        //     second half is only true because the DESPAWN a death owes an actor waits for step 5b: a corpse taken
+        //     out of the world here is gone from the interest set the serve builds, and its killing blow is filtered
+        //     out of every viewer's frame. See ReapDeadActors.
         ResolveCombat();
         ReportBrokenLocks();
 
@@ -200,6 +203,11 @@ public sealed partial class TileWorldServer
             // nothing either.
             if (combatEvents.Count > 0) SendCombatTo(slot, interest);
         }
+
+        // 5b. The despawn every actor killed at 4b owes, now that every client holding it in interest has been served
+        //     the blow that killed it. BEFORE step 6, so the removal's own change tracking is cleared on the tick it
+        //     happened, exactly as it was when the despawn ran inside 4b.
+        ReapDeadActors();
 
         // 6. Clear each cell's per-tick change tracking, so it does not accumulate on a long-running server. Exactly
         //    one fixed sub-tick ran per cell, so one advance per cell matches. Indexed over the server's own live

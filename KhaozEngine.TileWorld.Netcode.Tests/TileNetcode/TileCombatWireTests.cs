@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Netcode;
 using Xunit;
@@ -127,6 +128,51 @@ public class TileCombatWireTests
         });
         Assert.True(h.Server.TryGetHealth(actor, out TileHealth hp));
         Assert.Equal(200 - 6 * seen.Count, hp.Current);
+    }
+
+    // A DEATH, END TO END, which is the one thing the Killed bit exists for: a head learns a monster died from the
+    // blow that killed it rather than from noticing an absence, and an absence cannot be told apart from a walk out
+    // of interest anyway. The count equality is the assertion that earns its keep here, and it is the one that goes
+    // red when the serve builds its interest set after the corpse has already left the world: every swing the server
+    // rolled has to arrive, and the killing one is exactly the swing a despawn-before-serve drops.
+    [Fact]
+    public void A_client_that_kills_an_actor_receives_the_killing_blow_with_its_Killed_bit()
+    {
+        using var h = new TileCombatHarness(TileMoveSimulatorTests.FlatWorld(), new TileCoord(20, 20, 0));
+        h.Server.CombatRules = new FlatRules { Damage = 60, Ticks = 4 };
+        h.Frames(8);
+        // See the end to end test above for why a player's health is written here rather than spawned with one.
+        Assert.True(h.Server.SetHealth(h.Client.LocalNetId, new TileHealth { Current = 100, Max = 100 }));
+        // A hundred against sixty is two swings: one ordinary blow, then the lethal one.
+        long actor = h.Server.SpawnActor(new TileCoord(20, 24, 0), new TileActorSpawn(100, 4, TileDirection.S));
+        h.Frames(8);
+
+        var onServer = new List<TileCombatEvent>();
+        var onClient = new List<TileCombatEvent>();
+        var left = new List<long>();
+        h.Server.OnCombatEvent += ev => onServer.Add(ev);
+        h.Client.CombatEvent += ev => onClient.Add(ev);
+        h.Client.RemoteLeft += id => left.Add(id);
+
+        h.Client.Queue(TileCommand.Attack(actor, TileMoveMode.Run));
+        h.Frames(120);
+
+        // The server really did kill it, so everything below is about DELIVERY rather than about a fight that never
+        // ran. Without this the test would pass on a server that stopped fighting altogether.
+        TileCombatEvent serverKill = Assert.Single(onServer, ev => ev.Killed);
+        Assert.False(h.Server.TryGetHealth(actor, out _));
+
+        Assert.Equal(onServer, onClient);
+        TileCombatEvent clientKill = Assert.Single(onClient, ev => ev.Killed);
+        Assert.Equal(serverKill, clientKill);
+        Assert.Equal(h.Client.LocalNetId, clientKill.AttackerNetId);
+        Assert.Equal(actor, clientKill.TargetNetId);
+        Assert.True(clientKill.Landed);
+
+        // And the corpse leaves on its own frame, so the pair a head prunes its hitsplat stack on still arrives in
+        // the order it reads: the blow that says it died, then the departure.
+        Assert.Equal(new[] { actor }, left);
+        Assert.DoesNotContain(actor, h.Client.RemoteNetIds);
     }
 
     // Only the events whose TARGET is in that viewer's interest set, so an ordinary tick costs nothing and a fight

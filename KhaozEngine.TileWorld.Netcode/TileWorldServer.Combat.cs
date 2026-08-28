@@ -6,9 +6,9 @@ using KhaozEngine.Sharding;
 namespace KhaozEngine.TileWorld.Netcode;
 
 /// <summary>
-/// The combat half of <see cref="TileWorldServer"/>: tick step 4b, which is roll, then apply, then die. See the
-/// other partials for construction, the tick order, the session lifecycle, the pending-action resolution and the
-/// actor lifecycle.
+/// The combat half of <see cref="TileWorldServer"/>: tick step 4b, which is roll, then apply, then die, and the
+/// step 5b reap that finishes a dead actor off once the serve has gone out. See the other partials for
+/// construction, the tick order, the session lifecycle, the pending-action resolution and the actor lifecycle.
 /// <para>TWO PHASES, AND THE SPLIT IS THE DESIGN. The roll phase reads every combatant as it stands at the START of
 /// the phase and produces a list of outcomes. The apply phase subtracts them all. So no hit's accuracy or damage can
 /// depend on another hit having landed, and the pass is order-independent for OUTCOMES. Death is evaluated ONCE,
@@ -30,6 +30,8 @@ public sealed partial class TileWorldServer
     readonly List<(long sinceTick, long netId, long target)> rollOrder = new();
     readonly List<(long attacker, long target, TileAttackOutcome outcome)> rolled = new();
     readonly List<(long netId, long killer)> died = new();
+    // The actors this tick's deaths owe a despawn, held from phase 3 until after the serve. See ReapDeadActors.
+    readonly List<long> deadActors = new();
     // Players whose lock the movement pass may have broken, captured at the drain so a player's OWN disengaging walk
     // is never reported as a failure to reach. A list rather than a dictionary because it is enumerated.
     //
@@ -49,7 +51,10 @@ public sealed partial class TileWorldServer
     /// after EVERY application, which is what makes a mutual kill raise both. The slot is the dead entity's
     /// connection slot, or -1 for anything that is not a player.
     /// <para>The engine's own half of a death is small and deliberate: it clears the DEAD entity's own combat
-    /// target, and for an ACTOR it despawns the entity so the spawner starts the respawn. It does NOT clear every
+    /// target, and for an ACTOR it despawns the entity so the spawner starts the respawn. That despawn happens
+    /// AFTER this tick's serve rather than inside this event, so the corpse ships in one last snapshot at zero
+    /// health and the blow that killed it reaches every viewer watching (see the reap in this file). A handler
+    /// reads a live entity either way. It does NOT clear every
     /// other entity's target pointing at the corpse, because it does not have to: the target stops resolving the
     /// moment the entity is gone and the follow already clears a target that does not resolve. One rule, one place.
     /// What happens to a dead PLAYER is the game's, through this event.</para></summary>
@@ -71,6 +76,7 @@ public sealed partial class TileWorldServer
         // tick rather than only from the moment a roll happened. ReportBrokenLocks reads it below, and the early
         // return under it would otherwise leave the previous tick's dead in the list.
         died.Clear();
+        deadActors.Clear();
 
         // PHASE 0, per combatant: stamp the lock, run the cooldown down, and decide who is eligible. Built from two
         // ORDERED lists rather than from a dictionary enumeration, because a hash layout must never reach a
@@ -176,8 +182,35 @@ public sealed partial class TileWorldServer
             int slot = SlotOf(netId);
             // BEFORE anything is removed, so a handler can still read the entity it is being told about.
             OnDied?.Invoke(netId, killer, slot);
-            if (slot < 0 && actorNetIds.Contains(netId)) DespawnActor(netId);
+            // COLLECTED here and despawned after the serve. See ReapDeadActors for the whole reason.
+            if (slot < 0 && actorNetIds.Contains(netId)) deadActors.Add(netId);
         }
+    }
+
+    // Tick step 5b: the despawn half of an ACTOR's death, held back until every client has been served.
+    //
+    // IT USED TO RUN INSIDE PHASE 3, and that made the Killed bit dead on the wire for the only case R1 has. The
+    // serve builds each viewer's interest set from the LIVE world at step 5, and SendCombatTo keeps an event whose
+    // TARGET is in that set, so a monster despawned at 4b was already gone from the grid when the set was built and
+    // its killing blow was filtered out of every viewer's frame. A head could then only learn a monster died by
+    // noticing its absence, which is the one thing the flag exists to avoid, and an absence cannot be told apart
+    // from a walk out of interest at all.
+    //
+    // Deferring rather than widening the filter is the choice, and the tick order is the argument. The alternative
+    // was to let SendCombatTo accept a target that DIED this tick as well as one in interest, which is cheaper but
+    // hands a death to a viewer who was nowhere near the fight unless the previous serve's interest set is kept as
+    // a second piece of per-slot state. Here the corpse simply ships in one more snapshot at zero health, which is
+    // what presentation wants anyway (the monster is drawn dead on the tick it died, then leaves), it makes the step
+    // 4b comment true as written, and it costs no new state at all.
+    //
+    // IT DOES NOT RESURRECT THE GHOST-KILL BUG. Nothing between phase 3 and here can target or resolve a corpse:
+    // step 1b's actor decisions and step 4b's rolls both ran earlier in this tick, and this runs before the next
+    // tick's 0c snapshot is taken, so no later pass ever sees the entity. The zero-health guards in phase 0 and the
+    // roll phase are unchanged and would refuse it anyway.
+    void ReapDeadActors()
+    {
+        for (int i = 0; i < deadActors.Count; i++) DespawnActor(deadActors[i]);
+        deadActors.Clear();
     }
 
     bool AlreadyDead(long netId)

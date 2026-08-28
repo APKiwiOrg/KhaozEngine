@@ -233,6 +233,39 @@ public class TileCombatResolveTests
         Assert.Equal(c, rules.Rolls[1].TargetNetId);
     }
 
+    // A BLOCKED ZERO IS A HIT. Ruling 13.3 item 1 phrases auto-retaliate as "a CombatEvent hit lands", not as
+    // "damage landed", and a swing that connects for nothing is OSRS's blue splat and the ordinary outcome of a bad
+    // accuracy roll against good defence. So the damage record is written on every LANDED outcome rather than on a
+    // positive number, and the retaliation seam that reads it fires for one.
+    [Fact]
+    public void A_landed_zero_records_its_attacker_so_a_blocked_hit_still_provokes_a_retaliation()
+    {
+        var hub = new InMemoryTransportHub();
+        var rules = new FixedRules { Damage = 0, Ticks = 4 };
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        using TileWorldServer s = Server(doc, hub.Server, new TileCoord(5, 5, 0), rules,
+            behaviour: new TileWanderBehaviour(TileMoveSimulatorTests.Bake(doc)));
+        long attacker = s.SpawnActor(new TileCoord(20, 20, 0), new TileActorSpawn(100, 4, TileDirection.S));
+        long defender = s.SpawnActor(new TileCoord(20, 21, 0), new TileActorSpawn(100, 4, TileDirection.S));
+        Lock(s, attacker, defender);
+
+        s.Tick(Dt);
+
+        TileCombatEvent ev = Assert.Single(s.CombatEventsThisTick);
+        Assert.True(ev.Landed);
+        Assert.Equal(0, ev.Amount);
+        Assert.True(s.TryGetHealth(defender, out TileHealth untouched));
+        Assert.Equal(100, untouched.Current);
+        Assert.True(s.TryGetCombatState(defender, out TileCombatState combat));
+        Assert.Equal(attacker, combat.LastDamagedBy);
+
+        // The consequence, through the real seam rather than through the field: the retaliating behaviour reads
+        // that record and swings back on the next tick, exactly as it would for a hit that took health.
+        s.Tick(Dt);
+        Assert.True(s.TryGetActorState(defender, out TileMoveState st));
+        Assert.Equal(attacker, st.CombatTarget);
+    }
+
     // Death, for an ACTOR: the engine despawns it and its spawner starts the respawn on the next tick, with nothing
     // listening for a death event to make that happen.
     [Fact]

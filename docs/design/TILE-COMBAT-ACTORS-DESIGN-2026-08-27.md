@@ -588,7 +588,13 @@ which is an arbitrary tiebreak deciding who lives.
 ### 6.5 The hit pipeline, and where the game plugs in
 
 `TileCombatState` is the attacker-side server component: `byte AttackTicks` (the cadence the game supplied),
-`byte CooldownRemaining`, `long LastDamagedBy` and `long LastDamagedTick`. It is registered on
+`byte CooldownRemaining`, `long LastDamagedBy`, `long LastDamagedTick` and `long LastCombatTick`. The last two are
+deliberately different facts, and R1 shipped them apart after the first cut folded them together. The damage pair is
+"who hurt me", which a retaliation reads, so it moves only on a swing that LANDED (a hit for zero counts, per ruling
+13.3 item 1, and a miss does not). `LastCombatTick` is "a combat event touched me", which the logout window in 13.3
+item 3 reads, so it moves on every resolved swing in either direction, misses included: the player that ruling
+exists to stop escaping is the one being attacked who has not clicked back, and folding the two made a fight of
+misses count as no fight at all. It is registered on
 `ReplicationChannels.Migrate` and NOT on `Replicate`, so it survives a region handoff and costs a viewer nothing.
 That is precisely the channel combination `ShardHost.cs:331-339` describes for "a mob's server-only state", and it
 is the reason section 5.4's per-actor cost has no line for it.

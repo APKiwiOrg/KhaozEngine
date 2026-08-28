@@ -30,8 +30,9 @@ public sealed class TileWanderBehaviour : ITileActorBehaviour
     /// an actor re-rolling a destination it is still walking to. It is a mean on OPEN GROUND and a floor anywhere
     /// else: a destination that comes back blocked, outside the baked map or equal to the tile the actor is already
     /// on is dropped and re-rolled next tick, so on a cluttered map the pauses observed are longer than this.</param>
-    /// <param name="retaliateWindowTicks">How recent a damaging hit has to be to provoke a counterattack, so an
-    /// actor does not retaliate against something that hit it a minute ago.</param>
+    /// <param name="retaliateWindowTicks">How recent a LANDED hit has to be to provoke a counterattack, so an
+    /// actor does not retaliate against something that hit it a minute ago. A hit that landed for zero counts and a
+    /// miss does not, which is the rule <see cref="TileCombatState.LastDamagedBy"/> itself carries.</param>
     /// <exception cref="ArgumentNullException"><paramref name="map"/> is null.</exception>
     public TileWanderBehaviour(TileCollisionMap map, int meanPauseTicks = 12, int retaliateWindowTicks = 40)
     {

@@ -83,6 +83,44 @@ public class TileCombatLingerTests
         Assert.Equal(0, s.PlayerCount);
     }
 
+    // A FIGHT OF MISSES IS STILL A FIGHT. Ruling 13.3 says the window is held by "a combat event touched them", and
+    // the player this rule exists to stop escaping is precisely the one being attacked who has NOT clicked back: no
+    // lock of their own, and nothing on the record if only the damage counts. Every swing here misses, so no health
+    // moves at all, and pulling the plug must still leave the body standing.
+    [Fact]
+    public void A_player_taking_nothing_but_misses_is_still_in_combat_and_still_lingers()
+    {
+        var hub = new InMemoryTransportHub();
+        var rules = new FixedRules { Land = false, Ticks = 1 };
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(20, 21, 0), rules,
+            combatLogoutTicks: 8);
+        (_, long player) = Join(s, hub, "a", out INetTransport c);
+        Assert.True(s.SetHealth(player, new TileHealth { Current = 100, Max = 100 }));
+        long monster = s.SpawnActor(new TileCoord(20, 20, 0), new TileActorSpawn(100, 1, TileDirection.S));
+        Lock(s, monster, player);
+        for (int i = 0; i < 3; i++) s.Tick(Dt);
+
+        // Three swings, three misses, no health moved, and the player holds no lock of their own.
+        Assert.Equal(3, rules.Rolls.Count);
+        Assert.True(s.TryGetHealth(player, out TileHealth full));
+        Assert.Equal(100, full.Current);
+        Assert.True(s.TryGetActorState(player, out TileMoveState st));
+        Assert.Equal(0L, st.CombatTarget);
+
+        var left = new List<string>();
+        s.PlayerLeaving += (_, account, _) => left.Add(account);
+
+        hub.DisconnectClient(c);
+        s.Poll();
+        Assert.Empty(left);
+        Assert.Equal(1, s.PlayerCount);
+        Assert.True(s.TryGetActorState(player, out _), "a fight of misses still holds the body in world");
+
+        for (int i = 0; i < 9; i++) s.Tick(Dt);
+        Assert.Equal(new[] { "a" }, left);
+        Assert.Equal(0, s.PlayerCount);
+    }
+
     // ONE ACCOUNT, ONE BODY, and the linger is the first thing in the tree that could break it. The seat is held at
     // the TileWorld layer for the window, but NetServer released it the moment the link dropped, so the account is
     // no longer known to the duplicate-session gate and a reconnect is handed the LOWEST free slot. Land that

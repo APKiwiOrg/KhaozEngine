@@ -72,8 +72,10 @@ public readonly record struct TileActorIntent(TileActorIntentKind Kind, TileCoor
 /// snapshot does not answer for, which is what a dead, despawned or mid-handoff target reads as. That is the same
 /// answer the follow acts on, so a behaviour that breaks off on it agrees with the stepper rather than fighting
 /// it.</param>
-/// <param name="LastDamagedBy">The net id that last landed damage on it, 0 when nothing has.</param>
-/// <param name="LastDamagedTick">The tick that damage landed on.</param>
+/// <param name="LastDamagedBy">The net id whose swing last LANDED on it, 0 when nothing has. A hit that connected
+/// for zero counts, so a blocked blow provokes a retaliation exactly as a damaging one does. A swing that MISSED
+/// does not.</param>
+/// <param name="LastDamagedTick">The tick that hit landed on.</param>
 /// <param name="Walking">True while it has a live route or a step in flight. A behaviour that re-rolled a
 /// destination every tick would never arrive at one, so this is the field that stops it.</param>
 /// <param name="Tick">The server tick being decided.</param>

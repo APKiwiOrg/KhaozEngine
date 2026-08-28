@@ -239,13 +239,18 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
         actions.Forget(slot);
     }
 
-    // In combat means holding a lock, or having been damaged inside the window. Both facts are already on the state
-    // and the server-only combat component, so the linger needs no third record of them.
+    // In combat means holding a lock, or a combat event having touched them inside the window, which is section
+    // 13.3's own phrasing and is deliberately not "damage landed": the player this rule exists to stop escaping is
+    // the one being attacked who has not clicked back, and a fight in which every swing misses is exactly that
+    // player's fight. TileCombatState.LastCombatTick is the fact, written for both parties on every resolved swing.
+    //
+    // The damage record is NOT read here. It answers a different question (who hurt me, for a retaliation) and a
+    // miss must not move it, so reading it for this would be reading the wrong fact for the wrong reason.
     bool IsInCombat(long netId)
     {
         if (TryGetActorState(netId, out TileMoveState state) && state.CombatTarget != 0) return true;
-        return TryGetCombatState(netId, out TileCombatState combat) && combat.LastDamagedTick != 0
-            && TickCount - combat.LastDamagedTick <= config.CombatLogoutTicks;
+        return TryGetCombatState(netId, out TileCombatState combat) && combat.LastCombatTick != 0
+            && TickCount - combat.LastCombatTick <= config.CombatLogoutTicks;
     }
 
     // ONE ACCOUNT, ONE LIVE BODY, and the linger is the only thing in the tree that can hold a seat the session

@@ -25,14 +25,31 @@ public struct TileCombatState : IComponent
     /// cadence again on arrival. That is OSRS, and it is what stops a chase from also being a cooldown reset.</summary>
     public byte CooldownRemaining;
 
-    /// <summary>Net id of the last entity to land damage on this one, 0 when nothing has. What a retaliating
-    /// behaviour reads, and what a <see cref="TileActorIntentKind.Break"/> clears: an actor that broke off a fight
-    /// must not be handed the same attacker back by the retaliation rule the moment it is home again.</summary>
+    /// <summary>Net id of the last entity whose swing LANDED on this one, 0 when nothing has. A hit that connected
+    /// for ZERO counts, because the ruling that asks for a counterattack asks for one when a hit lands rather than
+    /// when damage does, and a blocked zero is the ordinary outcome of a bad accuracy roll against good defence.
+    /// What a retaliating behaviour reads, and what a <see cref="TileActorIntentKind.Break"/> clears: an actor that
+    /// broke off a fight must not be handed the same attacker back by the retaliation rule the moment it is home
+    /// again.</summary>
     public long LastDamagedBy;
 
-    /// <summary>The server tick that damage landed on, so a behaviour can age it out rather than retaliating
-    /// against something that hit it a minute ago.</summary>
+    /// <summary>The server tick that hit landed on, so a behaviour can age it out rather than retaliating against
+    /// something that hit it a minute ago. Written with <see cref="LastDamagedBy"/> and under the same rule, so the
+    /// pair is always one answer rather than two.</summary>
     public long LastDamagedTick;
+
+    /// <summary>The server tick a combat event last TOUCHED this entity, in either direction: a swing it made or a
+    /// swing made at it, whether that swing landed or missed. Zero when none ever has.
+    /// <para>Separate from <see cref="LastDamagedTick"/> because the two answer different questions and widening one
+    /// of them would break the other. A retaliation wants to know who hurt it, so a miss must not move that record.
+    /// The combat LOGOUT window wants to know whether a fight is happening, which the spec states as "a combat event
+    /// touched them", and a player being swung at and missed is exactly the player that rule exists to stop escaping
+    /// by pulling the plug. Read by <c>TileWorldServer</c>'s own in-combat test and by nothing else, which is why it
+    /// is not on <see cref="TileActorContext"/>: it is a session fact rather than a threat fact, and for the same
+    /// reason a <see cref="TileActorIntentKind.Break"/> does not clear it.</para>
+    /// <para>Tick zero is indistinguishable from never, exactly as <see cref="LastDamagedTick"/> is, and for the
+    /// same reason: both are a bare tick index against a zero-based clock.</para></summary>
+    public long LastCombatTick;
 
     /// <summary>The <see cref="TileMoveState.CombatTarget"/> the combat pass last saw on this entity, so a CHANGE is
     /// detectable without a second pass. Server-only bookkeeping, never a rules input.</summary>

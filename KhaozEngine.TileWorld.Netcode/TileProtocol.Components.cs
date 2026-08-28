@@ -290,7 +290,7 @@ public static partial class TileProtocol
         return new TileHealth { Current = Math.Min(current, max), Max = max };
     }
 
-    // Thirty-four bytes, and the ONE codec here whose bytes never come off a socket: TileCombatState is registered
+    // Forty-two bytes, and the ONE codec here whose bytes never come off a socket: TileCombatState is registered
     // on the Migrate channel alone, so the only thing that ever encodes or decodes it is a cell handoff inside one
     // server process. Nothing is clamped for that reason, and the day it gains a Replicate bit is the day it needs
     // the same treatment ReadMove gives its enums. The two roll-order fields at the end cost a viewer nothing for
@@ -301,6 +301,7 @@ public static partial class TileProtocol
         w.Write(v.CooldownRemaining);
         w.Write(v.LastDamagedBy);
         w.Write(v.LastDamagedTick);
+        w.Write(v.LastCombatTick);
         w.Write(v.TargetSeen);
         w.Write(v.TargetSinceTick);
     }
@@ -311,6 +312,7 @@ public static partial class TileProtocol
         CooldownRemaining = r.ReadByte(),
         LastDamagedBy = r.ReadInt64(),
         LastDamagedTick = r.ReadInt64(),
+        LastCombatTick = r.ReadInt64(),
         TargetSeen = r.ReadInt64(),
         TargetSinceTick = r.ReadInt64(),
     };

@@ -127,7 +127,12 @@ public sealed partial class TileWorldServer
         for (int i = 0; i < rolled.Count; i++)
         {
             (long attacker, long target, TileAttackOutcome outcome) = rolled[i];
-            ResetCooldown(attacker);
+            // A RESOLVED SWING is what section 13.3 calls a combat event touching them, so both parties are stamped
+            // whether it landed or missed and whether it took any health. Two writes per swing, one per party, with
+            // the cooldown and the damage record folded into the same read-modify-write rather than costing a
+            // second one each.
+            NoteSwing(attacker);
+            NoteSwungAt(target, attacker, outcome.Landed);
 
             bool killed = false;
             if (outcome.Damage > 0 && TryGetHealth(target, out TileHealth hp))
@@ -135,7 +140,6 @@ public sealed partial class TileWorldServer
                 int next = hp.Current - outcome.Damage;
                 hp.Current = (ushort)Math.Max(0, next);
                 SetHealth(target, hp);
-                StampDamage(target, attacker);
                 // Not already dead this pass, so the death rides the blow that actually took it to zero rather than
                 // every later blow rolled against the same corpse.
                 if (hp.Current == 0 && !AlreadyDead(target))
@@ -171,25 +175,38 @@ public sealed partial class TileWorldServer
         return false;
     }
 
+    // The ATTACKER's half of a resolved swing: it pays its cadence, and the swing counts as a combat event that
+    // touched it, which is what keeps an attacker whose target died in combat for the window rather than free to
+    // log out on the tick the fight ended.
+    //
     // A cadence of zero would swing every tick, which no game means, so a swung attacker always pays at least one.
     // The rules member wins over the component's own copy, which is the value the spawn seeded and the fallback for
     // a game that answers zero.
-    void ResetCooldown(long attacker)
+    void NoteSwing(long attacker)
     {
         if (!host.TryGetOwner(attacker, out CellSim cell, out Entity e)) return;
         cell.World.TryGet(e, out TileCombatState combat);
         byte ticks = CombatRules?.AttackTicks(attacker) ?? 0;
         if (ticks == 0) ticks = combat.AttackTicks;
         combat.CooldownRemaining = ticks == 0 ? (byte)1 : ticks;
+        combat.LastCombatTick = TickCount;
         cell.World.Set(e, combat);
     }
 
-    void StampDamage(long target, long attacker)
+    // The TARGET's half, and the two facts it writes are deliberately not the same fact. Every resolved swing
+    // touched it, miss included, which is what the logout window reads. Only a swing that LANDED names an attacker,
+    // which is what a retaliation reads, and a hit that connected for zero is a landed swing: the ruling asks for a
+    // counterattack when a hit lands rather than when damage does.
+    void NoteSwungAt(long target, long attacker, bool landed)
     {
         if (!host.TryGetOwner(target, out CellSim cell, out Entity e)) return;
         cell.World.TryGet(e, out TileCombatState combat);
-        combat.LastDamagedBy = attacker;
-        combat.LastDamagedTick = TickCount;
+        combat.LastCombatTick = TickCount;
+        if (landed)
+        {
+            combat.LastDamagedBy = attacker;
+            combat.LastDamagedTick = TickCount;
+        }
         cell.World.Set(e, combat);
     }
 

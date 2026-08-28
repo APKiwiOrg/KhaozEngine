@@ -164,7 +164,13 @@ public sealed partial class TileWorldServer
     /// <summary>Writes one entity's health. The engine owns health MECHANICALLY and owns none of its meaning, so
     /// this is the door a game's own skill core writes <see cref="TileHealth.Max"/> through, and the one a heal goes
     /// through. Nothing is clamped here: a caller that writes a <see cref="TileHealth.Current"/> above
-    /// <see cref="TileHealth.Max"/> gets exactly that, and the wire codec clamps it on the way to a viewer.</summary>
+    /// <see cref="TileHealth.Max"/> gets exactly that, and the wire codec clamps it on the way to a viewer.
+    /// <para>A PLAYER HAS NO HEALTH UNTIL THIS IS CALLED FOR THEM, so this is not optional for a game with combat.
+    /// <see cref="SpawnPlayer"/> writes no <see cref="TileHealth"/>, and a combatant carrying none is skipped by the
+    /// combat pass in BOTH roles: that player cannot swing and cannot be hit, and nothing throws or notices. Call it
+    /// on join, and again on a respawn. <see cref="SkippedHealthlessCombatantCount"/> is the reading that says a
+    /// game forgot. An ACTOR needs no call: <see cref="SpawnActor"/> writes its spawn spec's max health.</para>
+    /// </summary>
     /// <param name="netId">The entity's net id.</param>
     /// <param name="health">The health to write.</param>
     /// <returns>False when no cell owns the id.</returns>

@@ -47,6 +47,18 @@ public sealed partial class TileWorldServer
     /// has not wired combat: the cooldown still runs down and no roll is ever asked for.</summary>
     public ITileCombatRules? CombatRules { get; set; }
 
+    /// <summary>Ticks on which an entity holding a combat target and ready to swing carried no
+    /// <see cref="TileHealth"/> at all, and was therefore skipped.
+    /// <para>THE SIGNAL FOR ONE WIRING MISTAKE, and it is the commonest one this package has: a player is spawned
+    /// WITHOUT health, deliberately, because what a player's <see cref="TileHealth.Max"/> should be belongs to the
+    /// game's own skill core. A game that never calls <see cref="SetHealth"/> for a player therefore has one who
+    /// can neither swing nor be hit, and every guard involved is silent. This is what makes that visible. It climbs
+    /// once per tick per such attacker while the lock is held, so a healthy head leaves it at zero and a non-zero
+    /// reading names exactly one fix: write the health on join.</para>
+    /// <para>A combatant at ZERO health is not counted. That one is a corpse, which is an ordinary outcome rather
+    /// than a mistake, and counting it would bury the signal under every death in the world.</para></summary>
+    public long SkippedHealthlessCombatantCount { get; private set; }
+
     /// <summary>Raised as (dead net id, killer net id, slot) for every entity whose health reached zero this tick,
     /// after EVERY application, which is what makes a mutual kill raise both. The slot is the dead entity's
     /// connection slot, or -1 for anything that is not a player.
@@ -113,7 +125,15 @@ public sealed partial class TileWorldServer
             if (moved) cell.World.Set(e, combat);
 
             if (state.CombatTarget == 0 || combat.CooldownRemaining != 0) continue;
-            if (!cell.World.TryGet(e, out TileHealth health) || health.Current == 0) continue;
+            // COUNTED, and only for an ABSENT component. Everything that reaches this line wants to swing and is off
+            // cooldown, so a missing TileHealth here is a game that never wrote one, which is silent in every other
+            // way. A zero is a corpse and stays uncounted. See SkippedHealthlessCombatantCount.
+            if (!cell.World.TryGet(e, out TileHealth health))
+            {
+                SkippedHealthlessCombatantCount++;
+                continue;
+            }
+            if (health.Current == 0) continue;
             rollOrder.Add((combat.TargetSinceTick, netId, state.CombatTarget));
         }
 

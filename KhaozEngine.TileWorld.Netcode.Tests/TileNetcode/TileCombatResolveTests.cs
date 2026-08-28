@@ -303,6 +303,43 @@ public class TileCombatResolveTests
         Assert.Equal(30, fresh.Current);
     }
 
+    // THE PLAYER HEALTH CONTRACT, and the one signal a game gets that it has not held up its end. A player is
+    // spawned with no TileHealth at all, deliberately: what a player's Max should BE is the game's skill core's, and
+    // an engine default would be the engine picking a gameplay number. So a game that never calls SetHealth gets a
+    // player who can neither swing nor be hit, and without the counter it gets that with no exception, no notice and
+    // nothing to read.
+    [Fact]
+    public void An_attacker_with_no_health_at_all_is_skipped_and_counted()
+    {
+        var hub = new InMemoryTransportHub();
+        var rules = new FixedRules();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(20, 20, 0), rules);
+        long player = s.SpawnPlayer(0, "a", "Ari");
+        long monster = s.SpawnActor(new TileCoord(20, 21, 0), new TileActorSpawn(100, 4, TileDirection.S));
+        Lock(s, player, monster);
+
+        s.Tick(Dt);
+
+        Assert.Empty(rules.Rolls);
+        Assert.Equal(1, s.SkippedHealthlessCombatantCount);
+
+        // And it stops the moment the game writes one, which is the fix the counter points at. It is the ABSENT
+        // component that counts, never a dead combatant: a zero-health attacker is skipped by the same guard and is
+        // an ordinary corpse rather than a wiring mistake.
+        Assert.True(s.SetHealth(player, new TileHealth { Current = 30, Max = 30 }));
+        s.Tick(Dt);
+        Assert.Single(rules.Rolls);
+        Assert.Equal(1, s.SkippedHealthlessCombatantCount);
+
+        Assert.True(s.SetHealth(player, new TileHealth { Current = 0, Max = 30 }));
+        s.Tick(Dt);
+        s.Tick(Dt);
+        s.Tick(Dt);
+        s.Tick(Dt);
+        Assert.Single(rules.Rolls);
+        Assert.Equal(1, s.SkippedHealthlessCombatantCount);
+    }
+
     // A PLAYER's death is the game's: OnDied names the slot, and the game answers it. The engine clears the dead
     // entity's own lock and nothing else, because every OTHER entity's target stops resolving on its own.
     [Fact]

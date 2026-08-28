@@ -159,7 +159,11 @@ public class TileActorSpawnTests
         world.Set(e, new NetId(7L));
         world.Set(e, TileMoveState.At(new TileCoord(1, 2, 0), TileDirection.N));
         world.Set(e, new TileHealth { Current = 12, Max = 30 });
-        world.Set(e, new TileCombatState { AttackTicks = 10, CooldownRemaining = 3, LastDamagedBy = 9L, LastDamagedTick = 44L });
+        world.Set(e, new TileCombatState
+        {
+            AttackTicks = 10, CooldownRemaining = 3, LastDamagedBy = 9L, LastDamagedTick = 44L,
+            LastCombatTick = 46L, TargetSeen = 5L, TargetSinceTick = 41L,
+        });
         var interest = new HashSet<long> { 7L };
 
         var replicated = new World();
@@ -176,6 +180,13 @@ public class TileActorSpawnTests
         Assert.Equal(3, mc.CooldownRemaining);
         Assert.Equal(9L, mc.LastDamagedBy);
         Assert.Equal(44L, mc.LastDamagedTick);
+        // The tail of the struct is the survivable asymmetry: a write kept with the read dropped leaves the
+        // reader short at the END, the fields above still come back right, and the tail silently zeroes on
+        // every cell handoff. LastCombatTick zeroing there is a player escaping the logout window by crossing
+        // a cell boundary mid fight, so the tail is pinned field by field.
+        Assert.Equal(46L, mc.LastCombatTick);
+        Assert.Equal(5L, mc.TargetSeen);
+        Assert.Equal(41L, mc.TargetSinceTick);
         Assert.True(migrated.Has<TileHealth>(m));
     }
 

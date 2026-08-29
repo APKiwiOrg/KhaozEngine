@@ -1965,6 +1965,12 @@ inside the callback: the command list it is recording into still names them unti
 - `Camera2D`: `Position`/`Zoom`/`Rotation`, `WorldToScreen`/`ScreenToWorld`, `CenterOn`, `PanByScreenDelta`,
   `Focus(rect, ...)`, `ClampPosition(...)`. The camera-feel layer (follow, look-ahead, blends, room cameras,
   parallax) lives alongside it in Render2D; screen shake is in `KhaozEngine.Particles`.
+  `ScreenToWorld` cannot return NaN: a `Zoom` of exactly 0 collapses the view matrix onto the viewport centre,
+  which has no inverse, and the conversion then falls back to `Position` (the one world point every screen pixel
+  collapsed onto) instead of handing NaN to whatever was picking or following. Use
+  `TryScreenToWorld(screen, viewportWidth, viewportHeight, out world)` when the caller wants to KNOW the camera
+  was degenerate rather than absorb it. A negative zoom is a mirror rather than a degeneracy and still converts
+  exactly.
 - Scissor clipping: `SetScissor(Rect)` / `ClearScissor()` (composes with the design viewport).
 - `ImageRgba` (CPU, no GPU): `ImageRgba.Load(path)` / `Decode(bytes)` / `Surface2D.LoadImageRgba(path)` give a
   tightly-packed RGBA8 image with `AlphaAt` / `IsOpaqueAt(threshold)` for opaque-pixel collision masks. Pass

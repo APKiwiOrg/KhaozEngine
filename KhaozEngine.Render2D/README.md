@@ -22,7 +22,12 @@
   boundaries later instead of behind the `WaitForIdle` the eviction path used to take every time anything aged out
   ([#84](https://github.com/APKiwiOrg/KhaozEngine/issues/84)). Eligibility is unchanged, only the disposal moved.
 - `Camera2D` - position/zoom/rotation 2D camera (headless, unit-tested) + the camera-feel layer (follow,
-  look-ahead, eased blends, room cameras, parallax).
+  look-ahead, eased blends, room cameras, parallax). `ScreenToWorld` cannot return NaN: a `Zoom` of exactly 0
+  collapses the view matrix, which then has no inverse, so the conversion falls back to `Position` (the world
+  point the whole viewport collapsed onto). `TryScreenToWorld(screen, w, h, out world)` is the same conversion
+  with a bool for a caller that wants to detect that case
+  ([#88](https://github.com/APKiwiOrg/KhaozEngine/issues/88)). A negative zoom is a mirror rather than a
+  degeneracy and still converts exactly.
 - `Texture2D` - GPU texture. PNG load via StbImageSharp. Dispose drains the device (`WaitForIdle`) before
   freeing the handle when the texture carries a device reference (every engine loader: `LoadTexture`,
   `RenderToTexture`, `SpriteFont`'s atlas), since a queued upload may still reference it. A texture obtained

@@ -5495,7 +5495,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.2.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.3.0" />
 ```
 
 ```csharp
@@ -10105,7 +10105,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.2.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.3.0" />
 ```
 
 ```csharp
@@ -10141,7 +10141,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.2.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.3.0" />
 ```
 
 ```csharp
@@ -10383,7 +10383,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.2.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.3.0" />
 ```
 
 ```csharp
@@ -11292,6 +11292,23 @@ by the mesh's per-vertex color. It never writes depth, so it never hides the sce
 scene geometry still occludes it. Drawn after the meshes/beams and before the pixel post. This is a reusable
 overlay pass, not collision-specific: `CollisionShapeOverlay` is the first consumer, and a future nav-mesh or
 area-of-interest-bounds overlay is a new type over the same `DrawOverlayMesh` call, not a new render path.
+
+### Entity silhouettes (`DrawMeshSilhouette`, 18.3.0)
+
+The per-entity highlight rim, the RuneLite look: `Scene3D.DrawMeshSilhouette(MeshHandle mesh, Matrix4x4 world,
+Color color, float widthMetres)` re-draws an already-loaded mesh as an inverted hull, vertices pushed along
+their world normals by the width, front faces culled, in a flat alpha-blending color, depth tested without
+writing. Draw the model as usual AND queue its silhouette the same frame, and only the rim outside the model's own
+silhouette survives, occluded correctly by nearer geometry. This is not the whole-scene edge post
+(`PixelPostProcessSettings.Outline`): a silhouette belongs to ONE entity, per frame, at the caller's color.
+
+For a body the game draws itself (an avatar, a monster), queue one silhouette per part at the body's world
+transform. For an authored tile-world object, the view owns the placement:
+`TileWorldView.SetSilhouettedObject(long objectId, Color color, float widthMetres = 0.05f)` silhouettes that
+object's parts every frame until `ClearSilhouettedObject()`. An id no loaded region holds draws nothing and
+self-corrects when its region streams in, so a click handler may set it optimistically. The seam member
+`ITileWorldScene.DrawMeshSilhouette` defaults to a no-op, so custom scene implementations keep compiling and
+simply draw no rims.
 
 **Build the static list.** The game collects the shapes it wants outlined as a flat
 `IReadOnlyList<CollisionStatic>` (`readonly record struct CollisionStatic(PhysicsShape Shape, Pose Pose)`) -

@@ -5,6 +5,36 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.3.0
+
+18.3.0 adds per-entity SILHOUETTES, the RuneLite-style highlight rim around a clicked monster or a selected
+prop, as an inverted-hull render pass with a tile-world door, consumed first by Grimhollow's interaction
+feedback. The whole-scene edge post keeps the Outline name on `PixelPostProcessSettings`, and this is the
+per-entity sibling, named silhouette everywhere.
+
+- **`Scene3D.DrawMeshSilhouette(MeshHandle, Matrix4x4, Color, float widthMetres)` is new.** The mesh re-draws
+  as an inverted hull: vertices pushed along their world normals by the width, FRONT faces culled (the meshes
+  wind counter-clockwise front, which the first bake's evidence caught the hard way), flat colour alpha-blended
+  into the model MRT with `PreserveDestination` on the normal and depth attachments, depth tested less-or-equal
+  without writing. Drawn right after the overlay meshes, so the rim is occluded by nearer geometry, never
+  occludes later passes, and sits over the entity's own overlay proxies. A silhouette-free frame renders
+  byte-identical to before the pass existed. The per-draw dynamic-offset UBO follows the overlay renderer's
+  one-whole-buffer-write shape with a 160-byte payload (ViewProj, World, Color, Params).
+- **`ITileWorldScene.DrawMeshSilhouette` is new, default no-op** (the `LoadTileGroundMaterial` precedent), so
+  every implementor keeps compiling, and `Scene3DTileWorldScene` forwards it.
+- **`TileWorldView.SetSilhouettedObject(long objectId, Color, float)` / `ClearSilhouettedObject` are new.** The
+  view resolves the object id to its placement per frame (a scan of the loaded regions' small object lists,
+  chosen over widening every `PropPlacement` with an id for the one object that is highlighted) and queues
+  each part as a hull at the exact transform the prop draws with. An id no loaded region holds draws nothing
+  and self-corrects when its region streams in, so a caller may set it optimistically.
+- Each pass partial now owns its own queue and public API: `DrawOverlayMesh`, its count and its queue moved
+  into `Scene3D.OverlayMeshPass.cs` beside the pass they feed (and the silhouette trio lives in
+  `Scene3D.SilhouettePass.cs`), a cohesion move that also keeps `Scene3D.cs` under its size ratchet.
+- Golden `silhouette_box` (a greybox box with a crimson rim) joins the three-family golden gate. Headless
+  coverage: the recording tile-world fake records silhouette draws, the view rule is pinned (set draws hulls
+  at the prop transform, clear stops, unknown id is quiet), and `Begin` clearing the queue is pinned on
+  device.
+
 ## 18.2.0
 
 18.2.0 adds one additive Gui control, `ContextMenu`, the right-click option menu Grimhollow asked for, and

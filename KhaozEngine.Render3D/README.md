@@ -621,6 +621,11 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   depth-tested-but-not-depth-writing, alpha-blended draw of an already-loaded mesh, colored by the mesh's
   per-vertex color. A general overlay primitive, not collision-specific: drawn after the meshes/beams and
   before the pixel post.
+- `Scene3D.DrawMeshSilhouette(MeshHandle mesh, Matrix4x4 world, Color color, float widthMetres)` - the
+  per-entity highlight rim (the RuneLite look): re-draws the mesh as an inverted hull, vertices pushed along
+  their world normals by the width, front faces culled, flat alpha-blending color, depth tested without
+  writing. Draw the model as usual and queue its silhouette the same frame, and only the rim survives. The
+  whole-scene edge post keeps the Outline name on `PixelPostProcessSettings`.
 - Debug wire volumes: `Scene3D.DebugWireSphere` / `DebugWireDome` (hemisphere, flat side down) /
   `DebugWireCylinder` (vertical, `radius` + `halfHeight`) / `DebugWireCircle`, each `(..., Color color, float
   opacity = 1, DebugDepthMode depth = DepthTested, int segments = DebugWireSegments)`. Immediate-mode (cleared each

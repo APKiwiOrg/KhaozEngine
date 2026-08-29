@@ -1291,6 +1291,67 @@ if (pointer.IsRightTapIn(slotRect))
 }
 ```
 
+### Context menus (`ContextMenu`, 18.2.0)
+
+`KhaozEngine.Gui.ContextMenu` is the right-click option menu those helpers open: a title band over a stack of
+selectable rows, anchored at a screen point in design pixels (the OSRS-style option list). Its text is
+`LocalizedText` and resolves ONCE, when the menu opens, so the draw path never re-resolves and a runtime locale
+switch means rebuilding the entries.
+
+```csharp
+var pointer = input.Pointer;
+var menu = new ContextMenu(titleFont, bodyFont) { Viewport = new Vector2(viewW, viewH) };
+
+if (pointer.IsRightTapIn(slotRect))
+{
+    menu.Open(Strings.CopperOre, new[]
+    {
+        ContextMenuEntry.Of(Strings.Use,     tag: (long)MenuAction.Use),
+        ContextMenuEntry.Of(Strings.Examine, tag: (long)MenuAction.Examine),
+        // right-aligned detail, and an opaque tag that rides through the selection
+        ContextMenuEntry.Of(Strings.Drop, LocalizedText.Raw("x128"), tag: (long)MenuAction.Drop),
+        ContextMenuEntry.Of(Strings.Sell,    tag: (long)MenuAction.Sell, enabled: CanSell),
+    }, pointer.Position);
+}
+
+menu.Update(input);                      // InputManager overload: pointer path + Escape / gamepad B / Back
+if (menu.WasSelected) Act((MenuAction)menu.SelectedTag);
+menu.Draw(batch, white);                 // last, so it covers what it should
+```
+
+`Update` returns `WasSelected`, and that whole result group (`WasSelected`, `SelectedTag`, `SelectedIndex`,
+`WasDismissed`, `DismissPress`) is a ONE-FRAME signal cleared at the top of the next `Update`, closed menu
+included. Poll it on the frame it fires rather than stashing the menu and reading it later. A row with
+`enabled: false` draws at `DisabledColor` whatever the caller tinted it, and refuses both hover and selection,
+so `HoverIndex` and what a tap will accept never disagree.
+
+Dismissal comes in two shapes. A release OUTSIDE the menu sets `WasDismissed` with `DismissPress` at the
+release position, and a menu-cancel sets it with a null `DismissPress`, since a key has no position. The
+release position is what the reopen-on-the-same-gesture pattern wants, so one right press can dismiss the open
+menu and open the next one under the cursor:
+
+```csharp
+menu.Update(input);
+if (menu.WasDismissed && menu.DismissPress is Vector2 p && HitTest(p) is { } target)
+    menu.Open(target.Name, BuildEntries(target), p);   // new menu, anchored where the gesture released
+```
+
+An open menu reserves its bounds through `Pointer.BlockRegion`, so the world beneath cannot be clicked through
+it, and the gesture that OPENED the menu can neither dismiss it nor select a row in it. Without that, a menu the
+edge clamp drops under a held cursor reads the pre-open press as a row tap, and a press-to-open gesture's
+release a frame later reads as a dismissal. Menu-cancel is deliberately exempt and works from the very first
+frame, because the keyboard was never the opening gesture.
+
+Layout is pure and headless-testable. `ContextMenu.ComputeBounds(titleFont, title, bodyFont, entries, point,
+viewport, metrics)` and `ContextMenu.RowBounds(bounds, titleFont, bodyFont, i, metrics)` run off plain
+`ITextMeasurer`s. The menu's top-left sits AT the point and opens down-right, flips to put its BOTTOM at the
+point when the bottom would overflow, and the viewport clamp runs LAST and WINS over the flip, so a point too
+close to an edge yields a menu pinned inside the `ContextMenuMetrics.Margin` box that may cover the point rather
+than sit at it. Assign `Viewport` (the design size) before you update or draw an open menu: `Draw` throws while
+it is `Vector2.Zero` rather than quietly pinning the menu into the top-left corner. For a headless test the
+measure-only `ContextMenu(ITextMeasurer, ITextMeasurer)` constructor drives `Open` / `Update` with no GPU device
+and no baked font, and `Draw` throws on a menu built that way.
+
 ---
 
 ## Toast notifications (`ToastStack` / `ToastView` / `ToastTheme`)
@@ -5401,7 +5462,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.1.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.2.0" />
 ```
 
 ```csharp
@@ -10011,7 +10072,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.2.0" />
 ```
 
 ```csharp
@@ -10047,7 +10108,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.2.0" />
 ```
 
 ```csharp
@@ -10289,7 +10350,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.2.0" />
 ```
 
 ```csharp

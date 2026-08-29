@@ -163,10 +163,10 @@ namespace KhaozEngine.Gui
         /// frame that already carries that gesture's edge, and when the clamp in <see cref="ComputeBounds"/>
         /// moves the menu the gesture reads either as a release outside the menu it just opened (a dismissal) or
         /// as a tap on a row the menu dropped under the cursor (a selection). Neither is deliberate: a press that
-        /// began before the menu existed cannot be an act on it. The latch clears on the first
+        /// began before the menu existed cannot be an act on it. The latch disarms on the first
         /// <see cref="Pointer.IsJustPressed"/> landing on a frame AFTER the opening one, and that press is then
-        /// read normally from its own edge, so the menu answers the user's first fresh gesture and nothing
-        /// before it. Menu-cancel via <see cref="Update(InputManager, PlayerIndex?)"/> stays live throughout,
+        /// read normally from its own edge, so the opening gesture can neither dismiss the menu nor select a row
+        /// in it. Menu-cancel via <see cref="Update(InputManager, PlayerIndex?)"/> stays live throughout,
         /// since the keyboard was not the opening gesture.
         /// </para>
         /// </summary>

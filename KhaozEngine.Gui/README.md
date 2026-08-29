@@ -3,7 +3,7 @@
 Immediate-mode + retained UI on the custom MonoGame-free stack.
 
 **Localized text:** the player-facing text sinks (the `Label` / `Button` widgets, `GuiSurface.Label` /
-`Button` / `StatChip`, `Tooltip.Show`, and `PopupPanel` - its `TitleContent` / `DismissContent` /
+`Button` / `StatChip`, `Tooltip.Show`, `ContextMenu.Open` plus `ContextMenuEntry.Of`, and `PopupPanel` - its `TitleContent` / `DismissContent` /
 `PrimaryActionContent` plus the `PopupRow.Header` / `Stat` factories) take a `LocalizedText` (from
 `KhaozEngine.App`) instead of a raw `string`. Pass a `StringId` (implicitly converts) for localizable copy, or
 `LocalizedText.Raw("...")` for non-localizable text (names, numbers, debug). The old `string` overloads remain
@@ -189,6 +189,29 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     `Scale` (default `1f`, a third optional positional field), and `Tooltip.TitleScale` (default `1f`) scales the
     title row, so one shared font can render a size hierarchy (e.g. a bright 1.0 title over 0.84/0.42 body lines).
     A scaled line still wraps within `MaxWidth` (the word-wrap budget divides by the line's own scale).
+  - `ContextMenu` (18.2.0) - a right-click option menu anchored at a screen point: a title band over a stack of
+    selectable rows, the OSRS-style option list. `Open(title, entries, screenPoint)` shows it (reopening while
+    open just replaces the content and the anchor), `Update(Pointer)` drives one frame, `Draw(batch, white)`
+    paints it. Text is `LocalizedText` throughout, resolved ONCE: the title in `Open`, each row through
+    `ContextMenuEntry.Of(label, rightDetail, ...)` at construction (the `TooltipLine.Of` precedent), so the draw
+    path never re-resolves and a runtime locale switch means rebuilding the entries. A row carries an optional
+    right-aligned `RightDetail`, per-row `LabelColor` / `DetailColor` overrides, an opaque `long Tag` that rides
+    through selection, and an `Enabled` flag (a disabled row draws at `DisabledColor`, whatever the caller
+    tinted it, and refuses both hover and selection). Results are one-frame flags in the `Dropdown.WasChanged`
+    mould, all cleared at the top of the next `Update`: `WasSelected` (also `Update`'s return value) with
+    `SelectedTag` / `SelectedIndex`, and `WasDismissed` with `DismissPress`, the position the dismissing gesture
+    RELEASED at (null for a menu-cancel), which is what a caller reopening on the same right press anchors the
+    next menu at. `Update(InputManager, PlayerIndex? = null)` layers menu-cancel (Escape / gamepad B / Back)
+    dismissal on top, and cancel is live from the first frame. `ComputeBounds` / `RowBounds` are pure layout over
+    `ITextMeasurer`: the menu's top-left sits at the point and opens down-right, flips to put its BOTTOM at the
+    point when the bottom would overflow, and the viewport clamp runs LAST and wins over the flip, so a point too
+    close to an edge yields a menu pinned inside the `ContextMenuMetrics.Margin` box that may cover the point
+    rather than sit at it. An open menu reserves its bounds through `Pointer.BlockRegion` (the `Dropdown`
+    precedent) so the world beneath cannot be clicked through it, and the gesture that OPENED the menu can
+    neither dismiss it nor select a row in it. Assign `Viewport` (the design size) before updating or drawing:
+    `Draw` throws while it is `Vector2.Zero` rather than silently pinning the menu into the corner, and throws
+    too on a menu built through the measure-only `ContextMenu(ITextMeasurer, ITextMeasurer)` constructor, which
+    exists so a headless test can drive the whole interaction with no GPU device and no baked font.
   - `PopupPanel` - modal dialog: scrim + title + `PopupRow` content + dismiss/primary footer; blocks the pointer.
     Text is `LocalizedText`: `TitleContent` / `DismissContent` / `PrimaryActionContent` and the resolve-at-build
     `PopupRow.Header(LocalizedText)` / `Stat(LocalizedText, LocalizedText, ...)` factories (rebuild the rows to pick

@@ -5,6 +5,67 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.2.0
+
+18.2.0 adds one additive Gui control, `ContextMenu`, the right-click option menu Grimhollow asked for. Nothing
+existing changes, so the repin costs a version number and no code. The control is a title band over a stack of
+selectable rows anchored at a screen point, the OSRS-style option list, and it is built out of the pieces the
+17.9.0 right-click hit-testing helpers were added for. Everything about it that a caller can get wrong fails
+loudly rather than quietly: an unset `Viewport` throws in `Draw` instead of pinning the menu into the corner,
+and the measure-only constructor throws there too rather than rendering nothing.
+
+- **`ContextMenu`, `ContextMenuEntry` and `ContextMenuMetrics` are new in `KhaozEngine.Gui`.**
+  `Open(LocalizedText title, IReadOnlyList<ContextMenuEntry> entries, Vector2 screenPoint)` shows the menu at a
+  design-pixel point, `Update(Pointer)` drives one frame and returns `WasSelected`, and
+  `Draw(SpriteBatch, Texture2D)` paints it. Reopening while already open replaces the content and the anchor and
+  clears every frame flag, so a right press landing on a new target swaps the menu in one call, and a null or
+  empty entry list opens a title-only menu rather than throwing. `Close()` hides it without touching this
+  frame's flags, so a caller closing in response to a selection still reads that selection.
+- **A row is a `ContextMenuEntry` with an optional right-aligned detail, per-entry colours, a tag and an enabled
+  flag.** `RightDetail` renders flush to the right edge of the row with at least `ContextMenuMetrics.DetailGap`
+  between it and the label, `LabelColor` / `DetailColor` are per-row overrides of the menu's own colours, `Tag`
+  is an opaque `long` that rides through the selection (an id, or an enum cast), and a row with `Enabled` false
+  draws at `DisabledColor` whatever the caller tinted it and refuses both hover and selection. `HoverIndex` is
+  therefore never a disabled row, so the hover fill and what a tap will accept can never disagree.
+- **Labels are `LocalizedText` and resolve ONCE, when the menu opens.** The title resolves inside `Open`, and a
+  row resolves inside `ContextMenuEntry.Of(label, rightDetail, ...)`, which is the `TooltipLine.Of` precedent:
+  the draw path never re-resolves, and a runtime locale switch is picked up by rebuilding the entries. The
+  positional `ContextMenuEntry` constructor still takes plain resolved strings, which is what the layout and the
+  draw see either way.
+- **Results are one-frame flags, cleared at the top of the next `Update`.** `WasSelected` (also `Update`'s
+  return value) with `SelectedTag` and `SelectedIndex`, plus `WasDismissed` with `DismissPress`. The clear runs
+  on a CLOSED menu too, so a caller that stops polling on the selection frame and reads later gets nothing
+  rather than a stale answer. `DismissPress` is where the dismissing gesture RELEASED, deliberately rather than
+  where it began, so a caller reopening on the same right press anchors the next menu under the cursor instead
+  of at a stale origin. It is null when the dismissal came from menu-cancel, which has no position.
+- **Layout is pure over `ITextMeasurer`, and the viewport clamp WINS over the flip.** Public static
+  `ComputeBounds` and `RowBounds` size the menu from the widest of the title and every row, stack full-width
+  rows under an always-present title band, and are the one geometry both the hit-testing and the draw walk. The
+  menu opens down-right from the point and flips to put its BOTTOM at the point when the bottom would overflow,
+  the `Tooltip` flip. The clamp then runs LAST, so a point too close to an edge for either placement yields a
+  menu pinned inside the `ContextMenuMetrics.Margin` box that may COVER the point rather than sit at it. That
+  precedence is pinned by a test rather than left to be rediscovered.
+- **The whole opening GESTURE is latched out, not just the opening frame.** A gesture that began before the menu
+  existed cannot be an act on it, so neither selection nor dismissal runs while the latch is armed, and the
+  latch disarms on the first press edge landing on a frame after the opening one. Without it, a caller opening
+  on a left press or a left release hands the first `Update` a frame already carrying that gesture's edge, and a
+  menu the clamp drops under the held cursor reads it as a row tap while a press-to-open reads its own release a
+  frame later as a dismissal. `HoverIndex` and the pointer reservation are computed on a latched frame anyway,
+  so it still highlights and blocks like any other open frame. One edge remains, a tap in the same frame the
+  menu opens being swallowed once, tracked as
+  [#760](https://github.com/APKiwiOrg/KhaozEngine/issues/760).
+- **An open menu reserves its bounds through `Pointer.BlockRegion`,** the `Dropdown` precedent, so the world
+  beneath cannot be clicked through it.
+- **Menu-cancel rides the `Update(InputManager, PlayerIndex? = null)` overload,** mirroring
+  `Dropdown.Update(InputManager, bool, PlayerIndex?)`. Escape, gamepad B or Back dismisses with a null
+  `DismissPress`, and cancel is NOT gated by the opening-gesture latch, so it closes the menu on the very first
+  frame: the keyboard was never the gesture that opened it.
+- **A measure-only constructor takes two `ITextMeasurer`s** (the `ToastView` precedent), so a headless test
+  drives `Open` and `Update` with no GPU device and no baked font. `Draw` throws on a menu built that way, and
+  also while `Viewport` is still `Vector2.Zero`, the `Tooltip` precedent for a forgotten assignment failing
+  loudly. 21 headless tests cover the layout, the flip and clamp precedence, selection, dismissal, the disabled
+  and hover rules, the block region and the latch.
+
 ## 18.1.0
 
 18.1.0 retires the one-uniform-buffer-per-pipeline shader rule

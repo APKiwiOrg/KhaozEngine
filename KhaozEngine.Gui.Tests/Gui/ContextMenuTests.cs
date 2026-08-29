@@ -74,6 +74,45 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void Bounds_size_to_the_title_when_it_is_wider_than_every_row()
+        {
+            // The title is 22 chars (220), well past the 86 of the widest row, so the title drives the
+            // width: 220 + PadX*2(20) = 240.
+            Rect r = ContextMenu.ComputeBounds(Font, "Bank of the Wilderness", Font, Two(),
+                new Vector2(100, 100), View, M);
+            Assert.Equal(240f, r.Width);
+        }
+
+        [Fact]
+        public void Bounds_clamp_wins_over_the_flip_near_the_bottom_edge()
+        {
+            // Height is 89. Opening down from y=538 overflows, so the menu flips to y=449 to put its bottom
+            // on the point, and the clamp then pulls it back to the last y that fits the margin box,
+            // 540 - 89 - 4 = 447. The bottom therefore lands on 536, not on the point's 538.
+            var point = new Vector2(300, 538);
+            Rect r = ContextMenu.ComputeBounds(Font, "", Font, Two(), point, View, M);
+            Assert.Equal(447f, r.Y);
+            Assert.Equal(536f, r.Bottom);
+            Assert.Equal(View.Y - M.Margin, r.Bottom);
+            Assert.NotEqual(point.Y, r.Bottom);
+        }
+
+        [Fact]
+        public void Bounds_clamp_collapses_a_menu_taller_than_the_space_above_onto_its_anchor()
+        {
+            // Ten rows over the title band is 313 tall, more than the 296 between the point and the top
+            // margin, so neither placement fits. The flip puts y at -13 and the clamp pins it to the
+            // margin, which leaves the menu covering its own anchor point.
+            var entries = new ContextMenuEntry[10];
+            for (int i = 0; i < entries.Length; i++) entries[i] = new ContextMenuEntry("Item");
+            var point = new Vector2(100, 300);
+            Rect r = ContextMenu.ComputeBounds(Font, "", Font, entries, point, View, M);
+            Assert.Equal(M.Margin, r.Y);
+            Assert.Equal(M.Margin + TitleBand + 10f * RowH, r.Bottom);
+            Assert.True(r.Contains(point));
+        }
+
+        [Fact]
         public void Row_rects_stack_below_the_title_band_without_gaps()
         {
             var entries = new[]

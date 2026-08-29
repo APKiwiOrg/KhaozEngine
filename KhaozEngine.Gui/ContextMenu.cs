@@ -69,7 +69,9 @@ namespace KhaozEngine.Gui
         /// <paramref name="point"/>. The menu's top-left sits AT the point and opens down-right, clamped into
         /// <paramref name="viewport"/> by <see cref="ContextMenuMetrics.Margin"/> on all four sides. When the
         /// bottom would overflow the viewport the menu flips to sit with its BOTTOM at the point instead, which
-        /// mirrors the <see cref="Tooltip"/> flip.
+        /// mirrors the <see cref="Tooltip"/> flip. The clamp runs LAST and wins over the flip, so a point too
+        /// close to an edge for either placement yields a menu pinned inside the margin box that may cover the
+        /// point rather than sit at it.
         /// <para>
         /// Width is the widest of the title and every row (a row being its label plus, when it has a right
         /// detail, <see cref="ContextMenuMetrics.DetailGap"/> plus that detail), plus horizontal padding.

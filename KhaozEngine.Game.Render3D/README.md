@@ -63,7 +63,9 @@ camera, never the collision-slid velocity, so a scraped wall cannot spin the mod
 REAL collision-clamped horizontal speed plus the controller's grounded/vertical/swim state, and eases the facing at
 `MaxTurnRate`. `Draw` renders the skinned mesh at the capsule's feet with that facing and the capsule-match scale.
 `TryLoadGltf` returns `null` (never throws) on a missing/unreadable/skeleton-less/clip-less asset, so a game keeps a
-greybox fallback. The composed pieces stay usable on their own - a movement-only game uses `CharacterController3D`
+greybox fallback, and a load that returns null leaves no GPU resource behind whichever step failed: the skinned mesh
+is uploaded partway through, so a failure after that point releases the upload before returning. Only a returned
+avatar owns a handle, and the game frees that one through `avatar.Mesh` on teardown. The composed pieces stay usable on their own - a movement-only game uses `CharacterController3D`
 directly, a networked OR local-only game that wants the canonical signal-driven stair glide instead uses
 `ReplicatedCharacterAnimators` (below), the facing math is the static `CharacterFacing` - the bundle is the convenient
 default, never a requirement. Client-cosmetic: pose and facing never feed sim or netcode.

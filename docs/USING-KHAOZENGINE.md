@@ -3343,7 +3343,9 @@ It faces the player's INTENDED move direction (`CharacterFacing`, input steered 
 collision-slid velocity, so a wall/prop the capsule scrapes cannot spin the model; it feeds the animator the REAL
 collision-clamped horizontal speed plus the controller's grounded / vertical-velocity / swim state; and
 `TryLoadGltf` returns `null` (never throws) on a missing/unreadable/skeleton-less/clip-less asset so you can keep a
-greybox capsule fallback. Tune facing turn speed with `avatar.MaxTurnRate`. The composed pieces stay usable alone -
+greybox capsule fallback, and it leaves no GPU resource behind when it does: the skinned mesh is uploaded partway
+through the load, so a failure after that point releases the upload before returning null. Only a returned avatar
+owns a handle, and you free that one through `avatar.Mesh`. Tune facing turn speed with `avatar.MaxTurnRate`. The composed pieces stay usable alone -
 `CharacterController3D` for a movement-only game, `ReplicatedCharacterAnimators` (below) for remote players, the
 static `CharacterFacing` for the facing math - the bundle is the convenient default, never a requirement.
 Client-cosmetic: pose and facing never feed sim or netcode.

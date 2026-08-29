@@ -1965,6 +1965,12 @@ inside the callback: the command list it is recording into still names them unti
 - `Camera2D`: `Position`/`Zoom`/`Rotation`, `WorldToScreen`/`ScreenToWorld`, `CenterOn`, `PanByScreenDelta`,
   `Focus(rect, ...)`, `ClampPosition(...)`. The camera-feel layer (follow, look-ahead, blends, room cameras,
   parallax) lives alongside it in Render2D; screen shake is in `KhaozEngine.Particles`.
+  `ScreenToWorld` cannot return NaN: a `Zoom` of exactly 0 collapses the view matrix onto the viewport centre,
+  which has no inverse, and the conversion then falls back to `Position` (the one world point every screen pixel
+  collapsed onto) instead of handing NaN to whatever was picking or following. Use
+  `TryScreenToWorld(screen, viewportWidth, viewportHeight, out world)` when the caller wants to KNOW the camera
+  was degenerate rather than absorb it. A negative zoom is a mirror rather than a degeneracy and still converts
+  exactly.
 - Scissor clipping: `SetScissor(Rect)` / `ClearScissor()` (composes with the design viewport).
 - `ImageRgba` (CPU, no GPU): `ImageRgba.Load(path)` / `Decode(bytes)` / `Surface2D.LoadImageRgba(path)` give a
   tightly-packed RGBA8 image with `AlphaAt` / `IsOpaqueAt(threshold)` for opaque-pixel collision masks. Pass
@@ -2000,7 +2006,22 @@ inside the callback: the command list it is recording into still names them unti
   ```
 
   The mode is part of the memo key (the same string wrapped both ways never returns one poisoning the other), and
-  `DrawWrapped` / `MeasureWrappedHeight` forward it. (The wrap still ignores newlines either way, tracked as #82.)
+  `DrawWrapped` / `MeasureWrappedHeight` forward it.
+
+  A `\n` is an explicit line break in either mode, and a `\r\n` pair is one break rather than two (a lone `\r` is
+  not a break, it stays an ordinary character). N breaks give N+1 lines before the width has any say, so
+  `"a\n\nb"` is three lines (the blank one between the paragraphs is kept) and `"a\n"` is two (the last one
+  empty). Whitespace touching a break is consumed with it, exactly as a width-forced break consumes the space run
+  it lands on, so no line comes back carrying leading or trailing space from the break. Height accounting follows
+  for free, since `MeasureWrappedHeight` counts the lines `Wrap` returns:
+
+  ```csharp
+  // Two authored paragraphs: wrapped to the box AND broken where the author asked, with the blank line between
+  // them reserved by the same measurement the draw uses.
+  string body = "Line one.\n\nLine two, which is long enough to wrap.";
+  float height = TextLayout.MeasureWrappedHeight(font, body, boxWidth);
+  TextLayout.DrawWrapped(batch, font, body, topLeft, boxWidth, TextAlign.Left, color);
+  ```
 
 ### 2D VFX (`KhaozEngine.Render2D.Vfx`)
 

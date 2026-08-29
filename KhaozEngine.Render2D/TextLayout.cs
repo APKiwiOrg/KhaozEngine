@@ -34,7 +34,7 @@ namespace KhaozEngine.Render2D
         }
 
         /// <summary>Word-wraps <paramref name="text"/> so each line fits within <paramref name="maxWidth"/>
-        /// pixels, breaking on spaces. By default a single word wider than the limit stays on its own line
+        /// pixels, breaking on spaces and at explicit line breaks. By default a single word wider than the limit stays on its own line
         /// (never dropped); set <paramref name="hardBreak"/> to instead slice such a word at character
         /// boundaries so every returned line fits within <paramref name="maxWidth"/> (a word narrower than one
         /// character still yields at least one character per line, so it always makes progress).
@@ -44,7 +44,16 @@ namespace KhaozEngine.Render2D
         /// spacing intact: a space run is still ONE break opportunity, but when no break is taken there the run is
         /// re-emitted verbatim (a break taken at the run still consumes it, so a fresh line never carries leading
         /// spaces). This is the mode for wrapping player-typed content (chat) where collapsing spaces would silently
-        /// rewrite the text. (Newlines are still ignored by the wrap either way - that is tracked separately as #82.)
+        /// rewrite the text.
+        /// </para>
+        /// <para>
+        /// A <c>\n</c> in <paramref name="text"/> is an explicit line break in EITHER mode, and a <c>\r\n</c> pair
+        /// is one break rather than two (a lone <c>\r</c> is not a break, it stays an ordinary character). N breaks
+        /// therefore yield N+1 lines before the width has any say, so consecutive breaks keep their empty lines
+        /// ("a\n\nb" is three lines) and a text ending on a break keeps its empty last line ("a\n" is two). Spaces
+        /// touching a break are consumed with it, the same way a width-forced break consumes the run it lands on,
+        /// so no output line carries leading or trailing space from the break. Height accounting follows for free,
+        /// since <see cref="MeasureWrappedHeight"/> counts the lines this returns.
         /// </para>
         /// <para>
         /// Memoized: the result is a pure function of (<paramref name="font"/> identity, <paramref name="text"/>,
@@ -58,7 +67,9 @@ namespace KhaozEngine.Render2D
         /// since <see cref="Wrap"/>'s output depends only on that effective width. The cache is bounded
         /// (oldest-unused entries evicted) so a session that streams many distinct texts (chat, procedurally
         /// generated labels) cannot grow it without limit. The returned list is always a fresh copy, so a caller
-        /// mutating it can never corrupt the cache.
+        /// mutating it can never corrupt the cache. Concurrent callers are safe, including off the render thread:
+        /// the wrap itself runs unlocked, and two threads that miss on the same key both compute it, then the
+        /// second to finish adopts the entry the first inserted instead of adding a duplicate.
         /// </para></summary>
         public static List<string> Wrap(ITextMeasurer font, string text, float maxWidth, bool hardBreak = false, bool preserveSpaceRuns = false)
         {
@@ -73,6 +84,16 @@ namespace KhaozEngine.Render2D
 
             lock (WrapCacheLock)
             {
+                // Re-check before inserting. The cache is UNLOCKED across ComputeWrap (see WrapCacheLock below
+                // for why it has to be), so another thread can have computed and inserted this very key while we
+                // were measuring. Inserting a second node for it would leave the first one in the LRU list with
+                // no index row pointing at it, an orphan that grows the list past capacity and, when it reaches
+                // the tail, evicts the index row belonging to the OTHER thread's still-live node (#87). Wrap is a
+                // pure function of the key, so the two results are equal and the loser simply adopts the
+                // winner's entry rather than fighting over it.
+                if (TryGetCachedWrap(key, out List<string>? winner))
+                    return new List<string>(winner);
+
                 CacheWrap(key, lines);
             }
             return new List<string>(lines);
@@ -81,7 +102,8 @@ namespace KhaozEngine.Render2D
         // The actual word-wrap computation (cache-miss path). Builds each candidate line in one scratch buffer
         // instead of concatenating a new string per word: the reconstructed line can never exceed the scan
         // cursor's position in the source text (every appended word plus its separating space was already read
-        // from `text`), so one upfront buffer sized to `text.Length` never needs to grow. A candidate that turns
+        // from `text`, and an explicit line break is consumed without ever entering the buffer), so one upfront
+        // buffer sized to `text.Length` never needs to grow. A candidate that turns
         // out not to fit costs no allocation - it is just overwritten in place by the next line's content - only
         // a line actually kept costs the one unavoidable allocation: the `string` for that output line.
         static List<string> ComputeWrap(ITextMeasurer font, string text, float maxWidth, bool hardBreak, bool preserveSpaceRuns)
@@ -93,15 +115,39 @@ namespace KhaozEngine.Render2D
             Span<char> buf = text.Length <= 512 ? stackalloc char[text.Length] : new char[text.Length];
             int bufLen = 0;
             int pos = 0;
+            bool lineOpen = false;   // an explicit break was taken, so a line is pending even with nothing after it
 
             while (pos < span.Length)
             {
+                // The separator run ahead of the next word: spaces and explicit line breaks, in any mix. A run
+                // holding at least one break IS a break, and the spaces around it are consumed with it, exactly as
+                // a width-forced break consumes its run today. The space count therefore only matters when the run
+                // holds no break at all.
                 int spaceStart = pos;
-                while (pos < span.Length && span[pos] == ' ') pos++;   // skip run(s) of spaces
-                int spaceRun = pos - spaceStart;                       // how many, for the preserve-spaces mode
+                int breaks = 0;
+                while (pos < span.Length)
+                {
+                    if (span[pos] == ' ') { pos++; continue; }
+                    if (!IsBreakAt(span, pos, out int breakLen)) break;
+                    breaks++;
+                    pos += breakLen;
+                }
+                int spaceRun = breaks == 0 ? pos - spaceStart : 0;   // how many, for the preserve-spaces mode
+
+                if (breaks > 0)
+                {
+                    // N breaks end the line being built and open N more. The lines between two consecutive breaks
+                    // stay in the output as empty lines: a blank line between paragraphs is authored content, and
+                    // MeasureWrappedHeight (which just counts these) has to reserve its height.
+                    lines.Add(new string(buf[..bufLen]));
+                    for (int b = 1; b < breaks; b++) lines.Add(string.Empty);
+                    bufLen = 0;
+                    lineOpen = true;
+                }
+
                 if (pos >= span.Length) break;
                 int wordStart = pos;
-                while (pos < span.Length && span[pos] != ' ') pos++;
+                while (pos < span.Length && span[pos] != ' ' && !IsBreakAt(span, pos, out _)) pos++;
                 ReadOnlySpan<char> word = span.Slice(wordStart, pos - wordStart);
 
                 // The separator emitted before this word when it packs onto the current line: none at a line start,
@@ -140,8 +186,21 @@ namespace KhaozEngine.Render2D
                 }
             }
 
-            if (bufLen > 0) lines.Add(new string(buf[..bufLen]));
+            // The trailing empty line is real when the text ended on a break ("a\n" is two lines, the second
+            // empty), which is what lineOpen carries past the loop.
+            if (bufLen > 0 || lineOpen) lines.Add(new string(buf[..bufLen]));
             return lines;
+        }
+
+        // An explicit line break at `i`: '\n' on its own, or a "\r\n" pair counted as ONE break, with `width` the
+        // characters to step past. A lone '\r' is deliberately NOT a break: it stays an ordinary character and
+        // measures as one, the same as every other control character the wrap does not interpret.
+        static bool IsBreakAt(ReadOnlySpan<char> span, int i, out int width)
+        {
+            if (span[i] == '\n') { width = 1; return true; }
+            if (span[i] == '\r' && i + 1 < span.Length && span[i + 1] == '\n') { width = 2; return true; }
+            width = 0;
+            return false;
         }
 
         // Slice a single (space-free) word into the fewest chunks that each fit within maxWidth, growing each
@@ -177,6 +236,12 @@ namespace KhaozEngine.Render2D
         // Not a hot per-frame allocation path (a cache hit/miss check, not the wrap itself), and Wrap() may be
         // called from tests/tools off the render thread, so guard the shared cache with a plain lock rather than
         // assuming single-threaded callers.
+        //
+        // The lock covers the lookup and the insert, never the computation between them. ComputeWrap calls
+        // ITextMeasurer.Measure once per candidate line, which is CONSUMER code of unbounded cost: holding a
+        // process-wide static lock across it would serialize every wrap in the process behind the slowest
+        // measurer, and would invite a lock-order inversion the moment a measurer takes a lock of its own. So the
+        // gap stays, and Wrap closes it by re-checking the cache under the second lock instead (#87).
         static readonly object WrapCacheLock = new();
         const int WrapCacheCapacity = 256;
         static readonly Dictionary<WrapKey, LinkedListNode<(WrapKey Key, List<string> Lines)>> WrapCacheIndex = new();
@@ -196,7 +261,8 @@ namespace KhaozEngine.Render2D
             return false;
         }
 
-        // Caller must hold WrapCacheLock.
+        // Caller must hold WrapCacheLock AND must have re-checked, under that same lock acquisition, that the key
+        // is absent: this inserts unconditionally, so a second insert for a live key orphans its first node (#87).
         static void CacheWrap(WrapKey key, List<string> lines)
         {
             var node = new LinkedListNode<(WrapKey Key, List<string> Lines)>((key, lines));
@@ -208,6 +274,15 @@ namespace KhaozEngine.Render2D
                 WrapCacheLru.RemoveLast();
                 WrapCacheIndex.Remove(lru.Value.Key);
             }
+        }
+
+        // Test hook for #87: the cache's structural invariant is exactly one LRU node per index entry. Every
+        // mutation above runs under WrapCacheLock and moves both counts together, so a reader taking the same
+        // lock never sees a torn intermediate state and the two counts are equal at every lock boundary. A racing
+        // double insert used to break that by leaving a node in the list that no index row pointed at.
+        internal static (int IndexCount, int LruCount) WrapCacheCounts()
+        {
+            lock (WrapCacheLock) return (WrapCacheIndex.Count, WrapCacheLru.Count);
         }
 
         // --- drawing (needs the GPU-backed SpriteFont) ---

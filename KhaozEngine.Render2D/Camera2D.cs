@@ -42,10 +42,50 @@ namespace KhaozEngine.Render2D
             return v;
         }
 
+        /// <summary>
+        /// Screen-pixel -> world transform, the inverse of <see cref="WorldToScreen"/>.
+        /// <para>
+        /// A degenerate camera has no inverse and yields <see cref="Position"/> (a defined answer) instead of
+        /// NaN. <see cref="Matrix4x4.Invert"/> does not throw on a singular matrix: it fills the result with
+        /// NaN and returns false, and that NaN used to flow straight out of here into whatever consumed the
+        /// unpicked world position (mouse picking, hit-testing, a camera-follow calculation). The only way to
+        /// get there is a <see cref="Zoom"/> of exactly 0, which collapses the whole viewport onto
+        /// <see cref="Position"/>, so <see cref="Position"/> is the world point every screen pixel then maps
+        /// back to. A NEGATIVE zoom is a mirror rather than a degeneracy and converts exactly, matching
+        /// <see cref="PanByScreenDelta"/>'s guard being about the collapse and not about the sign.
+        /// </para>
+        /// <para>Call <see cref="TryScreenToWorld"/> instead when the caller wants to KNOW the camera was
+        /// degenerate rather than absorb it.</para>
+        /// </summary>
         public Vector2 ScreenToWorld(Vector2 screen, int viewportWidth, int viewportHeight)
+            => TryScreenToWorld(screen, viewportWidth, viewportHeight, out Vector2 world) ? world : Position;
+
+        /// <summary>
+        /// As <see cref="ScreenToWorld"/>, but reports whether the conversion was real. Returns false for a
+        /// camera whose view matrix cannot be inverted (see <see cref="ScreenToWorld"/>) or whose transform
+        /// produced a non-finite result, and writes the <see cref="Position"/> fallback to
+        /// <paramref name="world"/> either way, so a caller that does not care can ignore the bool.
+        /// </summary>
+        public bool TryScreenToWorld(Vector2 screen, int viewportWidth, int viewportHeight, out Vector2 world)
         {
-            Matrix4x4.Invert(GetView(viewportWidth, viewportHeight), out var inv);
-            return Vector2.Transform(screen, inv);
+            if (!Matrix4x4.Invert(GetView(viewportWidth, viewportHeight), out Matrix4x4 inv))
+            {
+                world = Position;
+                return false;
+            }
+
+            // A non-finite Zoom/Rotation/Position makes the determinant NaN, which Invert's near-zero test does
+            // not catch (a NaN comparison is false), so it reports success over an all-NaN matrix. Check the
+            // result rather than trusting the bool alone.
+            Vector2 v = Vector2.Transform(screen, inv);
+            if (!float.IsFinite(v.X) || !float.IsFinite(v.Y))
+            {
+                world = Position;
+                return false;
+            }
+
+            world = v;
+            return true;
         }
 
         /// <summary>Sets <see cref="Position"/> so <paramref name="world"/> sits at the viewport centre.

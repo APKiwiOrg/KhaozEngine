@@ -22,7 +22,12 @@
   boundaries later instead of behind the `WaitForIdle` the eviction path used to take every time anything aged out
   ([#84](https://github.com/APKiwiOrg/KhaozEngine/issues/84)). Eligibility is unchanged, only the disposal moved.
 - `Camera2D` - position/zoom/rotation 2D camera (headless, unit-tested) + the camera-feel layer (follow,
-  look-ahead, eased blends, room cameras, parallax).
+  look-ahead, eased blends, room cameras, parallax). `ScreenToWorld` cannot return NaN: a `Zoom` of exactly 0
+  collapses the view matrix, which then has no inverse, so the conversion falls back to `Position` (the world
+  point the whole viewport collapsed onto). `TryScreenToWorld(screen, w, h, out world)` is the same conversion
+  with a bool for a caller that wants to detect that case
+  ([#88](https://github.com/APKiwiOrg/KhaozEngine/issues/88)). A negative zoom is a mirror rather than a
+  degeneracy and still converts exactly.
 - `Texture2D` - GPU texture. PNG load via StbImageSharp. Dispose drains the device (`WaitForIdle`) before
   freeing the handle when the texture carries a device reference (every engine loader: `LoadTexture`,
   `RenderToTexture`, `SpriteFont`'s atlas), since a queued upload may still reference it. A texture obtained
@@ -38,13 +43,19 @@
   word-wraps on spaces and is memoized (a bounded LRU cache keyed on font identity + text + maxWidth +
   hardBreak), so a caller re-wrapping the same unchanged text every frame (a static label, an idle tooltip)
   hits the cache instead of re-running the wrap algorithm, and the returned list is always a fresh copy, so mutating
-  it can never corrupt the cache. The opt-in `hardBreak` (default off) additionally slices a single token longer
+  it can never corrupt the cache. Concurrent callers are safe, including off the render thread: the wrap runs
+  outside the cache lock, and two callers that miss on the same key both compute it, then the second to finish
+  adopts the first's entry rather than inserting a duplicate that would orphan a node in the LRU list
+  ([#87](https://github.com/APKiwiOrg/KhaozEngine/issues/87)). The opt-in `hardBreak` (default off) additionally slices a single token longer
   than `maxWidth` at character boundaries so every returned line fits. The opt-in `preserveSpaceRuns` (14.9.0,
   default off, default path bit-identical) keeps interior space runs verbatim instead of collapsing each to one
   space: a run stays ONE break opportunity but is re-emitted intact when no break is taken there (a break taken at
   the run still consumes it), for wrapping user-authored content (chat) without silently rewriting it. The memo key
-  includes the mode, and `DrawWrapped` / `MeasureWrappedHeight` forward it. (Newlines are still ignored by the wrap
-  either way, tracked as #82.) Default baked coverage is
+  includes the mode, and `DrawWrapped` / `MeasureWrappedHeight` forward it. A `\n` in the text is an explicit line
+  break in either mode (`\r\n` counts as one break, a lone `\r` is not a break), so N breaks give N+1 lines before
+  the width has any say: consecutive breaks keep their empty lines, a text ending on a break keeps its empty last
+  line, and the whitespace touching a break is consumed with it
+  ([#82](https://github.com/APKiwiOrg/KhaozEngine/issues/82)). Default baked coverage is
   U+0020..U+017F (printable ASCII + Latin-1 Supplement + Latin Extended-A), so accented Western/Central European
   text renders out of the box. Anything outside the coverage (or missing from the face) measures AND draws as
   the visible `SpriteFont.FallbackChar` glyph (`?`) instead of silently dropping. Control characters stay

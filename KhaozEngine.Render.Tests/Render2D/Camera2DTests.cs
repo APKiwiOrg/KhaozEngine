@@ -46,6 +46,51 @@ namespace KhaozEngine.Tests.Render2D
         }
 
         [Fact]
+        public void ScreenToWorld_at_zero_zoom_returns_the_camera_position_instead_of_NaN()
+        {
+            // Zoom 0 collapses the view matrix onto the viewport centre, so Matrix4x4.Invert fails and (before
+            // #88) filled the result with NaN, which ScreenToWorld handed straight to its caller.
+            var cam = new Camera2D { Position = new Vector2(50, 30), Zoom = 0f };
+
+            var world = cam.ScreenToWorld(new Vector2(123, 456), W, H);
+
+            Assert.False(float.IsNaN(world.X) || float.IsNaN(world.Y), world.ToString());
+            Assert.Equal(cam.Position, world);
+        }
+
+        [Fact]
+        public void TryScreenToWorld_reports_false_for_a_degenerate_camera_and_true_otherwise()
+        {
+            var cam = new Camera2D { Position = new Vector2(50, 30), Zoom = 1.3f, Rotation = -0.4f };
+            var screen = cam.WorldToScreen(new Vector2(212, 97), W, H);
+
+            Assert.True(cam.TryScreenToWorld(screen, W, H, out Vector2 ok));
+            Assert.True(Vector2.Distance(new Vector2(212, 97), ok) < 1e-2f, ok.ToString());
+
+            cam.Zoom = 0f;
+            Assert.False(cam.TryScreenToWorld(screen, W, H, out Vector2 collapsed));
+            Assert.Equal(cam.Position, collapsed);
+
+            // A non-finite zoom makes the determinant NaN, which Invert's near-zero test cannot see, so the
+            // finite check on the transformed result is what catches this one.
+            cam.Zoom = float.NaN;
+            Assert.False(cam.TryScreenToWorld(screen, W, H, out Vector2 nonFinite));
+            Assert.Equal(cam.Position, nonFinite);
+        }
+
+        [Fact]
+        public void ScreenToWorld_at_negative_zoom_still_converts_because_a_mirror_is_invertible()
+        {
+            // The guard is about the collapse at zero, not the sign: a negative zoom flips the view and
+            // inverts exactly, so it must keep round-tripping rather than falling back to Position.
+            var cam = new Camera2D { Position = new Vector2(-12, 8), Zoom = -1.5f, Rotation = 0.3f };
+            var world = new Vector2(40, -60);
+
+            Assert.True(cam.TryScreenToWorld(cam.WorldToScreen(world, W, H), W, H, out Vector2 back));
+            Assert.True(Vector2.Distance(world, back) < 1e-2f, back.ToString());
+        }
+
+        [Fact]
         public void ViewProjection_maps_position_to_clip_origin()
         {
             var cam = new Camera2D { Position = new Vector2(77, 11), Zoom = 0.9f };

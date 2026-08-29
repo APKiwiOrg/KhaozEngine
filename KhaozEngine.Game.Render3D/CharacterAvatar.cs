@@ -217,7 +217,11 @@ namespace KhaozEngine.Game
         /// expected locomotion clips, so the game can fall back to a greybox capsule; <paramref name="onFailure"/>
         /// receives the reason for logging. Clip names are mapped by the <see cref="MapLocomotionClips"/> convention
         /// (<c>Idle/Walk/Run/Jump/Fall/SwimIdle/Swim</c>); a rig with different clip names builds the state map itself
-        /// and uses the constructor.</summary>
+        /// and uses the constructor.
+        /// <para>A load that returns null LEAVES NO GPU RESOURCE BEHIND, whichever step failed. The skinned mesh is
+        /// uploaded partway through, so a failure after that point (a clip set the rig cannot drive, a parse error in
+        /// the animations, a constructor that rejects its arguments) releases the upload before returning. Only a
+        /// returned avatar owns a handle, and the game frees that one through <see cref="Mesh"/> on teardown.</para></summary>
         /// <param name="scene">The scene to upload the skinned mesh into.</param>
         /// <param name="path">Filesystem path to the .glb/.gltf rig.</param>
         /// <param name="controller">The movement body to drive (its <see cref="CharacterController3D.CapsuleHalfHeight"/>
@@ -233,18 +237,67 @@ namespace KhaozEngine.Game
         {
             if (scene is null) throw new ArgumentNullException(nameof(scene));
             if (controller is null) throw new ArgumentNullException(nameof(controller));
+
+            SkinnedGltfMesh mesh;
+            GltfMaterialMaps maps;
             try
             {
-                (SkinnedGltfMesh mesh, GltfMaterialMaps maps) = GltfLoader.LoadSkinnedWithMaterial(path);
-                if (mesh.Skeleton is null) { onFailure?.Invoke("character glTF has no skeleton"); return null; }
-                SkinnedMeshHandle handle = scene.LoadSkinnedMesh(mesh, maps);
+                (mesh, maps) = GltfLoader.LoadSkinnedWithMaterial(path);
+            }
+            catch (Exception e)
+            {
+                // Nothing has been uploaded at this point, so there is no handle to release.
+                onFailure?.Invoke(e.Message);
+                return null;
+            }
 
+            return Compose(scene, mesh, maps, () => GltfLoader.LoadAnimations(path), controller,
+                thresholds, crossfade, initialFacingYaw, onFailure);
+        }
+
+        /// <summary>
+        /// The half of <see cref="TryLoadGltf"/> that OWNS the uploaded skinned mesh, from the upload to either
+        /// handing it over or releasing it. Split out so the ownership is stated once, and so the release-on-failure
+        /// case is testable without a glTF asset that fails halfway through
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/95">#95</see>). Internal rather than private:
+        /// <c>KhaozEngine.Render.Tests</c> drives it with a throwing clip source over a real <see cref="Scene3D"/>.
+        /// <para>
+        /// THE OWNERSHIP MODEL. <c>LoadSkinnedMesh</c> uploads GPU buffers that nothing else points at yet, and
+        /// exactly one of two things happens to them: a RETURNED avatar takes the handle (the game frees it through
+        /// <see cref="Mesh"/> on teardown), or this method releases it before returning null. Every step after the
+        /// upload can throw - the clip source parses the asset again, the height scan walks the vertices, and both
+        /// constructors validate their arguments - so the release is a <c>finally</c> rather than one branch's
+        /// cleanup. It used to be the latter: only the no-clips branch released, and the catch had no handle to
+        /// release, so a parse error or a rejected clip set leaked one skinned mesh per failed load, once per
+        /// attempt on a retry or editor re-import loop.
+        /// </para>
+        /// </summary>
+        internal static CharacterAvatar? Compose(Scene3D scene, SkinnedGltfMesh mesh, GltfMaterialMaps maps,
+            Func<IReadOnlyList<AnimationClip>> loadAnimations, CharacterController3D controller,
+            LocomotionThresholds? thresholds, float crossfade, float initialFacingYaw, Action<string>? onFailure)
+        {
+            if (mesh.Skeleton is null) { onFailure?.Invoke("character glTF has no skeleton"); return null; }
+
+            SkinnedMeshHandle handle;
+            try
+            {
+                handle = scene.LoadSkinnedMesh(mesh, maps);
+            }
+            catch (Exception e)
+            {
+                // The upload itself failed, so again there is no handle to release.
+                onFailure?.Invoke(e.Message);
+                return null;
+            }
+
+            bool owned = true;   // cleared once the handle has been handed to an avatar that is being returned
+            try
+            {
                 var byName = new Dictionary<string, AnimationClip>(StringComparer.Ordinal);
-                foreach (AnimationClip c in GltfLoader.LoadAnimations(path)) byName[c.Name] = c;
+                foreach (AnimationClip c in loadAnimations()) byName[c.Name] = c;
                 Dictionary<LocomotionState, AnimationClip> clips = MapLocomotionClips(byName);
                 if (clips.Count == 0)
                 {
-                    scene.UnloadSkinnedMesh(handle);
                     onFailure?.Invoke("character glTF has none of the expected locomotion clips (Idle/Walk/Run/Jump/Fall/Swim/SwimIdle)");
                     return null;
                 }
@@ -253,12 +306,18 @@ namespace KhaozEngine.Game
                 float modelScale = modelHeight > 0.01f ? (controller.CapsuleHalfHeight * 2f) / modelHeight : 1f;
                 var animation = new AnimatedCharacter(mesh.Skeleton, clips,
                     thresholds ?? new LocomotionThresholds(0.1f, 9f), crossfade);
-                return new CharacterAvatar(controller, animation, handle, modelScale, initialFacingYaw);
+                var avatar = new CharacterAvatar(controller, animation, handle, modelScale, initialFacingYaw);
+                owned = false;
+                return avatar;
             }
             catch (Exception e)
             {
                 onFailure?.Invoke(e.Message);
                 return null;
+            }
+            finally
+            {
+                if (owned) scene.UnloadSkinnedMesh(handle);
             }
         }
 

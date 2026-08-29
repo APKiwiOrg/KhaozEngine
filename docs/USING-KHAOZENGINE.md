@@ -3364,7 +3364,9 @@ It faces the player's INTENDED move direction (`CharacterFacing`, input steered 
 collision-slid velocity, so a wall/prop the capsule scrapes cannot spin the model; it feeds the animator the REAL
 collision-clamped horizontal speed plus the controller's grounded / vertical-velocity / swim state; and
 `TryLoadGltf` returns `null` (never throws) on a missing/unreadable/skeleton-less/clip-less asset so you can keep a
-greybox capsule fallback. Tune facing turn speed with `avatar.MaxTurnRate`. The composed pieces stay usable alone -
+greybox capsule fallback, and it leaves no GPU resource behind when it does: the skinned mesh is uploaded partway
+through the load, so a failure after that point releases the upload before returning null. Only a returned avatar
+owns a handle, and you free that one through `avatar.Mesh`. Tune facing turn speed with `avatar.MaxTurnRate`. The composed pieces stay usable alone -
 `CharacterController3D` for a movement-only game, `ReplicatedCharacterAnimators` (below) for remote players, the
 static `CharacterFacing` for the facing math - the bundle is the convenient default, never a requirement.
 Client-cosmetic: pose and facing never feed sim or netcode.
@@ -3490,6 +3492,13 @@ foreach (CharacterPose p in animators.Live)
 The set is render-free and headless-testable (owns no GPU handle, never calls `Scene3D`). Facing assumes the
 asset's rest pose looks down +Z; set `CharacterAnimatorTuning.FacingYawOffset` if yours does not. A
 `CharacterPose.Pose` is the brain's own buffer reused each frame - draw it this frame, do not retain it.
+
+`Live` holds exactly ONE pose per entity id, so the draw loop above cannot draw a character twice. The sample list
+is expected to carry at most one entry per `CharacterSample.Id` (the netcode's own snapshot does, its samples coming
+out of a dictionary keyed by id), and a list assembled another way that repeats one has the repeat DROPPED: the
+first entry for an id is the one advanced and posed
+([#97](https://github.com/APKiwiOrg/KhaozEngine/issues/97)). Deduplicate upstream if which entry wins matters to
+you, since the bridge cannot know which of two is the newer.
 
 **Death / despawn dissolve.** The same skinned dissolve overload behind the teleport screen effect (see the
 CharDissolve / teleport section below) works here too - swap the plain `DrawSkinned` call above for the dissolve
@@ -12500,6 +12509,22 @@ for. The SIZE is unconstrained. If you genuinely need an unaligned start, map th
 ```csharp
 uint[] tail = GpuReadback.ReadBuffer<uint>(gd, buffer, 4, srcOffsetBytes: 16);   // fine, 16 % 4 == 0
 uint[] bad  = GpuReadback.ReadBuffer<uint>(gd, buffer, 4, srcOffsetBytes: 3);    // throws on every backend
+```
+
+**`GpuReadback.ToRgba`'s source must already be single-mip, single-sample `R8G8B8A8UNorm` at the size you ask
+for.** It allocates a staging texture of exactly that shape and takes a WHOLE-texture copy into it, and a
+whole copy names every subresource on both sides, so anything else is not a copy a backend can narrow. A source that
+disagrees is refused with an `ArgumentException` naming the readback and what the texture actually is, before
+anything is allocated or submitted. Native Metal and Vulkan already refused the copy themselves, but Direct3D 11's
+`CopyResource` is silent about a mismatch, so the same call used to throw on two backends and hand back
+channel-swapped or garbage bytes on the third ([#83](https://github.com/APKiwiOrg/KhaozEngine/issues/83)). Resolve a
+multisampled target with `IGpuCommandList.ResolveTexture` first, read one level of a mip chain with
+`GpuReadback.ToRgbaMip`, and pass the source's own dimensions.
+
+```csharp
+byte[] px  = GpuReadback.ToRgba(gd, colourTarget, w, h);        // R8G8B8A8UNorm, 1 mip, 1 sample, w x h
+byte[] bad = GpuReadback.ToRgba(gd, swapchainBgra, w, h);       // throws: B8G8R8A8UNorm named in the message
+byte[] mip = GpuReadback.ToRgbaMip(gd, mipped, 2, 0, w / 4, h / 4);   // one level of a mip chain
 ```
 
 ### Ordering: two rules, because there is no barrier call

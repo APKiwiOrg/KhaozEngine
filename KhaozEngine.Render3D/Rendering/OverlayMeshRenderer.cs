@@ -40,6 +40,9 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuShaderSet _shaders;
         readonly IGpuResourceLayout _layout;
         IGpuPipeline _pipeline;   // rebuilt by SetOutputs when the MRT sample count (MSAA) changes
+        // Grown-out UBOs and the sets that ranged over them (a prior frame's submitted command list may still be
+        // reading one), freed in Dispose. The engine's buffer-lifetime rule, stated in
+        // ModelRenderer.EnsureInstanceCapacity and copied by every sibling renderer that grows a buffer.
         readonly List<IDisposable> _retired = new();
         IGpuBuffer? _ubo;      // grown geometrically to hold _capacity slots; a regrown buffer is retired and freed in Dispose
         int _capacity;
@@ -154,8 +157,9 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>Ensure the UBO holds at least <paramref name="drawCount"/> 256-byte slots, growing geometrically.
-        /// A regrown buffer retires the old one (a prior frame's command list may still read it) and rebuilds the set
-        /// against the new buffer. Call once before the frame's draw loop.</summary>
+        /// A regrown buffer RETIRES the old one AND the set that ranged over it (a prior frame's command list may
+        /// still read both), then binds a new set against the new buffer. Call once before the frame's draw
+        /// loop.</summary>
         public void EnsureCapacity(int drawCount)
         {
             if (_ubo != null && _capacity >= drawCount)
@@ -169,7 +173,11 @@ namespace KhaozEngine.Render3D.Rendering
             var image = new byte[checked(_capacity * SlotBytes)];
             _image.AsSpan().CopyTo(image);
             _image = image;
-            _set?.Dispose();
+            // The set goes to the same retired list as the buffer, never disposed inline. It is bound by this
+            // pass's own draws (Flush, with a dynamic offset), the frame path has no WaitForIdle, and this grow
+            // runs mid-recording, so a prior frame's submitted command list may still be reading it: freeing it
+            // here is the same use-after-free the buffer above avoids, one indirection out.
+            if (_set != null) _retired.Add(_set);
             _set = CreateSet();
         }
 

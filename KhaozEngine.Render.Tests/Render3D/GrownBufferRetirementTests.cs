@@ -1,4 +1,5 @@
 using System.Numerics;
+using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
@@ -19,6 +20,11 @@ namespace KhaozEngine.Tests.Render3D
     /// <para>The observable is WHEN a buffer is destroyed, not whether: a retired buffer survives the grow and is
     /// freed with the renderer. That is a lifetime question a picture cannot answer and a fake device can, since
     /// the harness records the moment each handle was disposed.</para>
+    ///
+    /// <para>The rule covers the SET a grow replaces as much as the buffer, which is the half that keeps getting
+    /// missed: <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/750">#750</see> is the same defect in
+    /// <c>OverlayMeshRenderer</c>, which retired its outgrown UBO and destroyed the set over it two lines
+    /// later.</para>
     /// </summary>
     public sealed class GrownBufferRetirementTests
     {
@@ -104,6 +110,55 @@ namespace KhaozEngine.Tests.Render3D
             renderer.Dispose();
             Assert.True(grownOutUbo.Disposed, "a retired buffer must still be freed when the renderer goes away");
             Assert.True(grownOutSet.Disposed, "a retired set must still be freed when the renderer goes away");
+        }
+
+        /// <summary>
+        /// The overlay pass's per-draw slot UBO and the set that ranged over it, the third instance of the same
+        /// defect (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/750">#750</see>). This one had the
+        /// buffer half right and the set half wrong, and its grow runs mid-recording on the ordinary path:
+        /// <c>Scene3D.DrawOverlayMeshes</c> calls <c>EnsureCapacity</c> every frame that queues an overlay proxy,
+        /// and the initial capacity is 8, so a ninth collision proxy grows it.
+        /// </summary>
+        [Fact]
+        public void TheOverlaySlotUboAndItsSetSurviveTheirGrowAndAreFreedWithTheRenderer()
+        {
+            using var device = new FakeGpuDevice();
+            var factory = (FakeGpuResourceFactory)device.Factory;
+            var modelOutputs = new GpuOutputDescription(GpuPixelFormat.D32FloatS8UInt,
+                GpuPixelFormat.R8G8B8A8UNorm, GpuPixelFormat.R8G8B8A8UNorm, GpuPixelFormat.R32Float);
+
+            var renderer = new OverlayMeshRenderer(device, modelOutputs);
+            IGpuBuffer vb = factory.CreateBuffer(new GpuBufferDescription(64, GpuBufferUsage.VertexBuffer));
+            IGpuBuffer ib = factory.CreateBuffer(new GpuBufferDescription(64, GpuBufferUsage.IndexBuffer));
+            int beforeFirstFrame = factory.Buffers.Count;
+
+            using var cl = new RecordingGpuCommandList(new NullGpuCommandList());
+            Frame(renderer, cl, vb, ib, proxies: 1);   // allocates the initial 8-slot UBO and draws through a set over it
+            FakeBuffer grownOutUbo = factory.Buffers[beforeFirstFrame];
+            FakeResourceSet grownOutSet = Assert.Single(factory.ResourceSets);
+
+            Frame(renderer, cl, vb, ib, proxies: 9);   // outgrows the UBO: 8 -> 16 slots, which rebuilds the set
+            Assert.False(grownOutUbo.Disposed,
+                "the replaced slot UBO was freed at the grow, while a prior frame's command list may still be "
+                + "reading it");
+            Assert.False(grownOutSet.Disposed,
+                "the set the previous frame's draws bound was destroyed at the grow, and that frame's command "
+                + "list may still be reading it");
+            Assert.Equal(2, factory.ResourceSets.Count);   // the grow rebound, it did not reuse
+
+            renderer.Dispose();
+            Assert.True(grownOutUbo.Disposed, "a retired buffer must still be freed when the renderer goes away");
+            Assert.True(grownOutSet.Disposed, "a retired set must still be freed when the renderer goes away");
+        }
+
+        static void Frame(OverlayMeshRenderer renderer, RecordingGpuCommandList cl, IGpuBuffer vb, IGpuBuffer ib,
+            int proxies)
+        {
+            renderer.EnsureCapacity(proxies);
+            renderer.BeginFrame(Matrix4x4.Identity);
+            for (int k = 0; k < proxies; k++)
+                renderer.Enqueue(vb, ib, 6, GpuIndexFormat.UInt16, k, Matrix4x4.CreateTranslation(k, 0f, 0f));
+            renderer.Flush(cl);   // binds the set, with this draw's dynamic offset, once per queued proxy
         }
 
         static void Draw(WaterRenderer renderer, RecordingGpuCommandList cl, RenderResources res, int planes)

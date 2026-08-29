@@ -86,10 +86,24 @@ public sealed partial class World
     }
 
     /// <summary>Rebuilds the children index from Parent components (after a load).</summary>
+    /// <remarks>
+    /// A child whose recorded parent is not alive is dropped to a root instead of being indexed. The index is keyed
+    /// by the bare parent id, so filing a stale handle (save data that is hand-edited, corrupt, or points at a since
+    /// recycled slot) would hang the child off whatever live entity now holds that id, and
+    /// <see cref="DespawnTree"/> would then take it out along with a tree it never belonged to.
+    /// </remarks>
     internal void RebuildHierarchyIndex()
     {
         _children.Clear();
+        List<Entity>? orphans = null;                       // stays null on well-formed data: no allocation
         foreach (Entity child in Query().With<Parent>().Entities())
-            AddToParentIndex(Get<Parent>(child).Value, child);
+        {
+            Entity parent = Get<Parent>(child).Value;
+            if (IsAlive(parent)) AddToParentIndex(parent, child);
+            else (orphans ??= new List<Entity>()).Add(child);
+        }
+        if (orphans is null) return;
+        foreach (Entity child in orphans)                   // after the walk: Remove is a structural change
+            Remove<Parent>(child);
     }
 }

@@ -23,8 +23,8 @@ per-entity sibling, named silhouette everywhere.
 - **`ITileWorldScene.DrawMeshSilhouette` is new, default no-op** (the `LoadTileGroundMaterial` precedent), so
   every implementor keeps compiling, and `Scene3DTileWorldScene` forwards it.
 - **`TileWorldView.SetSilhouettedObject(long objectId, Color, float)` / `ClearSilhouettedObject` are new.** The
-  view resolves the object id to its placement per frame (a scan of the loaded regions' small object lists,
-  chosen over widening every `PropPlacement` with an id for the one object that is highlighted) and queues
+  view resolves the object id per frame through the document's own O(1) object index (`FindObject`, never the
+  region accessors, which throw for unloaded hashes and insert for absent coords) and queues
   each part as a hull at the exact transform the prop draws with. An id no loaded region holds draws nothing
   and self-corrects when its region streams in, so a caller may set it optimistically.
 - Each pass partial now owns its own queue and public API: `DrawOverlayMesh`, its count and its queue moved

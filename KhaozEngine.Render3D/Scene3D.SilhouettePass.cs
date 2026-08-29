@@ -19,8 +19,12 @@ namespace KhaozEngine.Render3D
         /// <summary>Queue one per-entity SILHOUETTE: the mesh re-drawn as an inverted hull, vertices pushed
         /// along their world normals by <paramref name="widthMetres"/>, front faces culled, in a flat
         /// <paramref name="color"/> (alpha blends), depth tested without writing. The highlight for a clicked
-        /// monster or a selected prop; the whole-scene edge post keeps the Outline name on
+        /// monster or a selected prop. The whole-scene edge post keeps the Outline name on
         /// <see cref="PixelPostProcessSettings"/>.</summary>
+        /// <remarks>The normal push assumes a UNIFORM scale in <paramref name="world"/> (the shader rotates
+        /// the normal by the world's upper 3x3 and normalizes, not the inverse transpose), which every prop
+        /// and body transform in the engine satisfies. A nonuniform scale bends the hull off the surface:
+        /// bake the scale into the mesh instead.</remarks>
         public void DrawMeshSilhouette(MeshHandle mesh, Matrix4x4 world, Color color, float widthMetres) =>
             _silhouetteDraws.Add((mesh, world, color, widthMetres));
 

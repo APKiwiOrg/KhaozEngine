@@ -22,7 +22,7 @@ layout(location=4) in vec4 Tangent;
 void main() {
     // Push along the WORLD-space normal so the shell's width is in metres whatever the mesh's local scale.
     // The props use uniform scale, so the rotation part of World carries the normal faithfully after a
-    // normalize; Params.x is the width in metres.
+    // normalize. Params.x is the width in metres.
     vec3 worldNormal = normalize(mat3(World) * Normal);
     vec4 world = World * vec4(Position, 1.0);
     world.xyz += worldNormal * Params.x;

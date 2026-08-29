@@ -11303,7 +11303,8 @@ silhouette survives, occluded correctly by nearer geometry. This is not the whol
 (`PixelPostProcessSettings.Outline`): a silhouette belongs to ONE entity, per frame, at the caller's color.
 
 For a body the game draws itself (an avatar, a monster), queue one silhouette per part at the body's world
-transform. For an authored tile-world object, the view owns the placement:
+transform (uniform scale only: the shader pushes along the world-rotated normal, so a nonuniform scale bends
+the hull, and the fix is baking the scale into the mesh). For an authored tile-world object, the view owns the placement:
 `TileWorldView.SetSilhouettedObject(long objectId, Color color, float widthMetres = 0.05f)` silhouettes that
 object's parts every frame until `ClearSilhouettedObject()`. An id no loaded region holds draws nothing and
 self-corrects when its region streams in, so a click handler may set it optimistically. The seam member

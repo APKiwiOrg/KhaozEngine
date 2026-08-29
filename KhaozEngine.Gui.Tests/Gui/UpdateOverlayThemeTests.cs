@@ -71,6 +71,40 @@ public sealed class UpdateOverlayThemeTests
     }
 
     [Fact]
+    public void Failed_body_drops_the_retry_prompt_once_the_apply_budget_is_spent()
+    {
+        var t = UpdateOverlayTheme.Default;
+        Assert.Equal("Press [U] to retry",
+            t.BodyFor(UpdateState.Failed, new FakeUpdateStatus { State = UpdateState.Failed }));
+        Assert.Equal("This update could not be installed",
+            t.BodyFor(UpdateState.Failed,
+                new FakeUpdateStatus { State = UpdateState.Failed, ApplyAttemptsExhausted = true }));
+    }
+
+    [Fact]
+    public void Hint_offers_the_dismiss_key_on_a_dismissible_panel_only()
+    {
+        var t = UpdateOverlayTheme.Default;
+        var optional = new FakeUpdateStatus();
+        Assert.Equal("Press [Esc] to dismiss", t.HintFor(UpdateState.UpdateAvailable, optional));
+        Assert.Equal("Press [Esc] to dismiss", t.HintFor(UpdateState.ReadyToApply, optional));
+        Assert.Equal("Press [Esc] to dismiss", t.HintFor(UpdateState.Failed, optional));
+        Assert.Equal(string.Empty, t.HintFor(UpdateState.Downloading, optional));
+        Assert.Equal(string.Empty, t.HintFor(UpdateState.Applying, optional));
+        // A required update is never dismissible, so it never advertises a key that does nothing.
+        Assert.Equal(string.Empty,
+            t.HintFor(UpdateState.UpdateAvailable, new FakeUpdateStatus { IsRequired = true }));
+    }
+
+    [Fact]
+    public void Hint_uses_the_rebound_dismiss_key_label()
+    {
+        var t = UpdateOverlayTheme.Default;
+        t.DismissKeyLabel = "Q";
+        Assert.Equal("Press [Q] to dismiss", t.HintFor(UpdateState.Failed, new FakeUpdateStatus()));
+    }
+
+    [Fact]
     public void Optional_status_overload_delegates_to_the_version_titles()
     {
         var t = UpdateOverlayTheme.Default;

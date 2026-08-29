@@ -241,8 +241,8 @@ Two separate surfaces report update status, and the engine keeps them in one pal
 
 - The **in-game overlay** (`KhaozEngine.Gui.UpdateOverlayView` / `UpdateOverlayScreen`, themed by
   `UpdateOverlayTheme`) is the popup drawn inside the running game: it announces an available update, shows
-  download progress, and prompts the restart-and-apply. It is a pure presenter over the service's
-  `IUpdateStatus`.
+  download progress, prompts the restart-and-apply, and takes a dismiss on a second key. It is a pure
+  presenter over the service's `IUpdateStatus`.
 - The **shim progress window** (`UpdaterUiOptions`, in `KhaozEngine.Updates`) is the small native window the
   standalone shim shows during the file swap, after the game has exited. Windows-only, a no-op elsewhere.
 
@@ -271,6 +271,8 @@ arguments and the English default:
 | Applying (body) | `update.overlay.applying.body` | none | `Game will restart shortly` |
 | Failed (title) | `update.overlay.failed.title` | none | `Update Failed` |
 | Failed (body) | `update.overlay.failed.body` | `{0}` = trigger-key label | `Press [{0}] to retry` |
+| Failed (body, no retry left) | `update.overlay.failed.body.exhausted` | none | `This update could not be installed` |
+| Dismiss hint (any dismissible state) | `update.overlay.dismiss.hint` | `{0}` = dismiss-key label | `Press [{0}] to dismiss` |
 
 The overlay resolves through the wired catalog with culture-aware formatting. The English fallback formats with
 the invariant culture, so an unlocalized build renders exactly as it did before this feature. The shim window's
@@ -295,6 +297,41 @@ The helper lives on the Gui side because `KhaozEngine.Updates` (which owns `Upda
 dependency: Gui references Updates, so the edge points the right way and `Updates` stays renderer-free.
 `UpdaterUiThemeExtensions.ToRgb(Vector4)` exposes the RGBA-float to `(R, G, B)`-byte conversion on its own for
 any other hand-mapping a game still needs.
+
+### Dismissing the overlay, and the apply cap
+
+Visibility used to be a pure function of `UpdateState`, so once the flow left `Idle` the panel was on screen
+for the rest of the session. An environment that cannot apply (a read-only install dir, an AV lock on the
+shim, a full disk) fails the same way on every attempt, which put a player on a loop of retry, download,
+failed apply, with closing the game as the only exit (#739). Two mechanisms close that off.
+
+**A dismiss key.** `UpdateOverlayTheme.DismissKey` (default `Escape`, plus `DismissButton`, default gamepad
+`B`, and `DismissKeyLabel`) is bound the same way as the trigger and rebound the same way. Pressing it on a
+panel the player may decline records that state as dismissed and hides the panel, and the frame is consumed
+so the press does not also reach the game below. `UpdateOverlayView.OnDismiss` reports it.
+
+- **Dismissible states** (`UpdateOverlayView.IsDismissible`): `UpdateAvailable`, `ReadyToApply`, `Failed`.
+  Those are the states waiting on a decision. `Downloading` and `Applying` are not: both report an operation
+  the player already started, and the second is a process on its way out.
+- **A required update is never dismissible.** The key is refused while `IUpdateStatus.IsRequired`, and
+  `UpdateOverlayView.IsShowing` re-checks it, so even a direct `Dismiss(state)` call from game code cannot
+  hide a mandatory update that is installing itself.
+- **A dismissal is remembered per state**, which is what makes it stick: an in-session recheck cycles through
+  `Checking` and lands back on the same offer, and re-showing there would be the same nag in slow motion. The
+  panel returns on its own only when the flow reaches a state the player has NOT declined, e.g. a
+  `ReadyToApply` after a background download.
+- **`UpdateOverlayView.ResetDismissed()`** is the explicit way back, for a game whose own UI re-engages with
+  the updater (a Check for updates menu entry). Dismissals otherwise last the session: the view is built once
+  per session, so a relaunch already starts with nothing declined.
+
+**A per-session apply cap.** `UpdateService` counts failed apply attempts (`FailedApplyAttempts`) and reports
+`ApplyAttemptsExhausted` once the count reaches `UpdateServiceOptions.MaxApplyAttemptsPerSession` (default 2,
+non-positive turns the cap off). From that point `UpdateOverlayActions.ResolveAction(IUpdateStatus)` maps
+`Failed` to `None` instead of `Retry`, so the overlay stops offering a retry that keeps failing, and the
+default theme swaps the failed body for `update.overlay.failed.body.exhausted`. The service logs the spent
+budget once at warning, not on every failure. A failed DOWNLOAD is not an apply attempt and does not count.
+The cap is an offer policy only: `ApplyUpdate` itself still runs when a caller (the startup gate, a staged
+repair) asks for it.
 
 ---
 
@@ -328,7 +365,8 @@ UpdateOverlayActions.AutoAdvanceRequired(service);
 
 `AutoAdvanceRequired` is a no-op unless `IsRequired`, so optional updates are unchanged. For a required update
 it downloads with no keypress and then applies (restart) as soon as files are staged. It does NOT auto-retry a
-failed download (that would hot-loop); the overlay still offers the player a keypress retry on `Failed`.
+failed download (that would hot-loop). The overlay still offers the player a keypress retry on `Failed`, until
+the session's apply cap is spent (see the apply-cap section above).
 
 **Overlay text.** The default theme swaps in `update.overlay.*.required` variants for a required update (drawn
 via `UpdateOverlayTheme.TitleFor(UpdateState, IUpdateStatus)`), which convey mandatoriness and drop the now

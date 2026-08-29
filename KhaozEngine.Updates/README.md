@@ -434,11 +434,20 @@ from the signed manifest's `required` bit); for a required update it auto-downlo
 no keypress. Call it once per frame from the game loop so `ApplyUpdate` and its forced process exit run on
 the caller's thread. See the `KhaozEngine.Gui` README and `docs/UPDATER.md` for the required-update flow.
 
-Retheme via `new UpdateOverlayTheme { ... }` (colours, labels, `TriggerKey`/`TriggerButton`) or
-subclass it to override `TitleFor`/`BodyFor` for localized text (a required update draws its titles through
-the `TitleFor(UpdateState, IUpdateStatus)` overload, which adds the `*.required` variants). For non-stack
-UI, use the lower-level `UpdateOverlayView` directly (`Update(status, input, dt)` +
-`Draw(batch, font, white, viewport, status)`).
+Retheme via `new UpdateOverlayTheme { ... }` (colours, labels, `TriggerKey`/`TriggerButton`,
+`DismissKey`/`DismissButton`) or subclass it to override `TitleFor`/`BodyFor` for localized text (a required
+update draws its titles through the `TitleFor(UpdateState, IUpdateStatus)` overload, which adds the
+`*.required` variants). For non-stack UI, use the lower-level `UpdateOverlayView` directly
+(`Update(status, input, dt)` + `Draw(batch, font, white, viewport, status)`).
+
+The overlay's dismiss key (default `Escape`) lets a player decline an update, a staged restart, or a failure,
+and the service backs it with a per-session apply cap: `UpdateService` counts `FailedApplyAttempts` and flips
+`ApplyAttemptsExhausted` (an `IUpdateStatus` member, defaulted to false for any other implementation) once the
+count reaches `UpdateServiceOptions.MaxApplyAttemptsPerSession` (default 2, non-positive turns it off). From
+there `UpdateOverlayActions.ResolveAction(IUpdateStatus)`, the overload `Trigger` applies, maps `Failed` to
+`None` rather than `Retry`, so an environment that cannot install (a read-only install dir, an AV lock on the
+shim, a full disk) no longer walks the player round check, download, failed apply. The spent budget is logged
+once at warning. A failed download is not an apply attempt, and the cap never blocks `ApplyUpdate` itself.
 
 ### 3. The updater shim
 

@@ -13,4 +13,5 @@ public sealed class FakeUpdateStatus : IUpdateStatus
     public long TotalDownloadBytes { get; set; }
     public string? ErrorMessage { get; set; }
     public bool IsRequired { get; set; }
+    public bool ApplyAttemptsExhausted { get; set; }
 }

@@ -605,6 +605,27 @@ mechanics live in [UPDATER.md](UPDATER.md).
   ordinary launch. Check it at startup to suppress a "welcome back" / "what's new" prompt on a boot the
   game restarted itself into.
 
+### Dismissing the update overlay, and the apply cap (`UpdateOverlayView`, `UpdateService`)
+
+The overlay's visibility used to be a pure function of `UpdateState`, so once the flow left `Idle` the panel
+stayed on screen and a persistently failing apply left the player cycling retry, download, failed apply with
+no way out but quitting. Two mechanisms, both on by default and neither needing new wiring. Full mechanics in
+[UPDATER.md](UPDATER.md).
+
+- **A dismiss key.** `UpdateOverlayTheme.DismissKey` (default `Escape`, with `DismissButton` default gamepad
+  `B`) hides the panel for a state the player may decline: `UpdateAvailable`, `ReadyToApply`, `Failed`
+  (`UpdateOverlayView.IsDismissible`). Never the in-flight `Downloading`/`Applying`, and never a required
+  update. The dismissal is remembered per state, so a periodic recheck landing back on the same offer stays
+  hidden, and the panel returns only at a state that was not declined. `View.ResetDismissed()` clears it, for
+  a game whose own UI re-engages with the updater. The default theme draws a third line advertising the key
+  (`update.overlay.dismiss.hint`), and the dismiss frame is consumed so the press does not also reach the game.
+- **A per-session apply cap.** `UpdateService.FailedApplyAttempts` counts failed applies and
+  `ApplyAttemptsExhausted` goes true at `UpdateServiceOptions.MaxApplyAttemptsPerSession` (default 2,
+  non-positive turns it off). `UpdateOverlayActions.ResolveAction(IUpdateStatus)` then maps `Failed` to `None`
+  instead of `Retry`, and the default theme swaps in `update.overlay.failed.body.exhausted`. The service warns
+  once when the budget goes. A failed download is not an apply attempt, and the cap never blocks a direct
+  `ApplyUpdate` (the startup gate and a staged repair are unaffected).
+
 ### 3D (`GameApp3D`, `IGameScene3D`, `SceneManager.Draw3D`)
 
 `GameApp3D : GameApp` adds a `Render3DSurface` (`Surface3D`) and a `Scene3D` (`Scene`), and a new seam
@@ -936,8 +957,8 @@ keypresses with no visible cause. Pair this with keeping `PassUpdateThrough` tru
 false only for the frames something is actually visible/interactive, so a modal moment blocks lower screens and
 an idle moment does not. `UpdateOverlayScreen` (`KhaozEngine.Gui`) is the reference implementation: each frame it
 recomputes `PassUpdateThrough` from whether it must be modal (a required update or the apply step, not mere
-visibility) and returns consumed only when modal or when its trigger fired, never a bare `true`, so an optional
-"update available" prompt keeps the game below both simulating and receiving its own input. (There used to be a
+visibility) and returns consumed only when modal or when its trigger or its dismiss fired, never a bare `true`,
+so an optional "update available" prompt keeps the game below both simulating and receiving its own input. (There used to be a
 `Screen.InputConsumption` enum gesturing at this contract without `ScreenStack` ever
 reading it; it was removed in 10.111.0 as dead API - the bool-return contract above, sharpened in the `Screen.Update`
 XML doc, is the actual mechanism. See `CHANGELOG.md`.)

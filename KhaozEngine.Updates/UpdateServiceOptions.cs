@@ -43,6 +43,16 @@ public sealed class UpdateServiceOptions
     /// <summary>Retries per file on download/hash-mismatch before failing.</summary>
     public int MaxDownloadRetries { get; init; } = 2;
 
+    /// <summary>
+    /// How many failed apply attempts one session offers before
+    /// <see cref="UpdateService.ApplyAttemptsExhausted"/> goes true and the overlay stops proposing a retry.
+    /// Default 2: an environment that cannot apply (a read-only install dir, an AV lock on the shim, a full
+    /// disk) fails identically every time, so the second failure is enough to conclude that retrying only
+    /// walks the player through another download. Non-positive turns the cap off, which restores the
+    /// pre-cap behaviour of offering a retry after every failure.
+    /// </summary>
+    public int MaxApplyAttemptsPerSession { get; init; } = 2;
+
     /// <summary>Per-file download size cap (hostile/oversized payload guard). Default 4 GiB.</summary>
     public long MaxFileBytes { get; init; } = 4L * 1024 * 1024 * 1024;
 

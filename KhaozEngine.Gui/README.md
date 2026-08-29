@@ -31,7 +31,7 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   `Update` while dormant (received input != consumed it), or it silently blocks every screen below for as long as
   it sits in the stack. `UpdateOverlayScreen` is the reference implementation (recomputes `PassUpdateThrough` from
   whether it must be modal each frame, a required update or the apply step rather than mere visibility, and returns
-  consumed only when modal or when its trigger fired); see `Screen.Update`'s XML doc and
+  consumed only when modal or when its trigger or its dismiss fired). See `Screen.Update`'s XML doc and
   `docs/USING-KHAOZENGINE.md` for the full contract.
 - `IScreenComponent` + `ScreenComponentList` (13.7.0) - the composition unit BELOW `Screen`, mirroring what
   `Ecs.ISystem` is below `World`. A component is one HUD element / overlay / input controller / presenter:
@@ -340,7 +340,14 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   the `TitleFor(UpdateState, IUpdateStatus)` overload and swaps in the `update.overlay.*.required` keys, which
   convey mandatoriness and drop the keypress prompt (the client auto-advances via
   `UpdateOverlayActions.AutoAdvanceRequired`); a theme overriding `TitleFor`/`BodyFor` adds its own `IsRequired`
-  branch. Overriding `TitleFor`/`BodyFor` still fully replaces the text. `theme.ToUpdaterUiOptions(...)`
+  branch. Overriding `TitleFor`/`BodyFor` still fully replaces the text.
+  A second bound key (`Theme.DismissKey`, default `Escape`, plus `DismissButton` / `DismissKeyLabel`) **dismisses**
+  the panel for a state the player may decline (`UpdateOverlayView.IsDismissible`: `UpdateAvailable`,
+  `ReadyToApply`, `Failed`, never the in-flight `Downloading`/`Applying` and never a required update), which is
+  the way out of a repeatedly failing apply. The dismissal is remembered per state, so a recheck landing back on
+  the same offer stays hidden and the panel returns only at a state that was not declined.
+  `View.ResetDismissed()` clears it, and the theme draws a third `HintFor` line advertising the key
+  (`update.overlay.dismiss.hint`). `theme.ToUpdaterUiOptions(...)`
   (`UpdaterUiThemeExtensions`) derives the shim's native progress-window palette (`UpdaterUiOptions`, in
   `KhaozEngine.Updates`) from the same theme (accent from `ProgressFill`, background from `PanelFill`, text from
   `BodyText`), so the in-game overlay and the apply window share one palette. See `docs/UPDATER.md` for the key

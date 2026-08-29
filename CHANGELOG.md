@@ -7,12 +7,16 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 18.2.0
 
-18.2.0 adds one additive Gui control, `ContextMenu`, the right-click option menu Grimhollow asked for. Nothing
-existing changes, so the repin costs a version number and no code. The control is a title band over a stack of
-selectable rows anchored at a screen point, the OSRS-style option list, and it is built out of the pieces the
-17.9.0 right-click hit-testing helpers were added for. Everything about it that a caller can get wrong fails
-loudly rather than quietly: an unset `Viewport` throws in `Draw` instead of pinning the menu into the corner,
-and the measure-only constructor throws there too rather than rendering nothing.
+18.2.0 adds one additive Gui control, `ContextMenu`, the right-click option menu Grimhollow asked for, and
+gives the update overlay an exit ([#739](https://github.com/APKiwiOrg/KhaozEngine/issues/739)). The control is
+a title band over a stack of selectable rows anchored at a screen point, the OSRS-style option list, and
+everything about it that a caller can get wrong fails loudly rather than quietly: an unset `Viewport` throws in
+`Draw` instead of pinning the menu into the corner, and the measure-only constructor throws there too rather
+than rendering nothing. The overlay gains a dismiss key for the states a player may decline, plus a per-session
+cap so a persistently failing apply stops offering a retry it cannot honour, found from the Ruinborne dev-run
+spam (https://github.com/APKiwiOrg/Ruinborne/issues/464) though the player-reachable case is any install the
+apply cannot write. Nothing existing changes: consumer wiring is unchanged, existing catalogs render exactly as
+before, and the repin costs a version number and no code.
 
 - **`ContextMenu`, `ContextMenuEntry` and `ContextMenuMetrics` are new in `KhaozEngine.Gui`.**
   `Open(LocalizedText title, IReadOnlyList<ContextMenuEntry> entries, Vector2 screenPoint)` shows the menu at a
@@ -65,6 +69,37 @@ and the measure-only constructor throws there too rather than rendering nothing.
   also while `Viewport` is still `Vector2.Zero`, the `Tooltip` precedent for a forgotten assignment failing
   loudly. 21 headless tests cover the layout, the flip and clamp precedence, selection, dismissal, the disabled
   and hover rules, the block region and the latch.
+- **A dismiss key on the update overlay** (`KhaozEngine.Gui`). Visibility was a pure function of
+  `UpdateState`, so once the flow left `Idle` the panel stayed up for the session and the only input was
+  the state-advancing trigger key. `UpdateOverlayTheme.DismissKey` (default `Escape`, with
+  `DismissButton` gamepad B and `DismissKeyLabel`) now puts the panel away for a state the player may
+  decline (`UpdateOverlayView.IsDismissible`: `UpdateAvailable`, `ReadyToApply`, `Failed`), never for the
+  in-flight `Downloading` and `Applying`, and never for a required update, which `IsShowing` re-checks so
+  even a direct `Dismiss` call cannot hide a mandatory one. Dismissals are remembered per state, so a
+  periodic recheck landing back on the same offer stays hidden and the panel returns on its own only at a
+  state that was not declined. `ResetDismissed()` clears them, `OnDismiss` is exposed on the view and the
+  screen, and the dismiss frame is consumed so an `Escape` that closes the overlay does not also open a
+  pause menu.
+- **A per-session apply cap** (`KhaozEngine.Updates`). An environment that cannot apply (a read-only
+  install dir, an AV lock on the shim, a full disk) fails identically every attempt, so retry, download,
+  failed apply looped forever. `UpdateService` counts `FailedApplyAttempts` and reports
+  `ApplyAttemptsExhausted` at `UpdateServiceOptions.MaxApplyAttemptsPerSession` (default 2, non-positive
+  turns the cap off), logging the spent budget once at warning. The new
+  `UpdateOverlayActions.ResolveAction(IUpdateStatus)` overload, which `Trigger` now applies, maps `Failed`
+  to `None` from there instead of `Retry`. A failed download is not an apply attempt, and the cap is an
+  offer policy only: it never blocks `ApplyUpdate` itself, so `EnsureUpToDateAsync` and a staged repair
+  are unaffected. `IUpdateStatus.ApplyAttemptsExhausted` is a default interface member, so existing
+  implementations keep compiling with their old behaviour.
+- **Two new overlay localization keys with English fallbacks.** `update.overlay.dismiss.hint`
+  (`Press [{0}] to dismiss`) draws as a third panel line via the new virtual
+  `UpdateOverlayTheme.HintFor(UpdateState, IUpdateStatus)`, empty for non-dismissible states and required
+  updates so the layout is unchanged there, and `update.overlay.failed.body.exhausted`
+  (`This update could not be installed`) replaces the retry prompt once the apply budget is spent. No
+  existing key's text changed.
+
+The release also carries the repeatable MM1 record-cost gate (`MetalRecordCostGpuTests` over the shared
+`StreamedWorldSceneContent` scene) whose readings discharged the native Metal program's last rollout gate
+and closed [#566](https://github.com/APKiwiOrg/KhaozEngine/issues/566).
 
 ## 18.1.0
 

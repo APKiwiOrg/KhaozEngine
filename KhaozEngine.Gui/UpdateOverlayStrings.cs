@@ -19,7 +19,8 @@ namespace KhaozEngine.Gui;
 /// Format arguments per key (mirrored by <see cref="EnglishDefaults"/>): the titles that show a version take
 /// <c>{0}</c> = the remote version; the action bodies take <c>{0}</c> = the trigger-key label; the downloading
 /// body takes <c>{0}</c> = files downloaded, <c>{1}</c> = total files, <c>{2}</c> = MB downloaded,
-/// <c>{3}</c> = total MB. The other lines take no arguments.
+/// <c>{3}</c> = total MB. <see cref="DismissHint"/> takes <c>{0}</c> = the dismiss-key label. The other lines
+/// take no arguments.
 ///
 /// The <c>*.required</c> variants are used for a REQUIRED update (the client auto-downloads then auto-restarts,
 /// so no keypress prompt applies): the required titles that show a version take <c>{0}</c> = the remote version,
@@ -60,6 +61,20 @@ public static class UpdateOverlayStrings
 
     /// <summary>Body for <see cref="UpdateState.Failed"/>. Takes <c>{0}</c> = trigger-key label.</summary>
     public static readonly StringId FailedBody = new("update.overlay.failed.body");
+
+    /// <summary>
+    /// Body for <see cref="UpdateState.Failed"/> once the session's apply budget is spent
+    /// (<see cref="IUpdateStatus.ApplyAttemptsExhausted"/>), replacing <see cref="FailedBody"/> because there
+    /// is no retry left to prompt for. No arguments.
+    /// </summary>
+    public static readonly StringId FailedBodyExhausted = new("update.overlay.failed.body.exhausted");
+
+    /// <summary>
+    /// The dismiss prompt drawn under the body on a panel the player is allowed to decline
+    /// (<see cref="UpdateOverlayView.IsDismissible"/>, and never for a required update). Takes
+    /// <c>{0}</c> = the dismiss-key label.
+    /// </summary>
+    public static readonly StringId DismissHint = new("update.overlay.dismiss.hint");
 
     // --- Required-update variants (auto-download + auto-apply; no keypress prompt) ---
 
@@ -110,6 +125,8 @@ public static class UpdateOverlayStrings
             ["update.overlay.applying.body"] = "Game will restart shortly",
             ["update.overlay.failed.title"] = "Update Failed",
             ["update.overlay.failed.body"] = "Press [{0}] to retry",
+            ["update.overlay.failed.body.exhausted"] = "This update could not be installed",
+            ["update.overlay.dismiss.hint"] = "Press [{0}] to dismiss",
             ["update.overlay.available.title.required"] = "Required Update - v{0}",
             ["update.overlay.available.body.required"] = "A required update is downloading",
             ["update.overlay.downloading.title.required"] = "Downloading Required Update...",

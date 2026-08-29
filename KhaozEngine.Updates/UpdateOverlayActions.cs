@@ -6,7 +6,8 @@ public enum OverlayAction { None, Download, Apply, Retry }
 /// <summary>
 /// Default wiring from the Gui overlay's trigger to the <see cref="UpdateService"/>. Lets a game wire the
 /// overlay in one line: <c>overlay.OnTrigger += _ =&gt; UpdateOverlayActions.Trigger(service);</c>. The
-/// state-action policy is the pure <see cref="ResolveAction"/> (unit-tested); <see cref="Trigger"/> applies it.
+/// state-action policy is the pure <see cref="ResolveAction(IUpdateStatus)"/> (unit-tested);
+/// <see cref="Trigger"/> applies it.
 /// </summary>
 public static class UpdateOverlayActions
 {
@@ -19,10 +20,24 @@ public static class UpdateOverlayActions
         _ => OverlayAction.None,
     };
 
+    /// <summary>
+    /// The status-aware policy, and the one <see cref="Trigger"/> applies: the state map above, except that a
+    /// <see cref="UpdateState.Failed"/> update whose session has spent its apply budget
+    /// (<see cref="IUpdateStatus.ApplyAttemptsExhausted"/>) resolves to <see cref="OverlayAction.None"/>
+    /// instead of <see cref="OverlayAction.Retry"/>. Without that, an apply that fails for an environmental
+    /// reason (a read-only install dir, an AV lock on the shim, a full disk) fails the same way on every
+    /// retry, and the player rides check -&gt; download -&gt; failed apply round and round. Same reasoning as
+    /// <see cref="AutoAdvanceRequired"/>'s refusal to auto-drive a failed update, applied to the manual path.
+    /// </summary>
+    public static OverlayAction ResolveAction(IUpdateStatus status)
+        => status.State == UpdateState.Failed && status.ApplyAttemptsExhausted
+            ? OverlayAction.None
+            : ResolveAction(status.State);
+
     /// <summary>Performs the resolved action against <paramref name="service"/> for its current state.</summary>
     public static void Trigger(UpdateService service)
     {
-        switch (ResolveAction(service.State))
+        switch (ResolveAction(service))
         {
             case OverlayAction.Download: _ = service.StartDownloadAsync(); break;
             case OverlayAction.Apply: service.ApplyUpdate(); break;
@@ -39,7 +54,8 @@ public static class UpdateOverlayActions
     /// called once per frame from the game loop (which also keeps <see cref="UpdateService.ApplyUpdate"/>
     /// and its forced exit on the caller's thread). It deliberately does NOT auto-retry a
     /// <see cref="UpdateState.Failed"/> update (that would hot-loop); the overlay still offers the player
-    /// a keypress retry.
+    /// a keypress retry, until the session's apply budget runs out (see
+    /// <see cref="ResolveAction(IUpdateStatus)"/>).
     /// </summary>
     public static void AutoAdvanceRequired(UpdateService service)
     {

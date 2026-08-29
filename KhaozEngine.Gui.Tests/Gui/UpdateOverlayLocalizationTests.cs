@@ -120,6 +120,40 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void Wired_catalog_resolves_the_dismiss_hint_and_the_exhausted_body()
+        {
+            var prev = LocalizationContext.Catalog;
+            try
+            {
+                LocalizationContext.Catalog = new DictionaryCatalog()
+                    .Add("update.overlay.dismiss.hint", "Fermer avec [{0}]")
+                    .Add("update.overlay.failed.body.exhausted", "Installation impossible");
+                var t = UpdateOverlayTheme.Default;
+                var s = new FakeUpdateStatus { State = UpdateState.Failed, ApplyAttemptsExhausted = true };
+
+                Assert.Equal("Fermer avec [Esc]", t.HintFor(UpdateState.Failed, s));
+                Assert.Equal("Installation impossible", t.BodyFor(UpdateState.Failed, s));
+            }
+            finally { LocalizationContext.Catalog = prev; }
+        }
+
+        [Fact]
+        public void Dismiss_keys_missing_from_the_catalog_fall_back_to_english()
+        {
+            var prev = LocalizationContext.Catalog;
+            try
+            {
+                LocalizationContext.Catalog = new DictionaryCatalog().Add("menu.play", "Play");
+                var t = UpdateOverlayTheme.Default;
+                var s = new FakeUpdateStatus { State = UpdateState.Failed, ApplyAttemptsExhausted = true };
+
+                Assert.Equal("Press [Esc] to dismiss", t.HintFor(UpdateState.Failed, s));
+                Assert.Equal("This update could not be installed", t.BodyFor(UpdateState.Failed, s));
+            }
+            finally { LocalizationContext.Catalog = prev; }
+        }
+
+        [Fact]
         public void Subclass_override_still_wins_over_catalog()
         {
             var prev = LocalizationContext.Catalog;

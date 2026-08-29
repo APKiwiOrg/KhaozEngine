@@ -23,4 +23,12 @@ public interface IUpdateStatus
     string? ErrorMessage { get; }
     /// <summary>True when the offered update is marked required.</summary>
     bool IsRequired { get; }
+
+    /// <summary>
+    /// True once this session has spent its failed-apply budget, so a presenter must stop offering a retry
+    /// that keeps failing (see <see cref="UpdateService.ApplyAttemptsExhausted"/> and
+    /// <see cref="UpdateServiceOptions.MaxApplyAttemptsPerSession"/>). Defaults to false so an existing
+    /// implementation of this interface keeps compiling and keeps offering the retry it always did.
+    /// </summary>
+    bool ApplyAttemptsExhausted => false;
 }

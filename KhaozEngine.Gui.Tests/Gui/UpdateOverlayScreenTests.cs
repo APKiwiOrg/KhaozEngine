@@ -139,6 +139,45 @@ public sealed class UpdateOverlayScreenTests
     }
 
     [Fact]
+    public void Dismissing_consumes_only_that_frame_then_leaves_the_game_alone()
+    {
+        var status = new FakeUpdateStatus { State = UpdateState.Failed, IsRequired = false };
+        var overlay = NewScreen(status);
+        var game = new RecordingScreen { DrawOrder = 100 };
+        var stack = new ScreenStack();
+        stack.Add(game);
+        stack.Add(overlay);
+
+        // The dismiss press closes the overlay and is consumed, so it does not also open the pause menu.
+        game.Reset();
+        stack.Update(0.016f, OverlayTestInput.KeyFrame(Key.Escape));
+        Assert.True(game.Updated);
+        Assert.False(game.ReceivedInput);
+
+        // From the next frame on the overlay is gone and Escape belongs to the game again.
+        game.Reset();
+        stack.Update(0.016f, OverlayTestInput.KeyFrame(Key.Escape));
+        Assert.True(game.Updated);
+        Assert.True(game.ReceivedInput);
+    }
+
+    [Fact]
+    public void A_dismissed_failed_panel_stops_firing_the_trigger()
+    {
+        var status = new FakeUpdateStatus { State = UpdateState.Failed, IsRequired = false };
+        var overlay = NewScreen(status);
+        int fired = 0;
+        overlay.Triggered += () => fired++;
+        var stack = new ScreenStack();
+        stack.Add(overlay);
+
+        stack.Update(0.016f, OverlayTestInput.KeyFrame(Key.Escape));
+        stack.Update(0.016f, OverlayTestInput.KeyFrame(Key.U));
+
+        Assert.Equal(0, fired); // no retry: the player is out of the cycle
+    }
+
+    [Fact]
     public void Required_prompt_starves_the_game_below()
     {
         var status = new FakeUpdateStatus { State = UpdateState.UpdateAvailable, IsRequired = true };

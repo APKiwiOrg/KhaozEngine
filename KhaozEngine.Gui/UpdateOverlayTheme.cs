@@ -21,7 +21,8 @@ namespace KhaozEngine.Gui;
 /// game gets localized overlay text just by adding the <c>update.overlay.*</c> keys to its catalog, with no
 /// theme subclass. Overriding <see cref="TitleFor(UpdateState, string?)"/>/<see cref="BodyFor"/> still fully
 /// replaces this (the override never calls back into the catalog resolution). Required updates render via
-/// <see cref="TitleFor(UpdateState, IUpdateStatus)"/>, which adds the <c>*.required</c> variants.
+/// <see cref="TitleFor(UpdateState, IUpdateStatus)"/>, which adds the <c>*.required</c> variants, and
+/// <see cref="HintFor"/> adds the third line: the dismiss prompt for a panel the player may decline.
 /// </remarks>
 public class UpdateOverlayTheme
 {
@@ -29,6 +30,7 @@ public class UpdateOverlayTheme
     public Vector4 DimFill = Color.FromBytes(0, 0, 0, 140);
     public Vector4 PanelFill = Color.FromBytes(12, 16, 28, 230);
     public Vector4 BodyText = Color.FromBytes(180, 190, 210);
+    public Vector4 HintText = Color.FromBytes(130, 140, 160);
     public Vector4 ProgressBackground = Color.FromBytes(30, 40, 60, 200);
     public Vector4 ProgressFill = Color.FromBytes(80, 160, 255, 230);
 
@@ -52,6 +54,13 @@ public class UpdateOverlayTheme
     public Key TriggerKey = Key.U;
     public GamepadButton? TriggerButton = GamepadButton.Y;
     public string TriggerKeyLabel = "U";
+
+    // Dismiss binding: the second key, which puts the panel away for a state the player is allowed to decline
+    // (see UpdateOverlayView.IsDismissible). Rebind it the same way as the trigger. A required update ignores
+    // it entirely, so this can never hide a mandatory update.
+    public Key DismissKey = Key.Escape;
+    public GamepadButton? DismissButton = GamepadButton.B;
+    public string DismissKeyLabel = "Esc";
 
     /// <summary>Accent colour for <paramref name="state"/> (title text + border).</summary>
     public virtual Vector4 AccentFor(UpdateState state) => state switch
@@ -109,7 +118,9 @@ public class UpdateOverlayTheme
     /// <see cref="LocalizationContext.Catalog"/> against the <see cref="UpdateOverlayStrings"/> keys, falling
     /// back to the built-in English when no catalog is wired or the key is absent. For a required update
     /// (<see cref="IUpdateStatus.IsRequired"/>) the available/ready bodies drop the now-inapplicable keypress
-    /// prompt (the client auto-advances); the other bodies are shared with the optional case.
+    /// prompt (the client auto-advances); the other bodies are shared with the optional case. The failed body
+    /// likewise drops its retry prompt once the session's apply budget is spent
+    /// (<see cref="IUpdateStatus.ApplyAttemptsExhausted"/>), because there is no retry left to offer.
     /// </summary>
     public virtual string BodyFor(UpdateState state, IUpdateStatus status) => state switch
     {
@@ -123,9 +134,24 @@ public class UpdateOverlayTheme
             ? Localize(UpdateOverlayStrings.ReadyBodyRequired)
             : Localize(UpdateOverlayStrings.ReadyBody, TriggerKeyLabel),
         UpdateState.Applying => Localize(UpdateOverlayStrings.ApplyingBody),
-        UpdateState.Failed => Localize(UpdateOverlayStrings.FailedBody, TriggerKeyLabel),
+        UpdateState.Failed => status.ApplyAttemptsExhausted
+            ? Localize(UpdateOverlayStrings.FailedBodyExhausted)
+            : Localize(UpdateOverlayStrings.FailedBody, TriggerKeyLabel),
         _ => string.Empty,
     };
+
+    /// <summary>
+    /// The third line: the dismiss prompt, drawn under the body (and under the progress bar) whenever the
+    /// player may put this panel away, and empty otherwise so the panel keeps its two-line layout. Empty for a
+    /// required update, which is never dismissible, and for the in-flight states
+    /// (<see cref="UpdateState.Downloading"/>, <see cref="UpdateState.Applying"/>) the player already started.
+    /// Override to reword it, or return <see cref="string.Empty"/> throughout to drop the line while keeping
+    /// the key working.
+    /// </summary>
+    public virtual string HintFor(UpdateState state, IUpdateStatus status)
+        => status.IsRequired || !UpdateOverlayView.IsDismissible(state)
+            ? string.Empty
+            : Localize(UpdateOverlayStrings.DismissHint, DismissKeyLabel);
 
     /// <summary>
     /// Resolves an overlay <see cref="StringId"/> with format args. Uses the ambient

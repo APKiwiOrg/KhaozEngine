@@ -394,7 +394,7 @@ public sealed partial class UpdateService : IDisposable, IUpdateStatus
 
             if (string.IsNullOrEmpty(options.UpdaterExecutableName))
             {
-                SetError("No updater configured.");
+                SetApplyError("No updater configured.");
                 return false;
             }
 
@@ -406,7 +406,7 @@ public sealed partial class UpdateService : IDisposable, IUpdateStatus
             if (!File.Exists(updaterPath))
             {
                 log.Info($"Updater shim not found: {updaterPath}");
-                SetError("Updater not found. Please re-download the game.");
+                SetApplyError("Updater not found. Please re-download the game.");
                 return false;
             }
 
@@ -459,7 +459,7 @@ public sealed partial class UpdateService : IDisposable, IUpdateStatus
             bool launched = (options.LaunchUpdater ?? DefaultLaunchUpdater)(updaterPath, applyConfigPath);
             if (!launched)
             {
-                SetError("Updater failed to start.");
+                SetApplyError("Updater failed to start.");
                 return false;
             }
 
@@ -472,7 +472,7 @@ public sealed partial class UpdateService : IDisposable, IUpdateStatus
         catch (Exception ex)
         {
             log.Info($"Failed to launch updater: {ex.Message}");
-            SetError($"Failed to start update: {ex.Message}");
+            SetApplyError($"Failed to start update: {ex.Message}");
             return false;
         }
     }

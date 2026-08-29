@@ -11,7 +11,8 @@ namespace KhaozEngine.Gui;
 /// input from the owning <see cref="ScreenStack"/>, draws the overlay centred in the supplied design
 /// viewport, and is modal only for a required update or the apply step. An optional prompt stays non-modal,
 /// so the game below keeps simulating and keeps its own input, and the overlay consumes only the frame its
-/// trigger fires. Re-exposes the view's <see cref="OnTrigger"/>/<see cref="Triggered"/> events.
+/// trigger or its dismiss fires. Re-exposes the view's <see cref="OnTrigger"/>/<see cref="Triggered"/>/
+/// <see cref="OnDismiss"/> events; reach the dismissal state itself through <see cref="View"/>.
 /// </summary>
 public sealed class UpdateOverlayScreen : Screen
 {
@@ -25,6 +26,8 @@ public sealed class UpdateOverlayScreen : Screen
     public event Action<UpdateState>? OnTrigger { add => _view.OnTrigger += value; remove => _view.OnTrigger -= value; }
     /// <summary>Paramless convenience (forwards the view's event).</summary>
     public event Action? Triggered { add => _view.Triggered += value; remove => _view.Triggered -= value; }
+    /// <summary>Raised with the declined state when the dismiss key puts the panel away (forwards the view's event).</summary>
+    public event Action<UpdateState>? OnDismiss { add => _view.OnDismiss += value; remove => _view.OnDismiss -= value; }
 
     /// <summary>The wrapped view (e.g. to retheme at runtime).</summary>
     public UpdateOverlayView View => _view;
@@ -49,9 +52,10 @@ public sealed class UpdateOverlayScreen : Screen
         // about to relaunch). An optional prompt stays non-modal so the game below keeps simulating.
         bool modal = visible && (_status.IsRequired || _status.State == UpdateState.Applying);
         PassUpdateThrough = !modal;
-        // While modal, consume all input; while non-modal, consume only the frame the trigger fires so the game
-        // keeps receiving its own input. Never a bare true, and false whenever !receivesInput.
-        return modal ? receivesInput : _view.TriggeredThisFrame;
+        // While modal, consume all input; while non-modal, consume only the frame the trigger or the dismiss
+        // fires so the game keeps receiving its own input (an Escape that closes the overlay must not also open
+        // the pause menu). Never a bare true, and false whenever !receivesInput.
+        return modal ? receivesInput : _view.TriggeredThisFrame || _view.DismissedThisFrame;
     }
 
     public override void Draw(SpriteBatch batch) =>

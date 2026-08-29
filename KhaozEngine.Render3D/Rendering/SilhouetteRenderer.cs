@@ -81,9 +81,12 @@ namespace KhaozEngine.Render3D.Rendering
                 },
                 DepthStencil = GpuDepthStencilState.DepthTestLessEqualNoWrite,
                 // FRONT-face culling is the inverted hull: only the pushed-out back faces draw, and the model's
-                // own depth (written by the opaque pass) eats the hull's interior, leaving the rim.
+                // own depth (written by the opaque pass) eats the hull's interior, leaving the rim. FrontFace is
+                // COUNTER-clockwise here because the engine's meshes wind CCW-front: declared clockwise, the
+                // front cull kept the shell's NEAR side and painted the whole model (caught by the first bake's
+                // evidence PNG, a fully crimson box).
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.Front, GpuPolygonFill.Solid,
-                    GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
+                    GpuFrontFace.CounterClockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
                 ShaderSet = _shaders,

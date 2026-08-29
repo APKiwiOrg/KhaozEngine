@@ -200,13 +200,17 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     tinted it, and refuses both hover and selection). Results are one-frame flags in the `Dropdown.WasChanged`
     mould, all cleared at the top of the next `Update`: `WasSelected` (also `Update`'s return value) with
     `SelectedTag` / `SelectedIndex`, and `WasDismissed` with `DismissPress`, the position the dismissing gesture
-    RELEASED at (null for a menu-cancel), which is what a caller reopening on the same right press anchors the
-    next menu at. `Update(InputManager, PlayerIndex? = null)` layers menu-cancel (Escape / gamepad B / Back)
+    RELEASED at (null for a menu-cancel), which is what a caller reopening on the dismissing gesture anchors the
+    next menu at. The pointer dismissal is a LEFT release outside the menu and nothing else, so a right press
+    outside an open menu does nothing to it and a caller wanting right-click-to-reopen watches
+    `Pointer.IsRightTapIn` itself and calls `Open` again at the new point.
+    `Update(InputManager, PlayerIndex? = null)` layers menu-cancel (Escape / gamepad B / Back)
     dismissal on top, and cancel is live from the first frame. `ComputeBounds` / `RowBounds` are pure layout over
     `ITextMeasurer`: the menu's top-left sits at the point and opens down-right, flips to put its BOTTOM at the
     point when the bottom would overflow, and the viewport clamp runs LAST and wins over the flip, so a point too
     close to an edge yields a menu pinned inside the `ContextMenuMetrics.Margin` box that may cover the point
-    rather than sit at it. An open menu reserves its bounds through `Pointer.BlockRegion` (the `Dropdown`
+    rather than sit at it. A menu too big for that box pins to the left and top margins and overflows the right
+    and bottom edges. An open menu reserves its bounds through `Pointer.BlockRegion` (the `Dropdown`
     precedent) so the world beneath cannot be clicked through it, and the gesture that OPENED the menu can
     neither dismiss it nor select a row in it. Assign `Viewport` (the design size) before updating or drawing:
     `Draw` throws while it is `Vector2.Zero` rather than silently pinning the menu into the corner, and throws

@@ -1346,15 +1346,26 @@ included. Poll it on the frame it fires rather than stashing the menu and readin
 `enabled: false` draws at `DisabledColor` whatever the caller tinted it, and refuses both hover and selection,
 so `HoverIndex` and what a tap will accept never disagree.
 
-Dismissal comes in two shapes. A release OUTSIDE the menu sets `WasDismissed` with `DismissPress` at the
-release position, and a menu-cancel sets it with a null `DismissPress`, since a key has no position. The
-release position is what the reopen-on-the-same-gesture pattern wants, so one right press can dismiss the open
-menu and open the next one under the cursor:
+Dismissal comes in two shapes, and the right button is neither of them. A LEFT release OUTSIDE the menu sets
+`WasDismissed` with `DismissPress` at the release position, and a menu-cancel sets it with a null
+`DismissPress`, since a key has no position. A right press outside an open menu does not touch it. Reopening on
+the next right-click is therefore the CALLER's job: keep watching `Pointer.IsRightTapIn` while the menu is open,
+and open the next menu at the new point yourself. `Open` on an already-open menu replaces the content, the
+anchor and every frame flag in one call, so `Close` is only needed when the new right-click should open no menu
+at all.
+
+Call `Update` every frame, and AFTER `Open` in the same iteration. A menu opened later in the frame than its own
+`Update` reserves nothing until the next one, so the world under it stays clickable for that frame.
 
 ```csharp
-menu.Update(input);
-if (menu.WasDismissed && menu.DismissPress is Vector2 p && HitTest(p) is { } target)
-    menu.Open(target.Name, BuildEntries(target), p);   // new menu, anchored where the gesture released
+if (pointer.IsRightTapIn(otherSlotRect))
+{
+    menu.Open(target.Name, BuildEntries(target), pointer.Position);   // anchored at the new right-click
+    pointer.ConsumeRightGesture();
+}
+
+menu.Update(input);                                   // every frame, and after Open
+if (menu.WasDismissed) OnMenuClosed(menu.DismissPress);   // left release outside, or menu-cancel (null)
 ```
 
 An open menu reserves its bounds through `Pointer.BlockRegion`, so the world beneath cannot be clicked through
@@ -1368,7 +1379,8 @@ viewport, metrics)` and `ContextMenu.RowBounds(bounds, titleFont, bodyFont, i, m
 `ITextMeasurer`s. The menu's top-left sits AT the point and opens down-right, flips to put its BOTTOM at the
 point when the bottom would overflow, and the viewport clamp runs LAST and WINS over the flip, so a point too
 close to an edge yields a menu pinned inside the `ContextMenuMetrics.Margin` box that may cover the point rather
-than sit at it. Assign `Viewport` (the design size) before you update or draw an open menu: `Draw` throws while
+than sit at it. A menu too big for that box pins to the left and top margins and overflows the right and bottom
+edges. Assign `Viewport` (the design size) before you update or draw an open menu: `Draw` throws while
 it is `Vector2.Zero` rather than quietly pinning the menu into the top-left corner. For a headless test the
 measure-only `ContextMenu(ITextMeasurer, ITextMeasurer)` constructor drives `Open` / `Update` with no GPU device
 and no baked font, and `Draw` throws on a menu built that way.

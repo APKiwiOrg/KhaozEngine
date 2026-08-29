@@ -24,7 +24,10 @@ before, and the repin costs a version number and no code.
   `Draw(SpriteBatch, Texture2D)` paints it. Reopening while already open replaces the content and the anchor and
   clears every frame flag, so a right press landing on a new target swaps the menu in one call, and a null or
   empty entry list opens a title-only menu rather than throwing. `Close()` hides it without touching this
-  frame's flags, so a caller closing in response to a selection still reads that selection.
+  frame's flags, so a caller closing in response to a selection still reads that selection. Dismissal by
+  pointer is a LEFT release outside the menu, and menu-cancel is the other way out: a right press outside an
+  open menu does nothing to it, so a caller wanting right-click-to-reopen watches `Pointer.IsRightTapIn` itself
+  and calls `Open` again at the new point.
 - **A row is a `ContextMenuEntry` with an optional right-aligned detail, per-entry colours, a tag and an enabled
   flag.** `RightDetail` renders flush to the right edge of the row with at least `ContextMenuMetrics.DetailGap`
   between it and the label, `LabelColor` / `DetailColor` are per-row overrides of the menu's own colours, `Tag`
@@ -40,14 +43,15 @@ before, and the repin costs a version number and no code.
   return value) with `SelectedTag` and `SelectedIndex`, plus `WasDismissed` with `DismissPress`. The clear runs
   on a CLOSED menu too, so a caller that stops polling on the selection frame and reads later gets nothing
   rather than a stale answer. `DismissPress` is where the dismissing gesture RELEASED, deliberately rather than
-  where it began, so a caller reopening on the same right press anchors the next menu under the cursor instead
+  where it began, so a caller reopening on the dismissing gesture anchors the next menu under the cursor instead
   of at a stale origin. It is null when the dismissal came from menu-cancel, which has no position.
 - **Layout is pure over `ITextMeasurer`, and the viewport clamp WINS over the flip.** Public static
   `ComputeBounds` and `RowBounds` size the menu from the widest of the title and every row, stack full-width
   rows under an always-present title band, and are the one geometry both the hit-testing and the draw walk. The
   menu opens down-right from the point and flips to put its BOTTOM at the point when the bottom would overflow,
   the `Tooltip` flip. The clamp then runs LAST, so a point too close to an edge for either placement yields a
-  menu pinned inside the `ContextMenuMetrics.Margin` box that may COVER the point rather than sit at it. That
+  menu pinned inside the `ContextMenuMetrics.Margin` box that may COVER the point rather than sit at it. A menu
+  too big for that box pins to the left and top margins and overflows the right and bottom edges. That
   precedence is pinned by a test rather than left to be rediscovered.
 - **The whole opening GESTURE is latched out, not just the opening frame.** A gesture that began before the menu
   existed cannot be an act on it, so neither selection nor dismissal runs while the latch is armed, and the
@@ -55,9 +59,9 @@ before, and the repin costs a version number and no code.
   on a left press or a left release hands the first `Update` a frame already carrying that gesture's edge, and a
   menu the clamp drops under the held cursor reads it as a row tap while a press-to-open reads its own release a
   frame later as a dismissal. `HoverIndex` and the pointer reservation are computed on a latched frame anyway,
-  so it still highlights and blocks like any other open frame. One edge remains, a tap in the same frame the
-  menu opens being swallowed once, tracked as
-  [#760](https://github.com/APKiwiOrg/KhaozEngine/issues/760).
+  so it still highlights and blocks like any other open frame. One edge remains: while the latch is armed every
+  same-frame tap is swallowed, selection and dismissal alike, until an ordinary press edge disarms it. Tracked
+  as [#760](https://github.com/APKiwiOrg/KhaozEngine/issues/760).
 - **An open menu reserves its bounds through `Pointer.BlockRegion`,** the `Dropdown` precedent, so the world
   beneath cannot be clicked through it.
 - **Menu-cancel rides the `Update(InputManager, PlayerIndex? = null)` overload,** mirroring
@@ -67,8 +71,8 @@ before, and the repin costs a version number and no code.
 - **A measure-only constructor takes two `ITextMeasurer`s** (the `ToastView` precedent), so a headless test
   drives `Open` and `Update` with no GPU device and no baked font. `Draw` throws on a menu built that way, and
   also while `Viewport` is still `Vector2.Zero`, the `Tooltip` precedent for a forgotten assignment failing
-  loudly. 21 headless tests cover the layout, the flip and clamp precedence, selection, dismissal, the disabled
-  and hover rules, the block region and the latch.
+  loudly. 24 headless tests cover the layout, the flip and clamp precedence, selection, dismissal, the disabled
+  and hover rules, the block region, the latch and both throws.
 - **A dismiss key on the update overlay** (`KhaozEngine.Gui`). Visibility was a pure function of
   `UpdateState`, so once the flow left `Idle` the panel stayed up for the session and the only input was
   the state-advancing trigger key. `UpdateOverlayTheme.DismissKey` (default `Escape`, with

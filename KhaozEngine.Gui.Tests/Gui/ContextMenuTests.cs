@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.App;
@@ -211,6 +212,67 @@ namespace KhaozEngine.Tests.Gui
         {
             p.Update(Frame(at, false));
             menu.Update(p);
+        }
+
+        // The right-button twin of Frame, for the gesture the control deliberately ignores.
+        InputState RightFrame(Vector2 pos, bool down)
+        {
+            var b = new HashSet<MouseButton>();
+            if (down) b.Add(MouseButton.Right);
+            var (edgePressed, edgeReleased) = _mouse.Advance(b);
+            return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+                b, edgePressed, pos, Vector2.Zero, 0, 960, 540, mouseReleased: edgeReleased);
+        }
+
+        [Fact]
+        public void Draw_throws_while_the_viewport_is_unset()
+        {
+            // The guard runs before batch or white is touched, so nulls never reach the draw calls.
+            var menu = new ContextMenu(Font, Font);
+            menu.Open(LocalizedText.Raw("Options"), Three(), Point);
+
+            Assert.Equal(Vector2.Zero, menu.Viewport);
+            var ex = Assert.Throws<InvalidOperationException>(() => menu.Draw(null!, null!));
+            Assert.Contains("Viewport", ex.Message);
+
+            // A CLOSED menu returns before every guard, so the same call is a no-op.
+            menu.Close();
+            menu.Draw(null!, null!);
+        }
+
+        [Fact]
+        public void Draw_throws_on_a_measure_only_menu()
+        {
+            // Viewport is assigned, so this is the font guard rather than the viewport one.
+            var menu = new ContextMenu(Font, Font) { Viewport = View };
+            menu.Open(LocalizedText.Raw("Options"), Three(), Point);
+
+            var ex = Assert.Throws<InvalidOperationException>(() => menu.Draw(null!, null!));
+            Assert.Contains("measure-only", ex.Message);
+        }
+
+        [Fact]
+        public void A_right_press_and_release_outside_leaves_the_menu_open()
+        {
+            // Dismissal is a LEFT release outside or menu-cancel. The right button does nothing to an open menu,
+            // which is why a caller wanting right-click-to-reopen has to close and reopen it itself.
+            ContextMenu menu = OpenMenu(Three(), Point);
+            var p = new Pointer();
+
+            p.Update(RightFrame(Outside, false)); menu.Update(p);
+            p.Update(RightFrame(Outside, true)); menu.Update(p);
+            p.Update(RightFrame(Outside, false));
+            Assert.True(p.IsRightJustReleased);   // the right gesture really did complete outside the menu
+            menu.Update(p);
+
+            Assert.True(menu.IsOpen);
+            Assert.False(menu.WasDismissed);
+            Assert.Null(menu.DismissPress);
+
+            // And the left release outside still dismisses, so the menu was reachable all along.
+            Tap(menu, p, Outside);
+            Assert.False(menu.IsOpen);
+            Assert.True(menu.WasDismissed);
         }
 
         [Fact]

@@ -121,8 +121,10 @@ namespace KhaozEngine.Gui
         /// <c>null</c> (a menu-cancel key has no position). This is the release position rather than the press
         /// origin, deliberately: <see cref="Pointer.IsReleasedOutside"/> keys on the release, so a press that
         /// began inside the menu and dragged out reports where the cursor actually ended up. A caller that
-        /// reopens on the same gesture (a right press that dismisses one menu and opens the next) anchors the
-        /// new menu here, under the cursor, not at a stale origin.
+        /// reopens on the dismissing gesture anchors the new menu here, under the cursor, not at a stale origin.
+        /// The pointer dismissal is a LEFT release outside and nothing else: a right press outside an open menu
+        /// does not touch it, so a caller wanting right-click-to-reopen watches the right button itself and
+        /// calls <see cref="Open"/> again at the new point.
         /// </summary>
         public Vector2? DismissPress { get; private set; }
 
@@ -309,7 +311,7 @@ namespace KhaozEngine.Gui
             float textX = MathF.Floor(b.X + Metrics.PadX);
             if (!string.IsNullOrEmpty(_title))
                 batch.DrawString(_titleFont, _title, new Vector2(textX, MathF.Floor(b.Y + Metrics.RowPadY)), (Color)TitleColor);
-            // Centred in the TitleGap band under the title text, which is where the first row starts.
+            // Centred in the TitleGap band under the title text, above where the first row starts.
             float sepY = MathF.Floor(b.Y + TitleBandHeight(_titleMeasure, Metrics) - Metrics.TitleGap * 0.5f);
             GuiDraw.Fill(batch, white, new Rect(textX, sepY, MathF.Max(0f, b.Width - Metrics.PadX * 2f), 1f), Border);
 
@@ -342,7 +344,8 @@ namespace KhaozEngine.Gui
         /// bottom would overflow the viewport the menu flips to sit with its BOTTOM at the point instead, which
         /// mirrors the <see cref="Tooltip"/> flip. The clamp runs LAST and wins over the flip, so a point too
         /// close to an edge for either placement yields a menu pinned inside the margin box that may cover the
-        /// point rather than sit at it.
+        /// point rather than sit at it. A menu too big for that box cannot fit in it, so it pins to the left and
+        /// top margins and overflows the right and bottom edges.
         /// <para>
         /// Width is the widest of the title and every row (a row being its label plus, when it has a right
         /// detail, <see cref="ContextMenuMetrics.DetailGap"/> plus that detail), plus horizontal padding.

@@ -43,7 +43,10 @@
   word-wraps on spaces and is memoized (a bounded LRU cache keyed on font identity + text + maxWidth +
   hardBreak), so a caller re-wrapping the same unchanged text every frame (a static label, an idle tooltip)
   hits the cache instead of re-running the wrap algorithm, and the returned list is always a fresh copy, so mutating
-  it can never corrupt the cache. The opt-in `hardBreak` (default off) additionally slices a single token longer
+  it can never corrupt the cache. Concurrent callers are safe, including off the render thread: the wrap runs
+  outside the cache lock, and two callers that miss on the same key both compute it, then the second to finish
+  adopts the first's entry rather than inserting a duplicate that would orphan a node in the LRU list
+  ([#87](https://github.com/APKiwiOrg/KhaozEngine/issues/87)). The opt-in `hardBreak` (default off) additionally slices a single token longer
   than `maxWidth` at character boundaries so every returned line fits. The opt-in `preserveSpaceRuns` (14.9.0,
   default off, default path bit-identical) keeps interior space runs verbatim instead of collapsing each to one
   space: a run stays ONE break opportunity but is re-emitted intact when no break is taken there (a break taken at

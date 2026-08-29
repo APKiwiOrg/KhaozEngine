@@ -58,7 +58,9 @@ namespace KhaozEngine.Render2D
         /// since <see cref="Wrap"/>'s output depends only on that effective width. The cache is bounded
         /// (oldest-unused entries evicted) so a session that streams many distinct texts (chat, procedurally
         /// generated labels) cannot grow it without limit. The returned list is always a fresh copy, so a caller
-        /// mutating it can never corrupt the cache.
+        /// mutating it can never corrupt the cache. Concurrent callers are safe, including off the render thread:
+        /// the wrap itself runs unlocked, and two threads that miss on the same key both compute it, then the
+        /// second to finish adopts the entry the first inserted instead of adding a duplicate.
         /// </para></summary>
         public static List<string> Wrap(ITextMeasurer font, string text, float maxWidth, bool hardBreak = false, bool preserveSpaceRuns = false)
         {
@@ -73,6 +75,16 @@ namespace KhaozEngine.Render2D
 
             lock (WrapCacheLock)
             {
+                // Re-check before inserting. The cache is UNLOCKED across ComputeWrap (see WrapCacheLock below
+                // for why it has to be), so another thread can have computed and inserted this very key while we
+                // were measuring. Inserting a second node for it would leave the first one in the LRU list with
+                // no index row pointing at it, an orphan that grows the list past capacity and, when it reaches
+                // the tail, evicts the index row belonging to the OTHER thread's still-live node (#87). Wrap is a
+                // pure function of the key, so the two results are equal and the loser simply adopts the
+                // winner's entry rather than fighting over it.
+                if (TryGetCachedWrap(key, out List<string>? winner))
+                    return new List<string>(winner);
+
                 CacheWrap(key, lines);
             }
             return new List<string>(lines);
@@ -177,6 +189,12 @@ namespace KhaozEngine.Render2D
         // Not a hot per-frame allocation path (a cache hit/miss check, not the wrap itself), and Wrap() may be
         // called from tests/tools off the render thread, so guard the shared cache with a plain lock rather than
         // assuming single-threaded callers.
+        //
+        // The lock covers the lookup and the insert, never the computation between them. ComputeWrap calls
+        // ITextMeasurer.Measure once per candidate line, which is CONSUMER code of unbounded cost: holding a
+        // process-wide static lock across it would serialize every wrap in the process behind the slowest
+        // measurer, and would invite a lock-order inversion the moment a measurer takes a lock of its own. So the
+        // gap stays, and Wrap closes it by re-checking the cache under the second lock instead (#87).
         static readonly object WrapCacheLock = new();
         const int WrapCacheCapacity = 256;
         static readonly Dictionary<WrapKey, LinkedListNode<(WrapKey Key, List<string> Lines)>> WrapCacheIndex = new();
@@ -196,7 +214,8 @@ namespace KhaozEngine.Render2D
             return false;
         }
 
-        // Caller must hold WrapCacheLock.
+        // Caller must hold WrapCacheLock AND must have re-checked, under that same lock acquisition, that the key
+        // is absent: this inserts unconditionally, so a second insert for a live key orphans its first node (#87).
         static void CacheWrap(WrapKey key, List<string> lines)
         {
             var node = new LinkedListNode<(WrapKey Key, List<string> Lines)>((key, lines));
@@ -208,6 +227,15 @@ namespace KhaozEngine.Render2D
                 WrapCacheLru.RemoveLast();
                 WrapCacheIndex.Remove(lru.Value.Key);
             }
+        }
+
+        // Test hook for #87: the cache's structural invariant is exactly one LRU node per index entry. Every
+        // mutation above runs under WrapCacheLock and moves both counts together, so a reader taking the same
+        // lock never sees a torn intermediate state and the two counts are equal at every lock boundary. A racing
+        // double insert used to break that by leaving a node in the list that no index row pointed at.
+        internal static (int IndexCount, int LruCount) WrapCacheCounts()
+        {
+            lock (WrapCacheLock) return (WrapCacheIndex.Count, WrapCacheLru.Count);
         }
 
         // --- drawing (needs the GPU-backed SpriteFont) ---

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -58,6 +59,9 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuPipeline _pipeline;
         readonly IGpuBuffer _frameUbo;
         IGpuBuffer? _instances;
+        // Grown-out instance buffers (a prior frame's submitted command list may still be reading one), freed in
+        // Dispose. The engine's buffer-lifetime rule, stated in ModelRenderer.EnsureInstanceCapacity.
+        readonly List<IDisposable> _retired = new();
         int _capacity;
         DistortionInstance[] _packed = Array.Empty<DistortionInstance>();
         // One cached resource set over the resolved depth texture, rebuilt on a target rebind (generation bump).
@@ -118,7 +122,10 @@ namespace KhaozEngine.Render3D.Rendering
         void EnsureCapacity(int spriteCount)
         {
             if (_instances != null && _capacity >= spriteCount) return;
-            _instances?.Dispose();
+            // Retire, never dispose inline. The frame path has no WaitForIdle, so the CPU can be several frames
+            // ahead of the GPU and a prior frame's command list may still be reading the buffer this grow
+            // replaces: freeing it here is a use-after-free. Geometric growth bounds how many pile up.
+            if (_instances != null) _retired.Add(_instances);
             _capacity = Math.Max(spriteCount, _capacity == 0 ? 64 : _capacity * 2);
             _instances = _gd.Factory.CreateBuffer(new GpuBufferDescription((uint)(_capacity * (int)InstanceStride), GpuBufferUsage.VertexBuffer));
             if (_packed.Length < _capacity) _packed = new DistortionInstance[_capacity];
@@ -191,6 +198,8 @@ namespace KhaozEngine.Render3D.Rendering
             _shaders.Dispose();
             _frameUbo.Dispose();
             _instances?.Dispose();
+            foreach (var r in _retired) r.Dispose();
+            _retired.Clear();
         }
     }
 }

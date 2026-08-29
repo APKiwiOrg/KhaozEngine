@@ -100,6 +100,10 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuShaderSet? _clipShaders;
         IGpuPipeline? _clipPipe;
         IGpuBuffer? _ubo;     // grown geometrically to hold _capacity slots
+        // Grown-out UBOs and the sets that ranged over them (a prior frame's submitted command list may still be
+        // reading one), freed in Dispose. The engine's buffer-lifetime rule, stated in
+        // ModelRenderer.EnsureInstanceCapacity and copied by every sibling renderer that grows a buffer.
+        readonly List<IDisposable> _retired = new();
         int _capacity;
         IGpuResourceSet? _set;
         RenderResources? _bound;
@@ -284,15 +288,19 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>Ensure the UBO holds at least <paramref name="planeCount"/> slots, growing geometrically. A
-        /// regrown buffer drops the set so <see cref="BindTargets"/> rebuilds its range against the new buffer.</summary>
+        /// regrown buffer RETIRES the old one and the set that ranged over it (never disposes them inline: the
+        /// frame path has no WaitForIdle, so a prior frame's command list may still be reading both, and freeing
+        /// them here is a use-after-free), then drops the set so <see cref="BindTargets"/> rebuilds its range
+        /// against the new buffer. Geometric growth bounds how many pile up, and Dispose frees them.</summary>
         void EnsureUboCapacity(int planeCount)
         {
             if (_ubo != null && _capacity >= planeCount) return;
             _capacity = Math.Max(planeCount, _capacity == 0 ? 4 : _capacity * 2);
-            _ubo?.Dispose();
+            if (_ubo != null) _retired.Add(_ubo);
             _ubo = _gd.Factory.CreateBuffer(new GpuBufferDescription((uint)_capacity * SlotBytes, GpuBufferUsage.UniformBuffer));
             ResizeUboImage(_capacity);   // the CPU mirror the whole-buffer upload covers (WaterRenderer.SlotUpload.cs)
-            _set?.Dispose(); _set = null;
+            if (_set != null) _retired.Add(_set);
+            _set = null;
         }
 
         void EnsureGridBuffers()
@@ -742,8 +750,10 @@ namespace KhaozEngine.Render3D.Rendering
 
             _clipSliceVerts = Math.Max(_clipSliceVerts, vcount);
             _clipSliceIndices = Math.Max(_clipSliceIndices, icount);
-            _clipVb?.Dispose();
-            _clipIb?.Dispose();
+            // Retired, not disposed inline, for the same reason the UBO above is: these were bound as this pass's
+            // vertex and index buffers, and a prior frame's command list may still be reading them.
+            if (_clipVb != null) _retired.Add(_clipVb);
+            if (_clipIb != null) _retired.Add(_clipIb);
             _clipVerts = new WaterClipmapVertex[_clipSliceVerts];
             _clipIndices = new uint[_clipSliceIndices];
             _clipVb = _gd.Factory.CreateBuffer(new GpuBufferDescription(
@@ -778,6 +788,8 @@ namespace KhaozEngine.Render3D.Rendering
             _ib?.Dispose();
             _clipVb?.Dispose();
             _clipIb?.Dispose();
+            foreach (var r in _retired) r.Dispose();
+            _retired.Clear();
         }
     }
 }

@@ -366,6 +366,111 @@ public class TileWanderBehaviourTests
             $"the actor is at {home.Tile} targeting {home.CombatTarget} at {healed.Current} of {healed.Max}");
     }
 
+    // THE DEATH ANALOGUE of the leash test above, and the half a game could not write for itself. A player killed by
+    // a monster it had been hitting back leaves that killer holding TWO things: the LOCK, which a game drops by
+    // latching a walk through the one stepper, and the DAMAGE RECORD, which no public write reached. Drop only the
+    // lock and the retaliate rule hands the same victim straight back on the next tick, because nothing else ages
+    // that record, and the killer then walks to wherever the game just put the body.
+    //
+    // The engine does not do it unprompted, and section 6.6 is why: a dead PLAYER is never despawned, so what its
+    // death MEANS is the game's answer, and a game that revived the body where it fell is still in the fight it was
+    // in. What the engine owes is the door, which is TileWorldServer.ForgetAttacker.
+    //
+    // Red first, with the ForgetAttacker call taken out and the walk left in: the killer re-acquired the player on
+    // the tick after the sweep, walked the five tiles to the respawn tile and killed it a second time.
+    [Fact]
+    public void A_killer_whose_attacker_the_game_forgets_leaves_the_player_it_just_killed_alone()
+    {
+        var hub = new InMemoryTransportHub();
+        // INSIDE the rat's leash radius, deliberately: a respawn tile the killer could never reach would pass this
+        // test with the fix reverted.
+        var spawn = new TileCoord(30, 24, 0);
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, spawn);
+        s.CombatRules = new TileCombatResolveTests.FixedRules { Damage = 50 };
+        TileActorSpawner spawner = s.Actors.Add(Rat with { WanderRadius = 0 }, new TileCoord(30, 30, 0));
+        long player = s.SpawnPlayer(0, "a", "Ari");
+        s.Tick(Dt);
+        long actor = spawner.ActorNetId;
+        // A rat that survives what the player throws at it, so the fight is one-sided in the direction this needs.
+        Assert.True(s.SetHealth(actor, new TileHealth { Current = 500, Max = 500 }));
+        Assert.True(s.SetHealth(player, new TileHealth { Current = 40, Max = 40 }));
+        s.SetPlayerState(0, TileMoveState.At(new TileCoord(30, 31, 0), TileDirection.S), teleport: true);
+
+        // The game's death answer, which is Grimhollow's: every actor lock naming the dead player dropped through a
+        // latched walk on the actor's own tile, the damage record forgotten with it, then the body moved and its
+        // health written.
+        int deaths = 0;
+        s.OnDied += (dead, _, slot) =>
+        {
+            if (slot < 0) return;
+            deaths++;
+            IReadOnlyList<long> actors = s.ActorNetIds;
+            for (int i = 0; i < actors.Count; i++)
+            {
+                long id = actors[i];
+                if (!s.TryGetActorState(id, out TileMoveState locked) || locked.CombatTarget != dead) continue;
+                s.Actors.Command(id, TileCommand.WalkTo(locked.Tile, locked.Mode));
+                Assert.True(s.ForgetAttacker(id, dead));
+            }
+            s.SetPlayerState(slot, TileMoveState.At(spawn, TileDirection.S), teleport: true);
+            Assert.True(s.SetHealth(dead, new TileHealth { Current = 40, Max = 40 }));
+        };
+
+        // The player opens the fight, which is what puts it on the rat's damage record, and the rat retaliates and
+        // kills it.
+        s.Enqueue(0, seq: 0, TileCommand.Attack(actor, TileMoveMode.Walk));
+        for (int i = 0; i < 10 && deaths == 0; i++) s.Tick(Dt);
+        Assert.Equal(1, deaths);
+
+        // The whole retaliate window and half as much again, hands off.
+        for (int i = 0; i < 60; i++) s.Tick(Dt);
+
+        Assert.True(s.TryGetActorState(actor, out TileMoveState after));
+        Assert.True(s.TryGetHealth(player, out TileHealth survived));
+        Assert.True(s.TryGetCombatState(actor, out TileCombatState record));
+        // One assertion over all of it, because the wrong answers are one failure: a killer handed its victim back
+        // is standing at the respawn tile holding a lock, still remembering the hit, over a body below full health.
+        Assert.True(after.Tile.Equals(new TileCoord(30, 30, 0)) && after.CombatTarget == 0L
+            && record.LastDamagedBy == 0L && survived.Current == 40 && deaths == 1,
+            $"the killer is at {after.Tile} targeting {after.CombatTarget}, remembering {record.LastDamagedBy}, and "
+            + $"the player is at {survived.Current} of {survived.Max} after {deaths} death(s)");
+    }
+
+    // The door's own contract, which the scenario above only reaches in the direction that fires. A death ends ONE
+    // fight, so a record naming anybody else is left standing, and so is the LOCK, which a game drops through the
+    // stepper instead. Two doors rather than one, because the engine already has exactly one definition of what
+    // breaks a lock and this is not a second.
+    [Fact]
+    public void ForgetAttacker_drops_only_a_record_that_names_the_opponent_and_never_the_lock()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(5, 5, 0));
+        long actor = s.SpawnActor(new TileCoord(30, 30, 0), new TileActorSpawn(30, 10, TileDirection.S));
+        long other = s.SpawnActor(new TileCoord(30, 28, 0), new TileActorSpawn(30, 10, TileDirection.S));
+        // Ticked first so the record carries a non-zero tick, which tick zero would hide.
+        s.Tick(Dt);
+        Damage(s, actor, other);
+        TileCombatResolveTests.Lock(s, actor, other);
+
+        // A third party's death forgets nothing. Neither does a zero, which is what an empty record already reads
+        // as, and neither does an id no cell owns.
+        Assert.False(s.ForgetAttacker(actor, 4242L));
+        Assert.False(s.ForgetAttacker(actor, 0L));
+        Assert.False(s.ForgetAttacker(4242L, other));
+        Assert.True(s.TryGetCombatState(actor, out TileCombatState held));
+        Assert.Equal(other, held.LastDamagedBy);
+        Assert.Equal(s.TickCount, held.LastDamagedTick);
+
+        Assert.True(s.ForgetAttacker(actor, other));
+        Assert.True(s.TryGetCombatState(actor, out TileCombatState forgotten));
+        Assert.Equal(0L, forgotten.LastDamagedBy);
+        Assert.Equal(0L, forgotten.LastDamagedTick);
+        // The lock is untouched, and a second call has nothing left to name.
+        Assert.True(s.TryGetActorState(actor, out TileMoveState locked));
+        Assert.Equal(other, locked.CombatTarget);
+        Assert.False(s.ForgetAttacker(actor, other));
+    }
+
     // An actor built straight through SpawnActor has no spawner, and its HOME is the tile it was born on, captured
     // once. Re-evaluated per tick it was the actor's own current tile, which makes the leash test
     // Chebyshev(Tile, Tile), permanently false, and turns the wander into an unbounded random walk that drifts off

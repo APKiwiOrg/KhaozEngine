@@ -8723,7 +8723,20 @@ server.OnCombatEvent += e => game.AwardExperience(e.AttackerNetId, e.Amount);
 server.OnDied += (deadNetId, killerNetId, slot) =>
 {
     // slot is the dead entity's connection slot, or -1 for anything that is not a player.
-    if (slot >= 0) game.RespawnPlayerInTown(slot);
+    if (slot < 0) return;                        // an ACTOR is despawned at step 5b, and its fights go with it
+    // A PLAYER is never despawned, so a killer holding it keeps resolving the body wherever this handler puts it.
+    // Both halves of that fight are the game's to end: the LOCK through a latched walk, which is the idiom the
+    // engine's own leash break uses, and the DAMAGE RECORD, which nothing else ages and which a retaliating
+    // behaviour reads the moment the actor holds no target.
+    IReadOnlyList<long> actors = server.ActorNetIds;
+    for (int i = 0; i < actors.Count; i++)
+    {
+        long id = actors[i];
+        if (!server.TryGetActorState(id, out TileMoveState st) || st.CombatTarget != deadNetId) continue;
+        server.Actors.Command(id, TileCommand.WalkTo(st.Tile, st.Mode));
+        server.ForgetAttacker(id, deadNetId);    // targeted: a grudge against a third party survives the death
+    }
+    game.RespawnPlayerInTown(slot);
 };
 ```
 

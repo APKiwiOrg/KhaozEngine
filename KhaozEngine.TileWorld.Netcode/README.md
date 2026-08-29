@@ -240,7 +240,8 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   Actors are `Actors` (the `TileActorHost`), `SpawnActor`, `DespawnActor`, `TryGetActorState`, `ActorCount`,
   `ActorNetIds`, `OnActorSpawned` and `RefusedActorSpawnCount`. Combat is `CombatRules`, `OnCombatEvent`, `OnDied`,
   `CombatEventsThisTick` and `SkippedHealthlessCombatantCount`, with `TryGetHealth` / `SetHealth` /
-  `TryGetCombatState` as the reads and the one write. `TileWorldServerConfig` gained `MaxActorsPerCell` (the
+  `TryGetCombatState` as the reads and the one write, and `ForgetAttacker` as the one field a game can drop (see
+  what a dead player leaves behind, below). `TileWorldServerConfig` gained `MaxActorsPerCell` (the
   per-REGION monster budget, since a cell is a region), `ActorMove` (the actor's own `TileMoveOptions`, whose
   default drops `MaxPathRadius` from 64 to 12 because `FindPath` allocates `(2r+1)^2` scratch per call, about 83 KB
   at 64 and 3 KB at 12) and `CombatLogoutTicks` (zero by default, and one number with two jobs: how long a
@@ -317,6 +318,36 @@ if (client.View.TryGetEntity(targetNetId, out Entity mirrored)
     && client.World.TryGet(mirrored, out TileHealth hp))
     DrawHealthBar(hp.Current, hp.Max);
 ```
+
+## What a dead PLAYER leaves behind, which the engine deliberately does not clear
+
+An ACTOR that dies is despawned at step 5b, so every lock naming it stops resolving and the follow drops it on the
+next tick. A PLAYER is never despawned. The engine clears the dead player's own target, raises `OnDied` with its
+slot and stops there, because where that body goes is the game's answer: a spawn point, a hospital, a revive where
+it fell. The killer is therefore left holding both halves of the fight, and a game whose answer MOVED the body has
+to end it, or that killer walks to the new tile and picks the same fight up again.
+
+```csharp
+server.OnDied += (deadNetId, killerNetId, slot) =>
+{
+    if (slot < 0) return;                        // an actor, and the reap answers that one
+    IReadOnlyList<long> actors = server.ActorNetIds;
+    for (int i = 0; i < actors.Count; i++)
+    {
+        long id = actors[i];
+        if (!server.TryGetActorState(id, out TileMoveState st) || st.CombatTarget != deadNetId) continue;
+        server.Actors.Command(id, TileCommand.WalkTo(st.Tile, st.Mode));   // the LOCK, through the one stepper
+        server.ForgetAttacker(id, deadNetId);                              // the DAMAGE RECORD
+    }
+    game.RespawnPlayerInTown(slot);
+};
+```
+
+**Both halves, or neither is worth writing.** A latched walk on the actor's own tile is what drops a lock, which is
+the idiom the leash break itself uses, and on its own it lasts one tick: nothing else ages the damage record, so a
+retaliating behaviour reads it the moment the actor holds no target and takes the same victim straight back.
+`ForgetAttacker(netId, attacker)` drops the record only when it names that attacker, so a grudge against a third
+party who was also swinging survives the death, and it never touches the lock, because the stepper owns that.
 
 ## A server, in ten lines
 

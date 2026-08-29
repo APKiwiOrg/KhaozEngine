@@ -31,7 +31,10 @@ and every new constructor parameter is appended with a default, so **nothing in 
 that wires none of it ticks exactly as it did before. Its bullets are at the end of this entry, and the last of them
 is the first fix that half earned: a follower that catches a moving target ends on its tile, and R1 held that
 position forever while the combat pass silently refused every roll from it
-([#751](https://github.com/APKiwiOrg/KhaozEngine/issues/751)). It steps off now.
+([#751](https://github.com/APKiwiOrg/KhaozEngine/issues/751)). It steps off now. Beside it rides the other half of
+a fight the ENGINE did not end ([#752](https://github.com/APKiwiOrg/KhaozEngine/issues/752)): a dead player is never
+despawned, so its killer keeps resolving the body wherever the game puts it, and `TileWorldServer.ForgetAttacker` is
+the damage-record half of the break that no public write reached before.
 
 - **The rule is retired in code.** `MslBindingOrder.CheckPrefix`, which required every stage's resources to
   be a prefix of the layout's per index space, is deleted, so `ShaderValidation.ValidatePair` no longer
@@ -307,6 +310,19 @@ position forever while the combat pass silently refused every roll from it
     to the stepper its prediction runs, so the client predicts both answers instead of being corrected on every
     tick of a fight that is not moving. **A head that steps the simulator itself should pass the id**: left at 0,
     a self attack steps off and shuffles, which is the walk to the map edge R1 stood down.
+- **A game can drop a killer's grudge now, which is the second half of ending a fight the engine did not end**
+  ([#752](https://github.com/APKiwiOrg/KhaozEngine/issues/752), the engine half of the same R2 fix round).
+  `TileWorldServer.ForgetAttacker(netId, attacker)` clears one entity's damage record, and only when it names that
+  attacker. The case it exists for is a dead PLAYER. The engine clears the dead entity's own target and stops there,
+  and what makes that enough is the REAP, which a player never gets, so a game answering `OnDied` by moving the body
+  owns the killer's fight and could only end half of it: a latched walk drops the lock through the one stepper, and
+  nothing outside the assembly could touch `TileCombatState.LastDamagedBy`, which `TileWanderBehaviour`'s retaliate
+  rule reads on the first tick the actor holds no target. Red first through the real seam: with the walk alone, a rat
+  that killed a player took the lock straight back, walked the five tiles to the respawn tile and killed the same
+  player eight more times inside sixty ticks. **The engine still does not do it unprompted**, because it does not
+  know what a death MEANS for a body it did not remove (a spawn, a hospital, a revive where it fell), and the drop
+  is targeted at one opponent so a grudge against a third party who was also swinging survives it. The lock keeps
+  its one definition, which is the stepper's, and this door never touches it.
 - **The hit pipeline is `ITileCombatRules`, and it is the line between what the engine owns and what the game
   does.** The engine owns whether a swing is DUE (the cooldown) and whether it is LEGAL (adjacency, which is
   literally `TileReach.Contains` against a 1x1 rect, so the no-diagonal rule and the wall-denied safespot fall
@@ -327,7 +343,9 @@ position forever while the combat pass silently refused every roll from it
     connection slot or -1 for anything that is not a player. The engine's own half is deliberately small: it
     clears the DEAD entity's lock and, for an actor, despawns it. It does not clear every other entity's target
     pointing at the corpse, because the target stops resolving the moment the entity is gone and the follow
-    already handles that.
+    already handles that. **That last argument is the REAP's**, so it covers the actor and not the player, whose
+    body stays in the world: ending the killer's fight is the game's, and it takes both doors named in the
+    `ForgetAttacker` bullet above.
 - **The TICK IS EIGHT STEPS now, not five.** Step 1b is the actor pass, between the drain and the cell step: after
   the drain so both kinds of entity carry the tick's commands, before the step so an actor's decision moves it on
   this tick rather than the next. Step 4b is combat, after movement and handoff so a swing is judged on where

@@ -680,7 +680,13 @@ Death is a two-sided split, and the split is the same one section 4 draws:
 - **The engine, for any entity:** clear the dead entity's own `CombatTarget`, and raise `OnDied`. It does NOT clear
   every OTHER entity's target pointing at the corpse, because it does not have to: the target stops resolving the
   moment the entity is gone, and step 2 of the follow already clears a target that does not resolve. One rule, one
-  place.
+  place. **That reasoning is the REAP's**, so it covers exactly the entities the engine despawns, and a dead PLAYER
+  is not one of them: every lock and every damage record naming that body keeps resolving, which makes dropping them
+  part of the game's own death answer below. The lock has a public idiom already, a latched command through the one
+  stepper, and `TileWorldServer.ForgetAttacker(netId, attacker)` is the door for the record, which nothing outside
+  the assembly could write. The engine does not drop either unprompted, because it does not know what a death MEANS
+  for a body it did not remove: where that body goes is the game's answer, and a game whose death is a knockdown
+  revived in place is still in the fight it was in.
 - **The engine, for an ACTOR:** despawn it and put its spawner into `Waiting(respawnDelay)`. That is engine work
   because the spawner is engine-owned. The despawn is the one half of a death that does NOT happen inside the pass:
   it waits for step 5b, behind the serve, for the reason section 6.4 gives.

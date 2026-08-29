@@ -190,6 +190,37 @@ public sealed partial class TileWorldServer
         return host.TryGetOwner(netId, out CellSim cell, out Entity e) && cell.World.TryGet(e, out combat);
     }
 
+    /// <summary>Drops one entity's damage record, and ONLY when it names <paramref name="attacker"/>. Returns false
+    /// and writes nothing when no cell owns the id, when it carries no combat state, or when the record names
+    /// somebody else.
+    /// <para>WHAT A GAME USES IT FOR is a death it owns. The engine's own half of a death clears the DEAD entity's
+    /// target and nothing else, and what lets it stop there is the reap: every other lock naming a corpse stops
+    /// resolving the moment the entity leaves the world. A PLAYER is never reaped, so a game that answers
+    /// <see cref="OnDied"/> by moving the body owns both halves of the killer's break. The LOCK has a public idiom
+    /// already, which is to latch a command through <see cref="TileActorHost.Command"/> and let the one stepper clear
+    /// it, the same idiom the leash break uses. This is the other half: nothing else ages
+    /// <see cref="TileCombatState.LastDamagedBy"/>, so a retaliating behaviour reads it on the first tick the actor
+    /// holds no target and hands the same victim straight back.</para>
+    /// <para>TARGETED RATHER THAN A CLEAR, which is what separates it from the leash break's own forget. A death
+    /// ends ONE fight, so a grudge against a third party who was also hitting this actor has to survive it, or
+    /// first-attacker-wins quietly becomes whoever-died-last-wins.</para>
+    /// <para>NOT DONE UNPROMPTED AT A DEATH, because the engine does not know what a death MEANS for a body it did
+    /// not remove. Where that body goes is the game's answer (a spawn, a hospital, a revive where it fell), and a
+    /// game whose death is a knockdown is still in the fight it was in. An automatic drop would also be
+    /// unrecoverable, since a record that is gone cannot be put back.</para>
+    /// </summary>
+    /// <param name="netId">The entity that forgets.</param>
+    /// <param name="attacker">The net id its record has to name for the record to be dropped. Zero drops nothing,
+    /// because zero is what an empty record already reads as.</param>
+    public bool ForgetAttacker(long netId, long attacker)
+    {
+        if (attacker == 0L) return false;
+        if (!TryGetCombatState(netId, out TileCombatState combat) || combat.LastDamagedBy != attacker) return false;
+        combat.LastDamagedBy = 0L;
+        combat.LastDamagedTick = 0L;
+        return SetCombatState(netId, combat);
+    }
+
     // One entity's tile out of THIS TICK's combat target snapshot, which is what step 0c exists to make one answer.
     // False for an id the snapshot does not hold, which is what a dead, despawned or mid-handoff target reads as,
     // the same answer the follow acts on. Internal because it is the SNAPSHOT rather than the world: a public read
@@ -204,10 +235,11 @@ public sealed partial class TileWorldServer
     }
 
     // Writes one entity's server-only combat state. INTERNAL while its readers are, unlike the public read beside
-    // it: the two writers are the leash break, which drops the damage record so a broken fight cannot be re-acquired
-    // from a stale one, and the combat pass, which stamps the cooldown and the record itself. A game reaches the
-    // numbers through its rules seam rather than through the component, so widening this is a decision to take when
-    // something outside the assembly actually needs it.
+    // it: the writers are the leash break, which drops the damage record so a broken fight cannot be re-acquired
+    // from a stale one, the combat pass, which stamps the cooldown and the record itself, and the public
+    // ForgetAttacker above, which is the same drop for a fight a GAME ended. A game reaches the numbers through its
+    // rules seam rather than through the component, and it reaches the one field it has to be able to drop through
+    // that door, so this stays shut until something outside the assembly needs to write a number here.
     internal bool SetCombatState(long netId, in TileCombatState combat)
     {
         if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) return false;

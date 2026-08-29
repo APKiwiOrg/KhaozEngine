@@ -252,6 +252,13 @@ public sealed class TileActorHost
     // Drops the damage record, which is what makes a break a break rather than a pause. Read first and written only
     // when it holds something, so a leash that fires on every tick of a walk home costs one component read per tick
     // rather than a write into the archetype.
+    //
+    // THE UNTARGETED FORM, and the public TileWorldServer.ForgetAttacker is the targeted one. An actor that breaks
+    // off gives up on everything, so this forgets whoever the record names. A GAME ending one fight, which is what a
+    // death it owns amounts to, names the opponent, because a grudge against a third party has to survive that. The
+    // rule both write is the same one and it is stated once, on TileCombatState.LastDamagedBy: forgetting is the
+    // attacker and the tick going to zero together. This one is not routed through that door because it sits on the
+    // leash's per-tick path, where the read above is what keeps the tick free.
     void ForgetAttacker(long netId)
     {
         if (!server.TryGetCombatState(netId, out TileCombatState combat)) return;

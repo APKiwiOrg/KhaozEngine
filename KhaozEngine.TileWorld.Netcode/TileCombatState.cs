@@ -30,7 +30,11 @@ public struct TileCombatState : IComponent
     /// when damage does, and a blocked zero is the ordinary outcome of a bad accuracy roll against good defence.
     /// What a retaliating behaviour reads, and what a <see cref="TileActorIntentKind.Break"/> clears: an actor that
     /// broke off a fight must not be handed the same attacker back by the retaliation rule the moment it is home
-    /// again.</summary>
+    /// again. FORGETTING IS THIS AND <see cref="LastDamagedTick"/> GOING TO ZERO TOGETHER, wherever it happens.
+    /// <para>A game ending a fight the engine did not end drops it through
+    /// <c>TileWorldServer.ForgetAttacker(netId, attacker)</c>, which is the same act aimed at one opponent. The case
+    /// that needs it is a dead PLAYER, which is never despawned, so a killer holding this keeps re-acquiring the
+    /// body the game just moved.</para></summary>
     public long LastDamagedBy;
 
     /// <summary>The server tick that hit landed on, so a behaviour can age it out rather than retaliating against

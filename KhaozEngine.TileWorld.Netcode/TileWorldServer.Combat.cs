@@ -75,8 +75,15 @@ public sealed partial class TileWorldServer
     /// reap in this file, which qualifies that second half for a viewer one cell over). A handler
     /// reads a live entity either way. It does NOT clear every
     /// other entity's target pointing at the corpse, because it does not have to: the target stops resolving the
-    /// moment the entity is gone and the follow already clears a target that does not resolve. One rule, one place.
-    /// What happens to a dead PLAYER is the game's, through this event.</para></summary>
+    /// moment the entity is gone and the follow already clears a target that does not resolve. One rule, one
+    /// place.</para>
+    /// <para>THAT LAST ARGUMENT IS THE REAP'S, so it holds for exactly the entities this despawns. A dead PLAYER is
+    /// never one of them, and what happens to one is the game's, through this event: the body stays in the world, so
+    /// every lock and every damage record naming it keeps resolving, and a killer holding either picks the fight
+    /// back up wherever the game just put the victim. A game ends that fight the way the leash break does, by
+    /// latching a command to drop the lock and calling <see cref="ForgetAttacker"/> to drop the record. The engine
+    /// does neither on its own, because it does not know what a death MEANS for a body it did not remove.</para>
+    /// </summary>
     public event Action<long, long, int>? OnDied;
 
     /// <summary>Raised once per resolved swing, misses included, before the tick's serve. A game awards experience
@@ -226,7 +233,9 @@ public sealed partial class TileWorldServer
             (long netId, long killer) = died[i];
             // The engine clears the DEAD entity's own target and nothing else. Every OTHER entity's target pointing
             // at the corpse stops resolving the moment the entity is gone, and the follow already clears a target
-            // that does not resolve. One rule, one place.
+            // that does not resolve. One rule, one place. That holds for what the reap below removes, and a dead
+            // PLAYER is not removed: the game answering the event owns the killer's lock and its damage record, and
+            // has a door for each. See the OnDied doc above.
             ClearCombatTarget(netId);
             int slot = SlotOf(netId);
             // BEFORE anything is removed, so a handler can still read the entity it is being told about.

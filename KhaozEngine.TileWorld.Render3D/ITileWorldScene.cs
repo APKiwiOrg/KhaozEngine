@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
 using TileGroundMaterialHandle = KhaozEngine.Render3D.Scene3D.TileGroundMaterialHandle;
@@ -53,6 +54,12 @@ public interface ITileWorldScene
     /// <summary>Queues one water surface for this frame, defaulting to a no-op so an implementation written
     /// before water existed keeps compiling and simply draws none.</summary>
     void DrawWater(in WaterPlane plane) { }
+
+    /// <summary>Queues one per-entity SILHOUETTE (the inverted-hull highlight for a clicked monster or a
+    /// selected prop) of an already-loaded mesh at a world transform, in a flat colour, with the hull pushed
+    /// out by <paramref name="widthMetres"/>. Defaults to a no-op so an implementation written before
+    /// silhouettes existed keeps compiling and simply draws none.</summary>
+    void DrawMeshSilhouette(MeshHandle handle, Matrix4x4 world, Color color, float widthMetres) { }
 }
 
 /// <summary>The shipped <see cref="ITileWorldScene"/>: every member forwards straight to a <see cref="Scene3D"/>
@@ -79,6 +86,10 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene
 
     /// <inheritdoc />
     public void DrawMesh(MeshHandle handle, Matrix4x4 world) => _scene.Draw(handle, world);
+
+    /// <inheritdoc />
+    public void DrawMeshSilhouette(MeshHandle handle, Matrix4x4 world, Color color, float widthMetres) =>
+        _scene.DrawMeshSilhouette(handle, world, color, widthMetres);
 
     /// <inheritdoc />
     public TileGroundMaterialHandle LoadTileGroundMaterial(TileGroundMaterialSet set)

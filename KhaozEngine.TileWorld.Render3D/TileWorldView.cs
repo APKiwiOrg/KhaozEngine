@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using TileGroundMaterialHandle = KhaozEngine.Render3D.Scene3D.TileGroundMaterialHandle;
 
@@ -355,6 +356,55 @@ public sealed partial class TileWorldView : IDisposable
         // region-plane's mesh or the look changed, so this is a walk over the loaded regions and one submit per
         // plane. A caller that runs its own water pass turns it off with TileWorldViewOptions.DrawWater.
         if (_options.DrawWater) DrawWaterPlanes();
+        if (_silhouettedObject != 0L) DrawSilhouettedObject(focus);
+    }
+
+    // The silhouetted object, 0 for none. The id resolves through the document's own O(1) object index
+    // (FindObject) every frame, never through the region accessors: GetOrCreateRegion THROWS for an unloaded
+    // hash and INSERTS a dirty region for an absent coord, and a frame loop must do neither.
+    long _silhouettedObject;
+    Color _silhouetteColor;
+    float _silhouetteWidth;
+
+    /// <summary>The default hull width for an object silhouette, in metres.</summary>
+    public const float DefaultSilhouetteWidthMetres = 0.05f;
+
+    /// <summary>Silhouettes one authored object (the per-entity highlight for a clicked or selected prop): its
+    /// parts re-draw as an inverted hull in <paramref name="color"/> every frame until
+    /// <see cref="ClearSilhouettedObject"/>. An id the loaded regions do not hold draws nothing that frame and
+    /// self-corrects when its region streams in, so a caller can set it optimistically.</summary>
+    /// <param name="objectId">The object's document id, from a pick.</param>
+    /// <param name="color">The hull colour. Alpha blends.</param>
+    /// <param name="widthMetres">The hull width. Defaults to <see cref="DefaultSilhouetteWidthMetres"/>.</param>
+    public void SetSilhouettedObject(long objectId, Color color, float widthMetres = DefaultSilhouetteWidthMetres)
+    {
+        _silhouettedObject = objectId;
+        _silhouetteColor = color;
+        _silhouetteWidth = widthMetres;
+    }
+
+    /// <summary>Stops silhouetting. Safe when nothing is silhouetted.</summary>
+    public void ClearSilhouettedObject() => _silhouettedObject = 0L;
+
+    // Finds the silhouetted object through the document's object index and queues its parts as hulls, the
+    // placement derived exactly the way TileObjectProps builds a prop draw (anchor position, yaw, scale 1), so
+    // the hull sits on the same transform the prop was drawn at. The gates the prop draw applies apply here
+    // too: an object outside the prop draw radius, or a roof hidden by the indoor rule, draws no hull, because
+    // a hull whose model is not drawn has nothing to eat its interior and reads as a solid blob.
+    void DrawSilhouettedObject(Vector3 focus)
+    {
+        if (_doc.FindObject(_silhouettedObject) is not { } o) return;
+        if (RoofsHiddenOn(o.Plane) && _catalogs.Archetype(o.ArchetypeId) is { IsRoof: true }) return;
+        if (_catalogs.Archetype(o.ArchetypeId) is not { } archetype) return;
+        if (!_propMeshes.TryGetValue(o.ArchetypeId, out IReadOnlyList<MeshHandle>? parts)) return;
+        Vector3 at = TileObjectProps.AnchorPosition(_doc, archetype, o);
+        float dx = at.X - focus.X;
+        float dz = at.Z - focus.Z;
+        if (dx * dx + dz * dz > _options.PropDrawRadius * _options.PropDrawRadius) return;
+        Matrix4x4 world = Matrix4x4.CreateRotationY(TileObjectProps.YawRadians(archetype, o.Rotation))
+            * Matrix4x4.CreateTranslation(at);
+        for (int i = 0; i < parts.Count; i++)
+            _scene.DrawMeshSilhouette(parts[i], world, _silhouetteColor, _silhouetteWidth);
     }
 
     /// <summary>The ground materials every region-plane mesh of this view is drawn with, which is also the slot

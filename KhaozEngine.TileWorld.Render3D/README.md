@@ -243,10 +243,15 @@ material base colour. So a palette-painted kit needs neither textures nor a mate
 Everything the view does to a scene goes through `ITileWorldScene`: `LoadMesh`, `UnloadMesh`, `DrawMesh`,
 `LoadPropMeshes`, `UnloadPropMeshes`, `DrawProps`, plus the ground-material trio `LoadTileGroundMaterial`,
 `UnloadTileGroundMaterial` and the `LoadMesh(mesh, material)` overload that binds a mesh to the tile-ground
-pipeline, and `DrawWater(in WaterPlane)` for the water surfaces. Those four ship as DEFAULT interface
-implementations (an invalid handle, a no-op, a fall-through to the material-free upload, and a no-op), so an
-implementation written before textured ground and water existed keeps compiling and simply draws untextured ground
-and no water. It is shaped exactly on what `Scene3D` and the prop renderer
+pipeline, `DrawWater(in WaterPlane)` for the water surfaces, and `DrawMeshSilhouette(handle, world, color,
+widthMetres)` for the per-entity highlight rim (18.3.0). Those five ship as DEFAULT interface
+implementations (an invalid handle, a no-op, a fall-through to the material-free upload, and no-ops), so an
+implementation written before textured ground, water or silhouettes existed keeps compiling and simply draws
+untextured ground, no water and no rims. The view's own door is
+`TileWorldView.SetSilhouettedObject(long objectId, Color color, float widthMetres = 0.05f)` /
+`ClearSilhouettedObject()`: the flagged object's parts re-draw as hulls at the exact prop transform every
+frame, resolved by id per frame from the loaded regions, and an id nothing loaded holds is a quiet no-op that
+self-corrects when its region streams in. It is shaped exactly on what `Scene3D` and the prop renderer
 already offer, because its job is to let the view's bookkeeping run without a device, not to add an abstraction of
 its own. `Scene3DTileWorldScene` is the shipped implementation and forwards straight through, and a test drives a
 recording fake, which is how every view and residency rule is covered headless.

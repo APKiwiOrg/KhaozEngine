@@ -449,14 +449,17 @@ exists at all when there is none between `TileWorld` and `Terrain` themselves. `
 through its own `ITileWorldScene` seam rather than a `Scene3D` field, so every view and residency rule is testable
 without a device, and `Scene3DTileWorldScene` is the one place the two meet.
 
-**The seam grew four members for textured ground and water (17.38.0), all DEFAULT interface implementations.**
+**The seam grew four members for textured ground and water (17.38.0), and a fifth for silhouettes (18.3.0),
+all DEFAULT interface implementations.**
 `LoadTileGroundMaterial(TileGroundMaterialSet)` (defaults to an invalid handle),
 `UnloadTileGroundMaterial(TileGroundMaterialHandle)` (a no-op), `LoadMesh(GltfMesh,
 TileGroundMaterialHandle)` (falls through to the material-free `LoadMesh`, so the same geometry renders through
-the model path) and `DrawWater(in WaterPlane)` (a no-op, so no water is drawn). Defaults rather than abstract
+the model path), `DrawWater(in WaterPlane)` (a no-op, so no water is drawn) and
+`DrawMeshSilhouette(MeshHandle, Matrix4x4, Color, float)` (a no-op, so no highlight rims are drawn). Defaults
+rather than abstract
 members because two implementations sit outside this repo's control (a consumer's own, and Grimhollow's test
 fake), and the alternative is a compile break in a downstream game for a feature it has not adopted. The seam
-still adds no abstraction of its own: each of the four is `Scene3D` API forwarded straight through by
+still adds no abstraction of its own: each of the five is `Scene3D` API forwarded straight through by
 `Scene3DTileWorldScene`. The mesher takes a second, smaller seam for the same headless reason,
 `ITileGroundSlotMap` (`SlotOf(materialId)`, `MissingSlot`), which is what lets a slot map be swapped for a stub in
 a test. `TileGroundMaterialSet` implements it, and `IdentitySlotMap` is the shipped stand-in for a caller that has

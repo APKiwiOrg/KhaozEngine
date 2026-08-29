@@ -516,4 +516,61 @@ public class TileWorldViewTests
             return archetype.Id == "wall" ? null : _inner.Resolve(archetype);
         }
     }
+
+    [Fact]
+    public void A_silhouetted_object_draws_its_parts_as_hulls_at_the_prop_transform()
+    {
+        var scene = new RecordingTileWorldScene();
+        TileWorldDocument doc = TileRenderTestData.HouseWorld();
+        using TileWorldView view = View(scene, doc);
+        view.LoadRegion(TileRenderTestData.Region);
+
+        TileObject target = doc.GetOrCreateRegion(TileRenderTestData.Region).Objects[0];
+        var crimson = new KhaozEngine.Primitives.Color(0.9f, 0.25f, 0.2f, 1f);
+        view.SetSilhouettedObject(target.Id, crimson, widthMetres: 0.07f);
+        view.Draw(HouseFocus);
+
+        // One hull per part of the object's archetype, at the transform the prop itself draws with: the same
+        // anchor and yaw TileObjectProps builds a placement from.
+        TileObjectArchetype archetype = TileRenderTestData.Catalogs.Archetype(target.ArchetypeId)!;
+        Assert.Equal(new GreyboxMeshResolver().Resolve(archetype)!.Count, scene.Silhouettes.Count);
+        Vector3 at = TileObjectProps.AnchorPosition(doc, archetype, target);
+        Matrix4x4 expected = Matrix4x4.CreateRotationY(TileObjectProps.YawRadians(archetype, target.Rotation))
+            * Matrix4x4.CreateTranslation(at);
+        foreach (var s in scene.Silhouettes)
+        {
+            Assert.Equal(expected, s.World);
+            Assert.Equal(crimson, s.Color);
+            Assert.Equal(0.07f, s.Width);
+        }
+
+        // Clearing stops the hulls on the next frame, and nothing else draws them.
+        scene.Silhouettes.Clear();
+        view.ClearSilhouettedObject();
+        view.Draw(HouseFocus);
+        Assert.Empty(scene.Silhouettes);
+    }
+
+    [Fact]
+    public void An_unknown_or_unloaded_silhouette_id_draws_nothing()
+    {
+        var scene = new RecordingTileWorldScene();
+        TileWorldDocument doc = TileRenderTestData.HouseWorld();
+        using TileWorldView view = View(scene, doc);
+        view.LoadRegion(TileRenderTestData.Region);
+
+        // An id no loaded region holds is a quiet no-op, the optimistic-set contract: the caller may set it
+        // before the region streams in and the hull appears when it does.
+        view.SetSilhouettedObject(999_999L, new KhaozEngine.Primitives.Color(1f, 1f, 1f, 1f));
+        view.Draw(HouseFocus);
+        Assert.Empty(scene.Silhouettes);
+
+        // A silhouetted object outside the prop draw radius draws no hull either: a hull whose model is not
+        // drawn has nothing to eat its interior and would read as a solid blob, the same gate the prop draw
+        // itself applies.
+        TileObject target = doc.GetOrCreateRegion(TileRenderTestData.Region).Objects[0];
+        view.SetSilhouettedObject(target.Id, new KhaozEngine.Primitives.Color(1f, 1f, 1f, 1f));
+        view.Draw(HouseFocus + new Vector3(500f, 0f, 0f));
+        Assert.Empty(scene.Silhouettes);
+    }
 }

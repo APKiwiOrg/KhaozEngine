@@ -467,6 +467,13 @@ public sealed partial class RecordingTileWorldScene : ITileWorldScene
     /// <summary>Records one mesh draw at its world transform.</summary>
     public void DrawMesh(MeshHandle handle, Matrix4x4 world) => Drawn.Add((handle, world));
 
+    /// <summary>Every silhouette draw, in submission order, with the transform, colour and width it rode.</summary>
+    public List<(MeshHandle Handle, Matrix4x4 World, KhaozEngine.Primitives.Color Color, float Width)> Silhouettes { get; } = new();
+
+    /// <summary>Records one silhouette draw.</summary>
+    public void DrawMeshSilhouette(MeshHandle handle, Matrix4x4 world, KhaozEngine.Primitives.Color color, float widthMetres) =>
+        Silhouettes.Add((handle, world, color, widthMetres));
+
     /// <summary>Hands out one fresh live handle per part, unless this is the archetype
     /// <see cref="ThrowOnPropMeshLoad"/> names, which throws having uploaded nothing.</summary>
     public IReadOnlyList<MeshHandle> LoadPropMeshes(IReadOnlyList<GltfMeshPart> parts)

@@ -1,8 +1,10 @@
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.App;
 using KhaozEngine.Gui;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
+using KhaozEngine.Windowing;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gui
@@ -155,6 +157,237 @@ namespace KhaozEngine.Tests.Gui
             Assert.False(full.Enabled);
             Assert.True(full.LabelColor.HasValue);
             Assert.Equal(Vector4.One, full.LabelColor.Value);
+        }
+
+        // ---- interaction ----------------------------------------------------
+        //
+        // The interaction fixture is a three-row menu opened at (300,200) in the 960x540 viewport. With the
+        // fixed font the widest row is "Use" + DetailGap + "Rope" (86), so the menu is 106 wide and
+        // TitleBand(33) + 3 * RowH(28) = 117 tall, and nothing flips or clamps at that point. Rows therefore
+        // run 233..261, 261..289 and 289..317, and the third row is disabled.
+
+        static readonly Vector2 Point = new(300, 200);
+        static readonly Vector2 Row0Pt = new(350, 247);
+        static readonly Vector2 Row1Pt = new(350, 275);
+        static readonly Vector2 Row2Pt = new(350, 303);   // the disabled row
+        static readonly Vector2 TitlePt = new(350, 210);  // inside the menu, on the title band
+        static readonly Vector2 Outside = new(700, 400);
+
+        static ContextMenuEntry[] Three() => new[]
+        {
+            new ContextMenuEntry("Attack", Tag: 11),
+            new ContextMenuEntry("Use", "Rope", Tag: 22),
+            new ContextMenuEntry("Bury", Tag: 33, Enabled: false),
+        };
+
+        // One per test-class instance (xUnit builds a fresh instance per fact), so the press and release edges
+        // come from this test's own frame sequence, per the MouseFrames contract.
+        readonly MouseFrames _mouse = new();
+
+        InputState Frame(Vector2 pos, bool down)
+        {
+            var b = new HashSet<MouseButton>();
+            if (down) b.Add(MouseButton.Left);
+            var (edgePressed, edgeReleased) = _mouse.Advance(b);
+            return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+                b, edgePressed, pos, Vector2.Zero, 0, 960, 540, mouseReleased: edgeReleased);
+        }
+
+        static ContextMenu OpenMenu(ContextMenuEntry[] entries, Vector2 point)
+        {
+            var menu = new ContextMenu(Font, Font) { Viewport = View };
+            menu.Open(LocalizedText.Raw("Options"), entries, point);
+            return menu;
+        }
+
+        void Tap(ContextMenu menu, Pointer p, Vector2 at)
+        {
+            p.Update(Frame(at, false)); menu.Update(p);
+            p.Update(Frame(at, true)); menu.Update(p);
+            p.Update(Frame(at, false)); menu.Update(p);
+        }
+
+        void Idle(ContextMenu menu, Pointer p, Vector2 at)
+        {
+            p.Update(Frame(at, false));
+            menu.Update(p);
+        }
+
+        [Fact]
+        public void Tap_on_a_row_selects_its_tag_and_closes()
+        {
+            ContextMenu menu = OpenMenu(Three(), Point);
+            var p = new Pointer();
+
+            Tap(menu, p, Row1Pt);
+
+            Assert.True(menu.WasSelected);
+            Assert.Equal(22L, menu.SelectedTag);
+            Assert.Equal(1, menu.SelectedIndex);
+            Assert.False(menu.IsOpen);
+            Assert.False(menu.WasDismissed);
+        }
+
+        [Fact]
+        public void Tap_on_a_disabled_row_selects_nothing_and_stays_open()
+        {
+            ContextMenu menu = OpenMenu(Three(), Point);
+            var p = new Pointer();
+
+            Tap(menu, p, Row2Pt);
+
+            Assert.False(menu.WasSelected);
+            Assert.Equal(-1, menu.SelectedIndex);
+            Assert.True(menu.IsOpen);       // the tap landed inside the menu, so it is not a dismissal either
+            Assert.False(menu.WasDismissed);
+
+            // A tap on the title band is inert the same way: inside the menu, on no row.
+            Tap(menu, p, TitlePt);
+            Assert.False(menu.WasSelected);
+            Assert.True(menu.IsOpen);
+        }
+
+        [Fact]
+        public void Release_outside_dismisses_and_reports_the_press_position()
+        {
+            ContextMenu menu = OpenMenu(Three(), Point);
+            var p = new Pointer();
+            var pressAt = new Vector2(700, 400);
+            var releaseAt = new Vector2(800, 450);
+
+            // Press outside, drag, release somewhere else outside. DismissPress is documented as the RELEASE
+            // position, which is the one IsReleasedOutside keys on, so a drag that starts elsewhere still
+            // reopens under the cursor rather than at a stale press origin.
+            p.Update(Frame(pressAt, true)); menu.Update(p);
+            p.Update(Frame(releaseAt, true)); menu.Update(p);
+            p.Update(Frame(releaseAt, false)); menu.Update(p);
+
+            Assert.False(menu.IsOpen);
+            Assert.True(menu.WasDismissed);
+            Assert.False(menu.WasSelected);
+            Assert.Equal(releaseAt, menu.DismissPress);
+            Assert.NotEqual(pressAt, menu.DismissPress!.Value);
+            Assert.Equal(pressAt, p.PressOrigin);   // the press origin really was the other point
+        }
+
+        [Fact]
+        public void Menu_cancel_dismisses_via_the_input_manager_overload()
+        {
+            ContextMenu menu = OpenMenu(Three(), Point);
+            var input = new InputManager();
+
+            input.Update(OverlayTestInput.KeyFrame(Key.F1));
+            Assert.False(menu.Update(input));
+            Assert.True(menu.IsOpen);           // an unrelated key is not a cancel
+
+            input.Update(OverlayTestInput.KeyFrame(Key.Escape));
+            Assert.False(menu.Update(input));
+
+            Assert.False(menu.IsOpen);
+            Assert.True(menu.WasDismissed);
+            Assert.False(menu.WasSelected);
+            Assert.Null(menu.DismissPress);     // no outside press to reopen from
+        }
+
+        [Fact]
+        public void Hover_index_tracks_the_pointer_and_skips_disabled_rows()
+        {
+            ContextMenu menu = OpenMenu(Three(), Point);
+            var p = new Pointer();
+
+            Idle(menu, p, Row0Pt);
+            Assert.Equal(0, menu.HoverIndex);
+
+            Idle(menu, p, Row1Pt);
+            Assert.Equal(1, menu.HoverIndex);
+
+            Idle(menu, p, Row2Pt);
+            Assert.Equal(-1, menu.HoverIndex);   // disabled rows never highlight
+
+            Idle(menu, p, TitlePt);
+            Assert.Equal(-1, menu.HoverIndex);
+
+            Idle(menu, p, Outside);
+            Assert.Equal(-1, menu.HoverIndex);
+        }
+
+        [Fact]
+        public void Reopen_while_open_replaces_entries_and_point()
+        {
+            ContextMenu menu = OpenMenu(Three(), Point);
+            var p = new Pointer();
+            Idle(menu, p, Row0Pt);
+            Assert.Equal(0, menu.HoverIndex);
+
+            // One row, 70 wide (the 4-char title drives nothing here), 33 + 28 = 61 tall at (100,100), so its
+            // only row runs 133..161.
+            menu.Open(LocalizedText.Raw("Bank"), new[] { new ContextMenuEntry("Close", Tag: 99) }, new Vector2(100, 100));
+            Assert.True(menu.IsOpen);
+
+            Idle(menu, p, Row0Pt);
+            Assert.Equal(-1, menu.HoverIndex);   // the old point's rows are gone
+
+            var newRow0 = new Vector2(135, 147);
+            Idle(menu, p, newRow0);
+            Assert.Equal(0, menu.HoverIndex);
+
+            Tap(menu, p, newRow0);
+            Assert.True(menu.WasSelected);
+            Assert.Equal(99L, menu.SelectedTag);
+            Assert.Equal(0, menu.SelectedIndex);
+        }
+
+        [Fact]
+        public void Open_frame_flags_are_clear_and_selection_flags_last_one_frame()
+        {
+            ContextMenu menu = OpenMenu(Three(), Point);
+            var p = new Pointer();
+
+            Assert.False(menu.WasSelected);
+            Assert.False(menu.WasDismissed);
+            Assert.Null(menu.DismissPress);
+            Assert.Equal(-1, menu.SelectedIndex);
+            Assert.Equal(0L, menu.SelectedTag);
+            Assert.Equal(-1, menu.HoverIndex);
+
+            Tap(menu, p, Row0Pt);
+            Assert.True(menu.WasSelected);
+            Assert.Equal(0, menu.SelectedIndex);
+            Assert.Equal(11L, menu.SelectedTag);
+
+            // The next Update clears them, closed menu included, so a caller reads them on the frame Update
+            // returned true and never off a stale latch.
+            Idle(menu, p, Row0Pt);
+            Assert.False(menu.WasSelected);
+            Assert.Equal(-1, menu.SelectedIndex);
+            Assert.Equal(0L, menu.SelectedTag);
+            Assert.False(menu.WasDismissed);
+
+            // Same for the dismissal flags.
+            menu.Open(LocalizedText.Raw("Options"), Three(), Point);
+            Tap(menu, p, Outside);
+            Assert.True(menu.WasDismissed);
+            Assert.Equal(Outside, menu.DismissPress);
+            Idle(menu, p, Outside);
+            Assert.False(menu.WasDismissed);
+            Assert.Null(menu.DismissPress);
+        }
+
+        [Fact]
+        public void Update_reserves_the_menu_bounds_against_click_through()
+        {
+            ContextMenu menu = OpenMenu(Three(), Point);
+            var p = new Pointer();
+
+            Idle(menu, p, Outside);
+            Assert.True(p.IsBlocked(Row1Pt));    // the world beneath cannot be clicked through the menu
+            Assert.True(p.IsBlocked(TitlePt));   // the title band reserves too, it is part of the menu
+            Assert.False(p.IsBlocked(Outside));
+
+            // Reservations are per-frame and stop with the menu.
+            menu.Close();
+            Idle(menu, p, Outside);
+            Assert.False(p.IsBlocked(Row1Pt));
         }
     }
 }

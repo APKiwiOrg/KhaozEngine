@@ -4,6 +4,7 @@ using System.Numerics;
 using KhaozEngine.App;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
+using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Gui
 {
@@ -56,13 +57,245 @@ namespace KhaozEngine.Gui
     /// </summary>
     public sealed class ContextMenu
     {
-        readonly SpriteFont _titleFont, _bodyFont;
+        readonly ITextMeasurer _titleMeasure, _bodyMeasure;
+        readonly SpriteFont? _titleFont, _bodyFont;
+
+        readonly List<ContextMenuEntry> _entries = new();
+        string _title = "";
+        Vector2 _point;
 
         /// <summary>Spacing knobs used by the layout and the draw. Defaults to <see cref="ContextMenuMetrics.Default"/>.</summary>
         public ContextMenuMetrics Metrics = ContextMenuMetrics.Default;
 
         /// <summary>Build a menu that measures and draws its title band with <paramref name="titleFont"/> and its entry rows with <paramref name="bodyFont"/>.</summary>
-        public ContextMenu(SpriteFont titleFont, SpriteFont bodyFont) { _titleFont = titleFont; _bodyFont = bodyFont; }
+        public ContextMenu(SpriteFont titleFont, SpriteFont bodyFont)
+        {
+            _titleFont = titleFont; _bodyFont = bodyFont;
+            _titleMeasure = titleFont; _bodyMeasure = bodyFont;
+        }
+
+        /// <summary>
+        /// Measure-only build (the <see cref="ToastView"/> precedent): layout and interaction run off plain
+        /// <see cref="ITextMeasurer"/>s, so a headless test drives <see cref="Open"/> / <see cref="Update(Pointer)"/>
+        /// without a GPU device or a baked font. <see cref="Draw"/> throws on a menu built this way, because
+        /// there is no <see cref="SpriteFont"/> to render glyphs with.
+        /// </summary>
+        public ContextMenu(ITextMeasurer titleFont, ITextMeasurer bodyFont)
+        {
+            _titleMeasure = titleFont; _bodyMeasure = bodyFont;
+        }
+
+        /// <summary>True while the menu is showing. Set by <see cref="Open"/>, cleared by <see cref="Close"/>, a selection or a dismissal.</summary>
+        public bool IsOpen { get; private set; }
+
+        /// <summary>
+        /// The design-space viewport the menu clamps within. Defaults to <see cref="Vector2.Zero"/> ("unset"):
+        /// assign the real design size before updating or drawing an open menu. An open menu with this unset
+        /// throws in <see cref="Draw"/> (the <see cref="Tooltip"/> precedent) so a forgotten assignment fails
+        /// loudly instead of silently pinning the menu into the top-left corner.
+        /// </summary>
+        public Vector2 Viewport = Vector2.Zero;
+
+        /// <summary>
+        /// True only on the frame a row was selected (the <see cref="Dropdown.WasChanged"/> precedent), which is
+        /// also the frame <see cref="Update(Pointer)"/> returned <c>true</c>. Every flag in this group
+        /// (<see cref="SelectedTag"/>, <see cref="SelectedIndex"/>, <see cref="WasDismissed"/>,
+        /// <see cref="DismissPress"/>) is cleared at the top of the next <see cref="Update(Pointer)"/>, closed
+        /// menu included, so read them on the frame they fire rather than stashing the object and reading later.
+        /// </summary>
+        public bool WasSelected { get; private set; }
+
+        /// <summary>The selected row's <see cref="ContextMenuEntry.Tag"/> on the selection frame, else <c>0</c>.</summary>
+        public long SelectedTag { get; private set; }
+
+        /// <summary>The selected row's index on the selection frame, else <c>-1</c>.</summary>
+        public int SelectedIndex { get; private set; } = -1;
+
+        /// <summary>True only on the frame the menu was dismissed without a selection (a release outside it, or menu-cancel).</summary>
+        public bool WasDismissed { get; private set; }
+
+        /// <summary>
+        /// Where the dismissing gesture RELEASED, when the dismissal came from a release outside the menu, else
+        /// <c>null</c> (a menu-cancel key has no position). This is the release position rather than the press
+        /// origin, deliberately: <see cref="Pointer.IsReleasedOutside"/> keys on the release, so a press that
+        /// began inside the menu and dragged out reports where the cursor actually ended up. A caller that
+        /// reopens on the same gesture (a right press that dismisses one menu and opens the next) anchors the
+        /// new menu here, under the cursor, not at a stale origin.
+        /// </summary>
+        public Vector2? DismissPress { get; private set; }
+
+        /// <summary>
+        /// The row under the pointer, or <c>-1</c> for none. Never a disabled row, so the hover fill and any
+        /// caller-side hover affordance agree with what selection will actually accept. <c>-1</c> while closed.
+        /// </summary>
+        public int HoverIndex { get; private set; } = -1;
+
+        /// <summary>Menu fill.</summary>
+        public Vector4 Background = GuiTheme.Default.Background;
+        /// <summary>Menu border, and the 1px separator under the title band.</summary>
+        public Vector4 Border = GuiTheme.Default.Border;
+        /// <summary>Title text in the header band.</summary>
+        public Vector4 TitleColor = GuiTheme.Default.TextMuted;
+        /// <summary>Row label text, unless the entry carries its own <see cref="ContextMenuEntry.LabelColor"/>.</summary>
+        public Vector4 TextColor = GuiTheme.Default.Text;
+        /// <summary>Right-aligned row detail text, unless the entry carries its own <see cref="ContextMenuEntry.DetailColor"/>.</summary>
+        public Vector4 DetailColor = GuiTheme.Default.TextMuted;
+        /// <summary>Row fill under <see cref="HoverIndex"/>.</summary>
+        public Vector4 HoverColor = GuiTheme.Default.SurfaceHover;
+        /// <summary>
+        /// Label and detail text on a disabled row (muted text at half alpha), which overrides the entry's own
+        /// colours: a disabled row must read as disabled whatever the caller tinted it.
+        /// </summary>
+        public Vector4 DisabledColor = new(GuiTheme.Default.TextMuted.X, GuiTheme.Default.TextMuted.Y,
+            GuiTheme.Default.TextMuted.Z, GuiTheme.Default.TextMuted.W * 0.5f);
+
+        /// <summary>
+        /// Show a menu with this title and these entries anchored at <paramref name="screenPoint"/> (design
+        /// pixels). Reopening while already open simply replaces the content and the point, and clears every
+        /// frame flag, so a right press that lands on a new target swaps the menu in one call. A null or empty
+        /// <paramref name="entries"/> opens a title-only menu rather than throwing.
+        /// </summary>
+        public void Open(LocalizedText title, IReadOnlyList<ContextMenuEntry> entries, Vector2 screenPoint)
+        {
+            _title = title.Resolve() ?? "";
+            _entries.Clear();
+            if (entries != null)
+                for (int i = 0; i < entries.Count; i++) _entries.Add(entries[i]);
+            _point = screenPoint;
+            IsOpen = true;
+            HoverIndex = -1;
+            ClearFrameFlags();
+        }
+
+        /// <summary>Hide the menu. Leaves this frame's flags alone, so a caller closing in response to a selection still reads it.</summary>
+        public void Close()
+        {
+            IsOpen = false;
+            HoverIndex = -1;
+        }
+
+        void ClearFrameFlags()
+        {
+            WasSelected = false;
+            SelectedIndex = -1;
+            SelectedTag = 0;
+            WasDismissed = false;
+            DismissPress = null;
+        }
+
+        /// <summary>
+        /// Drive one frame of the open menu (a no-op beyond clearing the frame flags while closed). Reserves the
+        /// menu's bounds through <see cref="Pointer.BlockRegion"/> (the <see cref="Dropdown"/> precedent) so the
+        /// world beneath cannot be clicked through it, tracks <see cref="HoverIndex"/>, selects on a tap inside
+        /// an ENABLED row (setting <see cref="WasSelected"/> / <see cref="SelectedTag"/> /
+        /// <see cref="SelectedIndex"/> and closing), and dismisses on a release outside the bounds (setting
+        /// <see cref="WasDismissed"/> and <see cref="DismissPress"/>). A tap inside the menu that hits the title
+        /// band or a disabled row does nothing and leaves the menu open. Returns <see cref="WasSelected"/>.
+        /// </summary>
+        public bool Update(Pointer pointer)
+        {
+            ClearFrameFlags();
+            if (!IsOpen) { HoverIndex = -1; return false; }
+
+            Rect bounds = Bounds();
+            pointer.BlockRegion(bounds);
+
+            HoverIndex = -1;
+            for (int i = 0; i < _entries.Count; i++)
+            {
+                if (!_entries[i].Enabled) continue;
+                if (!pointer.IsPointerIn(RowBounds(bounds, _titleMeasure, _bodyMeasure, i, Metrics))) continue;
+                HoverIndex = i;
+                break;
+            }
+
+            for (int i = 0; i < _entries.Count; i++)
+            {
+                ContextMenuEntry e = _entries[i];
+                if (!e.Enabled) continue;
+                if (!pointer.IsTapIn(RowBounds(bounds, _titleMeasure, _bodyMeasure, i, Metrics))) continue;
+                WasSelected = true;
+                SelectedIndex = i;
+                SelectedTag = e.Tag;
+                Close();
+                return true;
+            }
+
+            if (pointer.IsReleasedOutside(bounds))
+            {
+                WasDismissed = true;
+                DismissPress = pointer.Position;
+                Close();
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// <see cref="Update(Pointer)"/> plus menu-cancel (Escape / gamepad B / Back) dismissal, mirroring
+        /// <see cref="Dropdown.Update(InputManager, bool, PlayerIndex?)"/>. A cancel sets
+        /// <see cref="WasDismissed"/> with a null <see cref="DismissPress"/>, since there is no outside press to
+        /// reopen from. <paramref name="player"/> scopes gamepad input (null = any player).
+        /// </summary>
+        public bool Update(InputManager input, PlayerIndex? player = null)
+        {
+            bool selected = Update(input.Pointer);
+            if (IsOpen && input.IsMenuCancel(player, out _))
+            {
+                WasDismissed = true;
+                DismissPress = null;
+                Close();
+            }
+            return selected;
+        }
+
+        /// <summary>
+        /// Draw the open menu (a no-op while closed). <paramref name="white"/> is a 1x1 white texture. The title
+        /// band is always painted, empty title included, so the header never reads as dead space: title text at
+        /// <see cref="TitleColor"/> plus a 1px separator in <see cref="Border"/> across the bottom of the band.
+        /// Rows walk the same <see cref="RowBounds"/> geometry the hit-testing does.
+        /// </summary>
+        public void Draw(SpriteBatch batch, Texture2D white)
+        {
+            if (!IsOpen) return;
+            if (Viewport == Vector2.Zero)
+                throw new InvalidOperationException(
+                    "ContextMenu.Viewport is unset (Vector2.Zero); assign the design viewport size before draw.");
+            if (_titleFont == null || _bodyFont == null)
+                throw new InvalidOperationException(
+                    "ContextMenu was built measure-only (the ITextMeasurer constructor); build it with SpriteFonts to draw.");
+
+            Rect b = Bounds();
+            GuiDraw.Fill(batch, white, b, Background);
+            GuiDraw.Border(batch, white, b, 1f, Border);
+
+            float textX = MathF.Floor(b.X + Metrics.PadX);
+            if (!string.IsNullOrEmpty(_title))
+                batch.DrawString(_titleFont, _title, new Vector2(textX, MathF.Floor(b.Y + Metrics.RowPadY)), (Color)TitleColor);
+            // Centred in the TitleGap band under the title text, which is where the first row starts.
+            float sepY = MathF.Floor(b.Y + TitleBandHeight(_titleMeasure, Metrics) - Metrics.TitleGap * 0.5f);
+            GuiDraw.Fill(batch, white, new Rect(textX, sepY, MathF.Max(0f, b.Width - Metrics.PadX * 2f), 1f), Border);
+
+            for (int i = 0; i < _entries.Count; i++)
+            {
+                ContextMenuEntry e = _entries[i];
+                Rect r = RowBounds(b, _titleMeasure, _bodyMeasure, i, Metrics);
+                if (e.Enabled && i == HoverIndex) GuiDraw.Fill(batch, white, r, HoverColor);
+
+                Vector4 label = e.Enabled ? e.LabelColor ?? TextColor : DisabledColor;
+                Vector4 detail = e.Enabled ? e.DetailColor ?? DetailColor : DisabledColor;
+                float y = MathF.Floor(r.Y + Metrics.RowPadY);
+                batch.DrawString(_bodyFont, e.Label, new Vector2(textX, y), (Color)label);
+                if (!string.IsNullOrEmpty(e.RightDetail))
+                {
+                    float dw = _bodyFont.Measure(e.RightDetail).X;
+                    batch.DrawString(_bodyFont, e.RightDetail,
+                        new Vector2(MathF.Floor(r.Right - Metrics.PadX - dw), y), (Color)detail);
+                }
+            }
+        }
+
+        /// <summary>The current menu rect, from the live title, entries and anchor point. One layout source for hit-testing and drawing.</summary>
+        Rect Bounds() => ComputeBounds(_titleMeasure, _title, _bodyMeasure, _entries, _point, Viewport, Metrics);
 
         /// <summary>
         /// Pure layout: the on-screen rect for a menu with this title and these entries opened at

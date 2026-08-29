@@ -602,6 +602,65 @@ public class TileCombatResolveTests
         Assert.Empty(refused);
     }
 
+    // THE PENNED-IN STEP-OFF, at the server. TileCombatTargetTests pins the simulator half of that claim (the lock
+    // clears and nothing thrashes) and cannot pin this one, because a notice is addressed to a SLOT, which is not a
+    // thing the simulator knows. A follower standing ON a target whose every reach tile is denied has nowhere to step
+    // off TO, so it takes rule 5's answer, and the player is TOLD: that is the whole difference from the silent
+    // forever-lock #751 is about. What makes it reportable is the watch by the id the click NAMES rather than by the
+    // one on the state, since the follow clears this lock inside the click's own Advance.
+    [Fact]
+    public void A_penned_in_target_stood_on_answers_the_click_with_cannot_reach()
+    {
+        var hub = new InMemoryTransportHub();
+        var rules = new FixedRules();
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        foreach ((int x, int z) in new[] { (20, 19), (20, 21), (19, 20), (21, 20) }) doc.AddObject("tree", x, z, 0, 0);
+        // The player starts ON the penned tile, which is the position a catch leaves it in: a chase that lands on a
+        // moving target's own tile puts both bodies there, and a body never blocks a tile.
+        using TileWorldServer s = Server(doc, hub.Server, new TileCoord(20, 20, 0), rules);
+        s.SpawnPlayer(0, "a", "Ari");
+        long penned = s.SpawnActor(new TileCoord(20, 20, 0), new TileActorSpawn(100, 4, TileDirection.S));
+        var refused = new List<long>();
+        s.OnCannotReach += (_, target) => refused.Add(target);
+
+        s.Enqueue(0, seq: 0, TileCommand.Attack(penned, TileMoveMode.Run));
+        s.Tick(Dt);
+
+        Assert.Equal(new[] { penned }, refused);
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState st));
+        Assert.Equal(0L, st.CombatTarget);
+        Assert.True(st.Route.IsIdle);
+        Assert.Equal(new TileCoord(20, 20, 0), st.Tile);
+        Assert.False(st.IsStepping);
+
+        // Once per broken lock, as the unreachable case above: the lock is already gone, so the next tick watches
+        // nothing and there is nothing left to refuse.
+        s.Tick(Dt);
+        Assert.Single(refused);
+        // The refusal is the PEN, not a target that quietly stopped resolving: an id the tick's snapshot cannot hold
+        // is refused by the clicked branch too, and would pass every assertion above for the wrong reason.
+        Assert.True(s.TryGetActorState(penned, out _));
+
+        // THE CONTROL, the same click on the same tile with the pen taken away. The step-off finds a reach tile, so
+        // the body moves, the lock is kept and nothing is said. Without this the test above passes on any world in
+        // which the click simply fails.
+        var openHub = new InMemoryTransportHub();
+        using TileWorldServer open = Server(TileMoveSimulatorTests.FlatWorld(), openHub.Server,
+            new TileCoord(20, 20, 0), new FixedRules());
+        open.SpawnPlayer(0, "a", "Ari");
+        long free = open.SpawnActor(new TileCoord(20, 20, 0), new TileActorSpawn(100, 4, TileDirection.S));
+        var openRefused = new List<long>();
+        open.OnCannotReach += (_, target) => openRefused.Add(target);
+
+        open.Enqueue(0, seq: 0, TileCommand.Attack(free, TileMoveMode.Run));
+        open.Tick(Dt);
+
+        Assert.Empty(openRefused);
+        Assert.True(open.TryGetPlayerState(0, out TileMoveState stepped));
+        Assert.Equal(free, stepped.CombatTarget);
+        Assert.NotEqual(new TileCoord(20, 20, 0), stepped.Tile);
+    }
+
     // THE TWO WAYS A TARGET STOPS RESOLVING, which are not the same fact and must not get the same answer. A click
     // naming an id the world no longer holds is a stale click from a client whose monster went away a moment ago,
     // and it is refused out loud, exactly as the same click made as an Interact is: silence would leave that client

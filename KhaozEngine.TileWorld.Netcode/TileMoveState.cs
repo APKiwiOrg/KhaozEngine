@@ -97,8 +97,8 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
     /// <para>It lives HERE, on the state, and costs 8 bytes on every entity's every snapshot, rather than on a
     /// component present only on entities actually fighting. That was weighed and rejected on the package's
     /// founding property: <see cref="TileMoveSimulator"/> is an
-    /// <see cref="KhaozEngine.Netcode.ITickSimulator{TState,TCommand}"/> and sees the state and the command and
-    /// nothing else, so a target held anywhere else cannot be followed inside the one stepper both heads run.
+    /// <see cref="KhaozEngine.Netcode.ITickSimulator{TState,TCommand}"/>, and that contract is a state and a command
+    /// and nothing else, so a target held anywhere else cannot be followed inside the one stepper both heads run.
     /// Following it elsewhere means a SECOND movement authority the client cannot predict, and a client that cannot
     /// predict its own approach pays a round trip on every re-path of every chase.</para>
     /// <para>Mutually exclusive with <see cref="InteractTarget"/>, each clearing the other, for the reason

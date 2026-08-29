@@ -439,10 +439,10 @@ either way, so the fallback costs no rewrite. Which one ships is a FEEL round in
 That is a deliberate 8 bytes on every entity's every snapshot, and the alternative was to keep the target in a
 separate component present only on entities actually fighting, which would be free for the ninety-five per cent of
 entities that are not. It was rejected on the package's founding property: `TileMoveSimulator` is
-`ITickSimulator<TileMoveState, TileCommand>` and sees the state and the command and nothing else, so a target that
-lives outside `TileMoveState` cannot be followed inside the one stepper both heads run. Following it anywhere else
-means a SECOND movement authority the client cannot predict, and a client that cannot predict its own approach pays
-a round trip on every re-path of every chase. Eight bytes against that is not a close call.
+`ITickSimulator<TileMoveState, TileCommand>`, and that contract is a state and a command and nothing else, so a
+target that lives outside `TileMoveState` cannot be followed inside the one stepper both heads run. Following it
+anywhere else means a SECOND movement authority the client cannot predict, and a client that cannot predict its
+own approach pays a round trip on every re-path of every chase. Eight bytes against that is not a close call.
 
 `CombatTarget` and `InteractTarget` are mutually exclusive and each clears the other, for the reason
 `TileActionQueue.cs:38-45` gives about its own pair: two records of one intent, where the one that outlives the

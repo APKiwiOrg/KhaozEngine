@@ -8727,7 +8727,10 @@ server.OnDied += (deadNetId, killerNetId, slot) =>
     // A PLAYER is never despawned, so a killer holding it keeps resolving the body wherever this handler puts it.
     // Both halves of that fight are the game's to end: the LOCK through a latched walk, which is the idiom the
     // engine's own leash break uses, and the DAMAGE RECORD, which nothing else ages and which a retaliating
-    // behaviour reads the moment the actor holds no target.
+    // behaviour reads the moment the actor holds no target. Answer it HERE rather than in OnCombatEvent, which
+    // fires per swing while the tick is still applying them, so a later swing stamps a dropped record back.
+    // The sweep is O(live actors) per player death: the engine holds no reverse index from a target to the
+    // entities locked onto it, and a world big enough for that to show up in a tick keeps its own.
     IReadOnlyList<long> actors = server.ActorNetIds;
     for (int i = 0; i < actors.Count; i++)
     {

@@ -28,8 +28,8 @@ one about your own. Riding LAST is the engine half of that same program's R1
 ([#736](https://github.com/APKiwiOrg/KhaozEngine/issues/736)): server-owned ACTORS and tick-based MELEE COMBAT,
 grown into `KhaozEngine.TileWorld.Netcode` rather than split into a sibling package. Every addition is optional
 and every new constructor parameter is appended with a default, so **nothing in that half is breaking** and a head
-that wires none of it ticks exactly as it did before. Its bullets are at the end of this entry, and the last of them
-is the first fix that half earned: a follower that catches a moving target ends on its tile, and R1 held that
+that wires none of it ticks exactly as it did before. Its bullets are at the end of this entry, and the newest of
+them is the first fix that half earned: a follower that catches a moving target ends on its tile, and R1 held that
 position forever while the combat pass silently refused every roll from it
 ([#751](https://github.com/APKiwiOrg/KhaozEngine/issues/751)). It steps off now. Beside it rides the other half of
 a fight the ENGINE did not end ([#752](https://github.com/APKiwiOrg/KhaozEngine/issues/752)): a dead player is never
@@ -280,10 +280,10 @@ the damage-record half of the break that no public write reached before.
     Its one-argument constructor still exists and still runs one simulator over everything.
 - **WIRE: `TileMoveState` grew `CombatTarget`, taking the move component from 33 to 41 payload bytes** (the same
   component the lead commit above took from 25 to 33, so it moved twice inside this one version). It lives on the
-  STATE rather than on a fighting-only component because `TileMoveSimulator` is an `ITickSimulator` and sees the
-  state and the command and nothing else: a target held anywhere else could not be followed inside the one
-  stepper both heads run, and following it elsewhere means a SECOND movement authority the client cannot predict,
-  which costs a round trip on every re-path of every chase. It is in `Equals` and `GetHashCode`, and mutually
+  STATE rather than on a fighting-only component because `TileMoveSimulator` is an `ITickSimulator`, and that
+  contract is a state and a command and nothing else: a target held anywhere else could not be followed inside
+  the one stepper both heads run, and following it elsewhere means a SECOND movement authority the client cannot
+  predict, which costs a round trip on every re-path of every chase. It is in `Equals` and `GetHashCode`, and mutually
   exclusive with `InteractTarget`, each clearing the other, with a `WalkTo` clearing both.
   - **The FOLLOW runs at the top of every `Advance`.** While a lock is held it re-paths to a reach tile only when
     the target's committed tile MOVED (the memo is the route's own end), stands when it is already in reach, steps

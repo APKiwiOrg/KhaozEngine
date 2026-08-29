@@ -13,9 +13,10 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// feeds the simulator, which is rules, so it takes the sibling read R0 landed for exactly this.</para>
 /// <para>The LOCAL branch has exactly one live consumer today, and it is not an oversight. This client simulates
 /// only its own entity, so <c>target == LocalNetId</c> can arise in one way: an <see cref="TileCommandKind.Attack"/>
-/// naming the player's own net id. The server resolves that through its own map and stands (a body inside the
-/// target's footprint is in reach), so answering it here is what makes the client's replay agree instead of
-/// clearing a lock the server still holds.</para>
+/// naming the player's own net id. The server resolves that through its own map and stands (because the target IS
+/// the attacker, the one case that stands inside a footprint instead of stepping off it, never because a footprint
+/// interior is in reach), so answering it here is what makes the client's replay agree instead of clearing a lock
+/// the server still holds.</para>
 /// <para>The two heads still resolve one target to slightly DIFFERENT tiles, and the residue is accepted. What is
 /// left after the honest read is the one-way latency no client can see, so a client predicting its approach to a
 /// moving monster can still path toward a tile the server has just left. That is not a new class of disagreement: it

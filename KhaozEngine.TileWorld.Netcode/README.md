@@ -347,7 +347,16 @@ server.OnDied += (deadNetId, killerNetId, slot) =>
 the idiom the leash break itself uses, and on its own it lasts one tick: nothing else ages the damage record, so a
 retaliating behaviour reads it the moment the actor holds no target and takes the same victim straight back.
 `ForgetAttacker(netId, attacker)` drops the record only when it names that attacker, so a grudge against a third
-party who was also swinging survives the death, and it never touches the lock, because the stepper owns that.
+party who was also swinging survives the death, and it never touches the lock, because the stepper owns that. Call
+either half from `OnDied` rather than from `OnCombatEvent`: the combat pass raises `OnDied` after every one of the
+tick's swings has landed, while `OnCombatEvent` fires per swing inside that application, where a later swing of the
+same tick stamps the dropped record straight back.
+
+**The sweep is O(live actors) per player death**, one state read per actor, because the engine holds no reverse
+index from a target to the entities locked onto it: a second index is a second structure to keep correct on every
+spawn, despawn and region handoff, and a death is rare enough that a scan bounded by the actor count is the cheaper
+of the two. A world with far more actors than a few hundred, or one whose deaths are frequent enough to make the
+scan show up in a tick, wants its own index keyed by target and this loop replaced by a lookup into it.
 
 ## A server, in ten lines
 

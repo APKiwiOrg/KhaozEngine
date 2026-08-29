@@ -292,7 +292,10 @@ public class TileCombatTargetTests
     // step-off falls into the search rule 5 already runs and gets rule 5's own answer, which is the one this package
     // gives every unreachable target: drop the route, clear the lock, stand. The player is TOLD (the server turns a
     // cleared lock whose target still resolves into a CannotReach notice), which is the whole difference from the
-    // silent forever-lock #751 is about, and nothing thrashes: no route is built and no tile changes.
+    // silent forever-lock #751 is about, and nothing thrashes: no route is built and no tile changes. The notice is
+    // the server's half and is pinned there, by
+    // TileCombatResolveTests.A_penned_in_target_stood_on_answers_the_click_with_cannot_reach, because a notice is
+    // addressed to a slot and this level has none.
     [Fact]
     public void A_follower_inside_a_penned_target_stands_and_the_lock_clears_rather_than_thrashing()
     {

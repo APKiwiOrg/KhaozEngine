@@ -204,6 +204,11 @@ public sealed partial class TileWorldServer
     /// <para>TARGETED RATHER THAN A CLEAR, which is what separates it from the leash break's own forget. A death
     /// ends ONE fight, so a grudge against a third party who was also hitting this actor has to survive it, or
     /// first-attacker-wins quietly becomes whoever-died-last-wins.</para>
+    /// <para>SAFE FROM <see cref="OnDied"/>, which is the intra-tick ordering the use above rests on: the combat pass
+    /// stamps every damage record while it APPLIES the tick's swings and raises <see cref="OnDied"/> only after every
+    /// one of them has landed, so a record dropped from that handler cannot be re-stamped on the same tick. Calling
+    /// it from <see cref="OnCombatEvent"/> instead is calling it from INSIDE that apply phase, where a later swing of
+    /// the same tick stamps the record straight back.</para>
     /// <para>NOT DONE UNPROMPTED AT A DEATH, because the engine does not know what a death MEANS for a body it did
     /// not remove. Where that body goes is the game's answer (a spawn, a hospital, a revive where it fell), and a
     /// game whose death is a knockdown is still in the fight it was in. An automatic drop would also be

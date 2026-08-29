@@ -198,4 +198,59 @@ public class OidcClientProviderTests
 
         await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
     }
+
+    /// <summary>Serves the well-known discovery document, then a caller-chosen 200 body for the token POST, so a
+    /// malformed-but-successful token response is testable.</summary>
+    private sealed class BodyTokenHandler(string tokenBody) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)
+        {
+            if (req.RequestUri!.AbsolutePath.Contains("well-known"))
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        "{\"issuer\":\"https://issuer.test\",\"authorization_endpoint\":\"https://issuer.test/auth\",\"token_endpoint\":\"https://issuer.test/token\"}",
+                        Encoding.UTF8, "application/json"),
+                });
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(tokenBody, Encoding.UTF8, "application/json"),
+            });
+        }
+    }
+
+    /// <summary>#168: a string-typed or out-of-Int32-range <c>expires_in</c> used to escape as a raw
+    /// <see cref="InvalidOperationException"/>/<see cref="FormatException"/> from an unguarded
+    /// <c>GetInt32()</c>, past every caller catching the provider's own failure type.</summary>
+    [Theory]
+    [InlineData("{\"id_token\":\"the-id-token\",\"expires_in\":\"3600\"}")]
+    [InlineData("{\"id_token\":\"the-id-token\",\"expires_in\":99999999999}")]
+    [InlineData("{\"id_token\":\"the-id-token\",\"expires_in\":null}")]
+    public async Task SignIn_throws_sign_in_failure_on_malformed_expires_in(string tokenBody)
+    {
+        StateHolder holder = new();
+        FakeBrowser browser = new(holder);
+        OidcClientProvider provider = new(
+            new OidcProviderOptions { Authority = "https://issuer.test", ClientId = "client-1", LoopbackPort = 12345 },
+            browser, _ => new FakeListener(holder), new HttpClient(new BodyTokenHandler(tokenBody)));
+
+        await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SignIn_treats_an_absent_expires_in_as_no_declared_lifetime()
+    {
+        StateHolder holder = new();
+        FakeBrowser browser = new(holder);
+        OidcClientProvider provider = new(
+            new OidcProviderOptions { Authority = "https://issuer.test", ClientId = "client-1", LoopbackPort = 12345 },
+            browser, _ => new FakeListener(holder),
+            new HttpClient(new BodyTokenHandler("{\"id_token\":\"the-id-token\"}")));
+
+        DateTimeOffset before = DateTimeOffset.UtcNow;
+        ProviderCredential cred = await provider.SignInAsync(CancellationToken.None);
+
+        Assert.Equal("the-id-token", cred.CredentialToken);
+        Assert.InRange(cred.ExpiresAtUtc, before, DateTimeOffset.UtcNow);
+    }
 }

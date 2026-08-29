@@ -184,4 +184,50 @@ public class DiscordClientProviderTests
 
         await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
     }
+
+    /// <summary>Serves a caller-chosen 200 body for the token POST, so a malformed-but-successful token
+    /// response is testable.</summary>
+    private sealed class BodyTokenHandler(string tokenBody) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)
+            => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(tokenBody, Encoding.UTF8, "application/json"),
+            });
+    }
+
+    /// <summary>#168: a string-typed or out-of-Int32-range <c>expires_in</c> used to escape as a raw
+    /// <see cref="InvalidOperationException"/>/<see cref="FormatException"/> from an unguarded
+    /// <c>GetInt32()</c>, past every caller catching the provider's own failure type.</summary>
+    [Theory]
+    [InlineData("{\"access_token\":\"the-access-token\",\"expires_in\":\"3600\"}")]
+    [InlineData("{\"access_token\":\"the-access-token\",\"expires_in\":99999999999}")]
+    [InlineData("{\"access_token\":\"the-access-token\",\"expires_in\":null}")]
+    public async Task SignIn_throws_sign_in_failure_on_malformed_expires_in(string tokenBody)
+    {
+        StateHolder holder = new();
+        FakeBrowser browser = new(holder);
+        DiscordClientProvider provider = new(
+            new DiscordProviderOptions { ClientId = "client-1", LoopbackPort = 12345 },
+            browser, _ => new FakeListener(holder), new HttpClient(new BodyTokenHandler(tokenBody)));
+
+        await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SignIn_treats_an_absent_expires_in_as_no_declared_lifetime()
+    {
+        StateHolder holder = new();
+        FakeBrowser browser = new(holder);
+        DiscordClientProvider provider = new(
+            new DiscordProviderOptions { ClientId = "client-1", LoopbackPort = 12345 },
+            browser, _ => new FakeListener(holder),
+            new HttpClient(new BodyTokenHandler("{\"access_token\":\"the-access-token\"}")));
+
+        DateTimeOffset before = DateTimeOffset.UtcNow;
+        ProviderCredential cred = await provider.SignInAsync(CancellationToken.None);
+
+        Assert.Equal("the-access-token", cred.CredentialToken);
+        Assert.InRange(cred.ExpiresAtUtc, before, DateTimeOffset.UtcNow);
+    }
 }

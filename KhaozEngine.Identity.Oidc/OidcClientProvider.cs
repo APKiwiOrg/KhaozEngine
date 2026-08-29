@@ -141,13 +141,25 @@ public sealed class OidcClientProvider(
             ? refreshElement.GetString()
             : null;
 
-        int expiresInSeconds = doc.RootElement.TryGetProperty("expires_in", out JsonElement expiresElement)
-            ? expiresElement.GetInt32()
-            : 0;
-
-        DateTimeOffset expiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(expiresInSeconds);
+        DateTimeOffset expiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(ReadExpiresInSeconds(doc.RootElement));
 
         return new ProviderCredential(ProviderId, idToken, refreshToken, expiresAtUtc);
+    }
+
+    /// <summary>Reads <c>expires_in</c> without letting a hostile or merely non-conforming value escape the
+    /// <see cref="IdentitySignInException"/> contract the rest of this class follows. An absent field is 0 (no
+    /// declared lifetime, as before). A value that is not a JSON number, or a number outside <see cref="int"/>
+    /// range, is a sign-in failure rather than the raw <see cref="InvalidOperationException"/> /
+    /// <see cref="FormatException"/> a bare <c>GetInt32()</c> throws straight out of sign-in.</summary>
+    private static int ReadExpiresInSeconds(JsonElement root)
+    {
+        if (!root.TryGetProperty("expires_in", out JsonElement expiresElement))
+            return 0;
+
+        if (expiresElement.ValueKind != JsonValueKind.Number || !expiresElement.TryGetInt32(out int seconds))
+            throw new IdentitySignInException("token endpoint response has a malformed expires_in");
+
+        return seconds;
     }
 
     private static string GenerateState()

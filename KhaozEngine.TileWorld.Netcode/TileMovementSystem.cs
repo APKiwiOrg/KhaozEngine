@@ -1,4 +1,5 @@
 using KhaozEngine.Ecs;
+using KhaozEngine.Replication;
 using KhaozEngine.Sharding;
 
 namespace KhaozEngine.TileWorld.Netcode;
@@ -61,8 +62,25 @@ public sealed class TileMovementSystem : ISystem
             // has already had its tag written back by step 1b, which runs before this pass.
             TileMoveSimulator simulator = world.Has<TileActor>(e) ? actors : players;
 
+            // WHOSE state this is, handed to the stepper because the follow's rule 4 cannot derive it: an Attack
+            // naming the attacker itself and one naming another entity standing on the same tile resolve to the
+            // identical footprint and want opposite answers (a standstill and a step off).
+            //
+            // Read only when a lock is in play, so an idle world pays nothing for it, and THIS TICK'S Attack counts:
+            // the lock it sets is written inside the step below, so the state still reads 0 here on the very tick a
+            // self attack begins, which is the one tick that decides the whole case. An actor's own attack arrives
+            // through the same field, as a TileCommand its behaviour asked for (TileActorHost's Attack intent), so
+            // both doors onto a fresh lock are covered by the one condition.
+            //
+            // Read as a component rather than added to the ForEach signature above: an entity carrying no NetId
+            // would silently drop out of the movement pass if it joined the archetype filter, which is a far worse
+            // failure than an unnamed self.
+            long self = 0L;
+            if ((state.CombatTarget != 0 || pending.Command.Kind == TileCommandKind.Attack)
+                && world.TryGet(e, out NetId netId)) self = netId.Value;
+
             TileMoveState s = simulator.Step(
-                TileProtocol.AssembleMoveState(state, route), pending.Command, dt);
+                TileProtocol.AssembleMoveState(state, route), pending.Command, dt, self);
 
             state = s;
             route.Remaining = s.Route.RemainingSteps(s.Tile);

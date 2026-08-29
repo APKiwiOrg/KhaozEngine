@@ -28,7 +28,10 @@ one about your own. Riding LAST is the engine half of that same program's R1
 ([#736](https://github.com/APKiwiOrg/KhaozEngine/issues/736)): server-owned ACTORS and tick-based MELEE COMBAT,
 grown into `KhaozEngine.TileWorld.Netcode` rather than split into a sibling package. Every addition is optional
 and every new constructor parameter is appended with a default, so **nothing in that half is breaking** and a head
-that wires none of it ticks exactly as it did before. Its bullets are at the end of this entry.
+that wires none of it ticks exactly as it did before. Its bullets are at the end of this entry, and the last of them
+is the first fix that half earned: a follower that catches a moving target ends on its tile, and R1 held that
+position forever while the combat pass silently refused every roll from it
+([#751](https://github.com/APKiwiOrg/KhaozEngine/issues/751)). It steps off now.
 
 - **The rule is retired in code.** `MslBindingOrder.CheckPrefix`, which required every stage's resources to
   be a prefix of the layout's per index space, is deleted, so `ShaderValidation.ValidatePair` no longer
@@ -280,10 +283,30 @@ that wires none of it ticks exactly as it did before. Its bullets are at the end
   which costs a round trip on every re-path of every chase. It is in `Equals` and `GetHashCode`, and mutually
   exclusive with `InteractTarget`, each clearing the other, with a `WalkTo` clearing both.
   - **The FOLLOW runs at the top of every `Advance`.** While a lock is held it re-paths to a reach tile only when
-    the target's committed tile MOVED (the memo is the route's own end), stands when it is already in reach, and
-    clears the lock when the target stops resolving or has no reachable tile. A body standing INSIDE the target's
-    own footprint counts as in reach, so a self attack stands rather than walking to the map edge one `FindPath`
+    the target's committed tile MOVED (the memo is the route's own end), stands when it is already in reach, steps
+    OFF the target's own tile when a catch left it standing there, and clears the lock when the target stops
+    resolving or has no reachable tile. The one body that stands INSIDE a footprint rather than stepping off it is
+    an attacker whose target is ITSELF, so a self attack stands rather than walking to the map edge one `FindPath`
     per tick. Nothing writes `Facing` from that case, because a tile the body stands on has no direction to face.
+- **A follower that ends a tick INSIDE its combat target's footprint now STEPS OFF it, which is what starts a
+  fight that could never start before** ([#751](https://github.com/APKiwiOrg/KhaozEngine/issues/751), found by
+  Grimhollow's R2 review through the loopback). A chasing monster that catches a MOVING target lands on its tile,
+  and R1's follow read that as arrived: it dropped the route and held the lock with the cooldown pinned at zero,
+  while the combat pass refused the roll on every tick, because `TileReach.Set` skips a candidate inside the
+  footprint by construction and a tile is therefore never in its own reach set. The refusal was a bare `continue`
+  that no counter, no event and no wire frame ever saw, so the fight silently never started, forever, and it was
+  reachable the moment a monster chased anyone. The footprint-interior case now falls through to the follow's own
+  re-path, which routes one step to a reach tile of the target: OSRS's answer, the monster under you stepping out
+  before it fights. A target penned in on every side takes the same answer any unreachable target gets, which
+  clears the lock and says `CannotReach` out loud rather than standing in silence.
+  - **`TileMoveSimulator.Step` gained a fourth argument, the stepped entity's own net id**, and the three-argument
+    form still exists and passes 0. It is read by that one rule and only while a lock is held: an `Attack` naming
+    the attacker ITSELF and one naming another entity standing on the same tile resolve to the identical 1x1
+    footprint on the identical tile and want OPPOSITE answers, so no geometry separates them and identity has to be
+    handed in. `TileMovementSystem` passes each entity's `NetId`, and `TileWorldClient` binds its own `LocalNetId`
+    to the stepper its prediction runs, so the client predicts both answers instead of being corrected on every
+    tick of a fight that is not moving. **A head that steps the simulator itself should pass the id**: left at 0,
+    a self attack steps off and shuffles, which is the walk to the map edge R1 stood down.
 - **The hit pipeline is `ITileCombatRules`, and it is the line between what the engine owns and what the game
   does.** The engine owns whether a swing is DUE (the cooldown) and whether it is LEGAL (adjacency, which is
   literally `TileReach.Contains` against a 1x1 rect, so the no-diagonal rule and the wall-denied safespot fall

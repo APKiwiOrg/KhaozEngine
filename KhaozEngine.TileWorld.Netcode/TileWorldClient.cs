@@ -78,7 +78,7 @@ public sealed partial class TileWorldClient : IDisposable
         // TileRemoteTargets reads Prediction and LocalNetId LAZILY, so handing it `this` from inside the constructor
         // is safe: nothing calls the resolver before construction returns.
         Simulator = new TileMoveSimulator(map, config.StepTicks, targets, config.Move, new TileRemoteTargets(this));
-        Prediction = new ClientPrediction<TileMoveState, TileCommand>(Simulator,
+        Prediction = new ClientPrediction<TileMoveState, TileCommand>(new SelfBoundStepper(this),
             config.Prediction ?? new PredictionSettings(config.TickSeconds, MaxPendingCommands: 64,
                 HardSnapDistance: 0.5f, CorrectionRate: 8f, CorrectionDeadZone: 0.01f));
         View = new ClientReplicationView(registry ?? TileProtocol.CreateRegistry());
@@ -389,5 +389,26 @@ public sealed partial class TileWorldClient : IDisposable
         goneLatest.Clear();
         liveLatest.Clear();
         decodedCombat.Clear();
+    }
+
+    // The stepper the PREDICTION runs: <see cref="Simulator"/> with this client's own net id bound to it. The
+    // simulator has to be told whose state it is stepping, because the follow cannot tell an Attack naming the
+    // player themselves from one naming a monster standing on their tile (see TileMoveSimulator.Step's `self`), and
+    // ITickSimulator's contract is a state and a command and nothing else. The server knows the id per entity, a
+    // client only ever steps ONE entity, so binding it here once is the whole of the client's half.
+    //
+    // BOTH of prediction's doors go through this one instance, the tick and the reconcile replay, so a replay can
+    // never read a different id from the tick it is replaying.
+    //
+    // LocalNetId is read LAZILY, for the reason TileRemoteTargets reads it lazily: it is -1 until the join lands,
+    // and no CombatTarget can hold -1, so a step taken before then reads exactly as an unbound one would.
+    sealed class SelfBoundStepper : ITickSimulator<TileMoveState, TileCommand>
+    {
+        readonly TileWorldClient client;
+
+        public SelfBoundStepper(TileWorldClient client) => this.client = client;
+
+        public TileMoveState Step(in TileMoveState state, in TileCommand command, float dt) =>
+            client.Simulator.Step(state, command, dt, client.LocalNetId);
     }
 }

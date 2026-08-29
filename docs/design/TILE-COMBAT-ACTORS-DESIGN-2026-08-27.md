@@ -469,6 +469,22 @@ The follow, per tick, inside `Advance`:
 Rule 5 is what keeps section 5.4's CPU budget honest: a stationary target costs no pathfinding, and a target moving
 at run cadence costs one `TryNearest` every two ticks.
 
+**Amended after R1 (#751): a follower INSIDE its target's footprint steps off it, and rule 4 no longer answers that
+case.** R1 shipped rule 4 as `footprint.Contains(tile) || TileReach.Contains(...)` (ae0713f7) to stand a self attack
+down, and deferred whether a swing lands from a tile inside the footprint. It does not, and it cannot: `TileReach.Set`
+skips a candidate inside the footprint by construction (`TileReach.cs:70`), so section 6.3's one definition of range
+reads a body standing on its target as out of range, and the roll is refused on every tick with a bare `continue` no
+counter, no event and no wire frame sees. A follower that CATCHES a moving target ends the tick exactly there, which
+made a silent, permanent non-fight reachable in ordinary play. So the footprint-interior case now falls through to
+rule 5, whose search routes it to a reach tile of the target: one step off, the OSRS answer, the monster under you
+stepping out before it fights. A target penned in on every side takes rule 5's own unreachable answer, which clears
+the lock and says `CannotReach` out loud rather than standing there silently. The ONE case that keeps R1's standstill
+is a target that IS the attacker, whose footprint moves with the body, so no step off it ever lands outside it. That
+case is not separable geometrically (both resolve to a 1x1 rect on the attacker's own tile), so the follow is TOLD
+which entity it is stepping: `TileMoveSimulator.Step` takes the stepped entity's net id, `TileMovementSystem` passes
+it per entity, and the client binds its own `LocalNetId` so prediction and the reconcile replay read the same answer
+the server does.
+
 ### 6.3 Adjacency: cardinal, and it is not a new function
 
 **Melee range is `TileReach.Contains(map, targetFootprint, targetPlane, attackerTile)`.** No new rule, no new

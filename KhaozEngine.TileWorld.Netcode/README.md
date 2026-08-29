@@ -124,8 +124,11 @@ id and the local player, and neither extrapolates. `docs/USING-KHAOZENGINE.md` c
   object space and `combatTargets` for the entity space, the second appended LAST in the constructor so an
   existing positional call keeps meaning what it said. `Follow` runs at the top of every `Advance`: while a
   `CombatTarget` is held it re-paths to a reach tile whenever the target's committed tile moved, stands when it is
-  already in reach (a body inside the target's own footprint counts, so a self attack stands rather than walking
-  away forever), and clears the lock when the target stops resolving or has no reachable tile. A step commits its tile at its START, after the `CanStep` re-check, so
+  already in reach, STEPS OFF the target's own tile when a catch left it standing there (a tile inside the footprint
+  is not in reach, so holding it is a fight that can never start), and clears the lock when the target stops
+  resolving or has no reachable tile. `Step` takes the stepped entity's own net id as its fourth argument, read by
+  that follow and by nothing else: it is what tells an `Attack` naming the attacker ITSELF, which stands, apart from
+  one naming another entity on the same tile, which steps off. A step commits its tile at its START, after the `CanStep` re-check, so
   a blocker is felt when the step would begin rather than when the foot lands. The step in progress is never
   abandoned either, and it needs no special case for it: a route is always pathed from `Tile`, which is the tile
   the step in flight is entering, so a direction change while moving never drags the avatar back toward the tile

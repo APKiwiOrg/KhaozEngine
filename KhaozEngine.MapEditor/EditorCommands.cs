@@ -126,8 +126,9 @@ public abstract partial class EditorCommand : IEditorCommand
             Tags = new List<string>(s.Tags),
         };
 
-    /// <summary>Rejects a duplicate region name. <paramref name="exceptIndex"/> excludes the renaming region's own
-    /// index (resolved by its current name at the call site), so a collapsed self-rename stays legal.</summary>
+    /// <summary>Rejects a duplicate region name, on the add path (which passes -1, having nothing to exclude) and
+    /// on the rename path, where <paramref name="exceptIndex"/> excludes the renaming region's own index (resolved
+    /// by its current name at the call site) so a collapsed self-rename stays legal.</summary>
     private protected static void GuardNoRegion(MapDocument doc, string name, int exceptIndex)
     {
         for (int i = 0; i < doc.Regions.Count; i++)
@@ -1723,7 +1724,7 @@ public sealed class ReorderScatterOverrideCommand : EditorCommand, IVisibilityEf
 
 /// <summary>Appends a named procedural scatter layer. Layer names are unique-required (the validator), so
 /// <see cref="Apply"/> rejects a duplicate name before it mutates anything (the add-guard idiom shared with
-/// placements / spawns / regions), leaving no undo step on a reject. Scatter layers feed the streamed prop
+/// companion layers and regions), leaving no undo step on a reject. Scatter layers feed the streamed prop
 /// field, so this affects the world.</summary>
 public sealed class AddScatterLayerCommand : EditorCommand
 {
@@ -2060,8 +2061,11 @@ public sealed class RenameCompanionLayerCommand : EditorCommand
 
 // ---- regions (game-interpreted markers, not terrain-affecting) --------------------------------------------
 
-/// <summary>Appends a named region marker. Regions are game-interpreted, so this does not affect the
-/// streamed world.</summary>
+/// <summary>Appends a named region marker. A region's name IS its identity and is unique-required (the
+/// validator), so <see cref="Apply"/> rejects a duplicate name before it mutates anything (the add-guard idiom
+/// shared with scatter and companion layers), leaving no undo step on a reject rather than deferring the
+/// collision to save-time validation. Regions are game-interpreted, so this does not affect the streamed
+/// world.</summary>
 public sealed class AddRegionCommand : EditorCommand
 {
     readonly MapRegion _region;
@@ -2075,7 +2079,11 @@ public sealed class AddRegionCommand : EditorCommand
     internal override bool AffectsWorld => false;
 
     /// <inheritdoc/>
-    public override void Apply(MapDocument doc) => ApplyAppend(doc.Regions, _region);
+    public override void Apply(MapDocument doc)
+    {
+        GuardNoRegion(doc, _region.Name, -1);   // reject a duplicate name before touching the list
+        ApplyAppend(doc.Regions, _region);
+    }
 
     /// <inheritdoc/>
     public override void Revert(MapDocument doc) => RevertAppend(doc.Regions);

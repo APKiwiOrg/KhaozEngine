@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapEditor;
@@ -7,7 +8,8 @@ using Xunit;
 namespace KhaozEngine.Tests.MapEditor
 {
     /// <summary>The Add*Command family's shared contracts, split out of the main
-    /// <see cref="EditorCommandsTests"/> partial: the append-slot revert idiom (#76).</summary>
+    /// <see cref="EditorCommandsTests"/> partial: the append-slot revert idiom (#76) and the add-time
+    /// duplicate-name guard (#75).</summary>
     public partial class EditorCommandsTests
     {
         /// <summary>Appends <paramref name="alias"/>, an element the document ALREADY holds at index 0, through
@@ -79,6 +81,29 @@ namespace KhaozEngine.Tests.MapEditor
             var doc = Sample();
             AssertUndoRemovesAppendedSlot(doc, doc.Terrain.Features, doc.Terrain.Features[0],
                 new AddFeatureCommand(doc.Terrain.Features[0]));
+        }
+
+        [Fact]
+        public void AddRegionCommand_GuardsDuplicateName()
+        {
+            // Regression for #75. Region names are unique-required, but AddRegionCommand used to append without
+            // consulting GuardNoRegion (whose only caller was the region rename), so a colliding add landed an
+            // undo step and left the collision for MapDocumentValidator to report at save time, long after the
+            // gesture that caused it. Apply now rejects before it mutates, the shape its guarded Add siblings
+            // use: History.Execute applies BEFORE it pushes, so a throwing Apply lands no undo step.
+            var doc = Sample();   // carries exactly one region, "town"
+            string before = Save(doc);
+            int baseline = doc.Regions.Count;
+
+            var ed = new EditorDocument(doc);
+            Assert.Throws<InvalidOperationException>(() => ed.Execute(new AddRegionCommand(
+                new MapRegion { Name = "town", Shape = new DiscShapeDoc { CenterX = 9f, CenterZ = 9f, Radius = 2f } })));
+
+            Assert.Equal(baseline, doc.Regions.Count);
+            Assert.Single(doc.Regions, r => r.Name == "town");   // no second "town" landed
+            Assert.Equal(before, Save(doc));
+            Assert.False(ed.History.CanUndo);
+            Assert.False(ed.IsDirty);
         }
     }
 }

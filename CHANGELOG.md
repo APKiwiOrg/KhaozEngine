@@ -396,6 +396,19 @@ that wires none of it ticks exactly as it did before. Its bullets are at the end
   of a main slot now), and the GPU-skinned draw entry points take the caster's palette slot alongside their
   own.
 
+- `DistortionRenderer` and `WaterRenderer` retire a grown-out GPU buffer instead of disposing it inline
+  ([#22](https://github.com/APKiwiOrg/KhaozEngine/issues/22)). Both freed the buffer they were replacing
+  while a prior frame's submitted command list could still be reading it, which the distortion pass reaches
+  through the public unbounded `Scene3D.DrawDistortion` past 64 sprites. The water resource set and the
+  clipmap vertex and index buffers were on the same paths and moved with them.
+- `OverlayMeshRenderer` retires the resource set a UBO grow replaces instead of destroying it inline, the
+  same lifetime rule at its third site: a ninth queued overlay proxy could free a binding a prior frame's
+  submitted command list was still reading ([#750](https://github.com/APKiwiOrg/KhaozEngine/issues/750)).
+- The screen-transition frozen capture copies mip 0 rather than whole-resource copying a mipped `ColorTex`
+  into its single-mip capture texture ([#21](https://github.com/APKiwiOrg/KhaozEngine/issues/21)). Under a
+  supersampled `MatchViewport` or an opted-in `FixedInternal` downscale the two disagreed on mip count,
+  which the native Metal and Vulkan backends refuse outright.
+
 ## 18.0.0
 
 18.0.0 deletes the Veldrid incumbent GPU backend. The engine's own Metal, Direct3D 11 and Vulkan backends are

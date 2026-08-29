@@ -349,13 +349,19 @@ on:
       # THE CRON IS NOT DEEP (https://github.com/APKiwiOrg/KhaozEngine/issues/617): shader validation
       # renders nothing at all on the hosted paravirtual device while being fully green on real Apple silicon, so
       # a weekly arm reds the matrix on a rung that cannot testify about the code. The full reasoning and its
-      # three measurements are on METAL_DEEP_TIER below. This input is still the ONLY way to arm that rung, which
-      # is what makes 'deep' still worth defaulting to: the trigger a human reaches for to investigate #617 is
-      # the trigger that arms the thing being investigated. Read by the metal-native leg alone.
+      # three measurements are on METAL_DEEP_TIER below. This input is still the ONLY way to arm that rung.
+      # THE DEFAULT IS 'push', NOT 'deep', since #728. It used to be 'deep' on the argument that the trigger a
+      # human reaches for to investigate #617 should arm the thing being investigated, but the routine dispatch
+      # today is the pre-merge BRANCH GATE, which exists to reproduce the push path exactly, and an argless
+      # dispatch under the old default armed the rung that renders nothing on the hosted paravirtual device:
+      # runs 32785390229 and 32787787551 each failed metal-native with about 200 blank-render assertions on a
+      # branch whose commit was innocent, indistinguishable at first read from a real regression. So the case
+      # that recurs weekly is the default and the investigation states its intent with -f tier=deep.
+      # Read by the metal-native leg alone.
       tier:
-        description: 'metal-native only: "push" is the debug-device shape every unattended trigger takes, "deep" adds shader validation (see #617), "capture" arms the frame capture instead.'
+        description: 'metal-native only: "push" (default) is the debug-device shape every unattended trigger takes, so a gate dispatch reproduces the push path. "deep" adds shader validation (see #617, cannot pass on the hosted device). "capture" arms the frame capture instead.'
         type: choice
-        default: deep
+        default: push
         options: [deep, push, capture]
       # THE DISCRIMINATING KNOB FOR #614, and the reason it is an INPUT rather than a branch edit is that the
       # thing it has to split is per-boot. The metal-native leg fails roughly one varying GPU test per boot on

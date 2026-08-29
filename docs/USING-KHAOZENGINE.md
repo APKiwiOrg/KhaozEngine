@@ -2006,7 +2006,22 @@ inside the callback: the command list it is recording into still names them unti
   ```
 
   The mode is part of the memo key (the same string wrapped both ways never returns one poisoning the other), and
-  `DrawWrapped` / `MeasureWrappedHeight` forward it. (The wrap still ignores newlines either way, tracked as #82.)
+  `DrawWrapped` / `MeasureWrappedHeight` forward it.
+
+  A `\n` is an explicit line break in either mode, and a `\r\n` pair is one break rather than two (a lone `\r` is
+  not a break, it stays an ordinary character). N breaks give N+1 lines before the width has any say, so
+  `"a\n\nb"` is three lines (the blank one between the paragraphs is kept) and `"a\n"` is two (the last one
+  empty). Whitespace touching a break is consumed with it, exactly as a width-forced break consumes the space run
+  it lands on, so no line comes back carrying leading or trailing space from the break. Height accounting follows
+  for free, since `MeasureWrappedHeight` counts the lines `Wrap` returns:
+
+  ```csharp
+  // Two authored paragraphs: wrapped to the box AND broken where the author asked, with the blank line between
+  // them reserved by the same measurement the draw uses.
+  string body = "Line one.\n\nLine two, which is long enough to wrap.";
+  float height = TextLayout.MeasureWrappedHeight(font, body, boxWidth);
+  TextLayout.DrawWrapped(batch, font, body, topLeft, boxWidth, TextAlign.Left, color);
+  ```
 
 ### 2D VFX (`KhaozEngine.Render2D.Vfx`)
 

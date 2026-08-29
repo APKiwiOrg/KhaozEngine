@@ -63,6 +63,7 @@ namespace KhaozEngine.Gui
         readonly List<ContextMenuEntry> _entries = new();
         string _title = "";
         Vector2 _point;
+        bool _openedThisFrame;
 
         /// <summary>Spacing knobs used by the layout and the draw. Defaults to <see cref="ContextMenuMetrics.Default"/>.</summary>
         public ContextMenuMetrics Metrics = ContextMenuMetrics.Default;
@@ -154,6 +155,13 @@ namespace KhaozEngine.Gui
         /// pixels). Reopening while already open simply replaces the content and the point, and clears every
         /// frame flag, so a right press that lands on a new target swaps the menu in one call. A null or empty
         /// <paramref name="entries"/> opens a title-only menu rather than throwing.
+        /// <para>
+        /// Latches the opening frame (the <see cref="Tooltip"/> precedent), so the gesture that opened the menu
+        /// can never dismiss it. A caller opening on a LEFT RELEASE hands the first <see cref="Update(Pointer)"/>
+        /// a frame that already carries the release edge, and when the clamp in <see cref="ComputeBounds"/> moves
+        /// the menu off the cursor that release reads as outside the menu it just opened. The latch is cleared by
+        /// the next <see cref="Update(Pointer)"/>, closed menu included, so it costs exactly one frame.
+        /// </para>
         /// </summary>
         public void Open(LocalizedText title, IReadOnlyList<ContextMenuEntry> entries, Vector2 screenPoint)
         {
@@ -164,6 +172,7 @@ namespace KhaozEngine.Gui
             _point = screenPoint;
             IsOpen = true;
             HoverIndex = -1;
+            _openedThisFrame = true;
             ClearFrameFlags();
         }
 
@@ -189,13 +198,18 @@ namespace KhaozEngine.Gui
         /// world beneath cannot be clicked through it, tracks <see cref="HoverIndex"/>, selects on a tap inside
         /// an ENABLED row (setting <see cref="WasSelected"/> / <see cref="SelectedTag"/> /
         /// <see cref="SelectedIndex"/> and closing), and dismisses on a release outside the bounds (setting
-        /// <see cref="WasDismissed"/> and <see cref="DismissPress"/>). A tap inside the menu that hits the title
-        /// band or a disabled row does nothing and leaves the menu open. Returns <see cref="WasSelected"/>.
+        /// <see cref="WasDismissed"/> and <see cref="DismissPress"/>), EXCEPT on the frame <see cref="Open"/> was
+        /// called, where the release-outside dismissal is suppressed so the opening gesture cannot close the menu
+        /// it opened. A tap inside the menu that hits the title band or a disabled row does nothing and leaves
+        /// the menu open. Returns <see cref="WasSelected"/>.
         /// </summary>
         public bool Update(Pointer pointer)
         {
             ClearFrameFlags();
-            if (!IsOpen) { HoverIndex = -1; return false; }
+            if (!IsOpen) { HoverIndex = -1; _openedThisFrame = false; return false; }
+
+            bool openedFrame = _openedThisFrame;
+            _openedThisFrame = false;
 
             Rect bounds = Bounds();
             pointer.BlockRegion(bounds);
@@ -221,7 +235,9 @@ namespace KhaozEngine.Gui
                 return true;
             }
 
-            if (pointer.IsReleasedOutside(bounds))
+            // IsReleasedOutside is a pure edge plus position, with no press-origin invariant and no consume
+            // latch (Pointer.ConsumeGesture gates the tap queries only), so the opening frame is skipped here.
+            if (!openedFrame && pointer.IsReleasedOutside(bounds))
             {
                 WasDismissed = true;
                 DismissPress = pointer.Position;
@@ -259,10 +275,10 @@ namespace KhaozEngine.Gui
             if (!IsOpen) return;
             if (Viewport == Vector2.Zero)
                 throw new InvalidOperationException(
-                    "ContextMenu.Viewport is unset (Vector2.Zero); assign the design viewport size before draw.");
+                    "ContextMenu.Viewport is unset (Vector2.Zero). Assign the design viewport size before draw.");
             if (_titleFont == null || _bodyFont == null)
                 throw new InvalidOperationException(
-                    "ContextMenu was built measure-only (the ITextMeasurer constructor); build it with SpriteFonts to draw.");
+                    "ContextMenu was built measure-only, via the ITextMeasurer constructor. Build it with SpriteFonts to draw.");
 
             Rect b = Bounds();
             GuiDraw.Fill(batch, white, b, Background);

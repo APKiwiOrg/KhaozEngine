@@ -389,5 +389,56 @@ namespace KhaozEngine.Tests.Gui
             Idle(menu, p, Outside);
             Assert.False(p.IsBlocked(Row1Pt));
         }
+
+        [Fact]
+        public void The_reservation_holds_on_the_selection_and_dismissal_frames()
+        {
+            ContextMenu menu = OpenMenu(Three(), Point);
+            var p = new Pointer();
+
+            // The selection frame returns early, before the dismissal check, so the reservation has to be in
+            // hand ahead of the selection loop. Move it below and the world beneath acts on the very click
+            // that picked the row.
+            Tap(menu, p, Row0Pt);
+            Assert.True(menu.WasSelected);
+            Assert.True(p.IsBlocked(Row0Pt));
+
+            // Same on the frame the menu closes itself: the click that dismissed it is not the world's to act on.
+            menu.Open(LocalizedText.Raw("Options"), Three(), Point);
+            Tap(menu, p, Outside);
+            Assert.True(menu.WasDismissed);
+            Assert.True(p.IsBlocked(Row0Pt));
+        }
+
+        [Fact]
+        public void A_menu_opened_on_a_left_release_survives_its_own_opening_frame()
+        {
+            // A caller that opens on a left RELEASE hands the first Update a frame that already carries the
+            // release edge. Three rows are 117 tall, so at (300,538) the flip puts the menu at 421 and the
+            // clamp pulls it to 419..536: the release at 538 lands OUTSIDE the menu it just opened.
+            var at = new Vector2(300, 538);
+            var p = new Pointer();
+            var menu = new ContextMenu(Font, Font) { Viewport = View };
+
+            p.Update(Frame(at, false));
+            p.Update(Frame(at, true));
+            p.Update(Frame(at, false));   // the release edge the caller opens on
+            menu.Open(LocalizedText.Raw("Options"), Three(), at);
+
+            Rect bounds = ContextMenu.ComputeBounds(Font, "Options", Font, Three(), at, View, M);
+            Assert.Equal(419f, bounds.Y);
+            Assert.True(p.IsReleasedOutside(bounds));   // the dismissal case really is live this frame
+
+            menu.Update(p);
+            Assert.True(menu.IsOpen);           // the opening gesture cannot dismiss the menu it opened
+            Assert.False(menu.WasDismissed);
+            Assert.Null(menu.DismissPress);
+
+            // The latch lasts exactly the opening frame. The next gesture releasing outside still dismisses.
+            Tap(menu, p, Outside);
+            Assert.False(menu.IsOpen);
+            Assert.True(menu.WasDismissed);
+            Assert.Equal(Outside, menu.DismissPress);
+        }
     }
 }

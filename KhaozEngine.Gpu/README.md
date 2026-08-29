@@ -328,6 +328,20 @@ What it owns today:
   fence here is to REPLACE a `WaitForIdle`, not to dress one up. A fence handed to a submission made after some
   earlier work signals only once the queue has drained through that work, which is what makes it a drop-in for the
   drain that guarded deferred GPU-resource destruction (`GpuRetireQueue`, below).
+- **`GpuReadback`** - GPU-to-CPU reads. `ToRgba(gd, src, width, height)` and
+  `ToRgbaMip(gd, src, mipLevel, arrayLayer, mipWidth, mipHeight)` return a tightly-packed RGBA8 buffer
+  (`width * height * 4` bytes, row-major, top-left origin), and `ReadBuffer<T>(gd, src, elementCount,
+  srcOffsetBytes)` is the buffer counterpart for a compute-written storage buffer. Each opens, submits and drains a
+  command list of its own, so none of them may be called while a frame is recording (see `GpuRecording` above).
+  - **`ToRgba`'s SOURCE must already be single-mip, single-sample `R8G8B8A8UNorm` at the size asked for.** It
+    allocates a staging texture of exactly that shape and takes a WHOLE-texture copy into it, and a whole copy names
+    every subresource on both sides, so anything else is not a copy a backend can narrow. A source that disagrees is
+    refused with an `ArgumentException` naming the readback and what the texture actually is, before anything is
+    allocated or submitted. Native Metal and Vulkan already refused it in their own `CopyTexture`, but Direct3D 11's
+    `CopyResource` is silent about a mismatch, so the same call used to throw on two backends and hand back
+    channel-swapped or garbage bytes on the third
+    ([#83](https://github.com/APKiwiOrg/KhaozEngine/issues/83)). Resolve a multisampled target first, read one level
+    of a mip chain with `ToRgbaMip`, and pass the source's own dimensions.
 - **`GpuRetireQueue`** (since 17.37.0) - deferred disposal for anything a renderer frees MID-LIFE (a streamed mesh
   unloaded while the scene runs, a sprite atlas whose descriptor set fell out of the working set). `Retire(resource)`
   costs nothing at the call site, `BeginFrame()` seals the frame's retirements into one batch behind a fence and

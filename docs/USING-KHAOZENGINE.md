@@ -12490,6 +12490,22 @@ uint[] tail = GpuReadback.ReadBuffer<uint>(gd, buffer, 4, srcOffsetBytes: 16);  
 uint[] bad  = GpuReadback.ReadBuffer<uint>(gd, buffer, 4, srcOffsetBytes: 3);    // throws on every backend
 ```
 
+**`GpuReadback.ToRgba`'s source must already be single-mip, single-sample `R8G8B8A8UNorm` at the size you ask
+for.** It allocates a staging texture of exactly that shape and takes a WHOLE-texture copy into it, and a
+whole copy names every subresource on both sides, so anything else is not a copy a backend can narrow. A source that
+disagrees is refused with an `ArgumentException` naming the readback and what the texture actually is, before
+anything is allocated or submitted. Native Metal and Vulkan already refused the copy themselves, but Direct3D 11's
+`CopyResource` is silent about a mismatch, so the same call used to throw on two backends and hand back
+channel-swapped or garbage bytes on the third ([#83](https://github.com/APKiwiOrg/KhaozEngine/issues/83)). Resolve a
+multisampled target with `IGpuCommandList.ResolveTexture` first, read one level of a mip chain with
+`GpuReadback.ToRgbaMip`, and pass the source's own dimensions.
+
+```csharp
+byte[] px  = GpuReadback.ToRgba(gd, colourTarget, w, h);        // R8G8B8A8UNorm, 1 mip, 1 sample, w x h
+byte[] bad = GpuReadback.ToRgba(gd, swapchainBgra, w, h);       // throws: B8G8R8A8UNorm named in the message
+byte[] mip = GpuReadback.ToRgbaMip(gd, mipped, 2, 0, w / 4, h / 4);   // one level of a mip chain
+```
+
 ### Ordering: two rules, because there is no barrier call
 
 There is no barrier method on this seam, because the backend layer has none. What ordering exists comes from

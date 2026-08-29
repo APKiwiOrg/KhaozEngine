@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu
@@ -20,12 +21,25 @@ namespace KhaozEngine.Gpu
     /// it refuses with a <see cref="GpuNestedRecordingException"/> naming both sides instead of corrupting the
     /// device (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/424">#424</see>).
     /// </para>
+    /// <para>
+    /// <see cref="ToRgba"/> takes a whole-texture copy, so its source must ALREADY be single-mip, single-sample
+    /// <see cref="GpuPixelFormat.R8G8B8A8UNorm"/> at the size asked for, and one that is not is refused here by
+    /// name rather than inside a backend's copy
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/83">#83</see>).
+    /// </para>
     /// </summary>
     public static class GpuReadback
     {
-        /// <summary>Read <paramref name="src"/> back as packed RGBA8. Requires a mappable device (a Metal GPU here).</summary>
+        /// <summary>Read <paramref name="src"/> back as packed RGBA8. Requires a mappable device (a Metal GPU here).
+        /// <para><paramref name="src"/> MUST ALREADY BE a <see cref="GpuPixelFormat.R8G8B8A8UNorm"/>, single-mip,
+        /// single-sample texture of exactly <paramref name="width"/> x <paramref name="height"/>: the copy is a
+        /// whole-texture one into a staging texture of that shape. Anything else is refused with an
+        /// <see cref="ArgumentException"/> naming what the source actually is (see
+        /// <see cref="RequireCopyableSource"/>). Read one level of a mipped texture with
+        /// <see cref="ToRgbaMip"/>.</para></summary>
         public static byte[] ToRgba(IGpuDevice gd, IGpuTexture src, int width, int height)
         {
+            RequireCopyableSource(src, width, height);
             var f = gd.Factory;
             using IGpuTexture staging = f.CreateTexture(GpuTextureDescription.Texture2D(
                 (uint)width, (uint)height, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Staging));
@@ -55,6 +69,57 @@ namespace KhaozEngine.Gpu
             gd.Unmap(staging);
             return outBytes;
         }
+
+        /// <summary>
+        /// THE SHAPE <see cref="ToRgba"/> ASSUMES OF ITS SOURCE, CHECKED AT THE READBACK RATHER THAN INSIDE A
+        /// BACKEND'S COPY (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/83">#83</see>). That method
+        /// allocates a single-mip, single-sample <see cref="GpuPixelFormat.R8G8B8A8UNorm"/> staging texture of the
+        /// size it was asked for and whole-texture copies into it, then de-strides at a fixed four bytes per texel.
+        /// A whole copy names every subresource on both sides, so every one of those has to already match.
+        ///
+        /// <para><b>WHY HERE AND NOT ONLY IN THE BACKENDS.</b> Two of the three refuse a mismatched whole copy
+        /// themselves (<c>RequireMatchingShape</c> in the native Metal and Vulkan command lists), but Direct3D 11's
+        /// <c>CopyResource</c> is silent about it, so the same call threw on two backends and read back
+        /// channel-swapped or garbage bytes on the third. Refusing at the call site is what makes the three agree,
+        /// and the message names the READBACK and the source's actual format and mip count rather than a copy the
+        /// caller never wrote.</para>
+        ///
+        /// <para>Device-free by construction: everything it reads is on the handle, so it runs before anything is
+        /// allocated, recorded or submitted.</para>
+        /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="src"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="src"/> is not a single-mip, single-sample
+        /// <see cref="GpuPixelFormat.R8G8B8A8UNorm"/> texture of exactly <paramref name="width"/> x
+        /// <paramref name="height"/>.</exception>
+        static void RequireCopyableSource(IGpuTexture src, int width, int height)
+        {
+            ArgumentNullException.ThrowIfNull(src);
+            if (src.Format == GpuPixelFormat.R8G8B8A8UNorm && src.MipLevels == 1 && src.SampleCount == 1
+                && width >= 0 && height >= 0 && src.Width == (uint)width && src.Height == (uint)height)
+            {
+                return;
+            }
+
+            throw new ArgumentException(
+                "An RGBA8 readback (GpuReadback.ToRgba) was asked for "
+                + width.ToString(CultureInfo.InvariantCulture) + "x" + height.ToString(CultureInfo.InvariantCulture)
+                + " of a texture that is " + Describe(src)
+                + ". The readback copies the WHOLE source into a staging texture that is "
+                + width.ToString(CultureInfo.InvariantCulture) + "x" + height.ToString(CultureInfo.InvariantCulture)
+                + " R8G8B8A8UNorm with 1 mip level and 1 sample, and a whole-texture copy names every subresource "
+                + "on both sides, so the source has to be exactly that. Native Metal and Vulkan refuse the copy "
+                + "themselves, Direct3D 11's CopyResource does not, so an unchecked mismatch is bytes in the wrong "
+                + "order on one backend and an exception on the other two. Resolve a multisampled target "
+                + "(IGpuCommandList.ResolveTexture) or convert a B8G8R8A8UNorm one before reading it back, read one "
+                + "level of a mip chain with GpuReadback.ToRgbaMip, and pass the source's own dimensions.",
+                nameof(src));
+        }
+
+        // What the source actually is, for the refusal above. Every field the whole copy compares, in one phrase.
+        static string Describe(IGpuTexture t) =>
+            t.Width.ToString(CultureInfo.InvariantCulture) + "x" + t.Height.ToString(CultureInfo.InvariantCulture)
+            + " " + t.Format + " with " + t.MipLevels.ToString(CultureInfo.InvariantCulture) + " mip level(s) and "
+            + t.SampleCount.ToString(CultureInfo.InvariantCulture) + " sample(s)";
 
         /// <summary>Read one mip level + array layer of <paramref name="src"/> back as packed RGBA8
         /// (<paramref name="mipWidth"/> x <paramref name="mipHeight"/>, the mip's own dimensions). Copies that

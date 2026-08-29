@@ -113,6 +113,12 @@ exactly what this seam wants. Nothing wires the two automatically, and their bas
 bridge reads yaw 0 as +Z, the sim reads 0 as -Z), so pass it through `WithFacingYaw` and add that half turn once
 on `FacingYawOffset`, alongside whatever your asset's rest pose needs. See `docs/USING-KHAOZENGINE.md`.
 
+`Live` holds exactly ONE `CharacterPose` per entity id, so a draw loop over it cannot draw a character twice. The
+sample list is expected to carry at most one entry per `CharacterSample.Id` (the netcode's snapshot does, its samples
+coming out of a dictionary keyed by id), and a list assembled another way that repeats one has the repeat DROPPED:
+the first entry for an id is the one advanced and posed. Deduplicate upstream if which of two entries wins matters,
+since the bridge cannot know which is the newer.
+
 ### Reverse locomotion (a backpedal that does not moonwalk)
 
 A character holding a facing while it travels backwards is genuinely moving in reverse relative to that facing, so

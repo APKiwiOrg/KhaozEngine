@@ -173,7 +173,8 @@ namespace KhaozEngine.Game
             return () => new AnimatedCharacter(skeleton, clips, tuning.Locomotion, tuning.Crossfade, tuning.StateDebounceSeconds, speedSync);
         }
 
-        /// <summary>The live characters this frame, in sample order. Iterate and draw each with
+        /// <summary>The live characters this frame, in sample order, EXACTLY ONE PER ENTITY ID (a repeated id in the
+        /// sample list is dropped, see <see cref="Update"/>). Iterate and draw each with
         /// <c>Scene3D.DrawSkinned(meshHandle, pose.Pose, pose.World, tint)</c>. Rebuilt every <see cref="Update"/>.</summary>
         public IReadOnlyList<CharacterPose> Live => _live;
 
@@ -210,7 +211,12 @@ namespace KhaozEngine.Game
         /// <summary>Advance every tracked character one frame from this frame's samples. Call once per render frame. An
         /// entity whose sample sets <see cref="CharacterSample.Downed"/> takes the downed pose override (locomotion
         /// suppressed; the baked <see cref="LocomotionState.Downed"/> clip held on its final frame, or a procedural
-        /// collapse to prone) instead of the locomotion path.</summary>
+        /// collapse to prone) instead of the locomotion path.
+        /// <para><paramref name="samples"/> is expected to carry at most ONE entry per
+        /// <see cref="CharacterSample.Id"/>, which is what the netcode's own dictionary-keyed snapshot yields. A list
+        /// assembled another way (two sources concatenated without a dedup, say) may repeat one, and a repeat is
+        /// DROPPED: the first entry for an id is the one advanced and posed, so <see cref="Live"/> holds exactly one
+        /// pose per entity whatever the caller hands in.</para></summary>
         public void Update(IReadOnlyList<CharacterSample> samples, float dt)
         {
             if (samples is null) throw new ArgumentNullException(nameof(samples));
@@ -220,7 +226,13 @@ namespace KhaozEngine.Game
             for (int i = 0; i < samples.Count; i++)
             {
                 CharacterSample s = samples[i];
-                _seen.Add(s.Id);
+                // ONE POSE PER ID, ENFORCED AT THE ENTRY (#97). `_seen` is this frame's id set and `Live` is
+                // documented as one pose per live entity, so a repeated id is dropped HERE rather than left to reach
+                // a pose branch. Letting it through costs twice: both branches push unconditionally, so the consumer
+                // iterating Live draws the entity twice, and the entry's velocity window, glide smoother and step
+                // baseline all age a second time against the same frame's dt, which is a state corruption that
+                // outlives the frame. First sample for an id wins.
+                if (!_seen.Add(s.Id)) continue;
 
                 if (!_entries.TryGetValue(s.Id, out Entry? e))
                 {

@@ -3472,6 +3472,13 @@ The set is render-free and headless-testable (owns no GPU handle, never calls `S
 asset's rest pose looks down +Z; set `CharacterAnimatorTuning.FacingYawOffset` if yours does not. A
 `CharacterPose.Pose` is the brain's own buffer reused each frame - draw it this frame, do not retain it.
 
+`Live` holds exactly ONE pose per entity id, so the draw loop above cannot draw a character twice. The sample list
+is expected to carry at most one entry per `CharacterSample.Id` (the netcode's own snapshot does, its samples coming
+out of a dictionary keyed by id), and a list assembled another way that repeats one has the repeat DROPPED: the
+first entry for an id is the one advanced and posed
+([#97](https://github.com/APKiwiOrg/KhaozEngine/issues/97)). Deduplicate upstream if which entry wins matters to
+you, since the bridge cannot know which of two is the newer.
+
 **Death / despawn dissolve.** The same skinned dissolve overload behind the teleport screen effect (see the
 CharDissolve / teleport section below) works here too - swap the plain `DrawSkinned` call above for the dissolve
 overload and drive `dissolve` from any game-side 0..1 timer (a death fade, a despawn countdown) instead of a

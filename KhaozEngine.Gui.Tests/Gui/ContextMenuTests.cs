@@ -255,6 +255,10 @@ namespace KhaozEngine.Tests.Gui
             var pressAt = new Vector2(700, 400);
             var releaseAt = new Vector2(800, 450);
 
+            // One idle frame first, so the press below is a FRESH gesture rather than one already in flight on
+            // the opening frame. A gesture live on that frame is the opening gesture and can never dismiss.
+            p.Update(Frame(pressAt, false)); menu.Update(p);
+
             // Press outside, drag, release somewhere else outside. DismissPress is documented as the RELEASE
             // position, which is the one IsReleasedOutside keys on, so a drag that starts elsewhere still
             // reopens under the cursor rather than at a stale press origin.
@@ -411,7 +415,7 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
-        public void A_menu_opened_on_a_left_release_survives_its_own_opening_frame()
+        public void A_menu_opened_on_a_left_release_survives_its_own_opening_gesture()
         {
             // A caller that opens on a left RELEASE hands the first Update a frame that already carries the
             // release edge. Three rows are 117 tall, so at (300,538) the flip puts the menu at 421 and the
@@ -434,11 +438,85 @@ namespace KhaozEngine.Tests.Gui
             Assert.False(menu.WasDismissed);
             Assert.Null(menu.DismissPress);
 
-            // The latch lasts exactly the opening frame. The next gesture releasing outside still dismisses.
+            // The latch holds until a FRESH press arrives, which is the whole of the opening gesture here: the
+            // release already happened, so nothing but a new press can clear it. That next gesture dismisses.
             Tap(menu, p, Outside);
             Assert.False(menu.IsOpen);
             Assert.True(menu.WasDismissed);
             Assert.Equal(Outside, menu.DismissPress);
+        }
+
+        [Fact]
+        public void A_menu_opened_on_a_left_press_survives_that_gesture_s_release_a_frame_later()
+        {
+            // The press-open twin of the case above, and the one a single-FRAME latch cannot cover: the caller
+            // opens on the PRESS edge, so the release lands a frame later, still the same gesture. Three rows
+            // are 117 tall, so at (300,538) the flip puts the menu at 421 and the clamp pulls it to 419..536.
+            // The release at 538 therefore lands OUTSIDE the menu that press just opened.
+            var at = new Vector2(300, 538);
+            var p = new Pointer();
+            var menu = new ContextMenu(Font, Font) { Viewport = View };
+
+            p.Update(Frame(at, false));
+            p.Update(Frame(at, true));    // the press edge the caller opens on
+            menu.Open(LocalizedText.Raw("Options"), Three(), at);
+            menu.Update(p);
+            Assert.True(menu.IsOpen);
+
+            Rect bounds = ContextMenu.ComputeBounds(Font, "Options", Font, Three(), at, View, M);
+            Assert.Equal(419f, bounds.Y);
+
+            p.Update(Frame(at, false));                 // the SAME gesture's release, one frame after the open
+            Assert.True(p.IsReleasedOutside(bounds));   // the dismissal case really is live this frame
+            menu.Update(p);
+
+            Assert.True(menu.IsOpen);                   // the opening gesture cannot dismiss the menu it opened
+            Assert.False(menu.WasDismissed);
+            Assert.Null(menu.DismissPress);
+
+            // A fresh press outside, on a frame the menu already existed for, still dismisses.
+            Tap(menu, p, Outside);
+            Assert.False(menu.IsOpen);
+            Assert.True(menu.WasDismissed);
+            Assert.Equal(Outside, menu.DismissPress);
+        }
+
+        [Fact]
+        public void A_menu_that_clamps_over_the_cursor_does_not_select_on_its_opening_gesture()
+        {
+            // Twenty rows over the title band is 593 tall, taller than the whole viewport, so neither placement
+            // fits and the clamp pins the menu to y 4, covering its own anchor. The caller opens on the release
+            // edge, so the first Update sees a tap whose press-origin AND release both sit on row 9. That press
+            // began before the menu existed, so it can never be a deliberate row press.
+            var entries = new ContextMenuEntry[20];
+            for (int i = 0; i < entries.Length; i++) entries[i] = new ContextMenuEntry("Item", Tag: 100 + i);
+            var at = new Vector2(500, 300);
+            var p = new Pointer();
+            var menu = new ContextMenu(Font, Font) { Viewport = View };
+
+            p.Update(Frame(at, false));
+            p.Update(Frame(at, true));
+            p.Update(Frame(at, false));   // the release edge the caller opens on
+            menu.Open(LocalizedText.Raw("Options"), entries, at);
+
+            Rect bounds = ContextMenu.ComputeBounds(Font, "Options", Font, entries, at, View, M);
+            Assert.Equal(M.Margin, bounds.Y);
+            Rect row9 = ContextMenu.RowBounds(bounds, Font, Font, 9, M);
+            Assert.True(row9.Contains(at));   // the clamped menu really did drop a row under the cursor
+            Assert.True(p.IsTapIn(row9));     // and the selection case really is live this frame
+
+            menu.Update(p);
+            Assert.False(menu.WasSelected);
+            Assert.Equal(-1, menu.SelectedIndex);
+            Assert.Equal(0L, menu.SelectedTag);
+            Assert.True(menu.IsOpen);
+
+            // Once the latch clears on a fresh press, a tap on that same row selects normally.
+            Tap(menu, p, at);
+            Assert.True(menu.WasSelected);
+            Assert.Equal(9, menu.SelectedIndex);
+            Assert.Equal(109L, menu.SelectedTag);
+            Assert.False(menu.IsOpen);
         }
     }
 }

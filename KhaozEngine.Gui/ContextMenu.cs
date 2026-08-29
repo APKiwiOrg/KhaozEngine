@@ -64,6 +64,7 @@ namespace KhaozEngine.Gui
         string _title = "";
         Vector2 _point;
         bool _openedThisFrame;
+        bool _openGestureLatch;
 
         /// <summary>Spacing knobs used by the layout and the draw. Defaults to <see cref="ContextMenuMetrics.Default"/>.</summary>
         public ContextMenuMetrics Metrics = ContextMenuMetrics.Default;
@@ -156,11 +157,17 @@ namespace KhaozEngine.Gui
         /// frame flag, so a right press that lands on a new target swaps the menu in one call. A null or empty
         /// <paramref name="entries"/> opens a title-only menu rather than throwing.
         /// <para>
-        /// Latches the opening frame (the <see cref="Tooltip"/> precedent), so the gesture that opened the menu
-        /// can never dismiss it. A caller opening on a LEFT RELEASE hands the first <see cref="Update(Pointer)"/>
-        /// a frame that already carries the release edge, and when the clamp in <see cref="ComputeBounds"/> moves
-        /// the menu off the cursor that release reads as outside the menu it just opened. The latch is cleared by
-        /// the next <see cref="Update(Pointer)"/>, closed menu included, so it costs exactly one frame.
+        /// Latches the whole OPENING GESTURE (the <see cref="Tooltip"/> precedent, widened from one frame to one
+        /// gesture), so the gesture that opened the menu can never dismiss it and can never select a row in it.
+        /// A caller opening on a LEFT PRESS or a LEFT RELEASE hands the first <see cref="Update(Pointer)"/> a
+        /// frame that already carries that gesture's edge, and when the clamp in <see cref="ComputeBounds"/>
+        /// moves the menu the gesture reads either as a release outside the menu it just opened (a dismissal) or
+        /// as a tap on a row the menu dropped under the cursor (a selection). Neither is deliberate: a press that
+        /// began before the menu existed cannot be an act on it. The latch clears on the first
+        /// <see cref="Pointer.IsJustPressed"/> landing on a frame AFTER the opening one, and that press is then
+        /// read normally from its own edge, so the menu answers the user's first fresh gesture and nothing
+        /// before it. Menu-cancel via <see cref="Update(InputManager, PlayerIndex?)"/> stays live throughout,
+        /// since the keyboard was not the opening gesture.
         /// </para>
         /// </summary>
         public void Open(LocalizedText title, IReadOnlyList<ContextMenuEntry> entries, Vector2 screenPoint)
@@ -173,6 +180,7 @@ namespace KhaozEngine.Gui
             IsOpen = true;
             HoverIndex = -1;
             _openedThisFrame = true;
+            _openGestureLatch = true;
             ClearFrameFlags();
         }
 
@@ -198,18 +206,25 @@ namespace KhaozEngine.Gui
         /// world beneath cannot be clicked through it, tracks <see cref="HoverIndex"/>, selects on a tap inside
         /// an ENABLED row (setting <see cref="WasSelected"/> / <see cref="SelectedTag"/> /
         /// <see cref="SelectedIndex"/> and closing), and dismisses on a release outside the bounds (setting
-        /// <see cref="WasDismissed"/> and <see cref="DismissPress"/>), EXCEPT on the frame <see cref="Open"/> was
-        /// called, where the release-outside dismissal is suppressed so the opening gesture cannot close the menu
-        /// it opened. A tap inside the menu that hits the title band or a disabled row does nothing and leaves
-        /// the menu open. Returns <see cref="WasSelected"/>.
+        /// <see cref="WasDismissed"/> and <see cref="DismissPress"/>). BOTH of those are suppressed while the
+        /// opening-gesture latch from <see cref="Open"/> is armed, which lasts until a press edge lands on a
+        /// frame after the opening one. <see cref="HoverIndex"/> and the <see cref="Pointer.BlockRegion"/>
+        /// reservation are computed either way, so a latched frame still highlights and blocks exactly like any
+        /// other open frame. A tap inside the menu that hits the title band or a disabled row does nothing and
+        /// leaves the menu open. Returns <see cref="WasSelected"/>.
         /// </summary>
         public bool Update(Pointer pointer)
         {
             ClearFrameFlags();
-            if (!IsOpen) { HoverIndex = -1; _openedThisFrame = false; return false; }
+            if (!IsOpen) { HoverIndex = -1; _openedThisFrame = false; _openGestureLatch = false; return false; }
 
-            bool openedFrame = _openedThisFrame;
+            bool openingFrame = _openedThisFrame;
             _openedThisFrame = false;
+            // A press edge on a LATER frame began when the menu already existed, so it is the user's first
+            // deliberate gesture at it: disarm, and read that same press normally from its own edge below. A
+            // press edge on the opening frame itself belongs to the gesture that opened the menu, and leaving
+            // the latch armed there is what carries it across a press-open gesture's release a frame later.
+            if (_openGestureLatch && !openingFrame && pointer.IsJustPressed) _openGestureLatch = false;
 
             Rect bounds = Bounds();
             pointer.BlockRegion(bounds);
@@ -223,6 +238,13 @@ namespace KhaozEngine.Gui
                 break;
             }
 
+            // Neither query below can tell an opening gesture from a deliberate one on its own. IsTapIn carries
+            // a press-origin invariant but no notion of when the menu appeared, so a menu the clamp drops under
+            // a held cursor reads the pre-open press as a row tap. IsReleasedOutside is a pure edge plus
+            // position, with no origin invariant at all. Pointer.ConsumeGesture is the caller-side answer and
+            // gates the tap queries only, so the menu carries its own latch and gates both paths here.
+            if (_openGestureLatch) return false;
+
             for (int i = 0; i < _entries.Count; i++)
             {
                 ContextMenuEntry e = _entries[i];
@@ -235,9 +257,7 @@ namespace KhaozEngine.Gui
                 return true;
             }
 
-            // IsReleasedOutside is a pure edge plus position, with no press-origin invariant and no consume
-            // latch (Pointer.ConsumeGesture gates the tap queries only), so the opening frame is skipped here.
-            if (!openedFrame && pointer.IsReleasedOutside(bounds))
+            if (pointer.IsReleasedOutside(bounds))
             {
                 WasDismissed = true;
                 DismissPress = pointer.Position;
@@ -250,7 +270,9 @@ namespace KhaozEngine.Gui
         /// <see cref="Update(Pointer)"/> plus menu-cancel (Escape / gamepad B / Back) dismissal, mirroring
         /// <see cref="Dropdown.Update(InputManager, bool, PlayerIndex?)"/>. A cancel sets
         /// <see cref="WasDismissed"/> with a null <see cref="DismissPress"/>, since there is no outside press to
-        /// reopen from. <paramref name="player"/> scopes gamepad input (null = any player).
+        /// reopen from. Cancel is NOT gated by the opening-gesture latch, deliberately: the keyboard was never
+        /// the gesture that opened the menu, so Escape closes it on the very first frame. <paramref name="player"/>
+        /// scopes gamepad input (null = any player).
         /// </summary>
         public bool Update(InputManager input, PlayerIndex? player = null)
         {

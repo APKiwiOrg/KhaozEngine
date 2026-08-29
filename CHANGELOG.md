@@ -5,6 +5,47 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.2.0
+
+18.2.0 gives the update overlay an exit ([#739](https://github.com/APKiwiOrg/KhaozEngine/issues/739)): a
+dismiss key for the states a player may decline, and a per-session cap so a persistently failing apply
+stops offering a retry it cannot honour. Found from the Ruinborne dev-run spam
+(https://github.com/APKiwiOrg/Ruinborne/issues/464), but the player-reachable case is any install the
+apply cannot write. Everything is additive: consumer wiring is unchanged and existing catalogs render
+exactly as before.
+
+- **A dismiss key on the update overlay** (`KhaozEngine.Gui`). Visibility was a pure function of
+  `UpdateState`, so once the flow left `Idle` the panel stayed up for the session and the only input was
+  the state-advancing trigger key. `UpdateOverlayTheme.DismissKey` (default `Escape`, with
+  `DismissButton` gamepad B and `DismissKeyLabel`) now puts the panel away for a state the player may
+  decline (`UpdateOverlayView.IsDismissible`: `UpdateAvailable`, `ReadyToApply`, `Failed`), never for the
+  in-flight `Downloading` and `Applying`, and never for a required update, which `IsShowing` re-checks so
+  even a direct `Dismiss` call cannot hide a mandatory one. Dismissals are remembered per state, so a
+  periodic recheck landing back on the same offer stays hidden and the panel returns on its own only at a
+  state that was not declined. `ResetDismissed()` clears them, `OnDismiss` is exposed on the view and the
+  screen, and the dismiss frame is consumed so an `Escape` that closes the overlay does not also open a
+  pause menu.
+- **A per-session apply cap** (`KhaozEngine.Updates`). An environment that cannot apply (a read-only
+  install dir, an AV lock on the shim, a full disk) fails identically every attempt, so retry, download,
+  failed apply looped forever. `UpdateService` counts `FailedApplyAttempts` and reports
+  `ApplyAttemptsExhausted` at `UpdateServiceOptions.MaxApplyAttemptsPerSession` (default 2, non-positive
+  turns the cap off), logging the spent budget once at warning. The new
+  `UpdateOverlayActions.ResolveAction(IUpdateStatus)` overload, which `Trigger` now applies, maps `Failed`
+  to `None` from there instead of `Retry`. A failed download is not an apply attempt, and the cap is an
+  offer policy only: it never blocks `ApplyUpdate` itself, so `EnsureUpToDateAsync` and a staged repair
+  are unaffected. `IUpdateStatus.ApplyAttemptsExhausted` is a default interface member, so existing
+  implementations keep compiling with their old behaviour.
+- **Two new overlay localization keys with English fallbacks.** `update.overlay.dismiss.hint`
+  (`Press [{0}] to dismiss`) draws as a third panel line via the new virtual
+  `UpdateOverlayTheme.HintFor(UpdateState, IUpdateStatus)`, empty for non-dismissible states and required
+  updates so the layout is unchanged there, and `update.overlay.failed.body.exhausted`
+  (`This update could not be installed`) replaces the retry prompt once the apply budget is spent. No
+  existing key's text changed.
+
+The release also carries the repeatable MM1 record-cost gate (`MetalRecordCostGpuTests` over the shared
+`StreamedWorldSceneContent` scene) whose readings discharged the native Metal program's last rollout gate
+and closed [#566](https://github.com/APKiwiOrg/KhaozEngine/issues/566).
+
 ## 18.1.0
 
 18.1.0 retires the one-uniform-buffer-per-pipeline shader rule

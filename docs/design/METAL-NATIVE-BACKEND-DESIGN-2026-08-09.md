@@ -202,8 +202,10 @@ resolves tile memory out to device memory and the next begin loads it back, unco
 `CreateRenderPassDescriptor` sets `loadAction = Load` on every attachment. That is a third distinct mechanism
 for the same defect class across three backends (CPU stalls on D3D11, render-pass splits plus a global barrier
 on Vulkan, encoder splits plus state wipes here), and the convergence is the argument that the ring is a
-property of the seam's usage rather than of any one API. The per-frame COUNT on the #410 scene is unmeasured
-and MM1 is what measures it.
+property of the seam's usage rather than of any one API. The per-frame COUNT on the #410 scene was unmeasured
+when this was written, and MM1 measured it on 2026-08-31: **ten record-time uploads for a frame issuing 909
+indexed draws**, a per-pass count and not a per-draw one, so what this paragraph prices is ten of these a
+frame on the incumbent rather than a thousand. Section 17's gate 4 notes carry the full reading.
 
 **Device-level `UpdateBuffer` is an ungated memcpy into memory the GPU may be reading.**
 `MTLGraphicsDevice.UpdateBufferCore` takes `DeviceBuffer.contents()` and copies straight into it. Every
@@ -3970,7 +3972,7 @@ table.**
 | 1. All 36 goldens green, worst-cell delta recorded, MM2 resolved | **GREEN, read 2026-08-11 (run 31464944222)** | The `metal-native` leg's golden compares, and the `golden-deltas-metal-native` artifact it uploads on `always()`. The leg's first two runs aborted before either could be read (see the paravirtual-device note below), so this reading comes off the third, which is the run after the border-sampler fix. The `KE_METAL_CLEAR` A/B was taken on the M2 Max rather than as a second leg dispatch, for the reason the gate-1 note gives, and the switch is now REMOVED |
 | 2. Full `macos-26` suite at 0 failed and NO NEW SKIPS, with the two `[GpuFact]` assemblies at 0 skipped, passed at or above the incumbent's, no validation errors, MM9 met | **GREEN, read 2026-08-11 (run 31464944222)** | The same leg, which runs the whole suite on every trigger with `MTL_DEBUG_LAYER=1` armed and `KE_METAL_REQUIRED=1` set. **The skip half is read off the `[GpuFact]` assemblies rather than off the leg's own total**, because the leg's test step names no project and therefore runs the whole solution, where 18 backend-independent rows skip for reasons this backend cannot move: 17 in `KhaozEngine.Server.Tests` that need a live SQL Server (the `SqlServerWorldStoreConformanceTests` set and `SqlServerWalletStoreTests`), plus one `Game.Tests` perturbation control that skips on its own condition. `KhaozEngine.Render.Tests` and `KhaozEngine.MapEditor.Tests` are where a Metal row could skip, both genuinely reach 0 skipped on a real GPU, and that is the readable criterion, with ONE standing exception the first hosted run surfaced: a `[GpuFact(RequiresRealGpu = true)]` row self-skips on the hosted runner's paravirtual adapter by design, so on that leg the criterion reads as 0 skipped beyond the CAPABILITY-GATED rows: `[GpuFact(RequiresRealGpu = true)]` (1 today, `DistortionGpuTests.Distortion_warps_the_starfield`) and `[GpuFact(RequiresFourSampleMsaa = true)]` (1 today, the #603 resolve instrument, which self-skips naming the backend and limit on a device reporting `MaxMsaaSampleCount` under 4, a value nobody has measured on the paravirtual adapter: the capability parity test read 4 on an M2 Max, so the hosted answer is unknown until the next leg run and either outcome is within the exception). A NEW skip outside those attributes is still a red flag. **`KE_METAL_REQUIRED` is what makes it worth reading at all**: a dormant row is not a skip, so without it the criterion could be satisfied by rows that asserted nothing. The passed-count comparison is against the incumbent Metal leg on the same commit, which is the leg beside it in the same matrix |
 | 3. Budget test green with marginals recorded, MM3 met, the MSL index-table test green, MM6 taken | **GREEN, read 2026-08-11 (run 31464944222)** | MM6 is TAKEN and PASSED (2.3a, row 17). The budget marginals, MM3 and the index-table test are device-free tests that already run on every `dotnet test`, the leg's included, so this gate was a RECORDING task rather than a machine one and all four halves are now in hand. Row 18, the #531 extraction, is the only work in section 18 that waited on it, and it is unblocked and dispatched |
-| 4. A field session at or above the incumbent's numbers, zero command-buffer errors, MM1, MM4 and MM10 met | **PENDING, baseline TAKEN and first native session READ, 2026-08-11** (both at `17.35.0+a6f31ab0`). MM4 met, MM10 discharged by its own refusal, MM1 still owed, and the pass bar itself ("no worse over a week") is a soak nobody has run yet | A windowed telemetry session on this Mac, and the FIRST task was the incumbent baseline (MM12), because no Metal field number existed anywhere in this program's record. Both captures are below. The instrument is the showcase's own `KE_TELEMETRY_PATH` lever, added for this gate, with `KE_SHOWCASE_FRAME_CAP` and `KE_SHOWCASE_BACKGROUND_THROTTLE` beside it for the reasons the gate 4 notes give. `GpuDeviceCounters` carries every channel this gate reads on the native backend and NONE of them on the incumbent (see the note below), and the session header names the backend. The build line and the capture-window stamps were pinned before anything was read |
+| 4. A field session at or above the incumbent's numbers, zero command-buffer errors, MM1, MM4 and MM10 met | **PENDING, baseline TAKEN and first native session READ, 2026-08-11** (both at `17.35.0+a6f31ab0`), **and MM1 MEASURED 2026-08-31** at 18.1.0. MM4 met, MM10 discharged by its own refusal, MM1's native half met and its incumbent half recorded as unmeasurable, and the pass bar itself ("no worse over a week") is a soak nobody has run yet | A windowed telemetry session on this Mac, and the FIRST task was the incumbent baseline (MM12), because no Metal field number existed anywhere in this program's record. Both captures are below. The instrument is the showcase's own `KE_TELEMETRY_PATH` lever, added for this gate, with `KE_SHOWCASE_FRAME_CAP` and `KE_SHOWCASE_BACKGROUND_THROTTLE` beside it for the reasons the gate 4 notes give. `GpuDeviceCounters` carries every channel this gate reads on the native backend and NONE of them on the incumbent (see the note below), and the session header names the backend. The build line and the capture-window stamps were pinned before anything was read |
 | 5. A human windowed pass, with the vsync toggle as a MEASUREMENT | **GREEN, read 2026-08-11.** The window appears correctly, the Retina framebuffer is full-scale, the vsync measurement is TAKEN and its result has LANDED in shipped code, #605 is filed as reproduced incumbent parity, and #607 sits beside the gate as an unreproduced one-off lead rather than blocking it | A person at a window, plus the F7 vsync toggle as the measuring instrument. The checklist is in the gate itself, narrowed by row 15: the layer half of the swapchain runs headless in the `[GpuFact]` suite, so what was genuinely uncovered is `MetalLayerHost`'s four Cocoa selectors and whether anything appears on a screen. Both now have an answer. The frame-cap arm had an instrument rather than a judgement (`AcquireWaitMs / AcquireWaitCount` on an uncapped capture with vsync on) and the toggle supplied the two legs that capture could not |
 
 **The `ProbeOS` flip does NOT land in row 19, and the design is unambiguous about why.** Section 17 opens
@@ -4052,13 +4054,57 @@ and MM10's corruption test exists against that payload instead (`MetalMslCacheTe
 asserting the same three things: a miss, a delete, and nothing thrown). The launch-failure half of the criterion
 is what a field session still has to say, since a cache is only exercised by a second launch.
 
-**MM1 is STILL OWED, both halves.** Nothing this session did counts record-time `UpdateBuffer` calls, encoder
-boundaries or record-time buffer allocations, on either backend. The incumbent half needs the throwaway
-instrumented build MM1 names, and the counter gap above means it cannot be shortcut through a capture.
+**MM1 was STILL OWED here, and its native half is MEASURED now. Taken 2026-08-31, on this same M2 Max.**
+Nothing the 2026-08-11 session did counted record-time `UpdateBuffer` calls, encoder boundaries or record-time
+buffer allocations on either backend. The incumbent half never can be counted: that backend was deleted in
+18.0.0 ([#687](https://github.com/APKiwiOrg/KhaozEngine/issues/687)), so it is recorded as UNMEASURABLE rather
+than skipped, on the user's ruling of 2026-08-31 and on the precedent that retired MV7
+([#564](https://github.com/APKiwiOrg/KhaozEngine/issues/564)). The comparison column the gate wanted is
+replaced by the absolute numbers, which is how two of MM1's three criteria were stated anyway.
 
-**What gate 4 still owes.** The pass bar is "no worse over accumulated field exposure" (MM12's week was the
-estimate of how much), and MM1's two halves have to be measured. The prerequisite is discharged and the gate
-stays PENDING.
+The instrument is `MetalRecordCostGpuTests`, a `[GpuFact]` on a headless `MetalNative` device, and it adds NO
+counter to the seam, which is M-G6 held rather than worked around: boundaries come off
+`MetalEncoderScope.Epoch` (which counts every transition by construction), allocations off
+`MetalStagingArena.BlocksCreated`, and uploads off the seam-level command tally. Three warmup frames discarded,
+five read, one command list reused by all of them. The scene is `StreamedWorldSceneContent`, the #410-shaped
+streamed world the upload-attribution row already measures, now shared by both rows so they read the same
+frame: 447 chunk meshes plus 447 HLOD cluster meshes plus 3000 prop instances, 24 characters at 13,640
+vertices and 48 bones, 4 cascades at 2048. It records 909 indexed draws against the field report's roughly
+1,000, and its geometry is deliberately light, which is exactly right for a COUNT and would be wrong for a
+triangle-bound reading.
+
+| per steady-state frame | GPU skinning | CPU skinning |
+|---|---|---|
+| record-time `UpdateBuffer` calls | 11 | 10 |
+| encoders opened (boundaries) | 5 (10) | 5 (10) |
+| MM1's encoder bound | 5 | 5 |
+| record-time buffer allocations | **0** | 1 |
+| framebuffer changes, blit passes needed | 4, 1 | 4, 1 |
+| indexed draws | 909 | 909 |
+
+**MM1 IS MET on the shipped path, and the bet PAID in a narrower sense than it was written in.** Ten or eleven
+record-time uploads for a frame issuing 909 indexed draws is a per-PASS count and not a per-draw one, so the
+encoder-split-per-record-time-write class could never have been dominant on THIS scene whatever its unit price
+was: the incumbent would have paid ten splits a frame, not a thousand. The bet's own hedge anticipated exactly
+that ("two releases of renderer-side engineering have already hoisted most of them out of the frame"), and the
+honest reading is that the hoisting is what made the count small, with the ring keeping it small for free.
+What the ring demonstrably buys is that nine or ten of those uploads are uniform writes costing nothing at
+all, no split, no blit and no allocation, so the frame's encoder count lands exactly ON its bound rather than
+over it: four render encoders for four framebuffer changes, plus the one blit encoder the bulk vertex upload
+genuinely needs. The frame-time half of the criterion is the field session above, where the native backend read
+16.737 ms mean against the incumbent's 16.758 ms and a materially better p99.
+
+**The one non-zero is the CPU-skinning path's allocation, and it is the retention cap working rather than
+failing.** That path re-uploads every deformed vertex every frame, 20,462.9 KB at this crowd size, which is
+over `MetalStagingArena.DefaultRetentionBytes` (8 MiB), so the 32 MiB block taken for it is released at the
+recycle and a fresh one is taken next frame. It is flat at one per frame across every frame read rather than
+climbing, and `Scene3D.UseGpuSkinning` removes the stream and takes it to zero, which is why the row measures
+both paths and reads MM1 against the second. Filed as its own item rather than left in this note:
+[#758](https://github.com/APKiwiOrg/KhaozEngine/issues/758).
+
+**What gate 4 still owes.** MM1 owes nothing further. The pass bar is "no worse over accumulated field
+exposure" (MM12's week was the estimate of how much), so the prerequisite is discharged, every named bet is
+read, and the gate stays PENDING on the soak alone.
 
 **The soak is ORGANIC SESSIONS, not a scheduled capture loop, reframed 2026-08-11 at the user's call.** The
 build does not change day to day, so a dedicated daily capture would measure the calendar. What the exposure

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
@@ -38,23 +37,25 @@ namespace KhaozEngine.Tests.Gpu
     /// for the shape. The millisecond columns are a secondary signal on reduced geometry and are reported, never
     /// asserted. Gated on KE_GPU_TESTS.
     /// </para>
+    /// <para>
+    /// THE SCENE ITSELF IS <see cref="StreamedWorldSceneContent"/>, shared with the row that measures the same
+    /// frame's record-time COUNTS (<see cref="MetalRecordCostGpuTests"/>). One definition, so the two readings are
+    /// of the same frame rather than of two copies that can drift apart.
+    /// </para>
     /// </summary>
     public sealed class FrameUploadAttributionGpuTests
     {
         const int W = 640, H = 400;
-        const int Resolution = 2048, Cascades = 4;
 
-        // The live client's scene shape.
-        const int ChunkMeshes = 447;        // resident chunks: each is its own mesh, so each is its own run + draw
-        const int HlodMeshes = 447;         // one merged HLOD cluster mesh per chunk (the tree layer)
-        const int PropInstances = 3000;     // authored placements inside the 240 m gameplay ring, over shared meshes
-        const float ChunkSize = 60f;
-
-        // Ruinborne's player mesh is 13,637 vertices (player_human_male.glb). BuildTube's vertex count is
-        // (rings + 1) * radial, so 340 x 40 lands at 13,640: the same order, and exact enough that the per-character
-        // byte cost below is the real one.
-        const int CharacterRings = 340, CharacterRadial = 40, CharacterBones = 48;
-        const int CharacterVertices = (CharacterRings + 1) * CharacterRadial;
+        // The live client's scene shape, which is StreamedWorldSceneContent's. Named here so the report lines and
+        // the assertions below read as they always did.
+        const int Resolution = StreamedWorldSceneContent.ShadowResolution;
+        const int Cascades = StreamedWorldSceneContent.Cascades;
+        const int ChunkMeshes = StreamedWorldSceneContent.ChunkMeshes;
+        const int HlodMeshes = StreamedWorldSceneContent.HlodMeshes;
+        const int PropInstances = StreamedWorldSceneContent.PropInstances;
+        const int CharacterBones = StreamedWorldSceneContent.CharacterBones;
+        const int CharacterVertices = StreamedWorldSceneContent.CharacterVertices;
 
         static readonly int[] CharacterCounts = { 0, 1, 4, 12, 24 };
 
@@ -62,13 +63,6 @@ namespace KhaozEngine.Tests.Gpu
 
         readonly ITestOutputHelper _out;
         public FrameUploadAttributionGpuTests(ITestOutputHelper o) => _out = o;
-
-        static ShadowSettings Shadows() => new()
-        {
-            Mode = ShadowMode.ShadowMap,
-            ShadowMapResolution = Resolution,
-            ShadowCascadeCount = Cascades,
-        };
 
         static double Median(List<double> xs)
         {
@@ -83,77 +77,27 @@ namespace KhaozEngine.Tests.Gpu
         sealed class Harness : IDisposable
         {
             readonly GpuDeviceContext _ctx;
+            readonly StreamedWorldSceneContent _content;
             public readonly Render3DPreview Preview;
             public Scene3D Scene => Preview.Scene;
             public readonly IGpuDevice Device;
-            readonly List<MeshHandle> _chunks = new();
-            readonly List<MeshHandle> _hlod = new();
-            readonly MeshHandle[] _props = new MeshHandle[4];
-            readonly SkinnedMeshHandle _character;
-            readonly Matrix4x4[] _palette;
-            readonly List<Matrix4x4> _propWorlds = new();
-            readonly List<Vector3> _chunkOrigins = new();
 
             public Harness()
             {
                 _ctx = GpuDeviceContext.CreateHeadless();
                 Device = _ctx.GpuDevice;
-                Preview = new Render3DPreview(Device, W, H, Shadows());
+                Preview = new Render3DPreview(Device, W, H, StreamedWorldSceneContent.Shadows());
                 Scene.EnableTiming = true;
                 Scene.Post.Starfield = false;
                 Scene.Post.Outline = false;
-                Scene.Camera.Azimuth = 0.6f;
-                Scene.Camera.Elevation = 0.35f;
-                Scene.Camera.Frame(Vector3.Zero, new Vector3(70f, 25f, 70f));
-
-                // Chunks + their merged HLOD clusters: DISTINCT mesh handles, because that is what makes a streamed
-                // world one run (and one draw call) per chunk rather than one big instanced run.
-                int side = (int)MathF.Ceiling(MathF.Sqrt(ChunkMeshes));
-                for (int i = 0; i < ChunkMeshes; i++)
-                {
-                    int cx = i % side, cz = i / side;
-                    _chunkOrigins.Add(new Vector3((cx - side / 2) * ChunkSize, 0f, (cz - side / 2) * ChunkSize));
-                    _chunks.Add(Scene.LoadMesh(MeshPrimitives.Tile(ChunkSize, 0.4f)));
-                }
-                for (int i = 0; i < HlodMeshes; i++) _hlod.Add(Scene.LoadMesh(MeshPrimitives.RoundedBox(3f, 0.5f, 3)));
-
-                _props[0] = Scene.LoadMesh(MeshPrimitives.Box(0.8f));
-                _props[1] = Scene.LoadMesh(MeshPrimitives.Cone(0.5f, 2.2f, 6));
-                _props[2] = Scene.LoadMesh(MeshPrimitives.Sphere(1.6f, 10, 12));
-                _props[3] = Scene.LoadMesh(MeshPrimitives.RoundedBox(1.4f, 0.3f, 4));
-
-                uint seed = 0x51AB_C0DE;
-                float Next() { seed = seed * 1664525u + 1013904223u; return (seed >> 8) / (float)(1 << 24); }
-                for (int i = 0; i < PropInstances; i++)
-                {
-                    float x = (Next() - 0.5f) * 480f, z = (Next() - 0.5f) * 480f;
-                    _propWorlds.Add(Matrix4x4.CreateRotationY(Next() * 6.28f) * Matrix4x4.CreateTranslation(x, 0f, z));
-                }
-
-                SkinnedGltfMesh tube = SkinnedMeshBuilder.BuildTube(0.5f, 4f, CharacterRings, CharacterRadial, CharacterBones, Axis.Z);
-                _character = Scene.LoadSkinnedMesh(tube);
-                _palette = (Matrix4x4[])tube.RestPose.Clone();
+                StreamedWorldSceneContent.FrameCamera(Scene);
+                _content = new StreamedWorldSceneContent(Scene);
             }
 
-            /// <summary>One frame of the scene with <paramref name="characters"/> skinned draws, all placed inside the
-            /// camera frustum so every one of them really is skinned (a culled draw skips its upload, which would make
-            /// the sweep measure the cull instead of the stream).</summary>
+            /// <summary>One frame of the scene with <paramref name="characters"/> skinned draws and
+            /// <paramref name="chunks"/> resident chunks. See <see cref="StreamedWorldSceneContent.Draw"/>.</summary>
             public void DrawFrame(Scene3D s, int characters, int chunks)
-            {
-                for (int i = 0; i < chunks; i++)
-                    s.Draw(_chunks[i], Matrix4x4.CreateTranslation(_chunkOrigins[i]), new Color(0.5f, 0.52f, 0.46f, 1f));
-                for (int i = 0; i < HlodMeshes; i++)
-                    s.Draw(_hlod[i], Matrix4x4.CreateTranslation(_chunkOrigins[i] + new Vector3(0f, 1.5f, 0f)),
-                        new Color(0.3f, 0.45f, 0.28f, 1f));
-                for (int i = 0; i < _propWorlds.Count; i++)
-                    s.Draw(_props[i & 3], _propWorlds[i], new Color(0.35f, 0.55f, 0.3f, 1f));
-                for (int i = 0; i < characters; i++)
-                {
-                    float a = i * 0.7f;
-                    var world = Matrix4x4.CreateTranslation(MathF.Cos(a) * (2f + i * 0.35f), 1f, MathF.Sin(a) * (2f + i * 0.35f));
-                    s.DrawSkinned(_character, _palette, world, Color.White);
-                }
-            }
+                => _content.Draw(s, characters, chunks);
 
             public void Dispose()
             {

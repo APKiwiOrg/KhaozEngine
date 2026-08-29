@@ -27,7 +27,7 @@ public interface IEditorCommand
 /// <summary>Shared base for the concrete editor commands. Carries the world-rebuild classification the
 /// <see cref="EditorDocument"/> reads (<see cref="AffectsWorld"/>) and a no-merge default. Public so game heads
 /// can script edits through the concrete commands, but the classification stays internal to the engine.</summary>
-public abstract class EditorCommand : IEditorCommand
+public abstract partial class EditorCommand : IEditorCommand
 {
     /// <inheritdoc/>
     public abstract string Label { get; }
@@ -346,10 +346,10 @@ public sealed class AddPlacementCommand : EditorCommand
     internal override bool AffectsWorld => false;
 
     /// <inheritdoc/>
-    public override void Apply(MapDocument doc) => doc.Placements.Add(_placement);
+    public override void Apply(MapDocument doc) => ApplyAppend(doc.Placements, _placement);
 
     /// <inheritdoc/>
-    public override void Revert(MapDocument doc) => doc.Placements.Remove(_placement);
+    public override void Revert(MapDocument doc) => RevertAppend(doc.Placements);
 
     /// <inheritdoc/>
     public override bool TryMerge(IEditorCommand next)
@@ -600,10 +600,10 @@ public sealed class AddSpawnCommand : EditorCommand
     internal override bool AffectsWorld => false;
 
     /// <inheritdoc/>
-    public override void Apply(MapDocument doc) => doc.Spawns.Add(_spawn);
+    public override void Apply(MapDocument doc) => ApplyAppend(doc.Spawns, _spawn);
 
     /// <inheritdoc/>
-    public override void Revert(MapDocument doc) => doc.Spawns.Remove(_spawn);
+    public override void Revert(MapDocument doc) => RevertAppend(doc.Spawns);
 
     /// <inheritdoc/>
     public override bool TryMerge(IEditorCommand next)
@@ -840,10 +840,10 @@ public sealed class AddPlayerSpawnCommand : EditorCommand
     internal override bool AffectsWorld => false;
 
     /// <inheritdoc/>
-    public override void Apply(MapDocument doc) => doc.PlayerSpawns.Add(_spawn);
+    public override void Apply(MapDocument doc) => ApplyAppend(doc.PlayerSpawns, _spawn);
 
     /// <inheritdoc/>
-    public override void Revert(MapDocument doc) => doc.PlayerSpawns.Remove(_spawn);
+    public override void Revert(MapDocument doc) => RevertAppend(doc.PlayerSpawns);
 
     /// <inheritdoc/>
     public override bool TryMerge(IEditorCommand next)
@@ -1089,11 +1089,11 @@ public sealed class AddExclusionCommand : EditorCommand
     public override void Apply(MapDocument doc)
     {
         _boundsMargin = ShapeGeometry.BoundsMarginFor(doc);
-        doc.Exclusions.Add(_exclusion);
+        ApplyAppend(doc.Exclusions, _exclusion);
     }
 
     /// <inheritdoc/>
-    public override void Revert(MapDocument doc) => doc.Exclusions.Remove(_exclusion);
+    public override void Revert(MapDocument doc) => RevertAppend(doc.Exclusions);
 }
 
 /// <summary>Removes the exclusion at the given index, restoring it at that index on revert. Affects the
@@ -1351,15 +1351,6 @@ public sealed class AddScatterOverrideCommand : EditorCommand
     // keeps it current, see AddExclusionCommand's matching field).
     float? _boundsMargin;
 
-    // The insertion index, captured at Apply and used by Revert (RemoveAt, the RemoveScatterOverrideCommand
-    // idiom) instead of a reference-based List.Remove. MapScatterOverrideDoc has no Equals override, so
-    // List.Remove compares by reference: EditScatterOverrideValuesCommand.Revert can put a DEEP CLONE of this
-    // override back into the slot (its constructor clones both the new and old values it is given), which
-    // List.Remove(_override) then fails to find, stranding the clone (#24). Add always appends, so the
-    // captured index is the list's length at Apply time. Under LIFO undo everything added after this command
-    // is already reverted by the time this Revert runs, so the index is still correct then.
-    int _index;
-
     /// <inheritdoc/>
     public override string Label => "Add scatter override";
     internal override bool AffectsWorld => true;
@@ -1375,12 +1366,11 @@ public sealed class AddScatterOverrideCommand : EditorCommand
     public override void Apply(MapDocument doc)
     {
         _boundsMargin = ShapeGeometry.BoundsMarginFor(doc);
-        _index = doc.ScatterOverrides.Count;
-        doc.ScatterOverrides.Add(_override);
+        ApplyAppend(doc.ScatterOverrides, _override);
     }
 
     /// <inheritdoc/>
-    public override void Revert(MapDocument doc) => doc.ScatterOverrides.RemoveAt(_index);
+    public override void Revert(MapDocument doc) => RevertAppend(doc.ScatterOverrides);
 }
 
 /// <summary>Removes the scatter override at the given index, restoring it at that index on revert. Affects the
@@ -1743,16 +1733,6 @@ public sealed class AddScatterLayerCommand : EditorCommand
     public AddScatterLayerCommand(MapScatterLayer layer) =>
         _layer = layer ?? throw new ArgumentNullException(nameof(layer));
 
-    // The insertion index, captured at Apply and used by Revert (RemoveAt) instead of a reference-based
-    // List.Remove, the same #24 hardening AddScatterOverrideCommand carries. EditScatterLayerCommand does not
-    // clone internally (every caller passes the live document instance through as its oldValue, see
-    // MapEditorScene.EditScatterLayer and MutationService), so its Revert always restores the exact reference
-    // this command captured and the pair does not actually diverge today. Capturing the index costs nothing
-    // and keeps this Revert identity-independent if that calling convention ever changes. Add always appends,
-    // so the index is the list's length at Apply time, still correct at Revert under LIFO undo (see
-    // AddScatterOverrideCommand's matching field).
-    int _index;
-
     /// <inheritdoc/>
     public override string Label => "Add scatter layer";
     internal override bool AffectsWorld => true;
@@ -1761,12 +1741,11 @@ public sealed class AddScatterLayerCommand : EditorCommand
     public override void Apply(MapDocument doc)
     {
         GuardNoScatterLayerName(doc, _layer.Name, -1);   // reject a duplicate name before touching the list
-        _index = doc.ScatterLayers.Count;
-        doc.ScatterLayers.Add(_layer);
+        ApplyAppend(doc.ScatterLayers, _layer);
     }
 
     /// <inheritdoc/>
-    public override void Revert(MapDocument doc) => doc.ScatterLayers.RemoveAt(_index);
+    public override void Revert(MapDocument doc) => RevertAppend(doc.ScatterLayers);
 }
 
 /// <summary>Removes the scatter layer with the given name, restoring it at its original index on revert. A
@@ -1950,11 +1929,11 @@ public sealed class AddCompanionLayerCommand : EditorCommand
     public override void Apply(MapDocument doc)
     {
         GuardNoCompanionLayerName(doc, _layer.Name, -1);   // reject a duplicate name before touching the list
-        doc.CompanionLayers.Add(_layer);
+        ApplyAppend(doc.CompanionLayers, _layer);
     }
 
     /// <inheritdoc/>
-    public override void Revert(MapDocument doc) => doc.CompanionLayers.Remove(_layer);
+    public override void Revert(MapDocument doc) => RevertAppend(doc.CompanionLayers);
 }
 
 /// <summary>Removes the companion layer with the given name, restoring it at its original index on revert.
@@ -2096,10 +2075,10 @@ public sealed class AddRegionCommand : EditorCommand
     internal override bool AffectsWorld => false;
 
     /// <inheritdoc/>
-    public override void Apply(MapDocument doc) => doc.Regions.Add(_region);
+    public override void Apply(MapDocument doc) => ApplyAppend(doc.Regions, _region);
 
     /// <inheritdoc/>
-    public override void Revert(MapDocument doc) => doc.Regions.Remove(_region);
+    public override void Revert(MapDocument doc) => RevertAppend(doc.Regions);
 }
 
 /// <summary>Removes the region with the given name, restoring it at its original index on revert.</summary>
@@ -2347,7 +2326,7 @@ public sealed class EditTerrainCommand : EditorCommand
 
 /// <summary>Appends a terrain biome band (a world-Z-range biome slice, <see cref="MapBiomeBand"/>). Bands feed
 /// the terrain field's biome selection and base-height / hill shaping, so this affects the streamed world. Appends
-/// at the end (the <see cref="AddFeatureCommand"/> idiom), and <see cref="Revert"/> removes the same instance.</summary>
+/// at the end (the <see cref="AddFeatureCommand"/> idiom), and <see cref="Revert"/> removes the slot it appended.</summary>
 public sealed class AddBiomeBandCommand : EditorCommand
 {
     readonly MapBiomeBand _band;
@@ -2361,10 +2340,10 @@ public sealed class AddBiomeBandCommand : EditorCommand
     internal override bool AffectsWorld => true;
 
     /// <inheritdoc/>
-    public override void Apply(MapDocument doc) => doc.Terrain.Biomes.Add(_band);
+    public override void Apply(MapDocument doc) => ApplyAppend(doc.Terrain.Biomes, _band);
 
     /// <inheritdoc/>
-    public override void Revert(MapDocument doc) => doc.Terrain.Biomes.Remove(_band);
+    public override void Revert(MapDocument doc) => RevertAppend(doc.Terrain.Biomes);
 }
 
 /// <summary>Removes the terrain biome band at the given index, restoring it at that index on revert. The index is
@@ -2468,10 +2447,10 @@ public sealed class AddFeatureCommand : EditorCommand
         FeatureGeometry.TryFootprint(_feature, out RectArea area) ? area : null;
 
     /// <inheritdoc/>
-    public override void Apply(MapDocument doc) => doc.Terrain.Features.Add(_feature);
+    public override void Apply(MapDocument doc) => ApplyAppend(doc.Terrain.Features, _feature);
 
     /// <inheritdoc/>
-    public override void Revert(MapDocument doc) => doc.Terrain.Features.Remove(_feature);
+    public override void Revert(MapDocument doc) => RevertAppend(doc.Terrain.Features);
 }
 
 /// <summary>Removes the terrain feature at the given index, restoring it at that index on revert. Affects the

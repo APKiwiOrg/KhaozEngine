@@ -12,7 +12,7 @@ namespace KhaozEngine.Tests.MapEditor
     /// deep-equality round-trips (compared via <see cref="MapDocumentFile.SaveText"/> string equality, the MapDoc
     /// idiom), same-gesture merge coalescing, world-rebuild classification, saved-point dirty tracking, and the
     /// DocumentChanged signal.</summary>
-    public class EditorCommandsTests
+    public partial class EditorCommandsTests
     {
         static MapDocument Sample() => KhaozEngine.Tests.MapDoc.MapDocumentFileTests.SampleDoc();
 

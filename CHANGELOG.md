@@ -5,6 +5,45 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.3.1
+
+18.3.1 is the backlog fix wave: eight verified old defects, each found real by the 2026-08-30
+sweep of the 66 oldest open issues and fixed with a test proven red against the unfixed code.
+
+- **The backlog fix wave, eight verified old defects closed in one pass.** Found real by the 2026-08-30
+  sweep of the 66 oldest open issues, each fixed with a test proven red against the unfixed code:
+  - `TextLayout.Wrap` breaks at explicit line breaks (`\n`, with `\r\n` as one break, a lone `\r` left an
+    ordinary character), in both space modes. N breaks give N+1 lines before the width has any say, blank
+    lines and a trailing empty line survive, and text with no break wraps exactly as before
+    ([#82](https://github.com/APKiwiOrg/KhaozEngine/issues/82)).
+  - `TextLayout.Wrap`'s memo cache no longer orphans an LRU node when two callers miss on the same key.
+    The wrap still runs outside the cache lock (it calls consumer measurement code), and the loser of the
+    race now adopts the winner's entry ([#87](https://github.com/APKiwiOrg/KhaozEngine/issues/87)).
+  - `Camera2D.ScreenToWorld` cannot return NaN: a collapsed camera (`Zoom` 0, or a non-finite zoom whose
+    determinant hides from `Invert`) falls back to `Position`, and the new
+    `Camera2D.TryScreenToWorld(screen, viewportWidth, viewportHeight, out world)` reports whether the
+    conversion was real. A negative zoom is a mirror and still converts exactly
+    ([#88](https://github.com/APKiwiOrg/KhaozEngine/issues/88)).
+  - `CharacterAvatar.TryLoadGltf` no longer leaks the skinned mesh upload when a later load step fails:
+    every `null` return releases the upload and only a returned avatar owns a handle
+    ([#95](https://github.com/APKiwiOrg/KhaozEngine/issues/95)).
+  - `ReplicatedCharacterAnimators.Live` holds exactly one `CharacterPose` per entity id: a repeated id in
+    one sample set is dropped at the loop entry, which also stops the duplicate double-aging that entry's
+    velocity window and smoothers against one frame's `dt`
+    ([#97](https://github.com/APKiwiOrg/KhaozEngine/issues/97)).
+  - `GpuReadback.ToRgba` refuses a source it cannot whole-copy (wrong format, mips, samples or size) with
+    an `ArgumentException` naming the readback and the texture's actual shape, thrown before anything is
+    allocated or submitted. Metal and Vulkan already refused the copy at the backend, Direct3D 11
+    returned channel-swapped or garbage bytes silently
+    ([#83](https://github.com/APKiwiOrg/KhaozEngine/issues/83)).
+  - Every map editor `Add*Command` reverts by the list slot it captured at `Apply` rather than by
+    reference-based `Remove`, through a shared `ApplyAppend`/`RevertAppend` pair, retiring the dormant
+    #24 class across the eight commands that still carried it
+    ([#76](https://github.com/APKiwiOrg/KhaozEngine/issues/76)), and `AddRegionCommand` rejects a
+    duplicate region name at command time, so the `region_add` tool verb fails fast instead of building
+    an unsaveable document ([#75](https://github.com/APKiwiOrg/KhaozEngine/issues/75)).
+
+
 ## 18.3.0
 
 18.3.0 adds per-entity SILHOUETTES, the RuneLite-style highlight rim around a clicked monster or a selected
@@ -134,39 +173,6 @@ before, and the repin costs a version number and no code.
 The release also carries the repeatable MM1 record-cost gate (`MetalRecordCostGpuTests` over the shared
 `StreamedWorldSceneContent` scene) whose readings discharged the native Metal program's last rollout gate
 and closed [#566](https://github.com/APKiwiOrg/KhaozEngine/issues/566).
-
-- **The backlog fix wave, eight verified old defects closed in one pass.** Found real by the 2026-08-30
-  sweep of the 66 oldest open issues, each fixed with a test proven red against the unfixed code:
-  - `TextLayout.Wrap` breaks at explicit line breaks (`\n`, with `\r\n` as one break, a lone `\r` left an
-    ordinary character), in both space modes. N breaks give N+1 lines before the width has any say, blank
-    lines and a trailing empty line survive, and text with no break wraps exactly as before
-    ([#82](https://github.com/APKiwiOrg/KhaozEngine/issues/82)).
-  - `TextLayout.Wrap`'s memo cache no longer orphans an LRU node when two callers miss on the same key.
-    The wrap still runs outside the cache lock (it calls consumer measurement code), and the loser of the
-    race now adopts the winner's entry ([#87](https://github.com/APKiwiOrg/KhaozEngine/issues/87)).
-  - `Camera2D.ScreenToWorld` cannot return NaN: a collapsed camera (`Zoom` 0, or a non-finite zoom whose
-    determinant hides from `Invert`) falls back to `Position`, and the new
-    `Camera2D.TryScreenToWorld(screen, viewportWidth, viewportHeight, out world)` reports whether the
-    conversion was real. A negative zoom is a mirror and still converts exactly
-    ([#88](https://github.com/APKiwiOrg/KhaozEngine/issues/88)).
-  - `CharacterAvatar.TryLoadGltf` no longer leaks the skinned mesh upload when a later load step fails:
-    every `null` return releases the upload and only a returned avatar owns a handle
-    ([#95](https://github.com/APKiwiOrg/KhaozEngine/issues/95)).
-  - `ReplicatedCharacterAnimators.Live` holds exactly one `CharacterPose` per entity id: a repeated id in
-    one sample set is dropped at the loop entry, which also stops the duplicate double-aging that entry's
-    velocity window and smoothers against one frame's `dt`
-    ([#97](https://github.com/APKiwiOrg/KhaozEngine/issues/97)).
-  - `GpuReadback.ToRgba` refuses a source it cannot whole-copy (wrong format, mips, samples or size) with
-    an `ArgumentException` naming the readback and the texture's actual shape, thrown before anything is
-    allocated or submitted. Metal and Vulkan already refused the copy at the backend, Direct3D 11
-    returned channel-swapped or garbage bytes silently
-    ([#83](https://github.com/APKiwiOrg/KhaozEngine/issues/83)).
-  - Every map editor `Add*Command` reverts by the list slot it captured at `Apply` rather than by
-    reference-based `Remove`, through a shared `ApplyAppend`/`RevertAppend` pair, retiring the dormant
-    #24 class across the eight commands that still carried it
-    ([#76](https://github.com/APKiwiOrg/KhaozEngine/issues/76)), and `AddRegionCommand` rejects a
-    duplicate region name at command time, so the `region_add` tool verb fails fast instead of building
-    an unsaveable document ([#75](https://github.com/APKiwiOrg/KhaozEngine/issues/75)).
 
 ## 18.1.0
 

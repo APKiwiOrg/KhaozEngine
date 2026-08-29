@@ -34,9 +34,11 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuPipeline _solidPipe, _crossPipe;
         readonly IGpuBuffer _solidBuf, _crossBuf;
 
-        // The captured pre-teleport frame (a copy of the resolved ColorTex), sized to the render target and rebuilt on
-        // resize. Its colour format follows ColorTex (float16 in HDR mode, UNorm in legacy) so the CopyTexture stays
-        // format-matched. Only allocated/used by the crossfade style.
+        // The captured pre-teleport frame (a copy of the resolved ColorTex's base level), sized to the render target
+        // and rebuilt on resize. Its colour format follows ColorTex (float16 in HDR mode, UNorm in legacy) so the
+        // BeginFrame copy stays format-matched. Single-mip on purpose: the frozen frame is only ever sampled 1:1, so
+        // it carries no chain even when ColorTex does, and BeginFrame copies mip 0 rather than the whole resource.
+        // Only allocated/used by the crossfade style.
         IGpuTexture? _frozen;
         IGpuResourceSet _solidSet = null!;
         IGpuResourceSet? _crossSet;
@@ -96,9 +98,10 @@ namespace KhaozEngine.Render3D.Rendering
         /// Call on construction and whenever the targets resize (alongside <c>PixelPostProcess.BindTargets</c>).</summary>
         public void BindTargets(RenderResources res)
         {
-            // Match the frozen capture's colour format to ColorTex so the BeginFrame CopyTexture is format-matched
-            // (float16 in HDR mode, UNorm in legacy). The crossfade pipeline samples _frozen and outputs to the
-            // swapchain, so a float16 source needs no pipeline rebuild here (only the OUTPUT format is baked).
+            // Match the frozen capture's colour format to ColorTex so the BeginFrame subresource copy is
+            // format-matched (float16 in HDR mode, UNorm in legacy). The crossfade pipeline samples _frozen and
+            // outputs to the swapchain, so a float16 source needs no pipeline rebuild here (only the OUTPUT format
+            // is baked). The mip count deliberately does NOT follow ColorTex: see the _frozen field.
             var colorFmt = res.HdrColor ? GpuPixelFormat.R16G16B16A16Float : GpuPixelFormat.R8G8B8A8UNorm;
             if (_frozen != null && _w == res.Width && _h == res.Height && _frozenFmt == colorFmt) return;
             _crossSet?.Dispose();
@@ -131,7 +134,15 @@ namespace KhaozEngine.Render3D.Rendering
             {
                 if (_haveResolvedFrame)
                 {
-                    cl.CopyTexture(res.ColorTex, _frozen!);   // the previous frame still lives in ColorTex here
+                    // MIP 0 ONLY, never the whole-resource CopyTexture. ColorTex carries a full mip chain whenever
+                    // RenderResources.Mipped is on (Scene3D.WantsMipDownsample: supersampled MatchViewport, or an
+                    // opted-in FixedInternal downscale), while _frozen is always single-mip. A whole copy names
+                    // every subresource on BOTH sides, so the shape mismatch is refused: the native Metal and
+                    // Vulkan backends throw ArgumentException from their RequireMatchingShape, and Direct3D 11's
+                    // CopyResource wants two identical descriptions. Copying the base level is also all the pass
+                    // needs, since the frozen frame is only ever sampled 1:1 by the fullscreen crossfade.
+                    // The extent is the destination's own, which BindTargets sized to ColorTex's mip 0.
+                    cl.CopyTextureSubresource(res.ColorTex, 0, 0, _frozen!, _frozen!.Width, _frozen.Height);
                     _frozenValid = true;
                 }
                 else

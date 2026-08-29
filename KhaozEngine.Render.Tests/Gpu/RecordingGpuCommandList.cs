@@ -7,10 +7,11 @@ using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Tests.Gpu
 {
-    /// <summary>A pass-through <see cref="IGpuCommandList"/> that records every <c>UpdateBuffer</c> and every
-    /// <c>ResolveTexture</c> a pass records, so a test can assert on the SHAPE of a frame (how many uploads, to
-    /// which buffer, covering what extent, and which multisampled source lands in which single-sample destination)
-    /// rather than on pixels. Everything else forwards untouched, so the frame renders exactly as it would have.
+    /// <summary>A pass-through <see cref="IGpuCommandList"/> that records every <c>UpdateBuffer</c>, every
+    /// <c>ResolveTexture</c> and every texture COPY a pass records, so a test can assert on the SHAPE of a frame
+    /// (how many uploads, to which buffer, covering what extent, which multisampled source lands in which
+    /// single-sample destination, and which copy overload named which subresources) rather than on pixels.
+    /// Everything else forwards untouched, so the frame renders exactly as it would have.
     /// <para>Give <see cref="Inner"/> to <c>IGpuDevice.Submit</c>: the device needs the real list, not this.</para>
     /// <para>The READ half (which uniform windows each draw bound) is opt-in and lives in
     /// <c>RecordingGpuCommandList.Reads.cs</c>: set <see cref="UniformWindowsOfSet"/> before recording and the
@@ -42,8 +43,20 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>One recorded multisample resolve: which texture was averaged into which.</summary>
         internal readonly record struct Resolve(IGpuTexture Source, IGpuTexture Destination);
 
+        /// <summary>One recorded texture copy, and WHICH FORM of it. <see cref="WholeResource"/> is the
+        /// <c>CopyTexture</c> overload, which names every mip level and array layer on both sides and so demands
+        /// the two textures agree on shape (the native Metal and Vulkan backends refuse a mismatch outright, and
+        /// Direct3D 11's <c>CopyResource</c> wants two identical descriptions). Everything else is a
+        /// <c>CopyTextureSubresource</c>, which names one level and layer per side and validates only the extent.
+        /// A caller copying a MIPPED source into a single-mip destination must use the second form, which is what
+        /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/21">#21</see> was.</summary>
+        internal readonly record struct TextureCopy(IGpuTexture Source, IGpuTexture Destination, bool WholeResource,
+            uint SourceMipLevel, uint SourceArrayLayer, uint DestinationMipLevel, uint DestinationArrayLayer,
+            uint Width, uint Height);
+
         readonly List<Upload> _uploads = new();
         readonly List<Resolve> _resolves = new();
+        readonly List<TextureCopy> _textureCopies = new();
         int _draws;
 
         public RecordingGpuCommandList(IGpuCommandList inner) => Inner = inner;
@@ -65,11 +78,16 @@ namespace KhaozEngine.Tests.Gpu
         /// the previous frame, which is a defect the destination's contents show and a count never would.</summary>
         public IReadOnlyList<Resolve> Resolves => _resolves;
 
+        /// <summary>Texture copies recorded since the last <see cref="Clear"/>, in the order they were recorded,
+        /// each carrying which overload issued it.</summary>
+        public IReadOnlyList<TextureCopy> TextureCopies => _textureCopies;
+
         /// <summary>Forget everything recorded so far (call between frames to assert on ONE frame).</summary>
         public void Clear()
         {
             _uploads.Clear();
             _resolves.Clear();
+            _textureCopies.Clear();
             _draws = 0;
             ClearReads();
         }
@@ -142,12 +160,23 @@ namespace KhaozEngine.Tests.Gpu
         }
         public void CopyBuffer(IGpuBuffer src, uint srcOffsetBytes, IGpuBuffer dst, uint dstOffsetBytes, uint sizeInBytes)
             => Inner.CopyBuffer(src, srcOffsetBytes, dst, dstOffsetBytes, sizeInBytes);
-        public void CopyTexture(IGpuTexture src, IGpuTexture dst) => Inner.CopyTexture(src, dst);
+        public void CopyTexture(IGpuTexture src, IGpuTexture dst)
+        {
+            _textureCopies.Add(new TextureCopy(src, dst, true, 0, 0, 0, 0, src.Width, src.Height));
+            Inner.CopyTexture(src, dst);
+        }
         public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer, IGpuTexture dst, uint width, uint height)
-            => Inner.CopyTextureSubresource(src, srcMipLevel, srcArrayLayer, dst, width, height);
+        {
+            _textureCopies.Add(new TextureCopy(src, dst, false, srcMipLevel, srcArrayLayer, 0, 0, width, height));
+            Inner.CopyTextureSubresource(src, srcMipLevel, srcArrayLayer, dst, width, height);
+        }
         public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer,
             IGpuTexture dst, uint dstMipLevel, uint dstArrayLayer, uint width, uint height)
-            => Inner.CopyTextureSubresource(src, srcMipLevel, srcArrayLayer, dst, dstMipLevel, dstArrayLayer, width, height);
+        {
+            _textureCopies.Add(new TextureCopy(src, dst, false, srcMipLevel, srcArrayLayer, dstMipLevel,
+                dstArrayLayer, width, height));
+            Inner.CopyTextureSubresource(src, srcMipLevel, srcArrayLayer, dst, dstMipLevel, dstArrayLayer, width, height);
+        }
         public void GenerateMipmaps(IGpuTexture texture) => Inner.GenerateMipmaps(texture);
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst)
         {

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
@@ -16,6 +17,28 @@ namespace KhaozEngine.Render3D
     /// </summary>
     public sealed partial class Scene3D
     {
+        // Translucent unlit overlay-mesh draws (collision proxies etc.): queued in submission order, flushed into the
+        // model FB after the beams and before the post chain (depth-interleaved). Cleared each Begin(). Lives with
+        // its pass (this file IS the pass: its queue, its sort, its renderer entry).
+        readonly List<(MeshHandle Mesh, Matrix4x4 World)> _overlayMeshDraws = new();
+
+        /// <summary>Queue a translucent, UNLIT, depth-TESTED (not depth-writing) overlay draw of an already-loaded
+        /// <paramref name="mesh"/> at world transform <paramref name="world"/> for this frame. The mesh's own
+        /// per-vertex <see cref="ModelVertex.Color"/> (RGBA) supplies the colour and alpha, alpha-blended over the
+        /// scene. It is occluded by nearer scene geometry (depth test) but never writes depth, so it never hides the
+        /// scene. Drawn after the meshes/beams and before the pixel post, so it flows through the post chain like the
+        /// rest of the model pass. A reusable overlay primitive: the collision-shape overlay is the first consumer;
+        /// nav / AoI / chunk-bounds layers reuse it. Presentation only; cleared in <see cref="Begin"/>.
+        /// Because depth-write is off, overlapping overlay meshes have no per-fragment depth ordering; the renderer
+        /// sorts the queued proxies back-to-front by their world-origin view depth before drawing, so overlapping
+        /// translucent proxies composite far-to-near regardless of submission order (a coarse per-draw sort, not
+        /// per-fragment: two proxies that interpenetrate at a shared depth can still blend by their origin order).</summary>
+        public void DrawOverlayMesh(MeshHandle mesh, Matrix4x4 world) => _overlayMeshDraws.Add((mesh, world));
+
+        /// <summary>Count of overlay-mesh draws queued this frame. Internal: lets tests assert <see cref="Begin"/>
+        /// clears the queue and <see cref="DrawOverlayMesh"/> enqueues.</summary>
+        internal int OverlayMeshDrawCount => _overlayMeshDraws.Count;
+
         /// <summary>
         /// Overlay meshes (collision proxies etc.): after the model pass wrote depth (meshes + textured billboards
         /// + beams), draw the queued translucent unlit proxies into the SAME model FB with the depth test on (no

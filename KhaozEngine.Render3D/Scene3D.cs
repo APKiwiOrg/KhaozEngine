@@ -44,6 +44,7 @@ namespace KhaozEngine.Render3D
         readonly Rendering.StarfieldRenderer _starfield;
         readonly Rendering.WaterRenderer _water;
         readonly Rendering.OverlayMeshRenderer _overlayMeshes;
+        readonly Rendering.SilhouetteRenderer _silhouettes;
         readonly RenderResources _res;
         // Slot-indexed GPU mesh storage parallel to _slots; a freed slot's entry is null until reused.
         readonly List<Mesh?> _meshes = new();
@@ -100,9 +101,6 @@ namespace KhaozEngine.Render3D
         // Per-frame animated-water-surface requests (Rendering gap #5). Cleared each Begin() like the decal queue;
         // opt-in - an empty queue means the water pass (Rendering.WaterRenderer) never runs this frame.
         readonly List<WaterPlane> _waterPlanes = new();
-        // Translucent unlit overlay-mesh draws (collision proxies etc.): queued in submission order, flushed into the
-        // model FB after the beams and before the post chain (depth-interleaved). Cleared each Begin().
-        readonly List<(MeshHandle Mesh, Matrix4x4 World)> _overlayMeshDraws = new();
         // Alpha billboards are queued as per-billboard items (centre/size/colour), sorted back-to-front by view
         // depth each frame (overlapping alpha must composite far-to-near), then expanded to the vertex stream.
         // Additive billboards stay a flat vertex list: additive blend is order-independent, so they skip the sort.
@@ -447,6 +445,7 @@ namespace KhaozEngine.Render3D
             // after the water pass, before the post chain, so scene geometry occludes their buried parts.
             _depthLines = new Rendering.DepthLineRenderer(gd, _res.ColorDepthFB.Outputs);
             _overlayMeshes = new Rendering.OverlayMeshRenderer(gd, _res.ModelFB.Outputs);
+            _silhouettes = new Rendering.SilhouetteRenderer(gd, _res.ModelFB.Outputs);
         }
 
         /// <summary>An opaque handle to an albedo texture loaded with <see cref="LoadTexture(string,TextureMipPolicy)"/> /
@@ -855,6 +854,7 @@ namespace KhaozEngine.Render3D
             _shadowBlobs.Clear();
             _waterPlanes.Clear();
             _overlayMeshDraws.Clear();
+            _silhouetteDraws.Clear();
             _billboardAlphaItems.Clear();
             _billboardAlpha.Clear();
             _billboardAdditive.Clear();
@@ -1192,22 +1192,6 @@ namespace KhaozEngine.Render3D
         /// the queue and <see cref="DrawWater(in WaterPlane)"/> enqueues.</summary>
         internal int WaterPlaneCount => _waterPlanes.Count;
 
-        /// <summary>Queue a translucent, UNLIT, depth-TESTED (not depth-writing) overlay draw of an already-loaded
-        /// <paramref name="mesh"/> at world transform <paramref name="world"/> for this frame. The mesh's own
-        /// per-vertex <see cref="ModelVertex.Color"/> (RGBA) supplies the colour and alpha, alpha-blended over the
-        /// scene. It is occluded by nearer scene geometry (depth test) but never writes depth, so it never hides the
-        /// scene. Drawn after the meshes/beams and before the pixel post, so it flows through the post chain like the
-        /// rest of the model pass. A reusable overlay primitive: the collision-shape overlay is the first consumer;
-        /// nav / AoI / chunk-bounds layers reuse it. Presentation only; cleared in <see cref="Begin"/>.
-        /// Because depth-write is off, overlapping overlay meshes have no per-fragment depth ordering; the renderer
-        /// sorts the queued proxies back-to-front by their world-origin view depth before drawing, so overlapping
-        /// translucent proxies composite far-to-near regardless of submission order (a coarse per-draw sort, not
-        /// per-fragment: two proxies that interpenetrate at a shared depth can still blend by their origin order).</summary>
-        public void DrawOverlayMesh(MeshHandle mesh, Matrix4x4 world) => _overlayMeshDraws.Add((mesh, world));
-
-        /// <summary>Count of overlay-mesh draws queued this frame. Internal: lets tests assert <see cref="Begin"/>
-        /// clears the queue and <see cref="DrawOverlayMesh"/> enqueues.</summary>
-        internal int OverlayMeshDrawCount => _overlayMeshDraws.Count;
 
         // ---- Camera-facing billboard overlay (immediate-mode; queued this frame, drawn on top after lines). ----
 
@@ -1490,6 +1474,7 @@ namespace KhaozEngine.Render3D
             _beams.SetOutputs(modelOut);
             _trails.SetOutputs(modelOut);
             _overlayMeshes.SetOutputs(modelOut);
+            _silhouettes.SetOutputs(modelOut);
             _decalRenderer.SetOutputs(_res.ColorDepthFB.Outputs);
             _particleRenderer.SetOutputs(_res.ColorDepthFB.Outputs);
             _sky.SetOutputs(_res.ColorDepthFB.Outputs);
@@ -1944,6 +1929,7 @@ namespace KhaozEngine.Render3D
             // Overlay meshes (collision proxies etc.): the queued translucent unlit proxies go into the SAME model
             // FB, packed and uploaded once before their draws. See Scene3D.OverlayMeshPass.cs.
             DrawOverlayMeshes(cl, vp);
+            DrawSilhouettes(cl, vp);   // per-entity inverted hulls, same FB (Scene3D.SilhouettePass.cs)
 
             // Under MSAA the geometry passes wrote a MULTISAMPLED MRT, so resolve the depth AND the encoded normal into
             // the single-sample DepthColorTex / NormalTex now - before the decals, which SAMPLE both (the depth to
@@ -2357,6 +2343,7 @@ namespace KhaozEngine.Render3D
             _starfield.Dispose();
             _water.Dispose();
             _overlayMeshes.Dispose();
+            _silhouettes.Dispose();
             _res.Dispose();
             foreach (var m in _meshes)
                 if (m is { } mesh) { mesh.Vb.Dispose(); mesh.Ib.Dispose(); mesh.MaterialSet?.Dispose(); }

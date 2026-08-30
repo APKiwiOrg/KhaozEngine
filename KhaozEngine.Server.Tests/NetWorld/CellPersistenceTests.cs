@@ -142,6 +142,47 @@ public class CellPersistenceTests
     }
 
     [Fact]
+    public async Task SaveDirtyPass_DoesNotQueueASecondWrite_WhileThatCellsSaveIsInFlight()
+    {
+        // The save-side twin of the load-side test above. A cell whose eviction write has been dispatched but has
+        // not landed must be SKIPPED by the periodic pass: the store orders the two writes against nothing, so a
+        // pass that queued its own would be racing the eviction's with an older or newer body at the store's whim.
+        // SlowSaveWorldStore parks every write, which is the only way to hold that window open with no timing
+        // assumption (an InMemoryWorldStore completes the write before SaveDirtyPass can run).
+        var inner = new InMemoryWorldStore();
+        var store = new SlowSaveWorldStore(inner);
+        var host = new FakeHost();
+        host.SetNextNetId(0);                                // isolate: no meta write competing for the parked count
+        byte[] evicted = { 1, 0, 0, 0, 7, 7, 7, 7 };
+        host.Snapshots[C00] = evicted;
+        var cp = new CellPersistence(host, store);
+
+        Task<bool> eviction = cp.SaveCellAsync(C00, evicted);   // the eviction half: one explicit write, parked
+        Assert.Equal(1, store.PendingSaves);
+        Assert.True(cp.IsBusy(C00));
+
+        host.Snapshots[C00] = new byte[] { 1, 0, 0, 0, 8, 8, 8, 8 };   // the cell changes while that write is out
+        cp.SaveDirtyPass();                                  // periodic pass fires mid-write
+
+        Assert.Equal(1, store.PendingSaves);                 // guard held: no second, unordered write was queued
+
+        store.ReleaseSaves();
+        Assert.True(await eviction);
+        Assert.Equal(1, store.CompletedSaves);
+        Assert.True(cp.TryGetLastSaved(C00, out byte[] baseline));
+        Assert.Equal(evicted, baseline);                     // the eviction's bytes are the durable ones
+        Assert.False(cp.IsBusy(C00));
+
+        // Skipped, not dropped: the change the guarded pass declined to write is still dirty and lands on the next.
+        cp.SaveDirtyPass();
+        Assert.Equal(1, store.PendingSaves);
+        store.ReleaseSaves();
+        await cp.FlushAsync();
+        Assert.True(cp.TryGetLastSaved(C00, out byte[] after));
+        Assert.Equal(new byte[] { 1, 0, 0, 0, 8, 8, 8, 8 }, after);
+    }
+
+    [Fact]
     public async Task Load_SkipsBlobWithWrongSchemaVersion()
     {
         var store = new InMemoryWorldStore();

@@ -9330,6 +9330,23 @@ overloads taking an `IReadOnlyList<string>` of candidate keys play the first loa
 the engine just plays the first that loaded. An all-unloaded list warns once and is a no-op; null/empty is a
 silent no-op.
 
+**SFX priority (which voice gets stolen).** The voice pool is small and fixed (16 on the OpenAL backend), so
+once every voice is busy a new one-shot can only be heard by taking someone's voice. `PlaySfx` and `PlaySfx3D`
+each have an overload with an `SfxPriority` (`Low` / `Normal` / `High`) right after the name, and the backend
+then steals the LOWEST-priority voice still playing rather than whatever the round robin landed on:
+
+```csharp
+audio.PlaySfx("footstep", SfxPriority.Low);                       // first to lose its voice
+audio.PlaySfx3D("boss/slam_telegraph", pos, SfxPriority.High);    // only stolen if nothing lesser is playing
+audio.PlaySfx("ui/click");                                        // states nothing, so Normal
+```
+
+Equal priorities keep the old oldest-first rotation, so a game that never states one sounds exactly as it did.
+A play is never dropped: it takes the least valuable voice rather than going silent, because a silence nothing
+reports is harder to diagnose than an audible cut. `ISfxBackend.Play(..., priority)` is a default interface
+member forwarding to the priority-free overload, so a game's own backend written before it keeps compiling and
+simply ignores the priority.
+
 **Releasing SFX.** `UnregisterSfx(name)` drops a sound from the registry and releases its buffer through
 `ISfxBackend.Unload(handle)`, returning whether a loaded buffer was actually freed. `UnregisterSfxes(names)`
 does a whole set and returns how many it released, which is the zone-scoped or level-scoped shape: load a

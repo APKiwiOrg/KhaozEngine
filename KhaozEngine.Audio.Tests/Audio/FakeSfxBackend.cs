@@ -36,6 +36,17 @@ internal sealed class FakeSfxBackend : ISfxBackend
     public void Play(int handle, float gain, float pitch, bool positional, Vector3 position)
         => Plays.Add(new PlayCall(handle, gain, pitch, positional, position));
 
+    /// <summary>Records the stated priority alongside the play, index-aligned to <see cref="Plays"/>. Kept as a
+    /// parallel list rather than a field on <see cref="PlayCall"/> so every existing gain / position assertion
+    /// keeps reading exactly what it read before priorities existed (#114).</summary>
+    public List<SfxPriority> PlayPriorities { get; } = new();
+
+    public void Play(int handle, float gain, float pitch, bool positional, Vector3 position, SfxPriority priority)
+    {
+        PlayPriorities.Add(priority);
+        Play(handle, gain, pitch, positional, position);
+    }
+
     public void SetListener(Vector3 position, Vector3 forward, Vector3 up)
         => Listeners.Add(new ListenerCall(position, forward, up));
 

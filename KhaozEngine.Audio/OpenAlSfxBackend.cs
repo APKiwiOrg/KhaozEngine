@@ -11,8 +11,9 @@ namespace KhaozEngine.Audio;
 /// OpenAL one-shot SFX backend (Silk.NET.OpenAL) sharing the per-process <see cref="OpenAlContext"/> with the
 /// music backend. Whole-file decodes short sounds into single buffers and plays them on a fixed pool of
 /// sources, optionally positioned in 3D relative to a listener. Voices are reclaimed lazily: each
-/// <see cref="Play"/> prefers a genuinely idle source and only falls back to the round-robin
-/// <see cref="SfxVoicePool"/> when all are busy.
+/// <see cref="Play(int, float, float, bool, Vector3, SfxPriority)"/> prefers a genuinely idle source, and when
+/// all are busy it steals the LOWEST-priority voice still playing (<see cref="SfxVoicePool.Steal"/>), with the
+/// round-robin rotation as the tie-break.
 /// </summary>
 internal sealed unsafe class OpenAlSfxBackend : ISfxBackend
 {
@@ -27,6 +28,9 @@ internal sealed unsafe class OpenAlSfxBackend : ISfxBackend
     readonly AlErrorLog _errors;
     readonly AL _al;
     readonly uint[] _voices = new uint[VoiceCount];
+    // What each voice is currently playing, by voice index. Only read when every voice is busy, so a stale
+    // entry left behind by a finished sound is never consulted: an idle voice is always preferred first.
+    readonly SfxPriority[] _voicePriorities = new SfxPriority[VoiceCount];
     readonly SfxVoicePool _pool = new(VoiceCount);
     readonly List<uint> _buffers = new();
     bool _disposed;
@@ -98,12 +102,17 @@ internal sealed unsafe class OpenAlSfxBackend : ISfxBackend
     }
 
     public void Play(int handle, float gain, float pitch, bool positional, Vector3 position)
+        => Play(handle, gain, pitch, positional, position, SfxPriority.Normal);
+
+    public void Play(int handle, float gain, float pitch, bool positional, Vector3 position, SfxPriority priority)
     {
         if (handle < 0 || handle >= _buffers.Count) return;
         uint bufferId = _buffers[handle];
         if (bufferId == 0) return;   // released by Unload; the handle is dead
 
-        uint source = PickVoice();
+        int voice = PickVoice();
+        _voicePriorities[voice] = priority;
+        uint source = _voices[voice];
 
         _al.SourceStop(source);
         _al.SetSourceProperty(source, SourceInteger.Buffer, bufferId);
@@ -129,15 +138,18 @@ internal sealed unsafe class OpenAlSfxBackend : ISfxBackend
         _errors.Check("SFX SourcePlay", _al.GetError());
     }
 
-    // Prefer a genuinely idle source; only steal in round-robin rotation when every voice is busy.
-    uint PickVoice()
+    // Prefer a genuinely idle source. When every voice is busy, steal the LOWEST-priority one still playing
+    // rather than whatever the rotation landed on, so a barrage of footsteps cannot cut a boss cue mid-play
+    // (issue #114). Rotation survives as the tie-break inside SfxVoicePool.Steal, so equal-priority voices are
+    // still taken oldest-first, which is the pre-priority behaviour for a game that never states one.
+    int PickVoice()
     {
         for (int i = 0; i < VoiceCount; i++)
         {
             _al.GetSourceProperty(_voices[i], GetSourceInteger.SourceState, out int state);
-            if (state != (int)SourceState.Playing) return _voices[i];
+            if (state != (int)SourceState.Playing) return i;
         }
-        return _voices[_pool.Next()];
+        return _pool.Steal(_voicePriorities);
     }
 
     public void SetListener(Vector3 position, Vector3 forward, Vector3 up)

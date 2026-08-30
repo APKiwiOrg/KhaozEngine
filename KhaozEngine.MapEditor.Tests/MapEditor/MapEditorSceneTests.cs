@@ -617,61 +617,6 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal(4, scene.Log.Count(s => s == "full"));
         }
 
-        // ---- exclusion gizmo drag: partial rebuild, never throttled (the choppy-drag fix) --------------
-
-        // A minimal document holding one disc exclusion at the origin, so a gizmo drag on it reuses the exact
-        // press/drag geometry EditorToolTests.ShapeDrag_MovesCenterThroughCommand already verifies (a +X arrow
-        // grab at (0.6, 100, 0) on a DiscShapeDoc CenterX=0 CenterZ=0 Radius=5).
-        static MapDocument SampleWithExclusion()
-        {
-            var doc = new MapDocument { Id = "exclusion-throttle", Bounds = new MapBounds { MinX = -100f, MinZ = -100f, MaxX = 100f, MaxZ = 100f } };
-            doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f } });
-            return doc;
-        }
-
-        [Fact]
-        public void ExclusionGizmoDrag_RoutesToPartial_NeverThrottled()
-        {
-            // EditExclusionShapeCommand now reports a bounded DirtyRegion (ShapeGeometry.TryBounds), so a gizmo
-            // drag on a selected exclusion takes the PARTIAL rebuild seam every frame, and CheckWorldRebuild's
-            // gesture throttle only ever wraps the FULL path, never partial. Mirrors
-            // Throttle_PartialRebuilds_BypassThrottle_AndDoNotFeedFullAccumulator above but drives it through a
-            // REAL selection + gizmo drag instead of the synthetic DirtyPartial helper, proving the fix through
-            // the actual editing gesture a map author performs, not just the command's own DirtyRegion getter.
-            var scene = new ThrottleScene(SampleWithExclusion) { PartialSucceeds = true };
-            scene.Init(null!, null!, null!, new MapEditorOptions { GestureRebuildInterval = 0.25f });
-            new SceneManager().Push(scene);
-            scene.Document.AcknowledgeWorldRebuild();   // ignore any pending state from the initial load
-            scene.Log.Clear();
-
-            scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
-
-            // Grab the +X translate arrow on the shape-center gizmo.
-            scene.Controller.Update(new EditorFrameInput(new Vector3(0.6f, 100f, 0f), ThrottleDown,
-                pointerPressed: true, pointerDown: true, dt: 0.016f));
-            Assert.True(scene.Controller.IsDragging);
-
-            // 5 drag frames, each carrying only 0.1s (well under the 0.25s gesture-rebuild interval): a
-            // full-rebuild-throttled path would stay silent for several of these, but the partial path never is.
-            for (int i = 0; i < 5; i++)
-            {
-                scene.Controller.Update(new EditorFrameInput(new Vector3(1.6f + i, 100f, 0f), ThrottleDown, pointerDown: true, dt: 0.016f));
-                scene.RunRebuildCheck(0.1f);
-            }
-
-            Assert.Equal(5, scene.Log.Count(s => s == "partial"));
-            Assert.DoesNotContain("full", scene.Log);
-            Assert.False(scene.Document.WorldRebuildPending);   // each partial rebuild acknowledges immediately
-
-            // Releasing seals the gesture into one coalesced undo step (drag coalescing), and the shape actually
-            // moved: this is a real edit, not just a rebuild-routing no-op.
-            scene.Controller.Update(new EditorFrameInput(new Vector3(5.6f, 100f, 0f), ThrottleDown, pointerReleased: true, dt: 0.016f));
-            Assert.False(scene.Controller.IsDragging);
-            Assert.Equal(1, scene.Document.History.UndoDepth);
-            var disc = Assert.IsType<DiscShapeDoc>(scene.Document.Doc.Exclusions[0].Shape);
-            Assert.True(disc.CenterX > 0f);
-        }
-
         // ---- same-frame inspector rebuild regression ---------------------------------------------------
 
         [Fact]

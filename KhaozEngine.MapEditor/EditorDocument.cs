@@ -149,10 +149,11 @@ public sealed class EditorDocument
     }
 
     // Sets WorldRebuildPending and folds the command's dirty region into the pending accumulation, when the command
-    // is an engine command that affects the world. A command with a null DirtyRegion (its reach is not a bounded
-    // rect) makes the pending region full-sticky for the rest of the batch. A bounded rect unions into the running
-    // region. For a merged drag, Undo/Redo pass the peeked (merged) command, whose endpoints-union region is correct
-    // (chunks the feature crossed mid-drag were already rebuilt when the footprint left them).
+    // is an engine command that affects the world. A command with a null DirtyRegion (one the partial path cannot
+    // serve, see EditorCommand.DirtyRegion) makes the pending region full-sticky for the rest of the batch. A
+    // bounded rect unions into the running region. For a merged drag, Undo/Redo pass the peeked (merged) command,
+    // whose endpoints-union region is correct (chunks the feature crossed mid-drag were already rebuilt when the
+    // footprint left them).
     void MarkWorldRebuild(IEditorCommand command)
     {
         if (command is not EditorCommand ec || !ec.AffectsWorld) return;

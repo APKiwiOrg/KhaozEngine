@@ -49,29 +49,32 @@ internal static class ShapeGeometry
         }
     }
 
-    /// <summary>Base margin (world units) padded around a shape's exact bounds for the dirty-region rect an
-    /// exclusion or scatter-override edit invalidates. Both only ever reach scatter
-    /// (<c>PropScatter.InExclusion</c> / <c>OverrideFor</c>, a pointwise <see cref="IArea2D.Contains"/> test with
-    /// no falloff and no height/normal reach), but scatter's chunk assignment and its membership test disagree by
-    /// the layer's jitter: <c>PropScatter.Generate</c> assigns a candidate to a chunk by its UN-jittered cell
-    /// centre (the half-open [Min, Max) window test) while testing exclusion / override membership at the
-    /// JITTERED position, so a candidate whose cell centre sits up to the layer's Jitter outside the shape can
-    /// still flip its cull result while living in a chunk beyond the bare shape bounds. The true margin floor is
-    /// therefore the document's largest scatter jitter (authored jitter has no validator clamp, so it can exceed
-    /// any constant), which the shape commands capture at Apply time via <see cref="BoundsMarginFor"/> and pad
-    /// with instead of this constant alone. The constant itself covers only the jitter-free boundary effects:
+    /// <summary>Base margin (world units) for a conservative AABB around an exclusion or scatter-override shape.
+    /// Both only ever reach scatter (<c>PropScatter.InExclusion</c> / <c>OverrideFor</c>, a pointwise
+    /// <see cref="IArea2D.Contains"/> test with no falloff and no height/normal reach), but scatter's chunk
+    /// assignment and its membership test disagree by the layer's jitter: <c>PropScatter.Generate</c> assigns a
+    /// candidate to a chunk by its UN-jittered cell centre (the half-open [Min, Max) window test) while testing
+    /// exclusion / override membership at the JITTERED position, so a candidate whose cell centre sits up to the
+    /// layer's Jitter outside the shape can still flip its cull result while living in a chunk beyond the bare
+    /// shape bounds. The true margin floor for a chunk-invalidation rect is therefore the document's largest
+    /// scatter jitter (authored jitter has no validator clamp, so it can exceed any constant), which is what
+    /// <see cref="BoundsMarginFor"/> adds. The constant itself covers only the jitter-free boundary effects:
     /// chunk invalidation maps a world rect to the whole chunks it touches (inclusive of a shape edge sitting
     /// exactly on a chunk seam), and a disc/rect authored with a boundary exactly on a seam can drift either way
     /// by float rounding. It stays well under <see cref="FeatureGeometry.FootprintMargin"/>'s 8 m, which pads a
-    /// height/normal reach this shape-only case does not have.</summary>
+    /// height/normal reach this shape-only case does not have.
+    /// <para>NOTE: no command wires this to a <see cref="EditorCommand.DirtyRegion"/> today. Shape edits take the
+    /// full rebuild instead, because the partial path cannot rebuild the prop layers a shape edit changes (see
+    /// <see cref="ViewportWorld.PartialRebuild"/> and issue #765). The margin analysis is kept because it is the
+    /// correctness floor any future partial handling of these edits has to clear.</para></summary>
     internal const float ShapeBoundsMargin = 2f;
 
-    /// <summary>The dirty-region margin for a shape edit against <paramref name="doc"/>:
+    /// <summary>The chunk-invalidation margin for a shape edit against <paramref name="doc"/>:
     /// <see cref="ShapeBoundsMargin"/> plus the largest scatter-layer jitter in the document (the margin floor,
-    /// see the constant's doc for why jitter reaches beyond the shape). Absolute value per layer: a degenerate
-    /// negative-authored jitter displaces candidates by the same magnitude (the Jitter field has no clamp). A
-    /// document with no scatter layers pads by the bare constant (no scatter means nothing can flip, the rect is
-    /// already conservative).</summary>
+    /// see the constant's doc for why jitter reaches beyond the shape, and for why no command reads this today).
+    /// Absolute value per layer: a degenerate negative-authored jitter displaces candidates by the same magnitude
+    /// (the Jitter field has no clamp). A document with no scatter layers pads by the bare constant (no scatter
+    /// means nothing can flip, the rect is already conservative).</summary>
     internal static float BoundsMarginFor(MapDocument doc)
     {
         float jitter = 0f;
@@ -81,9 +84,9 @@ internal static class ShapeGeometry
     }
 
     /// <summary>A conservative world-space AABB covering <paramref name="shape"/>, padded by
-    /// <see cref="ShapeBoundsMargin"/> only. Doc-independent convenience overload: command dirty regions pass
-    /// their captured <see cref="BoundsMarginFor"/> margin to the explicit overload instead, since the bare
-    /// constant does not cover scatter jitter.</summary>
+    /// <see cref="ShapeBoundsMargin"/> only. Doc-independent convenience overload: a caller that needs the rect to
+    /// cover chunk invalidation passes a <see cref="BoundsMarginFor"/> margin to the explicit overload instead,
+    /// since the bare constant does not cover scatter jitter.</summary>
     internal static bool TryBounds(MapShapeDoc? shape, out RectArea area) =>
         TryBounds(shape, ShapeBoundsMargin, out area);
 

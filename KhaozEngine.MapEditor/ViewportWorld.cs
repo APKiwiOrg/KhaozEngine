@@ -205,12 +205,15 @@ public sealed class ViewportWorld : IDisposable
     /// <para>Returns false (a no-op) when the world is not built, so the caller can fall back to a full
     /// <see cref="Rebuild"/> or skip. Throws <see cref="ObjectDisposedException"/> after <see cref="Dispose"/>, like
     /// its siblings.</para>
-    /// <para>This path does NOT rebuild the prop LAYERS (the scatter/companion configs are constructed once per
-    /// <see cref="Build"/> / <see cref="Rebuild"/>), so it is valid ONLY for an edit that cannot change any
-    /// scatter-layer or companion config or any exclusion. That holds this round because only the feature commands
-    /// report a bounded <see cref="EditorCommand.DirtyRegion"/>, and a feature edit changes terrain height alone (the
-    /// re-meshed chunks re-scatter off the new field automatically). An exclusion or scatter-layer edit reports a null
-    /// region and so takes the full rebuild.</para></summary>
+    /// <para>This path does NOT rebuild the prop LAYERS (the scatter / companion configs are constructed once per
+    /// <see cref="Build"/> / <see cref="Rebuild"/> and then live inside the sink's <see cref="PropLayer"/> list,
+    /// which has no setter), so it is valid ONLY for a TERRAIN-HEIGHT edit: the re-meshed chunks re-scatter off the
+    /// new field automatically, from the same config as before. Anything that changes what a layer's
+    /// <see cref="ScatterConfig"/> SAYS is invisible here, exclusions and scatter overrides included, because the
+    /// re-scatter reads the captured config and reproduces the very props the edit was meant to remove. That is
+    /// what <see cref="EditorCommand.DirtyRegion"/> encodes: only the feature and sculpt commands report a bounded
+    /// region, and every exclusion / scatter-override / scatter-layer command reports null and so takes the full
+    /// rebuild (issue #765, where they briefly reported bounded shape AABBs and left the props standing).</para></summary>
     public bool PartialRebuild(MapDocument doc, MapDocRegistry registry, RectArea dirty)
     {
         ThrowIfDisposed();

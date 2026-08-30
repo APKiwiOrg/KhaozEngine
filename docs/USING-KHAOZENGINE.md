@@ -2079,6 +2079,24 @@ batch.End();
   radius half each band's pulse-adjusted width at every endpoint (glow cap under, core cap over), independent of
   `FlareRadius` and sampled from the `glow` texture (square ends if `glow` is null). Default `BeamCap.None` keeps
   the original square ends.
+- **Jagged electric arcs (`BeamParams.JitterShape`).** `JitterAmount`/`JitterSpeed` used to give one shape only, a
+  coherent sine wobble, so the beam could be a wavy straight line and nothing else. `BeamJitter.Jagged` displaces
+  every segment boundary by its OWN signed noise under a mid-span envelope, and tilts each quad to run between its
+  two displaced boundaries, which is the chain-lightning / tesla / shock bolt the wobble cannot express
+  ([#239](https://github.com/APKiwiOrg/KhaozEngine/issues/239)). In that mode the two knobs change meaning:
+  `JitterAmount` is the peak displacement in pixels at mid-span (both endpoints stay pinned on the axis), and
+  `JitterSpeed` is the RE-ROLL RATE in whole new bolts per second, where 0 holds one still bolt rather than
+  disabling anything. `JitterSeed` picks which bolt, so give concurrent arcs different seeds or they draw the same
+  one. It stays pure and stateless like the rest of `EnergyBeam`: the bolt is a function of seed and time, so every
+  client draws the same one. `BeamParams.ElectricArc` is the tuned starting point.
+
+```csharp
+vfx.DrawBeam(batch, from, to, BeamParams.ElectricArc with { JitterSeed = arcId }, timeSeconds);
+```
+
+  `BeamJitter.Wave` is the default and byte-identical to the old behaviour, so no existing beam changes. The beam
+  is still immediate-mode with no spawn/lifetime/pool of its own, so a transient zap that fires, fades and expires
+  is still the caller's to drive (scale the two colours' alpha over the arc's lifetime).
 - `AttentionBeacon.Draw(batch, ring, glow, center, in AttentionBeaconParams, timeSeconds)`: an additive "look at
   me" pulse (pickups, quest markers, objectives), expanding sonar-ping rings plus a configurable number of
   twinkling glints; time-driven and stateless like `EnergyBeam`, so feed an unscaled real-time accumulator and it

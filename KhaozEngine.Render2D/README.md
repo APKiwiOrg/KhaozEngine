@@ -221,3 +221,13 @@ life, a per-particle `BlendMode`, and an optional trapezoid alpha envelope (see 
 `FadeOutDuration` (the fade-in / hold / fade-out alpha envelope, both default 0 = no envelope) and `SizeJitter`
 (per-particle +/- size variation, default 0). All three default to today's behaviour, so existing bursts are
 unchanged. `VfxRenderer` (glow / ring / beam / white-pixel textures) is the convenience entry point.
+
+`EnergyBeam` / `BeamParams` draw the additive A-to-B beam. `BeamParams.JitterShape` picks what the sideways
+displacement looks like: `BeamJitter.Wave` (the default) is the coherent sine wobble, a wavy straight line, while
+`BeamJitter.Jagged` displaces every segment boundary by its own signed noise under a mid-span envelope and tilts
+each quad to run between its two displaced boundaries, giving a chain-lightning / tesla bolt. In jagged mode
+`JitterAmount` is the peak mid-span displacement in pixels (both endpoints stay pinned on the axis) and
+`JitterSpeed` becomes the re-roll rate in whole new bolts per second, with 0 holding one still bolt.
+`JitterSeed` picks which bolt, so concurrent arcs need different seeds. The bolt is a pure function of seed and
+time, so the beam stays stateless and every client draws the same one. `BeamParams.ElectricArc` is the tuned
+preset. Wave is byte-identical to the pre-jagged behaviour.

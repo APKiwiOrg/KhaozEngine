@@ -117,7 +117,7 @@ namespace KhaozEngine.Showcase
             Rooms.Add(new ShowcaseRoomEntry(ShowcaseStrings.RoomWorldTitle, ShowcaseStrings.RoomWorldBlurb,
                 () => new Room3D().Init(Scene, _white, dpi22, _hud)));
 
-            // RoomVfx is the particles + modern VFX room: the nine authored VfxPresets played through a
+            // RoomVfx is the particles + modern VFX room: every authored VfxPresets effect played through a
             // ParticleEffectPlayer and drawn with Render3D's modern particle pass (bloom on by default), on the same
             // shared Scene3D as Room3D. Its bloom / HDR toggles toast through the shared hud.
             Rooms.Add(new ShowcaseRoomEntry(ShowcaseStrings.RoomVfxTitle, ShowcaseStrings.RoomVfxBlurb,

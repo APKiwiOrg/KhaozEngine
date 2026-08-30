@@ -4147,8 +4147,9 @@ scene.DrawEffect(player, looks);                          // one look per phase,
 ```
 
 Presets: `FireBurst`, `FrostShatter`, `HealMotes`, `EmberDrift`, `SparkShower`, `Shockwave`, `SmokePlume`,
-`ArcaneSparkle`, `HeatHaze`. `looks.Length` must equal `player.PhaseCount`. The showcase's "Particles & VFX"
-room (`KhaozEngine.Showcase/RoomVfx.cs`) is the runnable reference, cycling all nine live with bloom/HDR toggles.
+`ArcaneSparkle`, `HeatHaze`, `EssenceMotes`. `looks.Length` must equal `player.PhaseCount`. The showcase's
+"Particles & VFX" room (`KhaozEngine.Showcase/RoomVfx.cs`) is the runnable reference, cycling every one of them
+live with bloom/HDR toggles (`EssenceMotes` gets an orbiting `ParticleAttractor` target so its drain reads).
 
 **Authoring your own emitter.** `EmitterConfig` grew emission shapes, per-particle variance, life curves, spin, and
 turbulence. Every new field zero-defaults to the legacy look:

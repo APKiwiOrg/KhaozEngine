@@ -144,8 +144,9 @@ game can swap:
   `PeriodicGrant`. Last-write-wins is safe here because the wallet's credit idempotency key is the real
   double-grant guard, not this store. The first-ever (bootstrap) claim keys on a fixed sentinel retained
   in the wallet ledger, so it is a permanent one-shot: clearing this store while retaining the wallet
-  ledger denies the re-grant. `InMemoryWalletStore` implements both `IWalletStore` and
-  `IGrantScheduleStore`, and so do the two SQL backends.
+  ledger denies the re-grant. Re-open a reward with `PeriodicGrant.ResetAsync`, which WRITES a row here
+  rather than deleting one, keeping the bootstrap path unreachable. `InMemoryWalletStore` implements both
+  `IWalletStore` and `IGrantScheduleStore`, and so do the two SQL backends.
 - **`IEntitlementValidator`** - turns an untrusted external proof (`EntitlementProof`: a webhook body, a
   store receipt) into a `VerifiedEntitlement`, or null if invalid. No default implementation ships: the
   proof format and the trust decision are consumer-specific (a webhook signature, a platform receipt

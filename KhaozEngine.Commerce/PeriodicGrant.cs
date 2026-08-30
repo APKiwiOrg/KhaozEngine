@@ -12,8 +12,12 @@ public readonly record struct PeriodicGrantResult(bool Granted, long NewBalance,
 /// <summary>A server-clock daily/periodic reward routed through the wallet. The server instant is the
 /// only clock. No client timestamp is trusted, which closes the clock-forward exploit. Non-stacking via
 /// <see cref="WallClockRewardSchedule"/>, credited-once via the wallet idempotency key. The first-ever claim
-/// keys on a fixed per (account, reward) sentinel retained in the wallet ledger, a permanent one-shot: do not
-/// clear the schedule store while retaining the wallet ledger unless denying the re-grant is intended.
+/// keys on a fixed per (account, reward) sentinel retained in the wallet ledger, a permanent one-shot: never
+/// clear the schedule store while retaining the wallet ledger, because the next claim reads null, takes the
+/// bootstrap path again, replays that retained sentinel and reports <c>Granted=false</c> with no error.
+/// <see cref="ResetAsync"/> is the sanctioned way to re-open a reward (a wiped-progress account, a seasonal
+/// re-issue on the same reward id), and it works precisely because it WRITES a schedule row rather than
+/// deleting one, which keeps the bootstrap path unreachable.
 /// <para><c>rewardId</c> may not contain <c>':'</c>, the separator the idempotency key is built from
 /// (see <see cref="KeySeparator"/>).</para></summary>
 public sealed class PeriodicGrant
@@ -72,7 +76,7 @@ public sealed class PeriodicGrant
         // and the wallet credits exactly once. Every later claim reads a persisted NextAvailableUtc, already
         // stable across callers, and keys on its ticks.
         // The three segments split unambiguously because the ctor keeps KeySeparator out of the reward id and the
-        // suffix is separator-free by construction; see the ctor for why the account segment is left alone.
+        // suffix is separator-free by construction. See the ctor for why the account segment is left alone.
         string key = bootstrap
             ? $"{rewardId}:{account.Value}:bootstrap"
             : $"{rewardId}:{account.Value}:{schedule.NextAvailableUtc.UtcTicks.ToString(CultureInfo.InvariantCulture)}";
@@ -82,4 +86,17 @@ public sealed class PeriodicGrant
         await schedules.SetNextAvailableAsync(account, rewardId, advanced.NextAvailableUtc, ct);
         return new PeriodicGrantResult(!credit.Replayed, credit.NewBalance, advanced.TimeUntilAvailable(serverNowUtc));
     }
+
+    /// <summary>Re-opens this reward for <paramref name="account"/> from <paramref name="availableFromUtc"/>, so the
+    /// next <see cref="TryClaimAsync"/> at or after that instant grants again. The sanctioned reset for a wiped
+    /// progress account, an admin or player rewards reset, or a seasonal re-issue that reuses a reward id.
+    /// <para>It WRITES a schedule row rather than deleting one, and that is the whole point. A deleted row sends the
+    /// next claim down the bootstrap path, where it replays the sentinel the wallet ledger still holds and reports
+    /// <c>Granted=false</c> with no error, silently denying a legitimate grant (#208). Writing a row keeps the
+    /// bootstrap path unreachable, and the claim that follows keys on the written instant's ticks, which no earlier
+    /// claim can have used. Resetting twice to the SAME instant is therefore one re-grant, not two, which is the
+    /// right answer for a double-clicked admin button.</para>
+    /// <para>Pass a server instant, never a client one, for the same reason <see cref="TryClaimAsync"/> does.</para></summary>
+    public Task ResetAsync(AccountId account, DateTimeOffset availableFromUtc, CancellationToken ct = default)
+        => schedules.SetNextAvailableAsync(account, rewardId, availableFromUtc, ct);
 }

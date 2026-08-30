@@ -15,3 +15,15 @@ public sealed class SqliteWalletStoreTests : WalletStoreContract, IDisposable
 
     public void Dispose() => store.Dispose();
 }
+
+/// <summary>The SQLite row of <see cref="PeriodicGrantResetContract"/>. This backend stores the schedule instant as
+/// unix MILLISECONDS, so a reset instant comes back truncated and the claim keys on the truncated ticks. Same
+/// per-[Fact] instance and same in-memory database lifetime as the wallet rows above.</summary>
+public sealed class SqlitePeriodicGrantResetTests : PeriodicGrantResetContract, IDisposable
+{
+    private readonly SqliteWalletStore store = new($"Data Source=commerce_{Guid.NewGuid():N};Mode=Memory;Cache=Shared");
+
+    protected override (IWalletStore Ledger, IGrantScheduleStore Schedules) NewBackend() => (store, store);
+
+    public void Dispose() => store.Dispose();
+}

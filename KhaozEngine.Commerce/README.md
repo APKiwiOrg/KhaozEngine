@@ -11,7 +11,7 @@ Provides a foundational wallet system with:
 - `Wallet`: grant (free credit), spend (debit), and redeem (purchase entitlement) over the store
 - A source-agnostic entitlement pipeline: `VerifiedEntitlement`, `EntitlementProof`, `IEntitlementValidator` (no default implementation; the proof format and trust decision are the consumer's)
 - `IProductCatalog` / `InMemoryProductCatalog`: maps a store product id to the currency + amount it grants
-- `PeriodicGrant` + `IGrantScheduleStore`: a server-clock daily/periodic reward routed through the wallet, built on `KhaozEngine.Progression`'s `WallClockRewardSchedule`. The first-ever claim per `(account, reward)` is a permanent one-shot keyed in the wallet ledger, so do not clear the schedule store while retaining the wallet ledger unless denying the re-grant is intended
+- `PeriodicGrant` + `IGrantScheduleStore`: a server-clock daily/periodic reward routed through the wallet, built on `KhaozEngine.Progression`'s `WallClockRewardSchedule`. The first-ever claim per `(account, reward)` is a permanent one-shot keyed in the wallet ledger, so never clear the schedule store while retaining the wallet ledger. Use `PeriodicGrant.ResetAsync` to re-open a reward (a wiped-progress account, a seasonal re-issue on the same reward id): it writes a schedule row rather than deleting one, which keeps the bootstrap path unreachable
 - Zero external dependencies (no SQL, no netcode)
 
 ## Public API
@@ -28,7 +28,7 @@ Provides a foundational wallet system with:
 | `IProductCatalog`, `InMemoryProductCatalog`, `ProductDefinition` | Maps a product id to `(CurrencyId, AmountPerUnit)`. |
 | `VerifiedEntitlement`, `EntitlementProof`, `IEntitlementValidator` | Turns an untrusted external proof into a verified, account-resolved entitlement (or null). |
 | `IGrantScheduleStore` | Persists the next-available instant per `(account, rewardId)` for `PeriodicGrant`. |
-| `PeriodicGrant`, `PeriodicGrantResult` | Server-clock daily/periodic reward: `TryClaimAsync(account, serverNowUtc)`. The `rewardId` may not contain `':'` (the idempotency key's segment separator), while the account id still may. |
+| `PeriodicGrant`, `PeriodicGrantResult` | Server-clock daily/periodic reward: `TryClaimAsync(account, serverNowUtc)`, plus `ResetAsync(account, availableFromUtc)` to re-open it. The `rewardId` may not contain `':'` (the idempotency key's segment separator), while the account id still may. |
 
 ## Quick Start
 

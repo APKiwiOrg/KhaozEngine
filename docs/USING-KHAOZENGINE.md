@@ -12050,8 +12050,16 @@ if (claim.Granted)
 else
     ShowCountdown(claim.TimeUntilNext);
 
+// Re-open the reward (wiped progress, a rewards reset, a seasonal re-issue on the same reward id). Never clear the
+// schedule store to do this: the next claim would take the first-ever path, replay the sentinel the wallet ledger
+// still holds, and be denied with no error. ResetAsync WRITES a schedule row, which keeps that path unreachable.
+await daily.ResetAsync(account, DateTimeOffset.UtcNow);
+
 long balance = await wallet.BalanceAsync(account, new CurrencyId("shard"));
 ```
+
+`rewardId` may not contain `':'`, the separator the wallet idempotency key joins its segments with. An account id
+still may (the fleet writes them as `"acct:1"`).
 
 `Wallet.SpendAsync` debits (fails with `Insufficient`, no throw, if the balance is too low); `GrantAsync` is
 a raw server-authorized credit for anything outside the periodic/purchase paths. See

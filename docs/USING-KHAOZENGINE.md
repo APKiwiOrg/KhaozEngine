@@ -11747,6 +11747,10 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   `Observe` opaque metric keys, `Persistent` + `Session` scopes, `AtLeast` / `Reached` / `AtMost` conditions,
   idempotent `ObjectiveCompleted`, key-indexed re-eval, `Capture` / `Restore` snapshot. Deterministic and
   presentation-free (see "Objective / goal tracking" below).
+- **`KhaozEngine.Items`**: the item container kernel (`ItemContainer` + `ItemContainerCodec`), the `Stats`
+  split applied to slots: the engine owns stack-first adds, honest overflow answers, ordered removes, swaps
+  and the sparse versioned codec, and the game owns item identity entirely, supplying only a stackable
+  predicate. See the package README for the full API and the rules stated once.
 - **`KhaozEngine.Stats`**: game-agnostic layered stat computation (`StatSet`) for equipment, skills, and
   buffs. A per-channel `Base` plus any number of named `StatSourceId` contributions fold to `Value(channel) =
   (Base + sum(Flat)) * max(1 + sum(Percent), MinimumScale)`. Dense int channels backed by a `float[]`,

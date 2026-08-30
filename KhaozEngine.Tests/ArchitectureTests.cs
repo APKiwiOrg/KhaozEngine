@@ -295,7 +295,7 @@ public partial class ArchitectureTests
             new[]
             {
                 "App", "CodeHealth.Analyzers", "Collision", "Content", "Determinism", "Diagnostics", "Dungeon",
-                "Ecs", "Http", "Identity", "Locomotion", "MapDoc", "Navigation", "Objectives", "Persistence",
+                "Ecs", "Http", "Identity", "Items", "Locomotion", "MapDoc", "Navigation", "Objectives", "Persistence",
                 "Physics", "Platform", "Primitives", "Progression", "Serialization", "ServerStatus", "Social",
                 "Stats", "Terrain", "TileWorld", "TileWorld.Editing", "Updates",
             }

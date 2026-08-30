@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Items</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Game-agnostic item container kernel (in Foundation): a fixed-slot ItemContainer of opaque (ItemId, Count) stacks with stack-first adds, honest overflow answers, ordered removes, slot swaps, and a versioned codec for the durable and wire form. A game owns item identity entirely: it supplies the stackable rule as a predicate, and there is no item catalog, no icon, no equip slot, no use effect, and no economy rule in this package. Exact integer arithmetic throughout, saturating at int.MaxValue rather than overflowing. No JSON, no external deps.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

@@ -49,6 +49,16 @@ additive APIs ship: `TerrainLodConfig.SkirtDepthFor` (with `MinSkirtDepth` and `
   (the admin HTTP thread reads it lock-free, so a changed tick still copies out a fresh array). One new
   observable: an unchanged tick hands back the same list instance.
 
+TileWorld's consumer program also lands a new Foundation package:
+
+- **`KhaozEngine.Items`**, the item container kernel and the `Stats` split applied to slots (Grimhollow's
+  SP4 R2 is the pinned consumer, Ruinborne the expected second): `ItemStack` (opaque id + count),
+  `ItemContainer` (stack-first adds against a game-supplied stackable predicate, one stack per container
+  saturating at `int.MaxValue` with no shadow-stack spill, honest overflow answers, first-to-last removes,
+  `Swap`, and `SetAt` as the sanitising codec door), and `ItemContainerCodec` (sparse versioned
+  little-endian form with a quarantine-grade `Validate`). Carried by the `Foundation` umbrella. The engine
+  never learns what an item is: no catalog, no icons, no equip slots, no use effects, no economy rules.
+
 ## 18.7.0
 
 18.7.0 gives TileWorld object picking against the drawn MODELS, so what a player can click is what they can

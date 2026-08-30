@@ -14173,6 +14173,12 @@ net id) from a snapshot published once per tick; `Teleport(PlayerRef, Vector3)`,
 `Broadcast(text)` are queued and applied on the host thread between ticks, so you can call them safely from another
 thread (an HTTP handler). Target a player by `PlayerRef.Slot(n)` or `PlayerRef.Account("...")`.
 
+The tick rebuilds that snapshot into a reused buffer and republishes only when its content actually differs from
+what is already readable, so a tick where nobody joined, left or moved allocates nothing for it. What you read is
+unchanged (still at most one tick stale, still the same fields), with one detail worth knowing if you compare
+results: an unchanged tick hands back the SAME list instance, so identity is not a reliable "this is a new tick"
+signal. Read the values.
+
 **Bans.** `IBanStore` is consulted at connect (alongside the authenticator): a banned account is rejected before it
 spawns. `InMemoryBanStore` is the default; `WorldStoreBanStore` persists over any `IWorldStore` keyspace
 (`ban:{accountId}`) and caches in memory so the connect check stays synchronous (call `LoadAsync()` once at startup
@@ -14967,6 +14973,14 @@ so a tick serving several clients from the same home cell reindexes it once inst
 (the default, `null`) for the unconditional per-call rebuild that direct callers and tests rely on, since a call
 made right after a world mutation must see a fresh grid. `ShardedWorldServer.Tick` bumps a fresh epoch once per
 tick and passes it to both the delta (`HomeInterest`) and snapshot (`SnapshotForClient`) serve paths.
+
+**Buffer-filling interest query (perf).** `HomeInterest` also has an overload taking an `ICollection<long> results`:
+it ADDS the net ids into your collection and returns just the home-cell `World`, so a serve loop can reuse one set
+across every client it serves (clear it between clients) instead of allocating a `HashSet<long>` per client per tick.
+`ShardedWorldServer.Tick` uses it. Same validation, same rebuild cadence, same contents as the tuple-returning
+overload, which is kept and delegates to it. Like `InterestGrid.Query(float, float, float, ICollection<long>)` it
+adds rather than clears: the caller owns the reset. A bare `null` third argument still binds to the older
+`HomeInterest(slot, radius, serveEpoch)` overload, so nothing you already wrote changes meaning.
 
 **Reference dedicated server (Phase 3E).** `MmoServerSample` wires the whole stack into a runnable headless
 server: a multi-cell `ShardHost` driven over the `NetServer` session layer (any `INetTransport` - LiteNetLib in

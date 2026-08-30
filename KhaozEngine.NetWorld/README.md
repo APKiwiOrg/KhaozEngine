@@ -403,8 +403,11 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
 ## Server administration (since 8.4.2)
 
 Both `WorldServer` and `ShardedWorldServer` implement **`IAdminControllable`**: `ListOnline()` returns the
-connected players as a snapshot (published once per tick); `Teleport(PlayerRef, Vector3)`, `Kick(PlayerRef, reason)`,
+connected players as a snapshot published once per tick. `Teleport(PlayerRef, Vector3)`, `Kick(PlayerRef, reason)`,
 and `Broadcast(text)` are queued and applied on the host thread between ticks, safe to call from another thread.
+The tick rebuilds the online snapshot into a reused buffer and republishes only when its content actually changed,
+so an idle tick allocates nothing for it and hands the reader back the same list instance. What you read is
+unchanged, still at most one tick stale, but identity is not a "this is a new tick" signal. Read the values.
 Target a player by `PlayerRef.Slot(n)` or `PlayerRef.Account("...")`. `SetSpeedScale(PlayerRef, float)` rides the
 same queue on both heads (it is a gameplay mutation, not an admin action, so it is not on `IAdminControllable`).
 See "Per-entity speed scale" below.

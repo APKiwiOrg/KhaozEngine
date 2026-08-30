@@ -59,6 +59,12 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     // Per-tick scratch: the pre-step state of each owned player whose command we routed this frame, so we can
     // measure the authoritative correction after the cells step. Reused across ticks (single-threaded orchestration).
     private readonly List<(int slot, PlayerMoveState prev)> correctionScratch = new();
+    // Per-tick scratch, reused across ticks so the steady-state serve loop allocates nothing for its own
+    // bookkeeping (#134): the slot list the tick iterates, the per-client interest set (cleared between clients,
+    // never retained by the delta replicator), and the online-snapshot rebuild buffer.
+    private readonly List<int> tickSlots = new();
+    private readonly HashSet<long> interestScratch = new();
+    private readonly OnlineSnapshotPublisher onlinePublisher = new();
     private readonly DrainController drain = new();
     private readonly AdminCommandBuffer admin = new();
     private readonly IBanStore? banStore;
@@ -454,7 +460,11 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     {
         OnBeforeTick?.Invoke(dt);   // consumer NPC/enemy brains run before movement + serving
         admin.Drain(ApplyAdminCommand);
-        var slots = new List<int>(netIdBySlot.Keys);
+        // A reused buffer, but still a COPY of the keys: the loops below can mutate netIdBySlot (a kick or a
+        // disconnect mid-serve), so neither may enumerate the dictionary directly.
+        tickSlots.Clear();
+        foreach (int s in netIdBySlot.Keys) tickSlots.Add(s);
+        List<int> slots = tickSlots;
         bool trackCorrection = config.AntiCheat.CorrectionEnabled;
         correctionScratch.Clear();
 
@@ -512,10 +522,13 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             byte[] body;
             if (deltaReplicator is not null && deltaCapableSlots.Contains(slot))
             {
-                (World world, HashSet<long> interest) = host.HomeInterest(slot, config.InterestRadius, serveEpoch);
+                // One reused interest set for the whole client loop, cleared per client. WriteFor projects out of it
+                // into its own per-slot baseline and is done with it before it returns, so nothing retains it.
+                interestScratch.Clear();
+                World world = host.HomeInterest(slot, config.InterestRadius, interestScratch, serveEpoch);
                 // Owner-scope the Replicate channel to this client's own player (netId is stable across handoff), so an
                 // OwnerOnly component is served only on the client's own entity, never on another player it observes.
-                body = deltaReplicator.WriteFor(slot, world, interest, netId);
+                body = deltaReplicator.WriteFor(slot, world, interestScratch, netId);
                 kind = MoveProtocol.ServerFrameKind.Delta;
             }
             else
@@ -535,7 +548,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             foreach (CellSim cell in host.Cells) cell.World.AdvanceTick();
         drain.Advance(dt);
         selfRescueClock += dt;   // advance the self-rescue cooldown clock
-        admin.Publish(BuildOnlineSnapshot());
+        PublishOnlineSnapshot();
         // Consumer post-step observers (landing impacts, …) run after movement + serving, and ONLY after a frame that
         // actually stepped. A frame too short to fill any cell's accumulator leaves every per-tick step output exactly
         // as the last real sub-tick wrote it, so firing here would re-deliver that tick's landing as a fresh one.
@@ -652,9 +665,12 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         }
     }
 
-    private OnlinePlayer[] BuildOnlineSnapshot()
+    // Rebuilds the online view into the publisher's reused buffer and republishes only when it differs from what an
+    // admin can already read. Same content as the old unconditional rebuild, so ListOnline's "at most one tick
+    // stale" contract is unchanged; the tick just stops allocating a list plus an array when nothing moved (#134).
+    private void PublishOnlineSnapshot()
     {
-        var list = new List<OnlinePlayer>(netIdBySlot.Count);
+        List<OnlinePlayer> list = onlinePublisher.BeginRebuild();
         foreach (int slot in netIdBySlot.Keys)
         {
             if (!netIdBySlot.TryGetValue(slot, out long netId)) continue;
@@ -665,7 +681,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
                 name = pi.DisplayName ?? string.Empty;
             list.Add(new OnlinePlayer(slot, acct, name, st.Position, st.Grounded, st.VerticalVelocity, netId));
         }
-        return list.ToArray();
+        onlinePublisher.PublishIfChanged(admin);
     }
 
     private void OnJoin(int slot, string subject, string displayName)

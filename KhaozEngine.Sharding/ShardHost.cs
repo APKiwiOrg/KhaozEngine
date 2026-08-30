@@ -585,6 +585,24 @@ public sealed partial class ShardHost : IDisposable
     /// </summary>
     public (World world, HashSet<long> interest) HomeInterest(int slot, float interestRadius, long? serveEpoch = null)
     {
+        var interest = new HashSet<long>();
+        World world = HomeInterest(slot, interestRadius, interest, serveEpoch);
+        return (world, interest);
+    }
+
+    /// <summary>
+    /// As <see cref="HomeInterest(int, float, long?)"/>, but adds the net ids into <paramref name="results"/>
+    /// instead of allocating a set, and returns just the home-cell world. For a per-tick serve loop that can reuse
+    /// one set across every client it serves (clear it between clients), which is what keeps the authoritative loop
+    /// from producing one short-lived <see cref="HashSet{T}"/> per client per tick (#134). Same validation, same
+    /// grid-rebuild cadence, same contents.
+    /// </summary>
+    /// <remarks><paramref name="results"/> is added to, never cleared: the caller decides whether it is
+    /// accumulating or starting fresh, matching <c>InterestGrid.Query(float, float, float, ICollection{long})</c>.
+    /// </remarks>
+    public World HomeInterest(int slot, float interestRadius, ICollection<long> results, long? serveEpoch = null)
+    {
+        if (results is null) throw new ArgumentNullException(nameof(results));
         if (positionAccessor is null)
             throw new InvalidOperationException("HomeInterest requires a position accessor.");
         if (interestRadius < 0f)
@@ -604,8 +622,8 @@ public sealed partial class ShardHost : IDisposable
         // it. Without an epoch the grid is rebuilt unconditionally (the standalone / direct-call contract).
         if (serveEpoch is long epoch) home.RebuildInterestShared(positionAccessor, epoch);
         else home.RebuildInterest(positionAccessor);
-        HashSet<long> interest = home.Interest.Query(px, py, interestRadius);
-        return (home.World, interest);
+        home.Interest.Query(px, py, interestRadius, results);
+        return home.World;
     }
 
     /// <summary>

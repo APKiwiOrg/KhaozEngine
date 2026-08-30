@@ -5562,7 +5562,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.7.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.8.0" />
 ```
 
 ```csharp
@@ -10247,7 +10247,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.7.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.8.0" />
 ```
 
 ```csharp
@@ -10283,7 +10283,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.7.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.8.0" />
 ```
 
 ```csharp
@@ -10525,7 +10525,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.7.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.8.0" />
 ```
 
 ```csharp

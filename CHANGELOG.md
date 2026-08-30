@@ -5,6 +5,50 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.8.0
+
+18.8.0 is the fourth backlog fix wave: five sweep-verified defects, each fixed with a test proven red
+against the unfixed code, three of them measured or seen before they were believed. Minor because three
+additive APIs ship: `TerrainLodConfig.SkirtDepthFor` (with `MinSkirtDepth` and `SkirtCellFraction`),
+`BoundedEventQueue.EnqueueTerminal`, and the `ShardHost.HomeInterest` collection overload.
+
+- **Terrain skirt depth follows the LOD tier**
+  ([#100](https://github.com/APKiwiOrg/KhaozEngine/issues/100)). `Scene3DChunkSink` meshes every chunk
+  with `TerrainLodConfig.SkirtDepthFor(lod, chunkSize)` instead of a flat 0.3 m: half the coarsest cell
+  that can meet the chunk's edge, floored at the old 0.3, which is 0.94 m at the near tier up to 7.5 m at
+  the far ones for 60 m chunks. The seam gap was measured at up to 0.47 of the coarse cell on the
+  engine's own presets and the flat skirt was already failing at today's 64/32 seams, a hard-edged wedge
+  of void through the hillside, closed to zero in the before and after captures. The coarsest reachable
+  neighbour is derived from the tier table itself, so tightly packed thresholds get the deeper skirt
+  their seams need. `TerrainChunkBuilder.Build`'s own default is unchanged, so direct callers mesh
+  byte-identically.
+- **A terminal netcode event is exempt from the drop-oldest bound**
+  ([#130](https://github.com/APKiwiOrg/KhaozEngine/issues/130)). The session layer releases a peer's
+  slot off the transport's `Disconnected` and off nothing else, so a flood past the inbox cap used to
+  evict that event and leak the slot for the life of the process, draining the server one seat at a
+  time. `BoundedEventQueue.EnqueueTerminal` keeps such events outside the cap with drain order
+  preserved, and both LiteNetLib transports plus `NetServer`'s `Left` use it. `Count` may exceed
+  `Capacity` by at most one buffered terminal per connected peer.
+- **The SQL Server wallet store pins its key columns case-sensitive**
+  ([#160](https://github.com/APKiwiOrg/KhaozEngine/issues/160)). `account_id`, `currency_id`,
+  `idempotency_key` and `reward_id` are created `COLLATE Latin1_General_100_BIN2` instead of inheriting
+  a usually case-insensitive database default under which `claim-ABC` replayed `claim-abc` and swallowed
+  a credit while SQLite and InMemory applied both. Case sensitivity is now a conformance row across all
+  three backends, and an existing database keeps its collation until migrated with the script in the
+  package README.
+- **`AudioSystem` is main-thread-only, stated and enforced**
+  ([#115](https://github.com/APKiwiOrg/KhaozEngine/issues/115)). Every mutating entry point throws
+  `InvalidOperationException` naming the member and both thread ids when called off the constructing
+  thread, a check that holds in Release. `Dispose` is deliberately exempt so a shutdown path on another
+  thread is not turned into a crash. No behaviour change for a game driving audio from its frame loop,
+  which is all four.
+- **The authoritative serve loop stops allocating per tick**
+  ([#134](https://github.com/APKiwiOrg/KhaozEngine/issues/134)). One reused interest set per client via
+  the new `ShardHost.HomeInterest(slot, interestRadius, ICollection<long> results, serveEpoch)`
+  overload, a reused slot list, and the `ListOnline` snapshot republished only when its content changed
+  (the admin HTTP thread reads it lock-free, so a changed tick still copies out a fresh array). One new
+  observable: an unchanged tick hands back the same list instance.
+
 ## 18.7.0
 
 18.7.0 gives TileWorld object picking against the drawn MODELS, so what a player can click is what they can

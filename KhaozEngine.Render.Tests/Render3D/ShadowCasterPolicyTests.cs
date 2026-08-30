@@ -8,7 +8,8 @@ using Xunit;
 namespace KhaozEngine.Tests.Render3D
 {
     /// <summary>
-    /// Headless coverage of the shadow-caster policy (issue #287): the per-instance classification
+    /// Headless coverage of the shadow-caster policy (issue #287, plus the per-mesh terrain rule of issue #280):
+    /// the per-mesh cast test (<see cref="Scene3D.MeshCastsShadows"/>), the per-instance classification
     /// (<see cref="Scene3D.ClassifyCaster"/>), how <see cref="Scene3D.GroupInstances"/> carries it onto the uploaded
     /// slots, and the span builder (<see cref="Scene3D.AppendCasterSpans"/>) that turns it into the depth pass's
     /// draw list. The pass itself needs a GPU, but what it DRAWS is decided entirely by these pure pieces, so they are
@@ -30,6 +31,20 @@ namespace KhaozEngine.Tests.Render3D
             var spans = new List<Scene3D.ShadowCasterSpan>();
             Scene3D.AppendCasterSpans(7, 1, start, count, all, spans);
             return spans;
+        }
+
+        [Fact]
+        public void Terrain_is_receive_only_until_the_scene_opts_in()
+        {
+            // Issue #280. The rule the caster walk applies per MESH, before the per-instance classification above
+            // ever runs. A splat mesh is terrain, so it casts only with the scene flag on. A mesh with no splat
+            // material (a model, tile ground, an HLOD cluster) always casts, either way.
+            Assert.False(Scene3D.MeshCastsShadows(0, terrainCastsShadows: false));
+            Assert.False(Scene3D.MeshCastsShadows(3, terrainCastsShadows: false));
+            Assert.True(Scene3D.MeshCastsShadows(0, terrainCastsShadows: true));
+            Assert.True(Scene3D.MeshCastsShadows(3, terrainCastsShadows: true));
+            Assert.True(Scene3D.MeshCastsShadows(-1, terrainCastsShadows: false));
+            Assert.True(Scene3D.MeshCastsShadows(-1, terrainCastsShadows: true));
         }
 
         [Fact]

@@ -166,7 +166,8 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   own blob (ground-receiver-only: terrain and rigid props receive the blob, characters do not - the Y-band never
   repaints a character's legs). Radius follows the caster footprint. Strength fades with height above ground
   (`ShadowSettings.BlobFadeHeight`) so a jumping caster's blob shrinks + lightens.
-  - `ShadowMode.ShadowMap`: a depth-only pass renders the instanced casters (models cast; terrain receives only) into
+  - `ShadowMode.ShadowMap`: a depth-only pass renders the instanced casters (models cast, and splat terrain receives
+  only unless `Scene3D.TerrainCastsShadows` is set) into
   a CASCADED ortho light-space depth atlas - `ShadowCascadeCount` cascades (default 3) side by side in one R32F
   texture, each fitted to the bounding sphere of its own slice of the camera's ACTUAL view frustum (frustum-slice CSM,
   not a fixed-radius circle around a focus point, so shadow sharpness no longer depends on where the camera looks and
@@ -185,7 +186,10 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   erodes the mesh: a prop fading out at its draw radius no longer casts a fully solid shadow under an almost-invisible
   caster, and across an HLOD crossfade the props' shadow thins out as the merged mesh's thins in rather than both
   casting at full strength. Both are inert at their defaults (no dissolve, casting on), and a frame with neither is
-  byte-identical to before. A degenerate camera makes
+  byte-identical to before. `Scene3D.TerrainCastsShadows` (default `false`) is the third, scene-wide policy: leave it
+  off and splat terrain stays receive-only as it always was, set it and terrain chunks join the caster list through
+  the same per-cascade cull, which is what a SCULPTED world with real hills wants (a 49 m mountain otherwise throws
+  no shadow while the trees standing on it do). A degenerate camera makes
   `ComputeShadowCascades()` return `0` and disables shadows for that frame rather than throwing. Knobs on
   `ShadowSettings`: `ShadowCascadeCount` (default `3`, `1..4` via `ResolvedCascadeCount`), `ShadowNearDistance`
   (default `16`, the near cascade's view-depth reach - smaller packs texels onto the near action) and

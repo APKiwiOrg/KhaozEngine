@@ -1,11 +1,13 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Numerics;
 
 namespace KhaozEngine.Audio;
 
 /// <summary>
-/// The SFX registry half of <see cref="AudioSystem"/>: which one-shot sounds exist by content name, and the
-/// name -&gt; backend handle map behind them. Playback, buses and volume stay in the main file.
+/// The SFX registry half of <see cref="AudioSystem"/>: which one-shot sounds exist by content name, the
+/// name -&gt; backend handle map behind them, and the priority-stating play overloads. Priority-free playback,
+/// buses and volume stay in the main file.
 /// </summary>
 public sealed partial class AudioSystem
 {
@@ -50,6 +52,44 @@ public sealed partial class AudioSystem
         foreach (string name in names) if (UnregisterSfx(name)) released++;
         return released;
     }
+
+    /// <summary>
+    /// Plays a registered SFX as a non-positional one-shot at a stated <paramref name="priority"/>. Identical to
+    /// <see cref="PlaySfx(string, float, float, string)"/> in gain, warn-once and guard behaviour: the priority
+    /// only decides whose voice is taken when the backend's pool is full, where the least important voice still
+    /// playing is stolen instead of whatever the rotation landed on (issue #114).
+    /// <para>A separate overload rather than an optional parameter on the existing one, so a compiled consumer
+    /// keeps binding to the signature it was built against. A play that states nothing is
+    /// <see cref="SfxPriority.Normal"/>, exactly as before.</para>
+    /// </summary>
+    public void PlaySfx(string name, SfxPriority priority, float volume = 1f, float pitch = 1f, string? bus = null)
+        => PlaySfxInternal(name, volume, pitch, positional: false, default, bus, priority);
+
+    /// <summary>
+    /// Plays a registered SFX as a positional one-shot at <paramref name="position"/> and a stated
+    /// <paramref name="priority"/>. Same positional behaviour as
+    /// <see cref="PlaySfx3D(string, Vector3, float, float, string)"/>, same voice-stealing rule as
+    /// <see cref="PlaySfx(string, SfxPriority, float, float, string)"/>.
+    /// </summary>
+    public void PlaySfx3D(string name, Vector3 position, SfxPriority priority, float volume = 1f, float pitch = 1f, string? bus = null)
+        => PlaySfxInternal(name, volume, pitch, positional: true, position, bus, priority);
+
+    /// <summary>
+    /// Plays the first loaded SFX in <paramref name="candidateKeys"/> as a non-positional one-shot at a stated
+    /// <paramref name="priority"/>, returning <c>true</c> when one was played. Same first-available and
+    /// warn-once semantics as <see cref="PlaySfx(IReadOnlyList{string}, float, float, string)"/>.
+    /// </summary>
+    public bool PlaySfx(IReadOnlyList<string> candidateKeys, SfxPriority priority, float volume = 1f, float pitch = 1f, string? bus = null)
+        => PlayFirstAvailable(candidateKeys, volume, pitch, positional: false, default, bus, priority);
+
+    /// <summary>
+    /// Plays the first loaded SFX in <paramref name="candidateKeys"/> as a positional one-shot at
+    /// <paramref name="position"/> and a stated <paramref name="priority"/>, returning <c>true</c> when one was
+    /// played. Same first-available and warn-once semantics as
+    /// <see cref="PlaySfx3D(IReadOnlyList{string}, Vector3, float, float, string)"/>.
+    /// </summary>
+    public bool PlaySfx3D(IReadOnlyList<string> candidateKeys, Vector3 position, SfxPriority priority, float volume = 1f, float pitch = 1f, string? bus = null)
+        => PlayFirstAvailable(candidateKeys, volume, pitch, positional: true, position, bus, priority);
 
     // Looks for name + .wav/.ogg/.mp3 in the content dir and maps name -> backend handle. Skips + warns on
     // a missing file or a backend load failure (-1).

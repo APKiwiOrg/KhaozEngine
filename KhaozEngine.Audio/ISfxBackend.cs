@@ -8,7 +8,7 @@ namespace KhaozEngine.Audio;
 /// pool of voices, optionally positioned in 3D relative to a listener. Mirrors <see cref="IMusicBackend"/>.
 /// Implemented by the bundled OpenAL backend; games or tests may supply their own. No per-frame Update is
 /// needed: OpenAL one-shots are fire-and-forget and voices are reclaimed by querying source state on the
-/// next <see cref="Play"/>.
+/// next <see cref="Play(int, float, float, bool, Vector3)"/>.
 /// </summary>
 public interface ISfxBackend : IDisposable
 {
@@ -20,7 +20,7 @@ public interface ISfxBackend : IDisposable
 
     /// <summary>
     /// Release the buffer behind <paramref name="handle"/> (a value <see cref="Load"/> returned), stopping any
-    /// voice still playing it. The handle is dead afterwards: <see cref="Play"/> on it is a no-op, and the slot
+    /// voice still playing it. The handle is dead afterwards: a <c>Play</c> on it is a no-op, and the slot
     /// is free for a later <see cref="Load"/> to take. Out-of-range and already-released handles are ignored.
     /// <para>For a zone-scoped or level-scoped SFX set, which would otherwise accumulate buffers for the whole
     /// session. A backend holding nothing releasable needs no implementation: the default is a no-op, so an
@@ -34,6 +34,19 @@ public interface ISfxBackend : IDisposable
     /// it at <paramref name="position"/> in world space and attenuates relative to the listener.
     /// </summary>
     void Play(int handle, float gain, float pitch, bool positional, Vector3 position);
+
+    /// <summary>
+    /// Play a one-shot at a stated <paramref name="priority"/>, which decides whose voice is taken when the pool
+    /// is full: the backend steals the LEAST important voice still playing instead of whatever the rotation
+    /// landed on, so a barrage of <see cref="SfxPriority.Low"/> one-shots cannot cut a
+    /// <see cref="SfxPriority.High"/> cue mid-play (issue #114). Everything else matches
+    /// <see cref="Play(int, float, float, bool, Vector3)"/>.
+    /// <para>A default member, like <see cref="Unload"/>: a backend with no voice-stealing policy of its own
+    /// (the null backend, a test fake, a game's own) inherits this forward to the priority-free overload and
+    /// keeps compiling untouched. A backend that pools voices should override it.</para>
+    /// </summary>
+    void Play(int handle, float gain, float pitch, bool positional, Vector3 position, SfxPriority priority)
+        => Play(handle, gain, pitch, positional, position);
 
     /// <summary>Set the 3D listener pose (positional sounds attenuate / pan relative to this).</summary>
     void SetListener(Vector3 position, Vector3 forward, Vector3 up);

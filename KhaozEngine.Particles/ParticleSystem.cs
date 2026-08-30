@@ -128,12 +128,26 @@ public sealed class ParticleSystem
     /// Assign a cached delegate to keep the update loop allocation-free.</summary>
     public Action<Particle>? OnAbsorbed { get; set; }
 
+    /// <summary>Particles the most recent <see cref="Emit"/> could not fit, because the pool was already at
+    /// <see cref="Capacity"/>. 0 after an emit that fit whole, and after one that asked for nothing. Read it
+    /// straight after an <see cref="Emit"/> to learn what that call actually got.</summary>
+    public int DroppedLastEmit { get; private set; }
+
+    /// <summary>Total particles dropped for want of room over this system's lifetime (issue #124). The clamp
+    /// used to be entirely silent, so a burst that lost half its particles to a pool another emitter had
+    /// already filled read as "that explosion looked thin" with nothing anywhere to explain it. Not reset by
+    /// <see cref="Clear"/>, exactly like <see cref="AbsorbedTotal"/>: it is lifetime telemetry, not pool
+    /// state.</summary>
+    public int DroppedTotal { get; private set; }
+
     /// <summary>
     /// Spawn a burst of up to <c>min(count, Capacity - ActiveCount)</c> particles at <paramref name="origin"/>.
-    /// Excess is silently clamped.
+    /// Excess is clamped, and what the clamp cost is reported by <see cref="DroppedLastEmit"/> /
+    /// <see cref="DroppedTotal"/> rather than being lost (issue #124).
     /// </summary>
     public void Emit(in EmitterConfig cfg, Vector3 origin, int count)
     {
+        DroppedLastEmit = 0;
         if (count <= 0)
         {
             return;
@@ -142,6 +156,8 @@ public sealed class ParticleSystem
         int room = _particles.Length - _count;
         if (count > room)
         {
+            DroppedLastEmit = count - room;
+            DroppedTotal += DroppedLastEmit;
             count = room;
         }
 

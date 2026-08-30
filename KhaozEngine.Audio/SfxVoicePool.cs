@@ -26,4 +26,35 @@ internal sealed class SfxVoicePool
         _cursor = (_cursor + 1) % _count;
         return v;
     }
+
+    /// <summary>
+    /// Picks the voice to steal when every voice is busy, given what each one is currently playing: the LOWEST
+    /// priority in <paramref name="playing"/>, with the rotation as the tie-break, so equal-priority voices are
+    /// still taken oldest-first (issue #114). Pure rotation alone could cut a
+    /// <see cref="SfxPriority.High"/> cue while a <see cref="SfxPriority.Low"/> footstep was playing two voices
+    /// over, purely because it was that voice's turn.
+    /// <para>The incoming sound's own priority is deliberately not an input: a play always gets a voice, it just
+    /// takes the least valuable one. Dropping a one-shot instead would trade an audible cut for a silence that
+    /// nothing anywhere reports.</para>
+    /// </summary>
+    /// <param name="playing">Each voice's current priority, indexed by voice. Length must be the pool's count.</param>
+    public int Steal(ReadOnlySpan<SfxPriority> playing)
+    {
+        if (playing.Length != _count)
+            throw new ArgumentException($"Expected one priority per voice ({_count}), got {playing.Length}.", nameof(playing));
+
+        // Walk in rotation order from the cursor and keep the first STRICT minimum, which is what makes the
+        // rotation the tie-break rather than a second sort key.
+        int best = _cursor;
+        SfxPriority bestPriority = playing[_cursor];
+        for (int n = 1; n < _count; n++)
+        {
+            int v = (_cursor + n) % _count;
+            if (playing[v] >= bestPriority) continue;
+            best = v;
+            bestPriority = playing[v];
+        }
+        _cursor = (best + 1) % _count;
+        return best;
+    }
 }

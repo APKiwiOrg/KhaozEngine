@@ -7,6 +7,12 @@ namespace KhaozEngine.Particles;
 /// Plays bounded concurrent instances of a <see cref="ParticleEffect"/>. Owns one <see cref="ParticleSystem"/>
 /// pool per phase (so mixed per-phase looks stay renderable) and schedules each instance's bursts and streams
 /// from a per-instance clock. Deterministic given the ctor seed and the call sequence. Headless: no rendering.
+/// <para><b>A pool is per PHASE, not per instance.</b> Every concurrent <see cref="Play"/> emits into the same
+/// pool for a given phase, so a phase whose <c>PoolCapacity</c> only fits one instance's burst will clamp the
+/// second overlapping play. That is a sizing decision the effect author owns, and
+/// <see cref="DroppedLastUpdate"/> / <see cref="DroppedTotal"/> are how it stops being invisible (issue
+/// #124): size a phase for the bursts the game really overlaps, and watch the counter to know when it is
+/// wrong.</para>
 /// </summary>
 public sealed class ParticleEffectPlayer
 {
@@ -132,6 +138,30 @@ public sealed class ParticleEffectPlayer
         }
     }
 
+    /// <summary>Particles this player's phase pools could not fit during the last <see cref="Update"/>, summed
+    /// over every phase (issue #124). A pool is per PHASE and shared by every concurrent instance, while
+    /// <see cref="Play"/> is per INSTANCE, so two overlapping plays of the same effect compete for one pool's
+    /// room and the loser's burst is clamped. That used to be silent, and read only as "the second explosion
+    /// had fewer particles". A non-zero value here means a phase's <c>PoolCapacity</c> is too small for the
+    /// bursts actually in flight: size it for the concurrency the game really plays, not for one instance.</summary>
+    public int DroppedLastUpdate { get; private set; }
+
+    /// <summary>Particles dropped for want of pool room over this player's lifetime, summed over every phase.
+    /// Survives <see cref="Clear"/> (lifetime telemetry, not state), so a headless test or a debug overlay can
+    /// watch a whole encounter rather than one frame.</summary>
+    public int DroppedTotal
+    {
+        get
+        {
+            int sum = 0;
+            for (int ph = 0; ph < _phaseCount; ph++)
+            {
+                sum += _pools[ph].DroppedTotal;
+            }
+            return sum;
+        }
+    }
+
     /// <summary>Runtime multiplier on every phase's stream rate (bursts unaffected). Default 1. Drive it per
     /// frame to tie emission to an external ramp, for example a dissolve threshold. Values &lt;= 0 emit
     /// nothing. Does not affect already-live particles.</summary>
@@ -192,6 +222,10 @@ public sealed class ParticleEffectPlayer
     /// <summary>Advance every instance's schedule and then step each phase pool once by <paramref name="dt"/>.</summary>
     public void Update(float dt)
     {
+        // Every phase pool is shared by every instance, so what a burst LOSES is only visible as a difference
+        // across the scheduling pass. Snapshot before, diff after (issue #124).
+        int droppedBefore = DroppedTotal;
+
         for (int i = 0; i < _maxInstances; i++)
         {
             if (!_instActive[i])
@@ -246,6 +280,8 @@ public sealed class ParticleEffectPlayer
         {
             _pools[ph].Update(dt);
         }
+
+        DroppedLastUpdate = DroppedTotal - droppedBefore;
     }
 
     /// <summary>Stop every instance and clear every phase pool.</summary>

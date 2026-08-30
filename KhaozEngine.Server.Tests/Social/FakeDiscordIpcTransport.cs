@@ -47,6 +47,10 @@ internal sealed class FakeDiscordIpcTransport : IDiscordIpcTransport
     public void EnqueueFrame(DiscordIpcOpcode opcode, string json)
         => incoming.Enqueue(DiscordIpcCodec.EncodeFrame(opcode, json));
 
+    /// <summary>Queue arbitrary bytes, for the frames a healthy socket can still carry: a desynced header, a
+    /// truncated body, anything the codec has to survive rather than trust.</summary>
+    public void EnqueueRaw(byte[] bytes) => incoming.Enqueue(bytes);
+
     public void Write(ReadOnlySpan<byte> bytes)
     {
         if (ThrowOnWrite)

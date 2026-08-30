@@ -80,7 +80,9 @@ namespace KhaozEngine.Terrain
         /// <summary>Build the streamer over a config and sink. <paramref name="dispatcher"/> chooses how background
         /// builds run when async is active (null uses the thread pool). Tests inject a manual dispatcher to control
         /// completion order. It is ignored in synchronous mode. Throws if the hysteresis band is degenerate
-        /// (<see cref="StreamerConfig.UnloadRadius"/> must exceed the outer load radius).</summary>
+        /// (<see cref="StreamerConfig.UnloadRadius"/> must exceed the outer load radius), if
+        /// <see cref="StreamerConfig.ChunkSize"/> is not positive, or if the LOD table is finer than chunk
+        /// granularity (see <see cref="ValidateLodAgainstChunkSize"/>).</summary>
         public TerrainStreamer(StreamerConfig config, IChunkSink sink, IChunkBuildDispatcher? dispatcher = null)
         {
             _sink = sink ?? throw new ArgumentNullException(nameof(sink));
@@ -89,6 +91,11 @@ namespace KhaozEngine.Terrain
                 throw new ArgumentException(
                     $"UnloadRadius ({config.UnloadRadius}) must exceed the outer load radius ({config.OuterRadius}) so the hysteresis band stops churn.",
                     nameof(config));
+            if (!(config.ChunkSize > 0f))
+                throw new ArgumentException(
+                    $"ChunkSize ({config.ChunkSize}) must be positive: every metre distance the streamer measures, LOD tiers included, is derived from it.",
+                    nameof(config));
+            ValidateLodAgainstChunkSize(config);
             _config = config;
             _lodConfig = config.ResolvedLodConfig;
             if (config.Async && sink is IAsyncChunkSink asyncSink)
@@ -101,6 +108,33 @@ namespace KhaozEngine.Terrain
                     // frame loop, where it terminates the process (issue #402).
                     BuildFailed = OnBuildFailed,
                 };
+            }
+        }
+
+        /// <summary>Rejects a LOD table whose tier distances are finer than this config's chunk granularity.
+        /// <para>LOD is picked per chunk from the metre distance to that chunk's CENTER, and a point inside a chunk
+        /// is at most the chunk's half-diagonal (<c>ChunkSize * sqrt(2) / 2</c>) from its own centre. So a finite
+        /// tier boundary under that half-diagonal sits inside a single chunk's own footprint: the chunk the viewer
+        /// is standing in re-tiers, and so rebuilds its mesh, on sub-chunk movement, which is the churn
+        /// <see cref="StreamerConfig.LodHysteresis"/> exists to damp and cannot fix (the boundary is crossed for
+        /// real every time).</para>
+        /// <para>The check lives here rather than in <see cref="TerrainLodConfig"/> because a tier table is shared
+        /// and knows nothing about the chunk size it will be streamed at. The reachability direction is deliberately
+        /// NOT an error: a threshold past the outer ring simply never engages, which is how
+        /// <see cref="TerrainLodConfig.Default"/>'s far tiers wait for a <see cref="StreamerConfig.DecorRadius"/> to
+        /// buy the horizon (see the LOD paragraph on <see cref="StreamerConfig"/>).</para></summary>
+        static void ValidateLodAgainstChunkSize(StreamerConfig config)
+        {
+            TerrainLodConfig lod = config.ResolvedLodConfig;
+            float halfDiagonal = config.ChunkSize * 0.5f * MathF.Sqrt(2f);
+            for (int i = 0; i < lod.TierCount; i++)
+            {
+                float max = lod.Tiers[i].MaxDistance;
+                if (float.IsPositiveInfinity(max) || max >= halfDiagonal) continue;
+                throw new ArgumentException(
+                    $"LOD tier {i} ends at {max} m, inside a single chunk's own footprint (ChunkSize {config.ChunkSize} m, half-diagonal {halfDiagonal} m). " +
+                    "A tier boundary the viewer crosses without leaving a chunk re-tiers that chunk on sub-chunk movement, so keep every finite tier distance at or beyond the half-diagonal (or raise ChunkSize).",
+                    nameof(config));
             }
         }
 

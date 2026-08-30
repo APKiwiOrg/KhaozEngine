@@ -233,5 +233,57 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Equal(TerrainLodConfig.Default.PickLod(150f), TerrainLod.PickLod(150f));
             Assert.Equal(TerrainLodConfig.Default.ResolutionFor(1), TerrainLod.ResolutionFor(1));
         }
+
+        // ---- the tier-table / chunk-size coupling (issue #103) ------------------------------------------------
+        // A tier table is chunk-size agnostic on its own, so the coupling to ChunkSize and the ring radii is checked
+        // where both are known: the TerrainStreamer constructor.
+
+        [Fact]
+        public void Streamer_ctor_rejects_a_tier_boundary_inside_a_chunks_own_footprint()
+        {
+            // 300 m chunks: the half-diagonal is ~212 m, so the default table's 80 m and 200 m boundaries both sit
+            // inside a single chunk. The chunk the viewer stands in would re-tier on sub-chunk movement.
+            var cfg = new StreamerConfig(LoadRadius: 4, UnloadRadius: 6, MaxLoadsPerFrame: 3, ChunkSize: 300f);
+            ArgumentException ex = Assert.Throws<ArgumentException>(() => new TerrainStreamer(cfg, new FakeChunkSink()));
+            // The message names the offending tier and both distances, so the fix does not need a debugger.
+            Assert.Contains("LOD tier 0", ex.Message);
+            Assert.Contains("80", ex.Message);
+            Assert.Contains("300", ex.Message);
+            Assert.Contains("212", ex.Message);   // the half-diagonal it was measured against
+
+            // A custom table sized for those chunks is accepted: the check is a floor, not a ban on big chunks.
+            var ok = cfg with { LodConfig = new TerrainLodConfig(T(64, 400f), T(16, float.PositiveInfinity)) };
+            using var s = new TerrainStreamer(ok, new FakeChunkSink());
+            Assert.Empty(s.Loaded);
+        }
+
+        [Fact]
+        public void Streamer_ctor_rejects_a_non_positive_chunk_size()
+        {
+            // Every metre distance (LOD tiers included) is derived from ChunkSize, so 0 makes the tier check vacuous
+            // and every chunk centre coincident.
+            var zero = new StreamerConfig(LoadRadius: 4, UnloadRadius: 6, MaxLoadsPerFrame: 3, ChunkSize: 0f);
+            Assert.Contains("ChunkSize", Assert.Throws<ArgumentException>(() => new TerrainStreamer(zero, new FakeChunkSink())).Message);
+            var negative = zero with { ChunkSize = -60f };
+            Assert.Throws<ArgumentException>(() => new TerrainStreamer(negative, new FakeChunkSink()));
+        }
+
+        [Fact]
+        public void Streamer_ctor_accepts_tiers_that_reach_past_the_load_ring()
+        {
+            // The reachability direction is deliberately NOT an error. The shipped default pairing is exactly that
+            // case: a 4-chunk ring of 60 m chunks reaches 240 m, so the default table's 500 m and 1000 m tiers cannot
+            // fire until a DecorRadius buys the horizon. Rejecting it would reject the engine's own defaults.
+            var ring = StreamerConfig.Default;
+            Assert.True(ring.OuterRadius * ring.ChunkSize < TerrainLodConfig.Default.Tiers[2].MaxDistance,
+                "not vacuous: the default ring really does stop short of tier 2's boundary");
+            using var s = new TerrainStreamer(ring, new FakeChunkSink());
+            Assert.Empty(s.Loaded);
+
+            // Nor is a table that is inert for a tiny world (a 1-chunk ring never reaches the 80 m first boundary).
+            using var tiny = new TerrainStreamer(
+                new StreamerConfig(LoadRadius: 1, UnloadRadius: 2, MaxLoadsPerFrame: 3, ChunkSize: 60f), new FakeChunkSink());
+            Assert.Empty(tiny.Loaded);
+        }
     }
 }

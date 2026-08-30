@@ -4117,6 +4117,19 @@ Build a multi-phase `ParticleEffect` from `ParticleEffectPhase`s (each a config 
 `Delay`/`Duration`/`RatePerSecond`/`BurstCount`/`PoolCapacity`/`TrailSamples`/`OriginOffset`), or bake bursts
 straight into a `ParticleSystem` with `Emit`.
 
+**Pool capacity is per phase, shared by every instance.** `maxInstances` bounds concurrent `Play` calls, but a
+phase has ONE pool behind all of them, so two overlapping plays of the same effect draw their bursts from the
+same room. A phase sized for a single burst (say `BurstCount = 24` into a `PoolCapacity = 40`) clamps the
+second one. `Emit` still clamps rather than throwing, and now reports the cost: `ParticleSystem.DroppedLastEmit`
+/ `DroppedTotal` per pool, and `ParticleEffectPlayer.DroppedLastUpdate` / `DroppedTotal` summed over the
+phases. A non-zero value means that phase's `PoolCapacity` is too small for the bursts actually in flight:
+
+```csharp
+player.Update(dt);
+if (player.DroppedLastUpdate > 0)
+    hud.Note($"vfx starved: {player.DroppedLastUpdate} particles lost this frame");  // dev overlay
+```
+
 **Drawing a raw system.** When you drive one `ParticleSystem` yourself, hand it a `ParticleLook` and let the
 adapter map every live particle to a sprite:
 
@@ -5844,6 +5857,14 @@ same frame is flapping rather than dropping, and Discord mid-restart really does
 succeeds as soon as the bytes are written into a socket that is already going away. A flap carries its
 spent attempts forward instead of resetting them, so it reaches `GivenUp` rather than reconnecting and
 re-publishing every few seconds for the whole session. Zero opts out and treats every drop as held.
+
+A CORRUPTED stream reaches the controller as an ordinary drop. The Discord IPC decoder bounds the body length
+a frame header may declare (0 to 64 KiB, far above any real presence payload), and treats anything outside
+that as a framing error rather than as "the rest has not arrived yet". There is no marker in the framing for
+where the next frame starts, so a desync cannot be recovered from in place: the client disconnects, and the
+controller reconnects onto a clean stream like any other drop. Without that bound a single bad length parked
+the decoder forever on a socket that stayed healthy, so presence stopped updating for the rest of the session
+with nothing thrown and `IsConnected` still true.
 
 The presence that was live at the drop is republished once on the way back, so the game does not return
 blank, and an elapsed timer keeps its absolute start across an outage of any length. A `SetPresence` during
@@ -9336,6 +9357,23 @@ overloads taking an `IReadOnlyList<string>` of candidate keys play the first loa
 (e.g. a per-entity variant then a shared fallback like `towers/railgun/fire` -> `towers/default/fire`);
 the engine just plays the first that loaded. An all-unloaded list warns once and is a no-op; null/empty is a
 silent no-op.
+
+**SFX priority (which voice gets stolen).** The voice pool is small and fixed (16 on the OpenAL backend), so
+once every voice is busy a new one-shot can only be heard by taking someone's voice. `PlaySfx` and `PlaySfx3D`
+each have an overload with an `SfxPriority` (`Low` / `Normal` / `High`) right after the name, and the backend
+then steals the LOWEST-priority voice still playing rather than whatever the round robin landed on:
+
+```csharp
+audio.PlaySfx("footstep", SfxPriority.Low);                       // first to lose its voice
+audio.PlaySfx3D("boss/slam_telegraph", pos, SfxPriority.High);    // only stolen if nothing lesser is playing
+audio.PlaySfx("ui/click");                                        // states nothing, so Normal
+```
+
+Equal priorities keep the old oldest-first rotation, so a game that never states one sounds exactly as it did.
+A play is never dropped: it takes the least valuable voice rather than going silent, because a silence nothing
+reports is harder to diagnose than an audible cut. `ISfxBackend.Play(..., priority)` is a default interface
+member forwarding to the priority-free overload, so a game's own backend written before it keeps compiling and
+simply ignores the priority.
 
 **Releasing SFX.** `UnregisterSfx(name)` drops a sound from the registry and releases its buffer through
 `ISfxBackend.Unload(handle)`, returning whether a loaded buffer was actually freed. `UnregisterSfxes(names)`

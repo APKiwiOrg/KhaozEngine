@@ -10,6 +10,14 @@ Game-agnostic audio on the custom MonoGame-free stack: streaming music + SFX + 3
   `bus`; effective voice gain = `master x sfx x bus x volume`. No bus (or an unknown bus) = the default bus at
   1.0, so bus-less plays are byte-for-byte the old behavior. A bus volume change applies on the NEXT play on
   that bus (the `ISfxBackend` seam is fire-and-forget: no live per-voice re-gain).
+- SFX priority - `PlaySfx` / `PlaySfx3D` each have an overload taking an `SfxPriority` (`Low` / `Normal` /
+  `High`) right after the name. The pool is small and fixed, so once every voice is busy a new sound can only be
+  heard by taking one: with a priority the backend steals the LOWEST-priority voice still playing instead of
+  whatever the round robin landed on, which is what stops a barrage of footsteps from cutting a boss cue. Equal
+  priorities keep the old oldest-first rotation, a play that states nothing is `Normal`, and a play is never
+  dropped (it takes the least valuable voice rather than going silent). `ISfxBackend.Play(..., priority)` is a
+  default interface member forwarding to the priority-free overload, so a backend written before it keeps
+  compiling untouched.
 - SFX unload - `UnregisterSfx(name)` / `UnregisterSfxes(names)` drop a sound from the registry and release its
   buffer through `ISfxBackend.Unload(handle)`, so a zone-scoped or level-scoped sound set can be freed instead
   of living for the whole process. The name can be registered again later, which reloads it. `Unload` is a
@@ -23,7 +31,8 @@ Game-agnostic audio on the custom MonoGame-free stack: streaming music + SFX + 3
 - `OpenAlMusicBackend` - cross-platform OpenAL (Silk.NET.OpenAL) streaming backend, decoding **WAV / OGG
   (NVorbis) / MP3 (NLayer)**, one track at a time with queued-buffer streaming.
 - `OpenAlSfxBackend` + `SfxVoicePool` - a 16-voice one-shot SFX pool over a shared OpenAL context, with
-  optional 3D positioning.
+  optional 3D positioning. `SfxVoicePool` is the pure (device-free) allocation policy: `Next()` is the round
+  robin, `Steal(playing)` picks the lowest-priority voice with that rotation as the tie-break.
 
 No MonoGame. OpenAL is bundled (openal-soft, Silk.NET.OpenAL.Soft
 .Native) so no system OpenAL is required.

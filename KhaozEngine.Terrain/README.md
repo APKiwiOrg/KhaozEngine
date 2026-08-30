@@ -129,7 +129,12 @@ up regardless of load order. Plain `float` math throughout.
   would cross (`currentLod` -1 = not built yet, a hysteresis of 0 or less is the undamped pick, and
   `DefaultHysteresis` is the 10 m `StreamerConfig` default), `ResolutionFor(lod)` -> grid resolution.
   `TerrainLodConfig.Default` gives 64/32/16 at 80 m/200 m plus
-  coarser 8- and 4-segment far tiers. **`TerrainLod`** is a thin facade over `Default`
+  coarser 8- and 4-segment far tiers. The table itself is chunk-size agnostic, so the coupling check lives
+  in the `TerrainStreamer` constructor: a finite tier distance under a chunk's half-diagonal
+  (`ChunkSize * sqrt(2) / 2`) is rejected, since a boundary inside one chunk's own footprint would re-tier
+  the chunk the viewer stands in on sub-chunk movement. A tier past `OuterRadius * ChunkSize` is legal and
+  simply never engages, which is how the default far tiers wait for a `DecorRadius`.
+  **`TerrainLod`** is a thin facade over `Default`
   (`PickLod`/`ResolutionFor`). **`TerrainChunkRegion`** is the square world tile a mesh builder chunks the
   field into (default 60 m).
 

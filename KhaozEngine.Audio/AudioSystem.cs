@@ -257,7 +257,7 @@ public sealed partial class AudioSystem : IDisposable
     /// <summary>
     /// Sets the volume multiplier (0.0 - 1.0, clamped) for the bus <paramref name="id"/>, defining it if it was
     /// not already defined. Applies to sounds played on that bus AFTER this call. Sounds already playing on the
-    /// bus keep the gain they were started with: the SFX backend seam is fire-and-forget (<see cref="ISfxBackend.Play"/>
+    /// bus keep the gain they were started with: the SFX backend seam is fire-and-forget (<c>ISfxBackend.Play</c>
     /// returns no voice handle and exposes no per-voice gain setter), so a live per-voice re-gain is not possible
     /// without a breaking seam change. SFX one-shots are short, so this is a mild limitation; see the Audio docs.
     /// A <c>null</c> or empty id (the implicit default bus) is ignored: the default bus is always 1.0.
@@ -649,7 +649,7 @@ public sealed partial class AudioSystem : IDisposable
     /// (volume 1.0) with a warn-once note, never a throw. An SFX hiccup is logged and swallowed (never disables music).
     /// </summary>
     public void PlaySfx(string name, float volume = 1f, float pitch = 1f, string? bus = null)
-        => PlaySfxInternal(name, volume, pitch, positional: false, default, bus);
+        => PlaySfxInternal(name, volume, pitch, positional: false, default, bus, SfxPriority.Normal);
 
     /// <summary>
     /// Plays a registered SFX as a positional one-shot at <paramref name="position"/> in world space
@@ -658,7 +658,7 @@ public sealed partial class AudioSystem : IDisposable
     /// <see cref="PlaySfx(string, float, float, string)"/>.
     /// </summary>
     public void PlaySfx3D(string name, Vector3 position, float volume = 1f, float pitch = 1f, string? bus = null)
-        => PlaySfxInternal(name, volume, pitch, positional: true, position, bus);
+        => PlaySfxInternal(name, volume, pitch, positional: true, position, bus, SfxPriority.Normal);
 
     /// <summary>
     /// Whether <paramref name="name"/> resolves to a loaded SFX buffer (so a subsequent <see cref="PlaySfx(string,float,float,string)"/>
@@ -676,7 +676,7 @@ public sealed partial class AudioSystem : IDisposable
     /// <see cref="PlaySfx(string,float,float,string)"/>.
     /// </summary>
     public bool PlaySfx(IReadOnlyList<string> candidateKeys, float volume = 1f, float pitch = 1f, string? bus = null)
-        => PlayFirstAvailable(candidateKeys, volume, pitch, positional: false, default, bus);
+        => PlayFirstAvailable(candidateKeys, volume, pitch, positional: false, default, bus, SfxPriority.Normal);
 
     /// <summary>
     /// Plays the first loaded SFX in <paramref name="candidateKeys"/> (priority order) as a positional one-shot at
@@ -685,7 +685,7 @@ public sealed partial class AudioSystem : IDisposable
     /// behavior (and <paramref name="bus"/> factor) as <see cref="PlaySfx3D(string,Vector3,float,float,string)"/>.
     /// </summary>
     public bool PlaySfx3D(IReadOnlyList<string> candidateKeys, Vector3 position, float volume = 1f, float pitch = 1f, string? bus = null)
-        => PlayFirstAvailable(candidateKeys, volume, pitch, positional: true, position, bus);
+        => PlayFirstAvailable(candidateKeys, volume, pitch, positional: true, position, bus, SfxPriority.Normal);
 
     /// <summary>
     /// Stops every currently-playing SFX voice immediately (music is unaffected). Useful on a scene / screen
@@ -695,7 +695,7 @@ public sealed partial class AudioSystem : IDisposable
 
     // Plays the first candidate that resolves to a loaded buffer (reusing PlaySfxInternal's gain math + guard), or
     // warns once on the joined list and returns false if none load. Null / empty list is a silent no-op (false).
-    private bool PlayFirstAvailable(IReadOnlyList<string> candidateKeys, float volume, float pitch, bool positional, Vector3 position, string? bus)
+    private bool PlayFirstAvailable(IReadOnlyList<string> candidateKeys, float volume, float pitch, bool positional, Vector3 position, string? bus, SfxPriority priority)
     {
         if (candidateKeys is null || candidateKeys.Count == 0) return false;
 
@@ -704,7 +704,7 @@ public sealed partial class AudioSystem : IDisposable
             string name = candidateKeys[i];
             if (IsSfxLoaded(name))
             {
-                PlaySfxInternal(name, volume, pitch, positional, position, bus);
+                PlaySfxInternal(name, volume, pitch, positional, position, bus, priority);
                 return true;
             }
         }
@@ -714,7 +714,7 @@ public sealed partial class AudioSystem : IDisposable
         return false;
     }
 
-    private void PlaySfxInternal(string name, float volume, float pitch, bool positional, Vector3 position, string? bus)
+    private void PlaySfxInternal(string name, float volume, float pitch, bool positional, Vector3 position, string? bus, SfxPriority priority)
     {
         if (!_sfx.TryGetValue(name, out int handle))
         {
@@ -727,7 +727,7 @@ public sealed partial class AudioSystem : IDisposable
         float gain = _masterVolume * _sfxVolume * ResolveBusVolume(bus) * Math.Clamp(volume, 0f, 1f);
         try
         {
-            _sfxBackend.Play(handle, gain, pitch, positional, position);
+            _sfxBackend.Play(handle, gain, pitch, positional, position, priority);
         }
         catch (Exception ex)
         {

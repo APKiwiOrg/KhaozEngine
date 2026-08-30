@@ -46,4 +46,12 @@ thread back immediately instead of holding them for the length of the backoff. A
 Discord does send one, ends the session the same way. The player gets presence back on the next successful
 connect, showing whatever line was live when Discord went away.
 
+A DESYNCED stream ends the session the same way, and for the same reason: the framing carries no marker for
+where the next frame begins, so a header declaring a body length outside 0 to 64 KiB cannot be resynchronised
+from and is not backpressure either. The decoder treats it as a framing error, the pump disconnects, and the
+controller reconnects onto a clean stream. Before that bound existed one bad length (a partial-write race, or
+any local process writing non-IPC bytes into the same pipe) left the decoder waiting forever for a body that
+was never coming, on a socket that stayed healthy, so presence silently stopped updating for the rest of the
+session with nothing thrown anywhere.
+
 Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).

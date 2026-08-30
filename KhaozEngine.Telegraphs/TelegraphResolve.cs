@@ -76,13 +76,34 @@ namespace KhaozEngine.Telegraphs
                 fill = fill.WithAlpha(0f);
             }
 
-            return new ResolvedTelegraph(fill, outline, fillFraction, flash, style.EdgeThickness, style.FillMode, style.Blend,
-                style.FeatherWidth, style.Pattern, style.PatternSpeed, style.PatternScale, rimGlow, sweepGlow, sparkle,
-                MathUtil.Clamp01(style.InteriorDim), runner, MathUtil.Clamp01(style.BaseFill),
-                MathF.Max(style.EdgeWidthWorld, 0f), MathF.Max(style.FeatherWidthWorld, 0f),
+            // Named members rather than 21 positional arguments: ten of them are consecutive floats the compiler
+            // cannot order-check, so a transposed pair would compile and silently draw the wrong glow (#126).
+            return new ResolvedTelegraph
+            {
+                FillColor = fill,
+                OutlineColor = outline,
+                FillFraction = fillFraction,
+                FlashAdd = flash,
+                EdgeThickness = style.EdgeThickness,
+                FillMode = style.FillMode,
+                Blend = style.Blend,
+                FeatherFraction = style.FeatherWidth,
+                Pattern = style.Pattern,
+                PatternSpeed = style.PatternSpeed,
+                PatternScale = style.PatternScale,
+                RimGlow = rimGlow,
+                SweepGlow = sweepGlow,
+                Sparkle = sparkle,
+                InteriorDim = MathUtil.Clamp01(style.InteriorDim),
+                Runner = runner,
+                BaseFill = MathUtil.Clamp01(style.BaseFill),
+                EdgeWidthWorld = MathF.Max(style.EdgeWidthWorld, 0f),
+                FeatherWidthWorld = MathF.Max(style.FeatherWidthWorld, 0f),
                 // 3D-only passthrough, like EdgeWidthWorld / FeatherWidthWorld: the resolver does not interpret
                 // these, it only carries them to the ground-decal path. TelegraphRenderer2D ignores them.
-                style.VoidFallback, MathUtil.Clamp01(style.VoidDim));
+                VoidFallback = style.VoidFallback,
+                VoidDim = MathUtil.Clamp01(style.VoidDim),
+            };
         }
 
         // 0 below ~0.6, rising steeply to 1 at p=1. Quartic for a snappy late spike.

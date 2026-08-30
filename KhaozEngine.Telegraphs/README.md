@@ -76,6 +76,13 @@ zones painted flat on the ground in a 3D scene, add `KhaozEngine.Telegraphs.Rend
   term, edge thickness, fill mode, blend, plus the resolved feather fraction, pattern +
   speed + scale, interior dim, and rim glow / sweep glow / sparkle / runner energies (each 0 when
   its flag is off).
+- `ResolvedTelegraph` is built with an object initializer, naming each member
+  (`new ResolvedTelegraph { FillColor = ..., RimGlow = ... }`). Every member is `init`-settable and defaults
+  to its inert value (0, `Solid`, false), so an initializer that names only what it means is complete. The
+  positional constructors are kept for source compatibility and are frozen at their current shapes: ten of
+  the widest one's parameters are consecutive `float`s the compiler cannot order-check, so a transposed pair
+  compiles, runs, and draws the wrong thing. New state lands as another `init` member, never as a wider
+  constructor.
 - `TelegraphRenderer2D` - immediate-mode 2D renderer over a caller-owned `SpriteBatch` +
   `PrimitiveRenderer`: `Begin(batch, primitives)`, then `Circle` / `Ring` / `Beam` / `Cone` /
   `Arc`, then `End()`. Draws the flat fill/outline/pulse/flash only, picking primitives by

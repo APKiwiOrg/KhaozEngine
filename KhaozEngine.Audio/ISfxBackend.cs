@@ -19,6 +19,16 @@ public interface ISfxBackend : IDisposable
     int Load(string path);
 
     /// <summary>
+    /// Release the buffer behind <paramref name="handle"/> (a value <see cref="Load"/> returned), stopping any
+    /// voice still playing it. The handle is dead afterwards: <see cref="Play"/> on it is a no-op, and the slot
+    /// is free for a later <see cref="Load"/> to take. Out-of-range and already-released handles are ignored.
+    /// <para>For a zone-scoped or level-scoped SFX set, which would otherwise accumulate buffers for the whole
+    /// session. A backend holding nothing releasable needs no implementation: the default is a no-op, so an
+    /// existing backend keeps compiling untouched.</para>
+    /// </summary>
+    void Unload(int handle) { }
+
+    /// <summary>
     /// Play a one-shot on a pooled voice. <paramref name="positional"/> = false attaches the sound to the
     /// listener (heard at full <paramref name="gain"/> regardless of <paramref name="position"/>); true places
     /// it at <paramref name="position"/> in world space and attenuates relative to the listener.

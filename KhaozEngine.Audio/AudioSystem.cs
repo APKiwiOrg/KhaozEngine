@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Numerics;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Primitives;
@@ -12,7 +11,7 @@ namespace KhaozEngine.Audio;
 /// Uses a platform-specific music backend to provide volume control,
 /// enable/disable behavior, and automatic track rotation.
 /// </summary>
-public sealed class AudioSystem : IDisposable
+public sealed partial class AudioSystem : IDisposable
 {
     private static readonly string[] SfxExtensions = { ".wav", ".ogg", ".mp3" };
 
@@ -60,7 +59,7 @@ public sealed class AudioSystem : IDisposable
         // failure (no device) fall back to silent Null backends with no context, preserving today's behavior.
         try
         {
-            _context = new OpenAlContext();
+            _context = new OpenAlContext(_logger);
             _backend = new OpenAlMusicBackend(_context, _logger);
             _sfxBackend = new OpenAlSfxBackend(_context, _logger);
         }
@@ -358,43 +357,6 @@ public sealed class AudioSystem : IDisposable
 
         // Apply volume that was set during construction (before native audio was ready)
         ApplyVolume();
-    }
-
-    /// <summary>
-    /// Registers a one-shot SFX by content name (no extension). If content is already loaded, it is
-    /// eager-loaded now (mirrors <see cref="RegisterTrack"/>); otherwise it loads in <see cref="LoadContent"/>.
-    /// Idempotent.
-    /// </summary>
-    public void RegisterSfx(string name)
-    {
-        if (_sfxNames.Contains(name)) return;
-        _sfxNames.Add(name);
-        if (_loaded && _contentDirectory is not null) LoadSfx(name);
-    }
-
-    /// <summary>Registers several SFX via <see cref="RegisterSfx"/> (idempotent, pre- or post-load).</summary>
-    public void RegisterSfxes(IEnumerable<string> names)
-    {
-        foreach (string name in names) RegisterSfx(name);
-    }
-
-    // Looks for name + .wav/.ogg/.mp3 in the content dir and maps name -> backend handle. Skips + warns on
-    // a missing file or a backend load failure (-1).
-    private void LoadSfx(string name)
-    {
-        if (_contentDirectory is null || _sfx.ContainsKey(name)) return;
-
-        foreach (string ext in SfxExtensions)
-        {
-            string path = Path.Combine(_contentDirectory, name + ext);
-            if (!File.Exists(path)) continue;
-
-            int handle = _sfxBackend.Load(path);
-            if (handle >= 0) { _sfx[name] = handle; }
-            else _logger.Warn($"SFX '{name}' failed to load from '{path}'.");
-            return;
-        }
-        _logger.Warn($"SFX: no WAV/OGG/MP3 file found for '{name}' in '{_contentDirectory}'.");
     }
 
     /// <summary>

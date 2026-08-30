@@ -1,0 +1,72 @@
+using System.Collections.Generic;
+using System.IO;
+
+namespace KhaozEngine.Audio;
+
+/// <summary>
+/// The SFX registry half of <see cref="AudioSystem"/>: which one-shot sounds exist by content name, and the
+/// name -&gt; backend handle map behind them. Playback, buses and volume stay in the main file.
+/// </summary>
+public sealed partial class AudioSystem
+{
+    /// <summary>
+    /// Registers a one-shot SFX by content name (no extension). If content is already loaded, it is
+    /// eager-loaded now (mirrors <see cref="RegisterTrack"/>); otherwise it loads in <see cref="LoadContent"/>.
+    /// Idempotent.
+    /// </summary>
+    public void RegisterSfx(string name)
+    {
+        if (_sfxNames.Contains(name)) return;
+        _sfxNames.Add(name);
+        if (_loaded && _contentDirectory is not null) LoadSfx(name);
+    }
+
+    /// <summary>Registers several SFX via <see cref="RegisterSfx"/> (idempotent, pre- or post-load).</summary>
+    public void RegisterSfxes(IEnumerable<string> names)
+    {
+        foreach (string name in names) RegisterSfx(name);
+    }
+
+    /// <summary>
+    /// Drops <paramref name="name"/> from the registry and releases its buffer through
+    /// <see cref="ISfxBackend.Unload"/>. Returns true when a loaded buffer was actually released. The name can
+    /// be registered again later, which reloads it. Without this a loaded SFX lived for the rest of the
+    /// process, so a zone-scoped or level-scoped sound set only ever grew.
+    /// </summary>
+    public bool UnregisterSfx(string name)
+    {
+        _sfxNames.Remove(name);
+        if (!_sfx.Remove(name, out int handle)) return false;
+        _sfxBackend.Unload(handle);
+        // Forget the warn-once record too, so a later re-register that fails still says so once.
+        _warnedSfx.Remove(name);
+        return true;
+    }
+
+    /// <summary>Unregisters several SFX via <see cref="UnregisterSfx"/>. Returns how many were released.</summary>
+    public int UnregisterSfxes(IEnumerable<string> names)
+    {
+        int released = 0;
+        foreach (string name in names) if (UnregisterSfx(name)) released++;
+        return released;
+    }
+
+    // Looks for name + .wav/.ogg/.mp3 in the content dir and maps name -> backend handle. Skips + warns on
+    // a missing file or a backend load failure (-1).
+    private void LoadSfx(string name)
+    {
+        if (_contentDirectory is null || _sfx.ContainsKey(name)) return;
+
+        foreach (string ext in SfxExtensions)
+        {
+            string path = Path.Combine(_contentDirectory, name + ext);
+            if (!File.Exists(path)) continue;
+
+            int handle = _sfxBackend.Load(path);
+            if (handle >= 0) { _sfx[name] = handle; }
+            else _logger.Warn($"SFX '{name}' failed to load from '{path}'.");
+            return;
+        }
+        _logger.Warn($"SFX: no WAV/OGG/MP3 file found for '{name}' in '{_contentDirectory}'.");
+    }
+}

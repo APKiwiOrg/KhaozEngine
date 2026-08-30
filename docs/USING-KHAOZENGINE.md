@@ -1971,7 +1971,13 @@ inside the callback: the command list it is recording into still names them unti
   `TryScreenToWorld(screen, viewportWidth, viewportHeight, out world)` when the caller wants to KNOW the camera
   was degenerate rather than absorb it. A negative zoom is a mirror rather than a degeneracy and still converts
   exactly.
-- Scissor clipping: `SetScissor(Rect)` / `ClearScissor()` (composes with the design viewport).
+- Scissor clipping: `SetScissor(Rect)` / `ClearScissor()` (composes with the design viewport). The pair is a
+  STACK: a `SetScissor` called while another clip is active clips to the overlap of the two, and its
+  `ClearScissor` restores the outer region instead of resetting to the whole framebuffer, so a clipping widget
+  drawn inside another one (a `ScrollablePanel` as a `PopupPanel`'s body, a text field inside either) stays
+  bounded by both. `ScissorDepth` reports how many clips are active, and an unpaired `ClearScissor` still
+  resets to the full framebuffer. `SpriteBatch.IntersectScissor` is the pure helper behind the nesting, next to
+  the existing `ComputeScissor`.
 - `ImageRgba` (CPU, no GPU): `ImageRgba.Load(path)` / `Decode(bytes)` / `Surface2D.LoadImageRgba(path)` give a
   tightly-packed RGBA8 image with `AlphaAt` / `IsOpaqueAt(threshold)` for opaque-pixel collision masks. Pass
   `img.Pixels` to `Surface2D.CreateTexture` to also draw it without re-decoding.
@@ -9323,6 +9329,15 @@ overloads taking an `IReadOnlyList<string>` of candidate keys play the first loa
 (e.g. a per-entity variant then a shared fallback like `towers/railgun/fire` -> `towers/default/fire`);
 the engine just plays the first that loaded. An all-unloaded list warns once and is a no-op; null/empty is a
 silent no-op.
+
+**Releasing SFX.** `UnregisterSfx(name)` drops a sound from the registry and releases its buffer through
+`ISfxBackend.Unload(handle)`, returning whether a loaded buffer was actually freed. `UnregisterSfxes(names)`
+does a whole set and returns how many it released, which is the zone-scoped or level-scoped shape: load a
+zone's sounds on entry, release them on exit, instead of accumulating every sound the session ever touched.
+A released name stops resolving (`IsSfxLoaded` goes false and `PlaySfx` on it is a no-op) and can be
+registered again later, which reloads it. On the OpenAL backend the freed handle is reused by the next load.
+`Unload` is a default interface member with a no-op body, so a game's own `ISfxBackend` written before it
+keeps compiling and simply never frees anything.
 
 **SFX buses.** Group sounds (UI, ambience, combat, and any game-defined others) under one volume without the
 game tracking individual voices. `DefineBus(id)` registers a bus (opaque identifier, not player-facing text),

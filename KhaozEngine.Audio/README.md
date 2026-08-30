@@ -10,6 +10,10 @@ Game-agnostic audio on the custom MonoGame-free stack: streaming music + SFX + 3
   `bus`; effective voice gain = `master x sfx x bus x volume`. No bus (or an unknown bus) = the default bus at
   1.0, so bus-less plays are byte-for-byte the old behavior. A bus volume change applies on the NEXT play on
   that bus (the `ISfxBackend` seam is fire-and-forget: no live per-voice re-gain).
+- SFX unload - `UnregisterSfx(name)` / `UnregisterSfxes(names)` drop a sound from the registry and release its
+  buffer through `ISfxBackend.Unload(handle)`, so a zone-scoped or level-scoped sound set can be freed instead
+  of living for the whole process. The name can be registered again later, which reloads it. `Unload` is a
+  default interface member (a no-op), so a backend written before it keeps compiling untouched.
 - Music crossfade - `MusicCrossfadeDuration` (seconds, default `0` = hard cut) makes every track change fade the
   old track out and the new one in; `CrossfadeTo(name/index, duration)` does a one-off fade. Single-stream
   (fade-out, switch, fade-in) because the `IMusicBackend` seam holds one active track; the fade factor multiplies

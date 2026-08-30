@@ -15,6 +15,16 @@ namespace KhaozEngine.Tests.Gui
     {
         static readonly Rect Square = new(0, 0, 100, 100);
 
+        // CooldownSweepQuads fills a caller-provided span (it is on a per-frame draw path and allocates nothing).
+        // These geometry assertions want a plain collection, so each call gets its own array of exactly what the
+        // fan wrote.
+        static GuiDraw.CooldownQuad[] Fan(Rect rect, float fraction)
+        {
+            var buffer = new GuiDraw.CooldownQuad[GuiDraw.MaxCooldownQuads];
+            int n = GuiDraw.CooldownSweepQuads(rect, fraction, buffer);
+            return buffer[..n];
+        }
+
         static float FanArea(IReadOnlyList<GuiDraw.CooldownQuad> quads)
         {
             float area = 0f;
@@ -39,8 +49,8 @@ namespace KhaozEngine.Tests.Gui
         [Fact]
         public void Fraction_zero_or_less_is_an_empty_fan()
         {
-            Assert.Empty(GuiDraw.CooldownSweepQuads(Square, 0f));
-            Assert.Empty(GuiDraw.CooldownSweepQuads(Square, -1f));
+            Assert.Empty(Fan(Square, 0f));
+            Assert.Empty(Fan(Square, -1f));
         }
 
         [Theory]
@@ -50,26 +60,26 @@ namespace KhaozEngine.Tests.Gui
         [InlineData(1.0f, 10000f)]
         public void Fan_area_matches_the_fraction_on_a_square(float fraction, float expected)
         {
-            float area = FanArea(GuiDraw.CooldownSweepQuads(Square, fraction));
+            float area = FanArea(Fan(Square, fraction));
             Assert.True(MathF.Abs(area - expected) < 1f, $"fraction {fraction}: area {area}, expected {expected}");
         }
 
         [Fact]
         public void Fraction_above_one_clamps_to_full_coverage()
         {
-            float area = FanArea(GuiDraw.CooldownSweepQuads(Square, 5f));
+            float area = FanArea(Fan(Square, 5f));
             Assert.True(MathF.Abs(area - 10000f) < 1f);
         }
 
         [Fact]
         public void Every_slice_apex_is_the_centre_and_the_fixed_edge_ends_at_twelve_oclock()
         {
-            var quads = GuiDraw.CooldownSweepQuads(Square, 0.5f);
+            var quads = Fan(Square, 0.5f);
             Assert.NotEmpty(quads);
             var center = new Vector2(50, 50);
             foreach (var q in quads) Assert.Equal(center, q.P0);   // the fan apex is the rect centre
             // The covered region's fixed edge is the 12 o'clock line: the last slice ends at top-centre.
-            Vector2 last = quads[quads.Count - 1].P2;
+            Vector2 last = quads[^1].P2;
             Assert.Equal(50f, last.X, 3);
             Assert.Equal(0f, last.Y, 3);
         }
@@ -77,7 +87,7 @@ namespace KhaozEngine.Tests.Gui
         [Fact]
         public void All_perimeter_vertices_lie_on_the_rect_edge()
         {
-            foreach (var q in GuiDraw.CooldownSweepQuads(Square, 0.5f))
+            foreach (var q in Fan(Square, 0.5f))
             {
                 AssertOnPerimeter(q.P1);
                 AssertOnPerimeter(q.P2);
@@ -88,8 +98,8 @@ namespace KhaozEngine.Tests.Gui
         // Locks the sweep to clockwise direction. A mirrored counterclockwise sweep would produce right-half points like (100, 50).
         public void Quarter_fraction_covers_the_left_side_of_the_sweep_not_the_right()
         {
-            var quads = GuiDraw.CooldownSweepQuads(Square, 0.25f);
-            Assert.Equal(2, quads.Count);
+            var quads = Fan(Square, 0.25f);
+            Assert.Equal(2, quads.Length);
 
             // First quad's trailing-edge perimeter point is the left-edge midpoint
             Assert.Equal(0f, quads[0].P1.X, 3);

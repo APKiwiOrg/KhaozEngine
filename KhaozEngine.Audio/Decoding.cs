@@ -48,14 +48,28 @@ internal sealed class WavDecoder : IPcmDecoder
         {
             string id = new string(_r.ReadChars(4));
             int sz = _r.ReadInt32();
+            long body = _s.Position;
+            // A negative size seeks BACKWARD, and the only way out of this loop is reaching the end of the
+            // stream, so a corrupt size can leave the position oscillating instead of ever getting there.
+            // Refuse it as a parse error rather than spinning on the decode thread.
+            if (sz < 0) throw new InvalidDataException($"WAV chunk '{id}' declares a negative size ({sz})");
+            // RIFF pads every chunk to an even byte boundary and does NOT count that pad byte in the size, so
+            // skipping only sz leaves every later chunk header one byte out. An odd-sized LIST/bext/cue chunk
+            // ahead of fmt /data (common from DAWs and mastering tools) desyncs the whole walk that way, and the
+            // hardcoded defaults below then silently stand in for the real format.
+            long next = body + sz + (sz & 1);
             if (id == "fmt ")
             {
+                if (sz < 16 || body + 16 > _s.Length) throw new InvalidDataException("WAV 'fmt ' chunk is truncated");
                 _r.ReadInt16(); channels = _r.ReadInt16(); rate = _r.ReadInt32();
                 _r.ReadInt32(); _r.ReadInt16(); bits = _r.ReadInt16();
-                if (sz > 16) _s.Seek(sz - 16, SeekOrigin.Current);
             }
-            else if (id == "data") { dataStart = _s.Position; dataLen = sz; _s.Seek(sz, SeekOrigin.Current); }
-            else _s.Seek(sz, SeekOrigin.Current);
+            else if (id == "data") { dataStart = body; dataLen = sz; }
+            // A 'data' chunk that overruns the file is the truncated-download case, tolerated here and surfacing
+            // as an EndOfStreamException at read time. Any OTHER chunk claiming to run past the end is simply
+            // corrupt, and walking on from there only reads garbage as the next chunk header.
+            else if (next > _s.Length) throw new InvalidDataException($"WAV chunk '{id}' runs past the end of the file");
+            _s.Seek(next, SeekOrigin.Begin);
         }
         if (bits != 16) throw new NotSupportedException("only 16-bit PCM WAV is supported");
         Channels = channels; SampleRate = rate;

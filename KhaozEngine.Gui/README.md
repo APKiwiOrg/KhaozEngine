@@ -179,7 +179,10 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     A held key auto-repeats (Backspace deletes / a character keeps typing) at the OS repeat rate. `SetText(value)`
     replaces the buffer programmatically (clamped to `MaxLength`, seen as a change by the next `Update`); `Focus()` /
     `Unfocus()` drive focus directly. The placeholder is `LocalizedText` via `PlaceholderContent` (the former
-    `Placeholder` string is an `[Obsolete]` shim); `Opacity` fades the whole field for a host transition.
+    `Placeholder` string is an `[Obsolete]` shim); `Opacity` fades the whole field for a host transition. Text
+    wider than the box is clipped to it (caret included) rather than painting over whatever is beside the field,
+    and the clip only engages when the content actually overflows, so a field that fits costs no extra flush.
+    `NumberField` clips the same way. Neither scrolls the visible window with the caret yet.
   - `Tooltip` - auto-sized floating bubble; `ComputeBounds` (flip/clamp) is a pure, testable layout function.
     Opt-in (default off): a two-column title (`Show(title, titleRight, ...)`), a `ShowTitleSeparator` rule under the
     title, a width cap (`MaxWidth` px and/or `MaxWidthFraction` of the viewport) that word-wraps long body lines
@@ -516,6 +519,7 @@ block's ascent baseline, once per `DrawString`, so every glyph of a word stays o
 `DpiFont` from `KhaozEngine.Render2D` for a crisp atlas).
 
 Text wrap/alignment lives in `KhaozEngine.Render2D.TextLayout` (over the `ITextMeasurer` seam, so the layout
-math is headless-testable); clipping uses `SpriteBatch` scissor (`SetScissor`/`ClearScissor`, DPI-aware). Ported
+math is headless-testable). Clipping uses `SpriteBatch` scissor (`SetScissor`/`ClearScissor`, DPI-aware, and
+nesting: a clipping widget drawn inside another clipping widget is bounded by both). Ported
 from `KhaozEngine.Screens`/`UI` (game-specific layout coupling dropped). Built on `KhaozEngine.Windowing`
 (Pointer/Input) + `KhaozEngine.Render2D` (SpriteBatch/SpriteFont/Texture2D). Part of the MonoGame-free engine.

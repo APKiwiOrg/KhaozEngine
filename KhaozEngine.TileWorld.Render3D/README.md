@@ -187,6 +187,18 @@ roof rule keys on), so its slab starts at y 0 too and the PLANE supplies the hei
 makes a wall exactly one plane tall. Pass `doc.PlaneHeight` for `wallHeight` whenever a document is at hand, so a
 world with a non-default plane height still has its walls meet its roofs.
 
+### Picking the models (`TileObjectRaycast`, `TileObjectBoundsCache`)
+
+`TileObjectRaycast.Pick(doc, catalogs, plane, origin, direction, maxDistance, bounds, hits)` names every
+object whose drawn MODEL a ray passes through, nearest first (exact ties to the lower object id), so what a
+player can click is what they can see, a well's roof included. It is the picture-side counterpart of
+`TileRaycast` (the ground) and the footprint join (the tiles): the placement is derived through
+`TileObjectProps.AnchorPosition`/`YawRadians`, the same transform a prop draw uses, and the box is slab-tested
+in the object's local frame. It decides nothing about clickability: hits carry the archetype id so the caller
+applies its own gates (a hidden roof, a non-interactive archetype). `TileObjectBoundsCache` is the
+`BoundsSource` to hand it: the per-archetype vertex AABB measured once from the SAME `ITileMeshResolver` the
+view draws through, greybox fallback included.
+
 ### Real meshes (`GltfMeshResolver`)
 
 `GltfMeshResolver(string rootDirectory, ITileMeshResolver? fallback = null, Action<string>? log = null)` is the

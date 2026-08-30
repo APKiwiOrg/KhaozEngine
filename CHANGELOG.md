@@ -5,6 +5,20 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.7.0
+
+18.7.0 gives TileWorld object picking against the drawn MODELS, so what a player can click is what they can
+see, a well's roof included. Grimhollow's interaction rework (full object clickboxes, universal examine, the
+z-stacked context menu) is the consumer this ships for.
+
+- `TileObjectRaycast.Pick` (TileWorld.Render3D): every object whose model box a ray passes through, nearest
+  first, exact distance ties to the lower object id. The placement is `TileObjectProps.AnchorPosition` and
+  `YawRadians`, the same transform a prop draw uses, and the box comes from a caller-supplied `BoundsSource`,
+  slab-tested in the object's local frame. Hits carry the archetype id, and clickability gates (a hidden
+  roof, a non-interactive archetype, a cut at the ground hit) stay the caller's rules.
+- `TileObjectBoundsCache`: the `BoundsSource` over an `ITileMeshResolver`, measuring each archetype's vertex
+  AABB once and caching by id, greybox fallback included, so the box tested is the model drawn.
+
 ## 18.6.0
 
 18.6.0 is swing-based aggression in TileWorld.Netcode, a Grimhollow playtest ruling: a splashed miss and a

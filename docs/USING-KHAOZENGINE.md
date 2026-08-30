@@ -5544,7 +5544,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.6.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.7.0" />
 ```
 
 ```csharp
@@ -6811,6 +6811,15 @@ them together. `TilePrefabs.Extract`/`Rotate`/`Place` lift a rect of tiles (laye
 relative heights, objects, markers) and stamp it elsewhere at any rotation, with `TilePrefabFile` as the JSON
 form. A stamp is additive per layer, so clear the rect first if you want a replace. Full API summary: the
 `KhaozEngine.TileWorld` package README. Design rationale: `docs/design/TILE-WORLD-DESIGN-2026-08-15.md`.
+
+**Picking object models.** `TileRaycast` answers the GROUND. For the objects standing on it,
+`TileObjectRaycast.Pick(doc, catalogs, plane, origin, direction, maxDistance, bounds, hits)` (in
+`KhaozEngine.TileWorld.Render3D`) names every object whose drawn MODEL the ray passes through, nearest first,
+exact ties to the lower object id, using the same `TileObjectProps` placement a prop draw uses, so a well's
+roof counts as the well. Hand it a `TileObjectBoundsCache` over the view's own `ITileMeshResolver` as the
+bounds source (the per-archetype vertex box, measured once), and apply your own clickability gates on the hits
+(the archetype id rides on each one): a roof hidden by the indoor rule, a non-interactive archetype, or a cut
+at the ground hit's distance are all the caller's rules, deliberately.
 
 ---
 
@@ -10207,7 +10216,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.6.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.7.0" />
 ```
 
 ```csharp
@@ -10243,7 +10252,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.6.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.7.0" />
 ```
 
 ```csharp
@@ -10485,7 +10494,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.6.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.7.0" />
 ```
 
 ```csharp

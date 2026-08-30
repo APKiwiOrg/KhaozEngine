@@ -14,6 +14,12 @@ public sealed class NetClient
     private readonly INetTransport transport;
     private readonly byte[] token;
     private readonly Queue<ClientSessionEvent> inbox = new();
+    // The connection id the transport actually gave the server peer, captured off the Connected event rather than
+    // assumed. Both current transports happen to number that peer 1 (LoopbackTransport pins it, and a client-role
+    // LiteNetLib NetManager numbers its single peer 0, which the binding surfaces as peer.Id + 1), so a literal 1
+    // was indistinguishable from the real id until something renumbered the peer, at which point Send would have
+    // aimed at an id no transport knows and silently stopped delivering while receive kept working.
+    private NetConnectionId serverConnection = NetConnectionId.None;
     private bool helloSent;
 
     public NetClient(INetTransport transport, byte[]? token = null)
@@ -42,6 +48,7 @@ public sealed class NetClient
             switch (ev.Type)
             {
                 case NetEventType.Connected:
+                    serverConnection = ev.Connection;   // whatever the transport calls the server, that is what Send targets
                     if (!helloSent)
                     {
                         helloSent = true;
@@ -50,6 +57,7 @@ public sealed class NetClient
                     break;
                 case NetEventType.Disconnected:
                     Slot = -1;                       // the session is over either way: stop reporting the seat it held
+                    serverConnection = NetConnectionId.None;   // and stop naming a connection the transport has torn down
                     // A disconnect may carry the server's framed Reject as its reason payload (the robust path when
                     // a separately-sent reliable Reject is lost to the teardown over a real socket). Surface it as
                     // the terminal Rejected it is, not a bare drop the consumer would auto-reconnect on.
@@ -94,9 +102,12 @@ public sealed class NetClient
         return false;
     }
 
-    /// <summary>Sends game data to the server (surfaced as connection id 1 by loopback and the UDP bindings).</summary>
+    /// <summary>Sends game data to the server, on the connection id the transport reported for it. No-op before the
+    /// transport has surfaced a Connected event (there is no server connection to name yet) and after it has surfaced
+    /// the Disconnected that ended the session.</summary>
     public void Send(ReadOnlySpan<byte> payload, NetChannelReliability reliability)
     {
-        transport.Send(new NetConnectionId(1), SessionFrame.Write(SessionOpcode.Data, payload), reliability);
+        if (!serverConnection.IsValid) return;
+        transport.Send(serverConnection, SessionFrame.Write(SessionOpcode.Data, payload), reliability);
     }
 }

@@ -18,8 +18,16 @@ ver=$(tag_props_version < Directory.Build.props 2>/dev/null || true)
 [ -n "${ver:-}" ] || { echo "tag-release: could not read <$knob> from Directory.Build.props." >&2; exit 1; }
 tag="v$ver"
 
-if git rev-parse -q --verify "refs/tags/$tag" >/dev/null 2>&1; then
-  echo "tag-release: $tag already exists locally. Bump <$knob> to a free version first." >&2
+# THE authoritative collision check (issue #261). It belongs here rather than in the PreToolUse hook,
+# because a hook runs BEFORE the command it judges: for the ritual's own chained
+# `git merge <branch> && scripts/tag-release.sh` the bump arrives with the merge, so the hook could only
+# ever read the PREVIOUS version out of Directory.Build.props and deny the whole chain over the previous
+# release's tag. Here the version has already been read at the moment it is true, and origin counts as
+# well as local, because the collision this catches is a concurrent release that tagged first.
+if tag_taken . "$tag"; then
+  echo "tag-release: $tag already exists ($TAG_TAKEN_WHERE). A concurrent release likely took it." >&2
+  echo "             Re-read the current version and tags, bump <$knob> to the next free version," >&2
+  echo "             rebase the CHANGELOG entry onto it, then tag." >&2
   exit 1
 fi
 

@@ -386,6 +386,60 @@ namespace KhaozEngine.Tests.Render3D
             }
         }
 
+        // The first dusk handover in a full-day sweep: the sample where the key stops being the sun and starts
+        // being the moon, plus the sample just before it. Fine enough (0.0002 of a day, about 17 seconds of game
+        // clock) that a pair straddling the flip is right at the crossing rather than either side of the dip.
+        static (SunCycleState Before, SunCycleState After, float T) FirstSunToMoonHandover(SunCycleSettings s)
+        {
+            var prev = SunCycle.Evaluate(0f, s);
+            for (float t = 0.0002f; t <= 1f; t += 0.0002f)
+            {
+                var cur = SunCycle.Evaluate(t, s);
+                if (prev.ActiveSource == KeyLightSource.Sun && cur.ActiveSource == KeyLightSource.Moon)
+                {
+                    return (prev, cur, t);
+                }
+                prev = cur;
+            }
+            Assert.Fail("no sun-to-moon handover in a full day");
+            return default;
+        }
+
+        [Fact]
+        public void Moon_mode_handover_pops_rather_than_crossing_black_away_from_a_twelve_hour_day()
+        {
+            // The through-black handover is a property of the CONFIGURATION, not of Moon mode, and the docs on
+            // NightKeyMode.Moon now say so. It needs the sun and moon horizon crossings to COINCIDE, which the
+            // default 12h opposition offset only delivers when both bodies are up for about 12h: the equator, or a
+            // zero declination. This pins the other regime, so the caveat cannot rot back into a guarantee, and so
+            // the cross-fade tracked by #223 has a red test the day it lands.
+            var s = new SunCycleSettings { NightKey = NightKeyMode.Moon };   // the shipped defaults: lat 35, dec 15
+            var (before, after, t) = FirstSunToMoonHandover(s);
+
+            // The sun hands over at its OWN crossing, with its key correctly dipped to black.
+            Assert.True(MathF.Abs(after.SunElevationDegrees) < 1f, $"the handover should sit at the sun's crossing, got {after.SunElevationDegrees} deg at t={t}");
+            Assert.True(KeyMagnitude(before) < 1e-3f, $"the outgoing sun key should be black, got {KeyMagnitude(before)}");
+
+            // The moon is nowhere near ITS crossing though (about 17 degrees up, against a 2-degree dip band), so
+            // its key arrives at full strength instead of fading in. That step is the visible dusk pop.
+            Assert.True(after.MoonElevationDegrees > 5f * s.MoonHorizonKeyDipDegrees, $"the moon should be well past its dip band, got {after.MoonElevationDegrees} deg against a {s.MoonHorizonKeyDipDegrees} deg dip");
+            float fullMoonKey = s.MoonKeyColor.R + s.MoonKeyColor.G + s.MoonKeyColor.B;
+            Assert.Equal(fullMoonKey, KeyMagnitude(after), 1e-3);
+
+            // And because the two bodies are not at the same place, the key's horizontal direction swings by more
+            // than 90 degrees in that single step. The opposition invariant test skips this pair on the grounds
+            // that the key is black at a handover, which is exactly the assumption that does not hold here.
+            var a = new Vector2(before.LightDirection.X, before.LightDirection.Z);
+            var b = new Vector2(after.LightDirection.X, after.LightDirection.Z);
+            Assert.True(Vector2.Dot(a, b) < 0f, $"expected a direction reversal across the handover, got dot={Vector2.Dot(a, b)}");
+
+            // The contrast: the equatorial opposition config the guarantee assumes hands over through black, both
+            // bodies deep in their shared dip (under 1% of the moon's full key, against the 100% above).
+            var (oppBefore, oppAfter, oppT) = FirstSunToMoonHandover(OppositionMoon());
+            float dark = 0.01f * fullMoonKey;
+            Assert.True(KeyMagnitude(oppBefore) < dark && KeyMagnitude(oppAfter) < dark, $"opposition handover should be through black at t={oppT}, got {KeyMagnitude(oppBefore)} -> {KeyMagnitude(oppAfter)}");
+        }
+
         [Fact]
         public void Moon_mode_decorative_moon_shows_a_disc_with_a_black_key()
         {

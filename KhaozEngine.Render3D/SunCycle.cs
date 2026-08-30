@@ -84,10 +84,20 @@ namespace KhaozEngine.Render3D
         /// (<see cref="SunCycleSettings.MoonDeclinationDegrees"/>), its own key color
         /// (<see cref="SunCycleSettings.MoonKeyColor"/>) and its own horizon dip
         /// (<see cref="SunCycleSettings.MoonHorizonKeyDipDegrees"/>). The key is the sun while the sun is up, else the
-        /// moon while the moon is up, else black; each body fades to black at its OWN crossing, so a source switch
-        /// only ever happens through black and the direction is continuous within each body. The disc follows the
+        /// moon while the moon is up, else black; each body fades to black at its OWN crossing, and the direction is
+        /// continuous within each body. The disc follows the
         /// active body (sun when up, else moon when up) and can show a decorative moon that casts no key. Kills the
-        /// pre-dawn 180-degree flip: below the horizon the sun is simply never the key.</summary>
+        /// pre-dawn 180-degree flip: below the horizon the sun is simply never the key.
+        /// <para>The source switch is only through BLACK when the two crossings COINCIDE, which is a property of the
+        /// configuration rather than of this mode. The default 12h <see cref="SunCycleSettings.MoonHourOffset"/>
+        /// lines them up only while both bodies are up for about 12 hours: the equator, or a zero declination.
+        /// At the shipped defaults (latitude 35, declination 15) the day is longer than that, so the moon is already
+        /// about 17 degrees up when the sun sets, well clear of its 2-degree
+        /// <see cref="SunCycleSettings.MoonHorizonKeyDipDegrees"/> band. The key then jumps from black to the moon's
+        /// full strength in one frame and swings more than 90 degrees in azimuth: a visible dusk/dawn pop, not a
+        /// handover. Until the cross-fade lands (issue #223), either keep the day near 12 hours, or give the moon a
+        /// black <see cref="SunCycleSettings.MoonKeyColor"/> so no key ever hands over (the decorative-moon setup).
+        /// Widening the dip hides the pop but eats a large shadowless band at a long-day latitude.</para></summary>
         Moon,
     }
 
@@ -142,7 +152,8 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Moon time offset from the sun, in HOURS on a 24-hour day (the moon runs the same arc math as the
         /// sun, shifted by this much). Default <c>12</c> = opposition (the moon rises as the sun sets), which lines
-        /// the two crossings up so the sun-to-moon handover happens through black. Only used under
+        /// the two crossings up so the sun-to-moon handover happens through black ONLY at a day length near 12 hours
+        /// (see <see cref="NightKeyMode.Moon"/> for what happens away from it). Only used under
         /// <see cref="NightKeyMode.Moon"/>.</summary>
         public float MoonHourOffset { get; set; } = 12f;
 

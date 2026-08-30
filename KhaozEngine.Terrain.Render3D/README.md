@@ -7,11 +7,17 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
 
 ## Types
 
-- **`TerrainChunkBuilder.Build(field, region, lod[, lodConfig][, splatRule])`** -> **`TerrainChunkMesh`** - samples the
-  field on a LOD-chosen grid into a `Render3D` `GltfMesh` with ~0.3 m edge skirts (mismatched-LOD neighbours
+- **`TerrainChunkBuilder.Build(field, region, lod[, lodConfig][, skirtDepth][, splatRule])`** -> **`TerrainChunkMesh`** - samples the
+  field on a LOD-chosen grid into a `Render3D` `GltfMesh` with edge skirts (mismatched-LOD neighbours
   stay crack-free), a per-vertex splat-weight array (grass/dirt/rock/sand/snow), a height/slope vertex-colour
   ramp, and an AABB (`TerrainChunkBounds`) for culling. CPU only, no GPU device. The `lodConfig` overload
   resolves the tier's resolution through a custom table; the plain overload uses `TerrainLodConfig.Default`.
+  - **`skirtDepth`** defaults to a flat 0.3 m, which is only right for the densest tier. The slit a skirt hides is
+    the coarse neighbour's, bounded by how far the field departs from that side's chord across ONE of its cells, so
+    it grows with the tier: on the default table's far tiers a 0.3 m skirt leaves daylight at the seam (issue #100).
+    Anything streaming more than one tier passes `TerrainLodConfig.SkirtDepthFor(lod, chunkSize)`, which is what
+    `Scene3DChunkSink` does for every chunk it builds. The parameter's default stays flat so a direct caller keeps
+    meshing exactly what it did before.
   **Vertices are CHUNK-LOCAL in X/Z (absolute in Y), and so is `TerrainChunkBounds`.** The field is still sampled
   at the ABSOLUTE coordinate (it is authored in world space and stays that way), but what is stored is
   `x - region.OriginX`, so a chunk 100 km out has vertices of magnitude at most its own size instead of being

@@ -400,7 +400,12 @@ namespace KhaozEngine.Terrain
             IReadOnlyList<PropPlacement>[]? scatter = ring == ChunkRing.Gameplay || buildHlod ? ScatterLayersFor(coord) : null;
             var cpu = new CpuBuild
             {
-                Mesh = TerrainChunkBuilder.Build(_field, region, lod, _lodConfig, splatRule: _splatRule),
+                // Tier-aware skirt (issue #100). The sink is the one place that knows both the tier table and the
+                // chunk size, so it is where the depth stops being a flat 0.3 m and starts following the coarsest
+                // cell that can meet this chunk's edge. A direct TerrainChunkBuilder.Build caller still gets the
+                // flat default.
+                Mesh = TerrainChunkBuilder.Build(_field, region, lod, _lodConfig,
+                                                 skirtDepth: _lodConfig.SkirtDepthFor(lod, _chunkSize), splatRule: _splatRule),
                 LayerProps = ring == ChunkRing.Gameplay ? scatter! : EmptyLayers(),
             };
             // Terrain collision surface at the FIXED collision tier, only for a gameplay chunk that opts in. Reuse the
@@ -408,7 +413,10 @@ namespace KhaozEngine.Terrain
             // No splat rule on the second grid: ChunkTerrainCollision reads positions and winding only, so running a
             // per-vertex presentation rule over a mesh whose weights are discarded is pure cost.
             if (ring == ChunkRing.Gameplay && _collideTerrain)
-                cpu.CollisionMesh = _collisionLod == lod ? cpu.Mesh : TerrainChunkBuilder.Build(_field, region, _collisionLod, _lodConfig);
+                cpu.CollisionMesh = _collisionLod == lod
+                    ? cpu.Mesh
+                    : TerrainChunkBuilder.Build(_field, region, _collisionLod, _lodConfig,
+                                                skirtDepth: _lodConfig.SkirtDepthFor(_collisionLod, _chunkSize));
             // HLOD merged mesh per layer: merge + weld this cluster's placements into one coarse world-space mesh
             // (deterministic per chunk + field, so a runtime bake at load reproduces). Built for both rings, and only
             // when the apply is going to consume it. A null HlodMeshes is the payload's own signal to Apply that this

@@ -6,9 +6,14 @@ using KhaozEngine.Render3D;
 namespace KhaozEngine.Terrain
 {
     /// <summary>Meshes one finite chunk off the analytic field at a chosen LOD: a (res+1)^2 grid of
-    /// field-sampled vertices (position/normal/ramp-colour/splat), CCW-from-above indices, plus ~0.3 m edge
+    /// field-sampled vertices (position/normal/ramp-colour/splat), CCW-from-above indices, plus edge
     /// skirts that hide cracks where a dense chunk meets a coarse neighbour. CPU only - no GPU device. Output is
     /// standard Render3D mesh data plus a parallel splat array and an AABB.
+    /// <para><c>skirtDepth</c> defaults to a flat 0.3 m, which is only ever right for the densest tier: the slit a
+    /// skirt hides is bounded by how far the field departs from the COARSE side's chord across one of its cells, so
+    /// it grows with the tier (issue #100). A caller that streams several tiers wants
+    /// <see cref="TerrainLodConfig.SkirtDepthFor"/>, which is what <c>Scene3DChunkSink</c> passes for every chunk it
+    /// builds. The default is left flat so a direct caller meshes byte-identically to before.</para>
     /// <para>Vertices are CHUNK-LOCAL in X and Z: the field is sampled at the absolute world coordinate (it is
     /// authored in world space and stays that way), but what is STORED is <c>x - region.OriginX</c>, so a vertex
     /// magnitude is at most <see cref="TerrainChunkRegion.Size"/> however far out the chunk sits. Y is absolute

@@ -64,6 +64,17 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   resource, so nothing is destroyed in the frame it was retired in. The unload bodies live in `Scene3D.Unload.cs`,
   and `Scene3D.RetiredResourceCount` is the observable: a healthy streaming world shows a small number that returns
   to 0 shortly after a burst.
+- `Scene3D.GetOrLoadMesh` / `GetOrLoadSkinnedMesh` / `GetOrLoadTexture` - keyed, idempotent loads for a scene that
+  outlives what it draws ([#250](https://github.com/APKiwiOrg/KhaozEngine/issues/250)). Each takes a key plus a
+  loader and runs the loader only the FIRST time that key is seen, returning the cached handle after that, so a
+  renderer that rebuilds its asset set on every run restart stops re-uploading it. The plain `Load*` calls are
+  unchanged and still upload every time. Ownership does not change: a cached handle is owned by the scene exactly
+  as the underlying `Load*` left it, `Dispose` frees it with everything else, and the key tables die with the
+  scene. Eviction is explicit and by key: `UnloadSharedMesh` / `UnloadSharedSkinnedMesh` / `UnloadSharedTexture`
+  unload through the matching `Unload*` and forget the key (`false` when nothing was cached under it), so the next
+  `GetOrLoad*` uploads again. There is no refcount and nothing evicts on its own. Calling the plain `Unload*` on a
+  cached handle directly leaves the key pointing at a freed handle, so pair the two.
+  `Scene3D.SharedAssetCount` is the diagnostic.
 - `Scene3D.PrepareFrame()` - the frame's pre-recording phase. Call it once per frame, after the frame's
   `Draw*` calls and BEFORE opening the command list the scene is recorded into. Subsystems whose per-frame GPU work
   cannot go in the frame's list (the FFT ocean's priming dispatch, which needs a submit + device wait of its own)

@@ -2183,6 +2183,29 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   to build (see below). `Post` is the
   `PixelPostProcess` (pixelation / quantize / dither / cel bands / palette for the chunky retro look; the smooth
   look is the default).
+- **Keyed loads for a scene that outlives what it draws (`GetOrLoad*`).** `LoadMesh` / `LoadSkinnedMesh` /
+  `LoadTexture` upload EVERY time they are called, which is right for a scene built once and torn down once and
+  wrong for an app-lifetime scene whose renderer rebuilds its asset set on every run restart. The keyed loads
+  dedup that:
+
+```csharp
+// Runs the loader the first time this key is seen, returns the cached handle every time after.
+Scene3D.TextureHandle hull = scene.GetOrLoadTexture("art/hull.png", () => scene.LoadTexture("art/hull.png"));
+MeshHandle ship = scene.GetOrLoadMesh("art/ship.glb", () => scene.LoadMesh(GltfLoader.Load("art/ship.glb")));
+
+// Explicit eviction, by key: unloads the handle and forgets the key, so the next GetOrLoad uploads again.
+scene.UnloadSharedTexture("art/hull.png");     // false when nothing was cached under that key
+```
+
+  The plain `Load*` calls are unchanged. **Ownership does not change either**: a cached handle is owned by the
+  scene exactly as the underlying `Load*` left it, so `Dispose` frees it along with every other handle the scene
+  owns and the key tables die with the scene. **Eviction is explicit and by key, with no refcount**:
+  `UnloadSharedMesh` / `UnloadSharedSkinnedMesh` / `UnloadSharedTexture` are the only eviction, nothing evicts on
+  its own, and nothing counts references (a refcount would need a matching release at every use site, which is the
+  bookkeeping this API exists to stop a game from doing). Calling the plain `Unload*` on a cached handle directly
+  leaves the key pointing at a freed handle, so pair the two. Keys are ordinal and case-sensitive, each family has
+  its own key space, and a loader that throws caches nothing so the next call retries. `SharedAssetCount` is the
+  diagnostic: a number that climbs across run restarts is a consumer still re-keying its assets.
 - **`PrepareFrame()`, the frame's pre-recording phase.** Runs once per frame, after every `Draw*`
   call for that frame and **before the command list the scene renders into is opened**. Every host the engine
   ships calls it for you - `Render3DSurface.Render` (so `GameApp3D` and any surface you build yourself are both

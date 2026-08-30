@@ -173,6 +173,74 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.False(vw.PartialRebuild(new MapDocument(), MapDocRegistry.CreateDefault(), new RectArea(0f, 0f, 1f, 1f)));
         }
 
+        // ---- partial rebuild vs. the prop layers' captured scatter configs ------------------------------
+
+        // A document whose one scatter layer covers everything: a flat meadow field (GentleAmplitude zeroed, the
+        // FlatField() recipe expressed as a document), density 1 and no jitter, so PropScatter.Generate places one
+        // prop on every 4 m cell of the area below and the counts are exact rather than statistical.
+        static MapDocument ScatterDoc()
+        {
+            var doc = new MapDocument
+            {
+                Id = "scatter-partial",
+                Bounds = new MapBounds { MinX = -100f, MinZ = -100f, MaxX = 100f, MaxZ = 100f },
+                Terrain = new MapTerrain { GentleAmplitude = 0f },
+            };
+            doc.ScatterLayers.Add(new MapScatterLayer
+            {
+                Name = "trees",
+                CellSize = 4f,
+                Jitter = 0f,
+                Rules =
+                {
+                    new MapBiomeScatterRule
+                    {
+                        Biome = BiomeId.Meadow,
+                        Density = 1f,
+                        Kinds = { new MapPropKind { Id = "pine_a", Weight = 1f } },
+                    },
+                },
+            });
+            return doc;
+        }
+
+        [Fact]
+        public void ExclusionEdit_TakesTheFullRebuild_BecausePartialKeepsTheCapturedScatterConfigs()
+        {
+            // Issue #765. PartialRebuild swaps the field and re-meshes the dirty chunks, and the sink re-scatters
+            // each of them from the ScatterConfig captured inside its PropLayer at Build time
+            // (Scene3DChunkSink.ScatterLayersFor reads _layers[i].Scatter, and the sink has no layer setter). An
+            // exclusion lives in that captured config (MapRuntime.BuildScatterConfig fills Exclusions), and it
+            // changes no terrain at all, so a partial rebuild after drawing one regenerates BYTE-IDENTICAL props
+            // and every tree under the new exclusion keeps standing. Only a full Rebuild, which reruns
+            // BuildPropLayers, clears them. So the command must not report a bounded region.
+            MapDocument doc = ScatterDoc();
+            MapDocRegistry registry = MapDocRegistry.CreateDefault();
+            var area = new RectArea(-20f, -20f, 20f, 20f);
+
+            // What ViewportWorld.Build hands the sink: the layer configs as the document reads right now.
+            ScatterConfig captured = MapRuntime.BuildScatterConfigs(doc)["trees"];
+            Assert.NotEmpty(PropScatter.Generate(MapRuntime.BuildField(doc, registry), captured, area));
+
+            // Draw an exclusion over the whole area through the real command path.
+            var editor = new EditorDocument(doc, registry);
+            editor.Execute(new AddExclusionCommand(new MapExclusion
+            {
+                Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 40f },
+            }));
+
+            // The field PartialRebuild would swap in is unchanged by an exclusion (it is a scatter input, not a
+            // terrain one), so the re-meshed chunks re-scatter the same props off the stale captured config...
+            TerrainField after = MapRuntime.BuildField(doc, registry);
+            Assert.NotEmpty(PropScatter.Generate(after, captured, area));
+            // ...while the configs a full rebuild would construct place nothing inside the exclusion.
+            Assert.Empty(PropScatter.Generate(after, MapRuntime.BuildScatterConfigs(doc)["trees"], area));
+
+            // Which is why the edit has to route to the full rebuild: pending with a NULL region.
+            Assert.True(editor.WorldRebuildPending);
+            Assert.Null(editor.PendingRebuildRegion);
+        }
+
         // ---- after dispose (never built) ---------------------------------------------------------------
 
         [Fact]

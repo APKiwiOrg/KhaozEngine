@@ -784,10 +784,12 @@ it runs at most once per `MapEditorOptions.GestureRebuildInterval` seconds (defa
 throttle), with `WorldRebuildPending` left untouched on a throttled frame so the very next check after the
 gesture ends always performs the final full rebuild. The partial path is never throttled (it is cheap by
 construction). A bounded `DirtyRegion` comes from `FeatureGeometry.TryFootprint` for terrain features and
-`ShapeGeometry.TryBounds` for exclusion / scatter-override shapes (an AABB padded by a margin captured at
-apply time: a base constant plus the document's largest scatter jitter, since scatter tests shape
-membership at the jittered candidate position while chunk assignment uses the cell centre), so a gizmo
-drag on any of those stays on the never-throttled partial path instead of the gesture-throttled full one.
+from the stroke footprint for sculpt commands, so a gizmo drag on a lake or a sculpt stroke stays on the
+never-throttled partial path. Only terrain-HEIGHT edits qualify: the partial path swaps the field and
+re-meshes chunks, and the prop layers (with each layer's `ScatterConfig`, exclusions and overrides included)
+are built once per full `Build`/`Rebuild`. An exclusion or scatter-override edit therefore reports a null
+region and takes the full rebuild, because a partial one would re-scatter byte-identical props off the
+stale captured config and leave every prop under a freshly drawn exclusion standing (issue #765).
 
 **Same-frame inspector rebuild.** A terrain-feature parameter scrub lands through the `PropertyGrid`
 inspector, which is polled inside `UpdateChrome`, now BEFORE `CheckWorldRebuild` in the per-frame order (moved

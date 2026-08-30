@@ -75,6 +75,36 @@ public sealed class SqlServerWalletStoreTests
         Assert.Equal(7, await store.GetBalanceAsync(a2, Currency));
     }
 
+    /// <summary>The SQL Server row of <see cref="WalletStoreContract.Keys_and_account_ids_are_case_sensitive"/>,
+    /// which the contract base cannot carry for this backend because its <c>[Fact]</c> rows cannot skip. Case
+    /// sensitivity is the one wallet behaviour this backend does not get for free: without the binary collation
+    /// the schema pins on its key columns, a database created with the usual case-insensitive default answers
+    /// "claim-ABC" as a replay of "claim-abc" and swallows the second credit, while InMemory and SQLite apply
+    /// both. Run it against a database whose DEFAULT collation is case-insensitive, which is the deployment this
+    /// guards.</summary>
+    [SqlServerFact]
+    public async Task Keys_and_account_ids_are_case_sensitive()
+    {
+        SqlServerWalletStore store = NewStore();
+        AccountId account = FreshAccount();
+        CreditResult lower = await store.CreditAsync(account, Currency, 5, "claim-abc", LedgerReason.Grant, null);
+        CreditResult upper = await store.CreditAsync(account, Currency, 7, "claim-ABC", LedgerReason.Grant, null);
+        Assert.True(lower.Applied);
+        Assert.True(upper.Applied); // NOT a replay: the two keys differ by case, so they are two operations
+        Assert.False(upper.Replayed);
+        Assert.Equal(12, await store.GetBalanceAsync(account, Currency));
+        Assert.Equal(2, (await store.GetLedgerAsync(account, Currency, 100)).Count);
+
+        // Account ids the same way: two ids differing only by case are two wallets, not one.
+        string stem = $"acct:{Guid.NewGuid():N}";
+        AccountId lowerAccount = new($"{stem}-case");
+        AccountId upperAccount = new($"{stem}-CASE");
+        await store.CreditAsync(lowerAccount, Currency, 3, "k", LedgerReason.Grant, null);
+        await store.CreditAsync(upperAccount, Currency, 4, "k", LedgerReason.Grant, null);
+        Assert.Equal(3, await store.GetBalanceAsync(lowerAccount, Currency));
+        Assert.Equal(4, await store.GetBalanceAsync(upperAccount, Currency));
+    }
+
     /// <summary>Stress the atomic credit/debit update paths against a live server: many concurrent credits and
     /// debits, distinct idempotency keys, racing on the same account row under <c>IsolationLevel.Serializable</c>.
     /// The final balance must equal the net of applied ops and must never go negative. Only runs when

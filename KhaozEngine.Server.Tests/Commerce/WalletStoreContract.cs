@@ -82,6 +82,32 @@ public abstract class WalletStoreContract
             () => s.GetLedgerAsync(A, C, -1));
     }
 
+    /// <summary>Keys compare by code point on every backend. InMemory (ordinal string equality) and SQLite (TEXT,
+    /// BINARY collation) get this by construction; SQL Server only gets it because the schema pins a binary
+    /// collation on the key columns instead of inheriting a database default that is usually case-insensitive.
+    /// Without that, two idempotency keys differing only by case collide in the ledger's unique index and the
+    /// second call is answered as a replay of the first, swallowing a credit.</summary>
+    [Fact]
+    public async Task Keys_and_account_ids_are_case_sensitive()
+    {
+        IWalletStore s = NewStore();
+        CreditResult lower = await s.CreditAsync(A, C, 5, "claim-abc", LedgerReason.Grant, null);
+        CreditResult upper = await s.CreditAsync(A, C, 7, "claim-ABC", LedgerReason.Grant, null);
+        Assert.True(lower.Applied);
+        Assert.True(upper.Applied); // NOT a replay: the two keys differ by case, so they are two operations
+        Assert.False(upper.Replayed);
+        Assert.Equal(12, await s.GetBalanceAsync(A, C));
+        Assert.Equal(2, (await s.GetLedgerAsync(A, C, 100)).Count);
+
+        // Account ids the same way: two ids differing only by case are two wallets, not one.
+        AccountId lowerAccount = new("acct:case");
+        AccountId upperAccount = new("acct:CASE");
+        await s.CreditAsync(lowerAccount, C, 3, "k", LedgerReason.Grant, null);
+        await s.CreditAsync(upperAccount, C, 4, "k", LedgerReason.Grant, null);
+        Assert.Equal(3, await s.GetBalanceAsync(lowerAccount, C));
+        Assert.Equal(4, await s.GetBalanceAsync(upperAccount, C));
+    }
+
     [Fact]
     public async Task Same_key_different_accounts_do_not_collide()
     {

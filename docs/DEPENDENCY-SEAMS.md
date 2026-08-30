@@ -137,6 +137,9 @@ game can swap:
   idempotent by an `idempotencyKey`, scoped per `(account, currency)`; `GetBalanceAsync`/`GetLedgerAsync`
   read it back. `InMemoryWalletStore` (in the core package) is the reference/test backend; `Commerce.Sqlite`
   and `Commerce.SqlServer` are the durable opt-in backends, same contract, same idempotency semantics.
+  Keys (account, currency, idempotency key) compare by code point on all three, so they are case sensitive:
+  the SQL Server schema pins a binary collation on those columns rather than inherit a database default that
+  is usually case-insensitive, which would otherwise answer a differently-cased key as a replay.
 - **`IGrantScheduleStore`** - persists the next-available instant per `(account, rewardId)` for
   `PeriodicGrant`. Last-write-wins is safe here because the wallet's credit idempotency key is the real
   double-grant guard, not this store. The first-ever (bootstrap) claim keys on a fixed sentinel retained

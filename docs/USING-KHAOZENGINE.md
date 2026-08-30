@@ -4477,9 +4477,27 @@ into the vertex would have quantized it to that magnitude's 7.8 mm float32 latti
 collided with it. The parameterless `DrawTerrainChunk(handle)` is obsolete: it is correct only for a region at
 (0, 0). `TerrainChunkBounds` is chunk-local for the same reason - offset it by the region origin for a world box.
 
-Each chunk is a Render3D `GltfMesh` with ~0.3 m edge skirts to hide cracks where a dense chunk meets a coarse
+Each chunk is a Render3D `GltfMesh` with edge skirts to hide cracks where a dense chunk meets a coarse
 neighbour, a `TerrainChunkBounds` AABB for frustum culling, and per-vertex splat weights (grass/dirt/rock/sand/snow
-in `ModelVertex.Color`). With a `SplatMaterialHandle` supplied the weights drive the PBR splat pipeline (five
+in `ModelVertex.Color`).
+
+The skirt depth follows the TIER (18.5.0, issue #100). Two chunks that share an edge sample it at different
+spacings, and between the coarse side's samples its surface is a straight chord while the fine side follows the
+field, so the vertical slit between them is bounded by how far the field departs from that chord across one COARSE
+cell. That cell grows 16x from the default table's near tier to its far one, which is why the flat 0.3 m skirt that
+predates the far tiers leaves a wedge of daylight at range (and, on a mountain preset, already at the 64/32 seam).
+`Scene3DChunkSink` now meshes every chunk with `TerrainLodConfig.SkirtDepthFor(lod, chunkSize)`: half the coarsest
+cell that can meet that chunk's edge, floored at the legacy 0.3 m, so 0.94 m at the near tier up to 7.5 m at the far
+ones for 60 m chunks. The coarsest reachable neighbour comes from the tier table itself (a chunk's own reach plus a
+chunk width plus the hysteresis), so a table whose thresholds sit closer together than a chunk is wide gets the
+deeper skirt its seams actually need. `TerrainChunkBuilder.Build`'s own `skirtDepth` parameter still defaults to the
+flat 0.3 m, so a direct caller meshes byte-identically to before, and `SkirtDepthFor` takes a `cellFraction` for a
+field rougher than the engine's presets:
+
+```csharp
+float depth = TerrainLodConfig.Default.SkirtDepthFor(lod, chunkSize: 60f);        // 0.9375 m at tier 0, 7.5 m at tier 4
+var chunk = TerrainChunkBuilder.Build(field, region, lod, TerrainLodConfig.Default, depth);
+``` With a `SplatMaterialHandle` supplied the weights drive the PBR splat pipeline (five
 tileable PBR layers, triplanar); without one the weights are blended into a height/slope vertex-colour ramp
 (the fallback). *Which* chunks exist and *when* they rebuild is the **World streaming** sub-project below
 (`TerrainStreamer`). See "Textured terrain (PBR splat)" below for the material API. For water, see

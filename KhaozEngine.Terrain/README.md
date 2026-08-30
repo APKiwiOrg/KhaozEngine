@@ -127,7 +127,11 @@ up regardless of load order. Plain `float` math throughout.
   distances, the coarsest at `float.PositiveInfinity`). `PickLod(distance)` -> tier index,
   `PickLod(distance, currentLod, hysteresis)` the same with a dead zone around the boundary the chunk
   would cross (`currentLod` -1 = not built yet, a hysteresis of 0 or less is the undamped pick, and
-  `DefaultHysteresis` is the 10 m `StreamerConfig` default), `ResolutionFor(lod)` -> grid resolution.
+  `DefaultHysteresis` is the 10 m `StreamerConfig` default), `ResolutionFor(lod)` -> grid resolution,
+  `SkirtDepthFor(lod, chunkSize[, cellFraction])` -> the metre depth a chunk at that tier hangs its crack-hiding
+  skirts (`SkirtCellFraction`, half, of the coarsest cell that can meet its edge, floored at `MinSkirtDepth`, the
+  0.3 m every tier used to get flat). A skirt hides the neighbour's sampling gap, not its own, so it has to grow
+  with the tier or far seams show daylight (issue #100). `Scene3DChunkSink` passes it for every chunk it meshes.
   `TerrainLodConfig.Default` gives 64/32/16 at 80 m/200 m plus
   coarser 8- and 4-segment far tiers. The table itself is chunk-size agnostic, so the coupling check lives
   in the `TerrainStreamer` constructor: a finite tier distance under a chunk's half-diagonal

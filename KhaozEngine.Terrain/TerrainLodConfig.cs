@@ -113,10 +113,50 @@ namespace KhaozEngine.Terrain
         /// <summary>Grid resolution (segments per chunk edge) for a tier index, clamped to the valid range.</summary>
         public int ResolutionFor(int lod) => _tiers[Math.Clamp(lod, 0, _tiers.Length - 1)].Resolution;
 
+        /// <summary>The shallowest skirt any tier gets, in metres. This is the flat depth every chunk used before the
+        /// skirt became tier-aware, kept as a FLOOR so no tier ever gets a shallower skirt than the near ring
+        /// shipped with, however dense a config's cells are.</summary>
+        public const float MinSkirtDepth = 0.3f;
+
+        /// <summary>How deep a skirt hangs below the chunk edge, as a fraction of the coarsest cell that can meet
+        /// that edge. Half a cell is the height a cell climbing at 45 degrees straddles either side of its own chord,
+        /// and the chord is exactly what a coarse chunk renders between its samples, so this is the vertical gap a
+        /// seam can open on terrain that steep. Measured against the engine's own presets (Clearing's mountain band
+        /// and BoundedClearing, every tier pair of <see cref="Default"/>, 8 chunk columns each) the worst real gap
+        /// came to 0.47 of the coarse cell, so 0.5 covers them with a little room for a rougher field.</summary>
+        public const float SkirtCellFraction = 0.5f;
+
+        /// <summary>Skirt depth in metres for a chunk meshed at <paramref name="lod"/> on a
+        /// <paramref name="chunkSize"/> m grid: <paramref name="cellFraction"/> of the COARSEST cell that can meet
+        /// this chunk's edge, floored at <see cref="MinSkirtDepth"/>.
+        /// <para>The gap a skirt hides is the NEIGHBOUR's, not this chunk's. Two chunks that share an edge sample the
+        /// same boundary line at different spacings, and between the coarse side's samples its surface is a straight
+        /// chord while the fine side follows the field, so the vertical slit between them is bounded by how far the
+        /// field departs from that chord across ONE COARSE CELL. That is why a flat depth cracks at range: it is the
+        /// coarse cell that grows with distance, by 16x from <see cref="Default"/>'s near tier to its far one.</para>
+        /// <para>The coarsest neighbour is derived from the table itself rather than assumed to be one tier out: LOD
+        /// is picked per chunk from the metre distance to its CENTER, edge-sharing centres are exactly
+        /// <paramref name="chunkSize"/> apart, and hysteresis can hold a chunk on its old tier for another
+        /// <see cref="DefaultHysteresis"/> metres, so the coarsest tier reachable from this one is what
+        /// <see cref="PickLod(float)"/> returns that far past this tier's own reach. On <see cref="Default"/> that is
+        /// simply the next tier, but a table with thresholds packed closer than a chunk is wide can skip one, and
+        /// then the deeper skirt is exactly what the seam needs.</para></summary>
+        public float SkirtDepthFor(int lod, float chunkSize, float cellFraction = SkirtCellFraction)
+        {
+            int tier = Math.Clamp(lod, 0, _tiers.Length - 1);
+            float reach = _tiers[tier].MaxDistance;
+            int coarsest = float.IsPositiveInfinity(reach)
+                ? _tiers.Length - 1
+                : PickLod(reach + chunkSize + DefaultHysteresis);
+            return MathF.Max(MinSkirtDepth, cellFraction * (chunkSize / _tiers[coarsest].Resolution));
+        }
+
         /// <summary>The default tiers: the legacy 64/32/16 at 80 m/200 m (byte-identical meshes for existing callers),
         /// extended with an 8-segment tier out to 500 m, another to 1000 m, and a 4-segment tier beyond. The near
         /// three tiers reproduce today's behaviour exactly; the far tiers only engage past 200 m, where nothing
-        /// loaded before a far radius / decor ring is configured.</summary>
+        /// loaded before a far radius / decor ring is configured. The byte-identical claim is about the RESOLUTIONS,
+        /// which have not moved. What did move is the skirt depth a streamed chunk is meshed with, once it stopped
+        /// being flat (see <see cref="SkirtDepthFor"/>).</summary>
         public static TerrainLodConfig Default { get; } = new(
             new TerrainLodTier(64, 80f),
             new TerrainLodTier(32, 200f),

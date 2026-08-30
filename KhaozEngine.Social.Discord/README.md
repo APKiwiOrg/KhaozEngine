@@ -54,4 +54,20 @@ any local process writing non-IPC bytes into the same pipe) left the decoder wai
 was never coming, on a socket that stayed healthy, so presence silently stopped updating for the rest of the
 session with nothing thrown anywhere.
 
+## Ask-to-join is answered, not just surfaced
+
+A friend's "ask to join" arrives as a `JoinRequest` on `JoinRequestReceived`, and `Accept()` / `Reject()`
+send the answer back over the same IPC socket: accept writes `SEND_ACTIVITY_JOIN_INVITE`, which invites the
+requester into the local player's activity, and reject writes `CLOSE_ACTIVITY_REQUEST`, which closes the
+request so the asking friend's client stops waiting. Both name only the requesting user, with no pid in the
+args, unlike the `SET_ACTIVITY` family. Both work on the plain handshake, so neither needs an `AUTHORIZE`
+round trip.
+
+They are fire-and-forget: Discord sends no correlated reply, so nothing waits on one. That matters for the
+lifetime, because a game shows the player a prompt and answers whenever the player gets to it, which can be
+long after the request arrived. Answering a request whose session has since dropped (or whose provider has
+been disposed) writes nothing and throws nothing, the same best-effort shape as every other call here.
+Before this landed the request reached the game with a no-op respond callback, so whichever button the
+player pressed, nothing ever reached Discord (issue #162).
+
 Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).

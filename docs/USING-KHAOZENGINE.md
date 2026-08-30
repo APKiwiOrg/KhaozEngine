@@ -5827,6 +5827,9 @@ social.SetElapsedPresence(new RichPresence { Details = "In Game", State = "Boss 
 // One-click "Join Game" from a friend's profile (needs a JoinSecret on the presence):
 social.JoinRequested += secret => myNetcode.JoinFromSecret(secret);
 
+// The other direction, a friend ASKING to join you. Answer whenever the player gets to the prompt:
+social.JoinRequestReceived += request => myUi.ShowAskToJoin(request);  // request.Accept() / request.Reject()
+
 // Pump once per frame, and dispose at shutdown. Update() also drives the connect retry.
 social.Update();
 ```
@@ -5837,6 +5840,13 @@ The Discord backend talks to the local Discord client over its IPC socket (Windo
 socket) with zero native libraries, and while Discord is not running the provider stays disconnected and
 every call is a silent no-op. The native Discord Social SDK (friends/lobbies/voice) is out of scope and
 would be a separate opt-in backend behind the same `ISocialProvider`.
+
+`JoinRequest.Accept()` / `Reject()` really answer the asking friend: the Discord backend writes
+`SEND_ACTIVITY_JOIN_INVITE` or `CLOSE_ACTIVITY_REQUEST` back over the same IPC socket, naming the requester.
+Both are idempotent, so only the first call on a given request lands. Both are also best-effort, which is
+what makes them safe to wire straight to a UI button: the player answers on their own schedule, and a
+request answered after Discord went away (or after the provider was disposed) sends nothing and throws
+nothing rather than faulting the game's UI flow.
 
 ### Connecting is retried, so launching before Discord does still gets presence
 

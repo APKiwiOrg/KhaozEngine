@@ -68,9 +68,13 @@ public sealed class DiscordSocialProvider : ISocialProvider
 
     private void OnJoinRequestUser(SocialUser requester)
     {
-        // The engine cannot answer ask-to-join over the current IPC subset, so the request is surfaced
-        // for the game; Accept/Reject is a no-op respond callback until a reply path is added.
-        JoinRequestReceived?.Invoke(new JoinRequest(requester, respond: null));
+        // Answer over IPC: accept sends SEND_ACTIVITY_JOIN_INVITE, reject sends CLOSE_ACTIVITY_REQUEST,
+        // both naming this requester. The id is captured rather than the SocialUser so the delegate holds
+        // only what the reply needs, and the game may hold the request across a disconnect (or past
+        // Dispose), where responding is a silent no-op rather than a throw.
+        string requesterId = requester.Id;
+        JoinRequestReceived?.Invoke(
+            new JoinRequest(requester, accept => client.RespondToJoinRequest(requesterId, accept)));
     }
 
     public void Dispose()

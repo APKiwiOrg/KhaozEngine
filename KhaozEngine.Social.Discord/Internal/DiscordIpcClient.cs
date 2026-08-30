@@ -95,6 +95,37 @@ internal sealed class DiscordIpcClient : IDisposable
         }
     }
 
+    /// <summary>
+    /// Answer an inbound ask-to-join: accept invites the requester into the local activity, reject closes
+    /// the request so the asking friend stops waiting. Fire and forget, like the reference implementation -
+    /// Discord sends no correlated reply, and <see cref="HandleFrame"/> drops every non-dispatch frame, so
+    /// there is nothing here to wait on. Works on the plain handshake, no AUTHORIZE round trip.
+    /// </summary>
+    /// <remarks>
+    /// The game answers from its own UI, which is an unbounded time after the request arrived, so the
+    /// session is routinely gone by then. A dead connection is therefore a silent no-op rather than a
+    /// failure: the same best-effort shape as <see cref="SetActivity"/>, and never a throw into game code.
+    /// </remarks>
+    public void RespondToJoinRequest(string userId, bool accept)
+    {
+        if (!IsConnected || string.IsNullOrEmpty(userId))
+        {
+            return;
+        }
+
+        try
+        {
+            string payload = accept
+                ? DiscordIpcPayloads.AcceptJoinRequest(userId, NextNonce())
+                : DiscordIpcPayloads.RejectJoinRequest(userId, NextNonce());
+            WriteFrame(DiscordIpcOpcode.Frame, payload);
+        }
+        catch (Exception)
+        {
+            Disconnect();
+        }
+    }
+
     public void Pump()
     {
         if (!IsConnected)

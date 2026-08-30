@@ -18,7 +18,10 @@ Steam/other later) for rich presence, local identity, and join/invite. Depends o
   `SmallImage` (`PresenceImage`), `Party` (`PresenceParty`), `JoinSecret`/`SpectateSecret`, `Buttons`
   (`PresenceButton`). Empty fields are omitted by the backend.
 - **`SocialUser`** - `Id`, `Username`, `GlobalName` (the local platform identity).
-- **`JoinRequest`** - an inbound ask-to-join; `Accept()` / `Reject()`.
+- **`JoinRequest`** - an inbound ask-to-join. `Accept()` / `Reject()` answer it on the backend, and both
+  are idempotent (only the first call lands) and best-effort. A game answers from its own UI, an
+  unbounded time after the request arrived, so answering once the platform connection has dropped is a
+  silent no-op rather than a throw.
 - **`NullSocialProvider`** - silent no-op default (headless / no backend). The controller reads it as a
   deliberate opt-out and never arms its connect retry for it.
 - **`SocialPresenceController`** - the orchestrator games use. `Initialize()`, `Retry()`, `State`,

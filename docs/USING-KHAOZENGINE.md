@@ -11848,6 +11848,38 @@ has since taken its slot.
 
 ---
 
+## Angle math (`MathUtil.WrapAngle` / `DeltaAngle` / `MoveTowardsAngle` / `LerpAngle`)
+
+Turret aim, character facing, camera lookat and any other "turn toward a heading" all need the same two
+things: keep an accumulated angle bounded, and take the shortest way round. `MathUtil`
+(`KhaozEngine.Primitives`) has them, so a game does not hand-roll a `WrapPi`:
+
+```csharp
+float yaw = MathUtil.WrapAngle(yaw + spinPerSecond * dt);        // never grows without bound
+
+// Turn toward a target heading at a bounded rate (frame-rate independent).
+float desired = MathF.Atan2(toTarget.X, toTarget.Z);
+turretYaw = MathUtil.MoveTowardsAngle(turretYaw, desired, maxTurnRate * dt);
+
+float error = MathUtil.DeltaAngle(turretYaw, desired);           // shortest signed error, for a fire gate
+if (MathF.Abs(error) < 0.02f) Fire();
+
+float blended = MathUtil.LerpAngle(previousYaw, currentYaw, alpha);   // presentation smoothing
+```
+
+Every one of them returns radians in the half-open interval `(-pi, pi]`: exactly `-pi` comes back as `+pi`,
+exactly `+pi` stays put. `DeltaAngle(from, to)` is the shortest signed rotation, so 350 degrees to 10 degrees
+is `+20`, not `-340`, and two exact opposites resolve to `+pi`. `MoveTowardsAngle` never overshoots, and a
+non-positive `maxDelta` is a zero step that HOLDS the current heading (wrapped) rather than snapping to the
+target. `LerpAngle` walks the short arc, so halfway between 350 and 10 degrees is 0 rather than 180, and its
+`t` is unclamped like `Lerp`.
+
+`CharacterFacing.TurnTowards` / `CharacterFacing.WrapAngle` (`KhaozEngine.Game.Render3D`) stay as they are:
+they take a `Vector3` intended direction rather than a target angle, and they live in the Game3D umbrella, so
+a 2D game cannot reach them. `MathUtil` is the reachable-from-anywhere version.
+
+---
+
 ## Wall-clock periodic rewards (`KhaozEngine.Progression`)
 
 `WallClockRewardSchedule` (a pure `readonly struct`) answers "is a periodic reward available now?" against

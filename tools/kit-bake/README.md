@@ -20,30 +20,28 @@ npm install
 `@gltf-transform/functions`, `meshoptimizer`, and `sharp`, with `package-lock.json` committed for a
 reproducible install. `node_modules/` is gitignored, never committed.
 
-`package.json` also carries an `overrides` block collapsing every `sharp` in the tree onto the one this
-tool pins:
+**The tree must hold exactly one `sharp`.** `@gltf-transform/functions` reaches `ndarray-pixels`, which
+asks for `sharp@^0.35.0` as of 5.2.0, so npm dedupes it onto the copy this tool pins. Confirm that after
+any dependency change:
 
-```json
-"overrides": {
-  "sharp": "$sharp"
-}
+```
+npm ls sharp
 ```
 
-Without it npm installs a **second, nested** `sharp` under `node_modules/ndarray-pixels/`, because
-`@gltf-transform/functions` reaches `ndarray-pixels`, which still asks for `sharp@^0.34.0`. That nested
-copy is what carried GHSA-f88m-g3jw-g9cj (four high-severity libvips CVEs fixed in `sharp` 0.35.0), and
-Dependabot could not fix it on its own: the only resolution it could find was downgrading
-`@gltf-transform/functions` to 3.4.2, so its update run failed with `security_update_not_possible` rather
-than opening a PR. The override is the documented npm escape hatch for exactly that shape. `$sharp` means
-"whatever the direct dependency above pins", so bumping `sharp` in `dependencies` carries the override
-with it and there is no second version number to keep in sync.
+It must print a single `sharp@0.35.3`, the `ndarray-pixels` line marked `deduped`, and no nested
+`node_modules/ndarray-pixels/node_modules/sharp`.
 
-`ndarray-pixels` only calls `sharp(buf).ensureAlpha().raw().toBuffer()` and
-`sharp(data, { raw }).toFormat(...).toBuffer()`, both unchanged across 0.34 to 0.35, and `bake.mjs`
-already hands its own top-level `sharp` to `textureCompress` as the encoder. Re-baking the seven kits in
-`foliage-map.json` after the override lands reproduces the committed glbs byte-for-byte.
+A second, nested `sharp` is the failure to watch for. `ndarray-pixels` up to 5.0.1 asked for
+`sharp@^0.34.0`, and the 0.34 copy npm installed for it carried GHSA-f88m-g3jw-g9cj (four high-severity
+libvips CVEs fixed in `sharp` 0.35.0). Dependabot could not resolve that on its own: the only fix it
+could find was downgrading `@gltf-transform/functions` to 3.4.2, so its update run failed with
+`security_update_not_possible` rather than opening a PR. This `package.json` therefore carried an
+`overrides` block (`"sharp": "$sharp"`) collapsing the tree onto the pinned version until upstream caught
+up. `ndarray-pixels@5.2.0` made it unnecessary and it was removed (#319). Do not add it back for a future
+recurrence without first trying to move the dependency that wants the old range.
 
-Drop the override once `ndarray-pixels` ships a release that asks for `sharp@^0.35`.
+Re-baking the seven kits in `foliage-map.json` reproduces the committed glbs byte-for-byte across that
+dependency change, and `cmp` against the committed outputs is the check for any future one.
 
 ## What it does
 

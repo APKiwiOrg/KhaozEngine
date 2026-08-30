@@ -12,5 +12,7 @@
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>
+    <!-- AdminEndpointOptions.ApplyLimits / Validate: tested against a bare KestrelServerLimits, no listener. -->
+    <InternalsVisibleTo Include="KhaozEngine.Server.Tests" />
   </ItemGroup>
 </Project>

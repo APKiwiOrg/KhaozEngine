@@ -14353,6 +14353,14 @@ json body" }`. An absent, empty, whitespace-only, or literal JSON-null request b
 null payload, so the common `payload?.GetProperty(...)` idiom is safe against a caller that posts nothing. Bind
 defaults to loopback. There are no changes to the game client wire protocol.
 
+**Pre-auth exposure.** The TLS handshake completes before the bearer token is read, so an unauthenticated peer can
+make the endpoint do RSA work and hold connections open regardless of the token. `AdminEndpointOptions` bounds that
+with `MaxConcurrentConnections` (default 64, Kestrel unlimited), `RequestHeadersTimeout` (default 10 s, Kestrel
+30 s, and the one that runs before the bearer check, so it is the slowloris bound) and `KeepAliveTimeout` (default
+30 s, Kestrel 130 s). Set any to `null` to leave Kestrel's own value. A non-positive value throws from the
+`AdminHttpServer` constructor rather than later inside Kestrel's start. Neither knob replaces the two real
+mitigations: keep the endpoint on loopback or behind a tunnel, and keep the token long and random.
+
 ### Client self-rescue / unstuck
 
 Let a normal game client ask the authoritative server to teleport **itself** to a server-decided safe spot (a

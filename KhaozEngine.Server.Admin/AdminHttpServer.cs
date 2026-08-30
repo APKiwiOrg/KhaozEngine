@@ -39,6 +39,8 @@ public sealed class AdminHttpServer : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(admin);
         ArgumentNullException.ThrowIfNull(options);
+        // Eagerly, so a bad limit throws HERE and not later inside Kestrel's lazily-invoked configure callback.
+        options.Validate();
 
         WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
         builder.Logging.ClearProviders();
@@ -47,7 +49,13 @@ public sealed class AdminHttpServer : IAsyncDisposable
         // endpoint's JSON options (not a blanket IncludeFields, which would change every other type's serialization).
         builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new Vector3JsonConverter()));
         builder.WebHost.ConfigureKestrel(k =>
-            k.Listen(options.BindAddress, options.Port, listen => listen.UseHttps(options.Certificate.Certificate)));
+        {
+            // Before the Listen, because these bound what an UNAUTHENTICATED peer can hold: the TLS handshake
+            // completes before the bearer check ever runs, so connection count and header/idle timeouts are the only
+            // pre-auth cost this endpoint can be made to pay.
+            options.ApplyLimits(k.Limits);
+            k.Listen(options.BindAddress, options.Port, listen => listen.UseHttps(options.Certificate.Certificate));
+        });
         app = builder.Build();
 
         byte[] expected = Encoding.UTF8.GetBytes("Bearer " + options.BearerToken);

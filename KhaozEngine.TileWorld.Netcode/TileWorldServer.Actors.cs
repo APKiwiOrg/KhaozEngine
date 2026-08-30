@@ -239,6 +239,11 @@ public sealed partial class TileWorldServer
         return true;
     }
 
+    // Who is locked onto this entity, out of the SAME tick's snapshot the target tiles come from, 0 when nobody
+    // is. Internal for the same reason TryGetTargetTile is: it is the snapshot rather than the world, and the one
+    // consumer is the actor decision pass, which hands it to behaviours as TileActorContext.TargetedBy.
+    internal long TargetedByOf(long netId) => combatTargets.TargetedBy(netId);
+
     // Writes one entity's server-only combat state. INTERNAL while its readers are, unlike the public read beside
     // it: the writers are the leash break, which drops the damage record so a broken fight cannot be re-acquired
     // from a stale one, the combat pass, which stamps the cooldown and the record itself, and the public

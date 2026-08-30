@@ -11,9 +11,11 @@ namespace KhaozEngine.Tests.TileNetcode;
 
 public class TileWanderBehaviourTests
 {
-    const float Dt = 0.25f;
+    // The helpers below are internal rather than private: TileActorStandTests drives the same harness for the
+    // stand-your-ground rule, the same cross-class pattern TileMoveSimulatorTests.FlatWorld already sets.
+    internal const float Dt = 0.25f;
 
-    static readonly TileActorDefinition Rat = new()
+    internal static readonly TileActorDefinition Rat = new()
     {
         Id = "rat",
         MaxHealth = 30,
@@ -23,7 +25,7 @@ public class TileWanderBehaviourTests
         RespawnDelayTicks = 6,
     };
 
-    sealed class ScriptedBehaviour : ITileActorBehaviour
+    internal sealed class ScriptedBehaviour : ITileActorBehaviour
     {
         public readonly List<TileActorContext> Seen = new();
         public TileActorIntent Next = TileActorIntent.Idle;
@@ -35,8 +37,8 @@ public class TileWanderBehaviourTests
         }
     }
 
-    static TileWorldServer Server(TileWorldDocument doc, INetTransport transport, TileCoord spawn, int seed = 1,
-        ITileActorBehaviour? behaviour = null)
+    internal static TileWorldServer Server(TileWorldDocument doc, INetTransport transport, TileCoord spawn,
+        int seed = 1, ITileActorBehaviour? behaviour = null)
     {
         var server = new TileWorldServer(transport, TileWorldServerTickTests.Config(spawn),
             TileMoveSimulatorTests.Bake(doc),
@@ -46,11 +48,11 @@ public class TileWanderBehaviourTests
         return server;
     }
 
-    static int Chebyshev(TileCoord a, TileCoord b) =>
+    internal static int Chebyshev(TileCoord a, TileCoord b) =>
         Math.Max(Math.Abs(a.X - b.X), Math.Abs(a.Z - b.Z));
 
     // A hit landing on an actor, written where the combat pass will write it: the damage record on TileCombatState.
-    static void Damage(TileWorldServer s, long netId, long attacker)
+    internal static void Damage(TileWorldServer s, long netId, long attacker)
     {
         Assert.True(s.Host.TryGetOwner(netId, out CellSim cell, out Entity e));
         Assert.True(cell.World.TryGet(e, out TileCombatState combat));

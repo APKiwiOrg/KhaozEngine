@@ -3,8 +3,8 @@ using System;
 namespace KhaozEngine.TileWorld.Netcode;
 
 /// <summary>
-/// The engine's DEFAULT actor behaviour: wander, leash, retaliate and chase, parameterised entirely by the
-/// definition. Shipping a default alongside the seam is deliberate. An engine with only the seam means the first
+/// The engine's DEFAULT actor behaviour: wander, leash, retaliate, chase and stand-your-ground, parameterised
+/// entirely by the definition. Shipping a default alongside the seam is deliberate. An engine with only the seam means the first
 /// monster in the first game is a hundred lines of pathfind-and-leash the second game rewrites, which is the
 /// fit-failure the engine-first rule exists to prevent, and an engine with only the default blocks the second
 /// monster the day it needs to do anything else.
@@ -12,9 +12,11 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// memory here would need a prune keyed on actors that died. The randomness comes from
 /// <see cref="TileActorContext.Rng"/>, which the engine derives fresh per actor per tick, so a replay of the same
 /// server from the same seed produces the same wander with nothing stored anywhere.</para>
-/// <para>The four rules, in the order they are asked, and the ORDER is the design. The leash outranks a live target,
+/// <para>The five rules, in the order they are asked, and the ORDER is the design. The leash outranks a live target,
 /// so a monster dragged far enough breaks off whatever it was doing. A held target outranks a new attacker, which is
-/// FIRST ATTACKER WINS and is the simplest rule that is not an aggro table. Wandering is what is left.</para>
+/// FIRST ATTACKER WINS and is the simplest rule that is not an aggro table. An incoming lock outranks wandering:
+/// an actor something has targeted stands its ground instead of drifting away from the fight. Wandering is what is
+/// left.</para>
 /// </summary>
 public sealed class TileWanderBehaviour : ITileActorBehaviour
 {
@@ -56,6 +58,13 @@ public sealed class TileWanderBehaviour : ITileActorBehaviour
         // RETALIATE. Reached only when no target is held, which IS the first-attacker-wins rule.
         if (context.LastDamagedBy != 0L && context.Tick - context.LastDamagedTick <= retaliateWindowTicks)
             return TileActorIntent.Attack(context.LastDamagedBy);
+
+        // STAND YOUR GROUND. Something is locked onto this actor and coming for it, so walking away is over: the
+        // route in flight is cancelled and no new wander starts while the lock holds. BELOW retaliate, so an actor
+        // the attacker has already hit answers back rather than waiting politely, and ABOVE wander, which is what
+        // makes the wait hold. What a player reads from this is "it saw me": the attack click freezes the monster
+        // where it is instead of letting it drift one more walk cycle before the first blow lands.
+        if (context.TargetedBy != 0L) return TileActorIntent.Stand;
 
         // WANDER.
         if (context.Walking || definition.WanderRadius <= 0) return TileActorIntent.Idle;

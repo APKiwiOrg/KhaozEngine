@@ -206,7 +206,8 @@ public sealed class TileActorHost
             LastDamagedTick: combat.LastDamagedTick,
             Walking: !state.Route.IsIdle || state.IsStepping,
             Tick: tick,
-            Rng: TileActorRandom.For(Seed, netId, tick));
+            Rng: TileActorRandom.For(Seed, netId, tick),
+            TargetedBy: server.TargetedByOf(netId));
 
         TileActorIntent intent = Behaviour.Decide(context);
         switch (intent.Kind)
@@ -244,6 +245,16 @@ public sealed class TileActorHost
                 if (state.CombatTarget == 0L && !state.Route.IsIdle && state.Route.End.Equals(home))
                     return TileCommand.Continue(mode);
                 return TileCommand.WalkTo(home, mode);
+            case TileActorIntentKind.Stand:
+                // The fight this actor is standing for is about to happen, so a pending arrival restore is
+                // cancelled exactly as an Attack's is: a monster interrupted on its walk home is back in play.
+                if (spawner is not null) spawner.Returning = false;
+                // Cancelled through the one stepper: a walk to the tile the actor already stands on just stands
+                // (BeginWalk's own rule). Issued only while a route is live, mirroring the Break memo above, so a
+                // standing actor re-deciding Stand every tick costs nothing. A step already in flight finishes on
+                // its own cadence either way, which is the lattice invariant rather than a compromise.
+                if (!state.Route.IsIdle) return TileCommand.WalkTo(state.Tile, mode);
+                return TileCommand.Continue(mode);
             default:
                 return TileCommand.Continue(mode);
         }

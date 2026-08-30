@@ -33,10 +33,16 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// nothing is ever <see cref="Migrating"/> when this runs and the window is zero. A networked <c>ICellLink</c>
 /// spans calls by design, and then a target mid-handoff is unresolvable for a tick or more and a fight would break
 /// silently whenever the target crossed a region boundary.</para>
+/// <para>The same walk also snapshots the REVERSE of every combat lock: <see cref="TargetedBy"/> answers who is
+/// locked onto an entity, out of the same tick-start view the tiles come from, so an actor deciding whether to
+/// stand its ground reads the same instant every other consumer of this snapshot does. It is on this concrete type
+/// rather than on <see cref="ITileTargets"/>, because the interface is the target-tile seam both heads share and
+/// only the server's decision pass has any business asking who the attackers are.</para>
 /// </summary>
 public sealed class TileEntityTargets : ITileTargets
 {
     readonly Dictionary<long, TileCoord> tiles = new();
+    readonly Dictionary<long, long> attackerByTarget = new();
     RefAction<NetId>? capture;
     World? captureWorld;
 
@@ -63,6 +69,7 @@ public sealed class TileEntityTargets : ITileTargets
         ArgumentNullException.ThrowIfNull(cells);
         capture ??= Capture;
         tiles.Clear();
+        attackerByTarget.Clear();
         for (int i = 0; i < cells.Count; i++)
         {
             captureWorld = cells[i].World;
@@ -85,6 +92,14 @@ public sealed class TileEntityTargets : ITileTargets
         return true;
     }
 
+    /// <summary>Who holds <paramref name="netId"/> as a combat target in this tick's snapshot, 0 when nobody
+    /// does. Where several entities hold it, the LOWEST net id answers, which is deterministic whatever order
+    /// the cells were walked in, and net ids are assigned in spawn order so the answer approximates the
+    /// earliest arrival. This is the read the default behaviour's stand-your-ground rule rides: an actor that
+    /// knows something has locked onto it can stop walking away before the first blow lands.</summary>
+    /// <param name="netId">The entity being asked about as a TARGET.</param>
+    public long TargetedBy(long netId) => attackerByTarget.TryGetValue(netId, out long attacker) ? attacker : 0L;
+
     // The RAW component, deliberately, and this is the one read in the package that may skip
     // TileProtocol.AssembleMoveState: the rule that helper exists for is about Route, and nothing here reads a route.
     // Tile is correct on the raw component on every tick including the one after a handoff.
@@ -92,6 +107,12 @@ public sealed class TileEntityTargets : ITileTargets
     {
         World world = captureWorld!;
         if (world.Has<Ghost>(e) || world.Has<Migrating>(e)) return;
-        if (world.TryGet(e, out TileMoveState state)) tiles[id.Value] = state.Tile;
+        if (!world.TryGet(e, out TileMoveState state)) return;
+        tiles[id.Value] = state.Tile;
+        // The reverse of the lock, built in the same walk the tiles are. The min rule is what keeps the
+        // answer independent of cell and ECS iteration order, which nothing here may depend on.
+        if (state.CombatTarget == 0L) return;
+        if (!attackerByTarget.TryGetValue(state.CombatTarget, out long held) || id.Value < held)
+            attackerByTarget[state.CombatTarget] = id.Value;
     }
 }

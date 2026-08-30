@@ -185,20 +185,24 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   because a query over the tag cannot see the one actor that most needs the write.
 - **`ITileActorBehaviour`** / **`TileActorIntent`** / **`TileActorIntentKind`** / **`TileActorContext`** - the one
   decision seam. An intent names a TILE (`WalkTo`), a TARGET (`Attack`), `Break` (drop the target, walk home, and
-  drop the damage record with it) or `Idle`, and never a route, a step, a facing or a tick. The context is a
+  drop the damage record with it), `Stand` (cancel the route, hold the tile, KEEP the damage record: waiting for
+  a fight rather than giving one up) or `Idle`, and never a route, a step, a facing or a tick. The context is a
   TICK-START view (the actor's tile, its home, its definition, its health, its target's tile through the same
-  per-tick snapshot the follow reads, its damage record, whether it is walking, the tick and its own random
-  stream), so no actor's decision can depend on another having moved first. One instance is SHARED by every actor,
-  as a simulator is, so a game that wants different behaviour per monster dispatches on `Definition.Kind` inside
-  one implementation.
+  per-tick snapshot the follow reads, its damage record, whether it is walking, who is locked onto IT
+  (`TargetedBy`, lowest net id when several are, one tick behind a freshly accepted attack), the tick and its own
+  random stream), so no actor's decision can depend on another having moved first. One instance is SHARED by every
+  actor, as a simulator is, so a game that wants different behaviour per monster dispatches on `Definition.Kind`
+  inside one implementation.
 - **`TileActorRandom`** - a splitmix64 value type, `For(seed, netId, tick)`, so a behaviour needs no per-actor
   storage and a replay reproduces every draw. Deliberately not `System.Random`, whose sequence is not stable
   across .NET releases. **It MUTATES, and the context hands it over an `in` parameter, so copy it to a local and
   draw from the copy**: `context.Rng.Next(10)` called twice takes a defensive copy each time and hands back the
   identical number, silently and deterministically.
 - **`TileWanderBehaviour`** - the engine's shipped default and the thing to replace rather than to extend: leash,
-  chase, retaliate, wander, in that order, stateless. Not installed by any constructor, so an actor with no
-  behaviour stands exactly where it was put.
+  chase, retaliate, stand-your-ground, wander, in that order, stateless. The stand rule is the feel fix a click
+  game wants: an actor something has locked onto stops walking away before the first blow lands, instead of
+  finishing the wander leg it had rolled. Not installed by any constructor, so an actor with no behaviour stands
+  exactly where it was put.
 - **`ITileCombatRules`** / **`TileAttackContext`** / **`TileAttackOutcome`** - where the GAME plugs into the hit
   pipeline. The engine owns whether a swing is DUE (the cooldown) and whether it is LEGAL (adjacency through
   `TileReach`). This owns what it DOES. `Roll` is called once per eligible attacker per tick, in the engine's fixed

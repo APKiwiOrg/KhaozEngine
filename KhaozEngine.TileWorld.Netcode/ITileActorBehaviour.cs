@@ -20,6 +20,17 @@ public enum TileActorIntentKind : byte
     /// <see cref="TileCombatState.LastDamagedTick"/>), because a break that left it set would have a retaliating
     /// behaviour re-acquire the same attacker on the first tick the actor was back inside its leash.</para></summary>
     Break = 3,
+
+    /// <summary>Stop walking and hold this tile. Any route in flight is cancelled through the one stepper (a walk
+    /// to the tile the actor already stands on just stands), the step already under way finishes on its own
+    /// cadence, and the damage record is KEPT, which is what separates standing from <see cref="Break"/>: an actor
+    /// that stands is waiting for a fight, not giving one up.
+    /// <para>The mechanical walk-to-self carries a walk's own rule with it: a combat target held while standing is
+    /// dropped, exactly as a player's walk drops one. The default behaviour never stands while it holds a target
+    /// (the chase outranks it), so this only matters to a custom behaviour, and one that wants to hold a lock
+    /// while stationary should keep issuing <see cref="Attack"/> at it instead: the follow already stands still
+    /// when it is in reach.</para></summary>
+    Stand = 4,
 }
 
 /// <summary>
@@ -45,6 +56,9 @@ public readonly record struct TileActorIntent(TileActorIntentKind Kind, TileCoor
 
     /// <summary>Drop the target and go home.</summary>
     public static TileActorIntent Break => new(TileActorIntentKind.Break, default, 0L);
+
+    /// <summary>Stop walking and hold this tile, keeping the damage record.</summary>
+    public static TileActorIntent Stand => new(TileActorIntentKind.Stand, default, 0L);
 }
 
 /// <summary>
@@ -80,6 +94,12 @@ public readonly record struct TileActorIntent(TileActorIntentKind Kind, TileCoor
 /// destination every tick would never arrive at one, so this is the field that stops it.</param>
 /// <param name="Tick">The server tick being decided.</param>
 /// <param name="Rng">Its own deterministic stream for this tick. Copy it to a local and draw from the copy.</param>
+/// <param name="TargetedBy">The net id locked onto THIS actor in this tick's snapshot, 0 when nothing is. The
+/// lowest id answers when several hold it, deterministically. This is what lets a behaviour react to a fight that
+/// is COMING rather than only to one that has landed: the default behaviour stands its ground on it. One tick
+/// behind a freshly accepted Attack command, because it is read from the tick-start snapshot every other combat
+/// answer comes from. Positionally last, after <paramref name="Rng"/> rather than with the other combat fields,
+/// only because a defaulted addition must trail: construct this record with named arguments.</param>
 public readonly record struct TileActorContext(
     long NetId,
     TileCoord Tile,
@@ -93,7 +113,8 @@ public readonly record struct TileActorContext(
     long LastDamagedTick,
     bool Walking,
     long Tick,
-    TileActorRandom Rng);
+    TileActorRandom Rng,
+    long TargetedBy = 0L);
 
 /// <summary>
 /// The one seam a game plugs an actor's decisions into. The engine owns the tick scheduling and the movement, this

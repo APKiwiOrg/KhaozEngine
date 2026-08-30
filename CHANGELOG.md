@@ -94,6 +94,20 @@ Core and tools:
 - The PixelLab sheet assembler deletes its extraction directory when a load throws, so failed runs stop
   orphaning temp directories ([#188](https://github.com/APKiwiOrg/KhaozEngine/issues/188)).
 
+TileWorld.Netcode also gains the actor stand-your-ground rule, a Grimhollow playtest fix (a monster kept
+walking one more wander leg after the attack click and engaged mid-stride):
+
+- `TileActorContext.TargetedBy` (additive, defaulted, so existing construction compiles): who holds this
+  actor as a combat target, out of the same tick-start snapshot every other combat answer comes from, the
+  lowest net id when several do. `TileEntityTargets.TargetedBy` is the underlying read, built in the same
+  per-tick walk as the target tiles.
+- `TileActorIntentKind.Stand` and `TileActorIntent.Stand`: cancel the route through the one stepper (a
+  walk to the tile the actor stands on just stands), let the step in flight finish on its own cadence,
+  and KEEP the damage record, which is what separates standing from `Break`.
+- `TileWanderBehaviour` answers an incoming lock with `Stand`, between retaliate and wander: an actor
+  something has targeted stops walking away before the first blow lands, retaliation still wins once a
+  hit has landed, and the leash still outranks everything.
+
 ## 18.3.1
 
 18.3.1 is the backlog fix wave: eight verified old defects, each found real by the 2026-08-30

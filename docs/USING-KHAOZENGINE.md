@@ -8736,7 +8736,7 @@ var rat = new TileActorDefinition
 };
 
 server.Actors.Add(rat, new TileCoord(70, 70, 0));          // the home tile, and the spawner's identity
-server.Actors.Behaviour = new TileWanderBehaviour(map);    // the shipped default: leash, chase, retaliate, wander
+server.Actors.Behaviour = new TileWanderBehaviour(map);    // the default: leash, chase, retaliate, stand, wander
 server.Actors.Seed = 20260827;                             // fixes every actor's random stream
 ```
 
@@ -8772,7 +8772,7 @@ sealed class GuardBehaviour(ITileActorBehaviour fallback) : ITileActorBehaviour
 }
 ```
 
-Four things about the context are worth knowing before writing one:
+Five things about the context are worth knowing before writing one:
 
 - **Every tile on it is a TICK-START tile**, the actor's own and its target's, resolved through the tick's own
   target snapshot. So no actor's decision can depend on another entity having already moved, and the ECS
@@ -8785,10 +8785,17 @@ Four things about the context are worth knowing before writing one:
   the leash unfireable and the wander an unbounded random walk.
 - **One behaviour instance is SHARED by every actor**, exactly as a simulator is, so an implementation that keeps
   per-actor state has to key it and prune it itself. `TileActorRandom` exists so the shipped default needs none.
+- **`TargetedBy` is who holds THIS actor as a combat target**, out of the same tick-start snapshot, the lowest
+  net id when several do, and one tick behind a freshly accepted attack command. It is what lets a behaviour
+  react to a fight that is COMING rather than only to one that has landed: the shipped default answers it with
+  `Stand`, so a monster a player has clicked stops walking away before the first blow.
 
 `TileActorIntentKind.Break` drops the target, walks home and restores the actor to full health when it ARRIVES,
 not when it breaks, and it drops the damage record with the target, because a break that left it set would have a
 retaliating behaviour re-acquire the same attacker on the first tick it was back inside its leash.
+`TileActorIntentKind.Stand` is the other way to stop: the route dies through the one stepper (a walk to the tile
+the actor is on just stands), the step in flight finishes on its own cadence, and the damage record is KEPT,
+because a standing actor is waiting for a fight rather than giving one up.
 
 Actors also carry their own pathfinder knobs. `TileWorldServerConfig.ActorMove` defaults to `MaxPathRadius = 12`
 against a player's 64, because `TilePathfinder.FindPath` allocates `(2r+1)^2` scratch entries per call, about

@@ -12208,6 +12208,31 @@ Both backends are opt-in siblings (not in any umbrella); add the one your game's
 See each package's README for the full API and [DEPENDENCY-SEAMS.md](DEPENDENCY-SEAMS.md) for the seam
 edges.
 
+### One catch for every backend
+
+Each backend throws its own `IdentitySignInException`, under its own namespace, so neither provider package
+depends on the other. Both derive from `KhaozEngine.Identity.SignInException`, the shared base in the core
+package, so a game that offers a choice of providers writes one catch clause against the core package alone:
+
+```csharp
+using KhaozEngine.Identity;
+
+try
+{
+    state = await session.SignInAsync(ct);
+}
+catch (SignInException ex)
+{
+    // Recoverable, whichever backend the player picked: show a retryable sign-in error.
+    ShowSignInError(ex.Message);
+}
+```
+
+Catch the provider type instead when the handling differs per backend. The base is named `SignInException`
+rather than `IdentitySignInException` deliberately: sign-in code imports `KhaozEngine.Identity` alongside a
+provider namespace, and a base sharing the providers' simple name would make every unqualified reference in
+those files ambiguous.
+
 ---
 
 ## Save data (`GameStorage`)

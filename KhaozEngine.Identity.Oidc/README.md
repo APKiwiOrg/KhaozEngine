@@ -43,6 +43,12 @@ authorization-code + PKCE flow, using the system browser and a local loopback re
   for the life of the process. On expiry `SignInAsync` throws `IdentitySignInException` and the listener is
   disposed on the way out. Set it to zero or negative to restore the unbounded wait and bound sign-in with
   your own cancellation token instead.
+- **IdentitySignInException** - this package's recoverable sign-in failure, thrown by every path above. It
+  derives from `KhaozEngine.Identity.SignInException`, the shared base in the core package, so a game that
+  offers a choice of sign-in providers catches that one type instead of one per backend. Catch this type when
+  you need to know the OIDC backend specifically. The base carries a different simple name on purpose, so a
+  file importing `KhaozEngine.Identity` alongside this namespace still resolves the unqualified
+  `IdentitySignInException`.
 
 It is opt-in and not part of any umbrella package: reference it directly when a game wants generic
 OIDC sign-in (Auth0, Okta, Azure AD, or any standards-compliant OIDC provider). Discord and other

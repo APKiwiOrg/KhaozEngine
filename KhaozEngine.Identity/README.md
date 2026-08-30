@@ -16,6 +16,7 @@ Pluggable player-identity seam: provider sign-in + server-side verified-subject 
 - **SessionToken** - A stateless HMAC-SHA256 session token: mint it on the server after validating a credential, verify it on every subsequent request
 - **IdentitySession** - The client-side orchestrator: restores the cached session at launch (`RequiresSignIn` / `OfflineGrace` / `SignedIn`), drives interactive sign-in, renews a lapsed credential silently via `RefreshCredentialAsync`, and completes the exchange handshake via `AttachSessionTokenAsync`
 - **CredentialRefreshResult** / **CredentialRefreshOutcome** - The result of `RefreshCredentialAsync`: `Refreshed` (a new rotated credential, already persisted) or `Rejected` (a dead chain, fall back to interactive sign-in)
+- **SignInException** - The shared base every provider backend's sign-in failure derives from, so cross-provider code catches one type instead of one per backend
 
 Provider implementations (OIDC, Discord) are opt-in sibling packages. This core package depends only on `KhaozEngine.Diagnostics` and `KhaozEngine.Serialization`; it has no HTTP/ASP.NET dependency of its own.
 
@@ -53,6 +54,30 @@ A consumer that supports multiple providers at once builds its own lookup, e.g. 
 `IReadOnlyDictionary<string, IIdentityValidator>` keyed by provider id, and dispatches to
 `validator.ValidateAsync` for whichever provider the client used. `KhaozEngine.Identity` itself has no
 such registry: it is a pair of interfaces plus the orchestration types above, not a service locator.
+
+## One catch for every provider backend
+
+Each provider package throws its own `IdentitySignInException` (`KhaozEngine.Identity.Oidc`'s and
+`KhaozEngine.Identity.Discord`'s are separate types under their own namespaces, so neither package depends on
+the other). Both derive from `SignInException`, which lives here in the core package, so a game that offers a
+choice of sign-in providers writes one catch clause against the core package alone:
+
+```csharp
+try
+{
+    state = await session.SignInAsync(ct);
+}
+catch (SignInException ex)
+{
+    // Recoverable, whichever backend the player picked: show a retryable sign-in error.
+    ShowSignInError(ex.Message);
+}
+```
+
+Code that does care which backend failed still catches the provider type. The base is named `SignInException`
+rather than `IdentitySignInException` on purpose: a consumer's sign-in file imports `KhaozEngine.Identity`
+alongside a provider namespace, and a base sharing the providers' simple name would make every unqualified
+reference in those files ambiguous.
 
 ## Durable silent refresh
 

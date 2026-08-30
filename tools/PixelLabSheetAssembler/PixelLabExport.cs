@@ -13,7 +13,8 @@ namespace PixelLabSheetAssembler;
 /// <summary>
 /// IO boundary: resolves a PixelLab character export (zip or unzipped dir), parses metadata.json,
 /// and loads the chosen animation's frames. Returns the parsed animation plus, when a zip was
-/// extracted, the temp directory the caller must delete.
+/// extracted, the temp directory the caller must delete. A load that throws deletes its own
+/// extraction first, since the caller never receives a path it can clean up.
 /// </summary>
 public static class PixelLabExport
 {
@@ -37,6 +38,25 @@ public static class PixelLabExport
             throw new AssemblyException($"input not found or not a .zip / directory: {input}");
         }
 
+        try
+        {
+            return (LoadFrom(root, input, animName), temp);
+        }
+        catch
+        {
+            // An extracted directory only reaches the caller through the return above, so a throw from here leaves
+            // the caller's cleanup with nothing to delete. Every failed run would otherwise orphan another
+            // pixellab_* directory, the unknown --anim case included, whose own message invites another attempt.
+            if (temp is not null)
+            {
+                try { Directory.Delete(temp, recursive: true); } catch { /* best effort, same as Program.cs */ }
+            }
+            throw;
+        }
+    }
+
+    private static CharacterAnimation LoadFrom(string root, string input, string animName)
+    {
         string metaPath = Path.Combine(root, "metadata.json");
         if (!File.Exists(metaPath))
         {
@@ -74,7 +94,7 @@ public static class PixelLabExport
             byDir[dirProp.Name] = list;
         }
 
-        return (new CharacterAnimation(charName, animName, byDir), temp);
+        return new CharacterAnimation(charName, animName, byDir);
     }
 
     private static int ParseIndex(string path)

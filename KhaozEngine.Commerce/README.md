@@ -28,7 +28,7 @@ Provides a foundational wallet system with:
 | `IProductCatalog`, `InMemoryProductCatalog`, `ProductDefinition` | Maps a product id to `(CurrencyId, AmountPerUnit)`. |
 | `VerifiedEntitlement`, `EntitlementProof`, `IEntitlementValidator` | Turns an untrusted external proof into a verified, account-resolved entitlement (or null). |
 | `IGrantScheduleStore` | Persists the next-available instant per `(account, rewardId)` for `PeriodicGrant`. |
-| `PeriodicGrant`, `PeriodicGrantResult` | Server-clock daily/periodic reward: `TryClaimAsync(account, serverNowUtc)`. |
+| `PeriodicGrant`, `PeriodicGrantResult` | Server-clock daily/periodic reward: `TryClaimAsync(account, serverNowUtc)`. The `rewardId` may not contain `':'` (the idempotency key's segment separator), while the account id still may. |
 
 ## Quick Start
 

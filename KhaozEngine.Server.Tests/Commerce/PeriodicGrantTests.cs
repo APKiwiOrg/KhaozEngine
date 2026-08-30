@@ -129,6 +129,40 @@ public class PeriodicGrantTests
         }
     }
 
+    /// <summary>The idempotency key is three colon-separated segments, so the FIRST one has to be colon-free or the
+    /// split is ambiguous and two different (rewardId, account) pairs can address one key. The account segment does
+    /// not need the same rule: it sits between the reward and a suffix that is itself colon-free ("bootstrap" or a
+    /// decimal tick count), so the first and last colons bound it however many it contains. Rejecting here rather
+    /// than escaping is what keeps the encoding byte-identical for every key already in a wallet ledger, and the
+    /// fleet's account ids ("acct:1") are full of colons.</summary>
+    [Theory]
+    [InlineData("daily:extra")]
+    [InlineData(":daily")]
+    [InlineData("daily:")]
+    public void Reward_id_carrying_the_key_separator_is_rejected(string rewardId)
+    {
+        InMemoryWalletStore store = new();
+        Wallet wallet = new(store, new InMemoryProductCatalog(Array.Empty<ProductDefinition>()));
+        Assert.Throws<ArgumentException>(
+            () => new PeriodicGrant(wallet, store, TimeSpan.FromHours(24), rewardId, Shard, 1));
+    }
+
+    /// <summary>The other half of that choice: a colon-bearing ACCOUNT id keeps producing the exact key it always
+    /// did, so an upgraded server still reads its own ledger. An escaping encoding would have rewritten every one of
+    /// these and handed every account one more bootstrap grant on the changeover.</summary>
+    [Fact]
+    public async Task A_colon_bearing_account_id_keys_exactly_as_it_did_before()
+    {
+        InMemoryWalletStore store = new();
+        Wallet wallet = new(store, new InMemoryProductCatalog(Array.Empty<ProductDefinition>()));
+        PeriodicGrant grant = new(wallet, store, TimeSpan.FromHours(24), "dailyShard", Shard, 1);
+
+        Assert.True((await grant.TryClaimAsync(A, T0)).Granted);
+
+        LedgerEntry row = Assert.Single(await store.GetLedgerAsync(A, Shard, 10));
+        Assert.Equal("dailyShard:acct:1:bootstrap", row.IdempotencyKey);
+    }
+
     /// <summary>A schedule store whose write is never visible to a later read: models the bootstrap window
     /// where a concurrent first claim's <c>SetNextAvailableAsync</c> has not landed yet, so both reads see null.</summary>
     private sealed class AlwaysNullScheduleStore : IGrantScheduleStore

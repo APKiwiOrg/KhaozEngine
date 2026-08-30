@@ -30,7 +30,13 @@ authorization-code + PKCE flow, using the system browser and a local loopback re
   or branded page here (the identity packages do not reference the localization catalog, so the page is
   caller-supplied).
 - **OidcProviderOptions** - authority, client id, scopes (default `openid profile email`), loopback port,
-  and HTTP timeout.
+  and HTTP timeout. The **authority must be `https`**: discovery reads the `token_endpoint` out of the
+  document it fetches, so a plain-http authority would put the PKCE `code_verifier` on the wire on the way
+  out and the `id_token`/`refresh_token` on the way back. `OidcClientProvider` refuses a non-https authority
+  with `IdentitySignInException` before any request leaves the process (so before the browser launches), on
+  both the sign-in and the refresh path. `AllowInsecureLoopbackAuthority` is the local-dev opt-out: with it
+  set, a plain-`http` authority is accepted only when its host is a loopback address (`localhost`,
+  `127.0.0.0/8`, `::1`), never for a remote host.
 
 It is opt-in and not part of any umbrella package: reference it directly when a game wants generic
 OIDC sign-in (Auth0, Okta, Azure AD, or any standards-compliant OIDC provider). Discord and other

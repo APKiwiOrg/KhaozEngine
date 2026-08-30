@@ -90,6 +90,8 @@ public sealed class OidcClientProvider(
 
     private async Task<(string authorizationEndpoint, string tokenEndpoint)> DiscoverAsync(CancellationToken ct)
     {
+        RequireSecureAuthority();
+
         string metadataUrl = options.Authority.TrimEnd('/') + "/.well-known/openid-configuration";
         using HttpResponseMessage response = await http.GetAsync(new Uri(metadataUrl), ct).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
@@ -142,6 +144,29 @@ public sealed class OidcClientProvider(
         DateTimeOffset expiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(ReadExpiresInSeconds(doc.RootElement));
 
         return new ProviderCredential(ProviderId, idToken, refreshToken, expiresAtUtc);
+    }
+
+    /// <summary>Refuses a non-https <see cref="OidcProviderOptions.Authority"/> before any request leaves the
+    /// process. Discovery reads the <c>token_endpoint</c> out of the document it fetches, so a plain-http
+    /// authority puts the whole chain in cleartext: the PKCE <c>code_verifier</c> on the way out and the
+    /// <c>id_token</c>/<c>refresh_token</c> on the way back. This runs at the top of discovery, which both
+    /// <see cref="SignInAsync"/> and <see cref="RefreshAsync"/> go through, and before the browser launches.
+    /// <see cref="OidcProviderOptions.AllowInsecureLoopbackAuthority"/> is the local-dev opt-out, and it only
+    /// reaches a loopback host.</summary>
+    private void RequireSecureAuthority()
+    {
+        if (!Uri.TryCreate(options.Authority, UriKind.Absolute, out Uri? authority))
+            throw new IdentitySignInException("OIDC authority is not an absolute URL");
+
+        if (authority.Scheme == Uri.UriSchemeHttps)
+            return;
+
+        if (options.AllowInsecureLoopbackAuthority && authority.Scheme == Uri.UriSchemeHttp && authority.IsLoopback)
+            return;
+
+        throw new IdentitySignInException(
+            $"OIDC authority must be https (got {authority.Scheme}). Set AllowInsecureLoopbackAuthority " +
+            "to allow a plain-http authority on a loopback host for local development.");
     }
 
     /// <summary>Reads a successful response body as JSON. A 200 whose body is not JSON at all (an HTML

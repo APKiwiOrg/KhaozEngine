@@ -237,6 +237,80 @@ public class OidcClientProviderTests
         await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
     }
 
+    /// <summary>#170: a plain-http authority put the PKCE verifier and the returned tokens on the wire in
+    /// cleartext. Nothing checked the scheme, so the refusal has to come before any request goes out (which is
+    /// also before the browser launches).</summary>
+    [Theory]
+    [InlineData("http://issuer.test")]
+    [InlineData("http://localhost:8080")]
+    [InlineData("not-a-url")]
+    public async Task SignIn_refuses_a_non_https_authority(string authority)
+    {
+        StateHolder holder = new();
+        FakeBrowser browser = new(holder);
+        FakeTokenHandler handler = new();
+        OidcClientProvider provider = new(
+            new OidcProviderOptions { Authority = authority, ClientId = "client-1", LoopbackPort = 12345 },
+            browser, _ => new FakeListener(holder), new HttpClient(handler));
+
+        await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
+        Assert.Null(browser.Launched);
+        Assert.Null(handler.SeenGrantType);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_refuses_a_non_https_authority()
+    {
+        OidcClientProvider provider = new(
+            new OidcProviderOptions { Authority = "http://issuer.test", ClientId = "client-1", LoopbackPort = 12345 },
+            new FakeBrowser(new StateHolder()), _ => new FakeListener(new StateHolder()),
+            new HttpClient(new FakeTokenHandler()));
+        ProviderCredential expired = new("oidc", "old-token", "old-refresh", DateTimeOffset.UnixEpoch);
+
+        await Assert.ThrowsAsync<IdentitySignInException>(
+            () => provider.RefreshAsync(expired, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SignIn_allows_a_loopback_http_authority_under_the_local_dev_opt_out()
+    {
+        StateHolder holder = new();
+        FakeBrowser browser = new(holder);
+        FakeTokenHandler handler = new();
+        OidcClientProvider provider = new(
+            new OidcProviderOptions
+            {
+                Authority = "http://127.0.0.1:8080",
+                ClientId = "client-1",
+                LoopbackPort = 12345,
+                AllowInsecureLoopbackAuthority = true,
+            },
+            browser, _ => new FakeListener(holder), new HttpClient(handler));
+
+        ProviderCredential cred = await provider.SignInAsync(CancellationToken.None);
+
+        Assert.Equal("the-id-token", cred.CredentialToken);
+    }
+
+    [Fact]
+    public async Task SignIn_opt_out_still_refuses_a_remote_http_authority()
+    {
+        StateHolder holder = new();
+        FakeBrowser browser = new(holder);
+        OidcClientProvider provider = new(
+            new OidcProviderOptions
+            {
+                Authority = "http://issuer.test",
+                ClientId = "client-1",
+                LoopbackPort = 12345,
+                AllowInsecureLoopbackAuthority = true,
+            },
+            browser, _ => new FakeListener(holder), new HttpClient(new FakeTokenHandler()));
+
+        await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
+        Assert.Null(browser.Launched);
+    }
+
     /// <summary>A captive portal (hotel/airport wifi) or a misconfigured reverse proxy answering 200 with an
     /// HTML interstitial in place of the discovery document.</summary>
     private sealed class HtmlDiscoveryHandler : HttpMessageHandler

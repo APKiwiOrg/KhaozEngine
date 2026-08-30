@@ -72,6 +72,18 @@ Rendering and effects:
   override now that `ndarray-pixels` 5.2.0 asks for the fixed line itself, re-baking the seven committed
   kits byte-for-byte ([#319](https://github.com/APKiwiOrg/KhaozEngine/issues/319)).
 
+- A length-prefixed built-in is walkable from `SnapshotBlobReader`: a second constructor takes
+  `Func<ushort, BinaryReader, int>` handed the reader at the frame's first payload byte, so a
+  self-describing built-in can report its total size, with the stream rewound so the frame re-emits
+  byte-identically. Additive, the id-only constructor is untouched
+  ([#354](https://github.com/APKiwiOrg/KhaozEngine/issues/354)).
+- The map editor's render-distance and window-radius coupling is documented from both ends, with the
+  boundary behaviour verified by a pinned test: a ring past a windowed tiled document meshes the
+  unauthored analytic base, neither clamped nor an error
+  ([#363](https://github.com/APKiwiOrg/KhaozEngine/issues/363)).
+- The `savesInFlight` overlapping-write guard in `SaveDirtyPass` gains the save-side test its load-side
+  twin has had since 16.6.0 ([#783](https://github.com/APKiwiOrg/KhaozEngine/issues/783)).
+
 ## 18.9.0
 
 18.9.0 is the fifth backlog wave plus TileWorld ground items, the drop half of a kill. It landed

@@ -5,6 +5,73 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.10.0
+
+18.10.0 is sixth backlog wave, seventeen sweep-verified items across Gui, Commerce, Netcode,
+NetWorld, Server.Admin, Primitives, Render3D, Render2D, Telegraphs, the showcase and two tools, each
+fixed with a test proven red against the unfixed code.
+
+Gui parity, the set SpaceGame's tooltip adoption was waiting on:
+
+- `Tooltip.Opacity` fades every colour the bubble paints, and `0` draws nothing
+  ([#245](https://github.com/APKiwiOrg/KhaozEngine/issues/245)). `TooltipAnchorMode` picks `Centered`
+  (the default, byte-identical) or `Offset` for cursor-style placement via
+  `TooltipMetrics.AnchorOffsetX` ([#246](https://github.com/APKiwiOrg/KhaozEngine/issues/246)).
+- `Dropdown.TextScale`, `TextInput.TextScale`, `TreeView.TextScale` and `ProgressBar.OverlayTextScale`,
+  each defaulting `1f` and scaling text only, with `TextInput` carrying the scale through all three
+  width terms it derives so a scaled field still carets and clips where it draws
+  ([#244](https://github.com/APKiwiOrg/KhaozEngine/issues/244)).
+- `GuiStyle` gains optional `HoverBorder`/`PressBorder`/`DisabledBorder`/`HoverText`/`PressText`
+  (`null` falls back), `Button.Opacity` mirrors `TabBar.Opacity`, and the private TabBar style fade is
+  promoted to the public `GuiStyle.Faded(float)` now also covering shadow and glow
+  ([#252](https://github.com/APKiwiOrg/KhaozEngine/issues/252)).
+
+Commerce and server:
+
+- A `PeriodicGrant` reward id may not contain `:`, making the idempotency key split unambiguous while
+  keeping every existing ledger key byte-identical (rejecting rather than escaping avoids a fleet-wide
+  extra bootstrap grant on upgrade, and the cross-account aliasing the issue feared was never reachable,
+  every backend scopes keys by account and currency)
+  ([#209](https://github.com/APKiwiOrg/KhaozEngine/issues/209)). `PeriodicGrant.ResetAsync` re-opens a
+  reward for a wiped-progress account by writing a schedule row rather than deleting one, proven across
+  all three stores ([#208](https://github.com/APKiwiOrg/KhaozEngine/issues/208)).
+- `DisconnectReason.Banned`: a drop after a ban notice attributes as `Banned` instead of `Unreachable`,
+  mirroring the shutdown gate, with reconnect policy deliberately unchanged
+  ([#251](https://github.com/APKiwiOrg/KhaozEngine/issues/251)).
+- `NetServer` takes an optional pending-connection cap (flood degrades to refused handshakes, observable
+  via `PendingConnectionCount`/`RefusedPendingConnectionCount`, forwarded by both world servers), and
+  `Disconnect(slot, reason)` rides the reason on the kick itself
+  ([#267](https://github.com/APKiwiOrg/KhaozEngine/issues/267)).
+- `AdminEndpointOptions` gains pre-auth hardening knobs (`MaxConcurrentConnections` 64,
+  `RequestHeadersTimeout` 10 s, `KeepAliveTimeout` 30 s) written onto Kestrel's limits
+  ([#268](https://github.com/APKiwiOrg/KhaozEngine/issues/268)).
+
+Rendering and effects:
+
+- `Scene3D.TerrainCastsShadows` (default `false`): splat-terrain chunks can join the cascade atlas
+  through the existing caster walk and per-cascade cull. Off is byte-identical. Measured on a 447-chunk
+  streamed frame: 447 extra candidates but only about 22 drawn per cascade after the cull, 0.22 ms of
+  extra shadow-pass encode ([#280](https://github.com/APKiwiOrg/KhaozEngine/issues/280)).
+- `MathUtil` gains `WrapAngle`, `DeltaAngle`, `MoveTowardsAngle` and `LerpAngle` on the half-open
+  `(-pi, pi]`, reachable from 2D games at last
+  ([#243](https://github.com/APKiwiOrg/KhaozEngine/issues/243)).
+- `Scene3D.GetOrLoadMesh`/`GetOrLoadSkinnedMesh`/`GetOrLoadTexture` cache by key with explicit
+  per-key unload and no self-eviction, so run restarts stop re-uploading the asset set
+  ([#250](https://github.com/APKiwiOrg/KhaozEngine/issues/250)).
+- `TelegraphFillPattern.MoltenCracks` plus `TelegraphStyle.AccentColor`/`PatternParam`/`EdgeErosion`,
+  all default-inert, with an enum-agreement guard on the decal cast
+  ([#229](https://github.com/APKiwiOrg/KhaozEngine/issues/229)). `BeamParams.JitterShape` adds the
+  `Jagged` bolt mode with `JitterSeed` and the `ElectricArc` preset, stateless as before (the pooled
+  transient emitter remains open as re-scoped
+  [#239](https://github.com/APKiwiOrg/KhaozEngine/issues/239)).
+- The showcase VFX room cycles `EssenceMotes` with an orbiting attractor target, and its roster is
+  pinned by reflection so the next preset cannot be silently missing
+  ([#258](https://github.com/APKiwiOrg/KhaozEngine/issues/258)). The file-size analyzer gains
+  CRLF-parity and relative-path message tests
+  ([#260](https://github.com/APKiwiOrg/KhaozEngine/issues/260)). `tools/kit-bake` drops its `sharp`
+  override now that `ndarray-pixels` 5.2.0 asks for the fixed line itself, re-baking the seven committed
+  kits byte-for-byte ([#319](https://github.com/APKiwiOrg/KhaozEngine/issues/319)).
+
 ## 18.9.0
 
 18.9.0 is the fifth backlog wave plus TileWorld ground items, the drop half of a kill. It landed

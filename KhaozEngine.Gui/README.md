@@ -25,6 +25,10 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   overloads), its `Pointer` (== `InputManager.Pointer`, so pointer-only and manager-driven widget updates share
   one click-through gate), and the raw `InputState`. Screens are ordered by `DrawOrder` ascending with a stable
   insert, so equal-`DrawOrder` screens keep insertion order and `Screens[^1]` is the visually-topmost.
+  `Remove` unloads the screen and leaves it in the terminal `Hidden` state with its exit request cleared, so a
+  screen pulled out mid-frame (its own transition-off completing, or another screen's `Update` removing it)
+  cannot get one more `Update` out of the loop's scratch copy after its content is gone. Re-adding that same
+  instance remounts it and re-runs its entry transition.
 - `Screen` - base UI surface: `Update(dt, receivesInput)` (returns whether it consumed input) + `Draw(SpriteBatch)`,
   with `DrawOrder` / `PassUpdateThrough` / `AlwaysReceivesInput` / transitions. **The dormant-overlay trap:** a
   screen that stays mounted all the time but is only sometimes showing something MUST return `false` from
@@ -219,7 +223,10 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     `Draw` throws while it is `Vector2.Zero` rather than silently pinning the menu into the corner, and throws
     too on a menu built through the measure-only `ContextMenu(ITextMeasurer, ITextMeasurer)` constructor, which
     exists so a headless test can drive the whole interaction with no GPU device and no baked font.
-  - `PopupPanel` - modal dialog: scrim + title + `PopupRow` content + dismiss/primary footer; blocks the pointer.
+  - `PopupPanel` - modal dialog: scrim + title + `PopupRow` content + dismiss/primary footer. `Update` reserves
+    the whole `ScrimRect` (the full viewport the scrim dims) through `Pointer.BlockRegion`, not just the panel,
+    so a click on the dimmed area cannot reach the UI underneath. That only matters when the popup is driven
+    directly in immediate mode: hosting it in a non-passthrough `Screen` already blocks everything below.
     Text is `LocalizedText`: `TitleContent` / `DismissContent` / `PrimaryActionContent` and the resolve-at-build
     `PopupRow.Header(LocalizedText)` / `Stat(LocalizedText, LocalizedText, ...)` factories (rebuild the rows to pick
     up a runtime locale switch). The former `Title` / `DismissText` / `PrimaryActionText` string members and the

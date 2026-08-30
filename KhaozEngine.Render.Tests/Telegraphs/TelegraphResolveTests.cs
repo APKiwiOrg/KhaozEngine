@@ -309,5 +309,129 @@ namespace KhaozEngine.Tests.Telegraphs
             }
         }
 
+        /// <summary>
+        /// The construction shape #126 asked for: every member is init-settable, so a caller names each one
+        /// instead of counting positions through a run of ten same-typed floats the compiler cannot order-check.
+        /// Distinct values throughout, so a member wired to the wrong backing slot shows up as a mismatch rather
+        /// than as two zeros agreeing with each other.
+        /// </summary>
+        [Fact]
+        public void Object_initializer_sets_every_member_by_name()
+        {
+            var r = new ResolvedTelegraph
+            {
+                FillColor = new Color(0.1f, 0.2f, 0.3f, 0.4f),
+                OutlineColor = new Color(0.5f, 0.6f, 0.7f, 0.8f),
+                FillFraction = 0.11f,
+                FlashAdd = 0.12f,
+                EdgeThickness = 3.5f,
+                FillMode = FillMode.OutlineAndFill,
+                Blend = TelegraphBlend.Additive,
+                FeatherFraction = 0.13f,
+                Pattern = TelegraphFillPattern.RadialNoise,
+                PatternSpeed = 0.14f,
+                PatternScale = 7.5f,
+                RimGlow = 0.15f,
+                SweepGlow = 0.16f,
+                Sparkle = 0.17f,
+                InteriorDim = 0.18f,
+                Runner = 0.19f,
+                BaseFill = 0.21f,
+                EdgeWidthWorld = 0.22f,
+                FeatherWidthWorld = 0.23f,
+                VoidFallback = true,
+                VoidDim = 0.24f,
+            };
+
+            Assert.Equal(new Color(0.1f, 0.2f, 0.3f, 0.4f), r.FillColor);
+            Assert.Equal(new Color(0.5f, 0.6f, 0.7f, 0.8f), r.OutlineColor);
+            Assert.Equal(0.11f, r.FillFraction, 5);
+            Assert.Equal(0.12f, r.FlashAdd, 5);
+            Assert.Equal(3.5f, r.EdgeThickness, 5);
+            Assert.Equal(FillMode.OutlineAndFill, r.FillMode);
+            Assert.Equal(TelegraphBlend.Additive, r.Blend);
+            Assert.Equal(0.13f, r.FeatherFraction, 5);
+            Assert.Equal(TelegraphFillPattern.RadialNoise, r.Pattern);
+            Assert.Equal(0.14f, r.PatternSpeed, 5);
+            Assert.Equal(7.5f, r.PatternScale, 5);
+            Assert.Equal(0.15f, r.RimGlow, 5);
+            Assert.Equal(0.16f, r.SweepGlow, 5);
+            Assert.Equal(0.17f, r.Sparkle, 5);
+            Assert.Equal(0.18f, r.InteriorDim, 5);
+            Assert.Equal(0.19f, r.Runner, 5);
+            Assert.Equal(0.21f, r.BaseFill, 5);
+            Assert.Equal(0.22f, r.EdgeWidthWorld, 5);
+            Assert.Equal(0.23f, r.FeatherWidthWorld, 5);
+            Assert.True(r.VoidFallback);
+            Assert.Equal(0.24f, r.VoidDim, 5);
+        }
+
+        /// <summary>An initializer that names nothing is the all-inert value, which is what makes a partial
+        /// initializer complete: the members it leaves out are exactly the ones the widest constructor used to
+        /// take as trailing zeros.</summary>
+        [Fact]
+        public void An_empty_initializer_is_the_inert_value()
+        {
+            var r = new ResolvedTelegraph();
+
+            Assert.Equal(0f, r.RimGlow);
+            Assert.Equal(0f, r.SweepGlow);
+            Assert.Equal(0f, r.Sparkle);
+            Assert.Equal(0f, r.Runner);
+            Assert.Equal(0f, r.BaseFill);
+            Assert.Equal(0f, r.EdgeWidthWorld);
+            Assert.Equal(0f, r.FeatherWidthWorld);
+            Assert.Equal(0f, r.VoidDim);
+            Assert.False(r.VoidFallback);
+            Assert.Equal(TelegraphFillPattern.Solid, r.Pattern);
+        }
+
+        /// <summary>
+        /// The transposition guard on the one production call site: every passthrough gets its own distinct
+        /// value, so a pair swapped inside Resolve fails here instead of silently drawing the wrong glow. The
+        /// flag-driven terms are separated by which flags are on rather than by value: RimGlow and EdgeSparkle
+        /// are set and OutlineRunner is not, so Runner has to be the zero and the other two must not be.
+        /// </summary>
+        [Fact]
+        public void Resolve_carries_each_style_input_to_its_own_member()
+        {
+            var s = TelegraphStyle.Generic;
+            s.FillMode = FillMode.OutlineAndFill;
+            s.Blend = TelegraphBlend.Additive;
+            s.Animation = TelegraphAnim.RimGlow | TelegraphAnim.EdgeSparkle;   // no OutlineRunner, no FillSweep
+            s.EdgeEnergy = 0.5f;
+            s.EdgeThickness = 3.25f;
+            s.FeatherWidth = 0.11f;
+            s.Pattern = TelegraphFillPattern.RadialNoise;
+            s.PatternSpeed = 0.22f;
+            s.PatternScale = 8.5f;
+            s.InteriorDim = 0.33f;
+            s.BaseFill = 0.44f;
+            s.EdgeWidthWorld = 0.055f;
+            s.FeatherWidthWorld = 0.066f;
+            s.VoidFallback = true;
+            s.VoidDim = 0.77f;
+
+            var r = TelegraphResolve.Resolve(0.5f, s);
+
+            Assert.Equal(3.25f, r.EdgeThickness, 5);
+            Assert.Equal(FillMode.OutlineAndFill, r.FillMode);
+            Assert.Equal(TelegraphBlend.Additive, r.Blend);
+            Assert.Equal(0.11f, r.FeatherFraction, 5);
+            Assert.Equal(TelegraphFillPattern.RadialNoise, r.Pattern);
+            Assert.Equal(0.22f, r.PatternSpeed, 5);
+            Assert.Equal(8.5f, r.PatternScale, 5);
+            Assert.Equal(0.33f, r.InteriorDim, 5);
+            Assert.Equal(0.44f, r.BaseFill, 5);
+            Assert.Equal(0.055f, r.EdgeWidthWorld, 5);
+            Assert.Equal(0.066f, r.FeatherWidthWorld, 5);
+            Assert.True(r.VoidFallback);
+            Assert.Equal(0.77f, r.VoidDim, 5);
+
+            Assert.True(r.RimGlow > 0f);
+            Assert.Equal(0.5f, r.Sparkle, 5);      // energy straight through when EdgeSparkle is on
+            Assert.Equal(0f, r.Runner);            // OutlineRunner is off
+            Assert.Equal(0f, r.SweepGlow);         // SweepGlow needs FillSweep too
+        }
     }
 }

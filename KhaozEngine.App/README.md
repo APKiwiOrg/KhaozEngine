@@ -188,7 +188,12 @@ if (strings.TryGet("optional.hint", out string hint)) { /* present */ }
   the key itself (a visible, non-fatal placeholder). Reads the culture live, so a later `SetCulture` is picked
   up without re-creating the catalog.
 - **`Format(key, args)`** is `string.Format(CurrentUICulture, Get(key), args)` - culture-aware substitution of
-  the resolved template.
+  the resolved template. It **never throws** either: a template the arguments cannot be applied to (a
+  translation carrying `{1}` where the call site passes one arg, an unbalanced brace) comes back unformatted
+  instead of throwing `FormatException` out of whatever draw call resolved the text. Implement `Format` in your
+  own catalog through the static `IStringCatalog.SafeFormat(culture, template, args)`, which is where that
+  guarantee lives. It is a backstop, not the check: catch the defect ahead of time with the placeholder-integrity
+  pass in `LocalizationCoverage.AssertComplete` (`KhaozEngine.Localization.TestKit`).
 - **`TryGet(key, out value)`** is a non-throwing probe: `false` with `value == key` when absent, `true` with
   the localized value when present.
 

@@ -31,7 +31,7 @@ public sealed class ResourceStringCatalog : IStringCatalog
 
     /// <inheritdoc />
     public string Format(string key, params object?[] args)
-        => string.Format(CultureInfo.CurrentUICulture, Get(key), args);
+        => IStringCatalog.SafeFormat(CultureInfo.CurrentUICulture, Get(key), args);
 
     /// <inheritdoc />
     public bool TryGet(string key, out string value)

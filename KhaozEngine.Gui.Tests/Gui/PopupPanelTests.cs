@@ -112,6 +112,42 @@ namespace KhaozEngine.Tests.Gui
             Assert.True(p.IsBlocked(Center(panel.PanelRect())));
         }
 
+        /// <summary>
+        /// The popup is modal, and Draw dims the whole viewport to say so, so Update has to reserve what the scrim
+        /// covers and not just the panel. Blocking only the panel let a click on the dimmed area fall through to
+        /// whatever is updated underneath, which only shows when the popup is driven directly in immediate mode
+        /// rather than wrapped in a non-passthrough Screen. See #109.
+        /// </summary>
+        [Fact]
+        public void Update_blocks_the_pointer_across_the_whole_dimmed_scrim()
+        {
+            var panel = new PopupPanel { Viewport = View };
+            panel.SetRows(new[] { PopupRow.Stat(LocalizedText.Raw("a"), LocalizedText.Raw("1"), Vector4.One) });
+            var p = new Pointer();
+            p.Update(Frame(Center(panel.PanelRect()), false));
+            panel.Update(p);
+
+            Rect panelRect = panel.PanelRect();
+            Assert.Equal(new Rect(0f, 0f, View.X, View.Y), panel.ScrimRect());
+
+            // Four dimmed points well outside the panel, one per side, all of them inside the scrim.
+            Assert.True(p.IsBlocked(new Vector2(2, 2)));                              // top-left corner
+            Assert.True(p.IsBlocked(new Vector2(View.X - 2, View.Y - 2)));            // bottom-right corner
+            Assert.True(p.IsBlocked(new Vector2(panelRect.X * 0.5f, View.Y * 0.5f))); // left of the panel
+            Assert.True(p.IsBlocked(new Vector2(View.X * 0.5f, panelRect.Y * 0.5f))); // above the panel
+
+            // Outside the viewport entirely is still not blocked, so the reservation stays bounded by the scrim.
+            Assert.False(p.IsBlocked(new Vector2(-4, -4)));
+            Assert.False(p.IsBlocked(new Vector2(View.X + 4, View.Y + 4)));
+        }
+
+        [Fact]
+        public void ScrimRect_throws_until_the_viewport_is_set()
+        {
+            var panel = new PopupPanel();
+            Assert.Throws<System.InvalidOperationException>(() => panel.ScrimRect());
+        }
+
         [Fact]
         public void Viewport_defaults_to_zero_and_layout_throws_until_it_is_set()
         {
@@ -325,7 +361,10 @@ namespace KhaozEngine.Tests.Gui
 
             Assert.True(p.IsBlocked(Center(panel.PanelRect())));
             Assert.True(p.IsBlocked(Center(panel.FooterButtonBounds()[0])));
-            Assert.False(p.IsBlocked(new Vector2(2, 2)));   // top-left corner outside the panel: a background control there is not blocked
+            // The top-left corner is outside the panel but inside the dimmed scrim, so it is blocked too: the
+            // popup is modal across everything it dims (#109). Off-viewport is where the reservation stops.
+            Assert.True(p.IsBlocked(new Vector2(2, 2)));
+            Assert.False(p.IsBlocked(new Vector2(-4, -4)));
         }
     }
 }

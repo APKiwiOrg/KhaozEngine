@@ -60,7 +60,7 @@ public sealed class AudioSystem : IDisposable
         // failure (no device) fall back to silent Null backends with no context, preserving today's behavior.
         try
         {
-            _context = new OpenAlContext();
+            _context = new OpenAlContext(_logger);
             _backend = new OpenAlMusicBackend(_context, _logger);
             _sfxBackend = new OpenAlSfxBackend(_context, _logger);
         }

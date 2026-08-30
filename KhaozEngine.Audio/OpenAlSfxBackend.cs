@@ -24,6 +24,7 @@ internal sealed unsafe class OpenAlSfxBackend : ISfxBackend
     const float MaxDistance = 50f;
 
     readonly ILogger _logger;
+    readonly AlErrorLog _errors;
     readonly AL _al;
     readonly uint[] _voices = new uint[VoiceCount];
     readonly SfxVoicePool _pool = new(VoiceCount);
@@ -35,6 +36,7 @@ internal sealed unsafe class OpenAlSfxBackend : ISfxBackend
     public OpenAlSfxBackend(OpenAlContext context, ILogger? logger = null)
     {
         _logger = logger ?? Log.For<OpenAlSfxBackend>();
+        _errors = new AlErrorLog(_logger);
         _al = context.Al;
         for (int i = 0; i < VoiceCount; i++) _voices[i] = _al.GenSource();
     }
@@ -60,6 +62,7 @@ internal sealed unsafe class OpenAlSfxBackend : ISfxBackend
             uint buffer = _al.GenBuffer();
             fixed (short* p = data)
                 _al.BufferData(buffer, format, p, total * sizeof(short), decoder.SampleRate);
+            _errors.Check("SFX BufferData", _al.GetError());
 
             _buffers.Add(buffer);
             return _buffers.Count - 1;
@@ -99,6 +102,7 @@ internal sealed unsafe class OpenAlSfxBackend : ISfxBackend
         }
 
         _al.SourcePlay(source);
+        _errors.Check("SFX SourcePlay", _al.GetError());
     }
 
     // Prefer a genuinely idle source; only steal in round-robin rotation when every voice is busy.

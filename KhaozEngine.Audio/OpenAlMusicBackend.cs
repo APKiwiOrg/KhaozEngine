@@ -19,6 +19,7 @@ public sealed unsafe class OpenAlMusicBackend : IMusicBackend
     static readonly string[] Extensions = { ".ogg", ".mp3", ".wav" };
 
     readonly ILogger _logger;
+    readonly AlErrorLog _errors;
     readonly OpenAlContext _ctx;
     readonly bool _ownsContext;
     readonly AL _al;
@@ -61,6 +62,7 @@ public sealed unsafe class OpenAlMusicBackend : IMusicBackend
     OpenAlMusicBackend(OpenAlContext context, bool ownsContext, ILogger? logger)
     {
         _logger = logger ?? Log.For<OpenAlMusicBackend>();
+        _errors = new AlErrorLog(_logger);
         _ctx = context ?? throw new ArgumentNullException(nameof(context));
         _ownsContext = ownsContext;
         _al = context.Al;
@@ -101,6 +103,7 @@ public sealed unsafe class OpenAlMusicBackend : IMusicBackend
 
             _al.SetSourceProperty(_source, SourceFloat.Gain, volume);
             _al.SourcePlay(_source);
+            _errors.Check("music SourcePlay", _al.GetError());
             _playing = true;
             return true;
         }
@@ -124,13 +127,20 @@ public sealed unsafe class OpenAlMusicBackend : IMusicBackend
                 _al.SourceUnqueueBuffers(_source, _one);
                 if (!_streamEnded && Fill(_one[0])) _al.SourceQueueBuffers(_source, _one);
             }
+            // The refill is the per-frame path a lost device kills first: unqueue/queue start failing and the
+            // track goes silent while IsPlaying still reads true. One check for the whole loop, logged once.
+            _errors.Check("music buffer refill", _al.GetError());
 
             _al.GetSourceProperty(_source, GetSourceInteger.BuffersQueued, out int queued);
             if (_streamEnded && queued == 0) { StopCleanFinish(); return; }   // track finished
 
             // Resume if the source underran while buffers are still queued.
             _al.GetSourceProperty(_source, GetSourceInteger.SourceState, out int state);
-            if (queued > 0 && state != (int)SourceState.Playing) _al.SourcePlay(_source);
+            if (queued > 0 && state != (int)SourceState.Playing)
+            {
+                _al.SourcePlay(_source);
+                _errors.Check("music SourcePlay", _al.GetError());
+            }
         }
         catch (Exception ex)
         {

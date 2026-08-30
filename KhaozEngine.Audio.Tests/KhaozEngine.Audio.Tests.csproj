@@ -13,6 +13,9 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Audio/KhaozEngine.Audio.csproj" />
+    <!-- AlErrorLogTests builds a private LogManager + InMemorySink to read what the OpenAL error sweep logs.
+         Already in the closure via KhaozEngine.Audio, so selection is unchanged. -->
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
     <!-- The Sfx folder tests the KhaozEngine.Sfx.Tool asset-baking CLI (Exe output), a different physical
          assembly from the KhaozEngine.Audio-hosted runtime Sfx backend, referenced directly. -->

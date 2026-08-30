@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Diagnostics;
 using Silk.NET.OpenAL;
 
 namespace KhaozEngine.Audio;
@@ -16,6 +17,7 @@ internal sealed unsafe class OpenAlContext : IDisposable
     readonly AL _al;
     readonly Device* _device;
     readonly Context* _context;
+    readonly AlErrorLog _errors;
 
     /// <summary>Shared AL (sources / buffers / listener) API. Borrowed by the backends; do not dispose.</summary>
     public AL Al => _al;
@@ -23,7 +25,7 @@ internal sealed unsafe class OpenAlContext : IDisposable
     /// <summary>Shared ALContext (device / context) API. Borrowed by the backends; do not dispose.</summary>
     public ALContext Alc => _alc;
 
-    public OpenAlContext()
+    public OpenAlContext(ILogger? logger = null)
     {
         // soft: true targets the bundled openal-soft (Silk.NET.OpenAL.Soft.Native) rather than the platform's
         // default OpenAL, so macOS uses the shipped lib instead of its deprecated system OpenAL.framework.
@@ -33,6 +35,10 @@ internal sealed unsafe class OpenAlContext : IDisposable
         if (_device == null) throw new InvalidOperationException("OpenAL: could not open an audio device");
         _context = _alc.CreateContext(_device, null);
         _alc.MakeContextCurrent(_context);
+        // A null device is the only construction failure that throws. Everything past it can fail quietly, and
+        // a context that never became current makes every later AL call a silent no-op.
+        _errors = new AlErrorLog(logger ?? Log.For<OpenAlContext>());
+        _errors.Check("context setup", _alc.GetError(_device));
     }
 
     public void Dispose()

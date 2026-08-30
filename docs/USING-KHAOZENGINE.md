@@ -9324,6 +9324,15 @@ overloads taking an `IReadOnlyList<string>` of candidate keys play the first loa
 the engine just plays the first that loaded. An all-unloaded list warns once and is a no-op; null/empty is a
 silent no-op.
 
+**Releasing SFX.** `UnregisterSfx(name)` drops a sound from the registry and releases its buffer through
+`ISfxBackend.Unload(handle)`, returning whether a loaded buffer was actually freed. `UnregisterSfxes(names)`
+does a whole set and returns how many it released, which is the zone-scoped or level-scoped shape: load a
+zone's sounds on entry, release them on exit, instead of accumulating every sound the session ever touched.
+A released name stops resolving (`IsSfxLoaded` goes false and `PlaySfx` on it is a no-op) and can be
+registered again later, which reloads it. On the OpenAL backend the freed handle is reused by the next load.
+`Unload` is a default interface member with a no-op body, so a game's own `ISfxBackend` written before it
+keeps compiling and simply never frees anything.
+
 **SFX buses.** Group sounds (UI, ambience, combat, and any game-defined others) under one volume without the
 game tracking individual voices. `DefineBus(id)` registers a bus (opaque identifier, not player-facing text),
 `SetBusVolume(id, v)` and `GetBusVolume(id)` read/write its 0-1 multiplier, and every `PlaySfx` / `PlaySfx3D`

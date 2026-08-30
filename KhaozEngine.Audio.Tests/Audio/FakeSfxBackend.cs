@@ -11,6 +11,7 @@ internal sealed class FakeSfxBackend : ISfxBackend
     public readonly record struct ListenerCall(Vector3 Position, Vector3 Forward, Vector3 Up);
 
     public List<string> LoadedPaths { get; } = new();
+    public List<int> Unloaded { get; } = new();
     public List<PlayCall> Plays { get; } = new();
     public List<ListenerCall> Listeners { get; } = new();
     public int StopAllCount { get; private set; }
@@ -29,6 +30,8 @@ internal sealed class FakeSfxBackend : ISfxBackend
         if (FailPaths.Contains(path)) return -1;
         return _nextHandle++;
     }
+
+    public void Unload(int handle) => Unloaded.Add(handle);
 
     public void Play(int handle, float gain, float pitch, bool positional, Vector3 position)
         => Plays.Add(new PlayCall(handle, gain, pitch, positional, position));

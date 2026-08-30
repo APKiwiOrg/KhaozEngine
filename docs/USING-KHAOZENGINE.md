@@ -8391,9 +8391,21 @@ server.OnSuspiciousActivity += a =>
 {
     // a.Slot, a.Reason (MalformedPacket | RateLimited | MovementCorrection), a.Magnitude (correction distance)
     log.Warn($"suspicious: slot {a.Slot} {a.Reason} ({a.Magnitude:0.00})");
-    if (a.Reason == SuspiciousReason.MovementCorrection) server.Disconnect(a.Slot);   // your policy: log / kick / ban
+    // Your policy: log / kick / ban. Disconnect(slot, reason) carries the reason on the disconnect itself, so the
+    // kicked client learns why instead of reading a bare drop as an outage and reconnecting into the same kick.
+    // A stable token, not display text: the client matches it and renders its own localized line.
+    if (a.Reason == SuspiciousReason.MovementCorrection) server.Disconnect(a.Slot, "ke:movement-anomaly");
 };
 ```
+
+**Bounding a connection flood.** A connection the transport accepted holds no slot until a valid handshake arrives,
+and the per-connection rate limiter above does not engage until it does. Set `MaxPendingConnections` on
+`WorldServerConfig` / `ShardedWorldServerConfig` (0, the default, is unlimited) to cap how many such connections the
+server holds at once, so a flood degrades to refused handshakes rather than unbounded server-side state. Size it
+above the concurrent-join burst a launch or a restart produces, not at `MaxPlayers`. Watch
+`server.PendingConnectionCount` (in flight right now) and `server.RefusedPendingConnectionCount` (total shed) to
+tell a flood being refused from a cap set below your real join burst. This is the one flood mitigation available
+without a remote address, which the transport seam deliberately does not expose.
 
 `MovementCorrection` fires when the authoritative sim has to deny a player's *intended* move (a wall slide,
 static collision, or play-area bound pulls them back) by more than `MaxCorrectionDistance` for `CorrectionStreak`

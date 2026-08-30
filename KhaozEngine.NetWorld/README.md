@@ -412,6 +412,19 @@ Target a player by `PlayerRef.Slot(n)` or `PlayerRef.Account("...")`. `SetSpeedS
 same queue on both heads (it is a gameplay mutation, not an admin action, so it is not on `IAdminControllable`).
 See "Per-entity speed scale" below.
 
+**Kicking with a reason.** `Disconnect(slot)` drops a connection silently, which a client reads as a transient
+outage and reconnects on. `Disconnect(slot, reason)` carries the reason on the disconnect itself (over
+`INetTransport.Disconnect(id, reason)`), so it survives a teardown that outruns the reliable flush and surfaces on
+the client as `DisconnectReasonDetail`. That is the overload a repeated-offense kick out of an
+`OnSuspiciousActivity` handler wants. The reason is a stable token, not display text: a headless server owns no
+string catalog, so send something the client matches and renders from its own localization.
+
+**Bounding a connection flood.** `MaxPendingConnections` on either config (0, the default, is unlimited) caps how
+many connections the server holds that have no slot yet, so a flood degrades to refused handshakes rather than
+unbounded server-side state. The per-connection `AntiCheat` limiter cannot help there, because it does not engage
+until a slot exists. `PendingConnectionCount` and `RefusedPendingConnectionCount` on both servers make it
+observable. Size the cap above the concurrent-join burst a launch or a restart produces, not at `MaxPlayers`.
+
 **`IBanStore`** is consulted at connect: a banned account is rejected before it spawns. `InMemoryBanStore` is
 the in-memory default; `WorldStoreBanStore` persists over any `IWorldStore` keyspace (`ban:{accountId}`) with a
 synchronous in-memory cache (call `LoadAsync()` once at startup). Pass either as the trailing `banStore:` ctor

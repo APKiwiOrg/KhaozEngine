@@ -260,6 +260,30 @@ fired before the `Rejected` was drained. A reason-carrying loopback disconnect n
 not polled and ends the session with the single `Disconnected` that carries the reject, matching the wire. An empty
 reason is not a refusal and stays a plain, lossless disconnect: everything already sent still lands, then the drop.
 
+`NetServer.Disconnect(slot, reason)` rides the same two paths for a KICK, so a client kicked by the game (a
+repeated-offense flood kick out of an `OnSuspiciousActivity` handler, say) learns why instead of reading a bare drop
+as a transient outage and reconnecting into the same kick. The reason is a stable token, not display text: a
+headless server owns no string catalog, so send something the client matches and renders from its own localization.
+It surfaces on `WorldClient` as `DisconnectReasonDetail`. `NetServer.Disconnect(slot)`, `WorldServer` and
+`ShardedWorldServer` all keep the reasonless overload unchanged, and both world servers carry the reason-carrying
+one too.
+
+## Pending-connection cap
+
+A connection the transport has accepted holds no slot until a valid `Hello` arrives, and until then the
+per-connection rate limiter has nothing to limit. `NetServer`'s optional `maxPendingConnections` (0, the default,
+leaves it unlimited) bounds how many such connections the server will hold at once, so a connection flood degrades
+to refused handshakes instead of unbounded server-side state. It is the only flood mitigation available without a
+remote address, which `INetTransport` deliberately does not expose.
+
+The refusal is a BARE disconnect, not the framed `Reject` above: a cap whose job is to shed a flood must not answer
+every flooded connect with bytes of its own. A legitimate client refused this way reads a plain drop and comes back
+on its backoff, which is right for a transient capacity limit. Two counters make it visible:
+`PendingConnectionCount` (connections in flight toward a join right now) and `RefusedPendingConnectionCount` (total
+refused by the cap). Both are forwarded by `WorldServer` and `ShardedWorldServer`, which take the cap itself as
+`MaxPendingConnections` on their configs. Size it above the concurrent-join burst a launch or a restart produces,
+not at `MaxPlayers`: a pending connection is cheap, and a cap that bites normal traffic locks out real players.
+
 ## One account, one live session
 
 `NetServer`'s join gate keys a live session by the SUBJECT the authenticator verified, not by the connection, so

@@ -124,7 +124,8 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         host.CellRemoved += cell => cellRuntime.Remove(cell.Coord);
         // Always enforce the engine wire generation at connect (see WorldServer): a wire-skewed / version-less client
         // is rejected cleanly rather than admitted and left to misparse the wire.
-        net = new NetServer(transport, config.MaxPlayers, WireGenerationAuthenticator.Install(authenticator), duplicateSessions: config.DuplicateSessions);
+        net = new NetServer(transport, config.MaxPlayers, WireGenerationAuthenticator.Install(authenticator),
+            duplicateSessions: config.DuplicateSessions, maxPendingConnections: config.MaxPendingConnections);
         this.banStore = banStore;
     }
 
@@ -201,6 +202,13 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
 
     /// <summary>Number of joined players.</summary>
     public int PlayerCount => netIdBySlot.Count;
+    /// <summary>Connections accepted but holding no slot yet: connected, Hello not yet answered. A handful at any
+    /// instant is a join in flight. A number that climbs and stays there is a flood, or peers that connect and never
+    /// say Hello.</summary>
+    public int PendingConnectionCount => net.PendingConnectionCount;
+    /// <summary>Total connects refused because <see cref="ShardedWorldServerConfig.MaxPendingConnections"/> was
+    /// already reached. 0 with no cap configured, and 0 under normal traffic with one.</summary>
+    public long RefusedPendingConnectionCount => net.RefusedPendingConnectionCount;
     /// <summary>The net id of the player entity for a joined slot.</summary>
     public bool TryGetPlayerNetId(int slot, out long netId) => netIdBySlot.TryGetValue(slot, out netId);
 
@@ -214,7 +222,8 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
 
     /// <summary>Raised when the server flags a connection as suspicious: a malformed/NaN move packet, a per-
     /// connection message-rate trip, or a sustained streak of large authoritative movement corrections. The engine
-    /// signals; the game decides the policy (log / kick via <see cref="Disconnect"/> / ban). Allocation-free. The
+    /// signals; the game decides the policy (log / kick via <see cref="Disconnect(int)"/> or
+    /// <see cref="Disconnect(int, string)"/> / ban). Allocation-free. The
     /// same hook contract as <see cref="WorldServer.OnSuspiciousActivity"/>.</summary>
     public event Action<SuspiciousActivity>? OnSuspiciousActivity;
 
@@ -234,6 +243,14 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     /// handler calls. Immediately removes the slot from authoritative state via <see cref="OnLeave"/> and closes the
     /// transport connection. No-op for an unknown slot.</summary>
     public void Disconnect(int slot) { net.Disconnect(slot); OnLeave(slot); }
+
+    /// <summary>Disconnects a player's connection CARRYING <paramref name="reason"/>, so a kicked client learns why
+    /// instead of reading a bare drop as a transient outage and reconnecting into the same kick. Same immediate
+    /// <see cref="OnLeave"/> as the reasonless overload. A repeated-offense kick out of an
+    /// <see cref="OnSuspiciousActivity"/> handler is what this is for. The reason is a STABLE TOKEN, not display
+    /// text (a headless server owns no string catalog), and surfaces on the client as
+    /// <see cref="WorldClient.DisconnectReasonDetail"/>. No-op for an unknown slot.</summary>
+    public void Disconnect(int slot, string reason) { net.Disconnect(slot, reason); OnLeave(slot); }
 
     /// <summary>Broadcasts a <see cref="ServerNotice"/> to every connected client (reliable-ordered). Same contract
     /// as <see cref="WorldServer.BroadcastNotice"/>.</summary>

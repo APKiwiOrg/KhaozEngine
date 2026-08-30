@@ -28,13 +28,15 @@ namespace KhaozEngine.Render3D
     /// The shadow-caster half of <see cref="Scene3D"/>: which queued instances write into the key light's cascade
     /// atlas, and the depth pass that draws them.
     /// <para>
-    /// Two policies live here, both opt-in and both inert by default. A per-instance <c>castsShadows</c> flag
+    /// Three policies live here, all opt-in and all inert by default. A per-instance <c>castsShadows</c> flag
     /// (issue #287) keeps chosen geometry out of the depth pass entirely - what a consumer sets on a dense
-    /// decorative layer (ground cover, understory) whose hundreds of small shadows cost more than they read. And a
+    /// decorative layer (ground cover, understory) whose hundreds of small shadows cost more than they read. A
     /// caster carrying the 14.5.0 rigid dissolve is drawn through the dissolve-aware depth pipeline, so its shadow
     /// thins as it fades: before this, a prop at 85 percent dissolve still cast a fully solid shadow, which then
     /// popped out at the hard cull radius, and across an HLOD crossfade band the individual props AND the merged
-    /// mesh both cast at full strength, roughly doubling shadow density.
+    /// mesh both cast at full strength, roughly doubling shadow density. And the scene-wide
+    /// <see cref="TerrainCastsShadows"/> (issue #280) lets splat terrain cast, which a sculpted world with real
+    /// hills needs and the flat ground the receive-only rule was written for did not.
     /// </para>
     /// <para>
     /// Across an HLOD crossfade the two halves' shadow dithers are COMPLEMENTARY, which is what
@@ -97,6 +99,39 @@ namespace KhaozEngine.Render3D
             float dissolve, float edgeWidth, Color edgeColor, bool castsShadows, bool invertShadowDissolve)
             => _instances.Add(mesh, world, tint, material, dissolve, edgeWidth, edgeColor, castsShadows, invertShadowDissolve);
 
+        /// <summary>
+        /// Whether splat-terrain chunks write into the key light's cascade atlas (issue #280). Default <c>false</c>,
+        /// which is the receive-only rule the pass shipped with: terrain always RECEIVES, and only models, tile
+        /// ground and characters cast. At that default not a single pixel moves, so every existing scene and every
+        /// baked golden is unaffected.
+        /// <para>
+        /// Set it <c>true</c> for a SCULPTED world, which is the case the receive-only premise did not anticipate:
+        /// its reason was that terrain self-shadowing is negligible on flat MMO ground with no overhangs, and a
+        /// 49 m mountain is neither. With it off, a mountain throws no shadow at all while the trees standing on it
+        /// do, so the ground the mountain should shade reads as fully lit and carries individual prop shadows.
+        /// Turning it on subsumes those prop shadows naturally, with no special-casing: a tree inside the
+        /// mountain's shadow just stands on already-shadowed ground.
+        /// </para>
+        /// <para>
+        /// Terrain chunks go through the SAME caster path as everything else, so they are per-cascade culled by
+        /// <see cref="ShadowCascadeCulling"/> (a far cascade draws the chunks that reach it, not the whole world)
+        /// and they can be opted out per instance like any other caster. The cost is the chunk geometry rasterized
+        /// once per cascade it reaches, so it scales with resident chunk count rather than with prop count. Watch
+        /// for terrain self-shadow acne when turning it on: <c>ShadowSettings.ShadowNormalOffset</c> is the knob,
+        /// raised before either depth bias (see the bias-tuning note in docs/USING-KHAOZENGINE.md).
+        /// </para>
+        /// </summary>
+        public bool TerrainCastsShadows { get; set; }
+
+        /// <summary>Whether a mesh takes part in the depth pass AT ALL, from its splat-material slot and the
+        /// scene's <see cref="TerrainCastsShadows"/> flag. A splat mesh is terrain, so it casts only with the flag
+        /// on. Everything else always casts, tile ground included (a tile world's ground carries authored height,
+        /// so it casts like a model mesh, tile-world design section 7.5, and the terrain rule is deliberately keyed
+        /// on the splat material rather than on "draws through a ground pipeline"). Pure, so the caster walk and
+        /// the tests read one definition of the rule.</summary>
+        internal static bool MeshCastsShadows(int splatMaterial, bool terrainCastsShadows)
+            => splatMaterial < 0 || terrainCastsShadows;
+
         /// <summary>How one queued instance participates in the depth pass: opted out, plainly, or dissolving. Pure
         /// (no scene state), so the classification is unit-testable and stays the single definition both
         /// <see cref="GroupInstances"/> and the tests read.</summary>
@@ -140,8 +175,9 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// Build this frame's caster draw list into <paramref name="spans"/> + <paramref name="instances"/>, in the
-        /// EXACT order <see cref="RenderShadowDepthPass"/> draws it. Terrain (splat) meshes and stale-handle runs are
-        /// excluded, matching what the pass draws, and so is anything the consumer opted out of casting. The same two
+        /// EXACT order <see cref="RenderShadowDepthPass"/> draws it. Stale-handle runs are excluded, matching what
+        /// the pass draws, and so is anything the consumer opted out of casting and (unless
+        /// <see cref="TerrainCastsShadows"/> is set) every terrain splat mesh. The same two
         /// lists are the per-frame caster SIGNATURE the dirty check compares against the last rendered pass (see
         /// <see cref="ShadowCastersChanged"/>), so a caster set, transform, opt-out or dissolve that moved
         /// re-renders the atlas. Reused buffers (Cleared, not reallocated), so the per-frame check stays
@@ -164,11 +200,11 @@ namespace KhaozEngine.Render3D
                 if (!_slots.IsValid(run.Mesh.Index, run.Mesh.Generation)) continue;
                 var m = _meshes[run.Mesh.Index];
                 if (m is not { } mesh) continue;
-                // Splat terrain does not cast (receive-only), matching the depth pass. TILE GROUND IS NOT EXCLUDED
-                // HERE ON PURPOSE: a tile world's ground carries authored height, so it casts like a model mesh
-                // (tile-world design section 7.5), and the exclusion below is deliberately keyed on SplatMaterial
-                // alone rather than on "draws through a ground pipeline".
-                if (mesh.SplatMaterial >= 0) continue;
+                // Splat terrain is receive-only unless the scene opted in (TerrainCastsShadows, issue #280), which
+                // is the one rule this walk and the depth pass share. TILE GROUND IS NOT EXCLUDED EITHER WAY: see
+                // MeshCastsShadows for why the rule is keyed on the splat material rather than on "draws through a
+                // ground pipeline".
+                if (!MeshCastsShadows(mesh.SplatMaterial, TerrainCastsShadows)) continue;
                 int first = spans.Count;
                 AppendCasterSpans(run.Mesh.Index, run.Mesh.Generation, run.Start, run.Count, _instanceCastKinds, spans);
                 for (int i = first; i < spans.Count; i++)
@@ -244,9 +280,9 @@ namespace KhaozEngine.Render3D
         /// (reusing the already-uploaded instance/skinned buffers). The rigid casters come from
         /// <paramref name="spansPerCascade"/>, this frame's per-cascade caster draw lists (see
         /// <see cref="BuildCascadeCasterSpans"/>, which splits the one list <see cref="BuildShadowCasterSpans"/>
-        /// built): terrain (splat meshes) do NOT cast (model-only casting -
-        /// terrain self-shadowing is visually negligible in the test scenes and the flat MMO ground has no overhangs),
-        /// and neither does anything the consumer opted out of. Terrain always RECEIVES via the shared lighting block.
+        /// built): terrain (splat meshes) casts only when the scene set <see cref="TerrainCastsShadows"/>, and
+        /// nothing the consumer opted out of ever casts. Terrain always RECEIVES via the shared lighting block,
+        /// whichever way that flag is set.
         /// A dissolving span switches to the dissolve-aware depth pipeline (or its inverted sibling, for the merged
         /// half of an HLOD crossfade) so its shadow erodes with its mesh, and the plain pipeline is re-bound before
         /// the skinned casters, which never dissolve in the depth pass. NEVER

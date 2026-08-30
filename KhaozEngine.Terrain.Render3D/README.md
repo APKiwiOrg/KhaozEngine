@@ -41,6 +41,10 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   vertices placed by the region origin, a pure translation) and `LoadTerrainMaterial` (realize a layered material
   once, share the handle across every chunk). The old parameterless `DrawTerrainChunk(handle)` is obsolete: it
   stays correct only for a chunk whose region origin is (0, 0), and draws every other chunk at the world origin.
+  A chunk drawn this way RECEIVES the key light's shadow and, by default, casts none. A sculpted world with real
+  hills wants `scene.TerrainCastsShadows = true`, which puts chunk meshes into the shadow depth pass through the
+  same per-cascade cull everything else uses (see the Render3D README, and the terrain-casting note in
+  `docs/USING-KHAOZENGINE.md`).
 - **Terrain collision placement.** A chunk's collision mesh is built from those same chunk-local vertices
   (`TerrainChunkCollision.Build`), so it is registered at the chunk's REGION ORIGIN rather than `Pose.Identity`.
   Bepu transforms a query into a mesh's local space using the static's pose, so every triangle test runs at chunk

@@ -2605,8 +2605,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     light's diffuse+spec only (fill + ambient untouched, so a shadow reads as shade, not blackness), cross-fading
     toward the next cascade inside a `ShadowCascadeBlend` UV border band so a cascade hand-off is invisible instead
     of a visible square seam, and fading the shadow to fully lit toward the outermost cascade's border so the
-    coverage limit is invisible (no hard box). Casters shadow the ground and each other. **Terrain receives but does
-    not cast** (model-only casting - terrain self-shadowing is negligible on the flat MMO ground). Caster visibility
+    coverage limit is invisible (no hard box). Casters shadow the ground and each other. **Terrain receives but by
+    default does not cast** (model-only casting - terrain self-shadowing is negligible on flat MMO ground with no
+    overhangs). A sculpted world with real hills wants the other setting: see **Terrain casting** below. Caster visibility
     for the shadow pass unions ALL cascade frustums (a caster camera-culled from the main pass but still inside any
     cascade still casts its shadow). Every drawn mesh casts automatically unless the draw opts out (see
     **Caster policy** below). The tier is on
@@ -2658,6 +2659,21 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         a GPU upload and an all-plain frame issues the same depth draws in the same order as before. The dissolve
         variant does add a depth-pass pipeline switch per contiguous fading span, which is why it is bound only for
         the spans that carry a dissolve.
+    - **Terrain casting: `scene.TerrainCastsShadows`** (default `false`, issue #280). Splat-terrain chunks are
+      receive-only by default, which is the rule the pass shipped with: terrain self-shadowing is negligible on flat
+      MMO ground with no overhangs, so only models, tile ground and characters write into the atlas. At that default
+      not one pixel moves, so every existing scene and every baked golden is unaffected. Set it `true` for a
+      **sculpted** world, which is the case that premise did not anticipate: with real hills a mountain throws no
+      shadow at all while the trees standing on it do, so the ground the mountain should shade reads as fully lit
+      and carries individual prop shadows. Turning it on subsumes those prop shadows with no special-casing (a tree
+      inside the mountain's shadow just stands on already-shadowed ground). Terrain chunks go through the SAME
+      caster path as everything else, so the per-cascade cull applies to them and they can be opted out per
+      instance. Measured on a 447-chunk streamed frame at four cascades, the flag adds 447 caster candidates (+13
+      percent) but only about 22 drawn chunk instances per cascade after the cull, 87 depth draw calls in total,
+      and about 0.22 ms of shadow-pass CPU encode. Watch for terrain self-shadow acne when you turn it on: raise
+      `ShadowNormalOffset` first, as with any other receiver (see **Bias tuning** below).
+      (Tile-ground meshes are not affected either way: a tile world's ground carries authored height and has always
+      cast, so the rule is keyed on the splat material rather than on "draws through a ground pipeline".)
     - **Bias tuning** (`ShadowNormalOffset` default `2.5`, `ShadowConstantBias` default `0.0004`, `ShadowSlopeBias`
       default `0.0015`): together these defeat self-shadow acne without detaching the shadow from the caster's feet
       (**peter-panning**). `ShadowNormalOffset` is the primary defence: it pushes the receiver's sample point off the

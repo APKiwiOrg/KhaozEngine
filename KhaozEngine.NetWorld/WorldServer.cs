@@ -136,6 +136,12 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     // so unlike ShardHost's per-world epoch dictionary this only needs a per-tick "already rebuilt" flag.
     private readonly WorldSnapshotIndex snapshotIndex = new();
     private readonly SnapshotScratch snapshotScratch = new();
+    // Per-tick scratch, reused across ticks so the steady-state serve loop allocates nothing for its own
+    // bookkeeping (#134): the slot list the tick iterates, the per-client interest set (cleared between clients,
+    // never retained by WriteFor / WriteFiltered), and the online-snapshot rebuild buffer.
+    private readonly List<int> tickSlots = new();
+    private readonly HashSet<long> interestScratch = new();
+    private readonly OnlineSnapshotPublisher onlinePublisher = new();
     private bool snapshotIndexFreshThisTick;
 
     private readonly Dictionary<int, long> netIdBySlot = new();
@@ -471,8 +477,12 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     {
         OnBeforeTick?.Invoke(dt);   // consumer NPC/enemy brains run before movement + serving
         admin.Drain(ApplyAdminCommand);
-        // Authoritative movement: one command per player per tick.
-        var slots = new List<int>(netIdBySlot.Keys);
+        // Authoritative movement: one command per player per tick. The slot list is a reused buffer rather than a
+        // fresh List each tick, but it is still a COPY of the keys: both loops below can mutate netIdBySlot (a kick
+        // or a disconnect mid-serve), so neither may enumerate the dictionary directly.
+        tickSlots.Clear();
+        foreach (int s in netIdBySlot.Keys) tickSlots.Add(s);
+        List<int> slots = tickSlots;
         foreach (int slot in slots)
         {
             MoveCommand cmd = commands.Dequeue(slot, out int ack);
@@ -506,7 +516,12 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         {
             long netId = netIdBySlot[slot];
             Vector3 p = AbsolutePositionOf(slot);   // the interest grid is keyed absolute, so the query is too
-            HashSet<long> set = interest.Query(p.X, p.Z, config.InterestRadius);
+            // One reused set for the whole client loop, cleared per client. Neither serve path retains it: the delta
+            // replicator projects out of it into its own baseline, the indexed writer resolves through it into its
+            // own scratch, and both are done with it before they return.
+            interestScratch.Clear();
+            interest.Query(p.X, p.Z, config.InterestRadius, interestScratch);
+            HashSet<long> set = interestScratch;
             MoveProtocol.ServerFrameKind kind;
             byte[] body;
             if (deltaReplicator is not null && deltaCapableSlots.Contains(slot))
@@ -538,7 +553,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         if (config.AdvanceWorldTick) world.AdvanceTick();
         drain.Advance(dt);
         selfRescueClock += dt;   // advance the self-rescue cooldown clock
-        admin.Publish(BuildOnlineSnapshot());
+        PublishOnlineSnapshot();
         OnAfterTick?.Invoke(dt);   // consumer post-step observers (landing impacts, …) run after movement + serving
     }
 
@@ -628,9 +643,12 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         }
     }
 
-    private OnlinePlayer[] BuildOnlineSnapshot()
+    // Rebuilds the online view into the publisher's reused buffer and republishes only when it differs from what an
+    // admin can already read. Same content as the old unconditional rebuild, so ListOnline's "at most one tick
+    // stale" contract is unchanged; the tick just stops allocating a list plus an array when nothing moved (#134).
+    private void PublishOnlineSnapshot()
     {
-        var list = new List<OnlinePlayer>(netIdBySlot.Count);
+        List<OnlinePlayer> list = onlinePublisher.BeginRebuild();
         foreach (int slot in netIdBySlot.Keys)
         {
             string acct = accountIdBySlot.TryGetValue(slot, out string? a) ? a : string.Empty;
@@ -641,7 +659,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
                 name = pi.DisplayName ?? string.Empty;
             list.Add(new OnlinePlayer(slot, acct, name, st.Position, st.Grounded, st.VerticalVelocity, netId));
         }
-        return list.ToArray();
+        onlinePublisher.PublishIfChanged(admin);
     }
 
     private void OnJoin(int slot, string subject, string displayName)

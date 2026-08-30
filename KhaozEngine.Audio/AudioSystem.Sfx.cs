@@ -6,8 +6,8 @@ namespace KhaozEngine.Audio;
 
 /// <summary>
 /// The SFX registry half of <see cref="AudioSystem"/>: which one-shot sounds exist by content name, the
-/// name -&gt; backend handle map behind them, and the priority-stating play overloads. Priority-free playback,
-/// buses and volume stay in the main file.
+/// name -&gt; backend handle map behind them, and the priority-stating play overloads. Priority-free playback
+/// and volume stay in the main file, the bus mixer in <c>AudioSystem.Buses.cs</c>.
 /// </summary>
 public sealed partial class AudioSystem
 {
@@ -18,6 +18,7 @@ public sealed partial class AudioSystem
     /// </summary>
     public void RegisterSfx(string name)
     {
+        EnsureOwningThread();
         if (_sfxNames.Contains(name)) return;
         _sfxNames.Add(name);
         if (_loaded && _contentDirectory is not null) LoadSfx(name);
@@ -37,6 +38,7 @@ public sealed partial class AudioSystem
     /// </summary>
     public bool UnregisterSfx(string name)
     {
+        EnsureOwningThread();
         _sfxNames.Remove(name);
         if (!_sfx.Remove(name, out int handle)) return false;
         _sfxBackend.Unload(handle);

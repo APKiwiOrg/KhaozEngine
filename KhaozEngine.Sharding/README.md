@@ -134,6 +134,14 @@ rebuilds unconditionally, the contract a direct caller or test relies on right a
 `ShardedWorldServer.Tick` bumps a fresh epoch once per tick and passes it to both the delta and snapshot serve
 paths.
 
+**Buffer-filling interest query (perf).** `HomeInterest(slot, interestRadius, ICollection<long> results, serveEpoch)`
+returns just the home-cell `World` and ADDS the net ids into a caller-supplied collection, so a serve loop reuses one
+set across every client it serves (clearing it between clients) instead of taking a fresh `HashSet<long>` per client
+per tick. Same validation, same rebuild cadence, same contents as the `(World, HashSet<long>)` overload, which is
+kept and now delegates to it. The results collection is added to, never cleared, matching
+`InterestGrid.Query(float, float, float, ICollection<long>)`. A bare `null` third argument still binds to the older
+`HomeInterest(slot, radius, serveEpoch)` overload, so existing calls mean exactly what they did.
+
 **Indexed snapshots (perf).** The filtered `SnapshotWriter` calls on the hot cross-cell and serve passes
 (`SyncGhosts` ghost mirroring, `SnapshotForClient` non-delta fallback, `ProcessHandoffs` crossing capture) resolve
 their net-id sets off a per-tick, per-world `WorldSnapshotIndex` (shared across a cell's target neighbours and the

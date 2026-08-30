@@ -5,6 +5,13 @@ Game-agnostic audio on the custom MonoGame-free stack: streaming music + SFX + 3
 - `AudioSystem` - track list, volume (master x music), enable/disable, automatic rotation (`PlayMode`),
   `TrackChanged` events; `PlaySfx` / `PlaySfx3D` / `SetListener` / `SfxVolume`. `LoadContent(directory)` then
   `Update()` once per frame.
+- **Main-thread-only, enforced.** An `AudioSystem` belongs to the thread that constructed it (normally the
+  thread running the frame loop). Its registries are plain dictionaries and lists with no locking, so every
+  mutating entry point (register, load, play, tick, volume and bus setters) checks the calling thread and throws
+  `InvalidOperationException` when it is the wrong one. The check is a thread-local int compare and is present in
+  Release, so a background job firing an SFX fails on its first call instead of quietly corrupting a dictionary.
+  To trigger audio from a worker, record the request and issue the call from the main thread's next frame.
+  `Dispose` is the one exemption, so a shutdown path on another thread is not turned into a crash.
 - SFX buses - `DefineBus(id)` / `SetBusVolume(id, v)` / `GetBusVolume(id)` group sounds (UI, ambience, combat, ...)
   under one volume without per-voice bookkeeping. Every `PlaySfx` / `PlaySfx3D` overload takes an optional
   `bus`; effective voice gain = `master x sfx x bus x volume`. No bus (or an unknown bus) = the default bus at

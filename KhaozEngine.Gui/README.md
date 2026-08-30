@@ -223,7 +223,10 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     `Draw` throws while it is `Vector2.Zero` rather than silently pinning the menu into the corner, and throws
     too on a menu built through the measure-only `ContextMenu(ITextMeasurer, ITextMeasurer)` constructor, which
     exists so a headless test can drive the whole interaction with no GPU device and no baked font.
-  - `PopupPanel` - modal dialog: scrim + title + `PopupRow` content + dismiss/primary footer; blocks the pointer.
+  - `PopupPanel` - modal dialog: scrim + title + `PopupRow` content + dismiss/primary footer. `Update` reserves
+    the whole `ScrimRect` (the full viewport the scrim dims) through `Pointer.BlockRegion`, not just the panel,
+    so a click on the dimmed area cannot reach the UI underneath. That only matters when the popup is driven
+    directly in immediate mode: hosting it in a non-passthrough `Screen` already blocks everything below.
     Text is `LocalizedText`: `TitleContent` / `DismissContent` / `PrimaryActionContent` and the resolve-at-build
     `PopupRow.Header(LocalizedText)` / `Stat(LocalizedText, LocalizedText, ...)` factories (rebuild the rows to pick
     up a runtime locale switch). The former `Title` / `DismissText` / `PrimaryActionText` string members and the

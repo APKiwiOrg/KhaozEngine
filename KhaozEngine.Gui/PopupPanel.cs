@@ -74,7 +74,9 @@ namespace KhaozEngine.Gui
     /// and <see cref="MaxHeightFraction"/> of the viewport), a title bar, label/value content rows, and a footer
     /// with a dismiss button (plus an optional primary action), or an N-button <see cref="FooterButtons"/> footer
     /// laid out right-to-left when set (index 0 rightmost, the default action). <see cref="Update(Pointer)"/>
-    /// blocks the pointer over the panel so the screen beneath ignores clicks. Internal scroll lives in
+    /// blocks the pointer over the whole <see cref="ScrimRect"/>, the same region the scrim dims, so the screen
+    /// beneath ignores clicks anywhere the popup has visually claimed rather than only over the panel itself
+    /// (a host wrapping this in a modal <see cref="Screen"/> already blocked the rest). Internal scroll lives in
     /// <see cref="ScrollablePanel"/>. Keyboard defaults for <see cref="FooterButtons"/> (Enter/Esc) are handled by
     /// <see cref="HandleKeys"/>, an additive entry point the host calls alongside the pointer-only overloads.
     /// </summary>
@@ -268,9 +270,7 @@ namespace KhaozEngine.Gui
         /// </summary>
         public Rect PanelRect()
         {
-            if (Viewport == Vector2.Zero)
-                throw new InvalidOperationException(
-                    "PopupPanel.Viewport is unset (Vector2.Zero); assign the design viewport size before layout/draw.");
+            RequireViewport();
             int footerCount = _footerButtons.Count;
             float footerMinWidth = footerCount > 0
                 ? MathF.Min(Viewport.X, footerCount * BtnW + (footerCount - 1) * BtnGap + ContentPadding * 2f)
@@ -282,6 +282,24 @@ namespace KhaozEngine.Gui
             float x = (Viewport.X - panelW) * 0.5f;
             float y = (Viewport.Y - totalH) * 0.4f;   // slightly above center
             return new Rect(x, y, panelW, totalH);
+        }
+
+        /// <summary>
+        /// The whole-viewport rectangle the modal scrim dims, and the region <see cref="Update(Pointer, float)"/>
+        /// reserves on the pointer, so what the popup blocks matches what it visually claims. Throws when
+        /// <see cref="Viewport"/> is unset, like <see cref="PanelRect"/>.
+        /// </summary>
+        public Rect ScrimRect()
+        {
+            RequireViewport();
+            return new Rect(0f, 0f, Viewport.X, Viewport.Y);
+        }
+
+        void RequireViewport()
+        {
+            if (Viewport == Vector2.Zero)
+                throw new InvalidOperationException(
+                    "PopupPanel.Viewport is unset (Vector2.Zero); assign the design viewport size before layout/draw.");
         }
 
         /// <summary>The content area between the title bar and the footer.</summary>
@@ -345,11 +363,12 @@ namespace KhaozEngine.Gui
             return bounds;
         }
 
-        /// <summary>Reserve the panel region, hit-test the footer buttons. Returns true if dismiss was tapped.</summary>
+        /// <summary>Reserve the whole <see cref="ScrimRect"/>, hit-test the footer buttons. Returns true if dismiss
+        /// was tapped.</summary>
         public bool Update(Pointer pointer) => Update(pointer, 0f);
 
         /// <summary>
-        /// Reserve the panel region, scroll the content on wheel (<paramref name="wheelDelta"/>, e.g.
+        /// Reserve the whole <see cref="ScrimRect"/>, scroll the content on wheel (<paramref name="wheelDelta"/>, e.g.
         /// <c>InputState.ScrollDelta</c>) and drag-to-scroll, and hit-test the footer buttons. Returns true if dismiss
         /// was tapped. Scrolling only bites when the content overflows the content area, otherwise this is the same as
         /// the wheel-less overload. When <see cref="FooterButtons"/> is non-empty this hit-tests those buttons
@@ -359,7 +378,12 @@ namespace KhaozEngine.Gui
         public bool Update(Pointer pointer, float wheelDelta)
         {
             WasPrimaryActionClicked = false;
-            pointer.BlockRegion(PanelRect());
+            // The whole scrim, not just the panel: Draw dims the entire viewport, and a modal that LOOKS like it
+            // swallows the screen has to swallow the clicks too. A PopupPanel hosted inside a non-passthrough
+            // Screen never showed the difference (the screen stack already stopped input below it), but Update and
+            // Draw are public and take a Pointer directly, so an immediate-mode host with nothing blocking above
+            // it is a supported use, and there a click on the dimmed area used to reach the UI underneath.
+            pointer.BlockRegion(ScrimRect());
 
             Rect content = ContentRect();
             if (wheelDelta != 0f && pointer.IsPointerIn(content))
@@ -436,7 +460,7 @@ namespace KhaozEngine.Gui
         public void Draw(SpriteBatch batch, Texture2D white, Pointer pointer)
         {
             Rect p = PanelRect();
-            GuiDraw.Fill(batch, white, new Rect(0, 0, Viewport.X, Viewport.Y),
+            GuiDraw.Fill(batch, white, ScrimRect(),
                 new Vector4(ScrimColor.X, ScrimColor.Y, ScrimColor.Z, ScrimOpacity * Opacity));
             GuiDraw.FillStyled(batch, white, p, Style with { BorderThickness = 1f },
                 GuiDraw.WithOpacity(PanelColor, Opacity), GuiDraw.WithOpacity(PanelBorder, Opacity));

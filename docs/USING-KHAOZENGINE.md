@@ -926,11 +926,17 @@ if (gui.Button(font, btnRect, Strings.Resume, style, scale: 1.5f)) Resume();    
 
 The retained widgets that draw text follow the same idiom, one scale field per widget defaulting to `1f`
 (label-only: the widget's rect, hit-test, and chrome never change with scale): `Button.LabelScale`,
-`TabBar.TextScale` (each tab label), and `Tooltip`'s per-line `TooltipLine.Scale` plus `Tooltip.TitleScale`
-for the title row, so a single shared font can render a whole size hierarchy.
+`TabBar.TextScale` (each tab label), `Dropdown.TextScale` (the trigger label and every option row),
+`TextInput.TextScale` (the text and the placeholder), `TreeView.TextScale` (the node labels),
+`ProgressBar.OverlayTextScale` (the centred caption), and `Tooltip`'s per-line `TooltipLine.Scale` plus
+`Tooltip.TitleScale` for the title row, so a single shared font can render a whole size hierarchy.
+`TextInput` carries its scale through every width term the draw derives, so the caret still trails the last
+glyph and the overflow clip engages where the drawn text actually reaches the border.
 
 ```csharp
 var compact = new Button(btnRect, Strings.Resume, font) { LabelScale = 0.56f };   // small label, same fixed rect
+var dense   = new TreeView(outlineRect) { TextScale = 0.8f };                     // more label per row, same RowHeight
+var readout = new ProgressBar(barRect, 0.4f) { OverlayTextScale = 0.7f };         // small caption on a thin bar
 
 var tip = new Tooltip(font, font);   // one shared font, the title and body scale independently
 tip.TitleScale = 1f;
@@ -1053,6 +1059,30 @@ GuiTheme.Default = GuiTheme.Legacy;
 override the theme (`toggle.OnColor = ...`). The Showcase "Gui" room shows the crisp look and the semantic button
 variants.
 
+**Per-state border and text tints + `Button.Opacity`** - a `GuiStyle` tints its FILL per state
+(`Hover`/`Press`/`DisabledFill`/`SelectedFill`) and, alongside the single `Border` and `Text`, can also tint the
+outline and the label per state. Each is a `Vector4?` defaulting to `null`, meaning "fall back to `Border` /
+`Text`", so a style that sets none renders exactly as it did before.
+
+```csharp
+var t = GuiTheme.Default;
+var style = GuiStyle.Secondary;
+style.HoverBorder = t.BorderHover;          // brighten the outline on hover
+style.PressBorder = t.Accent;
+style.DisabledBorder = t.BorderDisabled;    // grey the outline when disabled
+style.HoverText = t.Text;                   // and brighten the label with it
+style.PressText = t.AccentBright;
+
+var btn = new Button(rect, Strings.Confirm, font) { Style = style };
+btn.Opacity = panel.TransitionAlpha;        // fade the whole button with its panel (0 paints nothing)
+```
+
+`GuiStyle.ResolveBorder(enabled, selected, hover, press)` / `ResolveText(enabled, hover, press)` are the pure
+resolvers, so a consumer's own widget can share the precedence instead of re-deriving it: `SelectedBorder` still
+wins outright for the border and `DisabledText` for the text, then press, then hover.
+`GuiStyle.Faded(opacity)` is the shared fade behind `Button.Opacity` and `TabBar.Opacity` (every colour's alpha
+scaled, the optional tints only when set, plus the shadow and glow), callable directly for a bespoke widget.
+
 **Texture skinning: `GuiStyle.Skin` + `GuiSkin` (family-wide, 10.82.0)** - `GuiStyle` has an optional `Skin` (a
 `GuiSkin`, default `null` = today's flat GuiDraw primitives, byte-for-byte). Set it and EVERY widget that fills
 through `GuiDraw.FillStyled` - Panel, Button, ProgressBar, TextInput/NumberField, ScrollablePanel, Dropdown,
@@ -1146,6 +1176,12 @@ tip.Dismiss = isTouch ? TooltipDismiss.TapOutside : TooltipDismiss.CallerDriven;
 tip.ShowTitleSeparator = true;
 tip.MaxWidthFraction = 0.4f;                       // cap at 40% of the viewport: long body lines wrap + grow down
                                                    // (or an absolute tip.MaxWidth = 360f, smaller cap wins)
+tip.Opacity = panel.TransitionAlpha;               // fade the whole bubble with the host transition (0 draws nothing)
+
+// Cursor-style placement: the bubble beside the pointer instead of straddling it (default is Centered).
+tip.AnchorMode = TooltipAnchorMode.Offset;
+tip.Metrics.AnchorOffsetX = 14f;                   // left edge at anchor.X + 14 (negative places it to the left)
+
 tip.Show(Strings.CopperOre, LocalizedText.Raw("x128"), bodyLines, anchor); // left name (localized), right count (raw)
 tip.Update(pointer);                               // auto-dismisses on tap-outside in TapOutside mode
 tip.Draw(batch, white);

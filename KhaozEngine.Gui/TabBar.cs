@@ -136,8 +136,8 @@ namespace KhaozEngine.Gui
         {
             if (Font == null) return;
 
-            GuiStyle active = FadedStyle(ActiveStyle, Opacity);
-            GuiStyle inactive = FadedStyle(InactiveStyle, Opacity);
+            GuiStyle active = ActiveStyle.Faded(Opacity);
+            GuiStyle inactive = InactiveStyle.Faded(Opacity);
 
             // Whole-unit draw geometry: a shared frame + integer seam edges (see GuiDraw.TabStripDrawGeometry). This
             // removes the sub-pixel blur of fractional TabRect edges in a non-snapping design pass; BodyRect's
@@ -184,21 +184,5 @@ namespace KhaozEngine.Gui
         // extent. A no-op snap outside a point-space UI pass, so the design-space rect is the whole-unit geometry.
         static Rect BodyRect(SpriteBatch batch, Rect frame, float[] edges, int index) =>
             batch.SnapRect(new Rect(edges[index], frame.Y, edges[index + 1] - edges[index], frame.Height));
-
-        // A copy of the style with every colour's alpha scaled by opacity, so the whole bar fades uniformly.
-        static GuiStyle FadedStyle(GuiStyle s, float opacity)
-        {
-            if (opacity >= 1f) return s;
-            s.Fill = GuiDraw.WithOpacity(s.Fill, opacity);
-            s.Hover = GuiDraw.WithOpacity(s.Hover, opacity);
-            s.Press = GuiDraw.WithOpacity(s.Press, opacity);
-            s.Border = GuiDraw.WithOpacity(s.Border, opacity);
-            s.Text = GuiDraw.WithOpacity(s.Text, opacity);
-            s.DisabledFill = GuiDraw.WithOpacity(s.DisabledFill, opacity);
-            s.DisabledText = GuiDraw.WithOpacity(s.DisabledText, opacity);
-            s.SelectedFill = GuiDraw.WithOpacity(s.SelectedFill, opacity);
-            s.SelectedBorder = GuiDraw.WithOpacity(s.SelectedBorder, opacity);
-            return s;
-        }
     }
 }

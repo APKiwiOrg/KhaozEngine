@@ -21,9 +21,9 @@ namespace KhaozEngine.Gui
         public Vector4 Hover;
         /// <summary>Fill while the pointer is pressing inside.</summary>
         public Vector4 Press;
-        /// <summary>Outline color.</summary>
+        /// <summary>Outline color. The fallback for every unset per-state border tint below.</summary>
         public Vector4 Border;
-        /// <summary>Text color.</summary>
+        /// <summary>Text color. The fallback for every unset per-state text tint below.</summary>
         public Vector4 Text;
         /// <summary>Fill when disabled.</summary>
         public Vector4 DisabledFill;
@@ -33,6 +33,17 @@ namespace KhaozEngine.Gui
         public Vector4 SelectedFill;
         /// <summary>Outline color when selected.</summary>
         public Vector4 SelectedBorder;
+
+        /// <summary>Outline color while the pointer hovers. <c>null</c> (default) falls back to <see cref="Border"/>.</summary>
+        public Vector4? HoverBorder;
+        /// <summary>Outline color while the pointer is pressing inside. <c>null</c> (default) falls back to <see cref="Border"/>.</summary>
+        public Vector4? PressBorder;
+        /// <summary>Outline color when disabled. <c>null</c> (default) falls back to <see cref="Border"/>.</summary>
+        public Vector4? DisabledBorder;
+        /// <summary>Text color while the pointer hovers. <c>null</c> (default) falls back to <see cref="Text"/>.</summary>
+        public Vector4? HoverText;
+        /// <summary>Text color while the pointer is pressing inside. <c>null</c> (default) falls back to <see cref="Text"/>.</summary>
+        public Vector4? PressText;
         /// <summary>Outline thickness in pixels.</summary>
         public float BorderThickness;
 
@@ -69,6 +80,62 @@ namespace KhaozEngine.Gui
         /// </summary>
         public bool IsFlat =>
             CornerRadius == 0f && ShadowSize == 0f && FillMode == GuiFill.Solid && GlowSize == 0f && Skin == null;
+
+        /// <summary>
+        /// The outline colour for one interaction state. <paramref name="selected"/> wins outright (the pre-existing
+        /// rule), then disabled, press and hover in that order, each falling back to <see cref="Border"/> when its own
+        /// tint is unset. With every per-state tint left at <c>null</c> this is exactly
+        /// <c>selected ? SelectedBorder : Border</c>, so a style that sets none renders unchanged. Pure, headless-testable.
+        /// </summary>
+        public Vector4 ResolveBorder(bool enabled, bool selected, bool hover, bool press) =>
+            selected ? SelectedBorder
+            : !enabled ? DisabledBorder ?? Border
+            : press ? PressBorder ?? Border
+            : hover ? HoverBorder ?? Border
+            : Border;
+
+        /// <summary>
+        /// The text colour for one interaction state. Disabled wins outright (the pre-existing rule), then press and
+        /// hover, each falling back to <see cref="Text"/> when its own tint is unset. With every per-state tint left at
+        /// <c>null</c> this is exactly <c>enabled ? Text : DisabledText</c>. Pure, headless-testable.
+        /// </summary>
+        public Vector4 ResolveText(bool enabled, bool hover, bool press) =>
+            !enabled ? DisabledText
+            : press ? PressText ?? Text
+            : hover ? HoverText ?? Text
+            : Text;
+
+        /// <summary>
+        /// A copy of this style with every colour's alpha scaled by <paramref name="opacity"/>, so a whole widget
+        /// fades uniformly with a host transition. An <paramref name="opacity"/> of 1 or more returns the style
+        /// unchanged (identity, not a rebuilt copy), which is what keeps an un-faded widget byte-identical. Covers the
+        /// per-state tints (each only when it is set, so an unset tint stays unset and keeps falling back) and the
+        /// shadow / glow colours, so a modern style at <c>0</c> really does paint nothing. This is the shared fade
+        /// behind <see cref="Button.Opacity"/> and <see cref="TabBar.Opacity"/>, and is public so a consumer's own
+        /// widget can fade a <see cref="GuiStyle"/> the same way instead of re-deriving the field list.
+        /// </summary>
+        public GuiStyle Faded(float opacity)
+        {
+            if (opacity >= 1f) return this;
+            GuiStyle s = this;
+            s.Fill = GuiDraw.WithOpacity(s.Fill, opacity);
+            s.Hover = GuiDraw.WithOpacity(s.Hover, opacity);
+            s.Press = GuiDraw.WithOpacity(s.Press, opacity);
+            s.Border = GuiDraw.WithOpacity(s.Border, opacity);
+            s.Text = GuiDraw.WithOpacity(s.Text, opacity);
+            s.DisabledFill = GuiDraw.WithOpacity(s.DisabledFill, opacity);
+            s.DisabledText = GuiDraw.WithOpacity(s.DisabledText, opacity);
+            s.SelectedFill = GuiDraw.WithOpacity(s.SelectedFill, opacity);
+            s.SelectedBorder = GuiDraw.WithOpacity(s.SelectedBorder, opacity);
+            if (s.HoverBorder is { } hb) s.HoverBorder = GuiDraw.WithOpacity(hb, opacity);
+            if (s.PressBorder is { } pb) s.PressBorder = GuiDraw.WithOpacity(pb, opacity);
+            if (s.DisabledBorder is { } db) s.DisabledBorder = GuiDraw.WithOpacity(db, opacity);
+            if (s.HoverText is { } ht) s.HoverText = GuiDraw.WithOpacity(ht, opacity);
+            if (s.PressText is { } pt) s.PressText = GuiDraw.WithOpacity(pt, opacity);
+            s.ShadowColor = GuiDraw.WithOpacity(s.ShadowColor, opacity);
+            s.GlowColor = GuiDraw.WithOpacity(s.GlowColor, opacity);
+            return s;
+        }
 
         /// <summary>
         /// The frame insets interior content must clear for a widget drawn at <paramref name="bounds"/>, as

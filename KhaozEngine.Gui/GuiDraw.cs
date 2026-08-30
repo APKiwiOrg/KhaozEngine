@@ -460,8 +460,9 @@ namespace KhaozEngine.Gui
         /// The single source of truth for button visuals, shared by the immediate <see cref="GuiSurface.Button(SpriteFont, Rect, string, GuiStyle, bool, bool)"/>
         /// and the retained <see cref="Button"/>. Draws the fill (priority: <c>!enabled</c>→DisabledFill,
         /// <paramref name="selected"/>→SelectedFill, <paramref name="press"/>→Press, <paramref name="hover"/>→Hover,
-        /// else Fill), the border (selected→SelectedBorder else Border, <c>style.BorderThickness</c>), and the
-        /// centred <paramref name="label"/> (enabled→Text else DisabledText).
+        /// else Fill), the border (<see cref="GuiStyle.ResolveBorder"/>), and the centred <paramref name="label"/>
+        /// (<see cref="GuiStyle.ResolveText"/>). Those two resolve the optional per-state border / text tints and fall
+        /// back to the single Border / Text when a style sets none, which is the pre-existing behaviour exactly.
         /// </summary>
         internal static void DrawButton(SpriteBatch batch, Texture2D white, SpriteFont font, Rect rect, LocalizedText label,
             in GuiStyle style, bool enabled, bool selected, bool hover, bool press, float scale = 1f)
@@ -471,8 +472,8 @@ namespace KhaozEngine.Gui
                 : press ? style.Press
                 : hover ? style.Hover
                 : style.Fill;
-            Vector4 border = selected ? style.SelectedBorder : style.Border;
-            Vector4 text = enabled ? style.Text : style.DisabledText;
+            Vector4 border = style.ResolveBorder(enabled, selected, hover, press);
+            Vector4 text = style.ResolveText(enabled, hover, press);
 
             // Snap the body rect once (a no-op outside a point-space pass) so the fill, border, and the centred
             // label all lay out against the same device-aligned rect; FillStyled re-snaps idempotently.
@@ -506,6 +507,17 @@ namespace KhaozEngine.Gui
             float y = rect.Y + (rect.Height - lineHeight * scale) * 0.5f;
             return new Vector2(x, y);
         }
+
+        /// <summary>
+        /// The vertically centred top y for one line of <paramref name="lineHeight"/> text drawn at
+        /// <paramref name="scale"/> inside a row spanning [<paramref name="rowY"/>, <paramref name="rowY"/> +
+        /// <paramref name="rowHeight"/>]. The <see cref="AlignedTextPos"/> vertical term on its own, for the widgets
+        /// that place text at an x of their own (a fixed pad, an indent) and only need the centring: one place for the
+        /// <c>lineHeight * scale</c> term, which is the one a per-widget text scale is most easily forgotten in.
+        /// <paramref name="scale"/> <c>1</c> reproduces the unscaled expression exactly. Pure math, headless-testable.
+        /// </summary>
+        internal static float CenteredTextY(float rowY, float rowHeight, float lineHeight, float scale = 1f) =>
+            rowY + (rowHeight - lineHeight * scale) * 0.5f;
 
         /// <summary>
         /// Fit a single line of text into <paramref name="maxWidth"/>: returns <paramref name="text"/> unchanged

@@ -66,6 +66,16 @@ namespace KhaozEngine.Gui
         /// </summary>
         public float Opacity = 1f;
 
+        /// <summary>
+        /// Uniform scale for the field's text and placeholder. Defaults to <c>1f</c> (today's rendering,
+        /// byte-for-byte). Scales the TEXT only: <see cref="Bounds"/>, the box chrome, the caret sliver's own width
+        /// and height, and all hit-testing are unchanged at any scale, so a compact field draws smaller text in the
+        /// same rect. Mirrors <see cref="TabBar.TextScale"/>. Every width term the draw derives rides the scale
+        /// (<see cref="DrawLayout"/>), so the caret still trails the last glyph and the overflow clip still engages
+        /// at the point the drawn text actually reaches the right border.
+        /// </summary>
+        public float TextScale = 1f;
+
         const float BlinkRate = 0.5f;
         const float PadX = 8f;
         const float CaretWidth = 2f;
@@ -126,25 +136,47 @@ namespace KhaozEngine.Gui
 
             // A nine-slice skin's frame can be thicker than the fixed pad, so clear it (no-skin: PadX, unchanged).
             float textX = Bounds.X + (Style.Skin != null ? MathF.Max(PadX, Style.ContentInsets(Bounds).X) : PadX);
-            float textY = Bounds.Y + (Bounds.Height - Font.LineHeight) * 0.5f;
             bool empty = Text.Length == 0;
             string shown = empty ? PlaceholderContent.Resolve() : Text;
-            // The field draws its text at a fixed offset and lets it run as wide as it measures, so a value wider
-            // than the box used to paint straight past the right border into whatever sits next to it. Clip to the
-            // field when it overflows, caret included (the caret trails the text and can be the part that spills).
-            // Only when it overflows: SetScissor flushes the batch, and paying two extra flushes per field per
-            // frame to clip nothing would be a poor trade in a form full of fields.
-            bool clip = textX + Font.Measure(shown).X + CaretWidth + 1f > Bounds.Right;
-            if (clip) batch.SetScissor(Bounds);
-            batch.DrawString(Font, shown, new Vector2(MathF.Floor(textX), MathF.Floor(textY)),
-                (Color)GuiDraw.WithOpacity(empty ? PlaceholderColor : TextColor, Opacity));
+            TextInputLayout layout = DrawLayout(Font, Bounds, textX, shown, Text, TextScale);
+
+            if (layout.Clip) batch.SetScissor(Bounds);
+            batch.DrawString(Font, shown, new Vector2(MathF.Floor(layout.TextX), MathF.Floor(layout.TextY)),
+                (Color)GuiDraw.WithOpacity(empty ? PlaceholderColor : TextColor, Opacity), TextScale);
 
             if (IsFocused && CursorVisible)
-            {
-                float caretX = textX + (empty ? 0f : Font.Measure(Text).X) + 1f;
-                GuiDraw.Fill(batch, white, new Rect(caretX, Bounds.Y + 4f, CaretWidth, Bounds.Height - 8f), GuiDraw.WithOpacity(CursorColor, Opacity));
-            }
-            if (clip) batch.ClearScissor();
+                GuiDraw.Fill(batch, white, new Rect(layout.CaretX, Bounds.Y + 4f, CaretWidth, Bounds.Height - 8f),
+                    GuiDraw.WithOpacity(CursorColor, Opacity));
+            if (layout.Clip) batch.ClearScissor();
+        }
+
+        /// <summary>Where <see cref="Draw"/> puts the text and the caret, and whether it has to scissor.</summary>
+        internal readonly record struct TextInputLayout(float TextX, float TextY, float CaretX, bool Clip);
+
+        /// <summary>
+        /// The pure draw layout for one field, so the three places a text scale has to reach are one expression each
+        /// and testable without a device. <paramref name="textX"/> is the already-resolved left inset (fixed pad, or a
+        /// nine-slice skin's frame), which no scale touches.
+        /// <list type="bullet">
+        /// <item>the vertical centring, on <c>LineHeight * scale</c></item>
+        /// <item>the caret x, which trails the DRAWN width of <paramref name="text"/> (0 when the field is empty and
+        /// the placeholder is what is showing, so the caret sits at the text origin)</item>
+        /// <item>the overflow test, which asks whether the DRAWN text plus the caret crosses the right border. The
+        /// field draws at a fixed offset and lets its text run as wide as it measures, so a value wider than the box
+        /// would otherwise paint straight past the border into whatever sits beside it. Only an actual overflow
+        /// scissors: <c>SetScissor</c> flushes the batch, and two extra flushes per field per frame to clip nothing
+        /// would be a poor trade in a form full of fields.</item>
+        /// </list>
+        /// Getting the overflow test wrong is silent (it under-clips or over-flushes rather than throwing), which is
+        /// exactly why it lives here beside the other two rather than inline in the draw.
+        /// </summary>
+        internal static TextInputLayout DrawLayout(ITextMeasurer font, Rect bounds, float textX,
+            string shown, string text, float scale)
+        {
+            float textY = GuiDraw.CenteredTextY(bounds.Y, bounds.Height, font.LineHeight, scale);
+            bool clip = textX + font.Measure(shown).X * scale + CaretWidth + 1f > bounds.Right;
+            float caretX = textX + (text.Length == 0 ? 0f : font.Measure(text).X * scale) + 1f;
+            return new TextInputLayout(textX, textY, caretX, clip);
         }
     }
 }

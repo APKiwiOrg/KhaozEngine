@@ -58,7 +58,13 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   rebrand the whole UI; set it to `GuiTheme.Legacy` to keep the pre-10.11.0 flat blue-grey look. `GuiStyle` carries
   the button palette + the modern-affordance knobs, with presets: `Default` (crisp, == `Primary`), `Secondary`
   (muted), `Danger` (red), `Active` (bright-accent selected), `Modern` (rounded + glow + shadow), and `Legacy` (the
-  exact old flat button). Per-widget colour fields still override the theme.
+  exact old flat button). Per-widget colour fields still override the theme. Alongside the single `Border` and
+  `Text`, a style can carry per-state tints: `HoverBorder` / `PressBorder` / `DisabledBorder` and `HoverText` /
+  `PressText`, each a `Vector4?` defaulting to `null` = fall back to `Border` / `Text` (so a style that sets none
+  renders exactly as before). `ResolveBorder` / `ResolveText` are the pure resolvers behind them: `SelectedBorder`
+  still wins outright for the border and `DisabledText` for the text, then press, then hover. `Faded(opacity)`
+  returns a copy with every colour's alpha scaled (the optional tints only when set, plus the shadow and glow), the
+  shared fade behind `Button.Opacity` and `TabBar.Opacity` and callable from a consumer's own widget.
 - **Texture skinning (`GuiStyle.Skin`, family-wide).** `GuiStyle` has an optional `Skin` (a `GuiSkin`, default
   `null` = today's flat GuiDraw primitives, byte-for-byte). Set it and EVERY widget that fills through
   `GuiDraw.FillStyled` (Panel, Button, ProgressBar, TextInput/NumberField, ScrollablePanel, Dropdown, PopupPanel,
@@ -81,7 +87,9 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
 - Core widgets, all bounds-aware over `Pointer` (press-origin click-through invariant), drawn with a 1x1 white
   texture + `SpriteBatch`:
   - `Button` - click via `IsTapIn`, hover/press visuals. `LabelScale` (default `1f`) scales the caption only
-    (`Bounds` and the hit-test are unchanged), forwarded into the shared `GuiDraw.DrawButton`.
+    (`Bounds` and the hit-test are unchanged), forwarded into the shared `GuiDraw.DrawButton`. `Opacity`
+    (default `1f`) fades the whole button for a host transition via `GuiStyle.Faded`, so fill, border, label,
+    drop shadow and hover glow fade together and `0` paints nothing.
   - `Label` - non-interactive text, aligned (left/center/right) and optionally word-wrapped, via `TextLayout`; a
     `Scale` field (default 1) uniformly scales the drawn text.
   - `Panel` - filled/bordered container; `BlocksPointer` reserves its region so lower layers skip hit-testing under it.
@@ -140,7 +148,8 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     ability charges). Segmentation composes with every `FillDirection` (a vertical pip stack works). Optional centered
     `OverlayText` (a `LocalizedText`, so a caption localizes; wrap a number/percentage in `Raw`) stays centered in
     `Bounds` regardless of direction. `FillRect`/`InnerBounds`/`SegmentRects()`/`FilledSegmentCount` are pure geometry;
-    non-interactive (no `Update`); `Opacity` fades the whole bar.
+    non-interactive (no `Update`). `Opacity` fades the whole bar, and `OverlayTextScale` (default `1f`) scales the
+    overlay caption only, so a thin readout bar can carry a small label without shrinking the bar.
   - `NumberField` - numeric field for editor inspectors, driven by `InputManager` (needs the keyboard). A drag
     started inside scrubs `Value` by `DragScale` value units per pixel (grab-gated, so it keeps tracking off the
     widget). A tap under 3 draw units of travel, with no real value change already scrubbed this gesture, opens
@@ -162,7 +171,8 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     seeded value, not append to it).
   - `Dropdown` - trigger + option list (opens below); two-phase draw (`Draw` trigger / `DrawOverlay` list last).
     Opt-in (default off): `ShowChevron` draws an up/down caret reflecting the open state; `Opacity` fades the whole
-    dropdown for a host transition.
+    dropdown for a host transition. `TextScale` (default `1f`) scales the trigger label AND every option row's
+    label, text only: the rects, the row fills, the chevron and the hit-testing are unchanged.
   - `TabBar` - horizontal tab bar / segmented control: N evenly-split tabs, exactly one active. A valid tap
     activates a tab and raises `ChangedThisFrame` for one frame (and `Update` returns true), so the caller swaps
     the panel body only on a real change. `ActiveIndex` is settable to restore/persist the selection without
@@ -183,7 +193,10 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     A held key auto-repeats (Backspace deletes / a character keeps typing) at the OS repeat rate. `SetText(value)`
     replaces the buffer programmatically (clamped to `MaxLength`, seen as a change by the next `Update`); `Focus()` /
     `Unfocus()` drive focus directly. The placeholder is `LocalizedText` via `PlaceholderContent` (the former
-    `Placeholder` string is an `[Obsolete]` shim); `Opacity` fades the whole field for a host transition. Text
+    `Placeholder` string is an `[Obsolete]` shim). `Opacity` fades the whole field for a host transition, and
+    `TextScale` (default `1f`) scales the text and placeholder only (the rect, the caret sliver and the
+    hit-testing are unchanged). The scale carries every width term the draw derives, so the caret still trails
+    the last glyph and the overflow clip engages where the drawn text actually reaches the border. Text
     wider than the box is clipped to it (caret included) rather than painting over whatever is beside the field,
     and the clip only engages when the content actually overflows, so a field that fits costs no extra flush.
     `NumberField` clips the same way. Neither scrolls the visible window with the caret yet.
@@ -196,6 +209,12 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     `Scale` (default `1f`, a third optional positional field), and `Tooltip.TitleScale` (default `1f`) scales the
     title row, so one shared font can render a size hierarchy (e.g. a bright 1.0 title over 0.84/0.42 body lines).
     A scaled line still wraps within `MaxWidth` (the word-wrap budget divides by the line's own scale).
+    `Opacity` (default `1f`) fades the whole bubble for a host transition, and covers every colour it paints
+    (background, border, title row, separator, each body line), so `0` draws nothing.
+    `AnchorMode` (default `TooltipAnchorMode.Centered`, the bubble straddling the anchor) switches to
+    `Offset` for cursor-style placement: the bubble's left edge sits at `anchor.X + Metrics.AnchorOffsetX`,
+    so it lands beside a pointer instead of under it (a negative offset places it to the left). The vertical
+    rule and the viewport clamp are shared by both modes.
   - `ContextMenu` (18.2.0) - a right-click option menu anchored at a screen point: a title band over a stack of
     selectable rows, the OSRS-style option list. `Open(title, entries, screenPoint)` shows it (reopening while
     open just replaces the content and the anchor), `Update(Pointer)` drives one frame, `Draw(batch, white)`
@@ -285,7 +304,8 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     a selection-sync host uses after every rebuild so the highlighted row survives instead of orphaning. The
     selected-row fill now draws via `GuiDraw.FillStyled` against `Style` (a `GuiStyle`, default
     `GuiStyle.Default`) instead of a flat `GuiDraw.Fill`, so a tree using `GuiStyle.Modern` gets the same
-    rounded selection highlight as its other styled widgets.
+    rounded selection highlight as its other styled widgets. `TextScale` (default `1f`) scales the node labels
+    only, so a dense tree fits more text per row without changing `RowHeight`, `Indent` or any hit-testing.
   - `PropertyGrid` - a vertical stack of `PropertyRow`s split label/editor at `LabelFraction`, scrolling like
     `ScrollablePanel` (wheel + scissor clip). Built-in rows: `FloatRow` (a `NumberField`), `BoolRow` (a
     `Toggle`), `TextRow` (a `TextInput`), `ChoiceRow` (a `Dropdown` over a fixed set of option strings, get/set

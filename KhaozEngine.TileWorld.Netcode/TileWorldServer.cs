@@ -417,6 +417,9 @@ public sealed partial class TileWorldServer : IDisposable
     static bool PositionOf(World world, Entity entity, out float x, out float y)
     {
         if (world.TryGet(entity, out TileMoveState s)) { x = s.Tile.X; y = s.Tile.Z; return true; }
+        // A ground item has no move state on purpose (it never moves), so it answers off its own component,
+        // which is what puts a drop into the interest grid and therefore into the serve at all.
+        if (world.TryGet(entity, out TileGroundItem item)) { x = item.X; y = item.Z; return true; }
         x = 0f;
         y = 0f;
         return false;

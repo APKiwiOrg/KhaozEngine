@@ -235,6 +235,20 @@ public sealed partial class TileWorldClient : IDisposable
     /// <summary>Net ids of the remotes currently drawn. The local player is never among them.</summary>
     public IReadOnlyCollection<long> RemoteNetIds => remoteSamples.Keys;
 
+    /// <summary>Fills a caller's buffer with every ground item this client currently holds, net id and
+    /// payload. Cleared first, unsorted, complete: a drop the server despawned is simply absent on the next
+    /// call, so a game enumerates per frame and holds no lifecycle of its own. A separate door from
+    /// <see cref="RemoteNetIds"/> on purpose: that list is fed by move-state samples and a ground item has
+    /// no move state, it just sits on its tile.</summary>
+    /// <param name="into">The buffer to fill. Reused by the caller, allocated by nobody here.</param>
+    public void CollectGroundItems(List<(long NetId, TileGroundItem Item)> into)
+    {
+        ArgumentNullException.ThrowIfNull(into);
+        into.Clear();
+        foreach (KeyValuePair<long, Ecs.Entity> pair in View.Entities)
+            if (World.TryGet(pair.Value, out TileGroundItem item)) into.Add((pair.Key, item));
+    }
+
     /// <summary>
     /// Latest-wins intent for the NEXT command tick, called from a click handler. A second click before the tick
     /// replaces the first, which is what makes a rapid double click feel like one decision rather than two.

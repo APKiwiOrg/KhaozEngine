@@ -294,6 +294,28 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   edited world no longer has is quarantined and its player placed at the spawn, rather than reaching
   `TileWorldServer.SetPlayerState` and throwing out of the head's frame loop.
 
+## Ground items, whose lifecycle is the engine's and whose meaning is yours
+
+A dropped stack on a tile is a replicated entity: `TileWorldServer.SpawnGroundItem(at, itemId, count,
+ttlTicks)` places one (net id from the actors' own allocator, refused countably at
+`TileWorldServerConfig.MaxGroundItemsPerCell`, throwing on a malformed placement exactly as
+`SpawnActor` does), the server despawns it unprompted when its clock runs out (`OnGroundItemExpired`),
+and `DespawnGroundItem` is the deliberate removal whose true-once answer is what a pickup racing the
+expiry sweep keys on: move your payload only after it answers true. `TryGetGroundItem`,
+`GroundItemCount` and `GroundItemNetIds` are the server-side reads.
+
+The component is two meaning-free integers plus the tile (`TileGroundItem`: `ItemId`, `Count`, `X`,
+`Z`, `Plane`), deliberately not a dependency on `KhaozEngine.Items`: the engine owns existence,
+replication, the plane filter and the clock, and a game owns what an item IS and what taking one
+MEANS. A drop has no move state (it never moves), so clients read them through
+`TileWorldClient.CollectGroundItems(buffer)` rather than `RemoteNetIds`, per frame, with no lifecycle
+of their own: a despawned drop is simply absent on the next call. Items are `Transient` like actors:
+a cell capture never persists them.
+
+The intended pickup shape, all game code: click routes a walk to the drop's tile, arrival sends your
+own TAKE message naming the net id, your handler re-proves tile proximity per request, moves the
+stack into your own storage, and despawns.
+
 ## The player health contract, which is the first thing a game with combat gets wrong
 
 **A spawned PLAYER has no `TileHealth` at all.** An actor gets one from its spawn spec, and nothing writes a

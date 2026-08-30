@@ -167,6 +167,10 @@ public sealed partial class TileWorldServer
         //     the ECS iteration order cannot reach a decision.
         Actors.Tick();
 
+        // 1c. Expired drops leave, BEFORE the movement pass and the snapshot, so a despawn decided by this
+        //     tick's clock is gone from this tick's picture rather than lingering one more.
+        SweepExpiredGroundItems();
+
         // 2. Every cell runs the movement system (wired the moment the host creates one), then one fixed sub-tick.
         host.Tick(dt, maxTicksPerFrame: 1);
 
@@ -373,6 +377,7 @@ public sealed partial class TileWorldServer
     {
         if (!filterInterest!.Contains(id.Value)) return;
         if (filterWorld!.TryGet(e, out TileMoveState s)) planeByNetId[id.Value] = s.Tile.Plane;
+        else if (filterWorld!.TryGet(e, out TileGroundItem item)) planeByNetId[id.Value] = item.Plane;
     }
 
     bool IsOffViewerPlane(long netId) => planeByNetId.TryGetValue(netId, out int plane) && plane != filterPlane;

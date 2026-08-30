@@ -9029,6 +9029,33 @@ neither is the player's decision. It is ONE number with TWO jobs, deliberately: 
 is also the lookback that decides whether a leaving player counts as being in a fight at all, so raising it widens
 both.
 
+### Ground items (drops on tiles, 18.9.0)
+
+The engine owns a drop's LIFECYCLE and stays agnostic about what an item is: `TileGroundItem` carries
+`ItemId` and `Count` as meaning-free integers plus the tile it sits on, replicated to every viewer on
+that plane. Spawn from your death handler, read back for your own pickup rule, despawn when taking:
+
+```csharp
+// Server, in the game's OnDied handler:
+long drop = server.SpawnGroundItem(deathTile, itemId: Items.Coins, count: 25,
+    ttlTicks: server.Config.TicksFor(TimeSpan.FromMinutes(2)));   // or your own tick count
+
+// Server, in the game's TAKE message handler (your proximity rule, your storage):
+if (server.TryGetGroundItem(netId, out TileGroundItem drop)
+    && playerTile == drop.Tile                       // your rule: OSRS picks up under your feet
+    && server.DespawnGroundItem(netId))              // true exactly once, the race against expiry settled
+    inventory.Add(drop.ItemId, drop.Count);          // move the payload ONLY after the true
+
+// Client, per frame (a despawned drop is simply absent next call, no lifecycle to hold):
+client.CollectGroundItems(dropsBuffer);
+foreach ((long netId, TileGroundItem item) in dropsBuffer) DrawDropMarker(item.Tile, item.ItemId);
+```
+
+A full cell refuses countably (`MaxGroundItemsPerCell`, `RefusedGroundItemSpawnCount`), a malformed
+placement throws like `SpawnActor`'s, the server's clock despawns expired drops unprompted
+(`OnGroundItemExpired`), and drops are `Transient`: a cell capture never persists them. `TicksFor` in
+the snippet is illustrative, compute your TTL from your own tick seconds.
+
 ---
 
 ## Server status (`KhaozEngine.ServerStatus`)

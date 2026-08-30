@@ -29,10 +29,13 @@ public static partial class TileProtocol
     /// survives a region handoff and reaches no client at all.</summary>
     public const ushort TileCombatStateTypeId = ReplicationRegistry.FirstExtensionTypeId + 4;
 
+    /// <summary>Extension id of <see cref="TileGroundItem"/>, a dropped stack on a tile.</summary>
+    public const ushort TileGroundItemTypeId = ReplicationRegistry.FirstExtensionTypeId + 5;
+
     /// <summary>The first id a GAME may register, with room left below it for this package to add a component
     /// without silently colliding with a game that already shipped. Everything from
-    /// <see cref="ReplicationRegistry.FirstExtensionTypeId"/> up to here belongs to the tile netcode. Ids 21 to 23
-    /// are the tile netcode's remaining free window.</summary>
+    /// <see cref="ReplicationRegistry.FirstExtensionTypeId"/> up to here belongs to the tile netcode. Ids 22 and
+    /// 23 are the tile netcode's remaining free window.</summary>
     public const ushort FirstGameTypeId = ReplicationRegistry.FirstExtensionTypeId + 8;
 
     /// <summary>Cap on a replicated route, in steps, and the ONE definition of that number: it is also the ceiling
@@ -89,6 +92,7 @@ public static partial class TileProtocol
         reg.Register<TileHealth>(TileHealthTypeId, WriteHealth, ReadHealth);
         reg.Register<TileCombatState>(TileCombatStateTypeId, WriteCombat, ReadCombat,
             channels: ReplicationChannels.Migrate);
+        reg.Register<TileGroundItem>(TileGroundItemTypeId, WriteGroundItem, ReadGroundItem);
         registerExtensions?.Invoke(reg);
         return reg;
     }
@@ -273,6 +277,29 @@ public static partial class TileProtocol
 
     // Four bytes, both fields whole. No length prefix and nothing declared, so there is no lie a frame can tell
     // about its own size here and nothing for a reader to check.
+    static void WriteGroundItem(TileGroundItem v, BinaryWriter w)
+    {
+        w.Write(v.ItemId);
+        w.Write(v.Count);
+        w.Write(v.X);
+        w.Write(v.Z);
+        w.Write(v.Plane);
+    }
+
+    // CLAMPED, the health reader's half of the hostile-frame rule: every bit pattern of these ints is a
+    // meaningful coordinate or id to SOME world, so there is no malformed frame here. The one inconsistency a
+    // frame can carry is a non-positive count, which would draw a stack of nothing, and it clamps to one
+    // because a ground item that exists holds at least one of something.
+    static TileGroundItem ReadGroundItem(BinaryReader r)
+    {
+        int itemId = r.ReadInt32();
+        int count = r.ReadInt32();
+        int x = r.ReadInt32();
+        int z = r.ReadInt32();
+        int plane = r.ReadInt32();
+        return new TileGroundItem { ItemId = itemId, Count = Math.Max(1, count), X = x, Z = z, Plane = plane };
+    }
+
     static void WriteHealth(TileHealth v, BinaryWriter w)
     {
         w.Write(v.Current);

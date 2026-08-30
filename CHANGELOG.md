@@ -7,8 +7,33 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 18.9.0
 
-18.9.0 is the fifth backlog wave. It landed beside the v18.8.0 release, so it cuts its own minor:
-the shared sign-in base is additive API.
+18.9.0 is the fifth backlog wave plus TileWorld ground items, the drop half of a kill. It landed
+beside the v18.8.0 release, so it cuts its own minor: the shared sign-in base and the ground-item
+surface are additive API.
+
+TileWorld.Netcode gains GROUND ITEMS, engine-owned lifecycle for the loot a game's death handler
+drops (Grimhollow SP5 R1 is the consumer this ships for):
+
+- `TileGroundItem` is a new replicated component (extension id 21): `ItemId` and `Count` as
+  meaning-free integers plus the tile it sits on, deliberately NOT a `KhaozEngine.Items` dependency,
+  so a game with its own item model consumes drops identically. Registered in
+  `TileProtocol.CreateRegistry` on both heads. The netcode's remaining free id window is 22 to 23.
+- `TileWorldServer.SpawnGroundItem(at, itemId, count, ttlTicks)` spawns one as an owned entity
+  (`SpawnActor`'s split at the door: malformed placements and payloads throw, a cell at
+  `TileWorldServerConfig.MaxGroundItemsPerCell` answers 0 and counts
+  `RefusedGroundItemSpawnCount`). The server's tick despawns expired drops (`OnGroundItemExpired`),
+  `DespawnGroundItem` is the deliberate removal with `DespawnActor`'s idempotent-by-answer contract
+  (a pickup moves its payload only after it answers true, which is the race against the expiry sweep
+  settled), and `TryGetGroundItem` / `GroundItemCount` / `GroundItemNetIds` /
+  `OnGroundItemSpawned` are the reads and the hook.
+- The serve sees drops now: the interest position accessor answers for an entity carrying
+  `TileGroundItem` (a drop has no move state, deliberately), and the per-viewer plane filter reads a
+  drop's plane off its own component, so a stack upstairs is not drawn through the floor. Both were
+  invisible gaps the loopback test caught: a component can replicate perfectly and still never be
+  SERVED.
+- `TileWorldClient.CollectGroundItems(buffer)` is the client-side read: fill-a-buffer enumeration per
+  frame, no lifecycle, a despawned drop is simply absent on the next call. A separate door from
+  `RemoteNetIds` on purpose, which is fed by move-state samples.
 
 guard's last live failure mode retired, and two hygiene items.
 

@@ -60,6 +60,12 @@ public sealed record TileWorldServerConfig
     /// spawner cannot take a tick down with it.</summary>
     public int MaxActorsPerCell { get; init; } = 64;
 
+    /// <summary>How many ground items one cell may hold. The drop-side sibling of
+    /// <see cref="MaxActorsPerCell"/>, enforced as a refusal at <see cref="TileWorldServer.SpawnGroundItem"/>
+    /// for the same reason: a kill farm piling drops must degrade to refused spawns, never to an unbounded
+    /// cell.</summary>
+    public int MaxGroundItemsPerCell { get; init; } = 64;
+
     /// <summary>Inbound message budget per connection, spent per POLL rather than per wall-clock second. The token
     /// bucket is topped up once per <see cref="TileWorldServer.Poll"/> with <c>MaxCommandsPerSecond * TickSeconds</c>
     /// tokens, so a head admits that many messages per poll and its sustained ceiling is

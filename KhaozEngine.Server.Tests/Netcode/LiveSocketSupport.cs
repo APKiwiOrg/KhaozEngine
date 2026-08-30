@@ -1,6 +1,7 @@
 using System;
 using System.Net;
 using System.Net.Sockets;
+using KhaozEngine.Netcode;
 using KhaozEngine.Netcode.LiteNetLib;
 
 namespace KhaozEngine.Tests;
@@ -24,15 +25,18 @@ internal static class LiveSocketSupport
     /// ports up to <paramref name="attempts"/> times, returning <c>null</c> (and <paramref name="port"/> = 0)
     /// only if every attempt loses the race or the host is genuinely out of ports. The returned transport is
     /// owned by the caller (wrap it in <c>using</c>); a <c>null</c> return is safe to <c>using</c> (no-op).
+    /// <paramref name="maxQueuedEvents"/> sizes the transport's undrained inbox cap, so a test can force an
+    /// overflow with a couple of events instead of a real packet flood.
     /// </summary>
-    public static LiteNetLibServerTransport? TryBindServer(out int port, string connectionKey = "khaoz", int attempts = 16)
+    public static LiteNetLibServerTransport? TryBindServer(out int port, string connectionKey = "khaoz", int attempts = 16,
+        int maxQueuedEvents = BoundedEventQueue<NetEvent>.DefaultCapacity)
     {
         for (int attempt = 0; attempt < attempts; attempt++)
         {
             int candidate = ProbeFreeUdpPort();
             try
             {
-                LiteNetLibServerTransport transport = new(candidate, connectionKey);
+                LiteNetLibServerTransport transport = new(candidate, connectionKey, maxQueuedEvents);
                 port = candidate;
                 return transport;
             }

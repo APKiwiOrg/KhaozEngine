@@ -24,7 +24,8 @@ public sealed class LiteNetLibServerTransport : INetTransport
     /// <param name="connectionKey">Shared key a client must present to be accepted.</param>
     /// <param name="maxQueuedEvents">Defensive hard cap on undrained transport events. Under the drain-each-poll
     /// contract this never bites; a stalled or flooded host drops the oldest event (each Data event holds a fresh
-    /// payload buffer) instead of growing memory without bound. Drops are counted in <see cref="DroppedEventCount"/>.</param>
+    /// payload buffer) instead of growing memory without bound. Disconnected events are exempt (they release a
+    /// player slot, so dropping one leaks it). Drops are counted in <see cref="DroppedEventCount"/>.</param>
     public LiteNetLibServerTransport(int port, string connectionKey = "khaoz",
         int maxQueuedEvents = BoundedEventQueue<NetEvent>.DefaultCapacity)
     {
@@ -54,7 +55,9 @@ public sealed class LiteNetLibServerTransport : INetTransport
         listener.PeerDisconnectedEvent += (peer, info) =>
         {
             peersById.Remove(peer.Id);
-            inbox.Enqueue(NetEvent.Disconnected(ToId(peer)));
+            // Terminal: the session layer releases the peer's player slot off THIS event and off nothing else, so
+            // an overflow that dropped it would leak that slot for the life of the process. Exempt from the cap.
+            inbox.EnqueueTerminal(NetEvent.Disconnected(ToId(peer)));
         };
 
         listener.NetworkReceiveEvent += (peer, reader, channel, deliveryMethod) =>

@@ -11766,7 +11766,12 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   binding. `BoundedEventQueue<T>` is the defensive hard cap (drop-oldest, keep-newest, `DroppedCount` observable)
   the `NetServer` session inbox and the LiteNetLib transport inboxes use so a stalled or flooded host can't grow
   undrained events without bound; tune it with the optional `maxQueuedEvents` ctor arg (default 10,000) and watch
-  `DroppedEventCount`, which stays 0 for a host that drains each poll as contracted.
+  `DroppedEventCount`, which stays 0 for a host that drains each poll as contracted. `EnqueueTerminal` posts an
+  event the cap does NOT apply to and an eviction will never drop, for the ones whose loss corrupts state instead
+  of merely losing traffic: a peer's Disconnected releases its player slot and a `Left` frees the host's
+  per-player state, and nothing re-announces either, so an evicted one leaks that state permanently. Terminal
+  events are rare and self-limiting (at most one per peer, no payload buffer), so `Count` can exceed `Capacity`
+  by however many are buffered. Use it for your own terminal events if you queue through this type.
 
 ---
 

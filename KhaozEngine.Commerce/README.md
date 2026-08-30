@@ -19,7 +19,7 @@ Provides a foundational wallet system with:
 | Type | What it does |
 |---|---|
 | `AccountId`, `CurrencyId` | Opaque, non-empty string identifiers (`IEquatable`, ordinal comparison). |
-| `IWalletStore` | `CreditAsync`/`DebitAsync` (atomic, idempotent by `idempotencyKey`, scoped per account+currency), `GetBalanceAsync`, `GetLedgerAsync`. |
+| `IWalletStore` | `CreditAsync`/`DebitAsync` (atomic, idempotent by `idempotencyKey`, scoped per account+currency), `GetBalanceAsync`, `GetLedgerAsync`. Keys compare by code point on every backend, so `"claim-ABC"` is not a replay of `"claim-abc"`. |
 | `InMemoryWalletStore` | In-process reference/test `IWalletStore` + `IGrantScheduleStore`, single lock for atomicity. |
 | `Wallet` | `GrantAsync` (free credit), `SpendAsync` (debit), `RedeemAsync` (credit a `VerifiedEntitlement` via the product catalog), `BalanceAsync`. |
 | `LedgerEntry` | Immutable ledger row: `Delta` (negative = debit, positive = credit), `Reason`, `SourceRef`, `IdempotencyKey`, `CreatedAt`. |

@@ -42,7 +42,8 @@ public sealed class NetServer
     /// <param name="maxQueuedEvents">Defensive hard cap on undrained session events. The drain-to-empty contract
     /// (Poll then drain via <see cref="TryDequeueEvent"/> every tick) keeps this far below the cap; it only bites a
     /// host that stalls or is flooded, where the oldest event is dropped to keep memory bounded (Data events each
-    /// pin a payload buffer). Drops are counted in <see cref="DroppedEventCount"/>.</param>
+    /// pin a payload buffer). Left events are exempt: nothing re-announces a departure, so dropping one strands the
+    /// host's per-player state. Drops are counted in <see cref="DroppedEventCount"/>.</param>
     /// <param name="duplicateSessions">What a Hello does when its authenticated subject already holds a slot. Default
     /// <see cref="DuplicateSessionPolicy.KickOlder"/>. Tokenless connections (empty subject) are never deduped.</param>
     public NetServer(INetTransport transport, int maxPlayers, IConnectionAuthenticator authenticator,
@@ -75,7 +76,10 @@ public sealed class NetServer
                     if (slotByConnection.TryGetValue(ev.Connection, out int leftSlot))
                     {
                         RemovePeer(ev.Connection, leftSlot);
-                        inbox.Enqueue(ServerSessionEvent.Left(leftSlot));
+                        // Terminal: the host frees its own per-player state (save-on-leave, despawn) off this and
+                        // off nothing else, so an overflow that dropped it would strand that state the way a
+                        // dropped transport Disconnected used to strand the slot itself.
+                        inbox.EnqueueTerminal(ServerSessionEvent.Left(leftSlot));
                     }
                     break;
                 case NetEventType.Data:
@@ -150,7 +154,7 @@ public sealed class NetServer
         if (!connectionBySlot.TryGetValue(heldSlot, out NetConnectionId held)) return;
         RejectAndDisconnect(held, SessionRejectReason.SignedInElsewhere);
         RemovePeer(held, heldSlot);
-        inbox.Enqueue(ServerSessionEvent.Left(heldSlot));
+        inbox.EnqueueTerminal(ServerSessionEvent.Left(heldSlot));
     }
 
     // Refuse a pending peer: send the reliable Reject (delivered as-is over a lossless transport such as the

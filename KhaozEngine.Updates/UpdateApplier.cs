@@ -981,7 +981,7 @@ public static class UpdateApplier
         }
     }
 
-    private static string ToNative(string relativePath) => relativePath.Replace('/', Path.DirectorySeparatorChar);
+    private static string ToNative(string relativePath) => UpdatePathSafety.ToNative(relativePath);
 
     /// <summary>True when <paramref name="childDir"/> is <paramref name="parentDir"/> or nested under it.</summary>
     private static bool IsDirInside(string childDir, string parentDir)
@@ -999,35 +999,8 @@ public static class UpdateApplier
             || child.StartsWith(parent + Path.DirectorySeparatorChar, cmp);
     }
 
-    /// <summary>
-    /// True when <paramref name="relativePath"/> is a plain forward-slash relative path that stays
-    /// under <paramref name="installDir"/>: not rooted, no drive letter, no <c>..</c> segment, no null
-    /// byte, and resolving it against the install dir does not escape it.
-    /// </summary>
+    /// <summary>The apply-side half of the shared traversal guard. The download stage runs the same check
+    /// against the staging directory before it writes, so a hostile path never lands on disk at all.</summary>
     private static bool IsSafeRelativePath(string installDir, string relativePath)
-    {
-        if (string.IsNullOrWhiteSpace(relativePath) || relativePath.Contains('\0'))
-        {
-            return false;
-        }
-        if (Path.IsPathRooted(relativePath) || relativePath.Contains(':'))
-        {
-            return false;
-        }
-        string[] segments = relativePath.Split('/', '\\');
-        foreach (string segment in segments)
-        {
-            if (segment == "..")
-            {
-                return false;
-            }
-        }
-
-        string fullInstall = Path.GetFullPath(installDir);
-        string combined = Path.GetFullPath(Path.Combine(fullInstall, ToNative(relativePath)));
-        string prefix = fullInstall.EndsWith(Path.DirectorySeparatorChar)
-            ? fullInstall
-            : fullInstall + Path.DirectorySeparatorChar;
-        return combined.StartsWith(prefix, StringComparison.Ordinal);
-    }
+        => UpdatePathSafety.IsSafeRelativePath(installDir, relativePath);
 }

@@ -170,6 +170,32 @@ public sealed class UpdateRepairTests : IDisposable
         Assert.Equal(UpdateState.Idle, svc.State);
     }
 
+    /// <summary>#164: the repair path composes the same download loop, and it builds its own download plan, so
+    /// it is the entry point that actually reaches the loop's traversal guard. A validly-signed path escaping
+    /// the staging dir has to fail the repair rather than write outside it.</summary>
+    [Fact]
+    public async Task Repair_RefusesAManifestFilePathThatEscapesStaging()
+    {
+        UpdateManifest remote = SetupHealthyInstall();
+        // Declared by the manifest, absent from the install, so the repair diff wants to download it.
+        remote.Files.Add(new ManifestFileEntry
+        {
+            Path = "../../pwned.dll",
+            Sha256 = source.Add("../../pwned.dll", "bad"),
+            Size = 3,
+        });
+        source.PublishSigned(remote, ManifestUrl, PrivPem);
+        using UpdateService svc = Build();
+
+        UpdateRepairResult result = await svc.VerifyAndRepairAsync();
+
+        Assert.Equal(UpdateRepairOutcome.Failed, result.Outcome);
+        Assert.Equal(0, source.DownloadCalls);
+        Assert.False(File.Exists(Path.Combine(appDataDir, "pwned.dll")));
+        Assert.False(File.Exists(Path.Combine(root, "pwned.dll")));
+        Assert.Empty(launches);
+    }
+
     // --- Missing file ---
 
     [Fact]

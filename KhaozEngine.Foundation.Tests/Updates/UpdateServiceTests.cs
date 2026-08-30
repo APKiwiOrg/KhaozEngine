@@ -193,6 +193,33 @@ public sealed class UpdateServiceTests : IDisposable
         Assert.Equal(downloadsBefore, source.DownloadCalls);
     }
 
+    /// <summary>#164: the download stage combined a manifest-declared path onto the staging dir with no
+    /// traversal check, so a validly-signed <c>../../</c> path (a manifest-generator bug, a bad glob, or a
+    /// compromised signing key) wrote outside staging long before the apply-side guard ever ran.</summary>
+    [Theory]
+    [InlineData("../../pwned.dll")]
+    [InlineData("sub/../../../pwned.dll")]
+    public async Task Check_RefusesAManifestFilePathThatEscapesStaging(string hostilePath)
+    {
+        File.WriteAllText(Path.Combine(installDir, "game.dll"), "v1");
+        var remote = new UpdateManifest { Version = "2.0.0", Platform = "win-x64" };
+        remote.Files.Add(new ManifestFileEntry
+        {
+            Path = hostilePath,
+            Sha256 = source.Add(hostilePath, "bad"),
+            Size = 3,
+        });
+        source.PublishSigned(remote, ManifestUrl, PrivPem);
+        using UpdateService svc = Build();
+
+        await svc.CheckForUpdateAsync();
+
+        Assert.Equal(UpdateState.Idle, svc.State);
+        Assert.Equal(0, source.DownloadCalls);
+        Assert.False(File.Exists(Path.Combine(appDataDir, "pwned.dll")));
+        Assert.False(File.Exists(Path.Combine(root, "pwned.dll")));
+    }
+
     [Fact]
     public async Task Check_UpdateAvailable_ListsChangedFiles()
     {

@@ -198,7 +198,13 @@ public sealed partial class UpdateService : IDisposable, IUpdateStatus
             for (int i = downloads.Count - 1; i >= 0; i--)
             {
                 ManifestFileEntry file = downloads[i];
-                string stagedPath = Path.Combine(stagingDir, file.Path.Replace('/', Path.DirectorySeparatorChar));
+                if (!UpdatePathSafety.IsSafeRelativePath(stagingDir, file.Path))
+                {
+                    log.Warn($"Manifest file path {file.Path} escapes the staging directory; refusing update.");
+                    SetState(UpdateState.Idle);
+                    return;
+                }
+                string stagedPath = Path.Combine(stagingDir, UpdatePathSafety.ToNative(file.Path));
                 if (File.Exists(stagedPath) && VerifyFileHash(stagedPath, file.Sha256))
                 {
                     alreadyStaged++;
@@ -313,7 +319,12 @@ public sealed partial class UpdateService : IDisposable, IUpdateStatus
             for (int i = 0; i < pendingDownloads.Count; i++)
             {
                 ManifestFileEntry file = pendingDownloads[i];
-                string destPath = Path.Combine(stagingDir, file.Path.Replace('/', Path.DirectorySeparatorChar));
+                if (!UpdatePathSafety.IsSafeRelativePath(stagingDir, file.Path))
+                {
+                    SetError($"Unsafe file path in update manifest: {file.Path}");
+                    return;
+                }
+                string destPath = Path.Combine(stagingDir, UpdatePathSafety.ToNative(file.Path));
                 string fileUrl = source.ResolveFileUrl(pendingLatest, file.Path);
 
                 bool success = false;

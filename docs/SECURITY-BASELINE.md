@@ -152,7 +152,8 @@ dive is the canonical reference:
 
 The short version of what the updater mandates (read UPDATER.md for detail):
 mandatory RSA-2048 / PKCS#1 v1.5 / SHA-256 signed manifests with no unsigned path, file-URL origin
-locking, path-traversal and symlink/reparse guards on apply, per-file/total/free-disk size caps, strict
+locking, path-traversal guards on both download staging and apply (one shared check, so a hostile manifest
+path never reaches disk in the first place) plus symlink/reparse guards on apply, per-file/total/free-disk size caps, strict
 downgrade rejection on the signed version, and macOS `codesign` re-verify before relaunch.
 
 ## Layered defenses

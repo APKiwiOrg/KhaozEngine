@@ -224,7 +224,14 @@ public sealed partial class UpdateService
         string stagingDir = GetStagingDir(remote.Version);
         for (int i = downloads.Count - 1; i >= 0; i--)
         {
-            string staged = Path.Combine(stagingDir, downloads[i].Path.Replace('/', Path.DirectorySeparatorChar));
+            string relative = downloads[i].Path;
+            if (!UpdatePathSafety.IsSafeRelativePath(stagingDir, relative))
+            {
+                // Never combine an escaping path, not even to stat it. Left in the plan deliberately, so the
+                // download loop's guard turns it into one clean failure instead of a silent skip here.
+                continue;
+            }
+            string staged = Path.Combine(stagingDir, UpdatePathSafety.ToNative(relative));
             if (File.Exists(staged) && VerifyFileHash(staged, downloads[i].Sha256))
             {
                 downloads.RemoveAt(i);

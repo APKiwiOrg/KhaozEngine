@@ -5,7 +5,9 @@ Pure, deterministic, headless-testable particle simulation for the MonoGame-free
 
 - `ParticleSystem` - capacity-bounded pool. `Emit` a burst, `Update(dt)` to age/integrate/interpolate/recycle.
   Dead particles are swap-removed so `Active` is a contiguous `ReadOnlySpan<Particle>` of the live prefix.
-  Opt into per-particle motion-history trails with the ctor `trailSamples` (see Trails below).
+  Opt into per-particle motion-history trails with the ctor `trailSamples` (see Trails below). An `Emit` with
+  more particles than room left is clamped to what fits, and `DroppedLastEmit` / `DroppedTotal` say what that
+  cost, so a starved burst is diagnosable instead of just looking thin.
 - `Particle` - live interpolated state (`Position`/`Velocity`/`Age`/`Life`/`Size`/`Color`/`Rotation`/`Seed`) a renderer reads.
 - `EmitterConfig` - spawn params (lifetime/speed ranges, cone `Direction` + `SpreadDegrees`, `Gravity`,
   `Drag`, start/end size + color). `Spark` and `Puff` static defaults. Modern fields (emission shapes, life
@@ -82,6 +84,9 @@ A layered effect plays several emitters on one timeline, all headless and determ
   and `Clear()` rounding it out. `RateScale` (default 1) is a runtime multiplier on every phase's stream rate,
   independent of and multiplicative with each phase's own `RateCurve` - drive it per frame to tie emission to an
   external ramp your game owns (a dissolve threshold, a channel-up windup). Deterministic from the ctor seed.
+  A pool is per PHASE, so every concurrent instance emits into the same one: a phase whose `PoolCapacity` only
+  fits one burst clamps the second overlapping `Play`. Size a phase for the concurrency the game really plays,
+  and watch `DroppedLastUpdate` / `DroppedTotal` to know when it is wrong.
 
 ## Attractor and absorb-on-arrival
 

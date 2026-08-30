@@ -4117,6 +4117,19 @@ Build a multi-phase `ParticleEffect` from `ParticleEffectPhase`s (each a config 
 `Delay`/`Duration`/`RatePerSecond`/`BurstCount`/`PoolCapacity`/`TrailSamples`/`OriginOffset`), or bake bursts
 straight into a `ParticleSystem` with `Emit`.
 
+**Pool capacity is per phase, shared by every instance.** `maxInstances` bounds concurrent `Play` calls, but a
+phase has ONE pool behind all of them, so two overlapping plays of the same effect draw their bursts from the
+same room. A phase sized for a single burst (say `BurstCount = 24` into a `PoolCapacity = 40`) clamps the
+second one. `Emit` still clamps rather than throwing, and now reports the cost: `ParticleSystem.DroppedLastEmit`
+/ `DroppedTotal` per pool, and `ParticleEffectPlayer.DroppedLastUpdate` / `DroppedTotal` summed over the
+phases. A non-zero value means that phase's `PoolCapacity` is too small for the bursts actually in flight:
+
+```csharp
+player.Update(dt);
+if (player.DroppedLastUpdate > 0)
+    hud.Note($"vfx starved: {player.DroppedLastUpdate} particles lost this frame");  // dev overlay
+```
+
 **Drawing a raw system.** When you drive one `ParticleSystem` yourself, hand it a `ParticleLook` and let the
 adapter map every live particle to a sprite:
 

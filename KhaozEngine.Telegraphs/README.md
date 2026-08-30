@@ -29,9 +29,24 @@ zones painted flat on the ground in a 3D scene, add `KhaozEngine.Telegraphs.Rend
   - `Pattern` (`TelegraphFillPattern`): `Solid` (legacy flat tint, default), `ScrollingNoise`
     (domain-warped value noise drifting across the shape into wispy filaments, not round
     scrolling blobs), `RadialNoise` (a Cartesian vortex swirl, spiral arms orbiting the shape
-    center over time, no polar singularity at the center).
-  - `PatternSpeed` - pattern animation rate, cycles per second of the scene effect clock.
+    center over time, no polar singularity at the center), `MoltenCracks` (an animated
+    Voronoi/cellular crack web, a near-white core at each cell border falling off through
+    `AccentColor` into the dark fill field between cells: molten slam scar, ice fracture,
+    corruption ground).
+  - `PatternSpeed` - pattern animation rate, cycles per second of the scene effect clock. For
+    `MoltenCracks` it is a slow per-cell breathing rather than a scroll.
   - `PatternScale` - noise cells across the shape's characteristic size. 0 falls back to 6.
+  - `PatternParam` - pattern-specific shape control, meaning owned by the active `Pattern`. For
+    `MoltenCracks` it is the crack width in cell-space units (0 falls back to the shader's 0.22).
+    Ignored by patterns that define no parameter.
+  - `AccentColor` - the second, "hot" colour of a two-tone pattern (today only `MoltenCracks`,
+    where rgb tints the crack glow and alpha scales the crack opacity independently of
+    `FillColor`'s, so a dark near-opaque field can carry bright cracks). Its alpha is scaled by
+    `Opacity` like the fill's. A fully zero colour (the default) is inert.
+  - `EdgeErosion` - noise-modulated silhouette breakup at the shape's analytic edge, for every
+    shape and pattern. 0 (default) = the exact boundary, 1 = fully eroded fingers biting inward.
+    Stable value noise with no time and no RNG, so every client sees the same silhouette. The
+    shader erodes first, then feathers the surviving boundary.
   - `EdgeEnergy` - master strength multiplier for `RimGlow` / `SweepGlow` / `EdgeSparkle`. 0
     means the default full strength of 1 (not off). Set an explicit value to scale it.
   - `InteriorDim` - how much the deep fill interior dims relative to the boundary and sweep
@@ -87,9 +102,10 @@ zones painted flat on the ground in a 3D scene, add `KhaozEngine.Telegraphs.Rend
   `PrimitiveRenderer`: `Begin(batch, primitives)`, then `Circle` / `Ring` / `Beam` / `Cone` /
   `Arc`, then `End()`. Draws the flat fill/outline/pulse/flash only, picking primitives by
   `FillMode` directly. **It reads none of the modern style knobs above** (FeatherWidth,
-  Pattern/PatternSpeed/PatternScale, EdgeEnergy, InteriorDim, BaseFill, RimGlow, SweepGlow,
-  EdgeSparkle, OutlineRunner, EdgeWidthWorld, FeatherWidthWorld, VoidFallback, VoidDim) - those are
-  a `KhaozEngine.Telegraphs.Render3D` ground-decal feature.
+  Pattern/PatternSpeed/PatternScale/PatternParam, AccentColor, EdgeErosion, EdgeEnergy,
+  InteriorDim, BaseFill, RimGlow, SweepGlow, EdgeSparkle, OutlineRunner, EdgeWidthWorld,
+  FeatherWidthWorld, VoidFallback, VoidDim) - those are a `KhaozEngine.Telegraphs.Render3D`
+  ground-decal feature.
 - `ZoneSense.Safe` is reserved for a future version (v1 renders it exactly like `Danger`).
 
 ```csharp

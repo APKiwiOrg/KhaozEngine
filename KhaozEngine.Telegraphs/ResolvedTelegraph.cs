@@ -102,6 +102,23 @@ namespace KhaozEngine.Telegraphs
         /// 0 = no dim. Carried through from the style clamped to 0..1. The 2D renderer ignores it.</summary>
         public float VoidDim { get; init; }
 
+        /// <summary>Second, "hot" colour for a two-tone fill pattern (today only
+        /// <see cref="TelegraphFillPattern.MoltenCracks"/>). Carried through from the style with its alpha scaled
+        /// by the style opacity, like the fill's. Default (a fully zero colour) is inert. The 2D renderer ignores
+        /// it.</summary>
+        public Color AccentColor { get; init; }
+
+        /// <summary>Pattern-specific shape control, meaning owned by <see cref="Pattern"/>. Dimensionless, so it
+        /// is carried through from the style clamped to non-negative and passed to the decal verbatim. The 2D
+        /// renderer ignores it.</summary>
+        public float PatternParam { get; init; }
+
+        /// <summary>Noise-modulated silhouette breakup at the shape's analytic edge (0 = the exact boundary,
+        /// 1 = fully eroded). Dimensionless, so unlike <see cref="FeatherFraction"/> it needs no world-unit
+        /// derivation and passes to the decal verbatim. Carried through from the style clamped to 0..1. The 2D
+        /// renderer ignores it.</summary>
+        public float EdgeErosion { get; init; }
+
         public ResolvedTelegraph(Color fillColor, Color outlineColor, float fillFraction, float flashAdd,
             float edgeThickness, FillMode fillMode, TelegraphBlend blend)
             : this(fillColor, outlineColor, fillFraction, flashAdd, edgeThickness, fillMode, blend,

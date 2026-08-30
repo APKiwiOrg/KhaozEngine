@@ -4075,13 +4075,20 @@ energy lane follow the eroded edge.
         FillFraction = 1f, YTolerance = 0.3f, MaxStep = 0.4f,
     });
 
-These are raw-decal fields only for now: `TelegraphStyle` does not expose them yet, so build the
-`GroundDecal` directly (as above) rather than through `GroundTelegraphs`. The
+`TelegraphStyle` exposes all of it too, so the same look is reachable through `GroundTelegraphs`
+with its presets, progress resolve and residue, not only by building the `GroundDecal` by hand:
+`TelegraphFillPattern.MoltenCracks`, plus `TelegraphStyle.AccentColor`, `PatternParam` and
+`EdgeErosion`. Every one of those passes to the decal verbatim, because `PatternParam` (cell space)
+and `EdgeErosion` (a fraction of the shape's own half-thickness) are dimensionless, unlike
+`FeatherWidth`, which the 3D path derives in world units from the shape's characteristic size or
+takes from the `FeatherWidthWorld` override. So erosion behaves the same whichever feather path a
+style is on. `AccentColor`'s alpha rides `TelegraphStyle.Opacity` exactly as the fill's does. The
 `MoltenCracksShowcaseGpuTests` PNG dumps are the reference look.
 
 **The 2D `TelegraphRenderer2D` path ignores every knob in this subsection** (FeatherWidth,
-Pattern/PatternSpeed/PatternScale, EdgeEnergy, InteriorDim, BaseFill, RimGlow, SweepGlow,
-EdgeSparkle, OutlineRunner, EdgeWidthWorld, FeatherWidthWorld, VoidFallback, VoidDim, and residue)
+Pattern/PatternSpeed/PatternScale/PatternParam, AccentColor, EdgeErosion, EdgeEnergy, InteriorDim,
+BaseFill, RimGlow, SweepGlow, EdgeSparkle, OutlineRunner, EdgeWidthWorld, FeatherWidthWorld,
+VoidFallback, VoidDim, and residue)
 and always renders the flat legacy fill/outline/pulse/flash look, picking primitives by `FillMode`
 directly. They are a 3D ground-decal feature.
 

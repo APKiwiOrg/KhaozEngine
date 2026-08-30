@@ -229,5 +229,146 @@ namespace KhaozEngine.Tests.Telegraphs
         Assert.Equal(0f, d.VoidDim);
     }
 
+    /// <summary>
+    /// THE CAST AT THE HEART OF <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/229">#229</see>.
+    /// <c>GroundTelegraphs.Base</c> maps the fill pattern with a direct <c>(DecalFillPattern)</c> cast, which is
+    /// sound exactly as long as the two enums agree member for member and value for value. They did not: the decal
+    /// side gained MoltenCracks in 13.4.0 and the telegraph side stopped at RadialNoise, so a telegraph could not
+    /// author the molten look and a decal-side member added after this would map to whatever the cast happened to
+    /// produce. This is the guard that keeps the cast honest.
+    /// </summary>
+    [Fact]
+    public void Every_decal_fill_pattern_has_a_telegraph_twin_at_the_same_value()
+    {
+        string[] decalNames = Enum.GetNames<DecalFillPattern>();
+        string[] telegraphNames = Enum.GetNames<TelegraphFillPattern>();
+        Assert.Equal(decalNames, telegraphNames);
+
+        foreach (TelegraphFillPattern p in Enum.GetValues<TelegraphFillPattern>())
+        {
+            Assert.True(Enum.IsDefined((DecalFillPattern)p),
+                $"TelegraphFillPattern.{p} casts to an undefined DecalFillPattern");
+            Assert.Equal(p.ToString(), ((DecalFillPattern)p).ToString());
+        }
+    }
+
+    [Fact]
+    public void Molten_cracks_and_its_knobs_map_through_to_the_decal()
+    {
+        var s = TelegraphStyle.Fire;
+        s.Pattern = TelegraphFillPattern.MoltenCracks;
+        s.AccentColor = new Color(1f, 0.55f, 0.15f, 0.8f);
+        s.PatternParam = 0.3f;
+        s.EdgeErosion = 0.45f;
+
+        var d = GroundTelegraphs.BuildCircle(Vector3.Zero, 4f, 0.5f, s);
+
+        Assert.Equal(DecalFillPattern.MoltenCracks, d.Pattern);
+        Assert.Equal(1f, d.AccentColor.R, 4);
+        Assert.Equal(0.55f, d.AccentColor.G, 4);
+        Assert.Equal(0.15f, d.AccentColor.B, 4);
+        Assert.Equal(0.8f, d.AccentColor.A, 4);
+        Assert.Equal(0.3f, d.PatternParam, 4);
+        Assert.Equal(0.45f, d.EdgeErosion, 4);
+    }
+
+    [Fact]
+    public void Accent_alpha_follows_the_style_opacity_like_the_fill_does()
+    {
+        var s = TelegraphStyle.Fire;
+        s.Pattern = TelegraphFillPattern.MoltenCracks;
+        s.AccentColor = new Color(1f, 0.5f, 0.2f, 0.8f);
+        s.Opacity = 0.5f;
+
+        var d = GroundTelegraphs.BuildCircle(Vector3.Zero, 4f, 0.5f, s);
+
+        Assert.Equal(0.4f, d.AccentColor.A, 4);
+        Assert.Equal(1f, d.AccentColor.R, 4);      // rgb untouched, only the alpha is scaled
+    }
+
+    /// <summary>
+    /// EdgeErosion is DIMENSIONLESS (0..1 of the shape's own half-thickness), unlike FeatherWidth, which the 3D
+    /// path derives in world units from the shape's characteristic size or takes verbatim from the world-unit
+    /// override. So the two do not interact at this layer: erosion passes straight through untouched whichever
+    /// feather path a style is on, and the shader's documented order (erode first, then feather the surviving
+    /// boundary) does the rest.
+    /// </summary>
+    [Fact]
+    public void Edge_erosion_is_unaffected_by_which_feather_path_the_style_is_on()
+    {
+        var derived = TelegraphStyle.Generic;
+        derived.EdgeErosion = 0.6f;
+        derived.FeatherWidth = 0.1f;            // shape-relative fraction path
+
+        var pinned = TelegraphStyle.Generic;
+        pinned.EdgeErosion = 0.6f;
+        pinned.FeatherWidthWorld = 0.25f;       // world-unit override path
+
+        var a = GroundTelegraphs.BuildCircle(Vector3.Zero, 4f, 0.5f, derived);
+        var b = GroundTelegraphs.BuildCircle(Vector3.Zero, 4f, 0.5f, pinned);
+
+        Assert.Equal(0.6f, a.EdgeErosion, 4);
+        Assert.Equal(0.6f, b.EdgeErosion, 4);
+        Assert.NotEqual(a.FeatherWidth, b.FeatherWidth);   // the feather paths really are different
+    }
+
+    [Fact]
+    public void Edge_erosion_clamps_to_the_unit_range()
+    {
+        var hot = TelegraphStyle.Generic;
+        hot.EdgeErosion = 3f;
+        Assert.Equal(1f, GroundTelegraphs.BuildCircle(Vector3.Zero, 4f, 0.5f, hot).EdgeErosion, 4);
+
+        var cold = TelegraphStyle.Generic;
+        cold.EdgeErosion = -2f;
+        Assert.Equal(0f, GroundTelegraphs.BuildCircle(Vector3.Zero, 4f, 0.5f, cold).EdgeErosion, 4);
+    }
+
+    [Fact]
+    public void Accent_pattern_param_and_erosion_map_through_every_shape_builder()
+    {
+        var s = TelegraphStyle.Generic;
+        s.Pattern = TelegraphFillPattern.MoltenCracks;
+        s.AccentColor = new Color(0.9f, 0.2f, 0.1f, 1f);
+        s.PatternParam = 0.18f;
+        s.EdgeErosion = 0.35f;
+        var built = new[]
+        {
+            GroundTelegraphs.BuildCircle(Vector3.Zero, 4f, 0.5f, s),
+            GroundTelegraphs.BuildRing(Vector3.Zero, 2f, 4f, 0.5f, s),
+            GroundTelegraphs.BuildBeam(Vector3.Zero, new Vector2(1f, 0f), 6f, 1f, 0.5f, s),
+            GroundTelegraphs.BuildCone(Vector3.Zero, new Vector2(1f, 0f), 0.5f, 5f, 0.5f, s),
+            GroundTelegraphs.BuildArc(Vector3.Zero, 4f, 0.5f, 0f, 1.5f, 0.5f, s),
+        };
+        foreach (var d in built)
+        {
+            Assert.Equal(DecalFillPattern.MoltenCracks, d.Pattern);
+            Assert.Equal(0.9f, d.AccentColor.R, 4);
+            Assert.Equal(0.18f, d.PatternParam, 4);
+            Assert.Equal(0.35f, d.EdgeErosion, 4);
+        }
+    }
+
+    [Fact]
+    public void An_untouched_style_keeps_accent_pattern_param_and_erosion_fully_zero()
+    {
+        // The zero-neutral contract: every authored preset predates these fields, so a style that never sets them
+        // must still map to a byte-for-byte unchanged decal.
+        foreach (var s in new[]
+                 {
+                     TelegraphStyle.Generic, TelegraphStyle.Fire, TelegraphStyle.Poison, TelegraphStyle.Steel,
+                     TelegraphStyle.Frost, TelegraphStyle.Nature, TelegraphStyle.Arcane,
+                 })
+        {
+            var d = GroundTelegraphs.BuildCircle(Vector3.Zero, 4f, 0.5f, s);
+            Assert.Equal(0f, d.AccentColor.R);
+            Assert.Equal(0f, d.AccentColor.G);
+            Assert.Equal(0f, d.AccentColor.B);
+            Assert.Equal(0f, d.AccentColor.A);
+            Assert.Equal(0f, d.PatternParam);
+            Assert.Equal(0f, d.EdgeErosion);
+        }
+    }
+
     }
 }

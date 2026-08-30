@@ -87,6 +87,12 @@ namespace KhaozEngine.Telegraphs
                 BaseFill = r.BaseFill,
                 VoidFallback = r.VoidFallback,
                 VoidDim = r.VoidDim,
+                // Verbatim, all three: AccentColor is a colour, and PatternParam (cell-space) and EdgeErosion
+                // (a fraction of the shape's own half-thickness) are both DIMENSIONLESS, so unlike the edge and
+                // feather widths above there is nothing to convert from shape-relative into world units.
+                AccentColor = r.AccentColor,
+                PatternParam = r.PatternParam,
+                EdgeErosion = r.EdgeErosion,
             };
         }
 

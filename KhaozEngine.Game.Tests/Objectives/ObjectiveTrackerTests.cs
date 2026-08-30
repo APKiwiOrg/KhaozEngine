@@ -158,6 +158,78 @@ public class ObjectiveTrackerTests
         Assert.True(t.IsComplete("purist"));
     }
 
+    // ----- constraint-only objectives -----------------------------------------
+
+    private static ObjectiveDefinition NoUpgrades(double target = 0) =>
+        ObjectiveDefinition.Create("frugal", ObjectiveCondition.AtMost("upgrades.bought", target, MetricScope.Session));
+
+    [Fact]
+    public void AtMostOnly_DoesNotCompleteAtRegister()
+    {
+        var t = new ObjectiveTracker();
+        var fired = Capture(t);
+        t.Register(NoUpgrades());          // nothing reported yet: 0 <= 0 holds, but the run has not happened
+
+        Assert.False(t.IsComplete("frugal"));
+        Assert.Empty(fired);
+    }
+
+    [Fact]
+    public void AtMostOnly_DoesNotCompleteOnAReportThatStaysUnderTarget()
+    {
+        var t = new ObjectiveTracker();
+        var fired = Capture(t);
+        t.Register(NoUpgrades(target: 3));
+
+        t.Report("upgrades.bought", 1);    // still within the constraint, but the run is not over either
+
+        Assert.False(t.IsComplete("frugal"));
+        Assert.Empty(fired);
+    }
+
+    [Fact]
+    public void AtMostOnly_CompletesOnTheGamesExplicitEvaluateAll()
+    {
+        var t = new ObjectiveTracker();
+        var fired = Capture(t);
+        t.Register(NoUpgrades());
+
+        t.EvaluateAll();                   // the game's end-of-run call
+
+        Assert.True(t.IsComplete("frugal"));
+        Assert.Single(fired);
+        Assert.Equal("frugal", fired[0].ObjectiveId);
+    }
+
+    [Fact]
+    public void AtMostOnly_ViolatedBeforeEvaluateAll_NeverCompletes()
+    {
+        var t = new ObjectiveTracker();
+        t.Register(NoUpgrades());
+
+        t.Report("upgrades.bought", 1);    // violated
+        t.EvaluateAll();
+
+        Assert.False(t.IsComplete("frugal"));
+    }
+
+    [Fact]
+    public void AtMostOnly_IsNotCompletedByRestore_ButARestoredIdStillBinds()
+    {
+        var t = new ObjectiveTracker();
+        var fired = Capture(t);
+        t.Register(NoUpgrades());
+        t.Restore(new ObjectivesSnapshot());   // empty counters: "not violated" is not evidence of a finished run
+
+        Assert.False(t.IsComplete("frugal"));
+        Assert.Empty(fired);
+
+        var done = new ObjectiveTracker();
+        done.Register(NoUpgrades());
+        done.Restore(new ObjectivesSnapshot { Completed = new List<string> { "frugal" } });
+        Assert.True(done.IsComplete("frugal"));
+    }
+
     // ----- completion semantics ----------------------------------------------
 
     [Fact]

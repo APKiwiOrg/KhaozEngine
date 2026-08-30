@@ -11,7 +11,12 @@ public enum ObjectiveConditionKind
     /// <summary>Peak threshold: the key's maximum <see cref="ObjectiveTracker.Observe(string, double)"/> value is <c>&gt;= target</c> (e.g. "reach depth 200").</summary>
     Reached,
 
-    /// <summary>Constraint / negative goal: the key's summed total is <c>&lt;= target</c> (e.g. "buy no upgrades this run").</summary>
+    /// <summary>
+    /// Constraint / negative goal: the key's summed total is <c>&lt;= target</c> (e.g. "buy no upgrades this run").
+    /// It holds until it is violated, so it gates a goal rather than being one. An objective built ONLY from
+    /// constraints completes solely from <see cref="ObjectiveTracker.EvaluateAll"/>, the game's own end-of-run call,
+    /// since on empty counters there is nothing to tell "not violated" from "not started".
+    /// </summary>
     AtMost,
 }
 
@@ -55,7 +60,10 @@ public readonly struct ObjectiveCondition
     public static ObjectiveCondition Reached(string key, double target, MetricScope scope)
         => new(ObjectiveConditionKind.Reached, key, target, scope);
 
-    /// <summary>A constraint condition: the summed total of <paramref name="key"/> in <paramref name="scope"/> is <c>&lt;= <paramref name="target"/></c>.</summary>
+    /// <summary>A constraint condition: the summed total of <paramref name="key"/> in <paramref name="scope"/> is
+    /// <c>&lt;= <paramref name="target"/></c>. Pair it with an AtLeast / Reached condition to gate it, or complete an
+    /// all-constraint objective with <see cref="ObjectiveTracker.EvaluateAll"/> (see
+    /// <see cref="ObjectiveConditionKind.AtMost"/>).</summary>
     public static ObjectiveCondition AtMost(string key, double target, MetricScope scope)
         => new(ObjectiveConditionKind.AtMost, key, target, scope);
 

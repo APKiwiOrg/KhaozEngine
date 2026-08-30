@@ -11792,6 +11792,7 @@ objectives.Report("bars.copper", 3);      // accumulator (Sum): feeds AtLeast / 
 objectives.Observe("depth.max", 120);     // peak (Max): feeds Reached
 
 // 4. Clear the Session scope at YOUR run boundary (Nullwake calls this in Wake()).
+objectives.EvaluateAll();                 // judges the constraint-only objectives, see below
 objectives.ResetScope(MetricScope.Session);
 
 // 5. Introspect for a progress log - no bookkeeping of your own.
@@ -11810,6 +11811,14 @@ thousands of reports/sec against hundreds of objectives). Completion is idempote
 once, stays completed, never re-fires, and survives Capture / Restore. It is deterministic (pure counters +
 predicates, no RNG / wall-clock) and single-threaded - route all calls from the sim thread; completion handlers
 run synchronously inside the triggering call.
+
+**A constraint is not a goal, so an all-`AtMost` objective waits for `EvaluateAll()`.** "Finish the level
+buying no upgrades" holds the moment it registers, because an unreported key reads 0 and `0 <= 0`. Nothing
+derives completion for such an objective (not `Register`, not a `Report`, not `Restore`): on empty counters
+there is no way to tell "not violated" from "not started", and only the game knows when its run ended. Call
+`EvaluateAll()` at that boundary, before `ResetScope` clears the evidence, and every constraint still standing
+completes. An objective that mixes a constraint with an `AtLeast` / `Reached` needs none of this, since the
+progress condition already gates it.
 
 **What stays game-side (the seam):** rewards / points / trees (read the opaque `ObjectiveCompletion.Metadata`
 you attached), save transport (serialize the `ObjectivesSnapshot`), and display text (reference a localized

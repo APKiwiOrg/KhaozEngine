@@ -18,7 +18,9 @@ The framework never names a domain concept. It knows opaque metric-key strings, 
    mechanism.
 3. **Objectives are declarative conditions over metrics** (pure data the game supplies): `AtLeast(key, target,
    scope)` (accumulator >=), `Reached(key, target, scope)` (peak >=, for "reach depth N"), `AtMost(key, target,
-   scope)` (constraint / negative goals), AND-composed.
+   scope)` (constraint / negative goals), AND-composed. An `AtMost` is a constraint rather than a goal: it holds
+   until it is violated. Pair it with an `AtLeast` / `Reached` that gates it, or see the constraint-only rule
+   below.
 4. **Only objectives watching the changed key are re-evaluated** (indexed by key) - the perf contract, never a
    full scan.
 5. **On completion, `ObjectiveCompleted` fires.** Idempotent: completes once, stays completed, never re-fires,
@@ -66,6 +68,13 @@ ambiguity.
 
 Recommended lifecycle: **subscribe -> Register -> Restore**. Register-before-Restore is preferred but not
 required - a completed id restored ahead of its definition binds silently when the definition registers.
+
+**Constraint-only objectives need step 6: `EvaluateAll()` at the run boundary.** An objective whose every
+condition is an `AtMost` ("finish the level buying no upgrades") holds on empty counters, so nothing derives its
+completion: not `Register`, not a `Report`, not `Restore`. On an empty counter set there is no way to tell "not
+violated" from "not started", and only the game knows when the run ended. Call `EvaluateAll()` at that point and
+the surviving constraints complete. Mixed objectives need none of this: their `AtLeast` / `Reached` condition
+already gates them, and they complete on the report that satisfies it.
 
 ## The seam (stays game-side)
 

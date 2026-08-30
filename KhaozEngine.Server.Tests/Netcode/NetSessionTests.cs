@@ -88,7 +88,11 @@ public class NetSessionTests
         Pump(server, client);
 
         Assert.DoesNotContain(DrainServer(server), e => e.Kind == ServerSessionEventKind.Joined);
-        var rejected = Assert.Single(DrainClient(client), e => e.Kind == ClientSessionEventKind.Rejected);
+        // The WHOLE drained list, not a predicate filter over it. The filter passed while the loopback was also
+        // emitting a bare Disconnected ahead of the Rejected (#129), because it only asked that a Rejected exist
+        // somewhere. A refusal is one terminal event and nothing else.
+        ClientSessionEvent rejected = Assert.Single(DrainClient(client));
+        Assert.Equal(ClientSessionEventKind.Rejected, rejected.Kind);
         Assert.Equal("nope", rejected.RejectReason);
         Assert.Equal(-1, client.Slot);
     }

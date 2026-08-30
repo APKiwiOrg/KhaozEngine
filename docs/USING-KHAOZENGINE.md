@@ -12904,7 +12904,10 @@ Implementations:
 - **`LoopbackTransport`** (in `KhaozEngine.Netcode`) - a deterministic, socket-free, thread-free in-memory
   pair for headless tests and single-process local play. `var (server, client) = LoopbackTransport.CreatePair();`
   A `Send` on one surfaces as a `Data` event on the other after that other endpoint `Poll`s; both see the peer
-  as connection id 1. This is what netcode tests run on - no real sockets needed.
+  as connection id 1. This is what netcode tests run on - no real sockets needed. A `Disconnect` takes its place in
+  that same order, so a plain kick loses nothing already sent. A disconnect carrying a reason (how `NetServer`
+  refuses a peer) instead supersedes what the peer has not polled and ends the session with one event, which is
+  what the UDP binding does and what keeps a rejected client from seeing a bare drop ahead of the reject.
 - **`LiteNetLibServerTransport(port)` / `LiteNetLibClientTransport(host, port)`** (in
   `KhaozEngine.Netcode.LiteNetLib`) - reliable-UDP over LiteNetLib, reusing `ChannelSplitter.ToDeliveryMethod`
   for the reliability mapping. A peer is surfaced as `NetConnectionId` = `peer.Id + 1`.

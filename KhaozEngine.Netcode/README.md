@@ -204,13 +204,21 @@ server peer. Games read it (with the snapshot rate + prediction-correction magni
 
 `NetServer` refuses a pending peer by sending a reliable `Reject` frame AND carrying the same framed reject on
 the disconnect via `INetTransport.Disconnect(NetConnectionId, ReadOnlySpan<byte> reason)` (a **default interface
-method** that drops the reason and does a plain disconnect, so the loopback and any external transport keep
-compiling unchanged). Over the in-memory loopback the reliable Reject lands first (unchanged). Over a real socket
-the immediate teardown can outrun the reliable flush, so the reason on the disconnect - delivered as part of the
-shutdown handshake (LiteNetLib `NetPeer.Disconnect(byte[])` -> `DisconnectInfo.AdditionalData`, surfaced on the
-`NetEvent` `Disconnected` payload) - is what makes the reject reach the client. `NetClient` turns a disconnect that
-carries a `Reject` frame into a `Rejected` session event, so `WorldClient` classifies a version/token reject
-terminally instead of treating the bare drop as a transient outage and auto-reconnecting forever.
+method** that drops the reason and does a plain disconnect, so an external transport with nowhere to put one keeps
+compiling unchanged). Over a real socket the immediate teardown can outrun the reliable flush, so the reason on the
+disconnect - delivered as part of the shutdown handshake (LiteNetLib `NetPeer.Disconnect(byte[])` ->
+`DisconnectInfo.AdditionalData`, surfaced on the `NetEvent` `Disconnected` payload) - is what makes the reject reach
+the client. `NetClient` turns a disconnect that carries a `Reject` frame into a `Rejected` session event, so
+`WorldClient` classifies a version/token reject terminally instead of treating the bare drop as a transient outage
+and auto-reconnecting forever.
+
+`LoopbackTransport` implements the same overload rather than falling through to the default (#129). Being lossless
+it would otherwise deliver BOTH copies of the reject, and the reasonless default delivered the drop first, so a
+rejected loopback client observed `Disconnected` and only then `Rejected` - exactly the bare-drop-then-reconnect
+sequence the reason on the disconnect exists to prevent, and a consumer that reacts to the first event it sees
+fired before the `Rejected` was drained. A reason-carrying loopback disconnect now supersedes whatever the peer has
+not polled and ends the session with the single `Disconnected` that carries the reject, matching the wire. An empty
+reason is not a refusal and stays a plain, lossless disconnect: everything already sent still lands, then the drop.
 
 ## One account, one live session
 

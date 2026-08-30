@@ -58,7 +58,13 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   rebrand the whole UI; set it to `GuiTheme.Legacy` to keep the pre-10.11.0 flat blue-grey look. `GuiStyle` carries
   the button palette + the modern-affordance knobs, with presets: `Default` (crisp, == `Primary`), `Secondary`
   (muted), `Danger` (red), `Active` (bright-accent selected), `Modern` (rounded + glow + shadow), and `Legacy` (the
-  exact old flat button). Per-widget colour fields still override the theme.
+  exact old flat button). Per-widget colour fields still override the theme. Alongside the single `Border` and
+  `Text`, a style can carry per-state tints: `HoverBorder` / `PressBorder` / `DisabledBorder` and `HoverText` /
+  `PressText`, each a `Vector4?` defaulting to `null` = fall back to `Border` / `Text` (so a style that sets none
+  renders exactly as before). `ResolveBorder` / `ResolveText` are the pure resolvers behind them: `SelectedBorder`
+  still wins outright for the border and `DisabledText` for the text, then press, then hover. `Faded(opacity)`
+  returns a copy with every colour's alpha scaled (the optional tints only when set, plus the shadow and glow), the
+  shared fade behind `Button.Opacity` and `TabBar.Opacity` and callable from a consumer's own widget.
 - **Texture skinning (`GuiStyle.Skin`, family-wide).** `GuiStyle` has an optional `Skin` (a `GuiSkin`, default
   `null` = today's flat GuiDraw primitives, byte-for-byte). Set it and EVERY widget that fills through
   `GuiDraw.FillStyled` (Panel, Button, ProgressBar, TextInput/NumberField, ScrollablePanel, Dropdown, PopupPanel,
@@ -81,7 +87,9 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
 - Core widgets, all bounds-aware over `Pointer` (press-origin click-through invariant), drawn with a 1x1 white
   texture + `SpriteBatch`:
   - `Button` - click via `IsTapIn`, hover/press visuals. `LabelScale` (default `1f`) scales the caption only
-    (`Bounds` and the hit-test are unchanged), forwarded into the shared `GuiDraw.DrawButton`.
+    (`Bounds` and the hit-test are unchanged), forwarded into the shared `GuiDraw.DrawButton`. `Opacity`
+    (default `1f`) fades the whole button for a host transition via `GuiStyle.Faded`, so fill, border, label,
+    drop shadow and hover glow fade together and `0` paints nothing.
   - `Label` - non-interactive text, aligned (left/center/right) and optionally word-wrapped, via `TextLayout`; a
     `Scale` field (default 1) uniformly scales the drawn text.
   - `Panel` - filled/bordered container; `BlocksPointer` reserves its region so lower layers skip hit-testing under it.

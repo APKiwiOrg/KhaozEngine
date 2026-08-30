@@ -38,6 +38,14 @@ namespace KhaozEngine.Gui
         /// </summary>
         public float LabelScale = 1f;
 
+        /// <summary>
+        /// Uniform fade multiplied into every colour's alpha at draw time (1 = opaque). Lets a caller fade the button
+        /// in / out with a host transition (a panel sliding away under it). Default 1 is a no-op. Mirrors
+        /// <see cref="TabBar.Opacity"/>, and rides the same <see cref="GuiStyle.Faded"/> the tab bar uses, so the
+        /// fill, the border, the label, the drop shadow and the hover glow all fade together.
+        /// </summary>
+        public float Opacity = 1f;
+
         bool _hover, _press;
 
         /// <summary>Create a button from localized text.</summary>
@@ -82,6 +90,6 @@ namespace KhaozEngine.Gui
         /// <summary>Draw the button via the shared <see cref="GuiDraw.DrawButton"/>. <paramref name="white"/> is a
         /// 1x1 white texture for the fill.</summary>
         public void Draw(SpriteBatch batch, Texture2D white) =>
-            GuiDraw.DrawButton(batch, white, Font, Bounds, Content, Style, Enabled, Selected, _hover, _press, LabelScale);
+            GuiDraw.DrawButton(batch, white, Font, Bounds, Content, Style.Faded(Opacity), Enabled, Selected, _hover, _press, LabelScale);
     }
 }

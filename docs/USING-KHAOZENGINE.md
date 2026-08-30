@@ -1059,6 +1059,30 @@ GuiTheme.Default = GuiTheme.Legacy;
 override the theme (`toggle.OnColor = ...`). The Showcase "Gui" room shows the crisp look and the semantic button
 variants.
 
+**Per-state border and text tints + `Button.Opacity`** - a `GuiStyle` tints its FILL per state
+(`Hover`/`Press`/`DisabledFill`/`SelectedFill`) and, alongside the single `Border` and `Text`, can also tint the
+outline and the label per state. Each is a `Vector4?` defaulting to `null`, meaning "fall back to `Border` /
+`Text`", so a style that sets none renders exactly as it did before.
+
+```csharp
+var t = GuiTheme.Default;
+var style = GuiStyle.Secondary;
+style.HoverBorder = t.BorderHover;          // brighten the outline on hover
+style.PressBorder = t.Accent;
+style.DisabledBorder = t.BorderDisabled;    // grey the outline when disabled
+style.HoverText = t.Text;                   // and brighten the label with it
+style.PressText = t.AccentBright;
+
+var btn = new Button(rect, Strings.Confirm, font) { Style = style };
+btn.Opacity = panel.TransitionAlpha;        // fade the whole button with its panel (0 paints nothing)
+```
+
+`GuiStyle.ResolveBorder(enabled, selected, hover, press)` / `ResolveText(enabled, hover, press)` are the pure
+resolvers, so a consumer's own widget can share the precedence instead of re-deriving it: `SelectedBorder` still
+wins outright for the border and `DisabledText` for the text, then press, then hover.
+`GuiStyle.Faded(opacity)` is the shared fade behind `Button.Opacity` and `TabBar.Opacity` (every colour's alpha
+scaled, the optional tints only when set, plus the shadow and glow), callable directly for a bespoke widget.
+
 **Texture skinning: `GuiStyle.Skin` + `GuiSkin` (family-wide, 10.82.0)** - `GuiStyle` has an optional `Skin` (a
 `GuiSkin`, default `null` = today's flat GuiDraw primitives, byte-for-byte). Set it and EVERY widget that fills
 through `GuiDraw.FillStyled` - Panel, Button, ProgressBar, TextInput/NumberField, ScrollablePanel, Dropdown,

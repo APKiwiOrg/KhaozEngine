@@ -460,8 +460,9 @@ namespace KhaozEngine.Gui
         /// The single source of truth for button visuals, shared by the immediate <see cref="GuiSurface.Button(SpriteFont, Rect, string, GuiStyle, bool, bool)"/>
         /// and the retained <see cref="Button"/>. Draws the fill (priority: <c>!enabled</c>→DisabledFill,
         /// <paramref name="selected"/>→SelectedFill, <paramref name="press"/>→Press, <paramref name="hover"/>→Hover,
-        /// else Fill), the border (selected→SelectedBorder else Border, <c>style.BorderThickness</c>), and the
-        /// centred <paramref name="label"/> (enabled→Text else DisabledText).
+        /// else Fill), the border (<see cref="GuiStyle.ResolveBorder"/>), and the centred <paramref name="label"/>
+        /// (<see cref="GuiStyle.ResolveText"/>). Those two resolve the optional per-state border / text tints and fall
+        /// back to the single Border / Text when a style sets none, which is the pre-existing behaviour exactly.
         /// </summary>
         internal static void DrawButton(SpriteBatch batch, Texture2D white, SpriteFont font, Rect rect, LocalizedText label,
             in GuiStyle style, bool enabled, bool selected, bool hover, bool press, float scale = 1f)
@@ -471,8 +472,8 @@ namespace KhaozEngine.Gui
                 : press ? style.Press
                 : hover ? style.Hover
                 : style.Fill;
-            Vector4 border = selected ? style.SelectedBorder : style.Border;
-            Vector4 text = enabled ? style.Text : style.DisabledText;
+            Vector4 border = style.ResolveBorder(enabled, selected, hover, press);
+            Vector4 text = style.ResolveText(enabled, hover, press);
 
             // Snap the body rect once (a no-op outside a point-space pass) so the fill, border, and the centred
             // label all lay out against the same device-aligned rect; FillStyled re-snaps idempotently.

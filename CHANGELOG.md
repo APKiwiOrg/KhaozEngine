@@ -108,6 +108,47 @@ walking one more wander leg after the attack click and engaged mid-stride):
   something has targeted stops walking away before the first blow lands, retaliation still wins once a
   hit has landed, and the leash still outranks everything.
 
+The third backlog fix wave rides this entry: ten more sweep-verified defects, each fixed with a test
+proven red against the unfixed code.
+
+- **Exclusion and scatter-override edits rebuild the streamed world in full again** in the map editor
+  ([#765](https://github.com/APKiwiOrg/KhaozEngine/issues/765), reproduced before fixing). Since 11.4.0
+  those commands reported a bounded region and routed through the partial rebuild, which swaps the
+  terrain field and re-meshes chunks but never rebuilds prop layers, and exclusions live in the
+  `ScatterConfig` captured at the last full build, so drawing an exclusion over a stand of trees left
+  every tree standing. The cost is a full rebuild per `GestureRebuildInterval` on those drags, and
+  teaching the partial path about prop layers is tracked as
+  [#771](https://github.com/APKiwiOrg/KhaozEngine/issues/771).
+- `ScreenStack.Remove` leaves the removed screen in the terminal `Hidden` state the update loop skips,
+  so a screen removed mid-frame no longer gets one more `Update` after `UnloadContent`, and `Add`
+  remounts a previously-mounted screen ([#102](https://github.com/APKiwiOrg/KhaozEngine/issues/102)).
+- `PopupPanel` blocks the pointer across its whole scrim via the new public `ScrimRect()`, so a click on
+  the dimmed area no longer falls through to the UI underneath
+  ([#109](https://github.com/APKiwiOrg/KhaozEngine/issues/109)).
+- `ResolvedTelegraph`'s 21 readonly fields become init-only properties and the resolver builds by name,
+  with all six positional constructors kept working and frozen: new state is another init member, never
+  a wider constructor ([#126](https://github.com/APKiwiOrg/KhaozEngine/issues/126)).
+- `IStringCatalog.Format` never throws on a malformed translation: the new static
+  `IStringCatalog.SafeFormat` falls back to the unformatted template, routed through all five catalog
+  implementations, so a bad placeholder cannot crash the Gui draw that resolves it
+  ([#163](https://github.com/APKiwiOrg/KhaozEngine/issues/163)).
+- `TerrainStreamer` rejects a finite LOD tier distance below a chunk's half-diagonal (and a non-positive
+  `ChunkSize`) at construction, naming the tier and both distances. Tiers past the load ring stay legal
+  and simply wait for a `DecorRadius`, now documented
+  ([#103](https://github.com/APKiwiOrg/KhaozEngine/issues/103)).
+- `Scene3DChunkSink.UpdateField` throws when a chunk build is executing instead of documenting the
+  precondition and silently meshing one chunk from two fields
+  ([#105](https://github.com/APKiwiOrg/KhaozEngine/issues/105)).
+- SFX one-shots carry an `SfxPriority` (`Low`/`Normal`/`High`, default `Normal`): a full voice pool
+  steals the lowest-priority playing voice instead of whatever the round robin landed on, with the old
+  oldest-first rotation as the tie-break ([#114](https://github.com/APKiwiOrg/KhaozEngine/issues/114)).
+- A clamped particle emit is observable: `ParticleSystem.DroppedLastEmit`/`DroppedTotal` and the player's
+  `DroppedLastUpdate`/`DroppedTotal` make a starved pool diagnosable instead of reading as a thin
+  explosion ([#124](https://github.com/APKiwiOrg/KhaozEngine/issues/124)).
+- A desynced Discord IPC frame length disconnects and reconnects instead of wedging the decoder forever
+  on a healthy socket: `DiscordIpcCodec` bounds a declared body at 64 KiB and treats anything outside
+  that as a framing error ([#159](https://github.com/APKiwiOrg/KhaozEngine/issues/159)).
+
 ## 18.3.1
 
 18.3.1 is the backlog fix wave: eight verified old defects, each found real by the 2026-08-30

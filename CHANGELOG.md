@@ -59,6 +59,35 @@ TileWorld's consumer program also lands a new Foundation package:
   little-endian form with a quarantine-grade `Validate`). Carried by the `Foundation` umbrella. The engine
   never learns what an item is: no catalog, no icons, no equip slots, no use effects, no economy rules.
 
+The fifth backlog wave rides this entry: two design-gated items unblocked and executed, the release
+guard's last live failure mode retired, and two hygiene items.
+
+- `KhaozEngine.Identity` gains `SignInException`, the shared base both provider backends'
+  `IdentitySignInException` types now derive from, so cross-provider consumer code catches one type
+  instead of one per backend. The provider types keep their names, namespaces, packages and
+  constructors, so every existing throw and catch site is unaffected, and the base's distinct simple
+  name keeps a file importing core beside a provider namespace unambiguous, pinned by a compile-time
+  test. `Pkce` stays duplicated per the third-consumer gate
+  ([#176](https://github.com/APKiwiOrg/KhaozEngine/issues/176)).
+- **Discord ask-to-join can be answered**: `JoinRequest.Accept()`/`Reject()` write
+  `SEND_ACTIVITY_JOIN_INVITE`/`CLOSE_ACTIVITY_REQUEST` over the IPC socket naming the requester, the
+  wire format pinned against the official discord-rpc protocol doc. Fire and forget on the plain
+  handshake, and answering after the connection dropped or the provider was disposed is a silent no-op
+  rather than a throw into game code ([#162](https://github.com/APKiwiOrg/KhaozEngine/issues/162)).
+- **The release-tag collision check moved into `scripts/tag-release.sh`**, which reads the version at
+  the moment it is true, so the documented merge-then-release chain is no longer denied against the
+  pre-merge version, and an origin-only tag collision is now caught too. The PreToolUse hook judges
+  only a literal `vX.Y.Z` in the command. The rule lives once as `tag_taken` in
+  `scripts/tag-standard.sh`, exercised by `scripts/tests/tag-collision-guard.test.sh`
+  ([#261](https://github.com/APKiwiOrg/KhaozEngine/issues/261)).
+- The Codex agent hooks match the Claude ones again: `.codex/settings.json`'s dash guard covers `*.cs`
+  as its twin does, and the two files are byte-identical
+  ([#265](https://github.com/APKiwiOrg/KhaozEngine/issues/265)).
+- `SunCycle` Moon mode's through-black key handover is documented as a ~12h-day property rather than a
+  guarantee, in all four shipped places that claimed it unconditionally, with a test pinning the dusk
+  pop at the shipped defaults. The cross-fade itself stays open as
+  [#223](https://github.com/APKiwiOrg/KhaozEngine/issues/223).
+
 ## 18.7.0
 
 18.7.0 gives TileWorld object picking against the drawn MODELS, so what a player can click is what they can

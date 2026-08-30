@@ -36,7 +36,7 @@
 
 832 CHANGELOG.md
 309 docs/USING-KHAOZENGINE.md
-33 README.md
+32 README.md
 32 KhaozEngine.NetWorld/README.md
 26 docs/SECURITY-BASELINE.md
 23 KhaozEngine.Render3D/README.md
@@ -45,9 +45,9 @@
 20 KhaozEngine.Windowing/README.md
 14 KhaozEngine.Game.Render3D/README.md
 13 docs/UPDATER.md
-13 docs/DEPENDENCY-SEAMS.md
 13 KhaozEngine.Physics.Bepu/README.md
 13 KhaozEngine.Netcode/README.md
+11 docs/DEPENDENCY-SEAMS.md
 11 AGENTS.md
 10 KhaozEngine.Replication/README.md
 9 KhaozEngine.Benchmarks/README.md
@@ -95,7 +95,6 @@
 1 docs/design/SCREEN-COMPONENT-DESIGN-2026-07-18.md
 1 KhaozEngine.Updates.Tool/README.md
 1 KhaozEngine.Terrain/README.md
-1 KhaozEngine.Social/README.md
 1 KhaozEngine.Simulation/README.md
 1 KhaozEngine.Progression/README.md
 1 KhaozEngine.Persistence/README.md

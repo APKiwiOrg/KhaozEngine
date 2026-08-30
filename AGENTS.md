@@ -208,7 +208,10 @@ exception is the trivial-change case below.
   that already drifted: it reports every version whose newest package was written after its tag, and it is what to
   run before vendoring the feed into a consumer. The rule itself lives once, in `scripts/pack-standard.sh`, sourced
   by all three, the same anti-drift shape as `scripts/tag-standard.sh`. Exercised by
-  `scripts/tests/pack-local-feed.test.sh` (`sh scripts/tests/pack-local-feed.test.sh`).
+  `scripts/tests/pack-local-feed.test.sh` (`sh scripts/tests/pack-local-feed.test.sh`). The tag-collision
+  rule has the same shape and its own test: `tag_taken` in `scripts/tag-standard.sh`, checked by
+  `scripts/tag-release.sh` at the moment the version is true (the PreToolUse hook only judges a literal
+  `vX.Y.Z` in the command), exercised by `sh scripts/tests/tag-collision-guard.test.sh`.
 - **Full doc sweep on EVERY feature / bug / change - not just the guard-checked declarations.**
   `check-doc-versions.sh` verifies the engine-version declarations, the newest `CHANGELOG.md` heading, AND the
   package inventory (every packable package has a README catalog row and ships its own `<Package>/README.md`).

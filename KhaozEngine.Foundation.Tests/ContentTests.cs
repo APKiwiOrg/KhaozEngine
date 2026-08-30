@@ -74,4 +74,38 @@ public class ContentTests
         }
         finally { Directory.Delete(dir, recursive: true); }
     }
+
+    [Theory]
+    [InlineData("{ not json")]                    // broken text
+    [InlineData("[1, 2, 3]")]                     // parses, but is not a schema
+    [InlineData("{ \"type\": 5 }")]               // a keyword whose value is the wrong shape
+    public void ValidateReportsAnUnparseableSchemaInsteadOfThrowing(string schemaJson)
+    {
+        var report = JsonSchemaValidator.Validate("{ \"name\":\"x\" }", schemaJson);
+        Assert.False(report.IsValid);
+        Assert.Contains(report.Errors, e => e.StartsWith("invalid schema:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ValidateDirectoryFailsOnlyTheFileWhoseSchemaIsBroken()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "ke-content-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(dir, "schemas"));
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "schemas", "s.schema.json"), Schema);
+            File.WriteAllText(Path.Combine(dir, "schemas", "broken.schema.json"), "{ not json");
+            File.WriteAllText(Path.Combine(dir, "good.json"), "{ \"$schema\":\"schemas/s.schema.json\", \"name\":\"x\", \"count\":1 }");
+            File.WriteAllText(Path.Combine(dir, "brokenschema.json"), "{ \"$schema\":\"schemas/broken.schema.json\", \"name\":\"x\" }");
+
+            var log = new StringWriter();
+            Assert.False(JsonSchemaValidator.ValidateDirectory(dir, log));   // the sweep returns rather than throwing
+
+            string text = log.ToString();
+            Assert.Contains("FAIL  brokenschema.json", text, StringComparison.Ordinal);
+            Assert.Contains("invalid schema:", text, StringComparison.Ordinal);
+            Assert.Contains("OK    good.json", text, StringComparison.Ordinal);   // the rest of the sweep still ran
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
 }

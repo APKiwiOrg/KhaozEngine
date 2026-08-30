@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Text;
 using SixLabors.ImageSharp;
@@ -82,6 +83,45 @@ public class PixelLabExportTests
         string root = WriteExport();
         var ex = Assert.Throws<AssemblyException>(() => PixelLabExport.Load(root, "running"));
         Assert.Contains("walking", ex.Message);
+    }
+
+    // Zips a synthetic export and returns the .zip path (inside its own temp dir, so the caller can delete both).
+    private static string WriteExportZip()
+    {
+        string source = WriteExport();
+        string zip = Path.Combine(Directory.CreateTempSubdirectory("pl_zip_test_").FullName, "export.zip");
+        ZipFile.CreateFromDirectory(source, zip);
+        return zip;
+    }
+
+    private static string[] ExtractedTempDirs() =>
+        Directory.GetDirectories(Path.GetTempPath(), "pixellab_*");
+
+    [Fact]
+    public void Loads_zip_export_and_hands_back_the_extracted_dir()
+    {
+        string zip = WriteExportZip();
+        var (anim, temp) = PixelLabExport.Load(zip, "walking");
+
+        Assert.NotNull(temp);
+        Assert.True(Directory.Exists(temp));
+        Assert.Equal("Hero", anim.CharacterName);
+        Assert.Equal(8, anim.FramesByDir.Count);
+
+        Directory.Delete(temp, recursive: true);   // the caller owns it on the success path
+    }
+
+    [Fact]
+    public void Failed_zip_load_deletes_the_directory_it_extracted()
+    {
+        string zip = WriteExportZip();
+        string[] before = ExtractedTempDirs();
+
+        var ex = Assert.Throws<AssemblyException>(() => PixelLabExport.Load(zip, "running"));
+        Assert.Contains("walking", ex.Message);    // the message that invites another attempt
+
+        // Nothing new left behind: the throw happens after extraction, and the caller never got a path to delete.
+        Assert.Empty(ExtractedTempDirs().Except(before));
     }
 
     [Fact]

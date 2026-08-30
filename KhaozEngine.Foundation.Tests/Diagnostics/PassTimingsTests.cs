@@ -1,4 +1,6 @@
+using System;
 using KhaozEngine.Diagnostics;
+using KhaozEngine.Tests.Logging;
 using Xunit;
 
 namespace KhaozEngine.Tests.Diagnostics;
@@ -69,14 +71,37 @@ public sealed class PassTimingsTests
     [Fact]
     public void Old_slow_sample_leaves_window_after_its_time_passes()
     {
-        var t = new PassTimings(windowSeconds: 1f);
+        var clock = new FakeClock();
+        var t = new PassTimings(windowSeconds: 1f, clock);
         t.Sample("model", 500f); // one slow 500ms pass
         Assert.Equal(500f, t.MaxMs("model"), 1);
 
-        // ~1.2s (in ms-equivalent window terms) of fast samples pushes the slow one out.
-        for (int i = 0; i < 130; i++) t.Sample("model", 10f);
+        // 1.3 real seconds of fast frames pushes the slow one out of the 1s window.
+        for (int i = 0; i < 130; i++)
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(10));
+            t.Sample("model", 10f);
+        }
 
         Assert.True(t.MaxMs("model") < 100f, $"expected slow sample evicted, max={t.MaxMs("model")}");
+    }
+
+    [Fact]
+    public void Window_is_wall_time_so_a_cheap_pass_is_not_trimmed_by_its_own_cost()
+    {
+        var clock = new FakeClock();
+        var t = new PassTimings(windowSeconds: 1f, clock);
+        t.Sample("model", 50f);                          // the one slow frame we want to still see
+
+        // A pass costing a fraction of a frame: 2100 samples sum to over a second of PASS time while only half a
+        // second of REAL time goes by, which is exactly the case a summed-milliseconds trim got wrong.
+        for (int i = 0; i < 2100; i++)
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(0.25));
+            t.Sample("model", 0.5f);
+        }
+
+        Assert.Equal(50f, t.MaxMs("model"), 1);          // 525ms in, still inside the 1s window
     }
 
     [Fact]

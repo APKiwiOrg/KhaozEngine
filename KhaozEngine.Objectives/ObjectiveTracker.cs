@@ -17,6 +17,14 @@ namespace KhaozEngine.Objectives;
 /// stays completed, and fires <see cref="ObjectiveCompleted"/>; completion is idempotent and survives Capture/Restore.
 /// </para>
 /// <para>
+/// <b>Constraints.</b> An <see cref="ObjectiveConditionKind.AtMost"/> is a constraint, not a goal: it holds until it
+/// is violated, so an objective built only from those holds on empty counters. Nothing derives its completion (not
+/// <see cref="Register(ObjectiveDefinition)"/>, not a report, not <see cref="Restore(ObjectivesSnapshot)"/>). The game
+/// completes it by calling <see cref="EvaluateAll"/> at the point it decides the run is over, which is the only moment
+/// "no upgrades were bought" means anything. Mixed objectives (a constraint alongside an AtLeast or Reached) are
+/// evaluated normally, gated by their progress condition.
+/// </para>
+/// <para>
 /// <b>Perf.</b> Objectives are indexed by the keys their conditions watch, so a report re-evaluates only the
 /// objectives touching the changed key, never the full set - the contract that makes thousands of reports/sec against
 /// hundreds of objectives cheap.
@@ -52,9 +60,30 @@ public sealed class ObjectiveTracker
 
     private sealed class ObjectiveState
     {
-        public ObjectiveState(ObjectiveDefinition definition) => Definition = definition;
+        public ObjectiveState(ObjectiveDefinition definition)
+        {
+            Definition = definition;
+            ConstraintOnly = AllConstraints(definition);
+        }
+
         public ObjectiveDefinition Definition { get; }
         public bool Complete { get; set; }
+
+        /// <summary>
+        /// True when every condition is an <see cref="ObjectiveConditionKind.AtMost"/>, i.e. the objective is pure
+        /// constraint with no progress condition to gate it. Computed once at registration: it decides eligibility on
+        /// every evaluation, and the perf contract says an evaluation costs a walk of the conditions, not two.
+        /// </summary>
+        public bool ConstraintOnly { get; }
+
+        private static bool AllConstraints(ObjectiveDefinition definition)
+        {
+            var conditions = definition.Conditions;   // never empty (ObjectiveDefinition enforces it)
+            for (int i = 0; i < conditions.Count; i++)
+                if (conditions[i].Kind != ObjectiveConditionKind.AtMost)
+                    return false;
+            return true;
+        }
     }
 
     private readonly Dictionary<string, MetricEntry> _metrics = new(StringComparer.Ordinal);
@@ -76,8 +105,13 @@ public sealed class ObjectiveTracker
     /// <summary>Registers an objective definition and indexes it by the keys its conditions watch.</summary>
     /// <remarks>
     /// If the id was restored as completed ahead of registration, it binds as complete without firing. Otherwise the
-    /// objective is evaluated once against the current counters and may complete + fire immediately (a well-formed
-    /// objective carries a positive AtLeast/Reached condition, so it does not trivially complete on empty counters).
+    /// objective is evaluated once against the current counters and may complete + fire immediately, which is how a
+    /// challenge added in a patch surfaces against lifetime totals that already satisfy it.
+    /// <para>
+    /// A constraint-only objective (every condition an <see cref="ObjectiveConditionKind.AtMost"/>) is skipped by that
+    /// evaluation. It carries no progress condition, so it holds on empty counters and would otherwise complete the
+    /// moment it registers. See <see cref="EvaluateAll"/>, which is what completes those.
+    /// </para>
     /// </remarks>
     /// <exception cref="ArgumentException">An objective with the same <see cref="ObjectiveDefinition.Id"/> is already registered.</exception>
     public void Register(ObjectiveDefinition definition)
@@ -199,13 +233,31 @@ public sealed class ObjectiveTracker
     /// satisfied. Call after bulk-registering objectives that may already be met by current counters (e.g. a challenge
     /// shipped in a patch that a player's lifetime totals already satisfy) if you did not follow Register-then-report.
     /// </summary>
+    /// <remarks>
+    /// This is also the ONLY call that can complete a constraint-only objective (every condition an
+    /// <see cref="ObjectiveConditionKind.AtMost"/>, e.g. "buy no upgrades this run"). Such an objective holds on empty
+    /// counters, so nothing derives its completion from a report: the game calls this at the point it decides the run
+    /// is over, which is the moment the constraint means anything.
+    /// </remarks>
     public void EvaluateAll()
     {
         foreach (var state in _objectives.Values)
-            TryComplete(state);
+            TryCompleteNow(state);
     }
 
+    // Derived evaluation: Register, a report on a watched key, and the Restore sweep all come through here. A
+    // constraint-only objective is never completed from one. Every AtMost holds on empty counters, so "no violation
+    // reported" reads identically to "nothing has happened yet", and completing on that fires the objective before
+    // the game has reported anything at all. Only the game knows when its run ended, and it says so by calling
+    // EvaluateAll.
     private void TryComplete(ObjectiveState state)
+    {
+        if (state.ConstraintOnly)
+            return;
+        TryCompleteNow(state);
+    }
+
+    private void TryCompleteNow(ObjectiveState state)
     {
         if (state.Complete)
             return;
@@ -344,6 +396,11 @@ public sealed class ObjectiveTracker
     /// then evaluates the remaining objectives so any now satisfied by restored counters (e.g. a patched-in challenge
     /// already met by lifetime totals) completes and fires exactly once. A completed id whose definition is not yet
     /// registered is remembered and binds when it registers.
+    /// <para>
+    /// A constraint-only objective is restored from the snapshot's completed ids like any other, but its completion is
+    /// never derived here: a save that records no violation is indistinguishable from a save where the run had not
+    /// started. Call <see cref="EvaluateAll"/> if the game wants those judged against the restored counters.
+    /// </para>
     /// </summary>
     public void Restore(ObjectivesSnapshot snapshot)
     {
@@ -387,6 +444,7 @@ public sealed class ObjectiveTracker
             }
         }
 
-        EvaluateAll();
+        foreach (var state in _objectives.Values)
+            TryComplete(state);   // derived: a restored counter set is not the game saying its run is over
     }
 }

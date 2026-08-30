@@ -237,6 +237,56 @@ public class OidcClientProviderTests
         await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
     }
 
+    /// <summary>A captive portal (hotel/airport wifi) or a misconfigured reverse proxy answering 200 with an
+    /// HTML interstitial in place of the discovery document.</summary>
+    private sealed class HtmlDiscoveryHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)
+            => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "<html><body>Sign in to the hotel network</body></html>", Encoding.UTF8, "text/html"),
+            });
+    }
+
+    /// <summary>#175: a non-JSON 200 used to throw a raw JsonException straight out of sign-in, past every
+    /// caller catching the provider's own failure type.</summary>
+    [Fact]
+    public async Task SignIn_throws_sign_in_failure_when_discovery_returns_non_json()
+    {
+        StateHolder holder = new();
+        OidcClientProvider provider = new(
+            new OidcProviderOptions { Authority = "https://issuer.test", ClientId = "client-1", LoopbackPort = 12345 },
+            new FakeBrowser(holder), _ => new FakeListener(holder), new HttpClient(new HtmlDiscoveryHandler()));
+
+        await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RefreshAsync_throws_sign_in_failure_when_discovery_returns_non_json()
+    {
+        StateHolder holder = new();
+        OidcClientProvider provider = new(
+            new OidcProviderOptions { Authority = "https://issuer.test", ClientId = "client-1", LoopbackPort = 12345 },
+            new FakeBrowser(holder), _ => new FakeListener(holder), new HttpClient(new HtmlDiscoveryHandler()));
+        ProviderCredential expired = new("oidc", "old-token", "old-refresh", DateTimeOffset.UnixEpoch);
+
+        await Assert.ThrowsAsync<IdentitySignInException>(
+            () => provider.RefreshAsync(expired, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SignIn_throws_sign_in_failure_when_token_endpoint_returns_non_json()
+    {
+        StateHolder holder = new();
+        OidcClientProvider provider = new(
+            new OidcProviderOptions { Authority = "https://issuer.test", ClientId = "client-1", LoopbackPort = 12345 },
+            new FakeBrowser(holder), _ => new FakeListener(holder),
+            new HttpClient(new BodyTokenHandler("<html><body>Sign in to the hotel network</body></html>")));
+
+        await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
+    }
+
     [Fact]
     public async Task SignIn_treats_an_absent_expires_in_as_no_declared_lifetime()
     {

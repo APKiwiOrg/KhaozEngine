@@ -214,6 +214,34 @@ public class DiscordClientProviderTests
         await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
     }
 
+    /// <summary>#175: a non-JSON 200 (a captive-portal interstitial on hotel or airport wifi, a misconfigured
+    /// reverse proxy) used to throw a raw JsonException straight out of sign-in, past every caller catching the
+    /// provider's own failure type.</summary>
+    [Fact]
+    public async Task SignIn_throws_sign_in_failure_when_token_endpoint_returns_non_json()
+    {
+        StateHolder holder = new();
+        DiscordClientProvider provider = new(
+            new DiscordProviderOptions { ClientId = "client-1", LoopbackPort = 12345 },
+            new FakeBrowser(holder), _ => new FakeListener(holder),
+            new HttpClient(new BodyTokenHandler("<html><body>Sign in to the hotel network</body></html>")));
+
+        await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RefreshAsync_throws_sign_in_failure_when_token_endpoint_returns_non_json()
+    {
+        DiscordClientProvider provider = new(
+            new DiscordProviderOptions { ClientId = "client-1", LoopbackPort = 12345 },
+            new FakeBrowser(new StateHolder()), _ => new FakeListener(new StateHolder()),
+            new HttpClient(new BodyTokenHandler("<html><body>Sign in to the hotel network</body></html>")));
+        ProviderCredential expired = new("discord", "old-token", "old-refresh", DateTimeOffset.UnixEpoch);
+
+        await Assert.ThrowsAsync<IdentitySignInException>(
+            () => provider.RefreshAsync(expired, CancellationToken.None));
+    }
+
     [Fact]
     public async Task SignIn_treats_an_absent_expires_in_as_no_declared_lifetime()
     {

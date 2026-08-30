@@ -95,8 +95,7 @@ public sealed class OidcClientProvider(
         if (!response.IsSuccessStatusCode)
             throw new IdentitySignInException($"failed to fetch OIDC discovery document ({(int)response.StatusCode})");
 
-        using System.IO.Stream stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-        using JsonDocument doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+        using JsonDocument doc = await ParseJsonBodyAsync(response, "the OIDC discovery document", ct).ConfigureAwait(false);
 
         if (!doc.RootElement.TryGetProperty("authorization_endpoint", out JsonElement authElement) ||
             !doc.RootElement.TryGetProperty("token_endpoint", out JsonElement tokenElement))
@@ -127,8 +126,7 @@ public sealed class OidcClientProvider(
             throw new IdentitySignInException($"token endpoint returned an error ({(int)response.StatusCode})");
         }
 
-        using System.IO.Stream stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-        using JsonDocument doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+        using JsonDocument doc = await ParseJsonBodyAsync(response, "the token endpoint", ct).ConfigureAwait(false);
 
         if (!doc.RootElement.TryGetProperty("id_token", out JsonElement idTokenElement))
             throw new IdentitySignInException("token endpoint response is missing id_token");
@@ -144,6 +142,25 @@ public sealed class OidcClientProvider(
         DateTimeOffset expiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(ReadExpiresInSeconds(doc.RootElement));
 
         return new ProviderCredential(ProviderId, idToken, refreshToken, expiresAtUtc);
+    }
+
+    /// <summary>Reads a successful response body as JSON. A 200 whose body is not JSON at all (an HTML
+    /// captive-portal interstitial on hotel or airport wifi, a misconfigured reverse proxy sitting in front of
+    /// the authority or the token endpoint) becomes this class's own <see cref="IdentitySignInException"/>,
+    /// instead of a raw <see cref="JsonException"/> escaping sign-in past every caller catching that type.
+    /// <paramref name="what"/> names the endpoint in the message.</summary>
+    private static async Task<JsonDocument> ParseJsonBodyAsync(
+        HttpResponseMessage response, string what, CancellationToken ct)
+    {
+        using System.IO.Stream stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        try
+        {
+            return await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+        }
+        catch (JsonException ex)
+        {
+            throw new IdentitySignInException($"{what} did not return a JSON body", ex);
+        }
     }
 
     /// <summary>Reads <c>expires_in</c> without letting a hostile or merely non-conforming value escape the

@@ -139,7 +139,7 @@ public static class UpdateOverlayStrings
         public string Get(string key) => Map.TryGetValue(key, out string? v) ? v : key;
 
         public string Format(string key, params object?[] args)
-            => string.Format(CultureInfo.InvariantCulture, Get(key), args);
+            => IStringCatalog.SafeFormat(CultureInfo.InvariantCulture, Get(key), args);
 
         public bool TryGet(string key, out string value)
         {

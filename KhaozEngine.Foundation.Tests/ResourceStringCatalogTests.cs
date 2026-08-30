@@ -89,6 +89,24 @@ public class ResourceStringCatalogTests
         WithCulture("en-US", () => Assert.Equal("Welcome, Ada!", strings.Format("welcome", "Ada")));
     }
 
+    /// <summary>
+    /// A translated value whose placeholder set diverges from the neutral template is a content defect in the
+    /// resx, and it reached the engine as a FormatException out of the draw call that resolved the text (#163).
+    /// Format falls back to the unformatted template: visibly wrong text, live process.
+    /// </summary>
+    [Fact]
+    public void Format_TemplateTheArgsCannotSatisfy_FallsBackToTemplate_DoesNotThrow()
+    {
+        var rm = new FakeStringResourceManager
+        {
+            // The translator added a second placeholder the call site knows nothing about.
+            ["en-US"] = { ["score"] = "Score: {0}, Bonus: {1}" },
+        };
+        IStringCatalog strings = new ResourceStringCatalog(rm);
+
+        WithCulture("en-US", () => Assert.Equal("Score: {0}, Bonus: {1}", strings.Format("score", 7)));
+    }
+
     [Fact]
     public void Get_ReadsCurrentUiCultureLive_AfterSetCulture()
     {

@@ -57,6 +57,12 @@ internal static class AnalyzerHarness
     public static string SourceOfLines(int newlines) =>
         string.Concat(Enumerable.Repeat("// filler\n", newlines)) + "class C {}";
 
+    /// <summary>The CRLF twin of <see cref="SourceOfLines"/>: the same <paramref name="newlines"/> lines, each
+    /// terminated by a <c>\r\n</c> pair. A CRLF pair is ONE line to <c>wc -l</c>, so a source built here must
+    /// count identically to the LF version of the same length.</summary>
+    public static string SourceOfCrlfLines(int newlines) =>
+        string.Concat(Enumerable.Repeat("// filler\r\n", newlines)) + "class C {}";
+
     private sealed class InMemoryAdditionalText : AdditionalText
     {
         private readonly SourceText _text;

@@ -52,7 +52,29 @@ public class FileSizeAnalyzerTests
             baseline: "1200 Src/Frozen.cs\n");
         var d = Assert.Single(diags);
         Assert.Equal("KESIZE001", d.Id);
+        // The REPO-RELATIVE path, not the absolute one the compilation carries: it is what the reader greps
+        // for and what the baseline file is keyed by. Only the 002 message was asserting this.
+        Assert.Contains("Src/Frozen.cs", d.GetMessage());
+        Assert.DoesNotContain(Root + "/Src/Frozen.cs", d.GetMessage());
+        Assert.Contains("1201", d.GetMessage());
         Assert.Contains("baseline is 1200", d.GetMessage());
+    }
+
+    [Fact]
+    public async Task Fires001_NamesTheRightFile_WhenSeveralAreBaselined()
+    {
+        // With one path per diagnostic the message could name any of them and still contain "Src/".
+        var diags = await AnalyzerHarness.Run(
+            new[]
+            {
+                (Root + "/Src/Frozen.cs", AnalyzerHarness.SourceOfLines(900)),
+                (Root + "/Src/Nested/Grown.cs", AnalyzerHarness.SourceOfLines(1201)),
+            },
+            baseline: "1200 Src/Frozen.cs\n1200 Src/Nested/Grown.cs\n");
+        var d = Assert.Single(diags);
+        Assert.Equal("KESIZE001", d.Id);
+        Assert.Contains("Src/Nested/Grown.cs", d.GetMessage());
+        Assert.DoesNotContain("Src/Frozen.cs", d.GetMessage());
     }
 
     [Fact]
@@ -76,6 +98,40 @@ public class FileSizeAnalyzerTests
         diags = await AnalyzerHarness.Run(
             new[] { (Root + "/Src/Edge.cs", AnalyzerHarness.SourceOfLines(800) + "\n") }, baseline: "");
         Assert.Single(diags);
+    }
+
+    /// <summary>
+    /// CRLF, all the way through the ANALYZER rather than only the baseline parser, which is where the coverage
+    /// stopped. A `\r\n` pair is ONE line to `wc -l`, so a file authored on Windows must count the same as the
+    /// identical file with LF endings. Pinned at the cap boundary, since a per-line off-by-one only shows up
+    /// there: were `\r` counted too, a 400-line CRLF file would read as 800 and this pair would both fire.
+    /// </summary>
+    [Fact]
+    public async Task CrlfLineEndings_CountAsOneLineEach_WcParity()
+    {
+        var atCap = await AnalyzerHarness.Run(
+            new[] { (Root + "/Src/Windows.cs", AnalyzerHarness.SourceOfCrlfLines(800)) }, baseline: "");
+        Assert.Empty(atCap);
+
+        var pastCap = await AnalyzerHarness.Run(
+            new[] { (Root + "/Src/Windows.cs", AnalyzerHarness.SourceOfCrlfLines(801)) }, baseline: "");
+        var d = Assert.Single(pastCap);
+        Assert.Equal("KESIZE002", d.Id);
+        Assert.Contains("801", d.GetMessage());
+    }
+
+    [Fact]
+    public async Task CrlfAndLf_OfTheSameLength_AgreeOnTheCount()
+    {
+        // The same file with the two endings must produce the same reported line count.
+        var lf = await AnalyzerHarness.Run(
+            new[] { (Root + "/Src/Mixed.cs", AnalyzerHarness.SourceOfLines(1201)) },
+            baseline: "1200 Src/Mixed.cs\n");
+        var crlf = await AnalyzerHarness.Run(
+            new[] { (Root + "/Src/Mixed.cs", AnalyzerHarness.SourceOfCrlfLines(1201)) },
+            baseline: "1200 Src/Mixed.cs\n");
+
+        Assert.Equal(Assert.Single(lf).GetMessage(), Assert.Single(crlf).GetMessage());
     }
 
     [Theory]

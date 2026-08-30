@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Text;
 
@@ -120,8 +121,12 @@ public sealed class NetServer
         connectionBySlot[newSlot] = ev.Connection;
         slotByConnection[ev.Connection] = newSlot;
         if (!string.IsNullOrEmpty(subject)) { slotBySubject[subject] = newSlot; subjectBySlot[newSlot] = subject; }
+        // Little-endian by the wire format SessionOpcode.Welcome documents, not by whatever the host happens to be.
+        // BitConverter writes in the running process's native order, which agrees with the documented format on every
+        // machine the fleet runs on and silently disagrees anywhere else, including in an independently written
+        // decoder that trusted the doc comment.
         var slotBytes = new byte[4];
-        BitConverter.TryWriteBytes(slotBytes, newSlot);
+        BinaryPrimitives.WriteInt32LittleEndian(slotBytes, newSlot);
         transport.Send(ev.Connection, SessionFrame.Write(SessionOpcode.Welcome, slotBytes), NetChannelReliability.ReliableOrdered);
         // Surface a verified display name from the token when the authenticator can provide one (opt-in seam).
         string displayName = authenticator is IConnectionDisplayName named ? named.ReadDisplayName(token) : string.Empty;

@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Text;
 
@@ -79,7 +80,8 @@ public sealed class NetClient
         {
             case SessionOpcode.Welcome:
                 byte[] body = SessionFrame.ReadBody(ev.Data);
-                Slot = body.Length >= 4 ? BitConverter.ToInt32(body, 0) : -1;
+                // Little-endian by the wire format, matching the write side; see the note on NetServer's Welcome.
+                Slot = body.Length >= 4 ? BinaryPrimitives.ReadInt32LittleEndian(body) : -1;
                 inbox.Enqueue(ClientSessionEvent.Joined(Slot));
                 break;
             case SessionOpcode.Reject:

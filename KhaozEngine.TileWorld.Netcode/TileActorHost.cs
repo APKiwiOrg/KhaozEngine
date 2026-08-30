@@ -207,7 +207,9 @@ public sealed class TileActorHost
             Walking: !state.Route.IsIdle || state.IsStepping,
             Tick: tick,
             Rng: TileActorRandom.For(Seed, netId, tick),
-            TargetedBy: server.TargetedByOf(netId));
+            TargetedBy: server.TargetedByOf(netId),
+            LastAttackedBy: combat.LastAttackedBy,
+            LastAttackedTick: combat.LastAttackedTick);
 
         TileActorIntent intent = Behaviour.Decide(context);
         switch (intent.Kind)
@@ -273,9 +275,15 @@ public sealed class TileActorHost
     void ForgetAttacker(long netId)
     {
         if (!server.TryGetCombatState(netId, out TileCombatState combat)) return;
-        if (combat.LastDamagedBy == 0L && combat.LastDamagedTick == 0L) return;
+        if (combat.LastDamagedBy == 0L && combat.LastDamagedTick == 0L
+            && combat.LastAttackedBy == 0L && combat.LastAttackedTick == 0L) return;
         combat.LastDamagedBy = 0L;
         combat.LastDamagedTick = 0L;
+        // The swung-at record goes with it, under the same rule: an actor that breaks off gives up on
+        // everything, and a break that left this set had the swing-based retaliation re-acquire the attacker
+        // exactly as the damage-based one used to.
+        combat.LastAttackedBy = 0L;
+        combat.LastAttackedTick = 0L;
         server.SetCombatState(netId, combat);
     }
 

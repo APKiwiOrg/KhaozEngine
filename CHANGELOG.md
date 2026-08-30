@@ -52,7 +52,19 @@ proven red against the unfixed code.
   on a healthy socket: `DiscordIpcCodec` bounds a declared body at 64 KiB and treats anything outside
   that as a framing error ([#159](https://github.com/APKiwiOrg/KhaozEngine/issues/159)).
 
-## 18.4.0
+TileWorld.Netcode also gains swing-based aggression, a Grimhollow playtest ruling (a splashed miss and a
+blocked zero draw the same blue splat, and a monster that answered one while standing politely through the
+other read as broken):
+
+- `TileCombatState.LastAttackedBy` / `LastAttackedTick`: the swung-at record, stamped by EVERY resolved
+  swing aimed at an entity, miss included, beside the landed-only damage record. Both records drop
+  together on a `Break`, and `TileWorldServer.ForgetAttacker` now drops whichever of the two names the
+  opponent (each independently), so a killer cannot re-acquire its victim through the new record.
+- `TileActorContext.LastAttackedBy` / `LastAttackedTick` (additive, defaulted): the same pair on the
+  behaviour's tick-start view.
+- `TileWanderBehaviour` retaliates off the swung-at record now: aggression answers the swing, and the
+  damage record stays what threat-shaped logic reads. **Behaviour change** for a game relying on misses
+  not provoking the default behaviour.
 
 18.4.0 is the second backlog fix wave: 23 verified defects across the packages the big rewrites never
 touched (Identity, Updates, Netcode, Replication, Audio, Gui, Render2D, Ecs, Content, App, Diagnostics,

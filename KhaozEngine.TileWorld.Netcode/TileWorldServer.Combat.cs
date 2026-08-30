@@ -307,15 +307,19 @@ public sealed partial class TileWorldServer
         cell.World.Set(e, combat);
     }
 
-    // The TARGET's half, and the two facts it writes are deliberately not the same fact. Every resolved swing
-    // touched it, miss included, which is what the logout window reads. Only a swing that LANDED names an attacker,
-    // which is what a retaliation reads, and a hit that connected for zero is a landed swing: the ruling asks for a
-    // counterattack when a hit lands rather than when damage does.
+    // The TARGET's half, and the three facts it writes are deliberately not the same fact. Every resolved swing
+    // touched it, miss included, which is what the logout window reads. Every resolved swing also NAMES its
+    // attacker on the swung-at record, miss included, which is what aggression reads since the swing-aggro
+    // ruling: a splashed miss and a blocked zero draw the same blue splat, and a monster that answers one and
+    // ignores the other reads as broken. Only a swing that LANDED moves the damage record, which is where a
+    // threat table or a drop rule will look.
     void NoteSwungAt(long target, long attacker, bool landed)
     {
         if (!host.TryGetOwner(target, out CellSim cell, out Entity e)) return;
         cell.World.TryGet(e, out TileCombatState combat);
         combat.LastCombatTick = TickCount;
+        combat.LastAttackedBy = attacker;
+        combat.LastAttackedTick = TickCount;
         if (landed)
         {
             combat.LastDamagedBy = attacker;

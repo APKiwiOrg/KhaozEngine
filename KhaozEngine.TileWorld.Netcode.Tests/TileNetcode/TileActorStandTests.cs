@@ -15,11 +15,13 @@ public class TileActorStandTests
 {
     // A hand-built tick-start view, for the rule-order pins below: no server, just the behaviour's own decision.
     static TileActorContext Context(TileCoord tile, TileCoord home, long combatTarget = 0L, long damagedBy = 0L,
-        long damagedTick = 0L, bool walking = false, long tick = 100L, long targetedBy = 0L) =>
+        long damagedTick = 0L, bool walking = false, long tick = 100L, long targetedBy = 0L,
+        long attackedBy = 0L, long attackedTick = 0L) =>
         new(NetId: 1L, Tile: tile, Home: home, Definition: Rat, Health: new TileHealth { Current = 30, Max = 30 },
             CombatTarget: combatTarget, TargetTile: default, TargetResolved: false, LastDamagedBy: damagedBy,
             LastDamagedTick: damagedTick, Walking: walking, Tick: tick,
-            Rng: TileActorRandom.For(1, 1L, tick), TargetedBy: targetedBy);
+            Rng: TileActorRandom.For(1, 1L, tick), TargetedBy: targetedBy,
+            LastAttackedBy: attackedBy, LastAttackedTick: attackedTick);
 
     // The stand-your-ground rule and its PLACE in the order, which is the design: below the leash, the chase and
     // the retaliation, above the wander. Each clause here is one inversion of that order made visible.
@@ -35,12 +37,18 @@ public class TileActorStandTests
             behaviour.Decide(Context(home, home, walking: true, targetedBy: 7L)).Kind);
         Assert.Equal(TileActorIntentKind.Stand, behaviour.Decide(Context(home, home, targetedBy: 7L)).Kind);
 
-        // Already hit by the thing coming for it: retaliation wins, an actor the attacker has damaged answers
-        // back rather than waiting politely for the next blow.
-        TileActorIntent hitBack = behaviour.Decide(Context(home, home, damagedBy: 7L, damagedTick: 99L,
+        // Already SWUNG AT by the thing coming for it, a miss included: retaliation wins, an actor the attacker
+        // has opened on answers back rather than waiting politely for the next blow.
+        TileActorIntent hitBack = behaviour.Decide(Context(home, home, attackedBy: 7L, attackedTick: 99L,
             targetedBy: 7L));
         Assert.Equal(TileActorIntentKind.Attack, hitBack.Kind);
         Assert.Equal(7L, hitBack.Target);
+
+        // The damage record ALONE no longer drives retaliation: aggression answers the swing, and the wound is
+        // for threat tables. In the live pass the two are always written together for a landed hit, so this
+        // only distinguishes the read, which is exactly what it is here to pin.
+        Assert.Equal(TileActorIntentKind.Stand,
+            behaviour.Decide(Context(home, home, damagedBy: 7L, damagedTick: 99L, targetedBy: 7L)).Kind);
 
         // A held target outranks an incoming lock, which is first-attacker-wins from the other side.
         TileActorIntent held = behaviour.Decide(Context(home, home, combatTarget: 9L, targetedBy: 7L));

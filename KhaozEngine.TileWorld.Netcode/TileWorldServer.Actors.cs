@@ -220,10 +220,25 @@ public sealed partial class TileWorldServer
     public bool ForgetAttacker(long netId, long attacker)
     {
         if (attacker == 0L) return false;
-        if (!TryGetCombatState(netId, out TileCombatState combat) || combat.LastDamagedBy != attacker) return false;
-        combat.LastDamagedBy = 0L;
-        combat.LastDamagedTick = 0L;
-        return SetCombatState(netId, combat);
+        if (!TryGetCombatState(netId, out TileCombatState combat)) return false;
+        // Each record is dropped only when it names THIS opponent, independently: a third party's landed hit
+        // survives an opponent's death exactly as before, and since the swing-aggro ruling the SWUNG-AT record
+        // is the one the retaliation actually reads, so leaving it standing here would hand the killer its
+        // victim back through the new record instead of the old one.
+        bool dropped = false;
+        if (combat.LastDamagedBy == attacker)
+        {
+            combat.LastDamagedBy = 0L;
+            combat.LastDamagedTick = 0L;
+            dropped = true;
+        }
+        if (combat.LastAttackedBy == attacker)
+        {
+            combat.LastAttackedBy = 0L;
+            combat.LastAttackedTick = 0L;
+            dropped = true;
+        }
+        return dropped && SetCombatState(netId, combat);
     }
 
     // One entity's tile out of THIS TICK's combat target snapshot, which is what step 0c exists to make one answer.

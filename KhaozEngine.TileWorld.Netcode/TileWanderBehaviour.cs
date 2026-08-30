@@ -32,9 +32,10 @@ public sealed class TileWanderBehaviour : ITileActorBehaviour
     /// an actor re-rolling a destination it is still walking to. It is a mean on OPEN GROUND and a floor anywhere
     /// else: a destination that comes back blocked, outside the baked map or equal to the tile the actor is already
     /// on is dropped and re-rolled next tick, so on a cluttered map the pauses observed are longer than this.</param>
-    /// <param name="retaliateWindowTicks">How recent a LANDED hit has to be to provoke a counterattack, so an
-    /// actor does not retaliate against something that hit it a minute ago. A hit that landed for zero counts and a
-    /// miss does not, which is the rule <see cref="TileCombatState.LastDamagedBy"/> itself carries.</param>
+    /// <param name="retaliateWindowTicks">How recent an incoming SWING has to be to provoke a counterattack, so
+    /// an actor does not retaliate against something that swung at it a minute ago. A miss counts exactly as a
+    /// landed hit does, which is the rule <see cref="TileCombatState.LastAttackedBy"/> itself carries: aggression
+    /// answers the swing, not the wound.</param>
     /// <exception cref="ArgumentNullException"><paramref name="map"/> is null.</exception>
     public TileWanderBehaviour(TileCollisionMap map, int meanPauseTicks = 12, int retaliateWindowTicks = 40)
     {
@@ -55,9 +56,12 @@ public sealed class TileWanderBehaviour : ITileActorBehaviour
         // CHASE. One value, re-issued, costing the behaviour nothing per tick, because the follow is the stepper's.
         if (context.CombatTarget != 0L) return TileActorIntent.Attack(context.CombatTarget);
 
-        // RETALIATE. Reached only when no target is held, which IS the first-attacker-wins rule.
-        if (context.LastDamagedBy != 0L && context.Tick - context.LastDamagedTick <= retaliateWindowTicks)
-            return TileActorIntent.Attack(context.LastDamagedBy);
+        // RETALIATE. Reached only when no target is held, which IS the first-attacker-wins rule. Off the
+        // SWUNG-AT record rather than the damage record since the swing-aggro ruling: a splashed miss and a
+        // blocked zero draw the same blue splat, so an actor that hits back on one and stands politely through
+        // the other reads as broken. Aggression answers the swing, the wound is for threat tables.
+        if (context.LastAttackedBy != 0L && context.Tick - context.LastAttackedTick <= retaliateWindowTicks)
+            return TileActorIntent.Attack(context.LastAttackedBy);
 
         // STAND YOUR GROUND. Something is locked onto this actor and coming for it, so walking away is over: the
         // route in flight is cancelled and no new wander starts while the lock holds. BELOW retaliate, so an actor

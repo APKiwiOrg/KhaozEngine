@@ -100,6 +100,10 @@ public readonly record struct TileActorIntent(TileActorIntentKind Kind, TileCoor
 /// behind a freshly accepted Attack command, because it is read from the tick-start snapshot every other combat
 /// answer comes from. Positionally last, after <paramref name="Rng"/> rather than with the other combat fields,
 /// only because a defaulted addition must trail: construct this record with named arguments.</param>
+/// <param name="LastAttackedBy">The net id that last SWUNG at it, 0 when nothing has, a miss counting exactly as
+/// a landed hit. What the default behaviour's retaliation reads: aggression answers the swing, the damage record
+/// is for threat. Trailing and defaulted for the same reason <paramref name="TargetedBy"/> is.</param>
+/// <param name="LastAttackedTick">The tick that swing happened on.</param>
 public readonly record struct TileActorContext(
     long NetId,
     TileCoord Tile,
@@ -114,7 +118,9 @@ public readonly record struct TileActorContext(
     bool Walking,
     long Tick,
     TileActorRandom Rng,
-    long TargetedBy = 0L);
+    long TargetedBy = 0L,
+    long LastAttackedBy = 0L,
+    long LastAttackedTick = 0L);
 
 /// <summary>
 /// The one seam a game plugs an actor's decisions into. The engine owns the tick scheduling and the movement, this

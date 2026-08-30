@@ -51,13 +51,17 @@ public class TileWanderBehaviourTests
     internal static int Chebyshev(TileCoord a, TileCoord b) =>
         Math.Max(Math.Abs(a.X - b.X), Math.Abs(a.Z - b.Z));
 
-    // A hit landing on an actor, written where the combat pass will write it: the damage record on TileCombatState.
+    // A hit landing on an actor, written where the combat pass writes it: the damage record AND the swung-at
+    // record together, because a landed hit is also a swing and the retaliation reads the swing side since the
+    // swing-aggro rule.
     internal static void Damage(TileWorldServer s, long netId, long attacker)
     {
         Assert.True(s.Host.TryGetOwner(netId, out CellSim cell, out Entity e));
         Assert.True(cell.World.TryGet(e, out TileCombatState combat));
         combat.LastDamagedBy = attacker;
         combat.LastDamagedTick = s.TickCount;
+        combat.LastAttackedBy = attacker;
+        combat.LastAttackedTick = s.TickCount;
         cell.World.Set(e, combat);
     }
 
@@ -237,11 +241,7 @@ public class TileWanderBehaviourTests
         s.Tick(Dt);
         long actor = spawner.ActorNetId;
 
-        Assert.True(s.Host.TryGetOwner(actor, out CellSim cell, out Entity e));
-        Assert.True(cell.World.TryGet(e, out TileCombatState combat));
-        combat.LastDamagedBy = player;
-        combat.LastDamagedTick = s.TickCount;
-        cell.World.Set(e, combat);
+        Damage(s, actor, player);
 
         s.Tick(Dt);
         Assert.True(s.TryGetActorState(actor, out TileMoveState st));
@@ -249,15 +249,44 @@ public class TileWanderBehaviourTests
 
         // A second attacker does not steal a held target.
         long other = s.SpawnActor(new TileCoord(30, 28, 0), new TileActorSpawn(30, 10, TileDirection.S));
-        Assert.True(s.Host.TryGetOwner(actor, out cell, out e));
-        Assert.True(cell.World.TryGet(e, out combat));
-        combat.LastDamagedBy = other;
-        combat.LastDamagedTick = s.TickCount;
-        cell.World.Set(e, combat);
+        Damage(s, actor, other);
         s.Tick(Dt);
 
         Assert.True(s.TryGetActorState(actor, out st));
         Assert.Equal(player, st.CombatTarget);
+    }
+
+    // The swing-aggro ruling, through the whole combat pass: a swing that MISSES provokes the counterattack
+    // exactly as a landed hit does, because a splashed miss and a blocked zero draw the same blue splat and a
+    // monster that answers one and stands politely through the other reads as broken. The rules here always
+    // miss, so the ONLY thing that can provoke the rat is the swing itself, and the assertion that the rat's
+    // health never moved is what proves no damage sneaked in to do the provoking.
+    [Fact]
+    public void A_swing_that_misses_still_provokes_the_counterattack()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(30, 31, 0));
+        s.CombatRules = new TileCombatResolveTests.FixedRules { Land = false };
+        TileActorSpawner spawner = s.Actors.Add(Rat with { WanderRadius = 0 }, new TileCoord(30, 30, 0));
+        long player = s.SpawnPlayer(0, "a", "Ari");
+        s.Tick(Dt);
+        long actor = spawner.ActorNetId;
+        Assert.True(s.SetHealth(player, new TileHealth { Current = 40, Max = 40 }));
+
+        s.Enqueue(0, seq: 0, TileCommand.Attack(actor, TileMoveMode.Walk));
+        bool retaliated = false;
+        for (int i = 0; i < 40 && !retaliated; i++)
+        {
+            s.Tick(Dt);
+            retaliated = s.TryGetActorState(actor, out TileMoveState st) && st.CombatTarget == player;
+        }
+
+        Assert.True(retaliated, "the rat never answered a swing that missed");
+        Assert.True(s.TryGetHealth(actor, out TileHealth untouched));
+        Assert.Equal(30, untouched.Current);
+        Assert.True(s.TryGetCombatState(actor, out TileCombatState record));
+        Assert.Equal(player, record.LastAttackedBy);
+        Assert.Equal(0L, record.LastDamagedBy);
     }
 
     // The chase costs the behaviour ONE value re-issued, because the follow itself is the stepper's.
@@ -272,11 +301,7 @@ public class TileWanderBehaviourTests
         s.Tick(Dt);
         long actor = spawner.ActorNetId;
 
-        Assert.True(s.Host.TryGetOwner(actor, out CellSim cell, out Entity e));
-        Assert.True(cell.World.TryGet(e, out TileCombatState combat));
-        combat.LastDamagedBy = player;
-        combat.LastDamagedTick = s.TickCount;
-        cell.World.Set(e, combat);
+        Damage(s, actor, player);
 
         s.Enqueue(0, seq: 0, TileCommand.WalkTo(new TileCoord(30, 40, 0), TileMoveMode.Walk));
         for (int i = 0; i < 60; i++) s.Tick(Dt);

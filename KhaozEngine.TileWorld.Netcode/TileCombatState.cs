@@ -42,6 +42,19 @@ public struct TileCombatState : IComponent
     /// pair is always one answer rather than two.</summary>
     public long LastDamagedTick;
 
+    /// <summary>Net id of the last entity that SWUNG at this one, 0 when nothing has, a miss counting exactly as a
+    /// hit does. This is what aggression reads since the swing-aggro ruling: a monster answers being ATTACKED, not
+    /// being wounded, because a splashed miss and a blocked zero draw the same blue splat and a monster that
+    /// ignores one of them reads as broken. <see cref="LastDamagedBy"/> stays the record of what actually LANDED,
+    /// which is where a threat table or a drop rule will want to look. Dropped wherever the damage record is
+    /// dropped, under the same one-answer rule: an actor that forgets a fight forgets being swung at in it.</summary>
+    public long LastAttackedBy;
+
+    /// <summary>The server tick that swing happened on, so a behaviour can age it out. Written with
+    /// <see cref="LastAttackedBy"/> and under the same rule, so the pair is always one answer rather than
+    /// two.</summary>
+    public long LastAttackedTick;
+
     /// <summary>The server tick a combat event last TOUCHED this entity, in either direction: a swing it made or a
     /// swing made at it, whether that swing landed or missed. Zero when none ever has.
     /// <para>Separate from <see cref="LastDamagedTick"/> because the two answer different questions and widening one

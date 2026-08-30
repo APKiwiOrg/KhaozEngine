@@ -166,10 +166,12 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   to read. The engine owns it MECHANICALLY and owns none of its meaning: it subtracts a game-rolled amount and
   raises the death event at zero. **A spawned PLAYER carries none.** See the health contract below.
 - **`TileCombatState`** - the swing cadence (`AttackTicks`), the cooldown, the damage record (`LastDamagedBy` /
-  `LastDamagedTick`, written by a swing that LANDED, a blocked zero included, and not by a miss), `LastCombatTick`
-  (either direction, misses included, which is what `CombatLogoutTicks` reads) and the lock age pair
-  (`TargetSeen` / `TargetSinceTick`, which is what makes the roll order oldest lock first). Registered on the
-  MIGRATE channel alone, so it survives a handoff and reaches no client at all.
+  `LastDamagedTick`, written by a swing that LANDED, a blocked zero included, and not by a miss), the swung-at
+  record (`LastAttackedBy` / `LastAttackedTick`, written by EVERY swing aimed at it, miss included, and what
+  the default behaviour's retaliation reads: aggression answers the swing, the wound is for threat),
+  `LastCombatTick` (either direction, misses included, which is what `CombatLogoutTicks` reads) and the lock
+  age pair (`TargetSeen` / `TargetSinceTick`, which is what makes the roll order oldest lock first). Registered
+  on the MIGRATE channel alone, so it survives a handoff and reaches no client at all.
 - **`TileActorSpawn`** / **`TileWorldServer.SpawnActor`** / **`DespawnActor`** - the door. The spec is the numbers
   that go on ONE entity (`MaxHealth`, `AttackTicks`, `Facing`, `Mode`), and the door refuses a zero `MaxHealth`, an
   off-map or off-plane tile and a cell already at `MaxActorsPerCell` by answering 0 rather than throwing, so a

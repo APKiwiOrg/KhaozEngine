@@ -8778,9 +8778,10 @@ sealed class GuardBehaviour(ITileActorBehaviour fallback) : ITileActorBehaviour
         // ONE implementation dispatches on Definition.Kind. The engine must not learn what a goblin is.
         if (context.Definition.Kind != 2) return fallback.Decide(context);
 
-        // Retaliate: LastDamagedBy is written by a swing that LANDED, a blocked zero included, never by a miss.
-        if (context.LastDamagedBy != 0 && context.Tick - context.LastDamagedTick < 40)
-            return TileActorIntent.Attack(context.LastDamagedBy);
+        // Retaliate: LastAttackedBy is written by EVERY swing aimed at this actor, a miss included, because
+        // aggression answers the swing. LastDamagedBy is the landed-only record, for threat-shaped logic.
+        if (context.LastAttackedBy != 0 && context.Tick - context.LastAttackedTick < 40)
+            return TileActorIntent.Attack(context.LastAttackedBy);
 
         // COPY THE STREAM TO A LOCAL. TileActorRandom is a mutating value type handed over an `in` parameter, so
         // context.Rng.Next(10) called twice takes a DEFENSIVE COPY each time and hands back the identical number,
@@ -8916,8 +8917,10 @@ Four rules the pipeline runs on:
   RNG gets server-side reproducibility from that, which is all it needs, since the roll is NEVER predicted by a
   client.
 - **A MISS is still an event and still draws a hitsplat.** A fight with invisible misses reads as a broken fight.
-  A hit that connected for ZERO damage is still a landed hit, and it still names its attacker on the target's
-  damage record, which is what a retaliating behaviour rides. A miss does not.
+  Every swing, miss included, names its attacker on the target's SWUNG-AT record (`LastAttackedBy`), which is what
+  a retaliating behaviour rides: a splashed miss and a blocked zero draw the same blue splat, so aggression
+  answers the swing. Only a hit that LANDED (a connected zero included) moves the damage record
+  (`LastDamagedBy`), which is where threat-shaped logic looks.
 - **`TileCombatEvent.Amount` is the ROLLED damage**, so an overkill reports more than was actually taken (a 3 hp
   target hit for 50 produces an event of 50). That is the number a player expects on the splat, and it means a
   game awarding experience straight from it over-awards on every killing blow. Read the target's health if what is

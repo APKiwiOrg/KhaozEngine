@@ -5858,6 +5858,14 @@ succeeds as soon as the bytes are written into a socket that is already going aw
 spent attempts forward instead of resetting them, so it reaches `GivenUp` rather than reconnecting and
 re-publishing every few seconds for the whole session. Zero opts out and treats every drop as held.
 
+A CORRUPTED stream reaches the controller as an ordinary drop. The Discord IPC decoder bounds the body length
+a frame header may declare (0 to 64 KiB, far above any real presence payload), and treats anything outside
+that as a framing error rather than as "the rest has not arrived yet". There is no marker in the framing for
+where the next frame starts, so a desync cannot be recovered from in place: the client disconnects, and the
+controller reconnects onto a clean stream like any other drop. Without that bound a single bad length parked
+the decoder forever on a socket that stayed healthy, so presence stopped updating for the rest of the session
+with nothing thrown and `IsConnected` still true.
+
 The presence that was live at the drop is republished once on the way back, so the game does not return
 blank, and an elapsed timer keeps its absolute start across an outage of any length. A `SetPresence` during
 the outage is held and wins instead (latest wins, as always), and a `ClearPresence` during the outage

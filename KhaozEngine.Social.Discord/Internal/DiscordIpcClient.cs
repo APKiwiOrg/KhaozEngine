@@ -109,6 +109,9 @@ internal sealed class DiscordIpcClient : IDisposable
         }
         catch (Exception)
         {
+            // Socket faults AND framing faults land here. A desynced frame length is hopeless by nature, so
+            // tearing the connection down is the recovery: the controller's reconnect starts a fresh session,
+            // and TryConnect clears the accumulated bytes so the new stream is decoded on its own boundaries.
             Disconnect();
             return;
         }
@@ -139,6 +142,12 @@ internal sealed class DiscordIpcClient : IDisposable
         }
     }
 
+    // A desynced frame header throws InvalidDataException out of the codec, and that is DELIBERATELY not
+    // caught here: Pump's catch turns it into a Disconnect, which is the only recovery there is. The stream
+    // cannot be resynchronised from inside (nothing in the framing marks where the next frame starts), and the
+    // socket itself is healthy, so the transport-death check never fires. Before the codec bounded the
+    // declared length this decoded nothing, consumed nothing and returned quietly on every Pump for the rest
+    // of the session, with IsConnected still true (issue #159).
     private void ProcessFrames()
     {
         while (DiscordIpcCodec.TryDecodeFrame(readBuffer.ToArray(), out DiscordIpcOpcode op, out string json, out int consumed))

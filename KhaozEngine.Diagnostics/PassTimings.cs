@@ -5,9 +5,10 @@ namespace KhaozEngine.Diagnostics;
 
 /// <summary>
 /// A headless per-pass CPU-encode timing meter: feed it one named <see cref="Sample"/> per pass per frame and
-/// read back the rolling avg/min/max milliseconds for that pass over a window (default ~1 second), same shape
-/// as <see cref="FrameStats"/> but keyed by pass name instead of a single whole-frame number. Pure managed code,
-/// no renderer or GPU dependency, so it constructs and unit-tests from a synthetic millisecond stream.
+/// read back the rolling avg/min/max milliseconds for that pass over a window of REAL time (default ~1 second),
+/// same shape as <see cref="FrameStats"/> but keyed by pass name instead of a single whole-frame number. Pure
+/// managed code, no renderer or GPU dependency, so it constructs and unit-tests from a synthetic millisecond
+/// stream plus an injected <see cref="IClock"/>.
 /// <para>
 /// What this measures: CPU time spent RECORDING (encoding) commands for a pass, i.e. the wall-clock span a
 /// <c>Stopwatch</c> bracket placed around that pass's command-list calls observes. It is NOT true GPU execution
@@ -25,14 +26,21 @@ namespace KhaozEngine.Diagnostics;
 public sealed class PassTimings
 {
     readonly float _window;
+    readonly IClock _clock;
     readonly Dictionary<string, PassMeter> _passes = new(StringComparer.Ordinal);
     // Preserves first-seen order so a section populator lists passes in a stable, meaningful order
     // (e.g. shadow -> model -> transparents -> post -> present) rather than dictionary-iteration order.
     readonly List<string> _order = new();
 
     /// <summary>Create a meter whose rolling window spans <paramref name="windowSeconds"/> (defaults to 1s).</summary>
-    public PassTimings(float windowSeconds = 1f) =>
+    /// <param name="windowSeconds">Length of the rolling window, in real seconds.</param>
+    /// <param name="clock">The wall clock the window is measured against. Defaults to <see cref="SystemClock"/>;
+    /// pass a fake one to drive the window deterministically from a test.</param>
+    public PassTimings(float windowSeconds = 1f, IClock? clock = null)
+    {
         _window = windowSeconds > 0f ? windowSeconds : 1f;
+        _clock = clock ?? SystemClock.Instance;
+    }
 
     /// <summary>
     /// Record one pass's elapsed time (milliseconds) for this frame and recompute that pass's aggregates.
@@ -51,7 +59,7 @@ public sealed class PassTimings
             _passes[pass] = meter;
             _order.Add(pass);
         }
-        meter.Sample(ms);
+        meter.Sample(ms, _clock.Now);
     }
 
     /// <summary>Pass names in first-sampled order (stable across frames once every pass has been seen once).</summary>
@@ -73,23 +81,26 @@ public sealed class PassTimings
         _order.Clear();
     }
 
-    // One pass's rolling window, same trim/recompute shape as FrameStats but without the FPS derivation
-    // (a per-pass "frames per second" is meaningless).
+    // One pass's rolling window. Recompute is FrameStats' shape without the FPS derivation (a per-pass "frames per
+    // second" is meaningless), but the TRIM cannot be: FrameStats sums dt, so its sum is elapsed time and trimming
+    // on it keeps a real-seconds window. A pass costs a fraction of a frame, so summing pass milliseconds and
+    // trimming at the window would hold tens of real seconds of samples, differently per pass.
     sealed class PassMeter
     {
         readonly float _window;
-        readonly Queue<float> _samples = new();
+        readonly Queue<(float Ms, DateTimeOffset At)> _samples = new();
         float _sum;
         float _avgMs, _minMs, _maxMs;
 
         public PassMeter(float window) => _window = window;
 
-        public void Sample(float ms)
+        public void Sample(float ms, DateTimeOffset at)
         {
-            _samples.Enqueue(ms);
+            _samples.Enqueue((ms, at));
             _sum += ms;
-            while (_samples.Count > 1 && _sum - _samples.Peek() >= _window * 1000f)
-                _sum -= _samples.Dequeue();
+            // Keep the newest sample plus every one taken within the window of it, measured on the wall clock.
+            while (_samples.Count > 1 && (at - _samples.Peek().At).TotalSeconds >= _window)
+                _sum -= _samples.Dequeue().Ms;
             Recompute();
         }
 
@@ -100,7 +111,7 @@ public sealed class PassTimings
 
             float min = float.MaxValue;
             float max = 0f;
-            foreach (float ms in _samples)
+            foreach ((float ms, _) in _samples)
             {
                 if (ms < min) min = ms;
                 if (ms > max) max = ms;

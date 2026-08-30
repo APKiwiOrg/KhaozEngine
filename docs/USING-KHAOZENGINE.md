@@ -9783,6 +9783,12 @@ ignores non-positive values) never records it and the row is simply absent. `Pas
 `Scene3D.PassTimingsMs` actually gets populated needs a live device (`KE_GPU_TESTS=1`), like the other
 Scene3D render-path GPU tests.
 
+The window is REAL time: a pass costs a fraction of a frame, so `PassTimings` timestamps each sample and trims
+by wall clock rather than by the milliseconds it is being fed (summing those would hold tens of seconds of
+samples, and a different span per pass depending on how expensive that pass is). The clock is the
+`KhaozEngine.Diagnostics.IClock` seam, so `new PassTimings(windowSeconds, clock)` drives the window from a test
+without sleeping.
+
 ---
 
 ## The engine's own backends are the only backends (default in 17.40.0, sole in 18.0.0)

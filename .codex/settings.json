@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "data=$(cat); f=$(printf '%s' \"$data\" | jq -r '.tool_input.file_path // \"\"'); case \"$f\" in *.md) c=$(printf '%s' \"$data\" | jq -r '.tool_input.content // .tool_input.new_string // \"\"'); printf '%s' \"$c\" | LC_ALL=C grep -qF -e '—' -e '–' && printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Introduces an em-dash or en-dash. Repo bans them in shipped text. Use a period, comma, colon, or parentheses instead.\"}}' ;; esac"
+            "command": "data=$(cat); f=$(printf '%s' \"$data\" | jq -r '.tool_input.file_path // \"\"'); case \"$f\" in *.md|*.cs) c=$(printf '%s' \"$data\" | jq -r '.tool_input.content // .tool_input.new_string // \"\"'); printf '%s' \"$c\" | LC_ALL=C grep -qF -e '—' -e '–' && printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Introduces an em-dash or en-dash. Repo bans them in shipped text. Use a period, comma, colon, or parentheses instead.\"}}' ;; esac"
           },
           {
             "type": "command",

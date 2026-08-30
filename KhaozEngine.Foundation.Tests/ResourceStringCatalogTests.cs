@@ -60,6 +60,24 @@ public class ResourceStringCatalogTests
     }
 
     [Fact]
+    public void TryGet_PresentKeyWhoseTranslationEqualsTheKey_ReturnsTrue()
+    {
+        var rm = new FakeStringResourceManager
+        {
+            // A real resx carries entries like this: an untranslated placeholder, or a culture whose
+            // translation genuinely is the key text.
+            ["en-US"] = { ["OK"] = "OK" },
+        };
+        IStringCatalog strings = new ResourceStringCatalog(rm);
+
+        WithCulture("en-US", () =>
+        {
+            Assert.True(strings.TryGet("OK", out string value));
+            Assert.Equal("OK", value);
+        });
+    }
+
+    [Fact]
     public void Format_SubstitutesArgsIntoResolvedTemplate()
     {
         var rm = new FakeStringResourceManager

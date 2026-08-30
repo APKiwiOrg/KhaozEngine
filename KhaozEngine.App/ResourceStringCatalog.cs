@@ -36,8 +36,11 @@ public sealed class ResourceStringCatalog : IStringCatalog
     /// <inheritdoc />
     public bool TryGet(string key, out string value)
     {
-        value = Get(key);
-        // Get returns the key itself when absent, so a resolved value differs from the key.
-        return !string.Equals(value, key, StringComparison.Ordinal);
+        // Ask the resource manager directly: it returns null for an absent key. Inferring the miss from Get's
+        // already-defaulted return (a value equal to the key) reads a present entry as missing whenever the
+        // translation happens to be its own key, which an untranslated placeholder or a value like "OK" does.
+        string? found = _resources.GetString(key, CultureInfo.CurrentUICulture);
+        value = found ?? key;
+        return found is not null;
     }
 }

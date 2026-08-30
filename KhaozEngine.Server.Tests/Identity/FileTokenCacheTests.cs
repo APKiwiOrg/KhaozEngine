@@ -62,5 +62,76 @@ public class FileTokenCacheTests : IDisposable
         Assert.Null(await cache.LoadAsync());
     }
 
-    public void Dispose() { if (File.Exists(path)) File.Delete(path); }
+    /// <summary>#172: the save wrote the temp file first and chmodded it second, so the encoded session sat at
+    /// the predictable "&lt;path&gt;.tmp" with the umask's mode (typically 0644) for the width of the write. The
+    /// write now creates the file already owner-only, which means it must also refuse to write through anything
+    /// it did not create: a pre-planted symlink at that predictable name used to carry the token straight into
+    /// the attacker's file (and left the cache itself pointing there).</summary>
+    [Fact]
+    public async Task SaveAsync_does_not_write_the_session_through_a_pre_planted_tmp_symlink()
+    {
+        if (OperatingSystem.IsWindows()) return;
+
+        string probe = path + ".probe";
+        await File.WriteAllTextAsync(probe, "not-the-token");
+        File.CreateSymbolicLink(path + ".tmp", probe);
+        try
+        {
+            FileTokenCache cache = new(path);
+            ProviderCredential cred = new("oidc", "secret-token-value", null, DateTimeOffset.UtcNow.AddHours(1));
+            CachedSession s = new(cred, null, null, DateTimeOffset.UtcNow, null);
+
+            await cache.SaveAsync(s);
+
+            Assert.Equal("not-the-token", await File.ReadAllTextAsync(probe));
+            Assert.False(File.Exists(path + ".tmp"));
+            Assert.StartsWith("KEID1:", await File.ReadAllTextAsync(path), StringComparison.Ordinal);
+            Assert.Null(File.ResolveLinkTarget(path, returnFinalTarget: false));
+        }
+        finally
+        {
+            if (File.Exists(probe)) File.Delete(probe);
+            if (File.Exists(path + ".tmp")) File.Delete(path + ".tmp");
+        }
+    }
+
+    [Fact]
+    public async Task Saved_file_is_owner_only_on_unix()
+    {
+        FileTokenCache cache = new(path);
+        ProviderCredential cred = new("oidc", "tok", null, DateTimeOffset.UtcNow.AddHours(1));
+        CachedSession s = new(cred, null, null, DateTimeOffset.UtcNow, null);
+
+        await cache.SaveAsync(s);
+
+        if (!OperatingSystem.IsWindows())
+            Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
+    }
+
+    /// <summary>A temp file left behind by a crashed earlier save must not have its mode inherited by the next
+    /// one: UnixCreateMode only applies to a file the open creates, so the stale one has to be unlinked.</summary>
+    [Fact]
+    public async Task SaveAsync_replaces_a_stale_permissive_tmp_file()
+    {
+        if (OperatingSystem.IsWindows()) return;
+
+        string tmp = path + ".tmp";
+        await File.WriteAllTextAsync(tmp, "leftover");
+        File.SetUnixFileMode(tmp, UnixFileMode.UserRead | UnixFileMode.UserWrite
+            | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+
+        FileTokenCache cache = new(path);
+        ProviderCredential cred = new("oidc", "tok", null, DateTimeOffset.UtcNow.AddHours(1));
+        await cache.SaveAsync(new CachedSession(cred, null, null, DateTimeOffset.UtcNow, null));
+
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
+        Assert.NotNull(await cache.LoadAsync());
+    }
+
+    public void Dispose()
+    {
+        if (File.Exists(path)) File.Delete(path);
+        if (File.Exists(path + ".tmp")) File.Delete(path + ".tmp");
+        if (File.Exists(path + ".probe")) File.Delete(path + ".probe");
+    }
 }

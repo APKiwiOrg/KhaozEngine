@@ -41,11 +41,34 @@ public sealed class FileTokenCache : ITokenCache
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
         string json = JsonSerializer.Serialize(session, JsonDefaults.IndentedWrite);
         string tmp = filePath + ".tmp";
-        File.WriteAllText(tmp, Encode(json));
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            File.SetUnixFileMode(tmp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        WriteOwnerOnly(tmp, Encode(json));
         File.Move(tmp, filePath, overwrite: true);
         return Task.CompletedTask;
+    }
+
+    /// <summary>Writes <paramref name="contents"/> to a file that is BORN owner-only on unix, keeping the
+    /// atomic write-temp-then-move shape. The write used to run first and the chmod after it, which left the
+    /// encoded session (refresh token included) sitting at the predictable <c>&lt;path&gt;.tmp</c> with whatever
+    /// the process umask gives, typically 0644, for the width of the write: a co-located local user could read
+    /// it inside that window. <see cref="FileStreamOptions.UnixCreateMode"/> applies only to a file the open
+    /// actually creates, so any leftover temp (a crashed earlier save, or a pre-planted file or symlink at that
+    /// predictable name) is unlinked first and <see cref="FileMode.CreateNew"/> then refuses to write through
+    /// anything this call did not create itself.</summary>
+    private static void WriteOwnerOnly(string path, string contents)
+    {
+        File.Delete(path);
+
+        FileStreamOptions open = new()
+        {
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.Write,
+            Share = FileShare.None,
+        };
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            open.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+
+        using FileStream stream = File.Open(path, open);
+        stream.Write(Encoding.UTF8.GetBytes(contents));
     }
 
     public Task ClearAsync(CancellationToken ct = default)

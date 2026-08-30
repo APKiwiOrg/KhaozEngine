@@ -45,7 +45,10 @@ sceneManager.Push(new MapEditorScene().Init(scene, whiteTexture, dpiFont, option
   rounded up to whole tiles), so a wider horizon also loads a wider slice rather than reaching past it. It is
   read once, when the document opens, because re-windowing a live document means reloading it and discarding
   unsaved edits, so a multiplier changed mid-session says so in the status strip instead. See Settings menu
-  below.
+  below. The BASE radius and the base `RenderDistance` profile are still independently chosen, so the ring can
+  reach outside the loaded window. That is degradation, not breakage: the streamer neither clamps its ring to
+  the window nor throws at its edge, it meshes the unauthored analytic base out there, since the authored
+  sculpt tiles that would have modified it were never read.
 - `ManifestPaths` are the same `AssetManifest` files the game's own prop-kit loading reads, so the
   editor's palette and picking heights match what the game actually renders.
 - `Registry` defaults to `MapDocRegistry.CreateDefault()`. Pass your own to add custom terrain feature

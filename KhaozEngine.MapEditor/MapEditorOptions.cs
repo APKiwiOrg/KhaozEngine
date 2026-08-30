@@ -70,7 +70,13 @@ public sealed class MapEditorOptions
     /// <see cref="RenderDistanceProfile.For"/>, e.g. <c>RenderDistanceProfile.For(RenderDistanceTier.Near)</c>, which
     /// trims the streamed ring as well as the visible distance. A hand-rolled profile is checked with
     /// <see cref="RenderDistanceProfile.Validate"/> when the scene builds its world, so an incoherent set throws at
-    /// editor start rather than rendering wrong.</summary>
+    /// editor start rather than rendering wrong.
+    /// <para>Coupled to <see cref="EditorWindowRadius"/> on a windowed tiled document, which is how much of the world
+    /// is actually resident to stream FROM. Reaching past that window is neither clamped nor an error: the streamer
+    /// keeps the whole ring this profile asks for and meshes the far field from the composed terrain field, which
+    /// outside the window is the pure analytic base, because the authored sculpt tiles that would have modified it
+    /// live in document tiles the window never read. So over-reaching costs authored fidelity in the far ring and
+    /// nothing worse, no void and no throw. Verified headless in <c>MapEditorWindowReachTests</c> (#363).</para></summary>
     public RenderDistanceProfile RenderDistance = RenderDistanceProfile.Default;
 
     /// <summary>Occupied-tile ceiling below which opening a tiled document loads it whole, exactly like a
@@ -82,7 +88,12 @@ public sealed class MapEditorOptions
     /// <summary>Tile radius either side of the window center when a tiled document opens windowed (see
     /// <see cref="WholeWorldTileLimit"/>). Default 2, <see cref="MapDocumentWindowing.DefaultEditorWindowRadius"/>.
     /// The operator's render-distance multiplier scales this at open time (see the editor settings menu), so a
-    /// wider horizon also loads a wider slice of a tiled world rather than reaching past it.</summary>
+    /// wider horizon also loads a wider slice of a tiled world rather than reaching past it.
+    /// <para>The base radius and the base <see cref="RenderDistance"/> profile stay independently chosen, so a
+    /// narrower window here (or a further tier there) can still put the streamed ring outside the loaded slice. That
+    /// is degradation rather than breakage: the streamer does not clamp its ring to the window and does not throw at
+    /// its edge, it simply meshes the unauthored analytic base out there. See the note on
+    /// <see cref="RenderDistance"/> for the verified behaviour and the test that pins it (#363).</para></summary>
     public int EditorWindowRadius = MapDocumentWindowing.DefaultEditorWindowRadius;
 
     /// <summary>When true (the default) the editor OWNS the host <c>Scene3D</c>'s look: it applies its own sky,

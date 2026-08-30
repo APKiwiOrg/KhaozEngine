@@ -7742,7 +7742,12 @@ always saves back in the form and directory the document was opened from (`MapDo
 never converting implicitly: a plain `.map.json` load-then-save round-trips as monolithic, a tiled
 directory round-trips as tiled, touching only the tiles that actually changed. Moving content into a tile
 the loaded window never covered surfaces as an ordinary "Save failed: ..." status message
-(`MapDocumentException`, the same guard `SaveTiled` states on the document itself), not a crash. Explicit
+(`MapDocumentException`, the same guard `SaveTiled` states on the document itself), not a crash. The
+viewport's `RenderDistance` ring can reach outside that window, since the base radius and the base profile
+are chosen independently: the streamer neither clamps its ring to the window nor throws at its edge, it
+meshes the pure analytic base out there, because the authored sculpt tiles that would have modified it live
+in document tiles the window never read. Over-reaching therefore costs authored fidelity in the far ring and
+nothing worse. Explicit
 form conversion (`convert_to_tiled` / `convert_to_single`) and re-tiling (`retile`) are `ke-mapedit` verbs,
 below, and there is no GUI affordance for either. A large authored world is expected to convert once, from
 the tool, and the GUI editor just opens whatever form is already on disk.

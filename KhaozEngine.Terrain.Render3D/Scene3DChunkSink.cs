@@ -33,6 +33,10 @@ namespace KhaozEngine.Terrain
     {
         readonly Scene3D _scene;
         TerrainField _field;
+        // BuildCpu calls that have entered and not yet returned. Bumped from the build threads, read by UpdateField
+        // on the frame thread, so it goes through Interlocked / Volatile rather than a plain int. This is what makes
+        // UpdateField's flush precondition enforceable instead of prose (issue #105).
+        int _buildsInFlight;
         readonly IReadOnlyList<PropLayer> _layers;
         readonly float _chunkSize;
         readonly Scene3D.SplatMaterialHandle _material;
@@ -292,8 +296,24 @@ namespace KhaozEngine.Terrain
         /// the old field cannot land after the swap. The map editor runs the streamer in synchronous mode, so this
         /// does not apply there. A FROZEN-LIST placement layer ignores the field by construction: its buckets are
         /// fixed at ctor time, so a swap never changes what it serves. A SOURCE-BACKED placement layer is queried
-        /// live per build, so what it serves can change on its own without a field swap.</summary>
-        public void UpdateField(TerrainField field) => _field = field ?? throw new ArgumentNullException(nameof(field));
+        /// live per build, so what it serves can change on its own without a field swap.
+        /// <para><b>That precondition is enforced, not merely documented</b> (issue #105). A swap while any
+        /// <see cref="BuildCpu"/> is EXECUTING throws <see cref="InvalidOperationException"/>, because that build
+        /// reads <c>_field</c> at several points (mesh, collision surface, companion scatter) and would otherwise
+        /// mesh half a chunk from each field with nothing anywhere to say so. A build that has already RETURNED and
+        /// is waiting to apply is not visible here, and is the half <see cref="TerrainStreamer.FlushPendingBuilds"/>
+        /// covers, which is why the fix for this exception is to flush rather than to retry.</para></summary>
+        public void UpdateField(TerrainField field)
+        {
+            if (field is null) throw new ArgumentNullException(nameof(field));
+            int inFlight = Volatile.Read(ref _buildsInFlight);
+            if (inFlight > 0)
+                throw new InvalidOperationException(
+                    $"UpdateField was called while {inFlight} chunk build(s) are still running against the current field. " +
+                    "Flush the streamer first (TerrainStreamer.FlushPendingBuilds), or run it synchronously " +
+                    "(StreamerConfig.Synchronous), so no build can mesh one chunk from two different fields.");
+            _field = field;
+        }
 
         /// <summary>The opaque CPU payload <see cref="BuildCpu"/> hands to <see cref="Apply"/>: the pure-CPU mesh and
         /// the per-layer scatter, both built off the analytic field with no GPU device. Everything here is safe to
@@ -358,8 +378,19 @@ namespace KhaozEngine.Terrain
         /// rebuild in place, never a tier re-LOD or a ring change (both keep the mesh already on the GPU). See
         /// <see cref="HlodBuildGate"/> for the rule and issue #393 for what it costs to get this wrong: the merge is
         /// multi-megabyte large-object work per chunk, so building it for an apply that discards it is the whole
-        /// leak.</para></summary>
+        /// leak.</para>
+        /// <para>The body is wrapped so the sink knows a build is EXECUTING, which is what lets
+        /// <see cref="UpdateField"/> refuse a field swap out from under it (issue #105) instead of documenting the
+        /// precondition and hoping. The counter is the only thing the wrapper adds: no lock, no allocation, and the
+        /// build itself is unchanged.</para></summary>
         public object BuildCpu(ChunkCoord coord, int lod, ChunkRing ring = ChunkRing.Gameplay)
+        {
+            Interlocked.Increment(ref _buildsInFlight);
+            try { return BuildCpuCore(coord, lod, ring); }
+            finally { Interlocked.Decrement(ref _buildsInFlight); }
+        }
+
+        object BuildCpuCore(ChunkCoord coord, int lod, ChunkRing ring)
         {
             TerrainChunkRegion region = ChunkGrid.RegionOf(coord, _chunkSize);
             bool buildHlod = _hlodGate is not null && _hlodGate.NeedsMerge(coord, lod, ring);

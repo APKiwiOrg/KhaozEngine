@@ -79,7 +79,11 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
     (`TerrainStreamer.Invalidate`); this call only changes what a build starting after it reads. In async mode
     the caller must flush in-flight builds first (`TerrainStreamer.FlushPendingBuilds`) before swapping, so a
     build already running against the old field cannot land after the swap. The map editor runs its streamer
-    synchronously, so that ordering concern does not apply there.
+    synchronously, so that ordering concern does not apply there. Swapping while a build is EXECUTING throws
+    `InvalidOperationException` naming the number of builds it caught (issue #105), because that build reads the
+    field at several points and would otherwise mesh one chunk from two fields. A build that has already returned
+    and is waiting to apply is the half `FlushPendingBuilds` covers, so the fix for that exception is to flush,
+    never to retry.
 - **`PropLayer`** - one scatter, companion, or placement layer's config + mesh set + draw radius, plus its
   dissolve fade band and optional far LOD variants. `PropLayer.ScatterLayer(scatter, meshes, drawRadius,
   fadeBandWidth = 0, lodMeshes = null, lodDistance = 0)` / `CompanionLayer(hostLayerIndex, companions, meshes,

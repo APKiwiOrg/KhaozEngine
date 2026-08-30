@@ -12904,7 +12904,10 @@ Implementations:
 - **`LoopbackTransport`** (in `KhaozEngine.Netcode`) - a deterministic, socket-free, thread-free in-memory
   pair for headless tests and single-process local play. `var (server, client) = LoopbackTransport.CreatePair();`
   A `Send` on one surfaces as a `Data` event on the other after that other endpoint `Poll`s; both see the peer
-  as connection id 1. This is what netcode tests run on - no real sockets needed.
+  as connection id 1. This is what netcode tests run on - no real sockets needed. A `Disconnect` takes its place in
+  that same order, so a plain kick loses nothing already sent. A disconnect carrying a reason (how `NetServer`
+  refuses a peer) instead supersedes what the peer has not polled and ends the session with one event, which is
+  what the UDP binding does and what keeps a rejected client from seeing a bare drop ahead of the reject.
 - **`LiteNetLibServerTransport(port)` / `LiteNetLibClientTransport(host, port)`** (in
   `KhaozEngine.Netcode.LiteNetLib`) - reliable-UDP over LiteNetLib, reusing `ChannelSplitter.ToDeliveryMethod`
   for the reliability mapping. A peer is surfaced as `NetConnectionId` = `peer.Id + 1`.
@@ -13127,6 +13130,30 @@ else
 ```
 
 Slots are the same small-int key `RemoteCommandQueue` uses, so commands and replication line up.
+
+**The send path allocates nothing per call.** `SendTo` and `Broadcast` frame the payload into one buffer the
+`NetServer` keeps and grows to the largest payload it has seen, so a fixed-rate authoritative server settles on a
+single allocation instead of a fresh frame array per send. `Broadcast` frames once and hands the same span to every
+peer. The transport seam is what makes that safe: `INetTransport.Send` BORROWS its payload for the duration of the
+call only, so an implementation that needs the bytes afterwards copies them (the loopback stages a copy, the
+LiteNetLib binding passes the span to `NetPeer.Send`, which copies into its own packet before returning). A custom
+transport must do the same, and must never stash the span or the array behind it.
+
+Games framing their own session payloads can use the same shape directly:
+
+```csharp
+// The allocating overload is still there and is right for one-off frames (the handshake uses it):
+byte[] frame = SessionFrame.Write(SessionOpcode.Data, payload);
+
+// Per tick, write into a buffer you keep instead:
+int length = SessionFrame.FrameLength(payload.Length);
+if (scratch.Length < length) scratch = new byte[length];
+SessionFrame.Write(SessionOpcode.Data, payload, scratch);      // returns the bytes written
+transport.Send(connection, scratch.AsSpan(0, length), NetChannelReliability.UnreliableSequenced);
+```
+
+`SessionFrame.Write(opcode, body, destination)` throws `ArgumentException` when the destination is shorter than
+`FrameLength(body.Length)`, so a too-small buffer is a hard error rather than a truncated frame on the wire.
 
 ### Entity replication (`KhaozEngine.Replication`)
 

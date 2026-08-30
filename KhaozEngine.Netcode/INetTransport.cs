@@ -17,18 +17,24 @@ public interface INetTransport : IDisposable
     /// <summary>Drains one queued event in arrival order. Returns false when none remain this poll.</summary>
     bool TryDequeueEvent(out NetEvent ev);
 
-    /// <summary>Sends <paramref name="payload"/> to <paramref name="target"/> on the given reliability channel.</summary>
+    /// <summary>Sends <paramref name="payload"/> to <paramref name="target"/> on the given reliability channel.
+    /// <para><paramref name="payload"/> is BORROWED for the duration of the call and no longer: an implementation that
+    /// needs the bytes afterwards copies them (the loopback stages a copy, the UDP binding hands them to LiteNetLib,
+    /// which copies into its own packet before returning). That is what lets a caller frame once into a buffer it
+    /// keeps and hand the same span to every peer of a fan-out, which is what <see cref="NetServer.Broadcast"/>
+    /// does.</para></summary>
     void Send(NetConnectionId target, ReadOnlySpan<byte> payload, NetChannelReliability reliability);
 
     /// <summary>Disconnects a single connection. No-op if the connection is unknown.</summary>
     void Disconnect(NetConnectionId connection);
 
     /// <summary>Disconnects a single connection, carrying <paramref name="reason"/> in the disconnect itself so a
-    /// rejecting server conveys WHY even when a separately-sent reliable frame would be lost to the teardown. The
-    /// UDP binding rides it on LiteNetLib's disconnect handshake and the peer surfaces it on the resulting
-    /// <see cref="NetEvent"/> Disconnected payload. The default drops the reason and does a plain disconnect, so a
-    /// lossless transport (the in-memory loopback, which delivers the reliable Reject anyway) needs no change.
-    /// No-op if the connection is unknown.</summary>
+    /// rejecting server conveys WHY even when a separately-sent reliable frame would be lost to the teardown. Both
+    /// in-tree transports implement it: the UDP binding rides it on LiteNetLib's disconnect handshake, and the
+    /// in-memory loopback delivers it as the single Disconnected that ends the session, superseding what the peer has
+    /// not yet polled, so a rejected client sees one terminal event either way. The default drops the reason and does
+    /// a plain disconnect, which is all an external transport with nowhere to put one can do, and it leaves such a
+    /// transport compiling unchanged. No-op if the connection is unknown.</summary>
     void Disconnect(NetConnectionId connection, ReadOnlySpan<byte> reason) => Disconnect(connection);
 
     /// <summary>

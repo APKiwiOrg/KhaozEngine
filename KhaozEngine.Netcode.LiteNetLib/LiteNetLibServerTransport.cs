@@ -72,10 +72,13 @@ public sealed class LiteNetLibServerTransport : INetTransport
 
     public bool TryDequeueEvent(out NetEvent ev) => inbox.TryDequeue(out ev);
 
+    /// <summary>Sends straight from the caller's span. LiteNetLib's span overload copies into its own packet before
+    /// returning, so nothing here retains the borrowed bytes, and a broadcast no longer pays one array copy per peer
+    /// for the identical frame.</summary>
     public void Send(NetConnectionId target, ReadOnlySpan<byte> payload, NetChannelReliability reliability)
     {
         if (peersById.TryGetValue(target.Value - 1, out NetPeer? peer))
-            peer.Send(payload.ToArray(), ChannelSplitter.ToDeliveryMethod(reliability));
+            peer.Send(payload, ChannelSplitter.ToDeliveryMethod(reliability));
     }
 
     public void Disconnect(NetConnectionId connection)

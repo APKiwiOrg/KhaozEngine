@@ -64,6 +64,12 @@ to size the inbox cap, and `connectionKey` defaults to `"khaoz"`. `Send`/`Discon
 carries a reject reason on LiteNetLib's own disconnect handshake, so it survives even when a
 separately-sent reliable frame would be lost to the teardown.
 
+`Send` hands the caller's span straight to LiteNetLib's `NetPeer.Send(ReadOnlySpan<byte>, DeliveryMethod)`, which
+copies into its own packet before returning. It used to call `payload.ToArray()` first, so a `NetServer.Broadcast`
+to N players allocated N copies of one identical frame on every broadcast of every tick. Nothing here retains the
+borrowed span, which is what the `INetTransport.Send` contract requires and what lets the session layer frame once
+and reuse the buffer across a fan-out.
+
 `LiteNetLibClientTransport` additionally turns on `NetManager.EnableStatistics` and exposes `Stats`
 (`NetTransportStats`: `Connected`, `RttMs`, `PacketLoss`, cumulative `BytesReceivedTotal`/`BytesSentTotal`)
 for the server peer, read by `NetClient.TransportStats` and, in turn, `KhaozEngine.NetWorld`'s

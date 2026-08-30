@@ -24,6 +24,16 @@ public sealed class ClientReplicationView
     // timestamps (see RecordInterpolationSample / InterpolateAt). Independent of the previous/current double-buffer
     // that drives the legacy alpha-ramp Interpolate.
     private readonly Dictionary<(long netId, ushort typeId), List<(double t, byte[] bytes)>> sampleHistory = new();
+
+    // Which typeIds are buffered under each netId, so dropping one entity's state is a lookup rather than three full
+    // key scans over every (netId, typeId) pair the client tracks. Removal is called once per departed entity from
+    // three sites on the delta/snapshot apply path, so the scans cost O(removed x tracked): an AoI boundary crossing
+    // in a dense area drops many entities in one delta, which is exactly where a hitch shows (#138).
+    // Fed from the ONE place currentBytes gains a key: previousBytes and sampleHistory only ever take copies of
+    // currentBytes' keys, so tracking that single write covers all three dictionaries. Deliberately allowed to be a
+    // SUPERSET (a component removed from a still-present entity leaves its typeId listed), because a stale entry
+    // costs a no-op Remove while a missing one would strand a buffer. The whole entry goes when the entity does.
+    private readonly Dictionary<long, HashSet<ushort>> typeIdsByNetId = new();
     // A remote whose most recent InterpolateAt clamped at the newest sample (renderTime ran past the buffer): a
     // genuine snapshot starvation "hold". Diagnostics read it via WasHeldAtLastInterpolation; recomputed per InterpolateAt.
     private readonly HashSet<long> heldNetIds = new();
@@ -238,6 +248,9 @@ public sealed class ClientReplicationView
                     // Also drop the fixed-delay sample history, else InterpolateAt keeps lerping the stale samples and
                     // world.Set re-adds the component the server just removed, every frame (resurrection).
                     sampleHistory.Remove((netId, rtid));
+                    // All three lost the key, so the index may lose it too. Only a tightening: leaving it would be
+                    // correct as well, since the index is allowed to name typeIds no dictionary still holds.
+                    if (typeIdsByNetId.TryGetValue(netId, out HashSet<ushort>? tracked)) tracked.Remove(rtid);
                 }
             }
 
@@ -308,7 +321,7 @@ public sealed class ClientReplicationView
                 {
                     var slice = new byte[end - posBefore];
                     Array.Copy(backing, (int)posBefore, slice, 0, slice.Length);
-                    currentBytes[(netId, typeId)] = slice;
+                    SetCurrent(netId, typeId, slice);
                 }
             }
             else if (extension)
@@ -331,17 +344,27 @@ public sealed class ClientReplicationView
         framedPayload.Release();   // do not keep this snapshot's buffer alive until the next apply re-points it
     }
 
+    // The ONE place currentBytes gains a key, and therefore the one place the netId index has to be fed.
+    private void SetCurrent(long netId, ushort typeId, byte[] bytes)
+    {
+        currentBytes[(netId, typeId)] = bytes;
+        if (!typeIdsByNetId.TryGetValue(netId, out HashSet<ushort>? typeIds))
+            typeIdsByNetId[netId] = typeIds = new HashSet<ushort>();
+        typeIds.Add(typeId);
+    }
+
+    // Drops every buffer belonging to one departed entity: the entity's own typeId list, not a scan of all three
+    // dictionaries. Costs the components on that entity rather than everything the client tracks, and allocates
+    // nothing (the old scans needed a collector list per call).
     private void RemoveEntityBuffers(long netIdToRemove)
     {
-        var keys = new List<(long netId, ushort typeId)>();
-        foreach ((long netId, ushort typeId) key in currentBytes.Keys) if (key.netId == netIdToRemove) keys.Add(key);
-        foreach ((long netId, ushort typeId) key in keys) currentBytes.Remove(key);
-        keys.Clear();
-        foreach ((long netId, ushort typeId) key in previousBytes.Keys) if (key.netId == netIdToRemove) keys.Add(key);
-        foreach ((long netId, ushort typeId) key in keys) previousBytes.Remove(key);
-        keys.Clear();
-        foreach ((long netId, ushort typeId) key in sampleHistory.Keys) if (key.netId == netIdToRemove) keys.Add(key);
-        foreach ((long netId, ushort typeId) key in keys) sampleHistory.Remove(key);
+        if (!typeIdsByNetId.Remove(netIdToRemove, out HashSet<ushort>? typeIds)) return;
+        foreach (ushort typeId in typeIds)
+        {
+            currentBytes.Remove((netIdToRemove, typeId));
+            previousBytes.Remove((netIdToRemove, typeId));
+            sampleHistory.Remove((netIdToRemove, typeId));
+        }
     }
 
     // Drops ONLY the fixed-delay interpolation history for one net id (leaves the current/previous double-buffer that
@@ -349,9 +372,9 @@ public sealed class ClientReplicationView
     // stale samples (buffered while it was a remote, pre-reconnect) are cleared so a later un-exclude cannot lerp them.
     private void RemoveSampleHistory(long netIdToRemove)
     {
-        var keys = new List<(long netId, ushort typeId)>();
-        foreach ((long netId, ushort typeId) key in sampleHistory.Keys) if (key.netId == netIdToRemove) keys.Add(key);
-        foreach ((long netId, ushort typeId) key in keys) sampleHistory.Remove(key);
+        // The index entry STAYS: current/previous still hold this entity's keys, and only its history is being dropped.
+        if (!typeIdsByNetId.TryGetValue(netIdToRemove, out HashSet<ushort>? typeIds)) return;
+        foreach (ushort typeId in typeIds) sampleHistory.Remove((netIdToRemove, typeId));
     }
 
     /// <summary>

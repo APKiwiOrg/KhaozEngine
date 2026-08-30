@@ -27,6 +27,13 @@ OAuth2 authorization-code + PKCE flow, using the system browser and a local loop
   parks forever and holds the bound loopback port for the life of the process. On expiry `SignInAsync` throws
   `IdentitySignInException` and the listener is disposed on the way out. Set it to zero or negative to restore
   the unbounded wait and bound sign-in with your own cancellation token instead.
+- **IdentitySignInException** - this package's recoverable sign-in failure, thrown by every path above. It
+  derives from `KhaozEngine.Identity.SignInException`, the shared base in the core package, so a game that
+  offers a choice of sign-in providers catches that one type instead of one per backend. Catch this type when
+  you need to know the Discord backend specifically. The type stays under this package's own namespace, so
+  this package still does not depend on the Oidc sibling, and the base carries a different simple name on
+  purpose, so a file importing `KhaozEngine.Identity` alongside this namespace still resolves the unqualified
+  `IdentitySignInException`.
 
 Discord is opaque-token OAuth2, not OIDC: there is no ID token or JWKS to validate, so this package
 has no `Microsoft.IdentityModel` dependency. It is opt-in and not part of any umbrella package;

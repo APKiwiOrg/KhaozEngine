@@ -17,7 +17,12 @@ public interface INetTransport : IDisposable
     /// <summary>Drains one queued event in arrival order. Returns false when none remain this poll.</summary>
     bool TryDequeueEvent(out NetEvent ev);
 
-    /// <summary>Sends <paramref name="payload"/> to <paramref name="target"/> on the given reliability channel.</summary>
+    /// <summary>Sends <paramref name="payload"/> to <paramref name="target"/> on the given reliability channel.
+    /// <para><paramref name="payload"/> is BORROWED for the duration of the call and no longer: an implementation that
+    /// needs the bytes afterwards copies them (the loopback stages a copy, the UDP binding hands them to LiteNetLib,
+    /// which copies into its own packet before returning). That is what lets a caller frame once into a buffer it
+    /// keeps and hand the same span to every peer of a fan-out, which is what <see cref="NetServer.Broadcast"/>
+    /// does.</para></summary>
     void Send(NetConnectionId target, ReadOnlySpan<byte> payload, NetChannelReliability reliability);
 
     /// <summary>Disconnects a single connection. No-op if the connection is unknown.</summary>

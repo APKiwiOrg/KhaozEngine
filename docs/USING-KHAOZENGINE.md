@@ -13131,6 +13131,30 @@ else
 
 Slots are the same small-int key `RemoteCommandQueue` uses, so commands and replication line up.
 
+**The send path allocates nothing per call.** `SendTo` and `Broadcast` frame the payload into one buffer the
+`NetServer` keeps and grows to the largest payload it has seen, so a fixed-rate authoritative server settles on a
+single allocation instead of a fresh frame array per send. `Broadcast` frames once and hands the same span to every
+peer. The transport seam is what makes that safe: `INetTransport.Send` BORROWS its payload for the duration of the
+call only, so an implementation that needs the bytes afterwards copies them (the loopback stages a copy, the
+LiteNetLib binding passes the span to `NetPeer.Send`, which copies into its own packet before returning). A custom
+transport must do the same, and must never stash the span or the array behind it.
+
+Games framing their own session payloads can use the same shape directly:
+
+```csharp
+// The allocating overload is still there and is right for one-off frames (the handshake uses it):
+byte[] frame = SessionFrame.Write(SessionOpcode.Data, payload);
+
+// Per tick, write into a buffer you keep instead:
+int length = SessionFrame.FrameLength(payload.Length);
+if (scratch.Length < length) scratch = new byte[length];
+SessionFrame.Write(SessionOpcode.Data, payload, scratch);      // returns the bytes written
+transport.Send(connection, scratch.AsSpan(0, length), NetChannelReliability.UnreliableSequenced);
+```
+
+`SessionFrame.Write(opcode, body, destination)` throws `ArgumentException` when the destination is shorter than
+`FrameLength(body.Length)`, so a too-small buffer is a hard error rather than a truncated frame on the wire.
+
 ### Entity replication (`KhaozEngine.Replication`)
 
 Replicate the authoritative ECS `World` to clients. Register each replicated component once (server and client

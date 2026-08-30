@@ -200,6 +200,23 @@ the `KhaozEngine.Netcode.LiteNetLib` client binding sets `NetManager.EnableStati
 server peer. Games read it (with the snapshot rate + prediction-correction magnitude) via
 `KhaozEngine.NetWorld`'s `WorldClient.NetStats`.
 
+## Session send path: frame once, borrow the span
+
+`SessionFrame` carries two `Write` overloads. The allocating one returns a fresh `byte[]` and is right for the
+handshake frames, which happen once per session. The other writes into a caller-supplied `Span<byte>` and returns
+the bytes written (`SessionFrame.FrameLength(bodyLength)` sizes it, and a short destination throws
+`ArgumentException` rather than truncating a frame onto the wire).
+
+`NetServer.SendTo` and `NetServer.Broadcast` use the second one against a buffer the server keeps and grows to the
+largest payload it has seen, so a fixed-rate authoritative host settles on one allocation rather than a frame array
+per send, and a broadcast frames ONCE and hands the same span to every peer.
+
+What makes reusing that buffer legitimate is a contract on the seam: `INetTransport.Send` BORROWS its payload for
+the duration of the call and no longer. An implementation that needs the bytes afterwards copies them - the
+loopback stages a copy, and the LiteNetLib binding passes the span to `NetPeer.Send`, which copies into its own
+packet before returning (it used to call `payload.ToArray()` first, so a broadcast to N players made N copies of
+identical bytes on top of the frame). A third-party transport must honour the same rule and never stash the span.
+
 ## Reject delivery: the reason rides the disconnect
 
 `NetServer` refuses a pending peer by sending a reliable `Reject` frame AND carrying the same framed reject on

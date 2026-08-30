@@ -29,6 +29,12 @@ public sealed class NetServer
     private readonly Dictionary<int, string> subjectBySlot = new();
     private readonly DuplicateSessionPolicy duplicateSessions;
     private readonly BoundedEventQueue<ServerSessionEvent> inbox;
+    // One reusable buffer the per-tick game sends frame into, grown to the largest payload seen and then reused. A
+    // broadcast frames ONCE into it and hands the same span to every peer, so the fan-out costs no allocation at all
+    // rather than one frame plus a copy per player, every broadcast, every tick. Safe to reuse because Send is
+    // synchronous and a transport may not retain the span past the call (see INetTransport.Send). Single-threaded by
+    // the same contract that governs Poll, so there is no second caller to interleave with.
+    private byte[] sendScratch = Array.Empty<byte>();
 
     /// <param name="transport">The byte transport to serve on (already listening).</param>
     /// <param name="maxPlayers">Slot capacity. A Hello past this is answered with a full-server refusal.</param>
@@ -173,8 +179,8 @@ public sealed class NetServer
     /// <summary>Sends game data to one slot. No-op for an unknown slot.</summary>
     public void SendTo(int slot, ReadOnlySpan<byte> payload, NetChannelReliability reliability)
     {
-        if (connectionBySlot.TryGetValue(slot, out NetConnectionId conn))
-            transport.Send(conn, SessionFrame.Write(SessionOpcode.Data, payload), reliability);
+        if (!connectionBySlot.TryGetValue(slot, out NetConnectionId conn)) return;
+        transport.Send(conn, FrameForSend(payload), reliability);
     }
 
     /// <summary>Disconnects one slot's connection (a kick). The transport surfaces the resulting Disconnected event
@@ -185,11 +191,21 @@ public sealed class NetServer
             transport.Disconnect(conn);
     }
 
-    /// <summary>Sends game data to every joined slot.</summary>
+    /// <summary>Sends game data to every joined slot. The frame is built once and the same bytes go to every peer.</summary>
     public void Broadcast(ReadOnlySpan<byte> payload, NetChannelReliability reliability)
     {
-        byte[] frame = SessionFrame.Write(SessionOpcode.Data, payload);
+        ReadOnlySpan<byte> frame = FrameForSend(payload);
         foreach (NetConnectionId conn in connectionBySlot.Values)
             transport.Send(conn, frame, reliability);
+    }
+
+    // Frames a game payload into the reusable send buffer and hands back the written window. The buffer only ever
+    // grows, so a steady tick rate settles on one allocation for the whole server rather than one per send.
+    private ReadOnlySpan<byte> FrameForSend(ReadOnlySpan<byte> payload)
+    {
+        int length = SessionFrame.FrameLength(payload.Length);
+        if (sendScratch.Length < length) sendScratch = new byte[length];
+        SessionFrame.Write(SessionOpcode.Data, payload, sendScratch);
+        return sendScratch.AsSpan(0, length);
     }
 }

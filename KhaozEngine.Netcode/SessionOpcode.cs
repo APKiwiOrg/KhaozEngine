@@ -20,13 +20,34 @@ public enum SessionOpcode : byte
 /// <summary>Reads/writes the 1-byte-opcode session frame: <c>[opcode][body...]</c>.</summary>
 public static class SessionFrame
 {
-    /// <summary>Allocates <c>[opcode][body]</c>.</summary>
+    /// <summary>Allocates <c>[opcode][body]</c>. Fine for the handshake frames, which happen once per session; a
+    /// per-tick send path wants the <see cref="Write(SessionOpcode, ReadOnlySpan{byte}, Span{byte})"/> overload and a
+    /// buffer it keeps.</summary>
     public static byte[] Write(SessionOpcode opcode, ReadOnlySpan<byte> body)
     {
         var buffer = new byte[1 + body.Length];
         buffer[0] = (byte)opcode;
         body.CopyTo(buffer.AsSpan(1));
         return buffer;
+    }
+
+    /// <summary>The framed length of a body of <paramref name="bodyLength"/> bytes: the body plus its opcode.</summary>
+    public static int FrameLength(int bodyLength) => 1 + bodyLength;
+
+    /// <summary>
+    /// Writes <c>[opcode][body]</c> into <paramref name="destination"/> and returns the number of bytes written, so a
+    /// caller sending every tick can reuse one buffer instead of allocating a frame per call.
+    /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="destination"/> is shorter than
+    /// <see cref="FrameLength"/>.</exception>
+    public static int Write(SessionOpcode opcode, ReadOnlySpan<byte> body, Span<byte> destination)
+    {
+        int length = FrameLength(body.Length);
+        if (destination.Length < length)
+            throw new ArgumentException($"Need {length} bytes for the frame, got {destination.Length}.", nameof(destination));
+        destination[0] = (byte)opcode;
+        body.CopyTo(destination.Slice(1));
+        return length;
     }
 
     /// <summary>The opcode, or <see cref="SessionOpcode.Unknown"/> for an empty/unrecognized frame.</summary>

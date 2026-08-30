@@ -38,7 +38,9 @@ The package's actual `INetTransport` implementation: a real UDP binding over Lit
 `INetTransport`. Each peer is surfaced as a `NetConnectionId` (`peer.Id + 1`, so a valid id is always
 positive), and each holds its own bounded raw-event inbox (`BoundedEventQueue<NetEvent>`, drop-oldest
 under an undrained flood, counted in `DroppedEventCount`) the same way the transport-free package's own
-primitives are bounded. Single-threaded by the `INetTransport` contract: call `Poll()` then drain with
+primitives are bounded. Disconnected events are enqueued as TERMINAL, so an overflow never evicts one:
+the session layer releases a peer's player slot off that event and off nothing else, so a dropped
+Disconnected used to leak the slot for the life of the process. Single-threaded by the `INetTransport` contract: call `Poll()` then drain with
 `TryDequeueEvent` from the host-loop thread.
 
 ```csharp

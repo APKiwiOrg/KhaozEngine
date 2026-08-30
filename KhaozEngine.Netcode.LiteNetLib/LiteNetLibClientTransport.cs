@@ -22,7 +22,8 @@ public sealed class LiteNetLibClientTransport : INetTransport
     /// <param name="connectionKey">Shared key presented to the server; must match the server's key.</param>
     /// <param name="maxQueuedEvents">Defensive hard cap on undrained transport events. Under the drain-each-poll
     /// contract this never bites; a stalled or flooded host drops the oldest event (each Data event holds a fresh
-    /// payload buffer) instead of growing memory without bound. Drops are counted in <see cref="DroppedEventCount"/>.</param>
+    /// payload buffer) instead of growing memory without bound. Disconnected events are exempt (nothing
+    /// re-announces one). Drops are counted in <see cref="DroppedEventCount"/>.</param>
     public LiteNetLibClientTransport(string host, int port, string connectionKey = "khaoz",
         int maxQueuedEvents = BoundedEventQueue<NetEvent>.DefaultCapacity)
     {
@@ -57,7 +58,9 @@ public sealed class LiteNetLibClientTransport : INetTransport
             // Surface it as the Disconnected payload so NetClient can read the terminal reason even when the
             // separately-sent reliable Reject was lost to the teardown.
             byte[]? reason = info.AdditionalData.AvailableBytes > 0 ? info.AdditionalData.GetRemainingBytes() : null;
-            inbox.Enqueue(NetEvent.Disconnected(ToId(peer), reason));
+            // Terminal, for the same reason the server side is: nothing re-announces a disconnect, so a client
+            // that lost this one to an overflow would sit "connected" against a peer that is gone.
+            inbox.EnqueueTerminal(NetEvent.Disconnected(ToId(peer), reason));
         };
 
         listener.NetworkReceiveEvent += (peer, reader, channel, deliveryMethod) =>

@@ -59,4 +59,35 @@ public class NetServerInboxBoundTests
         var tags = drained.ConvertAll(e => e.Data[0]);
         Assert.Equal(new byte[] { 192, 193, 194, 195, 196, 197, 198, 199 }, tags);
     }
+
+    [Fact]
+    public void FloodedInbox_KeepsALeft_SoADepartureIsNeverEvictedByNewerTraffic()
+    {
+        var transport = new ScriptedTransport();
+        var leaver = new NetConnectionId(1);
+        var flooder = new NetConnectionId(2);
+        byte[] hello = SessionFrame.Write(SessionOpcode.Hello, Array.Empty<byte>());
+        transport.Stage(NetEvent.FromData(leaver, hello, NetChannelReliability.ReliableOrdered));  // Joined slot 0
+        transport.Stage(NetEvent.FromData(flooder, hello, NetChannelReliability.ReliableOrdered)); // Joined slot 1
+        transport.Stage(NetEvent.Disconnected(leaver));                                            // Left slot 0
+        // Then a second peer floods the inbox with far more than the cap, all of it NEWER than the Left.
+        const int floods = 200;
+        for (int i = 0; i < floods; i++)
+            transport.Stage(NetEvent.FromData(flooder, SessionFrame.Write(SessionOpcode.Data, new[] { (byte)(i & 0xFF) }),
+                NetChannelReliability.UnreliableSequenced));
+
+        var server = new NetServer(transport, maxPlayers: 4, new AllowAllAuthenticator(), maxQueuedEvents: 8);
+        server.Poll(); // ingests everything, never draining
+
+        // The cap applies to the 2 Joined + 200 Data only: 8 survive, 194 are evicted. The Left is exempt.
+        Assert.Equal(202 - 8, server.DroppedEventCount);
+
+        List<ServerSessionEvent> drained = Drain(server);
+        Assert.Equal(9, drained.Count); // the 8 the cap allows, plus the exempt Left
+        // The Left was the OLDEST buffered event, so drop-oldest is exactly what used to throw it away. The host
+        // frees its per-player state off this event and off nothing else.
+        Assert.Equal(ServerSessionEventKind.Left, drained[0].Kind);
+        Assert.Equal(0, drained[0].Slot);
+        Assert.All(drained.GetRange(1, 8), e => Assert.Equal(ServerSessionEventKind.Data, e.Kind));
+    }
 }

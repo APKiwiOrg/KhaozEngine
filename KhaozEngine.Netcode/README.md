@@ -163,6 +163,29 @@ queue.Forget(slot);                                    // on disconnect, before 
 var moves = new RemoteCommandQueue<MyCommand>(neutralCommand: MyCommand.Idle, catchUpThreshold: 8);
 ```
 
+## BoundedEventQueue
+
+The defensive hard cap behind the `NetServer` session inbox and the LiteNetLib transport inboxes. FIFO, and at
+capacity a new item evicts the oldest (drop-oldest, keep-newest) so a host that stalls or is flooded cannot grow
+undrained events without bound. `DroppedCount` counts the evictions, and stays 0 for a host that drains to empty
+each tick as contracted.
+
+`EnqueueTerminal` posts an item the cap does not apply to and an eviction will never drop. Use it for events
+whose loss corrupts state rather than merely losing traffic, because nothing re-announces them: a peer's
+Disconnected is what releases its player slot, and a `Left` is what frees the host's per-player state. Dropping
+one of those under a flood leaked that state permanently, one seat at a time, until real players were refused
+against a server that was not full. Terminal items are rare and self-limiting (at most one per connected peer,
+and no payload buffer), so buffering all of them is far cheaper than losing any, and `Count` may exceed
+`Capacity` by however many are currently buffered. Drain order is untouched: a terminal item still comes out
+between the ordinary items it arrived between.
+
+```csharp
+var inbox = new BoundedEventQueue<NetEvent>(maxQueuedEvents);
+inbox.Enqueue(NetEvent.FromData(id, payload, reliability)); // capped, evictable
+inbox.EnqueueTerminal(NetEvent.Disconnected(id));           // exempt, never dropped
+while (inbox.TryDequeue(out NetEvent ev)) { /* handle */ }  // drain to empty every tick
+```
+
 ## IChannelSplittable&lt;TSelf&gt; + NetChannelReliability
 
 The transport-free channel-split contract. A batch DTO declares its unreliable (position/transient,

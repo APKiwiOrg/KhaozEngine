@@ -41,6 +41,42 @@ public class LiteNetLibTransportTests
         Assert.Equal(new byte[] { 42 }, received);
     }
 
+    [Trait("Category", "LiveSocket")]
+    [Fact]
+    public void ServerInbox_UnderOverflow_KeepsTheDisconnect_NotTheNewerEvent()
+    {
+        // A cap of 1 makes one later event enough to overflow the inbox, so the eviction a real flood causes is
+        // reproducible without pushing thousands of packets through a socket.
+        using LiteNetLibServerTransport? server = LiveSocketSupport.TryBindServer(out int port, maxQueuedEvents: 1);
+        if (server is null) { output.WriteLine(LiveSocketSupport.NoFreePortReason); return; }
+
+        using var first = new LiteNetLibClientTransport("127.0.0.1", port);
+        NetConnectionId firstId = PumpUntilId(server, first,
+            () => TryFind(server, NetEventType.Connected, out NetConnectionId id) ? id : (NetConnectionId?)null)
+            ?? throw new Exception("server never saw the first client connect");
+
+        // Drop the peer from the SERVER side: LiteNetLib raises the local Disconnected on the next poll, with no
+        // packet to wait on, so it is in the inbox before anything newer can arrive.
+        server.Disconnect(firstId);
+        for (int i = 0; i < 4; i++) { server.Poll(); Thread.Sleep(15); }
+
+        // A second client's Connected is the newer event that overflows the cap-1 inbox. Its arrival is observed
+        // on the CLIENT's inbox so the server's stays undrained, which is the whole point.
+        using var second = new LiteNetLibClientTransport("127.0.0.1", port);
+        Assert.NotNull(PumpUntil(server, second,
+            () => TryFind(second, NetEventType.Connected, out _) ? "up" : null));
+
+        var drained = new System.Collections.Generic.List<NetEvent>();
+        while (server.TryDequeueEvent(out NetEvent ev)) drained.Add(ev);
+
+        // The Disconnected is the OLDEST buffered event, so drop-oldest is exactly what would throw it away, and
+        // NetServer releases the peer's slot off this event and off nothing else.
+        Assert.NotEmpty(drained);
+        Assert.Equal(NetEventType.Disconnected, drained[0].Type);
+        Assert.Equal(firstId, drained[0].Connection);
+        Assert.Contains(drained, e => e.Type == NetEventType.Connected);
+    }
+
     // Pumps both transports up to a bounded time budget until the selector returns non-null.
     private static T? PumpUntil<T>(INetTransport a, INetTransport b, Func<T?> selector) where T : class
     {

@@ -1,17 +1,26 @@
 #!/bin/sh
 # tag-collision-guard.sh - PreToolUse Bash guard. Reads the hook JSON on stdin, parses the proposed
-# command for a release-tag action (git tag vX.Y.Z, git push of a vX.Y.Z tag, scripts/tag-release.sh),
-# and denies it when that tag already exists locally or on origin, so a concurrent release cannot have
-# its version taken twice. Silent (exit 0, no output) for anything else, which is the allow path.
+# command for a release tag named LITERALLY in it (git tag vX.Y.Z, git push of a vX.Y.Z tag), and
+# denies it when that tag already exists locally or on origin, so a concurrent release cannot have its
+# version taken twice. Silent (exit 0, no output) for anything else, which is the allow path.
+#
+# It does NOT gate scripts/tag-release.sh, deliberately (issue #261). A PreToolUse hook runs BEFORE the
+# command it judges, so for the ritual's own chained `git merge <branch> && scripts/tag-release.sh` it
+# could only read the PRE-merge <KhaozEngineVersion> out of Directory.Build.props, which is the
+# PREVIOUS release's version, whose tag legitimately exists. It denied the documented release chain
+# every time, and the deny killed the merge with it. The authoritative check lives in tag-release.sh
+# instead, which reads the version at the moment it is true. What is left here is the half a hook can
+# actually judge: a version the command spells out itself.
 #
 # Lived inline in .claude/settings.json and .codex/settings.json as one JSON string until it was moved
-# here verbatim, and both settings files now invoke this file. The body is the ENGINE's own copy, not
-# the game-template one: it reads the version through scripts/tag-standard.sh (tag_props_version)
-# rather than a raw sed, and its deny message also asks for the CHANGELOG entry to be rebased. Keep
-# edits surgical.
+# here verbatim, and both settings files now invoke this file. The rule for what "already taken" means
+# is scripts/tag-standard.sh (tag_taken), shared with tag-release.sh so the two cannot drift.
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+[ -f "$here/../tag-standard.sh" ] || exit 0
+. "$here/../tag-standard.sh"
 data=$(cat)
 cmd=$(printf '%s' "$data" | jq -r '.tool_input.command // ""')
-case "$cmd" in *tag-release.sh*|*git*) ;; *) exit 0 ;; esac
+case "$cmd" in *git*) ;; *) exit 0 ;; esac
 nohd=$(printf '%s\n' "$cmd" | awk 'skip==1 { t=$0; sub(/^[ \t]*/,"",t); if (t==term) skip=0; next } { line=$0; p=index(line,"<<"); if (p>0) { rest=substr(line,p+2); sub(/^-?[ \t]*/,"",rest); q=sprintf("%c",39); f=substr(rest,1,1); if (f=="\"" || f==q) rest=substr(rest,2); if (match(rest,/^[A-Za-z_][A-Za-z0-9_]*/)) { term=substr(rest,RSTART,RLENGTH); skip=1 } } print line }')
 stripped=$(printf '%s\n' "$nohd" | sed -e 's/"[^"]*"//g' -e "s/'[^']*'//g")
 norm=$(printf '%s\n' "$stripped" | tr ';&|(){}`' '\n')
@@ -48,9 +57,6 @@ for stmt in $norm; do
   cand=''
   gd=''
   case "$1" in
-    tag-release.sh|*/tag-release.sh)
-      kind=rel
-      ;;
     git)
       shift
       while [ $# -gt 0 ]; do
@@ -109,24 +115,14 @@ for stmt in $norm; do
   else base=.
   fi
   repo=$(git -C "$base" rev-parse --show-toplevel 2>/dev/null) || continue
-  mk=0
+  # Creating the tag collides with either copy of it. Pushing one is expected to have a local copy
+  # already, so only origin counts there.
   case "$kind" in
-    rel)
-      mk=1
-      cand=$( cd "$repo" 2>/dev/null && [ -f scripts/tag-standard.sh ] && . scripts/tag-standard.sh && tag_props_version < Directory.Build.props 2>/dev/null )
-      [ -n "$cand" ] || continue
-      cand="v$cand"
-      ;;
-    mk)
-      mk=1
-      ;;
+    mk) scope=any ;;
+    *) scope=origin ;;
   esac
-  git -C "$repo" fetch --tags --quiet 2>/dev/null
-  hit=0
-  if git -C "$repo" ls-remote --tags origin "$cand" 2>/dev/null | grep -q "refs/tags/$cand$"; then hit=1; fi
-  if [ "$hit" = 0 ] && [ "$mk" = 1 ] && git -C "$repo" rev-parse -q --verify "refs/tags/$cand" >/dev/null 2>&1; then hit=1; fi
-  if [ "$hit" = 1 ]; then
-    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Tag %s already exists in %s (local or origin). A concurrent release likely took it. Re-read the current version and tags, bump to the next free version, rebase the CHANGELOG entry, then tag."}}' "$cand" "$repo"
+  if tag_taken "$repo" "$cand" "$scope"; then
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Tag %s already exists in %s (%s). A concurrent release likely took it. Re-read the current version and tags, bump to the next free version, rebase the CHANGELOG entry, then tag."}}' "$cand" "$repo" "$TAG_TAKEN_WHERE"
     exit 0
   fi
 done

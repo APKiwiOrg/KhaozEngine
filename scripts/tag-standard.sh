@@ -33,6 +33,31 @@ tag_props_version() { props_version "$(tag_version_knob)"; }
 # tag_name_ok <name>  -> 0 when it is vX.Y.Z
 tag_name_ok() { printf '%s' "$1" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; }
 
+# tag_taken <repo-dir> <tag> [scope]  -> 0 when that release tag is already taken, and sets
+# TAG_TAKEN_WHERE to 'origin' or 'local' so the caller can say which. Fetches tags first, because the
+# collision this exists to catch is a CONCURRENT release: the tag is usually on origin before it is
+# here. scope 'any' (the default) counts a tag that exists locally OR on origin, which is the creation
+# collision. scope 'origin' counts only origin, for a push, where the local tag is expected to exist.
+#
+# THE single collision reader for the repo standard (issue #261): scripts/tag-release.sh refuses on it
+# right before it tags, and scripts/hooks/tag-collision-guard.sh denies an explicit `git tag vX.Y.Z` or
+# tag push on it, so the two cannot drift on what "already taken" means. A repo with no reachable
+# origin degrades to the local half rather than failing.
+tag_taken() {
+  _tt_repo=$1; _tt_tag=$2; _tt_scope=${3:-any}
+  TAG_TAKEN_WHERE=''
+  git -C "$_tt_repo" fetch --tags --quiet 2>/dev/null
+  if git -C "$_tt_repo" ls-remote --tags origin "$_tt_tag" 2>/dev/null | grep -q "refs/tags/${_tt_tag}$"; then
+    TAG_TAKEN_WHERE=origin
+    return 0
+  fi
+  if [ "$_tt_scope" = any ] && git -C "$_tt_repo" rev-parse -q --verify "refs/tags/$_tt_tag" >/dev/null 2>&1; then
+    TAG_TAKEN_WHERE=local
+    return 0
+  fi
+  return 1
+}
+
 # tag_msg_ok <subject> <version>  -> 0 when subject is 'area(<version>): summary' with no dash
 tag_msg_ok() {
   _subj=$1; _ver=$2

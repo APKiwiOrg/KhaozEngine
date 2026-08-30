@@ -42,12 +42,10 @@
 1512 KhaozEngine.MapEdit.Tool/MutationService.cs
 1296 KhaozEngine.Showcase/Room2DGui.cs
 1077 KhaozEngine.MapEditor/EditorTool.cs
-1033 KhaozEngine.Updates/UpdateApplier.cs
+1006 KhaozEngine.Updates/UpdateApplier.cs
 905 KhaozEngine.Game.Tests/Game/ReplicatedCharacterAnimatorsTests.cs
 905 KhaozEngine.Dungeon/Internal/RoomGrower.cs
 857 KhaozEngine.MapEditor.Tests/MapEditTool/MutationServiceProceduralTests.cs
-826 KhaozEngine.Audio/AudioSystem.cs
 824 KhaozEngine.Platform/ClipboardInterop.cs
 820 KhaozEngine.Windowing/AppWindow.cs
-815 KhaozEngine.Render2D/SpriteBatch.cs
 806 KhaozEngine.Game.Tests/Physics/ConstraintTests.cs

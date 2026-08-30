@@ -5,6 +5,95 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.4.0
+
+18.4.0 is the second backlog fix wave: 23 verified defects across the packages the big rewrites never
+touched (Identity, Updates, Netcode, Replication, Audio, Gui, Render2D, Ecs, Content, App, Diagnostics,
+Objectives and two tools), every one re-verified against 18.3.1 by the 2026-08-30 sweep and fixed with a
+test proven red against the unfixed code. Minor rather than patch because four additive APIs ship:
+`ISfxBackend.Unload`, `SessionFrame.Write(opcode, body, destination)`, `SignInTimeout` on both identity
+option types, and `SpriteBatch.ScissorDepth` with nested clip regions.
+
+Identity and Updates hardening:
+
+- OIDC and Discord sign-in no longer let a malformed `expires_in` escape raw: both providers read it
+  through a guarded helper and a bad value is an `IdentitySignInException` like every other failure there
+  ([#168](https://github.com/APKiwiOrg/KhaozEngine/issues/168)). A non-JSON 200 on discovery or token
+  exchange is the same clean failure naming the endpoint
+  ([#175](https://github.com/APKiwiOrg/KhaozEngine/issues/175)).
+- `OidcClientProvider` requires an https authority before building the discovery URL, closing the
+  cleartext PKCE verifier and token exposure. `OidcProviderOptions.AllowInsecureLoopbackAuthority` is the
+  local-dev opt-out and only ever accepts a loopback host
+  ([#170](https://github.com/APKiwiOrg/KhaozEngine/issues/170)).
+- `FileTokenCache` writes an owner-only temp file from creation via `UnixCreateMode`, keeping the atomic
+  tmp-then-move shape and refusing to write through a pre-planted temp
+  ([#172](https://github.com/APKiwiOrg/KhaozEngine/issues/172)).
+- The update download stage refuses a manifest path that escapes staging at all three manifest-controlled
+  combines, through a shared `UpdatePathSafety` the applier delegates to as well, defence in depth behind
+  the signed manifest ([#164](https://github.com/APKiwiOrg/KhaozEngine/issues/164)).
+- Interactive sign-in has a deadline: `SignInTimeout` (default five minutes) on both option types bounds
+  the whole flow including the browser-redirect wait `HttpTimeout` never covered, unwinding the loopback
+  listener and freeing the port on expiry ([#166](https://github.com/APKiwiOrg/KhaozEngine/issues/166)).
+
+Netcode and replication:
+
+- `NetClient.Send` targets the connection id the transport reported for the server rather than a
+  hardcoded `1` ([#132](https://github.com/APKiwiOrg/KhaozEngine/issues/132)), and the `Welcome` slot is
+  encoded little-endian by `BinaryPrimitives` on both sides, as its doc always promised
+  ([#133](https://github.com/APKiwiOrg/KhaozEngine/issues/133)).
+- `LoopbackTransport` implements `Disconnect(id, reason)` through one ordered staging list: a rejected
+  loopback client sees a single terminal `Rejected`, and a plain kick delivers everything already sent
+  before the drop ([#129](https://github.com/APKiwiOrg/KhaozEngine/issues/129)).
+- `ClientReplicationView` keeps a netId to typeIds index, so dropping 400 entities from 3200 tracked
+  entries fell from 109056 to 184 allocated bytes
+  ([#138](https://github.com/APKiwiOrg/KhaozEngine/issues/138)), and the server send path frames once per
+  broadcast into a kept buffer with both LiteNetLib bindings taking the span overload, removing the
+  per-peer copy. `INetTransport.Send` now states the payload span is borrowed for the call only
+  ([#131](https://github.com/APKiwiOrg/KhaozEngine/issues/131)).
+
+Audio, Gui and Render2D:
+
+- WAV decoding pays the RIFF pad byte on odd-sized chunks (a metadata chunk ahead of `fmt ` no longer
+  desyncs every later header and silently falls back to 2ch/44100Hz) and bounds-checks chunk sizes, so a
+  negative size that used to spin the decode thread now throws `InvalidDataException`
+  ([#112](https://github.com/APKiwiOrg/KhaozEngine/issues/112)).
+- The OpenAL path reads the error latch after context setup, music refill, both music plays, the SFX
+  upload and SFX play, logging once per operation and counting repeats, so a lost device no longer turns
+  into silent no-ops. Device reopen is deliberately not part of this
+  ([#113](https://github.com/APKiwiOrg/KhaozEngine/issues/113)).
+- SFX buffers can be released: `ISfxBackend.Unload` (default interface member) plus
+  `AudioSystem.UnregisterSfx`/`UnregisterSfxes`, with the OpenAL backend detaching, deleting and reusing
+  the slot, making zone-scoped sound sets possible
+  ([#116](https://github.com/APKiwiOrg/KhaozEngine/issues/116)).
+- `SpriteBatch` clip regions nest: `SetScissor` intersects with the active region and pushes,
+  `ClearScissor` pops, `ScissorDepth` reports the depth, and one level behaves exactly as before
+  ([#106](https://github.com/APKiwiOrg/KhaozEngine/issues/106)). `TextInput` and `NumberField` clip their
+  overflow to the field rect, engaging only when content overflows and composing with the nesting
+  ([#110](https://github.com/APKiwiOrg/KhaozEngine/issues/110)). The radial cooldown sweep is
+  allocation-free through caller spans and stackalloc scratch
+  ([#108](https://github.com/APKiwiOrg/KhaozEngine/issues/108)).
+
+Core and tools:
+
+- `RebuildHierarchyIndex` liveness-checks each recorded parent, so a save carrying a stale `Parent`
+  handle loads that child as a root instead of filing it under an unrelated live entity that
+  `DespawnTree` would then cascade into ([#123](https://github.com/APKiwiOrg/KhaozEngine/issues/123)).
+- `JsonSchemaValidator` reports a schema that fails to parse as that file's own invalid result instead of
+  aborting the whole directory sweep ([#154](https://github.com/APKiwiOrg/KhaozEngine/issues/154)).
+- `ResourceStringCatalog.TryGet` asks the `ResourceManager` for presence directly, so an entry whose
+  translation equals its key is no longer reported missing
+  ([#169](https://github.com/APKiwiOrg/KhaozEngine/issues/169)).
+- `PassTimings` trims its rolling window by wall clock rather than accumulated pass milliseconds, and the
+  constructor takes an optional `IClock` for deterministic tests
+  ([#167](https://github.com/APKiwiOrg/KhaozEngine/issues/167)).
+- An objective whose every condition is an `AtMost` no longer completes from a derived evaluation
+  (`Register`, a watched-key report, the `Restore` sweep): constraints hold on empty counters, so "buy no
+  upgrades this run" used to fire the moment it registered. They complete from the game's explicit
+  `EvaluateAll` at its run boundary. **Behaviour change** for a game relying on the old immediate
+  completion ([#161](https://github.com/APKiwiOrg/KhaozEngine/issues/161)).
+- The PixelLab sheet assembler deletes its extraction directory when a load throws, so failed runs stop
+  orphaning temp directories ([#188](https://github.com/APKiwiOrg/KhaozEngine/issues/188)).
+
 ## 18.3.1
 
 18.3.1 is the backlog fix wave: eight verified old defects, each found real by the 2026-08-30

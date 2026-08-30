@@ -198,6 +198,10 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     A scaled line still wraps within `MaxWidth` (the word-wrap budget divides by the line's own scale).
     `Opacity` (default `1f`) fades the whole bubble for a host transition, and covers every colour it paints
     (background, border, title row, separator, each body line), so `0` draws nothing.
+    `AnchorMode` (default `TooltipAnchorMode.Centered`, the bubble straddling the anchor) switches to
+    `Offset` for cursor-style placement: the bubble's left edge sits at `anchor.X + Metrics.AnchorOffsetX`,
+    so it lands beside a pointer instead of under it (a negative offset places it to the left). The vertical
+    rule and the viewport clamp are shared by both modes.
   - `ContextMenu` (18.2.0) - a right-click option menu anchored at a screen point: a title band over a stack of
     selectable rows, the OSRS-style option list. `Open(title, entries, screenPoint)` shows it (reopening while
     open just replaces the content and the anchor), `Update(Pointer)` drives one frame, `Draw(batch, white)`

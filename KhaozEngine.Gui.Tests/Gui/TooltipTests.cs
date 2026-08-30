@@ -318,7 +318,7 @@ namespace KhaozEngine.Tests.Gui
 
             var drawLayout = new CountingFont();
             Rect forDraw = Tooltip.ComputeBounds(drawLayout, "", "", drawLayout, drawLayout, lines,
-                new Vector2(400, 300), View, M, 100f, 1f, out List<TooltipLine> visual);
+                new Vector2(400, 300), View, M, 100f, 1f, TooltipAnchorMode.Centered, out List<TooltipLine> visual);
 
             Assert.Equal(measured, forDraw);
             Assert.Equal(1, boundsOnly.WrapsOf(body));

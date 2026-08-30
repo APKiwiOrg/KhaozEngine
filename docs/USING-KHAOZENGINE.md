@@ -1147,6 +1147,11 @@ tip.ShowTitleSeparator = true;
 tip.MaxWidthFraction = 0.4f;                       // cap at 40% of the viewport: long body lines wrap + grow down
                                                    // (or an absolute tip.MaxWidth = 360f, smaller cap wins)
 tip.Opacity = panel.TransitionAlpha;               // fade the whole bubble with the host transition (0 draws nothing)
+
+// Cursor-style placement: the bubble beside the pointer instead of straddling it (default is Centered).
+tip.AnchorMode = TooltipAnchorMode.Offset;
+tip.Metrics.AnchorOffsetX = 14f;                   // left edge at anchor.X + 14 (negative places it to the left)
+
 tip.Show(Strings.CopperOre, LocalizedText.Raw("x128"), bodyLines, anchor); // left name (localized), right count (raw)
 tip.Update(pointer);                               // auto-dismisses on tap-outside in TapOutside mode
 tip.Draw(batch, white);

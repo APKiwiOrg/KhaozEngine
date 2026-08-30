@@ -26,14 +26,31 @@ namespace KhaozEngine.Gui
     /// </summary>
     public enum TooltipDismiss { CallerDriven, TapOutside }
 
-    /// <summary>Spacing/padding knobs for tooltip auto-sizing and edge clamping.</summary>
+    /// <summary>
+    /// How a <see cref="Tooltip"/> places itself horizontally against its anchor. <see cref="Centered"/> (default)
+    /// is the pre-existing placement: the bubble straddles the anchor (<c>x = anchor.X - width / 2</c>), which suits
+    /// an anchor that is a widget's own centre. <see cref="Offset"/> is the cursor-style placement: the bubble's LEFT
+    /// edge sits at <c>anchor.X + <see cref="TooltipMetrics.AnchorOffsetX"/></c>, so a positive offset puts the whole
+    /// bubble to the right of a pointer instead of under it (negative puts it to the left). The vertical rule (prefer
+    /// above the anchor by <see cref="TooltipMetrics.AnchorOffsetY"/>, flip below when there is no room) and the
+    /// viewport clamp are the same in both modes.
+    /// </summary>
+    public enum TooltipAnchorMode { Centered, Offset }
+
+    /// <summary>Spacing/padding knobs for tooltip auto-sizing, anchor placement and edge clamping.</summary>
     public struct TooltipMetrics
     {
         public float PadX, PadY, TitleGap, LineSpacing, AnchorOffsetY, Margin, TopMargin;
         /// <summary>Gap between the left title and the optional right-aligned title value (two-column header).</summary>
         public float TitleRightGap;
+        /// <summary>
+        /// Horizontal gap between the anchor and the bubble's left edge, used only in
+        /// <see cref="TooltipAnchorMode.Offset"/> (the sibling of <see cref="AnchorOffsetY"/>). Default <c>0</c>,
+        /// and unread in <see cref="TooltipAnchorMode.Centered"/>, so the pre-existing placement is untouched.
+        /// </summary>
+        public float AnchorOffsetX;
         public static TooltipMetrics Default => new()
-        { PadX = 10, PadY = 8, TitleGap = 5, LineSpacing = 3, AnchorOffsetY = 10, Margin = 4, TopMargin = 0, TitleRightGap = 12 };
+        { PadX = 10, PadY = 8, TitleGap = 5, LineSpacing = 3, AnchorOffsetY = 10, Margin = 4, TopMargin = 0, TitleRightGap = 12, AnchorOffsetX = 0 };
     }
 
     /// <summary>
@@ -45,7 +62,9 @@ namespace KhaozEngine.Gui
     /// Opt-in extras (all default to the pre-existing look): a two-column title (<see cref="Show(string,string,IReadOnlyList{TooltipLine},Vector2)"/>
     /// with a right-aligned value), a separator under the title (<see cref="ShowTitleSeparator"/>), a width cap that
     /// word-wraps long body lines downward instead of overflowing (<see cref="MaxWidth"/> / <see cref="MaxWidthFraction"/>),
-    /// and touch/mobile auto-dismiss (<see cref="Dismiss"/> = <see cref="TooltipDismiss.TapOutside"/> + calling <see cref="Update"/>).
+    /// touch/mobile auto-dismiss (<see cref="Dismiss"/> = <see cref="TooltipDismiss.TapOutside"/> + calling <see cref="Update"/>),
+    /// a uniform fade (<see cref="Opacity"/>), and cursor-style placement beside the anchor rather than straddling it
+    /// (<see cref="AnchorMode"/> = <see cref="TooltipAnchorMode.Offset"/> + <see cref="TooltipMetrics.AnchorOffsetX"/>).
     /// </para>
     /// </summary>
     public sealed class Tooltip
@@ -67,6 +86,15 @@ namespace KhaozEngine.Gui
         /// each frame for touch/mobile auto-dismiss on the next tap-outside.
         /// </summary>
         public TooltipDismiss Dismiss = TooltipDismiss.CallerDriven;
+
+        /// <summary>
+        /// Horizontal placement against the anchor. Default <see cref="TooltipAnchorMode.Centered"/> keeps the
+        /// pre-existing behaviour (the bubble straddles the anchor), byte-identically. Set
+        /// <see cref="TooltipAnchorMode.Offset"/> plus <see cref="TooltipMetrics.AnchorOffsetX"/> for the
+        /// cursor-style placement, where the bubble sits beside the anchor rather than under it.
+        /// </summary>
+        public TooltipAnchorMode AnchorMode = TooltipAnchorMode.Centered;
+
         /// <summary>
         /// The design-space viewport the bubble clamps within. Defaults to <see cref="Vector2.Zero"/> ("unset");
         /// the caller must assign the real design size before drawing. A visible tooltip with this unset throws
@@ -165,7 +193,7 @@ namespace KhaozEngine.Gui
             if (!IsVisible) { _showedThisFrame = false; return; }
             bool shownFrame = _showedThisFrame;
             _showedThisFrame = false;
-            Rect bounds = ComputeBounds(_titleFont, _title, _titleRight, _bodyFont, _bodyFont, _lines, _anchor, Viewport, Metrics, ResolveMaxWidth(), TitleScale);
+            Rect bounds = ComputeBounds(_titleFont, _title, _titleRight, _bodyFont, _bodyFont, _lines, _anchor, Viewport, Metrics, ResolveMaxWidth(), TitleScale, AnchorMode);
             if (ShouldDismiss(Dismiss, shownFrame, pointer, bounds)) IsVisible = false;
         }
 
@@ -218,14 +246,16 @@ namespace KhaozEngine.Gui
         /// <paramref name="titleScale"/> (default <c>1f</c>) scales the title row only. Each body line's own
         /// <see cref="TooltipLine.Scale"/> rides through <paramref name="lines"/>. The shorter overloads above
         /// all keep an unscaled title (they never pass <paramref name="titleScale"/>), so this is the only
-        /// overload a caller with a scaled title needs.
+        /// overload a caller with a scaled title needs. <paramref name="anchorMode"/> (default
+        /// <see cref="TooltipAnchorMode.Centered"/>) picks the horizontal placement, and is likewise only
+        /// reachable here.
         /// </summary>
         public static Rect ComputeBounds(ITextMeasurer titleFont, string title, string titleRight,
             ITextMeasurer titleRightFont, ITextMeasurer bodyFont,
             IReadOnlyList<TooltipLine> lines, Vector2 anchor, Vector2 viewport, TooltipMetrics m, float maxWidth,
-            float titleScale = 1f) =>
+            float titleScale = 1f, TooltipAnchorMode anchorMode = TooltipAnchorMode.Centered) =>
             ComputeBounds(titleFont, title, titleRight, titleRightFont, bodyFont, lines, anchor, viewport, m,
-                maxWidth, titleScale, out _);
+                maxWidth, titleScale, anchorMode, out _);
 
         /// <summary>
         /// The one layout pass behind both the public overloads above and <see cref="Draw"/>: the bubble bounds,
@@ -238,7 +268,7 @@ namespace KhaozEngine.Gui
         internal static Rect ComputeBounds(ITextMeasurer titleFont, string title, string titleRight,
             ITextMeasurer titleRightFont, ITextMeasurer bodyFont,
             IReadOnlyList<TooltipLine> lines, Vector2 anchor, Vector2 viewport, TooltipMetrics m, float maxWidth,
-            float titleScale, out List<TooltipLine> visual)
+            float titleScale, TooltipAnchorMode anchorMode, out List<TooltipLine> visual)
         {
             bool bounded = maxWidth > 0f && !float.IsInfinity(maxWidth);
             visual = WrapBody(bodyFont, lines, ContentWidthCap(maxWidth, m));
@@ -271,7 +301,11 @@ namespace KhaozEngine.Gui
                 w = MathF.Min(w, cap);
             }
 
-            float x = anchor.X - w * 0.5f;
+            // Centered straddles the anchor (a widget's own centre). Offset puts the bubble's left edge beside it
+            // (the cursor-style placement, where the anchor is a pointer the bubble must not sit on top of).
+            float x = anchorMode == TooltipAnchorMode.Offset
+                ? anchor.X + m.AnchorOffsetX
+                : anchor.X - w * 0.5f;
             float y = anchor.Y - h - m.AnchorOffsetY;          // above the anchor
             if (y < m.TopMargin) y = anchor.Y + m.AnchorOffsetY; // flip below
 
@@ -332,7 +366,7 @@ namespace KhaozEngine.Gui
                     "Tooltip.Viewport is unset (Vector2.Zero); assign the design viewport size before draw.");
             float maxWidth = ResolveMaxWidth();
             Rect b = ComputeBounds(_titleFont, _title, _titleRight, _bodyFont, _bodyFont, _lines, _anchor, Viewport,
-                Metrics, maxWidth, TitleScale, out List<TooltipLine> visual);
+                Metrics, maxWidth, TitleScale, AnchorMode, out List<TooltipLine> visual);
             GuiDraw.Fill(batch, white, b, GuiDraw.WithOpacity(Background, Opacity));
             GuiDraw.Border(batch, white, b, 1f, GuiDraw.WithOpacity(Border, Opacity));
 

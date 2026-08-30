@@ -109,6 +109,7 @@ namespace KhaozEngine.Gui
         const int MaxEditLength = 16;
         const float BlinkRate = 0.5f;
         const float PadX = 6f;
+        const float CaretWidth = 2f;
 
         readonly Func<string, char, bool> _numericFilter;   // cached so Update allocates no delegate per frame
         float _value;
@@ -303,16 +304,24 @@ namespace KhaozEngine.Gui
             Vector4 textColor = !Enabled ? DisabledTextColor : TextColor;
             // A nine-slice skin's frame can be thicker than the fixed pad, so clear it (no-skin: PadX, unchanged).
             float pad = Style.Skin != null ? MathF.Max(PadX, Style.ContentInsets(Bounds).X) : PadX;
-            Vector2 pos = GuiDraw.AlignedTextPos(Bounds, font.Measure(shown), font.LineHeight, GuiAlign.Left, 1f, pad);
+            Vector2 size = font.Measure(shown);
+            Vector2 pos = GuiDraw.AlignedTextPos(Bounds, size, font.LineHeight, GuiAlign.Left, 1f, pad);
+            // A long edit buffer or a wide formatted value used to paint straight past the field's right border
+            // into whatever sits next to it. Clip to the field when it overflows, caret included. Only when it
+            // overflows: SetScissor flushes the batch, and a property grid of number fields would otherwise pay
+            // two extra flushes per field per frame to clip nothing.
+            bool clip = pos.X + size.X + CaretWidth + 1f > Bounds.Right;
+            if (clip) batch.SetScissor(Bounds);
             batch.DrawString(font, shown, new Vector2(MathF.Floor(pos.X), MathF.Floor(pos.Y)),
                 (Color)GuiDraw.WithOpacity(textColor, Opacity));
 
             if (IsEditing && _caretVisible)
             {
-                float caretX = pos.X + font.Measure(shown).X + 1f;
-                GuiDraw.Fill(batch, white, new Rect(caretX, Bounds.Y + 4f, 2f, Bounds.Height - 8f),
+                float caretX = pos.X + size.X + 1f;
+                GuiDraw.Fill(batch, white, new Rect(caretX, Bounds.Y + 4f, CaretWidth, Bounds.Height - 8f),
                     GuiDraw.WithOpacity(CaretColor, Opacity));
             }
+            if (clip) batch.ClearScissor();
         }
     }
 }

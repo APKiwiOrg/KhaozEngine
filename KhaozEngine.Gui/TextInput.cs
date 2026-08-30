@@ -68,6 +68,7 @@ namespace KhaozEngine.Gui
 
         const float BlinkRate = 0.5f;
         const float PadX = 8f;
+        const float CaretWidth = 2f;
         float _blink;
         string _previousText = "";
 
@@ -128,14 +129,22 @@ namespace KhaozEngine.Gui
             float textY = Bounds.Y + (Bounds.Height - Font.LineHeight) * 0.5f;
             bool empty = Text.Length == 0;
             string shown = empty ? PlaceholderContent.Resolve() : Text;
+            // The field draws its text at a fixed offset and lets it run as wide as it measures, so a value wider
+            // than the box used to paint straight past the right border into whatever sits next to it. Clip to the
+            // field when it overflows, caret included (the caret trails the text and can be the part that spills).
+            // Only when it overflows: SetScissor flushes the batch, and paying two extra flushes per field per
+            // frame to clip nothing would be a poor trade in a form full of fields.
+            bool clip = textX + Font.Measure(shown).X + CaretWidth + 1f > Bounds.Right;
+            if (clip) batch.SetScissor(Bounds);
             batch.DrawString(Font, shown, new Vector2(MathF.Floor(textX), MathF.Floor(textY)),
                 (Color)GuiDraw.WithOpacity(empty ? PlaceholderColor : TextColor, Opacity));
 
             if (IsFocused && CursorVisible)
             {
                 float caretX = textX + (empty ? 0f : Font.Measure(Text).X) + 1f;
-                GuiDraw.Fill(batch, white, new Rect(caretX, Bounds.Y + 4f, 2f, Bounds.Height - 8f), GuiDraw.WithOpacity(CursorColor, Opacity));
+                GuiDraw.Fill(batch, white, new Rect(caretX, Bounds.Y + 4f, CaretWidth, Bounds.Height - 8f), GuiDraw.WithOpacity(CursorColor, Opacity));
             }
+            if (clip) batch.ClearScissor();
         }
     }
 }

@@ -17,6 +17,17 @@ namespace KhaozEngine.Terrain
     /// <see cref="LodHysteresis"/> is the dead zone (metres) around each tier boundary, so a chunk parked on one does
     /// not re-tier (and rebuild its mesh) on every small move. It damps only a CHANGE: a first load and a viewer that
     /// has not moved pick exactly the stateless tier. 0 restores the undamped behaviour.</para>
+    /// <para><b>Tier distances are coupled to <see cref="ChunkSize"/> and the ring radii, in metres.</b> The tier is
+    /// picked per chunk from the distance to that chunk's CENTER, so the resolvable range is bounded at both ends.
+    /// BELOW: a finite tier distance under a chunk's half-diagonal (<see cref="ChunkSize"/> * sqrt(2) / 2) sits
+    /// inside one chunk's own footprint, so the chunk the viewer stands in would re-tier on sub-chunk movement. The
+    /// <see cref="TerrainStreamer"/> constructor REJECTS that outright, naming the tier and both distances. ABOVE: a
+    /// chunk centre only ever reaches <see cref="OuterRadius"/> * <see cref="ChunkSize"/> metres, so a threshold past
+    /// that never engages. That end is legal and deliberate, because <see cref="TerrainLodConfig.Default"/>'s far
+    /// tiers (500 m and 1000 m) sit past the default 240 m ring on purpose and start engaging once a
+    /// <see cref="DecorRadius"/> buys the horizon. Retuning <see cref="ChunkSize"/> or the radii without retuning
+    /// <see cref="LodConfig"/> is the mis-tune to watch for: it silently narrows how much of the table can ever
+    /// fire.</para>
     /// <para><see cref="Async"/> (default true): the CPU mesh build runs on a background thread and only the GPU
     /// upload happens on the frame thread. <see cref="MaxLoadsPerFrame"/> then caps how many completed builds are
     /// APPLIED (GPU upload + swap) per <c>Update</c>. The builds themselves are unbudgeted (they run in parallel off

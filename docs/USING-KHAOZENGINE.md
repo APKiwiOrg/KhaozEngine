@@ -1971,7 +1971,13 @@ inside the callback: the command list it is recording into still names them unti
   `TryScreenToWorld(screen, viewportWidth, viewportHeight, out world)` when the caller wants to KNOW the camera
   was degenerate rather than absorb it. A negative zoom is a mirror rather than a degeneracy and still converts
   exactly.
-- Scissor clipping: `SetScissor(Rect)` / `ClearScissor()` (composes with the design viewport).
+- Scissor clipping: `SetScissor(Rect)` / `ClearScissor()` (composes with the design viewport). The pair is a
+  STACK: a `SetScissor` called while another clip is active clips to the overlap of the two, and its
+  `ClearScissor` restores the outer region instead of resetting to the whole framebuffer, so a clipping widget
+  drawn inside another one (a `ScrollablePanel` as a `PopupPanel`'s body, a text field inside either) stays
+  bounded by both. `ScissorDepth` reports how many clips are active, and an unpaired `ClearScissor` still
+  resets to the full framebuffer. `SpriteBatch.IntersectScissor` is the pure helper behind the nesting, next to
+  the existing `ComputeScissor`.
 - `ImageRgba` (CPU, no GPU): `ImageRgba.Load(path)` / `Decode(bytes)` / `Surface2D.LoadImageRgba(path)` give a
   tightly-packed RGBA8 image with `AlphaAt` / `IsOpaqueAt(threshold)` for opaque-pixel collision masks. Pass
   `img.Pixels` to `Surface2D.CreateTexture` to also draw it without re-decoding.

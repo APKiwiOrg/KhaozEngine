@@ -254,71 +254,11 @@ void main() {
         public float SnapLength(float length, float minDevicePixels = 0f) =>
             ViewportMath.SnapLengthToDevice(length, _deviceScale.X, minDevicePixels);
 
-        /// <summary>
-        /// Convert a clip rect (in viewport points, top-left origin) to framebuffer pixels, scaling for DPI
-        /// (e.g. 2x Retina) and clamping to the framebuffer. Pure function, unit-tested headlessly.
-        /// </summary>
-        public static (uint X, uint Y, uint Width, uint Height) ComputeScissor(
-            Rect rect, int viewportW, int viewportH, int framebufferW, int framebufferH)
-        {
-            float sx = viewportW > 0 ? (float)framebufferW / viewportW : 1f;
-            float sy = viewportH > 0 ? (float)framebufferH / viewportH : 1f;
-            float x0 = Math.Clamp(rect.X * sx, 0, framebufferW);
-            float x1 = Math.Clamp((rect.X + rect.Width) * sx, 0, framebufferW);
-            float y0 = Math.Clamp(rect.Y * sy, 0, framebufferH);
-            float y1 = Math.Clamp((rect.Y + rect.Height) * sy, 0, framebufferH);
-            return ((uint)MathF.Round(x0), (uint)MathF.Round(y0),
-                    (uint)MathF.Round(x1 - x0), (uint)MathF.Round(y1 - y0));
-        }
-
-        /// <summary>
-        /// As <see cref="ComputeScissor(Rect,int,int,int,int)"/>, but first maps a clip rect given in
-        /// design space through <paramref name="viewport"/> (scale + letterbox offset) into window points. Pass
-        /// a null viewport to treat <paramref name="rect"/> as already in window points. Pure / headless.
-        /// </summary>
-        public static (uint X, uint Y, uint Width, uint Height) ComputeScissor(
-            Rect rect, IDesignViewport? viewport, int viewportW, int viewportH, int framebufferW, int framebufferH)
-        {
-            if (viewport != null)
-            {
-                var tl = viewport.DesignToScreen(new Vector2(rect.X, rect.Y));
-                var br = viewport.DesignToScreen(new Vector2(rect.Right, rect.Bottom));
-                rect = new Rect(tl.X, tl.Y, br.X - tl.X, br.Y - tl.Y);
-            }
-            return ComputeScissor(rect, viewportW, viewportH, framebufferW, framebufferH);
-        }
-
-        /// <summary>
-        /// Flush pending draws, then clip subsequent draws to <paramref name="rect"/>. When a design viewport is
-        /// active (<see cref="Begin(IDesignViewport, SamplerMode)"/>) <paramref name="rect"/> is in design space and
-        /// is mapped through it; otherwise it is in window points. Pair with <see cref="ClearScissor"/>. The
-        /// current transform is preserved, so no <see cref="Begin(Camera2D, SamplerMode)"/> is needed around it.
-        /// </summary>
-        public void SetScissor(Rect rect)
-        {
-            Flush();
-            var fb = _gd.SwapchainFramebuffer;
-            int fbw = fb != null ? (int)fb.Width : _vw;
-            int fbh = fb != null ? (int)fb.Height : _vh;
-            var (x, y, w, h) = ComputeScissor(rect, _viewport, _vw, _vh, fbw, fbh);
-            _cl.SetScissorRect(0, x, y, w, h);
-        }
-
-        /// <summary>Flush pending (clipped) draws, then reset the scissor to the full framebuffer (undo <see cref="SetScissor"/>).</summary>
-        public void ClearScissor()
-        {
-            Flush();
-            var fb = _gd.SwapchainFramebuffer;
-            uint fbw = fb != null ? fb.Width : (uint)Math.Max(0, _vw);
-            uint fbh = fb != null ? fb.Height : (uint)Math.Max(0, _vh);
-            _cl.SetScissorRect(0, 0, 0, fbw, fbh);
-        }
-
         // Called by the host/snapshot each frame before the user's draw callback.
         internal void NewFrame(IGpuCommandList cl, int viewportW, int viewportH)
         {
             _cl = cl; _vw = viewportW; _vh = viewportH; _flushIndex = 0; _beginIndex = 0;
-            _frame++; _stats.Reset(); _lastBoundTex = null;
+            _frame++; _stats.Reset(); _lastBoundTex = null; _scissorStack.Clear();
             _retire.BeginFrame();   // frees what the GPU has provably finished with, and never stalls doing it
             EvictStaleSets();
         }

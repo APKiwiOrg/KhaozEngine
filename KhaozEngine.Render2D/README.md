@@ -6,7 +6,9 @@
   -texture draws coalesce into one draw call, and interleaved textures split into separate runs so painter's order
   across textures is preserved). `Begin` overloads for screen / `Camera2D` (world) / `IDesignViewport` (design)
   space, each with an optional `SamplerMode` (`Linear` / `Point`) and an optional `Matrix4x4` model transform
-  (tilt/scale a composed group as one). `SetScissor`/`ClearScissor` DPI-aware clipping. `GroupByTexture` (opt-in,
+  (tilt/scale a composed group as one). `SetScissor`/`ClearScissor` DPI-aware clipping, which NESTS: an inner
+  clip is intersected with whatever is already active and its `ClearScissor` restores that outer region rather
+  than the whole framebuffer (`ScissorDepth` reports how many are active). `GroupByTexture` (opt-in,
   off by default, reset by every `Begin`) groups queued quads by texture at flush regardless of submission
   order, trading strict painter's order for fewer draw calls when interleaved same-texture draws would
   otherwise split into separate runs - order stays intact WITHIN a texture group, so only enable it for a pass

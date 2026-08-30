@@ -516,6 +516,7 @@ block's ascent baseline, once per `DrawString`, so every glyph of a word stays o
 `DpiFont` from `KhaozEngine.Render2D` for a crisp atlas).
 
 Text wrap/alignment lives in `KhaozEngine.Render2D.TextLayout` (over the `ITextMeasurer` seam, so the layout
-math is headless-testable); clipping uses `SpriteBatch` scissor (`SetScissor`/`ClearScissor`, DPI-aware). Ported
+math is headless-testable). Clipping uses `SpriteBatch` scissor (`SetScissor`/`ClearScissor`, DPI-aware, and
+nesting: a clipping widget drawn inside another clipping widget is bounded by both). Ported
 from `KhaozEngine.Screens`/`UI` (game-specific layout coupling dropped). Built on `KhaozEngine.Windowing`
 (Pointer/Input) + `KhaozEngine.Render2D` (SpriteBatch/SpriteFont/Texture2D). Part of the MonoGame-free engine.

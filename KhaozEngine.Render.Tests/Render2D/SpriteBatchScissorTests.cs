@@ -57,5 +57,30 @@ namespace KhaozEngine.Tests.Render2D
             var direct = SpriteBatch.ComputeScissor(new Rect(100, 50, 200, 80), 480, 270, 960, 540);
             Assert.Equal(direct, mapped);
         }
+
+        // The nesting half (#106): a clip set inside another one may only shrink the region, never widen it back
+        // out. Before the scissor stack, an inner SetScissor replaced the outer region wholesale.
+        [Fact]
+        public void Intersect_keeps_only_the_overlap_of_two_regions()
+        {
+            var overlap = SpriteBatch.IntersectScissor((100u, 100u, 200u, 200u), (150u, 50u, 200u, 200u));
+            Assert.Equal((150u, 100u, 150u, 150u), overlap);
+        }
+
+        [Fact]
+        public void Intersect_with_a_region_that_contains_it_is_that_region()
+        {
+            var inner = (X: 120u, Y: 130u, Width: 40u, Height: 50u);
+            Assert.Equal(inner, SpriteBatch.IntersectScissor((100u, 100u, 200u, 200u), inner));
+        }
+
+        [Fact]
+        public void Intersect_of_disjoint_regions_clips_everything()
+        {
+            // No overlap at all: a zero-sized region, never a negative (unsigned) one that would wrap huge.
+            var empty = SpriteBatch.IntersectScissor((0u, 0u, 50u, 50u), (200u, 200u, 50u, 50u));
+            Assert.Equal(0u, empty.Width);
+            Assert.Equal(0u, empty.Height);
+        }
     }
 }

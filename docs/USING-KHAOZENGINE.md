@@ -2751,12 +2751,22 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       direction (no anti-solar flip). For night lit by ambient + fill only.
     - `Moon`: a real, decoupled moon track (`MoonHourOffset` default 12h = opposition, `MoonDeclinationDegrees`,
       `MoonKeyColor`, `MoonDiscColor`, `MoonHorizonKeyDipDegrees`). The key is the sun while the sun is up, else
-      the moon while the moon is up, else black; each body fades to black at its own crossing, so a switch is
-      always through black and the direction is continuous within each body (this kills the pre-dawn flip). The
+      the moon while the moon is up, else black; each body fades to black at its own crossing, and the direction is
+      continuous within each body (this kills the pre-dawn flip). The
       single disc slot follows the active body, and the moon disc color is independent of its key, so a
       decorative moon can hang a bright disc while casting a black key. `Apply` manages `Sky.SunDirectionOverride`
       (pointed at the moon when the moon owns the disc, cleared for the sun). Read `state.ActiveSource`
       (`KeyLightSource.Sun`/`Moon`/`None`) and `state.MoonElevationDegrees`/`MoonDirection` to drive custom sinks.
+      - **The handover is only through black near a 12h day.** That is a property of the configuration, not of
+        `Moon` mode: the sun-to-moon switch crosses black only when the two horizon crossings coincide, and the
+        default `MoonHourOffset` of 12h lines them up only while both bodies are up for about 12 hours (the
+        equator, or a zero declination). At the shipped defaults (latitude 35, declination 15) the day is longer,
+        so the moon is already about 17 degrees up when the sun sets, well clear of its 2-degree
+        `MoonHorizonKeyDipDegrees` band. The key jumps from black to the moon's full strength in one frame and
+        swings more than 90 degrees in azimuth, which reads as a dusk/dawn pop. Until the cross-fade lands
+        (tracked by [#223](https://github.com/APKiwiOrg/KhaozEngine/issues/223)), either keep the day near 12
+        hours, or set `MoonKeyColor` to black so no key ever hands over (the decorative-moon setup). Widening
+        `MoonHorizonKeyDipDegrees` hides the pop but eats a large shadowless band at a long-day latitude.
   - **Palettes are calibrated, not fixed.** `SunCycleSettings.DayPalette`/`DuskPalette`/`NightPalette` (each a
     `SunCyclePalette`) default to the engine's existing look (`DefaultDay()` reproduces the stock `Sky`/`Post`
     defaults exactly), blended by sun elevation rather than time of day so one setup works at any latitude or day

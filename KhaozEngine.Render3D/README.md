@@ -336,8 +336,11 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   dipping to zero across the crossing so the direction flip is invisible; `None` is a keyless night (black key,
   the sun's true direction held); `Moon` is a real decoupled moon body (own `MoonHourOffset`/`MoonDeclinationDegrees`/
   `MoonKeyColor`/`MoonDiscColor`/`MoonHorizonKeyDipDegrees`) that owns the key + single disc slot while it is up,
-  each body fading to black at its own crossing so a switch is always through black, with an independent disc color
-  so a decorative moon can cast a black key. `SunCycleState` exposes `MoonElevationDegrees`/`MoonDirection`/
+  each body fading to black at its own crossing, with an independent disc color
+  so a decorative moon can cast a black key. That switch is through black only when the two horizon crossings
+  coincide, which the default 12h `MoonHourOffset` delivers near a 12h day (the equator, or a zero declination) and
+  not at the shipped latitude 35 / declination 15 defaults, where the moon is about 17 degrees up at sunset and its
+  key arrives at full strength: see the `NightKeyMode.Moon` doc comment for the caveat and the workarounds. `SunCycleState` exposes `MoonElevationDegrees`/`MoonDirection`/
   `ActiveSource` (`KeyLightSource`)/`DiscDirectionOverride`. The night ambient floor stays above black so scenes
   remain playable. The engine owns no clock: feed it your own game time (an MMO replicates it from the server)
   each frame.

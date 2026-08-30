@@ -140,7 +140,8 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     ability charges). Segmentation composes with every `FillDirection` (a vertical pip stack works). Optional centered
     `OverlayText` (a `LocalizedText`, so a caption localizes; wrap a number/percentage in `Raw`) stays centered in
     `Bounds` regardless of direction. `FillRect`/`InnerBounds`/`SegmentRects()`/`FilledSegmentCount` are pure geometry;
-    non-interactive (no `Update`); `Opacity` fades the whole bar.
+    non-interactive (no `Update`). `Opacity` fades the whole bar, and `OverlayTextScale` (default `1f`) scales the
+    overlay caption only, so a thin readout bar can carry a small label without shrinking the bar.
   - `NumberField` - numeric field for editor inspectors, driven by `InputManager` (needs the keyboard). A drag
     started inside scrubs `Value` by `DragScale` value units per pixel (grab-gated, so it keeps tracking off the
     widget). A tap under 3 draw units of travel, with no real value change already scrubbed this gesture, opens
@@ -162,7 +163,8 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     seeded value, not append to it).
   - `Dropdown` - trigger + option list (opens below); two-phase draw (`Draw` trigger / `DrawOverlay` list last).
     Opt-in (default off): `ShowChevron` draws an up/down caret reflecting the open state; `Opacity` fades the whole
-    dropdown for a host transition.
+    dropdown for a host transition. `TextScale` (default `1f`) scales the trigger label AND every option row's
+    label, text only: the rects, the row fills, the chevron and the hit-testing are unchanged.
   - `TabBar` - horizontal tab bar / segmented control: N evenly-split tabs, exactly one active. A valid tap
     activates a tab and raises `ChangedThisFrame` for one frame (and `Update` returns true), so the caller swaps
     the panel body only on a real change. `ActiveIndex` is settable to restore/persist the selection without
@@ -183,7 +185,10 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     A held key auto-repeats (Backspace deletes / a character keeps typing) at the OS repeat rate. `SetText(value)`
     replaces the buffer programmatically (clamped to `MaxLength`, seen as a change by the next `Update`); `Focus()` /
     `Unfocus()` drive focus directly. The placeholder is `LocalizedText` via `PlaceholderContent` (the former
-    `Placeholder` string is an `[Obsolete]` shim); `Opacity` fades the whole field for a host transition. Text
+    `Placeholder` string is an `[Obsolete]` shim). `Opacity` fades the whole field for a host transition, and
+    `TextScale` (default `1f`) scales the text and placeholder only (the rect, the caret sliver and the
+    hit-testing are unchanged). The scale carries every width term the draw derives, so the caret still trails
+    the last glyph and the overflow clip engages where the drawn text actually reaches the border. Text
     wider than the box is clipped to it (caret included) rather than painting over whatever is beside the field,
     and the clip only engages when the content actually overflows, so a field that fits costs no extra flush.
     `NumberField` clips the same way. Neither scrolls the visible window with the caret yet.
@@ -291,7 +296,8 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     a selection-sync host uses after every rebuild so the highlighted row survives instead of orphaning. The
     selected-row fill now draws via `GuiDraw.FillStyled` against `Style` (a `GuiStyle`, default
     `GuiStyle.Default`) instead of a flat `GuiDraw.Fill`, so a tree using `GuiStyle.Modern` gets the same
-    rounded selection highlight as its other styled widgets.
+    rounded selection highlight as its other styled widgets. `TextScale` (default `1f`) scales the node labels
+    only, so a dense tree fits more text per row without changing `RowHeight`, `Indent` or any hit-testing.
   - `PropertyGrid` - a vertical stack of `PropertyRow`s split label/editor at `LabelFraction`, scrolling like
     `ScrollablePanel` (wheel + scissor clip). Built-in rows: `FloatRow` (a `NumberField`), `BoolRow` (a
     `Toggle`), `TextRow` (a `TextInput`), `ChoiceRow` (a `Dropdown` over a fixed set of option strings, get/set

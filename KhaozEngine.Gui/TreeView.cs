@@ -105,6 +105,14 @@ namespace KhaozEngine.Gui
         /// <summary>Uniform fade multiplied into every colour's alpha at draw time (1 = opaque). Default 1 is a no-op.</summary>
         public float Opacity = 1f;
 
+        /// <summary>
+        /// Uniform scale for every node label. Defaults to <c>1f</c> (today's rendering, byte-for-byte). Scales the
+        /// LABEL text only: <see cref="RowHeight"/>, <see cref="Indent"/>, the caret chevrons, the row fills and all
+        /// hit-testing are unchanged at any scale, so a dense tree draws smaller labels in the same rows. Mirrors
+        /// <see cref="TabBar.TextScale"/>.
+        /// </summary>
+        public float TextScale = 1f;
+
         /// <summary>Palette knobs read at draw time: <see cref="GuiStyle.SelectedFill"/> for the selected row and
         /// <see cref="GuiStyle.Text"/> for the caret and label. Defaults to <see cref="GuiStyle.Default"/>.</summary>
         public GuiStyle Style = GuiStyle.Default;
@@ -451,9 +459,9 @@ namespace KhaozEngine.Gui
                 }
 
                 float tx = caretStart + Indent + LabelPadding;
-                float ty = row.Y + (RowHeight - font.LineHeight) * 0.5f;
+                float ty = GuiDraw.CenteredTextY(row.Y, RowHeight, font.LineHeight, TextScale);
                 batch.DrawString(font, node.Label.Resolve(), new Vector2(MathF.Floor(tx), MathF.Floor(ty)),
-                    (Color)GuiDraw.WithOpacity(Style.Text, Opacity));
+                    (Color)GuiDraw.WithOpacity(Style.Text, Opacity), TextScale);
             }
 
             // The drag insertion line: a thin bar at the boundary of the target row (its bottom edge when dropping

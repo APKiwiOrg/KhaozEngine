@@ -69,6 +69,14 @@ namespace KhaozEngine.Gui
         /// <summary>Uniform fade multiplied into every colour's alpha at draw time (1 = opaque).</summary>
         public float Opacity = 1f;
 
+        /// <summary>
+        /// Uniform scale for the centred <see cref="OverlayText"/>. Defaults to <c>1f</c> (today's rendering,
+        /// byte-for-byte). Scales the TEXT only: <see cref="Bounds"/>, <see cref="InnerBounds"/>, the track, the
+        /// accent fill and the segmentation are unchanged at any scale, so a thin readout bar can carry a small
+        /// label. Mirrors <see cref="TabBar.TextScale"/>.
+        /// </summary>
+        public float OverlayTextScale = 1f;
+
         /// <summary>The edge the accent grows from. Default <see cref="FillDirection.LeftToRight"/> (today's look).</summary>
         public FillDirection FillDirection = FillDirection.LeftToRight;
 
@@ -206,8 +214,9 @@ namespace KhaozEngine.Gui
                 string s = text.Resolve();
                 if (s.Length > 0)
                 {
-                    Vector2 pos = GuiDraw.AlignedTextPos(Bounds, font.Measure(s), font.LineHeight, GuiAlign.Center);
-                    batch.DrawString(font, s, pos, (Color)GuiDraw.WithOpacity(OverlayTextColor, Opacity));
+                    Vector2 pos = GuiDraw.AlignedTextPos(Bounds, font.Measure(s), font.LineHeight, GuiAlign.Center,
+                        OverlayTextScale);
+                    batch.DrawString(font, s, pos, (Color)GuiDraw.WithOpacity(OverlayTextColor, Opacity), OverlayTextScale);
                 }
             }
         }

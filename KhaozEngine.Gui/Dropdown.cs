@@ -73,6 +73,14 @@ namespace KhaozEngine.Gui
         /// </summary>
         public float Opacity = 1f;
 
+        /// <summary>
+        /// Uniform scale for the trigger label AND every option row's label. Defaults to <c>1f</c> (today's
+        /// rendering, byte-for-byte). Scales the TEXT only: <see cref="TriggerBounds"/>, <see cref="OptionBounds"/>,
+        /// the row fills and the chevron are unchanged at any scale, so a compact dropdown draws smaller labels in
+        /// the same rows. Mirrors <see cref="TabBar.TextScale"/>.
+        /// </summary>
+        public float TextScale = 1f;
+
         public Dropdown(IReadOnlyList<DropdownOption> options, Rect triggerBounds)
         {
             if (options == null || options.Count == 0) throw new ArgumentException("At least one option is required.", nameof(options));
@@ -214,9 +222,9 @@ namespace KhaozEngine.Gui
             if (IsOpen) GuiDraw.HoverGlow(batch, white, TriggerBounds, Style);
             GuiDraw.FillStyled(batch, white, TriggerBounds, Style with { BorderThickness = 1f },
                 GuiDraw.WithOpacity(Background, Opacity), GuiDraw.WithOpacity(IsOpen ? OpenBorder : Border, Opacity));
-            float ty = TriggerBounds.Y + (TriggerBounds.Height - font.LineHeight) * 0.5f;
+            float ty = GuiDraw.CenteredTextY(TriggerBounds.Y, TriggerBounds.Height, font.LineHeight, TextScale);
             batch.DrawString(font, SelectedLabel, new Vector2(MathF.Floor(TriggerBounds.X + 6f), MathF.Floor(ty)),
-                (Color)GuiDraw.WithOpacity(TextColor, Opacity));
+                (Color)GuiDraw.WithOpacity(TextColor, Opacity), TextScale);
 
             if (ShowChevron)
             {
@@ -243,9 +251,9 @@ namespace KhaozEngine.Gui
                 if (selected) GuiDraw.Fill(batch, white, r, GuiDraw.WithOpacity(SelectedColor, Opacity));
                 else if (i == HighlightedIndex) GuiDraw.Fill(batch, white, r, GuiDraw.WithOpacity(FocusColor, Opacity));
                 else if (pointer.IsPointerIn(r)) GuiDraw.Fill(batch, white, r, GuiDraw.WithOpacity(HoverColor, Opacity));
-                float ty = r.Y + (r.Height - font.LineHeight) * 0.5f;
+                float ty = GuiDraw.CenteredTextY(r.Y, r.Height, font.LineHeight, TextScale);
                 batch.DrawString(font, _options[i].Label, new Vector2(MathF.Floor(r.X + 6f), MathF.Floor(ty)),
-                    (Color)GuiDraw.WithOpacity(selected ? SelectedTextColor : TextColor, Opacity));
+                    (Color)GuiDraw.WithOpacity(selected ? SelectedTextColor : TextColor, Opacity), TextScale);
             }
         }
     }

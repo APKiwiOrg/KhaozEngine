@@ -926,11 +926,17 @@ if (gui.Button(font, btnRect, Strings.Resume, style, scale: 1.5f)) Resume();    
 
 The retained widgets that draw text follow the same idiom, one scale field per widget defaulting to `1f`
 (label-only: the widget's rect, hit-test, and chrome never change with scale): `Button.LabelScale`,
-`TabBar.TextScale` (each tab label), and `Tooltip`'s per-line `TooltipLine.Scale` plus `Tooltip.TitleScale`
-for the title row, so a single shared font can render a whole size hierarchy.
+`TabBar.TextScale` (each tab label), `Dropdown.TextScale` (the trigger label and every option row),
+`TextInput.TextScale` (the text and the placeholder), `TreeView.TextScale` (the node labels),
+`ProgressBar.OverlayTextScale` (the centred caption), and `Tooltip`'s per-line `TooltipLine.Scale` plus
+`Tooltip.TitleScale` for the title row, so a single shared font can render a whole size hierarchy.
+`TextInput` carries its scale through every width term the draw derives, so the caret still trails the last
+glyph and the overflow clip engages where the drawn text actually reaches the border.
 
 ```csharp
 var compact = new Button(btnRect, Strings.Resume, font) { LabelScale = 0.56f };   // small label, same fixed rect
+var dense   = new TreeView(outlineRect) { TextScale = 0.8f };                     // more label per row, same RowHeight
+var readout = new ProgressBar(barRect, 0.4f) { OverlayTextScale = 0.7f };         // small caption on a thin bar
 
 var tip = new Tooltip(font, font);   // one shared font, the title and body scale independently
 tip.TitleScale = 1f;

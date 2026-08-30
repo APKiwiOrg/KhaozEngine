@@ -508,6 +508,17 @@ namespace KhaozEngine.Gui
         }
 
         /// <summary>
+        /// The vertically centred top y for one line of <paramref name="lineHeight"/> text drawn at
+        /// <paramref name="scale"/> inside a row spanning [<paramref name="rowY"/>, <paramref name="rowY"/> +
+        /// <paramref name="rowHeight"/>]. The <see cref="AlignedTextPos"/> vertical term on its own, for the widgets
+        /// that place text at an x of their own (a fixed pad, an indent) and only need the centring: one place for the
+        /// <c>lineHeight * scale</c> term, which is the one a per-widget text scale is most easily forgotten in.
+        /// <paramref name="scale"/> <c>1</c> reproduces the unscaled expression exactly. Pure math, headless-testable.
+        /// </summary>
+        internal static float CenteredTextY(float rowY, float rowHeight, float lineHeight, float scale = 1f) =>
+            rowY + (rowHeight - lineHeight * scale) * 0.5f;
+
+        /// <summary>
         /// Fit a single line of text into <paramref name="maxWidth"/>: returns <paramref name="text"/> unchanged
         /// when it already fits, otherwise the longest prefix that fits with a trailing "..." appended (three
         /// ASCII dots, never the single-glyph ellipsis, which may not be baked into a font atlas).

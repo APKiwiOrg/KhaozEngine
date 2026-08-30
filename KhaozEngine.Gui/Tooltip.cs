@@ -93,6 +93,15 @@ namespace KhaozEngine.Gui
         public Vector4 Border = new(0.24f, 0.255f, 0.31f, 0.78f);
         public Vector4 TitleColor = new(0.86f, 0.88f, 0.94f, 1f);
 
+        /// <summary>
+        /// Uniform fade multiplied into every colour's alpha at draw time (1 = opaque). Lets a caller fade the whole
+        /// bubble in/out with a host transition (a hover tooltip easing in, a panel sliding away under it). Default 1
+        /// is a no-op. Mirrors <see cref="Dropdown.Opacity"/>. Every colour the bubble paints goes through it (the
+        /// background, the border, the title row, the optional separator, and each body line), so <c>0</c> draws
+        /// nothing at all rather than leaving one element at full alpha.
+        /// </summary>
+        public float Opacity = 1f;
+
         /// <summary>Uniform scale for the title row (the left title and the optional right-aligned value,
         /// scaled together). Defaults to <c>1f</c> so a tooltip with no scaled lines renders unchanged. The
         /// body lines carry their own per-line <see cref="TooltipLine.Scale"/>.</summary>
@@ -324,14 +333,15 @@ namespace KhaozEngine.Gui
             float maxWidth = ResolveMaxWidth();
             Rect b = ComputeBounds(_titleFont, _title, _titleRight, _bodyFont, _bodyFont, _lines, _anchor, Viewport,
                 Metrics, maxWidth, TitleScale, out List<TooltipLine> visual);
-            GuiDraw.Fill(batch, white, b, Background);
-            GuiDraw.Border(batch, white, b, 1f, Border);
+            GuiDraw.Fill(batch, white, b, GuiDraw.WithOpacity(Background, Opacity));
+            GuiDraw.Border(batch, white, b, 1f, GuiDraw.WithOpacity(Border, Opacity));
 
             float x = b.X + Metrics.PadX;
             float y = b.Y + Metrics.PadY;
             if (!string.IsNullOrEmpty(_title))
             {
-                batch.DrawString(_titleFont, _title, new Vector2(MathF.Floor(x), MathF.Floor(y)), (Color)TitleColor, TitleScale);
+                batch.DrawString(_titleFont, _title, new Vector2(MathF.Floor(x), MathF.Floor(y)),
+                    (Color)GuiDraw.WithOpacity(TitleColor, Opacity), TitleScale);
                 if (!string.IsNullOrEmpty(_titleRight))
                 {
                     // The right-aligned value draws with the body font but scales WITH the title row (both pass
@@ -339,18 +349,21 @@ namespace KhaozEngine.Gui
                     // right-edge anchor would be computed from the wrong (unscaled) width.
                     float rw = _bodyFont.Measure(_titleRight).X * TitleScale;
                     batch.DrawString(_bodyFont, _titleRight,
-                        new Vector2(MathF.Floor(b.Right - Metrics.PadX - rw), MathF.Floor(y)), (Color)TitleRightColor, TitleScale);
+                        new Vector2(MathF.Floor(b.Right - Metrics.PadX - rw), MathF.Floor(y)),
+                        (Color)GuiDraw.WithOpacity(TitleRightColor, Opacity), TitleScale);
                 }
                 y += _titleFont.LineHeight * TitleScale + Metrics.TitleGap;
                 if (ShowTitleSeparator)
                 {
                     float sepY = MathF.Floor(y - Metrics.TitleGap * 0.5f);
-                    GuiDraw.Fill(batch, white, new Rect(b.X + Metrics.PadX, sepY, b.Width - Metrics.PadX * 2f, 1f), SeparatorColor);
+                    GuiDraw.Fill(batch, white, new Rect(b.X + Metrics.PadX, sepY, b.Width - Metrics.PadX * 2f, 1f),
+                        GuiDraw.WithOpacity(SeparatorColor, Opacity));
                 }
             }
             for (int i = 0; i < visual.Count; i++)
             {
-                batch.DrawString(_bodyFont, visual[i].Text, new Vector2(MathF.Floor(x), MathF.Floor(y)), (Color)visual[i].Color, visual[i].Scale);
+                batch.DrawString(_bodyFont, visual[i].Text, new Vector2(MathF.Floor(x), MathF.Floor(y)),
+                    (Color)GuiDraw.WithOpacity(visual[i].Color, Opacity), visual[i].Scale);
                 y += _bodyFont.LineHeight * visual[i].Scale + Metrics.LineSpacing;
             }
         }

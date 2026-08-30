@@ -196,6 +196,8 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     `Scale` (default `1f`, a third optional positional field), and `Tooltip.TitleScale` (default `1f`) scales the
     title row, so one shared font can render a size hierarchy (e.g. a bright 1.0 title over 0.84/0.42 body lines).
     A scaled line still wraps within `MaxWidth` (the word-wrap budget divides by the line's own scale).
+    `Opacity` (default `1f`) fades the whole bubble for a host transition, and covers every colour it paints
+    (background, border, title row, separator, each body line), so `0` draws nothing.
   - `ContextMenu` (18.2.0) - a right-click option menu anchored at a screen point: a title band over a stack of
     selectable rows, the OSRS-style option list. `Open(title, entries, screenPoint)` shows it (reopening while
     open just replaces the content and the anchor), `Update(Pointer)` drives one frame, `Draw(batch, white)`

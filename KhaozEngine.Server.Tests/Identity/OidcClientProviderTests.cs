@@ -237,6 +237,63 @@ public class OidcClientProviderTests
         await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
     }
 
+    /// <summary>The abandoned flow: the player opens the browser and never comes back, so the redirect never
+    /// arrives and the wait only ends when its token is cancelled. Records disposal, which is what proves the
+    /// loopback port is released rather than held for the life of the process.</summary>
+    private sealed class StalledListener : ILoopbackListener
+    {
+        public bool Disposed;
+
+        public Uri RedirectUri { get; } = new("http://127.0.0.1:12345/");
+
+        public Task<LoopbackResult> WaitForRedirectAsync(CancellationToken ct)
+        {
+            TaskCompletionSource<LoopbackResult> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            ct.Register(() => pending.TrySetCanceled(ct));
+            return pending.Task;
+        }
+
+        public void Dispose() => Disposed = true;
+    }
+
+    /// <summary>#166: the redirect wait had no bound of its own, so an abandoned flow parked forever, the
+    /// using on the listener never ran, and the bound loopback port stayed open for the life of the process.
+    /// HttpTimeout never covered this: it only feeds the HttpClient.</summary>
+    [Fact]
+    public async Task SignIn_times_out_and_releases_the_listener_on_an_abandoned_flow()
+    {
+        StateHolder holder = new();
+        StalledListener listener = new();
+        OidcClientProvider provider = new(
+            new OidcProviderOptions
+            {
+                Authority = "https://issuer.test",
+                ClientId = "client-1",
+                LoopbackPort = 12345,
+                SignInTimeout = TimeSpan.FromMilliseconds(50),
+            },
+            new FakeBrowser(holder), _ => listener, new HttpClient(new FakeTokenHandler()));
+
+        await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
+        Assert.True(listener.Disposed);
+    }
+
+    /// <summary>The caller's own cancellation keeps its own shape: it is not a sign-in failure to retry.</summary>
+    [Fact]
+    public async Task SignIn_surfaces_caller_cancellation_rather_than_the_timeout()
+    {
+        StateHolder holder = new();
+        OidcClientProvider provider = new(
+            new OidcProviderOptions { Authority = "https://issuer.test", ClientId = "client-1", LoopbackPort = 12345 },
+            new FakeBrowser(holder), _ => new StalledListener(), new HttpClient(new FakeTokenHandler()));
+
+        using CancellationTokenSource cts = new();
+        Task<ProviderCredential> signIn = provider.SignInAsync(cts.Token);
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => signIn);
+    }
+
     /// <summary>#170: a plain-http authority put the PKCE verifier and the returned tokens on the wire in
     /// cleartext. Nothing checked the scheme, so the refusal has to come before any request goes out (which is
     /// also before the browser launches).</summary>

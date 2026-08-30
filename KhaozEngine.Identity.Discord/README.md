@@ -21,7 +21,12 @@ OAuth2 authorization-code + PKCE flow, using the system browser and a local loop
   minted for a *different* Discord app (an account-takeover vector). A non-success response, a token from a
   different app, or a malformed body all return null (fail-closed).
 - **DiscordProviderOptions** - client id, scopes (default `identify email`), loopback port, and HTTP
-  timeout.
+  timeout. `SignInTimeout` (default 5 minutes) bounds the **whole** interactive sign-in, the open-ended wait
+  on the browser redirect included: `HttpTimeout` only feeds the `HttpClient` used for the token exchange, so
+  without `SignInTimeout` an abandoned flow (the player closes the tab, the browser crashes, they walk away)
+  parks forever and holds the bound loopback port for the life of the process. On expiry `SignInAsync` throws
+  `IdentitySignInException` and the listener is disposed on the way out. Set it to zero or negative to restore
+  the unbounded wait and bound sign-in with your own cancellation token instead.
 
 Discord is opaque-token OAuth2, not OIDC: there is no ID token or JWKS to validate, so this package
 has no `Microsoft.IdentityModel` dependency. It is opt-in and not part of any umbrella package;

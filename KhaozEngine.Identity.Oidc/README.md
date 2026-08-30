@@ -36,7 +36,13 @@ authorization-code + PKCE flow, using the system browser and a local loopback re
   with `IdentitySignInException` before any request leaves the process (so before the browser launches), on
   both the sign-in and the refresh path. `AllowInsecureLoopbackAuthority` is the local-dev opt-out: with it
   set, a plain-`http` authority is accepted only when its host is a loopback address (`localhost`,
-  `127.0.0.0/8`, `::1`), never for a remote host.
+  `127.0.0.0/8`, `::1`), never for a remote host. `SignInTimeout` (default 5 minutes) bounds the **whole**
+  interactive sign-in, the open-ended wait on the browser redirect included: `HttpTimeout` only feeds the
+  `HttpClient` used for discovery and the token exchange, so without `SignInTimeout` an abandoned flow (the
+  player closes the tab, the browser crashes, they walk away) parks forever and holds the bound loopback port
+  for the life of the process. On expiry `SignInAsync` throws `IdentitySignInException` and the listener is
+  disposed on the way out. Set it to zero or negative to restore the unbounded wait and bound sign-in with
+  your own cancellation token instead.
 
 It is opt-in and not part of any umbrella package: reference it directly when a game wants generic
 OIDC sign-in (Auth0, Okta, Azure AD, or any standards-compliant OIDC provider). Discord and other

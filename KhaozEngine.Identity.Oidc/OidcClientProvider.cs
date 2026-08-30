@@ -27,7 +27,29 @@ public sealed class OidcClientProvider(
 
     public string ProviderId => "oidc";
 
+    /// <summary>Runs the interactive flow under <see cref="OidcProviderOptions.SignInTimeout"/>. The wait on the
+    /// loopback redirect is open-ended by nature (it ends when the player finishes in the browser, or never), so
+    /// without a deadline an abandoned flow leaves this task pending for the life of the process and the bound
+    /// loopback port with it. On expiry the core method unwinds, its <c>using</c> disposes the listener and
+    /// frees the port, and the caller sees the same <see cref="IdentitySignInException"/> as any other sign-in
+    /// failure. The caller's own cancellation still surfaces as <see cref="OperationCanceledException"/>.</summary>
     public async Task<ProviderCredential> SignInAsync(CancellationToken ct = default)
+    {
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        if (options.SignInTimeout > TimeSpan.Zero)
+            deadline.CancelAfter(options.SignInTimeout);
+
+        try
+        {
+            return await SignInCoreAsync(deadline.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            throw new IdentitySignInException($"sign-in timed out after {options.SignInTimeout}");
+        }
+    }
+
+    private async Task<ProviderCredential> SignInCoreAsync(CancellationToken ct)
     {
         (string authorizationEndpoint, string tokenEndpoint) = await DiscoverAsync(ct).ConfigureAwait(false);
 

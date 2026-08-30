@@ -47,10 +47,15 @@ This is the only path that renders `TelegraphStyle`'s modern knobs (`TelegraphRe
   in world units instead, skipping the characteristic-size multiply.
 - `TelegraphStyle.Pattern` (a `TelegraphFillPattern`) casts directly onto `GroundDecal.Pattern`
   (a `DecalFillPattern`, `GroundDecal`'s own enum in `KhaozEngine.Render3D`): the two enums share
-  the same `Solid`/`ScrollingNoise`/`RadialNoise` values on purpose, one per fill style, so the
-  cast never needs a lookup table. `ScrollingNoise` is domain-warped drift (wispy filaments,
-  not round blobs). `RadialNoise` is a Cartesian vortex swirl (spiral arms orbiting the center,
-  no polar singularity). `PatternSpeed` passes straight through. `PatternScale` gets one
+  the same `Solid`/`ScrollingNoise`/`RadialNoise`/`MoltenCracks` values on purpose, one per fill
+  style, so the cast never needs a lookup table. A test
+  (`GroundTelegraphMappingTests.Every_decal_fill_pattern_has_a_telegraph_twin_at_the_same_value`)
+  pins the two member lists against each other, because the cast is only sound while they agree
+  and the telegraph side did fall a member behind once
+  ([#229](https://github.com/APKiwiOrg/KhaozEngine/issues/229)). `ScrollingNoise` is domain-warped
+  drift (wispy filaments, not round blobs). `RadialNoise` is a Cartesian vortex swirl (spiral arms
+  orbiting the center, no polar singularity). `MoltenCracks` is an animated Voronoi crack web.
+  `PatternSpeed` passes straight through. `PatternScale` gets one
   conversion: it is authored as "noise cells across the shape" and converted here to "noise cells
   per world unit" by dividing by the shape's characteristic size, so a bigger AoE gets
   proportionally coarser (not stretched) noise. Gated on `Pattern != Solid`: a fully legacy style
@@ -77,6 +82,15 @@ This is the only path that renders `TelegraphStyle`'s modern knobs (`TelegraphRe
   it. `VoidDim` scales alpha on the plane-projected pixels only (0 default = no dim). Both are
   `false`/`0` on every preset, so no existing style opts in on its own. Set them explicitly on a
   style or a `TelegraphStyle.Generic with { VoidFallback = true, VoidDim = 0.15f }` copy.
+- `AccentColor`, `PatternParam` and `EdgeErosion` on `ResolvedTelegraph` pass through VERBATIM to
+  the matching `GroundDecal` fields, with no conversion at all. That is the point: `PatternParam`
+  is in cell space and `EdgeErosion` is a fraction of the shape's own half-thickness, so both are
+  dimensionless, unlike `FeatherWidth`, which this mapping either derives in world units from the
+  characteristic size or takes from the `FeatherWidthWorld` override. Erosion therefore behaves
+  identically whichever of those two feather paths a style is on, and the shader's own order
+  (erode first, then feather the surviving boundary) is what relates them. `AccentColor` arrives
+  with its alpha already scaled by the style `Opacity`, done in `TelegraphResolve` alongside the
+  fill's. All three are zero on every preset, so no existing style opts in on its own.
 - `Scene3D.DecalQuality` (`GroundDecalQuality.Full` / `.Reduced`) is a scene-wide tier read by
   the decal pass itself, not by this mapping: `Reduced` drops the second noise octave and the
   edge sparkle for weak GPUs. Set it once on the `Scene3D`, not per decal.

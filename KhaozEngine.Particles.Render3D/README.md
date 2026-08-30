@@ -141,6 +141,10 @@ scene.DrawEffect(player, looks);
 ```
 
 The showcase's "Particles & VFX" room (`KhaozEngine.Showcase/RoomVfx.cs`) is the runnable reference:
-all nine presets cycled live over a flat stage, with bloom and HDR toggles.
+every preset above cycled live over a flat stage, with bloom and HDR toggles. `EssenceMotes` is drawn there
+with an orbiting, bobbing `ParticleAttractor` target (marked by a small wire sphere), since a drain effect
+only reads as one when the thing it drains into is visible and moving. A test pins the room's roster against
+this library by reflection, so a preset added here without a demo entry fails
+([#258](https://github.com/APKiwiOrg/KhaozEngine/issues/258)).
 
 Depends on `KhaozEngine.Particles` + `KhaozEngine.Render3D`. In the `Game3D` umbrella.

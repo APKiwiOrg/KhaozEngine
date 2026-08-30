@@ -84,22 +84,86 @@ namespace KhaozEngine.Render2D.Vfx
             float length, float width, Color color, int segs, float segLen, float timeSeconds,
             in BeamParams p, bool dashed)
         {
+            // Jagged needs no speed: 0 holds one still bolt. Wave needs one, or there is nothing to oscillate.
+            bool jagged = p.JitterShape == BeamJitter.Jagged && p.JitterAmount > 0f;
+            int roll = jagged ? RollIndex(timeSeconds, p.JitterSpeed) : 0;
+            float axisAngle = MathF.Atan2(dir.Y, dir.X);
+
             for (int i = 0; i < segs; i++)
             {
+                // Dashing measures along the AXIS in both modes, so a jagged bolt's dashes stay evenly spaced
+                // rather than bunching wherever the bolt happens to zigzag.
                 float along = (i + 0.5f) * segLen;
                 float alpha = dashed ? DashAlpha(along, timeSeconds, p.DashLength, p.DashGap, p.DashSpeed) : 1f;
                 if (alpha <= 0f) continue;
 
-                Vector2 centre = a + dir * along;
-                if (p.JitterAmount > 0f && p.JitterSpeed > 0f)
+                Vector2 centre;
+                float quadLength, quadAngle;
+                if (jagged)
                 {
-                    float wobble = MathF.Sin(timeSeconds * p.JitterSpeed + along * 0.05f) * p.JitterAmount;
-                    centre += perp * wobble;
+                    // Each quad spans its two displaced boundaries, so it TILTS with the bolt instead of staying
+                    // axis-aligned. Axis-aligned quads at zigzagging centres would leave the band visibly broken.
+                    Vector2 p0 = a + dir * (i * segLen) + perp * BoltOffset(p.JitterSeed, roll, i, segs, p.JitterAmount);
+                    Vector2 p1 = a + dir * ((i + 1) * segLen) + perp * BoltOffset(p.JitterSeed, roll, i + 1, segs, p.JitterAmount);
+                    Vector2 span = p1 - p0;
+                    float spanLength = span.Length();
+                    if (spanLength <= 0f) continue;
+                    centre = (p0 + p1) * 0.5f;
+                    quadAngle = MathF.Atan2(span.Y, span.X);
+                    // Overlap neighbours by the band width so the wedge gap on the outside of each bend closes.
+                    // Two rectangles butted at an angle do not meet, and on an additive core that gap reads as a
+                    // dashed bolt. The cost is half a width of overhang at each endpoint, under the flare.
+                    quadLength = spanLength + width;
                 }
+                else
+                {
+                    centre = a + dir * along;
+                    if (p.JitterAmount > 0f && p.JitterSpeed > 0f)
+                    {
+                        float wobble = MathF.Sin(timeSeconds * p.JitterSpeed + along * 0.05f) * p.JitterAmount;
+                        centre += perp * wobble;
+                    }
+                    quadLength = segLen;
+                    quadAngle = axisAngle;
+                }
+
                 // Rotated quad centred on the segment: pivot (0.5,0.5) lands at centre.
-                batch.Draw(white, centre, new Vector2(segLen, width), new Vector2(0.5f, 0.5f),
-                    MathF.Atan2(dir.Y, dir.X), PrimitiveRenderer.FullUV, color * alpha);
+                batch.Draw(white, centre, new Vector2(quadLength, width), new Vector2(0.5f, 0.5f),
+                    quadAngle, PrimitiveRenderer.FullUV, color * alpha);
             }
+        }
+
+        /// <summary>
+        /// Which bolt <see cref="BeamJitter.Jagged"/> is drawing at <paramref name="timeSeconds"/>: the whole
+        /// number of re-rolls elapsed at <paramref name="rollsPerSecond"/>. A non-positive rate holds roll 0, one
+        /// still bolt. Monotone non-decreasing in time, and pure, which is what keeps the beam stateless and every
+        /// client on the same bolt.
+        /// </summary>
+        internal static int RollIndex(float timeSeconds, float rollsPerSecond) =>
+            rollsPerSecond > 0f ? (int)MathF.Floor(timeSeconds * rollsPerSecond) : 0;
+
+        /// <summary>
+        /// The mid-span envelope a jagged bolt's displacement is scaled by: 0 at both endpoints (so the bolt
+        /// starts and ends exactly on the two points it connects), 1 halfway along. A degenerate
+        /// <paramref name="segs"/> is 0. Pure.
+        /// </summary>
+        internal static float BoltEnvelope(int index, int segs) =>
+            segs <= 0 ? 0f : MathF.Sin(index / (float)segs * MathF.PI);
+
+        /// <summary>
+        /// Signed perpendicular displacement, in pixels, of segment boundary <paramref name="index"/> of a jagged
+        /// bolt: its own noise draw times <paramref name="amount"/> times <see cref="BoltEnvelope"/>. Keyed on
+        /// (<paramref name="seed"/>, <paramref name="roll"/>, <paramref name="index"/>) through
+        /// <see cref="StableHash"/>, so it is a pure key-to-value map with no RNG stream to thread anywhere: the
+        /// same bolt redraws identically, a new roll is a wholly new bolt, and neighbouring segments are
+        /// independent (which is the whole difference from the coherent sine wobble). Pure.
+        /// </summary>
+        internal static float BoltOffset(int seed, int roll, int index, int segs, float amount)
+        {
+            float envelope = BoltEnvelope(index, segs);
+            if (envelope <= 0f) return 0f;
+            float noise = StableHash.ToUnitFloat(StableHash.Mix((uint)seed, (uint)roll, (uint)index)) * 2f - 1f;
+            return noise * amount * envelope;
         }
 
         /// <summary>Draws a soft radial disc of <paramref name="radius"/> pixels (shared by endpoint flares and round caps).</summary>

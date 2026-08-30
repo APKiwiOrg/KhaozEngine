@@ -2115,6 +2115,24 @@ batch.End();
   radius half each band's pulse-adjusted width at every endpoint (glow cap under, core cap over), independent of
   `FlareRadius` and sampled from the `glow` texture (square ends if `glow` is null). Default `BeamCap.None` keeps
   the original square ends.
+- **Jagged electric arcs (`BeamParams.JitterShape`).** `JitterAmount`/`JitterSpeed` used to give one shape only, a
+  coherent sine wobble, so the beam could be a wavy straight line and nothing else. `BeamJitter.Jagged` displaces
+  every segment boundary by its OWN signed noise under a mid-span envelope, and tilts each quad to run between its
+  two displaced boundaries, which is the chain-lightning / tesla / shock bolt the wobble cannot express
+  ([#239](https://github.com/APKiwiOrg/KhaozEngine/issues/239)). In that mode the two knobs change meaning:
+  `JitterAmount` is the peak displacement in pixels at mid-span (both endpoints stay pinned on the axis), and
+  `JitterSpeed` is the RE-ROLL RATE in whole new bolts per second, where 0 holds one still bolt rather than
+  disabling anything. `JitterSeed` picks which bolt, so give concurrent arcs different seeds or they draw the same
+  one. It stays pure and stateless like the rest of `EnergyBeam`: the bolt is a function of seed and time, so every
+  client draws the same one. `BeamParams.ElectricArc` is the tuned starting point.
+
+```csharp
+vfx.DrawBeam(batch, from, to, BeamParams.ElectricArc with { JitterSeed = arcId }, timeSeconds);
+```
+
+  `BeamJitter.Wave` is the default and byte-identical to the old behaviour, so no existing beam changes. The beam
+  is still immediate-mode with no spawn/lifetime/pool of its own, so a transient zap that fires, fades and expires
+  is still the caller's to drive (scale the two colours' alpha over the arc's lifetime).
 - `AttentionBeacon.Draw(batch, ring, glow, center, in AttentionBeaconParams, timeSeconds)`: an additive "look at
   me" pulse (pickups, quest markers, objectives), expanding sonar-ping rings plus a configurable number of
   twinkling glints; time-driven and stateless like `EnergyBeam`, so feed an unscaled real-time accumulator and it
@@ -2219,6 +2237,29 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   to build (see below). `Post` is the
   `PixelPostProcess` (pixelation / quantize / dither / cel bands / palette for the chunky retro look; the smooth
   look is the default).
+- **Keyed loads for a scene that outlives what it draws (`GetOrLoad*`).** `LoadMesh` / `LoadSkinnedMesh` /
+  `LoadTexture` upload EVERY time they are called, which is right for a scene built once and torn down once and
+  wrong for an app-lifetime scene whose renderer rebuilds its asset set on every run restart. The keyed loads
+  dedup that:
+
+```csharp
+// Runs the loader the first time this key is seen, returns the cached handle every time after.
+Scene3D.TextureHandle hull = scene.GetOrLoadTexture("art/hull.png", () => scene.LoadTexture("art/hull.png"));
+MeshHandle ship = scene.GetOrLoadMesh("art/ship.glb", () => scene.LoadMesh(GltfLoader.Load("art/ship.glb")));
+
+// Explicit eviction, by key: unloads the handle and forgets the key, so the next GetOrLoad uploads again.
+scene.UnloadSharedTexture("art/hull.png");     // false when nothing was cached under that key
+```
+
+  The plain `Load*` calls are unchanged. **Ownership does not change either**: a cached handle is owned by the
+  scene exactly as the underlying `Load*` left it, so `Dispose` frees it along with every other handle the scene
+  owns and the key tables die with the scene. **Eviction is explicit and by key, with no refcount**:
+  `UnloadSharedMesh` / `UnloadSharedSkinnedMesh` / `UnloadSharedTexture` are the only eviction, nothing evicts on
+  its own, and nothing counts references (a refcount would need a matching release at every use site, which is the
+  bookkeeping this API exists to stop a game from doing). Calling the plain `Unload*` on a cached handle directly
+  leaves the key pointing at a freed handle, so pair the two. Keys are ordinal and case-sensitive, each family has
+  its own key space, and a loader that throws caches nothing so the next call retries. `SharedAssetCount` is the
+  diagnostic: a number that climbs across run restarts is a consumer still re-keying its assets.
 - **`PrepareFrame()`, the frame's pre-recording phase.** Runs once per frame, after every `Draw*`
   call for that frame and **before the command list the scene renders into is opened**. Every host the engine
   ships calls it for you - `Render3DSurface.Render` (so `GameApp3D` and any surface you build yourself are both
@@ -4088,13 +4129,20 @@ energy lane follow the eroded edge.
         FillFraction = 1f, YTolerance = 0.3f, MaxStep = 0.4f,
     });
 
-These are raw-decal fields only for now: `TelegraphStyle` does not expose them yet, so build the
-`GroundDecal` directly (as above) rather than through `GroundTelegraphs`. The
+`TelegraphStyle` exposes all of it too, so the same look is reachable through `GroundTelegraphs`
+with its presets, progress resolve and residue, not only by building the `GroundDecal` by hand:
+`TelegraphFillPattern.MoltenCracks`, plus `TelegraphStyle.AccentColor`, `PatternParam` and
+`EdgeErosion`. Every one of those passes to the decal verbatim, because `PatternParam` (cell space)
+and `EdgeErosion` (a fraction of the shape's own half-thickness) are dimensionless, unlike
+`FeatherWidth`, which the 3D path derives in world units from the shape's characteristic size or
+takes from the `FeatherWidthWorld` override. So erosion behaves the same whichever feather path a
+style is on. `AccentColor`'s alpha rides `TelegraphStyle.Opacity` exactly as the fill's does. The
 `MoltenCracksShowcaseGpuTests` PNG dumps are the reference look.
 
 **The 2D `TelegraphRenderer2D` path ignores every knob in this subsection** (FeatherWidth,
-Pattern/PatternSpeed/PatternScale, EdgeEnergy, InteriorDim, BaseFill, RimGlow, SweepGlow,
-EdgeSparkle, OutlineRunner, EdgeWidthWorld, FeatherWidthWorld, VoidFallback, VoidDim, and residue)
+Pattern/PatternSpeed/PatternScale/PatternParam, AccentColor, EdgeErosion, EdgeEnergy, InteriorDim,
+BaseFill, RimGlow, SweepGlow, EdgeSparkle, OutlineRunner, EdgeWidthWorld, FeatherWidthWorld,
+VoidFallback, VoidDim, and residue)
 and always renders the flat legacy fill/outline/pulse/flash look, picking primitives by `FillMode`
 directly. They are a 3D ground-decal feature.
 
@@ -4135,8 +4183,9 @@ scene.DrawEffect(player, looks);                          // one look per phase,
 ```
 
 Presets: `FireBurst`, `FrostShatter`, `HealMotes`, `EmberDrift`, `SparkShower`, `Shockwave`, `SmokePlume`,
-`ArcaneSparkle`, `HeatHaze`. `looks.Length` must equal `player.PhaseCount`. The showcase's "Particles & VFX"
-room (`KhaozEngine.Showcase/RoomVfx.cs`) is the runnable reference, cycling all nine live with bloom/HDR toggles.
+`ArcaneSparkle`, `HeatHaze`, `EssenceMotes`. `looks.Length` must equal `player.PhaseCount`. The showcase's
+"Particles & VFX" room (`KhaozEngine.Showcase/RoomVfx.cs`) is the runnable reference, cycling every one of them
+live with bloom/HDR toggles (`EssenceMotes` gets an orbiting `ParticleAttractor` target so its drain reads).
 
 **Authoring your own emitter.** `EmitterConfig` grew emission shapes, per-particle variance, life curves, spin, and
 turbulence. Every new field zero-defaults to the legacy look:
@@ -11920,6 +11969,38 @@ legacy pair and move new code to the handle.
 
 `Clear()` ends every outstanding rental, so returning one afterwards is refused rather than freeing whatever
 has since taken its slot.
+
+---
+
+## Angle math (`MathUtil.WrapAngle` / `DeltaAngle` / `MoveTowardsAngle` / `LerpAngle`)
+
+Turret aim, character facing, camera lookat and any other "turn toward a heading" all need the same two
+things: keep an accumulated angle bounded, and take the shortest way round. `MathUtil`
+(`KhaozEngine.Primitives`) has them, so a game does not hand-roll a `WrapPi`:
+
+```csharp
+float yaw = MathUtil.WrapAngle(yaw + spinPerSecond * dt);        // never grows without bound
+
+// Turn toward a target heading at a bounded rate (frame-rate independent).
+float desired = MathF.Atan2(toTarget.X, toTarget.Z);
+turretYaw = MathUtil.MoveTowardsAngle(turretYaw, desired, maxTurnRate * dt);
+
+float error = MathUtil.DeltaAngle(turretYaw, desired);           // shortest signed error, for a fire gate
+if (MathF.Abs(error) < 0.02f) Fire();
+
+float blended = MathUtil.LerpAngle(previousYaw, currentYaw, alpha);   // presentation smoothing
+```
+
+Every one of them returns radians in the half-open interval `(-pi, pi]`: exactly `-pi` comes back as `+pi`,
+exactly `+pi` stays put. `DeltaAngle(from, to)` is the shortest signed rotation, so 350 degrees to 10 degrees
+is `+20`, not `-340`, and two exact opposites resolve to `+pi`. `MoveTowardsAngle` never overshoots, and a
+non-positive `maxDelta` is a zero step that HOLDS the current heading (wrapped) rather than snapping to the
+target. `LerpAngle` walks the short arc, so halfway between 350 and 10 degrees is 0 rather than 180, and its
+`t` is unclamped like `Lerp`.
+
+`CharacterFacing.TurnTowards` / `CharacterFacing.WrapAngle` (`KhaozEngine.Game.Render3D`) stay as they are:
+they take a `Vector3` intended direction rather than a target angle, and they live in the Game3D umbrella, so
+a 2D game cannot reach them. `MathUtil` is the reachable-from-anywhere version.
 
 ---
 

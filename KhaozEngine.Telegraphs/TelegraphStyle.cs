@@ -18,6 +18,13 @@ namespace KhaozEngine.Telegraphs
         ScrollingNoise = 1,
         /// <summary>Cartesian vortex swirl, spiral arms orbiting the shape center over time.</summary>
         RadialNoise = 2,
+        /// <summary>Animated Voronoi/cellular crack web: a near-white hot core at each cell border falling off
+        /// through <see cref="TelegraphStyle.AccentColor"/> into the dark fill field between cells (molten-slam
+        /// aftermath, ice fracture, corruption ground). <see cref="TelegraphStyle.PatternSpeed"/> drives a slow
+        /// per-cell breathing rather than a scroll, and <see cref="TelegraphStyle.PatternParam"/> widens or
+        /// narrows the cracks. 3D ground decals only: the 2D <c>TelegraphRenderer2D</c> draws no pattern at
+        /// all.</summary>
+        MoltenCracks = 3,
     }
 
     /// <summary>
@@ -132,6 +139,30 @@ namespace KhaozEngine.Telegraphs
         /// 1 = fully transparent. Clamped to 0..1. Ignored unless <see cref="VoidFallback"/> is set. The
         /// 2D <c>TelegraphRenderer2D</c> ignores this field.</summary>
         public float VoidDim;
+
+        /// <summary>Second, "hot" colour for a two-tone fill pattern, today only
+        /// <see cref="TelegraphFillPattern.MoltenCracks"/>, where rgb tints the crack glow (the core lifts toward
+        /// white on top of it) and alpha scales the crack opacity independently of <see cref="FillColor"/>'s, so
+        /// the dark field can sit near-opaque while the cracks stay bright. Its alpha is scaled by
+        /// <see cref="Opacity"/> like the fill's is. Default (a fully zero colour) is inert, and ignored by every
+        /// other pattern. The 2D <c>TelegraphRenderer2D</c> ignores this field.</summary>
+        public Color AccentColor;
+
+        /// <summary>Pattern-specific shape control, meaning owned by the active <see cref="Pattern"/>. For
+        /// <see cref="TelegraphFillPattern.MoltenCracks"/> it is the crack width in cell-space units (roughly the
+        /// fraction of a cell the glow spans), 0 (default) falling back to the shader's own 0.22. Dimensionless,
+        /// so it passes to the decal verbatim. Ignored by patterns that define no parameter. The 2D
+        /// <c>TelegraphRenderer2D</c> ignores this field.</summary>
+        public float PatternParam;
+
+        /// <summary>Noise-modulated silhouette breakup at the shape's analytic edge, for every shape and pattern:
+        /// 0 (default) = the exact analytic boundary, 1 = fully eroded fingers biting inward. Stable value noise
+        /// with no time and no RNG, so the silhouette is identical frame to frame and across clients. It is
+        /// DIMENSIONLESS (a fraction of the shape's own half-thickness), unlike <see cref="FeatherWidth"/>, so it
+        /// passes to the decal verbatim and is unaffected by whether the feather came from the shape-relative
+        /// fraction or the <see cref="FeatherWidthWorld"/> override. The shader erodes first, then feathers the
+        /// surviving boundary. Clamped to 0..1. The 2D <c>TelegraphRenderer2D</c> ignores this field.</summary>
+        public float EdgeErosion;
 
         /// <summary>Neutral red-orange danger zone: alpha-blended outline + fill, all animations on.</summary>
         public static TelegraphStyle Generic => new()

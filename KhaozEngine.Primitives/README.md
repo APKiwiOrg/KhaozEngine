@@ -24,7 +24,11 @@ automatically, so this is transparent to every other package.
   machine), distinct from `XorRng`'s stateful stream, for deterministic procedural content keyed off ids/coordinates
   with no shared RNG. `XorRng.NextFloat` shares its `ToUnitFloat` fold, so a hashed value and a stream draw land in
   [0, 1) off the same bits identically. The uint-keyed 32-bit sibling of `DeterministicRng.StableHash(string) -> ulong`.
-- `MathUtil` - `Clamp01`, `Lerp`, `InverseLerp`, `SmoothStep(a, b, x)` (clamped Hermite).
+- `MathUtil` - `Clamp01`, `Lerp`, `InverseLerp`, `SmoothStep(a, b, x)` (clamped Hermite), plus the angle
+  helpers `WrapAngle` (radians to the half-open `(-pi, pi]`, so `-pi` comes back as `+pi`), `DeltaAngle`
+  (shortest signed rotation), `MoveTowardsAngle(current, target, maxDelta)` (bounded shortest-arc step, no
+  overshoot, a non-positive `maxDelta` holds still) and `LerpAngle` (shortest-arc interpolation, `t`
+  unclamped like `Lerp`).
 - `Easing` - `Linear`/`SmoothStep`/`EaseIn`/`EaseOut`/`EaseInOut`, all clamped to [0,1].
 - `ViewportMath` - `Fit` (letterbox) and `Cover` (crop) uniform-scale factors for aspect-preserving fits, plus
   `CoverAnchored` (the rect form of `Cover`: cover a viewport at a uniform scale with the image's normalized

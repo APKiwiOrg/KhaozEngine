@@ -103,6 +103,13 @@ namespace KhaozEngine.Telegraphs
                 // these, it only carries them to the ground-decal path. TelegraphRenderer2D ignores them.
                 VoidFallback = style.VoidFallback,
                 VoidDim = MathUtil.Clamp01(style.VoidDim),
+                // The accent is a fill-field colour, so its alpha rides the style opacity exactly as the fill's
+                // does. A fully zero AccentColor (every style that predates it) stays fully zero at any opacity.
+                AccentColor = style.AccentColor.WithAlpha(MathUtil.Clamp01(style.AccentColor.A * op)),
+                // Both dimensionless, so neither needs the world-unit derivation FeatherFraction gets on the 3D
+                // path. Carried, not interpreted, like the two World overrides above.
+                PatternParam = MathF.Max(style.PatternParam, 0f),
+                EdgeErosion = MathUtil.Clamp01(style.EdgeErosion),
             };
         }
 

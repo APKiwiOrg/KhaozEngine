@@ -10,6 +10,11 @@ namespace KhaozEngine.Audio;
 /// needed: OpenAL one-shots are fire-and-forget and voices are reclaimed by querying source state on the
 /// next <see cref="Play(int, float, float, bool, Vector3)"/>.
 /// </summary>
+/// <remarks>
+/// <b>Threading.</b> An implementation is not required to be thread-safe and none of the bundled ones is.
+/// <see cref="AudioSystem"/> drives this seam from its owning (main) thread only and enforces that on its own
+/// side, so every call an implementation sees arrives on one thread.
+/// </remarks>
 public interface ISfxBackend : IDisposable
 {
     /// <summary>Human-readable backend name (used in logs).</summary>

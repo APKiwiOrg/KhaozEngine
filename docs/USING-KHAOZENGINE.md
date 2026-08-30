@@ -9332,6 +9332,19 @@ one track via `PlayMode`, `CurrentTrack`/`TrackChanged`), SFX one-shots, and 3D 
 (`PlaySfx`/`PlaySfx3D`/`SetListener`, a 16-voice pool, per-channel volume). `LoadContent(directory)` +
 `Update()` per frame.
 
+**Threading: main-thread-only, and it throws if you get it wrong.** An `AudioSystem` belongs to the thread that
+constructed it, normally the thread pumping the frame loop. Its registries are plain dictionaries, sets and lists
+with no locking, so every mutating entry point (`RegisterTrack` / `RegisterSfx` / `LoadContent`, every play and
+crossfade call, `Update`, `StopAllSfx`, `SetListener`, `SetRng`, `SetRotationPool`, and the `MasterVolume` /
+`MusicVolume` / `SfxVolume` / `MusicEnabled` / `MusicCrossfadeDuration` / `PlayMode` setters plus `DefineBus` /
+`SetBusVolume`) compares the calling thread first and throws `InvalidOperationException` naming both threads when
+it is the wrong one. The comparison is a thread-local `int` read, so it costs the same in Release as in Debug and
+a background job cannot get a pass on a build where `Debug.Assert` has been compiled away. To play a sound in
+response to work on a worker thread (an ECS job under `ThreadPoolJobScheduler`, an async content load), record
+the request in your own structure and issue the call from the main thread on the next frame. `Dispose` is the one
+deliberate exemption: a process-exit handler or host teardown on another thread stays legal, since failing at the
+point where the state is about to be dropped buys nothing.
+
 **Music crossfade.** Switching tracks can fade the old one out and the new one in instead of a hard cut. Set
 `MusicCrossfadeDuration` (seconds, default `0` = hard cut, today's behavior) to make every track change
 (`PlayTrack`, `PlayRandomTrack`, end-of-track auto-advance) crossfade, or call `CrossfadeTo(name, duration)` /

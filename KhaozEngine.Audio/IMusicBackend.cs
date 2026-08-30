@@ -6,6 +6,11 @@ namespace KhaozEngine.Audio;
 /// A platform music backend: loads named tracks (from a content directory) and plays one at a time with
 /// volume control. Implemented by the bundled OpenAL backend; games or tests may supply their own.
 /// </summary>
+/// <remarks>
+/// <b>Threading.</b> An implementation is not required to be thread-safe and none of the bundled ones is.
+/// <see cref="AudioSystem"/> drives this seam from its owning (main) thread only and enforces that on its own
+/// side, so every call an implementation sees arrives on one thread.
+/// </remarks>
 public interface IMusicBackend : IDisposable
 {
     /// <summary>Human-readable backend name (used in logs).</summary>

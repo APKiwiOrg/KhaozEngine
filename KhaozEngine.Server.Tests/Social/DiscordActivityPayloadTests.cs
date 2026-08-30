@@ -113,6 +113,35 @@ public class DiscordActivityPayloadTests
         Assert.Equal(JsonValueKind.Null, args.GetProperty("activity").ValueKind);
     }
 
+    [Fact]
+    public void AcceptJoinRequest_SendsTheInviteCommand_NamingTheUser()
+    {
+        JsonElement root = Root(DiscordIpcPayloads.AcceptJoinRequest("9", "n-7"));
+        Assert.Equal("SEND_ACTIVITY_JOIN_INVITE", root.GetProperty("cmd").GetString());
+        Assert.Equal("n-7", root.GetProperty("nonce").GetString());
+        Assert.Equal("9", root.GetProperty("args").GetProperty("user_id").GetString());
+    }
+
+    [Fact]
+    public void RejectJoinRequest_SendsTheCloseCommand_NamingTheUser()
+    {
+        JsonElement root = Root(DiscordIpcPayloads.RejectJoinRequest("9", "n-8"));
+        Assert.Equal("CLOSE_ACTIVITY_REQUEST", root.GetProperty("cmd").GetString());
+        Assert.Equal("n-8", root.GetProperty("nonce").GetString());
+        Assert.Equal("9", root.GetProperty("args").GetProperty("user_id").GetString());
+    }
+
+    [Fact]
+    public void JoinRequestReplies_CarryNoPid_UnlikeTheSetActivityFamily()
+    {
+        // SET_ACTIVITY puts the pid in args, the ask-to-join replies deliberately do not: they name only
+        // the user being answered. A pid here would be the wrong envelope, not a harmless extra.
+        Assert.False(Root(DiscordIpcPayloads.AcceptJoinRequest("9", "n")).GetProperty("args")
+            .TryGetProperty("pid", out _));
+        Assert.False(Root(DiscordIpcPayloads.RejectJoinRequest("9", "n")).GetProperty("args")
+            .TryGetProperty("pid", out _));
+    }
+
     [Theory]
     [InlineData("{\"evt\":\"READY\",\"data\":\"not-an-object\"}")]                       // data is a string
     [InlineData("{\"evt\":\"READY\",\"data\":{\"user\":{\"id\":12345,\"username\":\"k\"}}}")] // numeric id

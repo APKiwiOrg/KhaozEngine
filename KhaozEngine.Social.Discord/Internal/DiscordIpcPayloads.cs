@@ -157,6 +157,38 @@ internal static class DiscordIpcPayloads
         return System.Text.Encoding.UTF8.GetString(stream.ToArray());
     }
 
+    /// <summary>
+    /// Build the ACCEPT answer to an inbound ask-to-join: Discord invites the requester into the local
+    /// player's activity. Note there is NO pid in the args, unlike the SET_ACTIVITY family - the reply
+    /// names only the user whose request is being answered.
+    /// </summary>
+    public static string AcceptJoinRequest(string userId, string nonce)
+        => JoinRequestReply("SEND_ACTIVITY_JOIN_INVITE", userId, nonce);
+
+    /// <summary>
+    /// Build the REJECT answer to an inbound ask-to-join, which closes the request on Discord's side so
+    /// the asking friend stops waiting. Same envelope as <see cref="AcceptJoinRequest"/>, different cmd.
+    /// </summary>
+    public static string RejectJoinRequest(string userId, string nonce)
+        => JoinRequestReply("CLOSE_ACTIVITY_REQUEST", userId, nonce);
+
+    private static string JoinRequestReply(string cmd, string userId, string nonce)
+    {
+        using var stream = new MemoryStream();
+        using (var w = new Utf8JsonWriter(stream))
+        {
+            w.WriteStartObject();
+            w.WriteString("cmd", cmd);
+            w.WriteString("nonce", nonce);
+            w.WriteStartObject("args");
+            w.WriteString("user_id", userId ?? string.Empty);
+            w.WriteEndObject(); // args
+            w.WriteEndObject(); // root
+        }
+
+        return System.Text.Encoding.UTF8.GetString(stream.ToArray());
+    }
+
     public static bool TryParseDispatch(string json, out string eventName, out string dataJson)
     {
         eventName = string.Empty;

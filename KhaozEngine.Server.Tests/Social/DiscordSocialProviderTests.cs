@@ -1,3 +1,4 @@
+using System.Text.Json;
 using KhaozEngine.Social;
 using KhaozEngine.Social.Discord;
 using KhaozEngine.Social.Discord.Internal;
@@ -7,6 +8,19 @@ namespace KhaozEngine.Tests;
 
 public class DiscordSocialProviderTests
 {
+    private const string JoinRequestDispatch =
+        """{"cmd":"DISPATCH","evt":"ACTIVITY_JOIN_REQUEST","data":{"user":{"id":"9","username":"ally","global_name":null}}}""";
+
+    private static JoinRequest RaiseJoinRequest(DiscordSocialProvider provider, FakeDiscordIpcTransport transport)
+    {
+        JoinRequest? received = null;
+        provider.JoinRequestReceived += r => received = r;
+        transport.EnqueueFrame(DiscordIpcOpcode.Frame, JoinRequestDispatch);
+        provider.Update();
+        Assert.NotNull(received);
+        return received!;
+    }
+
     [Fact]
     public void Initialize_ConnectsAndReportsConnected()
     {
@@ -58,6 +72,76 @@ public class DiscordSocialProviderTests
         provider.Update();
 
         Assert.Equal("j-1", secret);
+    }
+
+    [Fact]
+    public void Update_ActivityJoinRequest_AcceptSendsTheJoinInviteNamingTheRequester()
+    {
+        // The headline of #162: Accept used to reach a null respond callback, so the asking friend's
+        // Discord client sat waiting for an answer that was never sent.
+        var transport = new FakeDiscordIpcTransport();
+        using var provider = new DiscordSocialProvider(transport);
+        provider.TryInitialize("app-1");
+        JoinRequest request = RaiseJoinRequest(provider, transport);
+
+        request.Accept();
+
+        Assert.True(transport.TryReadLastWrittenFrame(out DiscordIpcOpcode op, out string json));
+        Assert.Equal(DiscordIpcOpcode.Frame, op);
+        JsonElement root = JsonDocument.Parse(json).RootElement;
+        Assert.Equal("SEND_ACTIVITY_JOIN_INVITE", root.GetProperty("cmd").GetString());
+        Assert.Equal("9", root.GetProperty("args").GetProperty("user_id").GetString());
+        Assert.False(string.IsNullOrEmpty(root.GetProperty("nonce").GetString()));
+    }
+
+    [Fact]
+    public void Update_ActivityJoinRequest_RejectSendsTheCloseRequestNamingTheRequester()
+    {
+        var transport = new FakeDiscordIpcTransport();
+        using var provider = new DiscordSocialProvider(transport);
+        provider.TryInitialize("app-1");
+        JoinRequest request = RaiseJoinRequest(provider, transport);
+
+        request.Reject();
+
+        Assert.True(transport.TryReadLastWrittenFrame(out _, out string json));
+        JsonElement root = JsonDocument.Parse(json).RootElement;
+        Assert.Equal("CLOSE_ACTIVITY_REQUEST", root.GetProperty("cmd").GetString());
+        Assert.Equal("9", root.GetProperty("args").GetProperty("user_id").GetString());
+    }
+
+    [Fact]
+    public void JoinRequest_AnsweredAfterTheConnectionDropped_IsASilentNoOp()
+    {
+        // A game answers from its own UI flow, an unbounded time after the request arrived, so Discord
+        // going away in between is the normal case rather than an error to throw into game code.
+        var transport = new FakeDiscordIpcTransport();
+        using var provider = new DiscordSocialProvider(transport);
+        provider.TryInitialize("app-1");
+        JoinRequest request = RaiseJoinRequest(provider, transport);
+
+        transport.SimulateQuietDeath();
+        provider.Update();
+        Assert.False(provider.IsConnected);
+
+        int writtenBefore = transport.Written.Count;
+        Assert.Null(Record.Exception(request.Accept));
+        Assert.Equal(writtenBefore, transport.Written.Count);
+    }
+
+    [Fact]
+    public void JoinRequest_AnsweredAfterTheProviderIsDisposed_IsASilentNoOp()
+    {
+        var transport = new FakeDiscordIpcTransport();
+        var provider = new DiscordSocialProvider(transport);
+        provider.TryInitialize("app-1");
+        JoinRequest request = RaiseJoinRequest(provider, transport);
+
+        provider.Dispose();
+
+        int writtenBefore = transport.Written.Count;
+        Assert.Null(Record.Exception(request.Reject));
+        Assert.Equal(writtenBefore, transport.Written.Count);
     }
 
     [Fact]

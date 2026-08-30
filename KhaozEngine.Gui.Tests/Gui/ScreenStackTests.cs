@@ -189,6 +189,124 @@ namespace KhaozEngine.Tests.Gui
             Assert.DoesNotContain(s, stack.Screens); // removed when the out-transition completes
         }
 
+        /// <summary>A screen that frees something in <see cref="Screen.UnloadContent"/> and would read it back in
+        /// <see cref="Screen.Update"/>. Records the violation rather than throwing, so the failure reads as an
+        /// assertion about lifecycle rather than a stack trace out of the stack's own loop.</summary>
+        sealed class UnloadTrackingScreen : Screen
+        {
+            public bool Unloaded;
+            public int UpdatesAfterUnload;
+            public override void UnloadContent() => Unloaded = true;
+            public override bool Update(float dt, bool receivesInput)
+            {
+                if (Unloaded) UpdatesAfterUnload++;
+                return false;
+            }
+            public override void Draw(SpriteBatch batch) { }
+        }
+
+        /// <summary>Removes another screen from inside its own Update, the way a menu screen swaps the screen
+        /// under it.</summary>
+        sealed class RemoverScreen : Screen
+        {
+            public Screen? Target;
+            public override bool Update(float dt, bool receivesInput)
+            {
+                if (Target != null) { Manager.Remove(Target); Target = null; }
+                return false;
+            }
+            public override void Draw(SpriteBatch batch) { }
+        }
+
+        /// <summary>
+        /// The transition-off completion frame removes the screen from inside the update loop, which iterates a
+        /// scratch copy taken before that removal. Without a terminal state on the removed screen the loop reaches
+        /// it anyway (its state is still TransitionOff, not Hidden) and runs one more Update on a screen whose
+        /// UnloadContent has already freed its content. See #102.
+        /// </summary>
+        [Fact]
+        public void Screen_removed_by_its_own_transition_off_is_not_updated_again_that_frame()
+        {
+            var stack = new ScreenStack();
+            var s = new UnloadTrackingScreen { TransitionOffDuration = 0.1f };
+            stack.Add(s);
+            s.ExitScreen();
+
+            stack.Update(0.05f, InputState.Empty);   // still animating out
+            Assert.Contains(s, stack.Screens);
+            Assert.False(s.Unloaded);
+
+            stack.Update(0.1f, InputState.Empty);    // completes: unloaded and removed inside this very loop
+            Assert.DoesNotContain(s, stack.Screens);
+            Assert.True(s.Unloaded);
+            Assert.Equal(0, s.UpdatesAfterUnload);
+        }
+
+        /// <summary>
+        /// The same hazard from the other direction: a screen removed by ANOTHER screen's Update is still in the
+        /// scratch copy the loop is walking, so it must not be updated after its content is gone either.
+        /// </summary>
+        [Fact]
+        public void Screen_removed_by_another_screens_update_is_not_updated_that_frame()
+        {
+            var stack = new ScreenStack();
+            var low = new UnloadTrackingScreen { DrawOrder = 0 };
+            var remover = new RemoverScreen { DrawOrder = 10, PassUpdateThrough = true, Target = low };
+            stack.Add(low); stack.Add(remover);
+
+            stack.Update(0.016f, InputState.Empty);
+
+            Assert.DoesNotContain(low, stack.Screens);
+            Assert.True(low.Unloaded);
+            Assert.Equal(0, low.UpdatesAfterUnload);
+        }
+
+        [Fact]
+        public void Remove_leaves_the_screen_in_the_terminal_hidden_state()
+        {
+            var stack = new ScreenStack();
+            var s = new FakeScreen { TransitionOffDuration = 0.1f };
+            stack.Add(s);
+            s.ExitScreen();
+            stack.Update(0.2f, InputState.Empty);    // animates out and removes
+
+            Assert.DoesNotContain(s, stack.Screens);
+            Assert.Equal(ScreenState.Hidden, s.State);
+            Assert.False(s.IsExiting);               // the exit finished, so the request is spent
+        }
+
+        /// <summary>Removal is terminal, not one-way: the Hidden state Remove leaves behind must not turn a
+        /// re-add into a screen that sits in the stack invisible and never updated.</summary>
+        [Fact]
+        public void Re_adding_a_removed_screen_mounts_it_active_again()
+        {
+            var stack = new ScreenStack();
+            var s = new FakeScreen();
+            stack.Add(s);
+            stack.Remove(s);
+            Assert.Equal(ScreenState.Hidden, s.State);
+
+            stack.Add(s);
+            Assert.Equal(ScreenState.Active, s.State);
+
+            stack.Update(0.016f, InputState.Empty);
+            Assert.Equal(1, s.UpdateCount);
+        }
+
+        /// <summary>The other half of the Add state rule: a screen the CALLER pre-set to Hidden, never mounted
+        /// anywhere, is still added dormant.</summary>
+        [Fact]
+        public void A_never_mounted_screen_pre_set_to_hidden_is_added_dormant()
+        {
+            var stack = new ScreenStack();
+            var s = new FakeScreen { State = ScreenState.Hidden };
+            stack.Add(s);
+
+            Assert.Equal(ScreenState.Hidden, s.State);
+            stack.Update(0.016f, InputState.Empty);
+            Assert.Equal(0, s.UpdateCount);
+        }
+
         [Fact]
         public void Add_preserves_insertion_order_among_equal_DrawOrder()
         {

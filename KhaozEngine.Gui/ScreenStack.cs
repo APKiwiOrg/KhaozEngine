@@ -47,8 +47,13 @@ namespace KhaozEngine.Gui
         /// (a stable insert, so screens sharing a <see cref="Screen.DrawOrder"/> keep insertion order).</summary>
         public void Add(Screen screen)
         {
+            // A screen that has been mounted before arrives back in the terminal Hidden state Remove left it in,
+            // so a re-add has to re-run the entry transition instead of silently mounting it invisible-and-never-
+            // updated. A screen the CALLER pre-set to Hidden without ever having been mounted anywhere (Manager
+            // still unset) is honoured as a dormant add, which is what the Hidden check was there for.
+            bool remount = screen.Manager is not null;
             screen.Manager = this;
-            if (screen.State != ScreenState.Hidden)
+            if (remount || screen.State != ScreenState.Hidden)
             {
                 screen.State = screen.TransitionOnDuration > 0f ? ScreenState.TransitionOn : ScreenState.Active;
                 if (screen.TransitionOnDuration > 0f) screen.TransitionAlpha = 0f;
@@ -64,11 +69,24 @@ namespace KhaozEngine.Gui
             _screens.Insert(idx, screen);
         }
 
-        /// <summary>Removes a screen and calls its UnloadContent.</summary>
+        /// <summary>
+        /// Removes a screen, calls its <see cref="Screen.UnloadContent"/> (before the removal, so a screen tearing
+        /// itself down still sees the stack it is leaving), and leaves it in the terminal
+        /// <see cref="ScreenState.Hidden"/> state with <see cref="Screen.IsExiting"/> cleared.
+        /// <para>That terminal state is load-bearing rather than cosmetic. <see cref="Update(float, InputState,
+        /// IDesignViewport?)"/> iterates a scratch copy taken before the frame's removals, so a screen pulled out
+        /// mid-frame - by its own transition-off completing, or by another screen's <see cref="Screen.Update"/> -
+        /// is still sitting in that copy. Hidden is the one state the loop skips, so setting it here is what stops
+        /// the screen running one more <see cref="Screen.Update"/> after its content is already gone.</para>
+        /// <para>Removal is terminal without being one-way: re-adding the same instance through
+        /// <see cref="Add"/> re-runs its entry transition.</para>
+        /// </summary>
         public void Remove(Screen screen)
         {
             screen.UnloadContent();
             _screens.Remove(screen);
+            screen.State = ScreenState.Hidden;
+            screen.IsExiting = false;   // the exit finished; leaving it set re-enters AdvanceTransition on a re-add
         }
 
         /// <summary>Advance transitions and route input/update top-to-bottom. Call once per frame.</summary>
@@ -91,6 +109,8 @@ namespace KhaozEngine.Gui
             {
                 Screen screen = _updateScratch[i];
                 AdvanceTransition(screen, dt);
+                // Hidden covers both a dormant screen and one already removed this frame (Remove leaves it Hidden),
+                // so a screen whose UnloadContent has just run never gets one more Update out of the scratch copy.
                 if (screen.State == ScreenState.Hidden) continue;
 
                 bool receivesInput = !inputHandled || screen.AlwaysReceivesInput;

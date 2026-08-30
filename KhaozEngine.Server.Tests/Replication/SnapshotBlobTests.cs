@@ -1,6 +1,9 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
+using KhaozEngine.NetWorld;
 using KhaozEngine.Replication;
 using Xunit;
 
@@ -77,6 +80,59 @@ public class SnapshotBlobTests
         Assert.Single(reader.Entities);
         Assert.Equal(new byte[] { 0, 0, 0, 42 }, reader.Entities[0].Components[0].Payload);
         Assert.False(reader.Entities[0].Components[0].IsExtension);
+    }
+
+    [Fact]
+    public void Reader_LengthPrefixedBuiltin_WalksThroughTheStreamAwareResolver_AndRoundTrips()
+    {
+        // MoveProtocol.IdentityTypeId's payload is itself [ushort byteLen][utf8 bytes], which is why the engine's
+        // own layout table reports it as the LengthPrefixed sentinel rather than a byte count. An id-keyed callback
+        // sees only the type id, never the stream, so there is no value it can return for such a frame: the int
+        // return reads that sentinel as "unknown" and throws. This is #354's defect, and its fix.
+        int generation = MoveProtocol.WireProtocolVersion;
+        Assert.Equal(BuiltinBlobLayout.LengthPrefixed,
+            BuiltinBlobLayout.PayloadLength(MoveProtocol.IdentityTypeId, generation));
+
+        byte[] name = Encoding.UTF8.GetBytes("Ayla");
+        var payload = new byte[2 + name.Length];
+        BinaryPrimitives.WriteUInt16LittleEndian(payload, (ushort)name.Length);
+        name.CopyTo(payload, 2);
+        byte[] blob = Build((5, new (ushort, byte[])[] { (MoveProtocol.IdentityTypeId, payload) }));
+
+        Assert.Throws<InvalidOperationException>(
+            () => new SnapshotBlobReader(blob, id => BuiltinBlobLayout.PayloadLength(id, generation)));
+
+        // The stream-aware overload reads the prefix to answer, off the SAME table, and the payload it captures
+        // keeps that prefix.
+        var reader = new SnapshotBlobReader(blob, (id, br) =>
+        {
+            int length = BuiltinBlobLayout.PayloadLength(id, generation);
+            return length == BuiltinBlobLayout.LengthPrefixed ? 2 + br.ReadUInt16() : length;
+        });
+        Assert.Single(reader.Entities);
+        Assert.Equal(payload, reader.Entities[0].Components[0].Payload);
+        Assert.False(reader.Entities[0].Components[0].IsExtension);
+
+        // Which is what keeps the re-emit byte-identical: the rewind means nothing the resolver read is lost.
+        var writer = new SnapshotBlobWriter();
+        foreach (SnapshotBlobEntity e in reader.Entities) writer.AddEntity(e.NetId, e.Components);
+        Assert.Equal(blob, writer.ToArray());
+    }
+
+    [Fact]
+    public void Reader_StreamAwareResolver_ReadingPastATruncatedFrame_ThrowsInvalidOperation()
+    {
+        // The resolver's own read can run off the end of a corrupt body. That must surface as this reader's
+        // exception type like every other malformed input, not as a raw EndOfStreamException.
+        using var ms = new MemoryStream();
+        using var bw = new BinaryWriter(ms);
+        bw.Write(1);            // count
+        bw.Write(5L);           // netId
+        bw.Write((ushort)3);    // built-in type id, and then nothing: the length prefix itself is missing
+        bw.Flush();
+
+        Assert.Throws<InvalidOperationException>(
+            () => new SnapshotBlobReader(ms.ToArray(), (id, br) => 2 + br.ReadUInt16()));
     }
 
     [Fact]

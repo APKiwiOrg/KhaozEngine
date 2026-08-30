@@ -109,7 +109,12 @@ area-of-interest deltas.
   (id >= the floor) are length-prefixed and self-describing; a built-in (unframed) frame is walkable only when the
   reader is given a `builtinPayloadLength` resolver for the OLD layout it targets (else it throws rather than
   mis-parsing). A well-formed blob round-trips byte-identically, so a migration that touches one component leaves
-  every other byte identical. **`RetainedComponent`** is the opaque frame type shared by `TryApplyRetainingUnknown`
+  every other byte identical. A built-in whose payload carries its own length (`MoveProtocol.IdentityTypeId` is
+  `[ushort byteLen][utf8 bytes]`, which `BuiltinBlobLayout` reports as its `LengthPrefixed` sentinel) cannot be
+  described by an id-keyed resolver at all, so since 18.10.0 there is a second constructor taking a
+  `Func<ushort, BinaryReader, int>`: it is called with the reader at the payload's first byte and may read a prefix
+  to work the total out. Whatever it read is rewound before the payload is captured, so the frame keeps its prefix
+  and still re-emits byte for byte. **`RetainedComponent`** is the opaque frame type shared by `TryApplyRetainingUnknown`
   (capture) and the `SnapshotWriter.WriteFiltered` retained-frames overload (re-emit).
 
 Transport-free: snapshots/deltas are plain `byte[]`, shipped via your `KhaozEngine.Netcode` session layer

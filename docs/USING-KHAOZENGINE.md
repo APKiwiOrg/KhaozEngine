@@ -13742,6 +13742,15 @@ var cfg = new CellPersistenceConfig { SchemaVersion = 2 };
 // Bring a v1 blob to v2. Migrations operate on the raw snapshot BODY (post header); walk it with the
 // SnapshotBlobReader/Writer helpers rather than hand-parsing. Extension frames (id >= FirstExtensionTypeId) are
 // length-prefixed and self-describing; a built-in (unframed) frame needs the old-layout length you supply.
+// A built-in whose payload carries its own length (MoveProtocol.IdentityTypeId, which BuiltinBlobLayout reports as
+// LengthPrefixed) takes the stream-aware resolver overload instead, since no id-keyed callback can size it:
+//   new SnapshotBlobReader(body, (id, br) =>
+//   {
+//       int length = BuiltinBlobLayout.PayloadLength(id, generation);
+//       return length == BuiltinBlobLayout.LengthPrefixed ? 2 + br.ReadUInt16() : length;
+//   });
+// The resolver is handed the reader at the payload's first byte and returns the frame's TOTAL payload size; the
+// stream is rewound before the payload is captured, so the prefix stays in the frame and the re-emit is identical.
 cfg.RegisterMigration(1, body =>
 {
     var reader = new SnapshotBlobReader(body);        // extension-only blob: no built-in resolver needed

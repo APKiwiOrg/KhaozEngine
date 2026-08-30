@@ -1,4 +1,6 @@
 using System;
+using System.Text;
+using System.Threading.Tasks;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode;
 using KhaozEngine.NetWorld;
@@ -48,5 +50,56 @@ public class WorldClientTimeoutTests
         for (int i = 0; i < 3; i++) client.Poll();
         Assert.Equal(WorldConnectionState.Disconnected, client.ConnectionState);
         Assert.Equal(DisconnectReason.ServerShutdown, client.DisconnectReason);
+    }
+
+    /// <summary>The ban mirror of the shutdown case above. The server's own ban path sends the typed
+    /// <see cref="ServerNoticeKind.Banned"/> notice at join, and the drop that follows must attribute as
+    /// <see cref="DisconnectReason.Banned"/> rather than the generic <see cref="DisconnectReason.Unreachable"/> a
+    /// crash or a network loss gives, so a consumer reading only the reason can tell a ban from an outage. The
+    /// harness produces the drop because <c>InMemoryHub</c>'s server endpoint no-ops Disconnect, exactly as the
+    /// shutdown case above does.</summary>
+    [Fact]
+    public async Task Drop_after_a_banned_notice_is_attributed_Banned()
+    {
+        var bans = new InMemoryBanStore();
+        await bans.BanAsync("evil", "cheating");
+
+        var hub = new InMemoryHub();
+        var config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 8 };
+        var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default, banStore: bans);
+        INetTransport ct = hub.CreateClient();
+        var client = new WorldClient(ct, Flat, MoveTuning.Default,
+            new WorldClientConfig { TickSeconds = config.TickSeconds, DisconnectTimeoutSeconds = 5f },
+            token: Encoding.UTF8.GetBytes("evil"));
+
+        for (int i = 0; i < 6; i++) { server.Poll(); server.Tick(config.TickSeconds); client.Poll(); }
+        Assert.Equal(0, server.PlayerCount);
+        Assert.True(client.LastNotice.HasValue);
+        Assert.Equal(ServerNoticeKind.Banned, client.LastNotice!.Value.Kind);
+
+        hub.DisconnectClient(ct);
+        for (int i = 0; i < 3; i++) client.Poll();
+        Assert.Equal(WorldConnectionState.Disconnected, client.ConnectionState);
+        Assert.Equal(DisconnectReason.Banned, client.DisconnectReason);
+    }
+
+    /// <summary>The gate is the notice, not the drop: a drop with nothing in front of it still reads as
+    /// <see cref="DisconnectReason.Unreachable"/>.</summary>
+    [Fact]
+    public void Drop_with_no_notice_in_front_of_it_is_still_Unreachable()
+    {
+        var hub = new InMemoryHub();
+        var config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 8 };
+        var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
+        INetTransport ct = hub.CreateClient();
+        var client = new WorldClient(ct, Flat, MoveTuning.Default,
+            new WorldClientConfig { TickSeconds = config.TickSeconds, DisconnectTimeoutSeconds = 5f });
+
+        for (int i = 0; i < 6; i++) { server.Poll(); server.Tick(config.TickSeconds); client.Poll(); }
+        Assert.Equal(WorldConnectionState.Connected, client.ConnectionState);
+
+        hub.DisconnectClient(ct);
+        for (int i = 0; i < 3; i++) client.Poll();
+        Assert.Equal(DisconnectReason.Unreachable, client.DisconnectReason);
     }
 }

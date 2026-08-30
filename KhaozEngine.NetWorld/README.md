@@ -412,6 +412,19 @@ Target a player by `PlayerRef.Slot(n)` or `PlayerRef.Account("...")`. `SetSpeedS
 same queue on both heads (it is a gameplay mutation, not an admin action, so it is not on `IAdminControllable`).
 See "Per-entity speed scale" below.
 
+**Kicking with a reason.** `Disconnect(slot)` drops a connection silently, which a client reads as a transient
+outage and reconnects on. `Disconnect(slot, reason)` carries the reason on the disconnect itself (over
+`INetTransport.Disconnect(id, reason)`), so it survives a teardown that outruns the reliable flush and surfaces on
+the client as `DisconnectReasonDetail`. That is the overload a repeated-offense kick out of an
+`OnSuspiciousActivity` handler wants. The reason is a stable token, not display text: a headless server owns no
+string catalog, so send something the client matches and renders from its own localization.
+
+**Bounding a connection flood.** `MaxPendingConnections` on either config (0, the default, is unlimited) caps how
+many connections the server holds that have no slot yet, so a flood degrades to refused handshakes rather than
+unbounded server-side state. The per-connection `AntiCheat` limiter cannot help there, because it does not engage
+until a slot exists. `PendingConnectionCount` and `RefusedPendingConnectionCount` on both servers make it
+observable. Size the cap above the concurrent-join burst a launch or a restart produces, not at `MaxPlayers`.
+
 **`IBanStore`** is consulted at connect: a banned account is rejected before it spawns. `InMemoryBanStore` is
 the in-memory default; `WorldStoreBanStore` persists over any `IWorldStore` keyspace (`ban:{accountId}`) with a
 synchronous in-memory cache (call `LoadAsync()` once at startup). Pass either as the trailing `banStore:` ctor
@@ -419,7 +432,10 @@ arg on `WorldServer` or `ShardedWorldServer`. Bans key on the verified account i
 
 That is the LIVE ban path: the check runs at JOIN, after the authenticator admitted the peer, and the kick is a
 typed `ServerNotice(ServerNoticeKind.Banned)`, so a ban applied mid-session lands on the next join and a game
-banned-player banner has a typed notice to render. `KhaozEngine.Netcode.BanGateAuthenticator` is the other path,
+banned-player banner has a typed notice to render. The drop that follows attributes as
+`DisconnectReason.Banned` on the client, mirroring what a `Shutdown` notice does for `ServerShutdown`, so a
+consumer reading only the disconnect reason can tell a ban from an outage. It is still retried on the backoff,
+because a ban may carry an expiry. `KhaozEngine.Netcode.BanGateAuthenticator` is the other path,
 refusing a subject the head ALREADY knows is banned during AUTHENTICATION with the `ke:banned` wire reason, before
 any join happens. It takes a `Func<string,bool>` rather than this interface because `KhaozEngine.Netcode` cannot
 reference this package. A game that wants both puts the SAME store behind both, here as `banStore:` and there as

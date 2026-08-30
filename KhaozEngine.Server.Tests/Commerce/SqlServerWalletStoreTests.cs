@@ -105,6 +105,28 @@ public sealed class SqlServerWalletStoreTests
         Assert.Equal(4, await store.GetBalanceAsync(upperAccount, Currency));
     }
 
+    /// <summary>The SQL Server row of <see cref="PeriodicGrantResetContract"/>, which the contract base cannot carry
+    /// for this backend because its <c>[Fact]</c> rows cannot skip. The reset writes through this backend's MERGE and
+    /// the claim that follows keys on the DATETIME2 instant it reads back, so this is the one place that proves the
+    /// round trip survives a real server rather than a dictionary.</summary>
+    [SqlServerFact]
+    public async Task Reset_reopens_the_reward_against_a_retained_ledger()
+    {
+        SqlServerWalletStore store = NewStore();
+        AccountId account = FreshAccount();
+        Wallet wallet = new(store, new InMemoryProductCatalog(Array.Empty<ProductDefinition>()));
+        PeriodicGrant grant = new(wallet, store, TimeSpan.FromHours(24), "dailyShard", Currency, 1);
+        DateTimeOffset t0 = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+        Assert.True((await grant.TryClaimAsync(account, t0)).Granted);
+        Assert.False((await grant.TryClaimAsync(account, t0.AddHours(1))).Granted);
+
+        await grant.ResetAsync(account, t0.AddHours(2));
+
+        Assert.True((await grant.TryClaimAsync(account, t0.AddHours(2))).Granted);
+        Assert.Equal(2, await wallet.BalanceAsync(account, Currency));
+    }
+
     /// <summary>Stress the atomic credit/debit update paths against a live server: many concurrent credits and
     /// debits, distinct idempotency keys, racing on the same account row under <c>IsolationLevel.Serializable</c>.
     /// The final balance must equal the net of applied ops and must never go negative. Only runs when

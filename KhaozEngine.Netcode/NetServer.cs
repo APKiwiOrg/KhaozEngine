@@ -29,6 +29,12 @@ public sealed class NetServer
     private readonly Dictionary<int, string> subjectBySlot = new();
     private readonly DuplicateSessionPolicy duplicateSessions;
     private readonly BoundedEventQueue<ServerSessionEvent> inbox;
+    // Connections the transport has accepted that hold no slot yet: connected, Hello not yet answered. Until this
+    // existed a Connected event was a no-op with nothing to count, so a connection flood was invisible here AND
+    // unbounded, and the only cap in the stack (the per-connection rate limiter) does not engage until a slot exists.
+    private readonly HashSet<NetConnectionId> pending = new();
+    private readonly int maxPendingConnections;
+    private long refusedPending;
     // One reusable buffer the per-tick game sends frame into, grown to the largest payload seen and then reused. A
     // broadcast frames ONCE into it and hands the same span to every peer, so the fan-out costs no allocation at all
     // rather than one frame plus a copy per player, every broadcast, every tick. Safe to reuse because Send is
@@ -46,20 +52,42 @@ public sealed class NetServer
     /// host's per-player state. Drops are counted in <see cref="DroppedEventCount"/>.</param>
     /// <param name="duplicateSessions">What a Hello does when its authenticated subject already holds a slot. Default
     /// <see cref="DuplicateSessionPolicy.KickOlder"/>. Tokenless connections (empty subject) are never deduped.</param>
+    /// <param name="maxPendingConnections">Global cap on connections that have been accepted but hold no slot yet
+    /// (connected, Hello not yet answered). 0, the default, leaves it unlimited, which is the pre-cap behaviour. Above
+    /// 0, a connect past the cap is refused immediately, so a connection flood degrades to refused handshakes instead
+    /// of unbounded server-side state. Size it above the real concurrent-join burst a launch or a restart produces, not
+    /// at <paramref name="maxPlayers"/>: a pending connection is cheap and a cap that bites normal traffic locks out
+    /// legitimate players. Counted in <see cref="RefusedPendingConnectionCount"/>.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxPendingConnections"/> is negative.</exception>
     public NetServer(INetTransport transport, int maxPlayers, IConnectionAuthenticator authenticator,
         int maxQueuedEvents = BoundedEventQueue<ServerSessionEvent>.DefaultCapacity,
-        DuplicateSessionPolicy duplicateSessions = DuplicateSessionPolicy.KickOlder)
+        DuplicateSessionPolicy duplicateSessions = DuplicateSessionPolicy.KickOlder,
+        int maxPendingConnections = 0)
     {
         this.transport = transport ?? throw new ArgumentNullException(nameof(transport));
         this.authenticator = authenticator ?? throw new ArgumentNullException(nameof(authenticator));
+        if (maxPendingConnections < 0)
+            throw new ArgumentOutOfRangeException(nameof(maxPendingConnections), maxPendingConnections,
+                "must be 0 (unlimited) or positive");
         slots = new SlotAllocator(maxPlayers);
         this.duplicateSessions = duplicateSessions;
+        this.maxPendingConnections = maxPendingConnections;
         inbox = new BoundedEventQueue<ServerSessionEvent>(maxQueuedEvents);
     }
 
     /// <summary>Total session events dropped because the undrained inbox hit its cap. Non-zero means the host is
     /// not draining as contracted (a stall) or a peer is flooding; under normal operation this stays 0.</summary>
     public long DroppedEventCount => inbox.DroppedCount;
+
+    /// <summary>Connections accepted but holding no slot yet: connected, Hello not yet answered. A handful at any
+    /// instant is normal (that is a join in flight). A number that climbs and stays there is either a flood or a set
+    /// of peers that connect and never say Hello.</summary>
+    public int PendingConnectionCount => pending.Count;
+
+    /// <summary>Total connects refused because <c>maxPendingConnections</c> was already reached. Stays 0 with no cap
+    /// configured, and 0 under normal traffic with one. Non-zero means the cap engaged, which is either a flood being
+    /// shed or a cap set below this server's real join burst.</summary>
+    public long RefusedPendingConnectionCount => refusedPending;
 
     /// <summary>Pumps the transport and processes handshake/data/disconnect into session events.</summary>
     public void Poll()
@@ -70,9 +98,22 @@ public sealed class NetServer
             switch (ev.Type)
             {
                 case NetEventType.Connected:
-                    // Pending: no slot until a valid Hello arrives.
+                    // Pending: no slot until a valid Hello arrives, so the only server-side state this connection
+                    // pins until then is its entry here. Cap the set and a connection flood degrades to refused
+                    // handshakes. The refusal is a BARE disconnect, not the framed Reject a rejected Hello gets: a
+                    // cap whose job is to shed a flood must not answer every flooded connect with bytes of its own.
+                    // A legitimate client refused this way reads a plain drop and comes back on its backoff, which is
+                    // the right answer for a transient capacity limit.
+                    if (maxPendingConnections > 0 && pending.Count >= maxPendingConnections)
+                    {
+                        refusedPending++;
+                        transport.Disconnect(ev.Connection);
+                        break;
+                    }
+                    pending.Add(ev.Connection);
                     break;
                 case NetEventType.Disconnected:
+                    pending.Remove(ev.Connection);
                     if (slotByConnection.TryGetValue(ev.Connection, out int leftSlot))
                     {
                         RemovePeer(ev.Connection, leftSlot);
@@ -130,6 +171,7 @@ public sealed class NetServer
         }
         connectionBySlot[newSlot] = ev.Connection;
         slotByConnection[ev.Connection] = newSlot;
+        pending.Remove(ev.Connection);   // it holds a slot now, so it is no longer what the pending cap governs
         if (!string.IsNullOrEmpty(subject)) { slotBySubject[subject] = newSlot; subjectBySlot[newSlot] = subject; }
         // Little-endian by the wire format SessionOpcode.Welcome documents, not by whatever the host happens to be.
         // BitConverter writes in the running process's native order, which agrees with the documented format on every
@@ -164,6 +206,11 @@ public sealed class NetServer
     // forever instead of surfacing the terminal rejection - the "reconnect never succeeds after a deploy" bug.
     private void RejectAndDisconnect(NetConnectionId connection, string reason)
     {
+        // Torn down here, so it pins nothing further. Not left to the transport's own Disconnected event: a transport
+        // that tells only the PEER about a disconnect it was asked to make (the in-memory loopback is one) would never
+        // surface one for this connection, and the entry would sit in `pending` for the process's lifetime, which is
+        // the same slow leak the cap exists to prevent.
+        pending.Remove(connection);
         byte[] frame = SessionFrame.Write(SessionOpcode.Reject, Encoding.UTF8.GetBytes(reason));
         transport.Send(connection, frame, NetChannelReliability.ReliableOrdered);
         transport.Disconnect(connection, frame);
@@ -171,6 +218,7 @@ public sealed class NetServer
 
     private void RemovePeer(NetConnectionId conn, int slot)
     {
+        pending.Remove(conn);
         slotByConnection.Remove(conn);
         connectionBySlot.Remove(slot);
         if (subjectBySlot.Remove(slot, out string? subject)) slotBySubject.Remove(subject);
@@ -193,6 +241,20 @@ public sealed class NetServer
     {
         if (connectionBySlot.TryGetValue(slot, out NetConnectionId conn))
             transport.Disconnect(conn);
+    }
+
+    /// <summary>Disconnects one slot's connection (a kick) CARRYING <paramref name="reason"/>, so the kicked client
+    /// learns why rather than seeing a bare drop it would read as a transient outage and reconnect on. The reason
+    /// rides the same two paths a refused Hello uses (a reliable Reject frame AND the disconnect itself), so it
+    /// survives a teardown that outruns the reliable flush over real UDP. Surfaces on <c>WorldClient</c> as
+    /// <c>DisconnectReasonDetail</c>.
+    /// <para>A STABLE TOKEN, not display text: a headless server owns no string catalog, so send something the
+    /// client matches and renders from its own localization (the shape <see cref="SessionRejectReason"/> uses).</para>
+    /// No-op for an unknown slot.</summary>
+    public void Disconnect(int slot, string reason)
+    {
+        if (connectionBySlot.TryGetValue(slot, out NetConnectionId conn))
+            RejectAndDisconnect(conn, reason ?? string.Empty);
     }
 
     /// <summary>Sends game data to every joined slot. The frame is built once and the same bytes go to every peer.</summary>

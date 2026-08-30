@@ -8427,9 +8427,21 @@ server.OnSuspiciousActivity += a =>
 {
     // a.Slot, a.Reason (MalformedPacket | RateLimited | MovementCorrection), a.Magnitude (correction distance)
     log.Warn($"suspicious: slot {a.Slot} {a.Reason} ({a.Magnitude:0.00})");
-    if (a.Reason == SuspiciousReason.MovementCorrection) server.Disconnect(a.Slot);   // your policy: log / kick / ban
+    // Your policy: log / kick / ban. Disconnect(slot, reason) carries the reason on the disconnect itself, so the
+    // kicked client learns why instead of reading a bare drop as an outage and reconnecting into the same kick.
+    // A stable token, not display text: the client matches it and renders its own localized line.
+    if (a.Reason == SuspiciousReason.MovementCorrection) server.Disconnect(a.Slot, "ke:movement-anomaly");
 };
 ```
+
+**Bounding a connection flood.** A connection the transport accepted holds no slot until a valid handshake arrives,
+and the per-connection rate limiter above does not engage until it does. Set `MaxPendingConnections` on
+`WorldServerConfig` / `ShardedWorldServerConfig` (0, the default, is unlimited) to cap how many such connections the
+server holds at once, so a flood degrades to refused handshakes rather than unbounded server-side state. Size it
+above the concurrent-join burst a launch or a restart produces, not at `MaxPlayers`. Watch
+`server.PendingConnectionCount` (in flight right now) and `server.RefusedPendingConnectionCount` (total shed) to
+tell a flood being refused from a cap set below your real join burst. This is the one flood mitigation available
+without a remote address, which the transport seam deliberately does not expose.
 
 `MovementCorrection` fires when the authoritative sim has to deny a player's *intended* move (a wall slide,
 static collision, or play-area bound pulls them back) by more than `MaxCorrectionDistance` for `CorrectionStreak`
@@ -12113,8 +12125,16 @@ if (claim.Granted)
 else
     ShowCountdown(claim.TimeUntilNext);
 
+// Re-open the reward (wiped progress, a rewards reset, a seasonal re-issue on the same reward id). Never clear the
+// schedule store to do this: the next claim would take the first-ever path, replay the sentinel the wallet ledger
+// still holds, and be denied with no error. ResetAsync WRITES a schedule row, which keeps that path unreachable.
+await daily.ResetAsync(account, DateTimeOffset.UtcNow);
+
 long balance = await wallet.BalanceAsync(account, new CurrencyId("shard"));
 ```
+
+`rewardId` may not contain `':'`, the separator the wallet idempotency key joins its segments with. An account id
+still may (the fleet writes them as `"acct:1"`).
 
 `Wallet.SpendAsync` debits (fails with `Insufficient`, no throw, if the balance is too low); `GrantAsync` is
 a raw server-authorized credit for anything outside the periodic/purchase paths. See
@@ -14203,7 +14223,7 @@ client.AdvancePresentation(dt);
 EntityRenderState[] snapshot = client.Snapshot();
 ```
 
-`ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below), `SignedInElsewhere` and `AlreadySignedIn` (the duplicate-session gate, below). The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
+`ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below), `SignedInElsewhere` and `AlreadySignedIn` (the duplicate-session gate, below), and `Banned` (the drop after a `ServerNoticeKind.Banned` notice, see "Bans" below). The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
 
 **One account, one live session (17.38.0).** The join gate keys a live session by the SUBJECT the authenticator verified, so two clients presenting one account's connect token cannot become two live sessions. Above the session layer that shape is unrepresentable: `WorldPersistence` keys one record per account, so the two shared it and the later join left the earlier session unrestored, then let its default-spawn state overwrite the record once the winner left (#662). Set the policy on either head:
 
@@ -14332,7 +14352,11 @@ spawns. `InMemoryBanStore` is the default; `WorldStoreBanStore` persists over an
 to hydrate from the store). Pass it as the trailing `banStore:` ctor arg on either server. Bans key on the verified
 account id; guests are not bannable. A rejected account receives a typed `ServerNoticeKind.Banned` notice (empty
 message) just before the drop, which the client maps to its own localized "you are banned" string, so the ban text
-never ships from the server as a hardcoded literal.
+never ships from the server as a hardcoded literal. The drop itself attributes as `DisconnectReason.Banned`,
+mirroring the way a `Shutdown` notice promotes the following drop to `ServerShutdown`, so a screen that only reads
+`client.DisconnectReason` can still tell a ban from a network outage. It stays retried on the reconnect backoff,
+deliberately: a ban may carry an expiry, and going terminal would sit out a five-minute ban forever. Read the
+reason and set `ReconnectBackoff.MaxAttempts` (or turn `AutoReconnect` off) if your game would rather stop asking.
 
 **Account enumeration.** Stores opt into `IEnumerableWorldStore` (`InMemoryWorldStore`, `SqliteWorldStore`,
 `SqlServerWorldStore` all do): `EnumerateAsync(keyPrefix?)` streams `WorldStoreEntry { Key, UpdatedAt, Size? }`.
@@ -14391,6 +14415,14 @@ return 501. An unknown action name returns 404. A malformed JSON body returns 40
 json body" }`. An absent, empty, whitespace-only, or literal JSON-null request body all reach the handler as a
 null payload, so the common `payload?.GetProperty(...)` idiom is safe against a caller that posts nothing. Bind
 defaults to loopback. There are no changes to the game client wire protocol.
+
+**Pre-auth exposure.** The TLS handshake completes before the bearer token is read, so an unauthenticated peer can
+make the endpoint do RSA work and hold connections open regardless of the token. `AdminEndpointOptions` bounds that
+with `MaxConcurrentConnections` (default 64, Kestrel unlimited), `RequestHeadersTimeout` (default 10 s, Kestrel
+30 s, and the one that runs before the bearer check, so it is the slowloris bound) and `KeepAliveTimeout` (default
+30 s, Kestrel 130 s). Set any to `null` to leave Kestrel's own value. A non-positive value throws from the
+`AdminHttpServer` constructor rather than later inside Kestrel's start. Neither knob replaces the two real
+mitigations: keep the endpoint on loopback or behind a tunnel, and keep the token long and random.
 
 ### Client self-rescue / unstuck
 

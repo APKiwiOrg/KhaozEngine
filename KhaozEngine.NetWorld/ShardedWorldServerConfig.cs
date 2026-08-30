@@ -74,4 +74,13 @@ public sealed partial class ShardedWorldServerConfig
     /// account record. Set <see cref="DuplicateSessionPolicy.RefuseNewer"/> to keep the existing session and refuse
     /// the newcomer instead. A TOKENLESS connection has no subject and is never deduped.</summary>
     public DuplicateSessionPolicy DuplicateSessions { get; init; } = DuplicateSessionPolicy.KickOlder;
+
+    /// <summary>Global cap on connections accepted but holding no slot yet (connected, Hello not yet answered),
+    /// forwarded to <see cref="NetServer"/>. 0, the default, leaves it unlimited. Above 0, a connect past the cap is
+    /// refused immediately, so a connection flood degrades to refused handshakes rather than unbounded server-side
+    /// state, which is the ONE flood mitigation available without a remote address (the per-connection rate limiter
+    /// only engages after a slot exists). Size it above the concurrent-join burst a launch or a restart produces, not
+    /// at <see cref="MaxPlayers"/>. Watch <see cref="ShardedWorldServer.RefusedPendingConnectionCount"/> to tell a
+    /// flood being shed from a cap set too low.</summary>
+    public int MaxPendingConnections { get; init; }
 }

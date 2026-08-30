@@ -100,6 +100,15 @@ public sealed class WorldServerConfig
     /// <see cref="DuplicateSessionPolicy.RefuseNewer"/> to keep the existing session and refuse the newcomer instead.
     /// A TOKENLESS connection has no subject and is never deduped.</summary>
     public DuplicateSessionPolicy DuplicateSessions { get; init; } = DuplicateSessionPolicy.KickOlder;
+
+    /// <summary>Global cap on connections accepted but holding no slot yet (connected, Hello not yet answered),
+    /// forwarded to <see cref="NetServer"/>. 0, the default, leaves it unlimited. Above 0, a connect past the cap is
+    /// refused immediately, so a connection flood degrades to refused handshakes rather than unbounded server-side
+    /// state, which is the ONE flood mitigation available without a remote address (the per-connection rate limiter
+    /// only engages after a slot exists). Size it above the concurrent-join burst a launch or a restart produces, not
+    /// at <see cref="MaxPlayers"/>. Watch <see cref="WorldServer.RefusedPendingConnectionCount"/> to tell a flood
+    /// being shed from a cap set too low.</summary>
+    public int MaxPendingConnections { get; init; }
 }
 
 /// <summary>
@@ -199,14 +208,15 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         // Always enforce the engine wire generation at connect (independent of any consumer version gate), so a
         // wire-skewed or version-less client is rejected cleanly instead of admitted and left to misparse the wire.
         net = new NetServer(transport, config.MaxPlayers, WireGenerationAuthenticator.Install(authenticator),
-            duplicateSessions: config.DuplicateSessions);
+            duplicateSessions: config.DuplicateSessions, maxPendingConnections: config.MaxPendingConnections);
         this.banStore = banStore;
         interest = new InterestGrid(MathF.Max(1f, config.InterestRadius));
     }
 
     /// <summary>Raised when the server flags a connection as suspicious: a malformed/NaN move packet, a per-
     /// connection message-rate trip, or a sustained streak of large authoritative movement corrections. The engine
-    /// signals; the game decides the policy (log / kick via <see cref="Disconnect"/> / ban). Allocation-free.</summary>
+    /// signals; the game decides the policy (log / kick via <see cref="Disconnect(int)"/> or
+    /// <see cref="Disconnect(int, string)"/> / ban). Allocation-free.</summary>
     public event Action<SuspiciousActivity>? OnSuspiciousActivity;
 
     /// <summary>Raised on the host thread during <see cref="Poll"/> when a joined client sends a game message
@@ -226,6 +236,14 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     /// handler calls. Immediately removes the slot from the authoritative state so <see cref="PlayerCount"/> reflects
     /// the kick without waiting for the transport event. No-op for an unknown slot.</summary>
     public void Disconnect(int slot) { net.Disconnect(slot); OnLeave(slot); }
+
+    /// <summary>Disconnects a player's connection CARRYING <paramref name="reason"/>, so a kicked client learns why
+    /// instead of reading a bare drop as a transient outage and reconnecting into the same kick. Same immediate
+    /// <see cref="OnLeave"/> as the reasonless overload. A repeated-offense kick out of an
+    /// <see cref="OnSuspiciousActivity"/> handler is what this is for. The reason is a STABLE TOKEN, not display
+    /// text (a headless server owns no string catalog), and surfaces on the client as
+    /// <see cref="WorldClient.DisconnectReasonDetail"/>. No-op for an unknown slot.</summary>
+    public void Disconnect(int slot, string reason) { net.Disconnect(slot, reason); OnLeave(slot); }
 
     /// <summary>Broadcasts a <see cref="ServerNotice"/> to every connected client (reliable-ordered), surfaced on
     /// <see cref="WorldClient.NoticeReceived"/>. Out-of-band: rides the Data channel alongside snapshots via the
@@ -283,6 +301,13 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     public ReplicationRegistry Registry => registry;
     /// <summary>Number of joined players.</summary>
     public int PlayerCount => netIdBySlot.Count;
+    /// <summary>Connections accepted but holding no slot yet: connected, Hello not yet answered. A handful at any
+    /// instant is a join in flight. A number that climbs and stays there is a flood, or peers that connect and never
+    /// say Hello.</summary>
+    public int PendingConnectionCount => net.PendingConnectionCount;
+    /// <summary>Total connects refused because <see cref="WorldServerConfig.MaxPendingConnections"/> was already
+    /// reached. 0 with no cap configured, and 0 under normal traffic with one.</summary>
+    public long RefusedPendingConnectionCount => net.RefusedPendingConnectionCount;
     /// <summary>The net id of the player entity for a joined slot.</summary>
     public bool TryGetPlayerNetId(int slot, out long netId) => netIdBySlot.TryGetValue(slot, out netId);
 

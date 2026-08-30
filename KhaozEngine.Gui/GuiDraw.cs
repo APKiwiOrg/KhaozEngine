@@ -227,20 +227,33 @@ namespace KhaozEngine.Gui
         internal readonly record struct CooldownQuad(Vector2 P0, Vector2 P1, Vector2 P2, Vector2 P3);
 
         /// <summary>
+        /// The most quads <see cref="CooldownSweepQuads"/> can emit, and so the smallest buffer it accepts. The fan's
+        /// boundary angles are the trailing edge, at most the four rect corners, and the fixed 12 o'clock edge: six
+        /// angles, five slices between them.
+        /// </summary>
+        internal const int MaxCooldownQuads = 5;
+
+        /// <summary>
         /// The "remaining cooldown" pie over <paramref name="rect"/> as a fan of quads (each a triangle from the rect
-        /// centre to two perimeter points). MMO-standard semantics: <paramref name="fraction"/> is clamped to [0,1],
-        /// 0 returns an empty fan (no overlay) and 1 covers the whole rect. The covered region is bounded on one side
+        /// centre to two perimeter points), written into <paramref name="quads"/> and returning how many were written.
+        /// MMO-standard semantics: <paramref name="fraction"/> is clamped to [0,1], 0 writes nothing (no overlay) and
+        /// 1 covers the whole rect. The covered region is bounded on one side
         /// by the 12 o'clock line (top-centre of the rect) and on the other by a trailing edge that sweeps CLOCKWISE
         /// as <paramref name="fraction"/> DECREASES, so the icon behind is revealed clockwise from the top. The
         /// boundary runs along the rect PERIMETER (a square / rounded slot, not a circle): each of the four rect
         /// corners that falls inside the swept arc is inserted as a fan vertex so every slice's outer edge lies
         /// exactly on an edge of the rect. Pure geometry (no GPU), headless-testable, mirrors <see cref="NineSlicePatches"/>.
+        /// <para>Caller-provided span rather than a returned list: both callers run this per frame per cooldown slot
+        /// (an ability bar with several slots on cooldown draws it several times a frame), and the quads are consumed
+        /// immediately and thrown away, so nothing about the fan needs to live on the heap. Pass at least
+        /// <see cref="MaxCooldownQuads"/> quads, which is what a stackalloc at the call site costs.</para>
         /// </summary>
-        internal static System.Collections.Generic.List<CooldownQuad> CooldownSweepQuads(Rect rect, float fraction)
+        internal static int CooldownSweepQuads(Rect rect, float fraction, Span<CooldownQuad> quads)
         {
-            var quads = new System.Collections.Generic.List<CooldownQuad>();
+            if (quads.Length < MaxCooldownQuads)
+                throw new ArgumentException($"needs room for {MaxCooldownQuads} quads", nameof(quads));
             float f = fraction < 0f ? 0f : fraction > 1f ? 1f : fraction;
-            if (f <= 0f) return quads;
+            if (f <= 0f) return 0;
 
             float hx = rect.Width * 0.5f, hy = rect.Height * 0.5f;
             var center = new Vector2(rect.X + hx, rect.Y + hy);
@@ -250,20 +263,23 @@ namespace KhaozEngine.Gui
             // Boundary angles clockwise from 12 o'clock: the trailing edge phi0, then any rect corners strictly
             // inside (phi0, 2pi) in increasing order, then 2pi (the fixed 12 o'clock edge). A rect's corner angles
             // fall one per 90-degree band: top-right, bottom-right, bottom-left, top-left.
-            float[] corners = { AngleFromTop(hx, -hy), AngleFromTop(hx, hy), AngleFromTop(-hx, hy), AngleFromTop(-hx, -hy) };
-            var angles = new System.Collections.Generic.List<float>(6) { phi0 };
+            Span<float> corners = stackalloc float[4]
+                { AngleFromTop(hx, -hy), AngleFromTop(hx, hy), AngleFromTop(-hx, hy), AngleFromTop(-hx, -hy) };
+            Span<float> angles = stackalloc float[MaxCooldownQuads + 1];
+            int count = 0;
+            angles[count++] = phi0;
             foreach (float a in corners)
-                if (a > phi0 && a < twoPi) angles.Add(a);
-            angles.Sort();
-            angles.Add(twoPi);
+                if (a > phi0 && a < twoPi) angles[count++] = a;
+            angles[1..count].Sort();
+            angles[count++] = twoPi;
 
-            for (int i = 0; i < angles.Count - 1; i++)
+            for (int i = 0; i < count - 1; i++)
             {
                 Vector2 pa = PerimeterPoint(center, hx, hy, angles[i]);
                 Vector2 pb = PerimeterPoint(center, hx, hy, angles[i + 1]);
-                quads.Add(new CooldownQuad(center, pa, pb, pb));   // 4th corner == P2 => a degenerate quad (triangle)
+                quads[i] = new CooldownQuad(center, pa, pb, pb);   // 4th corner == P2 => a degenerate quad (triangle)
             }
-            return quads;
+            return count - 1;
         }
 
         // Clockwise angle in [0, 2pi) from 12 o'clock of the offset (vx, vy) from the rect centre. Screen space is
@@ -293,10 +309,13 @@ namespace KhaozEngine.Gui
         /// </summary>
         internal static void CooldownSweep(SpriteBatch batch, Texture2D white, Rect rect, float fraction, Vector4 tint)
         {
+            Span<CooldownQuad> quads = stackalloc CooldownQuad[MaxCooldownQuads];
+            int n = CooldownSweepQuads(rect, fraction, quads);
+            if (n == 0) return;
             var uv = new Vector4(0f, 0f, 1f, 1f);
             var col = (Color)tint;
-            foreach (CooldownQuad q in CooldownSweepQuads(rect, fraction))
-                batch.DrawQuad(white, q.P0, q.P1, q.P2, q.P3, uv, col);
+            for (int i = 0; i < n; i++)
+                batch.DrawQuad(white, quads[i].P0, quads[i].P1, quads[i].P2, quads[i].P3, uv, col);
         }
 
         // Emit one nine-slice cell, either as a single stretched patch or as a grid of native-size tiles (clipping

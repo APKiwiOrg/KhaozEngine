@@ -34,4 +34,14 @@ public enum DisconnectReason
     /// while the state is <c>Reconnecting</c>. Cap the asking with <see cref="ReconnectBackoff.MaxAttempts"/> if a
     /// game would rather stop after a few.</summary>
     AlreadySignedIn,
+    /// <summary>The transport dropped after a <see cref="ServerNoticeKind.Banned"/> notice: the server refused this
+    /// account rather than the connection being lost. Mirrors what <see cref="ServerShutdown"/> does for a planned
+    /// restart, so a consumer reading only the disconnect reason can tell a ban from an outage without also
+    /// subscribing to <see cref="WorldClient.NoticeReceived"/>. Show "you are banned", not "connection lost".
+    /// <para>RETRIED on the backoff, exactly like <see cref="ServerShutdown"/>, and deliberately so: a ban may carry
+    /// an expiry (<see cref="IBanStore.BanAsync"/> takes an <c>until</c>), and a client that went terminal here would
+    /// sit out a five-minute ban forever. A game that would rather stop asking sets
+    /// <see cref="ReconnectBackoff.MaxAttempts"/>, or turns <see cref="WorldClientConfig.AutoReconnect"/> off when it
+    /// reads this reason.</para></summary>
+    Banned,
 }

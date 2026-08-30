@@ -419,7 +419,10 @@ arg on `WorldServer` or `ShardedWorldServer`. Bans key on the verified account i
 
 That is the LIVE ban path: the check runs at JOIN, after the authenticator admitted the peer, and the kick is a
 typed `ServerNotice(ServerNoticeKind.Banned)`, so a ban applied mid-session lands on the next join and a game
-banned-player banner has a typed notice to render. `KhaozEngine.Netcode.BanGateAuthenticator` is the other path,
+banned-player banner has a typed notice to render. The drop that follows attributes as
+`DisconnectReason.Banned` on the client, mirroring what a `Shutdown` notice does for `ServerShutdown`, so a
+consumer reading only the disconnect reason can tell a ban from an outage. It is still retried on the backoff,
+because a ban may carry an expiry. `KhaozEngine.Netcode.BanGateAuthenticator` is the other path,
 refusing a subject the head ALREADY knows is banned during AUTHENTICATION with the `ke:banned` wire reason, before
 any join happens. It takes a `Func<string,bool>` rather than this interface because `KhaozEngine.Netcode` cannot
 reference this package. A game that wants both puts the SAME store behind both, here as `banStore:` and there as

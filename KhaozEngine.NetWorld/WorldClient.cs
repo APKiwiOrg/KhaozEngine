@@ -35,6 +35,7 @@ public sealed partial class WorldClient : IDisposable
     private readonly float disconnectTimeout;
     private float secondsSinceServerFrame;
     private bool sawShutdownNotice;
+    private bool sawBanNotice;
 
     // Remote interpolation: render replicated remotes on a FIXED delay (interpolationDelaySeconds behind the newest
     // received snapshot), lerping the two buffered snapshots bracketing that render time by their true timestamps
@@ -282,6 +283,7 @@ public sealed partial class WorldClient : IDisposable
                     disconnectReason = DisconnectReason.None;
                     disconnectReasonDetail = string.Empty;
                     sawShutdownNotice = false;
+                    sawBanNotice = false;
                     attempt = 0;
                     secondsSinceServerFrame = 0f;
                     // Advertise delta replication so a delta-aware server upgrades this slot to AoI deltas. Sent on
@@ -338,7 +340,13 @@ public sealed partial class WorldClient : IDisposable
                 case ClientSessionEventKind.Disconnected:
                     if (state != WorldConnectionState.Disconnected)
                     {
-                        disconnectReason = sawShutdownNotice ? DisconnectReason.ServerShutdown : DisconnectReason.Unreachable;
+                        // A typed notice that arrived before the drop says what the drop MEANS, so it wins over the
+                        // generic Unreachable a bare transport loss gets. A ban outranks a shutdown when somehow
+                        // both arrived: a broadcast restart warning goes to everyone, a ban is aimed at this account.
+                        // Neither changes whether the attempt is retried, only how it is described.
+                        disconnectReason = sawBanNotice ? DisconnectReason.Banned
+                            : sawShutdownNotice ? DisconnectReason.ServerShutdown
+                            : DisconnectReason.Unreachable;
                         FailAttempt(allowReconnect: true);
                     }
                     break;
@@ -608,6 +616,7 @@ public sealed partial class WorldClient : IDisposable
             case MoveProtocol.ServerFrameKind.Notice:
                 ServerNotice notice = MoveProtocol.DecodeNotice(payload);
                 if (notice.Kind == ServerNoticeKind.Shutdown) sawShutdownNotice = true;
+                else if (notice.Kind == ServerNoticeKind.Banned) sawBanNotice = true;
                 LastNotice = notice;
                 NoticeReceived?.Invoke(notice);
                 break;

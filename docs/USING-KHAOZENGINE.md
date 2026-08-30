@@ -14148,7 +14148,7 @@ client.AdvancePresentation(dt);
 EntityRenderState[] snapshot = client.Snapshot();
 ```
 
-`ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below), `SignedInElsewhere` and `AlreadySignedIn` (the duplicate-session gate, below). The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
+`ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below), `SignedInElsewhere` and `AlreadySignedIn` (the duplicate-session gate, below), and `Banned` (the drop after a `ServerNoticeKind.Banned` notice, see "Bans" below). The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
 
 **One account, one live session (17.38.0).** The join gate keys a live session by the SUBJECT the authenticator verified, so two clients presenting one account's connect token cannot become two live sessions. Above the session layer that shape is unrepresentable: `WorldPersistence` keys one record per account, so the two shared it and the later join left the earlier session unrestored, then let its default-spawn state overwrite the record once the winner left (#662). Set the policy on either head:
 
@@ -14277,7 +14277,11 @@ spawns. `InMemoryBanStore` is the default; `WorldStoreBanStore` persists over an
 to hydrate from the store). Pass it as the trailing `banStore:` ctor arg on either server. Bans key on the verified
 account id; guests are not bannable. A rejected account receives a typed `ServerNoticeKind.Banned` notice (empty
 message) just before the drop, which the client maps to its own localized "you are banned" string, so the ban text
-never ships from the server as a hardcoded literal.
+never ships from the server as a hardcoded literal. The drop itself attributes as `DisconnectReason.Banned`,
+mirroring the way a `Shutdown` notice promotes the following drop to `ServerShutdown`, so a screen that only reads
+`client.DisconnectReason` can still tell a ban from a network outage. It stays retried on the reconnect backoff,
+deliberately: a ban may carry an expiry, and going terminal would sit out a five-minute ban forever. Read the
+reason and set `ReconnectBackoff.MaxAttempts` (or turn `AutoReconnect` off) if your game would rather stop asking.
 
 **Account enumeration.** Stores opt into `IEnumerableWorldStore` (`InMemoryWorldStore`, `SqliteWorldStore`,
 `SqlServerWorldStore` all do): `EnumerateAsync(keyPrefix?)` streams `WorldStoreEntry { Key, UpdatedAt, Size? }`.

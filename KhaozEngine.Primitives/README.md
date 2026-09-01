@@ -13,9 +13,12 @@ automatically, so this is transparent to every other package.
   `FromBytes`, `FromHex`/`ToHex`, `WithAlpha`, `ScaleRgb` (scale RGB, keep alpha - dim a color without
   making it translucent, unlike `* float`), `ScaleRgbClamped` (`ScaleRgb`, but each scaled channel clamped
   to 0..1 - a brighten factor that would otherwise overshoot 1.0), `* float`, unclamped `Lerp`.
-- `DeterministicRng` - seeded xorshift128+ (splitmix64 init), reproducible across .NET versions and
-  platforms. `State` get/set for save/resume, `CreateDerived("combat")` for decorrelated per-subsystem
-  streams, `StableHash` for a platform-stable string hash.
+- `DeterministicRng` - seeded xorshift128+-derived recurrence (splitmix64 init), reproducible across .NET
+  versions and platforms. `State` get/set for save/resume, `CreateDerived("combat")` for decorrelated
+  per-subsystem streams, `StableHash` for a platform-stable string hash. Derived, not canonical: the state
+  update is Vigna's xorshift128+ word for word, but the returned sum is taken after that update rather than
+  before it, so the stream is not the one the studied generator emits. The output stream is a shipped
+  contract (persisted `State`, seed-generated content), so the variant is pinned by known vectors and stays.
 - `XorRng` - tiny xorshift32 value-type PRNG for allocation-free hot paths (particles, audio noise).
   Copy the struct to snapshot. Use `DeterministicRng` when you need resume or derived streams.
 - `StableHash` (14.9.0) - stateless, allocation-free integer hashing: `Mix(uint)`, `Mix(uint, uint)`,

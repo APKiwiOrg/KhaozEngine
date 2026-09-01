@@ -9433,10 +9433,10 @@ boxing), iteration via `Query()` and `ForEach<T1..T8>(RefAction<…>)` (plus opt
 see "Parallel `ForEach` + access declarations" below), parent/child hierarchy
 (`SetParent`/`DespawnTree`), per-`World` resources (`SetResource/GetResource<T>`), and systems grouped + ordered
 (`AddSystem(ISystem, group)`, `SetGroupOrder`, `Update(float dt)`). `CachedQuery` reuses a query across ticks to
-avoid per-tick allocation; `DeterministicRng` (xorshift128+/splitmix64, `CreateDerived(name)` for per-stream
-sub-RNGs) gives platform-stable RNG for lockstep sims; `WorldSerializer` round-trips a world as JSON (uses
-`KhaozEngine.Serialization.JsonDefaults.IncludeFields`). (`DeterministicRng` lives in
-`KhaozEngine.Primitives`, and the ECS uses it for lockstep RNG.)
+avoid per-tick allocation. `DeterministicRng` (a xorshift128+-derived recurrence over splitmix64 seeding,
+`CreateDerived(name)` for per-stream sub-RNGs) gives platform-stable RNG for lockstep sims. `WorldSerializer`
+round-trips a world as JSON (uses `KhaozEngine.Serialization.JsonDefaults.IncludeFields`).
+(`DeterministicRng` lives in `KhaozEngine.Primitives`, and the ECS uses it for lockstep RNG.)
 
 **Structural changes during iteration are forbidden, and since 17.37.0 they are refused (#118).** Iteration walks
 each archetype's rows by index. A structural change made DIRECTLY from inside a `ForEach` action, or from the body

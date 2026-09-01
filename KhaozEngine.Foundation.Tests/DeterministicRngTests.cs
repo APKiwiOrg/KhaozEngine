@@ -21,10 +21,52 @@ public class DeterministicRngTests
     [Fact]
     public void KnownVectorLocksAlgorithm()
     {
-        // Captured from the implementation (xorshift128+ seeded via splitmix64, seed 42).
+        // Captured from the implementation (the xorshift128+-derived recurrence seeded via splitmix64,
+        // seed 42). This vector is why the recurrence stays as it is: the stream is a shipped contract.
         var r = new DeterministicRng(42);
         ulong[] expected = { 12706997879443677767, 13388708669165669496, 16395596082725179435 };
         Assert.Equal(expected, new[] { r.NextULong(), r.NextULong(), r.NextULong() });
+    }
+
+    [Fact]
+    public void NextULong_IsTheDerivedVariantNotCanonicalXorshift128Plus()
+    {
+        // The state update is Vigna's xorshift128+ word for word, but the sum is taken over the NEW second
+        // word and the old one, where the canonical generator sums both words as they stood before the
+        // update. Pinning both halves keeps the class doc honest: the derived stream is what ships, and the
+        // canonical stream is what it is NOT. The variant is deliberate (persisted State, seed-generated
+        // content and two known vectors all ride on this stream), so it must not drift into the canonical
+        // form by a well-meant tidy-up either.
+        var rng = new DeterministicRng(42);
+        (ulong derived0, ulong derived1) = rng.State;
+        (ulong canonical0, ulong canonical1) = rng.State;
+        for (int i = 0; i < 8; i++)
+        {
+            ulong drawn = rng.NextULong();
+            Assert.Equal(DerivedVariant(ref derived0, ref derived1), drawn);
+            Assert.NotEqual(CanonicalXorshift128Plus(ref canonical0, ref canonical1), drawn);
+        }
+    }
+
+    /// <summary>Vigna's reference next(): the sum of both state words BEFORE either is mutated.</summary>
+    static ulong CanonicalXorshift128Plus(ref ulong state0, ref ulong state1)
+    {
+        ulong s1 = state0, s0 = state1;
+        ulong result = s0 + s1;
+        state0 = s0;
+        s1 ^= s1 << 23;
+        state1 = s1 ^ s0 ^ (s1 >> 18) ^ (s0 >> 5);
+        return result;
+    }
+
+    /// <summary>What DeterministicRng actually emits: the same update, summed AFTER it.</summary>
+    static ulong DerivedVariant(ref ulong state0, ref ulong state1)
+    {
+        ulong s1 = state0, s0 = state1;
+        state0 = s0;
+        s1 ^= s1 << 23;
+        state1 = s1 ^ s0 ^ (s1 >> 18) ^ (s0 >> 5);
+        return state1 + s0;
     }
 
     [Fact]
@@ -120,7 +162,7 @@ public class DeterministicRngTests
     public void CreateDerived_KnownVectorLocksDerivation()
     {
         // Captured from the implementation: DeterministicRng(42).CreateDerived("combat").
-        // Locks hash (64-bit DJB2-xor) + combine (seed ^ hash) + splitmix64 + xorshift128+.
+        // Locks hash (64-bit DJB2-xor) + combine (seed ^ hash) + splitmix64 + the derived recurrence.
         var r = new DeterministicRng(42).CreateDerived("combat");
         ulong[] expected = { 9806816559159912542, 11064271574511955243, 16628530826375170203 };
         Assert.Equal(expected, new[] { r.NextULong(), r.NextULong(), r.NextULong() });

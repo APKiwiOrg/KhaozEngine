@@ -41,6 +41,11 @@ namespace KhaozEngine.Game
         readonly DpiFont? _hudFont;
         readonly Texture2D? _hudWhite;
 
+        // Opt-in auto-pause while the window is backgrounded (GameAppOptions.PauseOnFocusLoss). Holds the
+        // focus edge and whether the pause on the clock is ours to lift, so a game's own pause survives a
+        // refocus. Constructed either way and inert when the option is off.
+        readonly FocusAutoPause _focusAutoPause;
+
         InputState _input = InputState.Empty;
         int _frameWidth, _frameHeight;
         int _lastW = -1, _lastH = -1;
@@ -115,6 +120,7 @@ namespace KhaozEngine.Game
             TryArmCrashReport(options);
 
             _resumeGapThresholdSeconds = options.ResumeGapThresholdSeconds;
+            _focusAutoPause = new FocusAutoPause(options.PauseOnFocusLoss);
             _jobSchedulerDisabled = options.DisableJobScheduler;
             _jobSchedulerDegreeOfParallelism = options.JobSchedulerDegreeOfParallelism;
 
@@ -522,6 +528,10 @@ namespace KhaozEngine.Game
                 _foregroundRequested = false;
                 _window.RequestForeground();
             }
+
+            // Before the clock update, so a frame that loses focus already reports a zero scaled delta.
+            // Inert unless GameAppOptions.PauseOnFocusLoss is set, and it only lifts a pause it took itself.
+            _focusAutoPause.Update(frame.Input.WindowFocused, _clock);
 
             _clock.Update(frame.Dt);
             _input = frame.Input;

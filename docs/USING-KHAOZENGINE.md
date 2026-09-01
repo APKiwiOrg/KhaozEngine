@@ -325,6 +325,15 @@ by default, so a client no longer free-runs a whole core plus the GPU out of the
   wallpaper / capture source), or a custom policy with the `init` setters. On a minimized frame `Frame.RenderSuppressed`
   is set. `GameApp` honours it (runs `OnUpdate` only, skips the draw passes), and a raw `AppWindow.Run` callback must
   check it before drawing. The per-frame decision is the pure, headless-tested `BackgroundThrottlePolicy.Plan`.
+- **`PauseOnFocusLoss` stops the SIMULATION while the window is backgrounded** (`GameAppOptions.PauseOnFocusLoss`,
+  default `false` = the historic behaviour, physics and timers and AI carry on full tilt behind whatever the player
+  alt-tabbed to). Set it and the frame loop drives `Clock.Pause()` / `Clock.Resume()` off the frame snapshot's
+  `Input.WindowFocused` bit, so an unfocused frame reports a zero `Dt` and the clock's `Paused` / `Resumed` events
+  fire on the transitions. It only lifts a pause it took itself: a game already paused when focus is lost (its own
+  pause menu, or a zero `TimeScale`) is still paused when the window comes back, so the switch composes with a
+  game's own pause instead of fighting it. Real time keeps running either way, which is what `OnResume` and the
+  clock's unscaled members are for. Orthogonal to `BackgroundThrottle`, which throttles RENDERING and leaves the
+  simulation alone.
 
 ```csharp
 var o = GameAppOptions.For("My Game", 1280, 720);   // FrameCap.Auto + background throttle ON by default
@@ -332,6 +341,7 @@ o.FrameCap = FrameCap.Uncapped;                       // opt back into a free-ru
 o.FrameCapHz = 120;                                   // or an explicit fixed cap (wins over FrameCap)
 o.BackgroundThrottle = BackgroundThrottlePolicy.Disabled;                       // render full-rate when backgrounded
 o.BackgroundThrottle = BackgroundThrottlePolicy.Default with { UnfocusedHz = 30 }; // or tune it
+o.PauseOnFocusLoss = true;                            // and freeze the sim while the window is backgrounded
 ```
 
 **Runtime display settings (since 9.24.0).** Present mode, frame cap, window mode, and resolution are all changeable

@@ -47,6 +47,13 @@ minimized game (skips render + present, but `OnUpdate` keeps running so netcode/
 unfocused-but-visible one to a low cap. `BackgroundThrottlePolicy.Disabled` renders full-rate in the background. Both
 are live-changeable via `GameApp.FrameCap` / `GameApp.BackgroundThrottle`.
 
+**Auto-pause on focus loss** (`GameAppOptions.PauseOnFocusLoss`, default `false`): opt in and the frame loop pauses
+`GameApp.Clock` while the window is backgrounded, off the frame snapshot's `Input.WindowFocused` bit, so an
+unfocused frame reports a zero `Dt` and the clock's `Paused` / `Resumed` events fire on the transitions. It only
+lifts a pause it took itself, so a game already paused when focus was lost (its own pause menu, or a zero
+`TimeScale`) comes back still paused. Real time keeps running regardless. This is the SIMULATION switch, orthogonal
+to `BackgroundThrottle`, which throttles rendering and leaves the clock alone.
+
 **Runtime display settings** (since 9.24.0): change present mode, frame cap, window mode, and resolution live
 mid-session (no crash, no leaked swapchain) via `GameApp.Display` (the cohesive `IDisplaySettings` surface) or the
 `GameApp.PresentMode` / `FrameCapHz` / `WindowMode` pass-throughs. Read a `DisplaySettings` snapshot from

@@ -114,7 +114,10 @@ id and the local player, and neither extrapolates. `docs/USING-KHAOZENGINE.md` c
   `MaxRouteSteps`, the longest route one click may produce, counted in the steps still to take from the tile the
   player is committed to.
 - **`TileIdentity`** - the cosmetic display name, replicated to everyone in interest. Never a rules input.
-- **`PendingTileCommand`** - the command drained for a player this tick, ECS-only and never replicated.
+- **`PendingTileCommand`** - the command drained for a player this tick. Registered on the `Migrate` channel
+  ALONE, so it crosses a cell handoff and reaches no client and no persistence blob. The movement pass resets it
+  to `Continue` at the mode the step left, and it does so at tick step 2 while the handoff runs at step 3, so
+  what crosses a border is the tick's neutral rather than a click waiting to be applied twice.
 
 **Simulation**
 

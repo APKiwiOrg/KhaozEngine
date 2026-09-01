@@ -288,6 +288,14 @@ query on the tag, which is why a momentarily untagged actor cannot escape it. Th
 per-tick-mutated command on a channel whose contract is durable state, and it would make the component's own doc
 ("reaches no client, no persistence blob and no handoff capture") false for the sake of one consumer.
 
+> SUPERSEDED, and the rejection above is kept because its second half is what turned out to be wrong. `Migrate` is
+> not the durable channel, `Persist` is, and the two are separate flags: registering on `Migrate` alone crosses a
+> handoff and touches neither a client nor a blob. The per-tick mutation is not a problem either, because the
+> movement pass resets the command at tick step 2 and the handoff runs at step 3, so the value a capture ever sees
+> is the tick's neutral. [#737](https://github.com/APKiwiOrg/KhaozEngine/issues/737) reopened the choice on the
+> grounds that the rewrite below is a prop rather than a fix, and the component is registered on `Migrate` now. The
+> rewrite still runs and is still what an actor's tag needs.
+
 **Taken: `TileActorHost` re-adds the component unconditionally, every tick, before the movement pass.** The actor
 decision step already writes `PendingTileCommand` for every live actor on every tick, exactly as step 1 of the tick
 body does for every player. So the fix is not a fix at all: it is the same immunity players already have, obtained

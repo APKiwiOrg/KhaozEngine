@@ -127,8 +127,10 @@ an F1-toggled panel showing fps / frame-ms / heap, the frame draw counters (`Ren
 instances, triangles, upload bytes, 2D quads/flushes/tex-switches), and, for a 3D app, per-pass CPU-encode
 timings (`Scene3D.EnableTiming` is coupled to visibility, so it costs nothing while hidden). Hidden by default,
 so the only cost until F1 is the always-on counter increments. `GameAppOptions.DiagnosticsToggleKey` rebinds the
-key (default `Key.F1`) and `GameAppOptions.DisableDiagnosticsOverlay` turns it off. A subclass reaches it through
-the protected `Diagnostics` property (e.g. `Diagnostics?.SetNetStatsSource(...)` for a Network section) and can
+key (default `Key.F1`), `GameAppOptions.DiagnosticsVisibleAtBoot` starts it shown instead of hidden, and
+`GameAppOptions.DisableDiagnosticsOverlay` turns it off. A subclass reaches it through
+the protected `Diagnostics` property (e.g. `Diagnostics?.SetNetStatsSource(...)` for a Network section, or
+`Diagnostics?.AddSection(() => ...)` for a section of the game's own, composed after the built-in four) and can
 override `CollectFrameStats` / `SupportsPassTimings` (`GameApp3D` already adds the scene's `LastFrameStats` and
 the pass-timing section). See `docs/USING-KHAOZENGINE.md` "Seeing where the frame goes".
 

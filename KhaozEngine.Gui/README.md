@@ -455,7 +455,13 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   once per frame (samples FPS, handles the toggle + fade), feed `SetDrawStats(in RenderFrameStats)` the aggregate
   and (3D) sample its `PassTimings`, then `Draw`. Hidden by default, and while hidden the provider builds nothing,
   so the only cost is the surfaces' always-on counter increments. `SetNetStatsSource(Func<ClientNetStats?>)` opts a
-  Network section in and out with the active screen. `GameApp`/`GameApp3D` wire one automatically (F1).
+  Network section in and out with the active screen. `AddSection(Func<OverlaySection?>)` is the composition seam
+  for a section of the GAME's own: it renders after the built-in ones instead of replacing them, is polled on the
+  same throttled refresh, and returning null omits it for that refresh. Registration order is render order, and
+  `ClearSections()` drops the added ones. Reaching past this to `Overlay.SetSectionsProvider` installs a provider
+  OVER the built-in one and costs all four built-in sections, which is the trap this seam exists to close.
+  The ctor's `visibleAtBoot` starts the panel shown (default false), for a build whose tester has to read a value
+  without first finding the toggle key. `GameApp`/`GameApp3D` wire one automatically (F1).
 - `TextEntry` - headless key→char text-entry helper (US layout + shift), used by `TextInput`. No SDL plumbing.
   Ctrl/Super (Cmd) held suppresses character entry so shortcut chords like Ctrl+V / Cmd+V paste instead of typing.
   Acts on `InputState.WasTyped` (press edge OR OS auto-repeat tick), so a held Backspace or character key repeats at

@@ -175,6 +175,15 @@ namespace KhaozEngine.Game
         public Key? DiagnosticsToggleKey;
 
         /// <summary>
+        /// Start the built-in diagnostics HUD SHOWN rather than hidden (default <c>false</c>, the behaviour every
+        /// build has had). <see cref="DiagnosticsToggleKey"/> still hides it from there. This exists for a build
+        /// whose tester is asked to read a value off the HUD, where "press F1 first" is one instruction the
+        /// handoff loses. Ignored when <see cref="DisableDiagnosticsOverlay"/> is set, and being a plain bool the
+        /// default-zero struct keeps the HUD hidden.
+        /// </summary>
+        public bool DiagnosticsVisibleAtBoot;
+
+        /// <summary>
         /// Opt OUT of the turn-key client-side job scheduler (default <c>false</c>, i.e. it is ON). By default
         /// <see cref="GameApp.JobScheduler"/> lazily builds a shared
         /// <see cref="KhaozEngine.Simulation.ThreadPoolJobScheduler"/>, sized to

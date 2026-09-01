@@ -9781,6 +9781,7 @@ Opt out or rebind via `GameAppOptions`:
 ```csharp
 var options = GameAppOptions.For("MyGame", 1280, 720);
 options.DiagnosticsToggleKey = Key.F3;        // default is F1
+options.DiagnosticsVisibleAtBoot = true;     // start it SHOWN (default false), for a build a tester has to read
 // options.DisableDiagnosticsOverlay = true;  // turn the built-in HUD off entirely
 ```
 
@@ -9790,6 +9791,23 @@ whose source turns on and off with the active screen:
 ```csharp
 Diagnostics?.SetNetStatsSource(() => (_scenes.Active as RoomNet)?.NetStats);   // null result => no Network row
 ```
+
+**A section of your own.** `AddSection` composes a game section onto the HUD instead of replacing the engine's,
+which is what makes one HUD enough. It is polled on the same throttled refresh as the built-ins, renders after
+them in registration order, and returning null omits it for that refresh:
+
+```csharp
+Diagnostics?.AddSection(() => new OverlaySection("World", new[]
+{
+    new OverlayRow("tile", $"{_player.TileX}, {_player.TileY}"),
+    new OverlayRow("region", _region.Id.ToString()),
+}));
+```
+
+Do NOT reach past this to `Diagnostics?.Overlay.SetSectionsProvider(...)`. That installs a provider over the
+engine's, so Performance, Draw stats and Pass timings all disappear unless the game rebuilds them itself. That
+trap is why a game ended up drawing a second always-on readout beside the engine HUD and computing fps twice.
+`ClearSections()` drops the added sections again.
 
 **Frame draw counters (`RenderFrameStats`).** Each render surface keeps an always-on, allocation-free per-frame
 tally in `KhaozEngine.Primitives.RenderFrameStats`: `DrawCalls`, `Instances`, `Triangles` (estimated from the

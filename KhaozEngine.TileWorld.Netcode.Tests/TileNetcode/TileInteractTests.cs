@@ -353,6 +353,92 @@ public class TileInteractTests
         Assert.True(s.Route.IsIdle);
     }
 
+    // The inverse of TryGetFootprint, which is what a click-to-interact client asks on every click: the ray gives a
+    // GROUND tile, and the question is which interactive object, if any, covers it. Every tile game wrote this scan
+    // itself before the seam answered it.
+    [Fact]
+    public void The_tile_under_a_click_resolves_to_the_interactive_object_covering_it()
+    {
+        TileWorldCatalogs catalogs =
+            TileWorldCatalogs.Merge(TileWorldCatalogs.Greybox(), TileWorldCatalogs.LoadJson(WideBooth, "wide"));
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        TileObject booth = doc.AddObject("long_booth", 10, 10, 0, 0);
+        var targets = new TileDocumentTargets(doc, catalogs);
+
+        Assert.True(targets.TryGetTargetAt(new TileCoord(10, 10, 0), out long anchor));
+        Assert.Equal(booth.Id, anchor);
+        // The far tile of the footprint, which is the half a scan keyed on the anchor tile alone would miss.
+        Assert.True(targets.TryGetTargetAt(new TileCoord(11, 10, 0), out long far));
+        Assert.Equal(booth.Id, far);
+        Assert.False(targets.TryGetTargetAt(new TileCoord(12, 10, 0), out long past));
+        Assert.Equal(0L, past);
+    }
+
+    // Everything the forward direction refuses, refused the same way round: a non-interactive archetype, an empty
+    // tile, and the same tile on another plane.
+    [Fact]
+    public void A_non_interactive_object_an_empty_tile_and_another_plane_cover_nothing()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        doc.AddObject("tree", 10, 10, 0, 0);
+        doc.AddObject("bank_booth", 20, 20, 1, 0);
+        var targets = new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs);
+
+        Assert.False(targets.TryGetTargetAt(new TileCoord(10, 10, 0), out _));
+        Assert.False(targets.TryGetTargetAt(new TileCoord(30, 30, 0), out _));
+        Assert.False(targets.TryGetTargetAt(new TileCoord(20, 20, 0), out _));
+        Assert.True(targets.TryGetTargetAt(new TileCoord(20, 20, 1), out long onPlane));
+        Assert.True(onPlane > 0);
+    }
+
+    // A footprint crosses a region boundary whenever an object is anchored near one, and objects live in the region
+    // their ANCHOR is in. A search that only read the clicked tile's own region would answer false for the half of
+    // the booth on the other side of the seam.
+    [Fact]
+    public void A_footprint_reaching_across_a_region_boundary_still_answers()
+    {
+        TileWorldCatalogs catalogs =
+            TileWorldCatalogs.Merge(TileWorldCatalogs.Greybox(), TileWorldCatalogs.LoadJson(WideBooth, "wide"));
+        TileWorldDocument doc =
+            TileMoveSimulatorTests.FlatWorld(4, new RegionCoord(0, 0), new RegionCoord(1, 0));
+        TileObject booth = doc.AddObject("long_booth", TileRegion.Size - 1, 10, 0, 0);
+        var targets = new TileDocumentTargets(doc, catalogs);
+
+        Assert.Equal(new RegionCoord(0, 0), RegionCoord.Of(TileRegion.Size - 1, 10));
+        Assert.Equal(new RegionCoord(1, 0), RegionCoord.Of(TileRegion.Size, 10));
+        Assert.True(targets.TryGetTargetAt(new TileCoord(TileRegion.Size, 10, 0), out long across));
+        Assert.Equal(booth.Id, across);
+    }
+
+    // Two targets on one tile is authored content, not an error, and the answer has to be the SAME one on both
+    // heads or a click resolves differently on each. Lowest id wins, which is the earliest authored object.
+    [Fact]
+    public void Two_targets_over_one_tile_resolve_to_the_lower_id()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        TileObject first = doc.AddObject("bank_booth", 10, 10, 0, 0);
+        TileObject second = doc.AddObject("stairs", 10, 10, 0, 0);
+        var targets = new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs);
+
+        Assert.True(first.Id < second.Id);
+        Assert.True(targets.TryGetTargetAt(new TileCoord(10, 10, 0), out long id));
+        Assert.Equal(first.Id, id);
+    }
+
+    // The seam reads the document THROUGH, so the inverse has to stop answering the moment the object it named
+    // stops existing, exactly as TryGetFootprint does.
+    [Fact]
+    public void A_deleted_object_stops_covering_its_tile()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        TileObject booth = doc.AddObject("bank_booth", 10, 10, 0, 0);
+        var targets = new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs);
+
+        Assert.True(targets.TryGetTargetAt(new TileCoord(10, 10, 0), out _));
+        Assert.True(doc.RemoveObject(booth.Id));
+        Assert.False(targets.TryGetTargetAt(new TileCoord(10, 10, 0), out _));
+    }
+
     [Fact]
     public void The_queue_holds_one_action_per_player_and_a_second_click_replaces_it()
     {

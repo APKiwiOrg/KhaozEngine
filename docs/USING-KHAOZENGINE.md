@@ -8628,9 +8628,20 @@ string worldHash = TileWorldHash.OfWorldAndCatalogs(document, catalogs);
 ```
 
 `TileDocumentTargets(document, catalogs)` is the interaction seam over the same pair: a target id is a
-`TileObject.Id`, and only an object whose archetype carries `Interactive` resolves at all. `TileReach` is the rule
-over what it resolves: the reach set of a footprint is every tile CARDINALLY adjacent to a footprint tile that the
-footprint tile could step OUT onto, so a wall between you and the booth denies reach, a diagonal never counts, and
+`TileObject.Id`, and only an object whose archetype carries `Interactive` resolves at all. It answers both ways,
+and the inverse is what a click needs, because a ray lands on a ground tile rather than on an object:
+
+```csharp
+// Click to target, both halves. Pick gives the ground tile under the cursor, TryGetTargetAt gives whatever
+// interactive object is standing on it. The whole footprint counts, so the far half of a two-tile booth resolves
+// to the same id, and two overlapping targets resolve to the lower id on BOTH heads.
+if (TileRaycast.Pick(document, plane, rayOrigin, rayDirection) is TileHit hit
+    && targets.TryGetTargetAt(new TileCoord(hit.X, hit.Z, hit.Plane), out long target))
+    client.Queue(TileCommand.Interact(target, TileMoveMode.Run));
+```
+
+`TileReach` is the rule over what it resolves: the reach set of a footprint is every tile CARDINALLY adjacent to a
+footprint tile that the footprint tile could step OUT onto, so a wall between you and the booth denies reach, a diagonal never counts, and
 the target itself being solid is not a problem. It reads the document
 THROUGH on every call, so an object deleted between the click and the arrival stops resolving, which is the
 contract the reach rules need.

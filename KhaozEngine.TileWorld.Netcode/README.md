@@ -145,7 +145,10 @@ id and the local player, and neither extrapolates. `docs/USING-KHAOZENGINE.md` c
 - **`ITileTargets`** / **`TileDocumentTargets`** / **`TileEntityTargets`** / **`TileRemoteTargets`** - the seam
   that resolves a target id to a footprint and a plane, and its three implementations across TWO id spaces.
   `TileDocumentTargets` is the OBJECT space, backed by the document over `TileObjectArchetype.Interactive` and
-  read through on every call, so an id stops resolving the moment the thing it named stops existing.
+  read through on every call, so an id stops resolving the moment the thing it named stops existing. It answers
+  the INVERSE too: `TryGetTargetAt(tile, out long id)` is the click-to-target search, the whole footprint rather
+  than the anchor tile, lowest id first when two targets overlap so both heads resolve one click the same way.
+  Compose it with `TileRaycast.Pick`, whose hit is a ground tile, and a click is resolved in two lines.
   `TileEntityTargets` is the server's ENTITY space, a per-tick SNAPSHOT over the live cells refreshed once before
   anything moves, which is what makes the actor pass and the movement pass order-independent in fact rather than
   in claim: every read is a keyed lookup into a map built before either pass began. `TileRemoteTargets` is the

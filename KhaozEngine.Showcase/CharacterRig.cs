@@ -73,7 +73,6 @@ namespace KhaozEngine.Showcase
             () => GltfLoader.LoadSkinnedWithMaterial(glbPath),
             () => GltfLoader.LoadAnimations(glbPath),
             (mesh, maps) => scene.LoadSkinnedMesh(mesh, maps),
-            handle => scene.UnloadSkinnedMesh(handle),
             capsuleHalfHeight);
 
         /// <summary>The load with its asset and GPU calls handed in, so the whole thing is exercisable with no
@@ -82,21 +81,15 @@ namespace KhaozEngine.Showcase
             Func<(SkinnedGltfMesh Mesh, GltfMaterialMaps Maps)> loadMesh,
             Func<IReadOnlyList<AnimationClip>> loadClips,
             Func<SkinnedGltfMesh, GltfMaterialMaps, SkinnedMeshHandle> upload,
-            Action<SkinnedMeshHandle> unload,
             float capsuleHalfHeight)
         {
             try
             {
                 (SkinnedGltfMesh mesh, GltfMaterialMaps maps) = loadMesh();
                 if (mesh.Skeleton is null) return CharacterRigLoad.Failed("Character has no skeleton, using the capsule.");
-                SkinnedMeshHandle handle = upload(mesh, maps);
 
                 Dictionary<LocomotionState, AnimationClip> clips = MapClips(loadClips());
-                if (clips.Count == 0)
-                {
-                    unload(handle);
-                    return CharacterRigLoad.Failed("Character has no expected clips, using the capsule.");
-                }
+                if (clips.Count == 0) return CharacterRigLoad.Failed("Character has no expected clips, using the capsule.");
 
                 // Auto-fit the model to the capsule height (asset-agnostic) and bake that scale into the bridge tuning,
                 // starting from CharacterAnimatorTuning.Default so every OTHER tunable (SlopeGlideRate,
@@ -108,6 +101,12 @@ namespace KhaozEngine.Showcase
                 tuning.Locomotion = new LocomotionThresholds(0.1f, 9f);   // matches the controller's 6/12 walk/run feel
 
                 var animators = new ReplicatedCharacterAnimators(mesh.Skeleton, clips, tuning);
+
+                // The GPU upload goes LAST, after every step that can fail. A handle taken before the clip read or
+                // the animator build has no owner if either throws: the catch below cannot free what it was never
+                // handed, and the room's own free is gated on a flag this path leaves false, so the mesh stayed
+                // resident for the life of the process (issue #187). Nothing after this line can throw.
+                SkinnedMeshHandle handle = upload(mesh, maps);
                 return CharacterRigLoad.Ok(handle, animators, scale,
                     $"Animated character loaded ({mesh.BoneCount} bones, {clips.Count} clips, scale {scale:0.00}).");
             }

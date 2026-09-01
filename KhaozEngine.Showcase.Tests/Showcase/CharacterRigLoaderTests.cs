@@ -13,9 +13,9 @@ namespace KhaozEngine.Tests.Showcase
     /// the load, and the copies had already drifted twice
     /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/189">#189</see>): RoomNet's <c>ModelHeight</c>
     /// lost the degenerate-mesh guard, so a vertexless rig gave it negative infinity where the other two gave 0,
-    /// and its empty-clip bail dropped the unload the other two kept. These pin the one shared loader the rooms
-    /// call now, through the delegate seam its <see cref="Scene3D"/> overload wraps, so the whole load runs with
-    /// no GPU device at all.
+    /// and its empty-clip bail dropped the free the other two did. These pin the one shared loader the rooms call
+    /// now, through the delegate seam its <see cref="Scene3D"/> overload wraps, so the whole load runs with no GPU
+    /// device at all.
     /// </summary>
     public sealed class CharacterRigLoaderTests
     {
@@ -58,19 +58,16 @@ namespace KhaozEngine.Tests.Showcase
             Park("Idle"), Park("Walk"), Park("Run"), Park("Jump"), Park("Fall"),
         };
 
-        /// <summary>Counts what the loader asked the scene to do, standing in for the GPU upload and free.</summary>
+        /// <summary>Counts what the loader asked the scene to do, standing in for the GPU upload.</summary>
         sealed class SceneSpy
         {
             public int Uploads;
-            public int Unloads;
 
             public SkinnedMeshHandle Upload(SkinnedGltfMesh mesh, GltfMaterialMaps maps)
             {
                 Uploads++;
                 return new SkinnedMeshHandle(7, 3);
             }
-
-            public void Unload(SkinnedMeshHandle handle) => Unloads++;
         }
 
         [Fact]
@@ -94,14 +91,13 @@ namespace KhaozEngine.Tests.Showcase
             var spy = new SceneSpy();
 
             CharacterRigLoad load = CharacterRigLoader.Load(
-                () => (Rig(2f), default), LocomotionClips, spy.Upload, spy.Unload, CapsuleHalfHeight);
+                () => (Rig(2f), default), LocomotionClips, spy.Upload, CapsuleHalfHeight);
 
             Assert.True(load.Loaded);
             Assert.NotNull(load.Animators);
             Assert.Equal((CapsuleHalfHeight * 2f) / 2f, load.Scale, 4);
             Assert.Equal(7, load.Mesh.Index);
             Assert.Equal(1, spy.Uploads);
-            Assert.Equal(0, spy.Unloads);
         }
 
         /// <summary>A rig too small to measure keeps unit scale rather than dividing by something near zero.</summary>
@@ -111,7 +107,7 @@ namespace KhaozEngine.Tests.Showcase
             var spy = new SceneSpy();
 
             CharacterRigLoad load = CharacterRigLoader.Load(
-                () => (Vertexless(), default), LocomotionClips, spy.Upload, spy.Unload, CapsuleHalfHeight);
+                () => (Vertexless(), default), LocomotionClips, spy.Upload, CapsuleHalfHeight);
 
             Assert.True(load.Loaded);
             Assert.Equal(1f, load.Scale, 4);
@@ -123,7 +119,7 @@ namespace KhaozEngine.Tests.Showcase
             var spy = new SceneSpy();
 
             CharacterRigLoad load = CharacterRigLoader.Load(
-                () => (Rig(2f, skeleton: false), default), LocomotionClips, spy.Upload, spy.Unload, CapsuleHalfHeight);
+                () => (Rig(2f, skeleton: false), default), LocomotionClips, spy.Upload, CapsuleHalfHeight);
 
             Assert.False(load.Loaded);
             Assert.Null(load.Animators);
@@ -131,20 +127,38 @@ namespace KhaozEngine.Tests.Showcase
             Assert.Contains("skeleton", load.Message, StringComparison.Ordinal);
         }
 
-        /// <summary>RoomNet's copy returned here without freeing the mesh it had just uploaded. The shared loader
-        /// keeps the other two rooms' unload.</summary>
+        /// <summary>RoomNet's copy returned here without freeing the mesh it had just uploaded, and the other two
+        /// freed one they should never have taken. The shared loader has not uploaded anything yet.</summary>
         [Fact]
-        public void A_rig_whose_clips_match_no_locomotion_state_frees_the_mesh()
+        public void A_rig_whose_clips_match_no_locomotion_state_uploads_nothing()
         {
             var spy = new SceneSpy();
             IReadOnlyList<AnimationClip> unrelated = new[] { Park("Dance"), Park("Wave") };
 
             CharacterRigLoad load = CharacterRigLoader.Load(
-                () => (Rig(2f), default), () => unrelated, spy.Upload, spy.Unload, CapsuleHalfHeight);
+                () => (Rig(2f), default), () => unrelated, spy.Upload, CapsuleHalfHeight);
 
             Assert.False(load.Loaded);
             Assert.Null(load.Animators);
-            Assert.Equal(spy.Uploads, spy.Unloads);
+            Assert.Equal(0, spy.Uploads);
+        }
+
+        /// <summary>The leak from <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/187">#187</see>: the
+        /// upload used to run before the clip read and the animator build, and the catch that swallowed a failure
+        /// there never freed it. The room's own OnExit free is gated on the flag that stayed false, so the handle
+        /// was stranded for the life of the process, once per attempt on a room that can be re-entered.</summary>
+        [Fact]
+        public void A_clip_read_that_throws_uploads_nothing()
+        {
+            var spy = new SceneSpy();
+
+            CharacterRigLoad load = CharacterRigLoader.Load(
+                () => (Rig(2f), default),
+                () => throw new InvalidOperationException("malformed animation track"),
+                spy.Upload, CapsuleHalfHeight);
+
+            Assert.False(load.Loaded);
+            Assert.Equal(0, spy.Uploads);
         }
 
         [Fact]
@@ -153,7 +167,7 @@ namespace KhaozEngine.Tests.Showcase
             var spy = new SceneSpy();
 
             CharacterRigLoad load = CharacterRigLoader.Load(
-                () => throw new InvalidOperationException("bad glb"), LocomotionClips, spy.Upload, spy.Unload, CapsuleHalfHeight);
+                () => throw new InvalidOperationException("bad glb"), LocomotionClips, spy.Upload, CapsuleHalfHeight);
 
             Assert.False(load.Loaded);
             Assert.Contains("bad glb", load.Message, StringComparison.Ordinal);

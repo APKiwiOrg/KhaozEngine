@@ -9282,6 +9282,34 @@ into the tick loop) and skips at most one beat - a skipped beat is truthful, the
 heartbeat and reports `down` accordingly. `NullServerHeartbeatSink` (local runs) and `InMemoryServerHeartbeatSink`
 (tests) are the reference sinks.
 
+### Deriving health in the status endpoint (`ServerStatusHealthDeriver`)
+
+The endpoint turns the newest heartbeat plus the deploy window into the `health` field it serves, and that step
+is engine code now:
+
+```csharp
+ServerHealth health = ServerStatusHealthDeriver.Derive(
+    newestHeartbeat,                                   // null when the store has never held one
+    new ServerDeployWindow(lastDeployUtc, expectedBackUtc),
+    DateTimeOffset.UtcNow,
+    new ServerStatusHealthOptions
+    {
+        HeartbeatStaleAfter = TimeSpan.FromSeconds(60),
+        DeployGrace = TimeSpan.FromSeconds(120),
+    });
+```
+
+Precedence, first match wins: no heartbeat ever written is `Unknown` (never seen, which is not the same as
+seen long ago), an active deploy window is `Restarting` (`ExpectedBackUtc` still in the future, or
+`LastDeployUtc` inside `DeployGrace`), a heartbeat no older than `HeartbeatStaleAfter` is `Healthy`, and
+anything left is `Down`. A declared window wins over a still-beating old process, because CI/CD set it
+deliberately.
+
+Pure and clock-free (the caller passes `nowUtc`), so an endpoint unit-tests its own answers with no database.
+It is the producing half of what `ServerStatusEvaluator` consumes on the client, which is why it ships here:
+two games had written the same deriver four lines apart, each keeping its precedence in step with the
+evaluator by hand. The durable sink stays game-side, per the heartbeat section above.
+
 ### Status readout (in-game status page)
 
 `ServerStatusReadout.Build(snapshot, view, clientVersion, nowUtc)` turns a poller snapshot + evaluated view

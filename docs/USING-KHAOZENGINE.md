@@ -13292,6 +13292,31 @@ connection: the queue rejects any seq at or below a slot's high-water mark (anti
 whose mark is stale would reject the new player's seq-0-onward input and freeze them. (`WorldServer` and
 `ShardedWorldServer` do this for you.)
 
+### Parsing the address a player typed (`NetEndpoint`)
+
+Before any of that runs there is a string to turn into a host and a port: an env var, a config field, a text box
+on the connect screen. `NetEndpoint.TryParse` (in `KhaozEngine.Netcode`) is that parser.
+
+```csharp
+if (!NetEndpoint.TryParse(address, defaultPort: 7777, out string host, out int port))
+{
+    ShowBadAddress(address);   // one rejection covering every malformed form
+    return;
+}
+
+transport.Connect(host, port);
+```
+
+Accepted forms: a bare host, `host:port`, `[ipv6]`, `[ipv6]:port`, and a bare unbracketed IPv6 literal, which
+takes `defaultPort`. Whitespace is trimmed, a null or blank address returns false rather than defaulting, ports
+are bounded to `[1, 65535]`, and a `defaultPort` outside that range throws `ArgumentOutOfRangeException`.
+
+The reason it is engine code: the hand-rolled version splits on the last colon, which reads `"::1"` as host `":"`
+and port `1`. Every bounds check passes, so the client dials an endpoint nobody asked for rather than reporting a
+bad address. Brackets are what tell an address's colons apart from the port separator, so here an unbracketed
+literal keeps every colon in the host and never yields a port. `"fe80::1:9000"` is therefore one whole address on
+the default port, not a host with a port.
+
 ### Worker-pool seam (`IJobScheduler`) + parallel cell ticks
 
 **`IJobScheduler`** (in `KhaozEngine.Simulation`) is the engine's one worker-pool abstraction: `For(int count,

@@ -156,8 +156,13 @@ id and the local player, and neither extrapolates. `docs/USING-KHAOZENGINE.md` c
   in claim: every read is a keyed lookup into a map built before either pass began. `TileRemoteTargets` is the
   client's entity space, the honest `TryGetLatestRemoteTile` for a remote and the prediction for the local player,
   and the client builds its own rather than taking one, because the only honest answer to where an entity is on a
-  client is that client's newest snapshot. A `Ghost` or `Migrating` entity is EXCLUDED and therefore reads as
-  gone, which is the answer the follow acts on.
+  client is that client's newest snapshot. A `Ghost` is EXCLUDED and therefore reads as gone, which is the answer
+  the follow acts on. A `Migrating` entity is HELD instead, for `MigratingGraceRefreshes` consecutive refreshes
+  (four by default, one second at a 250 ms tick), answering with the frozen pre-handoff tile it is not moving off:
+  an in-process link finishes the whole handshake inside one `ProcessHandoffs` so the window is never used, and a
+  NETWORKED link spans calls, where dropping on the first unresolvable refresh breaks every fight whose target
+  crosses a region boundary. The hold is bounded so a handshake that never completes cannot pin a lock, and the
+  destination cell's owned copy always wins over the source's frozen one.
 
 **Actors and combat**
 

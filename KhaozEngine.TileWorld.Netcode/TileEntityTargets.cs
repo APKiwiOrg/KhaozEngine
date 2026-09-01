@@ -20,19 +20,23 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// collapses the one-tick miss window a fleeing target depends on and changes how a chase resolves. The snapshot is
 /// what makes the movement pass order-independent in fact rather than in claim, and it is also what makes the server
 /// match a client, whose own read is snapshot-stable within a tick by construction.</para>
-/// <para>Ghosts and migrating mirrors are excluded BY AN EXPLICIT CHECK, which is worth knowing rather than
-/// assuming: <see cref="Refresh"/> walks every entity in each cell, and the capture skips anything carrying
-/// <c>Ghost</c> or <c>Migrating</c> before it reads a tile. So a border mirror of an entity another cell simulates
-/// is never in the map and cannot answer with a tick-stale tile under the same net id, and that property lives in
-/// one line of code rather than in the shape of the walk.</para>
-/// <para>WHAT AN EXCLUDED ENTITY GETS IS "gone", not "held", and that is worth knowing before a networked link
-/// lands. An id this map does not hold does not resolve, and the follow reads a target that does not resolve as
-/// dead, despawned or out of view, so it CLEARS the lock. A ghost is only ever a mirror of something its owning
-/// cell is already following, so nothing is lost there. A MIGRATING entity is a different case: with the in-process
-/// link the whole migrate, ack and release handshake completes inside one <c>ShardHost.ProcessHandoffs</c> call, so
-/// nothing is ever <see cref="Migrating"/> when this runs and the window is zero. A networked <c>ICellLink</c>
-/// spans calls by design, and then a target mid-handoff is unresolvable for a tick or more and a fight would break
-/// silently whenever the target crossed a region boundary.</para>
+/// <para>GHOSTS are excluded BY AN EXPLICIT CHECK, which is worth knowing rather than assuming:
+/// <see cref="Refresh"/> walks every entity in each cell, and the capture skips anything carrying <c>Ghost</c>
+/// before it reads a tile. So a border mirror of an entity another cell simulates is never in the map and cannot
+/// answer with a tick-stale tile under the same net id, and that property lives in one line of code rather than in
+/// the shape of the walk. What an excluded entity gets is "gone", not "held": an id this map does not hold does not
+/// resolve, and the follow reads a target that does not resolve as dead, despawned or out of view, so it CLEARS the
+/// lock. Nothing is lost for a ghost, which is only ever a mirror of something its owning cell is already
+/// following.</para>
+/// <para>A MIGRATING ENTITY IS HELD RATHER THAN DROPPED, for <see cref="MigratingGraceRefreshes"/> consecutive
+/// refreshes, and that is the one place this differs from a ghost. With the in-process link the whole migrate, ack
+/// and release handshake completes inside one <c>ShardHost.ProcessHandoffs</c> call, so nothing is ever
+/// <see cref="Migrating"/> when this runs and the window is zero either way. A networked <c>ICellLink</c> spans
+/// calls by design, and dropping on the first unresolvable refresh would break every fight in the world the moment
+/// its target crossed a region boundary. A frozen entity is not simulated, so the tile it holds IS its pre-handoff
+/// tile and holding it answers with the truth rather than with a guess. The hold is BOUNDED because a handshake
+/// that never completes must not hold a lock forever, and it always loses to the destination cell's OWNED copy,
+/// which is the live one from the moment the Migrate is received.</para>
 /// <para>The same walk also snapshots the REVERSE of every combat lock: <see cref="TargetedBy"/> answers who is
 /// locked onto an entity, out of the same tick-start view the tiles come from, so an actor deciding whether to
 /// stand its ground reads the same instant every other consumer of this snapshot does. It is on this concrete type
@@ -41,16 +45,38 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// </summary>
 public sealed class TileEntityTargets : ITileTargets
 {
+    /// <summary>The default <see cref="MigratingGraceRefreshes"/>, four refreshes, which is one second at a 250 ms
+    /// tick. Long enough for a networked handoff's round trip and short enough that a handshake which never
+    /// completes cannot hold a lock for a noticeable time.</summary>
+    public const int DefaultMigratingGraceRefreshes = 4;
+
     readonly Dictionary<long, TileCoord> tiles = new();
     readonly Dictionary<long, long> attackerByTarget = new();
+    // Everything the walk saw frozen mid handoff, in walk order, folded in AFTER the owned pass so an entity the
+    // destination cell already owns wins over the source's frozen copy of it. A list rather than a map because it
+    // is enumerated, and because two cells cannot both hold one net id as Migrating.
+    readonly List<(long netId, TileCoord tile, long combatTarget)> migrating = new();
+    // How many consecutive refreshes each held entity has been frozen for. Two maps swapped rather than one
+    // rebuilt, so an entity whose handoff completed stops being counted without a second pass to find it.
+    Dictionary<long, int> heldRefreshes = new();
+    Dictionary<long, int> nextHeldRefreshes = new();
     RefAction<NetId>? capture;
     World? captureWorld;
 
     /// <summary>Builds the resolver. Nothing is read until <see cref="Refresh"/> runs, so a server can hand this to
     /// its simulators before it has any entities.</summary>
-    public TileEntityTargets()
+    /// <param name="migratingGraceRefreshes">How many consecutive refreshes a mid-handoff entity keeps answering
+    /// with its frozen tile. Zero drops it on the first one.</param>
+    public TileEntityTargets(int migratingGraceRefreshes = DefaultMigratingGraceRefreshes)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(migratingGraceRefreshes);
+        MigratingGraceRefreshes = migratingGraceRefreshes;
     }
+
+    /// <summary>How many consecutive <see cref="Refresh"/> calls an entity frozen mid handoff keeps answering with
+    /// the tile it was frozen on. Zero drops it on the first one, which is the answer a <see cref="Ghost"/> always
+    /// gets. See the type doc for why a mid-handoff entity is held at all and a ghost never is.</summary>
+    public int MigratingGraceRefreshes { get; }
 
     /// <summary>
     /// Snapshots every owned entity's COMMITTED tile, once, at the top of a server tick. Everything that asks this
@@ -70,12 +96,44 @@ public sealed class TileEntityTargets : ITileTargets
         capture ??= Capture;
         tiles.Clear();
         attackerByTarget.Clear();
+        migrating.Clear();
         for (int i = 0; i < cells.Count; i++)
         {
             captureWorld = cells[i].World;
             captureWorld.ForEach(capture);
         }
         captureWorld = null;
+        HoldMigrating();
+    }
+
+    // THE MIGRATING GRACE WINDOW. A frozen entity's tile IS its pre-handoff tile, so holding it answers with the
+    // truth rather than with a guess, and the hold is what stops one tick of unresolvability reading as a death.
+    //
+    // AFTER the owned pass, and gated on the owned map, because the destination cell owns the entity from the
+    // moment it receives the Migrate while the source holds its frozen copy until the ack. During that overlap the
+    // owned answer is the live one and must win.
+    //
+    // BOUNDED, because the alternative is a handshake that never completes holding every lock naming it forever.
+    // Past the window the id stops resolving and the follow's rule 2 gives the answer it always gave.
+    //
+    // The lock reverse is folded in on the same min rule the owned walk uses, so the answer stays independent of
+    // cell and ECS iteration order even though this pass runs second.
+    void HoldMigrating()
+    {
+        nextHeldRefreshes.Clear();
+        for (int i = 0; i < migrating.Count; i++)
+        {
+            (long netId, TileCoord tile, long combatTarget) = migrating[i];
+            if (tiles.ContainsKey(netId)) continue;          // the destination already owns it, nothing to hold
+            int held = heldRefreshes.GetValueOrDefault(netId) + 1;
+            if (held > MigratingGraceRefreshes) continue;
+            nextHeldRefreshes[netId] = held;
+            tiles[netId] = tile;
+            if (combatTarget == 0L) continue;
+            if (!attackerByTarget.TryGetValue(combatTarget, out long holder) || netId < holder)
+                attackerByTarget[combatTarget] = netId;
+        }
+        (heldRefreshes, nextHeldRefreshes) = (nextHeldRefreshes, heldRefreshes);
     }
 
     /// <inheritdoc/>
@@ -106,8 +164,15 @@ public sealed class TileEntityTargets : ITileTargets
     void Capture(Entity e, ref NetId id)
     {
         World world = captureWorld!;
-        if (world.Has<Ghost>(e) || world.Has<Migrating>(e)) return;
+        if (world.Has<Ghost>(e)) return;
         if (!world.TryGet(e, out TileMoveState state)) return;
+        // Frozen mid handoff: set aside rather than captured, because whether it answers at all is decided against
+        // the OWNED map once the whole walk is done. See HoldMigrating.
+        if (world.Has<Migrating>(e))
+        {
+            migrating.Add((id.Value, state.Tile, state.CombatTarget));
+            return;
+        }
         tiles[id.Value] = state.Tile;
         // The reverse of the lock, built in the same walk the tiles are. The min rule is what keeps the
         // answer independent of cell and ECS iteration order, which nothing here may depend on.

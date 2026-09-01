@@ -80,6 +80,13 @@ folds in `TileSize`, `PlaneCount` and `PlaneHeight`, excludes the id, display na
 allocator so renaming a world never desyncs a server from its clients, and formats every number invariant.
 `OfRegion` and `OfWorld` TRIM the regions they hash, so re-take any layer array you were holding.
 
+`OfCatalogs` is the second half of that identity: every material and every archetype, field by field, composed
+canonically so the digest is independent of file formatting and merge order. `OfWorldAndCatalogs` composes the
+two, and it is the one a netcode connect gate should compare. `OfWorld` alone cannot see an archetype gaining a
+`CollisionKind`, so two heads over the same world directory with independently updated catalogs pass the gate and
+then disagree on the baked collision map, which reads as a per-step correction on every wall instead of a refusal
+at the door. `OfWorld` is unchanged, so moving a gate to the composed digest is a change on BOTH heads at once.
+
 ## Catalogs and validation
 
 Catalogs are game content, referenced by id and never stored in the world. `TileWorldCatalogs.Load(paths)` reads

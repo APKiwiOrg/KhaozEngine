@@ -6915,7 +6915,9 @@ if (!path.Reached) { /* path.End is the nearest reachable tile, path.Tiles still
 
 TileWorldFile.Save(doc, "assets/worlds/grimhollow");     // world.json + regions/r_0_0.json, manifest LAST
 TileWorldDocument reloaded = TileWorldFile.Load("assets/worlds/grimhollow");
-string identity = TileWorldHash.OfWorld(reloaded);       // what a client and a server compare
+string identity = TileWorldHash.OfWorld(reloaded);       // the world alone
+// The digest a connect gate compares, catalogs folded in: OfWorld cannot see archetype drift.
+string gate = TileWorldHash.OfWorldAndCatalogs(reloaded, catalogs);
 ```
 
 **Two conventions run through every type.** Coordinates are WORLD tile coordinates everywhere, including
@@ -8620,7 +8622,9 @@ TileCollisionMap map = TileCollisionBaker.Bake(document, catalogs);
 ReplicationRegistry registry = TileProtocol.CreateRegistry(
     r => r.Register<MyComponent>(TileProtocol.FirstGameTypeId, WriteMine, ReadMine));
 
-string worldHash = TileWorldHash.OfWorld(document);        // what the connect gate refuses a mismatch on
+// The CATALOGS are half the identity too: an archetype that gains a CollisionKind bakes a different collision
+// map, and OfWorld composes only the regions and the header. Gate on the composed digest, on both heads at once.
+string worldHash = TileWorldHash.OfWorldAndCatalogs(document, catalogs);
 ```
 
 `TileDocumentTargets(document, catalogs)` is the interaction seam over the same pair: a target id is a

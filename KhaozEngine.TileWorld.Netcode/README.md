@@ -410,7 +410,10 @@ var server = new TileWorldServer(
     },
     map,
     new TileDocumentTargets(document, catalogs),
-    ConnectionGate.Wrap(tokenAuth, protocolVersion: "grimhollow-1", worldHash: TileWorldHash.OfWorld(document),
+    // OfWorldAndCatalogs, not OfWorld: the world digest alone cannot see an archetype gaining a CollisionKind,
+    // so two heads with independently updated catalogs would pass the gate and disagree on every wall.
+    ConnectionGate.Wrap(tokenAuth, protocolVersion: "grimhollow-1",
+                        worldHash: TileWorldHash.OfWorldAndCatalogs(document, catalogs),
                         log: Console.WriteLine, isBanned: bans.IsBanned),
     registry);
 

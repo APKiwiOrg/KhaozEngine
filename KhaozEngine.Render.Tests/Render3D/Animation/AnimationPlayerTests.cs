@@ -167,5 +167,29 @@ namespace KhaozEngine.Tests.Render3D.Animation
             // The incoming clip's playhead advanced at the SCALED rate: 0.1 * 5 = 0.5.
             Assert.Equal(0.5f, p.Time, 4);
         }
+
+        /// <summary>
+        /// A negative speed multiplier plays a one-shot BACKWARDS, and the playhead holds at frame 0 the way the
+        /// forward direction holds the final frame. The looping branch already wrapped cleanly onto the clip tail
+        /// (AnimationSampler.Wrap adds the duration back on a negative time), but the one-shot branch only clamped
+        /// the TOP, so a negative clip dt drove the playhead below zero without bound and the sampler was then asked
+        /// for a negative time on a clamped clip. Silent, not a throw, which is why it is pinned here.
+        /// </summary>
+        [Fact]
+        public void A_one_shot_played_backwards_holds_at_frame_zero_instead_of_underflowing()
+        {
+            var p = new AnimationPlayer(OneBone());
+            p.PlayOnce(ConstantTranslationClip("once", new Vector3(1, 0, 0), duration: 1f), crossfade: 0f);
+            p.Update(0.5f);
+            Assert.Equal(0.5f, p.Time, 3);
+
+            for (int i = 0; i < 10; i++) p.Update(0.5f, speedMultiplier: -1f);
+            Assert.True(p.Time >= 0f, $"a one-shot played backwards underflowed to {p.Time}");
+            Assert.Equal(0f, p.Time, 3);
+
+            // And it is still a playhead: the clip plays forward again from the held frame.
+            p.Update(0.25f);
+            Assert.Equal(0.25f, p.Time, 3);
+        }
     }
 }

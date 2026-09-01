@@ -76,16 +76,21 @@ namespace KhaozEngine.Render3D
         /// playheads (both the incoming and the outgoing clip during a blend) move at the scaled rate so the feet
         /// track speed even mid-blend, but the crossfade TIMER always runs at wall-clock <paramref name="dt"/> so a
         /// blend still completes in its authored duration regardless of speed. <paramref name="speedMultiplier"/> 1
-        /// (the default path via <see cref="Update(float)"/>) is byte-identical to the pre-speed-sync behaviour.</summary>
+        /// (the default path via <see cref="Update(float)"/>) is byte-identical to the pre-speed-sync behaviour.
+        /// A NEGATIVE multiplier plays backwards: a looping clip wraps onto its tail, a one-shot holds at frame 0
+        /// the way the forward direction holds the final frame.</summary>
         public void Update(float dt, float speedMultiplier)
         {
             if (_to is null) return;
             float clipDt = dt * speedMultiplier;   // clip playheads advance at the scaled rate...
-            // A looping clip wraps within its duration. A one-shot (PlayOnce) clamps at the end and HOLDS the final
-            // frame there. The FROM clip during a crossfade always wraps (it is fading out, never a held pose).
+            // A looping clip wraps within its duration. A one-shot (PlayOnce) clamps at BOTH ends and HOLDS the
+            // frame there: the final one played forward, frame 0 played backwards on a negative speedMultiplier.
+            // Clamping only the top let a negative clip dt drive the playhead below zero without bound, and the
+            // sampler was then asked for a negative time on a clamped clip. The FROM clip during a crossfade always
+            // wraps (it is fading out, never a held pose), and Wrap already handles a negative time.
             _toTime = _toLoops
                 ? AnimationSampler.Wrap(_toTime + clipDt, _to.Duration)
-                : MathF.Min(_toTime + clipDt, _to.Duration);
+                : Math.Clamp(_toTime + clipDt, 0f, _to.Duration);
             if (_from != null)
             {
                 _fromTime = AnimationSampler.Wrap(_fromTime + clipDt, _from.Duration);

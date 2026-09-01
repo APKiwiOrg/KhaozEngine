@@ -3834,7 +3834,9 @@ playheads scale, so the feet track speed even mid-blend.
 skeleton, time)` is a one-shot pose; `AnimationPlayer` holds a playhead, loops, and crossfades
 (`Play(clip, crossfade)` then `Update(dt)` then `GetBonePalette(buffer)`). `AnimationPlayer.Update(dt,
 speedMultiplier)` scales the playhead advance (for the speed-sync above) while keeping the crossfade timer on
-wall-clock `dt`; the 1-arg `Update(dt)` is exactly `Update(dt, 1f)`. `JointPose` is the TRS unit clips
+wall-clock `dt`. The 1-arg `Update(dt)` is exactly `Update(dt, 1f)`. A NEGATIVE multiplier plays the clip
+backwards: a looping clip wraps onto its tail, and a one-shot (`PlayOnce`) holds at frame 0 the way the forward
+direction holds the final frame. `JointPose` is the TRS unit clips
 interpolate; `InterpolationMode` is LINEAR or STEP (CUBICSPLINE is read as its value keys).
 
 ### Layered / masked animation (attack while running)

@@ -30,6 +30,14 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   screen pulled out mid-frame (its own transition-off completing, or another screen's `Update` removing it)
   cannot get one more `Update` out of the loop's scratch copy after its content is gone. Re-adding that same
   instance remounts it and re-runs its entry transition.
+  `PressBeganOverUi` carries the press-origin invariant across the UI boundary: true while the current gesture
+  began over a region the screens had reserved, latched at the press and held until the next fresh press. The
+  stack drives its own pointer, so a reservation here is invisible to a game's world-picking pointer, and there
+  is no rect that means "the whole screen stack" (its rect is the window, which contains every tap). A game with
+  a modal screen over a 3D world gates its world pick on it,
+  `if (!stack.PressBeganOverUi && worldPointer.IsTapIn(bounds))`, so the release that dismisses a login screen
+  does not also walk the player. Evaluated after the screens reserve, on the press frame rather than the release
+  frame, since by the release the screen that was in the way has usually closed. Left button only.
 - `Screen` - base UI surface: `Update(dt, receivesInput)` (returns whether it consumed input) + `Draw(SpriteBatch)`,
   with `DrawOrder` / `PassUpdateThrough` / `AlwaysReceivesInput` / transitions. **The dormant-overlay trap:** a
   screen that stays mounted all the time but is only sometimes showing something MUST return `false` from

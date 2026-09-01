@@ -953,6 +953,24 @@ for menu-heavy games. `Add`/`Remove`, `Update(dt, input[, viewport])`, `Draw(bat
 `Manager.Pointer`, so both share one click-through gate), and returns whether it consumed (to block screens
 below); set a screen non-pass-through for a modal.
 
+**Gating a world pick behind the UI (`PressBeganOverUi`).** The stack drives its OWN composed `Pointer`, so a
+`BlockRegion` a screen makes is invisible to the pointer a game uses to pick in its 3D world, and there is no
+rect the game can hand `IsTapIn` that means "the whole screen stack" (its rect is the window, so it contains
+every tap anywhere). `ScreenStack.PressBeganOverUi` answers that question directly: true while the CURRENT
+gesture began over a region the screens had reserved, latched at the press and held until the next fresh press.
+
+```csharp
+stack.Update(dt, input, viewport);                 // screens reserve their regions here
+if (!stack.PressBeganOverUi && worldPointer.IsTapIn(worldBounds)) PickInWorld();
+```
+
+It is evaluated after the screens have reserved for the frame, and only when the press origin is fresh, which is
+the whole point. Recomputing it on the release reads the layout as it stands THEN, and by then the modal that was
+in the way has usually closed, so the release that dismisses a login screen also walks the player. Left button
+only, since that is the gesture a world pick rides. Underneath it is `Pointer.IsPressOriginFresh`, true on the one
+frame the press origin was latched (a real press edge or a same-frame tap), which is the hook to use for any other
+per-gesture state a host keeps of its own.
+
 **The dormant-overlay trap.** `Screen.Update`'s bool return means "did THIS screen consume input THIS frame", not
 "did this screen receive input" - the two are different questions, and `receivesInput` already tells you the
 latter. A screen that stays in the stack all the time but is only sometimes showing/doing something (an

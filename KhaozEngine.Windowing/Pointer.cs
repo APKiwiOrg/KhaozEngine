@@ -22,6 +22,7 @@ namespace KhaozEngine.Windowing
         bool _consumed;   // current LEFT gesture claimed by a consumer; reset on the next fresh left press
         bool _rightConsumed;   // the same latch for the RIGHT gesture, tracked separately (see ConsumeRightGesture)
         bool _focused = true;   // OS window focus, from InputState.WindowFocused; windows start focused
+        bool _pressOriginFresh;   // this frame re-latched _pressOrigin (a real press edge, or a same-frame tap)
         Vector2 _pos, _prevPos, _pressOrigin, _rightPressOrigin;
 
         /// <summary>Current pointer position (pixels).</summary>
@@ -50,6 +51,15 @@ namespace KhaozEngine.Windowing
         public bool IsRightJustPressed => _right && !_wasRight;
         /// <summary>The right button's <see cref="IsJustReleased"/>, same-frame tap included.</summary>
         public bool IsRightJustReleased => !_right && _wasRight;
+
+        /// <summary>
+        /// True on the frame this gesture's <see cref="PressOrigin"/> was latched, and only that frame. That is
+        /// <see cref="IsJustPressed"/> plus the same-frame tap, whose press and release both land inside one frame
+        /// and so never shows up as a press edge at all. Read it when you keep per-GESTURE state of your own and
+        /// need to know when to recompute it: recomputing on the release instead reads a world that has moved on
+        /// since the press, which is the click-through bug the press-origin invariant exists to stop.
+        /// </summary>
+        public bool IsPressOriginFresh => _pressOriginFresh;
 
         /// <summary>
         /// True while the owning window has OS focus (from <see cref="InputState.WindowFocused"/>; <c>true</c> until
@@ -126,7 +136,8 @@ namespace KhaozEngine.Windowing
             // consumed flag: a context menu opened by a right-click must not be blinded by a left-gesture consume,
             // and consuming the right gesture (so the menu that just opened does not immediately re-fire) must not
             // cancel an unrelated left tap in the same frame.
-            if (IsJustPressed || leftTapped) { _pressOrigin = _pos; _consumed = false; }
+            _pressOriginFresh = IsJustPressed || leftTapped;
+            if (_pressOriginFresh) { _pressOrigin = _pos; _consumed = false; }
             if (IsRightJustPressed || rightTapped) { _rightPressOrigin = _pos; _rightConsumed = false; }
         }
 

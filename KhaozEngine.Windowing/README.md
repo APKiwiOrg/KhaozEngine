@@ -200,7 +200,10 @@ Windowing + input foundation for the custom MonoGame-free stack.
   off their own `RightPressOrigin` - what a right-click context menu hangs off, since hit-testing by raw
   position plus a button read is against the rule above. `ConsumeRightGesture()` / `IsRightConsumed` are the
   right-button twin of `ConsumeGesture()` / `IsConsumed` and are tracked separately, so neither button can
-  silence the other.
+  silence the other. `IsPressOriginFresh` is true on the one frame `PressOrigin` was latched (a real press edge
+  or a same-frame tap), for a consumer keeping per-GESTURE state of its own: recompute on that frame, never on
+  the release, which reads a world that has moved on since the press. `Gui.ScreenStack.PressBeganOverUi` is
+  built on it.
 - **Action maps + rebinding** (`KhaozEngine.Windowing.Actions`) - named actions instead of hardcoded key checks.
   A game declares `InputAction`s (`Button` / `Axis1D` / `Axis2D`) with default `InputBinding`s over `InputSource`s
   (key, mouse button, gamepad button, trigger, a whole stick via `WholeStick` for a 2D move/look, a single stick

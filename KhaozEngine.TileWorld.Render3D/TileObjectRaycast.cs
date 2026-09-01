@@ -81,17 +81,12 @@ public static class TileObjectRaycast
             if (catalogs.Archetype(o.ArchetypeId) is not { } archetype) continue;
             if (!bounds(archetype, out Vector3 min, out Vector3 max)) continue;
 
-            // The ray into the object's local frame: untranslate by the anchor, unrotate by the drawn yaw.
+            // The object's own frame: anchored at its drawn position, yawed by its drawn rotation. RayMath owns
+            // the untranslate + unrotate, so the engine is not hand-rolling the oriented-box test against itself.
             Vector3 at = TileObjectProps.AnchorPosition(document, archetype, o);
             float yaw = TileObjectProps.YawRadians(archetype, o.Rotation);
-            float cos = MathF.Cos(-yaw);
-            float sin = MathF.Sin(-yaw);
-            Vector3 ro = origin - at;
-            var localOrigin = new Vector3(ro.X * cos + ro.Z * sin, ro.Y, -ro.X * sin + ro.Z * cos);
-            var localDir = new Vector3(
-                direction.X * cos + direction.Z * sin, direction.Y, -direction.X * sin + direction.Z * cos);
 
-            if (!RayMath.IntersectAabb(localOrigin, localDir, min, max, out float t)) continue;
+            if (!RayMath.IntersectObbY(origin, direction, at, yaw, min, max, out float t)) continue;
             if (t >= maxDistance) continue;
             hits.Add(new TileObjectHit(o.Id, o.ArchetypeId, t));
         }

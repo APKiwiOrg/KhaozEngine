@@ -7364,6 +7364,10 @@ if (TerrainRaycast.Raycast(field, ray.Origin, dir, 200f, out Vector3 groundHit))
 // A prop's world AABB: allocation-free slab test, tNear the entry distance (0 when the origin starts inside).
 if (RayMath.IntersectAabb(ray.Origin, dir, propMin, propMax, out float tNear))
     Select(prop, hitPoint: ray.Origin + dir * tNear);
+
+// A prop that is PLACED and turned: local extents around its world anchor, yawed about Y.
+if (RayMath.IntersectObbY(ray.Origin, dir, prop.Position, prop.Yaw, localMin, localMax, out float tProp))
+    Select(prop, hitPoint: ray.Origin + dir * tProp);
 ```
 
 `TerrainRaycast.Raycast` (`KhaozEngine.Terrain`, render-free) marches `step` in units of the direction's
@@ -7373,6 +7377,15 @@ A ray starting below the surface returns the origin. `RayMath.IntersectAabb` (`K
 zero-dependency leaf) is the box test any other spatial query can reuse. Neither depends on a renderer or a
 window, so both are headless-testable off a constructed `Ray`/`TerrainField`/box, the same standard as the
 rest of the engine.
+
+`RayMath.IntersectObbY(origin, direction, center, yaw, min, max, out tNear)` is the oriented sibling, for the
+common Y-up case of a box that is axis-aligned in its own frame and turned about world Y: a placed prop, an
+actor, a clickbox. `center` is the world anchor and `min`/`max` are the extents in the box's local frame
+(relative to the anchor, not world coordinates). It untranslates by the anchor, unrotates by `yaw` and defers
+to `IntersectAabb`, so `tNear` still comes back in units of the direction's length and every edge case the
+slab test pins holds unchanged. A `yaw` of 0 is the same answer as `IntersectAabb` with the anchor subtracted
+out. `TileObjectRaycast` (`KhaozEngine.TileWorld.Render3D`) picks tile objects through it, so a game picking
+its own placed bodies gets the same math rather than a copy of it.
 
 A sibling overload takes a bare `Func<float, float, float> heightAt(x, z)` instead of a `TerrainField`, for a
 consumer that needs to raycast a height source that is not backed by a concrete `TerrainField` (a closed-form

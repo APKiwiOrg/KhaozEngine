@@ -43,6 +43,12 @@ automatically, so this is transparent to every other package.
   A degenerate zero-length ray (zero direction) hits, at `tNear` 0, only when the origin already lies inside
   the box on every axis. A NaN component in either the origin or the direction always misses (without the
   explicit check, the all-false NaN comparisons would fall through the slab test as an always-pass hit).
+  `IntersectObbY(origin, direction, center, yaw, min, max, out tNear)` is the same test against a box that is
+  axis-aligned in its own frame and yawed about world Y, the shape a placed prop, actor or clickbox has in a
+  Y-up world. `center` is the box's world anchor and `min`/`max` are its extents in the box's local frame, so
+  they are relative to that anchor. It untranslates and unrotates the ray and defers to `IntersectAabb`, so
+  every edge case above holds unchanged and a `yaw` of 0 gives the same answer as `IntersectAabb` with the
+  anchor subtracted out.
 - `WorldFrame` - a quantized planar frame for large worlds, the floating-origin primitive: a `(short X, short Z)`
   index onto a 128 m grid whose `Anchor` is `(X, 0, Z) * Grid` metres, always exactly representable in float32.
   `Nearest(world)` rounds (never floors) so a freshly anchored local lies inside half a grid, which is what makes
@@ -122,4 +128,8 @@ if (pool.TryRent(out PoolRental<Bullet> rental))   // false when exhausted
 ```csharp
 bool hit = RayMath.IntersectAabb(ray.Origin, ray.Direction, box.Min, box.Max, out float tNear);
 Vector3 hitPoint = ray.Origin + ray.Direction * tNear;   // tNear is in units of Direction's length
+
+// A placed prop: local extents around its world anchor, yawed about Y.
+bool onProp = RayMath.IntersectObbY(
+    ray.Origin, ray.Direction, prop.Position, prop.YawRadians, prop.LocalMin, prop.LocalMax, out float t);
 ```

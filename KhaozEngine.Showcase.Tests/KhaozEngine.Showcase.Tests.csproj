@@ -20,5 +20,7 @@
     <ProjectReference Include="../KhaozEngine.Showcase/KhaozEngine.Showcase.csproj" />
     <!-- ShowcaseStringsTests names StringId and ResourceStringCatalog. -->
     <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />
+    <!-- ShowcaseBootLogTests names SessionLogOptions. -->
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
   </ItemGroup>
 </Project>

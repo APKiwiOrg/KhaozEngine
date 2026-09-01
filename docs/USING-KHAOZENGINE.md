@@ -210,7 +210,8 @@ is the floor: see [the crash file](#the-crash-file-when-there-is-no-log-to-read-
 it contains and how to add your own facts to it. The recommended richer path is still to wire
 `KhaozEngine.Diagnostics.CrashHandler.Install()` with a `FileSink` (see the Diagnostics / logging section below),
 which routes every fatal to your game's `game.log` regardless of console. `KhaozEngine.Showcase` is the reference
-desktop head and ships as `WinExe`.
+desktop head and ships as `WinExe`, and it runs the `SessionLog.Configure` bootstrap at its entry point before
+the window opens, so the richer path is wired in the reference head too.
 
 ### Publishing (self-contained, single-file)
 

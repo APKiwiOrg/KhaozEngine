@@ -46,13 +46,17 @@ namespace KhaozEngine.Gui
     }
 
     /// <summary>
-    /// A grid of uniform square slots (a hotbar, an inventory panel, an equipment rack) over <see cref="Pointer"/>.
+    /// A grid of uniform slots (a hotbar, an inventory panel, an equipment rack) over <see cref="Pointer"/>.
     /// <see cref="Bounds"/>.X/Y is the grid's top-left origin. The footprint is DERIVED from <see cref="Columns"/>,
-    /// <see cref="SlotSize"/>, <see cref="Spacing"/> and the slot <see cref="Count"/> (<see cref="Bounds"/>.Width /
+    /// <see cref="SlotWidth"/> / <see cref="SlotHeight"/>, <see cref="Spacing"/> and the slot <see cref="Count"/>
+    /// (<see cref="Bounds"/>.Width /
     /// Height are advisory - read <see cref="ContentSize"/> / <see cref="ContentBounds"/> for the real footprint).
+    /// A slot is square by default and <see cref="SlotSize"/> keeps writing both axes at once, so a panel that draws
+    /// item NAMES rather than icons sets the two axes apart for a wide, short cell.
     /// Slots fill left-to-right then top-to-bottom, wrapping at <see cref="Columns"/>. Each slot is hit-tested through
     /// the press-origin <see cref="Pointer.IsTapIn"/> invariant, so a click that began in another slot (or off-grid)
-    /// can't fire it. <see cref="HoveredSlot"/> / <see cref="PressedSlot"/> expose the live states (-1 = none). The
+    /// can't fire it, and the right button gets the same treatment through <see cref="OnSlotRightClicked"/> (the
+    /// per-slot context menu). <see cref="HoveredSlot"/> / <see cref="PressedSlot"/> expose the live states (-1 = none). The
     /// widget knows nothing about game items: it draws each empty slot as a themed frame and lets the caller paint
     /// icons / counts through <see cref="DrawSlotContent"/>. Call <see cref="Update(Pointer)"/> then <see cref="Draw"/> each
     /// frame. <see cref="Update(Pointer)"/> reserves the footprint on the pointer (the click-through gate).
@@ -66,8 +70,23 @@ namespace KhaozEngine.Gui
         public int Count;
         /// <summary>Slots per row (the wrap width). <see cref="Rows"/> is derived from this and <see cref="Count"/>.</summary>
         public int Columns;
-        /// <summary>Edge length of every (square) slot, in draw units.</summary>
-        public float SlotSize = 48f;
+        /// <summary>Width of every slot, in draw units. Defaults to 48, the square cell the grid always drew.</summary>
+        public float SlotWidth = 48f;
+        /// <summary>Height of every slot, in draw units. Defaults to 48, the square cell the grid always drew.
+        /// Set it apart from <see cref="SlotWidth"/> for a rectangular cell, e.g. an inventory row that draws an
+        /// item NAME rather than an icon and so wants a wide, short slot.</summary>
+        public float SlotHeight = 48f;
+
+        /// <summary>
+        /// The square shorthand: setting it writes BOTH <see cref="SlotWidth"/> and <see cref="SlotHeight"/>, which
+        /// is what this knob always did back when a slot could only be square. Reading it returns
+        /// <see cref="SlotWidth"/>, so on a rectangular grid read the two axes directly rather than this.
+        /// </summary>
+        public float SlotSize
+        {
+            get => SlotWidth;
+            set { SlotWidth = value; SlotHeight = value; }
+        }
         /// <summary>Gap between adjacent slots (both axes), in draw units.</summary>
         public float Spacing = 4f;
 
@@ -157,10 +176,25 @@ namespace KhaozEngine.Gui
         /// <summary>Fired on a valid press-origin tap with the tapped slot index (mirrors the <see cref="Update(Pointer)"/> return).</summary>
         public Action<int>? OnSlotClicked;
 
+        /// <summary>
+        /// The right-button twin of <see cref="OnSlotClicked"/>, fired on a valid right press-origin tap
+        /// (<see cref="Pointer.IsRightTapIn"/>) with the tapped slot index. This is what a per-slot context menu
+        /// hangs off, and it carries the same press-origin guarantee the left tap does: a right press that began
+        /// in another slot, or off the grid, never fires. The <c>Update</c> return value stays the LEFT tap, so a
+        /// caller polling the return reads exactly what it always did. Poll <see cref="RightClickedSlot"/> instead
+        /// of wiring this when the call site prefers state to a callback.
+        /// </summary>
+        public Action<int>? OnSlotRightClicked;
+
         /// <summary>Index of the slot under the pointer this frame, or -1. Set by <see cref="Update(Pointer)"/>.</summary>
         public int HoveredSlot { get; private set; } = -1;
         /// <summary>Index of the slot being pressed this frame (press began inside it), or -1. Set by <see cref="Update(Pointer)"/>.</summary>
         public int PressedSlot { get; private set; } = -1;
+
+        /// <summary>Slot a right tap landed on this frame, or -1. The polling form of
+        /// <see cref="OnSlotRightClicked"/>, and cleared at the top of every <c>Update</c> the same way
+        /// <see cref="DroppedSlot"/> is.</summary>
+        public int RightClickedSlot { get; private set; } = -1;
 
         /// <summary>
         /// Index of the slot the held press BEGAN in, or -1. Unlike <see cref="PressedSlot"/> this survives the
@@ -232,8 +266,8 @@ namespace KhaozEngine.Gui
                 if (Count <= 0) return Vector2.Zero;
                 int cols = Math.Min(Count, Math.Max(1, Columns));   // a partial single row is only Count wide
                 int rows = Rows;
-                float w = cols * SlotSize + (cols - 1) * Spacing;
-                float h = rows * SlotSize + (rows - 1) * Spacing;
+                float w = cols * SlotWidth + (cols - 1) * Spacing;
+                float h = rows * SlotHeight + (rows - 1) * Spacing;
                 return new Vector2(w, h);
             }
         }
@@ -247,9 +281,9 @@ namespace KhaozEngine.Gui
             int cols = Math.Max(1, Columns);
             int col = index % cols;
             int row = index / cols;
-            float x = Bounds.X + col * (SlotSize + Spacing);
-            float y = Bounds.Y + row * (SlotSize + Spacing);
-            return new Rect(x, y, SlotSize, SlotSize);
+            float x = Bounds.X + col * (SlotWidth + Spacing);
+            float y = Bounds.Y + row * (SlotHeight + Spacing);
+            return new Rect(x, y, SlotWidth, SlotHeight);
         }
 
         /// <summary>Index of the slot containing <paramref name="point"/>, or -1 when the point is off every slot
@@ -285,7 +319,9 @@ namespace KhaozEngine.Gui
         /// <summary>
         /// Reserve the grid footprint for click-through, then hit-test every slot. Sets <see cref="HoveredSlot"/> and
         /// <see cref="PressedSlot"/>, and on a valid press-origin tap fires <see cref="OnSlotClicked"/> and returns
-        /// that slot index. Returns -1 otherwise.
+        /// that slot index. Returns -1 otherwise. A valid right press-origin tap sets
+        /// <see cref="RightClickedSlot"/> and fires <see cref="OnSlotRightClicked"/> in the same pass, and never
+        /// changes the return value.
         /// </summary>
         public int Update(Pointer pointer) => Update(pointer, null);
 
@@ -309,6 +345,7 @@ namespace KhaozEngine.Gui
             DropTargetAccepted = false;
             DroppedSlot = -1;
             DroppedPayload = default;
+            RightClickedSlot = -1;
             int clicked = -1;
             for (int i = 0; i < Count; i++)
             {
@@ -317,11 +354,13 @@ namespace KhaozEngine.Gui
                 if (PressedSlot < 0 && pointer.IsPressingIn(r)) PressedSlot = i;
                 if (PressOriginSlot < 0 && pointer.IsDragStartIn(r)) PressOriginSlot = i;
                 if (clicked < 0 && pointer.IsTapIn(r)) clicked = i;
+                if (RightClickedSlot < 0 && pointer.IsRightTapIn(r)) RightClickedSlot = i;
             }
 
             if (drag is not null) UpdateDrag(pointer, drag);
 
             if (clicked >= 0) OnSlotClicked?.Invoke(clicked);
+            if (RightClickedSlot >= 0) OnSlotRightClicked?.Invoke(RightClickedSlot);
             return clicked;
         }
 

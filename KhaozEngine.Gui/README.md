@@ -97,10 +97,15 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     `Update` return for callers that inspect it later in the frame; `Opacity` fades the whole slider for a host transition.
   - `Toggle` - two-state switch flipped by a valid tap; fires `OnChanged`. `WasToggled` mirrors the `Update` return;
     `Opacity` fades the whole toggle for a host transition.
-  - `SlotGrid` - a grid of uniform square slots (hotbar / inventory / equipment) over `Pointer`. `Bounds`.X/Y is
-    the origin; the footprint is derived from `Columns`/`SlotSize`/`Spacing` and the slot `Count` (read `ContentSize`
-    / `ContentBounds`). Each slot hit-tests through the press-origin invariant; `HoveredSlot`/`PressedSlot` expose the
-    live index (-1 = none) and a valid tap fires `OnSlotClicked` (and `Update` returns the index). Empty slots draw a
+  - `SlotGrid` - a grid of uniform slots (hotbar / inventory / equipment) over `Pointer`. `Bounds`.X/Y is
+    the origin, and the footprint is derived from `Columns`/`SlotWidth`/`SlotHeight`/`Spacing` and the slot `Count`
+    (read `ContentSize`
+    / `ContentBounds`). A slot is square by default and `SlotSize` is the shorthand that writes both axes (reading
+    it returns `SlotWidth`), so a panel drawing item NAMES rather than icons sets `SlotWidth`/`SlotHeight` apart for
+    a wide, short cell. Each slot hit-tests through the press-origin invariant, and `HoveredSlot`/`PressedSlot` expose the
+    live index (-1 = none) and a valid tap fires `OnSlotClicked` (and `Update` returns the index). The right button
+    gets the same press-origin treatment: a valid right tap sets `RightClickedSlot` and fires `OnSlotRightClicked`,
+    which is what a per-slot context menu hangs off, and it never changes the `Update` return. Empty slots draw a
     themed frame; the caller paints icons/counts through the `DrawSlotContent(index, rect, batch)` hook and optional
     per-slot `KeybindLabels` (raw input-token glyphs). `SlotRect(i)`/`SlotAt(point)` are pure geometry; `Opacity`
     fades the whole grid. Built-in slot content is available too: set an `IconAtlas` on the grid and hand each

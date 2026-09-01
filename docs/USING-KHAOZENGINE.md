@@ -1208,11 +1208,28 @@ The glide always snaps (no easing) on the first update and whenever the panel is
 `HeightGlideSeconds`.
 
 **HUD widgets: `SlotGrid` + `ProgressBar` (10.78.0)** - two additive widgets for inventory / status HUDs. `SlotGrid`
-lays out `Count` uniform square slots wrapping at `Columns` (`Bounds`.X/Y is the origin; the footprint is `ContentSize`
-/ `ContentBounds`, derived from `SlotSize` / `Spacing`). It hit-tests each slot through the press-origin invariant and
-exposes `HoveredSlot` / `PressedSlot` (-1 = none); a valid tap fires `OnSlotClicked` and `Update` returns the tapped
-index. The widget is item-agnostic: empty slots draw a themed frame, and the caller paints icons / counts through the
+lays out `Count` uniform slots wrapping at `Columns` (`Bounds`.X/Y is the origin, and the footprint is
+`ContentSize` / `ContentBounds`, derived from `SlotWidth` / `SlotHeight` / `Spacing`). It hit-tests each slot
+through the press-origin invariant and
+exposes `HoveredSlot` / `PressedSlot` (-1 = none). A valid tap fires `OnSlotClicked` and `Update` returns the
+tapped index. The widget is item-agnostic: empty slots draw a themed frame, and the caller paints icons / counts through the
 `DrawSlotContent(index, rect, batch)` hook and optional per-slot `KeybindLabels` (raw input-token glyphs).
+
+A slot is square by default (both axes 48) and `SlotSize` stays the shorthand that writes both, so every existing
+grid lays out exactly as before. Set `SlotWidth` and `SlotHeight` apart for a rectangular cell, which is what an
+inventory panel drawing item NAMES rather than icons wants. The right button carries the same press-origin
+invariant as the left: a valid right tap sets `RightClickedSlot` and fires `OnSlotRightClicked(index)`, so a
+per-slot context menu opens only when the right press BEGAN in that slot. The `Update` return stays the left tap.
+
+```csharp
+// A two-column inventory of wide text rows, right-click opening a per-slot context menu.
+var bag = new SlotGrid(new Rect(panelX, panelY, 0, 0), count: 28, columns: 2)
+{
+    SlotWidth = 92f, SlotHeight = 34f, Spacing = 4f,
+    DrawSlotContent = (i, rect, b) => DrawItemName(b, rect, _bag[i]),
+    OnSlotRightClicked = i => OpenItemMenu(i, bag.SlotRect(i)),
+};
+```
 `ProgressBar` is a thin fill bar: `Fraction` clamps 0..1, the accent `FillColor` sits inside the border frame, and an
 optional centered `OverlayText` (`LocalizedText`) labels it. `FillDirection` picks the edge the fill grows FROM -
 `LeftToRight` (default), `RightToLeft`, `BottomToTop`, `TopToBottom` (the last two are vertical bars). `SegmentCount`

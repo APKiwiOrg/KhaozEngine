@@ -141,7 +141,9 @@ id and the local player, and neither extrapolates. `docs/USING-KHAOZENGINE.md` c
   the one-deep pending action. `TileReach.Set` is every tile cardinally adjacent to a footprint tile that the
   footprint tile could step OUT onto, `Contains` is the in-range test, `TryNearest` picks the reach tile by real
   path length with scan order as the tie-break, and `FacingToward` turns the arriving actor toward what it came
-  for.
+  for. `TryNearest` refuses a footprint further than `maxRadius` + 1 away without searching, since no reach tile of
+  one is inside the pathfinder's window: the answer is the same false, and it is what stops a client naming a far
+  target it has never seen from buying up to eight full window floods per command.
 - **`ITileTargets`** / **`TileDocumentTargets`** / **`TileEntityTargets`** / **`TileRemoteTargets`** - the seam
   that resolves a target id to a footprint and a plane, and its three implementations across TWO id spaces.
   `TileDocumentTargets` is the OBJECT space, backed by the document over `TileObjectArchetype.Interactive` and

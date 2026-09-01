@@ -103,7 +103,13 @@ public static class TileReach
     /// prediction of an interaction walk reconciles instead of snapping.
     /// <para>Returns false when the footprint has no reach tile at all, when <paramref name="from"/> stands on
     /// another plane, and when none of the reach tiles can be reached from <paramref name="from"/> inside
-    /// <paramref name="maxRadius"/>. Reach never crosses planes, which is the refusal <see cref="Contains"/>
+    /// <paramref name="maxRadius"/>. That last refusal is ADMITTED CHEAPLY for a footprint the search window
+    /// cannot hold: a footprint further than <paramref name="maxRadius"/> + 1 away has no candidate inside the
+    /// window, so it is answered without a search and without the scratch one allocates. The answer is the same
+    /// one, and the reason it is worth stating is that a caller naming a far target is how an unbounded search
+    /// gets bought (see the comment in the body). The <see cref="ArgumentOutOfRangeException"/> below comes out of
+    /// the pathfinder, so a call decided here, or by <paramref name="from"/> already standing on a reach tile,
+    /// never raises it. Reach never crosses planes, which is the refusal <see cref="Contains"/>
     /// already makes and the one the two members have to agree on: an actor a plane above a booth is not standing
     /// on a reach tile, so it must not be handed a zero step walk to one either. A caller treats a false as
     /// "cannot get there", not as "walk as close as you can": <c>FindPath</c>'s nearest-reachable fallback is
@@ -134,6 +140,29 @@ public static class TileReach
         reachTile = default;
         path = TilePath.Empty(from);
         if (from.Plane != plane) return false;               // reach never crosses planes, same as Contains
+        if (footprint.IsEmpty) return false;                 // no candidates, and no distance to measure either
+
+        // ADMISSION, and the counterpart to the server's own MaxGoalRadius refusal for a walk goal.
+        // TilePathfinder.FindPath searches a (2r+1)^2 window centred on `from`, so a candidate outside that box is
+        // never visited and the search always fails. Every reach tile is cardinally adjacent to a footprint tile,
+        // so the nearest candidate is at most one tile closer than the footprint itself: a footprint whose nearest
+        // tile is further than maxRadius + 1 has no candidate inside the window AT ALL, and the whole call is
+        // decided here. Exactly the answer the searches below would have reached, for none of the (2r+1)^2 scratch
+        // entries each of them allocates.
+        //
+        // That cost is what a client naming a target it has never seen was buying. Net ids are handed out from a
+        // counter, so a hostile Attack or Interact guesses a small integer rather than needing to have seen
+        // anything, and at the player simulator's radius of 64 each guess was up to eight floods of about 83 KB.
+        // Refusing here rather than at the door is what gives both seams one rule and both heads one definition of
+        // it, since the client predicts through this same member.
+        //
+        // In LONG, because the two coordinates are independent and can be far apart: a footprint near int.MinValue
+        // against a `from` at a positive tile overflows the subtraction in int, and the wrong sign would ADMIT the
+        // call rather than refuse it.
+        long dx = Math.Max(Math.Max((long)footprint.X - from.X, (long)from.X - ((long)footprint.X1 - 1)), 0L);
+        long dz = Math.Max(Math.Max((long)footprint.Z - from.Z, (long)from.Z - ((long)footprint.Z1 - 1)), 0L);
+        if (Math.Max(dx, dz) > (long)maxRadius + 1) return false;
+
         int best = int.MaxValue;
         bool any = false;
 

@@ -9046,7 +9046,13 @@ sealed class MeleeRules : ITileCombatRules
 
 server.CombatRules = new MeleeRules();
 
-server.OnCombatEvent += e => game.AwardExperience(e.AttackerNetId, e.Amount);
+// Every combat seam names NET IDS, and a game's per-seat state (a skill book, an inventory, a persistence record)
+// is keyed by SLOT, so the seat index is read in both directions. `TryGetPlayerSlot` is the combat direction and
+// answers false for an actor's id, which is exactly the "not a player" test a rules implementation needs.
+server.OnCombatEvent += e =>
+{
+    if (server.TryGetPlayerSlot(e.AttackerNetId, out int attackerSlot)) game.AwardExperience(attackerSlot, e.Amount);
+};
 server.OnDied += (deadNetId, killerNetId, slot) =>
 {
     // slot is the dead entity's connection slot, or -1 for anything that is not a player.

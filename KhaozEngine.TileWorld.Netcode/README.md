@@ -235,7 +235,9 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
 - **`TileWorldServer`** (+ **`TileWorldServerConfig`**) - the authoritative server, a `ShardHost` whose cell grid is
   the tile region grid. `Poll` pumps the transport, `Tick` runs the world, and the seams are `OnBeforeTick`,
   `OnInteract`, `OnGameMessage`, `OnCannotReach`, `PlayerJoined` and `PlayerLeaving`. It is also the
-  `IPersistenceHost<TileMoveState>`. **The tick is EIGHT steps**, not five, with the head's own systems ahead of
+  `IPersistenceHost<TileMoveState>`. The seat index reads BOTH ways, `TryGetPlayerNetId` and `TryGetPlayerSlot`,
+  because the combat seams all name net ids while a game's per-seat state is keyed by slot. The reverse answers
+  false for an actor's id and forgets a seat on the same leave that frees it. **The tick is EIGHT steps**, not five, with the head's own systems ahead of
   the first of them: drain one command per player, the actor step (1b), step every cell, authority handoff and
   border ghosting, the action queue, combat (4b), serve every client its area of interest, then the despawn every
   actor killed this tick owes (5b). The reap sits BEHIND the serve deliberately: a corpse taken out of the world at

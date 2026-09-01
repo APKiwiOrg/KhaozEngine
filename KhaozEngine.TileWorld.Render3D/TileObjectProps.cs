@@ -5,11 +5,21 @@ using KhaozEngine.Terrain;
 
 namespace KhaozEngine.TileWorld;
 
-/// <summary>The prop placements of one region-plane, split by the roof rule so a view can hide the roofs while
-/// the camera subject stands indoors and keep drawing everything else.</summary>
+/// <summary>The prop placements of one region-plane, split by the roof rule so a view can hide the roofs over
+/// the building the camera subject stands in and keep drawing everything else.</summary>
 /// <param name="Ground">Placements for every non-roof object of the region-plane.</param>
 /// <param name="Roofs">Placements for the region-plane's roof objects, drawn only when the roofs are shown.</param>
-public sealed record TileRegionProps(IReadOnlyList<PropPlacement> Ground, IReadOnlyList<PropPlacement> Roofs);
+public sealed record TileRegionProps(IReadOnlyList<PropPlacement> Ground, IReadOnlyList<PropPlacement> Roofs)
+{
+    /// <summary>The world tile footprint of each <see cref="Roofs"/> entry, same order and same length. A
+    /// placement carries a world POSITION and no extent, and the roof rule has to know which tiles a roof covers
+    /// to decide whether it belongs to the observer's building, so the footprints ride alongside.
+    /// <para>Empty by default, which keeps a record built by hand compiling: a roof this list does not reach is
+    /// never hidden by the interior rule (<c>RoofVisibility.AlwaysHidden</c> still hides it), the same
+    /// hide-nothing-you-cannot-place direction the interior fill's cap takes.
+    /// <see cref="TileObjectProps.Build"/> always fills it.</para></summary>
+    public IReadOnlyList<TileRect> RoofFootprints { get; init; } = Array.Empty<TileRect>();
+}
 
 /// <summary>Turns a region-plane's <see cref="TileObject"/>s into the <see cref="PropPlacement"/>s the existing
 /// prop path draws: one placement per object, anchored at the centre of its rotated footprint with the
@@ -22,8 +32,8 @@ public static class TileObjectProps
     /// <summary>Degrees of yaw one quarter turn of <see cref="TileObject.Rotation"/> adds.</summary>
     public const float DegreesPerRotation = 90f;
 
-    /// <summary>Builds the placements of one region-plane, roofs separated from the rest. A region the document
-    /// does not hold builds two empty lists.</summary>
+    /// <summary>Builds the placements of one region-plane, roofs separated from the rest and each roof's rotated
+    /// tile footprint recorded beside it. A region the document does not hold builds empty lists.</summary>
     public static TileRegionProps Build(TileWorldDocument doc, TileWorldCatalogs catalogs, RegionCoord region, int plane)
     {
         ArgumentNullException.ThrowIfNull(doc);
@@ -31,6 +41,7 @@ public static class TileObjectProps
 
         var ground = new List<PropPlacement>();
         var roofs = new List<PropPlacement>();
+        var roofFootprints = new List<TileRect>();
         TileRegion? data = doc.GetRegion(region);
         if (data is null) return new TileRegionProps(ground, roofs);
 
@@ -42,9 +53,11 @@ public static class TileObjectProps
 
             Vector3 at = AnchorPosition(doc, a, o);
             var placement = new PropPlacement(o.ArchetypeId, at.X, at.Y, at.Z, 1f, YawRadians(a, o.Rotation), 0);
-            (a.IsRoof ? roofs : ground).Add(placement);
+            if (!a.IsRoof) { ground.Add(placement); continue; }
+            roofs.Add(placement);
+            roofFootprints.Add(TileFootprint.Of(a, o.X, o.Z, o.Rotation));
         }
-        return new TileRegionProps(ground, roofs);
+        return new TileRegionProps(ground, roofs) { RoofFootprints = roofFootprints };
     }
 
     /// <summary>The yaw in radians for an instance rotation, NEGATIVE per quarter turn. That sign is what makes

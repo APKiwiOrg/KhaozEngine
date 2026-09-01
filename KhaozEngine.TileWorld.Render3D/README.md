@@ -164,7 +164,11 @@ own through `TileWorldViewOptions.WaterLook`.
 
 `TileObjectProps.Build(doc, catalogs, region, plane)` turns a region-plane's `TileObject`s into
 `TileRegionProps(Ground, Roofs)`, two `PropPlacement` lists for the existing prop path, split so the roof rule can
-hide one and keep the other. Objects on another plane, and objects whose archetype the catalogs do not define, are
+hide one and keep the other, plus `RoofFootprints`, the world tile rect each roof covers in the same order and
+the same length. A placement carries a position and no extent, and the roof rule has to know which TILES a roof
+sits over to tell whose building it is, so the footprints ride alongside. The property is init-only and empty by
+default, so a record built by hand still compiles: a roof the list does not reach is never hidden by the interior
+rule. Objects on another plane, and objects whose archetype the catalogs do not define, are
 skipped rather than thrown on, because content outlives a catalog edit. `AnchorPosition` puts a placement at the
 centre of the ROTATED footprint at the document's ground height there, so a mesh is authored centred on its own
 footprint with its base at y 0. `YawRadians` is NEGATIVE per quarter turn
@@ -304,9 +308,23 @@ catalog archetype up front, so a region load is placements alone.
 - `Draw(focus)` flushes, then queues every loaded region: each plane's ground mesh at its world transform, that
   plane's ground props, and its roofs. `focus` is the point the prop draw radius (`PropDrawRadius`, 96 m) is
   measured from, which is the camera subject rather than the observer tile.
-- **The roof rule.** `Observer` is the tile the rule is judged from and `ObserverIndoors` reports whether that
-  tile carries `TileSettings.Indoors`. Standing indoors hides the roofs of every plane ABOVE the observer's own,
-  so the storey the observer is on keeps its props and the ceiling between them and the camera goes.
+- **The roof rule, one building at a time.** `Observer` is the tile the rule is judged from and `ObserverIndoors`
+  reports whether that tile carries `TileSettings.Indoors`. Standing indoors hides the roofs that sit on a plane
+  ABOVE the observer's own AND cover the observer's own INTERIOR, which is the 4-connected flood fill of indoor
+  tiles seeded from the observer's tile. So the storey the observer is on keeps its props, the ceiling between
+  them and the camera goes, and the building next door keeps its roof. `IsRoofHidden(footprint, plane)` is the
+  predicate itself, and `InteriorTileCount` reports the size of the interior the answer came from.
+- **`RoofMode`** picks between `RoofVisibility.Interior` (the default above), `AlwaysVisible` (nothing is ever
+  hidden, the map-authoring view) and `AlwaysHidden` (every roof on every plane goes, the OSRS "roofs off"
+  setting, and the pre-18.10.0 indoor behaviour applied unconditionally). Wire it to the player's setting.
+- **The interior fill is bounded** at `MaxInteriorTiles` (4096). A world that flags a whole region indoors by
+  mistake would otherwise cost tens of thousands of settings reads on the frame the observer walks into it, so
+  the walk stops there and every tile it did not reach is outside the interior: the failure direction is a roof
+  left visible, never a stalled frame and never a throw. `InteriorTruncated` says it happened and
+  `TileWorldViewOptions.Log` gets one line for the view's life.
+- The interior is refilled lazily, when the observer's TILE changes, when the indoor flag under a stationary
+  observer flips, or when anything is marked dirty. `MarkDirty` is the only edit channel the document has (it
+  raises no events), so an editor painting `Indoors` gets the new interior on the next draw for free.
 - `Dispose` frees every region and every archetype mesh set the view uploaded. The scene is not owned.
 
 ## Streaming (`TileRegionResidency`, `TileResidencyConfig`)

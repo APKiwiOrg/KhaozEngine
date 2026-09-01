@@ -12362,6 +12362,35 @@ where it should live); every subsequent authenticated request calls `SessionToke
 secret. `SessionToken` is a fixed-time-compared HMAC-SHA256, so it never round-trips to the provider once
 minted.
 
+### A provider outage is not a bad credential
+
+`ValidateAsync` answers null for everything that is not a verified identity, so a Discord 500 or a 429 rate
+limit is indistinguishable from an expired token. Acting on that reads an outage as a refusal: the client
+discards a good credential and re-runs sign-in against a provider that is already down.
+
+`ValidateDetailedAsync` carries the third outcome:
+
+```csharp
+IdentityValidation result = await validator.ValidateDetailedAsync(credentialTokenFromClient, ct);
+switch (result.Outcome)
+{
+    case IdentityValidationOutcome.Verified:
+        VerifiedIdentity identity = result.Identity!.Value;
+        return Results.Ok(Mint(identity));
+    case IdentityValidationOutcome.ProviderUnavailable:
+        return Results.StatusCode(503);   // keep the credential, back off, retry
+    default:
+        return Results.Unauthorized();    // Refused: sign in again
+}
+```
+
+It is a default interface member, so every validator already has it. The default calls `ValidateAsync` and
+maps null to `Refused`, which is what null already meant, so nothing that exists today changes meaning.
+`DiscordTokenValidator` overrides it and splits on the HTTP status class: any 5xx, a 429, a 408, or a request
+that never completed report `ProviderUnavailable`, everything else non-success reports `Refused`.
+`OidcTokenValidator` takes the default for now, so an OIDC outage still reads as `Refused`. `result.Detail` is
+a developer-facing note (a status code, an exception message), never localized and never shown to a player.
+
 ### Offline grace
 
 `IdentitySession.RestoreAsync` implements a small state machine off the cached session's

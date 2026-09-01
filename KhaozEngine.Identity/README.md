@@ -8,6 +8,7 @@ Pluggable player-identity seam: provider sign-in + server-side verified-subject 
 
 - **IIdentityProvider** - Client-side sign-in integration (e.g., OIDC, Discord)
 - **IIdentityValidator** - Server-side credential verification to a stable subject
+- **IdentityValidation** / **IdentityValidationOutcome** - The three-outcome result of `ValidateDetailedAsync`: `Verified`, `Refused`, or `ProviderUnavailable`
 - **ITokenCache** / **FileTokenCache** - Persisted sign-in session (provider credential + session token), so a returning player skips an interactive sign-in
 - **IBrowserLauncher** / **ILoopbackListener** - The OS/network seams an interactive sign-in flow drives (opening the system browser, capturing the redirect)
 - **ProviderCredential** - Client sign-in result with refresh state
@@ -49,6 +50,42 @@ if (verified is VerifiedIdentity identity)
     // return { token, expiry, identity.Subject, identity.DisplayName } to the client
 }
 ```
+
+## Telling a refused credential from a provider outage
+
+`ValidateAsync` returns null for everything that is not a verified identity, so a Discord 500 or a 429 rate
+limit reads exactly like a bad token. That is the wrong answer to act on: a client that treats an outage as a
+refusal throws away a good credential and re-runs sign-in against a provider that is already down, which is a
+retry loop pointed at an outage.
+
+`ValidateDetailedAsync` reports which of the three happened:
+
+```csharp
+IdentityValidation result = await validator.ValidateDetailedAsync(credentialTokenFromClient, ct);
+switch (result.Outcome)
+{
+    case IdentityValidationOutcome.Verified:
+        string token = SessionToken.Mint(result.Identity!.Value.Subject, ..., expiry, secret);
+        break;
+    case IdentityValidationOutcome.Refused:
+        // 401 to the client: sign in again.
+        break;
+    case IdentityValidationOutcome.ProviderUnavailable:
+        // 503 to the client: keep the credential, back off, retry.
+        break;
+}
+```
+
+It is a default interface member, so every existing validator already has it: the default calls
+`ValidateAsync` and maps null to `Refused`, which is exactly what null meant. A backend that can see more
+overrides it. `DiscordTokenValidator` does, splitting on the HTTP status class (any 5xx, 429 and 408 are
+unavailable, every other non-success is refused) and treating a request that never completed as unavailable
+too. `OidcTokenValidator` still takes the default, so an OIDC provider outage reads as `Refused` until it
+overrides in turn. `result.Detail` carries a developer-facing note (a status code, an exception message) and is
+never localized or shown to a player.
+
+Being a default interface member has one consequence worth knowing: it is reachable through the interface, so
+a caller holding a concrete type that does not declare the method calls it through `IIdentityValidator`.
 
 A consumer that supports multiple providers at once builds its own lookup, e.g. a
 `IReadOnlyDictionary<string, IIdentityValidator>` keyed by provider id, and dispatches to

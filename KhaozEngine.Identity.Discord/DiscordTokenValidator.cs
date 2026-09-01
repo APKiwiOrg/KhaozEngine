@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
@@ -44,13 +45,80 @@ public sealed class DiscordTokenValidator : IIdentityValidator
 
     /// <summary>Verifies the token against <c>oauth2/@me</c> and maps the nested user object to a
     /// <see cref="VerifiedIdentity"/>. Returns null for a non-success response, a token from a different
-    /// application, or a malformed/unparseable body (fail-closed).</summary>
+    /// application, or a malformed/unparseable body (fail-closed). A request that never completes still
+    /// throws, as it always has: <see cref="ValidateDetailedAsync"/> is where that becomes an outcome.</summary>
     public async Task<VerifiedIdentity?> ValidateAsync(string credentialToken, CancellationToken ct = default)
+    {
+        using HttpResponseMessage resp = await SendAsync(credentialToken, ct).ConfigureAwait(false);
+        if (!resp.IsSuccessStatusCode) return null;
+        return await ReadIdentityAsync(resp, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Same verification, with the outage case split out. Discord answering 500, or rate-limiting with 429, is
+    /// a completed round trip that says nothing about the token, and a request that never completed says even
+    /// less. Reporting either as a refusal sends the player back through sign-in against a provider that is
+    /// already down, so those map to <see cref="IdentityValidationOutcome.ProviderUnavailable"/> and every
+    /// other non-success maps to Refused. Cancellation the caller asked for still surfaces as an exception.
+    /// </summary>
+    public async Task<IdentityValidation> ValidateDetailedAsync(string credentialToken, CancellationToken ct = default)
+    {
+        HttpResponseMessage resp;
+        try
+        {
+            resp = await SendAsync(credentialToken, ct).ConfigureAwait(false);
+        }
+        catch (HttpRequestException ex)
+        {
+            return IdentityValidation.ProviderUnavailable($"discord request failed: {ex.Message}");
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // The client's own timeout, not the caller's cancellation. Discord did not answer in time.
+            return IdentityValidation.ProviderUnavailable("discord request timed out");
+        }
+
+        using (resp)
+        {
+            if (!resp.IsSuccessStatusCode)
+            {
+                string detail = $"discord returned {(int)resp.StatusCode}";
+                return IsTransient(resp.StatusCode)
+                    ? IdentityValidation.ProviderUnavailable(detail)
+                    : IdentityValidation.Refused(detail);
+            }
+
+            VerifiedIdentity? identity = await ReadIdentityAsync(resp, ct).ConfigureAwait(false);
+            return identity is { } verified
+                ? IdentityValidation.Verified(verified)
+                : IdentityValidation.Refused("discord answered, but the token is not this application's");
+        }
+    }
+
+    /// <summary>
+    /// A status the provider is expected to recover from on its own: any 5xx, a 429 rate limit, or a 408. None
+    /// of them is a statement about the credential.
+    /// </summary>
+    private static bool IsTransient(HttpStatusCode status) =>
+        (int)status >= 500 || status == HttpStatusCode.TooManyRequests || status == HttpStatusCode.RequestTimeout;
+
+    /// <summary>
+    /// Issues the introspection call. Awaited rather than returned, so the request message outlives the send
+    /// instead of being disposed under it.
+    /// </summary>
+    private async Task<HttpResponseMessage> SendAsync(string credentialToken, CancellationToken ct)
     {
         using HttpRequestMessage req = new(HttpMethod.Get, TokenInfoEndpoint);
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credentialToken);
-        using HttpResponseMessage resp = await http.SendAsync(req, ct).ConfigureAwait(false);
-        if (!resp.IsSuccessStatusCode) return null;
+        return await http.SendAsync(req, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Maps a success response to an identity, or null when the body is not this application's or cannot be
+    /// read. Every null here is a refusal: the round trip completed and the answer was unusable.
+    /// </summary>
+    private async Task<VerifiedIdentity?> ReadIdentityAsync(HttpResponseMessage resp, CancellationToken ct)
+    {
         string body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
 
         try

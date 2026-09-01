@@ -16,7 +16,7 @@ namespace KhaozEngine.MapEdit.Tools;
 [McpServerToolType]
 public sealed class RenderTools(RenderService render)
 {
-    [McpServerTool(Name = "render_topdown"), Description("Renders a top-down orthographic PNG of the open map over a world rect (defaults to the document bounds). The camera looks straight down with world +Z up the image and world +X to the right. Returns a text block naming the rect, image size, and meters-per-pixel, then the PNG image. Overlays (exclusion, region, and feature fills) draw by default. Renders terrain only when no asset manifests were supplied. Needs a headless GPU device.")]
+    [McpServerTool(Name = "render_topdown"), Description("Renders a top-down orthographic PNG of the open map over a world rect (defaults to the document bounds). The camera looks straight down with world +X to the right and world +Z DOWN the image. Returns a text block naming the rect, image size, and meters-per-pixel, then the PNG image. Overlays (exclusion, region, and feature fills) draw by default. Renders terrain only when no asset manifests were supplied. Needs a headless GPU device.")]
     public IEnumerable<ContentBlock> RenderTopDown(
         [Description("Minimum world X of the rect in meters. Null uses the document bounds.")] float? minX = null,
         [Description("Minimum world Z of the rect in meters. Null uses the document bounds.")] float? minZ = null,

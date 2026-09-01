@@ -34,7 +34,11 @@ public sealed class RenderService(MapEditSession session)
     const float FocusLift = 2f;
 
     /// <summary>Top-down orthographic PNG over the world rect (defaulting to the document bounds). The camera looks
-    /// straight down with azimuth zero, so world +Z runs up the image and world +X runs to the right.
+    /// straight down with azimuth zero, so world +X runs to the RIGHT and world +Z runs DOWN the image. That pair
+    /// is forced, not chosen: with x east, z north and y up the world triple is left handed against a right-handed
+    /// render space, so a camera looking down the up axis gives up either north-up or east-right. Azimuth zero
+    /// keeps east-right. Do not flip it, <c>TileWorldSnapshot.TopDownAzimuth</c> deliberately matches this camera
+    /// so the engine's two orthographic map captures agree.
     /// <paramref name="includeOverlays"/> paints the exclusion, region, and feature fills over the terrain.
     /// <paramref name="textured"/> mirrors the editor's TexturedProps toggle: true (the default) renders a manifest
     /// entry's textured parts when it declares them, false renders every prop flattened regardless of the manifest

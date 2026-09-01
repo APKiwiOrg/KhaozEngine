@@ -76,7 +76,6 @@
 4 docs/INDEX.md
 4 KhaozEngine.Terrain.Render3D/README.md
 4 KhaozEngine.Objectives/README.md
-4 KhaozEngine.Commerce.SqlServer/README.md
 3 tools/PixelLabSheetAssembler/README.md
 3 docs/design/MAP-EDITOR-DESIGN.md
 3 docs/design/GUI-DRAG-AND-DROP-DESIGN-2026-07-28.md
@@ -85,6 +84,7 @@
 3 KhaozEngine.MapEdit.Tool/README.md
 3 KhaozEngine.MapDoc/README.md
 3 KhaozEngine.Localization.TestKit/README.md
+3 KhaozEngine.Commerce.SqlServer/README.md
 3 KhaozEngine.Collision/README.md
 2 SnapshotTool/README.md
 2 KhaozEngine.WorldStore.Sqlite/README.md

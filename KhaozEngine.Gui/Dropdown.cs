@@ -1,14 +1,34 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.App;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Gui
 {
-    /// <summary>A single option in a <see cref="Dropdown"/>.</summary>
-    public readonly record struct DropdownOption(string Label, int Value);
+    /// <summary>
+    /// A single option in a <see cref="Dropdown"/>: the player-facing <see cref="Content"/> plus the caller's own
+    /// <see cref="Value"/>. <see cref="Content"/> is a <see cref="LocalizedText"/>, so a <see cref="StringId"/>
+    /// converts implicitly and a bare literal does not, which is what puts the option list in front of the
+    /// localization analyzer. A settings selector (difficulty, display mode, quality) is exactly the shape that
+    /// used to ship unlocalizable, because a plain <c>string</c> member is not a sink the analyzer can see.
+    /// </summary>
+    public readonly record struct DropdownOption(LocalizedText Content, int Value)
+    {
+        /// <summary>Obsolete: pass a <see cref="LocalizedText"/>. A raw string bypasses localization.</summary>
+        [Obsolete("Pass a LocalizedText; a raw string bypasses localization. Use a StringId or LocalizedText.Raw(...) for non-localizable text.")]
+        [LocalizationStringSink]
+        [LocalizationExempt]
+        public DropdownOption(string label, int value) : this(LocalizedText.Raw(label), value) { }
+
+        /// <summary>Obsolete shim for the former string member: resolves <see cref="Content"/> against the
+        /// ambient catalog.</summary>
+        [Obsolete("Use Content (LocalizedText), or the Dropdown's SelectedLabel for the resolved string.")]
+        [LocalizationExempt]
+        public string Label => Content.Resolve();
+    }
 
     /// <summary>
     /// A selector over <see cref="Pointer"/>: the trigger shows the current option; a tap opens a list below it;
@@ -38,7 +58,11 @@ namespace KhaozEngine.Gui
         /// <summary>When true (default) keyboard highlight movement and inline stepping wrap at the ends; when false they clamp.</summary>
         public bool Wrap = true;
         public int SelectedValue => _options[SelectedIndex].Value;
-        public string SelectedLabel => _options[SelectedIndex].Label;
+        /// <summary>The selected option's text, resolved against the ambient catalog (what the trigger draws).</summary>
+        public string SelectedLabel => _options[SelectedIndex].Content.Resolve();
+        /// <summary>The selected option's unresolved <see cref="LocalizedText"/>, for a caller forwarding it to
+        /// another sink rather than drawing it.</summary>
+        public LocalizedText SelectedContent => _options[SelectedIndex].Content;
         public IReadOnlyList<DropdownOption> Options => _options;
 
         public Vector4 Background = GuiTheme.Default.Surface;
@@ -252,7 +276,7 @@ namespace KhaozEngine.Gui
                 else if (i == HighlightedIndex) GuiDraw.Fill(batch, white, r, GuiDraw.WithOpacity(FocusColor, Opacity));
                 else if (pointer.IsPointerIn(r)) GuiDraw.Fill(batch, white, r, GuiDraw.WithOpacity(HoverColor, Opacity));
                 float ty = GuiDraw.CenteredTextY(r.Y, r.Height, font.LineHeight, TextScale);
-                batch.DrawString(font, _options[i].Label, new Vector2(MathF.Floor(r.X + 6f), MathF.Floor(ty)),
+                batch.DrawString(font, _options[i].Content.Resolve(), new Vector2(MathF.Floor(r.X + 6f), MathF.Floor(ty)),
                     (Color)GuiDraw.WithOpacity(selected ? SelectedTextColor : TextColor, Opacity), TextScale);
             }
         }

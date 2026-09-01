@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.App;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 using KhaozEngine.Primitives;
@@ -14,7 +15,7 @@ namespace KhaozEngine.Gui
     /// <see cref="TappedItemIndex"/>. Clipping is via the engine's <see cref="SpriteBatch"/> scissor.
     /// <para>
     /// Opt-in overlay chrome (9.21.0), all defaulting to no-ops so existing callers are byte-identical: a header
-    /// band (<see cref="HeaderHeight"/> + <see cref="DrawHeader"/>) above the scroll region; a slide-up animation
+    /// band (<see cref="HeaderHeight"/> + <see cref="DrawHeader(SpriteBatch, Texture2D, SpriteFont, LocalizedText)"/>) above the scroll region; a slide-up animation
     /// driven by an external <see cref="TransitionAlpha"/> from a docked bottom edge (<see cref="SlideFromBottom"/>);
     /// drag-to-resize the header within <see cref="MinHeight"/>/<see cref="MaxHeight"/> (<see cref="Resizable"/>);
     /// and a dimmed <see cref="Scrim"/> with tap-outside-to-close (<see cref="ScrimDismissed"/>). All geometry is
@@ -56,7 +57,7 @@ namespace KhaozEngine.Gui
         // ---- opt-in overlay chrome (9.21.0) --------------------------------------------------------------
 
         /// <summary>Height of a header band reserved at the top of the panel (title + divider). 0 (default) = no
-        /// header: the content region fills the whole panel, exactly as before. Draw it with <see cref="DrawHeader"/>.</summary>
+        /// header: the content region fills the whole panel, exactly as before. Draw it with <see cref="DrawHeader(SpriteBatch, Texture2D, SpriteFont, LocalizedText)"/>.</summary>
         public float HeaderHeight = 0f;
         public Vector4 HeaderBackground = new(0f, 0f, 0f, 0f);   // transparent by default: header sits over the panel bg
         public Vector4 HeaderDivider = new(0.20f, 0.20f, 0.25f, 1f);
@@ -291,17 +292,26 @@ namespace KhaozEngine.Gui
             GuiDraw.FillStyled(batch, white, CurrentBounds, Style with { BorderThickness = 1f }, Background, Border);
         }
 
+        /// <summary>Obsolete: pass a <see cref="LocalizedText"/>. A raw string title bypasses localization.</summary>
+        [Obsolete("Pass a LocalizedText; a raw string bypasses localization. Use a StringId or LocalizedText.Raw(...) for non-localizable text.")]
+        [LocalizationStringSink]
+        [LocalizationExempt]
+        public void DrawHeader(SpriteBatch batch, Texture2D white, SpriteFont font, string title) =>
+            DrawHeader(batch, white, font, LocalizedText.Raw(title));
+
         /// <summary>Draw the header band: optional <see cref="HeaderBackground"/> fill, left-aligned <paramref name="title"/>,
-        /// and a bottom divider. No-op when <see cref="HeaderHeight"/> is 0.</summary>
-        public void DrawHeader(SpriteBatch batch, Texture2D white, SpriteFont font, string title)
+        /// and a bottom divider. No-op when <see cref="HeaderHeight"/> is 0. The title is resolved against the
+        /// ambient catalog on every draw, so a runtime locale switch takes effect on the next frame.</summary>
+        public void DrawHeader(SpriteBatch batch, Texture2D white, SpriteFont font, LocalizedText title)
         {
             if (HeaderHeight <= 0f) return;
             Rect h = HeaderBounds;
             if (HeaderBackground.W > 0f) GuiDraw.Fill(batch, white, h, HeaderBackground);
-            if (!string.IsNullOrEmpty(title))
+            string resolved = title.Resolve();
+            if (!string.IsNullOrEmpty(resolved))
             {
                 float ty = h.Y + (HeaderHeight - font.LineHeight) * 0.5f;
-                batch.DrawString(font, title, new Vector2(MathF.Floor(h.X + 8f), MathF.Floor(ty)), (Color)HeaderTextColor);
+                batch.DrawString(font, resolved, new Vector2(MathF.Floor(h.X + 8f), MathF.Floor(ty)), (Color)HeaderTextColor);
             }
             GuiDraw.Fill(batch, white, new Rect(h.X, h.Bottom - 1f, h.Width, 1f), HeaderDivider);
         }

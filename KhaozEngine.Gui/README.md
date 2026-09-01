@@ -3,7 +3,8 @@
 Immediate-mode + retained UI on the custom MonoGame-free stack.
 
 **Localized text:** the player-facing text sinks (the `Label` / `Button` widgets, `GuiSurface.Label` /
-`Button` / `StatChip`, `Tooltip.Show`, `ContextMenu.Open` plus `ContextMenuEntry.Of`, and `PopupPanel` - its `TitleContent` / `DismissContent` /
+`Button` / `StatChip`, `Tooltip.Show`, `ContextMenu.Open` plus `ContextMenuEntry.Of`, `DropdownOption.Content`,
+`ScrollablePanel.DrawHeader`, and `PopupPanel` - its `TitleContent` / `DismissContent` /
 `PrimaryActionContent` plus the `PopupRow.Header` / `Stat` factories) take a `LocalizedText` (from
 `KhaozEngine.App`) instead of a raw `string`. Pass a `StringId` (implicitly converts) for localizable copy, or
 `LocalizedText.Raw("...")` for non-localizable text (names, numbers, debug). The old `string` overloads remain
@@ -175,6 +176,10 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     dot, minus - and the FIRST keypad keystroke ends the select-all seed exactly like a top-row one (replace the
     seeded value, not append to it).
   - `Dropdown` - trigger + option list (opens below); two-phase draw (`Draw` trigger / `DrawOverlay` list last).
+    `DropdownOption` is `(LocalizedText Content, int Value)`, so a settings selector (difficulty, display mode,
+    quality) localizes through a `StringId` and a bare literal no longer compiles at that sink. `SelectedLabel` is
+    the resolved string and `SelectedContent` the unresolved value. The `(string, int)` ctor and the `Label` member
+    remain, `[Obsolete]`, so an existing caller keeps building.
     Opt-in (default off): `ShowChevron` draws an up/down caret reflecting the open state; `Opacity` fades the whole
     dropdown for a host transition. `TextScale` (default `1f`) scales the trigger label AND every option row's
     label, text only: the rects, the row fills, the chevron and the hit-testing are unchanged.
@@ -272,7 +277,8 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     unchanged, so every existing consumer stays byte-identical.
   - `ScrollablePanel` - wheel/drag scrolling fixed-height list; rows drawn between `BeginClip`/`EndClip` (scissor),
     hit-test with `TappedItemIndex`. Opt-in overlay chrome (all default to no-ops, so existing callers are
-    byte-identical): a header band (`HeaderHeight` + `DrawHeader`) above the scroll region; a slide-up animation
+    byte-identical): a header band (`HeaderHeight` + `DrawHeader`, whose title is a `LocalizedText` with the old
+    `string` overload kept `[Obsolete]`) above the scroll region; a slide-up animation
     driven by an external `TransitionAlpha` from a docked bottom edge (`SlideFromBottom`); drag-to-resize the header
     within `MinHeight`/`MaxHeight` (`Resizable`); and a dimmed `Scrim` with tap-outside-to-close (`ScrimDismissed`).
     Geometry is exposed via `CurrentBounds`/`ContentBounds` (== `Bounds` with no knob set). Opt-in height glide

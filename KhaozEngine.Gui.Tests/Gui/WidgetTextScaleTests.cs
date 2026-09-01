@@ -37,7 +37,7 @@ namespace KhaozEngine.Tests.Gui
         [Fact]
         public void Every_new_text_scale_defaults_to_one()
         {
-            var dropdown = new Dropdown(new[] { new DropdownOption("a", 0) }, new Rect(0, 0, 120, 24));
+            var dropdown = new Dropdown(new[] { new DropdownOption(LocalizedText.Raw("a"), 0) }, new Rect(0, 0, 120, 24));
             Assert.Equal(1f, dropdown.TextScale);
             Assert.Equal(1f, new TextInput(new Rect(0, 0, 200, 30)).TextScale);
             Assert.Equal(1f, new TreeView(new Rect(0, 0, 200, 120)).TextScale);

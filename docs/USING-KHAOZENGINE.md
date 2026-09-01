@@ -1159,7 +1159,7 @@ if (panel.ScrimDismissed) Close();             // tap outside the panel
 
 panel.DrawScrim(batch, white);
 panel.DrawBackground(batch, white);
-panel.DrawHeader(batch, white, titleFont, "Inventory");
+panel.DrawHeader(batch, white, titleFont, Strings.PanelInventory);   // LocalizedText: a StringId converts
 panel.BeginClip(batch);
 for (int i = 0; i < panel.ItemCount; i++) DrawRow(panel.ItemBounds(i), i);  // clipped to ContentBounds
 panel.EndClip(batch);
@@ -1720,6 +1720,27 @@ analyzer (already in the `Game2D`/`Game3D` umbrellas) enforces the rest. Adoptin
 The migration is warning-not-break: the old `string` Gui overloads remain `[Obsolete]`, so a game builds (with
 warnings) before any text is migrated. `KhaozEngine.Showcase` is the worked example (`ShowcaseStrings.resx` +
 `ShowcaseStrings` constants + `LocalizationContext` wiring).
+
+**A widget with no sink is invisible to the analyzer, which is the failure mode to watch for.** KELOC001 and
+KELOC003 flag a literal passed into a parameter that is typed or marked as a sink, so a widget holding a plain
+`string` member offers nothing to flag and its text ships unlocalizable under a green build. `DropdownOption`
+was exactly that: a bare `string Label`, drawn straight to `DrawString`, which let a whole settings selector
+(difficulty, display mode, quality, language) be built out of raw literals with no diagnostic anywhere.
+`DropdownOption.Content` and `ScrollablePanel.DrawHeader`'s title are `LocalizedText` now:
+
+```csharp
+var difficulty = new Dropdown(new[]
+{
+    new DropdownOption(Strings.DifficultyEasy, 0),     // StringId -> LocalizedText implicitly
+    new DropdownOption(Strings.DifficultyHard, 1),
+}, triggerRect);
+
+string shown = difficulty.SelectedLabel;               // resolved against the ambient catalog
+LocalizedText raw = difficulty.SelectedContent;        // the unresolved value, to forward to another sink
+```
+
+The `(string, int)` option ctor and the `DropdownOption.Label` member both remain, `[Obsolete]`, so an existing
+caller keeps building. Same for `DrawHeader`'s `string` title overload.
 
 ### The low-level `SpriteBatch.DrawString` sink (`KELOC003`)
 

@@ -101,6 +101,9 @@
   <data name="Widgets.Name" xml:space="preserve"><value>Name</value></data>
   <data name="Widgets.NamePlaceholder" xml:space="preserve"><value>type a name</value></data>
   <data name="Widgets.Difficulty" xml:space="preserve"><value>Difficulty</value></data>
+  <data name="Widgets.DifficultyEasy" xml:space="preserve"><value>Easy</value></data>
+  <data name="Widgets.DifficultyNormal" xml:space="preserve"><value>Normal</value></data>
+  <data name="Widgets.DifficultyHard" xml:space="preserve"><value>Hard</value></data>
   <data name="Widgets.PartySize" xml:space="preserve"><value>Party size</value></data>
   <data name="Widgets.List" xml:space="preserve"><value>Scrollable list (wheel / drag)</value></data>
   <data name="Widgets.ListItem" xml:space="preserve"><value>Item {0}</value></data>

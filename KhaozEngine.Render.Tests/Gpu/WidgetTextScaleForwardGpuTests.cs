@@ -32,7 +32,7 @@ namespace KhaozEngine.Tests.Gpu
             AssertScaleReachesTheDraw(
                 (ctx, font, white, label, scale) =>
                 {
-                    var dd = new Dropdown(new[] { new DropdownOption(label, 0) }, Widget);
+                    var dd = new Dropdown(new[] { new DropdownOption(LocalizedText.Raw(label), 0) }, Widget);
                     if (scale is { } s) dd.TextScale = s;
                     dd.Draw(ctx.Batch, white, font);
                 });
@@ -44,7 +44,7 @@ namespace KhaozEngine.Tests.Gpu
             AssertScaleReachesTheDraw(
                 (ctx, font, white, label, scale) =>
                 {
-                    var dd = new Dropdown(new[] { new DropdownOption(label, 0) }, new Rect(30, 20, 260, 40));
+                    var dd = new Dropdown(new[] { new DropdownOption(LocalizedText.Raw(label), 0) }, new Rect(30, 20, 260, 40));
                     if (scale is { } s) dd.TextScale = s;
                     dd.Open();
                     dd.DrawOverlay(ctx.Batch, white, font, new Pointer());

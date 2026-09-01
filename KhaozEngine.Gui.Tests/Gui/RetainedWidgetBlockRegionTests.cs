@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.App;
 using KhaozEngine.Gui;
 using KhaozEngine.Windowing;
 using Xunit;
@@ -47,7 +48,10 @@ namespace KhaozEngine.Tests.Gui
             p.Update(Frame(at, false)); d.Update(p);
         }
 
-        static readonly List<DropdownOption> Opts = new() { new("a", 1), new("b", 2), new("c", 3) };
+        static readonly List<DropdownOption> Opts = new()
+        {
+            new(LocalizedText.Raw("a"), 1), new(LocalizedText.Raw("b"), 2), new(LocalizedText.Raw("c"), 3),
+        };
 
         [Fact]
         public void Toggle_reserves_bounds()

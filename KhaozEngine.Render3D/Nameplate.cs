@@ -46,8 +46,8 @@ namespace KhaozEngine.Render3D
         public string Title;
         /// <summary>Title text colour.</summary>
         public Color TitleColor;
-        /// <summary>The bars stacked below the title; may be null or empty for a title-only plate.</summary>
-        public IReadOnlyList<NameplateBar> Bars;
+        /// <summary>The bars stacked below the title. Null or empty for a title-only plate.</summary>
+        public IReadOnlyList<NameplateBar>? Bars;
 
         /// <summary>True when there is nothing to draw (blank title AND no bars): the renderer treats this as a cull.</summary>
         public readonly bool IsEmpty => string.IsNullOrEmpty(Title) && (Bars is null || Bars.Count == 0);

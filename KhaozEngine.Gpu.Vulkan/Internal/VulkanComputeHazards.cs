@@ -31,8 +31,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     ///
     /// <para><b>THIS IS NOT A SEAM CONTRACT CHANGE.</b> Rule 2 is honoured AS WRITTEN and no seam member is added:
     /// the portable contract still says a dependent dispatch chain needs <c>End</c>, <c>Submit</c> and
-    /// <c>WaitForIdle</c>, because the Veldrid legs needed the drain and a consumer that drops it because this
-    /// backend tolerates the chain breaks on Metal. What this is, is EVIDENCE for the automatic-hazard seam
+    /// <c>WaitForIdle</c>, because the drain is what the SEAM guarantees and not what any one backend happens to
+    /// need. All three engine-owned backends order a dependent chain natively, by three different mechanisms
+    /// (hazard tracking on Direct3D 11, this barrier on Vulkan, the compute encoder's default SERIAL dispatch type
+    /// on Metal), so a consumer that drops the drain because the machine it was written on tolerated it is relying
+    /// on a backend property the seam never promised. That quorum is recorded in full on
+    /// <c>IGpuCommandList.SetComputePipeline</c>. What this is, is EVIDENCE for the automatic-hazard seam
     /// capability (https://github.com/APKiwiOrg/KhaozEngine/issues/461).</para>
     ///
     /// <para><b>BOTH WALKS BELOW COVER EVERY RECORDED SLOT, INCLUDING ONES THE BOUND PIPELINE LAYOUT DOES NOT

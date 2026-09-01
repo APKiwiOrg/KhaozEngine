@@ -64,8 +64,11 @@ namespace KhaozEngine.Gpu.Internal
 
                 // OpExecutionModeId + LocalSizeId means the size comes from specialization constants, which are
                 // resolvable only by evaluating the constant graph. Flag it rather than silently defaulting.
-                // Defensive today: the seam does not expose specialization constants for compute at all (they are
-                // mis-marshalled a layer down, see issue #312), so nothing it compiles can emit LocalSizeId.
+                // Defensive today: the seam does not expose specialization constants for compute at all, so
+                // nothing it compiles can emit LocalSizeId. That non-exposure is deliberate and recorded at
+                // HlslCrossCompilePin, MslCrossCompilePin and VulkanPipelineApi, which all pin the substituted
+                // count at zero. Rejecting rather than defaulting is load-bearing because
+                // IGpuComputeShader.ThreadGroupSizeX is read straight off the literal layout(local_size_x = ...).
                 if (opcode == OpExecutionModeId && wordCount >= 6 && words[i + 2] == ExecutionModeLocalSizeId)
                     sawLocalSizeId = true;
 

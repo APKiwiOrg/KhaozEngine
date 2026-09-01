@@ -625,61 +625,17 @@ namespace KhaozEngine.Showcase
 
         // Skinned-ingest the committed Quaternius Universal CC0 character + its clips into the canonical signal-driven
         // stair-glide bridge (ReplicatedCharacterAnimators - the same "character bridge" RoomDungeon drives for its
-        // own local entity), one local entity (id 0) scaled to this room's capsule. On any load failure the room
-        // falls back to the greybox capsule (_animated stays false).
+        // own local entity), one local entity (id 0) scaled to this room's capsule. Shared with RoomDungeon and
+        // RoomNet through CharacterRigLoader. On any load failure the room falls back to the greybox capsule
+        // (_animated stays false).
         void TryLoadAnimators()
         {
-            try
-            {
-                string charPath = Path.Combine(AppContext.BaseDirectory, "assets", "character", "Player.glb");
-                (SkinnedGltfMesh charMesh, GltfMaterialMaps charMaps) = GltfLoader.LoadSkinnedWithMaterial(charPath);
-                if (charMesh.Skeleton is null) { Console.WriteLine("Character has no skeleton, using the capsule."); return; }
-                _characterMesh = _scene.LoadSkinnedMesh(charMesh, charMaps);
-
-                var byName = new Dictionary<string, AnimationClip>();
-                foreach (AnimationClip c in GltfLoader.LoadAnimations(charPath)) byName[c.Name] = c;
-                var clips = new Dictionary<LocomotionState, AnimationClip>();
-                void Map(LocomotionState st, string name) { if (byName.TryGetValue(name, out AnimationClip? c)) clips[st] = c; }
-                Map(LocomotionState.Idle, "Idle");
-                Map(LocomotionState.Walk, "Walk");
-                Map(LocomotionState.Run, "Run");
-                Map(LocomotionState.Jump, "Jump");
-                Map(LocomotionState.Fall, "Fall");
-                Map(LocomotionState.SwimIdle, "SwimIdle");   // tread water (absent in this rig -> degrades to Idle)
-                Map(LocomotionState.Swim, "Swim");           // forward stroke (absent -> degrades to Idle)
-                if (clips.Count == 0)
-                {
-                    _scene.UnloadSkinnedMesh(_characterMesh);
-                    Console.WriteLine("Character has no expected clips, using the capsule.");
-                    return;
-                }
-
-                // Auto-fit the model to the capsule height (asset-agnostic) and bake that scale into the bridge tuning,
-                // starting from CharacterAnimatorTuning.Default so every OTHER tunable (SlopeGlideRate,
-                // SlopeGlideSnapDistance, StepSmoothingRate, YawSmoothing, ...) matches the reference adopter exactly.
-                float modelHeight = ModelHeight(charMesh);
-                float scale = modelHeight > 0.01f ? (CapsuleHalfHeight * 2f) / modelHeight : 1f;
-                CharacterAnimatorTuning tuning = CharacterAnimatorTuning.Default;
-                tuning.Scale = scale;
-                tuning.Locomotion = new LocomotionThresholds(0.1f, 9f);   // matches the controller's 6/12 walk/run feel
-
-                _animators = new ReplicatedCharacterAnimators(charMesh.Skeleton, clips, tuning);
-                _animated = true;
-                Console.WriteLine($"Animated character loaded ({charMesh.BoneCount} bones, scale {scale:0.00}).");
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"Character load failed ({e.Message}), falling back to the capsule.");
-                _animated = false;
-            }
-        }
-
-        // Model-space height (max - min Y) of the rest mesh, for the capsule-match scale.
-        static float ModelHeight(SkinnedGltfMesh mesh)
-        {
-            float min = float.MaxValue, max = float.MinValue;
-            foreach (SkinnedVertex v in mesh.Vertices) { min = MathF.Min(min, v.Position.Y); max = MathF.Max(max, v.Position.Y); }
-            return max > min ? max - min : 0f;
+            CharacterRigLoad load = CharacterRigLoader.Load(_scene, CharacterRigLoader.PlayerGlbPath, CapsuleHalfHeight);
+            Console.WriteLine(load.Message);
+            if (!load.Loaded) return;
+            _characterMesh = load.Mesh;
+            _animators = load.Animators;
+            _animated = true;
         }
     }
 }

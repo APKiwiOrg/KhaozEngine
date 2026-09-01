@@ -381,56 +381,16 @@ namespace KhaozEngine.Showcase
         }
 
         // Skinned-ingest the committed Quaternius Universal CC0 character + its clips, then build a
-        // ReplicatedCharacterAnimators (one AnimatedCharacter brain per replicated entity). On any failure the room
-        // keeps the per-entity capsule.
+        // ReplicatedCharacterAnimators (one AnimatedCharacter brain per replicated entity). Shared with Room3D and
+        // RoomDungeon through CharacterRigLoader. On any failure the room keeps the per-entity capsule.
         void TryLoadAnimators(Scene3D sc)
         {
-            try
-            {
-                string charPath = Path.Combine(AppContext.BaseDirectory, "assets", "character", "Player.glb");
-                (SkinnedGltfMesh charMesh, GltfMaterialMaps charMaps) = GltfLoader.LoadSkinnedWithMaterial(charPath);
-                if (charMesh.Skeleton is null) { Console.WriteLine("Character has no skeleton; using capsules."); return; }
-                _characterMesh = sc.LoadSkinnedMesh(charMesh, charMaps);
-
-                var byName = new Dictionary<string, AnimationClip>();
-                foreach (AnimationClip c in GltfLoader.LoadAnimations(charPath)) byName[c.Name] = c;
-                var clips = new Dictionary<LocomotionState, AnimationClip>();
-                void Map(LocomotionState st, string name) { if (byName.TryGetValue(name, out AnimationClip? c)) clips[st] = c; }
-                Map(LocomotionState.Idle, "Idle");
-                Map(LocomotionState.Walk, "Walk");
-                Map(LocomotionState.Run, "Run");
-                Map(LocomotionState.Jump, "Jump");
-                Map(LocomotionState.Fall, "Fall");
-                Map(LocomotionState.SwimIdle, "SwimIdle");   // tread water (absent in this rig -> degrades to Idle)
-                Map(LocomotionState.Swim, "Swim");           // forward stroke (absent -> degrades to Idle)
-                if (clips.Count == 0) { Console.WriteLine("Character has no expected clips; using capsules."); return; }
-
-                // Auto-fit the model to the 1.8 m capsule height (asset-agnostic) and bake that scale into the
-                // bridge tuning.
-                float modelHeight = ModelHeight(charMesh);
-                float scale = modelHeight > 0.01f ? (CapsuleHalfHeight * 2f) / modelHeight : 1f;
-                CharacterAnimatorTuning tuning = CharacterAnimatorTuning.Default;
-                tuning.Scale = scale;
-                tuning.Locomotion = new LocomotionThresholds(0.1f, 9f);   // split walk/run at the server's 6/12 m/s feel
-
-                // The convenience ctor builds one brain per entity off the shared skeleton + clips, applying the tuning.
-                _animators = new ReplicatedCharacterAnimators(charMesh.Skeleton, clips, tuning);
-                _animated = true;
-                Console.WriteLine($"Animated avatars: {charMesh.BoneCount} bones, states [{string.Join(", ", clips.Keys)}], scale {scale:0.00}.");
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"Character load failed ({e.Message}); falling back to capsules.");
-                _animated = false;
-            }
-        }
-
-        // Model-space height (max - min Y) of the rest mesh, for the capsule-match scale.
-        static float ModelHeight(SkinnedGltfMesh mesh)
-        {
-            float min = float.MaxValue, max = float.MinValue;
-            foreach (SkinnedVertex v in mesh.Vertices) { min = MathF.Min(min, v.Position.Y); max = MathF.Max(max, v.Position.Y); }
-            return max - min;
+            CharacterRigLoad load = CharacterRigLoader.Load(sc, CharacterRigLoader.PlayerGlbPath, CapsuleHalfHeight);
+            Console.WriteLine(load.Message);
+            if (!load.Loaded) return;
+            _characterMesh = load.Mesh;
+            _animators = load.Animators;
+            _animated = true;
         }
     }
 }

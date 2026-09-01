@@ -412,6 +412,14 @@ Target a player by `PlayerRef.Slot(n)` or `PlayerRef.Account("...")`. `SetSpeedS
 same queue on both heads (it is a gameplay mutation, not an admin action, so it is not on `IAdminControllable`).
 See "Per-entity speed scale" below.
 
+**`SetPosition(PlayerRef, Vector3)`** is `Teleport` without the discontinuity: the same queue, the same placement
+and vertical-velocity reset, but the teleport epoch is left alone, so nothing downstream of it cuts. `Teleport` is
+for a portal, an admin yank or an unstuck. `SetPosition` is for a position the server CLAMPS: a per-tick hold, a
+death lock, a soft boundary push, where re-asserting `Teleport` claimed a teleport per tick and cost a consumer a
+full world reload per tick once it grew a reaction to the epoch (#379). It is not a gentler move (a large one still
+rubber-bands a predicting client), only an honest one. A default interface method that forwards to `Teleport`, so a
+custom head written before it keeps compiling and keeps its old behaviour until it overrides it.
+
 **Kicking with a reason.** `Disconnect(slot)` drops a connection silently, which a client reads as a transient
 outage and reconnects on. `Disconnect(slot, reason)` carries the reason on the disconnect itself (over
 `INetTransport.Disconnect(id, reason)`), so it survives a teardown that outruns the reliable flush and surfaces on
@@ -508,7 +516,9 @@ An intentional teleport must CUT (avatar + camera), not glide, even when the des
 **teleport epoch** rides the replicated `MovementState` (wire generation 4) and reaches the local owner's
 `ClientPrediction` basis via `PlayerMoveState`. The server advances it ONLY at teleport sites, through the
 `IWorldPersistenceHost.SetPlayerState(slot, state, teleport: true)` param (load-on-join placement, admin `Teleport`,
-self-rescue) on both `WorldServer` and `ShardedWorldServer`. Load-on-join passes true only when the placement
+self-rescue) on both `WorldServer` and `ShardedWorldServer`. The one placement that deliberately does NOT advance it
+is `IAdminControllable.SetPosition`, the continuous lever above, which exists precisely because a per-tick clamp had
+no way to move a player without claiming a cut. Load-on-join passes true only when the placement
 actually moves the player, since 17.37.0 (see below). Normal per-tick movement preserves it (the single-World
 sim carries it through `PlayerMoveSimulator.Step`; the sharded `PlayerMovementSystem` writes movement fields in place
 and never touches it). `ClientPrediction.Reconcile` force-cuts on an epoch advance regardless of `HardSnapDistance`.

@@ -14487,6 +14487,25 @@ net id) from a snapshot published once per tick; `Teleport(PlayerRef, Vector3)`,
 `Broadcast(text)` are queued and applied on the host thread between ticks, so you can call them safely from another
 thread (an HTTP handler). Target a player by `PlayerRef.Slot(n)` or `PlayerRef.Account("...")`.
 
+**Two position levers, and picking the wrong one is expensive.** `Teleport` always advances the teleport epoch,
+which is the client's signal to CUT: a camera cut, a chunk-ring prime and rebuild, an avatar render-height snap.
+That is right for a portal, an admin yank or an unstuck. It is wrong for a position the server CLAMPS, and a game
+holding a body still by re-asserting `Teleport` every tick is claiming a teleport every tick. That was harmless
+until a consumer grew a reaction to the epoch, at which point it became a full world reload per tick (#379).
+
+`SetPosition(PlayerRef, Vector3)` is the same placement without the claim: same queue, same thread rules, same
+vertical-velocity reset, epoch untouched. Use it for a per-tick clamp, a death lock, a soft boundary push:
+
+```csharp
+// a dead player is held where they fell, every tick, and nothing downstream cuts
+server.SetPosition(PlayerRef.Slot(slot), deathPosition);
+```
+
+It is not a gentler move, only an honest one: a large `SetPosition` is still a server correction and still
+rubber-bands a predicting client. What it removes is the false discontinuity, not the distance. It is a default
+interface method on `IAdminControllable` that forwards to `Teleport`, so a custom head written before it keeps
+compiling and keeps its old behaviour until it overrides it. `ServerAdmin` exposes it alongside `Teleport`.
+
 The tick rebuilds that snapshot into a reused buffer and republishes only when its content actually differs from
 what is already readable, so a tick where nobody joined, left or moved allocates nothing for it. What you read is
 unchanged (still at most one tick stale, still the same fields), with one detail worth knowing if you compare

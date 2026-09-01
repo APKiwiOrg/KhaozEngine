@@ -283,7 +283,10 @@ What it owns today:
   subresources when a side pads, and an `UpdateTexture` aimed at the phantom layer is refused rather than
   accepted silently. That refusal was made uniform in 17.40.0: native Direct3D 11 and
   native Vulkan took the call in silence until then, because neither API rejects a subresource index past the end
-  of the resource (#695). A `GpuTextureUsage.Staging` texture is never padded, having no view to fix.
+  of the resource (#695). The MIP LEVEL and the REGION halves of the same bound followed (#697), so an
+  `UpdateTexture` naming a level the chain does not have, or a region running past the level it is aimed at, is
+  refused by parameter name on all three natives instead of being dropped on two of them and applied out of
+  place on the third. A `GpuTextureUsage.Staging` texture is never padded, having no view to fix.
 - **`GpuWindowHandle`** - a native window handle (kind + handle/display) the windowing layer hands over, so
   this package needs no reference to the windowing library.
 - **`GpuDeviceContext`** - `CreateForWindow(in GpuWindowHandle, width, height, syncToVerticalBlank = true)` (device

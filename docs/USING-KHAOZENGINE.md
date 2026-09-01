@@ -11457,6 +11457,13 @@ anyway:
   natives. 17.39.0 closed the incumbent's silent accept and 17.40.0 closed the same hole on native Direct3D 11
   and native Vulkan, where the API itself never objects: `UpdateSubresource` drops an out-of-range subresource
   index without an `HRESULT` and a recorded `vkCmdCopyBufferToImage` carries no result code at all (#695).
+- `UpdateTexture` refuses the other two thirds of the same subresource bound on all three natives too (#697): a
+  `mipLevel` past the end of the chain, and a region (`x + width`, `y + height`) that runs past the mip level it
+  is aimed at. Only Metal checked either one before. A bad mip level was the same silent drop the phantom layer
+  was, while an oversized region is worse than a drop, because `UpdateSubresource` applies the box against the
+  subresource it names and lands real texels outside the rectangle the caller asked for. The exception names the
+  parameter that carried the bad value (`mipLevel`, `x` or `y`), and the staging-layout refusals now do the same
+  rather than reporting `mipLevel` when the array layer was what went out of range.
 
 A STAGING texture is never padded at all, since it has no view and nothing binds it to a shader.
 

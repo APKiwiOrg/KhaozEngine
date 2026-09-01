@@ -58,5 +58,88 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 + " UpdateSubresource would drop the write without an error, so the bytes would land nowhere and "
                 + "the caller would never hear about it.");
         }
+
+        /// <summary>
+        /// Refuse a mip level the destination does not have, by the name of the parameter that carried it. The
+        /// layer bound's sibling and the same silence: <c>D3D11CalcSubresource</c> is arithmetic rather than a
+        /// lookup, so a level past the end of the chain names a subresource the resource does not have and
+        /// <c>UpdateSubresource</c> drops the write.
+        /// </summary>
+        /// <param name="mipLevel">The destination mip level the caller asked for.</param>
+        /// <param name="mipLevels">How many levels the destination actually has.</param>
+        internal static void RequireMipLevel(uint mipLevel, uint mipLevels)
+        {
+            if (mipLevel < mipLevels) return;
+
+            throw new ArgumentOutOfRangeException(nameof(mipLevel), mipLevel,
+                "Mip level "
+                + mipLevel.ToString(CultureInfo.InvariantCulture)
+                + " is outside a native Direct3D 11 texture with "
+                + mipLevels.ToString(CultureInfo.InvariantCulture)
+                + " mip "
+                + (mipLevels == 1 ? "level." : "levels.")
+                + " UpdateSubresource would drop the write without an error, so the bytes would land nowhere and "
+                + "the caller would never hear about it.");
+        }
+
+        /// <summary>
+        /// One mip level's size along one axis: the base dimension halved once per level, with a floor of one,
+        /// which is the rule Direct3D 11 builds the chain by. This is the number a region is measured against.
+        /// </summary>
+        /// <param name="largestLevelDimension">The width or height of mip 0.</param>
+        /// <param name="mipLevel">The level to measure.</param>
+        internal static uint MipDimension(uint largestLevelDimension, uint mipLevel)
+        {
+            uint value = largestLevelDimension;
+            for (uint i = 0; i < mipLevel; i++) value /= 2;
+
+            return Math.Max(1, value);
+        }
+
+        /// <summary>
+        /// REFUSE A REGION THAT DOES NOT FIT ITS DESTINATION SUBRESOURCE, the third bound and the one that costs
+        /// most when it is missing. A layer or level past the end is dropped in silence, but an oversized box is
+        /// APPLIED: <c>UpdateSubresource</c> writes it against the subresource it named, so real texels land
+        /// outside the rectangle the caller asked for. Check the level first with <see cref="RequireMipLevel"/>,
+        /// since a region cannot be compared against a subresource that does not exist.
+        /// </summary>
+        /// <param name="mipLevel">The destination mip level, which sets the bound.</param>
+        /// <param name="x">Left edge of the region.</param>
+        /// <param name="y">Top edge of the region.</param>
+        /// <param name="width">Region width in texels.</param>
+        /// <param name="height">Region height in texels.</param>
+        /// <param name="textureWidth">Mip 0's width.</param>
+        /// <param name="textureHeight">Mip 0's height.</param>
+        internal static void RequireRegionFits(uint mipLevel, uint x, uint y, uint width, uint height,
+            uint textureWidth, uint textureHeight)
+        {
+            uint mipWidth = MipDimension(textureWidth, mipLevel);
+            uint mipHeight = MipDimension(textureHeight, mipLevel);
+
+            if ((ulong)x + width > mipWidth) throw Outside(nameof(x), x, width, mipWidth, "wide", mipLevel);
+            if ((ulong)y + height > mipHeight) throw Outside(nameof(y), y, height, mipHeight, "tall", mipLevel);
+        }
+
+        // One axis of the region refusal, as one sentence a caller can act on: which edge it crossed, by how
+        // much, and what the mip level it was aimed at actually measures.
+        static ArgumentOutOfRangeException Outside(string axis, uint origin, uint extent, uint bound,
+            string dimension, uint mipLevel)
+            => new(axis, origin,
+                "A native Direct3D 11 texture upload of "
+                + extent.ToString(CultureInfo.InvariantCulture)
+                + " texels from "
+                + axis
+                + " = "
+                + origin.ToString(CultureInfo.InvariantCulture)
+                + " runs to "
+                + ((ulong)origin + extent).ToString(CultureInfo.InvariantCulture)
+                + ", past a mip level "
+                + mipLevel.ToString(CultureInfo.InvariantCulture)
+                + " that is only "
+                + bound.ToString(CultureInfo.InvariantCulture)
+                + " texels "
+                + dimension
+                + ". UpdateSubresource applies the box against the subresource it names rather than refusing it, "
+                + "so the texels land outside the region the caller asked for.");
     }
 }

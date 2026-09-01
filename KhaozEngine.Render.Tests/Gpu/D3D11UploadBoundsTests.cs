@@ -94,5 +94,97 @@ namespace KhaozEngine.Tests.Gpu
             D3D11UploadBounds.RequireArrayLayer(5, slices);
             Assert.Throws<ArgumentOutOfRangeException>(() => D3D11UploadBounds.RequireArrayLayer(6, slices));
         }
+
+        /// <summary>
+        /// THE MIP LEVEL, the second of the three bounds and the one
+        /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/697">#697</see> closed. A level past the end
+        /// of the chain is the same silence the phantom layer was: <c>D3D11CalcSubresource</c> is arithmetic, not
+        /// a lookup, so it happily names a subresource the resource does not have.
+        /// </summary>
+        [Fact]
+        public void AOneMipTextureRefusesLevelOneByName()
+        {
+            var thrown = Assert.Throws<ArgumentOutOfRangeException>(
+                () => D3D11UploadBounds.RequireMipLevel(1, 1));
+
+            Assert.Equal("mipLevel", thrown.ParamName);
+        }
+
+        /// <summary>
+        /// A REAL CHAIN ADMITS EVERY LEVEL IT DECLARED AND REFUSES THE ONE PAST THE END, the same off-by-one rule
+        /// the layer bound gets.
+        /// </summary>
+        [Fact]
+        public void AFourLevelChainAdmitsItsFourAndRefusesTheFifth()
+        {
+            for (uint level = 0; level < 4; level++) D3D11UploadBounds.RequireMipLevel(level, 4);
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => D3D11UploadBounds.RequireMipLevel(4, 4));
+        }
+
+        /// <summary>
+        /// A LEVEL HALVES EACH DIMENSION AND STOPS AT ONE, which is what the region bound is measured against.
+        /// The floor is the whole reason a deep level of a small texture is still addressable.
+        /// </summary>
+        [Fact]
+        public void AMipLevelHalvesTheDimensionAndNeverReachesZero()
+        {
+            Assert.Equal(64u, D3D11UploadBounds.MipDimension(64, 0));
+            Assert.Equal(32u, D3D11UploadBounds.MipDimension(64, 1));
+            Assert.Equal(8u, D3D11UploadBounds.MipDimension(64, 3));
+            Assert.Equal(1u, D3D11UploadBounds.MipDimension(64, 6));
+            Assert.Equal(1u, D3D11UploadBounds.MipDimension(64, 9));
+        }
+
+        /// <summary>
+        /// A REGION INSIDE ITS DESTINATION SUBRESOURCE IS ACCEPTED, on every shape the seam can name: the whole
+        /// mip, a sub-rectangle at a non-zero origin, one that ends exactly on both edges, and the same at a
+        /// non-zero level, where the bound is the level's own size rather than mip 0's.
+        /// </summary>
+        [Fact]
+        public void ARegionInsideItsSubresourceIsAccepted()
+        {
+            D3D11UploadBounds.RequireRegionFits(0, 0, 0, 64, 32, 64, 32);
+            D3D11UploadBounds.RequireRegionFits(0, 1, 1, 2, 2, 64, 32);
+            D3D11UploadBounds.RequireRegionFits(0, 63, 31, 1, 1, 64, 32);
+
+            // Mip 2 of a 64 by 32 texture is 16 by 8, and the region is checked against THAT.
+            D3D11UploadBounds.RequireRegionFits(2, 0, 0, 16, 8, 64, 32);
+            D3D11UploadBounds.RequireRegionFits(2, 8, 4, 8, 4, 64, 32);
+        }
+
+        /// <summary>
+        /// ONE TEXEL PAST EITHER EDGE IS REFUSED, BY AXIS. This is worse than the phantom layer rather than the
+        /// same: <c>UpdateSubresource</c> applies the box against the subresource it names, so an oversized
+        /// region writes real texels in the wrong place instead of being dropped.
+        /// </summary>
+        [Fact]
+        public void ARegionPastEitherEdgeIsRefusedByAxis()
+        {
+            var right = Assert.Throws<ArgumentOutOfRangeException>(
+                () => D3D11UploadBounds.RequireRegionFits(0, 1, 0, 64, 32, 64, 32));
+            Assert.Equal("x", right.ParamName);
+
+            var bottom = Assert.Throws<ArgumentOutOfRangeException>(
+                () => D3D11UploadBounds.RequireRegionFits(0, 0, 1, 64, 32, 64, 32));
+            Assert.Equal("y", bottom.ParamName);
+
+            // And against the MIP's dimensions rather than mip 0's: 32 by 8 fits the texture and not level 2.
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => D3D11UploadBounds.RequireRegionFits(2, 0, 0, 32, 8, 64, 32));
+        }
+
+        /// <summary>
+        /// THE SUM IS TAKEN IN 64 BITS, so an origin near the top of the range is refused rather than wrapping
+        /// back inside the texture and passing.
+        /// </summary>
+        [Fact]
+        public void ARegionWhoseSumOverflowsThirtyTwoBitsIsRefused()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => D3D11UploadBounds.RequireRegionFits(0, uint.MaxValue, 0, 2, 1, 64, 32));
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => D3D11UploadBounds.RequireRegionFits(0, 0, uint.MaxValue, 1, 2, 64, 32));
+        }
     }
 }

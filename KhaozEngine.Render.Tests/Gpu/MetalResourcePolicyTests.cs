@@ -612,10 +612,15 @@ namespace KhaozEngine.Tests.Gpu
         {
             var shape = new MetalStagingShape(64, 32, 4, 3, GpuPixelFormat.R8G8B8A8UNorm);
 
-            Assert.Throws<ArgumentOutOfRangeException>(
+            var level = Assert.Throws<ArgumentOutOfRangeException>(
                 () => MetalStagingLayout.RequireRegionFits(shape, 4, 0, 0, 0, 1, 1));
-            Assert.Throws<ArgumentOutOfRangeException>(
+            var layer = Assert.Throws<ArgumentOutOfRangeException>(
                 () => MetalStagingLayout.RequireRegionFits(shape, 0, 3, 0, 0, 1, 1));
+
+            // Each refusal names the parameter that was actually out of range (#697). One message covered both
+            // and reported mipLevel either way, which points a caller at the argument that was fine.
+            Assert.Equal("mipLevel", level.ParamName);
+            Assert.Equal("arrayLayer", layer.ParamName);
         }
 
         // Every usage combination a BINDABLE texture can carry, which is the power set of the five bits that are

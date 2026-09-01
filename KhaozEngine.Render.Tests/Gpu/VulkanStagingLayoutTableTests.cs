@@ -288,8 +288,13 @@ namespace KhaozEngine.Tests.Gpu
         {
             var shape = new VulkanStagingShape(8, 8, 3, 2, GpuPixelFormat.R8G8B8A8UNorm);
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => VulkanStagingLayout.For(shape, 3, 0));
-            Assert.Throws<ArgumentOutOfRangeException>(() => VulkanStagingLayout.For(shape, 0, 2));
+            var level = Assert.Throws<ArgumentOutOfRangeException>(() => VulkanStagingLayout.For(shape, 3, 0));
+            var layer = Assert.Throws<ArgumentOutOfRangeException>(() => VulkanStagingLayout.For(shape, 0, 2));
+
+            // Each refusal names the parameter that was actually out of range (#697). One message covered both
+            // and reported mipLevel either way, which points a caller at the argument that was fine.
+            Assert.Equal("mipLevel", level.ParamName);
+            Assert.Equal("arrayLayer", layer.ParamName);
         }
 
         /// <summary>

@@ -4701,14 +4701,17 @@ Since 17.26.0 there is `FacingTurnSpeed` (rad/s, default `float.PositiveInfinity
 `MoveTuning.FacingTurnSpeed`: the maximum rate the character's own heading turns toward the direction it is
 commanded to travel, always along the shortest arc. The infinite default snaps in one tick, which is the
 presentation feel a local character already had, and a finite value (2 to 10 rad/s is the usual range) leans the
-body into its turns. **The controller does not surface the resulting heading yet** (there is no `FacingYaw`
-accessor and no way to set `MoveCommand.FaceCamera` from `Update`), so on a purely local character the knob has
-nothing to drive today and facing still comes from `CharacterFacing` / the character bridge. Tracked as
-[#436](https://github.com/APKiwiOrg/KhaozEngine/issues/436). The networked path is complete: see "Authoritative
-facing" in the netcode chapter below. 17.30.0's `StrafeSpeedScale`, `BackpedalSpeedScale` and `BackpedalAllowsRun`
-are mirrored here at the same literals and are inert for the same reason: they are consulted only under
-`FaceCamera`, which `Update` cannot set. They are mirrored anyway because every `MoveTuning` feel knob is, and a
-guard pins the defaults literal for literal.
+body into its turns. The heading it produces reads back off `character.FacingYaw` (radians, canonical
+`[-pi, pi)`, 0 faces world -Z, the same convention as the `cameraYaw` you hand `Update`), and
+`character.FaceCamera` (bool, default false) pins the body to the camera instead of to the direction of travel,
+so a strafing character keeps facing where the player is looking and a stationary one still turns. Set it each
+frame from whatever strafe-lock input the game uses, before `Update`. The knob had neither of those until #436,
+which is why a local character got nothing out of it and facing came from `CharacterFacing` or the character
+bridge instead. `character.LandingImpactSpeed` (m/s, positive, one tick only) landed with them as the local
+equivalent of the server-side fall-damage read, so a single-player game reads its own landings without a wire.
+The networked path is unchanged: see "Authoritative facing" in the netcode chapter below. 17.30.0's
+`StrafeSpeedScale`, `BackpedalSpeedScale` and `BackpedalAllowsRun` are mirrored here at the same literals and are
+consulted only under `FaceCamera`, so they went live with it. A guard pins the defaults literal for literal.
 
 Also since 17.26.0, walking off a steep drop is a real fall on the analytic-terrain path, not a wall, and since
 17.28.0 a face too steep to stand on is a surface you SLIDE down rather than one you are refused at. See "Bounded

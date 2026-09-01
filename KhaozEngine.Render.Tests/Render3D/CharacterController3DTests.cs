@@ -154,11 +154,16 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(MoveTuning.Default.FacingTurnSpeed, new CharacterController3D().FacingTurnSpeed);
 
             // And setting a finite rate steers nothing: facing is an OUTPUT, no position is derived from it, so the
-            // two runs stay bit-identical rather than merely close. The heading itself is not asserted here because
-            // the controller exposes no FacingYaw to read it from. That gap is #433.
+            // two runs stay bit-identical rather than merely close. Since #436 the heading is readable, so the two
+            // runs are also asserted to have DIFFERENT headings, which is what makes the identical positions a
+            // statement about the knob rather than about a knob nobody could tell was set.
             var snap = new CharacterController3D { CapsuleHalfHeight = 0f };
             var lean = new CharacterController3D { CapsuleHalfHeight = 0f, FacingTurnSpeed = 3f };
-            for (int i = 0; i < 30; i++)
+            snap.Update(Keys(Key.W, Key.D), dt: 1f / 60f, cameraYaw: 0f, FlatGround);
+            lean.Update(Keys(Key.W, Key.D), dt: 1f / 60f, cameraYaw: 0f, FlatGround);
+            Assert.NotEqual(snap.FacingYaw, lean.FacingYaw);
+
+            for (int i = 0; i < 29; i++)
             {
                 snap.Update(Keys(Key.W, Key.D), dt: 1f / 60f, cameraYaw: 0f, FlatGround);
                 lean.Update(Keys(Key.W, Key.D), dt: 1f / 60f, cameraYaw: 0f, FlatGround);
@@ -182,24 +187,40 @@ namespace KhaozEngine.Tests.Render3D
             // day it lands, with no list to update. What this does NOT cover is the other half of the mirror, that
             // Update actually copies each field into the tuning it builds - a field added here and never wired
             // into that object initializer still passes.
+            // A knob can mirror the other half of the step too. FaceCamera is a per-tick COMMAND rather than
+            // tuning (#436), so it is checked against a MoveCommand built with its own defaults instead, which is
+            // the same claim: the controller's default is the command Update built before the field existed.
             var c = new CharacterController3D();
             MoveTuning d = MoveTuning.Default;
+            var defaultCommand = new MoveCommand(Vector2.Zero, run: false, cameraYaw: 0f);
             var mismatched = new List<string>();
             int mirrored = 0;
 
             foreach (FieldInfo f in typeof(CharacterController3D).GetFields(BindingFlags.Public | BindingFlags.Instance))
             {
                 PropertyInfo? p = typeof(MoveTuning).GetProperty(f.Name, BindingFlags.Public | BindingFlags.Instance);
-                if (p is null)
+                if (p is not null)
                 {
-                    // No counterpart means it is not a mirror at all, and there are none of those today. Adding one
-                    // is a deliberate act, so it fails here rather than quietly leaving the claim half true.
-                    mismatched.Add($"{f.Name}: no MoveTuning property of that name");
+                    mirrored++;
+                    object? mine = f.GetValue(c), tuned = p.GetValue(d);
+                    if (!Equals(mine, tuned)) mismatched.Add($"{f.Name}: controller {mine}, MoveTuning.Default {tuned}");
                     continue;
                 }
-                mirrored++;
-                object? mine = f.GetValue(c), tuned = p.GetValue(d);
-                if (!Equals(mine, tuned)) mismatched.Add($"{f.Name}: controller {mine}, MoveTuning.Default {tuned}");
+
+                PropertyInfo? cp = typeof(MoveCommand).GetProperty(f.Name, BindingFlags.Public | BindingFlags.Instance);
+                if (cp is null)
+                {
+                    // No counterpart on either side means it is not a mirror at all. Adding one is a deliberate
+                    // act, so it fails here rather than quietly leaving the claim half true.
+                    mismatched.Add($"{f.Name}: no MoveTuning or MoveCommand property of that name");
+                    continue;
+                }
+
+                object? held = f.GetValue(c), commanded = cp.GetValue(defaultCommand);
+                if (!Equals(held, commanded))
+                {
+                    mismatched.Add($"{f.Name}: controller {held}, default MoveCommand {commanded}");
+                }
             }
 
             Assert.True(mismatched.Count == 0, string.Join(", ", mismatched));

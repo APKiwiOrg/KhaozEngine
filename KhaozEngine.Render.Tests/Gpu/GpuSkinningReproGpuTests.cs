@@ -233,17 +233,15 @@ void main() { o = vec4(1.0, 1.0, 1.0, 1.0) + Tint * 1e-30; }";
             // be read, and the bone columns this row measures come from the vertex stage, which binds correctly.
             // So the row keeps its meaning on every unarmed run and on every other backend.
             //
-            // THE GUARD IS THE BACKEND AS WELL AS THE ARMING, deliberately. The engine's own native Metal backend
+            // THE VALIDATION STAND-DOWN WENT WITH THE INCUMBENT, and is NOT retargeted at MetalNative. It was
+            // guarded on the backend as well as the arming, deliberately: the engine's own native Metal backend
             // binds at the index read out of each stage's emission, so this same draw is CORRECT there and the
-            // layer says nothing: the metal-native leg runs this row armed today and it passes. Standing down on
-            // the arming alone would throw that away to work around a defect that is not on that backend. The
-            // defect itself is the incumbent's numbering, measured, recorded, and retiring with that leg
-            // (https://github.com/APKiwiOrg/KhaozEngine/issues/604), so there is nothing to fix here.
-            if (gd.Backend == GpuBackendKind.Metal && MetalValidationDormancy.StandDown(_out,
-                    "reproduces the incumbent's split-stage mis-binding on purpose, by reading its frame UBO from "
-                    + "the fragment stage alone at set 1 behind a vertex-only set 0, which the layer sees as a "
-                    + "draw with an unbound fragment buffer at index 0"))
-                return;
+            // layer says nothing. The metal-native leg runs this row armed and it passes. Standing down there
+            // would throw that away to work around a defect that is not on that backend. The defect was the
+            // incumbent's numbering, measured and recorded, and it retired with that leg in 18.0.0
+            // (https://github.com/APKiwiOrg/KhaozEngine/issues/604), leaving the guard on a GpuBackendKind no
+            // created device can report (https://github.com/APKiwiOrg/KhaozEngine/issues/787). What this row
+            // preserves now is the measurement, on a backend nothing runs any more.
 
             var f = gd.Factory;
 

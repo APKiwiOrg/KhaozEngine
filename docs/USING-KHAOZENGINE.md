@@ -6937,6 +6937,24 @@ drops a clean region while keeping its hash so a later save carries it through u
 is that plus load-everything. A region the manifest knows about but that is not in memory cannot be created
 blind: `GetOrCreateRegion` and `RequireRegion` both throw for it, so a save can never blank authored terrain.
 
+`source.FindMarker("spawn")` answers off the manifest's marker index with NO region read, which is what a client
+needs before it has streamed anything: `TileWorldDocument.FindMarker` walks LOADED regions only, so asking it
+first means materialising regions one at a time until one carries the marker and unloading the ones that did not.
+The index is derived from the regions, like the collision map, and a save rebuilds it for the regions it holds
+while carrying the rest forward from the previous manifest, so a partial save never drops the markers of regions
+it never read. It hands back a COPY, and `source.Markers` is every indexed name. A world saved by an older engine
+carries no index and answers null, so fall back to the document lookup once regions are in.
+
+```csharp
+TileWorldSource source = TileWorldSource.Open("assets/worlds/grimhollow");
+TileMarker? spawn = source.FindMarker("spawn");                  // no region read
+if (spawn is TileMarker at) source.EnsureLoaded(RegionCoord.Of(at.X, at.Z));
+```
+
+The index rides OUTSIDE the world hash: `TileWorldHash.OfWorld` composes the region hashes and the three header
+fields, never the manifest's own rows, so adding it changed no digest. A marker MOVE still moves the world hash,
+through the region that carries it.
+
 **Collision is derived, never authored.** `TileCollisionBaker.Bake` builds the whole `TileCollisionMap` from
 settings plus object archetypes, `Rebake(map, doc, catalogs, dirtyRect, plane)` re-derives one rect after an
 edit, and a wall is one edge shared by two tiles (the baker sets the bit on both), so `CanStep` never looks at

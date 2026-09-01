@@ -405,8 +405,9 @@ takes and the one a game banned-player banner renders. The check here is a `Func
 
 The three decorators are public and compose on their own when a head wants a different order, or only one of them.
 
-`ConnectionGate.BuildToken(protocolVersion, worldHash, innerToken)` builds the token a client presents to that
-door: the version layer wrapping the world layer wrapping the real auth token.
+`ConnectionGate.BuildToken(protocolVersion, worldHash, innerToken)` builds the version layer wrapping the world
+layer wrapping the real auth token. On a plain `NetServer` / `NetClient` pair that is the whole token a client
+presents to the door. A `KhaozEngine.NetWorld` game needs one layer more, see below.
 
 ```csharp
 IConnectionAuthenticator auth = ConnectionGate.Wrap(

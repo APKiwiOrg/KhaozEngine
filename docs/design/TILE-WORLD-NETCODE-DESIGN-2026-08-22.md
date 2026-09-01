@@ -118,8 +118,8 @@ build. `FindPath` allocates its scratch per call, [#669](https://github.com/APKi
 One new package, `KhaozEngine.TileWorld.Netcode`, GPU-free, referencing `TileWorld`, `Netcode`, `Replication`,
 `Sharding`, `Simulation` and `WorldStore`. It does NOT reference `NetWorld`: the two movement stacks are siblings
 over the same generic layers, and pulling `NetWorld` in would drag `Locomotion` into every tile server. It joins the
-`Server` umbrella (server half) and `Game3D` (client half) the way `NetWorld` does, decided per type at the plan
-stage by which head constructs it.
+`Server` umbrella alone. `Game3D` carries no networking, so a client head picks this package up by referencing it
+directly rather than through an umbrella.
 
 Two engine changes outside the package:
 

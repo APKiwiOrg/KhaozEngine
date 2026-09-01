@@ -13,7 +13,9 @@
     <ProjectReference Include="../KhaozEngine.Sharding/KhaozEngine.Sharding.csproj" />
     <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
     <ProjectReference Include="../KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />
-    <InternalsVisibleTo Include="KhaozEngine.TileWorld.Netcode.Tests" />
     <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.TileWorld.Netcode.Tests" />
   </ItemGroup>
 </Project>

@@ -126,6 +126,14 @@ already in `Begin(Ui)`. `OnDraw2D` stays the design-space (letterboxed) game fie
 DPI-aware UI layer: author text via `DpiFont.For(Ui.DpiScale)` and hit-test with `UiPointer`. `OnDrawUi`
 is empty by default, so a game that only overrides `OnDraw2D` is completely unaffected.
 
+Hand the manager its whole frame context in one call,
+`SetFrameContext(input, pointer, viewport, uiViewport, uiPointer, frameWidth, frameHeight)`, rather than
+assigning the seven properties individually. They are all settable one at a time, so a host that wires six and
+forgets the seventh compiles and runs with that field at its default, silently. That is how `BootScreen` ends
+up unable to read Enter/Escape (an unset `Input` stays `InputState.Empty`) or to register a click on its own
+Retry/Quit buttons (an unset `UiPointer` falls back to a pointer nobody updates), on the one screen whose job
+is to handle a failure.
+
 `SceneManager` gains `UiViewport`, `UiPointer`, and `DrawUi(SpriteBatch)`, and `GameScene` gains a virtual
 `OnDrawUi(SpriteBatch)`. A scene draws its DPI-aware UI in `OnDrawUi` and hit-tests via `Manager.UiPointer`.
 

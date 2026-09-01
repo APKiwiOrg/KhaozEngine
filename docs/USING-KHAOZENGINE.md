@@ -523,8 +523,20 @@ from the sim delta: the 0.1s clamp and `Dt` are unchanged.
 For multi-screen games, push `GameScene`s onto a `SceneManager` (full-frame scene stack, distinct from the
 2D-only `Gui.ScreenStack`). `Push`/`Pop`/`Replace`/`SwitchTo`/`Clear`; a scene overrides `OnEnter`/`OnExit`,
 `OnUpdate(dt)`, `OnDraw2D(batch)`, `OnResize`. Set `DrawBelow` / `UpdateBelow` for an overlay scene (e.g. a pause
-menu over a still-rendered match). Feed the manager `Input`/`Pointer`/`Viewport`/`FrameWidth`/`FrameHeight` each
-frame, then `Update(dt)` and `Draw2D(batch)`.
+menu over a still-rendered match). Feed the manager its frame context each frame, then `Update(dt)` and
+`Draw2D(batch)`:
+
+```csharp
+_scenes.SetFrameContext(Input, Pointer, Viewport, Ui, UiPointer, FrameWidth, FrameHeight);
+_scenes.Update(dt);
+```
+
+Use `SetFrameContext` rather than assigning the seven properties one at a time. They are all individually
+settable, so a host that wires six and forgets the seventh compiles and runs, with that one left at its
+default and nothing thrown or logged. A forgotten argument, by contrast, does not build. Two of those
+defaults are the ones that bite: an unset `Input` stays `InputState.Empty` and an unset `UiPointer` stays
+null, which is exactly what disables `BootScreen`'s own retry/quit UI (see below) on the day a real boot
+failure needs it.
 
 ### Boot / startup screen (`BootScreen` / `BootPipeline` / `IBootStep`)
 
@@ -572,9 +584,11 @@ protected override void OnLoad()
 }
 ```
 
-Then drive the manager as usual: forward `Input`/`Pointer`/`UiViewport`/`UiPointer`/`FrameWidth`/`FrameHeight` and
-call `_scenes.Update(dt)` in `OnUpdate`, and `_scenes.DrawUi(batch)` in `OnDrawUi` (the boot screen draws through
-the DPI-aware `OnDrawUi` pass). A step signals failure by throwing `BootStepException(localizedMessage)` (the
+Then drive the manager as usual: `_scenes.SetFrameContext(Input, Pointer, Viewport, Ui, UiPointer, FrameWidth,
+FrameHeight)` and `_scenes.Update(dt)` in `OnUpdate`, and `_scenes.DrawUi(batch)` in `OnDrawUi` (the boot screen
+draws through the DPI-aware `OnDrawUi` pass). Wire it through that one call, not the seven properties: this
+screen is the one that reads `Input` for its Enter/Escape retry-quit and `UiPointer` for its Retry/Quit button
+clicks, so a host that misses either leaves the failure screen looking correct and doing nothing. A step signals failure by throwing `BootStepException(localizedMessage)` (the
 screen shows it with retry / quit affordances). The server-status min-version gate does this automatically for
 `ServerStatusState.UpdateRequired`. A required update applied by `UpdateBootStep` restarts the app by design
 (not a failure). Restyle without forking via `BootScreenTheme` (colours, bar geometry, optional logo + a custom

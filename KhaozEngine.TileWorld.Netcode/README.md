@@ -246,7 +246,10 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   reap, which is drained at the top of the next combat pass.
 
   Actors are `Actors` (the `TileActorHost`), `SpawnActor`, `DespawnActor`, `TryGetActorState`, `ActorCount`,
-  `ActorNetIds`, `OnActorSpawned` and `RefusedActorSpawnCount`. Combat is `CombatRules`, `OnCombatEvent`, `OnDied`,
+  `ActorNetIds`, `OnActorSpawned` and `RefusedActorSpawnCount`. `OnActorSpawned` fires with the spawner link
+  ALREADY in place, so a handler attaching a game's own component can read
+  `Actors.TryGetSpawnerOf(netId, out var spawner)` and dispatch on `spawner.Definition`. An actor built straight
+  through `SpawnActor` has no spawner and answers false. Combat is `CombatRules`, `OnCombatEvent`, `OnDied`,
   `CombatEventsThisTick` and `SkippedHealthlessCombatantCount`, with `TryGetHealth` / `SetHealth` /
   `TryGetCombatState` as the reads and the one write, and `ForgetAttacker` as the one field a game can drop (see
   what a dead player leaves behind, below). `TileWorldServerConfig` gained `MaxActorsPerCell` (the

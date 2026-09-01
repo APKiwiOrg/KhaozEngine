@@ -324,15 +324,13 @@ public sealed class TileActorHost
         }
     }
 
-    void TrySpawn(TileActorSpawner spawner)
+    // Files a freshly built actor under the spawner that asked for it. Called by TileWorldServer.SpawnActor from
+    // INSIDE the spawn, before OnActorSpawned is raised, which is the whole point: a handler attaching a game's own
+    // component is told which kind of actor this is by the spawner's definition, and a link written after the event
+    // answers false to exactly the lookup the event's doc points at. Both of the spawner's own fields are settled
+    // here too, so a handler reading spawner.State is not looking at the tick before.
+    internal void LinkSpawner(long netId, TileActorSpawner spawner)
     {
-        TileActorDefinition d = spawner.Definition;
-        long netId = server.SpawnActor(spawner.Home,
-            new TileActorSpawn(d.MaxHealth, d.AttackTicks, TileDirection.S, d.StepMode));
-        // Zero is the per-cell cap refusing at the door. The spawner keeps its state and tries again on the next
-        // tick, which is the right answer for a transient condition: a cell over its budget is usually not over it a
-        // moment later, and stranding the spawner would need an operator to notice.
-        if (netId == 0) return;
         spawner.Alive(netId);
         // A fresh actor is never mid leash-break, and a spawner reused after a respawn would otherwise hand its new
         // actor the old one's flag and heal it on its first arrival home.
@@ -341,6 +339,19 @@ public sealed class TileActorHost
         // because the actor pass is a loop over net ids and ids are never recycled, so an entry can only ever be
         // replaced by the same spawner's next actor or dropped when that actor is gone.
         spawnerByActor[netId] = spawner;
+    }
+
+    void TrySpawn(TileActorSpawner spawner)
+    {
+        TileActorDefinition d = spawner.Definition;
+        // The spawner rides INTO the spawn rather than being filed after it returns. See LinkSpawner.
+        server.SpawnActorFrom(spawner.Home,
+            new TileActorSpawn(d.MaxHealth, d.AttackTicks, TileDirection.S, d.StepMode), spawner);
+        // The answer is deliberately dropped. A zero is the per-cell cap refusing at the door, and a refused spawn
+        // files nothing, so the spawner keeps its state and tries again on the next tick. That is the right answer
+        // for a transient condition: a cell over its budget is usually not over it a moment later, and stranding
+        // the spawner would need an operator to notice.
+        //
         // The definition's cadence is LIVE FROM THE FIRST TICK, written onto the spawned STATE (the fourth argument
         // above) rather than latched on the spawn tick. A latch there would outrank the behaviour on the one tick
         // its actor was born, and a per-tick restatement of the definition would overwrite a head's own latched

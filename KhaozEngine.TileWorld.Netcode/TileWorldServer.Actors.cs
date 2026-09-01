@@ -31,7 +31,13 @@ public sealed partial class TileWorldServer
 
     /// <summary>Raised with the new actor's net id once the entity exists and every component is on it, so a game
     /// may attach its own there (a kind discriminator, a stat record). The mirror of <see cref="PlayerJoined"/> for
-    /// something with no account and no connection.</summary>
+    /// something with no account and no connection.
+    /// <para>THE SPAWNER IS ALREADY LINKED when this fires, so <see cref="TileActorHost.TryGetSpawnerOf"/> answers
+    /// inside the handler and its <see cref="TileActorSpawner.Definition"/> is what says which kind of actor this
+    /// is. That is the whole reason a game attaches a component here rather than on a later tick, and it is why the
+    /// link is written from inside the spawn instead of after it returns. An actor a head built through
+    /// <see cref="SpawnActor"/> itself has no spawner and answers false, which is the caller who already has the
+    /// spec in hand.</para></summary>
     public event Action<long>? OnActorSpawned;
 
     /// <summary>Live actors on this server.</summary>
@@ -68,7 +74,14 @@ public sealed partial class TileWorldServer
     /// <exception cref="ArgumentException"><paramref name="at"/> is on a plane at or above
     /// <see cref="TileWorldServerConfig.PlaneCount"/>, or in a region the collision map has not loaded.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="spec"/> asks for a max health of zero.</exception>
-    public long SpawnActor(TileCoord at, in TileActorSpawn spec)
+    public long SpawnActor(TileCoord at, in TileActorSpawn spec) => SpawnActorFrom(at, spec, null);
+
+    // The same door with the SPAWNER the actor came from, so the host's index is written before OnActorSpawned
+    // fires. Internal because a spawner link is the host's to make: a caller handing one in here could file an
+    // actor under a spawner that never built it, and there is nothing a game can do with that a plain SpawnActor
+    // plus its own bookkeeping cannot. Named apart from the public overload rather than overloading it, because
+    // every cref naming SpawnActor across this package would otherwise be ambiguous.
+    internal long SpawnActorFrom(TileCoord at, in TileActorSpawn spec, TileActorSpawner? spawner)
     {
         if (spec.MaxHealth == 0)
             throw new ArgumentOutOfRangeException(nameof(spec), spec.MaxHealth,
@@ -107,6 +120,10 @@ public sealed partial class TileWorldServer
         // that knows it without asking the world. It is what a behaviour is handed as HOME for an actor no spawner
         // built, and a home read off the actor's current tile instead is a home that moves with it.
         Actors.NoteSpawn(netId, at);
+        // The spawner link goes in BEFORE the event, because the event's whole job is to be the place a game
+        // attaches its own components and the only thing that says WHICH kind of actor this is is the spawner's
+        // definition. Raised first, the handler asks TryGetSpawnerOf and is told false, silently, on every spawn.
+        if (spawner is not null) Actors.LinkSpawner(netId, spawner);
         OnActorSpawned?.Invoke(netId);
         return netId;
     }

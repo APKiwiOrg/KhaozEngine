@@ -265,6 +265,59 @@ public class TileActorHostTests
         Assert.Equal(0, s.Actors.PendingCommandCount);
     }
 
+    // OnActorSpawned documents itself as the place a game attaches its own components, and the natural way to know
+    // WHICH kind to attach is the spawner's definition. The link has to be in place BEFORE the event, or the
+    // handler the doc points at reads false and a game's component silently never lands.
+    [Fact]
+    public void A_spawner_built_actor_is_linked_to_its_spawner_before_OnActorSpawned_fires()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(5, 5, 0));
+        TileActorSpawner spawner = s.Actors.Add(Rat, new TileCoord(20, 20, 0));
+
+        string? seenDefinition = null;
+        bool seenLink = false;
+        TileActorSpawnerState seenState = TileActorSpawnerState.Empty;
+        long seenActorNetId = -1L;
+        s.OnActorSpawned += netId =>
+        {
+            seenLink = s.Actors.TryGetSpawnerOf(netId, out TileActorSpawner from);
+            if (seenLink) seenDefinition = from.Definition.Id;
+            seenState = spawner.State;
+            seenActorNetId = spawner.ActorNetId;
+        };
+
+        s.Tick(Dt);
+
+        Assert.True(seenLink);
+        Assert.Equal("rat", seenDefinition);
+        // The spawner's own state is settled by then too, so a handler reading it is not looking at the tick
+        // before. Both halves of the link move together or neither is trustworthy from here.
+        Assert.Equal(TileActorSpawnerState.Alive, seenState);
+        Assert.Equal(spawner.ActorNetId, seenActorNetId);
+    }
+
+    // An actor a head built itself still raises the event and still has no spawner, which is the answer that says
+    // the link was moved rather than made mandatory.
+    [Fact]
+    public void A_directly_spawned_actor_still_raises_the_event_and_holds_no_spawner()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(5, 5, 0));
+        var raised = new List<long>();
+        bool linked = true;
+        s.OnActorSpawned += netId =>
+        {
+            raised.Add(netId);
+            linked = s.Actors.TryGetSpawnerOf(netId, out _);
+        };
+
+        long actor = s.SpawnActor(new TileCoord(20, 20, 0), new TileActorSpawn(30, 10, TileDirection.S));
+
+        Assert.Equal(new[] { actor }, raised);
+        Assert.False(linked);
+    }
+
     [Fact]
     public void Despawning_an_actor_prunes_its_unspent_latch()
     {

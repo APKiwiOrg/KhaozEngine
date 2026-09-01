@@ -7,6 +7,28 @@ This is the canonical, tool-neutral instruction file for every agent (Claude Cod
 other) and human contributor. `CLAUDE.md` is a thin `@AGENTS.md` import so Claude Code reads the same
 source; Codex reads this file directly.
 
+## Consumers
+
+Each game pins its own engine version in its `Directory.Build.props` and bumps to adopt.
+
+| Game | Path | Packages |
+|---|---|---|
+| Hardpoint | `~/Hardpoint` | `Game3D` + `Foundation` |
+| Nullwake | `~/Nullwake` | `Game2D` |
+| SpaceGame | `~/SpaceGame` | `Game2D` + `Render3D`, only the Desktop head ships |
+| Ruinborne | `~/Ruinborne` | client `Game3D` + `NetWorld`, headless server `Server` + `WorldStore.SqlServer` |
+
+Packages come from `~/KhaozEngine/local-feed` in dev and GitHub Packages on `v*` tags. Every repo
+under `APKiwiOrg` is private, and that is load-bearing rather than trivia: the Packages feed needs
+auth, so every consumer vendors the engine nupkgs in-repo (`vendor/khaozengine`, the
+`khaoz-vendored` nuget source) and restores offline on a clean checkout or in CI. Client updates
+ship via an Azure Blob feed for the same reason, because a private repo cannot serve Release assets
+to an unauthenticated client.
+
+New game repos follow the shared game-repo standard, canonical in `game-template` (`~/GameTemplate`,
+remote `APKiwiOrg/game-template`). Use the `scaffold-game-repo` skill to create or align one.
+
+
 ## Global policy, restated for Codex
 
 Claude loads the full versions from ~/.claude/CLAUDE.md every session. Codex does not, so the rules are restated here in brief:

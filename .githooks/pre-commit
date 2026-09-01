@@ -1,16 +1,18 @@
 #!/bin/sh
-# pre-commit: ban em/en-dashes in staged .md/.cs additions, ban prose semicolons in staged .md
-# additions (scripts/check-prose.sh), and enforce the version<->changelog coupling. Shared via
+# pre-commit: ban em/en-dashes in staged .md/.cs additions (scripts/check-dashes.sh), ban prose
+# semicolons in staged .md additions (scripts/check-prose.sh), and enforce the version<->changelog
+# coupling. Shared via
 # core.hooksPath=.githooks. Bypass with --no-verify.
 fail=0
 
-# 1) Em/en-dash in staged ADDED lines of shipped text (.md, .cs). Pre-existing dashes elsewhere
-#    in a touched file are ignored; only what you are adding is checked.
-added=$(git diff --cached --unified=0 -- '*.md' '*.cs' 2>/dev/null | grep -E '^\+' | grep -vE '^\+\+\+')
-if printf '%s' "$added" | LC_ALL=C grep -qF -e '—' -e '–'; then
-  echo "pre-commit: staged .md/.cs additions contain an em-dash or en-dash (banned in shipped text)." >&2
-  echo "            Fix them, or 'git commit --no-verify' to override." >&2
-  fail=1
+# 1) Em/en-dash ban in staged ADDED lines of shipped text (.md, .cs). Shared with CI
+#    (scripts/check-dashes.sh) so the rule cannot drift between the hook and the pipeline. Pre-existing
+#    dashes elsewhere in a touched file are ignored, only what you are adding is checked.
+if [ -f scripts/check-dashes.sh ]; then
+  if ! sh scripts/check-dashes.sh; then
+    echo "            Fix them, or 'git commit --no-verify' to override." >&2
+    fail=1
+  fi
 fi
 
 # 1b) Prose-semicolon ban in staged ADDED lines of .md (scripts/check-prose.sh). Same staged contract

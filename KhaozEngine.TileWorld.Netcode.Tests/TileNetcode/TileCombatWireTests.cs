@@ -406,6 +406,60 @@ public class TileCombatWireTests
         Assert.DoesNotContain(actor, h.Client.RemoteNetIds);
     }
 
+    // MORE THAN ONE FRAME'S WORTH OF SWINGS ON ONE TICK. The count rides in one byte, so 255 is the wire's own
+    // ceiling, and the serve used to answer a viewer holding more than that with an ArgumentException out of
+    // TileProtocol.EncodeCombat. That throw is inside the serve loop, so it took the whole tick down for every
+    // player on the server rather than costing the one viewer its hitsplats. The serve chunks now, and the
+    // assertion that earns its keep is the COUNT: every swing the server rolled has to arrive, in roll order,
+    // across as many frames as it takes.
+    //
+    // Built as mutually attacking PAIRS because reach is cardinal: a target can be swung at by at most four
+    // bodies, so a viewer only ever sees a big frame when a lot of separate fights are packed into its interest.
+    [Fact]
+    public void A_tick_with_more_swings_than_one_frame_holds_is_chunked_rather_than_taking_the_tick_down()
+    {
+        TileWorldServerConfig config = TileWorldServerTickTests.Config(new TileCoord(20, 20, 0)) with
+        {
+            MaxActorsPerCell = 1024,
+        };
+        using var h = new TileCombatHarness(TileMoveSimulatorTests.FlatWorld(), new TileCoord(20, 20, 0),
+            config: config);
+        h.Server.CombatRules = new FlatRules { Damage = 1, Ticks = 1 };
+        h.Frames(8);
+
+        // 130 pairs, 260 attackers, all of them inside the client's 15 tile interest radius. Two frames' worth and
+        // then some, so the chunking is exercised rather than just the boundary.
+        var pairs = new List<(long a, long b)>();
+        for (int z = 13; z <= 25; z++)
+            for (int x = 10; x < 30; x += 2)
+            {
+                long a = h.Server.SpawnActor(new TileCoord(x, z, 0), new TileActorSpawn(4000, 1, TileDirection.S));
+                long b = h.Server.SpawnActor(new TileCoord(x + 1, z, 0), new TileActorSpawn(4000, 1, TileDirection.S));
+                Assert.True(a != 0 && b != 0, "the cell took both actors of the pair");
+                pairs.Add((a, b));
+            }
+        Assert.Equal(130, pairs.Count);
+        h.Frames(8);
+        foreach ((long a, long b) in pairs)
+        {
+            h.Server.Actors.Command(a, TileCommand.Attack(b, TileMoveMode.Walk));
+            h.Server.Actors.Command(b, TileCommand.Attack(a, TileMoveMode.Walk));
+        }
+
+        var onServer = new List<TileCombatEvent>();
+        var onClient = new List<TileCombatEvent>();
+        h.Server.OnCombatEvent += ev => onServer.Add(ev);
+        h.Client.CombatEvent += ev => onClient.Add(ev);
+        h.Frames(20);
+
+        // The server really did roll more than one frame's worth on a single tick, so the delivery below is about
+        // chunking rather than about a fight that stayed small.
+        Assert.True(h.Server.CombatEventsThisTick.Count > TileProtocol.MaxCombatEvents,
+            $"one tick rolled {h.Server.CombatEventsThisTick.Count} swings, which is not over the frame cap");
+        Assert.NotEmpty(onClient);
+        Assert.Equal(onServer, onClient);
+    }
+
     // A server transport that fails ONE send and then behaves, which is the recoverable error a real link hands a
     // server loop. It wraps rather than replaces the hub's own endpoint, so everything either head sends outside the
     // armed window still arrives and the test is about the reap rather than about a dead session.

@@ -225,7 +225,11 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   own frame family rather than a game message, because the game-message `kind` is a number the GAME defines and
   these are the ENGINE's events about a pipeline the engine owns. It is a frame at all because a MISS moves health
   by zero and two hits on one tick collapse into one delta, so a fight drawn from replicated health shows fewer,
-  larger, later hitsplats than the fight the server ran.
+  larger, later hitsplats than the fight the server ran. The count rides in one byte, so a tick that resolved more
+  swings than one frame holds is CHUNKED across several: `EncodeCombat(events, start, count)` is the overload that
+  slices one, and it is what the serve uses so an over-long viewer slice costs that viewer an extra packet rather
+  than taking the tick down for every player. The whole-list overload still throws above the cap, which is the
+  right answer for a game building a frame by hand.
 - **`TileServerReason`** - the stable wire reason tokens a tile server sends. Not display text.
 - **`TileCells`** - the one place tile space meets the shard grid: `CellSize`, `CoordOf(tile)` and
   `RegionOf(cell)`.

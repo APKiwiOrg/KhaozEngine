@@ -7300,10 +7300,20 @@ never stomped. The grid draws in two passes (every row's label+editor, then a la
 still draws inside the grid's own scissor, so it clips at the grid bounds (a host wanting it to spill past the
 grid calls `Dropdown.DrawOverlay` itself after the grid's `Draw`). A row's label and a `ReadOnlyRow`'s display string truncate to their column via `GuiDraw.TruncateWithEllipsis`
 (longest fitting prefix plus three ASCII dots) instead of running under the neighbouring cell or getting
-hard-cut by the scissor mid-glyph. `TruncateWithEllipsis(text, maxWidth, measureWidth)` is public (the one
-public member of `GuiDraw`), so a host can fit its own single-line text the same way: pass your own measure
+hard-cut by the scissor mid-glyph. `TruncateWithEllipsis(text, maxWidth, measureWidth)` is public, so a host
+can fit its own single-line text the same way: pass your own measure
 function (e.g. `s => font.Measure(s).X`), and it binary-searches the longest fitting prefix, pure and
-headless-testable (the map editor's status strip draws through it). `NumberField` and `TreeView` also stand alone outside a grid, e.g. an
+headless-testable (the map editor's status strip draws through it).
+
+`GuiDraw` also exposes the three 2D primitives the widgets themselves draw with, so a game rendering its own
+chrome in its own pass does not hand-build the shapes: `GuiDraw.Fill(batch, white, rect, color)`,
+`GuiDraw.Border(batch, white, rect, thickness, color)` and `GuiDraw.Line(batch, white, a, b, thickness, color)`,
+all over a 1x1 white texture (Render2D has no primitive renderer). `Border` strokes the outline just inside the
+rect and snaps rect + thickness to whole device pixels in a point-space UI pass, so a consumer border matches
+the engine's own. The rest of `GuiDraw` (`FillStyled`, the skin and glow paths, the widget geometry helpers) is
+internal widget plumbing and is not part of the consumer contract.
+
+`NumberField` and `TreeView` also stand alone outside a grid, e.g. an
 outline panel beside the inspector:
 
 ```csharp

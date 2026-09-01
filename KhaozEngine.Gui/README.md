@@ -466,8 +466,15 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   the text unchanged when it fits, otherwise the longest prefix that fits with a trailing `"..."` appended
   (three ASCII dots, binary-searched against the caller-supplied measure function, e.g.
   `s => font.Measure(s).X`, so it is pure and headless-testable). When not even the dots fit, `"..."` is still
-  returned. `PropertyGrid` cell/label text and the map editor's status strip draw through it. The only public
-  member of `GuiDraw` (the rest is internal widget plumbing).
+  returned. `PropertyGrid` cell/label text and the map editor's status strip draw through it.
+- `GuiDraw.Fill(batch, white, rect, color)`, `GuiDraw.Border(batch, white, rect, thickness, color)` and
+  `GuiDraw.Line(batch, white, a, b, thickness, color)` - the 2D primitives, public alongside
+  `TruncateWithEllipsis` so a game drawing its own chrome in its own pass calls the engine helper instead of
+  hand-building four rects. All three take a 1x1 white texture (Render2D has no primitive renderer). `Fill`
+  draws the rect verbatim, `Border` strokes a `thickness`-wide outline just inside it and snaps rect and
+  thickness to whole device pixels in a point-space pass (a no-op elsewhere), and `Line` is a single rotated
+  quad between two points. Everything else on `GuiDraw` (`FillStyled`, the skin path, the glow, the widget
+  geometry helpers) stays internal widget plumbing with no consumer contract.
 - `OverlayLegend` (+ `LegendEntry`, `OverlayLegendTheme`) - a domain-agnostic color-swatch + label panel for
   debug overlays: `SetEntries(IReadOnlyList<LegendEntry>)`, `EntryCount`, `Measure(SpriteFont)` -> `Rect` (empty
   when no entries), and two `Draw` overloads - `Draw(SpriteBatch, SpriteFont, Texture2D, Rect viewport)`

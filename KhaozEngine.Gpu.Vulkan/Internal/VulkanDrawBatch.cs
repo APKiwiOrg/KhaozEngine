@@ -17,9 +17,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     ///
     /// <para><b>THIS IS NOT A CONTRACT CHANGE AND MUST NOT BE WRITTEN AS ONE.</b> The seam's compute rule 2 is
     /// honoured AS WRITTEN and no seam member is added: chaining dependent dispatches inside one list still needs
-    /// <c>End</c>, <c>Submit</c> and <c>WaitForIdle</c> on the PORTABLE contract, because rule 2 is cross-backend,
-    /// the Veldrid legs needed the drain, and a consumer that drops it because this backend tolerates the
-    /// chain breaks on Metal. What this barrier is, is EVIDENCE for the automatic-hazard seam capability
+    /// <c>End</c>, <c>Submit</c> and <c>WaitForIdle</c> on the PORTABLE contract, because rule 2 is cross-backend
+    /// and the drain is what the seam guarantees rather than what any one backend needs. All three engine-owned
+    /// backends order a dependent chain natively by different mechanisms, so a consumer that drops the drain is
+    /// relying on a backend property the seam never promised (see <see cref="VulkanComputeHazards"/>). What this
+    /// barrier is, is EVIDENCE for the automatic-hazard seam capability
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/461), which after this phase has two of three backends able
     /// to answer yes.</para>
     ///

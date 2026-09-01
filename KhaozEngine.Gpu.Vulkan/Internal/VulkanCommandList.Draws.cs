@@ -108,9 +108,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <para>
         /// THAT BARRIER IS NOT A CONTRACT CHANGE AND MUST NOT BE READ AS ONE. The seam's compute rule 2 is
         /// honoured as written: chaining dependent dispatches inside one list still needs <c>End</c>,
-        /// <c>Submit</c> and <c>WaitForIdle</c> on the PORTABLE contract, because the Veldrid legs needed the drain
-        /// and a consumer that drops it because this backend tolerates the chain breaks on Metal. See
-        /// <see cref="VulkanComputeHazards"/>.
+        /// <c>Submit</c> and <c>WaitForIdle</c> on the PORTABLE contract, because the drain is what the seam
+        /// guarantees rather than what any one backend needs, and a consumer that drops it is relying on a
+        /// backend property the seam never promised. See <see cref="VulkanComputeHazards"/>.
         /// </para>
         /// </remarks>
         public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)

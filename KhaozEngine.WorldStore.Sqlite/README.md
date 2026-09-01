@@ -18,6 +18,10 @@ on the database file is genuinely released rather than parked in the pool, and t
 or exclusively opened straight after (since 17.41.0). For production / Azure SQL use
 `KhaozEngine.WorldStore.SqlServer` against the same `IWorldStore` contract.
 
+The connection, the operation gate and that dispose are `KhaozEngine.Sqlite`'s `SqliteStoreConnection`, shared
+with every other SQLite store in the engine. Only the schema and the SQL live here. A game writing its own
+SQLite-backed store should sit it on the same type rather than reimplementing the pool-clearing dispose.
+
 `SqliteWorldStore` implements **`IEnumerableWorldStore`** (since 8.4.2): `EnumerateAsync(keyPrefix?)` streams
 `WorldStoreEntry { Key, UpdatedAt, Size? }` records via a streaming SQLite cursor, optionally filtered by key
 prefix. Used by `ServerAdmin` for account enumeration and ban persistence.

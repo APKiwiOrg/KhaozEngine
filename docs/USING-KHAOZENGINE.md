@@ -13873,6 +13873,42 @@ server using one backend or none never pulls the other's provider:
 - **`KhaozEngine.WorldStore.SqlServer`** - `SqlServerWorldStore` over `Microsoft.Data.SqlClient`. The production
   backend (Azure SQL).
 
+**Writing your own SQLite store: `KhaozEngine.Sqlite`.** The handle release above is not something to reimplement.
+`SqliteConnection.Dispose()` returns the native handle to the provider's pool instead of closing it, which leaves
+the file open: Windows then refuses to delete or exclusively open it, and POSIX unlinks it and hands the SAME live
+handle to the next store opened on that path, so the new store quietly serves the deleted database. The engine
+shipped that leak three times before extracting the fix, so a game writing its own SQLite-backed store (accounts,
+telemetry, anything) should sit its schema on `SqliteStoreConnection` rather than opening a connection itself:
+
+```csharp
+using KhaozEngine.Sqlite;
+using Microsoft.Data.Sqlite;
+
+public sealed class AccountsStore : IDisposable
+{
+    private readonly SqliteStoreConnection db;
+
+    public AccountsStore(string connectionString) => db = new SqliteStoreConnection(connectionString,
+        "CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY, data BLOB NOT NULL);");
+
+    public async Task<byte[]?> LoadAsync(string id, CancellationToken ct = default)
+    {
+        using SqliteStoreLease _ = await db.EnterAsync(ct);      // exclusive use of the held connection
+        using SqliteCommand cmd = db.CreateCommand();
+        cmd.CommandText = "SELECT data FROM accounts WHERE id = $id;";
+        cmd.Parameters.AddWithValue("$id", id);
+        return await cmd.ExecuteScalarAsync(ct) as byte[];
+    }
+
+    public void Dispose() => db.Dispose();                       // clears the pool, then closes
+}
+```
+
+It owns the connection, the bootstrap DDL, the gate and the dispose, and nothing else: the schema, the SQL and the
+record shape stay in your store. `BeginTransaction()` is there for a multi-statement operation, taken under a lease
+held for the whole transaction. Both engine SQLite backends are built on it, and it is opt-in and in no umbrella,
+so reference it directly.
+
 Both bootstrap one `world_store(key, data, updated_at)` table on construction, upsert via dialect SQL (SQLite
 `ON CONFLICT`, SQL Server `MERGE WITH (HOLDLOCK)`), raw parameterized async ADO.NET, no EF/ORM. The same
 contract, so dev and prod differ only in which line you construct:

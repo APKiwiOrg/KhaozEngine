@@ -43,6 +43,7 @@
     <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
     <ProjectReference Include="../KhaozEngine.Social/KhaozEngine.Social.csproj" />
     <ProjectReference Include="../KhaozEngine.Social.Discord/KhaozEngine.Social.Discord.csproj" />
+    <ProjectReference Include="../KhaozEngine.Sqlite/KhaozEngine.Sqlite.csproj" />
     <ProjectReference Include="../KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />
     <ProjectReference Include="../KhaozEngine.WorldStore.Sqlite/KhaozEngine.WorldStore.Sqlite.csproj" />
     <ProjectReference Include="../KhaozEngine.WorldStore.SqlServer/KhaozEngine.WorldStore.SqlServer.csproj" />

@@ -19,9 +19,12 @@ Schema (`wallet_ledger`, `wallet_balance`, `grant_schedule`) is bootstrapped on 
 in-process semaphore. Idempotency is enforced by a composite unique index on
 `(account_id, currency_id, idempotency_key)`: replaying an already-seen key for the same account and currency is a
 no-op that returns the prior balance; the same key on a different account, or a different currency on the same
-account, is a distinct operation. Credit upserts the balance via `MERGE ... WITH (HOLDLOCK)`; debit uses a
+account, is a distinct operation. Credit upserts the balance with a relative
+`UPDATE ... SET amount = amount + @amt ... OUTPUT inserted.amount`, falling back to an `INSERT` when that update
+matched no row, so a first-ever credit for an account and currency creates the balance row. Debit uses a
 conditional `UPDATE ... WHERE amount >= @amt` and checks `@@ROWCOUNT` to reject an overspend atomically, writing no
-ledger row. A duplicate-key race on the ledger insert (`SqlException` 2601/2627) is treated as a replay: the prior
+ledger row. The only `MERGE ... WITH (HOLDLOCK)` in the store is in `SetNextAvailableAsync`, on `grant_schedule`,
+not on either wallet path. A duplicate-key race on the ledger insert (`SqlException` 2601/2627) is treated as a replay: the prior
 `post_balance` for that composite key is re-read and returned.
 
 Opt-in: pulls `Microsoft.Data.SqlClient` without touching the dependency-free `KhaozEngine.Commerce` core. Not

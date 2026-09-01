@@ -41,6 +41,9 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   `EntityRenderState[]` (local player predicted + reconciled, remotes from replicated positions - smoothly
   interpolated between snapshots by default, so a remote glides instead of teleporting one ~tick-rate snapshot-step
   per ingest; `AdvancePresentation(dt)` drives it, opt out with `WorldClientConfig.InterpolateRemotes = false`).
+  `AdvancePresentation` treats a frame time that is not a finite positive number of seconds (negative, zero,
+  infinite, or not a number) as zero, so a broken frame clock advances neither the local avatar nor the remote
+  render timeline instead of pinning both for the session.
   Remote interpolation is a **fixed-delay snapshot buffer** (since 9.23.0): each render frame renders remotes at
   `latest - interpolationDelay` and lerps the two buffered snapshots bracketing that time by their true timestamps,
   so presentation is decoupled from both the tick cadence and the render fps - no hold frames, no catch-up snaps at

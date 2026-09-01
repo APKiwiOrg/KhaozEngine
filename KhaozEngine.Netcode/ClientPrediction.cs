@@ -406,10 +406,17 @@ public sealed class ClientPrediction<TState, TCommand>
     }
 
     /// <summary>Advances the inter-tick interpolation clock and decays the smoothing offset toward zero;
-    /// frame-rate independent within clamping.</summary>
+    /// frame-rate independent within clamping. Anything that is not a finite positive number of seconds (negative,
+    /// zero, infinite, or not a number) is treated as zero and advances nothing.</summary>
     public void AdvancePresentation(float elapsedSeconds)
     {
-        float dt = MathF.Max(0f, elapsedSeconds);
+        // The clock here ACCUMULATES, which is why this is a finiteness test rather than a clamp. MathF.Max(0f, NaN)
+        // is NaN under IEEE, so a single NaN frame used to take secondsSinceLastPredict, and with it every
+        // RenderedState after it, out for the rest of the session rather than for a frame - and only Reset/Reseed
+        // recover, neither of which is on a per-frame path. An infinite dt is refused in the same breath: the decay's
+        // closed form multiplies a zero term by it and lands on NaN the same way. A frame that took no valid amount
+        // of time draws the previous one again.
+        float dt = float.IsFinite(elapsedSeconds) && elapsedSeconds > 0f ? elapsedSeconds : 0f;
         // Advance toward the current tick (clamped at one tick so a stalled tick stream holds, not overshoots).
         secondsSinceLastPredict = MathF.Min(secondsSinceLastPredict + dt, settings.TickSeconds);
 

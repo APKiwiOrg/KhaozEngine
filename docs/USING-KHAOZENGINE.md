@@ -8044,6 +8044,10 @@ var server = new WorldServer(transport, new WorldServerConfig { TickSeconds = 1f
   snapshot-step per ingest - at the cost of ~one tick (~33 ms) of remote render latency (it renders ~one snapshot in
   the past, never extrapolating). Set `InterpolateRemotes = false` to read the raw latest position instead. Call
   `AdvancePresentation(dt)` once per render frame to drive both the local smoothing and the remote interpolation.
+  A frame time that is not a finite positive number of seconds (negative, zero, infinite, or not a number) is
+  treated as zero and advances nothing, on both `WorldClient.AdvancePresentation` and the underlying
+  `ClientPrediction.AdvancePresentation`. Both clocks accumulate, so a broken frame clock redraws the previous
+  frame instead of poisoning the local avatar and the remote timeline for the rest of the session.
   Read-only local-avatar shorthands: `LocalRenderState` / `LocalGrounded` / `LocalVerticalVelocity`, plus
   `LocalHorizontalSpeed` - the predicted planar speed in m/s straight off
   `ClientPrediction.PredictedHorizontalSpeed`, computed per prediction tick and immune to reconciliation snaps,

@@ -3,7 +3,7 @@
     <PackageId>KhaozEngine.Terrain.Render3D</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Description>The 3D arm of the KhaozEngine terrain system: a chunked-LOD mesh builder over KhaozEngine.Terrain's analytic field. Build(field, region, lod) samples the field on a distance-chosen grid into a Render3D GltfMesh with ~0.3 m edge skirts (so mismatched-LOD neighbours stay crack-free), a per-vertex height/slope splat weight set (grass/dirt/rock/sand/snow) plumbed for the later PBR-texture upgrade, and a height/slope vertex-colour ramp for the current slice. Includes a chunk bounding box for frustum culling, a PickLod distance helper, and Scene3D load/draw extensions. Kept separate from KhaozEngine.Terrain so the server/sim never drags in Render3D.</Description>
+    <Description>The 3D arm of the KhaozEngine terrain system: a chunked-LOD mesh builder over KhaozEngine.Terrain's analytic field. Build(field, region, lod) samples the field on a distance-chosen grid into a Render3D GltfMesh with ~0.3 m edge skirts (so mismatched-LOD neighbours stay crack-free), a per-vertex height/slope splat weight set (grass/dirt/rock/sand/snow) plumbed for the later PBR-texture upgrade, and a height/slope vertex-colour ramp for the current slice. Includes a chunk bounding box for frustum culling and Scene3D load/draw extensions. The LOD tiers and the PickLod distance helper live in KhaozEngine.Terrain. Kept separate from KhaozEngine.Terrain so the server/sim never drags in Render3D.</Description>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />

@@ -234,10 +234,10 @@ public sealed partial class MutationService(MapEditSession session)
     /// with the smallest N &gt;= 1 unique against existing player spawn ids, the same scheme the editor's own
     /// auto-naming (<c>EditorTool.UniqueName</c>) uses. Which spawn a game uses at runtime (single-player start,
     /// party rally point, respawn point) is game code's concern, so unlike <see cref="SpawnAdd"/> there is no
-    /// archetype here. A duplicate explicit id is not pre-checked: it is rejected the same way <see cref="SpawnAdd"/>
-    /// and <see cref="PlacementAdd"/> already are, by the choke point's validate-and-revert net (the document
-    /// validator reports "duplicate player spawn id"), so this mirrors both exactly rather than adding a bespoke
-    /// precondition neither of them has.</summary>
+    /// archetype here. A duplicate explicit id is not pre-checked here: the Add command's own guard rejects it
+    /// before the append (#766), exactly as <see cref="SpawnAdd"/> and <see cref="PlacementAdd"/> are, so the
+    /// document is untouched and the message is the guard's rather than the choke point's "mutation rejected:"
+    /// shape, since nothing was applied for the validator to reject.</summary>
     public MutationResult PlayerSpawnAdd(float x, float z, float yaw = 0f, bool enabled = true,
         string? id = null, IReadOnlyList<string>? tags = null)
     {

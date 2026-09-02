@@ -71,8 +71,9 @@ namespace KhaozEngine.Tests.MapEditTool
                 InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
                     mutation.PlacementAdd("building_inn", 0f, 0f, id: "inn"));
 
-                Assert.StartsWith("mutation rejected:", ex.Message);
-                Assert.Contains("duplicate placement id", ex.Message);
+                // The Add command's own guard rejects this before the append (#766), so it never reaches the
+                // choke point's validate-and-revert net and carries no "mutation rejected:" prefix.
+                Assert.Contains("placement with id 'inn' already exists", ex.Message);
 
                 string after = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
                 Assert.Equal(before, after);
@@ -287,8 +288,8 @@ namespace KhaozEngine.Tests.MapEditTool
                 InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
                     mutation.PlayerSpawnAdd(1f, 1f, id: "start"));
 
-                Assert.StartsWith("mutation rejected:", ex.Message);
-                Assert.Contains("duplicate player spawn id", ex.Message);
+                // Rejected by the Add command's guard before the append (#766), so no "mutation rejected:" prefix.
+                Assert.Contains("player spawn with id 'start' already exists", ex.Message);
 
                 string after = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
                 Assert.Equal(before, after);

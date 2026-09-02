@@ -352,7 +352,7 @@ public sealed class AddPlacementCommand : EditorCommand
     internal override bool AffectsWorld => false;
 
     /// <inheritdoc/>
-    public override void Apply(MapDocument doc) => ApplyAppend(doc.Placements, _placement);
+    public override void Apply(MapDocument doc) => ApplyAppendUnique(doc, _placement);
 
     /// <inheritdoc/>
     public override void Revert(MapDocument doc) => RevertAppend(doc.Placements);
@@ -606,7 +606,7 @@ public sealed class AddSpawnCommand : EditorCommand
     internal override bool AffectsWorld => false;
 
     /// <inheritdoc/>
-    public override void Apply(MapDocument doc) => ApplyAppend(doc.Spawns, _spawn);
+    public override void Apply(MapDocument doc) => ApplyAppendUnique(doc, _spawn);
 
     /// <inheritdoc/>
     public override void Revert(MapDocument doc) => RevertAppend(doc.Spawns);
@@ -846,7 +846,7 @@ public sealed class AddPlayerSpawnCommand : EditorCommand
     internal override bool AffectsWorld => false;
 
     /// <inheritdoc/>
-    public override void Apply(MapDocument doc) => ApplyAppend(doc.PlayerSpawns, _spawn);
+    public override void Apply(MapDocument doc) => ApplyAppendUnique(doc, _spawn);
 
     /// <inheritdoc/>
     public override void Revert(MapDocument doc) => RevertAppend(doc.PlayerSpawns);

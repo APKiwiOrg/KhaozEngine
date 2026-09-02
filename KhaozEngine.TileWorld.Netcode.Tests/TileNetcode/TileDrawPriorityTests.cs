@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KhaozEngine.Replication;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Netcode;
 using Xunit;
@@ -8,11 +9,13 @@ namespace KhaozEngine.Tests.TileNetcode;
 
 /// <summary>
 /// ONE BODY PER TILE, the presentation rule <see cref="TileDrawPriority"/> applies. The local player owns their
-/// own tile and everywhere else the highest net id wins, which is the OSRS PID ruling with a stable key.
+/// own tile, and both tiles of a step in flight, while everywhere else the highest net id wins, which is the OSRS
+/// PID ruling with a stable key.
 /// <para>The pure cases run against <see cref="TileDrawPriority.Select"/> and its instance wrapper, because the
-/// rule is a function of a roster and asserting it through a session would only test the session. The last two
-/// run the REAL client over a loopback, which is what says the roster the convenience builds is the one the rule
-/// was designed against: the local player's PREDICTED tile and each remote's COMMITTED one.</para>
+/// rule is a function of a roster and asserting it through a session would only test the session. The ones at the
+/// end run the REAL client over a loopback, which is what says the roster the convenience builds is the one the
+/// rule was designed against: the local player's PREDICTED tile, the tile their step is leaving, and each
+/// remote's COMMITTED one.</para>
 /// </summary>
 public class TileDrawPriorityTests
 {
@@ -24,7 +27,7 @@ public class TileDrawPriorityTests
         var tile = new TileCoord(10, 10, 0);
         var priority = new TileDrawPriority();
 
-        priority.Rebuild(localNetId: 4, tile, Actors((99, tile)));
+        priority.Rebuild(localNetId: 4, tile, localLeaving: null, Actors((99, tile)));
 
         Assert.True(priority.IsDrawn(4));
         Assert.False(priority.IsDrawn(99));
@@ -40,7 +43,8 @@ public class TileDrawPriorityTests
         var priority = new TileDrawPriority();
 
         // Deliberately not in id order, because the rule is a max rather than a last-one-wins.
-        priority.Rebuild(localNetId: 4, new TileCoord(10, 10, 0), Actors((7, crowd), (31, crowd), (12, crowd)));
+        priority.Rebuild(localNetId: 4, new TileCoord(10, 10, 0), localLeaving: null,
+            Actors((7, crowd), (31, crowd), (12, crowd)));
 
         Assert.True(priority.IsDrawn(31));
         Assert.False(priority.IsDrawn(7));
@@ -55,7 +59,7 @@ public class TileDrawPriorityTests
         var priority = new TileDrawPriority();
         var alone = new TileCoord(20, 20, 0);
 
-        priority.Rebuild(localNetId: 4, new TileCoord(10, 10, 0), Actors((7, alone)));
+        priority.Rebuild(localNetId: 4, new TileCoord(10, 10, 0), localLeaving: null, Actors((7, alone)));
 
         Assert.True(priority.IsDrawn(7));
         Assert.True(priority.TryGetDrawn(alone, out long drawn));
@@ -72,7 +76,7 @@ public class TileDrawPriorityTests
     {
         var priority = new TileDrawPriority();
 
-        priority.Rebuild(localNetId: 4, new TileCoord(10, 10, 0),
+        priority.Rebuild(localNetId: 4, new TileCoord(10, 10, 0), localLeaving: null,
             Actors((7, new TileCoord(12, 10, 0)), (31, new TileCoord(12, 10, 1))));
 
         Assert.True(priority.IsDrawn(7));
@@ -87,7 +91,8 @@ public class TileDrawPriorityTests
     {
         var priority = new TileDrawPriority();
 
-        priority.Rebuild(localNetId: 4, new TileCoord(10, 10, 0), Actors((99, new TileCoord(10, 10, 1))));
+        priority.Rebuild(localNetId: 4, new TileCoord(10, 10, 0), localLeaving: null,
+            Actors((99, new TileCoord(10, 10, 1))));
 
         Assert.True(priority.IsDrawn(4));
         Assert.True(priority.IsDrawn(99));
@@ -103,10 +108,10 @@ public class TileDrawPriorityTests
         var local = new TileCoord(10, 10, 0);
         var priority = new TileDrawPriority();
 
-        priority.Rebuild(4, local, Actors((7, shared), (31, shared)));
+        priority.Rebuild(4, local, localLeaving: null, Actors((7, shared), (31, shared)));
         Assert.False(priority.IsDrawn(7));
 
-        priority.Rebuild(4, local, Actors((7, shared), (31, away)));
+        priority.Rebuild(4, local, localLeaving: null, Actors((7, shared), (31, away)));
 
         Assert.True(priority.IsDrawn(7));
         Assert.True(priority.IsDrawn(31));
@@ -115,16 +120,67 @@ public class TileDrawPriorityTests
 
     // No local player at all, which is the pre-join client: nothing claims localTile and the crowd settles itself.
     [Fact]
-    public void A_negative_local_net_id_claims_no_tile()
+    public void The_sentinel_local_net_id_claims_no_tile()
     {
         var tile = new TileCoord(10, 10, 0);
         var priority = new TileDrawPriority();
 
-        priority.Rebuild(localNetId: -1, tile, Actors((7, tile), (31, tile)));
+        priority.Rebuild(TileDrawPriority.NoLocalPlayer, tile, localLeaving: null, Actors((7, tile), (31, tile)));
 
         Assert.True(priority.IsDrawn(31));
         Assert.False(priority.IsDrawn(7));
-        Assert.False(priority.IsDrawn(-1));
+        Assert.False(priority.IsDrawn(TileDrawPriority.NoLocalPlayer));
+        Assert.Equal(1, priority.Count);
+    }
+
+    // THE STEP'S OTHER TILE. A step commits its destination on the tick it starts and the body glides in over the
+    // rest of it, so a local player claiming the destination alone leaves the tile they are walking out of, with
+    // their own body still on it, to the highest net id standing there. Both tiles are claimed instead.
+    [Fact]
+    public void The_local_player_claims_the_tile_they_are_stepping_out_of()
+    {
+        var leaving = new TileCoord(9, 10, 0);
+        var entering = new TileCoord(10, 10, 0);
+        var priority = new TileDrawPriority();
+
+        priority.Rebuild(localNetId: 50, entering, leaving, Actors((99, leaving)));
+
+        Assert.True(priority.IsDrawn(50));
+        Assert.False(priority.IsDrawn(99));                     // the higher id loses the tile it is standing on
+        Assert.True(priority.TryGetDrawn(leaving, out long behind));
+        Assert.Equal(50L, behind);
+        Assert.True(priority.TryGetDrawn(entering, out long ahead));
+        Assert.Equal(50L, ahead);
+        // TWO tiles, ONE body: Drawn is a set of net ids, which is why Count is not a tile count.
+        Assert.Equal(1, priority.Count);
+
+        // And the claim lasts exactly the step: the tile is settled by net id again the moment the body lands.
+        priority.Rebuild(localNetId: 50, entering, localLeaving: null, Actors((99, leaving)));
+
+        Assert.True(priority.IsDrawn(50));
+        Assert.True(priority.IsDrawn(99));
+        Assert.True(priority.TryGetDrawn(leaving, out behind));
+        Assert.Equal(99L, behind);
+    }
+
+    // A packed net id from a high node is NEGATIVE, so "no local player" is a sentinel rather than a sign. Gating
+    // on `>= 0` would drop the local player's own claim for every node from 32768 up, which is the one actor this
+    // rule may never lose.
+    [Fact]
+    public void A_packed_negative_net_id_still_claims_the_local_players_tiles()
+    {
+        long packed = NetIdAllocator.Pack(nodeId: 40000, counter: 1);
+        Assert.True(packed < 0, "the premise: a high node id packs to a negative net id");
+
+        var leaving = new TileCoord(9, 10, 0);
+        var entering = new TileCoord(10, 10, 0);
+        var priority = new TileDrawPriority();
+
+        priority.Rebuild(packed, entering, leaving, Actors((99, entering), (7, leaving)));
+
+        Assert.True(priority.IsDrawn(packed));
+        Assert.False(priority.IsDrawn(99));
+        Assert.False(priority.IsDrawn(7));
         Assert.Equal(1, priority.Count);
     }
 
@@ -138,7 +194,8 @@ public class TileDrawPriorityTests
         var winners = new Dictionary<TileCoord, long> { [new TileCoord(99, 99, 0)] = 1234 };
         var drawn = new HashSet<long> { 1234 };
 
-        TileDrawPriority.Select(localNetId: -1, default, new (long, TileCoord)[] { (7, tile) }, winners, drawn);
+        TileDrawPriority.Select(TileDrawPriority.NoLocalPlayer, default, localLeaving: null,
+            new (long, TileCoord)[] { (7, tile) }, winners, drawn);
 
         Assert.Equal(new[] { 7L }, drawn);
         Assert.Single(winners);
@@ -171,6 +228,51 @@ public class TileDrawPriorityTests
         Assert.False(priority.IsDrawn(remote));
         Assert.Equal(1, priority.Count);
         Assert.True(priority.TryGetDrawn(theirs, out long shown));
+        Assert.Equal(loop.Client.LocalNetId, shown);
+    }
+
+    // THE SAME VERDICT WHILE WALKING, through the real client, which is the case the rule missed while it claimed
+    // one tile. A step commits its destination on the tick it starts, so for the whole of the step the drawn body
+    // is still leaving a tile somebody else can be standing on, and at commit the two bodies draw at the same
+    // world position. The remote outranks the player on the raw rule and must still be hidden.
+    [Fact]
+    public void A_remote_on_the_tile_the_local_player_is_stepping_out_of_is_hidden_through_the_real_client()
+    {
+        using var loop = new TileRemoteReadTests.Loop();
+        loop.Join();
+        long remote = loop.Server.SpawnPlayer(slot: 1, "remote", "Rem");
+        TileCoord origin = loop.Client.Prediction.PredictedState.Tile;
+        loop.Server.SetPlayerState(1, TileMoveState.At(origin, TileDirection.S));
+        loop.Frames(24);
+        Assert.True(remote > loop.Client.LocalNetId, "the remote must outrank the local player for this to bite");
+
+        // Walk away, and stop in the MIDDLE of the first step: the body is between the two tiles, and the one it
+        // is walking out of is the remote's.
+        loop.Client.Queue(
+            TileCommand.WalkTo(new TileCoord(origin.X, origin.Z + 4, origin.Plane), TileMoveMode.Walk));
+        TileMoveState local = default;
+        for (int i = 0; i < 300; i++)
+        {
+            loop.Step();
+            local = loop.Client.Prediction.PredictedState;
+            if (local.IsStepping && local.StepFrom.Equals(origin) && local.StepTicks * 2 >= local.StepTotal) break;
+        }
+
+        Assert.True(local.IsStepping, "the local player never started a step to be judged mid-flight");
+        Assert.Equal(origin, local.StepFrom);
+        Assert.NotEqual(origin, local.Tile);
+        Assert.True(loop.Client.TryGetRemoteTile(remote, out TileCoord theirs));
+        Assert.Equal(origin, theirs);                            // the remote is on the tile being vacated
+
+        var priority = new TileDrawPriority();
+        priority.Rebuild(loop.Client);
+
+        Assert.True(priority.IsDrawn(loop.Client.LocalNetId));
+        Assert.False(priority.IsDrawn(remote));
+        Assert.Equal(1, priority.Count);                         // two tiles, one body
+        Assert.True(priority.TryGetDrawn(origin, out long shown));
+        Assert.Equal(loop.Client.LocalNetId, shown);
+        Assert.True(priority.TryGetDrawn(local.Tile, out shown));
         Assert.Equal(loop.Client.LocalNetId, shown);
     }
 

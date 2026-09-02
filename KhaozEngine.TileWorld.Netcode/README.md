@@ -78,8 +78,9 @@ example.
 
 **A crowd on one tile draws ONE body.** Every body draws on the tile centre, so a stack of them is a smear of
 overlapping meshes, and the body a player can least afford to lose in it is their own. `TileDrawPriority` picks
-the one to draw per tile: the local player on their own tile, the highest net id everywhere else. It is the OSRS
-PID ruling with a stable key, it is presentation only, and it is in the types list below.
+the one to draw per tile: the local player on their own tile, and on both tiles of a step in flight, with the
+highest net id everywhere else. It is the OSRS PID ruling with a stable key, it is presentation only, and it is
+in the types list below.
 
 ## The types
 
@@ -314,15 +315,20 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   tile in from the corner on each axis, which is the middle of that tile's ground quad and the point a 1x1
   `TileObjectProps` prop is anchored at, so a head draws at `pose.Position` without re-centring it.
 - **`TileDrawPriority`** - ONE BODY PER TILE, rebuilt per frame. `Rebuild(client)` reads a live client,
-  `Rebuild(localNetId, localTile, others)` takes a caller's own roster, and the static `Select` is the rule with
-  both output buffers owned by the caller. `IsDrawn(netId)` is the draw-loop test, `TryGetDrawn(tile, out netId)`
-  asks by place, `Drawn` and `Count` are the chosen set. The local player wins their own tile outright and every
-  other tile goes to the highest net id on it, which is the OSRS PID ruling with a key that cannot flicker: a net
-  id does not move for an actor's life, where an order keyed on distance or arrival time re-decides itself
-  mid-step. The plane is part of the tile. The local player is judged on their PREDICTED tile and a remote on its
-  committed tile off the DELAYED timeline (`TryGetRemoteTile`), so the hide runs on the same clock as the bodies.
-  Allocation free per frame after the first rebuild, and presentation only: a hidden actor is still replicated,
-  still clickable and still swinging.
+  `Rebuild(localNetId, localTile, localLeaving, others)` takes a caller's own roster, and the static `Select` is
+  the rule with both output buffers owned by the caller. `IsDrawn(netId)` is the draw-loop test,
+  `TryGetDrawn(tile, out netId)` asks by place, `Drawn` and `Count` are the chosen set (the live set, so a
+  rebuild invalidates an enumeration in flight, and a count of BODIES rather than of tiles). The local player
+  wins their own tile outright and every other tile goes to the highest net id on it, which is the OSRS PID
+  ruling with a key that cannot flicker: a net id does not move for an actor's life, where an order keyed on
+  distance or arrival time re-decides itself mid-step. The plane is part of the tile. The local player is judged
+  on their PREDICTED tile and a remote on its committed tile off the DELAYED timeline (`TryGetRemoteTile`), so
+  the hide runs on the same clock as the bodies. A step commits its tile when it starts, so the local player also
+  claims the `StepFrom` it is walking out of and nothing is ever drawn over their own body. A remote keeps one
+  tile and carries that one-step lead: a body on the tile a remote is leaving hides it until its step lands.
+  "No local player" is the `NoLocalPlayer` sentinel rather than a negative id, because a packed net id can be
+  negative. Allocation free per frame after the first rebuild, and presentation only: a hidden actor is still
+  replicated, still clickable and still swinging.
 - **`TileClientMessageHandler`** - the delegate an opaque server message arrives on.
 
 **Persistence**
@@ -495,7 +501,10 @@ client.AdvancePresentation(dt);                    // the render clock, before d
 priority.Rebuild(client);                          // one TileDrawPriority, held for the session
 
 TilePose me = client.LocalPose;                    // the BODY, gliding into its committed tile
-foreach (long id in client.RemoteNetIds)
+// Walk the collected list, not RemoteNetIds: that one is an IReadOnlyCollection, so a foreach over it
+// boxes an enumerator every frame, and Drawn has the same shape.
+client.CollectRemoteTiles(remotes);                // the head's own reused List<(long, TileCoord)>
+foreach ((long id, TileCoord _) in remotes)
     if (priority.IsDrawn(id) && client.TryGetRemotePose(id, out TilePose them)) Draw(id, them);
 
 // The true-tile overlay, which is how the lead is made visible rather than smaller. Index the route from

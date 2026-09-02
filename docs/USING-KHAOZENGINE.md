@@ -9051,18 +9051,21 @@ if (client.TryGetRemoteTile(netId, out TileCoord theirs))          // agrees wit
 
 Draw every body on its tile centre and a crowd on one tile is a smear of overlapping meshes that reads as one
 wrong-looking creature. The body a player can least afford to lose in that smear is their own. `TileDrawPriority`
-collapses each tile to ONE drawn actor: the local player on their own tile, and the highest net id everywhere
-else. OSRS answers the same question with PID and this is that shape with a stable key.
+collapses each tile to ONE drawn actor: the local player on their own tile (both tiles of a step in flight), and
+the highest net id everywhere else. OSRS answers the same question with PID and this is that shape with a stable
+key.
 
 ```csharp
 readonly TileDrawPriority priority = new();     // one per head, for the life of the session
+readonly List<(long NetId, TileCoord Tile)> remotes = new();
 
 // per frame, after AdvancePresentation and before drawing
 priority.Rebuild(client);
 
 TilePose me = client.LocalPose;                 // the local player is always drawn
 Draw(playerMesh, me.Position, me.Yaw);
-foreach (long netId in client.RemoteNetIds)
+client.CollectRemoteTiles(remotes);             // the reused list, so no enumerator is boxed per frame
+foreach ((long netId, TileCoord _) in remotes)
     if (priority.IsDrawn(netId) && client.TryGetRemotePose(netId, out TilePose pose))
         Draw(remoteMesh, pose.Position, pose.Yaw);
 ```
@@ -9079,20 +9082,37 @@ foreach (long netId in client.RemoteNetIds)
   committed tile off the DELAYED render timeline (`TryGetRemoteTile`), which is the timeline the drawn bodies
   ride, so the hide happens on the same clock as the picture. Judging a remote on `TryGetLatestRemoteTile`
   instead would hide it `InterpolationDelayTicks` before its body arrived.
-- **Bodies swap over on the tick a step COMMITS, not when they visually overlap**, because that is when the tile
-  changes. It is the same lead the true-tile marker and every other tile read in this package carry.
+- **The local player claims BOTH tiles of a step in flight**, the one it is entering and the `StepFrom` it is
+  leaving. A step commits its destination on the tick it starts and the body glides in over the rest of it, so
+  claiming the destination alone would leave the vacated tile to the highest net id standing there while the
+  local body is still on it, drawing another player over it at zero separation. Both claims name the same net id,
+  so it is one entry in `Drawn` and two in `TryGetDrawn`.
+- **A remote keeps ONE tile, so the one-step lead is still there for remotes.** A remote mid-step is judged on
+  the tile it is walking into, so a body standing on the tile it is leaving wins that tile and draws over the
+  remote's own body until the step lands. It is the same lead the true-tile marker and every other tile read in
+  this package carry, it lasts exactly one step, and it is the accepted cost: a remote is not the body a player
+  aims from, and a second tile per remote would hide a second body in every crowd for as long as anybody walks.
 - **Allocation free per frame** after the first rebuild, with no LINQ and no sort: one pass over the actors and
   one over the winners, into buffers the selector holds. `TileWorldClient.CollectRemoteTiles(buffer)` is the bulk
-  read it is built on (the same shape as `CollectGroundItems`), and it is public for a game that wants its own
-  per-tile pass.
+  read it is built on (the same shape as `CollectGroundItems`), it is public for a game that wants its own
+  per-tile pass, and it is what the draw loop above walks: `RemoteNetIds` and `Drawn` are both interface-typed,
+  so a per-frame foreach over either boxes an enumerator.
+- **`Drawn` is the live set and `Count` is a body count.** A rebuild clears and refills the same instance, so a
+  reference held across frames changes under its holder and enumerating it while a rebuild runs throws. `Count`
+  is not a tile count: a local player mid-step holds two tiles with one body, and so does a roster that lists one
+  net id twice.
 - **It is presentation and nothing else.** A hidden actor is still on its tile, still replicated, still a legal
   click target and still swinging. Hiding its nameplate or making it unclickable is a second, separate decision
   and it is yours.
 - **A head with actors the client does not own** (a replay, a server-side view, bodies outside the replication
-  view) calls `priority.Rebuild(localNetId, localTile, others)` with its own roster, or the static
-  `TileDrawPriority.Select(localNetId, localTile, others, winners, drawn)` with its own buffers. Same rule, and
-  both outputs are cleared on entry. `TryGetDrawn(tile, out netId)` asks by place rather than by actor, for a
-  click that should resolve to the body the player can actually see.
+  view) calls `priority.Rebuild(localNetId, localTile, localLeaving, others)` with its own roster, or the static
+  `TileDrawPriority.Select(localNetId, localTile, localLeaving, others, winners, drawn)` with its own buffers.
+  Pass null for `localLeaving` when the local player stands still. Same rule, and both outputs are cleared on
+  entry. `TryGetDrawn(tile, out netId)` asks by place rather than by actor, for a click that should resolve to
+  the body the player can actually see.
+- **"No local player" is `TileDrawPriority.NoLocalPlayer`**, the -1 `TileWorldClient.LocalNetId` carries until
+  the first snapshot names the local actor. The check is against that sentinel and not against the sign, because
+  `NetIdAllocator.Pack` hands out negative net ids from node 32768 up and one of those is a real local player.
 
 **A pose names the tile CENTRE**, half a tile in from the corner on each axis, which is the middle of the tile's
 own ground quad and the point `TileObjectProps.AnchorPosition` puts a 1x1 prop on, so an avatar and the thing it

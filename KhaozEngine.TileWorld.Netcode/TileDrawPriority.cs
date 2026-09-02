@@ -6,8 +6,8 @@ namespace KhaozEngine.TileWorld.Netcode;
 
 /// <summary>
 /// ONE BODY PER TILE. Which actor standing on each tile is the one to draw, and which are hidden behind it,
-/// rebuilt from scratch every frame. The local player wins their own tile outright, and every other tile goes to
-/// the HIGHEST net id on it.
+/// rebuilt from scratch every frame. The local player wins their own tile outright, and both tiles of a step
+/// while one is in flight. Every other tile goes to the HIGHEST net id on it.
 /// <para>WHY, and it is a presentation rule rather than a rules one. A tile game draws every body on the tile
 /// centre, so a stack of them is a smear of overlapping meshes that reads as one wrong-looking creature, and the
 /// body a player can least afford to lose in that smear is their own: standing under a bank crowd, an avatar the
@@ -30,18 +30,35 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// <see cref="TileWorldClient.TryGetLatestRemoteTile(long, out TileCoord)"/> instead would hide it
 /// <see cref="TileWorldClientConfig.InterpolationDelayTicks"/> before its body arrived, which is a remote
 /// vanishing into a tile it is visibly still two ticks away from. Neither read is the drawn POSITION: a body
-/// commits its tile when the step starts and glides in afterwards, so bodies swap over on the tick the step
-/// commits rather than when they visually overlap. That is the same lead every other tile read in this package
-/// carries, and it is the honest one to hide on.</para>
+/// commits its tile when the step starts and glides in afterwards, so a tile read leads the body it names by up
+/// to a whole step.</para>
+/// <para>THE LOCAL PLAYER CLAIMS BOTH TILES OF A STEP IN FLIGHT, and that is what makes the own-body guarantee
+/// hold while walking. <see cref="TileMoveState"/> commits the destination on the tick the step STARTS and the
+/// body glides in over the rest of it, so through the whole step the drawn local body is somewhere between
+/// <see cref="TileMoveState.StepFrom"/> and <see cref="TileMoveState.Tile"/>. Claiming the destination alone
+/// leaves the tile being vacated to the highest net id standing on it, and on the tick the step commits that
+/// body draws at the same world position as the local one, which is the exact failure this class exists to
+/// remove. So while <see cref="TileMoveState.IsStepping"/> the local player wins the leaving tile as well as the
+/// entering one. The drawn body is inside that pair for the whole step, so nothing is ever drawn over it. Both
+/// claims name the SAME net id, so the pair is one entry in <see cref="Drawn"/> and two in the tile map.</para>
+/// <para>A REMOTE KEEPS ONE TILE, deliberately, so the lead the local claim removes is still there for everybody
+/// else: a remote mid-step is judged on the tile it is walking into, and a body standing on the tile it is
+/// leaving wins that tile and draws over the remote's own body. It lasts exactly one step, it ends when the step
+/// lands, and it is the same lead every other tile read in this package carries. A remote is not the body a
+/// player aims from, and paying two tiles per remote to shave it would hide a second body in every crowd for the
+/// length of every step somebody takes.</para>
 /// <para>Per frame at 60 Hz and allocation free after the first rebuild: the buffers here are reused, the rule is
 /// one pass over the actors plus one over the winners, and there is no LINQ and no sort. Hold ONE of these on the
 /// head and call <see cref="Rebuild(TileWorldClient)"/> once a frame, after
-/// <see cref="TileWorldClient.AdvancePresentation"/> and before drawing.</para>
+/// <see cref="TileWorldClient.AdvancePresentation"/> and before drawing. The draw loop walks a collected list
+/// rather than <see cref="TileWorldClient.RemoteNetIds"/>, which is interface-typed and boxes an enumerator every
+/// frame, the cost <see cref="TileWorldClient.CollectRemoteTiles"/> exists to avoid.</para>
 /// <code>
 /// priority.Rebuild(client);
 /// TilePose me = client.LocalPose;                 // the local player is always drawn
 /// Draw(playerMesh, me.Position, me.Yaw);
-/// foreach (long netId in client.RemoteNetIds)
+/// client.CollectRemoteTiles(remotes);             // a List&lt;(long NetId, TileCoord Tile)&gt; the head keeps
+/// foreach ((long netId, TileCoord _) in remotes)
 ///     if (priority.IsDrawn(netId) &amp;&amp; client.TryGetRemotePose(netId, out TilePose pose))
 ///         Draw(remoteMesh, pose.Position, pose.Yaw);
 /// </code>
@@ -52,20 +69,37 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// </summary>
 public sealed class TileDrawPriority
 {
+    /// <summary>The one <c>localNetId</c> value that means "no local player", and the value
+    /// <see cref="TileWorldClient.LocalNetId"/> carries until the first snapshot names the local actor.
+    /// <para>It is a SENTINEL rather than a sign test, and that is load-bearing: <c>NetIdAllocator.Pack</c> is
+    /// <c>nodeId &lt;&lt; 48 | counter</c> over a node id up to 65535, so every node from 32768 up hands out
+    /// NEGATIVE net ids. A rule that read "negative" as "not logged in" would silently drop the local player's
+    /// own claim on a sharded fleet that far out, which is the one thing this class must never do.</para></summary>
+    public const long NoLocalPlayer = -1;
+
     // The client's remotes, collected once per rebuild so the rule can read them as a span. Grows to the biggest
     // crowd this client has seen and stops, which is the whole of the per-frame allocation story.
     readonly List<(long NetId, TileCoord Tile)> actors = new();
     readonly Dictionary<TileCoord, long> winners = new();
     readonly HashSet<long> drawn = new();
 
-    /// <summary>Every net id this rebuild chose to draw, one per occupied tile. The LOCAL player's id is among
-    /// them whenever the client has one, because the local player is always drawn, so a head walking this
-    /// collection to draw bodies has to draw that one through <see cref="TileWorldClient.LocalPose"/> rather than
-    /// <see cref="TileWorldClient.TryGetRemotePose"/>. Walking <see cref="TileWorldClient.RemoteNetIds"/> and
-    /// asking <see cref="IsDrawn"/> avoids the question entirely and is the shape to prefer.</summary>
+    /// <summary>The net ids this rebuild chose to draw. The LOCAL player's id is among them whenever the client
+    /// has one, because the local player is always drawn, so a head walking this collection to draw bodies has to
+    /// draw that one through <see cref="TileWorldClient.LocalPose"/> rather than
+    /// <see cref="TileWorldClient.TryGetRemotePose"/>. Walking a list filled by
+    /// <see cref="TileWorldClient.CollectRemoteTiles"/> and asking <see cref="IsDrawn"/> avoids the question
+    /// entirely, and is also the allocation-free shape: this collection is interface-typed, so enumerating it
+    /// boxes the set's enumerator once a frame.
+    /// <para>THE LIVE SET, not a snapshot. A rebuild CLEARS and refills this same instance, so a reference held
+    /// across frames changes under its holder, and enumerating it while <see cref="Rebuild(TileWorldClient)"/>
+    /// runs on it throws <see cref="InvalidOperationException"/>. Copy it if you need last frame's
+    /// answer.</para></summary>
     public IReadOnlyCollection<long> Drawn => drawn;
 
-    /// <summary>How many bodies this rebuild chose, which is also how many tiles are occupied.</summary>
+    /// <summary>How many bodies this rebuild chose. NOT the number of occupied tiles: one body can hold two of
+    /// them. The local player holds both tiles of a step in flight, and a caller's roster may list one net id on
+    /// two tiles. <see cref="Drawn"/> is a set of net ids, so either case counts once here and twice in
+    /// <see cref="TryGetDrawn"/>.</summary>
     public int Count => drawn.Count;
 
     /// <summary>True when <paramref name="netId"/> is the one body drawn on its tile. False when it is standing
@@ -85,10 +119,12 @@ public sealed class TileDrawPriority
 
     /// <summary>
     /// Rebuilds from a live client: every remote it is drawing on its committed tile, plus the local player on
-    /// their predicted one. Call it once a frame, after <see cref="TileWorldClient.AdvancePresentation"/> so the
-    /// remote set is the one this frame will draw.
-    /// <para>Before the first snapshot the client has no net id and no seeded prediction, so nothing claims the
-    /// local tile and the remotes (of which there are none yet) settle it between themselves.</para>
+    /// their predicted one AND, while a step is in flight, on the tile that step is leaving. Call it once a
+    /// frame, after <see cref="TileWorldClient.AdvancePresentation"/> so the remote set is the one this frame
+    /// will draw.
+    /// <para>Until the first snapshot names the local actor, <see cref="TileWorldClient.LocalNetId"/> is
+    /// <see cref="NoLocalPlayer"/>, so nothing claims a local tile and the remotes (of which there are none yet)
+    /// settle every tile between themselves.</para>
     /// </summary>
     /// <param name="client">The client to read. Not retained.</param>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is null.</exception>
@@ -96,8 +132,11 @@ public sealed class TileDrawPriority
     {
         ArgumentNullException.ThrowIfNull(client);
         client.CollectRemoteTiles(actors);
-        Select(client.LocalNetId, client.Prediction.PredictedState.Tile, CollectionsMarshal.AsSpan(actors),
-            winners, drawn);
+        // The predicted state is read ONCE, so the tile claimed and the tile being left cannot come from two
+        // different frames of prediction.
+        TileMoveState local = client.Prediction.PredictedState;
+        Select(client.LocalNetId, local.Tile, local.IsStepping ? local.StepFrom : null,
+            CollectionsMarshal.AsSpan(actors), winners, drawn);
     }
 
     /// <summary>
@@ -105,14 +144,20 @@ public sealed class TileDrawPriority
     /// server-side view, a game whose actors live outside the replication view). The rule is the same one
     /// <see cref="Rebuild(TileWorldClient)"/> applies, over the actors you hand it.
     /// </summary>
-    /// <param name="localNetId">The local player's net id, or any negative value when there is no local player,
-    /// in which case <paramref name="localTile"/> is not read and every tile is settled by net id.</param>
+    /// <param name="localNetId">The local player's net id, or <see cref="NoLocalPlayer"/> when there is no local
+    /// player, in which case neither local tile is read and every tile is settled by net id. Any OTHER negative
+    /// value is a net id like any other, because a packed one can be negative.</param>
     /// <param name="localTile">The tile the local player is committed to, their PREDICTED tile on a live
     /// client.</param>
+    /// <param name="localLeaving">The tile the local player's step in flight is walking OUT of
+    /// (<see cref="TileMoveState.StepFrom"/> while <see cref="TileMoveState.IsStepping"/>), or null when they are
+    /// standing still. Claimed alongside <paramref name="localTile"/>, because the drawn body is between the two
+    /// for the whole step. Passing <paramref name="localTile"/> again is the same as passing null.</param>
     /// <param name="others">Every other actor and the tile it is committed to, in any order. An entry whose net
     /// id is <paramref name="localNetId"/> is skipped, so a roster that includes the local player is fine.</param>
-    public void Rebuild(long localNetId, TileCoord localTile, ReadOnlySpan<(long NetId, TileCoord Tile)> others)
-        => Select(localNetId, localTile, others, winners, drawn);
+    public void Rebuild(long localNetId, TileCoord localTile, TileCoord? localLeaving,
+        ReadOnlySpan<(long NetId, TileCoord Tile)> others)
+        => Select(localNetId, localTile, localLeaving, others, winners, drawn);
 
     /// <summary>
     /// THE RULE ITSELF, pure and allocation free: no state of its own, both outputs owned by the caller, and the
@@ -123,15 +168,21 @@ public sealed class TileDrawPriority
     /// wants. The second is derivable from the first and is built anyway, because deriving it per query means
     /// scanning every tile for every body.</para>
     /// </summary>
-    /// <param name="localNetId">The local player's net id, or any negative value for no local player.</param>
+    /// <param name="localNetId">The local player's net id, or <see cref="NoLocalPlayer"/> for no local player.
+    /// Every other value is a net id, negative ones included: a packed net id from a high node is negative, so
+    /// this is a sentinel test and not a sign test.</param>
     /// <param name="localTile">The tile the local player is committed to. Not read when
-    /// <paramref name="localNetId"/> is negative.</param>
+    /// <paramref name="localNetId"/> is <see cref="NoLocalPlayer"/>.</param>
+    /// <param name="localLeaving">The tile the local player's step in flight is walking OUT of, claimed alongside
+    /// <paramref name="localTile"/>, or null when they stand still. Not read when
+    /// <paramref name="localNetId"/> is <see cref="NoLocalPlayer"/>.</param>
     /// <param name="others">Every other actor and its committed tile, in any order.</param>
     /// <param name="winners">Filled with the one net id drawn on each occupied tile.</param>
-    /// <param name="drawn">Filled with those net ids.</param>
+    /// <param name="drawn">Filled with those net ids, so a local player mid-step is ONE entry here against two
+    /// in <paramref name="winners"/>.</param>
     /// <exception cref="ArgumentNullException"><paramref name="winners"/> or <paramref name="drawn"/> is
     /// null.</exception>
-    public static void Select(long localNetId, TileCoord localTile,
+    public static void Select(long localNetId, TileCoord localTile, TileCoord? localLeaving,
         ReadOnlySpan<(long NetId, TileCoord Tile)> others, Dictionary<TileCoord, long> winners,
         HashSet<long> drawn)
     {
@@ -153,9 +204,15 @@ public sealed class TileDrawPriority
             else winners[tile] = netId;
         }
 
-        // LAST, and that ordering IS the local player's win: whoever took their tile above is overwritten here,
-        // in one write, rather than the loop carrying a per-entry test for a case that is true at most once.
-        if (localNetId >= 0) winners[localTile] = localNetId;
+        // LAST, and that ordering IS the local player's win: whoever took their tiles above is overwritten here,
+        // rather than the loop carrying a per-entry test for a case that is true at most twice. The leaving tile
+        // is the same write, and when it equals the tile being entered (a caller passing it rather than null) the
+        // second write lands on the entry the first one just made.
+        if (localNetId != NoLocalPlayer)
+        {
+            winners[localTile] = localNetId;
+            if (localLeaving is TileCoord leaving) winners[leaving] = localNetId;
+        }
 
         foreach (long netId in winners.Values) drawn.Add(netId);
     }

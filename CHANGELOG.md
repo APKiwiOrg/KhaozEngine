@@ -16,23 +16,38 @@ meshes. Every tile game on this engine wants the same rule, so it lands here rat
 OSRS answers the same question with PID, a per-tick priority, and this is that shape with a stable key.
 
 - `TileDrawPriority` (in `KhaozEngine.TileWorld.Netcode`) is a per-frame selector. `Rebuild(client)`
-  reads a live client, `Rebuild(localNetId, localTile, others)` takes a caller's own roster, and the
-  static `Select(localNetId, localTile, others, winners, drawn)` is the rule itself with both output
-  buffers owned by the caller. `IsDrawn(netId)` is the draw-loop test, `TryGetDrawn(tile, out netId)`
-  asks by place, and `Drawn` plus `Count` are the chosen set.
-- The rule: exactly one actor per tile. The local player wins their own tile outright, so nothing can
-  ever stand in front of the body its owner aims from. Every other tile goes to the highest net id on
-  it. The key is arbitrary and its job is to be STABLE: a net id does not move for an actor's life, so
-  a crowd standing still draws the same body every frame, where an order keyed on distance or arrival
-  time re-decides itself mid-step and swaps the body under the cursor. The plane is part of the tile,
-  so the same x and z one storey up hides nothing.
+  reads a live client, `Rebuild(localNetId, localTile, localLeaving, others)` takes a caller's own
+  roster, and the static `Select(localNetId, localTile, localLeaving, others, winners, drawn)` is the
+  rule itself with both output buffers owned by the caller. `IsDrawn(netId)` is the draw-loop test,
+  `TryGetDrawn(tile, out netId)` asks by place, and `Drawn` plus `Count` are the chosen set. `Drawn`
+  is the LIVE set rather than a snapshot, so a rebuild invalidates an enumeration in flight, and
+  `Count` counts bodies rather than occupied tiles.
+- The rule: exactly one actor per tile. The local player wins their own tile outright, and the tile a
+  step in flight is walking OUT of alongside it, so no other body is ever drawn over the one its owner
+  aims from. Every other tile goes to the highest net id on it. The key is arbitrary and its job is to
+  be STABLE: a net id does not move for an actor's life, so a crowd standing still draws the same body
+  every frame, where an order keyed on distance or arrival time re-decides itself mid-step and swaps
+  the body under the cursor. The plane is part of the tile, so the same x and z one storey up hides
+  nothing.
 - Which tile each actor is judged on is the other half. The local player is judged on their PREDICTED
-  tile, a remote on its COMMITTED replicated tile off the delayed render timeline
+  tile plus `StepFrom` while `IsStepping`, because a step commits its destination when it starts and
+  the body glides in over the rest of it, so the drawn body is inside that pair for the whole step. A
+  remote is judged on its COMMITTED replicated tile off the delayed render timeline
   (`TryGetRemoteTile`), which is the timeline the drawn bodies ride. Judging a remote on
   `TryGetLatestRemoteTile` would hide it `InterpolationDelayTicks` before its body arrived.
+- A remote keeps ONE tile, so the same one-step lead is still there for remotes: a body standing on
+  the tile a remote is walking out of wins that tile and draws over the remote until its step lands. A
+  second tile per remote would hide a second body in every crowd for as long as anybody is walking,
+  and a remote is not the body a player aims from.
+- `TileDrawPriority.NoLocalPlayer` (-1, what `TileWorldClient.LocalNetId` reads until the first
+  snapshot names the local actor) is the "no local player" value, and the check is against that
+  sentinel rather than against the sign: `NetIdAllocator.Pack` hands out negative net ids from node
+  32768 up, and one of those must not read as "not logged in".
 - `TileWorldClient.CollectRemoteTiles(buffer)` is the bulk form of `TryGetRemoteTile`, the same shape
   as `CollectGroundItems` and for the same reason: `RemoteNetIds` is interface-typed, so a per-frame
-  walk of it boxes an enumerator, and a rule over the whole crowd wants the tiles anyway.
+  walk of it boxes an enumerator, and a rule over the whole crowd wants the tiles anyway. The
+  documented draw loop walks that filled list and asks `IsDrawn`, which is the shape that boxes
+  nothing.
 - Allocation free per frame after the first rebuild, no LINQ and no sort: one pass over the actors and
   one over the winners, into buffers the selector holds for the life of the head.
 - Presentation only. A hidden actor is still on its tile, still replicated, still a legal click target

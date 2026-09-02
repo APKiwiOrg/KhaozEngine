@@ -9006,7 +9006,10 @@ Combat is a FOLLOWED interaction rather than a system of its own. `TileCommandKi
 `TileMoveState.CombatTarget` carries the lock, and the chase therefore runs inside the ONE stepper both heads
 predict rather than in a second movement authority the client would pay a round trip on. Melee range is literally
 `TileReach.Contains` against a 1x1 rect, so cardinal adjacency, the no-diagonal rule and the wall-denied safespot
-all fall out of the reach rule the package already had.
+all fall out of the reach rule the package already had. The follow turns the attacker toward its target on every
+tick it answers in range, not once as it lands, so a combatant faces what it is fighting even after a step-off
+walked it away from the target and even as the target circles it. Both heads predict that turn with the chase, so
+it is not a facing the client waits a snapshot for.
 
 **Read the player health contract before anything else here.** A spawned PLAYER has no `TileHealth` at all. An
 actor gets one from its spawn spec, and nothing writes a player's, because `Max` is a number out of the game's own

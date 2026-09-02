@@ -126,8 +126,11 @@ id and the local player, and neither extrapolates. `docs/USING-KHAOZENGINE.md` c
   `CombatTarget` is held it re-paths to a reach tile whenever the target's committed tile moved, stands when it is
   already in reach, STEPS OFF the target's own tile when a catch left it standing there (a tile inside the footprint
   is not in reach, so holding it is a fight that can never start), and clears the lock when the target stops
-  resolving or has no reachable tile. `Step` takes the stepped entity's own net id as its fourth argument, read by
-  that follow and by nothing else: it is what tells an `Attack` naming the attacker ITSELF, which stands, apart from
+  resolving or has no reachable tile. That in-reach stand also writes `Facing` toward the target, on EVERY tick it
+  answers in range rather than once as the attacker lands, so a combatant turns with a target that moves around it
+  and the step-off does not leave it looking 180 degrees away from what it is swinging at. `Step` takes the
+  stepped entity's own net id as its fourth argument, read by that follow and by nothing else: it is what tells
+  an `Attack` naming the attacker ITSELF, which stands, apart from
   one naming another entity on the same tile, which steps off. A step commits its tile at its START, after the `CanStep` re-check, so
   a blocker is felt when the step would begin rather than when the foot lands. The step in progress is never
   abandoned either, and it needs no special case for it: a route is always pathed from `Tile`, which is the tile

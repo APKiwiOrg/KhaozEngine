@@ -225,6 +225,43 @@ public class TileCombatTargetTests
         Assert.True(s.Route.IsIdle);
         Assert.False(s.IsStepping);
         Assert.True(TileReach.Contains(sim.Map, new TileRect(10, 10, 1, 1), 0, s.Tile));
+        // And it is looking at the thing it is fighting. The step-off is a step AWAY from the target, so the
+        // facing its own step left behind is exactly 180 degrees wrong, on every catch.
+        Assert.Equal(TileDirection.E, s.Facing);
+    }
+
+    // The fight's own facing rule, which R1 left to whatever the last step happened to point at. A combatant is
+    // drawn from Facing, so this is what every viewer sees. Continuous rather than once on arrival, which is OSRS's
+    // own answer and costs a four-iteration scan on a tick that already ran the reach test.
+    [Fact]
+    public void An_attacker_in_reach_turns_to_face_its_target_and_keeps_facing_it_as_the_target_moves()
+    {
+        (TileMoveSimulator sim, FakeTargets targets) = Sim();
+        targets.Tiles[42L] = new TileCoord(11, 10, 0);            // due E of the attacker
+        TileMoveState s = TileMoveState.At(new TileCoord(10, 10, 0), TileDirection.N);
+
+        s = sim.Step(s, TileCommand.Attack(42L, TileMoveMode.Run), Dt);
+        Assert.True(s.Route.IsIdle, "already in reach, so there is nothing to walk");
+        Assert.Equal(new TileCoord(10, 10, 0), s.Tile);
+        Assert.Equal(TileDirection.E, s.Facing);
+
+        // The target circles the attacker. Each tick the follow answers "in range" it also answers WHERE, so the
+        // body turns with it instead of holding the heading its last step left.
+        targets.Tiles[42L] = new TileCoord(10, 11, 0);
+        s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+        Assert.Equal(TileDirection.N, s.Facing);
+        Assert.Equal(new TileCoord(10, 10, 0), s.Tile);
+
+        targets.Tiles[42L] = new TileCoord(10, 9, 0);
+        s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+        Assert.Equal(TileDirection.S, s.Facing);
+
+        targets.Tiles[42L] = new TileCoord(9, 10, 0);
+        s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+        Assert.Equal(TileDirection.W, s.Facing);
+        Assert.Equal(new TileCoord(10, 10, 0), s.Tile);
+        Assert.Equal(42L, s.CombatTarget);
+        Assert.True(s.Route.IsIdle);
     }
 
     // The R1 standstill, at the SIMULATOR level rather than through a server, which is what the new self argument

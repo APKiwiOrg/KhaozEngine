@@ -96,6 +96,8 @@ this doc cannot silently drift apart.
 | Font rasterization | `KhaozEngine.Render2D` `SpriteFont` (glyphs baked to an engine texture atlas) | (containment, in `SpriteFont`) | StbTrueTypeSharp |
 | Content validation | `KhaozEngine.Content` `JsonSchemaValidator` (`Validate` -> engine `ValidationReport`) | (containment, in validator) | JsonSchema.Net |
 | MCP server protocol | The two dev tools, not engine packages: `KhaozEngine.MapEdit.Tool` (`Program.cs`, `ke-mapedit`) and `KhaozEngine.TileEdit.Tool` (`Program.cs`, `ke-tileedit`). No engine package references the SDK | (containment, not a swap) | ModelContextProtocol SDK |
+| Per-frame input composition | `KhaozEngine.Windowing` `AppWindow.InputFilter`, a `Func<InputState, InputState>?` applied to the snapshot `BuildInput()` just built and before the frame latches it (`AppWindow.InputFilter.cs`, called from `AppWindow.Frames.cs`). Null is the raw snapshot with no allocation | `KhaozEngine.Automation`'s `AutomationInputInjector` is the only in-tree filter. It is a COMPOSITION seam and not an input source: it never reaches `InputAccumulator` and never touches a Silk or GLFW static, so the row above (`AppWindow` is the sole toucher) is unchanged | (no extra dep) |
+| Playtest automation state and verbs | `KhaozEngine.Automation` (`AutomationHost.StateProvider`, a `Func<JsonNode?>`, and `Register(string, Func<JsonElement, JsonNode?>)`), both invoked on the WINDOW thread at the frame boundary | **game-side**, and deliberately no engine implementation. Projecting a tile to a screen pixel needs the live camera and only the game has it, so the engine defines the seam and knows nothing about tiles, inventories or panels | (no extra dep, `System.Text.Json` from the BCL) |
 
 `KhaozEngine.Sharding` gained the snapshot/restore primitives the per-cell persistence seam above is built on
 (`CellSim.SnapshotOwned`/`RestoreOwned`/`MaxOwnedNetId`, `ShardHost.CellCreated`/`EnsureCell`) with no storage
@@ -127,6 +129,33 @@ The game-registered admin action registry (`ServerAdmin.RegisterAction`/`ActionN
 10.131.0) lives on `ServerAdmin` itself, on the `NetWorld` side of this edge, not in `Server.Admin`. The
 `/actions` HTTP routes in `Server.Admin` are a thin dispatch shell over that registry, so this edge is
 unchanged: `Server.Admin` still only references `NetWorld`, `WorldStore`, and `Microsoft.AspNetCore.App`.
+
+## Automation package edge, and the one seam it adds
+
+`KhaozEngine.Automation` is the dev-only playtest endpoint. Its edge is a single line:
+
+```
+KhaozEngine.Automation -> KhaozEngine.Windowing (AppWindow, InputState, Key, MouseButton, BackgroundThrottlePolicy)
+```
+
+**It takes an `AppWindow` rather than a `GameApp`, and that is the smaller dependency AND the complete one.** The
+window carries all three seams a running host touches: `InputFilter` (the composed snapshot), `BackgroundThrottle`
+(so an unfocused window keeps its frame rate) and `Close` (the `quit` command). `GameApp` forwards only the throttle
+publicly and keeps its `Window` protected, so a `GameApp` constructor would drag in `KhaozEngine.Game` and still not
+reach two of the three. A game on `GameApp` constructs the host from inside its own subclass, where `Window` is in
+scope.
+
+Nothing references `Automation` back. It is in no umbrella, and a game head references it under
+`Condition="'$(Configuration)' == 'Debug'"`, which is the whole point: restore runs per configuration, so a Release
+`deps.json` carries zero references to the package and a shipping client CONTAINS no automation code. That is a
+constraint rather than a preference, and it is why this package must never be added to an umbrella.
+
+The seam it adds to `Windowing` is `AppWindow.InputFilter` (the two rows in the table above). It is deliberately a
+delegate rather than an interface: one method, one caller, no state the window has to own, composition through a
+lambda without a new public type, and it matches the delegate-shaped callbacks the frame loop already takes. The rule
+it does NOT break is the one that matters here. A filter transforms an already-built immutable snapshot, so
+`AppWindow` remains the only class in the engine that touches the Silk and GLFW input statics, and a filter has no
+way to reach them.
 
 ## Commerce wallet seams
 

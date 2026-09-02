@@ -13071,6 +13071,86 @@ or vectorized forms for the values you hash or send over the wire.
 
 ---
 
+## Playtest automation, dev only (`KhaozEngine.Automation`)
+
+An opt-in package that lets an agent boot your client, click in it, read its state and report back, over a loopback
+socket a shipping build does not contain. It is in NO umbrella, and a game head references it ONLY in Debug.
+
+**The reference IS the first gate, so write the condition and never an unconditional reference:**
+
+```xml
+<ItemGroup Condition="'$(Configuration)' == 'Debug'">
+  <PackageReference Include="KhaozEngine.Automation" Version="18.13.0" />
+</ItemGroup>
+```
+
+Restore runs per configuration and rewrites `project.assets.json` each time, so the Release `deps.json` carries zero
+references to the package while the Debug one carries the assembly. That is the guarantee: a released client contains
+no automation code, rather than containing it and refusing to run it. Two more gates sit behind it, and all three are
+required at once. `AutomationOptions.Enabled` plus `KE_AUTOMATION=1` keeps an ordinary Debug playtest from opening a
+socket nobody asked for, and the transport is loopback only on an ephemeral port with a per-run 256-bit token.
+
+### Wiring the host
+
+Construct it from inside your `GameApp` subclass, where the protected `Window` is in scope, and register everything
+before `Start` so no request can arrive against a half-built verb table:
+
+```csharp
+protected override void OnLoad()
+{
+    _automation = new AutomationHost(Window, new AutomationOptions(Enabled: true, StateDirectory));
+    _automation.StateProvider = () => new JsonObject
+    {
+        ["tile"] = $"{_player.Tile.X},{_player.Tile.Z}",
+        ["hitpoints"] = _player.Hitpoints,
+        ["panels"] = new JsonArray(_screens.OpenPanelNames().Select(n => (JsonNode)n!).ToArray()),
+    };
+    _automation.Register("click_tile", args => ClickTile(args.GetProperty("x").GetInt32(), args.GetProperty("z").GetInt32()));
+    _automation.Start();          // the gates decide whether anything happens at all
+}
+```
+
+`Start` is the only method the gates guard. When they refuse it there is no thread, no socket and no file. When they
+pass, the host binds, writes `automation.json` (port, token, pid, start time) into the directory you named, and wires
+three things on the window and nothing else: `InputFilter`, `BackgroundThrottle` (to `Disabled`, or the loop crawls
+the moment the agent's terminal takes focus) and `Close` as the default `quit` handler. It never sets
+`KE_MAX_FRAMES`, which ends the process at a frame count rather than yielding control.
+
+The state provider and every verb run on the WINDOW thread at the frame boundary, so they may touch the live camera,
+the screen stack and the world directly with no locking. A verb that throws becomes an error reply rather than taking
+the frame loop down.
+
+### The protocol, in one paragraph
+
+JSON lines over the socket: one request object per line, one reply per line. A request carries `cmd`, the `token`,
+and an optional `id` echoed back. A reply carries that `id`, the `frame` the command took effect on, and either `ok`
+or `error`. The commands are `input` (pointer in window pixels, a button or key pressed or released, `holdFrames` to
+schedule the auto-release), `step`, `state`, `call`, `quit` and `ping`. The full argument table is in
+`KhaozEngine.Automation/README.md`.
+
+### The input filter seam (`AppWindow.InputFilter`)
+
+The engine half is one line. `AppWindow` applies an optional `Func<InputState, InputState>` to the snapshot
+`BuildInput()` just built, before the frame latches it, so both pointers, the GUI, the HUD and the game all see one
+coherent frame:
+
+```csharp
+window.InputFilter = snapshot => snapshot;                       // identity
+window.InputFilter = s => second(first(s));                      // composition, no new type needed
+window.InputFilter = null;                                       // back to the raw snapshot, no allocation
+```
+
+It is useful outside automation (a replay driver, a demo attract mode, a scripted tutorial hand), with one rule: it
+is a COMPOSITION seam, not an input source. It never reaches the accumulator and never touches a Silk or GLFW static,
+so `AppWindow` stays the only class in the engine near those. `InputState` is immutable with a public constructor, so
+a filter returns a new instance rather than mutating one, and it runs on the window thread once per frame, so a
+filter that blocks stalls the loop.
+
+`AutomationInputInjector` is the automation filter's body and is usable on its own. It UNIONS injected keys and
+buttons into the real sets, so a key the developer is holding stays held while automation clicks. Two overrides are
+deliberate: the pointer position wins while an injected pointer is live, and `WindowFocused` is forced true, without
+which `GuiSurface` drops every injected press the moment another window takes focus.
+
 ## Testing your game headlessly
 
 Because input is injected, you can test logic and hit-testing without a window: construct `InputState` snapshots

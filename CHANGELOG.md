@@ -11,7 +11,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 the native Direct3D 11 and Vulkan correctness items that can be pinned without a device, the Metal
 depth-clip fix the Veldrid removal made possible, the Gpu seam contracts and packaging, and three low
 quick wins, each fixed with a test proven red against the unfixed code. It lands beside the v18.12.0
-release the tile draw-priority change cut, so it takes its own minor.
+release the tile draw-priority change cut, so it takes its own minor. It also carries round 1 of the
+playtest-automation program: a new opt-in `KhaozEngine.Automation` package and one composition seam on
+`AppWindow`.
 
 Tile protocol and the client seam:
 
@@ -154,6 +156,47 @@ NetWorld and animation smalls:
 - `CharacterFacing.WrapAngle` forwards to `MathUtil.WrapAngle`, bit-identical on the half-open
   interval, the first of the three private wrap copies to fold
   ([#785](https://github.com/APKiwiOrg/KhaozEngine/issues/785), the other two stay open).
+
+Playtest automation, round 1 of [#803](https://github.com/APKiwiOrg/KhaozEngine/issues/803)
+(`docs/design/PLAYTEST-AUTOMATION-DESIGN-2026-09-02.md`):
+
+- **New opt-in package `KhaozEngine.Automation`, in no umbrella.** A dev-only endpoint an agent drives
+  the running client through: `AutomationHost` binds a loopback TCP listener on an ephemeral port and
+  serves JSON lines. `input` (pointer position in window pixels, a mouse button or a key pressed or
+  released, `holdFrames` scheduling the auto-release), `step`, `state`, `call`, `quit` and `ping`.
+  Every command except `ping` is queued on the socket thread and applied on the WINDOW thread at the
+  frame boundary, following the cross-thread precedent the single-instance guard already sets, and
+  every reply names the frame it took effect on. The game supplies a `StateProvider` and named verbs
+  through `Register`, so the engine knows nothing about tiles, inventories or panels.
+- **Three gates, all required at once, because they fail differently.** A shipping client must CONTAIN
+  none of this rather than merely refuse to enable it, so the head references the package under
+  `Condition="'$(Configuration)' == 'Debug'"` and the Release `deps.json` carries zero references to
+  it. Then `AutomationOptions.Enabled` plus `KE_AUTOMATION=1`, which is what stops an ordinary Debug
+  playtest opening a socket nobody asked for: when it refuses there is no thread, no socket and no
+  file. Then a 256-bit base64url per-run token written with the port into one owner-only
+  `automation.json`, deleted on dispose. A wrong or missing token gets one refusal and the connection
+  closes, a malformed line gets an error reply and the connection stays open.
+- **`AppWindow.InputFilter`, one new seam.** A `Func<InputState, InputState>?` applied to the snapshot
+  `BuildInput()` just built, before the frame latches it, so both pointers, the GUI, the HUD and the
+  game all see ONE coherent frame. Null (the default) is the raw snapshot, unchanged and unallocated,
+  and the seam never reaches the accumulator or a Silk static, so `AppWindow` stays the only class near
+  those. A delegate rather than an interface: one method, one caller, no state the window owns, and it
+  composes through a lambda without a new public type.
+- The host's filter UNIONS injected keys and buttons into the real sets, so a key the developer is
+  holding stays held while automation clicks. Two overrides are deliberate: the pointer position wins
+  while an injected pointer is live (`releasePointer` hands it back), and `WindowFocused` is forced
+  true, without which `GuiSurface` drops every injected press the moment the agent's terminal takes
+  focus. A running host also sets `BackgroundThrottlePolicy.Disabled`, since the default drops an
+  unfocused window to 15 Hz, and it never sets `KE_MAX_FRAMES`, which ends the process at a frame count
+  rather than yielding control.
+- The listener's accept and serve threads let NOTHING escape, which the first full test run proved
+  necessary rather than tidy: `TcpClient.NoDelay` on a client the host just closed throws
+  `NullReferenceException` rather than `ObjectDisposedException`, so the narrow catch list missed it
+  and aborted a test host. A thread that runs inside a live game cannot afford a surprise like that, so
+  the catch is broad and every failure ends the same way, with that connection gone. Pinned by racing
+  dispose against a fresh connection fifty times.
+- No screenshot in this round. There is no windowed backbuffer readback and the seam is missing in two
+  places, so a picture is taken at screen level for now and the present-boundary capture is R2.
 
 ## 18.12.0
 

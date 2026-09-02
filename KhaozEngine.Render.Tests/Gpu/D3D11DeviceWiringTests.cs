@@ -187,10 +187,13 @@ namespace KhaozEngine.Tests.Gpu
             });
 
             // Register, then commit, then unwind. The unwind is LAST in IL because it is in the catch handler,
-            // which is exactly where it has to be: it must not run on the path that succeeded.
+            // which is exactly where it has to be: it must not run on the path that succeeded. TrackRelease sits
+            // beside Track because the shared sampler pair is non-owning and only its own destroy frees it
+            // (https://github.com/APKiwiOrg/KhaozEngine/issues/506).
             Assert.Equal(new[]
             {
-                "D3D11ConstructionScope.Track", "D3D11ConstructionScope.Commit", "D3D11ConstructionScope.Unwind",
+                "D3D11ConstructionScope.Track", "D3D11ConstructionScope.TrackRelease",
+                "D3D11ConstructionScope.Commit", "D3D11ConstructionScope.Unwind",
             }, calls);
         }
 
@@ -217,7 +220,9 @@ namespace KhaozEngine.Tests.Gpu
         /// <list type="number">
         ///   <item><description>The DRAIN comes first, while the device is still live and while nothing holds the
         ///   submit lock. It refuses a caller holding that lock by name, and it is the one member here that can
-        ///   block.</description></item>
+        ///   block. It is the BOUNDED entry point, because this method runs inside the process-wide device
+        ///   lifecycle gate (https://github.com/APKiwiOrg/KhaozEngine/issues/505), and reading that off the
+        ///   assembly is what stops a later edit quietly putting the unbounded one back.</description></item>
         ///   <item><description>The releases come next, in the order that leaves nothing referenced: the debug
         ///   pump, the swapchain and its views, then the fence subsystem, which takes the timeline's fence and
         ///   event objects with it.</description></item>
@@ -234,14 +239,18 @@ namespace KhaozEngine.Tests.Gpu
 
             IReadOnlyList<string> calls = backend.CalledMembersIn(DeviceType, "MarkDeviceDisposed", new[]
             {
-                "D3D11FenceSubsystem.WaitForIdle", "D3D11InfoQueuePump.Dispose", "D3D11Swapchain.Dispose",
+                "D3D11FenceSubsystem.WaitForIdle", "D3D11FenceSubsystem.WaitForIdleAtTeardown",
+                "D3D11InfoQueuePump.Dispose", "D3D11Swapchain.Dispose", "D3D11Sampler.DestroyShared",
                 "D3D11FenceSubsystem.Dispose", "DeviceLiveness.MarkDead",
             });
 
+            // WaitForIdle is in the asked-about set and absent from the answer, which is the assertion that the
+            // teardown takes the bounded drain rather than the frame path's.
             Assert.Equal(new[]
             {
-                "D3D11FenceSubsystem.WaitForIdle", "D3D11InfoQueuePump.Dispose", "D3D11Swapchain.Dispose",
-                "D3D11FenceSubsystem.Dispose", "DeviceLiveness.MarkDead",
+                "D3D11FenceSubsystem.WaitForIdleAtTeardown", "D3D11InfoQueuePump.Dispose",
+                "D3D11Swapchain.Dispose", "D3D11Sampler.DestroyShared", "D3D11FenceSubsystem.Dispose",
+                "DeviceLiveness.MarkDead",
             }, calls);
         }
 

@@ -396,67 +396,6 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         _controller.Update(BuildFrameInput(dt));
     }
 
-    /// <summary>Consumes a pending world rebuild after every edit source this frame (tools, then chrome, which
-    /// covers the property-grid inspector), so an edit from either one lands in the streamed world before the
-    /// next frame's pick. A pending edit that reported a bounded region
-    /// (<see cref="EditorDocument.PendingRebuildRegion"/>) rebuilds ONLY the chunks that region overlaps via
-    /// <see cref="PartialRebuildWorld"/>, never throttled (it is cheap by construction). A null region (a
-    /// whole-world edit, or the partial path declining because the world is not built) falls through to the full
-    /// <see cref="RebuildWorld"/>, which IS throttled while a drag or draw gesture is live
-    /// (<see cref="EditorToolController.IsDragging"/> / <see cref="EditorToolController.IsDrawing"/>): a full
-    /// rebuild only runs once <see cref="MapEditorOptions.GestureRebuildInterval"/> seconds have accumulated since
-    /// the last one, so a fast mid-gesture edit stream does not re-mesh the whole world every frame. The pending
-    /// flag is left untouched on a throttled-skip frame (not acknowledged), so the very next check after the
-    /// gesture ends falls straight through to the unthrottled branch and performs the final full rebuild with no
-    /// extra plumbing. Either way a rebuild that actually ran is acknowledged so it fires once. Overridable for
-    /// headless order tests, and it dispatches through the two rebuild seams so a headless test can observe the
-    /// routing without a device.</summary>
-    protected virtual void CheckWorldRebuild(float dt)
-    {
-        if (!_document.WorldRebuildPending) return;
-        if (_document.PendingRebuildRegion is RectArea dirty && PartialRebuildWorld(dirty))
-        {
-            _document.AcknowledgeWorldRebuild();
-            return;
-        }
-
-        if (_controller.IsDragging || _controller.IsDrawing)
-        {
-            _gestureRebuildAccumulator += dt;
-            if (_gestureRebuildAccumulator < _options.GestureRebuildInterval) return;   // throttled: stays pending
-        }
-
-        if (RebuildWorld())
-        {
-            _document.AcknowledgeWorldRebuild();
-            _gestureRebuildAccumulator = 0f;
-        }
-    }
-
-    /// <summary>Partial-rebuild seam: re-mesh only the loaded chunks overlapping <paramref name="dirty"/> and
-    /// re-point the tool controller at the swapped field. Returns false when the viewport is not built (the
-    /// <see cref="ViewportWorld.PartialRebuild"/> not-built contract), so <see cref="CheckWorldRebuild"/> falls back
-    /// to a full rebuild. Overridable so a headless test can observe the dispatch without a device.</summary>
-    protected virtual bool PartialRebuildWorld(RectArea dirty)
-    {
-        if (!_viewport.PartialRebuild(_document.Doc, _document.Registry, dirty)) return false;
-        _controller.Field = _viewport.Field;
-        return true;
-    }
-
-    /// <summary>Full-rebuild seam for a pending edit with no bounded region: rebuild the whole streamed world and
-    /// re-point the tool controller at the fresh field. Returns false (a no-op) when the viewport is not built, so
-    /// <see cref="CheckWorldRebuild"/> leaves the rebuild pending rather than throwing. Overridable so a headless
-    /// test can observe the dispatch without a device. <see cref="CheckWorldRebuild"/> wraps its gesture throttle
-    /// around this full path only, never around <see cref="PartialRebuildWorld"/>.</summary>
-    protected virtual bool RebuildWorld()
-    {
-        if (!_viewport.IsBuilt) return false;
-        _viewport.Rebuild(_document.Doc, _document.Registry);
-        _controller.Field = _viewport.Field;
-        return true;
-    }
-
     /// <summary>Hotkeys + Gui-chrome input step. Overridable for headless order tests.</summary>
     protected virtual void UpdateChrome(float dt)
     {

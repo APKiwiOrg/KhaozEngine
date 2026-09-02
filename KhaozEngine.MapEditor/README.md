@@ -758,6 +758,14 @@ A scatter-layer visibility toggle also rebuilds the streamed world, but through 
 `WorldRebuildPending`: visibility is view-only session state, not a document change, so it never touches the
 command/dirty machinery above. See Visibility above.
 
+A rebuild reads the document as it stands, and mid-edit that can be invalid: `ViewportWorld`'s prop-layer
+build throws `MapDocumentException` for a companion layer naming a host scatter layer the document does not
+declare. `CheckWorldRebuild` runs inside `OnUpdate`, so it catches that rather than letting it escape the
+frame and take the editor down. The message goes to the status strip, the world already on screen stays up
+(neither seam swaps anything before it has built), and the pending flag is consumed, so a document that
+stays invalid does not throw once a frame. The next edit marks it pending again and the world catches up as
+soon as the document is valid. Save-time validation is unchanged and still rejects the same document.
+
 The water level is `AffectsWorld` because scatter honours it (underwater candidates skip), so a change must
 rebuild the streamed world. The water SURFACE itself is separate: `ViewportWorld.Draw` submits one
 `Scene3D.DrawWater` plane per frame, centred on the CAMERA in XZ at `Terrain.WaterLevel` with a half-extent

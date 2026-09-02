@@ -77,6 +77,29 @@ namespace KhaozEngine.Gpu
     /// the outer one whose bindings the inner recording destroys.
     /// </para>
     /// <para>
+    /// WHAT IT COSTS, WRITTEN DOWN AS A CHOSEN NARROWING RATHER THAN LEFT TO BE REDISCOVERED
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/613">#613</see>). All three engine-owned
+    /// native backends advertise N CONCURRENT RECORDINGS as a real, argued property of their design, each for its
+    /// own structural reason: the Direct3D 11 deferred driver because two recorders are two arrays and neither
+    /// touches device state, Vulkan because per-list command pools plus list-local layout tracking mean nothing
+    /// shared is read or written while recording, and Metal because each list captures its own uniform segment at
+    /// its own <c>Begin</c>. Those README paragraphs are accurate and stay. What changed at 17.36.0 is that the
+    /// engine acquired a MECHANISM that makes the capability unreachable from engine code, where before there was
+    /// only a rule saying not to use it. That is deliberate: the portable contract is one open recording per
+    /// device, and enforcing the contract rather than the loosest backend is the entire point.
+    /// </para>
+    /// <para>
+    /// SO THE DAY SOMETHING WANTS PARALLEL RECORDING, THE ANSWER IS NOT TO DELETE THIS. A streaming upload
+    /// thread or a parallel pass builder would find the register in the way, and the shape that clears it is an
+    /// OPT-IN that keeps the refusal for everything else: a per-device concurrency budget, or an explicit escape
+    /// naming the backend the caller has checked and the list they are recording on their own. Not a global
+    /// switch, because the backends that half-record or corrupt outright are still reachable through a fallback
+    /// nothing in the calling code can see, and a process-wide relaxation would hand them the same permission.
+    /// Shipping multi-threaded recording on one backend
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/463">#463</see>) is that backend's own
+    /// supportability work and would still have to pass this gate afterwards.
+    /// </para>
+    /// <para>
     /// The register is keyed by device instance and holds no strong reference, so a disposed device's entry dies
     /// with it. TWO DEVICES SHARE NOTHING, including their locks: each entry carries its own, and no lock at all
     /// is held while a backend is inside <see cref="IGpuCommandList.Begin"/>. That is deliberate rather than

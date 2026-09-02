@@ -206,6 +206,21 @@ rely on, and it is written on `IGpuCommandList.Begin` and in `docs/USING-KHAOZEN
 there: every recording the engine opens goes through `GpuRecording`, which refuses a second one on any backend,
 so neither driver's tolerance is something engine code exercises.
 
+**AND THE ENGINE CANNOT USE THAT PERMISSIVENESS, WHICH IS A CHOSEN NARROWING**
+([#613](https://github.com/APKiwiOrg/KhaozEngine/issues/613)). The paragraph above is still true about this
+backend. It stopped being reachable from engine code at `17.36.0`, when `GpuRecording` became the register every
+command list the engine opens goes through: it claims the device at `Open` and refuses a second one with
+`GpuNestedRecordingException` whatever the backend underneath can tolerate. That is the portable contract being
+enforced rather than described, and enforcing the loosest backend instead would be no contract at all, since a
+creation fallback swaps the backend without telling the calling code.
+
+The narrowing is written down here so the first person to want parallel recording (a streaming upload thread, a
+parallel pass builder) meets a decision rather than a surprise. The answer then is not to delete the register:
+it is an opt-in that keeps the refusal for everything else, either a per-device concurrency budget or an explicit
+escape naming the backend the caller has checked and the list they own. Related and not a duplicate:
+[#463](https://github.com/APKiwiOrg/KhaozEngine/issues/463) is about SHIPPING multi-threaded recording on the
+native Direct3D 11 backend, which is one backend's supportability work and would still have to pass this gate.
+
 **`D3D11DeviceState` is what is bound on the context, and the device owns exactly one.** It carries the
 redundancy caches for the seven pipeline-level objects (vertex shader, pixel shader, blend, depth-stencil,
 rasterizer, input layout, topology), so a rebind of what is already bound costs zero native calls and a switch

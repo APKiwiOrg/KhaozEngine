@@ -11336,6 +11336,15 @@ else { /* GpuRecording.OpenOwner(gd) says who has it */ }
 `Open` on the same device can still win the race between the `true` it returned and the open it encouraged.
 Branch on it to avoid an expected refusal, never to make one impossible.
 
+**The refusal holds even where your backend would have coped, and that is deliberate**
+([#613](https://github.com/APKiwiOrg/KhaozEngine/issues/613)). All three native backends can genuinely record N
+lists at once, each for its own structural reason, and each says so in its own README. The register refuses a
+second one anyway, because a failed device creation swaps the backend under code that cannot see it, so the only
+thing portable code can be written against is the narrow rule. If you want parallel recording, say so on
+[#613](https://github.com/APKiwiOrg/KhaozEngine/issues/613) rather than working around the register: the opt-in
+shape it needs (a per-device budget, or an explicit escape naming the backend you have checked) is a decision,
+not a switch, and there is nowhere to flip it today.
+
 The exception is what you now get for calling one of these mid-frame, on every backend: `Scene3D.LoadTexture`
 with mips, `Scene3D.LoadSplatMaterial`, `Scene3D.LoadTileGroundMaterial`, `Scene3D.DebugReadShadowMap`,
 `Scene3D.DebugReadSplatAlbedoMip`, any

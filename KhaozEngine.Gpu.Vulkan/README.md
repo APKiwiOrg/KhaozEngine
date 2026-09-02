@@ -504,6 +504,21 @@ state, obtained here from the API's own threading model plus the barrier design.
 has to know rather than one they can see, which is why it is written down twice. One list is still ONE thread at
 a time.
 
+**AND THE ENGINE CANNOT USE THAT PERMISSIVENESS, WHICH IS A CHOSEN NARROWING**
+([#613](https://github.com/APKiwiOrg/KhaozEngine/issues/613)). The paragraph above is still true about this
+backend. It stopped being reachable from engine code at `17.36.0`, when `GpuRecording` became the register every
+command list the engine opens goes through: it claims the device at `Open` and refuses a second one with
+`GpuNestedRecordingException` whatever the backend underneath can tolerate. That is the portable contract being
+enforced rather than described, and enforcing the loosest backend instead would be no contract at all, since a
+creation fallback swaps the backend without telling the calling code.
+
+The narrowing is written down here so the first person to want parallel recording (a streaming upload thread, a
+parallel pass builder) meets a decision rather than a surprise. The answer then is not to delete the register:
+it is an opt-in that keeps the refusal for everything else, either a per-device concurrency budget or an explicit
+escape naming the backend the caller has checked and the list they own. Related and not a duplicate:
+[#463](https://github.com/APKiwiOrg/KhaozEngine/issues/463) is about SHIPPING multi-threaded recording on the
+native Direct3D 11 backend, which is one backend's supportability work and would still have to pass this gate.
+
 **A list disposed with submissions outstanding hands its pools to the retire list** at the highest timeline value
 any of its slots was submitted at, and they are destroyed once the counter passes it. The incumbent used a
 refcount, which also worked and which this design does not need because the retire list exists for resources

@@ -1128,6 +1128,24 @@ list's bindings and faulted several draws later. The three natives all pass it t
 nothing and not a reason to delete it: a pass on either is evidence that nothing nested, never evidence about a
 backend.
 
+**What the gate COSTS, recorded as a chosen narrowing**
+([#613](https://github.com/APKiwiOrg/KhaozEngine/issues/613)). All three native backends advertise N concurrent
+recordings as an argued property of their design, each in its own README: the Direct3D 11 deferred driver
+because two recorders are two arrays and neither touches device state, Vulkan because per-list command pools
+plus list-local layout tracking mean nothing shared is read or written while recording, and Metal because each
+list captures its own uniform segment at its own `Begin`. Those paragraphs are accurate and stay. What is new
+since `17.36.0` is that engine code cannot reach the capability at all, where before there was only a rule
+saying not to. That is the gate doing its job, and it is recorded because the alternative is somebody
+rediscovering it as an obstruction the day they want a streaming upload thread or a parallel pass builder.
+
+The answer that day is not to delete the register. It is an opt-in that keeps the refusal for everything else:
+a per-device concurrency budget, or an explicit escape naming the backend the caller has checked and the list
+they own. Not a global switch, because a failed device creation still swaps the backend under code that cannot
+see it, so a process-wide relaxation would hand the permissive shape to whatever the fallback landed on.
+[#463](https://github.com/APKiwiOrg/KhaozEngine/issues/463), which asks to SHIP multi-threaded recording on the
+native Direct3D 11 backend, is one backend's supportability work and a separate question: whichever of the two
+lands first, the other is still a gate it has to pass.
+
 ## GPU seam member: deferred retirement leaves Render3D (`GpuRetireQueue`, 17.37.0)
 
 `GpuRetireQueue` is a new PUBLIC type on `KhaozEngine.Gpu` (with `GpuRetireBarrier` internal beside it), moved

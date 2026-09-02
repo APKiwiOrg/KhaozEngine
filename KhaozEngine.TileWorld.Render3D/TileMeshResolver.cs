@@ -8,11 +8,31 @@ namespace KhaozEngine.TileWorld;
 /// <summary>Turns an object archetype into the mesh parts that draw it. A game implements this over its own
 /// content pipeline, keyed off the archetype's mesh reference. Returning null means "no mesh for this
 /// archetype", which the view answers with a placeholder box and one log line per archetype rather than a
-/// throw, so a half-authored catalog still renders.</summary>
+/// throw, so a half-authored catalog still renders.
+///
+/// <para>The MESH REFERENCE overload is for everything a game draws that is not a tile object: a player avatar,
+/// an NPC, a dropped item. Without it, reaching a resolver's cache and its fallback meant synthesizing a fake
+/// archetype around the reference at every call site, which is a content-shaped lie told to a content pipeline.
+/// It has a default implementation that does exactly that wrap, once, so an existing implementer gains it without
+/// changing, and a resolver that can do better (<see cref="GltfMeshResolver"/> keys its cache off the reference)
+/// overrides it.</para></summary>
 public interface ITileMeshResolver
 {
     /// <summary>The parts that draw this archetype, or null when the resolver has no mesh for it.</summary>
     IReadOnlyList<GltfMeshPart>? Resolve(TileObjectArchetype archetype);
+
+    /// <summary>The parts that draw this mesh reference on its own, or null when the resolver has no mesh for it.
+    /// The default wraps <see cref="Resolve(TileObjectArchetype)"/> with an archetype carrying the reference as
+    /// both its id and its <see cref="TileObjectArchetype.MeshRef"/>, so an implementer keyed on the id caches per
+    /// reference and one keyed on the reference sees what it expects. Everything else about that archetype is the
+    /// type's own defaults, which is what a fallback shape is built from when the reference resolves to
+    /// nothing.</summary>
+    /// <exception cref="ArgumentNullException"><paramref name="meshRef"/> is null.</exception>
+    IReadOnlyList<GltfMeshPart>? Resolve(string meshRef)
+    {
+        ArgumentNullException.ThrowIfNull(meshRef);
+        return Resolve(new TileObjectArchetype { Id = meshRef, Name = meshRef, MeshRef = meshRef });
+    }
 }
 
 /// <summary>A resolver with no content behind it: one procedural vertex-coloured box per archetype, sized from

@@ -7124,7 +7124,7 @@ edit channel the document has, so an editor painting `Indoors` sees the new inte
 
 **Real meshes.** `GreyboxMeshResolver` draws boxes. `GltfMeshResolver` draws a kit: it maps an archetype's
 `MeshRef` (relative, forward slashes, `kit/wall.glb`) to a glb under a root directory, loads it once through
-`GltfLoader.LoadPartsWithMaterials`, and caches it per archetype id. Chain it over the greybox one so a
+`GltfLoader.LoadPartsWithMaterials`, and caches it per mesh reference. Chain it over the greybox one so a
 half-authored kit still renders:
 
 ```csharp
@@ -7133,12 +7133,23 @@ var resolver = new GltfMeshResolver(kitRoot, new GreyboxMeshResolver(doc.TileSiz
 
 A missing file or a loader throw logs ONE line naming the archetype, the resolved path and the reason, then
 answers with the fallback, so the boxes stand in exactly where a glb is not there yet. That failure is cached like
-any other result, so the same archetype never logs twice or touches the disk twice. An empty `MeshRef` skips
+any other result, so the same reference never logs twice or touches the disk twice. An empty `MeshRef` skips
 straight to the fallback with no log line at all, an absolute `MeshRef` is used as it stands, and a `MeshRef` no
 path API will accept falls back like any other bad ref rather than faulting the view. Nothing about bad content
-throws out of `Resolve`, and the parts it hands out are read-only. The cache is keyed by archetype id and has no
-eviction, so two archetypes sharing a `MeshRef` parse that glb twice and every cached part's decoded pixels stay
-resident for the resolver's life.
+throws out of `Resolve`, and the parts it hands out are read-only. The cache is keyed by MESH REFERENCE and has no
+eviction, so two archetypes sharing a `MeshRef` hold one copy between them and every cached part's decoded pixels
+stay resident for the resolver's life.
+
+**Drawing something that is not a tile object.** `ITileMeshResolver.Resolve(meshRef)` takes the reference on its
+own, for a player avatar, an NPC or a dropped item, so reaching a resolver's cache and its fallback no longer means
+synthesizing a fake archetype at the call site. It has a default implementation that does exactly that wrap, once,
+so a resolver a game already wrote gains it without changing. `GltfMeshResolver` overrides it onto the same
+per-reference cache the archetype path fills, so the avatar's glb and an archetype pointing at it are parsed once
+between them:
+
+```csharp
+IReadOnlyList<GltfMeshPart>? avatar = resolver.Resolve("player/avatar.glb");   // no archetype anywhere
+```
 
 Nothing scales, rotates or re-centres a glb, so a kit piece has to be authored to the same contract the greybox
 shapes are built to: the origin at the footprint CENTRE on the piece's own floor, x east, minus z north, 1 unit

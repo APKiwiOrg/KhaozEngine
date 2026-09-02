@@ -242,6 +242,101 @@ namespace KhaozEngine.Tests.Gpu
         public void TheDrainSpin_TakesTheThresholdThatNeverEscalatesToASleep()
             => Assert.Equal(-1, D3D11DrainSpin.Sleep1Threshold);
 
+        // ---- Issue #505: the teardown drain is bounded, and only the teardown drain ----
+
+        /// <summary>
+        /// THE TEARDOWN DRAIN LATCHES AND LETS THE RELEASE CONTINUE
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/505). The frame drain has no timeout on purpose, but
+        /// teardown runs it inside the process-wide device lifecycle gate, so a GPU that is LIVE and hung would
+        /// wedge every other device create and dispose in the process behind one drain with no name on it.
+        /// <para>
+        /// THE BUDGET IS ZERO HERE, WHICH IS WHY THIS TEST HAS NO CLOCK IN IT. Elapsed time cannot carry a
+        /// property like this on a machine that is not idle, which is the lesson of
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/491 and why the spin threshold next door is asserted on
+        /// its constant. A spent budget takes the same branch a two-second one takes on a hung GPU, and it takes
+        /// it after exactly one poll.
+        /// </para>
+        /// <para>
+        /// WHAT THIS CANNOT SHOW is the wedge itself. A live-and-hung GPU is not reproducible on a software
+        /// rasterizer or on any leg this suite runs, so it needs hardware in that state. What is testable is the
+        /// policy, and that is what is here.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void TheTeardownDrain_LatchesOnASpentBudgetAndLetsTeardownContinue()
+        {
+            // Nothing drives completion, so this timeline models a GPU that never reaches the point.
+            var timeline = new FakeD3D11FenceTimeline { BlockingWaitAvailable = false };
+            using D3D11FenceSubsystem fences = Subsystem(timeline);
+
+            bool completed = fences.WaitForIdleAtTeardown(budgetMs: 0);
+
+            Assert.False(completed);
+            Assert.Equal(1, timeline.SignalCount);   // it still signalled and flushed the point it waited on
+            Assert.Equal(1, timeline.FlushCount);
+            Assert.Equal(1, timeline.PollCount);     // and it read the timeline before giving up on it
+        }
+
+        /// <summary>
+        /// THE POSITIVE CONTROL, and the assertion that stops the row above from passing on a drain that gave up
+        /// unconditionally: the same bounded entry point on a GPU that DOES reach the point reports true, having
+        /// waited for it.
+        /// </summary>
+        [Fact]
+        public void TheTeardownDrain_ReportsCompletionWhenTheGpuReachesThePoint()
+        {
+            var timeline = new FakeD3D11FenceTimeline { AutoCompleteAfterPolls = 3, BlockingWaitAvailable = false };
+            using D3D11FenceSubsystem fences = Subsystem(timeline);
+
+            Assert.True(fences.WaitForIdleAtTeardown(D3D11TeardownDrain.BudgetMs));
+            Assert.Equal(3, timeline.PollCount);
+        }
+
+        /// <summary>
+        /// A DEVICE THAT DIED UNDER THE DRAIN IS DONE, NOT LATCHED. Nothing it was waiting for can still be
+        /// running once the token says dead, and every release after it is a no-op, so warning about a hung GPU
+        /// there would put a scary line in the log of the ordinary path a lost device takes.
+        /// </summary>
+        [Fact]
+        public void TheTeardownDrain_ReportsCompletionWhenTheDeviceDiesUnderIt()
+        {
+            var liveness = new FakeD3D11DeviceLiveness();
+            var timeline = new DyingTimeline(liveness, killAfterPolls: 2);
+            using D3D11FenceSubsystem fences = Subsystem(timeline, liveness);
+
+            Assert.True(fences.WaitForIdleAtTeardown(D3D11TeardownDrain.BudgetMs));
+            Assert.True(liveness.IsDead);
+        }
+
+        /// <summary>
+        /// THE FRAME DRAIN IS UNCHANGED, which is the half that matters most: <c>WaitForIdle</c> takes the
+        /// unbounded budget and still waits for the GPU however long it takes. A timeout there would turn a hang
+        /// into silent forward progress over work that has not happened.
+        /// </summary>
+        [Fact]
+        public void TheUnboundedBudget_IsNeverSpentHoweverLongTheDrainRuns()
+        {
+            Assert.Equal(-1, D3D11TeardownDrain.Unbounded);
+            Assert.False(D3D11TeardownDrain.BudgetSpent(long.MaxValue, D3D11TeardownDrain.Unbounded));
+        }
+
+        /// <summary>
+        /// THE BOUND ITSELF, as arithmetic rather than as a wait. Two seconds is far longer than any real drain
+        /// and several times the Windows TDR that resets a hung device, so the failure direction is a bound
+        /// nobody legitimate reaches. Undershooting is the hazard: a budget short enough to expire on a slow
+        /// drain would free memory the GPU was still reading.
+        /// </summary>
+        [Fact]
+        public void TheTeardownBudget_IsTwoSecondsAndExpiresExactlyAtIt()
+        {
+            Assert.Equal(2000, D3D11TeardownDrain.BudgetMs);
+
+            long budget = D3D11TeardownDrain.TicksFor(D3D11TeardownDrain.BudgetMs);
+
+            Assert.False(D3D11TeardownDrain.BudgetSpent(budget - 1, D3D11TeardownDrain.BudgetMs));
+            Assert.True(D3D11TeardownDrain.BudgetSpent(budget, D3D11TeardownDrain.BudgetMs));
+        }
+
         /// <summary>
         /// The duration is real wall-clock time, never negative, and the drain terminates. This is a SMOKE bound
         /// now, not a discriminator: it catches a hang and the coarsest sleeping shape and nothing finer.

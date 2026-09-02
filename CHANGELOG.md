@@ -5,106 +5,13 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 18.10.0
+## 18.11.0
 
-18.10.0 is the sixth, seventh and eighth backlog waves: seventeen sweep-verified items across Gui,
-Commerce, Netcode, NetWorld, Server.Admin, Primitives, Render3D, Render2D, Telegraphs, the showcase
-and two tools, then three smalls, then the eighth wave's 48 fixes and a lead-pile triage that closed
-14 more with written reasons, one new package (`KhaozEngine.Sqlite`) and a wire-compatible catalog
-digest for the tile connect gate. Every fix carries a test proven red against the unfixed code.
-
-Gui parity, the set SpaceGame's tooltip adoption was waiting on:
-
-- `Tooltip.Opacity` fades every colour the bubble paints, and `0` draws nothing
-  ([#245](https://github.com/APKiwiOrg/KhaozEngine/issues/245)). `TooltipAnchorMode` picks `Centered`
-  (the default, byte-identical) or `Offset` for cursor-style placement via
-  `TooltipMetrics.AnchorOffsetX` ([#246](https://github.com/APKiwiOrg/KhaozEngine/issues/246)).
-- `Dropdown.TextScale`, `TextInput.TextScale`, `TreeView.TextScale` and `ProgressBar.OverlayTextScale`,
-  each defaulting `1f` and scaling text only, with `TextInput` carrying the scale through all three
-  width terms it derives so a scaled field still carets and clips where it draws
-  ([#244](https://github.com/APKiwiOrg/KhaozEngine/issues/244)).
-- `GuiStyle` gains optional `HoverBorder`/`PressBorder`/`DisabledBorder`/`HoverText`/`PressText`
-  (`null` falls back), `Button.Opacity` mirrors `TabBar.Opacity`, and the private TabBar style fade is
-  promoted to the public `GuiStyle.Faded(float)` now also covering shadow and glow
-  ([#252](https://github.com/APKiwiOrg/KhaozEngine/issues/252)).
-
-Commerce and server:
-
-- A `PeriodicGrant` reward id may not contain `:`, making the idempotency key split unambiguous while
-  keeping every existing ledger key byte-identical (rejecting rather than escaping avoids a fleet-wide
-  extra bootstrap grant on upgrade, and the cross-account aliasing the issue feared was never reachable,
-  every backend scopes keys by account and currency)
-  ([#209](https://github.com/APKiwiOrg/KhaozEngine/issues/209)). `PeriodicGrant.ResetAsync` re-opens a
-  reward for a wiped-progress account by writing a schedule row rather than deleting one, proven across
-  all three stores ([#208](https://github.com/APKiwiOrg/KhaozEngine/issues/208)).
-- `DisconnectReason.Banned`: a drop after a ban notice attributes as `Banned` instead of `Unreachable`,
-  mirroring the shutdown gate, with reconnect policy deliberately unchanged
-  ([#251](https://github.com/APKiwiOrg/KhaozEngine/issues/251)).
-- `NetServer` takes an optional pending-connection cap (flood degrades to refused handshakes, observable
-  via `PendingConnectionCount`/`RefusedPendingConnectionCount`, forwarded by both world servers), and
-  `Disconnect(slot, reason)` rides the reason on the kick itself
-  ([#267](https://github.com/APKiwiOrg/KhaozEngine/issues/267)).
-- `AdminEndpointOptions` gains pre-auth hardening knobs (`MaxConcurrentConnections` 64,
-  `RequestHeadersTimeout` 10 s, `KeepAliveTimeout` 30 s) written onto Kestrel's limits
-  ([#268](https://github.com/APKiwiOrg/KhaozEngine/issues/268)).
-
-Rendering and effects:
-
-- `Scene3D.TerrainCastsShadows` (default `false`): splat-terrain chunks can join the cascade atlas
-  through the existing caster walk and per-cascade cull. Off is byte-identical. Measured on a 447-chunk
-  streamed frame: 447 extra candidates but only about 22 drawn per cascade after the cull, 0.22 ms of
-  extra shadow-pass encode ([#280](https://github.com/APKiwiOrg/KhaozEngine/issues/280)).
-- `MathUtil` gains `WrapAngle`, `DeltaAngle`, `MoveTowardsAngle` and `LerpAngle` on the half-open
-  `(-pi, pi]`, reachable from 2D games at last
-  ([#243](https://github.com/APKiwiOrg/KhaozEngine/issues/243)).
-- `Scene3D.GetOrLoadMesh`/`GetOrLoadSkinnedMesh`/`GetOrLoadTexture` cache by key with explicit
-  per-key unload and no self-eviction, so run restarts stop re-uploading the asset set
-  ([#250](https://github.com/APKiwiOrg/KhaozEngine/issues/250)).
-- `TelegraphFillPattern.MoltenCracks` plus `TelegraphStyle.AccentColor`/`PatternParam`/`EdgeErosion`,
-  all default-inert, with an enum-agreement guard on the decal cast
-  ([#229](https://github.com/APKiwiOrg/KhaozEngine/issues/229)). `BeamParams.JitterShape` adds the
-  `Jagged` bolt mode with `JitterSeed` and the `ElectricArc` preset, stateless as before (the pooled
-  transient emitter remains open as re-scoped
-  [#239](https://github.com/APKiwiOrg/KhaozEngine/issues/239)).
-- The showcase VFX room cycles `EssenceMotes` with an orbiting attractor target, and its roster is
-  pinned by reflection so the next preset cannot be silently missing
-  ([#258](https://github.com/APKiwiOrg/KhaozEngine/issues/258)). The file-size analyzer gains
-  CRLF-parity and relative-path message tests
-  ([#260](https://github.com/APKiwiOrg/KhaozEngine/issues/260)). `tools/kit-bake` drops its `sharp`
-  override now that `ndarray-pixels` 5.2.0 asks for the fixed line itself, re-baking the seven committed
-  kits byte-for-byte ([#319](https://github.com/APKiwiOrg/KhaozEngine/issues/319)).
-
-- A length-prefixed built-in is walkable from `SnapshotBlobReader`: a second constructor takes
-  `Func<ushort, BinaryReader, int>` handed the reader at the frame's first payload byte, so a
-  self-describing built-in can report its total size, with the stream rewound so the frame re-emits
-  byte-identically. Additive, the id-only constructor is untouched
-  ([#354](https://github.com/APKiwiOrg/KhaozEngine/issues/354)).
-- The map editor's render-distance and window-radius coupling is documented from both ends, with the
-  boundary behaviour verified by a pinned test: a ring past a windowed tiled document meshes the
-  unauthored analytic base, neither clamped nor an error
-  ([#363](https://github.com/APKiwiOrg/KhaozEngine/issues/363)).
-- The `savesInFlight` overlapping-write guard in `SaveDirtyPass` gains the save-side test its load-side
-  twin has had since 16.6.0 ([#783](https://github.com/APKiwiOrg/KhaozEngine/issues/783)).
-
-- **Behaviour change, tile world roofs: hiding is per building now, not per plane.** `TileWorldView` used
-  to hide EVERY roof above an indoor observer, so walking into one house stripped the roofs off the whole
-  skyline. It now hides a roof only when its tile footprint touches the observer's own INTERIOR, the
-  4-connected flood fill of `TileSettings.Indoors` tiles seeded from the observer's tile, on a plane above
-  theirs. The old rule is what `RoofVisibility.AlwaysHidden` does now. New public API: the
-  `RoofVisibility` enum (`Interior` the default, `AlwaysVisible`, `AlwaysHidden`), `TileWorldView.RoofMode`
-  for the player's roofs setting, `TileWorldView.IsRoofHidden(footprint, plane)` as the predicate itself
-  (the object-silhouette gate goes through it too), `InteriorTileCount`, `InteriorTruncated` and
-  `MaxInteriorTiles`. `TileRegionProps` gains an init-only `RoofFootprints`, the tile rect of each roof
-  placement in the same order, which is what lets the rule tell one building from another (empty by
-  default, so a record built by hand still compiles and its roofs are never interior-hidden). The fill is
-  bounded at 4096 tiles so an authoring mistake that flags a region indoors cannot stall a frame: past the
-  cap the roofs simply stay visible, with a counter and one log line rather than a throw. The interior
-  refills lazily on an observer tile change, an indoor-flag flip under a stationary observer, or any
-  `MarkDirty`, so a still frame costs one settings lookup and no fill. Grimhollow reported it.
-
-The eighth backlog wave rides the same entry: the lead-confidence pile triaged end to end, and the
-verified defects and consumer parity gaps below, each fixed with a test proven red against the unfixed
-code.
+18.11.0 is the eighth backlog wave: 48 verified defects and consumer parity gaps fixed, each with a
+test proven red against the unfixed code, the lead-confidence pile triaged end to end (14 closed with
+written reasons, 9 relabelled verified with evidence), one new package (`KhaozEngine.Sqlite`) and a
+wire-compatible catalog digest for the tile connect gate. It lands beside the v18.10.0 release the
+tile-roof change cut, so it takes its own minor.
 
 Tile world and tile netcode:
 
@@ -287,6 +194,103 @@ top-down compass, the Commerce SqlServer README's credit path, the README Depend
 [#248](https://github.com/APKiwiOrg/KhaozEngine/issues/248),
 [#757](https://github.com/APKiwiOrg/KhaozEngine/issues/757),
 [#787](https://github.com/APKiwiOrg/KhaozEngine/issues/787)).
+
+## 18.10.0
+
+18.10.0 is the sixth backlog wave, seventeen sweep-verified items across Gui, Commerce, Netcode,
+NetWorld, Server.Admin, Primitives, Render3D, Render2D, Telegraphs, the showcase and two tools, each
+fixed with a test proven red against the unfixed code, plus the wave-7 smalls and interior-only roof
+hiding for the tile world.
+
+Gui parity, the set SpaceGame's tooltip adoption was waiting on:
+
+- `Tooltip.Opacity` fades every colour the bubble paints, and `0` draws nothing
+  ([#245](https://github.com/APKiwiOrg/KhaozEngine/issues/245)). `TooltipAnchorMode` picks `Centered`
+  (the default, byte-identical) or `Offset` for cursor-style placement via
+  `TooltipMetrics.AnchorOffsetX` ([#246](https://github.com/APKiwiOrg/KhaozEngine/issues/246)).
+- `Dropdown.TextScale`, `TextInput.TextScale`, `TreeView.TextScale` and `ProgressBar.OverlayTextScale`,
+  each defaulting `1f` and scaling text only, with `TextInput` carrying the scale through all three
+  width terms it derives so a scaled field still carets and clips where it draws
+  ([#244](https://github.com/APKiwiOrg/KhaozEngine/issues/244)).
+- `GuiStyle` gains optional `HoverBorder`/`PressBorder`/`DisabledBorder`/`HoverText`/`PressText`
+  (`null` falls back), `Button.Opacity` mirrors `TabBar.Opacity`, and the private TabBar style fade is
+  promoted to the public `GuiStyle.Faded(float)` now also covering shadow and glow
+  ([#252](https://github.com/APKiwiOrg/KhaozEngine/issues/252)).
+
+Commerce and server:
+
+- A `PeriodicGrant` reward id may not contain `:`, making the idempotency key split unambiguous while
+  keeping every existing ledger key byte-identical (rejecting rather than escaping avoids a fleet-wide
+  extra bootstrap grant on upgrade, and the cross-account aliasing the issue feared was never reachable,
+  every backend scopes keys by account and currency)
+  ([#209](https://github.com/APKiwiOrg/KhaozEngine/issues/209)). `PeriodicGrant.ResetAsync` re-opens a
+  reward for a wiped-progress account by writing a schedule row rather than deleting one, proven across
+  all three stores ([#208](https://github.com/APKiwiOrg/KhaozEngine/issues/208)).
+- `DisconnectReason.Banned`: a drop after a ban notice attributes as `Banned` instead of `Unreachable`,
+  mirroring the shutdown gate, with reconnect policy deliberately unchanged
+  ([#251](https://github.com/APKiwiOrg/KhaozEngine/issues/251)).
+- `NetServer` takes an optional pending-connection cap (flood degrades to refused handshakes, observable
+  via `PendingConnectionCount`/`RefusedPendingConnectionCount`, forwarded by both world servers), and
+  `Disconnect(slot, reason)` rides the reason on the kick itself
+  ([#267](https://github.com/APKiwiOrg/KhaozEngine/issues/267)).
+- `AdminEndpointOptions` gains pre-auth hardening knobs (`MaxConcurrentConnections` 64,
+  `RequestHeadersTimeout` 10 s, `KeepAliveTimeout` 30 s) written onto Kestrel's limits
+  ([#268](https://github.com/APKiwiOrg/KhaozEngine/issues/268)).
+
+Rendering and effects:
+
+- `Scene3D.TerrainCastsShadows` (default `false`): splat-terrain chunks can join the cascade atlas
+  through the existing caster walk and per-cascade cull. Off is byte-identical. Measured on a 447-chunk
+  streamed frame: 447 extra candidates but only about 22 drawn per cascade after the cull, 0.22 ms of
+  extra shadow-pass encode ([#280](https://github.com/APKiwiOrg/KhaozEngine/issues/280)).
+- `MathUtil` gains `WrapAngle`, `DeltaAngle`, `MoveTowardsAngle` and `LerpAngle` on the half-open
+  `(-pi, pi]`, reachable from 2D games at last
+  ([#243](https://github.com/APKiwiOrg/KhaozEngine/issues/243)).
+- `Scene3D.GetOrLoadMesh`/`GetOrLoadSkinnedMesh`/`GetOrLoadTexture` cache by key with explicit
+  per-key unload and no self-eviction, so run restarts stop re-uploading the asset set
+  ([#250](https://github.com/APKiwiOrg/KhaozEngine/issues/250)).
+- `TelegraphFillPattern.MoltenCracks` plus `TelegraphStyle.AccentColor`/`PatternParam`/`EdgeErosion`,
+  all default-inert, with an enum-agreement guard on the decal cast
+  ([#229](https://github.com/APKiwiOrg/KhaozEngine/issues/229)). `BeamParams.JitterShape` adds the
+  `Jagged` bolt mode with `JitterSeed` and the `ElectricArc` preset, stateless as before (the pooled
+  transient emitter remains open as re-scoped
+  [#239](https://github.com/APKiwiOrg/KhaozEngine/issues/239)).
+- The showcase VFX room cycles `EssenceMotes` with an orbiting attractor target, and its roster is
+  pinned by reflection so the next preset cannot be silently missing
+  ([#258](https://github.com/APKiwiOrg/KhaozEngine/issues/258)). The file-size analyzer gains
+  CRLF-parity and relative-path message tests
+  ([#260](https://github.com/APKiwiOrg/KhaozEngine/issues/260)). `tools/kit-bake` drops its `sharp`
+  override now that `ndarray-pixels` 5.2.0 asks for the fixed line itself, re-baking the seven committed
+  kits byte-for-byte ([#319](https://github.com/APKiwiOrg/KhaozEngine/issues/319)).
+
+- A length-prefixed built-in is walkable from `SnapshotBlobReader`: a second constructor takes
+  `Func<ushort, BinaryReader, int>` handed the reader at the frame's first payload byte, so a
+  self-describing built-in can report its total size, with the stream rewound so the frame re-emits
+  byte-identically. Additive, the id-only constructor is untouched
+  ([#354](https://github.com/APKiwiOrg/KhaozEngine/issues/354)).
+- The map editor's render-distance and window-radius coupling is documented from both ends, with the
+  boundary behaviour verified by a pinned test: a ring past a windowed tiled document meshes the
+  unauthored analytic base, neither clamped nor an error
+  ([#363](https://github.com/APKiwiOrg/KhaozEngine/issues/363)).
+- The `savesInFlight` overlapping-write guard in `SaveDirtyPass` gains the save-side test its load-side
+  twin has had since 16.6.0 ([#783](https://github.com/APKiwiOrg/KhaozEngine/issues/783)).
+
+- **Behaviour change, tile world roofs: hiding is per building now, not per plane.** `TileWorldView` used
+  to hide EVERY roof above an indoor observer, so walking into one house stripped the roofs off the whole
+  skyline. It now hides a roof only when its tile footprint touches the observer's own INTERIOR, the
+  4-connected flood fill of `TileSettings.Indoors` tiles seeded from the observer's tile, on a plane above
+  theirs. The old rule is what `RoofVisibility.AlwaysHidden` does now. New public API: the
+  `RoofVisibility` enum (`Interior` the default, `AlwaysVisible`, `AlwaysHidden`), `TileWorldView.RoofMode`
+  for the player's roofs setting, `TileWorldView.IsRoofHidden(footprint, plane)` as the predicate itself
+  (the object-silhouette gate goes through it too), `InteriorTileCount`, `InteriorTruncated` and
+  `MaxInteriorTiles`. `TileRegionProps` gains an init-only `RoofFootprints`, the tile rect of each roof
+  placement in the same order, which is what lets the rule tell one building from another (empty by
+  default, so a record built by hand still compiles and its roofs are never interior-hidden). The fill is
+  bounded at 4096 tiles so an authoring mistake that flags a region indoors cannot stall a frame: past the
+  cap the roofs simply stay visible, with a counter and one log line rather than a throw. The interior
+  refills lazily on an observer tile change, an indoor-flag flip under a stationary observer, or any
+  `MarkDirty`, so a still frame costs one settings lookup and no fill. Grimhollow reported it.
+
 
 ## 18.9.0
 

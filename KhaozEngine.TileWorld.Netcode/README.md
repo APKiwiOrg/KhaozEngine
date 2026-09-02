@@ -197,7 +197,8 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   and the spawner that owns one home tile, its live actor and its respawn countdown.
 - **`TileActorHost`** (`server.Actors`) - `Add(definition, home)` to register a spawner, `Command(netId, command)`
   to latch one command onto one actor, `Behaviour` and `Seed` for the decision seam, `Spawners`,
-  `TryGetSpawnerOf`, `Forget` and `PendingCommandCount`. Its tick is step 1b: every spawner respawns or counts
+  `TryGetSpawnerOf`, `Forget` (the despawn hook, dropping the unspent latch, the birth tile and the spawner link
+  together) and `PendingCommandCount`. Its tick is step 1b: every spawner respawns or counts
   down, then every live actor gets its decision translated into a command, plus the tag and
   `PendingTileCommand` rewrite above. It iterates its own net id list rather than an ECS query on the tag,
   because a query over the tag cannot see the one actor that most needs the write.

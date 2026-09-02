@@ -333,4 +333,27 @@ public class TileActorHostTests
         Assert.True(s.DespawnActor(actor));
         Assert.Equal(0, s.Actors.PendingCommandCount);
     }
+
+    // The despawn is the moment the actor stops existing, so every index keyed on its net id has to answer for that
+    // at once. The spawner link used to survive until the spawner's own next tick noticed the actor was gone, which
+    // left TryGetSpawnerOf answering true for an id nothing else in the server referenced. Harmless while net ids
+    // are never recycled, and an index that lies for a window either way.
+    [Fact]
+    public void Despawning_a_spawner_built_actor_drops_its_spawner_link_at_once()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(5, 5, 0));
+        TileActorSpawner spawner = s.Actors.Add(Rat, new TileCoord(20, 20, 0));
+        s.Tick(Dt);
+        long actor = spawner.ActorNetId;
+        Assert.True(actor > 0);
+        Assert.True(s.Actors.TryGetSpawnerOf(actor, out _));
+
+        Assert.True(s.DespawnActor(actor));
+
+        // Immediately, rather than on the tick the spawner notices. The spawner itself is untouched here: noticing
+        // the loss and starting the respawn countdown stays its own tick's job.
+        Assert.False(s.Actors.TryGetSpawnerOf(actor, out _));
+        Assert.Equal(TileActorSpawnerState.Alive, spawner.State);
+    }
 }

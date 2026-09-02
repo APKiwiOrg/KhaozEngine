@@ -113,11 +113,15 @@ public sealed class TileActorHost
     public void Command(long netId, in TileCommand command) => nextCommand[netId] = command;
 
     /// <summary>
-    /// Drops everything this host remembers about <paramref name="netId"/>: any unspent latch, and the tile it was
-    /// born on. <see cref="TileWorldServer.DespawnActor"/> calls it, because either entry for an actor that no
-    /// longer exists would otherwise sit in its dictionary forever: net ids are never recycled, so nothing else
-    /// would ever read or replace them, and combat makes death-before-the-next-tick the routine case rather than the
-    /// rare one.
+    /// Drops everything this host remembers about <paramref name="netId"/>: any unspent latch, the tile it was born
+    /// on, and the spawner that built it. <see cref="TileWorldServer.DespawnActor"/> calls it, because any of those
+    /// entries for an actor that no longer exists would otherwise sit in its dictionary forever: net ids are never
+    /// recycled, so nothing else would ever read or replace them, and combat makes death-before-the-next-tick the
+    /// routine case rather than the rare one.
+    /// <para>THE SPAWNER LINK GOES AT THE DESPAWN, not on the tick the spawner notices. It used to be pruned only by
+    /// <c>TickSpawner</c>, which left <see cref="TryGetSpawnerOf"/> answering true for an actor the server had
+    /// already removed. The SPAWNER's own state is untouched here: noticing the loss and starting the respawn
+    /// countdown is still its tick's job, and both reads it makes are of the world rather than of this index.</para>
     /// <para>A DESPAWN HOOK, not a way to cancel a queued command. Called on a LIVE actor it drops the birth tile
     /// as well as the latch, and a spawnerless actor with no birth tile falls through to the tile it is standing on
     /// as its home, so a leash walk after that returns it to wherever it happened to be. There is no error and no
@@ -128,6 +132,7 @@ public sealed class TileActorHost
     {
         nextCommand.Remove(netId);
         homeByActor.Remove(netId);
+        spawnerByActor.Remove(netId);
     }
 
     // The birth tile, recorded by TileWorldServer.SpawnActor for EVERY actor, spawner or not. A spawner's own Home
@@ -313,6 +318,9 @@ public sealed class TileActorHost
             case TileActorSpawnerState.Alive:
                 if (!server.TryGetActorState(spawner.ActorNetId, out _))
                 {
+                    // A no-op for a loss the server saw, since Forget already dropped both entries. Kept for the
+                    // loss it did NOT see: a cell eviction removes the entity without any despawn call, and this
+                    // is the only pass that notices.
                     spawnerByActor.Remove(spawner.ActorNetId);
                     homeByActor.Remove(spawner.ActorNetId);
                     spawner.Wait(spawner.Definition.RespawnDelayTicks);

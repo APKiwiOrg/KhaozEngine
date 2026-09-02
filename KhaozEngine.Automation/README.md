@@ -31,33 +31,58 @@ thread, no socket and no handshake file.
 
 **Gate 3, transport.** Loopback only, an ephemeral port, a per-run random token (256 bits, base64url). The port and
 the token go into one handshake file, `automation.json`, under the directory the options name, owner-only where the
-platform allows, deleted on dispose:
+platform allows, deleted on dispose and again on process exit:
 
 ```json
 {"port":51234,"token":"...","pid":4711,"startedAt":"2026-09-02T04:12:07.1234567+00:00"}
 ```
 
+**A bridge checks the `pid` is alive before it trusts the rest of the file.** A hard crash leaves the file behind,
+naming a port that is gone or, worse, one something else has since been given, so treat a file whose pid is dead as
+absent and wait for the next one.
+
 Be honest about what gate 3 is for. It is not what protects players (gate 1 is), and a loopback bind is reachable by
 every process on the developer's machine. The token raises the bar from "any local process can drive the client" to
 "any local process that can also read the developer's app data directory".
+
+Two bounds sit AHEAD of the token check, because the token travels inside the request line and so everything up to
+it is reachable by any local process that can connect:
+
+- A request line past `AutomationHost.MaxRequestLineBytes` (64 KiB) gets one error and the connection closes. The
+  reader stops copying at the cap, so a caller cannot grow the host's heap by writing a line that never ends.
+- A connection has `AutomationOptions.FirstLineTimeout` (5 seconds) to deliver its first complete line, which is the
+  one that must carry the token, and `AutomationOptions.IdleTimeout` (60 seconds) between lines after that. Both are
+  settable, and zero or less means no deadline.
 
 ## Wiring it up
 
 ```csharp
 protected override void OnLoad()
 {
-    _automation = new AutomationHost(Window, new AutomationOptions(Enabled: true, StateDirectory));
+    _automation = new AutomationHost(Window, new AutomationOptions(Enabled: true, StateDirectory)
+    {
+        Log = (message, error) => Log.Warn(message, error),   // silent by default, which suits a test and not a head
+    });
     _automation.StateProvider = DescribeState;          // Func<JsonNode?>, run on the window thread
     _automation.Register("click_tile", ClickTile);      // Func<JsonElement, JsonNode?>, same
     _automation.Start();                                // the gates decide whether anything happens
 }
+
+protected override void OnUnload() => _automation?.Dispose();   // or hold it in a using, or let ProcessExit do it
 ```
 
 Register everything before `Start`, so no request can arrive against a half-built verb table. A running host wires
 three things on the window and nothing else: the input filter, the background throttle (to
-`BackgroundThrottlePolicy.Disabled`, or the loop crawls the moment the agent's terminal takes focus) and
-`AppWindow.Close` as the default `quit` handler. It never sets `KE_MAX_FRAMES`, which ends the process at a frame
-count rather than yielding control.
+`BackgroundThrottlePolicy.Disabled`, or the loop crawls the moment the agent's terminal takes focus, restored to
+whatever it found on dispose) and `AppWindow.Close` as the default `quit` handler. It never sets `KE_MAX_FRAMES`,
+which ends the process at a frame count rather than yielding control.
+
+Dispose it, and the host also hooks `ProcessExit` so an ordinary `quit` to `AppWindow.Close` to `Run` returning
+still removes the handshake file rather than leaving one that names a dead port. `Log` is where a loop or a
+connection ending for a reason other than shutdown is reported: an accept loop that died (the endpoint is gone for
+the run, and the bridge sees nothing but connection refused), a refused over-long line, an expired read deadline.
+It takes a message and an optional exception, because half of what is worth reporting is a deliberate close rather
+than a throw. It is called from a socket thread, so it must not block, and a throw from it is swallowed.
 
 ## The protocol
 
@@ -84,7 +109,7 @@ running.
 
 | Command | Arguments | Effect |
 |---|---|---|
-| `input` | `x` + `y` (window pixels, given together), `releasePointer`, `button` (`left`/`middle`/`right`/`x1`/`x2`), `key` (a `Key` name, case-insensitive), `action` (`press`, the default, or `release`), `holdFrames` | Move the pointer, press or release a button or a key. `holdFrames: N` auto-releases N frames later: the press is live on frame F through F+N-1 and the release edge lands on F+N. Replies `{}` on the frame it was applied. |
+| `input` | `x` + `y` (window pixels, given together), `releasePointer`, `button` (`left`/`middle`/`right`/`x1`/`x2`), `key` (a `Key` name, case-insensitive, and `None` is refused), `action` (`press`, the default, or `release`), `holdFrames` | Move the pointer, press or release a button or a key. `holdFrames: N` auto-releases N frames later: the press is live on frame F through F+N-1 and the release edge lands on F+N. An `input` carrying no pointer, no `releasePointer`, no button and no key is refused, since it has nothing to apply. Replies `{}` on the frame it was applied. |
 | `step` | `frames` (default 1) | Run that many frames, then reply. Counted inclusive of the frame it landed on, so `step 1` replies on that frame. |
 | `state` | none | The game's registered state provider, invoked on the window thread. Its JSON document is the `ok` payload. An error when no provider is registered. |
 | `call` | `name`, `args` (any JSON) | Run a game-registered verb on the window thread. Its return value is the `ok` payload. An unknown name is an error, and a verb that throws becomes an error reply rather than taking the frame loop down. |
@@ -93,7 +118,12 @@ running.
 
 A malformed line gets an error reply and the connection STAYS OPEN, since the caller can recover from its own typo.
 A wrong or missing token gets ONE refusal and then the connection CLOSES, so a guesser pays a reconnect per attempt.
-A bad argument fails at submit time with a precise message rather than a frame later.
+A line past the 64 KiB cap is refused the same way, since what is left of it on the wire cannot be resynchronised
+against a request. A bad argument fails at submit time with a precise message rather than a frame later.
+
+Disposing the host fails every command still waiting on a frame with `automation host stopped`, and those replies go
+out BEFORE the sockets close, so a client parked on `step 9999` reads the reason rather than an EOF it has to guess
+at.
 
 Positions are in WINDOW PIXELS, matching `InputState.MousePosition`, which `AppWindow` has already scaled out of
 Silk's logical points. Anything higher level than a pixel (a tile, a widget, an inventory slot) is a game `call`
@@ -114,15 +144,21 @@ Two exceptions are deliberate:
 - `InputState.WindowFocused` is forced true, without which `GuiSurface` drops every injected press the moment the
   agent's terminal takes focus.
 
+A press and a release of the same button applied in ONE pump is a click, and the frame carries both edges: pressed
+and released, with the button not down. That is the shape `Pointer` already completes as a same-frame tap, so
+sending press and release in one batch works and does not need a `step` between them. `holdFrames` is still the
+idiom when the game has to see the button held.
+
 Nothing here touches a Silk or GLFW static. `AppWindow` remains the only class in the engine near those, and
 `InputState` is immutable, so a composed frame is a union of sets and a new instance.
 
 ## Public API
 
-- `AutomationOptions(bool Enabled, string HandshakeDirectory)`, plus `AutomationOptions.Off`.
+- `AutomationOptions(bool Enabled, string HandshakeDirectory)` with the init-only `Log`, `FirstLineTimeout` and
+  `IdleTimeout`, plus `AutomationOptions.Off`.
 - `AutomationHost`: `Start`, `Pump`, `Submit`, `Register`, `Dispose`, `StateProvider`, `QuitRequested`, `Frame`,
   `IsRunning`, `Port`, `Token`, `HandshakeFilePath`, `EnvironmentAllows`, and the constants
-  `EnvironmentVariable`, `EnabledValue`, `HandshakeFileName`.
+  `EnvironmentVariable`, `EnabledValue`, `HandshakeFileName`, `MaxRequestLineBytes`.
 - `AutomationRequest` / `AutomationReply`: the wire shapes, `TryParse` and `ToJsonLine`.
 - `AutomationInputInjector`: the compose half, usable on its own.
 - `AutomationHandshake`: `NewToken`, `TokenMatches`, `Serialize`, `Write`, `Delete`, `CurrentProcessId`.

@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Automation;
+using KhaozEngine.Primitives;
 using KhaozEngine.Windowing;
 using Xunit;
 
@@ -254,6 +255,27 @@ public class AutomationFramePumpTests
         host.Submit(AutomationTestKit.Parse("{\"cmd\":\"input\",\"releasePointer\":true}"));
 
         Assert.Equal(Frame.MousePosition, host.Pump(Frame).MousePosition);
+    }
+
+    [Fact]
+    public void APressAndAReleaseInOnePumpReadAsAClick()
+    {
+        // A click is a press plus a release, and a bridge is free to send both in one batch rather than holding the
+        // button across a step. Dropping the press edge made that land as a bare release nothing acts on. Asserted
+        // through Pointer, which already completes this shape as a same-frame tap.
+        using AutomationHost host = NewHost();
+        host.Submit(AutomationTestKit.Parse("{\"cmd\":\"input\",\"x\":400,\"y\":300,\"button\":\"left\"}"));
+        host.Submit(AutomationTestKit.Parse("{\"cmd\":\"input\",\"button\":\"left\",\"action\":\"release\"}"));
+
+        InputState composed = host.Pump(Frame);
+
+        Assert.Contains(MouseButton.Left, composed.MousePressed);
+        Assert.Contains(MouseButton.Left, composed.MouseReleased);
+        Assert.False(composed.IsDown(MouseButton.Left));
+
+        var pointer = new Pointer();
+        pointer.Update(composed);
+        Assert.True(pointer.IsTapIn(new Rect(390, 290, 20, 20)));
     }
 
     [Fact]

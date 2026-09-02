@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 using System.Text.Json;
+using System.Threading;
 using KhaozEngine.Automation;
 using KhaozEngine.Windowing;
 
@@ -41,6 +42,41 @@ sealed class TempDirectory : IDisposable
         try { Directory.Delete(Path, recursive: true); }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
+    }
+}
+
+/// <summary>
+/// Collects what an <see cref="AutomationOptions.Log"/> hook was told, from whichever socket thread told it. The
+/// endpoint reports asynchronously, so a test waits for its message rather than asserting straight after the act.
+/// </summary>
+sealed class LogSink
+{
+    readonly List<string> _messages = new();
+    readonly object _lock = new();
+
+    /// <summary>The hook itself, handed to <see cref="AutomationOptions.Log"/>.</summary>
+    public void Write(string message, Exception? error)
+    {
+        lock (_lock) _messages.Add(error is null ? message : message + " :: " + error.GetType().Name);
+    }
+
+    /// <summary>Everything reported so far, as a snapshot.</summary>
+    public string[] Messages
+    {
+        get { lock (_lock) return _messages.ToArray(); }
+    }
+
+    /// <summary>Wait for a message carrying <paramref name="fragment"/>, or give up and say so.</summary>
+    public bool Wait(string fragment, TimeSpan timeout)
+    {
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        while (elapsed.Elapsed < timeout)
+        {
+            foreach (string message in Messages)
+                if (message.Contains(fragment, StringComparison.Ordinal)) return true;
+            Thread.Sleep(5);
+        }
+        return false;
     }
 }
 

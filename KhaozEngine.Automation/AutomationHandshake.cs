@@ -60,11 +60,18 @@ namespace KhaozEngine.Automation
         /// CREATE time rather than afterwards, so there is no window in which the token is world-readable. Windows
         /// has no equivalent one-call mode, so the file inherits the directory's ACL there, which is why the
         /// directory the options name should be the app data directory the game already owns.
+        /// <para>
+        /// A create-time mode only applies to a file the call actually CREATES, so the stale file is deleted first
+        /// rather than truncated: opening a pre-existing world-readable <c>automation.json</c> keeps its mode, and
+        /// the owner-only guarantee quietly stops holding. The mode is set again after the write for the residual
+        /// case, another process re-creating the file in the gap between the delete and the create.
+        /// </para>
         /// </summary>
         public static void Write(string path, int port, string token, int processId, DateTimeOffset startedAt)
         {
             string? directory = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+            Delete(path);
 
             var stream = OperatingSystem.IsWindows()
                 ? new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read)
@@ -78,6 +85,9 @@ namespace KhaozEngine.Automation
             using (stream)
             using (var writer = new StreamWriter(stream, new UTF8Encoding(false)))
                 writer.Write(Serialize(port, token, processId, startedAt));
+
+            if (!OperatingSystem.IsWindows())
+                File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         }
 
         /// <summary>Delete the handshake file, tolerating a file another process already removed.</summary>

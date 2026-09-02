@@ -189,6 +189,37 @@ Playtest automation, round 1 of [#803](https://github.com/APKiwiOrg/KhaozEngine/
   focus. A running host also sets `BackgroundThrottlePolicy.Disabled`, since the default drops an
   unfocused window to 15 Hz, and it never sets `KE_MAX_FRAMES`, which ends the process at a frame count
   rather than yielding control.
+- **The listener bounds its reads, and both bounds sit AHEAD of the token check**, because the token
+  travels inside the request line and everything up to it is reachable by any local process that can
+  connect. A line past `AutomationHost.MaxRequestLineBytes` (64 KiB) gets one error and the connection
+  closes, with the rest of it read into a fixed chunk and dropped rather than buffered: the unbounded
+  read it replaces took the managed heap past a gigabyte in under two seconds off 200 MB written with
+  no newline, having authenticated nothing. A connection also gets `AutomationOptions.FirstLineTimeout`
+  (5 seconds) to deliver the line carrying the token, and `IdleTimeout` (60 seconds) between lines
+  after that.
+- **`AutomationOptions.Log` reports a loop or a connection that ended for a reason other than
+  shutdown**, null and silent by default so a headless test stays quiet. A message plus an optional
+  exception rather than a bare exception, because half of what is worth reporting is a deliberate close
+  (an over-long line, an expired deadline) with no throw behind it. The accept loop dying is the case
+  that earns it: the endpoint is gone for the rest of the run and the bridge sees nothing but
+  connection refused.
+- **Dispose fails the pending commands BEFORE it closes the sockets**, and gives those replies a
+  bounded moment to reach the wire, so a client parked on `step 9999` reads `automation host stopped`
+  rather than an EOF it has to guess at. The old order disposed the listener first and the documented
+  failure reply was written into a socket that was already gone.
+- The handshake file is deleted on `ProcessExit` as well as on dispose, since the ordinary shutdown is
+  `quit` to `AppWindow.Close` to `Run` returning and a head written from the wiring example disposes
+  nothing on that path, which left a file naming a dead port after every run. Both wiring examples now
+  show the dispose, and the package README tells a bridge to check the file's `pid` is alive before
+  trusting it, which is the only cover a hard crash can have. The file is also deleted before it is
+  rewritten, because a create-time Unix mode does not apply to a file the call merely truncates, so a
+  pre-existing world-readable `automation.json` used to keep its mode.
+- A press and a release of the same button applied in ONE pump now keep the press edge, so the frame
+  carries both: that is a click, it is what a bridge sending both in one batch means, and it is the
+  same-frame tap shape `Pointer` already completes. It previously landed as a bare release nothing
+  acted on. `DetachWindow` also restores the background throttle it FOUND rather than the engine
+  default, and the disposed check and the queue enqueue in `Submit` are now one atomic step, closing
+  the window in which a command landed in a queue nobody would drain.
 - The listener's accept and serve threads let NOTHING escape, which the first full test run proved
   necessary rather than tidy: `TcpClient.NoDelay` on a client the host just closed throws
   `NullReferenceException` rather than `ObjectDisposedException`, so the narrow catch list missed it

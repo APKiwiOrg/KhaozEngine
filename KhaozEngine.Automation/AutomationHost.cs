@@ -42,17 +42,32 @@ namespace KhaozEngine.Automation
         /// <summary>The handshake file's name inside <see cref="AutomationOptions.HandshakeDirectory"/>.</summary>
         public const string HandshakeFileName = "automation.json";
 
+        /// <summary>
+        /// The most bytes one request line may carry before the connection is refused and closed. 64 KiB is two
+        /// orders of magnitude past the longest command this protocol has (a <c>call</c> with a JSON argument
+        /// document), and the cap exists because the token travels inside the line: without it any local process
+        /// could grow the host's heap by whatever it cared to write, having authenticated nothing.
+        /// </summary>
+        public const int MaxRequestLineBytes = 64 * 1024;
+
+        /// <summary>How long <see cref="Dispose"/> waits for the replies it just failed to reach the wire before it
+        /// closes the sockets under them. Bounded, so a wedged window thread cannot hang a head's shutdown.</summary>
+        static readonly TimeSpan ReplyDrainTimeout = TimeSpan.FromMilliseconds(250);
+
         readonly AutomationOptions _options;
         readonly AutomationInputInjector _injector = new();
         readonly Dictionary<string, Func<JsonElement, JsonNode?>> _verbs = new(StringComparer.Ordinal);
         readonly ConcurrentQueue<PendingCommand> _incoming = new();
         readonly List<PendingCommand> _waiting = new();
+        readonly object _submitLock = new();
+        readonly object _waitingLock = new();
 
         AutomationListener? _listener;
+        EventHandler? _processExit;
         string? _token;
         long _frame;
-        bool _running;
-        bool _disposed;
+        volatile bool _running;
+        volatile bool _disposed;
 
         /// <summary>Configure a host with no window attached. The head owns the wiring: hand <see cref="Pump"/> to
         /// <c>AppWindow.InputFilter</c> and set <see cref="QuitRequested"/> yourself. Prefer the
@@ -111,6 +126,13 @@ namespace KhaozEngine.Automation
         /// Run the gates and, if they all pass, bind the loopback listener on an ephemeral port, mint the per-run
         /// token, write the handshake file, and wire the window. Idempotent, and a no-op that touches nothing when
         /// any gate refuses.
+        /// <para>
+        /// It also hooks <see cref="AppDomain.ProcessExit"/> to delete the handshake file, because the ordinary
+        /// shutdown of a game is <c>quit</c> to <c>AppWindow.Close</c> to <c>Run</c> returning, and a head written
+        /// from the wiring example never disposes anything on that path. Without the hook every run left a file
+        /// naming a dead port. A hard crash still cannot be covered, which is why the file carries the pid and a
+        /// bridge is told to check it is alive before trusting the rest.
+        /// </para>
         /// </summary>
         public void Start()
         {
@@ -119,11 +141,25 @@ namespace KhaozEngine.Automation
             if (!_options.Enabled || !EnvironmentAllows) return;
 
             _token = AutomationHandshake.NewToken();
-            _listener = new AutomationListener(_token, () => Frame, Submit);
+            _listener = new AutomationListener(_options, _token, () => Frame, Submit);
             AutomationHandshake.Write(
                 HandshakeFilePath, _listener.Port, _token, AutomationHandshake.CurrentProcessId, DateTimeOffset.UtcNow);
+            string path = HandshakeFilePath;
+            _processExit = (_, _) => AutomationHandshake.Delete(path);
+            AppDomain.CurrentDomain.ProcessExit += _processExit;
             _running = true;
             AttachWindow();
+        }
+
+        /// <summary>Test seam (InternalsVisibleTo): whether the process-exit cleanup is currently subscribed, so a
+        /// test can pin the subscribe and the unsubscribe without exiting the test process to observe them.</summary>
+        internal bool HasProcessExitHandler => _processExit is not null;
+
+        /// <summary>Test seam (InternalsVisibleTo): how many commands are parked on a frame that has not arrived, so
+        /// a test can pump until one is genuinely waiting instead of sleeping and hoping.</summary>
+        internal int WaitingCount
+        {
+            get { lock (_waitingLock) return _waiting.Count; }
         }
 
         /// <summary>
@@ -131,6 +167,11 @@ namespace KhaozEngine.Automation
         /// here rather than on the window thread, because it is the bridge's readiness check and has to work in the
         /// window between the handshake file appearing and the first frame running. Everything else is queued, and a
         /// malformed argument fails fast here with a precise message rather than a frame later.
+        /// <para>
+        /// The disposed check and the enqueue are one atomic step, under the lock <see cref="Dispose"/> takes to
+        /// set the flag. Read and enqueue as two steps left a window in which a command landed in a queue nobody
+        /// would ever drain, and the socket thread waiting on its reply blocked for the life of the process.
+        /// </para>
         /// </summary>
         public Task<AutomationReply> Submit(AutomationRequest request)
         {
@@ -143,10 +184,12 @@ namespace KhaozEngine.Automation
             if (!TryPrepare(request, out PendingCommand? pending, out string? error))
                 return Task.FromResult(AutomationReply.Failure(request.Id, frame, error!));
 
-            if (_disposed)
-                return Task.FromResult(AutomationReply.Failure(request.Id, frame, StoppedError));
-
-            _incoming.Enqueue(pending!);
+            lock (_submitLock)
+            {
+                if (_disposed)
+                    return Task.FromResult(AutomationReply.Failure(request.Id, frame, StoppedError));
+                _incoming.Enqueue(pending!);
+            }
             return pending!.Completion.Task;
         }
 
@@ -170,26 +213,62 @@ namespace KhaozEngine.Automation
             return composed;
         }
 
-        /// <summary>Stop the listener, delete the handshake file, unwire the window, and fail every command still
-        /// waiting so no connection hangs. Safe to call twice.</summary>
+        /// <summary>
+        /// Unwire the window, fail every command still waiting so no connection hangs, then stop the listener and
+        /// delete the handshake file. Safe to call twice.
+        /// <para>
+        /// <b>The order is the contract.</b> The failure reply is written by the SERVING thread, so a listener
+        /// disposed first closes the socket out from under it and the client that asked for <c>step 9999</c> gets an
+        /// EOF rather than the documented error line. So the commands fail first, the listener is given
+        /// <see cref="ReplyDrainTimeout"/> to put those replies on the wire, and only then do the sockets close.
+        /// </para>
+        /// <para>
+        /// <b>Threading.</b> Call it on the window thread, or once the loop has returned and nothing is pumping.
+        /// The queue handoff and the waiting list are both locked, so a racing <see cref="Submit"/> or
+        /// <see cref="Pump"/> cannot lose a command, but the window seams (<c>InputFilter</c>, the throttle) are
+        /// plain property writes and the injector is documented as window-thread-only, so disposing from a third
+        /// thread mid-frame is not supported.
+        /// </para>
+        /// </summary>
         public void Dispose()
         {
-            if (_disposed) return;
-            _disposed = true;
+            lock (_submitLock)
+            {
+                if (_disposed) return;
+                _disposed = true;
+            }
 
             DetachWindow();
+            UnhookProcessExit();
+
+            long frame = Frame;
+            PendingCommand[] waiting;
+            lock (_waitingLock)
+            {
+                waiting = _waiting.ToArray();
+                _waiting.Clear();
+            }
+            foreach (PendingCommand pending in waiting)
+                pending.Completion.TrySetResult(AutomationReply.Failure(pending.Request.Id, frame, StoppedError));
+            while (_incoming.TryDequeue(out PendingCommand? queued))
+                queued.Completion.TrySetResult(AutomationReply.Failure(queued.Request.Id, frame, StoppedError));
+
+            _listener?.DrainReplies(ReplyDrainTimeout);
             _listener?.Dispose();
             _listener = null;
             if (_running) AutomationHandshake.Delete(HandshakeFilePath);
             _running = false;
             _token = null;
+        }
 
-            long frame = Frame;
-            foreach (PendingCommand pending in _waiting)
-                pending.Completion.TrySetResult(AutomationReply.Failure(pending.Request.Id, frame, StoppedError));
-            _waiting.Clear();
-            while (_incoming.TryDequeue(out PendingCommand? queued))
-                queued.Completion.TrySetResult(AutomationReply.Failure(queued.Request.Id, frame, StoppedError));
+        /// <summary>Drop the process-exit cleanup, so a disposed host leaves nothing subscribed to an event that
+        /// outlives it and holds it alive.</summary>
+        void UnhookProcessExit()
+        {
+            if (_processExit is null) return;
+            try { AppDomain.CurrentDomain.ProcessExit -= _processExit; }
+            catch (Exception) { }
+            _processExit = null;
         }
 
         const string StoppedError = "automation host stopped";

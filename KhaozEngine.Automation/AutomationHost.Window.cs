@@ -28,6 +28,7 @@ namespace KhaozEngine.Automation
     {
         readonly AppWindow? _window;
         Func<InputState, InputState>? _installedFilter;
+        BackgroundThrottlePolicy? _previousThrottle;
 
         /// <summary>
         /// Configure a host against <paramref name="window"/>. Nothing is wired until <see cref="Start"/> passes the
@@ -52,20 +53,25 @@ namespace KhaozEngine.Automation
             if (_window is null) return;
             _installedFilter = Pump;
             _window.InputFilter = _installedFilter;
+            _previousThrottle = _window.BackgroundThrottle;
             _window.BackgroundThrottle = BackgroundThrottlePolicy.Disabled;
             QuitRequested ??= _window.Close;
         }
 
         /// <summary>
-        /// Unwire on dispose: drop the filter so the window goes back to the raw snapshot, and restore the default
-        /// throttle. Only touches a filter this host actually installed, so a head that replaced it mid-run keeps its
-        /// own.
+        /// Unwire on dispose: drop the filter so the window goes back to the raw snapshot, and put the throttle back
+        /// to the policy the host FOUND rather than to the engine default, since a head that tuned its own would
+        /// otherwise lose it. Both restores are guarded the same way, so a head that replaced either one mid-run
+        /// keeps its replacement.
         /// </summary>
         void DetachWindow()
         {
             if (_window is null || _installedFilter is null) return;
             if (ReferenceEquals(_window.InputFilter, _installedFilter)) _window.InputFilter = null;
-            _window.BackgroundThrottle = BackgroundThrottlePolicy.Default;
+            if (_previousThrottle is BackgroundThrottlePolicy previous
+                && _window.BackgroundThrottle == BackgroundThrottlePolicy.Disabled)
+                _window.BackgroundThrottle = previous;
+            _previousThrottle = null;
             _installedFilter = null;
         }
     }

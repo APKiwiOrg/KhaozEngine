@@ -1,6 +1,11 @@
 # Playtest Automation Design (2026-09-02)
 
-Status: proposed, nothing built. Program issue: filed with this doc.
+Status: R1's engine half shipped in 18.13.0, the game half is next. Program issue
+[#803](https://github.com/APKiwiOrg/KhaozEngine/issues/803). Shipped here: the opt-in
+`KhaozEngine.Automation` package (the host, the JSON-lines loopback transport, `input`, `step`, `state`,
+`call`, `quit` and `ping`, the three gates and the handshake file) and the `AppWindow.InputFilter` seam
+the composed snapshot rides. Still open in R1, all game side: the state provider, the verb table and the
+MCP bridge. The four owner decisions in section 7 were taken as proposed, and are marked there.
 
 ## Problem
 
@@ -299,6 +304,11 @@ tile-to-pixel projection. Done means an agent can act on content rather than on 
 polling in a loop and a timeout is a reportable fact.
 
 ## Owner decisions to make before R1
+
+All four were taken as proposed when R1's engine half landed: the name stays `KhaozEngine.Automation`,
+the reference condition is the gate with no `#if DEBUG` beside it, the handshake file goes wherever the
+head's options point, and the bridge starts in the game repo. The reasoning each one was decided on is
+below, kept because it is what a later round would have to argue against to move one.
 
 1. **Package name.** `KhaozEngine.Automation` is proposed. It is accurate and it is also the word a
    reader is most likely to misread as something a player might use, so `KhaozEngine.DevHarness` or

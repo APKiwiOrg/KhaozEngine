@@ -166,7 +166,7 @@ namespace KhaozEngine.Automation
                 case "step":
                     // Counted inclusive of this frame, so "step 1" replies on the frame it landed on.
                     pending.DueFrame = frame + pending.Frames - 1;
-                    _waiting.Add(pending);
+                    lock (_waitingLock) _waiting.Add(pending);
                     break;
 
                 case "state":
@@ -211,15 +211,20 @@ namespace KhaozEngine.Automation
             }
         }
 
-        /// <summary>Reply to every <c>step</c> whose frame has arrived, newest-last order preserved.</summary>
+        /// <summary>Reply to every <c>step</c> whose frame has arrived, newest-last order preserved. Under the same
+        /// lock <see cref="Dispose"/> takes to drain the list, so a dispose racing a frame cannot complete one
+        /// command twice or drop another.</summary>
         void CompleteDue(long frame)
         {
-            for (int i = _waiting.Count - 1; i >= 0; i--)
+            lock (_waitingLock)
             {
-                PendingCommand pending = _waiting[i];
-                if (pending.DueFrame > frame) continue;
-                pending.Completion.TrySetResult(AutomationReply.Success(pending.Request.Id, frame, new JsonObject()));
-                _waiting.RemoveAt(i);
+                for (int i = _waiting.Count - 1; i >= 0; i--)
+                {
+                    PendingCommand pending = _waiting[i];
+                    if (pending.DueFrame > frame) continue;
+                    pending.Completion.TrySetResult(AutomationReply.Success(pending.Request.Id, frame, new JsonObject()));
+                    _waiting.RemoveAt(i);
+                }
             }
         }
 

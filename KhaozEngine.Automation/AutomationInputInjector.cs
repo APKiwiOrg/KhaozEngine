@@ -64,12 +64,18 @@ namespace KhaozEngine.Automation
             else _buttonHoldUntil.Remove(button);
         }
 
-        /// <summary>Release <paramref name="button"/> on this frame, cancelling any pending auto-release.</summary>
+        /// <summary>
+        /// Release <paramref name="button"/> on this frame, cancelling any pending auto-release. A press and a
+        /// release applied inside ONE pump keep the press edge, so the frame carries both: that is a click, which is
+        /// what a bridge sending press and release in one <c>input</c> batch means, and it is the same shape
+        /// <c>Pointer</c> already completes as a same-frame tap (a snapshot whose <c>MousePressed</c> carries a
+        /// button that is no longer down). Dropping the press edge instead made that click land as a bare release
+        /// nothing acts on.
+        /// </summary>
         public void ReleaseButton(MouseButton button)
         {
             _buttonHoldUntil.Remove(button);
             if (_buttonsDown.Remove(button)) _buttonsReleased.Add(button);
-            _buttonsPressed.Remove(button);
         }
 
         /// <summary>Press <paramref name="key"/>, with the same hold semantics as <see cref="PressButton"/>.</summary>
@@ -81,12 +87,12 @@ namespace KhaozEngine.Automation
             else _keyHoldUntil.Remove(key);
         }
 
-        /// <summary>Release <paramref name="key"/> on this frame, cancelling any pending auto-release.</summary>
+        /// <summary>Release <paramref name="key"/> on this frame, cancelling any pending auto-release. Keeps a press
+        /// edge applied in the same pump, for the reason on <see cref="ReleaseButton"/>.</summary>
         public void ReleaseKey(Key key)
         {
             _keyHoldUntil.Remove(key);
             if (_keysDown.Remove(key)) _keysReleased.Add(key);
-            _keysPressed.Remove(key);
         }
 
         /// <summary>

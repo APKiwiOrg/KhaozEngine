@@ -34,6 +34,26 @@ public class AutomationComposeTests
     }
 
     [Fact]
+    public void APressAndAReleaseInsideOneFrameKeepBothEdges()
+    {
+        var injector = new AutomationInputInjector();
+
+        injector.PressButton(MouseButton.Left, frame: 1, holdFrames: 0);
+        injector.ReleaseButton(MouseButton.Left);
+        injector.PressKey(Key.E, frame: 1, holdFrames: 0);
+        injector.ReleaseKey(Key.E);
+
+        InputState composed = injector.Compose(AutomationTestKit.Real());
+
+        Assert.Contains(MouseButton.Left, composed.MousePressed);
+        Assert.Contains(MouseButton.Left, composed.MouseReleased);
+        Assert.DoesNotContain(MouseButton.Left, composed.MouseDown);
+        Assert.True(composed.WasPressed(Key.E));
+        Assert.True(composed.WasReleased(Key.E));
+        Assert.False(composed.IsDown(Key.E));
+    }
+
+    [Fact]
     public void WindowFocusedIsForcedTrueEvenWhenTheOsSaysOtherwise()
     {
         // GuiSurface refuses hover and press while unfocused, so without this every injected click is dropped the

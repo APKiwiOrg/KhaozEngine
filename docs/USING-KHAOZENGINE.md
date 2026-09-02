@@ -13098,7 +13098,10 @@ before `Start` so no request can arrive against a half-built verb table:
 ```csharp
 protected override void OnLoad()
 {
-    _automation = new AutomationHost(Window, new AutomationOptions(Enabled: true, StateDirectory));
+    _automation = new AutomationHost(Window, new AutomationOptions(Enabled: true, StateDirectory)
+    {
+        Log = (message, error) => Log.Warn(message, error),
+    });
     _automation.StateProvider = () => new JsonObject
     {
         ["tile"] = $"{_player.Tile.X},{_player.Tile.Z}",
@@ -13108,17 +13111,35 @@ protected override void OnLoad()
     _automation.Register("click_tile", args => ClickTile(args.GetProperty("x").GetInt32(), args.GetProperty("z").GetInt32()));
     _automation.Start();          // the gates decide whether anything happens at all
 }
+
+protected override void OnUnload() => _automation?.Dispose();
 ```
 
 `Start` is the only method the gates guard. When they refuse it there is no thread, no socket and no file. When they
 pass, the host binds, writes `automation.json` (port, token, pid, start time) into the directory you named, and wires
 three things on the window and nothing else: `InputFilter`, `BackgroundThrottle` (to `Disabled`, or the loop crawls
-the moment the agent's terminal takes focus) and `Close` as the default `quit` handler. It never sets
-`KE_MAX_FRAMES`, which ends the process at a frame count rather than yielding control.
+the moment the agent's terminal takes focus, put back to whatever it found when the host is disposed) and `Close` as
+the default `quit` handler. It never sets `KE_MAX_FRAMES`, which ends the process at a frame count rather than
+yielding control.
+
+Dispose it (a `using`, an `OnUnload`, either) so the handshake file goes. The host also hooks `ProcessExit` for the
+ordinary path, where `quit` closes the window and `Run` returns without anything being disposed, but a hard crash
+still leaves a file naming a dead port, so a bridge checks the file's `pid` is alive before trusting it.
+
+`Log` is the diagnostic hook, null and silent by default. It is called with a message, and an exception when there
+was one, whenever an accept loop or a connection ends for a reason other than shutdown: the accept loop dying takes
+the endpoint down for the whole run and the bridge sees only connection refused, which is exactly the failure worth
+one log line. It runs on a socket thread, so do not block in it.
+
+Two bounds sit ahead of the token check, because the token travels inside the request line. A line past
+`AutomationHost.MaxRequestLineBytes` (64 KiB) is refused and the connection closes, without the rest of it ever being
+buffered. A connection gets `FirstLineTimeout` (5 seconds) for its first complete line and `IdleTimeout` (60 seconds)
+between lines after that, both settable on the options and both off when set to zero or less.
 
 The state provider and every verb run on the WINDOW thread at the frame boundary, so they may touch the live camera,
 the screen stack and the world directly with no locking. A verb that throws becomes an error reply rather than taking
-the frame loop down.
+the frame loop down. Disposing the host fails every command still waiting on a frame with `automation host stopped`,
+and puts those replies on the wire before it closes the sockets.
 
 ### The protocol, in one paragraph
 
@@ -13149,7 +13170,9 @@ filter that blocks stalls the loop.
 `AutomationInputInjector` is the automation filter's body and is usable on its own. It UNIONS injected keys and
 buttons into the real sets, so a key the developer is holding stays held while automation clicks. Two overrides are
 deliberate: the pointer position wins while an injected pointer is live, and `WindowFocused` is forced true, without
-which `GuiSurface` drops every injected press the moment another window takes focus.
+which `GuiSurface` drops every injected press the moment another window takes focus. A press and a release applied in
+one pump keep both edges (pressed and released, not down), which is the same-frame tap shape `Pointer` already
+completes, so a click sent as one batch lands as a click.
 
 ## Testing your game headlessly
 

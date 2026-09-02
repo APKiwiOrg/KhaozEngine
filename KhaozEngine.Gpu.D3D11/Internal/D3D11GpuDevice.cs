@@ -327,6 +327,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             // gives. The bound is slices rather than logical layers, which is what a cubemap makes different.
             D3D11UploadBounds.RequireArrayLayer(arrayLayer, destination.ArraySlices);
 
+            // THE OTHER TWO THIRDS OF THE SAME CONTRACT (#697), in the order native Metal checks them. A mip
+            // level past the end of the chain is the same silent drop the layer was. An oversized region is
+            // worse: UpdateSubresource APPLIES the box against the subresource it names, so the texels land
+            // outside the rectangle the caller asked for instead of going nowhere.
+            D3D11UploadBounds.RequireMipLevel(mipLevel, destination.MipLevels);
+            D3D11UploadBounds.RequireRegionFits(mipLevel, x, y, width, height, destination.Width, destination.Height);
+
             lock (_submitLock)
             {
                 UpdateTextureWindows(destination, data, x, y, width, height, mipLevel, arrayLayer);

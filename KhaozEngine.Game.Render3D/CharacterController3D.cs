@@ -50,6 +50,20 @@ namespace KhaozEngine.Game
         /// ease instead of popping.</summary>
         public float StepDeltaY => _state.StepDeltaY;
 
+        /// <summary>The character's heading this tick in radians (see <see cref="MoveState.FacingYaw"/>), in the SAME
+        /// convention as the <c>cameraYaw</c> handed to <see cref="Update"/>: 0 faces world -Z, canonical range
+        /// <c>[-pi, pi)</c>. This is what <see cref="FacingTurnSpeed"/> rate-limits, so it is how a local
+        /// non-networked game draws a body that leans into its turns instead of snapping. The networked path reads
+        /// the same fact off <c>EntityRenderState.FacingYaw</c>. It affects no position output.</summary>
+        public float FacingYaw => _state.FacingYaw;
+
+        /// <summary>Impact speed (m/s, positive) of a landing that happened THIS tick, else 0 (see
+        /// <see cref="MoveState.LandingImpactSpeed"/>). A per-tick event rather than carried state, so read it every
+        /// tick and threshold it: a spawn or a teleport honestly reports its one tick of gravity, and no fall-damage
+        /// curve starts anywhere near that. The local equivalent of the networked path's
+        /// <c>WorldServer.OnAfterTick</c> read.</summary>
+        public float LandingImpactSpeed => _state.LandingImpactSpeed;
+
         /// <summary>Metres per second while walking. Default 6.</summary>
         public float WalkSpeed = 6f;
         /// <summary>Metres per second while running (shift held). Default 12.</summary>
@@ -101,6 +115,14 @@ namespace KhaozEngine.Game
         /// pre-facing consumer already had. A finite value (2-10 rad/s is the usual range) leans the body into its
         /// turns. 0 freezes the heading.</summary>
         public float FacingTurnSpeed = float.PositiveInfinity;
+        /// <summary>Pin the heading to the camera instead of to the direction of travel (see
+        /// <see cref="MoveCommand.FaceCamera"/>): a strafing character keeps its body pointed where the player is
+        /// looking, and a STATIONARY one still turns. Default false, which is the pre-facing behaviour exactly.
+        /// A game holding a strafe-lock button sets this each frame before <see cref="Update"/>, the same way it
+        /// sets any other knob here. This is the target <see cref="FacingTurnSpeed"/> mostly exists to rate-limit,
+        /// and it feeds <see cref="StrafeSpeedScale"/> / <see cref="BackpedalSpeedScale"/> as well. Affects no
+        /// position output on its own.</summary>
+        public bool FaceCamera = false;
         /// <summary>How far past <see cref="MaxSlopeRadians"/> a character that ALREADY has footing keeps it (see
         /// <see cref="MoveTuning.TractionHysteresisRadians"/>). Default 3 deg, so a walk across ground that straddles
         /// the gate holds one continuous footing decision instead of flipping grip and slide every tick. 0 restores
@@ -112,10 +134,9 @@ namespace KhaozEngine.Game
         /// the full-strength slide of 17.28.0 and 17.29.0.</summary>
         public float SlideFrictionRampRadians = MathF.PI * 8f / 180f;
         /// <summary>Speed multiplier while strafing with the character pinned to the camera (see
-        /// <see cref="MoveTuning.StrafeSpeedScale"/>). Default 1 (no scaling). Inert on this controller as it stands,
-        /// which drives movement without <see cref="MoveCommand.FaceCamera"/>: it is mirrored because every
-        /// <see cref="MoveTuning"/> feel knob is, and because a consumer reads these defaults as the engine's
-        /// answer to "what is neutral".</summary>
+        /// <see cref="MoveTuning.StrafeSpeedScale"/>). Default 1 (no scaling). Live only while
+        /// <see cref="FaceCamera"/> is set, since that is what pins the body to the camera and gives a move axis a
+        /// strafe reading at all.</summary>
         public float StrafeSpeedScale = 1f;
         /// <summary>Speed multiplier while backing up with the character pinned to the camera (see
         /// <see cref="MoveTuning.BackpedalSpeedScale"/>). Default 1 (no scaling).</summary>
@@ -149,7 +170,7 @@ namespace KhaozEngine.Game
             bool run = input.IsDown(Key.LeftShift) || input.IsDown(Key.RightShift);
             bool jump = input.WasPressed(Key.Space);   // edge-triggered: one jump per press (buffer handles timing)
 
-            var cmd = new MoveCommand(move, run, cameraYaw, jump);
+            var cmd = new MoveCommand(move, run, cameraYaw, jump, FaceCamera);
             var tuning = new MoveTuning(WalkSpeed, RunSpeed, CapsuleHalfHeight, MaxSlopeRadians, CapsuleRadius)
             {
                 Gravity = Gravity, JumpSpeed = JumpSpeed, MaxFallSpeed = MaxFallSpeed,

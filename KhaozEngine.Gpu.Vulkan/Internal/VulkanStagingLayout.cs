@@ -332,18 +332,27 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         static void RequireSubresource(in VulkanStagingShape shape, uint mipLevel, uint arrayLayer)
         {
-            if (mipLevel < shape.MipLevels && arrayLayer < shape.ArrayLayers) return;
+            // Named by the parameter that was actually out of range (#697). One message for both used to report
+            // mipLevel even when the layer was the bad value, which sends a caller reading the wrong argument.
+            if (mipLevel >= shape.MipLevels)
+            {
+                throw new ArgumentOutOfRangeException(nameof(mipLevel), mipLevel,
+                    "Mip level "
+                    + mipLevel.ToString(CultureInfo.InvariantCulture)
+                    + " is outside a native Vulkan staging texture with "
+                    + shape.MipLevels.ToString(CultureInfo.InvariantCulture)
+                    + " mip levels. The offset it would produce lands in whatever follows the buffer.");
+            }
 
-            throw new ArgumentOutOfRangeException(nameof(mipLevel), mipLevel,
-                "Mip level "
-                + mipLevel.ToString(CultureInfo.InvariantCulture)
-                + " of array layer "
-                + arrayLayer.ToString(CultureInfo.InvariantCulture)
-                + " is outside a native Vulkan staging texture with "
-                + shape.MipLevels.ToString(CultureInfo.InvariantCulture)
-                + " mip levels and "
-                + shape.ArrayLayers.ToString(CultureInfo.InvariantCulture)
-                + " array layers. The offset it would produce lands in whatever follows the buffer.");
+            if (arrayLayer >= shape.ArrayLayers)
+            {
+                throw new ArgumentOutOfRangeException(nameof(arrayLayer), arrayLayer,
+                    "Array layer "
+                    + arrayLayer.ToString(CultureInfo.InvariantCulture)
+                    + " is outside a native Vulkan staging texture with "
+                    + shape.ArrayLayers.ToString(CultureInfo.InvariantCulture)
+                    + " array layers. The offset it would produce lands in whatever follows the buffer.");
+            }
         }
 
         // The 32-bit ceiling. See the class note: the arithmetic runs in 64 bits, so a size the seam cannot

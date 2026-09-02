@@ -85,6 +85,14 @@ reads so move and facing never diverge), `IntendedMoveDirection(input, cameraYaw
 basis), `YawOf(direction)`, `TurnTowards(currentYaw, intendedDirection, maxTurnRate, dt)` (a bounded-rate,
 shortest-path turn that holds facing when no key is held), and `WrapAngle`.
 
+`CharacterController3D` runs the same turn inside the shared movement step, and surfaces it: `FacingYaw` (radians,
+canonical `[-pi, pi)`, 0 faces world -Z, the convention `cameraYaw` is already in) is the heading `FacingTurnSpeed`
+rate-limits, and `FaceCamera` (bool, default false, set it each frame from a strafe-lock button) pins the body to
+the camera instead of to the direction of travel, which is also what makes `StrafeSpeedScale` /
+`BackpedalSpeedScale` / `BackpedalAllowsRun` live. `LandingImpactSpeed` (m/s, one tick only) is the local read of
+the landing a networked game gets server-side, for a single-player fall-damage curve. A game that wants the turn
+OUTSIDE the movement step, on something that is not a `CharacterController3D`, still uses `TurnTowards`.
+
 ## ReplicatedCharacterAnimators
 
 A render-free bridge ("the character bridge") that drives one skinned-character brain per entity from a per-frame

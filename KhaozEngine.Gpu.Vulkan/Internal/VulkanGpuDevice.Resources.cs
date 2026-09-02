@@ -81,6 +81,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // image arm accepted it in silence. Above the branch so both arms answer the same way.
             VulkanUploadBounds.RequireArrayLayer(arrayLayer, target.ActualArrayLayers);
 
+            // THE OTHER TWO THIRDS OF THE SAME CONTRACT (#697), also above the branch. The staging arm caught a
+            // bad mip level through the layout arithmetic and the image arm did not, and NEITHER arm looked at
+            // the region: the setup command validates the payload length, which says nothing about where the
+            // bytes land.
+            VulkanUploadBounds.RequireMipLevel(mipLevel, target.MipLevels);
+            VulkanUploadBounds.RequireRegionFits(mipLevel, x, y, width, height, target.Width, target.Height);
+
             if (target.IsStaging)
             {
                 WriteStagingTexture(target, data, x, y, width, height, mipLevel, arrayLayer);

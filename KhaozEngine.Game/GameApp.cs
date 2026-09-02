@@ -186,7 +186,8 @@ namespace KhaozEngine.Game
             DiagnosticsOverlayTheme? hudTheme = BuildDiagnosticsTheme(options);
             if (hudTheme != null)
             {
-                _hud = new DiagnosticsHud(hudTheme, withPassTimings: SupportsPassTimings);
+                _hud = new DiagnosticsHud(hudTheme, withPassTimings: SupportsPassTimings,
+                    visibleAtBoot: options.DiagnosticsVisibleAtBoot);
                 _hudFont = _surface2D.LoadDefaultDpiFont(32f);
                 _hudWhite = _surface2D.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
             }
@@ -304,8 +305,11 @@ namespace KhaozEngine.Game
         /// <summary>
         /// The built-in diagnostics HUD (FPS / frame-ms / heap, draw counters, and - for a 3D app - per-pass
         /// timings), or null when opted out via <see cref="GameAppOptions.DisableDiagnosticsOverlay"/>. Hidden until
-        /// toggled with the configured key (F1 by default). A game may drive it directly, e.g.
-        /// <c>Diagnostics?.SetNetStatsSource(() =&gt; ...)</c> to add a Network section, or read <see cref="DiagnosticsHud.Visible"/>.
+        /// toggled with the configured key (F1 by default), unless
+        /// <see cref="GameAppOptions.DiagnosticsVisibleAtBoot"/> starts it shown. A game may drive it directly, e.g.
+        /// <c>Diagnostics?.SetNetStatsSource(() =&gt; ...)</c> to add a Network section,
+        /// <c>Diagnostics?.AddSection(() =&gt; ...)</c> to compose a section of its own alongside the built-in ones,
+        /// or read <see cref="DiagnosticsHud.Visible"/>.
         /// </summary>
         protected DiagnosticsHud? Diagnostics => _hud;
 

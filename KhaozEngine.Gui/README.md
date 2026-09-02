@@ -3,7 +3,8 @@
 Immediate-mode + retained UI on the custom MonoGame-free stack.
 
 **Localized text:** the player-facing text sinks (the `Label` / `Button` widgets, `GuiSurface.Label` /
-`Button` / `StatChip`, `Tooltip.Show`, `ContextMenu.Open` plus `ContextMenuEntry.Of`, and `PopupPanel` - its `TitleContent` / `DismissContent` /
+`Button` / `StatChip`, `Tooltip.Show`, `ContextMenu.Open` plus `ContextMenuEntry.Of`, `DropdownOption.Content`,
+`ScrollablePanel.DrawHeader`, and `PopupPanel` - its `TitleContent` / `DismissContent` /
 `PrimaryActionContent` plus the `PopupRow.Header` / `Stat` factories) take a `LocalizedText` (from
 `KhaozEngine.App`) instead of a raw `string`. Pass a `StringId` (implicitly converts) for localizable copy, or
 `LocalizedText.Raw("...")` for non-localizable text (names, numbers, debug). The old `string` overloads remain
@@ -29,6 +30,14 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   screen pulled out mid-frame (its own transition-off completing, or another screen's `Update` removing it)
   cannot get one more `Update` out of the loop's scratch copy after its content is gone. Re-adding that same
   instance remounts it and re-runs its entry transition.
+  `PressBeganOverUi` carries the press-origin invariant across the UI boundary: true while the current gesture
+  began over a region the screens had reserved, latched at the press and held until the next fresh press. The
+  stack drives its own pointer, so a reservation here is invisible to a game's world-picking pointer, and there
+  is no rect that means "the whole screen stack" (its rect is the window, which contains every tap). A game with
+  a modal screen over a 3D world gates its world pick on it,
+  `if (!stack.PressBeganOverUi && worldPointer.IsTapIn(bounds))`, so the release that dismisses a login screen
+  does not also walk the player. Evaluated after the screens reserve, on the press frame rather than the release
+  frame, since by the release the screen that was in the way has usually closed. Left button only.
 - `Screen` - base UI surface: `Update(dt, receivesInput)` (returns whether it consumed input) + `Draw(SpriteBatch)`,
   with `DrawOrder` / `PassUpdateThrough` / `AlwaysReceivesInput` / transitions. **The dormant-overlay trap:** a
   screen that stays mounted all the time but is only sometimes showing something MUST return `false` from
@@ -97,10 +106,15 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     `Update` return for callers that inspect it later in the frame; `Opacity` fades the whole slider for a host transition.
   - `Toggle` - two-state switch flipped by a valid tap; fires `OnChanged`. `WasToggled` mirrors the `Update` return;
     `Opacity` fades the whole toggle for a host transition.
-  - `SlotGrid` - a grid of uniform square slots (hotbar / inventory / equipment) over `Pointer`. `Bounds`.X/Y is
-    the origin; the footprint is derived from `Columns`/`SlotSize`/`Spacing` and the slot `Count` (read `ContentSize`
-    / `ContentBounds`). Each slot hit-tests through the press-origin invariant; `HoveredSlot`/`PressedSlot` expose the
-    live index (-1 = none) and a valid tap fires `OnSlotClicked` (and `Update` returns the index). Empty slots draw a
+  - `SlotGrid` - a grid of uniform slots (hotbar / inventory / equipment) over `Pointer`. `Bounds`.X/Y is
+    the origin, and the footprint is derived from `Columns`/`SlotWidth`/`SlotHeight`/`Spacing` and the slot `Count`
+    (read `ContentSize`
+    / `ContentBounds`). A slot is square by default and `SlotSize` is the shorthand that writes both axes (reading
+    it returns `SlotWidth`), so a panel drawing item NAMES rather than icons sets `SlotWidth`/`SlotHeight` apart for
+    a wide, short cell. Each slot hit-tests through the press-origin invariant, and `HoveredSlot`/`PressedSlot` expose the
+    live index (-1 = none) and a valid tap fires `OnSlotClicked` (and `Update` returns the index). The right button
+    gets the same press-origin treatment: a valid right tap sets `RightClickedSlot` and fires `OnSlotRightClicked`,
+    which is what a per-slot context menu hangs off, and it never changes the `Update` return. Empty slots draw a
     themed frame; the caller paints icons/counts through the `DrawSlotContent(index, rect, batch)` hook and optional
     per-slot `KeybindLabels` (raw input-token glyphs). `SlotRect(i)`/`SlotAt(point)` are pure geometry; `Opacity`
     fades the whole grid. Built-in slot content is available too: set an `IconAtlas` on the grid and hand each
@@ -170,6 +184,10 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     dot, minus - and the FIRST keypad keystroke ends the select-all seed exactly like a top-row one (replace the
     seeded value, not append to it).
   - `Dropdown` - trigger + option list (opens below); two-phase draw (`Draw` trigger / `DrawOverlay` list last).
+    `DropdownOption` is `(LocalizedText Content, int Value)`, so a settings selector (difficulty, display mode,
+    quality) localizes through a `StringId` and a bare literal no longer compiles at that sink. `SelectedLabel` is
+    the resolved string and `SelectedContent` the unresolved value. The `(string, int)` ctor and the `Label` member
+    remain, `[Obsolete]`, so an existing caller keeps building.
     Opt-in (default off): `ShowChevron` draws an up/down caret reflecting the open state; `Opacity` fades the whole
     dropdown for a host transition. `TextScale` (default `1f`) scales the trigger label AND every option row's
     label, text only: the rects, the row fills, the chevron and the hit-testing are unchanged.
@@ -267,7 +285,8 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     unchanged, so every existing consumer stays byte-identical.
   - `ScrollablePanel` - wheel/drag scrolling fixed-height list; rows drawn between `BeginClip`/`EndClip` (scissor),
     hit-test with `TappedItemIndex`. Opt-in overlay chrome (all default to no-ops, so existing callers are
-    byte-identical): a header band (`HeaderHeight` + `DrawHeader`) above the scroll region; a slide-up animation
+    byte-identical): a header band (`HeaderHeight` + `DrawHeader`, whose title is a `LocalizedText` with the old
+    `string` overload kept `[Obsolete]`) above the scroll region; a slide-up animation
     driven by an external `TransitionAlpha` from a docked bottom edge (`SlideFromBottom`); drag-to-resize the header
     within `MinHeight`/`MaxHeight` (`Resizable`); and a dimmed `Scrim` with tap-outside-to-close (`ScrimDismissed`).
     Geometry is exposed via `CurrentBounds`/`ContentBounds` (== `Bounds` with no knob set). Opt-in height glide
@@ -450,7 +469,13 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   once per frame (samples FPS, handles the toggle + fade), feed `SetDrawStats(in RenderFrameStats)` the aggregate
   and (3D) sample its `PassTimings`, then `Draw`. Hidden by default, and while hidden the provider builds nothing,
   so the only cost is the surfaces' always-on counter increments. `SetNetStatsSource(Func<ClientNetStats?>)` opts a
-  Network section in and out with the active screen. `GameApp`/`GameApp3D` wire one automatically (F1).
+  Network section in and out with the active screen. `AddSection(Func<OverlaySection?>)` is the composition seam
+  for a section of the GAME's own: it renders after the built-in ones instead of replacing them, is polled on the
+  same throttled refresh, and returning null omits it for that refresh. Registration order is render order, and
+  `ClearSections()` drops the added ones. Reaching past this to `Overlay.SetSectionsProvider` installs a provider
+  OVER the built-in one and costs all four built-in sections, which is the trap this seam exists to close.
+  The ctor's `visibleAtBoot` starts the panel shown (default false), for a build whose tester has to read a value
+  without first finding the toggle key. `GameApp`/`GameApp3D` wire one automatically (F1).
 - `TextEntry` - headless key→char text-entry helper (US layout + shift), used by `TextInput`. No SDL plumbing.
   Ctrl/Super (Cmd) held suppresses character entry so shortcut chords like Ctrl+V / Cmd+V paste instead of typing.
   Acts on `InputState.WasTyped` (press edge OR OS auto-repeat tick), so a held Backspace or character key repeats at
@@ -466,8 +491,15 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   the text unchanged when it fits, otherwise the longest prefix that fits with a trailing `"..."` appended
   (three ASCII dots, binary-searched against the caller-supplied measure function, e.g.
   `s => font.Measure(s).X`, so it is pure and headless-testable). When not even the dots fit, `"..."` is still
-  returned. `PropertyGrid` cell/label text and the map editor's status strip draw through it. The only public
-  member of `GuiDraw` (the rest is internal widget plumbing).
+  returned. `PropertyGrid` cell/label text and the map editor's status strip draw through it.
+- `GuiDraw.Fill(batch, white, rect, color)`, `GuiDraw.Border(batch, white, rect, thickness, color)` and
+  `GuiDraw.Line(batch, white, a, b, thickness, color)` - the 2D primitives, public alongside
+  `TruncateWithEllipsis` so a game drawing its own chrome in its own pass calls the engine helper instead of
+  hand-building four rects. All three take a 1x1 white texture (Render2D has no primitive renderer). `Fill`
+  draws the rect verbatim, `Border` strokes a `thickness`-wide outline just inside it and snaps rect and
+  thickness to whole device pixels in a point-space pass (a no-op elsewhere), and `Line` is a single rotated
+  quad between two points. Everything else on `GuiDraw` (`FillStyled`, the skin path, the glow, the widget
+  geometry helpers) stays internal widget plumbing with no consumer contract.
 - `OverlayLegend` (+ `LegendEntry`, `OverlayLegendTheme`) - a domain-agnostic color-swatch + label panel for
   debug overlays: `SetEntries(IReadOnlyList<LegendEntry>)`, `EntryCount`, `Measure(SpriteFont)` -> `Rect` (empty
   when no entries), and two `Draw` overloads - `Draw(SpriteBatch, SpriteFont, Texture2D, Rect viewport)`

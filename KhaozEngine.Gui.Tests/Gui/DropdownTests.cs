@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.App;
 using KhaozEngine.Gui;
 using KhaozEngine.Windowing;
 using Xunit;
@@ -18,7 +19,7 @@ namespace KhaozEngine.Tests.Gui
 
         static readonly List<DropdownOption> Opts = new()
         {
-            new("Low", 1), new("Medium", 2), new("High", 3),
+            new(LocalizedText.Raw("Low"), 1), new(LocalizedText.Raw("Medium"), 2), new(LocalizedText.Raw("High"), 3),
         };
 
         // One per test-class instance (xUnit builds a fresh instance per fact), so the mouse press and

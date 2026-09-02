@@ -307,7 +307,10 @@ namespace KhaozEngine.Gui
             _get = get;
             _set = set;
             var opts = new List<DropdownOption>(options.Count);
-            for (int i = 0; i < options.Count; i++) opts.Add(new DropdownOption(options[i], i));
+            // Raw on purpose: a ChoiceRow's option strings ARE the value the get/set delegates round-trip, so
+            // they are identity tokens rather than display copy. A row wanting localized option text builds its
+            // own Dropdown with StringId content.
+            for (int i = 0; i < options.Count; i++) opts.Add(new DropdownOption(LocalizedText.Raw(options[i]), i));
             Dropdown = new Dropdown(opts, default) { ShowChevron = true };
             SelectOption(get());
         }
@@ -370,7 +373,7 @@ namespace KhaozEngine.Gui
         void SelectOption(string value)
         {
             for (int i = 0; i < Dropdown.Options.Count; i++)
-                if (Dropdown.Options[i].Label == value) { Dropdown.SelectByValue(i); return; }
+                if (Dropdown.Options[i].Content.Resolve() == value) { Dropdown.SelectByValue(i); return; }
         }
     }
 

@@ -404,9 +404,9 @@ namespace KhaozEngine.Showcase
             // Column A: form widgets.
             _name = new TextInput(default, A.Small)
             { PlaceholderContent = ShowcaseStrings.WidgetsNamePlaceholder, MaxLength = 16 };
-            _difficulty = new Dropdown(
-                new[] { new DropdownOption("Easy", 0), new DropdownOption("Normal", 1), new DropdownOption("Hard", 2) },
-                default);
+            _difficulty = new Dropdown(new[] { new DropdownOption(ShowcaseStrings.WidgetsDifficultyEasy, 0),
+                new DropdownOption(ShowcaseStrings.WidgetsDifficultyNormal, 1),
+                new DropdownOption(ShowcaseStrings.WidgetsDifficultyHard, 2) }, default);
             _difficulty.SelectByValue(1);
             _partySize = new NumberField(default, 4f)
             { Min = 1f, Max = 8f, Decimals = 0, DragScale = 0.05f };

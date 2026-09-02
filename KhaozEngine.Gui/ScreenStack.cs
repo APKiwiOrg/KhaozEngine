@@ -34,6 +34,23 @@ namespace KhaozEngine.Gui
         public Pointer Pointer => _input.Pointer;
         /// <summary>This frame's raw input snapshot (keyboard etc.). Also reachable as <c>InputManager.State</c>.</summary>
         public InputState Input { get; private set; } = InputState.Empty;
+
+        /// <summary>
+        /// Whether the CURRENT pointer gesture began over a region the screens had reserved, latched at the press
+        /// and held until the next fresh press. This is the press-origin invariant carried across the UI boundary.
+        /// <para>The stack drives its own composed <see cref="Pointer"/>, so a <see cref="Pointer.BlockRegion"/> a
+        /// screen makes here is invisible to the game's world-picking pointer, and there is no rect a game can hand
+        /// <see cref="Pointer.IsTapIn"/> that means "the whole screen stack" (its rect is the window, and the window
+        /// contains every tap). A game with a modal screen over a 3D world gates its world pick on this instead:
+        /// <code>if (!stack.PressBeganOverUi &amp;&amp; worldPointer.IsTapIn(bounds)) Pick();</code>
+        /// Without it, the release that dismisses a login screen is still live on the frame the world appears, so
+        /// the click that signs the player in also walks them.</para>
+        /// <para>Evaluated inside <see cref="Update(float, InputState, IDesignViewport?)"/>, AFTER the screens have
+        /// reserved their regions for the frame, so it sees this frame's real occlusion. It deliberately answers
+        /// from the PRESS frame rather than recomputing on the release, by which point the screen that was in the
+        /// way has usually closed. Left button only, which is the gesture the world pick rides.</para>
+        /// </summary>
+        public bool PressBeganOverUi { get; private set; }
         /// <summary>The current screens, ordered by <see cref="Screen.DrawOrder"/> ascending, with insertion order
         /// breaking ties. So the last element is the visually-topmost screen (highest draw order, and last added
         /// among equals).</summary>
@@ -119,6 +136,12 @@ namespace KhaozEngine.Gui
 
                 if (!screen.PassUpdateThrough) break;
             }
+
+            // After the screens have reserved this frame's regions, so the query sees the real occlusion. Only on
+            // a fresh press origin: on any other frame the answer is already latched, and recomputing it would read
+            // the CURRENT layout for a press made when the layout was something else.
+            Pointer pointer = _input.Pointer;
+            if (pointer.IsPressOriginFresh) PressBeganOverUi = pointer.IsBlocked(pointer.PressOrigin);
         }
 
         /// <summary>Draws all non-hidden screens bottom-to-top.</summary>

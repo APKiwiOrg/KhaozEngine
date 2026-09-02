@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using KhaozEngine.App;
 using KhaozEngine.Gui;
 using KhaozEngine.Windowing;
 using Xunit;
@@ -55,7 +56,7 @@ namespace KhaozEngine.Tests.Gui
         [Fact]
         public void Dropdown_Style_defaults_crisp_and_accepts_modern()
         {
-            var opts = new List<DropdownOption> { new("A", 0), new("B", 1) };
+            var opts = new List<DropdownOption> { new(LocalizedText.Raw("A"), 0), new(LocalizedText.Raw("B"), 1) };
             var w = new Dropdown(opts, Box);
             AssertCrispDefault(w.Style);
             w.Style = GuiStyle.Modern;

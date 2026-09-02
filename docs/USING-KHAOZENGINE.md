@@ -977,6 +977,24 @@ for menu-heavy games. `Add`/`Remove`, `Update(dt, input[, viewport])`, `Draw(bat
 `Manager.Pointer`, so both share one click-through gate), and returns whether it consumed (to block screens
 below); set a screen non-pass-through for a modal.
 
+**Gating a world pick behind the UI (`PressBeganOverUi`).** The stack drives its OWN composed `Pointer`, so a
+`BlockRegion` a screen makes is invisible to the pointer a game uses to pick in its 3D world, and there is no
+rect the game can hand `IsTapIn` that means "the whole screen stack" (its rect is the window, so it contains
+every tap anywhere). `ScreenStack.PressBeganOverUi` answers that question directly: true while the CURRENT
+gesture began over a region the screens had reserved, latched at the press and held until the next fresh press.
+
+```csharp
+stack.Update(dt, input, viewport);                 // screens reserve their regions here
+if (!stack.PressBeganOverUi && worldPointer.IsTapIn(worldBounds)) PickInWorld();
+```
+
+It is evaluated after the screens have reserved for the frame, and only when the press origin is fresh, which is
+the whole point. Recomputing it on the release reads the layout as it stands THEN, and by then the modal that was
+in the way has usually closed, so the release that dismisses a login screen also walks the player. Left button
+only, since that is the gesture a world pick rides. Underneath it is `Pointer.IsPressOriginFresh`, true on the one
+frame the press origin was latched (a real press edge or a same-frame tap), which is the hook to use for any other
+per-gesture state a host keeps of its own.
+
 **The dormant-overlay trap.** `Screen.Update`'s bool return means "did THIS screen consume input THIS frame", not
 "did this screen receive input" - the two are different questions, and `receivesInput` already tells you the
 latter. A screen that stays in the stack all the time but is only sometimes showing/doing something (an
@@ -1183,7 +1201,7 @@ if (panel.ScrimDismissed) Close();             // tap outside the panel
 
 panel.DrawScrim(batch, white);
 panel.DrawBackground(batch, white);
-panel.DrawHeader(batch, white, titleFont, "Inventory");
+panel.DrawHeader(batch, white, titleFont, Strings.PanelInventory);   // LocalizedText: a StringId converts
 panel.BeginClip(batch);
 for (int i = 0; i < panel.ItemCount; i++) DrawRow(panel.ItemBounds(i), i);  // clipped to ContentBounds
 panel.EndClip(batch);
@@ -1232,11 +1250,28 @@ The glide always snaps (no easing) on the first update and whenever the panel is
 `HeightGlideSeconds`.
 
 **HUD widgets: `SlotGrid` + `ProgressBar` (10.78.0)** - two additive widgets for inventory / status HUDs. `SlotGrid`
-lays out `Count` uniform square slots wrapping at `Columns` (`Bounds`.X/Y is the origin; the footprint is `ContentSize`
-/ `ContentBounds`, derived from `SlotSize` / `Spacing`). It hit-tests each slot through the press-origin invariant and
-exposes `HoveredSlot` / `PressedSlot` (-1 = none); a valid tap fires `OnSlotClicked` and `Update` returns the tapped
-index. The widget is item-agnostic: empty slots draw a themed frame, and the caller paints icons / counts through the
+lays out `Count` uniform slots wrapping at `Columns` (`Bounds`.X/Y is the origin, and the footprint is
+`ContentSize` / `ContentBounds`, derived from `SlotWidth` / `SlotHeight` / `Spacing`). It hit-tests each slot
+through the press-origin invariant and
+exposes `HoveredSlot` / `PressedSlot` (-1 = none). A valid tap fires `OnSlotClicked` and `Update` returns the
+tapped index. The widget is item-agnostic: empty slots draw a themed frame, and the caller paints icons / counts through the
 `DrawSlotContent(index, rect, batch)` hook and optional per-slot `KeybindLabels` (raw input-token glyphs).
+
+A slot is square by default (both axes 48) and `SlotSize` stays the shorthand that writes both, so every existing
+grid lays out exactly as before. Set `SlotWidth` and `SlotHeight` apart for a rectangular cell, which is what an
+inventory panel drawing item NAMES rather than icons wants. The right button carries the same press-origin
+invariant as the left: a valid right tap sets `RightClickedSlot` and fires `OnSlotRightClicked(index)`, so a
+per-slot context menu opens only when the right press BEGAN in that slot. The `Update` return stays the left tap.
+
+```csharp
+// A two-column inventory of wide text rows, right-click opening a per-slot context menu.
+var bag = new SlotGrid(new Rect(panelX, panelY, 0, 0), count: 28, columns: 2)
+{
+    SlotWidth = 92f, SlotHeight = 34f, Spacing = 4f,
+    DrawSlotContent = (i, rect, b) => DrawItemName(b, rect, _bag[i]),
+    OnSlotRightClicked = i => OpenItemMenu(i, bag.SlotRect(i)),
+};
+```
 `ProgressBar` is a thin fill bar: `Fraction` clamps 0..1, the accent `FillColor` sits inside the border frame, and an
 optional centered `OverlayText` (`LocalizedText`) labels it. `FillDirection` picks the edge the fill grows FROM -
 `LeftToRight` (default), `RightToLeft`, `BottomToTop`, `TopToBottom` (the last two are vertical bars). `SegmentCount`
@@ -1727,6 +1762,27 @@ analyzer (already in the `Game2D`/`Game3D` umbrellas) enforces the rest. Adoptin
 The migration is warning-not-break: the old `string` Gui overloads remain `[Obsolete]`, so a game builds (with
 warnings) before any text is migrated. `KhaozEngine.Showcase` is the worked example (`ShowcaseStrings.resx` +
 `ShowcaseStrings` constants + `LocalizationContext` wiring).
+
+**A widget with no sink is invisible to the analyzer, which is the failure mode to watch for.** KELOC001 and
+KELOC003 flag a literal passed into a parameter that is typed or marked as a sink, so a widget holding a plain
+`string` member offers nothing to flag and its text ships unlocalizable under a green build. `DropdownOption`
+was exactly that: a bare `string Label`, drawn straight to `DrawString`, which let a whole settings selector
+(difficulty, display mode, quality, language) be built out of raw literals with no diagnostic anywhere.
+`DropdownOption.Content` and `ScrollablePanel.DrawHeader`'s title are `LocalizedText` now:
+
+```csharp
+var difficulty = new Dropdown(new[]
+{
+    new DropdownOption(Strings.DifficultyEasy, 0),     // StringId -> LocalizedText implicitly
+    new DropdownOption(Strings.DifficultyHard, 1),
+}, triggerRect);
+
+string shown = difficulty.SelectedLabel;               // resolved against the ambient catalog
+LocalizedText raw = difficulty.SelectedContent;        // the unresolved value, to forward to another sink
+```
+
+The `(string, int)` option ctor and the `DropdownOption.Label` member both remain, `[Obsolete]`, so an existing
+caller keeps building. Same for `DrawHeader`'s `string` title overload.
 
 ### The low-level `SpriteBatch.DrawString` sink (`KELOC003`)
 
@@ -7347,10 +7403,20 @@ never stomped. The grid draws in two passes (every row's label+editor, then a la
 still draws inside the grid's own scissor, so it clips at the grid bounds (a host wanting it to spill past the
 grid calls `Dropdown.DrawOverlay` itself after the grid's `Draw`). A row's label and a `ReadOnlyRow`'s display string truncate to their column via `GuiDraw.TruncateWithEllipsis`
 (longest fitting prefix plus three ASCII dots) instead of running under the neighbouring cell or getting
-hard-cut by the scissor mid-glyph. `TruncateWithEllipsis(text, maxWidth, measureWidth)` is public (the one
-public member of `GuiDraw`), so a host can fit its own single-line text the same way: pass your own measure
+hard-cut by the scissor mid-glyph. `TruncateWithEllipsis(text, maxWidth, measureWidth)` is public, so a host
+can fit its own single-line text the same way: pass your own measure
 function (e.g. `s => font.Measure(s).X`), and it binary-searches the longest fitting prefix, pure and
-headless-testable (the map editor's status strip draws through it). `NumberField` and `TreeView` also stand alone outside a grid, e.g. an
+headless-testable (the map editor's status strip draws through it).
+
+`GuiDraw` also exposes the three 2D primitives the widgets themselves draw with, so a game rendering its own
+chrome in its own pass does not hand-build the shapes: `GuiDraw.Fill(batch, white, rect, color)`,
+`GuiDraw.Border(batch, white, rect, thickness, color)` and `GuiDraw.Line(batch, white, a, b, thickness, color)`,
+all over a 1x1 white texture (Render2D has no primitive renderer). `Border` strokes the outline just inside the
+rect and snaps rect + thickness to whole device pixels in a point-space UI pass, so a consumer border matches
+the engine's own. The rest of `GuiDraw` (`FillStyled`, the skin and glow paths, the widget geometry helpers) is
+internal widget plumbing and is not part of the consumer contract.
+
+`NumberField` and `TreeView` also stand alone outside a grid, e.g. an
 outline panel beside the inspector:
 
 ```csharp
@@ -9861,6 +9927,7 @@ Opt out or rebind via `GameAppOptions`:
 ```csharp
 var options = GameAppOptions.For("MyGame", 1280, 720);
 options.DiagnosticsToggleKey = Key.F3;        // default is F1
+options.DiagnosticsVisibleAtBoot = true;     // start it SHOWN (default false), for a build a tester has to read
 // options.DisableDiagnosticsOverlay = true;  // turn the built-in HUD off entirely
 ```
 
@@ -9870,6 +9937,23 @@ whose source turns on and off with the active screen:
 ```csharp
 Diagnostics?.SetNetStatsSource(() => (_scenes.Active as RoomNet)?.NetStats);   // null result => no Network row
 ```
+
+**A section of your own.** `AddSection` composes a game section onto the HUD instead of replacing the engine's,
+which is what makes one HUD enough. It is polled on the same throttled refresh as the built-ins, renders after
+them in registration order, and returning null omits it for that refresh:
+
+```csharp
+Diagnostics?.AddSection(() => new OverlaySection("World", new[]
+{
+    new OverlayRow("tile", $"{_player.TileX}, {_player.TileY}"),
+    new OverlayRow("region", _region.Id.ToString()),
+}));
+```
+
+Do NOT reach past this to `Diagnostics?.Overlay.SetSectionsProvider(...)`. That installs a provider over the
+engine's, so Performance, Draw stats and Pass timings all disappear unless the game rebuilds them itself. That
+trap is why a game ended up drawing a second always-on readout beside the engine HUD and computing fps twice.
+`ClearSections()` drops the added sections again.
 
 **Frame draw counters (`RenderFrameStats`).** Each render surface keeps an always-on, allocation-free per-frame
 tally in `KhaozEngine.Primitives.RenderFrameStats`: `DrawCalls`, `Instances`, `Triangles` (estimated from the

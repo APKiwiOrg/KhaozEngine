@@ -10,13 +10,19 @@ namespace KhaozEngine.Gui
     /// <summary>
     /// Small rectangle-drawing helpers shared by the widgets, drawn with a 1x1 white texture through the
     /// <see cref="SpriteBatch"/> (Render2D has no primitive renderer; this fills that gap for Gui).
-    /// The type is public solely to carry <see cref="TruncateWithEllipsis"/>, the one member consumers
-    /// outside this assembly are meant to call. Every other member is internal widget plumbing.
+    /// <para>The public surface is deliberate rather than blanket. The 2D primitives a game needs to draw its own
+    /// chrome in its own pass are public: <see cref="Fill"/>, <see cref="Border"/> and <see cref="Line"/>, plus
+    /// <see cref="TruncateWithEllipsis"/>. Everything else (the styled fill, the skin path, the glow and the
+    /// widget-specific geometry) is internal widget plumbing with no consumer contract, and stays internal so it
+    /// can change with the widgets.</para>
     /// </summary>
     public static class GuiDraw
     {
-        /// <summary>Fill <paramref name="r"/> with a solid color.</summary>
-        internal static void Fill(SpriteBatch batch, Texture2D white, Rect r, Vector4 color) =>
+        /// <summary>Fill <paramref name="r"/> with a solid colour, as one quad off the 1x1
+        /// <paramref name="white"/> texture. The rect is drawn verbatim, with no device-pixel snapping, so a
+        /// caller that wants crisp edges in a point-space pass snaps it first (see <see cref="Border"/>, which
+        /// does snap).</summary>
+        public static void Fill(SpriteBatch batch, Texture2D white, Rect r, Vector4 color) =>
             batch.Draw(white, new Vector4(r.X, r.Y, r.Width, r.Height), (Color)color);
 
         /// <summary>Return <paramref name="color"/> with its alpha scaled by <paramref name="opacity"/> (RGB kept).
@@ -41,7 +47,7 @@ namespace KhaozEngine.Gui
 
         /// <summary>Draw a <paramref name="thickness"/>-wide line from <paramref name="a"/> to <paramref name="b"/>
         /// as a single rotated quad (the 1x1 white texture; Render2D has no line primitive).</summary>
-        internal static void Line(SpriteBatch batch, Texture2D white, Vector2 a, Vector2 b, float thickness, Vector4 color)
+        public static void Line(SpriteBatch batch, Texture2D white, Vector2 a, Vector2 b, float thickness, Vector4 color)
         {
             Vector2 d = b - a;
             float len = d.Length();
@@ -82,7 +88,7 @@ namespace KhaozEngine.Gui
         /// <summary>Draw a <paramref name="thickness"/>-px outline just inside <paramref name="r"/>. In a point-space
         /// UI pass the rect and thickness snap to whole device pixels so the outline is uniform (no fractional-phase
         /// asymmetry); the snap is a no-op in any other pass, so screen/design/world output is unchanged.</summary>
-        internal static void Border(SpriteBatch batch, Texture2D white, Rect r, float thickness, Vector4 color)
+        public static void Border(SpriteBatch batch, Texture2D white, Rect r, float thickness, Vector4 color)
         {
             if (thickness <= 0f) return;
             r = batch.SnapRect(r);

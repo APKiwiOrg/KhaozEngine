@@ -7,9 +7,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 18.10.0
 
-18.10.0 is sixth backlog wave, seventeen sweep-verified items across Gui, Commerce, Netcode,
-NetWorld, Server.Admin, Primitives, Render3D, Render2D, Telegraphs, the showcase and two tools, each
-fixed with a test proven red against the unfixed code.
+18.10.0 is the sixth, seventh and eighth backlog waves: seventeen sweep-verified items across Gui,
+Commerce, Netcode, NetWorld, Server.Admin, Primitives, Render3D, Render2D, Telegraphs, the showcase
+and two tools, then three smalls, then the eighth wave's 48 fixes and a lead-pile triage that closed
+14 more with written reasons, one new package (`KhaozEngine.Sqlite`) and a wire-compatible catalog
+digest for the tile connect gate. Every fix carries a test proven red against the unfixed code.
 
 Gui parity, the set SpaceGame's tooltip adoption was waiting on:
 
@@ -83,6 +85,192 @@ Rendering and effects:
   ([#363](https://github.com/APKiwiOrg/KhaozEngine/issues/363)).
 - The `savesInFlight` overlapping-write guard in `SaveDirtyPass` gains the save-side test its load-side
   twin has had since 16.6.0 ([#783](https://github.com/APKiwiOrg/KhaozEngine/issues/783)).
+
+The eighth backlog wave rides the same entry: the lead-confidence pile triaged end to end, and the
+verified defects and consumer parity gaps below, each fixed with a test proven red against the unfixed
+code.
+
+Tile world and tile netcode:
+
+- `TileWorldServer.TryGetPlayerSlot(netId, out slot)` is the reverse of `TryGetPlayerNetId`, written
+  and cleared at the two places the seat index changes so the pair cannot drift
+  ([#778](https://github.com/APKiwiOrg/KhaozEngine/issues/778)).
+- A spawner-built actor is linked to its spawner BEFORE `OnActorSpawned` fires, so `TryGetSpawnerOf`
+  answers in the handler the doc points at. A head calling `SpawnActor` directly still gets the event
+  and still answers false ([#755](https://github.com/APKiwiOrg/KhaozEngine/issues/755)).
+- `TileWorldHash.OfCatalogs` digests loaded catalog content (sorted, length-prefixed, invariant floats)
+  and `OfWorldAndCatalogs` folds it in, opt-in on both heads together. `OfWorld` is byte-identical, so
+  a deployed client's connect gate is unchanged until a game opts in
+  ([#714](https://github.com/APKiwiOrg/KhaozEngine/issues/714)).
+- `TileDocumentTargets.TryGetTargetAt(TileCoord, out id)` answers which interactive object covers a
+  tile, across region boundaries, lowest id on overlap so both heads agree
+  ([#711](https://github.com/APKiwiOrg/KhaozEngine/issues/711)).
+- A tile world's manifest carries a marker index: `TileWorldSource.FindMarker` and `Markers` answer
+  before anything streams, the index unions loaded regions with the previous manifest's rows for
+  regions a partial save never read, and an older manifest deserialises to an empty index
+  ([#659](https://github.com/APKiwiOrg/KhaozEngine/issues/659)).
+- The combat serve chunks a viewer's events into frame-sized `EncodeCombat(events, start, count)`
+  calls instead of throwing inside the tick, proven with 130 attacking pairs in one interest set
+  ([#743](https://github.com/APKiwiOrg/KhaozEngine/issues/743)).
+- `TileReach.TryNearest` refuses a target whose footprint is further than `maxRadius + 1` before any
+  search runs (an exact bound on the path window), so a crafted far net id costs no allocation and
+  both heads and both seams share the one definition
+  ([#740](https://github.com/APKiwiOrg/KhaozEngine/issues/740)).
+- `PendingTileCommand` is registered on the `Migrate` channel (`FirstExtensionTypeId + 6`, a 22 byte
+  codec), so a player arrives from a region handoff carrying its command. The design doc's rejected
+  alternative gets a supersession note rather than deletion
+  ([#737](https://github.com/APKiwiOrg/KhaozEngine/issues/737)).
+- `TileEntityTargets` holds a `Migrating` target at its pre-handoff tile for a bounded window
+  (`migratingGraceRefreshes`, default 4, one second at a 250 ms tick, 0 restores the drop), gated on
+  the owned map so the destination's live copy wins during the receive-to-ack overlap
+  ([#738](https://github.com/APKiwiOrg/KhaozEngine/issues/738)). The in-phase chase
+  ([#756](https://github.com/APKiwiOrg/KhaozEngine/issues/756)) is proven unfixable by a tie-break
+  and moves to the roadmap with the trace.
+
+Netcode, server status and identity:
+
+- `NetEndpoint.TryParse(value, defaultPort, out host, out port)` in `KhaozEngine.Netcode` handles a
+  bare host, `host:port`, bracketed IPv6 with and without a port, and a bare IPv6 literal on the
+  default port, with a bounded port ([#780](https://github.com/APKiwiOrg/KhaozEngine/issues/780)).
+- `ServerStatusHealthDeriver.Derive(heartbeat, deployWindow, nowUtc, options)` with
+  `ServerDeployWindow` and `ServerStatusHealthOptions` ships the four-step derivation two games had
+  written apart. The SQL sink half stays game-side
+  ([#777](https://github.com/APKiwiOrg/KhaozEngine/issues/777)).
+- `IIdentityValidator.ValidateDetailedAsync` returns an `IdentityValidation` whose outcome is
+  `Verified`, `Refused` or `ProviderUnavailable`. The default maps the old null to `Refused`, so
+  existing callers keep their meaning. `DiscordTokenValidator` splits on the status class (5xx, 429,
+  408, a transport failure or a client-side timeout read as unavailable). `OidcTokenValidator` takes
+  the default for now ([#791](https://github.com/APKiwiOrg/KhaozEngine/issues/791))
+  ([#773](https://github.com/APKiwiOrg/KhaozEngine/issues/773)).
+
+NetWorld, WorldStore and the SQLite backends:
+
+- **New package `KhaozEngine.Sqlite`**, a dependency leaf below `WorldStore.Sqlite` and
+  `Commerce.Sqlite`: `SqliteStoreConnection` owns the connection, the bootstrap DDL, the lease gate
+  and the pool-clearing dispose that both stores had copy pasted and leaked three times. Both engine
+  stores keep only schema and SQL, and the file-lifetime release test is an abstract contract a fourth
+  store proves by deriving ([#731](https://github.com/APKiwiOrg/KhaozEngine/issues/731)).
+- `IAdminControllable.SetPosition` is a second position lever that does not stamp `TeleportEpoch`, a
+  default interface method forwarding to `Teleport` so an external head keeps compiling. Both engine
+  heads override it and share the apply path with `Teleport`, so a per-tick clamp no longer
+  advertises sixty discontinuities a second
+  ([#379](https://github.com/APKiwiOrg/KhaozEngine/issues/379)).
+- `WorldPersistence.PrewarmResumeHintsAsync` (the record-agnostic `StatePersistence<TState>.
+  PrewarmHintsAsync` underneath) fills the resume-hint cache from an `IEnumerableWorldStore` at boot,
+  newest-first read, oldest-first recorded so the freshest account is not the first eviction,
+  quarantine keys excluded explicitly ([#671](https://github.com/APKiwiOrg/KhaozEngine/issues/671)).
+  The cell-blob schema bump ([#784](https://github.com/APKiwiOrg/KhaozEngine/issues/784)) turned
+  out to have shipped in 17.38.0 and is closed refuted with the shas.
+
+Gui, all defaults byte-identical:
+
+- `GuiDraw.Fill`, `Border` and `Line` are public, the widget plumbing stays internal
+  ([#769](https://github.com/APKiwiOrg/KhaozEngine/issues/769)).
+- `SlotGrid.SlotWidth` and `SlotHeight` (both 48, `SlotSize` writes both), plus `RightClickedSlot`
+  and `OnSlotRightClicked` through `Pointer.IsRightTapIn`
+  ([#775](https://github.com/APKiwiOrg/KhaozEngine/issues/775)).
+- `DiagnosticsHud.AddSection(Func<OverlaySection?>)` and `ClearSections()` compose a game section
+  after the built-in four on the same throttled refresh, and `GameAppOptions.DiagnosticsVisibleAtBoot`
+  feeds the new `visibleAtBoot` constructor argument
+  ([#774](https://github.com/APKiwiOrg/KhaozEngine/issues/774)).
+- `DropdownOption` is `(LocalizedText Content, int Value)`, `Dropdown.SelectedContent` is the raw
+  value, and `ScrollablePanel.DrawHeader` takes a `LocalizedText`. The raw-string paths stay behind
+  `[Obsolete]` the way `Button` did, and KELOC001 now fires on a bare option label, proven on the
+  showcase ([#104](https://github.com/APKiwiOrg/KhaozEngine/issues/104)).
+- `ScreenStack.PressBeganOverUi` answers whether the live press began over a screen, latched after
+  the screen loop and only on a fresh press origin, which needed `Pointer.IsPressOriginFresh` (true
+  on the one frame the origin latched, so a same-frame tap over UI does not read a stale latch)
+  ([#776](https://github.com/APKiwiOrg/KhaozEngine/issues/776)).
+
+Primitives, game and app:
+
+- `RayMath.IntersectObbY(origin, direction, center, yaw, min, max, out tNear)`, the oriented-box test
+  `TileObjectRaycast` was hand-rolling, now calls it
+  ([#779](https://github.com/APKiwiOrg/KhaozEngine/issues/779)).
+- `DeterministicRng` names its recurrence honestly: a xorshift128+-derived variant whose returned sum
+  is taken after the state update. The stream is byte-identical (the seed-42 pins, the `State`
+  save/resume contract, the dungeon generator and the audio picker all depend on it) and a test pins
+  both halves so a tidy-up cannot convert it
+  ([#153](https://github.com/APKiwiOrg/KhaozEngine/issues/153)).
+- `GameAppOptions.PauseOnFocusLoss` (default `false`) pauses the `GameClock` while the window is
+  backgrounded, driven off `Frame.Input.WindowFocused` before the clock updates, and only ever lifts a
+  pause it took itself ([#177](https://github.com/APKiwiOrg/KhaozEngine/issues/177)).
+- `SceneManager.SetFrameContext(input, pointer, viewport, uiViewport, uiPointer, frameWidth,
+  frameHeight)` replaces the seven-property manual wiring (the properties stay), so a missing piece
+  is a compile error in every configuration rather than a Debug-only assert
+  ([#178](https://github.com/APKiwiOrg/KhaozEngine/issues/178)).
+
+Rendering, GPU and showcase:
+
+- The three showcase rooms share one `CharacterRigLoader`, and it uploads the skinned mesh only after
+  every fallible step, so a clip read that throws uploads nothing
+  ([#189](https://github.com/APKiwiOrg/KhaozEngine/issues/189),
+  [#187](https://github.com/APKiwiOrg/KhaozEngine/issues/187)).
+- Native Direct3D 11 and Vulkan `UpdateTexture` check the mip level and the region against the mip
+  they are aimed at, in 64 bits, the shape Metal already had, and all three staging layouts name the
+  right parameter when refusing ([#697](https://github.com/APKiwiOrg/KhaozEngine/issues/697)).
+- `CharacterController3D.FacingYaw` and `LandingImpactSpeed` are readable and `FaceCamera` is a
+  per-frame toggle, so `FacingTurnSpeed` has something to drive
+  ([#436](https://github.com/APKiwiOrg/KhaozEngine/issues/436)).
+
+Six defects that were filed as low priority and are not:
+
+- A non-finite frame time no longer poisons `ClientPrediction.RenderedState` for the rest of the
+  session, and `WorldClient` sanitises the delta once for the prediction layer, the net-stats window,
+  the render clock and the trace, so +Infinity cannot pin the presentation clock either
+  ([#733](https://github.com/APKiwiOrg/KhaozEngine/issues/733)).
+- `ServerAdmin.BanAsync` refuses a guest account with an `ArgumentException` pointing at Kick instead
+  of banning the seat, and `POST /admin/ban` answers 400 with the reason
+  ([#663](https://github.com/APKiwiOrg/KhaozEngine/issues/663)).
+- A verified subject inside the reserved `guest:` namespace is refused at the join with an Error log
+  naming the subject and the fix, on both heads, instead of silently losing every save that session
+  ([#664](https://github.com/APKiwiOrg/KhaozEngine/issues/664)).
+- `AnimationPlayer` holds a one-shot at frame 0 when played backwards instead of underflowing
+  ([#487](https://github.com/APKiwiOrg/KhaozEngine/issues/487)).
+- A tile combatant faces its target on every tick it is in reach (OSRS's continuous turn), so the
+  step-off no longer leaves it drawn 180 degrees wrong
+  ([#753](https://github.com/APKiwiOrg/KhaozEngine/issues/753)).
+- `ke-sfxbake`'s process runner drains stdout and stderr concurrently and bounds the wait (5 minutes
+  by default, a `TimeSpan` to change it), killing the tree and throwing `TimeoutException` on
+  overrun, so an ffmpeg that floods stderr no longer deadlocks the tool
+  ([#117](https://github.com/APKiwiOrg/KhaozEngine/issues/117)).
+
+Leads verified this wave and fixed in the same pass:
+
+- `CellSim.TryRestoreOwned` drops and counts any blob entity whose NetId the cell already owns
+  (`CellRestoreResult.SkippedOwnedCount`), so a custom `ICellPersistenceHost` that captured a live
+  player cannot re-point ownership at the stale copy on restore, and the seam doc says the exclusion
+  is the implementer's job ([#653](https://github.com/APKiwiOrg/KhaozEngine/issues/653)).
+- `TextLayout`'s wrap cache no longer holds a disposed measurer reachable through `WrapKey`
+  ([#767](https://github.com/APKiwiOrg/KhaozEngine/issues/767)).
+- The map editor catches `MapDocumentException` at the world-rebuild boundary, puts the message on
+  the status strip and keeps the world on screen, with the rebuild seams in their own
+  `MapEditorScene.WorldRebuild.cs` partial ([#77](https://github.com/APKiwiOrg/KhaozEngine/issues/77)).
+- `MapTiledDurabilityTests` measures per-tile allocation with `GC.GetAllocatedBytesForCurrentThread`
+  instead of a heap-size delta a mid-window collection could turn negative, which also drops the two
+  forced full collections ([#630](https://github.com/APKiwiOrg/KhaozEngine/issues/630)).
+- The ocean focus amplitude-bias claim is pinned headlessly (the correlated-tap gain off
+  `OceanFocus.Sectors` is 1 at the sector edges and sqrt(2) at the midpoint, never outside) and the
+  showcase arms `SessionLog` with the crash handler at boot so the next one-off exception is captured
+  ([#641](https://github.com/APKiwiOrg/KhaozEngine/issues/641),
+  [#607](https://github.com/APKiwiOrg/KhaozEngine/issues/607), both stay open for their rendering
+  and recurrence halves).
+
+Hygiene, ten small docs and code items: the Terrain.Render3D description, the AGENTS test-assembly
+count, the pre-commit hook calling `check-dashes.sh` instead of duplicating it, three Veldrid-era
+reasons in the GPU packages plus the two siblings the issue's own grep found, tile netcode doc nits, the
+top-down compass, the Commerce SqlServer README's credit path, the README Depends-on curation rule,
+`Nameplate.Bars` nullable, and the GPU-skinning stand-down guarded on a retired backend kind
+([#351](https://github.com/APKiwiOrg/KhaozEngine/issues/351),
+[#430](https://github.com/APKiwiOrg/KhaozEngine/issues/430),
+[#474](https://github.com/APKiwiOrg/KhaozEngine/issues/474),
+[#749](https://github.com/APKiwiOrg/KhaozEngine/issues/749),
+[#705](https://github.com/APKiwiOrg/KhaozEngine/issues/705),
+[#635](https://github.com/APKiwiOrg/KhaozEngine/issues/635),
+[#772](https://github.com/APKiwiOrg/KhaozEngine/issues/772),
+[#248](https://github.com/APKiwiOrg/KhaozEngine/issues/248),
+[#757](https://github.com/APKiwiOrg/KhaozEngine/issues/757),
+[#787](https://github.com/APKiwiOrg/KhaozEngine/issues/787)).
 
 ## 18.9.0
 

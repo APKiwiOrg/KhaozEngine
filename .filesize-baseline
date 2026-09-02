@@ -33,7 +33,7 @@
 # This file is per-repo and is NOT part of the verbatim template layer.
 
 4420 KhaozEngine.MapEditor.Tests/MapEditor/MapEditorSceneTests.cs
-3276 KhaozEngine.MapEditor/MapEditorScene.cs
+3215 KhaozEngine.MapEditor/MapEditorScene.cs
 2803 KhaozEngine.Render3D/Scene3D.cs
 2527 KhaozEngine.MapEditor/EditorCommands.cs
 2123 KhaozEngine.MapEditor.Tests/MapEditor/EditorCommandsTests.cs

@@ -129,6 +129,11 @@ public class TileActorSpawnTests
         Assert.Throws<ArgumentOutOfRangeException>(
             () => s.SpawnActor(new TileCoord(12, 12, 0), Rat with { MaxHealth = 0 }));
         Assert.Equal(0, s.ActorCount);
+        // ActorCount reads actorNetIds alone, and that list is appended AFTER the entity exists, so it stays zero
+        // for a refusal that moved BELOW host.SpawnOwned and left a real orphan owned by a cell: an entity nothing
+        // indexes, served to every viewer around it forever. The GRID is what says nothing was built, so that is
+        // what the door test asserts.
+        foreach (CellSim cell in s.Host.Cells) Assert.Equal(0, cell.OwnedCount);
     }
 
     [Fact]

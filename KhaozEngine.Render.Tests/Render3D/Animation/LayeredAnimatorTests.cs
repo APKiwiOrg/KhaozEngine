@@ -11,8 +11,10 @@ namespace KhaozEngine.Tests.Render3D.Animation
     // shortest-arc double-cover, zero/full-layer bit-identity, weight-ramp continuity, and determinism. Pose math is
     // pure CPU, so everything runs GPU-free (no device). In the AllocSensitive collection so the zero-alloc assertion
     // is not taken while the parallel-ForEach tests churn the GC on other threads.
+    // Split across two files so neither crosses the file-size ratchet: the multi-node and layer-stacking rows the
+    // #20 review asked for live in LayeredAnimatorTests.Hierarchy.cs and share these helpers.
     [Collection("AllocSensitive")]
-    public class LayeredAnimatorTests
+    public partial class LayeredAnimatorTests
     {
         // A three-node chain: node 0 root, node 1 child of 0, node 2 child of 1 (topological, parent < child).
         // One bone per node so a composed palette reads each node's WORLD transform directly (root == local).

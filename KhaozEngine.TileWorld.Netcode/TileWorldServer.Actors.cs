@@ -24,6 +24,16 @@ public sealed partial class TileWorldServer
     // about its own dictionary. It is also the ONLY index of who is an actor that survives a cell handoff, since
     // the TileActor tag is on no replication channel and a Migrate capture therefore drops it.
     readonly List<long> actorNetIds = new();
+    // netId -> the cell each actor was last SEEN owned by. Written at the spawn door and refreshed by
+    // WriteActorCommand, which is already unconditional every tick for every live actor and already holds the cell,
+    // so the entry costs one dictionary store on a path that does two component writes. What it is FOR is the one
+    // question ShardHost cannot answer: a cell eviction removes the CellSim outright, so an entity frozen in that
+    // cell is owned by nothing the host holds and TryGetOwner reports it gone. Materialising the coordinate is what
+    // runs a head's restore hook and hands the entity back, and this is the only record of WHICH coordinate. It is
+    // a coordinate rather than a CellSim for the reason wiredCells is: a cell is a different object each time it
+    // comes back. One tick stale after a crossing, which only matters for an actor whose NEW cell was evicted
+    // between the two, and there the resolve simply falls through as it did before.
+    readonly Dictionary<long, CellCoord> actorCells = new();
 
     /// <summary>The spawner list and the actor tick, driven from this server's own tick body at step 1b. A head adds
     /// its authored spawn points here and never has to call anything per tick.</summary>
@@ -122,6 +132,7 @@ public sealed partial class TileWorldServer
         // second is the localization rule: a player's display name is a verified fact the connect token produced,
         // and a monster's name is PROSE the server owns no catalog for.
         actorNetIds.Add(netId);
+        actorCells[netId] = cell.Coord;
         // The tile it was BORN on, recorded before anything else can see the actor, because this is the one place
         // that knows it without asking the world. It is what a behaviour is handed as HOME for an actor no spawner
         // built, and a home read off the actor's current tile instead is a home that moves with it.
@@ -146,12 +157,30 @@ public sealed partial class TileWorldServer
     {
         if (!actorNetIds.Remove(netId)) return false;
         Actors.Forget(netId);
-        if (host.TryGetOwner(netId, out CellSim cell, out Entity e) && cell.World.IsAlive(e))
+        bool owned = TryResolveActor(netId, out CellSim cell, out Entity e);
+        actorCells.Remove(netId);
+        if (owned && cell.World.IsAlive(e))
         {
             cell.UnregisterOwned(netId);
             cell.World.Despawn(e);
         }
         return true;
+    }
+
+    // TryGetOwner, plus the cell this actor was last SEEN in materialised first when nothing answers. An entity
+    // frozen in an evicted cell is owned by no live cell at all, so the host reports it gone and a despawn that
+    // stopped there left it in the freeze to come back on the next visit to that coordinate as an entity nothing
+    // on this server indexes. Instantiating the coordinate is what runs whatever restore a head wired to
+    // CellCreated, and that is the only path this package has to a freeze it cannot see: cell persistence is the
+    // head's, and TileWorld.Netcode is a sibling of the stack that owns an evictor rather than a dependent of it.
+    // Skipped when the coordinate IS live, so an ordinary despawn is exactly the lookup it always was and a miss
+    // there still means the entity is genuinely gone rather than frozen.
+    bool TryResolveActor(long netId, out CellSim cell, out Entity entity)
+    {
+        if (host.TryGetOwner(netId, out cell, out entity)) return true;
+        if (!actorCells.TryGetValue(netId, out CellCoord last) || host.TryGetCell(last, out _)) return false;
+        host.EnsureCell(last);
+        return host.TryGetOwner(netId, out cell, out entity);
     }
 
     /// <summary>
@@ -304,6 +333,9 @@ public sealed partial class TileWorldServer
     {
         if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) return false;
         if (!cell.World.IsAlive(e)) return false;
+        // The last-seen cell, refreshed here because this is the one pass that is documented to run for every live
+        // actor on every tick and it already has the cell in hand.
+        actorCells[netId] = cell.Coord;
         cell.World.Set(e, new TileActor());
         cell.World.Set(e, new PendingTileCommand { Command = command });
         return true;
@@ -314,6 +346,13 @@ public sealed partial class TileWorldServer
     // so an index would be a cache to keep correct across every handoff for no measurable saving.
     int ActorsIn(CellCoord coord)
     {
+        // MATERIALISED FIRST, because this is a CAP and an entity frozen in an evicted cell is one no live cell
+        // owns: a DurableOnly actor waiting in a freeze would be invisible here and a spawner would put another one
+        // on top of it, over the budget the moment the coordinate is re-entered. Instantiating it runs a head's
+        // restore hook, which is what hands the frozen actors back, and it costs nothing on either answer: a
+        // PASSING count is followed by a SpawnOwned that creates the same cell a few lines later, and a REFUSING
+        // count needs the cell to be there already to have anything to refuse.
+        host.EnsureCell(coord);
         int n = 0;
         for (int i = 0; i < actorNetIds.Count; i++)
             if (host.TryGetOwner(actorNetIds[i], out CellSim cell, out _) && cell.Coord.Equals(coord)) n++;

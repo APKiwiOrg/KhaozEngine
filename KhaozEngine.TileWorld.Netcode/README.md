@@ -191,7 +191,10 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
 - **`TileActorSpawn`** / **`TileWorldServer.SpawnActor`** / **`DespawnActor`** - the door. The spec is the numbers
   that go on ONE entity (`MaxHealth`, `AttackTicks`, `Facing`, `Mode`), and the door refuses a zero `MaxHealth`, an
   off-map or off-plane tile and a cell already at `MaxActorsPerCell` by answering 0 rather than throwing, so a
-  spawner can never take a tick down with it. `RefusedActorSpawnCount` counts the refusals.
+  spawner can never take a tick down with it. `RefusedActorSpawnCount` counts the refusals. An actor is
+  `Transient` at `DurableOnly`, so a cell eviction FREEZES it rather than ending it, and both doors instantiate
+  the coordinate before they resolve: the cap counts a frozen actor rather than admitting a spawn on top of it,
+  and the despawn reaches one rather than leaving it to come back as an entity nothing indexes.
 - **`TileActorDefinition`** / **`TileActorSpawner`** / **`TileActorSpawnerState`** - what a spawn POINT is authored
   from (id, max health, step mode, attack cadence, wander and leash radii, respawn delay, and a game-owned `Kind`),
   and the spawner that owns one home tile, its live actor and its respawn countdown. `LeashRadius` is checked

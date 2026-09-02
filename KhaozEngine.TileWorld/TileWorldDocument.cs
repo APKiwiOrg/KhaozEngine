@@ -150,8 +150,17 @@ public sealed partial class TileWorldDocument
     }
 
     /// <summary>The object with this id, or null when no such object is indexed.</summary>
-    public TileObject? FindObject(long id) =>
-        _objectIndex.TryGetValue(id, out TileRegion? r) ? r.Objects.Find(o => o.Id == id) : null;
+    public TileObject? FindObject(long id)
+    {
+        // Indexed loop rather than List.Find with a lambda: the predicate captures id, so the old form allocated
+        // a closure and a delegate on EVERY lookup. Harmless in the editor, and the tile netcode resolves an
+        // interaction target through here on each command and on each reconcile replay of an unacked one.
+        if (!_objectIndex.TryGetValue(id, out TileRegion? r)) return null;
+        List<TileObject> objects = r.Objects;
+        for (int i = 0; i < objects.Count; i++)
+            if (objects[i].Id == id) return objects[i];
+        return null;
+    }
 
     /// <summary>Deletes the object. False when no such object is indexed.</summary>
     public bool RemoveObject(long id)

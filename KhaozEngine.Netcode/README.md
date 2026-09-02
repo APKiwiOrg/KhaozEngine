@@ -436,3 +436,33 @@ match on, which needs a Ruinborne protocol-version bump plus a client-side reaso
 also the stricter of the two: `RuinborneWorldIdentity` reads a body with no pipe as all-server-hash, where
 `TryParseWorldMismatch` returns false. The engine's own producer always writes the pipe, so nothing breaks today,
 but the swap has to account for the dropped tolerance.
+
+## NetEndpoint: parsing the address a player typed
+
+`NetEndpoint.TryParse` turns a server address into a host and a port. It covers a bare host, `host:port`, a
+bracketed IPv6 literal with or without a port, and a bare (unbracketed) IPv6 literal, which takes the default
+port the caller supplies.
+
+```csharp
+if (!NetEndpoint.TryParse(configuredAddress, defaultPort: 7777, out string host, out int port))
+{
+    // One rejection for every malformed form, including the ones that used to parse into something plausible.
+    return null;
+}
+
+await transport.ConnectAsync(host, port);
+```
+
+Two games hand-rolled this and one of them was wrong, which is why it is here. The obvious implementation
+splits on the last colon, and that reading breaks on every unbracketed IPv6 literal: `"::1"` splits into a host
+of `":"` and a port of `1`, and both halves pass an ordinary bounds check, so the client silently dials an
+endpoint nobody asked for instead of reporting a bad address. Brackets are what separate an address's colons
+from the port separator, so an unbracketed literal keeps all of its colons and never yields a port. That also
+settles `"fe80::1:9000"`, which is one whole IPv6 literal here rather than a host and a port.
+
+The rest of the contract: surrounding whitespace is trimmed, a null or blank address is rejected rather than
+defaulted (what an unset address means is the caller's decision), ports are bounded to `[1, 65535]` with no
+sign and no separators, and a bracketed literal must actually parse as IPv6. A `defaultPort` outside
+`[1, 65535]` throws `ArgumentOutOfRangeException`, because that is a wiring mistake in the caller rather than
+bad input. Nothing here touches DNS or a socket: the host comes back as written (brackets stripped) and
+resolving it stays the transport's job.

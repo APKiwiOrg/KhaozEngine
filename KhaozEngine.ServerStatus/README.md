@@ -25,7 +25,7 @@ game client and headless server keep resolving the `net10.0` assets automaticall
 - **The game server** heartbeats a liveness row on a timer (it already has SQL access) via
   `IServerHeartbeatSink`.
 - **The endpoint** derives `health` from the newest heartbeat's age plus the deploy window, and serves the
-  `ServerStatusReport`.
+  `ServerStatusReport`. `ServerStatusHealthDeriver` is that derivation.
 - **The client** polls with `ServerStatusClient`, then maps the report to an actionable state with
   `ServerStatusEvaluator`.
 
@@ -152,6 +152,38 @@ and types are the game's). A write failure is contained (logged, surfaced via `C
 `LastError`, never rethrown into the server loop) and skips at most one beat rather than storming. Use
 `NullServerHeartbeatSink` for local runs and `InMemoryServerHeartbeatSink` in tests.
 
+## Deriving health server-side (`ServerStatusHealthDeriver`)
+
+The endpoint turns the heartbeat and the deploy window into the `health` field it serves.
+`ServerStatusHealthDeriver.Derive` is that step, pure and clock-free, so an endpoint can unit-test its own
+answers without a database.
+
+```csharp
+ServerHealth health = ServerStatusHealthDeriver.Derive(
+    newestHeartbeat,                                  // null when the store has never held one
+    new ServerDeployWindow(lastDeployUtc, expectedBackUtc),
+    DateTimeOffset.UtcNow,
+    new ServerStatusHealthOptions { HeartbeatStaleAfter = TimeSpan.FromSeconds(60) });
+```
+
+Precedence, first match wins:
+
+1. **Unknown** - no heartbeat has ever been written. Null is "never seen", not "seen long ago": a server with
+   no heartbeat in its history has never been observed up, so calling it Down would be inventing history.
+2. **Restarting** - a deploy window is active. Either `ExpectedBackUtc` is still in the future, or
+   `LastDeployUtc` is inside `DeployGrace` (default 120 s). A declared window wins even when the old process is
+   still beating, because CI/CD set it deliberately.
+3. **Healthy** - the heartbeat is no older than `HeartbeatStaleAfter` (default 60 s).
+4. **Down** - the heartbeat is stale and no deploy window explains it.
+
+This is the producing half of what `ServerStatusEvaluator` consumes, which is why it ships here rather than in
+each game's status endpoint. Two games had written the same deriver, four lines apart, each with a comment
+about keeping its precedence in step with the evaluator by hand. Precedence that has to agree across a wire is
+not something to maintain in two places.
+
+The durable sink half of that duplication is still game-side. See the heartbeat section above: the engine
+defines the row and the seam, the game owns the upsert.
+
 ## Idle shutdown (a server head that stops costing money when nobody is playing)
 
 A server billed by the second charges the same for an empty world as a full one, so a game with scheduled or
@@ -197,6 +229,9 @@ you have built is a server that becomes unreachable.
   ordered row list for an in-game "server status" page (GPU-free, Gui-free).
 - **`IServerHeartbeatSink`** / **`ServerHeartbeat`** / **`ServerHeartbeatService`** - the liveness-write seam,
   its row value type, and the cadence driver (+ `Null` / `InMemory` reference sinks).
+- **`ServerStatusHealthDeriver`** / **`ServerDeployWindow`** / **`ServerStatusHealthOptions`** - the
+  server-side heartbeat-age + deploy-window -> `ServerHealth` map, the producing half of what
+  `ServerStatusEvaluator` consumes.
 - **`IdleShutdownService`** - watches a player count and requests a graceful shutdown once the server has been
   empty for a configured window, for server heads billed by the second.
 - **`VersionOrder`** - numeric `x.y.z` comparison for the version gates. A thin wrapper over

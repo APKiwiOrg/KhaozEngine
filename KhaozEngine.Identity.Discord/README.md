@@ -19,7 +19,12 @@ OAuth2 authorization-code + PKCE flow, using the system browser and a local loop
   makes the validator safe to exchange for a session token: the plain `users/@me` endpoint answers for ANY
   application's access token and never names the issuing app, so validating against it would accept a token
   minted for a *different* Discord app (an account-takeover vector). A non-success response, a token from a
-  different app, or a malformed body all return null (fail-closed).
+  different app, or a malformed body all return null (fail-closed). `ValidateDetailedAsync` is the member
+  that splits the outage case out of that null: any 5xx, a 429 rate limit, a 408, or a request that never
+  completed report `ProviderUnavailable`, and every other non-success reports `Refused`. The distinction
+  matters because a client that reads an outage as a refusal discards a good token and re-runs sign-in
+  against a provider that is already down. `ValidateAsync` keeps its exact old behaviour, transport failure
+  included, so existing callers are unaffected.
 - **DiscordProviderOptions** - client id, scopes (default `identify email`), loopback port, and HTTP
   timeout. `SignInTimeout` (default 5 minutes) bounds the **whole** interactive sign-in, the open-ended wait
   on the browser redirect included: `HttpTimeout` only feeds the `HttpClient` used for the token exchange, so
@@ -71,6 +76,10 @@ ProviderCredential credential = await provider.SignInAsync();
 // Pass the consumer's own Discord client id: the validator rejects any token minted for a different app.
 DiscordTokenValidator validator = new(options.ClientId);
 VerifiedIdentity? identity = await validator.ValidateAsync(credential.CredentialToken);
+
+// Or, to keep a Discord outage from reading as a bad token (503 to the client, not 401):
+IdentityValidation result = await validator.ValidateDetailedAsync(credential.CredentialToken);
+if (result.Outcome == IdentityValidationOutcome.ProviderUnavailable) { /* back off and retry */ }
 ```
 
 See [KhaozEngine.Identity](../KhaozEngine.Identity/README.md) for the full client `IdentitySession` +

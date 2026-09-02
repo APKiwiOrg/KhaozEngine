@@ -9321,6 +9321,34 @@ into the tick loop) and skips at most one beat - a skipped beat is truthful, the
 heartbeat and reports `down` accordingly. `NullServerHeartbeatSink` (local runs) and `InMemoryServerHeartbeatSink`
 (tests) are the reference sinks.
 
+### Deriving health in the status endpoint (`ServerStatusHealthDeriver`)
+
+The endpoint turns the newest heartbeat plus the deploy window into the `health` field it serves, and that step
+is engine code now:
+
+```csharp
+ServerHealth health = ServerStatusHealthDeriver.Derive(
+    newestHeartbeat,                                   // null when the store has never held one
+    new ServerDeployWindow(lastDeployUtc, expectedBackUtc),
+    DateTimeOffset.UtcNow,
+    new ServerStatusHealthOptions
+    {
+        HeartbeatStaleAfter = TimeSpan.FromSeconds(60),
+        DeployGrace = TimeSpan.FromSeconds(120),
+    });
+```
+
+Precedence, first match wins: no heartbeat ever written is `Unknown` (never seen, which is not the same as
+seen long ago), an active deploy window is `Restarting` (`ExpectedBackUtc` still in the future, or
+`LastDeployUtc` inside `DeployGrace`), a heartbeat no older than `HeartbeatStaleAfter` is `Healthy`, and
+anything left is `Down`. A declared window wins over a still-beating old process, because CI/CD set it
+deliberately.
+
+Pure and clock-free (the caller passes `nowUtc`), so an endpoint unit-tests its own answers with no database.
+It is the producing half of what `ServerStatusEvaluator` consumes on the client, which is why it ships here:
+two games had written the same deriver four lines apart, each keeping its precedence in step with the
+evaluator by hand. The durable sink stays game-side, per the heartbeat section above.
+
 ### Status readout (in-game status page)
 
 `ServerStatusReadout.Build(snapshot, view, clientVersion, nowUtc)` turns a poller snapshot + evaluated view
@@ -12373,6 +12401,35 @@ where it should live); every subsequent authenticated request calls `SessionToke
 secret. `SessionToken` is a fixed-time-compared HMAC-SHA256, so it never round-trips to the provider once
 minted.
 
+### A provider outage is not a bad credential
+
+`ValidateAsync` answers null for everything that is not a verified identity, so a Discord 500 or a 429 rate
+limit is indistinguishable from an expired token. Acting on that reads an outage as a refusal: the client
+discards a good credential and re-runs sign-in against a provider that is already down.
+
+`ValidateDetailedAsync` carries the third outcome:
+
+```csharp
+IdentityValidation result = await validator.ValidateDetailedAsync(credentialTokenFromClient, ct);
+switch (result.Outcome)
+{
+    case IdentityValidationOutcome.Verified:
+        VerifiedIdentity identity = result.Identity!.Value;
+        return Results.Ok(Mint(identity));
+    case IdentityValidationOutcome.ProviderUnavailable:
+        return Results.StatusCode(503);   // keep the credential, back off, retry
+    default:
+        return Results.Unauthorized();    // Refused: sign in again
+}
+```
+
+It is a default interface member, so every validator already has it. The default calls `ValidateAsync` and
+maps null to `Refused`, which is what null already meant, so nothing that exists today changes meaning.
+`DiscordTokenValidator` overrides it and splits on the HTTP status class: any 5xx, a 429, a 408, or a request
+that never completed report `ProviderUnavailable`, everything else non-success reports `Refused`.
+`OidcTokenValidator` takes the default for now, so an OIDC outage still reads as `Refused`. `result.Detail` is
+a developer-facing note (a status code, an exception message), never localized and never shown to a player.
+
 ### Offline grace
 
 `IdentitySession.RestoreAsync` implements a small state machine off the cached session's
@@ -13330,6 +13387,31 @@ window or GPU. When a connection drops, call `commandQueue.Forget(slot)` before 
 connection: the queue rejects any seq at or below a slot's high-water mark (anti-replay), and a recycled slot
 whose mark is stale would reject the new player's seq-0-onward input and freeze them. (`WorldServer` and
 `ShardedWorldServer` do this for you.)
+
+### Parsing the address a player typed (`NetEndpoint`)
+
+Before any of that runs there is a string to turn into a host and a port: an env var, a config field, a text box
+on the connect screen. `NetEndpoint.TryParse` (in `KhaozEngine.Netcode`) is that parser.
+
+```csharp
+if (!NetEndpoint.TryParse(address, defaultPort: 7777, out string host, out int port))
+{
+    ShowBadAddress(address);   // one rejection covering every malformed form
+    return;
+}
+
+transport.Connect(host, port);
+```
+
+Accepted forms: a bare host, `host:port`, `[ipv6]`, `[ipv6]:port`, and a bare unbracketed IPv6 literal, which
+takes `defaultPort`. Whitespace is trimmed, a null or blank address returns false rather than defaulting, ports
+are bounded to `[1, 65535]`, and a `defaultPort` outside that range throws `ArgumentOutOfRangeException`.
+
+The reason it is engine code: the hand-rolled version splits on the last colon, which reads `"::1"` as host `":"`
+and port `1`. Every bounds check passes, so the client dials an endpoint nobody asked for rather than reporting a
+bad address. Brackets are what tell an address's colons apart from the port separator, so here an unbracketed
+literal keeps every colon in the host and never yields a port. `"fe80::1:9000"` is therefore one whole address on
+the default port, not a host with a port.
 
 ### Worker-pool seam (`IJobScheduler`) + parallel cell ticks
 

@@ -194,7 +194,9 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   spawner can never take a tick down with it. `RefusedActorSpawnCount` counts the refusals.
 - **`TileActorDefinition`** / **`TileActorSpawner`** / **`TileActorSpawnerState`** - what a spawn POINT is authored
   from (id, max health, step mode, attack cadence, wander and leash radii, respawn delay, and a game-owned `Kind`),
-  and the spawner that owns one home tile, its live actor and its respawn countdown.
+  and the spawner that owns one home tile, its live actor and its respawn countdown. `LeashRadius` is checked
+  against `TileWorldServerConfig.ActorMove.MaxPathRadius` where the definition arrives, at `TileActorHost.Add`,
+  because a leash beyond the pathfinder's window is a walk home it cannot plan in one go.
 - **`TileActorHost`** (`server.Actors`) - `Add(definition, home)` to register a spawner, `Command(netId, command)`
   to latch one command onto one actor, `Behaviour` and `Seed` for the decision seam, `Spawners`,
   `TryGetSpawnerOf`, `Forget` (the despawn hook, dropping the unspent latch, the birth tile and the spawner link

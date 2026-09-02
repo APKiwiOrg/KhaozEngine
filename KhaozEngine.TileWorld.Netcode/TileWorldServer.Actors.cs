@@ -43,6 +43,12 @@ public sealed partial class TileWorldServer
     /// <summary>Live actors on this server.</summary>
     public int ActorCount => actorNetIds.Count;
 
+    // The actor simulator's pathfinder window, which is the ceiling a definition's LeashRadius is authored against:
+    // a leash longer than the window is a walk home the pathfinder cannot plan in one go. Internal because the
+    // reader is TileActorHost.Add, which is the one door a definition comes through and the only place both the
+    // definition and this server's config are in hand at once.
+    internal int ActorPathRadius => config.ActorMove.MaxPathRadius;
+
     /// <summary>Live actors' net ids in SPAWN ORDER, which is the order every actor pass runs in. The live list, so
     /// it reflects a spawn or a despawn immediately and must not be enumerated across one.</summary>
     public IReadOnlyList<long> ActorNetIds => actorNetIds;

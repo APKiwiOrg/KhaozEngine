@@ -89,14 +89,31 @@ public sealed class TileActorHost
         spawnerByActor.TryGetValue(netId, out spawner!);
 
     /// <summary>Adds an authored spawn point and returns it, so a caller can read its state later. It spawns on the
-    /// next tick rather than now, which keeps every actor's first tick the same tick.</summary>
+    /// next tick rather than now, which keeps every actor's first tick the same tick.
+    /// <para>THE LEASH IS CHECKED AGAINST THE ACTOR SIMULATOR'S PATH WINDOW here, which is the one place both the
+    /// definition and the server's <see cref="TileWorldServerConfig.ActorMove"/> are in hand.
+    /// <see cref="TileActorDefinition.LeashRadius"/> has always said it is sized against that radius and nothing
+    /// read the relation: a leash longer than the window is a walk home <c>TilePathfinder.FindPath</c> cannot plan
+    /// in one go, so the break paths to the nearest reachable tile instead and the actor arrives home in as many
+    /// hops as the drag was long. Refused at the door for the reason <see cref="TileActorSpawner"/> refuses its
+    /// own numbers there: a content mistake that waits for the first leash surfaces inside a server tick, hours
+    /// after the content shipped.</para>
+    /// </summary>
     /// <param name="definition">What to build there.</param>
     /// <param name="home">Where to build it.</param>
     /// <exception cref="ArgumentNullException"><paramref name="definition"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="definition"/> is refused by
-    /// <see cref="TileActorSpawner"/>'s own door.</exception>
+    /// <see cref="TileActorSpawner"/>'s own door, or its <see cref="TileActorDefinition.LeashRadius"/> is above
+    /// this server's <see cref="TileMoveOptions.MaxPathRadius"/> for actors.</exception>
     public TileActorSpawner Add(TileActorDefinition definition, TileCoord home)
     {
+        ArgumentNullException.ThrowIfNull(definition);
+        int pathRadius = server.ActorPathRadius;
+        if (definition.LeashRadius > pathRadius)
+            throw new ArgumentOutOfRangeException(nameof(definition), definition.LeashRadius,
+                $"An actor definition's LeashRadius must not exceed the actor simulator's path radius "
+                + $"({pathRadius}, TileWorldServerConfig.ActorMove.MaxPathRadius). A leash beyond that window is a "
+                + "walk home the pathfinder cannot plan in one go.");
         var spawner = new TileActorSpawner(definition, home);
         spawners.Add(spawner);
         return spawner;
@@ -247,20 +264,29 @@ public sealed class TileActorHost
                 // the arrival restore never fired and the heal was lost for that break. A player who stopped
                 // attacking got the monster back anyway.
                 ForgetAttacker(netId);
+                // ALREADY WALKING THERE, read BEFORE the flag below is set, because the flag IS the memo. Break is
+                // re-decided on every tick the actor is outside its leash, and a WalkTo re-paths through
+                // TilePathfinder.FindPath unconditionally, so re-issuing it costs one path per tick per leashed
+                // actor for the whole walk home. This is the leash's version of the rule TileMoveSimulator.Follow
+                // rule 5 gives the chase.
+                //
+                // THE MEMO IS THE INTENT RATHER THAN THE DESTINATION. Asking whether the route ENDS at home is only
+                // the same question inside the pathfinder's window: past it FindPath answers with the path to the
+                // nearest reachable tile, so the route's end is never home, the test is permanently false and the
+                // WalkTo is re-issued on every step of the whole walk. Returning already says "this actor is on its
+                // way home" and says it whatever the route reaches, so it is what the skip reads. An actor with NO
+                // spawner has no flag to read and keeps the destination test, which is what it had.
+                bool headingHome = spawner is not null ? spawner.Returning : state.Route.End.Equals(home);
                 // An actor with no spawner still walks home, because it has one now. What it does NOT get is the
                 // arrival restore: the fire-once flag lives on the spawner, and a head that builds actors itself
                 // owns their health the way it owns their respawn.
                 if (spawner is not null) spawner.Returning = true;
-                // ALREADY WALKING THERE. Break is re-decided on every tick the actor is outside its leash, and a
-                // WalkTo re-paths through TilePathfinder.FindPath unconditionally, so re-issuing it costs one path
-                // per tick per leashed actor for the whole walk home. This is the leash's version of the rule
-                // TileMoveSimulator.Follow rule 5 gives the chase, and the memo is the same one: the route's END is
-                // where the actor is headed, so "already going home" is a question the state already answers.
-                //
                 // The LOCK has to be gone for the skip to be sound, because the WalkTo is what clears one and a
                 // Continue clears nothing. That only differs from the ordinary case when something latched an
-                // Attack onto an actor that was already walking home, and there the route must be re-issued.
-                if (state.CombatTarget == 0L && !state.Route.IsIdle && state.Route.End.Equals(home))
+                // Attack onto an actor that was already walking home, and there the route must be re-issued. An
+                // IDLE route is re-issued too, which is what keeps an actor whose home is blocked retrying rather
+                // than standing where the nearest reachable tile left it.
+                if (state.CombatTarget == 0L && !state.Route.IsIdle && headingHome)
                     return TileCommand.Continue(mode);
                 return TileCommand.WalkTo(home, mode);
             case TileActorIntentKind.Stand:

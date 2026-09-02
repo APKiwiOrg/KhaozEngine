@@ -334,6 +334,67 @@ public class TileActorHostTests
         Assert.Equal(0, s.Actors.PendingCommandCount);
     }
 
+    // LeashRadius has always documented itself as sized against the actor simulator's path radius, and nothing read
+    // that relation. A leash beyond the window is a walk home the pathfinder cannot plan in one go, which is content
+    // that limps rather than content that fails, so it is refused where the definition arrives instead.
+    [Fact]
+    public void A_definition_whose_leash_is_beyond_the_actor_path_radius_is_refused_at_the_door()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(5, 5, 0));
+
+        // The shipped defaults are a leash of 10 against a window of 12, so no existing content moves.
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => s.Actors.Add(Rat with { LeashRadius = 13 }, new TileCoord(20, 20, 0)));
+        Assert.Empty(s.Actors.Spawners);
+        // Exactly the window is what "sized against the path radius" means, so it is allowed.
+        Assert.NotNull(s.Actors.Add(Rat with { LeashRadius = 12 }, new TileCoord(20, 20, 0)));
+    }
+
+    // The walk home is memoised on the INTENT rather than on the route's destination. Beyond the path window
+    // FindPath answers with the route to the nearest reachable tile, so the route never ENDS at home, the
+    // destination test is permanently false and Break re-issues WalkTo(home) on every step of the whole walk. Still
+    // reachable with a LEGAL leash, because something can put an actor much further out than its leash before the
+    // break fires.
+    [Fact]
+    public void A_leash_walk_home_from_beyond_the_path_window_paths_once_rather_than_every_step()
+    {
+        var hub = new InMemoryTransportHub();
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        using TileWorldServer s = Server(doc, hub.Server, new TileCoord(5, 5, 0));
+        s.Actors.Behaviour = new TileWanderBehaviour(TileMoveSimulatorTests.Bake(doc));
+        TileActorSpawner spawner = s.Actors.Add(
+            Rat with { WanderRadius = 0, StepMode = TileMoveMode.Run }, new TileCoord(10, 30, 0));
+        s.Tick(Dt);
+        long actor = spawner.ActorNetId;
+        // Thirty tiles out, well past the actor window of 12. Written onto the state the way the combat tests place
+        // a body, because walking it out that far would trip the leash on the way.
+        Place(s, actor, new TileCoord(40, 30, 0));
+
+        var ends = new List<TileCoord>();
+        for (int i = 0; i < 20; i++)
+        {
+            s.Tick(Dt);
+            if (s.TryGetActorState(actor, out TileMoveState st) && !st.Route.IsIdle) ends.Add(st.Route.End);
+        }
+
+        Assert.NotEmpty(ends);
+        // ONE route, walked. Re-issued every step the end tile crawls homeward with the actor instead.
+        Assert.Single(new HashSet<TileCoord>(ends));
+    }
+
+    // One actor put on a tile, keeping its facing and its cadence and dropping any route, which is the drag this
+    // leash test needs without a walk long enough to trip the leash on the way out.
+    static void Place(TileWorldServer s, long netId, TileCoord at)
+    {
+        Assert.True(s.Host.TryGetOwner(netId, out CellSim cell, out Entity e));
+        Assert.True(cell.World.TryGet(e, out TileMoveState state));
+        TileMoveState moved = TileMoveState.At(at, state.Facing);
+        moved.Mode = state.Mode;
+        cell.World.Set(e, moved);
+        cell.World.Set(e, new TileRouteState { Remaining = Array.Empty<TileDirection>() });
+    }
+
     // THE ONE-ARGUMENT CONSTRUCTOR has no caller in the tree: the server always passes two, one tuned to the leash.
     // Keeping it is right (it is still the shape a head with no actors wants, and dropping it would be a breaking
     // change for one), and nothing pinned that it still routes BOTH kinds of entity through the single simulator it

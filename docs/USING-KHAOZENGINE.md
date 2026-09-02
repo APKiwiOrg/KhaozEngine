@@ -9088,7 +9088,7 @@ var rat = new TileActorDefinition
     StepMode = TileMoveMode.Walk,
     AttackTicks = 5,            // the swing cadence seeded onto TileCombatState
     WanderRadius = 4,           // how far from home it picks a destination
-    LeashRadius = 10,           // how far from home it gives up and walks back
+    LeashRadius = 10,           // how far from home it gives up and walks back, at most ActorMove.MaxPathRadius
     RespawnDelayTicks = 40,
     Kind = 1,                   // the game's own discriminator, which the engine never reads
 };
@@ -9097,6 +9097,11 @@ server.Actors.Add(rat, new TileCoord(70, 70, 0));          // the home tile, and
 server.Actors.Behaviour = new TileWanderBehaviour(map);    // the default: leash, chase, retaliate, stand, wander
 server.Actors.Seed = 20260827;                             // fixes every actor's random stream
 ```
+
+`Add` refuses a definition whose `LeashRadius` is above `TileWorldServerConfig.ActorMove.MaxPathRadius`
+(12 by default, against a default leash of 10). A leash beyond that window is a walk home the pathfinder cannot
+plan in one go, so the break paths to the nearest reachable tile and the actor comes home in as many hops as the
+drag was long. Raise the window with the leash if a monster is meant to roam that far.
 
 No constructor installs a behaviour, so an actor with `Behaviour` left null stands exactly where it was put. That
 is deliberate: the engine ships a default and never assumes it.

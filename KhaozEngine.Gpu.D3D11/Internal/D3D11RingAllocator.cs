@@ -662,7 +662,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <see cref="SpinWait.SpinOnce()"/> starts sleeping one millisecond after 20 iterations, which at
         /// Windows' default timer resolution is longer than the frame this wait is inside. The same reasoning the
         /// fence drain is written against (see <see cref="D3D11FenceSubsystem.WaitForIdle"/>), for a wait that is
-        /// expected never to happen at all.
+        /// expected never to happen at all, and it goes through the SAME seam
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/493): the threshold that disables the escalation is
+        /// invisible at a call site, so a <c>SpinOnce()</c> with the argument dropped compiles cleanly, reads
+        /// like the same line, and turns this wait into a millisecond sleep inside the frame it is meant to be
+        /// invisible in. See <see cref="D3D11DrainSpin"/>.
         /// </para>
         /// <para>
         /// The blocking wait the primary timeline offers is deliberately NOT used here. It belongs to the drain
@@ -678,7 +682,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             long start = Stopwatch.GetTimestamp();
             var spin = new SpinWait();
-            while (_completion.CompletedValue < target) spin.SpinOnce(sleep1Threshold: -1);
+            while (_completion.CompletedValue < target) D3D11DrainSpin.SpinOnce(ref spin);
 
             long elapsed = Stopwatch.GetTimestamp() - start;
             _stallCount++;

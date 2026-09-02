@@ -141,6 +141,36 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// THE SEGMENT WAIT NEVER SLEEPS A MILLISECOND, AND THAT IS PINNED STRUCTURALLY
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/493). The wait carried its own hand-copied
+        /// <c>sleep1Threshold: -1</c>, the same load-bearing value the fence drain names in
+        /// <see cref="D3D11DrainSpin"/> and for the same reason, with nothing guarding it. A
+        /// <c>SpinOnce()</c> with the argument dropped compiles cleanly, reads like the same line, and turns a
+        /// wait that is meant to be invisible inside a frame into a millisecond sleep, which at Windows' default
+        /// timer resolution really lasts about 15.6 ms.
+        /// <para>
+        /// STRUCTURAL RATHER THAN TIMED, which is the lesson of
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/491: elapsed time cannot tell a yielding loop from a
+        /// sleeping one on a machine that is not idle, because a yield under load costs what a sleep costs. So
+        /// the property is asserted where it is decidable, on the call the allocator makes. The row next door
+        /// (<see cref="ASegmentStillInFlight_BlocksAndIsCounted"/>) is what says the wait still WORKS, and it is
+        /// unchanged, because routing through the seam changes no behaviour at all.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void TheSegmentWait_TakesItsSpinThroughTheSeamAndNotABareThreshold()
+        {
+            using var backend = D3D11BackendMetadata.Open();
+
+            Assert.Equal(1, backend.CallCountIn("D3D11RingAllocator", "AcquireSegment",
+                "D3D11DrainSpin.SpinOnce"));
+            Assert.Equal(0, backend.CallCountIn("D3D11RingAllocator", "AcquireSegment", "SpinWait.SpinOnce"));
+
+            // The seam's own constant, so a routed call cannot be routed to a sleeping threshold either.
+            Assert.Equal(-1, D3D11DrainSpin.Sleep1Threshold);
+        }
+
+        /// <summary>
         /// A DEAD DEVICE RELEASES A SEGMENT WAIT, without the allocator knowing what a device is. The fence
         /// subsystem answers a completion read with everything it ever issued once the liveness latch has flipped
         /// (decision X3), so a frame that reaches a segment during teardown finds its target already reached. This

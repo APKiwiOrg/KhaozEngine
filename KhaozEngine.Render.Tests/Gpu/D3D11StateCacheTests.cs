@@ -172,6 +172,49 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Throws<InvalidOperationException>(emitter.SetFullScissorRects);
         }
 
+        /// <summary>
+        /// AND THE REFUSAL IS THE SHARED SEAM'S, NOT A COPY OF IT
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/496). Both emitters used to write the message out by
+        /// hand, identically, so nothing was silently accepted and nothing could catch the two drifting apart
+        /// either. One of the copies is in a Windows-only body no test off Windows can execute, so a change to
+        /// the reachable one would have stayed invisible until a Windows leg ran.
+        /// <para>
+        /// It still says what the FULL SCISSOR case needs rather than the generic attachment sentence the other
+        /// two wrappers take, because this command names the framebuffer's extent and not an attachment of it.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void SetFullScissorRects_RefusesWithTheSharedSeamsMessage()
+        {
+            var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), new D3D11NativeCallLog());
+            emitter.Begin();
+
+            var thrown = Assert.Throws<InvalidOperationException>(emitter.SetFullScissorRects);
+            var shared = Assert.Throws<InvalidOperationException>(
+                () => D3D11BindResolve.RequireScissorExtent(null));
+
+            Assert.Equal(shared.Message, thrown.Message);
+            Assert.Contains("The full scissor IS the bound framebuffer's extent", thrown.Message,
+                StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// THE OTHER EMITTER TAKES THE SAME SEAM, read off the compiled assembly because its body names Vortice
+        /// types and cannot be executed here. Without this the row above would pin one of the two copies and
+        /// leave the copy that actually runs on a Windows machine free to drift, which is the whole defect.
+        /// </summary>
+        [Fact]
+        public void BothEmitters_TakeTheFullScissorRefusalFromTheSharedSeam()
+        {
+            using var backend = D3D11BackendMetadata.Open();
+
+            foreach (string emitter in new[] { "D3D11NativeEmitter", "D3D11NativeTraceEmitter" })
+            {
+                Assert.Equal(1, backend.CallCountIn(emitter, "SetFullScissorRects",
+                    "D3D11BindResolve.RequireScissorExtent"));
+            }
+        }
+
         // ---- The clears, refused in the one place both emitters ask ----
 
         /// <summary>

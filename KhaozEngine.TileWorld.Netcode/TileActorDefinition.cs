@@ -39,7 +39,9 @@ public sealed record TileActorDefinition
 
     /// <summary>How far from home an actor may be dragged before it BREAKS: drops its target, walks home, and
     /// restores to full on arrival. Sized against the actor simulator's path radius, since a leash longer than that
-    /// window is a walk home the pathfinder cannot plan in one go.</summary>
+    /// window is a walk home the pathfinder cannot plan in one go, and <see cref="TileActorHost.Add"/> REFUSES a
+    /// definition that exceeds it (<c>TileWorldServerConfig.ActorMove.MaxPathRadius</c>, 12 by default against this
+    /// 10). Raise the window with the leash for a monster meant to roam that far.</summary>
     public int LeashRadius { get; init; } = 10;
 
     /// <summary>Ticks the spawner waits before it builds a new actor, counted from the tick it NOTICES the old one

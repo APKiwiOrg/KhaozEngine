@@ -235,4 +235,54 @@ public class TileCombatLingerTests
         Assert.Equal(1, s.PlayerCount);
         Assert.True(s.TryGetActorState(rejoinBody, out _), "the live session survived the lingering seat's expiry");
     }
+
+    // ReleaseLingerFor selects the seats to release into a list and then releases them, and PlayerLeaving fires
+    // inside that loop. A handler that seats somebody re-enters SpawnPlayer, which re-enters ReleaseLingerFor for
+    // the OTHER account, and the shared reclaim scratch was cleared and refilled under the loop still walking it:
+    // the seats it had already selected and not yet reached were simply dropped. Its sibling ExpireLingeringSessions
+    // has a comment about exactly this nesting and its own list, and this path did not get one.
+    //
+    // TWO lingering seats for ONE account is what the outer list needs, and it is not reachable through the door,
+    // because one subject is one account and a duplicate session is kicked. Built here through SpawnPlayer, which
+    // is public and takes the account id, so a head that seats two connections under one account gets it.
+    [Fact]
+    public void A_reentrant_PlayerLeaving_handler_does_not_drop_a_seat_the_release_had_already_selected()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(20, 21, 0),
+            new FixedRules(), combatLogoutTicks: 40);
+        (int first, _) = Join(s, hub, "one", out INetTransport firstLink);
+        (int second, _) = Join(s, hub, "two", out INetTransport secondLink);
+
+        // Both seats re-let under the SAME account, which is the shape the release's own loop is written for.
+        long firstBody = s.SpawnPlayer(first, "shared", "One");
+        long secondBody = s.SpawnPlayer(second, "shared", "Two");
+        // In combat, so dropping the link DEFERS the leave rather than running it. Any non-zero lock counts: the
+        // rule reads the lock itself, not whether a blow landed.
+        Lock(s, firstBody, secondBody);
+        Lock(s, secondBody, firstBody);
+
+        hub.DisconnectClient(firstLink);
+        hub.DisconnectClient(secondLink);
+        s.Poll();
+        Assert.True(s.TryGetPlayerNetId(first, out _), "the first seat should be lingering");
+        Assert.True(s.TryGetPlayerNetId(second, out _), "the second seat should be lingering");
+
+        // The re-entry: one handler call seats an unrelated account, which asks the release for ITS lingering
+        // seats and finds none. Once only, or releasing the second seat would recurse.
+        bool seated = false;
+        s.PlayerLeaving += (_, _, _) =>
+        {
+            if (seated) return;
+            seated = true;
+            s.SpawnPlayer(4, "other", "Other");
+        };
+
+        // The account comes back on a third seat, which is what ends both of its lingering bodies.
+        s.SpawnPlayer(5, "shared", "Back");
+
+        Assert.True(seated);
+        Assert.False(s.TryGetPlayerNetId(first, out _), "the first lingering seat outlived its account's return");
+        Assert.False(s.TryGetPlayerNetId(second, out _), "the second lingering seat outlived its account's return");
+    }
 }

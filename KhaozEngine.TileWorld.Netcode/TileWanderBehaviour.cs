@@ -60,7 +60,13 @@ public sealed class TileWanderBehaviour : ITileActorBehaviour
         // SWUNG-AT record rather than the damage record since the swing-aggro ruling: a splashed miss and a
         // blocked zero draw the same blue splat, so an actor that hits back on one and stands politely through
         // the other reads as broken. Aggression answers the swing, the wound is for threat tables.
-        if (context.LastAttackedBy != 0L && context.Tick - context.LastAttackedTick <= retaliateWindowTicks)
+        //
+        // AN ATTACKER THAT LEFT IS NOT RETALIATED AGAINST, which is what the resolution answer is for. The attack
+        // would set a lock the follow clears on the same tick, and the rule would re-issue it every tick for the
+        // whole window: the actor stops wandering and the leash's arrival restore is cancelled on each of those
+        // ticks. A player who logs out mid fight is the routine way that happens.
+        if (context.LastAttackedBy != 0L && context.LastAttackedByResolved
+            && context.Tick - context.LastAttackedTick <= retaliateWindowTicks)
             return TileActorIntent.Attack(context.LastAttackedBy);
 
         // STAND YOUR GROUND. Something is locked onto this actor and coming for it, so walking away is over: the

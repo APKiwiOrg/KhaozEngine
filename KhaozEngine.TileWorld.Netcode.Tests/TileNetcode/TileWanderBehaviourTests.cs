@@ -37,10 +37,16 @@ public class TileWanderBehaviourTests
         }
     }
 
+    // actorPathRadius is for the tests that want a leash big enough never to fire: TileActorHost.Add refuses a
+    // definition whose LeashRadius is above the actor simulator's own path window, so an actor authored with a big
+    // leash has to be given the window that leash is sized against. The default leaves the shipped 12.
     internal static TileWorldServer Server(TileWorldDocument doc, INetTransport transport, TileCoord spawn,
-        int seed = 1, ITileActorBehaviour? behaviour = null)
+        int seed = 1, ITileActorBehaviour? behaviour = null, int actorPathRadius = 0)
     {
-        var server = new TileWorldServer(transport, TileWorldServerTickTests.Config(spawn),
+        TileWorldServerConfig config = TileWorldServerTickTests.Config(spawn);
+        if (actorPathRadius > 0)
+            config = config with { ActorMove = new TileMoveOptions { MaxPathRadius = actorPathRadius } };
+        var server = new TileWorldServer(transport, config,
             TileMoveSimulatorTests.Bake(doc),
             new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs), new AllowAllAuthenticator());
         server.Actors.Seed = seed;
@@ -294,7 +300,8 @@ public class TileWanderBehaviourTests
     public void A_retaliating_actor_closes_on_a_target_that_walks_away()
     {
         var hub = new InMemoryTransportHub();
-        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(30, 31, 0));
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(30, 31, 0),
+            actorPathRadius: 40);
         TileActorSpawner spawner = s.Actors.Add(Rat with { LeashRadius = 40, WanderRadius = 0 },
             new TileCoord(30, 30, 0));
         long player = s.SpawnPlayer(0, "a", "Ari");
@@ -600,12 +607,14 @@ public class TileWanderBehaviourTests
         return GC.GetAllocatedBytesForCurrentThread() - before;
     }
 
-    // The control: an actor whose leash is far too big to fire, dragged out and then walked home by ONE latched
-    // command. Every tick after that one is a Continue, so the walk costs exactly one FindPath.
+    // The control: an actor whose leash cannot fire on this drag, dragged out and then walked home by ONE latched
+    // command. Every tick after that one is a Continue, so the walk costs exactly one FindPath. The leash sits at
+    // the actor path radius rather than above it, because the two servers must run the SAME window for the byte
+    // comparison to mean anything, and the drag below stops at 11 tiles out, one inside it.
     static int WalkHomeUnderOneCommand()
     {
         var home = new TileCoord(30, 30, 0);
-        (TileWorldServer s, long actor) = DraggedOut(Rat with { WanderRadius = 0, LeashRadius = 40 }, home);
+        (TileWorldServer s, long actor) = DraggedOut(Rat with { WanderRadius = 0, LeashRadius = 12 }, home);
         using (s)
         {
             s.Actors.Command(actor, TileCommand.WalkTo(home, TileMoveMode.Walk));
@@ -666,7 +675,7 @@ public class TileWanderBehaviourTests
         var hub = new InMemoryTransportHub();
         var scripted = new ScriptedBehaviour();
         using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(30, 34, 0),
-            behaviour: scripted);
+            behaviour: scripted, actorPathRadius: 40);
         TileActorSpawner spawner = s.Actors.Add(Rat with { WanderRadius = 0, LeashRadius = 40 },
             new TileCoord(30, 30, 0));
         long player = s.SpawnPlayer(0, "a", "Ari");

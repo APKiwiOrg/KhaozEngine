@@ -196,13 +196,19 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
 - **`TileActorSpawn`** / **`TileWorldServer.SpawnActor`** / **`DespawnActor`** - the door. The spec is the numbers
   that go on ONE entity (`MaxHealth`, `AttackTicks`, `Facing`, `Mode`), and the door refuses a zero `MaxHealth`, an
   off-map or off-plane tile and a cell already at `MaxActorsPerCell` by answering 0 rather than throwing, so a
-  spawner can never take a tick down with it. `RefusedActorSpawnCount` counts the refusals.
+  spawner can never take a tick down with it. `RefusedActorSpawnCount` counts the refusals. An actor is
+  `Transient` at `DurableOnly`, so a cell eviction FREEZES it rather than ending it, and both doors instantiate
+  the coordinate before they resolve: the cap counts a frozen actor rather than admitting a spawn on top of it,
+  and the despawn reaches one rather than leaving it to come back as an entity nothing indexes.
 - **`TileActorDefinition`** / **`TileActorSpawner`** / **`TileActorSpawnerState`** - what a spawn POINT is authored
   from (id, max health, step mode, attack cadence, wander and leash radii, respawn delay, and a game-owned `Kind`),
-  and the spawner that owns one home tile, its live actor and its respawn countdown.
+  and the spawner that owns one home tile, its live actor and its respawn countdown. `LeashRadius` is checked
+  against `TileWorldServerConfig.ActorMove.MaxPathRadius` where the definition arrives, at `TileActorHost.Add`,
+  because a leash beyond the pathfinder's window is a walk home it cannot plan in one go.
 - **`TileActorHost`** (`server.Actors`) - `Add(definition, home)` to register a spawner, `Command(netId, command)`
   to latch one command onto one actor, `Behaviour` and `Seed` for the decision seam, `Spawners`,
-  `TryGetSpawnerOf`, `Forget` and `PendingCommandCount`. Its tick is step 1b: every spawner respawns or counts
+  `TryGetSpawnerOf`, `Forget` (the despawn hook, dropping the unspent latch, the birth tile and the spawner link
+  together) and `PendingCommandCount`. Its tick is step 1b: every spawner respawns or counts
   down, then every live actor gets its decision translated into a command, plus the tag and
   `PendingTileCommand` rewrite above. It iterates its own net id list rather than an ECS query on the tag,
   because a query over the tag cannot see the one actor that most needs the write.
@@ -211,7 +217,10 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   drop the damage record with it), `Stand` (cancel the route, hold the tile, KEEP the damage record: waiting for
   a fight rather than giving one up) or `Idle`, and never a route, a step, a facing or a tick. The context is a
   TICK-START view (the actor's tile, its home, its definition, its health, its target's tile through the same
-  per-tick snapshot the follow reads, its damage record, whether it is walking, who is locked onto IT
+  per-tick snapshot the follow reads, its damage record and whether each half of that record still RESOLVES
+  (`LastDamagedByResolved` / `LastAttackedByResolved`, false once the entity it names has left the world, so a
+  rule can skip an attacker who logged out without the record being touched), whether it is walking, who is
+  locked onto IT
   (`TargetedBy`, lowest net id when several are, one tick behind a freshly accepted attack), the tick and its own
   random stream), so no actor's decision can depend on another having moved first. One instance is SHARED by every
   actor, as a simulator is, so a game that wants different behaviour per monster dispatches on `Definition.Kind`

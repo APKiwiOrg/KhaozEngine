@@ -9134,7 +9134,7 @@ var rat = new TileActorDefinition
     StepMode = TileMoveMode.Walk,
     AttackTicks = 5,            // the swing cadence seeded onto TileCombatState
     WanderRadius = 4,           // how far from home it picks a destination
-    LeashRadius = 10,           // how far from home it gives up and walks back
+    LeashRadius = 10,           // how far from home it gives up and walks back, at most ActorMove.MaxPathRadius
     RespawnDelayTicks = 40,
     Kind = 1,                   // the game's own discriminator, which the engine never reads
 };
@@ -9143,6 +9143,11 @@ server.Actors.Add(rat, new TileCoord(70, 70, 0));          // the home tile, and
 server.Actors.Behaviour = new TileWanderBehaviour(map);    // the default: leash, chase, retaliate, stand, wander
 server.Actors.Seed = 20260827;                             // fixes every actor's random stream
 ```
+
+`Add` refuses a definition whose `LeashRadius` is above `TileWorldServerConfig.ActorMove.MaxPathRadius`
+(12 by default, against a default leash of 10). A leash beyond that window is a walk home the pathfinder cannot
+plan in one go, so the break paths to the nearest reachable tile and the actor comes home in as many hops as the
+drag was long. Raise the window with the leash if a monster is meant to roam that far.
 
 No constructor installs a behaviour, so an actor with `Behaviour` left null stands exactly where it was put. That
 is deliberate: the engine ships a default and never assumes it.
@@ -9160,7 +9165,10 @@ sealed class GuardBehaviour(ITileActorBehaviour fallback) : ITileActorBehaviour
 
         // Retaliate: LastAttackedBy is written by EVERY swing aimed at this actor, a miss included, because
         // aggression answers the swing. LastDamagedBy is the landed-only record, for threat-shaped logic.
-        if (context.LastAttackedBy != 0 && context.Tick - context.LastAttackedTick < 40)
+        // LastAttackedByResolved is what says the attacker is still in the world: without it a player who logs
+        // out mid fight holds the actor for the whole window, re-issuing an attack the follow clears every tick.
+        if (context.LastAttackedBy != 0 && context.LastAttackedByResolved
+            && context.Tick - context.LastAttackedTick < 40)
             return TileActorIntent.Attack(context.LastAttackedBy);
 
         // COPY THE STREAM TO A LOCAL. TileActorRandom is a mutating value type handed over an `in` parameter, so
@@ -9177,7 +9185,7 @@ sealed class GuardBehaviour(ITileActorBehaviour fallback) : ITileActorBehaviour
 }
 ```
 
-Five things about the context are worth knowing before writing one:
+Six things about the context are worth knowing before writing one:
 
 - **Every tile on it is a TICK-START tile**, the actor's own and its target's, resolved through the tick's own
   target snapshot. So no actor's decision can depend on another entity having already moved, and the ECS
@@ -9185,6 +9193,10 @@ Five things about the context are worth knowing before writing one:
 - **`TargetResolved` is false for a target this tick's snapshot does not answer for**, which is what a dead,
   despawned or mid-handoff entity reads as. That is the same answer the follow inside the stepper acts on, so a
   behaviour that breaks off on it agrees with the stepper rather than fighting it.
+- **`LastDamagedByResolved` and `LastAttackedByResolved` are the same answer for the two damage records.** A
+  record is a fact about the PAST rather than a live pointer, so nothing ages one out when the entity it names
+  leaves the world, and a rule acting on one without checking would keep attacking somebody who logged out.
+  Both default to true on a hand-built context, so one written before these existed decides as it did.
 - **`Home` is the spawner's authored tile**, not the actor's current one. An actor built without a spawner is
   handed the tile it was BORN on, captured once, because a home re-read from the actor's own tile every tick makes
   the leash unfireable and the wander an unbounded random walk.

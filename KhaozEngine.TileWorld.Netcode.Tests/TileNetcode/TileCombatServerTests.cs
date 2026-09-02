@@ -117,17 +117,18 @@ public class TileCombatServerTests
         Assert.Equal(new TileRect(10, 11, 1, 1), fresh);
     }
 
-    // Ghosts and mid-handoff entities are excluded by construction, so neither can answer under the owned entity's
-    // net id with a tile the owner has already left. Driven over a cell built by hand, because the in-process link
-    // completes migrate, ack and release inside one ProcessHandoffs (ShardHost.cs:391-393) and therefore never
-    // leaves anything Migrating at a 0c boundary: this is the rule, not the window.
+    // A GHOST is excluded by construction, so a border mirror can never answer under the owned entity's net id with
+    // a tile the owner has already left. What the follow does with the false answer is rule 2, "dead, despawned or
+    // out of view", so it CLEARS the lock, which is correct for a mirror of something the owning cell is following
+    // anyway.
     //
-    // What the follow does with the false answer is rule 2, "dead, despawned or out of view", so it CLEARS the lock.
-    // Correct for a ghost, which is only ever a mirror of something the owning cell is following anyway. On a
-    // networked ICellLink, where a handoff spans calls, it would also break a fight whenever a target crosses a
-    // region boundary. See the note on TileEntityTargets.
+    // A MIGRATING entity is the other case and gets the opposite answer, held for TileEntityTargets'
+    // MigratingGraceRefreshes rather than dropped. Pinned here at a grace of ZERO, which is the drop, so this test
+    // keeps stating the exclusion rule and the sibling below states the window. Driven over a cell built by hand,
+    // because the in-process link completes migrate, ack and release inside one ProcessHandoffs and therefore never
+    // leaves anything Migrating at a 0c boundary.
     [Fact]
-    public void A_ghost_or_a_migrating_entity_is_not_a_target_for_the_tick()
+    public void A_ghost_is_not_a_target_and_a_migrating_entity_is_not_one_either_at_a_zero_grace()
     {
         var cell = new CellSim(new CellCoord(0, 0), Dt, TileProtocol.CreateRegistry(), interestCellSize: 8f);
         Entity owned = cell.World.Spawn();
@@ -142,13 +143,60 @@ public class TileCombatServerTests
         cell.World.Set(leaving, TileMoveState.At(new TileCoord(7, 8, 0), TileDirection.N));
         cell.World.Set(leaving, new Migrating { Destination = new CellCoord(1, 0) });
 
-        var targets = new TileEntityTargets();
+        var targets = new TileEntityTargets(migratingGraceRefreshes: 0);
         targets.Refresh(new List<CellSim> { cell });
 
         Assert.True(targets.TryGetFootprint(11L, out TileRect rect, out _));
         Assert.Equal(new TileRect(3, 4, 1, 1), rect);
         Assert.False(targets.TryGetFootprint(22L, out _, out _));
         Assert.False(targets.TryGetFootprint(33L, out _, out _));
+    }
+
+    // THE MIGRATING WINDOW, which is zero in process and is not zero on a networked link. The in-process ICellLink
+    // completes migrate, ack and release inside one ProcessHandoffs, so nothing is ever observed Migrating at the
+    // tick step that refreshes this. A networked one spans calls by design, and the source cell holds the entity
+    // frozen until the ack arrives. Excluding it outright made it unresolvable for that whole stretch, the follow's
+    // rule 2 reads an unresolvable target as dead, despawned or out of view, and every fight in the world would
+    // break the moment its target crossed a region boundary.
+    //
+    // A frozen entity's tile IS its pre-handoff tile, so holding it answers with the truth rather than with a
+    // guess. BOUNDED, because a handshake that never completes must not hold a lock forever: past the window the
+    // id stops resolving and the ordinary rule 2 answer applies again.
+    //
+    // Driven over a cell built by hand for the same reason the sibling above is: no in-process handoff can produce
+    // this state at a call boundary.
+    [Fact]
+    public void A_migrating_entity_answers_its_pre_handoff_tile_for_a_bounded_window_and_then_stops()
+    {
+        var cell = new CellSim(new CellCoord(0, 0), Dt, TileProtocol.CreateRegistry(), interestCellSize: 8f);
+        Entity crosser = cell.World.Spawn();
+        cell.World.Set(crosser, new NetId(44L));
+        TileMoveState state = TileMoveState.At(new TileCoord(7, 8, 0), TileDirection.N);
+        state.CombatTarget = 11L;
+        cell.World.Set(crosser, state);
+        var cells = new List<CellSim> { cell };
+
+        var targets = new TileEntityTargets(migratingGraceRefreshes: 2);
+        targets.Refresh(cells);
+        Assert.True(targets.TryGetFootprint(44L, out TileRect owned, out int plane));
+        Assert.Equal(new TileRect(7, 8, 1, 1), owned);
+        Assert.Equal(0, plane);
+        Assert.Equal(44L, targets.TargetedBy(11L));
+
+        // The owner has serialized it, sent the Migrate and frozen it. On a networked link it stays like this.
+        cell.World.Set(crosser, new Migrating { Destination = new CellCoord(1, 0) });
+        for (int refresh = 1; refresh <= 2; refresh++)
+        {
+            targets.Refresh(cells);
+            Assert.True(targets.TryGetFootprint(44L, out TileRect held, out _),
+                $"refresh {refresh} of the window still answers");
+            Assert.Equal(new TileRect(7, 8, 1, 1), held);
+            Assert.Equal(44L, targets.TargetedBy(11L));
+        }
+
+        targets.Refresh(cells);
+        Assert.False(targets.TryGetFootprint(44L, out _, out _));
+        Assert.Equal(0L, targets.TargetedBy(11L));
     }
 
     // Admit's half of the mutual exclusion: an APPLIED attack abandons the pending action, exactly as an applied

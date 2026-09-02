@@ -229,13 +229,25 @@ public sealed partial class TileWorldServer
     // attacker, because a hitsplat is drawn on the thing being hit: a viewer who can see the target can see the
     // splat, whether or not the attacker is anywhere in view. A frame is sent only when something survived the
     // filter, so a viewer standing away from every fight pays one pass over a short list and no packet.
+    //
+    // CHUNKED, because the frame's count rides in one byte and a slice longer than that is a frame the wire cannot
+    // carry. The encoder used to be handed the whole slice and threw an ArgumentException above the cap, INSIDE
+    // this loop, which took the tick down for every player on the server rather than costing the one viewer whose
+    // interest happened to hold that many fights at once. Unreachable at R1's budgets and reachable in principle
+    // the moment a lot of separate fights pack into one interest set, and it is the one throw the serve does not
+    // otherwise carry. The channel is reliable ordered, so the frames arrive in the order they were written and a
+    // head raises the swings in roll order across all of them, which is exactly what one frame would have given it.
     void SendCombatTo(int slot, HashSet<long> interest)
     {
         viewerCombat.Clear();
         for (int i = 0; i < combatEvents.Count; i++)
             if (interest.Contains(combatEvents[i].TargetNetId)) viewerCombat.Add(combatEvents[i]);
-        if (viewerCombat.Count == 0) return;
-        net.SendTo(slot, TileProtocol.EncodeCombat(viewerCombat), NetChannelReliability.ReliableOrdered);
+        for (int sent = 0; sent < viewerCombat.Count; sent += TileProtocol.MaxCombatEvents)
+        {
+            int take = Math.Min(TileProtocol.MaxCombatEvents, viewerCombat.Count - sent);
+            net.SendTo(slot, TileProtocol.EncodeCombat(viewerCombat, sent, take),
+                NetChannelReliability.ReliableOrdered);
+        }
     }
 
     /// <summary>

@@ -40,14 +40,42 @@ public static partial class TileProtocol
         ArgumentNullException.ThrowIfNull(events);
         if (events.Count > MaxCombatEvents)
             throw new ArgumentException($"A combat frame is capped at {MaxCombatEvents} events.", nameof(events));
-        int natural = CombatHeader + events.Count * CombatEventSize;
+        return EncodeCombat(events, 0, events.Count);
+    }
+
+    /// <summary>
+    /// Encodes ONE FRAME'S WORTH of a longer run of swings, which is what lets a caller holding more than
+    /// <see cref="MaxCombatEvents"/> of them chunk instead of failing. The count rides in one byte, so the ceiling
+    /// is the wire's own and no encoder can lift it: what a caller can do is send several frames, and a decoder
+    /// needs no help with that because it reads each frame on its own terms and a head raises the events in the
+    /// order the frames arrive.
+    /// <para>This is the overload the SERVE uses, and the reason it exists is that the whole-list overload above
+    /// throws. That throw is correct for a game building a frame by hand (an over-long list is a local bug worth a
+    /// stack) and it was wrong inside the serve loop, where it took the tick down for every player on the server
+    /// rather than costing the one viewer whose interest happened to hold that many fights.</para>
+    /// </summary>
+    /// <param name="events">The swings to slice a frame out of.</param>
+    /// <param name="start">Index of the first swing to encode.</param>
+    /// <param name="count">How many to encode, at most <see cref="MaxCombatEvents"/>.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="events"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="start"/> or <paramref name="count"/> is
+    /// negative, the pair runs past the end of <paramref name="events"/>, or <paramref name="count"/> is above
+    /// <see cref="MaxCombatEvents"/>.</exception>
+    public static byte[] EncodeCombat(IReadOnlyList<TileCombatEvent> events, int start, int count)
+    {
+        ArgumentNullException.ThrowIfNull(events);
+        ArgumentOutOfRangeException.ThrowIfNegative(start);
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(count, MaxCombatEvents);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(count, events.Count - start);
+        int natural = CombatHeader + count * CombatEventSize;
         bool pad = natural == CommandFrameSize;
         var b = new byte[natural + (pad ? 1 : 0)];
         b[0] = ServerFrameCombat;
-        b[1] = (byte)events.Count;
-        for (int i = 0; i < events.Count; i++)
+        b[1] = (byte)count;
+        for (int i = 0; i < count; i++)
         {
-            TileCombatEvent e = events[i];
+            TileCombatEvent e = events[start + i];
             int at = CombatHeader + i * CombatEventSize;
             BitConverter.TryWriteBytes(b.AsSpan(at, 8), e.AttackerNetId);
             BitConverter.TryWriteBytes(b.AsSpan(at + 8, 8), e.TargetNetId);

@@ -32,10 +32,14 @@ public static partial class TileProtocol
     /// <summary>Extension id of <see cref="TileGroundItem"/>, a dropped stack on a tile.</summary>
     public const ushort TileGroundItemTypeId = ReplicationRegistry.FirstExtensionTypeId + 5;
 
+    /// <summary>Extension id of <see cref="PendingTileCommand"/>, registered on the MIGRATE channel alone so the
+    /// tick's command follows a body across a region boundary and reaches no client and no persistence blob.</summary>
+    public const ushort PendingTileCommandTypeId = ReplicationRegistry.FirstExtensionTypeId + 6;
+
     /// <summary>The first id a GAME may register, with room left below it for this package to add a component
     /// without silently colliding with a game that already shipped. Everything from
-    /// <see cref="ReplicationRegistry.FirstExtensionTypeId"/> up to here belongs to the tile netcode. Ids 22 and
-    /// 23 are the tile netcode's remaining free window.</summary>
+    /// <see cref="ReplicationRegistry.FirstExtensionTypeId"/> up to here belongs to the tile netcode. Id 23 is the
+    /// tile netcode's remaining free window.</summary>
     public const ushort FirstGameTypeId = ReplicationRegistry.FirstExtensionTypeId + 8;
 
     /// <summary>Cap on a replicated route, in steps, and the ONE definition of that number: it is also the ceiling
@@ -93,6 +97,8 @@ public static partial class TileProtocol
         reg.Register<TileCombatState>(TileCombatStateTypeId, WriteCombat, ReadCombat,
             channels: ReplicationChannels.Migrate);
         reg.Register<TileGroundItem>(TileGroundItemTypeId, WriteGroundItem, ReadGroundItem);
+        reg.Register<PendingTileCommand>(PendingTileCommandTypeId, WritePendingCommand, ReadPendingCommand,
+            channels: ReplicationChannels.Migrate);
         registerExtensions?.Invoke(reg);
         return reg;
     }
@@ -298,6 +304,34 @@ public static partial class TileProtocol
         int z = r.ReadInt32();
         int plane = r.ReadInt32();
         return new TileGroundItem { ItemId = itemId, Count = Math.Max(1, count), X = x, Z = z, Plane = plane };
+    }
+
+    // Twenty-two bytes, and the SECOND codec here whose bytes never come off a socket: registered on the Migrate
+    // channel alone, so the only thing that ever encodes or decodes it is a cell handoff inside one server process.
+    // Nothing is clamped for that reason, the plane rides as a whole int rather than the command frame's one byte,
+    // and the day it gains a Replicate bit is the day it needs the treatment ReadMove gives its enums.
+    //
+    // It is registered AT ALL because the movement pass reads the three components together, so an entity that
+    // arrived in the destination cell without this one fell out of the query. See PendingTileCommand's own doc for
+    // why carrying it is safe: the movement pass resets it to Continue before the handoff runs, so what crosses is
+    // the tick's neutral rather than a click waiting to be applied a second time.
+    static void WritePendingCommand(PendingTileCommand v, BinaryWriter w)
+    {
+        w.Write((byte)v.Command.Kind);
+        w.Write(v.Command.Goal.X);
+        w.Write(v.Command.Goal.Z);
+        w.Write(v.Command.Goal.Plane);
+        w.Write((byte)v.Command.Mode);
+        w.Write(v.Command.Target);
+    }
+
+    static PendingTileCommand ReadPendingCommand(BinaryReader r)
+    {
+        var kind = (TileCommandKind)r.ReadByte();
+        int x = r.ReadInt32(), z = r.ReadInt32(), plane = r.ReadInt32();
+        var mode = (TileMoveMode)r.ReadByte();
+        long target = r.ReadInt64();
+        return new PendingTileCommand { Command = new TileCommand(kind, new TileCoord(x, z, plane), mode, target) };
     }
 
     static void WriteHealth(TileHealth v, BinaryWriter w)

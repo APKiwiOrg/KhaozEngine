@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.TileWorld;
@@ -148,5 +149,73 @@ public class TileReachTests
         Assert.False(TileReach.TryNearest(map, footprint, 0, upstairs, 1, 64, out TileCoord tile, out TilePath path));
         Assert.Equal(default(TileCoord), tile);               // no tile offered, so nothing to walk to
         Assert.Empty(path.Tiles);
+    }
+    // THE ADMISSION BOUND, pinned at its exact edge, because the whole value of it is that it refuses only what
+    // the eight searches below it would have refused anyway. FindPath's window is a (2r+1)^2 box centred on the
+    // start, and every reach tile is one tile closer than the footprint it belongs to, so a footprint at exactly
+    // maxRadius + 1 still has one candidate inside the window and must still resolve.
+    [Fact]
+    public void A_footprint_one_tile_past_the_search_window_still_resolves_and_two_tiles_past_it_does_not()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld(4, new RegionCoord(0, 0), new RegionCoord(1, 0));
+        TileCollisionMap map = Bake(doc);
+        var from = new TileCoord(20, 20, 0);
+        const int radius = 64;
+
+        // 65 tiles away: its west reach tile is at exactly 64, the last column the window holds.
+        Assert.True(TileReach.TryNearest(map, new TileRect(20 + radius + 1, 20, 1, 1), 0, from, 1, radius,
+            out TileCoord tile, out TilePath path));
+        Assert.Equal(new TileCoord(20 + radius, 20, 0), tile);
+        Assert.Equal(radius, path.Tiles.Count);
+
+        // 66 tiles away: every one of its four reach tiles is outside the window, so there is nothing to find.
+        Assert.False(TileReach.TryNearest(map, new TileRect(20 + radius + 2, 20, 1, 1), 0, from, 1, radius,
+            out _, out _));
+    }
+}
+
+/// <summary>
+/// The allocation half of the reach search, serialized in the AllocSensitive collection so byte counting is not
+/// disturbed by parallel test threads, and split from <see cref="TileReachTests"/> so the behavioural tests there
+/// keep the assembly's parallelism.
+/// </summary>
+[Collection("AllocSensitive")]
+public class TileReachAllocationTests
+{
+    /// <summary>
+    /// A target the search window cannot hold costs NOTHING, which is the admission bound this is really about.
+    /// Net ids are handed out from a counter, so a hostile client can name a target it has never seen by guessing
+    /// a small integer, and every such guess used to buy up to eight <c>TilePathfinder.FindPath</c> calls at the
+    /// player simulator's radius of 64: a 129x129 int plus byte scratch each, about 83 KB, BFS-flooded to
+    /// exhaustion before failing. One crafted command per tick per slot, for as many slots as the attacker holds.
+    /// </summary>
+    [Fact]
+    public void A_target_outside_the_search_window_costs_no_search_at_all()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld(4, new RegionCoord(0, 0), new RegionCoord(2, 2));
+        TileCollisionMap map = TileMoveSimulatorTests.Bake(doc);
+        var from = new TileCoord(20, 20, 0);
+        var far = new TileRect(150, 150, 1, 1);                // 130 tiles away, twice the search radius
+
+        // Warm the JIT on the shape before anything is measured, and prove the answer is the refusal either way.
+        for (int i = 0; i < 8; i++)
+            Assert.False(TileReach.TryNearest(map, far, 0, from, 1, 64, out _, out _));
+
+        // The BEST of several passes, for the reason TileRemoteReadAllocationTests states at length: the per
+        // thread counter is only accurate to one allocation context, and a background collection that retires a
+        // context inside the window charges bytes this thread never allocated. A call that really searched would
+        // allocate on every pass and cannot hide behind the minimum.
+        const int iterations = 16;
+        const int passes = 5;
+        long allocated = long.MaxValue;
+        for (int pass = 0; pass < passes; pass++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < iterations; i++) TileReach.TryNearest(map, far, 0, from, 1, 64, out _, out _);
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        Assert.True(allocated < 4096,
+            $"the refused reach search allocated {allocated} bytes over {iterations} calls, which is a search");
     }
 }

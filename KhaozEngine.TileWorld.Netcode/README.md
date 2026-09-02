@@ -114,7 +114,10 @@ id and the local player, and neither extrapolates. `docs/USING-KHAOZENGINE.md` c
   `MaxRouteSteps`, the longest route one click may produce, counted in the steps still to take from the tile the
   player is committed to.
 - **`TileIdentity`** - the cosmetic display name, replicated to everyone in interest. Never a rules input.
-- **`PendingTileCommand`** - the command drained for a player this tick, ECS-only and never replicated.
+- **`PendingTileCommand`** - the command drained for a player this tick. Registered on the `Migrate` channel
+  ALONE, so it crosses a cell handoff and reaches no client and no persistence blob. The movement pass resets it
+  to `Continue` at the mode the step left, and it does so at tick step 2 while the handoff runs at step 3, so
+  what crosses a border is the tick's neutral rather than a click waiting to be applied twice.
 
 **Simulation**
 
@@ -141,7 +144,9 @@ id and the local player, and neither extrapolates. `docs/USING-KHAOZENGINE.md` c
   the one-deep pending action. `TileReach.Set` is every tile cardinally adjacent to a footprint tile that the
   footprint tile could step OUT onto, `Contains` is the in-range test, `TryNearest` picks the reach tile by real
   path length with scan order as the tie-break, and `FacingToward` turns the arriving actor toward what it came
-  for.
+  for. `TryNearest` refuses a footprint further than `maxRadius` + 1 away without searching, since no reach tile of
+  one is inside the pathfinder's window: the answer is the same false, and it is what stops a client naming a far
+  target it has never seen from buying up to eight full window floods per command.
 - **`ITileTargets`** / **`TileDocumentTargets`** / **`TileEntityTargets`** / **`TileRemoteTargets`** - the seam
   that resolves a target id to a footprint and a plane, and its three implementations across TWO id spaces.
   `TileDocumentTargets` is the OBJECT space, backed by the document over `TileObjectArchetype.Interactive` and
@@ -154,8 +159,13 @@ id and the local player, and neither extrapolates. `docs/USING-KHAOZENGINE.md` c
   in claim: every read is a keyed lookup into a map built before either pass began. `TileRemoteTargets` is the
   client's entity space, the honest `TryGetLatestRemoteTile` for a remote and the prediction for the local player,
   and the client builds its own rather than taking one, because the only honest answer to where an entity is on a
-  client is that client's newest snapshot. A `Ghost` or `Migrating` entity is EXCLUDED and therefore reads as
-  gone, which is the answer the follow acts on.
+  client is that client's newest snapshot. A `Ghost` is EXCLUDED and therefore reads as gone, which is the answer
+  the follow acts on. A `Migrating` entity is HELD instead, for `MigratingGraceRefreshes` consecutive refreshes
+  (four by default, one second at a 250 ms tick), answering with the frozen pre-handoff tile it is not moving off:
+  an in-process link finishes the whole handshake inside one `ProcessHandoffs` so the window is never used, and a
+  NETWORKED link spans calls, where dropping on the first unresolvable refresh breaks every fight whose target
+  crosses a region boundary. The hold is bounded so a handshake that never completes cannot pin a lock, and the
+  destination cell's owned copy always wins over the source's frozen one.
 
 **Actors and combat**
 
@@ -228,7 +238,11 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   own frame family rather than a game message, because the game-message `kind` is a number the GAME defines and
   these are the ENGINE's events about a pipeline the engine owns. It is a frame at all because a MISS moves health
   by zero and two hits on one tick collapse into one delta, so a fight drawn from replicated health shows fewer,
-  larger, later hitsplats than the fight the server ran.
+  larger, later hitsplats than the fight the server ran. The count rides in one byte, so a tick that resolved more
+  swings than one frame holds is CHUNKED across several: `EncodeCombat(events, start, count)` is the overload that
+  slices one, and it is what the serve uses so an over-long viewer slice costs that viewer an extra packet rather
+  than taking the tick down for every player. The whole-list overload still throws above the cap, which is the
+  right answer for a game building a frame by hand.
 - **`TileServerReason`** - the stable wire reason tokens a tile server sends. Not display text.
 - **`TileCells`** - the one place tile space meets the shard grid: `CellSize`, `CoordOf(tile)` and
   `RegionOf(cell)`.

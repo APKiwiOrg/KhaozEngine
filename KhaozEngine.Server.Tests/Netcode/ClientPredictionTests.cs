@@ -604,4 +604,39 @@ public class ClientPredictionTests
         p.Reseed(new FakeState(Vector2.Zero));
         Assert.Equal(0f, p.PredictedHorizontalSpeed, 3);
     }
+
+    /// <summary>
+    /// A frame time that is not a finite positive duration advances nothing, and poisons nothing either. The
+    /// inter-tick clock ACCUMULATES, so under IEEE semantics one NaN dt rides straight through the sanitizing
+    /// Max/Min into secondsSinceLastPredict, and every RenderedState after it is NaN for the rest of the session
+    /// rather than for a frame. An infinite dt is refused in the same breath: the offset decay's closed form
+    /// multiplies a zero term by it and lands on NaN the same way. Only Reset and Reseed recover, and neither is on
+    /// any per-frame path.
+    /// </summary>
+    [Fact]
+    public void A_frame_time_that_is_not_a_finite_duration_advances_nothing_and_poisons_nothing()
+    {
+        var p = NewPrediction();
+        p.Predict(new Vector2(600f, 0f));   // predicted 10
+        p.AdvancePresentation(Tick);        // rendered 10
+        // A live smoothing offset, so the decay path is exercised as well as the inter-tick clock.
+        p.Reconcile(1, new FakeState(new Vector2(5f, 0f)), lastAcknowledgedSeq: -1);
+        p.Predict(new Vector2(600f, 0f));
+        p.AdvancePresentation(Tick / 2f);
+        Vector2 before = p.RenderedState.Position;
+        Assert.True(float.IsFinite(before.X) && float.IsFinite(before.Y));
+
+        p.AdvancePresentation(float.NaN);
+        Assert.Equal(before, p.RenderedState.Position);
+        p.AdvancePresentation(float.PositiveInfinity);
+        Assert.Equal(before, p.RenderedState.Position);
+        p.AdvancePresentation(float.NegativeInfinity);
+        Assert.Equal(before, p.RenderedState.Position);
+
+        // And the clock is still a clock: the ordinary frames after the bad one keep easing toward the predicted tick.
+        p.AdvancePresentation(Tick / 2f);
+        Vector2 after = p.RenderedState.Position;
+        Assert.True(float.IsFinite(after.X) && float.IsFinite(after.Y));
+        Assert.NotEqual(before, after);
+    }
 }

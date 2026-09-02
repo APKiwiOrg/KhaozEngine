@@ -46,3 +46,7 @@ Options:
 - `ELEVENLABS_API_KEY` - required for a real bake, not for `--dry-run`.
 - OGG output needs a Vorbis encoder on PATH: ffmpeg built with libvorbis, or `oggenc`
   (vorbis-tools). WAV-only manifests need neither.
+- An encoder gets 5 minutes to finish (`SystemProcessRunner.DefaultTimeout`, overridable through the
+  constructor). Past that it is killed with anything it started and the bake fails with a `TimeoutException`
+  instead of parking forever. Both of the encoder's output pipes are drained concurrently, so a chatty ffmpeg
+  cannot wedge the bake by filling the stderr pipe buffer.

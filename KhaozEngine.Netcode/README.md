@@ -44,6 +44,10 @@ Draw(prediction.RenderedState);
 
 Tune via `PredictionSettings` (tick rate, buffer cap, hard-snap distance, correction rate, dead-zone).
 
+`AdvancePresentation` refuses a frame time that is not a finite positive number of seconds (negative, zero,
+infinite, or not a number): it is treated as zero and advances nothing. The inter-tick clock accumulates, so one
+bad frame would otherwise make every `RenderedState` after it NaN for the rest of the session.
+
 `Reconcile` is **C1-continuous** (since 9.23.0): a non-hard-snap rebase does NOT collapse the in-flight inter-tick
 interpolation onto the new basis. It folds only the genuine misprediction into the decaying render offset, so a
 matching (loopback) rebase - fired every tick - perturbs neither the rendered position nor its velocity. The

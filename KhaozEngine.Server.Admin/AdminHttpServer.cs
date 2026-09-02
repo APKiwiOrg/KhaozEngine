@@ -109,7 +109,17 @@ public sealed class AdminHttpServer : IAsyncDisposable
         g.MapPost("/ban", async Task<IResult> (BanRequest r) =>
         {
             if (!admin.BansSupported) return Results.StatusCode(StatusCodes.Status501NotImplemented);
-            await admin.BanAsync(r.AccountId, r.Reason ?? string.Empty, r.Until);
+            try
+            {
+                await admin.BanAsync(r.AccountId, r.Reason ?? string.Empty, r.Until);
+            }
+            catch (ArgumentException ex)
+            {
+                // ServerAdmin refuses an id that names a seat rather than a player (a tokenless connection's
+                // guest:{slot}). That is the operator naming the wrong thing, so it is a 400 carrying the reason
+                // and not a 500 carrying a stack trace.
+                return Results.BadRequest(new { error = ex.Message });
+            }
             return Results.Accepted();
         });
 

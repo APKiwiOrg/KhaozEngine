@@ -48,10 +48,22 @@ public sealed partial class ServerAdmin
     public void Kick(PlayerRef target, string reason) => server.Kick(target, reason);
     public void Broadcast(string text) => server.Broadcast(text);
 
-    /// <summary>Persists a ban then kicks the account if it is currently online (no-op if offline).</summary>
+    /// <summary>Persists a ban then kicks the account if it is currently online (no-op if offline). A TOKENLESS
+    /// connection's id (<see cref="ResumePositionCache.GuestAccountPrefix"/>) is refused: it names a seat rather
+    /// than a person, so banning it punishes whoever is seated there next. Use <see cref="Kick"/> on the
+    /// <see cref="PlayerRef.Slot"/> for a player with no durable identity.</summary>
+    /// <exception cref="ArgumentException"><paramref name="accountId"/> is a tokenless connection's id.</exception>
     public async ValueTask BanAsync(string accountId, string reason, DateTimeOffset? until = null, CancellationToken ct = default)
     {
         IBanStore store = bans ?? throw new NotSupportedException("No ban store configured.");
+        // Both heads derive a tokenless connection's account id as guest:{slot}, and the allocator recycles that
+        // slot to the next connection. A ban filed under it therefore rejects every future tokenless player seated
+        // there while the one who earned it reconnects onto another slot and carries on. There is nothing durable
+        // to ban, and saying so beats banning a chair.
+        if (ResumePositionCache.IsGuestAccount(accountId))
+            throw new ArgumentException(
+                $"'{accountId}' is a tokenless connection, whose id names a seat rather than a player, so a ban on " +
+                "it would land on whoever is seated there next. Kick the slot instead.", nameof(accountId));
         await store.BanAsync(accountId, reason, until, ct).ConfigureAwait(false);
         server.Kick(PlayerRef.Account(accountId), reason);
     }

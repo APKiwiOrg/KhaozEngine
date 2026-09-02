@@ -41,6 +41,9 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   `EntityRenderState[]` (local player predicted + reconciled, remotes from replicated positions - smoothly
   interpolated between snapshots by default, so a remote glides instead of teleporting one ~tick-rate snapshot-step
   per ingest; `AdvancePresentation(dt)` drives it, opt out with `WorldClientConfig.InterpolateRemotes = false`).
+  `AdvancePresentation` treats a frame time that is not a finite positive number of seconds (negative, zero,
+  infinite, or not a number) as zero, so a broken frame clock advances neither the local avatar nor the remote
+  render timeline instead of pinning both for the session.
   Remote interpolation is a **fixed-delay snapshot buffer** (since 9.23.0): each render frame renders remotes at
   `latest - interpolationDelay` and lerps the two buffered snapshots bracketing that time by their true timestamps,
   so presentation is decoupled from both the tick cadence and the render fps - no hold frames, no catch-up snaps at
@@ -154,7 +157,10 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
     **`WorldPersistenceConfig.PersistGuests`** (default false), which files each guest under a durable
     `guest:{guid}` minted for that one session and never under the seat. Be clear about what that buys: the minted id
     is unreachable afterwards, so it is crash-safety within a session and an audit trail, never a guest's return.
-    Give players a connect token if returning to where they left matters.
+    Give players a connect token if returning to where they left matters. The prefix is RESERVED for that seat key,
+    and both heads enforce it at the join gate: a VERIFIED subject carrying it is refused and logged, because it
+    would otherwise reach persistence reading as tokenless and lose the whole session silently (#664). It is the
+    prefix that decides, so an account genuinely named `guest` is an account.
   - **Load validation and quarantine.** Two optional hooks on `WorldPersistenceConfig`, both evaluated on the
     server thread inside the load-on-join apply step: **`Bounds`** (`WorldBounds`, the same type the movement
     clamp uses) rejects a loaded position outside the play area. **`ValidateGameState`**
@@ -470,7 +476,9 @@ blobs still read fine and rewrite to LF the next time they are saved.
 The **`ServerAdmin`** facade composes an `IAdminControllable` server, an optional `IBanStore`, and an optional
 `IEnumerableWorldStore`: `BanAsync` persists and kicks if the account is online; `ListAccountsAsync(prefix)`
 materializes the account enumeration. Unwired capabilities throw `NotSupportedException` (feature-detect via
-`BansSupported` / `AccountsSupported`).
+`BansSupported` / `AccountsSupported`). A ban on a TOKENLESS connection's id (the `guest:` prefix) is refused
+with an `ArgumentException`: that id names a seat the allocator recycles, so the ban would land on whoever is
+seated there next while the player who earned it reconnects onto another slot. Kick the slot instead.
 
 **Game-registered admin actions (since 10.131.0).** `ServerAdmin` also carries a name-keyed action registry:
 `RegisterAction(string name, Func<JsonElement?, CancellationToken, Task<AdminActionResult>> handler)` (and a

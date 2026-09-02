@@ -360,8 +360,9 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         //    apart, and Accepts cannot refuse either one: it sees a TileMoveState and a TileCommand, and neither
         //    carries a net id.
         //
-        //    Nothing here writes Facing. A tile the body is standing on has no direction to face, and the step-off
-        //    is turned by the step it takes, exactly as every other step is.
+        //    NEITHER of the two standstills below writes Facing. A tile the body is standing on has no direction to
+        //    face, which is what R1 said and still holds, and the step-off is turned by the step it takes, exactly
+        //    as every other step is. The IN REACH case is the one that changed (#753): it does write, see below.
         bool inside = footprint.Contains(s.Tile.X, s.Tile.Z);
         if (inside && s.CombatTarget == self)
         {
@@ -370,9 +371,24 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         }
         // The two tests are mutually exclusive by construction, so the cheap one GATES the allocating one rather
         // than merely running before it.
+        //
+        // A combatant in reach LOOKS at what it is fighting. Nothing wrote Facing for a fight before, so it kept
+        // whatever its last step pointed at, which the step-off makes exactly 180 degrees wrong on every catch: the
+        // step-off is a step AWAY from the target. Facing is simulation state on the wire, so that is what every
+        // viewer drew.
+        //
+        // Continuously, on every tick the follow answers "in range", rather than once as the attacker lands: the
+        // target moves around the attacker mid-fight, and OSRS turns to face it as it goes. The cost is the same
+        // four-iteration scan FaceTarget runs, on a tick that already paid for the reach test beside it.
+        //
+        // It is written HERE, in the simulator, for the reason FaceTarget's comment gives about the interaction
+        // arrival: a facing only the server writes reaches the client a snapshot after the tick it belongs to, and
+        // the avatar visibly rotates late. Both heads run the follow, so the turn is predicted with the chase and
+        // the server's own write of the same value is an idempotent backstop.
         if (!inside && TileReach.Contains(Map, footprint, plane, s.Tile))
         {
             s.Route = TileRoute.None;
+            s.Facing = TileReach.FacingToward(Map, footprint, plane, s.Tile);
             return s;
         }
 

@@ -3914,7 +3914,9 @@ playheads scale, so the feet track speed even mid-blend.
 skeleton, time)` is a one-shot pose; `AnimationPlayer` holds a playhead, loops, and crossfades
 (`Play(clip, crossfade)` then `Update(dt)` then `GetBonePalette(buffer)`). `AnimationPlayer.Update(dt,
 speedMultiplier)` scales the playhead advance (for the speed-sync above) while keeping the crossfade timer on
-wall-clock `dt`; the 1-arg `Update(dt)` is exactly `Update(dt, 1f)`. `JointPose` is the TRS unit clips
+wall-clock `dt`. The 1-arg `Update(dt)` is exactly `Update(dt, 1f)`. A NEGATIVE multiplier plays the clip
+backwards: a looping clip wraps onto its tail, and a one-shot (`PlayOnce`) holds at frame 0 the way the forward
+direction holds the final frame. `JointPose` is the TRS unit clips
 interpolate; `InterpolationMode` is LINEAR or STEP (CUBICSPLINE is read as its value keys).
 
 ### Layered / masked animation (attack while running)
@@ -8170,6 +8172,10 @@ var server = new WorldServer(transport, new WorldServerConfig { TickSeconds = 1f
   snapshot-step per ingest - at the cost of ~one tick (~33 ms) of remote render latency (it renders ~one snapshot in
   the past, never extrapolating). Set `InterpolateRemotes = false` to read the raw latest position instead. Call
   `AdvancePresentation(dt)` once per render frame to drive both the local smoothing and the remote interpolation.
+  A frame time that is not a finite positive number of seconds (negative, zero, infinite, or not a number) is
+  treated as zero and advances nothing, on both `WorldClient.AdvancePresentation` and the underlying
+  `ClientPrediction.AdvancePresentation`. Both clocks accumulate, so a broken frame clock redraws the previous
+  frame instead of poisoning the local avatar and the remote timeline for the rest of the session.
   Read-only local-avatar shorthands: `LocalRenderState` / `LocalGrounded` / `LocalVerticalVelocity`, plus
   `LocalHorizontalSpeed` - the predicted planar speed in m/s straight off
   `ClientPrediction.PredictedHorizontalSpeed`, computed per prediction tick and immune to reconciliation snaps,
@@ -9139,7 +9145,10 @@ Combat is a FOLLOWED interaction rather than a system of its own. `TileCommandKi
 `TileMoveState.CombatTarget` carries the lock, and the chase therefore runs inside the ONE stepper both heads
 predict rather than in a second movement authority the client would pay a round trip on. Melee range is literally
 `TileReach.Contains` against a 1x1 rect, so cardinal adjacency, the no-diagonal rule and the wall-denied safespot
-all fall out of the reach rule the package already had.
+all fall out of the reach rule the package already had. The follow turns the attacker toward its target on every
+tick it answers in range, not once as it lands, so a combatant faces what it is fighting even after a step-off
+walked it away from the target and even as the target circles it. Both heads predict that turn with the chase, so
+it is not a facing the client waits a snapshot for.
 
 **Read the player health contract before anything else here.** A spawned PLAYER has no `TileHealth` at all. An
 actor gets one from its spawn spec, and nothing writes a player's, because `Max` is a number out of the game's own
@@ -13718,7 +13727,9 @@ token for the same account carries the same subject, so persistence keyed on the
 `WorldServer`/`ShardedWorldServer` take the authenticator as an optional last constructor argument (default
 `AllowAllAuthenticator`) and use `ev.Subject` as the persisted `accountId`, falling back to `guest:{slot}` when it
 is empty. That fallback names a recycled seat rather than a player, so `WorldPersistence` stores nothing under it
-unless the game sets `WorldPersistenceConfig.PersistGuests` (see the persistence section).
+unless the game sets `WorldPersistenceConfig.PersistGuests` (see the persistence section). The `guest:` prefix is
+reserved for that fallback: a verified subject carrying it is refused at the join gate on both heads, since it
+would reach persistence reading as tokenless and lose the session silently.
 
 **Client-side shape pre-filter without the secret (`SignedToken.TryParseUnverified`, 14.9.0).** The HMAC secret
 lives only on the server, so a client that wants to sanity-check a pasted or launch-supplied token's SHAPE before
@@ -14321,11 +14332,13 @@ sets **`WorldPersistenceConfig.PersistGuests = true`**, which files each guest u
 for that one session and never under the seat. That buys crash-safety within a session and an audit trail, never a
 guest's return: nothing can present the minted id again. Give players a connect token if returning matters.
 
-The `guest:` prefix is RESERVED by that rule and enforced nowhere. `SignedToken.Mint` accepts any subject that has no
-`.` in it, and `AllowAllAuthenticator` takes the client's raw bytes as the subject, so a game that mints
-`guest:alice` as a real account id gets a player the engine reads as tokenless and, by default, does not persist at
-all, silently. Do not namespace your own account ids under it. Tracked in
-[#664](https://github.com/APKiwiOrg/KhaozEngine/issues/664).
+The `guest:` prefix is RESERVED by that rule, and both heads now ENFORCE it at the join gate: a verified subject
+carrying it is refused and the connection dropped, with an error log naming the subject and the fix. Nothing stops a
+game minting such a subject (`SignedToken.Mint` accepts any subject with no `.` in it, and `AllowAllAuthenticator`
+takes the client's raw bytes), and the join is the last place that can tell a minted `guest:alice` from the
+`guest:{slot}` a head derives for a tokenless connection. Before that gate the player joined fine and then lost the
+whole session on disconnect, silently. Do not namespace your own account ids under it. It is the PREFIX that
+decides, so every other subject format is unaffected, an account genuinely named `guest` included.
 
 ```csharp
 var persistence = new WorldPersistence(server, store, new WorldPersistenceConfig
@@ -14800,9 +14813,13 @@ reason and set `ReconnectBackoff.MaxAttempts` (or turn `AutoReconnect` off) if y
 Feature-detect with `store is IEnumerableWorldStore`.
 
 **Facade.** `ServerAdmin(IAdminControllable server, IBanStore? bans = null, IEnumerableWorldStore? accounts = null)`
-composes the three: `BanAsync` persists then kicks if the account is online; `ListAccountsAsync(prefix)` materializes
-the enumeration; unwired capabilities throw `NotSupportedException` (feature-detect via `BansSupported` /
-`AccountsSupported`).
+composes the three. `BanAsync` persists then kicks if the account is online, `ListAccountsAsync(prefix)` materializes
+the enumeration, and unwired capabilities throw `NotSupportedException` (feature-detect via `BansSupported` /
+`AccountsSupported`). `BanAsync` refuses a TOKENLESS connection's account id (anything carrying the reserved
+`ResumePositionCache.GuestAccountPrefix`) with an `ArgumentException`, which `POST /admin/ban` surfaces as a 400
+carrying the reason. That id is `guest:{slot}` and the allocator recycles the slot, so banning it rejects every
+future tokenless player seated there while the one who earned it reconnects onto another slot and carries on. Kick
+the slot (`Kick(PlayerRef.Slot(...))`) for a player with no durable identity.
 
 **Game-registered admin actions (since 10.131.0).** `ServerAdmin` also carries a name-keyed registry a game
 populates at startup: `RegisterAction(string name, Func<JsonElement?, CancellationToken, Task<AdminActionResult>> handler)`,

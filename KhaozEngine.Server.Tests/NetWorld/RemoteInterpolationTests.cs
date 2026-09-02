@@ -68,6 +68,13 @@ public class RemoteInterpolationTests
         return rig;
     }
 
+    static Vector3 LocalPos(WorldClient client)
+    {
+        foreach (EntityRenderState e in client.Snapshot())
+            if (e.IsLocal) return e.Position;
+        throw new Xunit.Sdk.XunitException("the local avatar is not visible");
+    }
+
     static Vector3 RemotePos(WorldClient observer, long remoteNetId)
     {
         foreach (EntityRenderState e in observer.Snapshot())
@@ -255,5 +262,42 @@ public class RemoteInterpolationTests
             }
         }
         Assert.True(sawB, "A never saw the late-joining remote B");
+    }
+
+    /// <summary>
+    /// A frame time that is not a finite positive duration advances nothing and poisons nothing, on either body.
+    /// The client hands its raw dt to the prediction layer, so a NaN frame took the LOCAL avatar out permanently,
+    /// and its own render clock only tested dt &gt; 0, which an infinite frame passes: that pins the clock at
+    /// infinity, carries the render time past every buffered sample at once and parks every REMOTE on its newest
+    /// one for the rest of the session. Both are silent and permanent, which is what makes them worth refusing at
+    /// the frame clock rather than per consumer.
+    /// </summary>
+    [Fact]
+    public void A_frame_time_that_is_not_a_finite_duration_advances_nothing_and_poisons_nothing()
+    {
+        Rig rig = NewRig();
+
+        rig.A.AdvancePresentation(float.NaN);
+        rig.A.AdvancePresentation(float.PositiveInfinity);
+        rig.A.AdvancePresentation(float.NegativeInfinity);
+
+        // The local avatar still renders a real position, not the NaN that one frame used to buy for the session.
+        Vector3 local = LocalPos(rig.A);
+        Assert.True(float.IsFinite(local.X) && float.IsFinite(local.Y) && float.IsFinite(local.Z),
+            $"local rendered position must be finite, got {local}");
+        rig.Tick(rig.Dt);
+        local = LocalPos(rig.A);
+        Assert.True(float.IsFinite(local.X) && float.IsFinite(local.Y) && float.IsFinite(local.Z),
+            $"local rendered position must still be finite a frame later, got {local}");
+
+        // And the remote timeline is still a timeline: it keeps rendering on the fixed delay, behind the newest
+        // snapshot, instead of parked on it by an infinite render clock.
+        rig.Tick(rig.Dt, advanceA: false);
+        float rawLatest = rig.Remote().X;
+        rig.A.AdvancePresentation(rig.Dt);
+        float rendered = rig.Remote().X;
+        Assert.True(float.IsFinite(rendered), $"remote rendered position must be finite, got {rendered}");
+        Assert.True(rendered < rawLatest - 1e-4f,
+            $"the render clock was pinned: remote {rendered} is not behind the latest snapshot {rawLatest}");
     }
 }

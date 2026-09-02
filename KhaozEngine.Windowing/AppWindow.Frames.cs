@@ -54,7 +54,9 @@ namespace KhaozEngine.Windowing
             _window.Render += dt =>
             {
                 float fdt = (float)Math.Min(dt, 0.1);
-                InputState input = BuildInput();
+                // The one composition seam: the built snapshot, then the optional filter, then the frame latches it.
+                // Null filter is the raw snapshot with no allocation. See AppWindow.InputFilter.cs.
+                InputState input = ApplyInputFilter(_inputFilter, BuildInput());
                 int w = _window.FramebufferSize.X, h = _window.FramebufferSize.Y;
 
                 // Background-throttle decision for this frame (pure). A minimized window skips render + present. An

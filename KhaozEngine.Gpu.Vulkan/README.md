@@ -1202,7 +1202,7 @@ wrote is left in `GENERAL`, and the next draw whose set samples it moves it to `
 is step 1 above rather than the incumbent's queued layout restore armed by a usage flag. A resource set carries
 its images as plain data resolved at CREATION, with the range each binding's own view covers: the full chain for
 a sampled bind, mip 0 for a storage one. That is what hands the tracker its contains-then-collapse shape rather
-than a partial overlap it would refuse. The walk covers every RECORDED slot rather than the dirty ones, because a
+than a partial overlap it would refuse. The walk covers every DECLARED slot rather than the dirty ones, because a
 set bound before a dispatch is still bound at the draw after it, and it costs no native call at all in the common
 frame: a texture already in the layout it is asked for emits nothing.
 
@@ -1215,6 +1215,17 @@ BACKEND PROPERTY. It is evidence for the automatic-hazard seam capability
 ([#461](https://github.com/APKiwiOrg/KhaozEngine/issues/461)), which is still a proposal rather than a member of
 `GpuCapabilities`: since the native Metal backend joined by its serial compute encoder, three of three
 engine-owned backends order a dependent chain natively.
+
+**Both halves of that set stop at the declared set count too**
+([#632](https://github.com/APKiwiOrg/KhaozEngine/issues/632)), which was the last walk over the bind records left
+unbounded and the only one whose bound decides whether a barrier is EMITTED. The storage-binding rule that makes
+every storage bind count as a write is about DIRECTION, not reach: it assumes a write because the seam cannot
+express a read-only storage binding, and it says nothing about a set at an index the bound layout has no entry
+for, which no shader on the pipeline can name at all. A switch to a shorter compute layout used to leave those
+slots recording resources as written, and a later independent dispatch that merely bound one was answered yes.
+Both errors ran the safe way, an extra global memory barrier and never a missing one, so no picture was ever
+wrong. What it cost is the serialisation the written set exists to avoid, put back by a slot the dispatch cannot
+reach.
 
 **A dispatch, a copy, a mip generation and a resolve all end the pending render pass instance first**, through the
 one helper that rule has, because every one of them is illegal inside one.

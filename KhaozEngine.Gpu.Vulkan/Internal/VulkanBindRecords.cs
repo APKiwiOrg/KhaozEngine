@@ -231,6 +231,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// bind.
         /// </para>
         /// <para>
+        /// AND SO DO BOTH OF <see cref="VulkanComputeHazards"/>' WALKS, from a third end
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/632): a slot past it names no resource the dispatch can
+        /// read or write, so counting one as written, or as a dependency, only puts back the serialisation the
+        /// hazard set exists to avoid. That was the last walk over these records left unbounded, and it was the
+        /// only one whose bound decides whether a BARRIER is emitted, which is why it landed on its own argument
+        /// rather than with either sibling.
+        /// </para>
+        /// <para>
         /// WITH NO PIPELINE BOUND IT REACHES EVERYTHING, deliberately. That is the case <c>RequireLayout</c> refuses
         /// by name, and a limit of zero there would turn a draw issued before a pipeline into silence.
         /// </para>
@@ -259,9 +267,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// IT ANSWERS FOR EVERY RECORDED SLOT AND NOT ONLY THE DIRTY ONES, deliberately. A set bound before a
         /// dispatch that then moved one of its images to <c>GENERAL</c> is still bound at the next draw, and a
         /// dirty-only walk would miss exactly the case rule 1 exists for. Which slots a caller ASKS about is its
-        /// own question and the two callers answer it differently: the image walk stops at
-        /// <see cref="BindableSlotLimit"/> and <see cref="VulkanComputeHazards"/>'s does not
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/632).
+        /// own question, and since https://github.com/APKiwiOrg/KhaozEngine/issues/632 every caller answers it the
+        /// same way: the image walk and both of <see cref="VulkanComputeHazards"/>' walks stop at
+        /// <see cref="BindableSlotLimit"/>, which is a bound on DECLARED slots and still not on dirty ones.
         /// </para>
         /// </summary>
         internal VulkanBoundSet BoundAt(uint slot) => slot < (uint)_recorded ? _slots[slot].Bound : default;

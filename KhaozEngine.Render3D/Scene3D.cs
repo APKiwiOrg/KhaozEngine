@@ -390,8 +390,8 @@ namespace KhaozEngine.Render3D
             // lifetime rather than once per frame (see the field doc comment above and AlphaCutoffFor below).
             _alphaCutoffLookup = AlphaCutoffFor;
             // Fence-polled ripeness where the backend can signal on GPU completion (Metal, Vulkan), the frame-count
-            // drain everywhere else. Create may mint a fence because Begin is in the pre-record phase (#424).
-            _retired = GpuRetireQueue.Create(gd);
+            // drain everywhere else, valve sized off the backend's frames-in-flight knob. See Create (#424, #661).
+            _retired = GpuRetireQueue.Create(gd, maxSealedBatches: GpuRetireQueue.SealedBatchCapFor(gd));
             _targetOutput = targetOutput;
             // Construction seam (issue #27): the shadow atlas is sized ONCE here (resolution x cascade count), and its
             // handle is bound into every material set, so those knobs can only be honoured if supplied BEFORE this

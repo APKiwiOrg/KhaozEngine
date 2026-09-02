@@ -13323,7 +13323,18 @@ sealed batches (default 8) the queue pays one `WaitForIdle` and frees the whole 
 costs at most one drain per nine frames of sustained fall-behind. Whether it fires is a property of the
 LOOP rather than of the GPU: a windowed loop blocks in its present at the backend's frames-in-flight
 depth and never comes near the cap, while an offscreen loop that submits without presenting runs eight or
-nine frames ahead even on fast hardware. `GpuRetireQueue.ValveDrains` counts the firings and
+nine frames ahead even on fast hardware.
+
+**Raising `KE_METAL_FRAMES_IN_FLIGHT` / `KE_VULKAN_FRAMES_IN_FLIGHT` / `KE_D3D11_FRAMES_IN_FLIGHT` costs you
+nothing here, and there is nothing for you to do about it**
+([#661](https://github.com/APKiwiOrg/KhaozEngine/issues/661)). A deeper pipeline lets the CPU get further ahead,
+so a fixed cap of 8 would start firing the valve on a loop that was never behind. `Scene3D` sizes its own cap off
+whichever of those variables its backend reads, one extra sealed batch per extra frame of depth and never below
+8, so the default is unchanged and a raised knob is absorbed.
+`GpuRetireQueue.SealedBatchCapFor(device)` is that rule if you build a queue of your own, and
+`SealedBatchCapForDepth(n)` is it with the depth handed in.
+
+`GpuRetireQueue.ValveDrains` counts the firings and
 `SealedBatchCount` is the batch-level view of the holding, next to `Scene3D.RetiredResourceCount`.
 
 **2D set eviction does not drain either, since 17.37.0.** `SpriteBatch` keeps one resource set per

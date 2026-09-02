@@ -371,9 +371,12 @@ What it owns today:
     submitted batch complete, then frees the whole holding behind it. `Create(device, frameDelay,
     maxSealedBatches)` sets it and `DefaultMaxSealedBatches` is 8: comfortably above the deepest a PRESENTED loop
     reaches, since the present stops the CPU at `KE_*_FRAMES_IN_FLIGHT` frames ahead (default 3) and each of those
-    frames has to have retired something to seal a batch. Raising that knob past 8 wants this raised with it or you
-    buy a drain you did not need, and there is no way to do it from outside the engine today
-    ([#661](https://github.com/APKiwiOrg/KhaozEngine/issues/661)). What actually decides whether it fires is how far
+    frames has to have retired something to seal a batch. Raising that knob wants this raised with it or you buy a
+    drain you did not need, and `SealedBatchCapFor(device)` does that for you: it reads the running backend's own
+    frames-in-flight variable and returns one more sealed batch per extra frame of depth, never below 8, which is
+    what `Scene3D` passes ([#661](https://github.com/APKiwiOrg/KhaozEngine/issues/661)). So a consumer who deepens
+    the pipeline pays nothing extra and a consumer who touches nothing gets the same 8 as before, and
+    `SealedBatchCapForDepth(n)` is the same rule with the depth handed in. What actually decides whether it fires is how far
     ahead the LOOP gets rather than how fast the GPU is: an offscreen loop that submits without presenting has
     nothing throttling it and runs eight or nine frames ahead on an M2 Max, where the engine's own 400-frame churn
     test parks the peak holding exactly on the cap and fires the valve anywhere from once to a couple of dozen times

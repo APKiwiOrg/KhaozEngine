@@ -1170,6 +1170,17 @@ so the bound holds identically on a backend with no ring at all and on an offscr
 presents. `ValveDrains` and the now-public `SealedBatchCount` are the two members that let a caller see it working.
 The frame-counted factory needed none of this, since a frame count is already a bound.
 
+**And the bound is sized against the backend rather than fixed
+([#661](https://github.com/APKiwiOrg/KhaozEngine/issues/661)).** A designed bound still has to be the right size,
+and 8 is right for the pipeline depth the three backends ship at. A consumer who raises
+`KE_*_FRAMES_IN_FLIGHT` lets the CPU get further ahead, so the same 8 starts firing the valve on a loop that was
+never behind, and the docs told that consumer to raise `MaxSealedBatches` with it through a parameter no public
+route into a scene reached. `GpuRetireQueue.SealedBatchCapFor(device)` reads the running backend's own knob and
+returns one more sealed batch per extra frame of depth, never below 8, and `Scene3D` passes it. That puts the
+seam in the position of restating three env-var names it cannot reference, which is asserted rather than assumed:
+`GpuRetireQueueSealedBatchCapTests` compares the reader's name and bounds against each backend package's own
+constants.
+
 ## GPU-backend invariant: ONE uniform buffer per pipeline (RETIRED by #604, kept here as history)
 
 **THE RULE IS GONE, AND NOTHING REPLACED IT.** For most of this engine's life every new render path was

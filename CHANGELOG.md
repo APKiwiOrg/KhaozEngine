@@ -86,6 +86,22 @@ Rendering and effects:
 - The `savesInFlight` overlapping-write guard in `SaveDirtyPass` gains the save-side test its load-side
   twin has had since 16.6.0 ([#783](https://github.com/APKiwiOrg/KhaozEngine/issues/783)).
 
+- **Behaviour change, tile world roofs: hiding is per building now, not per plane.** `TileWorldView` used
+  to hide EVERY roof above an indoor observer, so walking into one house stripped the roofs off the whole
+  skyline. It now hides a roof only when its tile footprint touches the observer's own INTERIOR, the
+  4-connected flood fill of `TileSettings.Indoors` tiles seeded from the observer's tile, on a plane above
+  theirs. The old rule is what `RoofVisibility.AlwaysHidden` does now. New public API: the
+  `RoofVisibility` enum (`Interior` the default, `AlwaysVisible`, `AlwaysHidden`), `TileWorldView.RoofMode`
+  for the player's roofs setting, `TileWorldView.IsRoofHidden(footprint, plane)` as the predicate itself
+  (the object-silhouette gate goes through it too), `InteriorTileCount`, `InteriorTruncated` and
+  `MaxInteriorTiles`. `TileRegionProps` gains an init-only `RoofFootprints`, the tile rect of each roof
+  placement in the same order, which is what lets the rule tell one building from another (empty by
+  default, so a record built by hand still compiles and its roofs are never interior-hidden). The fill is
+  bounded at 4096 tiles so an authoring mistake that flags a region indoors cannot stall a frame: past the
+  cap the roofs simply stay visible, with a counter and one log line rather than a throw. The interior
+  refills lazily on an observer tile change, an indoor-flag flip under a stationary observer, or any
+  `MarkDirty`, so a still frame costs one settings lookup and no fill. Grimhollow reported it.
+
 The eighth backlog wave rides the same entry: the lead-confidence pile triaged end to end, and the
 verified defects and consumer parity gaps below, each fixed with a test proven red against the unfixed
 code.

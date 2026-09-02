@@ -7064,8 +7064,8 @@ form. A stamp is additive per layer, so clear the rect first if you want a repla
 exact ties to the lower object id, using the same `TileObjectProps` placement a prop draw uses, so a well's
 roof counts as the well. Hand it a `TileObjectBoundsCache` over the view's own `ITileMeshResolver` as the
 bounds source (the per-archetype vertex box, measured once), and apply your own clickability gates on the hits
-(the archetype id rides on each one): a roof hidden by the indoor rule, a non-interactive archetype, or a cut
-at the ground hit's distance are all the caller's rules, deliberately.
+(the archetype id rides on each one): a roof the view is currently hiding (`TileWorldView.IsRoofHidden`), a
+non-interactive archetype, or a cut at the ground hit's distance are all the caller's rules, deliberately.
 
 ---
 
@@ -7099,6 +7099,28 @@ byte[] rgba = TileWorldSnapshot.CaptureTopDown(doc, catalogs, resolver,
     new TileRect(0, 0, 32, 32), plane: 0, pxPerTile: 4);
 PngWriter.Save("map.png", rgba, 32 * 4, 32 * 4);
 ```
+
+**Roofs come off one building at a time.** `Observer` is the tile the roof rule is judged from, and
+`ObserverIndoors` says whether it carries `TileSettings.Indoors`. A roof is hidden when the observer is indoors,
+the roof sits on a plane ABOVE the observer's own, and its tile footprint touches the observer's own INTERIOR:
+the 4-connected flood fill of indoor tiles seeded from the observer's tile. So walking into a house takes that
+house's roof off and leaves every other roof in view standing. `IsRoofHidden(footprint, plane)` is the predicate
+itself, for a caller gating its own picks or overlays, and `InteriorTileCount` reports how big the interior it
+answered from was.
+
+```csharp
+view.RoofMode = RoofVisibility.Interior;        // the default: only the building the observer is in
+view.RoofMode = RoofVisibility.AlwaysHidden;    // the "roofs off" player setting, every roof on every plane
+view.RoofMode = RoofVisibility.AlwaysVisible;   // nothing is ever hidden, the map-authoring view
+```
+
+The fill is bounded at `TileWorldView.MaxInteriorTiles` (4096). A world that flags a whole region indoors by
+mistake would otherwise walk tens of thousands of tiles on the frame the observer steps into it, so the walk
+stops there and the tiles it never reached are outside the interior. The failure direction is a roof left
+visible, never a stalled frame and never a throw: `InteriorTruncated` reports it and
+`TileWorldViewOptions.Log` gets one line for the view's life. It refills lazily, when the observer's tile
+changes, when the indoor flag under a stationary observer flips, or after any `MarkDirty`, which is the only
+edit channel the document has, so an editor painting `Indoors` sees the new interior on the next draw.
 
 **Real meshes.** `GreyboxMeshResolver` draws boxes. `GltfMeshResolver` draws a kit: it maps an archetype's
 `MeshRef` (relative, forward slashes, `kit/wall.glb`) to a glb under a root directory, loads it once through

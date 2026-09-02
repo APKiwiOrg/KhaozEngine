@@ -352,7 +352,10 @@ public sealed class TempDir : IDisposable
 }
 
 /// <summary>One prop-draw call as <see cref="RecordingTileWorldScene"/> saw it.</summary>
-/// <param name="Placements">The placement list handed in, so a test can name the archetypes it carried.</param>
+/// <param name="Placements">A SNAPSHOT of the placement list handed in, so a test can name the archetypes it
+/// carried. A copy because <see cref="ITileWorldScene.DrawProps"/> is defined to read its list during the call
+/// and never retain it, which lets the view hand over one scratch list it refills per region-plane: keeping the
+/// reference here would make every record of a frame show whatever the last call left in it.</param>
 /// <param name="Focus">The focus point the call culled around.</param>
 /// <param name="DrawRadius">The horizontal draw radius the call culled with.</param>
 /// <param name="Drawn">How many placements survived the cull and had a loaded mesh.</param>
@@ -513,7 +516,9 @@ public sealed partial class RecordingTileWorldScene : ITileWorldScene
             if (!parts.ContainsKey(p.Id)) continue;
             drawn++;
         }
-        PropDraws.Add(new TilePropDrawRecord(placements, focus, drawRadius, drawn));
+        var snapshot = new PropPlacement[placements.Count];
+        for (int i = 0; i < placements.Count; i++) snapshot[i] = placements[i];
+        PropDraws.Add(new TilePropDrawRecord(snapshot, focus, drawRadius, drawn));
         return drawn;
     }
 

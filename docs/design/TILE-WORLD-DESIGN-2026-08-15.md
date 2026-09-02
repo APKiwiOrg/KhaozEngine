@@ -404,7 +404,10 @@ alike.
 `TileWorldView` owns loaded region meshes and prop batches in a `Scene3D`, driven by `TileRegionResidency`
 (a Chebyshev ring of regions around an anchor, the `MapTileResidency` shape, radius default 1 for the editor
 and configurable for the client). Plane rules: all planes are drawn, and `IsRoof` objects on planes above the
-observer are hidden while the observer's tile carries `Indoors`, which is OSRS's global roof-hide. Headless
+observer are hidden while the observer's tile carries `Indoors`, which is OSRS's global roof-hide. (Superseded
+in 18.10.0: the plane-wide form stripped every roof in view when the observer walked into one building, so the
+shipped rule hides only the roofs over the observer's own interior and the plane-wide form became
+`RoofVisibility.AlwaysHidden`. See `CHANGELOG.md` and the package README.) Headless
 PNG for MCP goes through the same `Render3DSnapshot` path `ke-mapedit` uses, with `TileWorldView` in place
 of `ViewportWorld`.
 

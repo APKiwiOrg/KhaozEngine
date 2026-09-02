@@ -46,7 +46,10 @@ public interface ITileWorldScene
     void UnloadPropMeshes(IReadOnlyList<MeshHandle> handles);
 
     /// <summary>Queues every placement within <paramref name="drawRadius"/> of <paramref name="focus"/> whose
-    /// archetype id has parts in <paramref name="parts"/>, and returns how many were drawn.</summary>
+    /// archetype id has parts in <paramref name="parts"/>, and returns how many were drawn.
+    /// <para><paramref name="placements"/> is READ during the call and never retained, so a caller may hand over
+    /// a scratch list it refills for the next call of the same frame. The view relies on that for the roofs it
+    /// filters per region-plane.</para></summary>
     int DrawProps(IReadOnlyList<PropPlacement> placements,
                   IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
                   Vector3 focus, float drawRadius);

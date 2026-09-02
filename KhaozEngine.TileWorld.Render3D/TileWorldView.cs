@@ -3,9 +3,25 @@ using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
+using KhaozEngine.Terrain;
 using TileGroundMaterialHandle = KhaozEngine.Render3D.Scene3D.TileGroundMaterialHandle;
 
 namespace KhaozEngine.TileWorld;
+
+/// <summary>What <see cref="TileWorldView"/> does with roofs, the player-facing roofs setting an OSRS-style
+/// game exposes.</summary>
+public enum RoofVisibility
+{
+    /// <summary>The default. A roof is hidden while the observer stands INSIDE the building it covers: the
+    /// roof's footprint has to touch the observer's own interior, and sit on a plane above the observer's. Every
+    /// other roof in view keeps drawing, so walking into a house does not strip the skyline.</summary>
+    Interior,
+    /// <summary>Nothing is ever hidden. Roofs draw indoors as well, which is the debug and map-authoring view.</summary>
+    AlwaysVisible,
+    /// <summary>Every roof on every plane is hidden, indoors or not. This is the "roofs off" setting, and it is
+    /// also the pre-18.10.0 indoor behaviour applied unconditionally.</summary>
+    AlwaysHidden,
+}
 
 /// <summary>Knobs for <see cref="TileWorldView"/>.</summary>
 public sealed class TileWorldViewOptions
@@ -57,7 +73,7 @@ public sealed class TileWorldViewOptions
 
 /// <summary>Owns one tile world's meshes and props inside a scene: one ground mesh handle per drawable
 /// region-plane, one prop mesh set per catalog archetype, per-region prop placements, and the roof rule that
-/// hides the planes above an indoor observer. Edits are announced with <see cref="MarkDirty(RegionCoord, int)"/>
+/// hides the roofs over the building an indoor observer is standing in. Edits are announced with <see cref="MarkDirty(RegionCoord, int)"/>
 /// and coalesced into one rebuild per region-plane at the start of the next <see cref="Draw"/>, so a stroke that
 /// touches the same tiles a hundred times still remeshes each region-plane once. Everything goes through
 /// <see cref="ITileWorldScene"/>, so the whole class runs headless.</summary>
@@ -99,7 +115,14 @@ public sealed partial class TileWorldView : IDisposable
     readonly int _planes;
     readonly TileGroundMaterialSet _materials;
     readonly TileGroundMaterialHandle _material;
+    // The observer's own interior, and the roofs of one region-plane that survive it. The scratch list is
+    // refilled per region-plane rather than allocated, and is only ever handed to ITileWorldScene.DrawProps,
+    // which reads it during the call and does not retain it.
+    readonly TileInteriorFill _interior = new();
+    readonly List<PropPlacement> _visibleRoofs = new();
     TileCoord _observer;
+    bool _interiorStale = true;
+    bool _interiorTruncationLogged;
     bool _disposed;
 
     /// <summary>Binds a world to a scene and uploads the ground material set plus one mesh set per catalog
@@ -159,19 +182,47 @@ public sealed partial class TileWorldView : IDisposable
         Observer = default;
     }
 
-    /// <summary>The tile the roof rule is judged from. Setting it recomputes <see cref="ObserverIndoors"/>.</summary>
+    /// <summary>The tile the roof rule is judged from. Setting it recomputes <see cref="ObserverIndoors"/> at
+    /// once, and marks the interior for a refill on the next <see cref="Flush()"/> or roof query when the tile
+    /// actually moved, so standing still costs one settings lookup a frame and no flood fill.</summary>
     public TileCoord Observer
     {
         get => _observer;
         set
         {
+            if (value != _observer) _interiorStale = true;
             _observer = value;
             ObserverIndoors = IndoorsAt(value);
         }
     }
 
-    /// <summary>Whether the observer's tile is flagged indoors, which hides the roofs on the planes above it.</summary>
+    /// <summary>Whether the observer's tile is flagged indoors. Unchanged in meaning: it is the trigger for the
+    /// roof rule, and <see cref="RoofMode"/> plus the observer's own interior decide which roofs it reaches.</summary>
     public bool ObserverIndoors { get; private set; }
+
+    /// <summary>What this view does with roofs. <see cref="RoofVisibility.Interior"/> by default, which hides
+    /// only the roofs over the building the observer is standing in. A game wires this straight to its roofs
+    /// setting.</summary>
+    public RoofVisibility RoofMode { get; set; } = RoofVisibility.Interior;
+
+    /// <summary>Most tiles one interior may hold before the fill stops walking. Past it the roofs simply stay
+    /// visible: see <see cref="InteriorTruncated"/>.</summary>
+    public const int MaxInteriorTiles = TileInteriorFill.MaxTiles;
+
+    /// <summary>How many tiles the observer's interior holds, 0 outdoors. Refills the interior if an edit or a
+    /// move left it stale, so it never answers from a fill that is out of date.</summary>
+    public int InteriorTileCount
+    {
+        get { EnsureInterior(); return _interior.Count; }
+    }
+
+    /// <summary>Whether the observer's interior hit <see cref="MaxInteriorTiles"/> with tiles left to walk,
+    /// which means indoor tiles past the cap are not part of it and the roofs over them stay drawn. Content is
+    /// saying "indoors" over ground that is not one room.</summary>
+    public bool InteriorTruncated
+    {
+        get { EnsureInterior(); return _interior.Truncated; }
+    }
 
     /// <summary>How many prop placements the last <see cref="Draw"/> queued, roofs included when shown.</summary>
     public int LastDrawnProps { get; private set; }
@@ -289,8 +340,12 @@ public sealed partial class TileWorldView : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         // One settings lookup a frame, which is what it costs to stay right when the tile UNDER a stationary
-        // observer is edited: the setter alone only sees the observer moving.
-        ObserverIndoors = IndoorsAt(_observer);
+        // observer is edited: the setter alone only sees the observer moving. A flip refills the interior, and
+        // so does any MarkDirty, which is the only edit channel there is (the document raises no events).
+        bool indoors = IndoorsAt(_observer);
+        if (indoors != ObserverIndoors) _interiorStale = true;
+        ObserverIndoors = indoors;
+        EnsureInterior();
         if (_dirtyOrder.Count == 0) return;
 
         int budget = Math.Max(1, maxRebuilds);
@@ -326,8 +381,8 @@ public sealed partial class TileWorldView : IDisposable
     }
 
     /// <summary>Flushes pending rebuilds, then queues every loaded region: each plane's ground mesh at the
-    /// region's world transform, that plane's ground props, and its roofs unless the observer stands indoors on a
-    /// lower plane. <paramref name="focus"/> is the point the prop draw radius is measured from, which is the
+    /// region's world transform, that plane's ground props, and every roof <see cref="IsRoofHidden"/> leaves
+    /// visible. <paramref name="focus"/> is the point the prop draw radius is measured from, which is the
     /// camera subject rather than the observer tile, so a camera pulled back from an indoor observer still draws
     /// the props around it.</summary>
     public void Draw(Vector3 focus)
@@ -347,8 +402,12 @@ public sealed partial class TileWorldView : IDisposable
                 TileRegionProps props = handles.Props[plane];
                 if (props.Ground.Count > 0)
                     drawn += _scene.DrawProps(props.Ground, _propMeshes, focus, _options.PropDrawRadius);
-                if (props.Roofs.Count > 0 && !RoofsHiddenOn(plane))
-                    drawn += _scene.DrawProps(props.Roofs, _propMeshes, focus, _options.PropDrawRadius);
+                if (props.Roofs.Count > 0)
+                {
+                    IReadOnlyList<PropPlacement> roofs = VisibleRoofs(props, plane);
+                    if (roofs.Count > 0)
+                        drawn += _scene.DrawProps(roofs, _propMeshes, focus, _options.PropDrawRadius);
+                }
             }
         }
         LastDrawnProps = drawn;
@@ -389,13 +448,13 @@ public sealed partial class TileWorldView : IDisposable
     // Finds the silhouetted object through the document's object index and queues its parts as hulls, the
     // placement derived exactly the way TileObjectProps builds a prop draw (anchor position, yaw, scale 1), so
     // the hull sits on the same transform the prop was drawn at. The gates the prop draw applies apply here
-    // too: an object outside the prop draw radius, or a roof hidden by the indoor rule, draws no hull, because
-    // a hull whose model is not drawn has nothing to eat its interior and reads as a solid blob.
+    // too: an object outside the prop draw radius, or a roof the same IsRoofHidden predicate hides, draws no
+    // hull, because a hull whose model is not drawn has nothing to eat its middle and reads as a solid blob.
     void DrawSilhouettedObject(Vector3 focus)
     {
         if (_doc.FindObject(_silhouettedObject) is not { } o) return;
-        if (RoofsHiddenOn(o.Plane) && _catalogs.Archetype(o.ArchetypeId) is { IsRoof: true }) return;
         if (_catalogs.Archetype(o.ArchetypeId) is not { } archetype) return;
+        if (archetype.IsRoof && IsRoofHidden(TileFootprint.Of(archetype, o.X, o.Z, o.Rotation), o.Plane)) return;
         if (!_propMeshes.TryGetValue(o.ArchetypeId, out IReadOnlyList<MeshHandle>? parts)) return;
         Vector3 at = TileObjectProps.AnchorPosition(_doc, archetype, o);
         float dx = at.X - focus.X;
@@ -429,15 +488,79 @@ public sealed partial class TileWorldView : IDisposable
         if (_material.IsValid) _scene.UnloadTileGroundMaterial(_material);
     }
 
-    // The roof rule: standing indoors hides the roofs of every plane ABOVE the observer's own, so the storey the
-    // observer is on keeps its own props and the ceiling between them and the camera goes.
-    bool RoofsHiddenOn(int plane) => ObserverIndoors && plane > _observer.Plane;
+    /// <summary>The roof rule, and the whole of it. Under <see cref="RoofVisibility.Interior"/> a roof is hidden
+    /// when the observer is indoors, the roof sits on a plane ABOVE the observer's own (so the storey they stand
+    /// on keeps its own ceiling and only what is between them and the camera goes), and the roof's footprint
+    /// touches the observer's interior, which is what keeps the rule to one building. The other two modes answer
+    /// without looking at the world at all.</summary>
+    /// <param name="footprint">The world tile rect the roof covers, from <see cref="TileFootprint.Of"/>. An
+    /// empty rect is never hidden by the interior rule.</param>
+    /// <param name="plane">The plane the roof stands on.</param>
+    public bool IsRoofHidden(TileRect footprint, int plane)
+    {
+        EnsureInterior();
+        return RoofMode switch
+        {
+            RoofVisibility.AlwaysVisible => false,
+            RoofVisibility.AlwaysHidden => true,
+            _ => ObserverIndoors && plane > _observer.Plane && _interior.Intersects(footprint),
+        };
+    }
+
+    // The roofs of one region-plane this frame may draw. The region's OWN list comes back untouched whenever
+    // nothing on the plane can be hidden, which is every outdoor frame and every plane at or below the observer,
+    // so the common case copies nothing at all. Otherwise the one scratch list is refilled, which is safe to
+    // reuse across the region-planes of a frame because DrawProps reads it during the call (ITileWorldScene).
+    IReadOnlyList<PropPlacement> VisibleRoofs(TileRegionProps props, int plane)
+    {
+        if (!AnyRoofHiddenOn(plane)) return props.Roofs;
+        if (RoofMode != RoofVisibility.Interior) return Array.Empty<PropPlacement>();
+
+        _visibleRoofs.Clear();
+        IReadOnlyList<TileRect> footprints = props.RoofFootprints;
+        for (int i = 0; i < props.Roofs.Count; i++)
+        {
+            // A roof the footprint list does not reach is one nothing placed, so it is not part of any interior
+            // and stays visible. TileObjectProps.Build always fills the list, so this is the hand-built case.
+            TileRect footprint = i < footprints.Count ? footprints[i] : default;
+            if (!_interior.Intersects(footprint)) _visibleRoofs.Add(props.Roofs[i]);
+        }
+        return _visibleRoofs;
+    }
+
+    // Whether the mode and the observer can hide ANY roof on this plane, which is the per-region-plane gate that
+    // keeps the per-roof test off the outdoor path entirely.
+    bool AnyRoofHiddenOn(int plane) => RoofMode switch
+    {
+        RoofVisibility.AlwaysVisible => false,
+        RoofVisibility.AlwaysHidden => true,
+        _ => ObserverIndoors && plane > _observer.Plane && _interior.Count > 0,
+    };
+
+    // Refills the observer's interior when a move or an edit left it stale. Lazy rather than eager so a game
+    // that sets Observer every frame pays one flood fill per tile it actually walks onto.
+    void EnsureInterior()
+    {
+        if (!_interiorStale) return;
+        _interiorStale = false;
+        _interior.Rebuild(_doc, _observer, ObserverIndoors);
+        if (!_interior.Truncated || _interiorTruncationLogged) return;
+        // Once per view: the observer standing in an over-flagged interior would otherwise log every frame they
+        // walk through it. Developer diagnostics, never shown to a player, so it is deliberately not localized.
+        _interiorTruncationLogged = true;
+        _options.Log?.Invoke($"tile world: the interior around tile ({_observer.X}, {_observer.Z}) on plane " +
+                             $"{_observer.Plane} is larger than {MaxInteriorTiles} tiles, so the roofs past that " +
+                             "stay visible. Check the Indoors flags there.");
+    }
 
     bool IndoorsAt(TileCoord tile) => (_doc.GetSettings(tile.X, tile.Z, tile.Plane) & TileSettings.Indoors) != 0;
 
     // The one place the dedup set and the order list are appended to, so they cannot drift apart.
     void Queue(RegionCoord region, int plane)
     {
+        // An edit reaches the view through MarkDirty and nowhere else, so this is also where the interior hears
+        // that the tiles it was filled over may have moved under it.
+        _interiorStale = true;
         if (_dirty.Add((region, plane))) _dirtyOrder.Add((region, plane));
     }
 

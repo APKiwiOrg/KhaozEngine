@@ -83,7 +83,8 @@ The canonical facing math, so games stop re-deriving it (and stop hitting the wa
 facing produces in tight spaces): `MoveAxis(input)` (the WASD axis, the single source `CharacterController3D` also
 reads so move and facing never diverge), `IntendedMoveDirection(input, cameraYaw)` (that axis rotated into the camera
 basis), `YawOf(direction)`, `TurnTowards(currentYaw, intendedDirection, maxTurnRate, dt)` (a bounded-rate,
-shortest-path turn that holds facing when no key is held), and `WrapAngle`.
+shortest-path turn that holds facing when no key is held), and `WrapAngle` (a pure forward to
+`MathUtil.WrapAngle` in `KhaozEngine.Primitives`, normalizing to the half-open interval `(-pi, pi]`).
 
 `CharacterController3D` runs the same turn inside the shared movement step, and surfaces it: `FacingYaw` (radians,
 canonical `[-pi, pi)`, 0 faces world -Z, the convention `cameraYaw` is already in) is the heading `FacingTurnSpeed`

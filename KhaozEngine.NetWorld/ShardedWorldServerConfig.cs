@@ -83,4 +83,13 @@ public sealed partial class ShardedWorldServerConfig
     /// at <see cref="MaxPlayers"/>. Watch <see cref="ShardedWorldServer.RefusedPendingConnectionCount"/> to tell a
     /// flood being shed from a cap set too low.</summary>
     public int MaxPendingConnections { get; init; }
+
+    /// <summary>Hard cap on undrained session events the inner <see cref="NetServer"/> inbox will hold, forwarded
+    /// to it. Defaults to <see cref="BoundedEventQueue{T}.DefaultCapacity"/>, which is what the server used before
+    /// the knob existed. The documented contract is drain-to-empty every tick (<see cref="ShardedWorldServer.Poll"/>
+    /// does exactly that), so this only bites a host that stalls or a peer that floods, where the OLDEST buffered
+    /// event is evicted to admit the newest and memory stays bounded. A LEFT event is exempt and never counted: nothing
+    /// re-announces a departure, so dropping one would strand the player slot. Watch
+    /// <see cref="ShardedWorldServer.DroppedEventCount"/> to see the cap engage. Must be positive.</summary>
+    public int MaxQueuedEvents { get; init; } = BoundedEventQueue<ServerSessionEvent>.DefaultCapacity;
 }

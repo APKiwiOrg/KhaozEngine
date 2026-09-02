@@ -125,6 +125,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         // Always enforce the engine wire generation at connect (see WorldServer): a wire-skewed / version-less client
         // is rejected cleanly rather than admitted and left to misparse the wire.
         net = new NetServer(transport, config.MaxPlayers, WireGenerationAuthenticator.Install(authenticator),
+            maxQueuedEvents: config.MaxQueuedEvents,
             duplicateSessions: config.DuplicateSessions, maxPendingConnections: config.MaxPendingConnections);
         this.banStore = banStore;
     }
@@ -202,13 +203,6 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
 
     /// <summary>Number of joined players.</summary>
     public int PlayerCount => netIdBySlot.Count;
-    /// <summary>Connections accepted but holding no slot yet: connected, Hello not yet answered. A handful at any
-    /// instant is a join in flight. A number that climbs and stays there is a flood, or peers that connect and never
-    /// say Hello.</summary>
-    public int PendingConnectionCount => net.PendingConnectionCount;
-    /// <summary>Total connects refused because <see cref="ShardedWorldServerConfig.MaxPendingConnections"/> was
-    /// already reached. 0 with no cap configured, and 0 under normal traffic with one.</summary>
-    public long RefusedPendingConnectionCount => net.RefusedPendingConnectionCount;
     /// <summary>The net id of the player entity for a joined slot.</summary>
     public bool TryGetPlayerNetId(int slot, out long netId) => netIdBySlot.TryGetValue(slot, out netId);
 

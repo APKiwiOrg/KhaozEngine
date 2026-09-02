@@ -8669,6 +8669,15 @@ above the concurrent-join burst a launch or a restart produces, not at `MaxPlaye
 tell a flood being refused from a cap set below your real join burst. This is the one flood mitigation available
 without a remote address, which the transport seam deliberately does not expose.
 
+**Bounding the session inbox.** `MaxQueuedEvents` on `WorldServerConfig` / `ShardedWorldServerConfig` caps how many
+undrained session events the inner `NetServer` holds, defaulting to `BoundedEventQueue<T>.DefaultCapacity` (the
+value the servers used before the knob existed). `Poll` drains to empty every tick, so the cap only bites a host
+that stalls or a peer that floods, and when it does the OLDEST buffered event is evicted to admit the newest so
+memory stays bounded. Read `server.DroppedEventCount` to see it engage: non-zero means this host is not draining as
+contracted, or is under attack. A LEFT event never counts among the dropped. It is enqueued as terminal, sits
+outside the cap, and is never what an eviction throws away, because nothing re-announces a departure and losing one
+would strand the player slot.
+
 `MovementCorrection` fires when the authoritative sim has to deny a player's *intended* move (a wall slide,
 static collision, or play-area bound pulls them back) by more than `MaxCorrectionDistance` for `CorrectionStreak`
 consecutive ticks. A cheat hammering a wall trips it, a legitimate player brushing one does not. It is a
@@ -12250,9 +12259,11 @@ non-positive `maxDelta` is a zero step that HOLDS the current heading (wrapped) 
 target. `LerpAngle` walks the short arc, so halfway between 350 and 10 degrees is 0 rather than 180, and its
 `t` is unclamped like `Lerp`.
 
-`CharacterFacing.TurnTowards` / `CharacterFacing.WrapAngle` (`KhaozEngine.Game.Render3D`) stay as they are:
-they take a `Vector3` intended direction rather than a target angle, and they live in the Game3D umbrella, so
-a 2D game cannot reach them. `MathUtil` is the reachable-from-anywhere version.
+`CharacterFacing.TurnTowards` (`KhaozEngine.Game.Render3D`) stays as it is: it takes a `Vector3` intended
+direction rather than a target angle, and it lives in the Game3D umbrella, so a 2D game cannot reach it.
+`MathUtil` is the reachable-from-anywhere version. `CharacterFacing.WrapAngle` is now a pure forward to
+`MathUtil.WrapAngle` (same half-open interval, same bytes), kept on the facing type because that is where
+facing callers reach for it.
 
 ---
 

@@ -109,6 +109,15 @@ public sealed class WorldServerConfig
     /// at <see cref="MaxPlayers"/>. Watch <see cref="WorldServer.RefusedPendingConnectionCount"/> to tell a flood
     /// being shed from a cap set too low.</summary>
     public int MaxPendingConnections { get; init; }
+
+    /// <summary>Hard cap on undrained session events the inner <see cref="NetServer"/> inbox will hold, forwarded
+    /// to it. Defaults to <see cref="BoundedEventQueue{T}.DefaultCapacity"/>, which is what the server used before
+    /// the knob existed. The documented contract is drain-to-empty every tick (<see cref="WorldServer.Poll"/>
+    /// does exactly that), so this only bites a host that stalls or a peer that floods, where the OLDEST buffered
+    /// event is evicted to admit the newest and memory stays bounded. A LEFT event is exempt and never counted: nothing
+    /// re-announces a departure, so dropping one would strand the player slot. Watch
+    /// <see cref="WorldServer.DroppedEventCount"/> to see the cap engage. Must be positive.</summary>
+    public int MaxQueuedEvents { get; init; } = BoundedEventQueue<ServerSessionEvent>.DefaultCapacity;
 }
 
 /// <summary>
@@ -208,6 +217,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         // Always enforce the engine wire generation at connect (independent of any consumer version gate), so a
         // wire-skewed or version-less client is rejected cleanly instead of admitted and left to misparse the wire.
         net = new NetServer(transport, config.MaxPlayers, WireGenerationAuthenticator.Install(authenticator),
+            maxQueuedEvents: config.MaxQueuedEvents,
             duplicateSessions: config.DuplicateSessions, maxPendingConnections: config.MaxPendingConnections);
         this.banStore = banStore;
         interest = new InterestGrid(MathF.Max(1f, config.InterestRadius));
@@ -301,13 +311,6 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     public ReplicationRegistry Registry => registry;
     /// <summary>Number of joined players.</summary>
     public int PlayerCount => netIdBySlot.Count;
-    /// <summary>Connections accepted but holding no slot yet: connected, Hello not yet answered. A handful at any
-    /// instant is a join in flight. A number that climbs and stays there is a flood, or peers that connect and never
-    /// say Hello.</summary>
-    public int PendingConnectionCount => net.PendingConnectionCount;
-    /// <summary>Total connects refused because <see cref="WorldServerConfig.MaxPendingConnections"/> was already
-    /// reached. 0 with no cap configured, and 0 under normal traffic with one.</summary>
-    public long RefusedPendingConnectionCount => net.RefusedPendingConnectionCount;
     /// <summary>The net id of the player entity for a joined slot.</summary>
     public bool TryGetPlayerNetId(int slot, out long netId) => netIdBySlot.TryGetValue(slot, out netId);
 

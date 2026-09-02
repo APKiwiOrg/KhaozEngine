@@ -455,6 +455,14 @@ unbounded server-side state. The per-connection `AntiCheat` limiter cannot help 
 until a slot exists. `PendingConnectionCount` and `RefusedPendingConnectionCount` on both servers make it
 observable. Size the cap above the concurrent-join burst a launch or a restart produces, not at `MaxPlayers`.
 
+**Bounding the session inbox.** `MaxQueuedEvents` on either config caps how many undrained session events the inner
+`NetServer` holds, defaulting to `BoundedEventQueue<T>.DefaultCapacity`. `Poll` drains to empty every tick, so the
+cap only bites a stalled host or a flooding peer, where the oldest buffered event is evicted to admit the newest.
+`DroppedEventCount` on both servers is how you see it engage, and a non-zero value means this host is not draining
+as contracted. A LEFT event never counts among the dropped: it is enqueued as terminal, sits outside the cap, and
+is never what an eviction throws away, because nothing re-announces a departure and losing one would strand the
+player slot.
+
 **`IBanStore`** is consulted at connect: a banned account is rejected before it spawns. `InMemoryBanStore` is
 the in-memory default; `WorldStoreBanStore` persists over any `IWorldStore` keyspace (`ban:{accountId}`) with a
 synchronous in-memory cache (call `LoadAsync()` once at startup). Pass either as the trailing `banStore:` ctor

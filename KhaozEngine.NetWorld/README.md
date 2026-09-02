@@ -456,7 +456,9 @@ blobs still read fine and rewrite to LF the next time they are saved.
 The **`ServerAdmin`** facade composes an `IAdminControllable` server, an optional `IBanStore`, and an optional
 `IEnumerableWorldStore`: `BanAsync` persists and kicks if the account is online; `ListAccountsAsync(prefix)`
 materializes the account enumeration. Unwired capabilities throw `NotSupportedException` (feature-detect via
-`BansSupported` / `AccountsSupported`).
+`BansSupported` / `AccountsSupported`). A ban on a TOKENLESS connection's id (the `guest:` prefix) is refused
+with an `ArgumentException`: that id names a seat the allocator recycles, so the ban would land on whoever is
+seated there next while the player who earned it reconnects onto another slot. Kick the slot instead.
 
 **Game-registered admin actions (since 10.131.0).** `ServerAdmin` also carries a name-keyed action registry:
 `RegisterAction(string name, Func<JsonElement?, CancellationToken, Task<AdminActionResult>> handler)` (and a

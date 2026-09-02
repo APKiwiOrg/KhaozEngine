@@ -185,6 +185,45 @@ public class AdminHttpServerTests
     }
 
     /// <summary>
+    /// POST /ban on a TOKENLESS connection's id is the operator's mistake, not a server fault, so it comes back
+    /// 400 with the reason rather than 500 with a stack trace. ServerAdmin refuses the id because it names a seat
+    /// the allocator recycles, and an admin tool can only surface that if the endpoint keeps the message.
+    /// </summary>
+    [Fact]
+    public async Task PostBan_OnAGuestAccount_IsABadRequestWithTheReason()
+    {
+        var (st, _) = LoopbackTransport.CreatePair();
+        var config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 4 };
+        var bans = new InMemoryBanStore();
+        var server = new WorldServer(st, config, Flat, MoveTuning.Default, banStore: bans);
+        var admin = new ServerAdmin(server, bans);
+
+        var opts = new AdminEndpointOptions
+        {
+            Port = 0,
+            BearerToken = "secret",
+            Certificate = AdminTlsCertificate.CreateSelfSigned("localhost"),
+        };
+        await using var http = new AdminHttpServer(admin, opts);
+        await http.StartAsync();
+
+        using var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
+        using var hc = new HttpClient(handler) { Timeout = RequestTimeout };
+        hc.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "secret");
+
+        string seat = ResumePositionCache.GuestAccountPrefix + "0";
+        using var body = new StringContent(
+            $$"""{"accountId":"{{seat}}","reason":"griefing"}""", Encoding.UTF8, "application/json");
+        HttpResponseMessage resp = await hc.PostAsync($"https://127.0.0.1:{http.BoundPort}/admin/ban", body);
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.Contains("seat", await resp.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.Empty(admin.ListBans());
+
+        await http.StopAsync();
+    }
+
+    /// <summary>
     /// GET /accounts (a read) must thread the request's cancellation token (RequestAborted) into
     /// ListAccountsAsync, so a long enumeration stops when the client disconnects. A real request token is
     /// cancellable; default(CancellationToken) is not, so CanBeCanceled proves the handler forwarded it.

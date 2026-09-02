@@ -36,6 +36,35 @@ public class ServerAdminTests
         Assert.Equal("cheating", admin.ListBans().Single().Reason);
     }
 
+    /// <summary>
+    /// Banning a TOKENLESS connection is refused, because the id it would be filed under names a seat and not a
+    /// person. Both heads derive a tokenless connection's account id as guest:{slot}, and the slot is recycled to
+    /// whoever the allocator seats there next, so the ban landed on a chair: every later tokenless connection into
+    /// that slot was rejected and the player who earned the ban reconnected onto the next slot and carried on.
+    /// Kick is the honest tool for a player with no durable identity.
+    /// </summary>
+    [Fact]
+    public async Task BanAsync_RefusesAGuestAccount_ratherThanBanningTheSeat()
+    {
+        var (st, _) = LoopbackTransport.CreatePair();
+        var config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 4 };
+        var bans = new InMemoryBanStore();
+        var server = new WorldServer(st, config, Flat, MoveTuning.Default, banStore: bans);
+        var admin = new ServerAdmin(server, bans);
+
+        string seat = ResumePositionCache.GuestAccountPrefix + "0";
+        ArgumentException refused = await Assert.ThrowsAsync<ArgumentException>(
+            async () => await admin.BanAsync(seat, "griefing"));
+        Assert.Contains(seat, refused.Message, StringComparison.Ordinal);
+
+        Assert.False(bans.IsBanned(seat));
+        Assert.Empty(admin.ListBans());
+
+        // It is the PREFIX that decides, not the word: an account genuinely named guest is an account.
+        await admin.BanAsync("guest", "griefing");
+        Assert.True(bans.IsBanned("guest"));
+    }
+
     [Fact]
     public async Task ListAccounts_MaterializesEnumeration_AndFeatureDetects()
     {

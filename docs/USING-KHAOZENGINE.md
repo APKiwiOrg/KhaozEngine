@@ -14480,9 +14480,13 @@ reason and set `ReconnectBackoff.MaxAttempts` (or turn `AutoReconnect` off) if y
 Feature-detect with `store is IEnumerableWorldStore`.
 
 **Facade.** `ServerAdmin(IAdminControllable server, IBanStore? bans = null, IEnumerableWorldStore? accounts = null)`
-composes the three: `BanAsync` persists then kicks if the account is online; `ListAccountsAsync(prefix)` materializes
-the enumeration; unwired capabilities throw `NotSupportedException` (feature-detect via `BansSupported` /
-`AccountsSupported`).
+composes the three. `BanAsync` persists then kicks if the account is online, `ListAccountsAsync(prefix)` materializes
+the enumeration, and unwired capabilities throw `NotSupportedException` (feature-detect via `BansSupported` /
+`AccountsSupported`). `BanAsync` refuses a TOKENLESS connection's account id (anything carrying the reserved
+`ResumePositionCache.GuestAccountPrefix`) with an `ArgumentException`, which `POST /admin/ban` surfaces as a 400
+carrying the reason. That id is `guest:{slot}` and the allocator recycles the slot, so banning it rejects every
+future tokenless player seated there while the one who earned it reconnects onto another slot and carries on. Kick
+the slot (`Kick(PlayerRef.Slot(...))`) for a player with no durable identity.
 
 **Game-registered admin actions (since 10.131.0).** `ServerAdmin` also carries a name-keyed registry a game
 populates at startup: `RegisterAction(string name, Func<JsonElement?, CancellationToken, Task<AdminActionResult>> handler)`,

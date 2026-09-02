@@ -99,6 +99,11 @@ namespace KhaozEngine.Tests.Gpu
                 (GpuTextureUsage.Storage, VulkanRestingLayout.General),
                 (GpuTextureUsage.RenderTarget, VulkanRestingLayout.ColorAttachmentOptimal),
                 (GpuTextureUsage.DepthStencil, VulkanRestingLayout.DepthStencilAttachmentOptimal),
+
+                // THE TIE-BREAK, pinned in both ladders (#551): depth wins the attachment reading, because the
+                // aspect mask is what decides which of the two is even legal on the image.
+                (GpuTextureUsage.RenderTarget | GpuTextureUsage.DepthStencil,
+                    VulkanRestingLayout.DepthStencilAttachmentOptimal),
                 (GpuTextureUsage.Staging, VulkanRestingLayout.None),
             ];
 
@@ -130,14 +135,21 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// THE CREATION-TIME CLEAR IS PRESERVED AND ITS TWO ARMS ARE EXCLUSIVE (V-M10), reproducing
         /// <c>VkTexture.ClearIfRenderTarget</c>'s <c>if</c> and <c>else if</c>: a colour target is cleared to
-        /// transparent black, a depth target that is not also a colour one is cleared to depth 0, and everything
-        /// else is cleared not at all. Dropping the clear would change what a render target reads before anything
-        /// writes it, and undefined contents are not stable across runs while the goldens require stability.
+        /// transparent black, a depth target to depth 0, and everything else not at all. Dropping the clear would
+        /// change what a render target reads before anything writes it, and undefined contents are not stable
+        /// across runs while the goldens require stability.
+        ///
+        /// <para><b>AND THE TIE GOES TO DEPTH, THE SAME WAY THE RESTING LADDER BREAKS IT</b>
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/551). The incumbent's <c>else if</c> gave the
+        /// combination to colour while <c>RestingLayoutFor</c> gave it to depth, so a texture declaring both would
+        /// have taken a colour clear on an image resting in <c>DEPTH_STENCIL_ATTACHMENT_OPTIMAL</c> and carrying
+        /// the depth aspect. Nothing in the engine creates that texture, which is exactly why the disagreement
+        /// could sit there, and it is the reason this row exists rather than a bug report.</para>
         /// </summary>
         [Theory]
         [InlineData(GpuTextureUsage.RenderTarget, true, false)]
         [InlineData(GpuTextureUsage.DepthStencil, false, true)]
-        [InlineData(GpuTextureUsage.RenderTarget | GpuTextureUsage.DepthStencil, true, false)]
+        [InlineData(GpuTextureUsage.RenderTarget | GpuTextureUsage.DepthStencil, false, true)]
         [InlineData(GpuTextureUsage.Sampled, false, false)]
         [InlineData(GpuTextureUsage.Storage, false, false)]
         public void TheCreationTimeClear_HasTwoExclusiveArms(GpuTextureUsage usage, bool colour, bool depth)

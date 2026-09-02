@@ -565,7 +565,10 @@ both are appended to ONE device-owned setup command buffer, flushed lazily at th
 device-level read** (`Map`, a readback, `WaitForIdle`). The read-path half is what removes the hole rather than
 moving it: a render target created and immediately read back must still see cleared contents. The clear itself
 is preserved deliberately, because undefined contents are not stable across runs and the goldens require
-stability on the same rasterizer.
+stability on the same rasterizer. Its two arms are exclusive and the `RenderTarget | DepthStencil` tie goes to
+DEPTH ([#551](https://github.com/APKiwiOrg/KhaozEngine/issues/551)), the same way the resting ladder breaks it,
+because the depth bit is also what the ASPECT MASK is read off and a depth-aspect image can only take a depth
+clear. Nothing in the engine declares both usages, which is why the two ladders could disagree unobserved.
 
 **That buffer takes its own short lock, the third one.** A `VkCommandPool` and every buffer allocated from it are
 externally synchronised, so two threads creating two textures may not append to one setup buffer at once.
@@ -604,13 +607,23 @@ the other API did implicitly. A WRITE map does not wait, and neither did the inc
 creation and never unmapped, so a map is a pointer plus an offset and an unmap is bookkeeping plus, on a
 non-coherent memory type, a flush.
 
+**And both `Map` overloads refuse a LOST device** ([#551](https://github.com/APKiwiOrg/KhaozEngine/issues/551)),
+with the reason the loss latch recorded. They used to guard the disposed flag alone, which says the consumer let
+the device go and answers false for a device the driver took: the host-visible chunk a staging resource is
+mapped into went with the device, so the pointer would dangle and the read path's invalidate would be a native
+call against released memory. Every destroy is already a no-op by then, which is what leaves a map as the last
+live route into that memory. The refusal is the first thing either overload does, ahead of the setup flush and
+the drain.
+
 **Disposal is one TERMINAL retire per resource.** The single held entry destroys a texture's views inline, then
 its image, then its memory, and never re-retires a child. A destroy that retired another destroy that then freed
 an allocation would append a third generation of retirement after the teardown drain had taken its snapshot, and
 that chunk would never be freed. Destroying children inline bounds the depth at the one generation the device's
 two teardown drains already cover. The staging source obeys the same rule from the other side: its `Destroy`
 defers the native free through the retire list rather than making it, because the staging arena's own disposal is
-ungated, and it ABANDONS rather than frees on a dead device.
+ungated, and it ABANDONS rather than frees on a dead device. Both of its destroy counters are atomic, because
+they are incremented after the block ledger's lock is released and every arena on the device shares one source
+([#551](https://github.com/APKiwiOrg/KhaozEngine/issues/551)).
 
 **Four departures from the incumbent, all of them its defects.** An image is created with
 `VK_IMAGE_LAYOUT_UNDEFINED` rather than `PREINITIALIZED`, which describes a host-written linear image. The

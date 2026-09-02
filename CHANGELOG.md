@@ -5,6 +5,12 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.12.0
+
+18.12.0 is the ninth backlog wave: the tile netcode and tile world deferred minors, the native GPU
+backend correctness items that can be pinned without a device, and the remaining low quick wins,
+each fixed with a test proven red against the unfixed code. Entries follow as the wave lands.
+
 ## 18.11.0
 
 18.11.0 is the eighth backlog wave: 48 verified defects and consumer parity gaps fixed, each with a

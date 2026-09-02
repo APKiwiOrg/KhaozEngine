@@ -249,6 +249,27 @@ public sealed partial class TileWorldClient
     }
 
     /// <summary>
+    /// Fills a caller's buffer with every remote this client is drawing and the tile it is COMMITTED to, which is
+    /// <see cref="TryGetRemoteTile"/>'s answer for all of them at once. Cleared first, unsorted, complete, and the
+    /// local player is never in it. The same shape as <see cref="CollectGroundItems"/> and for the same reason:
+    /// <see cref="RemoteNetIds"/> is an interface-typed collection, so a per-frame walk of it boxes an enumerator,
+    /// and a rule over the whole crowd wants the tiles anyway.
+    /// <para>The DELAYED read, deliberately, because this exists for presentation rules over the drawn crowd and
+    /// those have to agree with the bodies on screen. See <see cref="TryGetLatestRemoteTile(long, out TileCoord)"/>
+    /// for the freshest answer, which is the one a game RULE asks and which has no bulk form: a rule asks about the
+    /// one actor it is reasoning about rather than about everybody.</para>
+    /// </summary>
+    /// <param name="into">The buffer to fill. Reused by the caller, allocated by nobody here.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="into"/> is null.</exception>
+    public void CollectRemoteTiles(List<(long NetId, TileCoord Tile)> into)
+    {
+        ArgumentNullException.ThrowIfNull(into);
+        into.Clear();
+        foreach (KeyValuePair<long, RemoteSample> pair in remoteSamples)
+            into.Add((pair.Key, pair.Value.State.Tile));
+    }
+
+    /// <summary>
     /// The tile a remote is committed to on the FRESHEST server state this client holds, which is a different
     /// question from <see cref="TryGetRemoteTile"/> and the one a rule should be asking. This one is read off the
     /// newest APPLIED snapshot. That one is read off the delayed render timeline the bodies ride, so it is

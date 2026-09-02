@@ -305,6 +305,13 @@ covers. What is missing is the DRAW itself, so nothing is rendered yet: what is 
 framebuffer bind and its clears, the resource-set binds, the pipeline binds, the device-level uploads, the
 record-time `UpdateBuffer` described below, and readback through `Map`.
 
+**The device's shared sampler pair is NON-OWNING, so a consumer that disposes what `PointSampler` handed it
+destroys nothing.** The device hands the same two objects to every caller for the process's life and releases
+the two sampler states itself at teardown, before the liveness flip. The wrapper's `Dispose` therefore returns
+without even marking itself disposed, which is deliberate rather than an oversight: the bind path reads the
+handle at the bind rather than copying it into a resource set, so a wrapper that latched would hand the next
+encoder a nil sampler.
+
 **Every buffer is `MTLStorageModeShared` and every texture is `MTLStorageModePrivate`**, reproducing the
 incumbent. On unified memory a Shared buffer's `contents()` pointer is stable for its life and visible to both
 sides, so a buffer write is a `memcpy` with no staging path, no flush and no invalidate. There is no allocator

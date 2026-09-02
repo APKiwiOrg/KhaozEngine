@@ -256,52 +256,56 @@ namespace KhaozEngine.Tests.MapDoc
         public void SaveTiled_SerializationBufferStaysFlatAsTileCountDoubles()
         {
             // What is flat is the SERIALIZATION buffer, one tile at a time, not the process: step 1 validates
-            // and step 2 buckets the whole document, both of which hold everything. So this measures the heap
-            // DELTA across the tile-writing phase itself, and asserts it does not grow with tile count while
-            // total allocation does.
-            (long delta, long allocated, long bytes) small = MeasureTiledWrite(4096);
-            (long delta, long allocated, long bytes) large = MeasureTiledWrite(8192);
+            // and step 2 buckets the whole document, both of which hold everything. So this measures what the
+            // TILE-WRITING phase ALLOCATES and asserts the per-tile cost does not grow with the tile count,
+            // while the total allocation does. Allocated bytes, not heap size: a heap-size delta answers "how
+            // much is live right now", which a collection landing inside the window moves by tens of megabytes
+            // on a loaded runner, and that is the whole of #630.
+            (long phase, long allocated, long bytes, int tiles) small = MeasureTiledWrite(4096);
+            (long phase, long allocated, long bytes, int tiles) large = MeasureTiledWrite(8192);
 
-            const long Bound = 32L * 1024 * 1024;
-            // The bound only discriminates if a buffering writer would blow it, so the fixture has to be
-            // several times the bound. At 8,192 tiles it is roughly 90 MB against a 32 MB bound.
-            Assert.True(large.bytes > 2 * Bound,
-                        $"the fixture must be far bigger than the bound to discriminate, wrote {large.bytes} bytes.");
-            Assert.True(Math.Abs(small.delta) < Bound, $"4096 tiles moved the heap by {small.delta} bytes.");
-            Assert.True(Math.Abs(large.delta) < Bound, $"8192 tiles moved the heap by {large.delta} bytes.");
+            // The measurement only discriminates if a buffering writer would have something to buffer, so the
+            // fixture has to be far past any per-tile buffer. At 8,192 tiles it is roughly 90 MB.
+            Assert.True(large.bytes > 64L * 1024 * 1024,
+                        $"the fixture must be far bigger than one tile to discriminate, wrote {large.bytes} bytes.");
+
+            double smallPerTile = (double)small.phase / small.tiles;
+            double largePerTile = (double)large.phase / large.tiles;
+            Assert.True(largePerTile < smallPerTile * 1.25,
+                        $"per-tile write allocation grew from {smallPerTile:F0} to {largePerTile:F0} bytes "
+                        + "as the tile count doubled, so something buffers across tiles.");
             Assert.True(large.allocated > small.allocated * 1.5,
                         $"allocation should scale with tile count: {small.allocated} then {large.allocated}.");
         }
 
-        static (long Delta, long Allocated, long Bytes) MeasureTiledWrite(int tileCount)
+        static (long Phase, long Allocated, long Bytes, int Tiles) MeasureTiledWrite(int tileCount)
         {
             MapDocument doc = ManyTileDoc(tileCount);
-            long first = -1;
+            long atFirstTile = -1;
             var options = new MapDocumentSaveOptions
             {
                 // Sampled once, at the first tile file: after validation and bucketing, both of which hold
-                // the whole document by construction and are not what this measures. A forced collection,
-                // because the interesting quantity is LIVE bytes and the suite runs in parallel, so an
-                // uncollected sample would mostly report another test's gen0 churn.
+                // the whole document by construction and are not what this measures.
                 OnStep = step =>
                 {
-                    if (step == MapTiledSaveStep.BeforeTileWrite && first < 0)
-                        first = GC.GetTotalMemory(forceFullCollection: true);
+                    if (step == MapTiledSaveStep.BeforeTileWrite && atFirstTile < 0)
+                        atFirstTile = GC.GetAllocatedBytesForCurrentThread();
                 },
             };
 
-            // Thread-local, so a parallel test's allocations cannot bleed into the scaling assertion.
+            // Thread-local, so a parallel test's allocations cannot bleed into either reading, and a counter
+            // of bytes handed out rather than bytes still held, so no collection can move it.
             long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
-            long delta = 0, bytes = 0;
+            long phase = 0, bytes = 0;
             TiledDocFixture.InDirectory(directory =>
             {
                 MapDocumentFile.SaveTiled(doc, directory, null, options);
-                delta = GC.GetTotalMemory(forceFullCollection: true) - first;
+                phase = GC.GetAllocatedBytesForCurrentThread() - atFirstTile;
                 bytes = TiledDocFixture.TileFiles(directory).Sum(f => new FileInfo(Path.Combine(directory, f)).Length);
             });
             long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
             GC.KeepAlive(doc);
-            return (delta, allocated, bytes);
+            return (phase, allocated, bytes, tileCount);
         }
 
         /// <summary>A document whose serialized form is hundreds of megabytes: one sculpt tile per 16 m span

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Resources;
 using KhaozEngine.App;
+using KhaozEngine.Diagnostics;
 using KhaozEngine.Game;
 using KhaozEngine.Gui;
 using KhaozEngine.Primitives;
@@ -51,6 +52,19 @@ namespace KhaozEngine.Showcase
         int _resIndex;
 
         public ShowcaseApp() : base(BuildOptions()) { }
+
+        /// <summary>The session-log bootstrap the head hands to <see cref="SessionLog.Configure(SessionLogOptions)"/>
+        /// before the window opens. It is a method rather than three lines in Program.cs so the contract is
+        /// readable without a window: the showcase is the engine's windowed testbed, and a one-off unhandled
+        /// managed exception here used to reach only the terminal that launched it, which is exactly how #607
+        /// lost the one crash it had. With the crash handler armed, the same exception lands in the session log
+        /// the tester still has after the run.</summary>
+        public static SessionLogOptions BootLogOptions() => new()
+        {
+            Directory = new AppDataPaths("APKiwi", "KhaozEngine.Showcase").GetFilePath("logs"),
+            ProcessLabel = "KhaozEngine.Showcase",
+            InstallCrashHandler = true,
+        };
 
         // Window/taskbar icon on Windows/Linux and (via GameApp's macOS wiring) the Cocoa Dock icon, from the
         // committed assets/icon.png. Resolved against the runtime output dir so it works from any launch cwd.

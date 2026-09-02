@@ -9,6 +9,11 @@ using KhaozEngine.Showcase;
 if (KhaozEngine.Gpu.Metal.KhaozEngineMetal.IsPlatformSupported)
     KhaozEngine.Gpu.Metal.KhaozEngineMetal.Register();
 
+// Session log + crash capture, before anything that can throw. The testbed is where a one-off managed
+// exception is most likely to be seen once and never again (#607), so it gets the same bootstrap every game
+// head runs rather than relying on whoever launched it still having the terminal open.
+KhaozEngine.Diagnostics.SessionLog.Configure(ShowcaseApp.BootLogOptions());
+
 using var app = new ShowcaseApp();
 app.Run();
 return 0;

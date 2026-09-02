@@ -51,6 +51,60 @@ public class CellSimPersistenceTests
         Assert.Equal(50, b.V);
     }
 
+    /// <summary>A consumer host is free to write its own SnapshotCell, and nothing forces it to exclude the
+    /// players bound in that cell (the engine's own host does, the seam has no parameter for it). Restoring such a
+    /// blob into the live cell used to re-point ownership at the stale copy, which then carried the MovementState a
+    /// teleport reads its epoch basis from (#653). The restore now refuses a NetId the cell already owns.</summary>
+    [Fact]
+    public void TryRestoreOwned_NetIdTheCellAlreadyOwns_KeepsTheLiveEntityAndCountsTheSkip()
+    {
+        ReplicationRegistry r = Registry();
+        CellSim source = Cell(r);
+        Owned(source, 6, 60);
+        byte[] stale = source.SnapshotOwned(new HashSet<long>());   // an empty exclusion set: the player is in it
+
+        CellSim live = Cell(r);
+        Entity player = Owned(live, 6, 99);
+        live.RegisterOwned(6, player);
+
+        CellRestoreResult result = live.TryRestoreOwned(stale);
+
+        Assert.True(result.Ok);
+        Assert.Empty(result.NetIds);                      // nothing was restored, so nothing is reported restored
+        Assert.Equal(1, result.SkippedOwnedCount);
+        Assert.True(live.TryGetOwned(6, out Entity e));
+        Assert.Equal(player, e);                          // ownership still resolves to the live entity
+        Assert.True(live.World.TryGet(e, out Blob b));
+        Assert.Equal(99, b.V);                            // carrying the live value, not the stale one
+        Assert.True(live.ScanOwned(6, out Entity scanned));
+        Assert.Equal(player, scanned);                    // and no stale duplicate was left loose in the world
+    }
+
+    /// <summary>The guard is not a blanket refusal: everything the cell does not already own restores as before,
+    /// in the same call that skips the one it does.</summary>
+    [Fact]
+    public void TryRestoreOwned_MixedBlob_RestoresTheUnownedAndSkipsTheOwned()
+    {
+        ReplicationRegistry r = Registry();
+        CellSim source = Cell(r);
+        Owned(source, 6, 60);
+        Owned(source, 7, 70);
+        byte[] blob = source.SnapshotOwned(new HashSet<long>());
+
+        CellSim live = Cell(r);
+        Entity player = Owned(live, 6, 99);
+        live.RegisterOwned(6, player);
+
+        CellRestoreResult result = live.TryRestoreOwned(blob);
+
+        Assert.True(result.Ok);
+        Assert.Equal(new long[] { 7 }, result.NetIds);
+        Assert.Equal(1, result.SkippedOwnedCount);
+        Assert.True(live.TryGetOwned(7, out Entity restored));
+        Assert.True(live.World.TryGet(restored, out Blob b));
+        Assert.Equal(70, b.V);
+    }
+
     [Fact]
     public void MaxOwnedNetId_ReturnsHighestOwned_ZeroWhenEmpty()
     {

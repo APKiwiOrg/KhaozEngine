@@ -349,6 +349,55 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void TheCorrelatedTapGainPeaksAtSqrt2HalfwayThroughASector()
+        {
+            // The other half of the claim, and the one the remark on OceanFocus.Sectors makes: the variance is
+            // conserved only between DECORRELATED taps. Close to the focus point both rotations agree, so the two
+            // taps land on the same texel and read the SAME value, and mixing one value with itself at weights
+            // (a, b) scales it by a + b rather than leaving it at a^2 + b^2 = 1. That gain folds to Norm exactly,
+            // since (1-T)*Norm + T*Norm is Norm, so it is 1 at a sector boundary and sqrt(2) halfway between.
+            // This is the arithmetic half of the amplitude bias. Whether the two taps really do read one texel
+            // inside that radius is the rendering half, and it is not what this asserts.
+            static float Gain(float t)
+            {
+                float norm = 1f / MathF.Sqrt(MathF.Max((1f - t) * (1f - t) + t * t, 1e-8f));
+                return (1f - t) * norm + t * norm;
+            }
+
+            Assert.Equal(1f, Gain(0f), 5);
+            Assert.Equal(MathF.Sqrt(2f), Gain(0.5f), 5);
+            Assert.Equal(1f, Gain(1f), 5);
+
+            // And the same triple as the shader gets it, straight off Sectors: at a lattice heading the taps
+            // coincide with the wanted one and the gain is unity, at a sector midpoint it is the sqrt(2) peak.
+            const int SectorCount = 12;
+            const float Step = 360f / SectorCount;
+            foreach ((float deg, float wantT, float wantGain) in new[]
+                     {
+                         (0f, 0f, 1f),
+                         (Step * 0.5f, 0.5f, 1.41421356f),
+                         (Step * 1.5f, 0.5f, 1.41421356f),
+                         (-Step * 0.5f, 0.5f, 1.41421356f),
+                     })
+            {
+                float phi = deg * MathF.PI / 180f;
+                (_, float t, float norm) = OceanFocus.Sectors(new Vector2(MathF.Cos(phi), MathF.Sin(phi)), SectorCount);
+                Assert.Equal(wantT, t, 4);
+                Assert.Equal(wantGain, (1f - t) * norm + t * norm, 4);
+            }
+
+            // Nowhere in the turn does it leave that band, so sqrt(2) really is the worst case.
+            for (int deg = -180; deg <= 180; deg++)
+            {
+                float phi = deg * MathF.PI / 180f;
+                (_, float t, float norm) = OceanFocus.Sectors(new Vector2(MathF.Cos(phi), MathF.Sin(phi)), SectorCount);
+                float gain = (1f - t) * norm + t * norm;
+                Assert.InRange(gain, 1f - 1e-4f, MathF.Sqrt(2f) + 1e-4f);
+                Assert.Equal(Gain(t), gain, 4);
+            }
+        }
+
+        [Fact]
         public void EverySectorTapIsAnExactRotationSoNoTapIsADistortedField()
         {
             // The reason this design exists rather than the obvious one: each tap must be a CONSTANT rotation, so

@@ -12,12 +12,14 @@ namespace KhaozEngine.Sharding;
 /// </summary>
 public readonly struct CellRestoreResult
 {
-    public CellRestoreResult(bool ok, IReadOnlyList<long> netIds, int retainedFrameCount, string? error)
+    public CellRestoreResult(bool ok, IReadOnlyList<long> netIds, int retainedFrameCount, string? error,
+                             int skippedOwnedCount = 0)
     {
         Ok = ok;
         NetIds = netIds ?? Array.Empty<long>();
         RetainedFrameCount = retainedFrameCount;
         Error = error;
+        SkippedOwnedCount = skippedOwnedCount;
     }
 
     /// <summary>True when the snapshot decoded and restored cleanly.</summary>
@@ -31,6 +33,15 @@ public readonly struct CellRestoreResult
 
     /// <summary>The decode error when <see cref="Ok"/> is false, else null.</summary>
     public string? Error { get; }
+
+    /// <summary>
+    /// How many entities in the blob were DROPPED because the cell already owns that
+    /// <see cref="KhaozEngine.Replication.NetId"/>. 0 for every well-formed restore. Anything above 0 means the
+    /// snapshot carried a stale copy of something live, which is what a persistence host that captures a cell
+    /// without excluding its bound players produces, so a driver can alarm on it rather than silently restoring
+    /// over a live player (#653).
+    /// </summary>
+    public int SkippedOwnedCount { get; }
 
     /// <summary>A rolled-back failure result carrying <paramref name="error"/>.</summary>
     public static CellRestoreResult Failed(string error) => new(false, Array.Empty<long>(), 0, error);

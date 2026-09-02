@@ -154,6 +154,12 @@ arrays being `(2r + 1)^2` entries each. `TilePath` carries `Tiles` (the steps AF
 to the goal, then by BFS distance, then by scan order, and a start on a `Blocked` tile behaves like any other.
 **Branch on `Reached`, never on `Tiles.Count`**: a partial walk and a reached one both carry steps.
 
+`FindPath` takes an optional `TilePathfinderScratch` as its last argument. Without one it allocates both window
+arrays per call, about 83 KB at radius 64. A scratch owns those arrays and the BFS queue across calls, so a
+caller that paths on a tick allocates only the result: `new TilePathfinderScratch(64)` pre-sizes it, a bigger
+radius grows it once, `Capacity` is the window it holds, and it is NOT thread safe, one per worker. The window
+is reset to exactly what fresh arrays hold before every search, so a scratch-fed path is byte identical.
+
 `TileRaycast.Pick(doc, plane, origin, direction, maxDistance = 2000f)` marches the lattice in XZ and returns the
 first `TileHit(X, Z, Plane, Point, Distance)`, or null. The direction need not be normalised, a plane outside
 the document throws as soon as the walk touches a tile, and world units are tiles times `TileWorldDocument.TileSize`

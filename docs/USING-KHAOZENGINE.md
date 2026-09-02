@@ -7049,6 +7049,15 @@ objects. Pass `Rebake` a rect covering the FULL footprint of anything you remove
 `TileFootprint.Of` before the removal, because a rebake can only re-derive the tiles it clears. Branch on
 `TilePath.Reached`, never on `Tiles.Count`: a partial walk to the nearest reachable tile carries steps too.
 
+**A caller that paths on a tick hands `FindPath` a `TilePathfinderScratch`.** The default call allocates the two
+`(2r + 1)^2` window arrays every search, about 83 KB at radius 64, which is nothing for an editor click and is
+the steady-state Gen0 rate of a server walking every actor. A scratch owns those arrays plus the BFS queue and
+is reused across calls, so the search allocates only its result. `new TilePathfinderScratch(64)` pre-sizes it, a
+bigger radius later grows it once, and `Capacity` reports the window it currently holds. It is one mutable
+buffer set and NOT thread safe, so give each worker its own. The walk does not change: `FindPath` resets the
+window to exactly what fresh arrays hold before every search, so a scratch-fed path is byte identical to the
+allocating one.
+
 **Picking and prefabs.** `TileRaycast.Pick(doc, plane, origin, direction)` is the GPU-free ray against the
 lattice, cutting each tile with `TileTriangulation.Triangulate`, the same shape triangulation the ground mesher
 uses over the same `TileLatticePoint` lattice and `SplitSwNe` diagonal choice, so a click lands on the triangle that is
@@ -9157,8 +9166,9 @@ the actor is on just stands), the step in flight finishes on its own cadence, an
 because a standing actor is waiting for a fight rather than giving one up.
 
 Actors also carry their own pathfinder knobs. `TileWorldServerConfig.ActorMove` defaults to `MaxPathRadius = 12`
-against a player's 64, because `TilePathfinder.FindPath` allocates `(2r+1)^2` scratch entries per call, about
-83 KB of Gen0 at 64 and about 3 KB at 12, and the chase path is the one an actor runs most often. Size it against
+against a player's 64, because a `TilePathfinder.FindPath` call with no scratch allocates `(2r+1)^2` window
+entries, about 83 KB of Gen0 at 64 and about 3 KB at 12, and the chase path is the one an actor runs most
+often (a caller holding a `TilePathfinderScratch` pays that once rather than per call). Size it against
 the LEASH, since an actor never legitimately paths further than that. `MaxActorsPerCell` (64 by default) is the
 per-REGION budget, since a cell is exactly a region, and `SpawnActor` answers 0 rather than throwing when a spawn
 is refused, so a spawner can never take a tick down with it.

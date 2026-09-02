@@ -107,14 +107,16 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// AND THIS IS THE BACKEND THAT MATCHES THE SEAM, WITH BOTH SIBLINGS NARROWER THAN THE CONTRACT.
-        /// <see cref="GpuResourceLayoutElement.Dynamic"/> documents a dynamic-offset "uniform/structured buffer",
-        /// and Metal's <c>setBufferOffset:</c> works at any buffer index whatever the kind, so every kind the seam
-        /// names is honoured here. <c>VulkanDescriptorPolicy.TypeFor</c> refuses a dynamic element that is not a
-        /// UNIFORM buffer, because a storage descriptor there has no dynamic offset at all, and
-        /// <c>D3D11ResourceLayout</c> refuses the same combination, because a structured buffer binds through a
-        /// view created once over the whole buffer with no per-bind window. So a consumer using one is Metal-only
-        /// today, which is https://github.com/APKiwiOrg/KhaozEngine/issues/597.
+        /// AND THIS IS THE BACKEND THAT IS WIDER THAN THE SEAM, WHICH IS A DOCUMENTED SUPERSET RATHER THAN THE
+        /// CONTRACT. <see cref="GpuResourceLayoutElement.Dynamic"/> is a dynamic-offset UNIFORM buffer and only
+        /// that since https://github.com/APKiwiOrg/KhaozEngine/issues/597, and Metal's <c>setBufferOffset:</c>
+        /// works at any buffer index whatever the kind, so a dynamic structured element is honoured here anyway.
+        /// <c>VulkanDescriptorPolicy.TypeFor</c> refuses a dynamic element that is not a UNIFORM buffer, because a
+        /// storage descriptor there has no dynamic offset at all, and <c>D3D11ResourceLayout</c> refuses the same
+        /// combination, because a structured buffer binds through a view created once over the whole buffer with
+        /// no per-bind window: not a gap anyone can close, which is why the seam narrowed rather than the siblings
+        /// widening. A consumer who declares one is macOS-only, and
+        /// <c>DynamicOffsetContractTests</c> pins all three sides of that in one place.
         /// </summary>
         [Theory]
         [InlineData(GpuResourceKind.UniformBuffer)]

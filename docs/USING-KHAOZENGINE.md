@@ -11041,12 +11041,13 @@ the machine has ever run. Only the default location is swept, never a directory 
 others take: `GpuResourceLayoutElement`'s `dynamic: true` on a texture or a sampler element. The per-draw offset
 is applied with Metal's `setBufferOffset:`, which exists only for buffers, so a dynamic offset declared anywhere
 else would be silently dropped at every bind and is refused at layout creation instead. On a buffer element of
-any kind it is accepted, including both structured kinds, which is the width
-`GpuResourceLayoutElement.Dynamic` documents ("a dynamic-offset uniform/structured buffer"). Both native
-siblings are NARROWER than that: the native Vulkan and Direct3D 11 backends refuse a dynamic structured element
-at layout creation, each for a reason that is real on its own API. So a dynamic structured element works on
-`MetalNative` alone today, and reconciling the seam's documented width with those two refusals is
-[#597](https://github.com/APKiwiOrg/KhaozEngine/issues/597): treat it as Metal-only until that lands.
+any kind it is accepted, including both structured kinds, and that is WIDER than the seam
+([#597](https://github.com/APKiwiOrg/KhaozEngine/issues/597)). `GpuResourceLayoutElement.Dynamic` is a
+dynamic-offset UNIFORM buffer and only that. The native Vulkan and Direct3D 11 backends both refuse a dynamic
+structured element at layout creation, each for a reason real on its own API, and the Direct3D 11 one is not
+closeable at all: a structured buffer binds through a view created once over the whole buffer and neither
+`*SetShaderResources` nor `*SetUnorderedAccessViews` has a per-bind window for the offset. So the seam names the
+narrow guarantee and this backend's extra width is a documented superset. Write one and you are macOS-only.
 
 **A set is resolved once when you create it, and what it refuses it refuses there.** A resource that is already
 disposed, a staging texture (it is a mappable buffer on this backend rather than a texture), and a texture bound

@@ -608,6 +608,14 @@ binding number, which is the key the binding table is read through. The only ref
 dynamic offset declared on a texture or a sampler, because the offset is applied with `setBufferOffset:` and that
 exists only in the buffer space, so declaring one anywhere else would be dropped at every bind with nothing said.
 
+**On a BUFFER element it is accepted whatever the kind, which is wider than the seam and is a documented
+superset** ([#597](https://github.com/APKiwiOrg/KhaozEngine/issues/597)). `GpuResourceLayoutElement.Dynamic` is a
+dynamic-offset uniform buffer and only that, because `setBufferOffset:` has no counterpart on either sibling: a
+Vulkan storage descriptor has no dynamic offset at all, and a Direct3D 11 structured buffer binds through a view
+created once over the whole buffer with no per-bind window for the number to go in. That second one is why the
+seam narrowed rather than the siblings widening. A dynamic structured element is honoured here and refused there,
+so writing one makes the consumer macOS-only.
+
 **A set resolves everything at creation and nothing at a bind.** A set is created once at load time and bound
 thousands of times a frame, so each binding comes out already carrying which argument table it goes in, the
 resolved resource whose Objective-C object a bind writes, and the numbers a buffer bind composes its offset

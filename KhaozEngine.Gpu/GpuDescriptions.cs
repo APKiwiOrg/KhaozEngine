@@ -162,10 +162,29 @@ namespace KhaozEngine.Gpu
         /// <summary>Which shader stages see it.</summary>
         public GpuShaderStages Stages { get; }
         /// <summary>When true, the buffer bound here is rebased per draw by a byte offset supplied to
-        /// <see cref="IGpuCommandList.SetGraphicsResourceSet(uint,IGpuResourceSet,uint)"/> (a dynamic-offset
-        /// uniform/structured buffer). The set binds a <see cref="GpuBufferRange"/> whose size is the per-draw
-        /// window; the offset varies per draw. Lets many draws read their own slice of one shared buffer without
-        /// recreating the set or re-uploading.</summary>
+        /// <see cref="IGpuCommandList.SetGraphicsResourceSet(uint,IGpuResourceSet,uint)"/>. The set binds a
+        /// <see cref="GpuBufferRange"/> whose size is the per-draw window and the offset varies per draw, which
+        /// lets many draws read their own slice of one shared buffer without recreating the set or re-uploading.
+        /// <para>
+        /// THE CONTRACT IS A DYNAMIC-OFFSET UNIFORM BUFFER, AND ONLY THAT.
+        /// <see cref="GpuResourceKind.UniformBuffer"/> is the one kind every backend rebases. Declaring any other
+        /// kind dynamic is not portable and two of the three backends refuse it at layout creation rather than
+        /// dropping the offset silently: Vulkan because a storage descriptor has no dynamic offset at all
+        /// (<c>STORAGE_BUFFER_DYNAMIC</c> is a different descriptor type with its own limit accounting, which
+        /// this engine does not use), and Direct3D 11 because a structured buffer binds through a view created
+        /// once over the whole buffer and neither <c>*SetShaderResources</c> nor <c>*SetUnorderedAccessViews</c>
+        /// carries a per-bind window for the offset to go in. That second one is not a gap somebody could close:
+        /// the API has nowhere to put the number.
+        /// </para>
+        /// <para>
+        /// THE METAL BACKEND ACCEPTS MORE, AND THAT IS A DOCUMENTED SUPERSET RATHER THAN THE CONTRACT
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/597). <c>setBufferOffset:</c> works at any buffer
+        /// index whatever the kind, so a dynamic structured element is honoured there. Writing one still makes
+        /// the consumer macOS-only, so the seam names the narrow guarantee and the backend's own README names
+        /// what it does beyond it. This doc used to say "uniform/structured buffer", which promised a width two
+        /// backends could not deliver and left the first consumer to try one finding out at a throw.
+        /// </para>
+        /// </summary>
         public bool Dynamic { get; }
 
         public GpuResourceLayoutElement(string name, GpuResourceKind kind, GpuShaderStages stages, bool dynamic = false)

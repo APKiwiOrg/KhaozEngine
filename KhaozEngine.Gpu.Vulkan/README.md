@@ -662,7 +662,11 @@ thing: whether the caller's own per-draw offset is added on top for that element
 that is not a uniform buffer is REFUSED at layout creation, one case wider than the Direct3D 11 backend's
 identical refusal for structured buffers, because a texture or a sampler has no dynamic form at all and either
 would leave the positional `pDynamicOffsets` array misaligned against the set's real dynamic descriptors.
-Vacuous in the engine today: all six shipped dynamic elements are uniform buffers.
+Vacuous in the engine today: all six shipped dynamic elements are uniform buffers. The seam agrees with this
+refusal since [#597](https://github.com/APKiwiOrg/KhaozEngine/issues/597): `GpuResourceLayoutElement.Dynamic` is
+a dynamic-offset uniform buffer and only that, so the structured half is no longer a documented width this
+backend fails to reach. Widening it here would mean introducing `STORAGE_BUFFER_DYNAMIC` and its own limit
+accounting for a case nothing declares. The native Metal backend does accept it, as a documented superset.
 
 **Pools are sized from actual demand and freeing restores EVERY counted type.** The incumbent created every pool
 with `maxSets = 1000` and 100 descriptors of each of seven types, whose per-type ceiling was reached long before

@@ -295,8 +295,11 @@ before the bind, because on that path a re-bind of the same buffer at a differen
 every draw after the first reads the first draw's constants. It doubles the constant-buffer call count there, and
 both arms are asserted.
 
-**BACKEND-DIVERGENT CREATION FAILURE: a layout element declared DYNAMIC on either structured-buffer kind throws
-here.** A dynamic offset is a per-draw byte rebase, and the only bind that can carry one is the constant-buffer
+**A layout element declared DYNAMIC on either structured-buffer kind throws here, and since
+[#597](https://github.com/APKiwiOrg/KhaozEngine/issues/597) that is the seam's own contract rather than a
+divergence from it.** `GpuResourceLayoutElement.Dynamic` used to say "uniform/structured buffer" and now says
+uniform buffer alone, precisely because of the argument below: this is not a gap that could be closed. A dynamic
+offset is a per-draw byte rebase, and the only bind that can carry one is the constant-buffer
 bind, which takes a first constant and a count. A structured buffer binds through a view created once over the
 whole buffer, and neither `*SetShaderResources` nor `*SetUnorderedAccessViews` has a per-bind window to put an
 offset in, so the offset would be dropped in both directions: a full activation writes the pre-resolved view with
@@ -304,6 +307,7 @@ nothing added, and the offsets-only path skips the element entirely for not bein
 would read the window the view was created with while the caller believed it had moved. The combination is vacuous
 in the engine today (all six dynamic elements shipped are uniform buffers) and is refused anyway, because nothing
 further down the path would ever say so. Declare the element as a uniform buffer, or build one set per window.
+The native Metal backend accepts the combination, which its own README names as a documented superset.
 
 **The ring is unmapped at the flush point on the immediate driver.** `KE_D3D11_RECORD=immediate` issues draws as
 the seam is called, so a ring mapped by a record-time uniform write is still mapped when the next draw binds it.

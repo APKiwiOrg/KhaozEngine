@@ -107,8 +107,11 @@ public partial class ArchitectureTests
         // Netcode transport seam backend.
         ["LiteNetLib"] = new[] { "Netcode.LiteNetLib" },
         // Persistence + commerce SQL backends. Managed provider plus the bundled native sqlite engine.
-        ["Microsoft.Data.Sqlite"] = new[] { "WorldStore.Sqlite", "Commerce.Sqlite" },
-        ["SQLitePCLRaw.lib.e_sqlite3"] = new[] { "WorldStore.Sqlite", "Commerce.Sqlite" },
+        // KhaozEngine.Sqlite is the shared store lifecycle the two SQLite backends sit on, so it is a third home
+        // for the provider rather than an escape from the seam: the pool-clearing dispose has to touch
+        // SqliteConnection, and that discipline living once is the whole point of the package (#731).
+        ["Microsoft.Data.Sqlite"] = new[] { "Sqlite", "WorldStore.Sqlite", "Commerce.Sqlite" },
+        ["SQLitePCLRaw.lib.e_sqlite3"] = new[] { "Sqlite", "WorldStore.Sqlite", "Commerce.Sqlite" },
         ["Microsoft.Data.SqlClient"] = new[] { "WorldStore.SqlServer", "Commerce.SqlServer" },
         // glTF load contained in Render3D's GltfLoader.
         ["SharpGLTF.Core"] = new[] { "Render3D" },

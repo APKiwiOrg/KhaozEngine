@@ -8,7 +8,10 @@ namespace KhaozEngine.NetWorld;
 // Not all of these are ADMIN actions in the operator sense - SpeedScale is a gameplay mutation and self-rescue
 // already rides Teleport - but they all share the one property this queue exists for: a mutation of authoritative
 // state, submitted from an arbitrary thread, that must land at one deterministic point in the tick.
-internal enum AdminCommandKind : byte { Teleport, Kick, Broadcast, SpeedScale }
+// SetPosition is Teleport's twin: the same placement, applied through the same case, differing only in whether the
+// teleport epoch advances. It is a separate KIND rather than a flag on the struct so the drain reads the intent
+// straight off the command.
+internal enum AdminCommandKind : byte { Teleport, Kick, Broadcast, SpeedScale, SetPosition }
 
 /// <summary>A queued admin mutation, applied on the host thread during the next tick.</summary>
 internal readonly struct AdminCommand

@@ -1,13 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <PackageId>KhaozEngine.Commerce.Sqlite</PackageId>
+    <PackageId>KhaozEngine.Sqlite</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
+    <Description>The shared SQLite store lifecycle every KhaozEngine.*.Sqlite backend sits on: SqliteStoreConnection holds one open connection, bootstraps the store's schema, serializes commands behind a lease, and disposes by clearing the provider's connection pool before closing, so the database file is genuinely released instead of parked on a pooled handle. Extracted after the same pool-clearing line was copied wrong three times. Schema, SQL and record shape stay with the store; this package owns the lifecycle and nothing else.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Description>SQLite backend for KhaozEngine.Commerce (IWalletStore + IGrantScheduleStore). Opt-in; not bundled in the Server umbrella.</Description>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../KhaozEngine.Commerce/KhaozEngine.Commerce.csproj" />
-    <ProjectReference Include="../KhaozEngine.Sqlite/KhaozEngine.Sqlite.csproj" />
     <PackageReference Include="Microsoft.Data.Sqlite" />
     <!-- Override the bundled native SQLite binary to the patched build (SQLite 3.50.3, fixes
          CVE-2025-6965 / NU1903). Microsoft.Data.Sqlite 10.0.9 still pulls the vulnerable
@@ -15,10 +13,6 @@
          lib (managed SQLitePCLRaw.core/provider stay at 2.1.11, the versions MDS is built against).
          Drop this pin once Microsoft.Data.Sqlite references a patched SQLitePCLRaw itself. -->
     <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" />
-  </ItemGroup>
-  <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
-  </ItemGroup>
-  <ItemGroup>
   </ItemGroup>
 </Project>

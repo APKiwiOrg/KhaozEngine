@@ -13,6 +13,7 @@
          lib (managed SQLitePCLRaw.core/provider stay at 2.1.11, the versions MDS is built against).
          Drop this pin once Microsoft.Data.Sqlite references a patched SQLitePCLRaw itself. -->
     <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" />
+    <ProjectReference Include="../KhaozEngine.Sqlite/KhaozEngine.Sqlite.csproj" />
     <ProjectReference Include="../KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>

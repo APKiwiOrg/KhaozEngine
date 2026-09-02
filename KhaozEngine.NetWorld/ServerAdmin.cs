@@ -43,6 +43,8 @@ public sealed partial class ServerAdmin
 
     public IReadOnlyList<OnlinePlayer> ListOnline() => server.ListOnline();
     public void Teleport(PlayerRef target, Vector3 position) => server.Teleport(target, position);
+    /// <inheritdoc cref="IAdminControllable.SetPosition"/>
+    public void SetPosition(PlayerRef target, Vector3 position) => server.SetPosition(target, position);
     public void Kick(PlayerRef target, string reason) => server.Kick(target, reason);
     public void Broadcast(string text) => server.Broadcast(text);
 

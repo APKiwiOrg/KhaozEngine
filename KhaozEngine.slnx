@@ -57,6 +57,7 @@
   <Project Path="KhaozEngine.Stats/KhaozEngine.Stats.csproj" />
   <Project Path="KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
   <Project Path="KhaozEngine.Sharding/KhaozEngine.Sharding.csproj" />
+  <Project Path="KhaozEngine.Sqlite/KhaozEngine.Sqlite.csproj" />
   <Project Path="KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />
   <Project Path="KhaozEngine.WorldStore.Sqlite/KhaozEngine.WorldStore.Sqlite.csproj" />
   <Project Path="KhaozEngine.WorldStore.SqlServer/KhaozEngine.WorldStore.SqlServer.csproj" />

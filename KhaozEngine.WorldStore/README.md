@@ -41,6 +41,15 @@ It is generic over the head's own state and knows nothing about a record:
   core's own log lines go out through. That sink is why this package can carry the core and stay dependency-free: a
   head wires it to its own logging.
 
+**`PrewarmHintsAsync(max = 0, ct)`** fills the rejoin hints from the store at boot, newest record first, and
+returns how many accounts it seeded. The hints are memory-only, so without it the first rejoin of every account
+after a process restart falls back to the head's configured spawn and takes the restore teleport the seed exists
+to remove. It needs an `IEnumerableWorldStore` (below) and is a no-op returning 0 on any other store. Every record
+is put through the binding's `Decode` and `Validate` first, because the join builds the player ON the hint and
+nothing else validates a hint, so a record the load path would quarantine must never become one. Guest keys and
+quarantine copies are skipped. Call it on the server thread before the head starts polling and await it:
+`PositionHintCache` is not thread-safe.
+
 The two bindings that ship are `WorldPersistence` in `KhaozEngine.NetWorld` (float, over `PlayerRecord`) and
 `TileWorldPersistence` in `KhaozEngine.TileWorld.Netcode` (tile, over `TilePlayerRecord`). Both keep their own
 config type and public surface, so a game pinned to either is unaffected.

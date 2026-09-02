@@ -14125,6 +14125,42 @@ server using one backend or none never pulls the other's provider:
 - **`KhaozEngine.WorldStore.SqlServer`** - `SqlServerWorldStore` over `Microsoft.Data.SqlClient`. The production
   backend (Azure SQL).
 
+**Writing your own SQLite store: `KhaozEngine.Sqlite`.** The handle release above is not something to reimplement.
+`SqliteConnection.Dispose()` returns the native handle to the provider's pool instead of closing it, which leaves
+the file open: Windows then refuses to delete or exclusively open it, and POSIX unlinks it and hands the SAME live
+handle to the next store opened on that path, so the new store quietly serves the deleted database. The engine
+shipped that leak three times before extracting the fix, so a game writing its own SQLite-backed store (accounts,
+telemetry, anything) should sit its schema on `SqliteStoreConnection` rather than opening a connection itself:
+
+```csharp
+using KhaozEngine.Sqlite;
+using Microsoft.Data.Sqlite;
+
+public sealed class AccountsStore : IDisposable
+{
+    private readonly SqliteStoreConnection db;
+
+    public AccountsStore(string connectionString) => db = new SqliteStoreConnection(connectionString,
+        "CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY, data BLOB NOT NULL);");
+
+    public async Task<byte[]?> LoadAsync(string id, CancellationToken ct = default)
+    {
+        using SqliteStoreLease _ = await db.EnterAsync(ct);      // exclusive use of the held connection
+        using SqliteCommand cmd = db.CreateCommand();
+        cmd.CommandText = "SELECT data FROM accounts WHERE id = $id;";
+        cmd.Parameters.AddWithValue("$id", id);
+        return await cmd.ExecuteScalarAsync(ct) as byte[];
+    }
+
+    public void Dispose() => db.Dispose();                       // clears the pool, then closes
+}
+```
+
+It owns the connection, the bootstrap DDL, the gate and the dispose, and nothing else: the schema, the SQL and the
+record shape stay in your store. `BeginTransaction()` is there for a multi-statement operation, taken under a lease
+held for the whole transaction. Both engine SQLite backends are built on it, and it is opt-in and in no umbrella,
+so reference it directly.
+
 Both bootstrap one `world_store(key, data, updated_at)` table on construction, upsert via dialect SQL (SQLite
 `ON CONFLICT`, SQL Server `MERGE WITH (HOLDLOCK)`), raw parameterized async ADO.NET, no EF/ORM. The same
 contract, so dev and prod differ only in which line you construct:
@@ -14382,11 +14418,30 @@ var persistence = new WorldPersistence(server, store, new WorldPersistenceConfig
     ResumeHintCapacity = 4096,     // accounts held, least-recently-recorded evicted (default 1024; 0 = off)
     QuietRestoreDistance = 1f,     // a restore landing this close is applied without advancing the epoch
 });
-// Optional, and the only thing that extends the quiet rejoin across a process restart: the hints are
-// memory-only, so warm them from your own store at boot, on the server thread, before it starts polling.
-foreach ((string accountId, Vector3 last) in LoadLastKnownPositions())
-    persistence.ResumeHints.Record(accountId, last);
+// The hints are memory-only, so this is what extends the quiet rejoin across a process restart. At boot,
+// on the server thread, before the head starts polling:
+int seeded = await persistence.PrewarmResumeHintsAsync();
 ```
+
+**Pre-warming the hints across a restart.** `PrewarmResumeHintsAsync(int max = 0, CancellationToken)` reads the
+stored records back into `ResumeHints` and returns how many accounts it seeded. Without it the first rejoin of
+every account after a deploy or a container recycle falls back to the configured spawn and takes the restore
+teleport that the seed exists to remove, which is routine rather than rare. It needs an `IEnumerableWorldStore`
+(`InMemoryWorldStore`, `SqliteWorldStore` and `SqlServerWorldStore` all are) and is a no-op returning 0 on any
+other store, so it is safe to call unconditionally. `max` at or below zero means `ResumeHintCapacity`, which is
+also the most worth reading: the cache holds that many and evicts past it. Records are taken newest-first by
+`WorldStoreEntry.UpdatedAt` and recorded oldest-first, so the cache's own recency order matches the store's and
+the stalest account is the first thing a live save evicts.
+
+It is engine-owned for one reason above the others: **a record the load path would quarantine must not become a
+hint.** `WorldPersistenceConfig.Bounds` vets the LOADED record and never the hint, and the join builds the player
+ON the hint, so a hand-written pre-warm silently seeds exactly the positions the quarantine exists to reject. This
+one applies `Bounds` and the decode guard to every record before recording it, skips guest keys, and skips
+quarantine copies. The one load-path check it cannot apply is `ValidateGameState`, which reads the live per-player
+object by slot and there is no slot at boot: a record whose blob that hook would reject is seeded and then
+quarantined at the join it seeded, which forgets the hint and resets the player, so the outcome is the no-pre-warm
+one a join later. Call it on the server thread before polling starts and await it: `ResumePositionCache` is not
+thread-safe.
 
 `WorldPersistence` installs the hint on the host itself (`IWorldPersistenceHost.SetResumePositionProvider`,
 implemented by both `WorldServer` and `ShardedWorldServer`), so a persistence-backed server needs no
@@ -14702,6 +14757,25 @@ A generic, opt-in admin surface for a live server. Nothing changes for a server 
 net id) from a snapshot published once per tick; `Teleport(PlayerRef, Vector3)`, `Kick(PlayerRef, reason)`, and
 `Broadcast(text)` are queued and applied on the host thread between ticks, so you can call them safely from another
 thread (an HTTP handler). Target a player by `PlayerRef.Slot(n)` or `PlayerRef.Account("...")`.
+
+**Two position levers, and picking the wrong one is expensive.** `Teleport` always advances the teleport epoch,
+which is the client's signal to CUT: a camera cut, a chunk-ring prime and rebuild, an avatar render-height snap.
+That is right for a portal, an admin yank or an unstuck. It is wrong for a position the server CLAMPS, and a game
+holding a body still by re-asserting `Teleport` every tick is claiming a teleport every tick. That was harmless
+until a consumer grew a reaction to the epoch, at which point it became a full world reload per tick (#379).
+
+`SetPosition(PlayerRef, Vector3)` is the same placement without the claim: same queue, same thread rules, same
+vertical-velocity reset, epoch untouched. Use it for a per-tick clamp, a death lock, a soft boundary push:
+
+```csharp
+// a dead player is held where they fell, every tick, and nothing downstream cuts
+server.SetPosition(PlayerRef.Slot(slot), deathPosition);
+```
+
+It is not a gentler move, only an honest one: a large `SetPosition` is still a server correction and still
+rubber-bands a predicting client. What it removes is the false discontinuity, not the distance. It is a default
+interface method on `IAdminControllable` that forwards to `Teleport`, so a custom head written before it keeps
+compiling and keeps its old behaviour until it overrides it. `ServerAdmin` exposes it alongside `Teleport`.
 
 The tick rebuilds that snapshot into a reused buffer and republishes only when its content actually differs from
 what is already readable, so a tick where nobody joined, left or moved allocates nothing for it. What you read is

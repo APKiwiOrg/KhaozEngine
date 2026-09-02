@@ -628,14 +628,18 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     {
         switch (cmd.Kind)
         {
+            // One placement, two intents. Teleport advertises the discontinuity (admin + self-rescue teleports cut
+            // on the client), SetPosition does not (#379). Nothing else about the two differs, which is why they
+            // share the case rather than being written twice.
             case AdminCommandKind.Teleport:
+            case AdminCommandKind.SetPosition:
             {
                 int slot = ResolveSlot(cmd.Target);
                 if (slot >= 0 && stateBySlot.TryGetValue(slot, out PlayerMoveState st))
                 {
                     st.Position = cmd.Position;
                     st.VerticalVelocity = 0f;
-                    SetPlayerState(slot, st, teleport: true);   // admin + self-rescue teleports cut on the client
+                    SetPlayerState(slot, st, teleport: cmd.Kind == AdminCommandKind.Teleport);
                 }
                 break;
             }

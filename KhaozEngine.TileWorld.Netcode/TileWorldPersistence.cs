@@ -31,8 +31,16 @@ public sealed record TileWorldPersistenceConfig
 
     /// <summary>Tile distance below which a restore is applied without reporting a teleport. A rejoiner seeded from
     /// the hint is already standing on the loaded tile, and a teleport for a move of nothing makes the client cut
-    /// when it should not. One tile of slack by default.</summary>
-    public float QuietRestoreDistance { get; init; } = 1f;
+    /// when it should not.
+    /// <para>HALF a tile by default, deliberately below the core's own 1f. This binding is a LATTICE and it carries
+    /// the plane on the position's Y (see <c>Binding</c> below), so the only distance that means "did not move" is
+    /// zero, and every real move is at least one. At the core's default a one tile step and a whole FLOOR both
+    /// measure exactly 1 and both passed as no move, so a restore that moved a player between floors was applied
+    /// quietly and the client glided between them instead of cutting. Half a tile keeps a positive epsilon around
+    /// "the same cell" while every one unit move stays loud. The alternative weighed was a per-binding predicate on
+    /// the shared core, which would add a seam to express what one number already expresses exactly here, and the
+    /// float binding would still want its slack shaped in metres.</para></summary>
+    public float QuietRestoreDistance { get; init; } = 0.5f;
 
     /// <summary>Tile rect a loaded record must land inside, or it is quarantined. Null accepts any tile. This is the
     /// authoritative play area, checked against the STORED record rather than against the live player, so a record
@@ -123,7 +131,9 @@ public sealed class TileWorldPersistence
     }
 
     // What the core cannot know about a tile player. The plane rides the Vector3's Y so one hint carries a full
-    // lattice address, and a record from another plane reads as a whole tile of distance rather than as no move.
+    // lattice address, and a record from another plane therefore measures exactly one unit of distance. That is a
+    // MOVE and it is why the config above sets its own sub-1 QuietRestoreDistance: at the core's default of 1f a
+    // whole floor was not greater than the threshold and the restore went in quietly.
     static PersistenceBinding<TileMoveState> Binding(TileWorldPersistenceConfig c, TileCollisionMap world) => new(
         PositionOf: s => new Vector3(s.Tile.X, s.Tile.Plane, s.Tile.Z),
         Encode: (s, game) => TilePlayerRecord.From(s, game).Encode(),

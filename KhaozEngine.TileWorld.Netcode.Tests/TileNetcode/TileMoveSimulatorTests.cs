@@ -610,6 +610,49 @@ public class TileMoveSimulatorTests
         Assert.Equal(new TileCoord(0, 3, 0), s.Tile);
     }
 
+    // The tick a step fails its collision re-check is the one tick that starts no step, so the toggle riding it has
+    // nothing to stamp itself onto. Repath rebuilds the route and zeroes progress, and before this it left StepTotal
+    // holding the cadence of the step that was just refused: a standing state whose StepTotal disagreed with its
+    // own Mode, on the wire and in equality, until the next Start stamped over it. The CADENCE half of the original
+    // report was absorbed by 18.1.0's step reversal, since a step is now stamped as it COMMITS in Start rather than
+    // as it fills, and the last four assertions here are the pin that says so.
+    [Fact]
+    public void A_mode_toggle_on_the_tick_a_step_fails_its_recheck_stamps_the_replacement_cadence()
+    {
+        TileWorldDocument doc = FlatWorld();
+        TileCollisionMap map = Bake(doc);
+        TileMoveSimulator sim = Sim(map);
+        TileMoveState s = TileMoveState.At(new TileCoord(0, 0, 0), TileDirection.N);
+
+        // One walking step committed into (0, 1), with three ticks of glide left to run.
+        s = sim.Step(s, TileCommand.WalkTo(new TileCoord(0, 6, 0), TileMoveMode.Walk), Dt);
+        Assert.Equal(new TileCoord(0, 1, 0), s.Tile);
+        Assert.Equal(4, s.StepTotal);
+
+        // Wall the tile the NEXT step would be committed to, leaving a way round to the east.
+        doc.AddObject("tree", 0, 2, 0, 0);
+        TileCollisionBaker.Rebake(map, doc, Catalogs, new TileRect(0, 1, 3, 3), 0);
+        for (int i = 0; i < 2; i++) s = sim.Step(s, TileCommand.Continue(TileMoveMode.Walk), Dt);
+        Assert.Equal(3, s.StepTicks);
+
+        // The landing tick, which is also the tick the re-check refuses and the tick the run toggle arrives on.
+        s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+        Assert.Equal(new TileCoord(0, 1, 0), s.Tile);       // nothing is committed on a refusal
+        Assert.False(s.IsStepping);
+        Assert.False(s.Route.IsIdle);                       // and a way round was found
+        Assert.Equal(TileMoveMode.Run, s.Mode);
+        Assert.Equal(2, s.StepTotal);                       // the state agrees with its own mode
+
+        // The replacement step then crosses its tile at the RUN cadence, two ticks rather than four.
+        s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+        TileCoord committed = s.Tile;
+        Assert.NotEqual(new TileCoord(0, 1, 0), committed);
+        Assert.Equal(1, s.StepTicks);
+        Assert.Equal(2, s.StepTotal);
+        s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+        Assert.NotEqual(committed, s.Tile);                 // landed, and the next step is already committed
+    }
+
     [Fact]
     public void Dropping_run_mid_step_still_finishes_that_step_at_the_run_cadence()
     {

@@ -570,6 +570,11 @@ public class TileWorldServerTickTests
 
     // Planes do not shard, so the plane filter has to live in the serve. Both players are in the one cell and nine
     // tiles apart, well inside the interest radius, and neither may see the other.
+    //
+    // Through the internal serve on purpose, because it is the only cheap way to assert BOTH directions in one
+    // test. What a client actually receives is pinned end to end beside it, over the real transport and the real
+    // decoder: TileWorldServerShardingTests.A_viewer_never_receives_an_entity_on_another_plane for a resident, and
+    // A_ghost_on_another_plane_never_reaches_the_viewers_snapshot for the border mirror.
     [Fact]
     public void The_serve_is_filtered_to_the_viewers_own_plane()
     {
@@ -589,6 +594,9 @@ public class TileWorldServerTickTests
         Assert.DoesNotContain(ground, seenByUpstairs);
     }
 
+    // Equality between the two heads is the point, and on its own it is satisfied by two servers that both
+    // ignored every command: default equals default. The end-state anchors below are what make that reading
+    // impossible, so the test can only pass by actually running the walks it fed in.
     [Fact]
     public void Two_servers_fed_the_same_joins_and_commands_reach_the_same_state()
     {
@@ -602,7 +610,7 @@ public class TileWorldServerTickTests
             s.SpawnPlayer(1, "b", "Bo");
             s.Enqueue(0, 0, TileCommand.WalkTo(new TileCoord(18, 14, 0), TileMoveMode.Run));
             s.Enqueue(1, 0, TileCommand.WalkTo(new TileCoord(4, 4, 0), TileMoveMode.Walk));
-            for (int i = 0; i < 12; i++) s.Tick(Dt);
+            for (int i = 0; i < 32; i++) s.Tick(Dt);      // long enough for the slower walk to arrive too
         }
 
         Assert.True(a.TryGetPlayerState(0, out TileMoveState a0));
@@ -611,6 +619,11 @@ public class TileWorldServerTickTests
         Assert.True(a.TryGetPlayerState(1, out TileMoveState a1));
         Assert.True(b.TryGetPlayerState(1, out TileMoveState b1));
         Assert.Equal(a1, b1);
+
+        Assert.Equal(new TileCoord(18, 14, 0), a0.Tile);
+        Assert.Equal(new TileCoord(4, 4, 0), a1.Tile);
+        Assert.True(a0.Route.IsIdle);
+        Assert.True(a1.Route.IsIdle);
     }
 
     [Fact]

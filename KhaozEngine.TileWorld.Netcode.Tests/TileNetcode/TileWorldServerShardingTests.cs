@@ -92,8 +92,51 @@ public class TileWorldServerShardingTests
         long upstairs = s.SpawnPlayer(5, "upstairs", "U");
         s.SetPlayerState(5, TileMoveState.At(new TileCoord(11, 10, 1), TileDirection.W));
 
+        (long localNetId, List<long> seen) = ServedNetIds(s, hub, "ground");
+        Assert.Contains(localNetId, seen);
+        Assert.DoesNotContain(upstairs, seen);
+        Assert.Contains(ground, seen);
+    }
+
+    // The GHOST half of the plane filter, which nothing covered. A ghost is a border mirror and the mirroring rule
+    // is pure distance: planes do not shard, so a player on another floor a few tiles the far side of a cell
+    // boundary is copied into the viewer's cell exactly as one on the viewer's own floor is, and the ONLY thing
+    // that keeps it off the wire is the serve's plane filter. The plane 0 row is the control: the same setup, the
+    // same distance, and the viewer does see it, so a pass on the plane 1 row cannot come from a ghost that was
+    // simply out of interest range or never mirrored at all.
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    public void A_ghost_on_another_plane_never_reaches_the_viewers_snapshot(int walkerPlane, bool visible)
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld(4, new RegionCoord(0, 0), new RegionCoord(1, 0));
+        var hub = new InMemoryTransportHub();
+        // The viewer joins onto the configured spawn, in cell (1, 0). The walker sits ten tiles away across the
+        // x = 64 boundary, inside both the interest radius and the border overlap.
+        using TileWorldServer s = TileWorldServerTickTests.Server(doc, hub.Server, new TileCoord(70, 10, 0));
+        long walker = s.SpawnPlayer(4, "walker", "Wal");
+        s.SetPlayerState(4, TileMoveState.At(new TileCoord(60, 10, walkerPlane), TileDirection.E));
+
+        (long localNetId, List<long> seen) = ServedNetIds(s, hub, "viewer");
+
+        // What the serve had to filter really is a GHOST: owned by cell (0, 0), mirrored into the viewer's (1, 0).
+        Assert.True(s.Host.TryGetOwner(walker, out CellSim owner, out _));
+        Assert.Equal(new CellCoord(0, 0), owner.Coord);
+        Assert.True(s.Host.TryGetCell(new CellCoord(1, 0), out CellSim east));
+        Assert.True(east.TryGetGhost(walker, out _));
+        Assert.False(east.TryGetOwned(walker, out _));
+
+        Assert.Contains(localNetId, seen);
+        Assert.Equal(visible, seen.Contains(walker));
+    }
+
+    // The PUBLIC snapshot path, in one place: join a real client through the hub, run one tick, and decode the net
+    // ids the server actually served it. A test written against this cannot pass on an interest set the wire never
+    // carried, which is the whole difference from asserting through the internal ServeInterest.
+    static (long LocalNetId, List<long> Seen) ServedNetIds(TileWorldServer s, InMemoryTransportHub hub, string account)
+    {
         INetTransport c = hub.CreateClient();
-        var net = new NetClient(c, System.Text.Encoding.UTF8.GetBytes("ground"));
+        var net = new NetClient(c, System.Text.Encoding.UTF8.GetBytes(account));
         net.Poll();
         s.Poll();
         s.Tick(Dt);
@@ -110,8 +153,6 @@ public class TileWorldServerShardingTests
         new ClientReplicationView(TileProtocol.CreateRegistry()).Apply(world, snapshot);
         var seen = new List<long>();
         world.ForEach<NetId>((Entity e, ref NetId id) => seen.Add(id.Value));
-        Assert.Contains(localNetId, seen);
-        Assert.DoesNotContain(upstairs, seen);
-        Assert.Contains(ground, seen);
+        return (localNetId, seen);
     }
 }

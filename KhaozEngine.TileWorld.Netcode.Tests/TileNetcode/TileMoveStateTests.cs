@@ -157,6 +157,30 @@ public class TileMoveStateTests
         Assert.NotEqual(new TileRoute(tiles, 0), new TileRoute(tiles, 1));
     }
 
+    // The licence for the reference fast path in Equals. It has to agree with the slice comparison in every
+    // direction, and the case that catches a fast path answering on the reference ALONE is the two spellings of an
+    // empty route: a defaulted struct holds a null backing field and TileRoute.None holds Array.Empty, so they are
+    // not reference equal and are still the same route.
+    [Fact]
+    public void Route_equality_agrees_with_the_slice_whether_or_not_the_two_share_a_backing_list()
+    {
+        var tiles = new[] { new TileCoord(1, 0, 0), new TileCoord(2, 0, 0), new TileCoord(3, 0, 0) };
+        var copy = (TileCoord[])tiles.Clone();
+
+        for (int i = 0; i <= tiles.Length; i++)
+        {
+            Assert.Equal(new TileRoute(tiles, i), new TileRoute(tiles, i));    // one list, one index
+            Assert.Equal(new TileRoute(tiles, i), new TileRoute(copy, i));     // equal walk, two lists
+            Assert.Equal(new TileRoute(tiles, i).GetHashCode(), new TileRoute(copy, i).GetHashCode());
+            for (int j = i + 1; j <= tiles.Length; j++)
+                Assert.NotEqual(new TileRoute(tiles, i), new TileRoute(tiles, j));
+        }
+
+        Assert.Equal(TileRoute.None, default(TileRoute));
+        Assert.Equal(TileRoute.None.GetHashCode(), default(TileRoute).GetHashCode());
+        Assert.Equal(TileRoute.None, TileRoute.None);
+    }
+
     [Fact]
     public void A_defaulted_route_reads_as_an_empty_one_rather_than_a_null_list()
     {

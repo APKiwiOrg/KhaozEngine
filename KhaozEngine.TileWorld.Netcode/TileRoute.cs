@@ -138,12 +138,22 @@ public readonly struct TileRoute : IEquatable<TileRoute>
         throw new ArgumentException($"{a} and {b} are not adjacent, so there is no single step between them.", nameof(b));
     }
 
-    /// <summary>Compares the remaining tiles, not the backing array. See the type doc for why.</summary>
+    /// <summary>Compares the remaining tiles, not the backing array. See the type doc for why.
+    /// <para>Two routes over the SAME list at the same index are answered on the references, which is the case a
+    /// reconcile hits on every tick a route rides through untouched: a state carried forward holds the list its
+    /// route was built with. It is a shortcut and never a second rule, since one list at one index is one remaining
+    /// slice. It deliberately does not fire on the two spellings of an empty route (a defaulted struct's null field
+    /// against <see cref="None"/>'s <c>Array.Empty</c>), which the length comparison below answers equal.</para>
+    /// <para><see cref="Remaining"/> is a computed property, so it is read ONCE into a local rather than on every
+    /// iteration of a loop that runs per player per tick.</para></summary>
     public bool Equals(TileRoute other)
     {
-        if (Remaining != other.Remaining) return false;
-        for (int i = 0; i < Remaining; i++)
-            if (!Tiles[Index + i].Equals(other.Tiles[other.Index + i])) return false;
+        if (ReferenceEquals(_tiles, other._tiles) && Index == other.Index) return true;
+        int remaining = Remaining;
+        if (remaining != other.Remaining) return false;
+        IReadOnlyList<TileCoord> mine = Tiles, theirs = other.Tiles;
+        for (int i = 0; i < remaining; i++)
+            if (!mine[Index + i].Equals(theirs[other.Index + i])) return false;
         return true;
     }
 
@@ -153,9 +163,11 @@ public readonly struct TileRoute : IEquatable<TileRoute>
     /// <summary>Hashes the same remaining tiles <see cref="Equals(TileRoute)"/> compares, so the two agree.</summary>
     public override int GetHashCode()
     {
+        int remaining = Remaining;                          // computed, so read once rather than per iteration
+        IReadOnlyList<TileCoord> tiles = Tiles;
         var hash = new HashCode();
-        hash.Add(Remaining);
-        for (int i = 0; i < Remaining; i++) hash.Add(Tiles[Index + i]);
+        hash.Add(remaining);
+        for (int i = 0; i < remaining; i++) hash.Add(tiles[Index + i]);
         return hash.ToHashCode();
     }
 

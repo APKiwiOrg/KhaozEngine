@@ -55,11 +55,9 @@ public static class TileReach
         var found = new List<TileCoord>();
         if (footprint.IsEmpty) return found;
 
-        // A rect is contiguous, so an outside tile is cardinally adjacent to at most one of its tiles and the
-        // seen set can never actually fire. It is kept because Set's contract is a set, and a caller reading
-        // one entry twice would double-weight it: the cost is one allocation against the several searches
-        // TryNearest is about to run.
-        var seen = new HashSet<TileCoord>();
+        // No dedupe, and none is needed. A rect is contiguous, so a tile outside it is cardinally adjacent to at
+        // most one of its tiles, and each footprint tile offers each cardinal once: the same candidate cannot be
+        // produced twice, which is what makes this list satisfy Set's contract of a set.
         for (int z = footprint.Z; z < footprint.Z1; z++)
         for (int x = footprint.X; x < footprint.X1; x++)
         {
@@ -69,8 +67,7 @@ public static class TileReach
                 int nx = x + dx, nz = z + dz;
                 if (footprint.Contains(nx, nz)) continue;             // inside the object is not a reach tile
                 if (!TileCollision.CanStep(map, x, z, plane, outward)) continue;
-                var candidate = new TileCoord(nx, nz, plane);
-                if (seen.Add(candidate)) found.Add(candidate);
+                found.Add(new TileCoord(nx, nz, plane));
             }
         }
         return found;
@@ -108,14 +105,22 @@ public static class TileReach
     /// window, so it is answered without a search and without the scratch one allocates. The answer is the same
     /// one, and the reason it is worth stating is that a caller naming a far target is how an unbounded search
     /// gets bought (see the comment in the body). The <see cref="ArgumentOutOfRangeException"/> below comes out of
-    /// the pathfinder, so a call decided here, or by <paramref name="from"/> already standing on a reach tile,
-    /// never raises it. Reach never crosses planes, which is the refusal <see cref="Contains"/>
+    /// the top of the body rather than out of the pathfinder, so a bad argument is refused the same way whether
+    /// the target is open, walled in, out of range, or on another plane. It used to surface only once a candidate
+    /// was actually pathed, which made one caller bug read as "cannot reach" against some targets and throw
+    /// against others. Reach never crosses planes, which is the refusal <see cref="Contains"/>
     /// already makes and the one the two members have to agree on: an actor a plane above a booth is not standing
     /// on a reach tile, so it must not be handed a zero step walk to one either. A caller treats a false as
     /// "cannot get there", not as "walk as close as you can": <c>FindPath</c>'s nearest-reachable fallback is
     /// deliberately discarded here, because stopping short of a target you cannot act on is worse than not
     /// moving.</para>
-    /// <para>One <c>FindPath</c> per candidate (at most eight) is deliberate. The pathfinder does not expose its
+    /// <para>At most one <c>FindPath</c> per candidate (so at most eight), and usually fewer, because a candidate
+    /// that provably cannot win is skipped before its search. Two facts do that: the pathfinder's window cannot
+    /// hold a candidate further than <paramref name="maxRadius"/> away, and an eight-connected walk is never
+    /// shorter than the Chebyshev distance to its goal, so a candidate already that far from
+    /// <paramref name="from"/> cannot come in under the best length found so far. Both are cases the loop below
+    /// would have discarded anyway, which is why the scan order the tie rule reads is untouched. The searches
+    /// that remain are deliberate. The pathfinder does not expose its
     /// distance field, and at one interaction per click that cost is invisible next to the tick it lands in. If
     /// it ever shows in a profile, the answer is a pooled multi-goal search on <c>TilePathfinder</c>, so both
     /// heads keep sharing one search, not a second BFS grown here that could disagree with the first.</para>
@@ -131,12 +136,17 @@ public static class TileReach
     /// <param name="reachTile">The chosen reach tile, default when the call returns false.</param>
     /// <param name="path">The walk to <paramref name="reachTile"/>, empty when the actor already stands on it.</param>
     /// <exception cref="ArgumentNullException"><paramref name="map"/> is null.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="agentSize"/> or <paramref name="maxRadius"/>
-    /// is outside what <see cref="TilePathfinder.FindPath"/> accepts.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="agentSize"/> is below 1, or
+    /// <paramref name="maxRadius"/> is outside 1..<see cref="TilePathfinder.MaxSearchRadius"/>, which is what
+    /// <see cref="TilePathfinder.FindPath"/> accepts. Checked here rather than left to the first search, so the
+    /// refusal does not depend on whether this particular target happens to reach one.</exception>
     public static bool TryNearest(TileCollisionMap map, TileRect footprint, int plane, TileCoord from,
         int agentSize, int maxRadius, out TileCoord reachTile, out TilePath path)
     {
         ArgumentNullException.ThrowIfNull(map);
+        ArgumentOutOfRangeException.ThrowIfLessThan(agentSize, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxRadius, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(maxRadius, TilePathfinder.MaxSearchRadius);
         reachTile = default;
         path = TilePath.Empty(from);
         if (from.Plane != plane) return false;               // reach never crosses planes, same as Contains
@@ -174,6 +184,17 @@ public static class TileReach
                 path = TilePath.Empty(from);
                 return true;                                    // already standing on one: nothing beats zero steps
             }
+
+            // The per-candidate prune, and it removes only what the two tests below would have removed anyway.
+            // FindPath searches a (2r+1)^2 window centred on `from`, so a candidate further than maxRadius is
+            // never visited and never reports Reached. And a walk is eight-connected, so its step count is never
+            // below the Chebyshev distance to its goal: a candidate already at or past `best` cannot come in
+            // under it and would meet the tie rule below instead. Nothing that could have won is skipped, so the
+            // scan order the tie rule decides by is untouched and both heads still choose the same tile. In long
+            // for the overflow reason the admission check above states.
+            long cheb = Math.Max(Math.Abs((long)candidate.X - from.X), Math.Abs((long)candidate.Z - from.Z));
+            if (cheb > maxRadius || cheb >= best) continue;
+
             TilePath p = TilePathfinder.FindPath(map, plane, from, candidate, agentSize, maxRadius);
             if (!p.Reached || p.Tiles.Count >= best) continue;   // >= keeps the FIRST of a tie, so scan order decides
             best = p.Tiles.Count;

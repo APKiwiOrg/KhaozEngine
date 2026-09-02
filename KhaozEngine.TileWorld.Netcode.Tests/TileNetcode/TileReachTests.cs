@@ -172,6 +172,54 @@ public class TileReachTests
         Assert.False(TileReach.TryNearest(map, new TileRect(20 + radius + 2, 20, 1, 1), 0, from, 1, radius,
             out _, out _));
     }
+
+    // The range throw is documented unconditionally, so it has to happen on a call the searches never reach.
+    // A fully walled target returns false at the empty reach set, and a `from` on another plane returns false
+    // sooner still, so before the top-of-body validation both of those swallowed a caller bug that the same
+    // arguments against an OPEN target would have thrown for. That data-dependent split is the whole defect.
+    [Fact]
+    public void A_bad_agent_size_or_radius_is_refused_before_any_candidate_is_pathed()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        doc.AddObject("bank_booth", 10, 10, 0, 0);
+        foreach ((int x, int z) in new[] { (9, 10), (11, 10), (10, 9), (10, 11) }) doc.AddObject("tree", x, z, 0, 0);
+        TileCollisionMap map = Bake(doc);
+        var footprint = new TileRect(10, 10, 1, 1);
+        var from = new TileCoord(5, 5, 0);
+
+        Assert.Throws<ArgumentOutOfRangeException>("agentSize",
+            () => { TileReach.TryNearest(map, footprint, 0, from, 0, 64, out _, out _); });
+        Assert.Throws<ArgumentOutOfRangeException>("maxRadius",
+            () => { TileReach.TryNearest(map, footprint, 0, from, 1, 0, out _, out _); });
+        Assert.Throws<ArgumentOutOfRangeException>("maxRadius",
+            () => { TileReach.TryNearest(map, footprint, 0, from, 1, TilePathfinder.MaxSearchRadius + 1, out _, out _); });
+
+        // The other two early answers, which are the ones that made the throw data dependent.
+        Assert.Throws<ArgumentOutOfRangeException>("agentSize",
+            () => { TileReach.TryNearest(map, footprint, 0, new TileCoord(5, 5, 1), 0, 64, out _, out _); });
+        Assert.Throws<ArgumentOutOfRangeException>("agentSize",
+            () => { TileReach.TryNearest(map, new TileRect(10, 10, 0, 0), 0, from, 0, 64, out _, out _); });
+    }
+
+    // Pins Set's output as a SEQUENCE, not just a count, which is what the dedupe removal had to leave alone.
+    // A rect is contiguous, so an outside tile touches at most one of its tiles and no candidate can repeat:
+    // this is the assertion that says so out loud, and it also pins the declared scan order (footprint tiles by
+    // z then x, cardinals in W, E, S, N) that TryNearest's tie rule reads.
+    [Fact]
+    public void The_reach_set_is_duplicate_free_and_in_the_declared_scan_order()
+    {
+        TileCollisionMap map = Bake(TileMoveSimulatorTests.FlatWorld());
+        IReadOnlyList<TileCoord> set = TileReach.Set(map, new TileRect(10, 10, 2, 2), 0);
+
+        Assert.Equal(new[]
+        {
+            new TileCoord(9, 10, 0), new TileCoord(10, 9, 0),      // (10,10): W then S
+            new TileCoord(12, 10, 0), new TileCoord(11, 9, 0),     // (11,10): E then S
+            new TileCoord(9, 11, 0), new TileCoord(10, 12, 0),     // (10,11): W then N
+            new TileCoord(12, 11, 0), new TileCoord(11, 12, 0),    // (11,11): E then N
+        }, set);
+        Assert.Equal(set.Count, set.Distinct().Count());
+    }
 }
 
 /// <summary>
@@ -217,5 +265,45 @@ public class TileReachAllocationTests
 
         Assert.True(allocated < 4096,
             $"the refused reach search allocated {allocated} bytes over {iterations} calls, which is a search");
+    }
+
+    /// <summary>
+    /// The per-candidate prune, measured. A reach set holds up to eight candidates and the first successful
+    /// search bounds every later one: no eight-connected walk is shorter than the Chebyshev distance to its
+    /// goal, so a candidate already at or past the best length cannot win and its search is skipped. Here the
+    /// walker stands due west, the west tile answers in four steps, and the other three candidates are five and
+    /// six away, so one search runs instead of four. At radius 64 each skipped search is a 129x129 int plus byte
+    /// scratch, about 83 KB, which is what this counts.
+    /// </summary>
+    [Fact]
+    public void A_candidate_that_cannot_beat_the_best_so_far_pays_no_search()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        doc.AddObject("bank_booth", 10, 10, 0, 0);
+        TileCollisionMap map = TileMoveSimulatorTests.Bake(doc);
+        var footprint = new TileRect(10, 10, 1, 1);
+        var from = new TileCoord(5, 10, 0);
+
+        // Warm the JIT, and pin that the pruned call still answers exactly what the unpruned one did.
+        for (int i = 0; i < 8; i++)
+        {
+            Assert.True(TileReach.TryNearest(map, footprint, 0, from, 1, 64, out TileCoord tile, out TilePath path));
+            Assert.Equal(new TileCoord(9, 10, 0), tile);
+            Assert.Equal(4, path.Tiles.Count);
+        }
+
+        // Best of several passes, for the reason the sibling above states: the per thread counter is only
+        // accurate to one allocation context. Four searches cannot hide under the minimum of a one-search bound.
+        const int passes = 5;
+        long allocated = long.MaxValue;
+        for (int pass = 0; pass < passes; pass++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            TileReach.TryNearest(map, footprint, 0, from, 1, 64, out _, out _);
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        Assert.True(allocated < 150_000,
+            $"the reach search allocated {allocated} bytes, which is more than the one search it should have run");
     }
 }

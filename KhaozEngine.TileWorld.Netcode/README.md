@@ -72,7 +72,14 @@ an overlay drawn ON the body wants and exactly what a RULE must not have.
 the transport latency plus at most one snapshot interval, and it reports how old the answer is in ticks so an
 overlay can fade a stale marker rather than draw a confident one. That age is a LOWER bound on the truth, because
 no client can see the one-way flight time, so a threshold built on it wants headroom. Both are allocation free, both refuse an unknown
-id and the local player, and neither extrapolates. `docs/USING-KHAOZENGINE.md` carries the worked example.
+id and the local player, and neither extrapolates. `client.CollectRemoteTiles(buffer)` is the delayed read for
+everybody at once, for a per-frame pass over the whole crowd. `docs/USING-KHAOZENGINE.md` carries the worked
+example.
+
+**A crowd on one tile draws ONE body.** Every body draws on the tile centre, so a stack of them is a smear of
+overlapping meshes, and the body a player can least afford to lose in it is their own. `TileDrawPriority` picks
+the one to draw per tile: the local player on their own tile, the highest net id everywhere else. It is the OSRS
+PID ruling with a stable key, it is presentation only, and it is in the types list below.
 
 ## The types
 
@@ -306,6 +313,16 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   replacing it when the document loads cannot change how anything moves. A pose names the tile CENTRE, half a
   tile in from the corner on each axis, which is the middle of that tile's ground quad and the point a 1x1
   `TileObjectProps` prop is anchored at, so a head draws at `pose.Position` without re-centring it.
+- **`TileDrawPriority`** - ONE BODY PER TILE, rebuilt per frame. `Rebuild(client)` reads a live client,
+  `Rebuild(localNetId, localTile, others)` takes a caller's own roster, and the static `Select` is the rule with
+  both output buffers owned by the caller. `IsDrawn(netId)` is the draw-loop test, `TryGetDrawn(tile, out netId)`
+  asks by place, `Drawn` and `Count` are the chosen set. The local player wins their own tile outright and every
+  other tile goes to the highest net id on it, which is the OSRS PID ruling with a key that cannot flicker: a net
+  id does not move for an actor's life, where an order keyed on distance or arrival time re-decides itself
+  mid-step. The plane is part of the tile. The local player is judged on their PREDICTED tile and a remote on its
+  committed tile off the DELAYED timeline (`TryGetRemoteTile`), so the hide runs on the same clock as the bodies.
+  Allocation free per frame after the first rebuild, and presentation only: a hidden actor is still replicated,
+  still clickable and still swinging.
 - **`TileClientMessageHandler`** - the delegate an opaque server message arrives on.
 
 **Persistence**
@@ -475,9 +492,11 @@ client.Poll();                                     // once a frame
 client.Tick(dt);                                   // the command clock, one command per whole tick
 client.AdvancePresentation(dt);                    // the render clock, before drawing
 
+priority.Rebuild(client);                          // one TileDrawPriority, held for the session
+
 TilePose me = client.LocalPose;                    // the BODY, gliding into its committed tile
 foreach (long id in client.RemoteNetIds)
-    if (client.TryGetRemotePose(id, out TilePose them)) Draw(id, them);
+    if (priority.IsDrawn(id) && client.TryGetRemotePose(id, out TilePose them)) Draw(id, them);
 
 // The true-tile overlay, which is how the lead is made visible rather than smaller. Index the route from
 // Route.Index: Tiles is an IReadOnlyList, so a foreach boxes an enumerator every frame.

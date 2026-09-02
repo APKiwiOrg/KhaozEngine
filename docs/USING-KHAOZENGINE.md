@@ -5760,7 +5760,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.11.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.12.0" />
 ```
 
 ```csharp
@@ -9047,6 +9047,53 @@ if (client.TryGetRemoteTile(netId, out TileCoord theirs))          // agrees wit
   the marker on the avatar and makes the lead invisible again, which is the one failure this whole section
   exists to prevent.
 
+### One body per tile: `TileDrawPriority`
+
+Draw every body on its tile centre and a crowd on one tile is a smear of overlapping meshes that reads as one
+wrong-looking creature. The body a player can least afford to lose in that smear is their own. `TileDrawPriority`
+collapses each tile to ONE drawn actor: the local player on their own tile, and the highest net id everywhere
+else. OSRS answers the same question with PID and this is that shape with a stable key.
+
+```csharp
+readonly TileDrawPriority priority = new();     // one per head, for the life of the session
+
+// per frame, after AdvancePresentation and before drawing
+priority.Rebuild(client);
+
+TilePose me = client.LocalPose;                 // the local player is always drawn
+Draw(playerMesh, me.Position, me.Yaw);
+foreach (long netId in client.RemoteNetIds)
+    if (priority.IsDrawn(netId) && client.TryGetRemotePose(netId, out TilePose pose))
+        Draw(remoteMesh, pose.Position, pose.Yaw);
+```
+
+- **The key is the net id, and its only job is to be STABLE.** It is arbitrary rather than meaningful: ids are
+  handed out in increasing order, so the highest one on a tile is the most recently spawned actor there, which is
+  not a fact to design around. What matters is that it does not move for an actor's life, so a crowd standing
+  still draws the same body every frame. Order by anything that moves (distance to the camera, distance to the
+  player, who arrived first) and the pick re-decides itself mid-step, so the body under the cursor swaps while
+  nothing on screen appears to have changed.
+- **The plane is part of the tile.** The same x and z one storey up is a different tile and hides nothing.
+- **Which tile each actor is judged on differs by head, on purpose.** The local player is judged on their
+  PREDICTED tile, because that is the tile the local rules have committed them to. A remote is judged on its
+  committed tile off the DELAYED render timeline (`TryGetRemoteTile`), which is the timeline the drawn bodies
+  ride, so the hide happens on the same clock as the picture. Judging a remote on `TryGetLatestRemoteTile`
+  instead would hide it `InterpolationDelayTicks` before its body arrived.
+- **Bodies swap over on the tick a step COMMITS, not when they visually overlap**, because that is when the tile
+  changes. It is the same lead the true-tile marker and every other tile read in this package carry.
+- **Allocation free per frame** after the first rebuild, with no LINQ and no sort: one pass over the actors and
+  one over the winners, into buffers the selector holds. `TileWorldClient.CollectRemoteTiles(buffer)` is the bulk
+  read it is built on (the same shape as `CollectGroundItems`), and it is public for a game that wants its own
+  per-tile pass.
+- **It is presentation and nothing else.** A hidden actor is still on its tile, still replicated, still a legal
+  click target and still swinging. Hiding its nameplate or making it unclickable is a second, separate decision
+  and it is yours.
+- **A head with actors the client does not own** (a replay, a server-side view, bodies outside the replication
+  view) calls `priority.Rebuild(localNetId, localTile, others)` with its own roster, or the static
+  `TileDrawPriority.Select(localNetId, localTile, others, winners, drawn)` with its own buffers. Same rule, and
+  both outputs are cleared on entry. `TryGetDrawn(tile, out netId)` asks by place rather than by actor, for a
+  click that should resolve to the body the player can actually see.
+
 **A pose names the tile CENTRE**, half a tile in from the corner on each axis, which is the middle of the tile's
 own ground quad and the point `TileObjectProps.AnchorPosition` puts a 1x1 prop on, so an avatar and the thing it
 walks up to sit on the same grid. Draw at `pose.Position` directly and do not re-centre it.
@@ -10636,7 +10683,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.11.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.12.0" />
 ```
 
 ```csharp
@@ -10672,7 +10719,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.11.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.12.0" />
 ```
 
 ```csharp
@@ -10914,7 +10961,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.11.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.12.0" />
 ```
 
 ```csharp

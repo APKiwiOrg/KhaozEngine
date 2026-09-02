@@ -5,6 +5,40 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.12.0
+
+One body per tile on a tile client: `TileDrawPriority` picks the single actor drawn on each tile, the
+local player on their own tile and the highest net id everywhere else.
+
+Grimhollow's playtest verdict was that a crowd standing on the player should show the player and
+nothing else, and that a stack elsewhere should show one body rather than a smear of overlapping
+meshes. Every tile game on this engine wants the same rule, so it lands here rather than in a game.
+OSRS answers the same question with PID, a per-tick priority, and this is that shape with a stable key.
+
+- `TileDrawPriority` (in `KhaozEngine.TileWorld.Netcode`) is a per-frame selector. `Rebuild(client)`
+  reads a live client, `Rebuild(localNetId, localTile, others)` takes a caller's own roster, and the
+  static `Select(localNetId, localTile, others, winners, drawn)` is the rule itself with both output
+  buffers owned by the caller. `IsDrawn(netId)` is the draw-loop test, `TryGetDrawn(tile, out netId)`
+  asks by place, and `Drawn` plus `Count` are the chosen set.
+- The rule: exactly one actor per tile. The local player wins their own tile outright, so nothing can
+  ever stand in front of the body its owner aims from. Every other tile goes to the highest net id on
+  it. The key is arbitrary and its job is to be STABLE: a net id does not move for an actor's life, so
+  a crowd standing still draws the same body every frame, where an order keyed on distance or arrival
+  time re-decides itself mid-step and swaps the body under the cursor. The plane is part of the tile,
+  so the same x and z one storey up hides nothing.
+- Which tile each actor is judged on is the other half. The local player is judged on their PREDICTED
+  tile, a remote on its COMMITTED replicated tile off the delayed render timeline
+  (`TryGetRemoteTile`), which is the timeline the drawn bodies ride. Judging a remote on
+  `TryGetLatestRemoteTile` would hide it `InterpolationDelayTicks` before its body arrived.
+- `TileWorldClient.CollectRemoteTiles(buffer)` is the bulk form of `TryGetRemoteTile`, the same shape
+  as `CollectGroundItems` and for the same reason: `RemoteNetIds` is interface-typed, so a per-frame
+  walk of it boxes an enumerator, and a rule over the whole crowd wants the tiles anyway.
+- Allocation free per frame after the first rebuild, no LINQ and no sort: one pass over the actors and
+  one over the winners, into buffers the selector holds for the life of the head.
+- Presentation only. A hidden actor is still on its tile, still replicated, still a legal click target
+  and still swinging. Hiding a nameplate or a click target along with the body is a separate decision
+  and stays the game's.
+
 ## 18.11.0
 
 18.11.0 is the eighth backlog wave: 48 verified defects and consumer parity gaps fixed, each with a

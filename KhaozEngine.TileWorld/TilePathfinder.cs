@@ -51,7 +51,7 @@ public static class TilePathfinder
     /// must be 1..<see cref="MaxSearchRadius"/>.</summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxRadius"/> is below 1 or above
     /// <see cref="MaxSearchRadius"/>.</exception>
-    public static TilePath FindPath(TileCollisionMap map, int plane, TileCoord start, TileCoord goal, int agentSize = 1, int maxRadius = DefaultMaxRadius)
+    public static TilePath FindPath(TileCollisionMap map, int plane, TileCoord start, TileCoord goal, int agentSize = 1, int maxRadius = DefaultMaxRadius, TilePathfinderScratch? scratch = null)
     {
         ArgumentNullException.ThrowIfNull(map);
         if (maxRadius < 1 || maxRadius > MaxSearchRadius)
@@ -59,11 +59,27 @@ public static class TilePathfinder
         if (start.X == goal.X && start.Z == goal.Z) return TilePath.Empty(new TileCoord(start.X, start.Z, plane));
 
         int side = 2 * maxRadius + 1;
+        int cells = side * side;
         int originX = start.X - maxRadius, originZ = start.Z - maxRadius;
-        var dist = new int[side * side];
-        var parent = new byte[side * side];
-        Array.Fill(dist, -1);
-        var queue = new Queue<int>();
+        // A scratch hands back arrays it has already handed out, so every read below is bounded by cells rather
+        // than by Length: a scratch sized for a bigger radius is longer than this window needs.
+        int[] dist;
+        byte[] parent;
+        Queue<int> queue;
+        if (scratch is null)
+        {
+            dist = new int[cells];
+            parent = new byte[cells];
+            Array.Fill(dist, -1);
+            queue = new Queue<int>();
+        }
+        else
+        {
+            scratch.Reset(cells);
+            dist = scratch.Dist;
+            parent = scratch.Parent;
+            queue = scratch.Queue;
+        }
 
         int startIndex = maxRadius * side + maxRadius;
         dist[startIndex] = 0;
@@ -96,7 +112,7 @@ public static class TilePathfinder
         }
 
         bool reached = goalIndex >= 0;
-        int endIndex = reached ? goalIndex : NearestReachable(dist, side, originX, originZ, goal);
+        int endIndex = reached ? goalIndex : NearestReachable(dist, cells, side, originX, originZ, goal);
         if (endIndex == startIndex) return new TilePath(Array.Empty<TileCoord>(), reached: false, new TileCoord(start.X, start.Z, plane));
 
         var reversed = new List<TileCoord>();
@@ -112,11 +128,11 @@ public static class TilePathfinder
         return new TilePath(reversed, reached, new TileCoord(start.X, start.Z, plane));
     }
 
-    static int NearestReachable(int[] dist, int side, int originX, int originZ, TileCoord goal)
+    static int NearestReachable(int[] dist, int cells, int side, int originX, int originZ, TileCoord goal)
     {
         int best = -1, bestDist = int.MaxValue;
         long bestSq = long.MaxValue;
-        for (int i = 0; i < dist.Length; i++)
+        for (int i = 0; i < cells; i++)
         {
             if (dist[i] < 0) continue;
             long ex = originX + i % side - goal.X, ez = originZ + i / side - goal.Z;
@@ -127,5 +143,61 @@ public static class TilePathfinder
             }
         }
         return best;
+    }
+}
+
+/// <summary>Reusable working memory for <see cref="TilePathfinder.FindPath"/>: the two <c>(2r + 1)^2</c> window
+/// arrays and the BFS queue, kept across calls so a caller that paths on a tick stops allocating about 83 KB per
+/// search at the default radius. Hand the same instance to every call on one thread.
+/// <para>NOT thread safe, and deliberately so: it is one mutable buffer set. A server gives each worker its own,
+/// and two searches sharing one instance corrupt each other's window. It also holds its arrays for as long as it
+/// lives, so a scratch sized for a huge radius keeps that memory resident.</para>
+/// <para>It changes NOTHING about the walk. <see cref="TilePathfinder.FindPath"/> resets the window to exactly
+/// what freshly allocated arrays hold before every search, so a scratch-fed path is byte identical to the
+/// allocating one, which server-authoritative movement relies on.</para></summary>
+public sealed class TilePathfinderScratch
+{
+    // Internal rather than properties: TilePathfinder reads them directly on the hot path, and nothing outside
+    // this assembly has any business seeing a half-reset window.
+    internal int[] Dist = Array.Empty<int>();
+    internal byte[] Parent = Array.Empty<byte>();
+    internal readonly Queue<int> Queue = new();
+
+    /// <summary>An empty scratch that sizes itself on its first search.</summary>
+    public TilePathfinderScratch() { }
+
+    /// <summary>A scratch pre-sized for searches up to <paramref name="maxRadius"/>, so the first search does not
+    /// allocate either. A bigger radius later still works, growing the arrays once.</summary>
+    /// <param name="maxRadius">Half width of the largest window this scratch should hold, 1..<see
+    /// cref="TilePathfinder.MaxSearchRadius"/>.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxRadius"/> is outside that range.</exception>
+    public TilePathfinderScratch(int maxRadius)
+    {
+        if (maxRadius < 1 || maxRadius > TilePathfinder.MaxSearchRadius)
+            throw new ArgumentOutOfRangeException(nameof(maxRadius), maxRadius, $"maxRadius must be 1..{TilePathfinder.MaxSearchRadius}");
+        int side = 2 * maxRadius + 1;
+        Grow(side * side);
+    }
+
+    /// <summary>Window cells this scratch can hold without growing, <c>(2r + 1)^2</c> for the radius it was sized
+    /// to and 0 for one that has never searched.</summary>
+    public int Capacity => Dist.Length;
+
+    // Both arrays are put back into their freshly-allocated state over the cells this search will touch: dist
+    // filled with -1, parent zeroed. Zeroing parent is not strictly needed, since a cell's parent is written
+    // before anything walks back through it, but it costs a quarter of the fill that is already happening and it
+    // makes "identical to fresh arrays" true of the whole buffer rather than of an argument about read order.
+    internal void Reset(int cells)
+    {
+        if (Dist.Length < cells) Grow(cells);
+        Array.Fill(Dist, -1, 0, cells);
+        Array.Clear(Parent, 0, cells);
+        Queue.Clear();
+    }
+
+    void Grow(int cells)
+    {
+        Dist = new int[cells];
+        Parent = new byte[cells];
     }
 }

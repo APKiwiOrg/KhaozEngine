@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KhaozEngine.MapDoc;
 
 namespace KhaozEngine.MapEditor;
 
@@ -43,5 +44,38 @@ public abstract partial class EditorCommand
     {
         if (_appendSlot < 0) throw new InvalidOperationException("Revert called before Apply.");
         list.RemoveAt(_appendSlot);
+    }
+
+    // The guarded half of the same idiom, for the three id-keyed Add commands (#766, the shape #75 closed for
+    // regions). Each guard already existed with exactly one caller, the matching rename command, so an add could
+    // land a duplicate id that only save-time validation ever reported, long after the gesture that caused it.
+    //
+    // The pairs live HERE rather than as two lines inside each Apply for the same reason the append slot does:
+    // one idiom, one explanation, and a new Add command joins it by calling the pair. It also keeps
+    // EditorCommands.cs, which sits at its file-size ratchet, at one line per Apply.
+    //
+    // Guard BEFORE the append, never after: History.Execute applies before it pushes, so a throwing Apply lands
+    // no undo step and leaves the document exactly as it was. A redo re-applies against a document its own undo
+    // has already emptied of the element, so the guard cannot see the command's own id.
+
+    /// <summary>Rejects a duplicate placement id, then appends. The guarded <see cref="ApplyAppend"/>.</summary>
+    private protected void ApplyAppendUnique(MapDocument doc, MapPlacement placement)
+    {
+        GuardNoPlacement(doc, placement.Id);
+        ApplyAppend(doc.Placements, placement);
+    }
+
+    /// <summary>Rejects a duplicate spawn id, then appends. The guarded <see cref="ApplyAppend"/>.</summary>
+    private protected void ApplyAppendUnique(MapDocument doc, MapSpawn spawn)
+    {
+        GuardNoSpawn(doc, spawn.Id);
+        ApplyAppend(doc.Spawns, spawn);
+    }
+
+    /// <summary>Rejects a duplicate player spawn id, then appends. The guarded <see cref="ApplyAppend"/>.</summary>
+    private protected void ApplyAppendUnique(MapDocument doc, MapPlayerSpawn spawn)
+    {
+        GuardNoPlayerSpawn(doc, spawn.Id);
+        ApplyAppend(doc.PlayerSpawns, spawn);
     }
 }

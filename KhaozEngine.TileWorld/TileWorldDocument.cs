@@ -41,6 +41,12 @@ public sealed partial class TileWorldDocument
     /// with their stored hashes, so a save carries them through untouched.</summary>
     internal Dictionary<RegionCoord, string> UnloadedRegionHashes { get; } = new();
 
+    /// <summary>The streaming source this document was opened through, or null for one built in memory. Set by
+    /// <see cref="TileWorldSource.Open"/>, which is also what <see cref="TileWorldFile.Load"/> goes through, so a
+    /// whole-world load has one too (with every region loaded, which the checks below then never need). It is the
+    /// document's only view of the regions it does NOT hold.</summary>
+    public TileWorldSource? Source { get; internal set; }
+
     /// <summary>The region at c, or null when it is not in memory.</summary>
     public TileRegion? GetRegion(RegionCoord c) => _regions.TryGetValue(c, out TileRegion? r) ? r : null;
 
@@ -150,8 +156,17 @@ public sealed partial class TileWorldDocument
     }
 
     /// <summary>The object with this id, or null when no such object is indexed.</summary>
-    public TileObject? FindObject(long id) =>
-        _objectIndex.TryGetValue(id, out TileRegion? r) ? r.Objects.Find(o => o.Id == id) : null;
+    public TileObject? FindObject(long id)
+    {
+        // Indexed loop rather than List.Find with a lambda: the predicate captures id, so the old form allocated
+        // a closure and a delegate on EVERY lookup. Harmless in the editor, and the tile netcode resolves an
+        // interaction target through here on each command and on each reconcile replay of an unacked one.
+        if (!_objectIndex.TryGetValue(id, out TileRegion? r)) return null;
+        List<TileObject> objects = r.Objects;
+        for (int i = 0; i < objects.Count; i++)
+            if (objects[i].Id == id) return objects[i];
+        return null;
+    }
 
     /// <summary>Deletes the object. False when no such object is indexed.</summary>
     public bool RemoveObject(long id)
@@ -205,12 +220,19 @@ public sealed partial class TileWorldDocument
     }
 
     /// <summary>Places (or re-homes) the uniquely named marker. Validates the destination BEFORE dropping the
-    /// old one, so a throw leaves the existing marker where it was rather than deleting it.</summary>
+    /// old one, so a throw leaves the existing marker where it was rather than deleting it.
+    /// <para>Marker names are unique across the WHOLE world, not just the part of it in memory. When this
+    /// document came from a <see cref="TileWorldSource"/>, a name an unloaded region already carries is refused
+    /// rather than authored into a second region that would collide the moment both were loaded (#788). A
+    /// document with no source has no view of anything it does not hold, so it checks the loaded set alone.</para></summary>
+    /// <exception cref="TileWorldException">The name belongs to a marker in a region this document does not
+    /// hold, or the destination region does not exist.</exception>
     public TileMarker SetMarker(string name, int x, int z, int plane, IEnumerable<string>? tags = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         RequirePlane(plane);
         TileRegion region = RequireRegion(x, z);
+        RequireNameFreeInUnloadedRegions(name);
         RemoveMarker(name);
         var m = new TileMarker { Name = name, X = x, Z = z, Plane = plane, Tags = tags?.ToList() };
         region.Markers.Add(m);
@@ -218,7 +240,24 @@ public sealed partial class TileWorldDocument
         return m;
     }
 
-    /// <summary>The marker with this name, or null when there is none.</summary>
+    // The manifest's marker index covers every region, loaded or not, and a LOADED region outranks its row
+    // there (the region in memory is the live truth, the row is a copy of what a file said). So a row only
+    // blocks the name when the region holding it is one this document cannot see: that marker is real, it is
+    // just not in memory, and RemoveMarker below would walk straight past it and author the duplicate.
+    void RequireNameFreeInUnloadedRegions(string name)
+    {
+        if (Source is not TileWorldSource source) return;
+        if (source.FindMarker(name) is not TileMarker carried) return;
+        RegionCoord home = RegionCoord.Of(carried.X, carried.Z);
+        if (GetRegion(home) is not null) return;
+        throw new TileWorldException(
+            $"marker '{name}' already exists at ({carried.X}, {carried.Z}) in region {home}, which is not loaded. " +
+            "Marker names are unique across the whole world. Load that region to move it, or pick another name.");
+    }
+
+    /// <summary>The marker with this name, or null when there is none. Walks the LOADED regions only, so a
+    /// streaming client asking before it has streamed anything wants <see cref="TileWorldSource.FindMarker"/>,
+    /// which reads the manifest's index instead.</summary>
     public TileMarker? FindMarker(string name) => AllMarkers().FirstOrDefault(m => m.Name == name);
 
     /// <summary>Deletes the named marker. False when there was none.</summary>

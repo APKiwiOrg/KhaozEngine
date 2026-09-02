@@ -207,8 +207,10 @@ One form only, a directory:
 - Stable file names, so a git diff points at the region that changed. Content-addressed names were weighed
   (the tiled `MapDoc` form uses them for crash-atomic commit) and rejected here: they churn every rename in
   git for a hand-authored, version-controlled world, and the crash safety is had another way.
-- Save: each region is written to `r_<rx>_<rz>.json.tmp` and renamed into place, the manifest is written to
-  `world.json.tmp` and renamed LAST. Only regions whose in-memory dirty flag is set are rewritten.
+- Save: each region is written to a sibling tmp and renamed into place, the manifest written and renamed LAST.
+  Only regions whose in-memory dirty flag is set are rewritten. The tmp name carries a fresh Guid per call
+  (`<target>.<guid>.tmp`) since #790: the fixed `<target>.tmp` this shipped with was shared by every writer into
+  the directory, so two concurrent saves could truncate each other's tmp and rename half a file into place.
 - Load: each region's bytes are hashed and compared to the manifest's entry. A mismatch is a torn write or a
   hand edit that forgot the manifest, and the load refuses, naming the region.
 - `WorldHash`: SHA-256 over the canonical manifest bytes, which compose the per-region hashes, so it is

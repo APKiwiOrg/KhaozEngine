@@ -47,6 +47,10 @@ of its own and raises no events: every mutation marks its region `Dirty`, and th
   bilinear height in metres at a world position.
 - Objects and markers: `AddObject`, `FindObject`, `MoveObject`, `RemoveObject`, `ObjectsIn`, `AllObjects`,
   `SetMarker`, `FindMarker`, `RemoveMarker`, `AllMarkers`, `AllocateObjectId`, `RebuildObjectIndex`.
+- `Source` is the `TileWorldSource` this document was opened through, or null for one built in memory. It is the
+  document's only view of the regions it does not hold, and `SetMarker` uses it: a marker name is unique across
+  the WHOLE world, so a name an unloaded region already carries is refused rather than authored into a second
+  region that collides once both are loaded. A document with no source checks the loaded regions alone.
 
 `TileRegion` is 64x64 (`Size`, `TileCount`) with one `TilePlaneData` per plane, its own object and marker lists
 and a `Dirty` flag. `TilePlaneData` carries the six dense layers (`Heights` in centimetre shorts, `Underlay`,
@@ -71,7 +75,8 @@ save leaves what it already wrote, and the next load refuses the world naming th
 only, `EnsureLoaded(coord)`/`EnsureLoaded(rect)` materialise regions on demand hash-checked, `IsKnown`,
 `IsLoaded`, `KnownRegions` and `Document` expose the state, and `Unload(coord)` drops a CLEAN region while
 refreshing its known-hash table from that region's current bytes, so a region that was edited and saved is not
-later mistaken for a torn write. `FindMarker(name)` and `Markers` answer off the manifest's marker index with no
+later mistaken for a torn write, and refreshing its marker rows the same way and for the same reason.
+`FindMarker(name)` and `Markers` answer off the manifest's marker index with no
 region read at all, which is how a client finds the spawn before it streams anything. The index is DERIVED from
 the regions, like the collision map: `Save` rebuilds it for every region it holds and carries the rest forward
 from the previous manifest, so a partial save keeps the markers of regions it never materialised. It rides
@@ -153,6 +158,12 @@ arrays being `(2r + 1)^2` entries each. `TilePath` carries `Tiles` (the steps AF
 `End`. An unreachable goal yields the walk to the nearest reachable tile, nearest by SQUARED EUCLIDEAN distance
 to the goal, then by BFS distance, then by scan order, and a start on a `Blocked` tile behaves like any other.
 **Branch on `Reached`, never on `Tiles.Count`**: a partial walk and a reached one both carry steps.
+
+`FindPath` takes an optional `TilePathfinderScratch` as its last argument. Without one it allocates both window
+arrays per call, about 83 KB at radius 64. A scratch owns those arrays and the BFS queue across calls, so a
+caller that paths on a tick allocates only the result: `new TilePathfinderScratch(64)` pre-sizes it, a bigger
+radius grows it once, `Capacity` is the window it holds, and it is NOT thread safe, one per worker. The window
+is reset to exactly what fresh arrays hold before every search, so a scratch-fed path is byte identical.
 
 `TileRaycast.Pick(doc, plane, origin, direction, maxDistance = 2000f)` marches the lattice in XZ and returns the
 first `TileHit(X, Z, Plane, Point, Distance)`, or null. The direction need not be normalised, a plane outside

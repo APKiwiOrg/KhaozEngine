@@ -183,21 +183,34 @@ public class TileWorldFileTests
         TileWorldDocument doc = Authored();
         TileWorldFile.Save(doc, dir);
 
-        // A directory sitting where the manifest's tmp file wants to be. The region files land, then the
-        // manifest write throws, so the OLD world.json and its now-stale hashes stay on disk. That is the
-        // shape that used to poison the NEXT save: clean regions, new bytes, old hashes.
-        string obstacle = Path.Combine(dir, "world.json.tmp");
+        string firstPath = TileWorldFile.RegionPath(dir, new RegionCoord(0, 0));
+        string obstacle = TileWorldFile.RegionPath(dir, new RegionCoord(1, 0));
+        byte[] firstBefore = File.ReadAllBytes(firstPath);
+
+        // A directory sitting where the SECOND region file wants to be. The first region lands, the second
+        // write throws, and the manifest is never reached, so the OLD world.json and its now-stale hashes stay
+        // on disk. That is the shape that used to poison the NEXT save: clean regions, new bytes, old hashes.
+        // The obstacle used to sit on the manifest's tmp file, which is a per-call name now (#790).
+        File.Delete(obstacle);
         Directory.CreateDirectory(obstacle);
         doc.SetUnderlay(2, 2, 0, 9);
+        doc.SetUnderlay(70, 6, 0, 9);
         TileRegion region = doc.Regions[new RegionCoord(0, 0)];
         Assert.True(region.Dirty);
         Assert.ThrowsAny<Exception>(() => TileWorldFile.Save(doc, dir));
+
+        // The first region really did land, so this is the failure the test means rather than one that wrote
+        // nothing. Regions go out in document order, and a flip should go red here rather than quietly stop
+        // covering the early-clear bug.
+        Assert.NotEqual(firstBefore, File.ReadAllBytes(firstPath));
         Assert.True(region.Dirty);
+        Assert.True(doc.Regions[new RegionCoord(1, 0)].Dirty);
 
         Directory.Delete(obstacle);
         TileWorldFile.Save(doc, dir);
         TileWorldDocument back = TileWorldFile.Load(dir);
         Assert.Equal(9, back.GetUnderlay(2, 2, 0));
+        Assert.Equal(9, back.GetUnderlay(70, 6, 0));
     }
 
     [Fact]

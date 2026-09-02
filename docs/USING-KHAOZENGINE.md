@@ -7042,12 +7042,29 @@ The index rides OUTSIDE the world hash: `TileWorldHash.OfWorld` composes the reg
 fields, never the manifest's own rows, so adding it changed no digest. A marker MOVE still moves the world hash,
 through the region that carries it.
 
+**A marker name is unique across the WHOLE world, not just the loaded part.** `SetMarker` consults the same
+index through `document.Source` (the `TileWorldSource` it was opened through, null for a document built in
+memory) and refuses a name an unloaded region already carries, naming that region, rather than authoring a
+second marker that only collides once both regions are in. A loaded region outranks its index row, so re-homing
+a marker inside the part of the world you hold is unaffected. `Unload` refreshes the rows of the region it is
+dropping from that region, the same way it refreshes the known hash, so a marker deleted and saved before the
+unload really does free its name.
+
 **Collision is derived, never authored.** `TileCollisionBaker.Bake` builds the whole `TileCollisionMap` from
 settings plus object archetypes, `Rebake(map, doc, catalogs, dirtyRect, plane)` re-derives one rect after an
 edit, and a wall is one edge shared by two tiles (the baker sets the bit on both), so `CanStep` never looks at
 objects. Pass `Rebake` a rect covering the FULL footprint of anything you removed, measured with
 `TileFootprint.Of` before the removal, because a rebake can only re-derive the tiles it clears. Branch on
 `TilePath.Reached`, never on `Tiles.Count`: a partial walk to the nearest reachable tile carries steps too.
+
+**A caller that paths on a tick hands `FindPath` a `TilePathfinderScratch`.** The default call allocates the two
+`(2r + 1)^2` window arrays every search, about 83 KB at radius 64, which is nothing for an editor click and is
+the steady-state Gen0 rate of a server walking every actor. A scratch owns those arrays plus the BFS queue and
+is reused across calls, so the search allocates only its result. `new TilePathfinderScratch(64)` pre-sizes it, a
+bigger radius later grows it once, and `Capacity` reports the window it currently holds. It is one mutable
+buffer set and NOT thread safe, so give each worker its own. The walk does not change: `FindPath` resets the
+window to exactly what fresh arrays hold before every search, so a scratch-fed path is byte identical to the
+allocating one.
 
 **Picking and prefabs.** `TileRaycast.Pick(doc, plane, origin, direction)` is the GPU-free ray against the
 lattice, cutting each tile with `TileTriangulation.Triangulate`, the same shape triangulation the ground mesher
@@ -9186,8 +9203,9 @@ the actor is on just stands), the step in flight finishes on its own cadence, an
 because a standing actor is waiting for a fight rather than giving one up.
 
 Actors also carry their own pathfinder knobs. `TileWorldServerConfig.ActorMove` defaults to `MaxPathRadius = 12`
-against a player's 64, because `TilePathfinder.FindPath` allocates `(2r+1)^2` scratch entries per call, about
-83 KB of Gen0 at 64 and about 3 KB at 12, and the chase path is the one an actor runs most often. Size it against
+against a player's 64, because a `TilePathfinder.FindPath` call with no scratch allocates `(2r+1)^2` window
+entries, about 83 KB of Gen0 at 64 and about 3 KB at 12, and the chase path is the one an actor runs most
+often (a caller holding a `TilePathfinderScratch` pays that once rather than per call). Size it against
 the LEASH, since an actor never legitimately paths further than that. `MaxActorsPerCell` (64 by default) is the
 per-REGION budget, since a cell is exactly a region, and `SpawnActor` answers 0 rather than throwing when a spawn
 is refused, so a spawner can never take a tick down with it.

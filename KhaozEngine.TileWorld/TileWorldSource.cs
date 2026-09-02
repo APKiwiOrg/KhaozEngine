@@ -28,7 +28,18 @@ public sealed class TileWorldSource
         Dictionary<string, TileMarker> markers)
     {
         Directory = directory; Document = document; _known = known; _markers = markers;
+        // The back link the document needs to see the regions it does not hold, for the marker-name check in
+        // TileWorldDocument.SetMarker. Last, so nothing hands out a half-built source.
+        document.Source = this;
     }
+
+    // A detached copy, so a caller that nudges what it was handed changes nothing in the index and nothing in
+    // the region once that region is loaded.
+    static TileMarker Copy(TileMarker m) => new()
+    {
+        Name = m.Name, X = m.X, Z = m.Z, Plane = m.Plane,
+        Tags = m.Tags is null ? null : new List<string>(m.Tags),
+    };
 
     /// <summary>
     /// A marker by name, out of the manifest's index, with NO region read. What a client uses to find the spawn
@@ -42,15 +53,8 @@ public sealed class TileWorldSource
     /// <see cref="TileWorldDocument.FindMarker"/> over loaded regions.</para>
     /// </summary>
     /// <param name="name">The marker's document-unique name.</param>
-    public TileMarker? FindMarker(string name)
-    {
-        if (name is null || !_markers.TryGetValue(name, out TileMarker? m)) return null;
-        return new TileMarker
-        {
-            Name = m.Name, X = m.X, Z = m.Z, Plane = m.Plane,
-            Tags = m.Tags is null ? null : new List<string>(m.Tags),
-        };
-    }
+    public TileMarker? FindMarker(string name) =>
+        name is not null && _markers.TryGetValue(name, out TileMarker? m) ? Copy(m) : null;
 
     /// <summary>Reads the manifest (migrating it when needed) and returns a source with no region loaded yet.</summary>
     public static TileWorldSource Open(string directory, TileWorldLoadOptions? options = null)
@@ -130,6 +134,17 @@ public sealed class TileWorldSource
         // file this engine writes is canonical, and a clean region reloaded from one re-serialises to the
         // same bytes, so this is the hash of what is on disk.
         string hash = TileWorldHash.OfRegion(r);
+        // The index rows for this region are refreshed from the region itself on the way out, for the same
+        // reason the hash is. _markers is the manifest as it stood at Open, and a region that was loaded,
+        // edited and saved carries markers those rows do not describe. Loaded regions outrank the index
+        // everywhere it is read, so a row only has to be true while its region is NOT in memory, and this is
+        // the one transition into that state.
+        var stale = new List<string>();
+        foreach (KeyValuePair<string, TileMarker> entry in _markers)
+            if (RegionCoord.Of(entry.Value.X, entry.Value.Z) == c) stale.Add(entry.Key);
+        foreach (string name in stale) _markers.Remove(name);
+        foreach (TileMarker m in r.Markers) _markers[m.Name] = Copy(m);
+
         Document.RemoveRegion(c);
         Document.UnloadedRegionHashes[c] = hash;
         // _known moves with it, or the next EnsureLoaded checks the file against the Open-time hash and calls

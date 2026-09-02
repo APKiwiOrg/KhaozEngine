@@ -45,10 +45,6 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
     // player index the tick body is iterating.
     readonly Dictionary<int, long> lingerUntilTick = new();
     readonly List<int> lingerScratch = new();
-    // A SECOND scratch list rather than a share of the one above, because the two walks can nest: a game's own
-    // PlayerLeaving handler is free to seat someone, and a reclaim running inside an expiry would otherwise rewrite
-    // the list the expiry is still walking.
-    readonly List<int> reclaimScratch = new();
 
     /// <summary>Raised as (slot, accountId) once a connection has a player entity, which is the point a game may
     /// start reading and writing that player. Raised from <see cref="SpawnPlayer"/>, so it fires for a headless
@@ -279,13 +275,20 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
     void ReleaseLingerFor(string accountId)
     {
         if (lingerUntilTick.Count == 0) return;
-        reclaimScratch.Clear();
+        // A LOCAL rather than a shared scratch list, for the reason ExpireLingeringSessions has its own: this walk
+        // NESTS. OnLeave below raises PlayerLeaving, a game's handler is free to seat someone, and seating someone
+        // runs SpawnPlayer, which re-enters this method for the NEW account. A shared list is cleared and refilled
+        // by that inner call under the outer loop still walking it, so every seat the outer call had selected and
+        // not yet reached is silently dropped: the account keeps a second live body, which is the one thing this
+        // method exists to prevent. Cheaper than the comment explaining why a second field is enough, and it is
+        // enough for one level of nesting only.
+        var reclaim = new List<int>();
         // accountIdBySlot still holds the lingering seat's account: the deferral returns from OnLeave ahead of every
         // Remove below it, so the linger needs no second record of who it belongs to.
         foreach (KeyValuePair<int, long> entry in lingerUntilTick)
             if (accountIdBySlot.TryGetValue(entry.Key, out string? held) && held == accountId)
-                reclaimScratch.Add(entry.Key);
-        for (int i = 0; i < reclaimScratch.Count; i++) OnLeave(reclaimScratch[i], force: true);
+                reclaim.Add(entry.Key);
+        for (int i = 0; i < reclaim.Count; i++) OnLeave(reclaim[i], force: true);
     }
 
     // Released from Tick, once each, through the ordinary leave path, so PlayerLeaving is raised and a persistence

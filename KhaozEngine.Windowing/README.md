@@ -260,3 +260,12 @@ and snap UI geometry to whole multiples of it.
 
 The 5.x renderers (`Render2D`, `Render3D`) build on this. Silk.NET windowing ships GLFW natives bundled per-RID,
 so there is no SDL2/brew step. Touch is mobile-deferred (no 5.x mobile-windowing head yet).
+
+**Linux host natives, packed here as well as in `KhaozEngine.Foundation`
+([#723](https://github.com/APKiwiOrg/KhaozEngine/issues/723)).** Silk.NET resolves its bindings itself rather
+than through `[DllImport]`, and on Linux it probes `runtimes/<distro rid>/native`, which nothing writes, so the
+GLFW natives never load until they sit flat beside the assemblies. This package carries a build rule that copies them
+there on `build` and on a rid-agnostic `publish`, no-op on Windows, macOS and `publish -r <rid>`, opt out with
+`<KhaozEngineFlattenHostNatives>false</KhaozEngineFlattenHostNatives>`. It ships here as well as in `Foundation`
+because `Foundation` is not in this package's dependency closure, so a project that references this one and no
+umbrella would otherwise get nothing. One physical rule file, so the two copies cannot drift.

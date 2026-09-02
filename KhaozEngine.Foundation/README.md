@@ -49,7 +49,9 @@ referenced directly or via `Game2D`/`Game3D`/`Server`:
   `runtimes/<distro rid>/native`, which nothing writes, so without this a Linux app cannot load any of them
   ([#722](https://github.com/APKiwiOrg/KhaozEngine/issues/722)). No-op on Windows and macOS, on
   `publish -r <rid>`, and in a project that references no native package. Opt out with
-  `KhaozEngineFlattenHostNatives=false`.
+  `KhaozEngineFlattenHostNatives=false`. `KhaozEngine.Gpu`, `KhaozEngine.Windowing` and `KhaozEngine.Audio`
+  pack the same rule file under their own names, so a project that references one of them without an umbrella
+  gets it too ([#723](https://github.com/APKiwiOrg/KhaozEngine/issues/723)).
 
 All three are overridable by setting the property in your game head.
 

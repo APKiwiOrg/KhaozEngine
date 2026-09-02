@@ -576,6 +576,16 @@ ubuntu container: without the rule it dies in `SpirvFrontEnd..cctor`, with it th
 the apphost on `build`, on `publish` and on `publish -r linux-x64`, and shaderc, SPIRV-Cross, GLFW and OpenAL
 Soft all load.
 
+**A consumer that skips the umbrellas is covered too, since
+[#723](https://github.com/APKiwiOrg/KhaozEngine/issues/723).** `Foundation` is not in the dependency closure of
+`KhaozEngine.Gpu`, `KhaozEngine.Windowing` or `KhaozEngine.Audio`, so a project that references one of those
+directly and takes no umbrella (a Linux shader tool on `Gpu` alone is the worked example) got none of this and
+died the same way. Those three now pack the SAME physical rule file under their own `<PackageId>.targets` name,
+which NuGet auto-imports with no `Import` line. Still one copy on disk, asserted by
+`HostNativesFlattenTests`, and no `PrivateAssets` moved, so nothing about asset flow changed. A consumer on both
+a package and an umbrella lands two copies of byte-identical targets, and a redefined target is an override
+rather than an error.
+
 Net result: **all three legs are blocking, none of them informational** - `metal-native` (macOS),
 `direct3d11-native` (Windows/WARP) and `vulkan-native` (Linux/lavapipe). The RASTERIZERS are long validated,
 with months of green runs behind them under the Veldrid incumbent that used to share each one. The three

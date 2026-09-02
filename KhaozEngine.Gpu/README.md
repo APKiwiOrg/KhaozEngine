@@ -482,3 +482,12 @@ reflection in `GpuPublicApiTests` here, and by `ArchitectureTests.ThirdPartyHome
 shader-toolchain package ids (`Silk.NET.Shaderc`, `Silk.NET.SPIRV.Cross`, `Silk.NET.SPIRV` and the two `.Native`
 blobs) to this package alone, and to its shader toolchain alone). Adding a backend is a new
 `IGpuDevice` implementation behind an `IGpuBackendProvider`, not a consumer-visible change.
+
+**Linux host natives, packed here as well as in `KhaozEngine.Foundation`
+([#723](https://github.com/APKiwiOrg/KhaozEngine/issues/723)).** Silk.NET resolves its bindings itself rather
+than through `[DllImport]`, and on Linux it probes `runtimes/<distro rid>/native`, which nothing writes, so the
+shader-toolchain natives (`libshaderc_shared`, `libspirv-cross`) never load until they sit flat beside the assemblies. This package carries a build rule that copies them
+there on `build` and on a rid-agnostic `publish`, no-op on Windows, macOS and `publish -r <rid>`, opt out with
+`<KhaozEngineFlattenHostNatives>false</KhaozEngineFlattenHostNatives>`. It ships here as well as in `Foundation`
+because `Foundation` is not in this package's dependency closure, so a project that references this one and no
+umbrella would otherwise get nothing. One physical rule file, so the two copies cannot drift.

@@ -249,6 +249,14 @@ and macOS (both resolve out of `runtimes/` fine) and on `publish -r <rid>` (the 
 A project that references no native package copies nothing. Set
 `<KhaozEngineFlattenHostNatives>false</KhaozEngineFlattenHostNatives>` if you lay the natives out yourself.
 
+**And the three packages that carry the natives ship the same rule themselves**, so a project that takes one of
+them on its own and no umbrella is covered too
+([#723](https://github.com/APKiwiOrg/KhaozEngine/issues/723)). `KhaozEngine.Gpu`, `KhaozEngine.Windowing` and
+`KhaozEngine.Audio` each pack the one physical rule file under their own package name, which NuGet auto-imports.
+That is the case a Linux shader tool on `Gpu` alone, or a headless audio tool on `Audio` alone, used to miss:
+`Foundation` is not in any of their dependency closures. Taking both a package and an umbrella lands two copies
+of identical targets, which MSBuild treats as a redefinition rather than an error.
+
 **New game head checklist:** set `<OutputType>WinExe</OutputType>` on the Desktop head (no stray console window;
 the engine attaches the parent console for terminal launches). `CETCompat` and
 `IncludeNativeLibrariesForSelfExtract` are the engine-imposed build-property defaults. Pin your umbrella package

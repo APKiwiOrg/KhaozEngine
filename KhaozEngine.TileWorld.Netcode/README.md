@@ -149,7 +149,12 @@ id and the local player, and neither extrapolates. `docs/USING-KHAOZENGINE.md` c
   path length with scan order as the tie-break, and `FacingToward` turns the arriving actor toward what it came
   for. `TryNearest` refuses a footprint further than `maxRadius` + 1 away without searching, since no reach tile of
   one is inside the pathfinder's window: the answer is the same false, and it is what stops a client naming a far
-  target it has never seen from buying up to eight full window floods per command.
+  target it has never seen from buying up to eight full window floods per command. Past that it prunes per
+  candidate, skipping one outside the window or already at or past the best length found so far, both of which
+  the loop would have discarded after paying for the search: a walk is eight-connected, so its step count is
+  never below the Chebyshev distance to its goal. The chosen tile and the tie rule are unchanged by either.
+  `agentSize` and `maxRadius` are validated at the top of `TryNearest` rather than left to the first search, so a
+  bad argument throws whether the target is open, walled in, out of range or on another plane.
 - **`ITileTargets`** / **`TileDocumentTargets`** / **`TileEntityTargets`** / **`TileRemoteTargets`** - the seam
   that resolves a target id to a footprint and a plane, and its three implementations across TWO id spaces.
   `TileDocumentTargets` is the OBJECT space, backed by the document over `TileObjectArchetype.Interactive` and

@@ -281,7 +281,11 @@ public class TileReplicationTests
             (World server, _) = Spawn(1, Walking());
             return SnapshotWriter.WriteFiltered(server, reg, interest, ReplicationChannels.Replicate, ownerNetId: 1);
         }
-        Assert.Equal(First(), First());
+        // NotEmpty first, because Assert.Equal(First(), First()) on its own passes for a writer that emits
+        // nothing at all: two empty arrays are equal, and a snapshot of a live entity is not empty.
+        byte[] once = First();
+        Assert.NotEmpty(once);
+        Assert.Equal(once, First());
     }
 
     [Fact]

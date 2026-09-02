@@ -75,8 +75,9 @@ public class TileWorldClientLoopbackTests
             }
         }
 
-        /// <summary>Drops the client's transport, which is how a real link dies. The server's own Disconnect is a
-        /// no-op on this hub, so a kick alone never reaches the client as a dropped session.</summary>
+        /// <summary>Drops the client's transport, which is how a real link dies. A server-side kick now reaches
+        /// the client on its own (the hub's endpoints route Disconnect through DisconnectClient), so this is the
+        /// CLIENT-side drop and an idempotent no-op after a kick has already taken the link.</summary>
         public void Drop() => hub.DisconnectClient(clientTransport);
 
         public void Dispose() { Client.Dispose(); Server.Dispose(); }

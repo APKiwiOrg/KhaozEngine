@@ -110,7 +110,10 @@ public class TileWorldPersistenceTests
         var p = new TileWorldPersistence(host, store, Map);
         p.OnRecordQuarantined += (key, _) => quarantinedKey = key;
         host.Join(2, "acct-2", TileMoveState.At(new TileCoord(1, 1, 0), TileDirection.N));
-        for (int i = 0; i < 50 && quarantinedKey is null; i++) { p.Update(0.25f); await Task.Delay(10); }
+        // FlushAsync drains the apply queue and awaits the read, and the quarantine callback fires from inside
+        // that drain, so the decision has landed when it returns. The poll loop this replaces was the suite's only
+        // wall-clock dependency, a 500 ms budget on a loaded runner.
+        await p.FlushAsync();
         Assert.Equal("acct-2", quarantinedKey);
         // Reset to the configured spawn, and as a genuine teleport. Declining to place would leave a rejoiner
         // standing on the resume hint the rejected record seeded, which nothing here ever validated (#642).
@@ -133,7 +136,7 @@ public class TileWorldPersistenceTests
         var p = new TileWorldPersistence(host, store, Map);
         p.OnRecordQuarantined += (key, _) => quarantinedKey = key;
         host.Join(4, "acct-4", TileMoveState.At(new TileCoord(1, 1, 0), TileDirection.N));
-        for (int i = 0; i < 50 && quarantinedKey is null; i++) { p.Update(0.25f); await Task.Delay(10); }
+        await p.FlushAsync();                          // deterministic, see the sibling above
         Assert.Equal("acct-4", quarantinedKey);
         // A head that seeds no join has nothing to undo, so the player keeps whatever spawn it was built at.
         Assert.Empty(host.Placed);

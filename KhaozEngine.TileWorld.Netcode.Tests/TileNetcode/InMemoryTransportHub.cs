@@ -39,14 +39,21 @@ public sealed class InMemoryTransportHub
 
     /// <summary>Surfaces a disconnect for a client endpoint on the server's next Poll (the server then frees the
     /// player slot, which the next client to join recycles). The endpoint stops sending/receiving afterwards.
-    /// No-op for an unknown endpoint.</summary>
+    /// No-op for an unknown endpoint, and IDEMPOTENT: both endpoints' own Disconnect routes here, so a test that
+    /// kicks and then drops the same link explicitly must not see two Disconnected events.</summary>
     public void DisconnectClient(INetTransport client)
     {
         if (client is not ClientEndpoint ce) return;
         int idx = clients.IndexOf(ce);
-        if (idx < 0) return;
+        if (idx < 0 || ce.IsDisconnected) return;
         server.OnClientRemoved(idx + 1);
         clients[idx].MarkDisconnected();
+    }
+
+    // The server side of INetTransport.Disconnect, by connection id rather than by endpoint.
+    private void DisconnectConnection(int connId)
+    {
+        if (connId - 1 >= 0 && connId - 1 < clients.Count) DisconnectClient(clients[connId - 1]);
     }
 
     private void ServerSend(int connId, byte[] data, NetChannelReliability r)
@@ -96,9 +103,9 @@ public sealed class InMemoryTransportHub
         public void Send(NetConnectionId target, ReadOnlySpan<byte> payload, NetChannelReliability reliability) =>
             hub.ServerSend(target.Value, payload.ToArray(), reliability);
 
-        // A no-op, unlike LoopbackTransport.Disconnect. A server-initiated kick has to go through
-        // InMemoryTransportHub.DisconnectClient for the client endpoint to observe it.
-        public void Disconnect(NetConnectionId connection) { }
+        // A real drop, like LoopbackTransport.Disconnect: a head that kicks a client is exercised end to end here
+        // rather than compensated for with an explicit hub.DisconnectClient beside every kick.
+        public void Disconnect(NetConnectionId connection) => hub.DisconnectConnection(connection.Value);
         public void Dispose() { }
     }
 
@@ -114,11 +121,17 @@ public sealed class InMemoryTransportHub
 
         public ClientEndpoint(InMemoryTransportHub hub, int connId) { this.hub = hub; this.connId = connId; }
 
+        public bool IsDisconnected => disconnected;
+
         public void MarkDisconnected()
         {
             disconnected = true;
+            // Everything already sent still surfaces, ahead of the drop, which is LoopbackTransport.Disconnect's
+            // own promise that a plain kick loses nothing. It is load-bearing for a kick: the reason notice is
+            // Sent and the link dropped in the same call, so clearing the queue here would swallow the reason and
+            // the client would learn only that it was gone.
+            foreach ((byte[] data, NetChannelReliability r) in pending) inbox.Enqueue(NetEvent.FromData(ServerId, data, r));
             pending.Clear();
-            // Surface the drop to the NetClient so it emits a ClientSessionEvent.Disconnected.
             inbox.Enqueue(NetEvent.Disconnected(ServerId));
         }
 
@@ -148,8 +161,8 @@ public sealed class InMemoryTransportHub
             if (!disconnected) hub.ClientSend(connId, payload.ToArray(), reliability);
         }
 
-        // Also a no-op. A client-initiated leave goes through InMemoryTransportHub.DisconnectClient too.
-        public void Disconnect(NetConnectionId connection) { }
+        // The client hanging up on the server, routed through the same one place so both ends stay in step.
+        public void Disconnect(NetConnectionId connection) => hub.DisconnectClient(this);
         public void Dispose() { }
     }
 }

@@ -75,7 +75,8 @@ public static class TileWorldFile
         string regionsDir = Path.Combine(directory, RegionsDirectoryName);
         Directory.CreateDirectory(regionsDir);
 
-        Dictionary<RegionCoord, string> previous = ReadPreviousHashes(directory);
+        TileWorldManifest? before = ReadPreviousManifest(directory);
+        Dictionary<RegionCoord, string> previous = PreviousHashes(before);
         var hashes = new Dictionary<RegionCoord, string>(doc.UnloadedRegionHashes);
         var written = new List<TileRegion>();
         foreach (TileRegion region in doc.Regions.Values)
@@ -111,6 +112,7 @@ public static class TileWorldFile
             CatalogPaths = doc.CatalogPaths.ToList(), NextObjectId = doc.NextObjectId,
             Regions = hashes.OrderBy(k => k.Key.Rz).ThenBy(k => k.Key.Rx)
                 .Select(k => new TileWorldManifestRegion { Rx = k.Key.Rx, Rz = k.Key.Rz, Hash = k.Value }).ToList(),
+            Markers = BuildMarkerIndex(doc, before, hashes),
         };
         WriteAtomic(ManifestPath(directory), JsonSerializer.SerializeToUtf8Bytes(manifest, TileWorldJson.Manifest));
         // Dirty clears only now, once the manifest naming these exact bytes is on disk. Clearing it as each
@@ -174,23 +176,55 @@ public static class TileWorldFile
         }
     }
 
-    static Dictionary<RegionCoord, string> ReadPreviousHashes(string directory)
+    // The manifest as it stands on disk, or null when there is none or it cannot be read. An unreadable or corrupt
+    // previous manifest carries nothing forward, so every loaded region is rewritten and only the markers of loaded
+    // regions survive. That is the safe direction: nothing is carried over from bytes we could not read.
+    static TileWorldManifest? ReadPreviousManifest(string directory)
+    {
+        string path = ManifestPath(directory);
+        if (!File.Exists(path)) return null;
+        try { return JsonSerializer.Deserialize<TileWorldManifest>(File.ReadAllText(path), TileWorldJson.Manifest); }
+        catch (JsonException) { return null; }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
+    }
+
+    static Dictionary<RegionCoord, string> PreviousHashes(TileWorldManifest? previous)
     {
         var result = new Dictionary<RegionCoord, string>();
-        string path = ManifestPath(directory);
-        if (!File.Exists(path)) return result;
-        try
-        {
-            TileWorldManifest? m = JsonSerializer.Deserialize<TileWorldManifest>(File.ReadAllText(path), TileWorldJson.Manifest);
-            if (m is null) return result;
-            foreach (TileWorldManifestRegion r in m.Regions) result[new RegionCoord(r.Rx, r.Rz)] = r.Hash;
-        }
-        // An unreadable or corrupt previous manifest carries no hashes forward, so every loaded region is
-        // rewritten. That is the safe direction: nothing is carried over from bytes we could not read.
-        catch (JsonException) { }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
+        if (previous is null) return result;
+        foreach (TileWorldManifestRegion r in previous.Regions) result[new RegionCoord(r.Rx, r.Rz)] = r.Hash;
         return result;
+    }
+
+    // The marker index, DERIVED from the regions the way the collision map is. A save usually holds only some of
+    // the world's regions in memory, so the index is the union of two halves: every marker of every LOADED region,
+    // rebuilt from what that region carries right now, plus the previous manifest's rows for regions this save
+    // never materialised. Without the second half a streaming editor that touched one region would silently drop
+    // the marker index for the rest of the world.
+    //
+    // Sorted by name and keyed by it, because a marker name is document-unique and the write has to be canonical.
+    // A loaded region OUTRANKS a carried-forward row of the same name: the region in memory is the live truth and
+    // the manifest row is a copy of what a file said last time. Rows naming a region the world no longer has are
+    // dropped with it.
+    static List<TileWorldManifestMarker> BuildMarkerIndex(TileWorldDocument doc, TileWorldManifest? previous,
+        Dictionary<RegionCoord, string> hashes)
+    {
+        var byName = new SortedDictionary<string, TileWorldManifestMarker>(StringComparer.Ordinal);
+        foreach (TileWorldManifestMarker m in previous?.Markers ?? new List<TileWorldManifestMarker>())
+        {
+            RegionCoord home = RegionCoord.Of(m.X, m.Z);
+            if (doc.Regions.ContainsKey(home) || !hashes.ContainsKey(home)) continue;
+            byName[m.Name] = m;
+        }
+        foreach (TileRegion region in doc.Regions.Values.OrderBy(r => r.Coord.Rz).ThenBy(r => r.Coord.Rx))
+            foreach (TileMarker m in region.Markers)
+                byName[m.Name] = new TileWorldManifestMarker
+                {
+                    Name = m.Name, X = m.X, Z = m.Z, Plane = m.Plane,
+                    Tags = m.Tags is null ? null : new List<string>(m.Tags),
+                };
+        return byName.Values.ToList();
     }
 
     static void WriteAtomic(string path, byte[] bytes)

@@ -9,6 +9,9 @@ namespace KhaozEngine.TileWorld;
 public sealed class TileWorldSource
 {
     readonly Dictionary<RegionCoord, string> _known;
+    // The manifest's marker index, read once at Open. Keyed by name, which is document-unique, and holding the
+    // manifest's own copy rather than a region's, because none of the regions is materialised yet.
+    readonly Dictionary<string, TileMarker> _markers;
 
     /// <summary>The world directory this source reads from.</summary>
     public string Directory { get; }
@@ -17,9 +20,36 @@ public sealed class TileWorldSource
     /// <summary>Every region the manifest lists, loaded or not.</summary>
     public IReadOnlyCollection<RegionCoord> KnownRegions => _known.Keys;
 
-    TileWorldSource(string directory, TileWorldDocument document, Dictionary<RegionCoord, string> known)
+    /// <summary>Every marker the manifest indexes, in name order, without a region read. Empty for a world saved
+    /// by an engine older than the index.</summary>
+    public IReadOnlyCollection<string> Markers => _markers.Keys;
+
+    TileWorldSource(string directory, TileWorldDocument document, Dictionary<RegionCoord, string> known,
+        Dictionary<string, TileMarker> markers)
     {
-        Directory = directory; Document = document; _known = known;
+        Directory = directory; Document = document; _known = known; _markers = markers;
+    }
+
+    /// <summary>
+    /// A marker by name, out of the manifest's index, with NO region read. What a client uses to find the spawn
+    /// before it has streamed anything: <see cref="TileWorldDocument.FindMarker"/> walks LOADED regions only, so
+    /// asking it first would mean materialising regions one at a time until one carried the marker and then
+    /// unloading the ones that did not.
+    /// <para>A COPY, so a caller that nudges the one it was handed changes nothing in the index and nothing in the
+    /// region once that region is loaded. The index is derived from the regions, which stay the source of truth.</para>
+    /// <para>Null for an unknown name, and for every name in a world saved by an engine older than the index. A
+    /// world written by this engine always carries one, so the fallback a caller needs is the ordinary
+    /// <see cref="TileWorldDocument.FindMarker"/> over loaded regions.</para>
+    /// </summary>
+    /// <param name="name">The marker's document-unique name.</param>
+    public TileMarker? FindMarker(string name)
+    {
+        if (name is null || !_markers.TryGetValue(name, out TileMarker? m)) return null;
+        return new TileMarker
+        {
+            Name = m.Name, X = m.X, Z = m.Z, Plane = m.Plane,
+            Tags = m.Tags is null ? null : new List<string>(m.Tags),
+        };
     }
 
     /// <summary>Reads the manifest (migrating it when needed) and returns a source with no region loaded yet.</summary>
@@ -42,7 +72,14 @@ public sealed class TileWorldSource
                 throw new TileWorldException($"{TileWorldFile.ManifestPath(directory)}: region {c} is listed twice");
             doc.UnloadedRegionHashes[c] = r.Hash;
         }
-        return new TileWorldSource(directory, doc, known);
+        var markers = new Dictionary<string, TileMarker>(StringComparer.Ordinal);
+        foreach (TileWorldManifestMarker mk in m.Markers)
+            markers[mk.Name] = new TileMarker
+            {
+                Name = mk.Name, X = mk.X, Z = mk.Z, Plane = mk.Plane,
+                Tags = mk.Tags is null ? null : new List<string>(mk.Tags),
+            };
+        return new TileWorldSource(directory, doc, known, markers);
     }
 
     /// <summary>Materialises the region, checking its bytes against the manifest hash. Null when the manifest

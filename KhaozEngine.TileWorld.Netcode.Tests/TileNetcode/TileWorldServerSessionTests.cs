@@ -495,6 +495,46 @@ public class TileWorldServerSessionTests
         }
     }
 
+    // The reverse of TryGetPlayerNetId, which is the direction every combat seam hands a game: the rules take
+    // net ids and every piece of per-seat state is keyed by slot. Both directions have to agree on a live seat and
+    // both have to forget it at the same moment, or a game reading the reverse answers for a player who left.
+    [Fact]
+    public void A_joined_players_slot_is_readable_from_its_net_id_and_forgotten_on_leave()
+    {
+        (TileWorldServer s, InMemoryTransportHub hub, INetTransport c) = Up(new TileCoord(4, 4, 0));
+        using (s)
+        {
+            Hello(c, "acct-7");
+            s.Poll();
+            int slot = s.JoinedSlots.Single();
+            Assert.True(s.TryGetPlayerNetId(slot, out long netId));
+            Assert.True(s.TryGetPlayerSlot(netId, out int back));
+            Assert.Equal(slot, back);
+
+            hub.DisconnectClient(c);
+            s.Poll();
+            Assert.False(s.TryGetPlayerSlot(netId, out int gone));
+            Assert.Equal(0, gone);
+        }
+    }
+
+    // An id nothing on this server ever handed out, and an ACTOR's id, which is a live entity that is not a player.
+    // The seat index answers for players only, exactly as TryGetPlayerNetId does in the other direction.
+    [Fact]
+    public void An_unknown_id_and_an_actors_id_hold_no_seat()
+    {
+        (TileWorldServer s, _, INetTransport c) = Up(new TileCoord(4, 4, 0));
+        using (s)
+        {
+            Hello(c, "acct-7");
+            s.Poll();
+            long actor = s.SpawnActor(new TileCoord(6, 6, 0), new TileActorSpawn(10, 4, TileDirection.S));
+            Assert.True(actor > 0);
+            Assert.False(s.TryGetPlayerSlot(actor, out _));
+            Assert.False(s.TryGetPlayerSlot(999_999L, out _));
+        }
+    }
+
     // An ITileTargets whose answers can be switched off part way through a walk, which is what deleting or
     // despawning an object does to every id it had. Wraps the real seam rather than replacing it, so the resolving
     // case is still the shipped answer.

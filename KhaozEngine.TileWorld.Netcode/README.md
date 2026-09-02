@@ -145,7 +145,10 @@ id and the local player, and neither extrapolates. `docs/USING-KHAOZENGINE.md` c
 - **`ITileTargets`** / **`TileDocumentTargets`** / **`TileEntityTargets`** / **`TileRemoteTargets`** - the seam
   that resolves a target id to a footprint and a plane, and its three implementations across TWO id spaces.
   `TileDocumentTargets` is the OBJECT space, backed by the document over `TileObjectArchetype.Interactive` and
-  read through on every call, so an id stops resolving the moment the thing it named stops existing.
+  read through on every call, so an id stops resolving the moment the thing it named stops existing. It answers
+  the INVERSE too: `TryGetTargetAt(tile, out long id)` is the click-to-target search, the whole footprint rather
+  than the anchor tile, lowest id first when two targets overlap so both heads resolve one click the same way.
+  Compose it with `TileRaycast.Pick`, whose hit is a ground tile, and a click is resolved in two lines.
   `TileEntityTargets` is the server's ENTITY space, a per-tick SNAPSHOT over the live cells refreshed once before
   anything moves, which is what makes the actor pass and the movement pass order-independent in fact rather than
   in claim: every read is a keyed lookup into a map built before either pass began. `TileRemoteTargets` is the
@@ -235,7 +238,9 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
 - **`TileWorldServer`** (+ **`TileWorldServerConfig`**) - the authoritative server, a `ShardHost` whose cell grid is
   the tile region grid. `Poll` pumps the transport, `Tick` runs the world, and the seams are `OnBeforeTick`,
   `OnInteract`, `OnGameMessage`, `OnCannotReach`, `PlayerJoined` and `PlayerLeaving`. It is also the
-  `IPersistenceHost<TileMoveState>`. **The tick is EIGHT steps**, not five, with the head's own systems ahead of
+  `IPersistenceHost<TileMoveState>`. The seat index reads BOTH ways, `TryGetPlayerNetId` and `TryGetPlayerSlot`,
+  because the combat seams all name net ids while a game's per-seat state is keyed by slot. The reverse answers
+  false for an actor's id and forgets a seat on the same leave that frees it. **The tick is EIGHT steps**, not five, with the head's own systems ahead of
   the first of them: drain one command per player, the actor step (1b), step every cell, authority handoff and
   border ghosting, the action queue, combat (4b), serve every client its area of interest, then the despawn every
   actor killed this tick owes (5b). The reap sits BEHIND the serve deliberately: a corpse taken out of the world at
@@ -244,7 +249,10 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   reap, which is drained at the top of the next combat pass.
 
   Actors are `Actors` (the `TileActorHost`), `SpawnActor`, `DespawnActor`, `TryGetActorState`, `ActorCount`,
-  `ActorNetIds`, `OnActorSpawned` and `RefusedActorSpawnCount`. Combat is `CombatRules`, `OnCombatEvent`, `OnDied`,
+  `ActorNetIds`, `OnActorSpawned` and `RefusedActorSpawnCount`. `OnActorSpawned` fires with the spawner link
+  ALREADY in place, so a handler attaching a game's own component can read
+  `Actors.TryGetSpawnerOf(netId, out var spawner)` and dispatch on `spawner.Definition`. An actor built straight
+  through `SpawnActor` has no spawner and answers false. Combat is `CombatRules`, `OnCombatEvent`, `OnDied`,
   `CombatEventsThisTick` and `SkippedHealthlessCombatantCount`, with `TryGetHealth` / `SetHealth` /
   `TryGetCombatState` as the reads and the one write, and `ForgetAttacker` as the one field a game can drop (see
   what a dead player leaves behind, below). `TileWorldServerConfig` gained `MaxActorsPerCell` (the
@@ -405,7 +413,10 @@ var server = new TileWorldServer(
     },
     map,
     new TileDocumentTargets(document, catalogs),
-    ConnectionGate.Wrap(tokenAuth, protocolVersion: "grimhollow-1", worldHash: TileWorldHash.OfWorld(document),
+    // OfWorldAndCatalogs, not OfWorld: the world digest alone cannot see an archetype gaining a CollisionKind,
+    // so two heads with independently updated catalogs would pass the gate and disagree on every wall.
+    ConnectionGate.Wrap(tokenAuth, protocolVersion: "grimhollow-1",
+                        worldHash: TileWorldHash.OfWorldAndCatalogs(document, catalogs),
                         log: Console.WriteLine, isBanned: bans.IsBanned),
     registry);
 

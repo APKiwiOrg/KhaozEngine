@@ -6915,7 +6915,9 @@ if (!path.Reached) { /* path.End is the nearest reachable tile, path.Tiles still
 
 TileWorldFile.Save(doc, "assets/worlds/grimhollow");     // world.json + regions/r_0_0.json, manifest LAST
 TileWorldDocument reloaded = TileWorldFile.Load("assets/worlds/grimhollow");
-string identity = TileWorldHash.OfWorld(reloaded);       // what a client and a server compare
+string identity = TileWorldHash.OfWorld(reloaded);       // the world alone
+// The digest a connect gate compares, catalogs folded in: OfWorld cannot see archetype drift.
+string gate = TileWorldHash.OfWorldAndCatalogs(reloaded, catalogs);
 ```
 
 **Two conventions run through every type.** Coordinates are WORLD tile coordinates everywhere, including
@@ -6934,6 +6936,24 @@ buys a top-down view with north up and east right at the same time.
 drops a clean region while keeping its hash so a later save carries it through untouched. `TileWorldFile.Load`
 is that plus load-everything. A region the manifest knows about but that is not in memory cannot be created
 blind: `GetOrCreateRegion` and `RequireRegion` both throw for it, so a save can never blank authored terrain.
+
+`source.FindMarker("spawn")` answers off the manifest's marker index with NO region read, which is what a client
+needs before it has streamed anything: `TileWorldDocument.FindMarker` walks LOADED regions only, so asking it
+first means materialising regions one at a time until one carries the marker and unloading the ones that did not.
+The index is derived from the regions, like the collision map, and a save rebuilds it for the regions it holds
+while carrying the rest forward from the previous manifest, so a partial save never drops the markers of regions
+it never read. It hands back a COPY, and `source.Markers` is every indexed name. A world saved by an older engine
+carries no index and answers null, so fall back to the document lookup once regions are in.
+
+```csharp
+TileWorldSource source = TileWorldSource.Open("assets/worlds/grimhollow");
+TileMarker? spawn = source.FindMarker("spawn");                  // no region read
+if (spawn is TileMarker at) source.EnsureLoaded(RegionCoord.Of(at.X, at.Z));
+```
+
+The index rides OUTSIDE the world hash: `TileWorldHash.OfWorld` composes the region hashes and the three header
+fields, never the manifest's own rows, so adding it changed no digest. A marker MOVE still moves the world hash,
+through the region that carries it.
 
 **Collision is derived, never authored.** `TileCollisionBaker.Bake` builds the whole `TileCollisionMap` from
 settings plus object archetypes, `Rebake(map, doc, catalogs, dirtyRect, plane)` re-derives one rect after an
@@ -8620,13 +8640,26 @@ TileCollisionMap map = TileCollisionBaker.Bake(document, catalogs);
 ReplicationRegistry registry = TileProtocol.CreateRegistry(
     r => r.Register<MyComponent>(TileProtocol.FirstGameTypeId, WriteMine, ReadMine));
 
-string worldHash = TileWorldHash.OfWorld(document);        // what the connect gate refuses a mismatch on
+// The CATALOGS are half the identity too: an archetype that gains a CollisionKind bakes a different collision
+// map, and OfWorld composes only the regions and the header. Gate on the composed digest, on both heads at once.
+string worldHash = TileWorldHash.OfWorldAndCatalogs(document, catalogs);
 ```
 
 `TileDocumentTargets(document, catalogs)` is the interaction seam over the same pair: a target id is a
-`TileObject.Id`, and only an object whose archetype carries `Interactive` resolves at all. `TileReach` is the rule
-over what it resolves: the reach set of a footprint is every tile CARDINALLY adjacent to a footprint tile that the
-footprint tile could step OUT onto, so a wall between you and the booth denies reach, a diagonal never counts, and
+`TileObject.Id`, and only an object whose archetype carries `Interactive` resolves at all. It answers both ways,
+and the inverse is what a click needs, because a ray lands on a ground tile rather than on an object:
+
+```csharp
+// Click to target, both halves. Pick gives the ground tile under the cursor, TryGetTargetAt gives whatever
+// interactive object is standing on it. The whole footprint counts, so the far half of a two-tile booth resolves
+// to the same id, and two overlapping targets resolve to the lower id on BOTH heads.
+if (TileRaycast.Pick(document, plane, rayOrigin, rayDirection) is TileHit hit
+    && targets.TryGetTargetAt(new TileCoord(hit.X, hit.Z, hit.Plane), out long target))
+    client.Queue(TileCommand.Interact(target, TileMoveMode.Run));
+```
+
+`TileReach` is the rule over what it resolves: the reach set of a footprint is every tile CARDINALLY adjacent to a
+footprint tile that the footprint tile could step OUT onto, so a wall between you and the booth denies reach, a diagonal never counts, and
 the target itself being solid is not a problem. It reads the document
 THROUGH on every call, so an object deleted between the click and the arrival stops resolving, which is the
 contract the reach rules need.
@@ -9046,7 +9079,13 @@ sealed class MeleeRules : ITileCombatRules
 
 server.CombatRules = new MeleeRules();
 
-server.OnCombatEvent += e => game.AwardExperience(e.AttackerNetId, e.Amount);
+// Every combat seam names NET IDS, and a game's per-seat state (a skill book, an inventory, a persistence record)
+// is keyed by SLOT, so the seat index is read in both directions. `TryGetPlayerSlot` is the combat direction and
+// answers false for an actor's id, which is exactly the "not a player" test a rules implementation needs.
+server.OnCombatEvent += e =>
+{
+    if (server.TryGetPlayerSlot(e.AttackerNetId, out int attackerSlot)) game.AwardExperience(attackerSlot, e.Amount);
+};
 server.OnDied += (deadNetId, killerNetId, slot) =>
 {
     // slot is the dead entity's connection slot, or -1 for anything that is not a player.

@@ -230,6 +230,9 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
             }
         }
         host.UnbindClient(slot);
+        // Both directions of the seat index go at the same moment. A reverse entry left behind would answer a slot
+        // for a player who left, and the next occupant of that seat would then have two ids pointing at it.
+        if (netIdBySlot.TryGetValue(slot, out long leavingNetId)) slotByNetId.Remove(leavingNetId);
         netIdBySlot.Remove(slot);
         accountIdBySlot.Remove(slot);
         lastAckBySlot.Remove(slot);

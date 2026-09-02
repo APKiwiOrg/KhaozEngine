@@ -71,7 +71,12 @@ save leaves what it already wrote, and the next load refuses the world naming th
 only, `EnsureLoaded(coord)`/`EnsureLoaded(rect)` materialise regions on demand hash-checked, `IsKnown`,
 `IsLoaded`, `KnownRegions` and `Document` expose the state, and `Unload(coord)` drops a CLEAN region while
 refreshing its known-hash table from that region's current bytes, so a region that was edited and saved is not
-later mistaken for a torn write.
+later mistaken for a torn write. `FindMarker(name)` and `Markers` answer off the manifest's marker index with no
+region read at all, which is how a client finds the spawn before it streams anything. The index is DERIVED from
+the regions, like the collision map: `Save` rebuilds it for every region it holds and carries the rest forward
+from the previous manifest, so a partial save keeps the markers of regions it never materialised. It rides
+outside `OfWorld`, which reads region hashes and the header only, so no digest moved when it landed. A world
+saved by an older engine carries no index and answers null.
 
 `TileWorldHash` is world identity: `OfRegionBytes` over a region file's exact bytes, `OfRegion` over the
 canonical write of a live region, `OfWorld` composing loaded regions with the stored hashes of unloaded ones,
@@ -79,6 +84,13 @@ and `OfManifestRegions` doing the same from a manifest's rows, rejecting a null 
 folds in `TileSize`, `PlaneCount` and `PlaneHeight`, excludes the id, display name, catalog paths and object-id
 allocator so renaming a world never desyncs a server from its clients, and formats every number invariant.
 `OfRegion` and `OfWorld` TRIM the regions they hash, so re-take any layer array you were holding.
+
+`OfCatalogs` is the second half of that identity: every material and every archetype, field by field, composed
+canonically so the digest is independent of file formatting and merge order. `OfWorldAndCatalogs` composes the
+two, and it is the one a netcode connect gate should compare. `OfWorld` alone cannot see an archetype gaining a
+`CollisionKind`, so two heads over the same world directory with independently updated catalogs pass the gate and
+then disagree on the baked collision map, which reads as a per-step correction on every wall instead of a refusal
+at the door. `OfWorld` is unchanged, so moving a gate to the composed digest is a change on BOTH heads at once.
 
 ## Catalogs and validation
 

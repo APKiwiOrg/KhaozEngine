@@ -110,6 +110,90 @@ public class TileWorldHashTests
         Assert.Equal(here, there);
     }
 
+    // The catalogs the connect gate could not see. A wall archetype that gains a blocked tile bakes a different
+    // collision map on both heads, and OfWorld composes only the regions and the header, so two heads over one
+    // world directory with independently updated catalogs pass the gate and then disagree on every step.
+    [Fact]
+    public void Catalog_hash_moves_when_an_archetype_starts_blocking()
+    {
+        TileWorldCatalogs before = TileWorldCatalogs.Greybox();
+        string h = TileWorldHash.OfCatalogs(before);
+        Assert.Equal(h, TileWorldHash.OfCatalogs(TileWorldCatalogs.Greybox()));
+
+        TileWorldCatalogs after = TileWorldCatalogs.Greybox();
+        after.Archetype("doorway")!.CollisionKind = TileCollisionKind.Solid;
+        Assert.NotEqual(h, TileWorldHash.OfCatalogs(after));
+    }
+
+    // Load order is a caller's business, the digest is not. Two catalogs holding the same content merged from parts
+    // in either order are one identity, exactly as the region composition sorts its rows.
+    [Fact]
+    public void Catalog_hash_is_independent_of_merge_order()
+    {
+        TileWorldCatalogs one = TileWorldCatalogs.LoadJson(
+            "{\"archetypes\":[{\"id\":\"a\",\"name\":\"A\",\"meshRef\":\"a.glb\"}]}", "one");
+        TileWorldCatalogs two = TileWorldCatalogs.LoadJson(
+            "{\"materials\":[{\"id\":2,\"name\":\"dirt\",\"color\":\"#8a6a3a\"}]}", "two");
+        Assert.Equal(TileWorldHash.OfCatalogs(TileWorldCatalogs.Merge(one, two)),
+            TileWorldHash.OfCatalogs(TileWorldCatalogs.Merge(two, one)));
+    }
+
+    // The composed gate digest. It has to move when EITHER half moves, and it must not be either half's own digest,
+    // so a head that gates on one and a head that gates on the other can never accidentally agree.
+    [Fact]
+    public void World_and_catalog_hash_moves_with_both_halves_and_is_neither()
+    {
+        TileWorldDocument doc = World(false);
+        TileWorldCatalogs catalogs = TileWorldCatalogs.Greybox();
+        string h = TileWorldHash.OfWorldAndCatalogs(doc, catalogs);
+        Assert.NotEqual(TileWorldHash.OfWorld(doc), h);
+        Assert.NotEqual(TileWorldHash.OfCatalogs(catalogs), h);
+
+        catalogs.Archetype("bush")!.SizeX = 2;
+        string moved = TileWorldHash.OfWorldAndCatalogs(doc, catalogs);
+        Assert.NotEqual(h, moved);
+
+        doc.SetUnderlay(2, 2, 0, 3);
+        Assert.NotEqual(moved, TileWorldHash.OfWorldAndCatalogs(doc, catalogs));
+    }
+
+    // OfWorld is left exactly as it was, which is what keeps a deployed client's gate answering the same string.
+    // The catalogs are a SEPARATE digest a game opts into on both heads at once.
+    [Fact]
+    public void World_hash_still_ignores_the_catalogs_it_always_ignored()
+    {
+        TileWorldDocument doc = World(false);
+        string h = TileWorldHash.OfWorld(doc);
+        TileWorldCatalogs catalogs = TileWorldCatalogs.Greybox();
+        catalogs.Archetype("wall")!.CollisionKind = TileCollisionKind.Solid;
+        Assert.Equal(h, TileWorldHash.OfWorld(doc));
+    }
+
+    [Fact]
+    public void Catalog_hash_is_culture_independent()
+    {
+        TileWorldCatalogs catalogs = TileWorldCatalogs.Greybox();
+        catalogs.Archetype("wall")!.YawOffsetDegrees = -22.5f;
+        catalogs.Material(1)!.TilesPerMetre = 0.25f;
+        string here = TileWorldHash.OfCatalogs(catalogs);
+        string? there = null;
+        ExceptionDispatchInfo? failure = null;
+        var hostile = new CultureInfo("sv-SE");
+        var t = new Thread(() =>
+        {
+            try
+            {
+                CultureInfo.CurrentCulture = hostile;
+                there = TileWorldHash.OfCatalogs(catalogs);
+            }
+            catch (Exception ex) { failure = ExceptionDispatchInfo.Capture(ex); }
+        });
+        t.Start();
+        t.Join();
+        failure?.Throw();
+        Assert.Equal(here, there);
+    }
+
     [Fact]
     public void Manifest_composition_refuses_a_null_hash_and_a_repeated_region()
     {

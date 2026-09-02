@@ -126,6 +126,71 @@ public class TileWorldSourceTests
         Assert.Equal(5, s.Document.GetUnderlay(c.OriginX + 1, c.OriginZ + 1, 0));
     }
 
+    // The marker index: a client that opens a world and wants the spawn BEFORE it streams anything used to have to
+    // materialise regions one at a time until one carried the marker, then unload the ones that did not.
+    [Fact]
+    public void The_spawn_marker_is_findable_with_no_region_loaded()
+    {
+        using var tmp = new TempDir();
+        TileWorldDocument doc =
+            TileWorldTestData.FlatWorld(4, new RegionCoord(0, 0), new RegionCoord(1, 0), new RegionCoord(0, 1));
+        doc.SetMarker("spawn", 70, 3, 1, new[] { "start" });
+        doc.SetMarker("exit", 5, 70, 0);
+        TileWorldFile.Save(doc, tmp.Sub("m"));
+
+        TileWorldSource s = TileWorldSource.Open(tmp.Sub("m"));
+        Assert.Empty(s.Document.Regions);
+        TileMarker spawn = s.FindMarker("spawn")!;
+        Assert.NotNull(spawn);
+        Assert.Equal(new TileCoord(70, 3, 1), spawn.Coord);
+        Assert.Equal(new[] { "start" }, spawn.Tags);
+        Assert.Equal(2, s.Markers.Count);
+        Assert.Null(s.FindMarker("nowhere"));
+        // Still nothing materialised: the whole point is that the lookup costs no region read.
+        Assert.Empty(s.Document.Regions);
+    }
+
+    // A save that only has SOME regions loaded must not drop the markers of the ones it never saw. The index is
+    // rebuilt for loaded regions and carried forward from the previous manifest for the rest.
+    [Fact]
+    public void A_partial_save_keeps_the_markers_of_regions_it_never_loaded()
+    {
+        using var tmp = new TempDir();
+        string dir = tmp.Sub("p");
+        TileWorldDocument doc = TileWorldTestData.FlatWorld(4, new RegionCoord(0, 0), new RegionCoord(1, 0));
+        doc.SetMarker("spawn", 70, 3, 0);
+        doc.SetMarker("gate", 5, 5, 0);
+        TileWorldFile.Save(doc, dir);
+
+        TileWorldSource s = TileWorldSource.Open(dir);
+        TileRegion home = s.EnsureLoaded(new RegionCoord(0, 0))!;
+        home.Markers.Clear();
+        home.Dirty = true;
+        TileWorldFile.Save(s.Document, dir);
+
+        TileWorldSource after = TileWorldSource.Open(dir);
+        // The loaded region's marker is gone because the region no longer carries it, and the unloaded region's
+        // marker survived a save that never read its file.
+        Assert.Null(after.FindMarker("gate"));
+        Assert.Equal(new TileCoord(70, 3, 0), after.FindMarker("spawn")!.Coord);
+    }
+
+    // A marker the index hands back is a COPY. Editing it must not quietly rewrite what the region carries, or a
+    // caller that nudged the spawn for its own use would be reading a world nobody saved.
+    [Fact]
+    public void A_marker_read_off_the_index_is_a_copy()
+    {
+        using var tmp = new TempDir();
+        TileWorldDocument doc = TileWorldTestData.FlatWorld(4, new RegionCoord(0, 0));
+        doc.SetMarker("spawn", 5, 5, 0);
+        TileWorldFile.Save(doc, tmp.Sub("c"));
+
+        TileWorldSource s = TileWorldSource.Open(tmp.Sub("c"));
+        TileMarker first = s.FindMarker("spawn")!;
+        first.X = 99;
+        Assert.Equal(5, s.FindMarker("spawn")!.X);
+    }
+
     [Fact]
     public void A_lazily_loaded_region_is_hash_checked()
     {

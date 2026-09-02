@@ -55,6 +55,13 @@ public sealed partial class TileWorldServer : IDisposable
     readonly RemoteCommandQueue<TileCommand> commands;
     readonly NetIdAllocator allocator = new();
     readonly Dictionary<int, long> netIdBySlot = new();
+    // The same table read the other way, for the combat direction. Every seam that hands a game a decision
+    // (ITileCombatRules.Roll, TileCombatEvent, OnDied) names a net id, and every piece of per-seat state a game
+    // keeps is keyed by slot, so the reverse question is asked once per combat event. Written and removed with
+    // netIdBySlot on both of its two touch points (the spawn below, the leave in the session half), which is
+    // the only way the pair cannot drift: net ids are never recycled, so an entry can never be replaced under a
+    // live seat.
+    readonly Dictionary<long, int> slotByNetId = new();
     readonly Dictionary<int, string> accountIdBySlot = new();
     readonly Dictionary<int, int> lastAckBySlot = new();
     // Built per player at spawn so the budget is already in place, and consulted at the door by the session half.
@@ -201,6 +208,15 @@ public sealed partial class TileWorldServer : IDisposable
     /// <param name="netId">The player entity's net id, 0 when the slot holds no player.</param>
     public bool TryGetPlayerNetId(int slot, out long netId) => netIdBySlot.TryGetValue(slot, out netId);
 
+    /// <summary>The seat a player's net id belongs to, which is the direction a combat seam needs: the rules, the
+    /// combat event and the death hook all name net ids, while a game's own per-seat state (a skill book, an
+    /// inventory, a persistence record) is keyed by slot. False for an ACTOR's id and for any id this server holds
+    /// no player under, which is the same answer a slot with no player gets from
+    /// <see cref="TryGetPlayerNetId"/>.</summary>
+    /// <param name="slot">The player's connection slot, 0 when the id holds no seat.</param>
+    /// <param name="netId">The player entity's net id.</param>
+    public bool TryGetPlayerSlot(long netId, out int slot) => slotByNetId.TryGetValue(netId, out slot);
+
     /// <summary>The verified account id a slot is bound to.</summary>
     /// <param name="slot">The player's connection slot.</param>
     /// <param name="accountId">The account id, null when the slot holds no player.</param>
@@ -344,6 +360,7 @@ public sealed partial class TileWorldServer : IDisposable
         cell.World.Set(e, new PendingTileCommand { Command = TileCommand.Continue(state.Mode) });
         cell.World.Set(e, new TileIdentity { DisplayName = displayName });
         netIdBySlot[slot] = netId;
+        slotByNetId[netId] = slot;
         accountIdBySlot[slot] = accountId;
         lastAckBySlot[slot] = -1;
         rateBySlot[slot] = new RateLimiter(config.CommandBurst, config.MaxCommandsPerSecond * config.TickSeconds);

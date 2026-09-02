@@ -17,6 +17,20 @@ internal sealed class TileWorldManifest
     public List<string> CatalogPaths { get; set; } = new();
     public long NextObjectId { get; set; } = 1;
     public List<TileWorldManifestRegion> Regions { get; set; } = new();
+    // DERIVED from the regions, like the collision map: the regions stay the source of truth and this is the copy
+    // a client can read before it has streamed any of them. Absent in a manifest written by an older engine, which
+    // deserialises to an empty list and reads as a world with no markers rather than as a load failure.
+    public List<TileWorldManifestMarker> Markers { get; set; } = new();
+}
+
+/// <summary>One marker index row, a copy of what its region carries so a lookup costs no region read.</summary>
+internal sealed class TileWorldManifestMarker
+{
+    public string Name { get; set; } = "";
+    public int X { get; set; }
+    public int Z { get; set; }
+    public int Plane { get; set; }
+    public List<string>? Tags { get; set; }
 }
 
 /// <summary>One manifest row: a region coordinate and the hash of its file's exact bytes.</summary>

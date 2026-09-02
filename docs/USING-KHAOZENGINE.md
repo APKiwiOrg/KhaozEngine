@@ -7042,6 +7042,14 @@ The index rides OUTSIDE the world hash: `TileWorldHash.OfWorld` composes the reg
 fields, never the manifest's own rows, so adding it changed no digest. A marker MOVE still moves the world hash,
 through the region that carries it.
 
+**A marker name is unique across the WHOLE world, not just the loaded part.** `SetMarker` consults the same
+index through `document.Source` (the `TileWorldSource` it was opened through, null for a document built in
+memory) and refuses a name an unloaded region already carries, naming that region, rather than authoring a
+second marker that only collides once both regions are in. A loaded region outranks its index row, so re-homing
+a marker inside the part of the world you hold is unaffected. `Unload` refreshes the rows of the region it is
+dropping from that region, the same way it refreshes the known hash, so a marker deleted and saved before the
+unload really does free its name.
+
 **Collision is derived, never authored.** `TileCollisionBaker.Bake` builds the whole `TileCollisionMap` from
 settings plus object archetypes, `Rebake(map, doc, catalogs, dirtyRect, plane)` re-derives one rect after an
 edit, and a wall is one edge shared by two tiles (the baker sets the bit on both), so `CanStep` never looks at

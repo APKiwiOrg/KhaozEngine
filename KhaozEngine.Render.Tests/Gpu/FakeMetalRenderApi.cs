@@ -100,8 +100,8 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Every scissor emission.</summary>
         internal IReadOnlyList<(IntPtr Encoder, MetalScissorRect Rect)> Scissors => _scissors;
 
-        /// <summary>Every pipeline-state block a draw emitted, with the encoder it went into. The DEPTH TRIO's
-        /// guard is read straight off <see cref="MetalGraphicsStateBlock.DepthTrio"/>, which is the decision the
+        /// <summary>Every pipeline-state block a draw emitted, with the encoder it went into. The DEPTH PAIR's
+        /// guard is read straight off <see cref="MetalGraphicsStateBlock.DepthPair"/>, which is the decision the
         /// debug layer would otherwise be the only witness to.</summary>
         internal IReadOnlyList<(IntPtr Encoder, MetalGraphicsStateBlock Block)> StateBlocks => _stateBlocks;
 
@@ -168,7 +168,7 @@ namespace KhaozEngine.Tests.Gpu
 
         internal void GraphicsState(IntPtr encoder, in MetalGraphicsStateBlock block)
         {
-            _log.Add($"state block on {encoder} depthTrio={block.DepthTrio}");
+            _log.Add($"state block on {encoder} depthPair={block.DepthPair}");
             _stateBlocks.Add((encoder, block));
         }
 

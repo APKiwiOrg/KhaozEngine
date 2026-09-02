@@ -100,13 +100,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
         void ReleaseRenderPassDescriptor(IntPtr descriptor);
 
         /// <summary>
-        /// EMIT THE PIPELINE-STATE BLOCK into <paramref name="encoder"/>: five calls always, plus the DEPTH TRIO
-        /// when <see cref="MetalGraphicsStateBlock.DepthTrio"/> says the bound framebuffer has a depth attachment
+        /// EMIT THE PIPELINE-STATE BLOCK into <paramref name="encoder"/>: six calls always, plus the DEPTH PAIR
+        /// when <see cref="MetalGraphicsStateBlock.DepthPair"/> says the bound framebuffer has a depth attachment
         /// (section 6.3).
+        /// <para>
+        /// THE SIXTH UNGUARDED CALL IS <c>-setDepthClipMode:</c>, moved out of the guard by
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/674. It is rasterizer state rather than depth state,
+        /// so it binds on a colour-only pass, which is where the seam's <c>GpuRasterizerState.DepthClipEnabled</c>
+        /// used to reach nothing on this backend alone.
+        /// </para>
         /// <para>
         /// EVERY DECISION IS ALREADY MADE BY THE TIME IT ARRIVES HERE, which is
         /// <see cref="CreateRenderPassDescriptor"/>'s rule applied to the other half of a draw's preamble. WHICH
-        /// values, and whether the trio is among them, are <see cref="MetalGraphicsStateBlock"/>'s. WHETHER the
+        /// values, and whether the pair is among them, are <see cref="MetalGraphicsStateBlock"/>'s. WHETHER the
         /// block is emitted at all is <c>MetalPipelineBinding.NeedsGraphicsStateBlock</c>'s, which is M-R8's
         /// identity guard and M-R4's encoder invalidation between them. What is left here is eight message sends.
         /// </para>

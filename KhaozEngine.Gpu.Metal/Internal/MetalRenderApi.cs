@@ -110,10 +110,20 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <inheritdoc/>
         /// <remarks>
-        /// THE ORDER IS THE INCUMBENT'S <c>PreDrawCommand</c> BLOCK, call for call: the pipeline state, the cull
-        /// mode, the winding, the fill mode, the blend colour, and then the depth trio behind the framebuffer
-        /// guard. Nothing about the order is load-bearing to Metal, and it is kept anyway so a reader diffing the
-        /// two sources sees one shape.
+        /// THE ORDER IS THE INCUMBENT'S <c>PreDrawCommand</c> BLOCK WITH ONE CALL MOVED: the pipeline state, the
+        /// cull mode, the winding, the fill mode, the blend colour, the CLIP MODE, and then the depth pair behind
+        /// the framebuffer guard. Nothing about the order is load-bearing to Metal.
+        /// <para>
+        /// THE MOVED CALL IS <c>-setDepthClipMode:</c>, and it is out of the guard on purpose
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/674). It is plain encoder rasterizer state, like the
+        /// cull mode and the winding above it, so it is legal on a pass with no depth attachment and the API
+        /// validation layer accepts it there. Leaving it inside meant a colour-only pass rasterized at the
+        /// encoder default, <c>MTLDepthClipModeClip</c>, whatever the pipeline's
+        /// <c>GpuRasterizerState.DepthClipEnabled</c> asked for, so <c>false</c> could not be expressed at all
+        /// while Direct3D 11 and Vulkan both honoured it there. The incumbent gated all three calls together,
+        /// which is why the two Metal paths could not move separately at 17.39.0. That fork is gone, so this
+        /// path is the only one left and it moves alone.
+        /// </para>
         /// </remarks>
         [MethodImpl(MethodImplOptions.NoInlining)]
         public void SetGraphicsState(IntPtr encoder, in MetalGraphicsStateBlock block)
@@ -128,14 +138,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
             target.SetBlendColour(block.BlendColour.X, block.BlendColour.Y, block.BlendColour.Z,
                 block.BlendColour.W);
 
+            // UNGUARDED, beside the other rasterizer state and not with the depth pair below. See the remarks:
+            // the clip mode is what the seam's DepthClipEnabled becomes on Metal, and a pass with no depth
+            // attachment still rasterizes, so the flag has to bind there too.
+            target.SetDepthClipMode(block.DepthClipMode);
+
             // THE GUARD IS THE FRAMEBUFFER'S ALONE, which is the incumbent's own condition and NOT the pipeline
             // declaring a depth output: a colour-only pipeline drawing into a framebuffer that has depth is sent
             // a NIL depth-stencil state, which Metal reads as its default. MetalGraphicsStateBlock carries the
-            // whole argument, including why sending the trio to a depth-less pass is a debug-layer failure.
-            if (!block.DepthTrio) return;
+            // whole argument, including why sending the pair to a depth-less pass is a debug-layer failure.
+            if (!block.DepthPair) return;
 
             target.SetDepthStencilState(new MTLDepthStencilState(block.DepthStencilState));
-            target.SetDepthClipMode(block.DepthClipMode);
             target.SetStencilReferenceValue(block.StencilReference);
         }
 

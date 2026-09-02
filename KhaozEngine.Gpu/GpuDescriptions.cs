@@ -355,26 +355,24 @@ namespace KhaozEngine.Gpu
         /// </para>
         /// <para>
         /// It is the ONLY member here with no direct Metal equivalent, and that is why the contract is spelled
-        /// out. Metal has no rasterizer depth-clip enable, so both Metal backends express <c>false</c> as
+        /// out. Metal has no rasterizer depth-clip enable, so the Metal backend expresses <c>false</c> as
         /// <c>MTLDepthClipModeClamp</c> on the render encoder. Direct3D 11 passes it to
         /// <c>RasterizerDescription.DepthClipEnable</c> and Vulkan passes its INVERSE to
-        /// <c>depthClampEnable</c>. Until 17.39.0 both Metal paths derived the mode from
+        /// <c>depthClampEnable</c>. Until 17.39.0 both Metal paths of the day derived the mode from
         /// <see cref="GpuDepthStencilState.DepthTestEnabled"/> and read this flag nowhere, which made four
         /// shipped pipelines rasterize differently on macOS
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/598).
         /// </para>
         /// <para>
-        /// ONE CARVE-OUT, AND IT IS METAL'S ALONE: a render pass whose framebuffer has NO depth attachment
-        /// drops this flag. Both Metal paths emit <c>-setDepthClipMode:</c> inside the same guard as the
-        /// depth-stencil state, and that guard is the bound framebuffer having a depth attachment, because a
-        /// depth-stencil state on a depth-less pass is a validation failure. So a colour-only target rasterizes
-        /// at the encoder default (clip) whatever this says, and <c>false</c> cannot be expressed there at all.
-        /// Direct3D 11 and Vulkan keep it in rasterizer state that exists either way, so they honour it there.
-        /// No shipped pipeline can see the difference: the engine's colour-only passes are the fullscreen post
-        /// ones, whose vertex stage emits z = 0 exactly, and <c>SpriteBatch</c> takes its z from a 2D ortho,
-        /// both inside the depth range where the two modes agree.
-        /// https://github.com/APKiwiOrg/KhaozEngine/issues/674 decides whether Metal honours it on a depth-less
-        /// pass or the seam declares it undefined there.
+        /// IT BINDS ON A PASS WITH NO DEPTH ATTACHMENT TOO, on every backend, and Metal was one release short of
+        /// that until 18.10.0 (https://github.com/APKiwiOrg/KhaozEngine/issues/674). It used to emit
+        /// <c>-setDepthClipMode:</c> inside the same guard as the depth-stencil state, whose condition is the
+        /// bound framebuffer having a depth attachment, because a depth-stencil state on a depth-less pass IS a
+        /// validation failure. A colour-only target therefore rasterized at the encoder default (clip) whatever
+        /// this said. The clip mode is rasterizer state rather than depth state, so it is emitted unguarded now
+        /// and the contract holds everywhere. No shipped pipeline could see the old hole: the engine's
+        /// colour-only passes are the fullscreen post ones, whose vertex stage emits z = 0 exactly, and
+        /// <c>SpriteBatch</c> takes its z from a 2D ortho, both inside the depth range where the two modes agree.
         /// </para>
         /// </summary>
         public bool DepthClipEnabled { get; }

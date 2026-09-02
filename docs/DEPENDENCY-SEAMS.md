@@ -1304,17 +1304,27 @@ device feature, which `VulkanFeatureChain` enables by name). Metal expresses `fa
 macOS 10.11. Clamping keeps geometry outside the depth range and rasterizes it with its depth pinned to the
 limit, rather than discarding it.
 
-**One carve-out, and it is Metal's alone: a render pass with NO depth attachment drops the flag.** Both Metal
-paths emit `-setDepthClipMode:` inside the same guard as the depth-stencil state, and that guard is the bound
-FRAMEBUFFER having a depth attachment, because a depth-stencil state on a depth-less pass is a validation
-failure (`../KhaozEngine.Gpu.Metal/Internal/MetalRenderApi.cs:134-138` returns early on `!block.DepthTrio`).
-A colour-only target therefore rasterizes at the encoder default, `MTLDepthClipModeClip`, whatever the
-bound pipeline asked for, and `false` cannot be expressed there at all. Direct3D 11 and Vulkan keep the flag in
-rasterizer state that exists with or without a depth attachment, so they honour it there. No pixel differs
-today: the engine's colour-only passes are the fullscreen post ones, whose vertex stage emits z = 0 exactly,
-and `SpriteBatch` takes its z from a 2D ortho, both inside the depth range where the two modes agree.
-[#674](https://github.com/APKiwiOrg/KhaozEngine/issues/674) decides whether Metal honours it on a depth-less
-pass or the seam declares it undefined there.
+**The carve-out that used to sit here is closed: a render pass with no depth attachment honours the flag on
+every backend.** Metal used to emit `-setDepthClipMode:` inside the same guard as the depth-stencil state, and
+that guard is the bound FRAMEBUFFER having a depth attachment, because a depth-stencil state on a depth-less
+pass is a validation failure. A colour-only target therefore rasterized at the encoder default,
+`MTLDepthClipModeClip`, whatever the bound pipeline asked for, and `false` could not be expressed there at all,
+while Direct3D 11 and Vulkan kept the flag in rasterizer state that exists with or without a depth attachment
+and honoured it. [#674](https://github.com/APKiwiOrg/KhaozEngine/issues/674) hoisted the call out of the guard:
+the clip mode is encoder RASTERIZER state, it sits beside the cull mode, the winding and the fill mode, and the
+API validation layer accepts it on a depth-less pass. What stays guarded is the depth PAIR,
+`-setDepthStencilState:` and `-setStencilReferenceValue:`
+(`../KhaozEngine.Gpu.Metal/Internal/MetalRenderApi.cs` returns early on `!block.DepthPair`).
+
+No pixel moved. The engine's colour-only passes are the fullscreen post ones, whose vertex stage emits z = 0
+exactly, and `SpriteBatch` takes its z from a 2D ortho, both inside the depth range where clipping and clamping
+agree, so no golden is sensitive to the difference in either direction. The row that proves the fix is
+`DepthClipModeGpuTests.DepthClipDisabled_KeepsTheHalfInFrontOfTheNearPlane_OnAColourOnlyPass`, with its clipping
+control beside it, and both run on whichever device the leg holds.
+
+That the fix could land alone is a consequence of the fork going away. Until 18.0.0 the vendored Veldrid path
+gated the same three calls on the same condition, so the two Metal backends had to move together or the shared
+`metal` golden family reddened by construction. There is one Metal path now.
 
 **Why it needed writing down.** Until 17.39.0 BOTH Metal paths derived the clip mode from
 `DepthStencilState.DepthTestEnabled` and read `DepthClipEnabled` nowhere at all

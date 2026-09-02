@@ -109,10 +109,75 @@ void main() { o = vec4(0.0, 1.0, 0.0, 1.0); }";
         }
 
         /// <summary>
+        /// AND THE SAME TWO CLAIMS ON A PASS WITH NO DEPTH ATTACHMENT AT ALL, which is the hole 17.39.0 left
+        /// behind (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/674">#674</see>).
+        ///
+        /// <para><b>THE CLAMP DIRECTION WAS UNREACHABLE ON METAL HERE AND ONLY HERE.</b> Metal expresses the
+        /// flag as <c>-setDepthClipMode:</c> on the render encoder, and that call used to sit inside the guard
+        /// that skips the depth state when the BOUND FRAMEBUFFER has no depth attachment. So a colour-only pass
+        /// rasterized at the encoder default, <c>MTLDepthClipModeClip</c>, whatever the pipeline asked for, and
+        /// <c>false</c> could not be expressed at all. Direct3D 11 (<c>DepthClipEnable</c>) and Vulkan
+        /// (<c>depthClampEnable</c>) both hold the flag in rasterizer state that exists with or without a depth
+        /// attachment, so both already honoured it here and the disagreement was invisible.</para>
+        ///
+        /// <para><b>NOTHING SHIPPED COULD SEE IT, WHICH IS WHY THE ROW HAD TO BE WRITTEN RATHER THAN FOUND.</b>
+        /// The engine's colour-only passes are the fullscreen post ones, whose vertex stage writes z = 0
+        /// exactly, inside the depth range, where clipping and clamping do the same thing. No committed golden
+        /// moves either way. This quad crosses the near plane on purpose so the two modes separate.</para>
+        ///
+        /// <para>Skipped on the one pairing the depth row above is skipped on, and for the same measured reason
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/682">#682</see>): a virtualised adapter
+        /// with the Metal API validation layer holding the device drops the clamp.</para>
+        /// </summary>
+        [GpuFact(RequiresRealGpuUnderMetalApiValidation = true)]
+        public void DepthClipDisabled_KeepsTheHalfInFrontOfTheNearPlane_OnAColourOnlyPass()
+        {
+            (byte nearHalf, byte farHalf) = RenderCrossingQuad(depthClipEnabled: false, depthAttachment: false);
+
+            Assert.True(farHalf > 200,
+                "the half of the quad INSIDE the frustum must rasterize on a colour-only pass whatever the clip "
+                + "mode is, and it did not, so this run proves nothing about clamping. Got "
+                + $"G={farHalf.ToString(System.Globalization.CultureInfo.InvariantCulture)}.");
+
+            Assert.True(nearHalf > 200,
+                "DepthClipEnabled = false must CLAMP on a pass with no depth attachment too. It did not, so the "
+                + "backend clipped instead: on Metal that is -setDepthClipMode: still sitting behind the "
+                + "framebuffer-has-depth guard, leaving the encoder default MTLDepthClipModeClip in force "
+                + "(issue 674). Got "
+                + $"G={nearHalf.ToString(System.Globalization.CultureInfo.InvariantCulture)}.");
+        }
+
+        /// <summary>
+        /// The colour-only control. <c>DepthClipEnabled = true</c> must still cut the half in front of the near
+        /// plane, so the row above cannot pass on a backend that has simply stopped clipping.
+        /// </summary>
+        [GpuFact]
+        public void DepthClipEnabled_CutsTheHalfInFrontOfTheNearPlane_OnAColourOnlyPass()
+        {
+            (byte nearHalf, byte farHalf) = RenderCrossingQuad(depthClipEnabled: true, depthAttachment: false);
+
+            Assert.True(farHalf > 200,
+                "the half of the quad INSIDE the frustum must rasterize under clipping on a colour-only pass "
+                + "too, and it did not, so this run proves nothing about clipping. Got "
+                + $"G={farHalf.ToString(System.Globalization.CultureInfo.InvariantCulture)}.");
+
+            Assert.True(nearHalf < 50,
+                "DepthClipEnabled = true asks for real near-plane clipping on a colour-only pass as well, so "
+                + "the half in front of it must be discarded. It was not, which means the flag reaches nothing "
+                + "there in EITHER direction. Got "
+                + $"G={nearHalf.ToString(System.Globalization.CultureInfo.InvariantCulture)}.");
+        }
+
+        /// <summary>
         /// Draw the crossing quad once under <paramref name="depthClipEnabled"/> and return the green channel of
         /// one pixel from each half: the one in front of the near plane, then the one inside the frustum.
         /// </summary>
-        static (byte NearHalf, byte FarHalf) RenderCrossingQuad(bool depthClipEnabled)
+        /// <param name="depthClipEnabled">The seam flag under test.</param>
+        /// <param name="depthAttachment">Whether the bound framebuffer carries a depth texture. False is the
+        /// colour-only pass of issue 674, where the depth test is off because there is nothing to test
+        /// against and the clip mode is the only depth-shaped state left in play.</param>
+        static (byte NearHalf, byte FarHalf) RenderCrossingQuad(bool depthClipEnabled,
+            bool depthAttachment = true)
         {
             using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
             IGpuDevice device = ctx.GpuDevice;
@@ -131,8 +196,10 @@ void main() { o = vec4(0.0, 1.0, 0.0, 1.0); }";
 
             using IGpuTexture target = f.CreateTexture(GpuTextureDescription.Texture2D(
                 W, H, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
-            using IGpuTexture depth = f.CreateTexture(GpuTextureDescription.Texture2D(
-                W, H, GpuPixelFormat.D32FloatS8UInt, GpuTextureUsage.DepthStencil));
+            using IGpuTexture? depth = depthAttachment
+                ? f.CreateTexture(GpuTextureDescription.Texture2D(
+                    W, H, GpuPixelFormat.D32FloatS8UInt, GpuTextureUsage.DepthStencil))
+                : null;
             using IGpuFramebuffer fb = f.CreateFramebuffer(depth, target);
 
             using IGpuTexture staging = f.CreateTexture(GpuTextureDescription.Texture2D(
@@ -148,7 +215,11 @@ void main() { o = vec4(0.0, 1.0, 0.0, 1.0); }";
                 // THE DEPTH TEST IS ON, and that is the whole point of the row rather than incidental. Both Metal
                 // backends read this flag to pick their clip mode, so a depth-test-off pipeline would have agreed
                 // with the fixed behaviour by accident and asserted nothing.
-                DepthStencil = GpuDepthStencilState.DepthOnlyLessEqual,
+                // A colour-only pass gets the test OFF, because a depth-testing pipeline against an output with
+                // no depth format is the debug-layer failure the guard below exists for. That is exactly what
+                // makes the row interesting: with the test off, the clip mode cannot be derived from it.
+                DepthStencil = depthAttachment
+                    ? GpuDepthStencilState.DepthOnlyLessEqual : GpuDepthStencilState.Disabled,
                 Rasterizer = new GpuRasterizerState(
                     GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise,
                     depthClipEnabled, scissorTestEnabled: false),
@@ -177,7 +248,7 @@ void main() { o = vec4(0.0, 1.0, 0.0, 1.0); }";
 
             // Cleared to the far plane, so every fragment the rasterizer emits passes LessEqual and the only
             // thing deciding a pixel is whether the rasterizer emitted it at all.
-            cl.ClearDepthStencil(1f);
+            if (depthAttachment) cl.ClearDepthStencil(1f);
             cl.SetFullScissorRects();
             cl.SetPipeline(pipeline);
             cl.SetGraphicsResourceSet(0, emptySet);

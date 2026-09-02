@@ -687,6 +687,16 @@ nowhere at all, and `17.39.0` corrected both Metal paths together
 change as `4.9.104`. Fixing only this one would have left the native leg disagreeing with the `metal` grids the
 incumbent baked. Neither moved a committed golden.
 
+It reached one case short of the whole contract, and `18.10.0` closed that
+([#674](https://github.com/APKiwiOrg/KhaozEngine/issues/674)). `-setDepthClipMode:` used to be emitted inside
+the guard that skips the depth state on a pass with no depth attachment, so a colour-only pass rasterized at the
+encoder default `MTLDepthClipModeClip` however the pipeline was described, and `false` could not be expressed
+there at all. It is emitted unguarded now, beside the cull mode and the winding, which is what it is: rasterizer
+state rather than depth state, legal on a depth-less pass under the API validation layer. Only the depth PAIR,
+`-setDepthStencilState:` and `-setStencilReferenceValue:`, is still behind the framebuffer guard. No committed
+golden moved, because every colour-only pass the engine draws writes z inside the depth range where the two
+modes agree.
+
 **A compute pipeline is created from the function alone**, with no `MTLComputePipelineDescriptor`. The
 descriptor exists to carry per-buffer mutability, the incumbent filled it by counting buffer-kind elements in
 declaration order, and that counter is the arithmetic this backend removes. Metal's default infers the same

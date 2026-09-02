@@ -201,6 +201,13 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   cell-owned, non-player state only. Mirrors `WorldPersistence` but keyed by cell coordinate instead of account,
   including the batched periodic pass: every dirty cell's snapshot goes through one `IWorldStore.SaveManyAsync`
   call instead of one `SaveAsync` per cell (the meta write and quarantine writes stay single-record saves).
+  - **A custom host MUST exclude its bound players from `SnapshotCell` (#653).** The seam carries no exclusion
+    parameter, so it is the implementer's job: `ShardedWorldServer` passes its bound net ids to
+    `CellSim.SnapshotOwned`. A capture that keeps a live player is stale the moment that player moves, and
+    restoring it into the live cell would re-point ownership at the stale copy. `CellSim.TryRestoreOwned` refuses
+    that (a NetId the cell already owns is dropped and counted in `CellRestoreResult.SkippedOwnedCount`), which is
+    a backstop rather than a licence, since the state a bad capture recorded is still not in the save. Alarm on a
+    non-zero count.
   - **Per-entity opt-out (since 17.38.0, scoped since 17.39.0).** An entity carrying
     `KhaozEngine.Sharding.Transient` is left out of the blob entirely, so a server-owned thing meant to outlive
     nothing (a pickup, a timed spawn, a projectile) can no longer be caught in a save and resurrected as a husk. It

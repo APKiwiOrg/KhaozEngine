@@ -12,6 +12,16 @@ namespace KhaozEngine.NetWorld;
 /// cell's persistable (owned, non-player, non-ghost, non-migrating) entities, and <see cref="RestoreCell"/> puts
 /// them back. The host owns the <see cref="KhaozEngine.Replication.NetId"/> allocator so restored entities can never collide with fresh
 /// spawns after a restart (see <see cref="EnsureNextNetIdAtLeast"/>).
+/// <para>
+/// <b>An implementation MUST exclude the players bound to the cell from its capture.</b> The seam carries no
+/// exclusion parameter, so this is the implementer's job (<c>ShardedWorldServer</c> passes its bound net ids to
+/// <see cref="KhaozEngine.Sharding.CellSim.SnapshotOwned(IReadOnlySet{long}, SnapshotPurpose)"/>). A capture that
+/// keeps a live player writes a blob that goes stale the moment the player moves, and restoring it back into the
+/// live cell would re-point ownership at that stale copy. <see cref="KhaozEngine.Sharding.CellSim"/> refuses that
+/// on the restore side since 18.10.0 (a NetId the cell already owns is dropped and counted in
+/// <see cref="KhaozEngine.Sharding.CellRestoreResult.SkippedOwnedCount"/>), which is a backstop and not a licence:
+/// the entity is still missing from the save, so the state a bad capture recorded is still lost.
+/// </para>
 /// </summary>
 public interface ICellPersistenceHost
 {

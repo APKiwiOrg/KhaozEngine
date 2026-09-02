@@ -85,7 +85,13 @@ and returns the restored NetId list. `TryRestoreOwned(snapshot)` (since 9.33.0) 
 a `CellRestoreResult`: a blob that fails to decode is rolled back (the partial apply is despawned, so the cell is
 left empty and the caller can quarantine the bytes) rather than throwing, and an extension frame whose id this
 cell's registry does not know is retained per-netId and re-emitted verbatim by `SnapshotOwned` (retain-and-rewrite),
-so a registry downgrade cannot strip data at rest. `MaxOwnedNetId()` reads the highest owned NetId (0 if none),
+so a registry downgrade cannot strip data at rest. A restore also REFUSES a NetId the cell already owns: the copy in
+the blob is dropped (despawned, not registered) and counted in `CellRestoreResult.SkippedOwnedCount`, so a blob
+carrying a stale copy of something live cannot re-point ownership at it. That is what a persistence host produces
+when it captures a cell without excluding the players bound to it, and the stale copy's `MovementState` would then
+be the basis the next teleport stamps its epoch from. A well-formed restore reports 0 there. Retained frames belonging
+to a skipped NetId are dropped with it, so they cannot be re-emitted against the live entity.
+`MaxOwnedNetId()` reads the highest owned NetId (0 if none),
 useful for resuming an id allocator. See `KhaozEngine.NetWorld.CellPersistence` for the `IWorldStore` wiring
 (migration chain, quarantine, diagnostics) built on these.
 

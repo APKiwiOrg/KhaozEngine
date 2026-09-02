@@ -495,6 +495,11 @@ public sealed class CellSim
     public CellRestoreResult TryRestoreOwned(byte[] snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        // What this cell owns BEFORE the apply. Read here rather than after, because the apply spawns the blob's
+        // entities into this same world, and a check made afterwards would find a restored copy and call it live.
+        // A scan rather than the owned index, so the pre-index raw spawn idiom counts too. Cheap where it matters:
+        // a restore runs once on cell creation, whose world is normally empty.
+        HashSet<long> ownedBeforeRestore = LiveOwnedNetIds();
         var view = new ClientReplicationView(registry);
         if (!view.TryApplyRetainingUnknown(World, snapshot, out IReadOnlyList<RetainedComponent> retained, out string? error))
         {
@@ -504,19 +509,49 @@ public sealed class CellSim
             return CellRestoreResult.Failed(error ?? "cell snapshot failed to decode");
         }
         var netIds = new List<long>(view.Entities.Count);
+        int skipped = 0;
         foreach (KeyValuePair<long, Entity> kv in view.Entities)
         {
+            if (ownedBeforeRestore.Contains(kv.Key))
+            {
+                // The blob carries a stale copy of something this cell is already simulating, which is what a
+                // consumer host produces when it captures a cell without excluding the players bound to it. The
+                // old behaviour registered it anyway, and RegisterOwned overwrites, so ownership silently
+                // re-pointed at the stale copy and its old MovementState became the basis the next teleport
+                // stamped its epoch from. Drop the copy instead and leave the live entity exactly as it was.
+                if (World.IsAlive(kv.Value)) World.Despawn(kv.Value);
+                skipped++;
+                continue;
+            }
             netIds.Add(kv.Key);
             RegisterOwned(kv.Key, kv.Value); // restored entities are owned here -> index them
             AdaptFrame(kv.Value);            // a blob written by another frame (or an unframed build) lands in ours
         }
+        int retainedKept = 0;
         foreach (RetainedComponent rc in retained)
         {
+            // A skipped entity's retained frames go with it: re-emitting them would attach the stale copy's
+            // unknown extension data to the live entity on the next snapshot.
+            if (ownedBeforeRestore.Contains(rc.NetId)) continue;
             if (!retainedUnknown.TryGetValue(rc.NetId, out List<RetainedComponent>? list))
                 retainedUnknown[rc.NetId] = list = new List<RetainedComponent>();
             list.Add(rc);
+            retainedKept++;
         }
-        return new CellRestoreResult(true, netIds, retained.Count, null);
+        return new CellRestoreResult(true, netIds, retainedKept, null, skipped);
+    }
+
+    /// <summary>The NetIds this cell authoritatively owns right now (alive, not a ghost, not migrating), read by a
+    /// scan so it is ground truth rather than whatever the owned index has been told.</summary>
+    private HashSet<long> LiveOwnedNetIds()
+    {
+        var live = new HashSet<long>();
+        World.ForEach<NetId>((Entity e, ref NetId id) =>
+        {
+            if (World.Has<Ghost>(e) || World.Has<Migrating>(e)) return;
+            live.Add(id.Value);
+        });
+        return live;
     }
 
     /// <summary>The largest owned (non-ghost, non-migrating) <see cref="NetId"/> in this cell, or 0 if none.</summary>

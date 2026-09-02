@@ -14166,11 +14166,30 @@ var persistence = new WorldPersistence(server, store, new WorldPersistenceConfig
     ResumeHintCapacity = 4096,     // accounts held, least-recently-recorded evicted (default 1024; 0 = off)
     QuietRestoreDistance = 1f,     // a restore landing this close is applied without advancing the epoch
 });
-// Optional, and the only thing that extends the quiet rejoin across a process restart: the hints are
-// memory-only, so warm them from your own store at boot, on the server thread, before it starts polling.
-foreach ((string accountId, Vector3 last) in LoadLastKnownPositions())
-    persistence.ResumeHints.Record(accountId, last);
+// The hints are memory-only, so this is what extends the quiet rejoin across a process restart. At boot,
+// on the server thread, before the head starts polling:
+int seeded = await persistence.PrewarmResumeHintsAsync();
 ```
+
+**Pre-warming the hints across a restart.** `PrewarmResumeHintsAsync(int max = 0, CancellationToken)` reads the
+stored records back into `ResumeHints` and returns how many accounts it seeded. Without it the first rejoin of
+every account after a deploy or a container recycle falls back to the configured spawn and takes the restore
+teleport that the seed exists to remove, which is routine rather than rare. It needs an `IEnumerableWorldStore`
+(`InMemoryWorldStore`, `SqliteWorldStore` and `SqlServerWorldStore` all are) and is a no-op returning 0 on any
+other store, so it is safe to call unconditionally. `max` at or below zero means `ResumeHintCapacity`, which is
+also the most worth reading: the cache holds that many and evicts past it. Records are taken newest-first by
+`WorldStoreEntry.UpdatedAt` and recorded oldest-first, so the cache's own recency order matches the store's and
+the stalest account is the first thing a live save evicts.
+
+It is engine-owned for one reason above the others: **a record the load path would quarantine must not become a
+hint.** `WorldPersistenceConfig.Bounds` vets the LOADED record and never the hint, and the join builds the player
+ON the hint, so a hand-written pre-warm silently seeds exactly the positions the quarantine exists to reject. This
+one applies `Bounds` and the decode guard to every record before recording it, skips guest keys, and skips
+quarantine copies. The one load-path check it cannot apply is `ValidateGameState`, which reads the live per-player
+object by slot and there is no slot at boot: a record whose blob that hook would reject is seeded and then
+quarantined at the join it seeded, which forgets the hint and resets the player, so the outcome is the no-pre-warm
+one a join later. Call it on the server thread before polling starts and await it: `ResumePositionCache` is not
+thread-safe.
 
 `WorldPersistence` installs the hint on the host itself (`IWorldPersistenceHost.SetResumePositionProvider`,
 implemented by both `WorldServer` and `ShardedWorldServer`), so a persistence-backed server needs no

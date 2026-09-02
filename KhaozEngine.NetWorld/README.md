@@ -134,7 +134,16 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
     was a teleport before), but the benefit does degrade as store latency rises. `ResumeHintCapacity` (default
     1024, least-recently-recorded evicted) bounds the cache; 0 turns the seed off. The hints are memory-only, so
     after a process restart the first rejoin of each account falls back to the configured spawn and takes the
-    restore teleport, unless the game pre-warms `ResumeHints` from its own store at boot.
+    restore teleport.
+  - **`PrewarmResumeHintsAsync(max = 0, ct)` fills them from the store at boot**, which is what carries the quiet
+    rejoin across that restart, and returns how many accounts it seeded. It needs an `IEnumerableWorldStore` and is
+    a no-op returning 0 on any other, so it is safe to call unconditionally. Records are taken newest-first by
+    `WorldStoreEntry.UpdatedAt`, bounded by `ResumeHintCapacity` (or `max`), and recorded oldest-first so the
+    cache's recency order matches the store's. Every record is put through the load path's own checks first: an
+    undecodable one and one outside `WorldPersistenceConfig.Bounds` are skipped, as are guest keys and quarantine
+    copies. That is the part a game cannot safely write for itself, because `Bounds` vets the loaded record and
+    never the hint, and the join builds the player ON the hint. Call it on the server thread before polling starts
+    and await it: `ResumePositionCache` is not thread-safe.
   - **A tokenless connection is not persisted, and gets no hint either.** Both heads key one `guest:{slot}`
     (`ResumePositionCache.GuestAccountPrefix`, and `ResumePositionCache.IsGuestAccount` is the shared predicate), and
     the slot is recycled to the next connection, so that key names a seat rather than a player. `ResumePositionCache`

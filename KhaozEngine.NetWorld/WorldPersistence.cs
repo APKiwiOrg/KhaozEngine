@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.WorldStore;
@@ -216,6 +217,23 @@ public sealed class WorldPersistence
 
     /// <summary>Saves every joined player whose state changed since its last save.</summary>
     public void SaveDirtyPass() => core.SaveDirtyPass();
+
+    /// <inheritdoc cref="StatePersistence{TState}.PrewarmHintsAsync"/>
+    /// <remarks>
+    /// The <see cref="ResumeHints"/> are memory-only, so without this the first rejoin of every account after a
+    /// restart falls back to the configured spawn and takes the restore teleport (#642 shipped to remove that, and
+    /// a deploy or a container recycle re-earns it). Call it once at boot, on the server thread, before the head
+    /// starts polling:
+    /// <code>
+    /// var persistence = new WorldPersistence(server, store);
+    /// int seeded = await persistence.PrewarmResumeHintsAsync();
+    /// </code>
+    /// It reads <see cref="WorldPersistenceConfig.KeyPrefix"/>, needs an <see cref="IEnumerableWorldStore"/> (any
+    /// other store is a no-op returning 0), and applies <see cref="WorldPersistenceConfig.Bounds"/> to every record
+    /// before it becomes a hint, so an out-of-bounds record the load path would quarantine is never seeded.
+    /// </remarks>
+    public Task<int> PrewarmResumeHintsAsync(int max = 0, CancellationToken cancellationToken = default)
+        => core.PrewarmHintsAsync(max, cancellationToken);
 
     /// <summary>Awaits all in-flight loads/saves, then applies any pending loaded state. Call on shutdown (or in
     /// tests) to reach a quiescent, fully-persisted point. Invoke from the server thread / when the loop is idle.</summary>

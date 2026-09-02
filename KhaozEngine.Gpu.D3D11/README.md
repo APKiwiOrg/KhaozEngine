@@ -222,6 +222,21 @@ rely on, and it is written on `IGpuCommandList.Begin` and in `docs/USING-KHAOZEN
 there: every recording the engine opens goes through `GpuRecording`, which refuses a second one on any backend,
 so neither driver's tolerance is something engine code exercises.
 
+**AND THE ENGINE CANNOT USE THAT PERMISSIVENESS, WHICH IS A CHOSEN NARROWING**
+([#613](https://github.com/APKiwiOrg/KhaozEngine/issues/613)). The paragraph above is still true about this
+backend. It stopped being reachable from engine code at `17.36.0`, when `GpuRecording` became the register every
+command list the engine opens goes through: it claims the device at `Open` and refuses a second one with
+`GpuNestedRecordingException` whatever the backend underneath can tolerate. That is the portable contract being
+enforced rather than described, and enforcing the loosest backend instead would be no contract at all, since a
+creation fallback swaps the backend without telling the calling code.
+
+The narrowing is written down here so the first person to want parallel recording (a streaming upload thread, a
+parallel pass builder) meets a decision rather than a surprise. The answer then is not to delete the register:
+it is an opt-in that keeps the refusal for everything else, either a per-device concurrency budget or an explicit
+escape naming the backend the caller has checked and the list they own. Related and not a duplicate:
+[#463](https://github.com/APKiwiOrg/KhaozEngine/issues/463) is about SHIPPING multi-threaded recording on the
+native Direct3D 11 backend, which is one backend's supportability work and would still have to pass this gate.
+
 **`D3D11DeviceState` is what is bound on the context, and the device owns exactly one.** It carries the
 redundancy caches for the seven pipeline-level objects (vertex shader, pixel shader, blend, depth-stencil,
 rasterizer, input layout, topology), so a rebind of what is already bound costs zero native calls and a switch
@@ -311,8 +326,11 @@ before the bind, because on that path a re-bind of the same buffer at a differen
 every draw after the first reads the first draw's constants. It doubles the constant-buffer call count there, and
 both arms are asserted.
 
-**BACKEND-DIVERGENT CREATION FAILURE: a layout element declared DYNAMIC on either structured-buffer kind throws
-here.** A dynamic offset is a per-draw byte rebase, and the only bind that can carry one is the constant-buffer
+**A layout element declared DYNAMIC on either structured-buffer kind throws here, and since
+[#597](https://github.com/APKiwiOrg/KhaozEngine/issues/597) that is the seam's own contract rather than a
+divergence from it.** `GpuResourceLayoutElement.Dynamic` used to say "uniform/structured buffer" and now says
+uniform buffer alone, precisely because of the argument below: this is not a gap that could be closed. A dynamic
+offset is a per-draw byte rebase, and the only bind that can carry one is the constant-buffer
 bind, which takes a first constant and a count. A structured buffer binds through a view created once over the
 whole buffer, and neither `*SetShaderResources` nor `*SetUnorderedAccessViews` has a per-bind window to put an
 offset in, so the offset would be dropped in both directions: a full activation writes the pre-resolved view with
@@ -320,6 +338,7 @@ nothing added, and the offsets-only path skips the element entirely for not bein
 would read the window the view was created with while the caller believed it had moved. The combination is vacuous
 in the engine today (all six dynamic elements shipped are uniform buffers) and is refused anyway, because nothing
 further down the path would ever say so. Declare the element as a uniform buffer, or build one set per window.
+The native Metal backend accepts the combination, which its own README names as a documented superset.
 
 **The ring is unmapped at the flush point on the immediate driver.** `KE_D3D11_RECORD=immediate` issues draws as
 the seam is called, so a ring mapped by a record-time uniform write is still mapped when the next draw binds it.

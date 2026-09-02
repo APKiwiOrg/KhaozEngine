@@ -92,7 +92,12 @@ namespace KhaozEngine.Gpu
         /// </para>
         /// <para>
         /// Registering twice for one backend REPLACES the earlier provider, so a repeated startup call is
-        /// harmless. Thread-safe.
+        /// harmless. Thread-safe, and that now includes the support cache: a call that lands WHILE the outgoing
+        /// provider's probe is still running is still honoured, because
+        /// <see cref="GpuBackendSelector.IsBackendSupported"/> caches an answer against the provider that gave
+        /// it and re-probes when the registered one is a different instance
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/472). Registering the SAME instance again keeps the
+        /// cached answer, which is correct: the answerer has not changed.
         /// </para>
         /// </summary>
         public static void Register(GpuBackendKind backend, IGpuBackendProvider provider)
@@ -103,7 +108,9 @@ namespace KhaozEngine.Gpu
             // The support probe caches its answer per backend for the process lifetime, and for a provider-backed
             // kind that answer comes from THIS provider. Registering or replacing one therefore drops the cached
             // value, so a settings screen that asked before registration is not stuck forever with the answer it
-            // got when the code that answers was not yet in the process.
+            // got when the code that answers was not yet in the process. The drop is eager housekeeping only.
+            // What actually makes a displaced provider's answer unreachable is the answerer stored beside it,
+            // because this call cannot reach a probe that is already running and publishes after it returns.
             GpuBackendSelector.InvalidateSupportCache(backend);
         }
 

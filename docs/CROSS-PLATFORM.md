@@ -106,7 +106,9 @@ caused it lives inside the client that then will not start. Two mechanisms, and 
 - **`GpuBackendSelector.IsBackendSupported` / `SupportedBackends()`** are a FUNCTIONAL probe, not a guess: the
   question is routed to the backend's own registered provider, which loads its library, creates an instance,
   enumerates physical devices, and for Vulkan checks the required surface extensions. A game's settings UI must
-  offer only what `SupportedBackends()` returns. Results are cached for the process lifetime. No RETIRED member
+  offer only what `SupportedBackends()` returns. A result is cached against the provider that produced it, so it
+  lasts the process lifetime and is re-probed when a different provider instance is registered for that
+  backend. No RETIRED member
   is ever reported supported, `OpenGL` included, so a dropdown built from this list cannot hand a player a new
   dead preference.
 - **Creation fallback.** A probe pass is necessary but not sufficient: a broken or partial driver can report
@@ -573,6 +575,16 @@ any head that referenced `Game2D`/`Game3D`/`Server` rather than `Foundation` its
 ubuntu container: without the rule it dies in `SpirvFrontEnd..cctor`, with it the four natives are flat beside
 the apphost on `build`, on `publish` and on `publish -r linux-x64`, and shaderc, SPIRV-Cross, GLFW and OpenAL
 Soft all load.
+
+**A consumer that skips the umbrellas is covered too, since
+[#723](https://github.com/APKiwiOrg/KhaozEngine/issues/723).** `Foundation` is not in the dependency closure of
+`KhaozEngine.Gpu`, `KhaozEngine.Windowing` or `KhaozEngine.Audio`, so a project that references one of those
+directly and takes no umbrella (a Linux shader tool on `Gpu` alone is the worked example) got none of this and
+died the same way. Those three now pack the SAME physical rule file under their own `<PackageId>.targets` name,
+which NuGet auto-imports with no `Import` line. Still one copy on disk, asserted by
+`HostNativesFlattenTests`, and no `PrivateAssets` moved, so nothing about asset flow changed. A consumer on both
+a package and an umbrella lands two copies of byte-identical targets, and a redefined target is an override
+rather than an error.
 
 Net result: **all three legs are blocking, none of them informational** - `metal-native` (macOS),
 `direct3d11-native` (Windows/WARP) and `vulkan-native` (Linux/lavapipe). The RASTERIZERS are long validated,

@@ -443,6 +443,21 @@ one's writes land. What the depth bounds is how many recordings may be open or i
 that keeps more than `KE_METAL_FRAMES_IN_FLIGHT` recordings open without submitting them has two of them sharing
 a segment. Raise the depth if you build one.
 
+**AND THE ENGINE CANNOT USE THAT PERMISSIVENESS, WHICH IS A CHOSEN NARROWING**
+([#613](https://github.com/APKiwiOrg/KhaozEngine/issues/613)). The paragraph above is still true about this
+backend. It stopped being reachable from engine code at `17.36.0`, when `GpuRecording` became the register every
+command list the engine opens goes through: it claims the device at `Open` and refuses a second one with
+`GpuNestedRecordingException` whatever the backend underneath can tolerate. That is the portable contract being
+enforced rather than described, and enforcing the loosest backend instead would be no contract at all, since a
+creation fallback swaps the backend without telling the calling code.
+
+The narrowing is written down here so the first person to want parallel recording (a streaming upload thread, a
+parallel pass builder) meets a decision rather than a surprise. The answer then is not to delete the register:
+it is an opt-in that keeps the refusal for everything else, either a per-device concurrency budget or an explicit
+escape naming the backend the caller has checked and the list they own. Related and not a duplicate:
+[#463](https://github.com/APKiwiOrg/KhaozEngine/issues/463) is about SHIPPING multi-threaded recording on the
+native Direct3D 11 backend, which is one backend's supportability work and would still have to pass this gate.
+
 **One creation-time refusal follows from all of it**, and it is the divergence named above: a buffer declaring
 both `UniformBuffer` and a structured usage throws, because the ring rebases every bind of it and a structured
 binding of the same buffer would read whichever segment the frame landed on.
@@ -615,6 +630,14 @@ binding number, which is the key the binding table is read through. The only ref
 dynamic offset declared on a texture or a sampler, because the offset is applied with `setBufferOffset:` and that
 exists only in the buffer space, so declaring one anywhere else would be dropped at every bind with nothing said.
 
+**On a BUFFER element it is accepted whatever the kind, which is wider than the seam and is a documented
+superset** ([#597](https://github.com/APKiwiOrg/KhaozEngine/issues/597)). `GpuResourceLayoutElement.Dynamic` is a
+dynamic-offset uniform buffer and only that, because `setBufferOffset:` has no counterpart on either sibling: a
+Vulkan storage descriptor has no dynamic offset at all, and a Direct3D 11 structured buffer binds through a view
+created once over the whole buffer with no per-bind window for the number to go in. That second one is why the
+seam narrowed rather than the siblings widening. A dynamic structured element is honoured here and refused there,
+so writing one makes the consumer macOS-only.
+
 **A set resolves everything at creation and nothing at a bind.** A set is created once at load time and bound
 thousands of times a frame, so each binding comes out already carrying which argument table it goes in, the
 resolved resource whose Objective-C object a bind writes, and the numbers a buffer bind composes its offset
@@ -693,6 +716,16 @@ nowhere at all, and `17.39.0` corrected both Metal paths together
 ([#598](https://github.com/APKiwiOrg/KhaozEngine/issues/598)): the vendored Veldrid fork carried the identical
 change as `4.9.104`. Fixing only this one would have left the native leg disagreeing with the `metal` grids the
 incumbent baked. Neither moved a committed golden.
+
+It reached one case short of the whole contract, and
+[#674](https://github.com/APKiwiOrg/KhaozEngine/issues/674) closed that. `-setDepthClipMode:` used to be emitted inside
+the guard that skips the depth state on a pass with no depth attachment, so a colour-only pass rasterized at the
+encoder default `MTLDepthClipModeClip` however the pipeline was described, and `false` could not be expressed
+there at all. It is emitted unguarded now, beside the cull mode and the winding, which is what it is: rasterizer
+state rather than depth state, legal on a depth-less pass under the API validation layer. Only the depth PAIR,
+`-setDepthStencilState:` and `-setStencilReferenceValue:`, is still behind the framebuffer guard. No committed
+golden moved, because every colour-only pass the engine draws writes z inside the depth range where the two
+modes agree.
 
 **A compute pipeline is created from the function alone**, with no `MTLComputePipelineDescriptor`. The
 descriptor exists to carry per-buffer mutability, the incumbent filled it by counting buffer-kind elements in

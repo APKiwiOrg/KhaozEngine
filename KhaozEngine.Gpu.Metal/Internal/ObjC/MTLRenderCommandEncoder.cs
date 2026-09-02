@@ -210,7 +210,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
                 red, green, blue, alpha);
 
         /// <summary>
-        /// <c>-setDepthStencilState:</c>, one of the DEPTH TRIO.
+        /// <c>-setDepthStencilState:</c>, one of the DEPTH PAIR.
         /// <para>
         /// ONLY LEGAL ON A PASS WITH A DEPTH ATTACHMENT, which is why the caller gates all three on the BOUND
         /// FRAMEBUFFER rather than on the pipeline alone (<see cref="MetalGraphicsStateBlock"/>). Sending it to a
@@ -222,7 +222,9 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         internal void SetDepthStencilState(MTLDepthStencilState state)
             => ObjCMsgSend.SendVoidPtr(Handle, ObjCRuntime.Sel("setDepthStencilState:"), state.Handle);
 
-        /// <summary><c>-setDepthClipMode:</c>, the second of the depth trio.</summary>
+        /// <summary><c>-setDepthClipMode:</c>, emitted on every pipeline change beside the cull mode and the
+        /// winding rather than with the depth pair, because it is rasterizer state and binds on a pass with no
+        /// depth attachment (https://github.com/APKiwiOrg/KhaozEngine/issues/674).</summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal void SetDepthClipMode(MTLDepthClipMode mode)

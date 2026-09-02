@@ -12,9 +12,20 @@ namespace KhaozEngine.Tests;
 /// <c>[DllImport]</c>, and on Linux that resolver probes <c>runtimes/&lt;DISTRO rid&gt;/native</c> while the
 /// packages ship under the portable rid, so nothing loads until the natives sit FLAT beside the assemblies.
 /// The rule is an MSBuild asset, so the contract is asserted against the on-disk files the way
-/// <see cref="CetCompatDefaultTests"/> does. Three separate silent failure modes are covered: the file being
-/// renamed out of the import, the csproj forgetting to pack it, and an umbrella
-/// <c>ProjectReference</c> suppressing the Build asset so it never reaches a consumer at all.
+/// <see cref="CetCompatDefaultTests"/> does. Four separate silent failure modes are covered: the file being
+/// renamed out of the import, the csproj forgetting to pack it, an umbrella
+/// <c>ProjectReference</c> suppressing the Build asset so it never reaches a consumer at all, and a
+/// native-carrying package shipping without a copy of its own.
+/// <para>
+/// THE LAST ONE IS ISSUE 723. The 722 fix ships the rule in <c>KhaozEngine.Foundation</c> only, and
+/// <c>Foundation</c> is not in the dependency closure of <c>KhaozEngine.Gpu</c>, <c>KhaozEngine.Windowing</c> or
+/// <c>KhaozEngine.Audio</c>. A project that references one of those on its own and takes no umbrella, say a
+/// Linux shader tool on <c>Gpu</c> alone, got nothing and still died with "Could not load from any of the
+/// possible library names". The three packages that carry the natives now pack the SAME physical file under
+/// their own <c>&lt;PackageId&gt;.targets</c> name, which NuGet auto-imports with no <c>Import</c> line needed.
+/// Landing two copies in one build is an override rather than an error, because the target definitions are
+/// byte-identical, and it changes asset flow nowhere: no <c>PrivateAssets</c> moved.
+/// </para>
 /// </summary>
 public class HostNativesFlattenTests
 {
@@ -139,5 +150,53 @@ public class HostNativesFlattenTests
         string privateAssets = (string?)edge.Attribute("PrivateAssets") ?? "";
         Assert.NotEqual("", privateAssets);
         Assert.DoesNotContain("build", privateAssets.ToLowerInvariant());
+    }
+
+    /// <summary>
+    /// EVERY PACKAGE THAT CARRIES A SILK.NET NATIVE SHIPS THE RULE ITSELF, under its own PackageId name so
+    /// NuGet auto-imports it (issue 723). A consumer that takes one of these directly and no umbrella is the
+    /// case Foundation cannot reach, because Foundation is in none of their dependency closures.
+    /// </summary>
+    [Theory]
+    [InlineData("KhaozEngine.Gpu", "build")]
+    [InlineData("KhaozEngine.Gpu", "buildTransitive")]
+    [InlineData("KhaozEngine.Windowing", "build")]
+    [InlineData("KhaozEngine.Windowing", "buildTransitive")]
+    [InlineData("KhaozEngine.Audio", "build")]
+    [InlineData("KhaozEngine.Audio", "buildTransitive")]
+    public void NativeCarryingPackage_PacksTheRule_UnderItsOwnPackageIdName(string package, string folder)
+    {
+        string csproj = Path.Combine(RepoRoot(), package, $"{package}.csproj");
+
+        bool packed = XDocument.Load(csproj).Descendants("None").Any(n =>
+            ((string?)n.Attribute("Include"))?.Replace('\\', '/').EndsWith(
+                $"KhaozEngine.Foundation/build/{RuleFile}", System.StringComparison.Ordinal) == true &&
+            (string?)n.Attribute("Pack") == "true" &&
+            (string?)n.Attribute("PackagePath") == $"{folder}/{package}.targets");
+
+        Assert.True(packed,
+            $"{package}.csproj must pack the ONE copy of {RuleFile} to {folder}/{package}.targets, so a "
+            + "consumer that references it without an umbrella gets the Linux flatten (issue 723)");
+    }
+
+    /// <summary>
+    /// AND THERE IS STILL EXACTLY ONE PHYSICAL COPY OF THE RULE. Six more pack entries is the cheap half of
+    /// issue 723 only while they all point at the same file: a second copy on disk is the drift this whole
+    /// class exists to stop, and it would be invisible until the two behaved differently on someone's Linux box.
+    /// </summary>
+    [Fact]
+    public void TheRuleFileExistsExactlyOnceOnDisk()
+    {
+        string[] copies = Directory.GetFiles(RepoRoot(), RuleFile, SearchOption.AllDirectories)
+            .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                            System.StringComparison.Ordinal)
+                && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                            System.StringComparison.Ordinal)
+                && !f.Contains($"{Path.DirectorySeparatorChar}local-feed{Path.DirectorySeparatorChar}",
+                            System.StringComparison.Ordinal))
+            .ToArray();
+
+        Assert.True(copies.Length == 1,
+            $"expected one {RuleFile} in the tree, found {copies.Length}: {string.Join(", ", copies)}");
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu
@@ -140,14 +141,33 @@ namespace KhaozEngine.Gpu
         /// <summary>Sealed batches the queue holds behind unsignaled fences before the safety valve trades the poll
         /// for one drain (see the valve note on this type). Eight is comfortably above the deepest a PRESENTED frame
         /// loop reaches: the CPU is stopped at <c>KE_METAL_FRAMES_IN_FLIGHT</c> / <c>KE_VULKAN_FRAMES_IN_FLIGHT</c> /
-        /// <c>KE_D3D11_FRAMES_IN_FLIGHT</c> frames ahead (default 3), and every one of those frames would have to
-        /// have retired something to seal a batch. A consumer that raises that knob past 8 would want this raised
-        /// with it, or it buys a drain it did not need, and cannot: the parameter is on <see cref="Create"/>, which
-        /// no public route into a scene reaches
-        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/661">#661</see>). An UNTHROTTLED loop (an
-        /// offscreen capture run, a tool that submits without presenting) is the case that reaches it however fast
-        /// the device is, which is the case the bound exists for.</summary>
+        /// <c>KE_D3D11_FRAMES_IN_FLIGHT</c> frames ahead (<see cref="DefaultFramesInFlight"/>), and every one of
+        /// those frames would have to have retired something to seal a batch. A consumer who raises that knob past
+        /// the default wants this raised with it, or it buys a drain it did not need, and
+        /// <see cref="SealedBatchCapFor(IGpuDevice)"/> now does that FOR them: the renderer sizes its own queue off
+        /// the running backend's knob, so the advice is automatic rather than a parameter no public route into a
+        /// scene reached (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/661">#661</see>). An
+        /// UNTHROTTLED loop (an offscreen capture run, a tool that submits without presenting) is the case that
+        /// reaches the cap however fast the device is, which is the case the bound exists for.</summary>
         public const int DefaultMaxSealedBatches = 8;
+
+        /// <summary>The frames-in-flight depth all three backends default to, which is the depth
+        /// <see cref="DefaultMaxSealedBatches"/> was chosen against. Restated here rather than referenced because
+        /// each backend owns its own constant inside its own package and this one cannot see any of them, which is
+        /// what <c>GpuRetireQueueTests</c> pins by comparing the four against each other.</summary>
+        public const int DefaultFramesInFlight = 3;
+
+        /// <summary>The upper end each backend accepts on its frames-in-flight knob. A value outside
+        /// <see cref="MinimumFramesInFlight"/> to here is one the backend itself refuses and replaces with
+        /// <see cref="DefaultFramesInFlight"/>, so this reader has to refuse it identically or it would size a cap
+        /// for a depth that is not in force.</summary>
+        public const int MaximumFramesInFlight = 16;
+
+        /// <summary>The lowest depth any backend accepts. Metal and Direct3D 11 take 1 and Vulkan's floor is 2, so
+        /// the loosest of the three is the right bound HERE: a 1 that Vulkan refuses resolves to a cap of
+        /// <see cref="DefaultMaxSealedBatches"/> either way, where refusing it would need this reader to carry a
+        /// per-backend floor for no observable difference.</summary>
+        public const int MinimumFramesInFlight = 1;
 
         readonly Action _drainDevice;
         readonly IRetireBarrier? _barrier;
@@ -191,6 +211,88 @@ namespace KhaozEngine.Gpu
             ArgumentNullException.ThrowIfNull(device);
             return new GpuRetireQueue(device.WaitForIdle, GpuRetireBarrier.TryCreate(device),
                 GpuRetireFallback.DrainDevice, frameDelay, device, maxSealedBatches);
+        }
+
+        /// <summary>
+        /// THE SAFETY-VALVE CAP SIZED AGAINST <paramref name="device"/>'S OWN FRAMES-IN-FLIGHT KNOB, so a
+        /// consumer who deepens the pipeline does not silently buy a valve drain
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/661">#661</see>). Pass it to
+        /// <see cref="Create"/> as <c>maxSealedBatches</c>. <c>Scene3D</c> does, which is what makes the advice on
+        /// <see cref="DefaultMaxSealedBatches"/> actionable: the three public routes into a scene took a
+        /// <c>ShadowSettings</c> and nothing else, so there was no way to raise the cap by hand at all.
+        /// <para>
+        /// IT READS AN ENVIRONMENT VARIABLE THIS PACKAGE DOES NOT OWN, and that is the honest description rather
+        /// than a wart to hide. Each backend's depth constant lives inside that backend's own package and
+        /// <c>KhaozEngine.Gpu</c> cannot reference any of them, so the name and the bounds are restated here and
+        /// the agreement is asserted instead of assumed: <c>GpuRetireQueueTests</c> compares this reader's env-var
+        /// name and bounds against each backend's own constants, on every leg, so a rename goes red here rather
+        /// than quietly sizing the cap off a variable nobody sets any more.
+        /// </para>
+        /// <para>
+        /// A backend with no such knob, an unset or unparseable value, and a value the backend would itself refuse
+        /// all give <see cref="DefaultMaxSealedBatches"/>, which is what the queue used before this member existed.
+        /// So the default is byte-identical and only a deliberately raised knob moves anything.
+        /// </para>
+        /// </summary>
+        /// <param name="device">The device whose backend names the knob to read.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="device"/> is null.</exception>
+        public static int SealedBatchCapFor(IGpuDevice device)
+        {
+            ArgumentNullException.ThrowIfNull(device);
+
+            string? envVar = FramesInFlightEnvVarFor(device.Backend);
+            return envVar is null
+                ? DefaultMaxSealedBatches
+                : SealedBatchCapForDepth(
+                    ResolveFramesInFlight(Environment.GetEnvironmentVariable(envVar)));
+        }
+
+        /// <summary>
+        /// The cap for a pipeline <paramref name="framesInFlight"/> deep: ONE MORE SEALED BATCH PER EXTRA FRAME OF
+        /// DEPTH, never below <see cref="DefaultMaxSealedBatches"/>.
+        /// <para>
+        /// What the cap has to clear is the DEPTH, because a presented loop can be at most that many frames ahead
+        /// and each of those frames has to have retired something to seal a batch. The shipped default clears the
+        /// shipped depth by five, so preserving that margin is the whole rule, and it keeps
+        /// <see cref="DefaultFramesInFlight"/> landing exactly on <see cref="DefaultMaxSealedBatches"/>. A ratio
+        /// would not: it would move the default off 8 for any depth that does not divide evenly, and the number
+        /// that matters here is a MARGIN over the depth rather than a multiple of it.
+        /// </para>
+        /// <para>
+        /// Lowering the knob does NOT lower the cap. A smaller cap saves nothing worth having (the holding is
+        /// bounded by what the loop actually retires, not by this number) and would cost a valve drain on an
+        /// UNTHROTTLED loop, which is the case the bound exists for and which the depth knob says nothing about.
+        /// </para>
+        /// </summary>
+        /// <param name="framesInFlight">The backend's resolved pipeline depth.</param>
+        public static int SealedBatchCapForDepth(int framesInFlight)
+            => framesInFlight <= DefaultFramesInFlight
+                ? DefaultMaxSealedBatches
+                : DefaultMaxSealedBatches + (framesInFlight - DefaultFramesInFlight);
+
+        /// <summary>The frames-in-flight environment variable <paramref name="backend"/> reads, or null for a
+        /// backend that pipelines at no configurable depth. Internal so the test that pins each name against the
+        /// backend package's own constant can reach it.</summary>
+        internal static string? FramesInFlightEnvVarFor(GpuBackendKind backend) => backend switch
+        {
+            GpuBackendKind.MetalNative => "KE_METAL_FRAMES_IN_FLIGHT",
+            GpuBackendKind.VulkanNative => "KE_VULKAN_FRAMES_IN_FLIGHT",
+            GpuBackendKind.Direct3D11Native => "KE_D3D11_FRAMES_IN_FLIGHT",
+            _ => null,
+        };
+
+        /// <summary>The depth <paramref name="envValue"/> asks for, or <see cref="DefaultFramesInFlight"/> for
+        /// anything a backend would itself refuse. Deliberately silent: the backend that owns the knob already
+        /// WARNs on a value it did not understand, and a second warning from the retire queue would read as a
+        /// second problem.</summary>
+        internal static int ResolveFramesInFlight(string? envValue)
+        {
+            if (string.IsNullOrWhiteSpace(envValue)) return DefaultFramesInFlight;
+
+            return int.TryParse(envValue.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int depth)
+                && depth >= MinimumFramesInFlight && depth <= MaximumFramesInFlight
+                ? depth
+                : DefaultFramesInFlight;
         }
 
         /// <summary>

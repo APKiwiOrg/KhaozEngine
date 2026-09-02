@@ -142,5 +142,11 @@ namespace KhaozEngine.Render3D
         /// had not signalled <see cref="GpuRetireQueue.MaxSealedBatches"/> batches' worth of fences. Zero on a device
         /// that keeps up with the frame loop.</summary>
         internal int RetireValveDrains => _retired.ValveDrains;
+
+        /// <summary>The safety-valve cap this scene's queue was built with, which the ctor sizes off the running
+        /// backend's frames-in-flight knob rather than taking the queue's own default
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/661">#661</see>). Exists so a test can
+        /// assert that wiring end to end, since nothing else about the scene reports it.</summary>
+        internal int RetireSealedBatchCap => _retired.MaxSealedBatches;
     }
 }

@@ -2150,10 +2150,12 @@ narrower than the contract, for reasons that are real on their own APIs. `Vulkan
 dynamic element that is not a UNIFORM buffer, because a storage descriptor there has no dynamic offset at all.
 `D3D11ResourceLayout` refuses the same combination, because a structured buffer binds through a view created
 once over the whole buffer and neither `*SetShaderResources` nor `*SetUnorderedAccessViews` has a per-bind
-window. So a consumer declaring a dynamic structured element is Metal-only today, and the seam says otherwise:
-resolving that, by narrowing the seam doc or widening the siblings, is
-https://github.com/APKiwiOrg/KhaozEngine/issues/597. What all three share is the direction, which is that the
-offset has to have somewhere to go.
+window. So a consumer declaring a dynamic structured element is Metal-only, and the seam said otherwise:
+https://github.com/APKiwiOrg/KhaozEngine/issues/597 settled it by NARROWING the seam doc to the uniform buffer,
+because the Direct3D 11 half is not a gap anyone can close (the API has nowhere to put the number). So the
+framing above is the history: this backend is not the one that implements the contract, it is the one that
+accepts more than the contract asks, which its README now names as a documented superset. What all three share
+is the direction, which is that the offset has to have somewhere to go.
 
 **One more thing the first draft of this addendum got wrong, corrected at the review:** the bound record does
 not carry the raw handle and the ring as snapshots. It holds the WRAPPER and reads both through the wrapper's

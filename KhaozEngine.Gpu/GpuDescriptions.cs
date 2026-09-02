@@ -162,10 +162,29 @@ namespace KhaozEngine.Gpu
         /// <summary>Which shader stages see it.</summary>
         public GpuShaderStages Stages { get; }
         /// <summary>When true, the buffer bound here is rebased per draw by a byte offset supplied to
-        /// <see cref="IGpuCommandList.SetGraphicsResourceSet(uint,IGpuResourceSet,uint)"/> (a dynamic-offset
-        /// uniform/structured buffer). The set binds a <see cref="GpuBufferRange"/> whose size is the per-draw
-        /// window; the offset varies per draw. Lets many draws read their own slice of one shared buffer without
-        /// recreating the set or re-uploading.</summary>
+        /// <see cref="IGpuCommandList.SetGraphicsResourceSet(uint,IGpuResourceSet,uint)"/>. The set binds a
+        /// <see cref="GpuBufferRange"/> whose size is the per-draw window and the offset varies per draw, which
+        /// lets many draws read their own slice of one shared buffer without recreating the set or re-uploading.
+        /// <para>
+        /// THE CONTRACT IS A DYNAMIC-OFFSET UNIFORM BUFFER, AND ONLY THAT.
+        /// <see cref="GpuResourceKind.UniformBuffer"/> is the one kind every backend rebases. Declaring any other
+        /// kind dynamic is not portable and two of the three backends refuse it at layout creation rather than
+        /// dropping the offset silently: Vulkan because a storage descriptor has no dynamic offset at all
+        /// (<c>STORAGE_BUFFER_DYNAMIC</c> is a different descriptor type with its own limit accounting, which
+        /// this engine does not use), and Direct3D 11 because a structured buffer binds through a view created
+        /// once over the whole buffer and neither <c>*SetShaderResources</c> nor <c>*SetUnorderedAccessViews</c>
+        /// carries a per-bind window for the offset to go in. That second one is not a gap somebody could close:
+        /// the API has nowhere to put the number.
+        /// </para>
+        /// <para>
+        /// THE METAL BACKEND ACCEPTS MORE, AND THAT IS A DOCUMENTED SUPERSET RATHER THAN THE CONTRACT
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/597). <c>setBufferOffset:</c> works at any buffer
+        /// index whatever the kind, so a dynamic structured element is honoured there. Writing one still makes
+        /// the consumer macOS-only, so the seam names the narrow guarantee and the backend's own README names
+        /// what it does beyond it. This doc used to say "uniform/structured buffer", which promised a width two
+        /// backends could not deliver and left the first consumer to try one finding out at a throw.
+        /// </para>
+        /// </summary>
         public bool Dynamic { get; }
 
         public GpuResourceLayoutElement(string name, GpuResourceKind kind, GpuShaderStages stages, bool dynamic = false)
@@ -355,26 +374,24 @@ namespace KhaozEngine.Gpu
         /// </para>
         /// <para>
         /// It is the ONLY member here with no direct Metal equivalent, and that is why the contract is spelled
-        /// out. Metal has no rasterizer depth-clip enable, so both Metal backends express <c>false</c> as
+        /// out. Metal has no rasterizer depth-clip enable, so the Metal backend expresses <c>false</c> as
         /// <c>MTLDepthClipModeClamp</c> on the render encoder. Direct3D 11 passes it to
         /// <c>RasterizerDescription.DepthClipEnable</c> and Vulkan passes its INVERSE to
-        /// <c>depthClampEnable</c>. Until 17.39.0 both Metal paths derived the mode from
+        /// <c>depthClampEnable</c>. Until 17.39.0 both Metal paths of the day derived the mode from
         /// <see cref="GpuDepthStencilState.DepthTestEnabled"/> and read this flag nowhere, which made four
         /// shipped pipelines rasterize differently on macOS
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/598).
         /// </para>
         /// <para>
-        /// ONE CARVE-OUT, AND IT IS METAL'S ALONE: a render pass whose framebuffer has NO depth attachment
-        /// drops this flag. Both Metal paths emit <c>-setDepthClipMode:</c> inside the same guard as the
-        /// depth-stencil state, and that guard is the bound framebuffer having a depth attachment, because a
-        /// depth-stencil state on a depth-less pass is a validation failure. So a colour-only target rasterizes
-        /// at the encoder default (clip) whatever this says, and <c>false</c> cannot be expressed there at all.
-        /// Direct3D 11 and Vulkan keep it in rasterizer state that exists either way, so they honour it there.
-        /// No shipped pipeline can see the difference: the engine's colour-only passes are the fullscreen post
-        /// ones, whose vertex stage emits z = 0 exactly, and <c>SpriteBatch</c> takes its z from a 2D ortho,
-        /// both inside the depth range where the two modes agree.
-        /// https://github.com/APKiwiOrg/KhaozEngine/issues/674 decides whether Metal honours it on a depth-less
-        /// pass or the seam declares it undefined there.
+        /// IT BINDS ON A PASS WITH NO DEPTH ATTACHMENT TOO, on every backend, and Metal was one case short of
+        /// that (https://github.com/APKiwiOrg/KhaozEngine/issues/674). It used to emit
+        /// <c>-setDepthClipMode:</c> inside the same guard as the depth-stencil state, whose condition is the
+        /// bound framebuffer having a depth attachment, because a depth-stencil state on a depth-less pass IS a
+        /// validation failure. A colour-only target therefore rasterized at the encoder default (clip) whatever
+        /// this said. The clip mode is rasterizer state rather than depth state, so it is emitted unguarded now
+        /// and the contract holds everywhere. No shipped pipeline could see the old hole: the engine's
+        /// colour-only passes are the fullscreen post ones, whose vertex stage emits z = 0 exactly, and
+        /// <c>SpriteBatch</c> takes its z from a 2D ortho, both inside the depth range where the two modes agree.
         /// </para>
         /// </summary>
         public bool DepthClipEnabled { get; }

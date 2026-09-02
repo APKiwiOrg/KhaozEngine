@@ -1,4 +1,6 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using KhaozEngine.Gpu;
 using Xunit;
 
@@ -183,6 +185,70 @@ namespace KhaozEngine.Tests.Gpu
 
                 GpuBackendProviders.Register(SentinelKind, new FakeBackendProvider(SentinelKind) { Supported = false });
                 Assert.False(GpuBackendSelector.IsBackendSupported(SentinelKind));
+            }
+        }
+
+        /// <summary>
+        /// AND IT FOLLOWS ONE REPLACED WHILE ITS PREDECESSOR'S PROBE WAS STILL RUNNING, which the row above
+        /// cannot see (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/472">#472</see>).
+        ///
+        /// <para><b>THE HOLE WAS AN ORDERING ONE AND IT LASTED THE WHOLE PROCESS.</b> The probe used to publish
+        /// through <c>ConcurrentDictionary.GetOrAdd</c>, and <c>Register</c> invalidates by REMOVING the entry.
+        /// A thread that had already resolved provider P1 and was inside its <c>IsSupported</c> when a concurrent
+        /// <c>Register(P2)</c> removed the entry then completed its <c>GetOrAdd</c> and wrote P1's answer back
+        /// under P2's registration, where nothing would ever drop it again. A settings screen would offer, or
+        /// refuse, a backend on the strength of an answer from code that is no longer the answerer.</para>
+        ///
+        /// <para><b>THE ROW IS DETERMINISTIC, not a stress loop.</b> The outgoing provider blocks inside its own
+        /// probe until this thread says go, so the replacement lands at exactly the moment that used to lose.
+        /// Without the gates the window is a few instructions wide and a repeat-until-it-happens test would be
+        /// flaky in the useless direction: green on a bad build.</para>
+        ///
+        /// <para><b>WHAT A RED RUN MEANS.</b> The cache is trusting an answer without checking who produced it,
+        /// so the process is stuck on the outgoing provider's verdict.</para>
+        /// </summary>
+        [Fact]
+        public async Task IsBackendSupported_DoesNotKeepTheAnswerOfAProviderReplacedMidProbe()
+        {
+            // Not disposed on purpose. The probe thread is still parked on `release` if the wait below ever
+            // fails, and disposing an event out from under a waiter turns a clear test failure into an
+            // ObjectDisposedException on a pool thread. Two events for one test method is not worth that.
+            var entered = new ManualResetEventSlim(false);
+            var release = new ManualResetEventSlim(false);
+
+            var outgoing = new FakeBackendProvider(SentinelKind)
+            {
+                Supported = true,
+                ProbeEntered = entered,
+                ProbeRelease = release,
+            };
+            var replacement = new FakeBackendProvider(SentinelKind) { Supported = false };
+
+            GpuBackendProviders.Register(SentinelKind, outgoing);
+            try
+            {
+                Task<bool> probing = Task.Run(() => GpuBackendSelector.IsBackendSupported(SentinelKind));
+
+                // Past the registry lookup and inside the outgoing provider's probe, which is the only moment
+                // the race exists at.
+                Assert.True(entered.Wait(TimeSpan.FromSeconds(10)), "the probe never started");
+
+                GpuBackendProviders.Register(SentinelKind, replacement);
+                release.Set();
+                await probing.WaitAsync(TimeSpan.FromSeconds(10));
+
+                // The answer a later caller gets must come from whoever is registered NOW.
+                Assert.False(GpuBackendSelector.IsBackendSupported(SentinelKind));
+                Assert.Equal(1, replacement.SupportProbes);
+
+                // And it is still cached, so the fix did not turn the probe into a per-call cost.
+                Assert.False(GpuBackendSelector.IsBackendSupported(SentinelKind));
+                Assert.Equal(1, replacement.SupportProbes);
+            }
+            finally
+            {
+                release.Set();
+                GpuBackendProviders.Unregister(SentinelKind);
             }
         }
 
@@ -470,6 +536,14 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Thrown out of the probe, for the contract that says a probe blowing up reads as "no".</summary>
         internal Exception? SupportProbeThrows { get; set; }
 
+        /// <summary>Signalled once <see cref="IsSupported"/> has been entered, for a test that needs to act at
+        /// the moment a probe is in flight. Null on every provider that does not care.</summary>
+        internal ManualResetEventSlim? ProbeEntered { get; set; }
+
+        /// <summary>Waited on inside <see cref="IsSupported"/>, so a test can hold a probe open across another
+        /// registry call. Null means the probe returns straight away.</summary>
+        internal ManualResetEventSlim? ProbeRelease { get; set; }
+
         /// <summary>Thrown out of creation, standing in for a driver that fails after passing the probe.</summary>
         internal Exception? CreationThrows { get; set; }
 
@@ -490,6 +564,8 @@ namespace KhaozEngine.Tests.Gpu
         public bool IsSupported()
         {
             SupportProbes++;
+            ProbeEntered?.Set();
+            ProbeRelease?.Wait(TimeSpan.FromSeconds(30));
             if (SupportProbeThrows != null) throw SupportProbeThrows;
             return Supported;
         }

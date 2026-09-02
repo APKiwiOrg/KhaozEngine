@@ -34,4 +34,16 @@
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Game.Tests" />
   </ItemGroup>
+  <!-- THE LINUX HOST-NATIVE FLATTEN, shipped by this package as well as by KhaozEngine.Foundation
+       (https://github.com/APKiwiOrg/KhaozEngine/issues/723). This package carries Silk.NET natives, so a
+       consumer that references it on its own and takes no umbrella needs the rule, and Foundation is not in
+       its dependency closure. The file is the ONE copy under KhaozEngine.Foundation/build, packed here under
+       this package's own PackageId so NuGet auto-imports it with no Import line: only <PackageId>.props and
+       <PackageId>.targets are picked up automatically. A consumer that takes both this and an umbrella lands
+       two copies, which is an override rather than an error, because the two are the same bytes. No
+       PrivateAssets moved anywhere, so asset flow is unchanged. -->
+  <ItemGroup>
+    <None Include="../KhaozEngine.Foundation/build/KhaozEngine.HostNatives.targets" Pack="true" PackagePath="build/KhaozEngine.Windowing.targets" />
+    <None Include="../KhaozEngine.Foundation/build/KhaozEngine.HostNatives.targets" Pack="true" PackagePath="buildTransitive/KhaozEngine.Windowing.targets" />
+  </ItemGroup>
 </Project>

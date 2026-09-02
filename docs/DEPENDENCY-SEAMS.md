@@ -1128,6 +1128,24 @@ list's bindings and faulted several draws later. The three natives all pass it t
 nothing and not a reason to delete it: a pass on either is evidence that nothing nested, never evidence about a
 backend.
 
+**What the gate COSTS, recorded as a chosen narrowing**
+([#613](https://github.com/APKiwiOrg/KhaozEngine/issues/613)). All three native backends advertise N concurrent
+recordings as an argued property of their design, each in its own README: the Direct3D 11 deferred driver
+because two recorders are two arrays and neither touches device state, Vulkan because per-list command pools
+plus list-local layout tracking mean nothing shared is read or written while recording, and Metal because each
+list captures its own uniform segment at its own `Begin`. Those paragraphs are accurate and stay. What is new
+since `17.36.0` is that engine code cannot reach the capability at all, where before there was only a rule
+saying not to. That is the gate doing its job, and it is recorded because the alternative is somebody
+rediscovering it as an obstruction the day they want a streaming upload thread or a parallel pass builder.
+
+The answer that day is not to delete the register. It is an opt-in that keeps the refusal for everything else:
+a per-device concurrency budget, or an explicit escape naming the backend the caller has checked and the list
+they own. Not a global switch, because a failed device creation still swaps the backend under code that cannot
+see it, so a process-wide relaxation would hand the permissive shape to whatever the fallback landed on.
+[#463](https://github.com/APKiwiOrg/KhaozEngine/issues/463), which asks to SHIP multi-threaded recording on the
+native Direct3D 11 backend, is one backend's supportability work and a separate question: whichever of the two
+lands first, the other is still a gate it has to pass.
+
 ## GPU seam member: deferred retirement leaves Render3D (`GpuRetireQueue`, 17.37.0)
 
 `GpuRetireQueue` is a new PUBLIC type on `KhaozEngine.Gpu` (with `GpuRetireBarrier` internal beside it), moved
@@ -1169,6 +1187,17 @@ being left to the backend's ring backpressure to imply: past it the queue drains
 so the bound holds identically on a backend with no ring at all and on an offscreen loop that never
 presents. `ValveDrains` and the now-public `SealedBatchCount` are the two members that let a caller see it working.
 The frame-counted factory needed none of this, since a frame count is already a bound.
+
+**And the bound is sized against the backend rather than fixed
+([#661](https://github.com/APKiwiOrg/KhaozEngine/issues/661)).** A designed bound still has to be the right size,
+and 8 is right for the pipeline depth the three backends ship at. A consumer who raises
+`KE_*_FRAMES_IN_FLIGHT` lets the CPU get further ahead, so the same 8 starts firing the valve on a loop that was
+never behind, and the docs told that consumer to raise `MaxSealedBatches` with it through a parameter no public
+route into a scene reached. `GpuRetireQueue.SealedBatchCapFor(device)` reads the running backend's own knob and
+returns one more sealed batch per extra frame of depth, never below 8, and `Scene3D` passes it. That puts the
+seam in the position of restating three env-var names it cannot reference, which is asserted rather than assumed:
+`GpuRetireQueueSealedBatchCapTests` compares the reader's name and bounds against each backend package's own
+constants.
 
 ## GPU-backend invariant: ONE uniform buffer per pipeline (RETIRED by #604, kept here as history)
 
@@ -1304,17 +1333,27 @@ device feature, which `VulkanFeatureChain` enables by name). Metal expresses `fa
 macOS 10.11. Clamping keeps geometry outside the depth range and rasterizes it with its depth pinned to the
 limit, rather than discarding it.
 
-**One carve-out, and it is Metal's alone: a render pass with NO depth attachment drops the flag.** Both Metal
-paths emit `-setDepthClipMode:` inside the same guard as the depth-stencil state, and that guard is the bound
-FRAMEBUFFER having a depth attachment, because a depth-stencil state on a depth-less pass is a validation
-failure (`../KhaozEngine.Gpu.Metal/Internal/MetalRenderApi.cs:134-138` returns early on `!block.DepthTrio`).
-A colour-only target therefore rasterizes at the encoder default, `MTLDepthClipModeClip`, whatever the
-bound pipeline asked for, and `false` cannot be expressed there at all. Direct3D 11 and Vulkan keep the flag in
-rasterizer state that exists with or without a depth attachment, so they honour it there. No pixel differs
-today: the engine's colour-only passes are the fullscreen post ones, whose vertex stage emits z = 0 exactly,
-and `SpriteBatch` takes its z from a 2D ortho, both inside the depth range where the two modes agree.
-[#674](https://github.com/APKiwiOrg/KhaozEngine/issues/674) decides whether Metal honours it on a depth-less
-pass or the seam declares it undefined there.
+**The carve-out that used to sit here is closed: a render pass with no depth attachment honours the flag on
+every backend.** Metal used to emit `-setDepthClipMode:` inside the same guard as the depth-stencil state, and
+that guard is the bound FRAMEBUFFER having a depth attachment, because a depth-stencil state on a depth-less
+pass is a validation failure. A colour-only target therefore rasterized at the encoder default,
+`MTLDepthClipModeClip`, whatever the bound pipeline asked for, and `false` could not be expressed there at all,
+while Direct3D 11 and Vulkan kept the flag in rasterizer state that exists with or without a depth attachment
+and honoured it. [#674](https://github.com/APKiwiOrg/KhaozEngine/issues/674) hoisted the call out of the guard:
+the clip mode is encoder RASTERIZER state, it sits beside the cull mode, the winding and the fill mode, and the
+API validation layer accepts it on a depth-less pass. What stays guarded is the depth PAIR,
+`-setDepthStencilState:` and `-setStencilReferenceValue:`
+(`../KhaozEngine.Gpu.Metal/Internal/MetalRenderApi.cs` returns early on `!block.DepthPair`).
+
+No pixel moved. The engine's colour-only passes are the fullscreen post ones, whose vertex stage emits z = 0
+exactly, and `SpriteBatch` takes its z from a 2D ortho, both inside the depth range where clipping and clamping
+agree, so no golden is sensitive to the difference in either direction. The row that proves the fix is
+`DepthClipModeGpuTests.DepthClipDisabled_KeepsTheHalfInFrontOfTheNearPlane_OnAColourOnlyPass`, with its clipping
+control beside it, and both run on whichever device the leg holds.
+
+That the fix could land alone is a consequence of the fork going away. Until 18.0.0 the vendored Veldrid path
+gated the same three calls on the same condition, so the two Metal backends had to move together or the shared
+`metal` golden family reddened by construction. There is one Metal path now.
 
 **Why it needed writing down.** Until 17.39.0 BOTH Metal paths derived the clip mode from
 `DepthStencilState.DepthTestEnabled` and read `DepthClipEnabled` nowhere at all

@@ -249,6 +249,14 @@ and macOS (both resolve out of `runtimes/` fine) and on `publish -r <rid>` (the 
 A project that references no native package copies nothing. Set
 `<KhaozEngineFlattenHostNatives>false</KhaozEngineFlattenHostNatives>` if you lay the natives out yourself.
 
+**And the three packages that carry the natives ship the same rule themselves**, so a project that takes one of
+them on its own and no umbrella is covered too
+([#723](https://github.com/APKiwiOrg/KhaozEngine/issues/723)). `KhaozEngine.Gpu`, `KhaozEngine.Windowing` and
+`KhaozEngine.Audio` each pack the one physical rule file under their own package name, which NuGet auto-imports.
+That is the case a Linux shader tool on `Gpu` alone, or a headless audio tool on `Audio` alone, used to miss:
+`Foundation` is not in any of their dependency closures. Taking both a package and an umbrella lands two copies
+of identical targets, which MSBuild treats as a redefinition rather than an error.
+
 **New game head checklist:** set `<OutputType>WinExe</OutputType>` on the Desktop head (no stray console window;
 the engine attaches the parent console for terminal launches). `CETCompat` and
 `IncludeNativeLibrariesForSelfExtract` are the engine-imposed build-property defaults. Pin your umbrella package
@@ -10532,9 +10540,11 @@ foreach (GpuBackendKind kind in GpuBackendSelector.SupportedBackends())
 ```
 
 `SupportedBackends()` is a FUNCTIONAL probe, not a platform guess: it loads each backend's library, creates an
-instance, enumerates physical devices, and for Vulkan checks the required surface extensions. Results are cached
-for the process lifetime, so a settings screen may call it freely. `IsBackendSupported(kind)` asks about one.
-`OpenGL` is never offered, because there is no windowed GL device path.
+instance, enumerates physical devices, and for Vulkan checks the required surface extensions. A result is cached
+against the provider that produced it, so a settings screen may call it freely and a backend whose provider is
+registered again with a DIFFERENT instance is re-probed, including when that registration lands while the
+outgoing provider's probe is still running. `IsBackendSupported(kind)` asks about one. `OpenGL` is never
+offered, because there is no windowed GL device path.
 
 **Since 18.0.0 the list carries exactly the three native kinds**, in the order `MetalNative`, `VulkanNative`,
 `Direct3D11Native`. A kind appears only where its provider is registered, and the retired members are never
@@ -11090,12 +11100,13 @@ the machine has ever run. Only the default location is swept, never a directory 
 others take: `GpuResourceLayoutElement`'s `dynamic: true` on a texture or a sampler element. The per-draw offset
 is applied with Metal's `setBufferOffset:`, which exists only for buffers, so a dynamic offset declared anywhere
 else would be silently dropped at every bind and is refused at layout creation instead. On a buffer element of
-any kind it is accepted, including both structured kinds, which is the width
-`GpuResourceLayoutElement.Dynamic` documents ("a dynamic-offset uniform/structured buffer"). Both native
-siblings are NARROWER than that: the native Vulkan and Direct3D 11 backends refuse a dynamic structured element
-at layout creation, each for a reason that is real on its own API. So a dynamic structured element works on
-`MetalNative` alone today, and reconciling the seam's documented width with those two refusals is
-[#597](https://github.com/APKiwiOrg/KhaozEngine/issues/597): treat it as Metal-only until that lands.
+any kind it is accepted, including both structured kinds, and that is WIDER than the seam
+([#597](https://github.com/APKiwiOrg/KhaozEngine/issues/597)). `GpuResourceLayoutElement.Dynamic` is a
+dynamic-offset UNIFORM buffer and only that. The native Vulkan and Direct3D 11 backends both refuse a dynamic
+structured element at layout creation, each for a reason real on its own API, and the Direct3D 11 one is not
+closeable at all: a structured buffer binds through a view created once over the whole buffer and neither
+`*SetShaderResources` nor `*SetUnorderedAccessViews` has a per-bind window for the offset. So the seam names the
+narrow guarantee and this backend's extra width is a documented superset. Write one and you are macOS-only.
 
 **A set is resolved once when you create it, and what it refuses it refuses there.** A resource that is already
 disposed, a staging texture (it is a mappable buffer on this backend rather than a texture), and a texture bound
@@ -11383,6 +11394,15 @@ else { /* GpuRecording.OpenOwner(gd) says who has it */ }
 `CanOpen` is advisory rather than a reservation: it answers for the instant it was called, so a concurrent
 `Open` on the same device can still win the race between the `true` it returned and the open it encouraged.
 Branch on it to avoid an expected refusal, never to make one impossible.
+
+**The refusal holds even where your backend would have coped, and that is deliberate**
+([#613](https://github.com/APKiwiOrg/KhaozEngine/issues/613)). All three native backends can genuinely record N
+lists at once, each for its own structural reason, and each says so in its own README. The register refuses a
+second one anyway, because a failed device creation swaps the backend under code that cannot see it, so the only
+thing portable code can be written against is the narrow rule. If you want parallel recording, say so on
+[#613](https://github.com/APKiwiOrg/KhaozEngine/issues/613) rather than working around the register: the opt-in
+shape it needs (a per-device budget, or an explicit escape naming the backend you have checked) is a decision,
+not a switch, and there is nowhere to flip it today.
 
 The exception is what you now get for calling one of these mid-frame, on every backend: `Scene3D.LoadTexture`
 with mips, `Scene3D.LoadSplatMaterial`, `Scene3D.LoadTileGroundMaterial`, `Scene3D.DebugReadShadowMap`,
@@ -13386,7 +13406,18 @@ sealed batches (default 8) the queue pays one `WaitForIdle` and frees the whole 
 costs at most one drain per nine frames of sustained fall-behind. Whether it fires is a property of the
 LOOP rather than of the GPU: a windowed loop blocks in its present at the backend's frames-in-flight
 depth and never comes near the cap, while an offscreen loop that submits without presenting runs eight or
-nine frames ahead even on fast hardware. `GpuRetireQueue.ValveDrains` counts the firings and
+nine frames ahead even on fast hardware.
+
+**Raising `KE_METAL_FRAMES_IN_FLIGHT` / `KE_VULKAN_FRAMES_IN_FLIGHT` / `KE_D3D11_FRAMES_IN_FLIGHT` costs you
+nothing here, and there is nothing for you to do about it**
+([#661](https://github.com/APKiwiOrg/KhaozEngine/issues/661)). A deeper pipeline lets the CPU get further ahead,
+so a fixed cap of 8 would start firing the valve on a loop that was never behind. `Scene3D` sizes its own cap off
+whichever of those variables its backend reads, one extra sealed batch per extra frame of depth and never below
+8, so the default is unchanged and a raised knob is absorbed.
+`GpuRetireQueue.SealedBatchCapFor(device)` is that rule if you build a queue of your own, and
+`SealedBatchCapForDepth(n)` is it with the depth handed in.
+
+`GpuRetireQueue.ValveDrains` counts the firings and
 `SealedBatchCount` is the batch-level view of the holding, next to `Scene3D.RetiredResourceCount`.
 
 **2D set eviction does not drain either, since 17.37.0.** `SpriteBatch` keeps one resource set per

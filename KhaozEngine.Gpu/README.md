@@ -371,9 +371,12 @@ What it owns today:
     submitted batch complete, then frees the whole holding behind it. `Create(device, frameDelay,
     maxSealedBatches)` sets it and `DefaultMaxSealedBatches` is 8: comfortably above the deepest a PRESENTED loop
     reaches, since the present stops the CPU at `KE_*_FRAMES_IN_FLIGHT` frames ahead (default 3) and each of those
-    frames has to have retired something to seal a batch. Raising that knob past 8 wants this raised with it or you
-    buy a drain you did not need, and there is no way to do it from outside the engine today
-    ([#661](https://github.com/APKiwiOrg/KhaozEngine/issues/661)). What actually decides whether it fires is how far
+    frames has to have retired something to seal a batch. Raising that knob wants this raised with it or you buy a
+    drain you did not need, and `SealedBatchCapFor(device)` does that for you: it reads the running backend's own
+    frames-in-flight variable and returns one more sealed batch per extra frame of depth, never below 8, which is
+    what `Scene3D` passes ([#661](https://github.com/APKiwiOrg/KhaozEngine/issues/661)). So a consumer who deepens
+    the pipeline pays nothing extra and a consumer who touches nothing gets the same 8 as before, and
+    `SealedBatchCapForDepth(n)` is the same rule with the depth handed in. What actually decides whether it fires is how far
     ahead the LOOP gets rather than how fast the GPU is: an offscreen loop that submits without presenting has
     nothing throttling it and runs eight or nine frames ahead on an M2 Max, where the engine's own 400-frame churn
     test parks the peak holding exactly on the cap and fires the valve anywhere from once to a couple of dozen times
@@ -479,3 +482,12 @@ reflection in `GpuPublicApiTests` here, and by `ArchitectureTests.ThirdPartyHome
 shader-toolchain package ids (`Silk.NET.Shaderc`, `Silk.NET.SPIRV.Cross`, `Silk.NET.SPIRV` and the two `.Native`
 blobs) to this package alone, and to its shader toolchain alone). Adding a backend is a new
 `IGpuDevice` implementation behind an `IGpuBackendProvider`, not a consumer-visible change.
+
+**Linux host natives, packed here as well as in `KhaozEngine.Foundation`
+([#723](https://github.com/APKiwiOrg/KhaozEngine/issues/723)).** Silk.NET resolves its bindings itself rather
+than through `[DllImport]`, and on Linux it probes `runtimes/<distro rid>/native`, which nothing writes, so the
+shader-toolchain natives (`libshaderc_shared`, `libspirv-cross`) never load until they sit flat beside the assemblies. This package carries a build rule that copies them
+there on `build` and on a rid-agnostic `publish`, no-op on Windows, macOS and `publish -r <rid>`, opt out with
+`<KhaozEngineFlattenHostNatives>false</KhaozEngineFlattenHostNatives>`. It ships here as well as in `Foundation`
+because `Foundation` is not in this package's dependency closure, so a project that references this one and no
+umbrella would otherwise get nothing. One physical rule file, so the two copies cannot drift.

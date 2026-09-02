@@ -26,8 +26,8 @@ namespace KhaozEngine.Tests.Gpu
     /// <c>[Fact]</c> AND WHY IT HAS TO BE ONE.</b> A missing pre-draw step does not throw and does not report: it
     /// renders PLAUSIBLY WRONG. A state block that is emitted twice costs five calls a frame nobody counts. A
     /// state block that is NOT re-emitted after an encoder boundary draws with whatever the previous pipeline
-    /// left in force. A depth trio sent to a pass with no depth attachment is a validation error only the debug
-    /// layer on the one Metal leg can see, and a trio SKIPPED for a pass that has one silently leaves the
+    /// left in force. A depth-STATE call sent to a pass with no depth attachment is a validation error only the
+    /// debug layer on the one Metal leg can see, and a pair SKIPPED for a pass that has one silently leaves the
     /// previous pipeline's depth test applying. None of that is visible in a golden, and all of it is visible
     /// here.</para>
     ///
@@ -260,29 +260,35 @@ namespace KhaozEngine.Tests.Gpu
             list.End();
         }
 
-        // ---- The depth trio -------------------------------------------------------------------------------
+        // ---- The depth pair -------------------------------------------------------------------------------
 
         /// <summary>
-        /// THE DEPTH-TRIO GUARD, BOTH WAYS, AND IT IS THE BOUND FRAMEBUFFER'S CONDITION AND NOTHING ELSE.
+        /// THE DEPTH-PAIR GUARD, BOTH WAYS, AND IT IS THE BOUND FRAMEBUFFER'S CONDITION AND NOTHING ELSE.
         ///
         /// <para><b>THIS ROW EXISTS BECAUSE THE DEBUG LAYER WOULD OTHERWISE BE THE ONLY WITNESS, AND ONLY ON ONE
-        /// LEG.</b> Sending <c>-setDepthStencilState:</c> and its two companions to a pass with no depth
+        /// LEG.</b> Sending <c>-setDepthStencilState:</c> and the stencil reference to a pass with no depth
         /// attachment is a validation error under <c>MTL_DEBUG_LAYER</c>, which M-T7 arms on the native Metal leg
-        /// alone. The other direction reports NOTHING anywhere: skipping the trio for a pass that HAS depth
+        /// alone. The other direction reports NOTHING anywhere: skipping the pair for a pass that HAS depth
         /// leaves whatever the previous pipeline set in force, which is a depth test that silently keeps
         /// applying, and the 36 committed <c>metal</c> goldens were baked through the incumbent emitting it.</para>
         ///
+        /// <para><b>THE CLIP MODE IS NOT UNDER THIS GUARD AND HAS NOT BEEN SINCE
+        /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/674">#674</see>.</b> It is rasterizer state
+        /// rather than depth state, it is what the seam's <c>GpuRasterizerState.DepthClipEnabled</c> becomes on
+        /// Metal, and it binds on a pass with no depth attachment. Both blocks below therefore carry the SAME
+        /// clip mode, which is what the one-field equality assertion at the end pins.</para>
+        ///
         /// <para><b>THE GUARD IS NOT THE ONE A READER EXPECTS, WHICH IS WHY BOTH ARMS USE THE SAME PIPELINE.</b>
-        /// Two things could plausibly gate the trio: the framebuffer having a depth attachment, or the pipeline
+        /// Two things could plausibly gate the pair: the framebuffer having a depth attachment, or the pipeline
         /// declaring a depth output. The incumbent asked only the first, so the two blocks below differ in exactly
         /// one field and the equality assertion pins that.</para>
         ///
-        /// <para><b>WHAT A RED RUN MEANS.</b> Either a colour-only pass is being sent the trio (a validation
-        /// error the Metal leg reports and the other four legs do not), or a depth pass is not, which is a
+        /// <para><b>WHAT A RED RUN MEANS.</b> Either a colour-only pass is being sent the pair (a validation
+        /// error the Metal leg reports and the other legs do not), or a depth pass is not, which is a
         /// stale depth test and a wrong picture with nothing said.</para>
         /// </summary>
         [Fact]
-        public void TheDepthTrioIsTheBoundFramebuffersConditionAndNothingElse()
+        public void TheDepthPairIsTheBoundFramebuffersConditionAndNothingElse()
         {
             (MetalCommandList list, _, FakeMetalRenderCalls render, _) = NewList();
             MetalGraphicsPipeline pipeline = Pipeline();
@@ -293,7 +299,7 @@ namespace KhaozEngine.Tests.Gpu
             list.Draw(3);
 
             MetalGraphicsStateBlock withDepth = render.StateBlocks[0].Block;
-            Assert.True(withDepth.DepthTrio);
+            Assert.True(withDepth.DepthPair);
             Assert.Equal(MetalGraphicsStateBlock.For(pipeline, framebufferHasDepth: true), withDepth);
 
             // The framebuffer change ends the pass, so the next draw opens a new encoder and owes a fresh block.
@@ -301,12 +307,12 @@ namespace KhaozEngine.Tests.Gpu
             list.Draw(3);
 
             MetalGraphicsStateBlock withoutDepth = render.StateBlocks[1].Block;
-            Assert.False(withoutDepth.DepthTrio);
+            Assert.False(withoutDepth.DepthPair);
 
             // ONE FIELD APART, on one pipeline, which is the whole of the claim that the guard is the
             // framebuffer's.
             Assert.Equal(2, render.StateBlocks.Count);
-            Assert.Equal(withDepth with { DepthTrio = false }, withoutDepth);
+            Assert.Equal(withDepth with { DepthPair = false }, withoutDepth);
 
             list.End();
         }
@@ -719,7 +725,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// EACH INSTANCE MINTS ITS OWN <c>Id</c>, which is what M-A6's framebuffer-change guard compares. Two
     /// instances that shared a number would read as the same framebuffer and a rebind between them would do
-    /// nothing at all, which is precisely the case the depth-trio row drives.
+    /// nothing at all, which is precisely the case the depth-pair row drives.
     /// </para>
     /// </summary>
     internal sealed class RecordedFramebuffer : IGpuFramebuffer, IMetalBoundFramebufferSource
@@ -729,7 +735,7 @@ namespace KhaozEngine.Tests.Gpu
         static int _nextId;
 
         /// <param name="depth">Whether this framebuffer declares a depth attachment, which is the whole of the
-        /// depth trio's guard.</param>
+        /// depth pair's guard.</param>
         /// <param name="width">Width in pixels, which is also the viewport and the full scissor.</param>
         /// <param name="height">Height in pixels.</param>
         internal RecordedFramebuffer(bool depth = false, uint width = 64, uint height = 64)

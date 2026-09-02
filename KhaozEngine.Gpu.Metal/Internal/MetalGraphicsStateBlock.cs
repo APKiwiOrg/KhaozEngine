@@ -5,20 +5,20 @@ using KhaozEngine.Gpu.Metal.Internal.ObjC;
 namespace KhaozEngine.Gpu.Metal.Internal
 {
     /// <summary>
-    /// THE PIPELINE-STATE BLOCK AS ONE VALUE: the five calls a pipeline change always emits into a render
-    /// encoder, plus the DEPTH TRIO and the one condition that decides whether it is emitted at all (section 6.3,
+    /// THE PIPELINE-STATE BLOCK AS ONE VALUE: the six calls a pipeline change always emits into a render
+    /// encoder, plus the DEPTH PAIR and the one condition that decides whether it is emitted at all (section 6.3,
     /// work-breakdown row 14, https://github.com/APKiwiOrg/KhaozEngine/issues/580).
     ///
     /// <para><b>IT IS A VALUE SO THE GUARD IS A DEVICE-FREE ASSERTION RATHER THAN A CODE PATH INSIDE A NATIVE
-    /// CALL.</b> The incumbent's <c>PreDrawCommand</c> writes the eight setters inline with the depth trio behind
+    /// CALL.</b> The incumbent's <c>PreDrawCommand</c> writes the eight setters inline with three of them behind
     /// an <c>if (_framebuffer.DepthTarget != null)</c>, so the only way to check that condition there is to run a
     /// pass on a device and read what the debug layer says. Here the condition produces
-    /// <see cref="DepthTrio"/> and the emission is one <c>IMetalRenderApi</c> call, which is the same split
+    /// <see cref="DepthPair"/> and the emission is one <c>IMetalRenderApi</c> call, which is the same split
     /// <see cref="MetalRenderPassSchedule"/> makes for the load and store actions and for the same reason: a
     /// decision that can be wrong runs on every leg, and the message send runs where there is a device.</para>
     ///
     /// <para><b>THE GUARD IS THE FRAMEBUFFER'S AND ONLY THE FRAMEBUFFER'S, WHICH IS THE INCUMBENT'S OWN CONDITION
-    /// AND NOT THE ONE A READER EXPECTS.</b> Two things could plausibly gate the trio: the bound framebuffer
+    /// AND NOT THE ONE A READER EXPECTS.</b> Two things could plausibly gate the pair: the bound framebuffer
     /// having a depth attachment, or the bound pipeline declaring a depth output. The incumbent asked only the
     /// first, so a COLOUR-ONLY pipeline drawing into a framebuffer that has depth is sent
     /// <c>-setDepthStencilState:</c> with the NIL state object row 11 creates for it, which Metal reads as its
@@ -26,10 +26,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// goldens were baked through it, and a backend that skipped the call for a nil state would leave whatever
     /// the previous pipeline set in force, which is a depth test that silently keeps applying.</para>
     ///
-    /// <para><b>AND THE OTHER DIRECTION IS THE ONE THE DEBUG LAYER CATCHES.</b> Sending the trio to a pass with no
+    /// <para><b>AND THE OTHER DIRECTION IS THE ONE THE DEBUG LAYER CATCHES.</b> Sending the pair to a pass with no
     /// depth attachment is a validation error under <c>MTL_DEBUG_LAYER</c>, which M-T7 arms on every native-leg
     /// run, so this is one of the places the leg reports immediately rather than late. That asymmetry is why the
     /// condition is carried as a field rather than left to the caller to remember.</para>
+    ///
+    /// <para><b>THE CLIP MODE IS NOT IN THE PAIR, WHICH IS THE WHOLE OF ISSUE 674.</b> It used to be, because the
+    /// incumbent gated all three depth-named calls on the one condition. <c>-setDepthClipMode:</c> is ordinary
+    /// encoder rasterizer state though, legal and meaningful on a pass with no depth attachment, and it is the
+    /// only expression Metal has for the seam's <c>GpuRasterizerState.DepthClipEnabled</c>. Gating it meant a
+    /// colour-only pass silently rasterized at the encoder default, <c>MTLDepthClipModeClip</c>, where Direct3D
+    /// 11 and Vulkan both honoured the flag. <see cref="DepthClipMode"/> is therefore meaningful whatever
+    /// <see cref="DepthPair"/> says, and <see cref="IMetalRenderApi.SetGraphicsState"/> emits it unguarded.</para>
     ///
     /// <para><b>HANDLES ARE <see cref="IntPtr"/>, which is <see cref="IMetalRenderApi"/>'s rule applied to the
     /// value that crosses it.</b> Nothing above the interop layer names an Objective-C object, so a fake records
@@ -41,16 +49,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <param name="FillMode">For <c>-setTriangleFillMode:</c>.</param>
     /// <param name="BlendColour">For <c>-setBlendColorRed:green:blue:alpha:</c>, which the two constant blend
     /// factors read.</param>
-    /// <param name="DepthTrio">Whether the three depth calls are emitted, which is the BOUND FRAMEBUFFER having a
-    /// depth attachment and nothing else.</param>
+    /// <param name="DepthPair">Whether the two depth-STATE calls are emitted, which is the BOUND FRAMEBUFFER
+    /// having a depth attachment and nothing else. It does not gate <paramref name="DepthClipMode"/>.</param>
     /// <param name="DepthStencilState">The <c>MTLDepthStencilState</c>, or <see cref="IntPtr.Zero"/> for a
-    /// pipeline that declares no depth output. Meaningful only under <paramref name="DepthTrio"/>.</param>
-    /// <param name="DepthClipMode">For <c>-setDepthClipMode:</c>.</param>
+    /// pipeline that declares no depth output. Meaningful only under <paramref name="DepthPair"/>.</param>
+    /// <param name="DepthClipMode">For <c>-setDepthClipMode:</c>. Emitted on every pipeline change, depth
+    /// attachment or not (issue 674).</param>
     /// <param name="StencilReference">For <c>-setStencilReferenceValue:</c>. Always 0, because the seam carries
-    /// no stencil state at all.</param>
+    /// no stencil state at all. Meaningful only under <paramref name="DepthPair"/>.</param>
     internal readonly record struct MetalGraphicsStateBlock(
         IntPtr RenderState, MTLCullMode CullMode, MTLWinding FrontFace, MTLTriangleFillMode FillMode,
-        Vector4 BlendColour, bool DepthTrio, IntPtr DepthStencilState, MTLDepthClipMode DepthClipMode,
+        Vector4 BlendColour, bool DepthPair, IntPtr DepthStencilState, MTLDepthClipMode DepthClipMode,
         uint StencilReference)
     {
         /// <summary>

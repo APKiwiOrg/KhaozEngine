@@ -37,7 +37,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// exist, so <c>-setRenderPipelineState:</c> and its five to eight companions land with the draw row
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/580) together with their caller. What lands here is every
     /// decision that block makes, in a form a device-free test can read: which values it emits, and whether the
-    /// depth trio is among them.</para>
+    /// depth pair is among them.</para>
     /// </summary>
     /// <param name="CullMode">Which faces the rasterizer discards.</param>
     /// <param name="FrontFace">Which winding is front.</param>

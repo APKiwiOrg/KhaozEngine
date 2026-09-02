@@ -521,11 +521,17 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     // command. That is deliberate: the tick was already spent on the step whose start the map refused, so charging
     // it to the replacement would pay for it twice. The player hesitates for one step when the way closes in front
     // of them, which is the one place the class doc's "a click never costs a tick" does not hold.
+    //
+    // The total is re-stamped with the progress, so the state this returns agrees with its own Mode. Start stamps
+    // the replacement step as it commits, so the CADENCE was already right without this: what was wrong was the
+    // standing state in between, whose StepTotal still held the cadence of the step the map had just refused, on
+    // the wire and in equality, for every tick until the next step started.
     TileMoveState Repath(in TileMoveState state)
     {
         TileMoveState s = state;
         TileCoord end = s.Route.End;
         s.StepTicks = 0;
+        s.StepTotal = StepTicks.For(s.Mode);
         TilePath path = TilePathfinder.FindPath(Map, s.Tile.Plane, s.Tile, end, AgentSize, MaxPathRadius);
         s.Route = RouteFor(path);
         if (s.Route.IsIdle) s.InteractTarget = 0;

@@ -157,6 +157,33 @@ public class TileWorldPersistenceTests
         Assert.Empty(keys);
     }
 
+    // The tile binding puts the PLANE on the Vector3's Y, so a restore that moves a player one whole floor measures
+    // a distance of exactly 1. Against the core's own default of 1f that passed as no move at all, the record was
+    // applied without a teleport, and the client glided between floors instead of cutting. A lattice binding wants a
+    // sub-1 threshold, because the only distance that means "did not move" on a lattice is zero.
+    [Theory]
+    [InlineData(5, 5, 1, true)]        // one plane up: a move, and a loud one
+    [InlineData(6, 5, 0, true)]        // one tile east: the same distance, and the same answer
+    [InlineData(5, 5, 0, false)]       // the tile the join already seeded: still quiet, which is what #642 needs
+    public async Task A_restore_that_moves_a_player_one_plane_reports_a_teleport(int x, int z, int plane, bool loud)
+    {
+        var store = new InMemoryWorldStore();
+        await store.SaveAsync("player:acct-plane",
+            TilePlayerRecord.From(TileMoveState.At(new TileCoord(x, z, plane), TileDirection.S)).Encode());
+
+        var host = new FakeHost();
+        var p = new TileWorldPersistence(host, store, Map);
+        // Seeded on (5, 5, 0), which is what a rejoin hint does: the stored record is one plane, one tile, or
+        // nothing away from where the player already stands.
+        host.Join(6, "acct-plane", TileMoveState.At(new TileCoord(5, 5, 0), TileDirection.N));
+        await p.FlushAsync();
+
+        (int slot, TileMoveState state, bool teleport) = Assert.Single(host.Placed);
+        Assert.Equal(6, slot);
+        Assert.Equal(new TileCoord(x, z, plane), state.Tile);
+        Assert.Equal(loud, teleport);
+    }
+
     // A record can outlive the world it was written against: an authored-world edit drops or moves a region, or
     // lowers the plane count, and a player who logged out there is now stored somewhere the running build has no
     // ground for. TileWorldServer.SetPlayerState refuses both, by design and with a throw, because it is a door for

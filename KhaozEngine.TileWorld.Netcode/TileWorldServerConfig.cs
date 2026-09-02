@@ -45,13 +45,21 @@ public sealed record TileWorldServerConfig
 
     /// <summary>Planes the world has, used to refuse a command naming one it does not. It is the world's number
     /// rather than the protocol's: the wire carries a plane in one byte, so a document with more planes than this
-    /// would be refused at the decoder long before it got here.</summary>
+    /// would be refused at the decoder long before it got here.
+    /// <para>Refused means REWRITTEN to <see cref="TileCommand.Continue"/> at the command's own mode, not dropped
+    /// whole. That half is load-bearing for a client, which has to mirror it: the run toggle the command carried
+    /// still applies on the tick it arrived, and a head that drops the command entirely instead mispredicts that
+    /// toggle and reconciles. <see cref="TileWorldClientConfig.PlaneCount"/> is the mirror.</para></summary>
     public int PlaneCount { get; init; } = TileWorldDocument.DefaultPlaneCount;
 
     /// <summary>Largest Chebyshev distance from the player a walk goal may name. A farther goal is dropped rather
     /// than pathed, because the pathfinder's search window is (2r+1)^2 scratch entries and an unbounded goal is an
     /// unbounded allocation a client chooses. Dropped rather than clamped, so the two heads never end up walking to
-    /// two different tiles.</summary>
+    /// two different tiles.
+    /// <para>The WALK is what is dropped. The command itself is rewritten to <see cref="TileCommand.Continue"/> at
+    /// its own mode, so the run toggle it carried still applies on the tick it arrived, and a client that drops it
+    /// whole instead mispredicts that toggle. <see cref="TileWorldClientConfig.MaxGoalRadius"/> is the mirror, and
+    /// it states the same rewrite from the client's end.</para></summary>
     public int MaxGoalRadius { get; init; } = TilePathfinder.DefaultMaxRadius;
 
     /// <summary>How many server-owned actors one cell may hold. A cell is a REGION (see <see cref="TileCells"/>),

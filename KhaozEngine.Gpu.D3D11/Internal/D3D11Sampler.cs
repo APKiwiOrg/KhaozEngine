@@ -38,7 +38,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>
         /// Wrap a new sampler state built from <paramref name="description"/>. <paramref name="ownsSampler"/> is
         /// false for a device-owned shared sampler (the point and linear pair every device exposes), so handing
-        /// one to a consumer that disposes it does not destroy the device's own.
+        /// one to a consumer that disposes it does not destroy the device's own. The device destroys its own pair
+        /// through <see cref="DestroyShared"/> at teardown, which is the only thing that frees a non-owning one.
         /// </summary>
         internal D3D11Sampler(ID3D11Device device, DeviceLiveness liveness,
             in GpuSamplerDescription description, bool ownsSampler = true)
@@ -54,7 +55,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>The native sampler state.</summary>
         internal ID3D11SamplerState SamplerState { get; }
 
-        /// <summary>True once disposed, whether or not anything native was released.</summary>
+        /// <summary>Whether this wrapper destroys its sampler. False for the device's shared pair.</summary>
+        internal bool OwnsSampler => _owns;
+
+        /// <summary>True once disposed, whether or not anything native was released. A NON-OWNING wrapper never
+        /// reaches it through <see cref="Dispose"/>: see that method.</summary>
         internal bool IsDisposed { get; private set; }
 
         // ---- ID3D11BindableViews: a sampler fills the 's' file and no other ----
@@ -71,11 +76,36 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <inheritdoc/>
         object? ID3D11BindableViews.BufferObject => null;
 
+        /// <summary>
+        /// Release the sampler state, once, and never on a dead device, or do nothing AT ALL for the device's
+        /// shared pair (https://github.com/APKiwiOrg/KhaozEngine/issues/506).
+        /// <para>
+        /// A NON-OWNING WRAPPER RETURNS WITHOUT EVEN MARKING ITSELF DISPOSED, which looks like an oversight and
+        /// is the point. The device destroys its shared pair through <see cref="DestroyShared"/> at teardown, and
+        /// a flag set here would make that call a no-op, so a consumer that disposed what
+        /// <c>IGpuDevice.PointSampler</c> handed it would leak the device's own sampler until the device itself
+        /// was released. This is the same rule the Vulkan backend applies to its own pair.
+        /// </para>
+        /// </summary>
         public void Dispose()
+        {
+            if (!_owns || IsDisposed) return;
+            IsDisposed = true;
+
+            if (_liveness.IsDead) return;
+            SamplerState.Dispose();
+        }
+
+        /// <summary>Destroy a DEVICE-OWNED shared sampler, which <see cref="Dispose"/> deliberately will not. The
+        /// device's teardown calls this while the liveness token still says alive, which is the window in which
+        /// releasing a child of the device is safe at all, and it is also what a failed construction unwinds
+        /// through.</summary>
+        internal void DestroyShared()
         {
             if (IsDisposed) return;
             IsDisposed = true;
-            if (!_owns || _liveness.IsDead) return;
+
+            if (_liveness.IsDead) return;
             SamplerState.Dispose();
         }
 

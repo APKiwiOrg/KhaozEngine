@@ -219,17 +219,23 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // BOTH ARE WRAP ON ALL THREE AXES, so neither can reach the border-colour refusal whatever the device
             // answers. The flag is passed rather than hardcoded true because this path must not be the one place
             // that decides, and MetalSharedSamplers is where the wrap is stated.
-            _pointSampler = MetalSampler.Create(_device, _liveness, MetalSharedSamplers.Point, _supportsBorderColor);
+            //
+            // NON-OWNING (https://github.com/APKiwiOrg/KhaozEngine/issues/506): the device hands the same two
+            // objects to every caller for the process's life, so a consumer that disposes one must destroy
+            // nothing. Only DestroyShared frees them, and the device is the only thing that calls it.
+            _pointSampler = MetalSampler.Create(_device, _liveness, MetalSharedSamplers.Point,
+                _supportsBorderColor, ownsSampler: false);
 
             try
             {
                 _linearSampler = MetalSampler.Create(_device, _liveness, MetalSharedSamplers.Linear,
-                    _supportsBorderColor);
+                    _supportsBorderColor, ownsSampler: false);
             }
             catch
             {
-                // The point sampler is already a live +1 object nothing else has a reference to.
-                _pointSampler.Dispose();
+                // The point sampler is already a live +1 object nothing else has a reference to, and its Dispose
+                // is the no-op that protects it from a consumer, so the destroy is what releases it here.
+                _pointSampler.DestroyShared();
                 throw;
             }
         }

@@ -73,8 +73,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         readonly D3D11Swapchain? _swapchain;
         readonly D3D11InfoQueuePump? _infoQueue;
         readonly D3D11RecordMode _recordMode;
-        readonly IGpuSampler _pointSampler;
-        readonly IGpuSampler _linearSampler;
+        // THE CONCRETE TYPE, because the pair is NON-OWNING and only D3D11Sampler.DestroyShared can free it
+        // (https://github.com/APKiwiOrg/KhaozEngine/issues/506). Both still travel out through the seam as
+        // IGpuSampler.
+        readonly D3D11Sampler _pointSampler;
+        readonly D3D11Sampler _linearSampler;
         readonly bool _softwareAdapter;
 
         // NOT readonly, and it cannot be: D3D11CommandDrivers.Submit takes the emitter by ref, so a readonly
@@ -477,6 +480,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// while the token still says the device is alive, and the token is flipped LAST.
         /// </para>
         /// <para>
+        /// THE SHARED SAMPLER PAIR IS RELEASED THROUGH ITS OWN DESTROY, not through <c>Dispose</c>. It is
+        /// non-owning by construction, so a consumer that disposed <see cref="PointSampler"/> destroys nothing,
+        /// and only the call below frees the two sampler states.
+        /// </para>
+        /// <para>
         /// THE ORDER IS THE TWO LOCK GUARDS AND THE TIMELINE'S. The drain is called with no lock held, because it
         /// refuses a caller holding the submit lock by name and it is the one member that can block, and it is
         /// taken with <see cref="D3D11TeardownDrain"/>'s budget, because the caller holds the process-wide
@@ -513,8 +521,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             _infoQueue?.Dispose();
             _swapchain?.Dispose();
-            _pointSampler.Dispose();
-            _linearSampler.Dispose();
+
+            // DestroyShared rather than Dispose, because the pair is deliberately non-owning: Dispose is the
+            // no-op that protects it from a consumer, and this is the only call that frees the sampler states.
+            _pointSampler.DestroyShared();
+            _linearSampler.DestroyShared();
             _fences.Dispose();
 
             // LAST, so every release above ran against a live device and every straggler after this one is the

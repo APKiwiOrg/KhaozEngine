@@ -530,6 +530,11 @@ of them carrying an engine wire token the client matches and localizes itself:
 out-of-band notices carry `TileServerReason`: `ke:cannot-reach`, `ke:draining` and `ke:kicked`, all prefixed `ke:`
 so a game's own tokens can never collide with them.
 
+A notice frame declares its own length, and the decoder refuses one whose declared length does not account for the
+WHOLE datagram, pad byte included. A lying length is the shape a probe takes and no legitimate sender produces one,
+so the strictness is deliberate, but it constrains transport choice: a transport that pads every datagram out to a
+fixed size cannot carry these notices, because the padding it adds is length the frame never declared.
+
 ## Known limits in this release
 
 - **`TileWorldServerConfig.MaxCommandsPerSecond` is spent per POLL, not per wall-clock second.** The bucket is

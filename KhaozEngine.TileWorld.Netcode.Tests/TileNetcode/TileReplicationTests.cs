@@ -332,6 +332,39 @@ public class TileReplicationTests
     }
 
     [Fact]
+    public void A_plane_no_world_has_rides_the_wire_intact_and_is_caught_where_the_world_is_known()
+    {
+        // The plane is the one tile field with neither a clamp nor a length check, because one byte on the wire is
+        // already the whole of what a plane index can be and a codec registered for every world has no plane count
+        // to measure against. What that buys has to hold: the value arrives verbatim, the apply does not throw, and
+        // the map a body is actually stepped against answers Blocked for it.
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(1);                                  // entity count
+        w.Write(1L);                                 // net id
+        w.Write(TileProtocol.TileMoveStateTypeId);
+        byte[] move = MoveBytes(5, 6, plane: 255, fromX: 5, fromZ: 6,
+            facing: (byte)TileDirection.N, mode: 0, stepTicks: 0, stepTotal: 1);
+        w.Write7BitEncodedInt(move.Length);
+        w.Write(move);
+        w.Write((ushort)0);                          // end of entity
+        w.Flush();
+
+        var client = new World();
+        Assert.True(new ClientReplicationView(TileProtocol.CreateRegistry())
+            .TryApply(client, ms.ToArray(), out string? error));
+        Assert.Null(error);
+
+        Entity e = client.Query().With<TileMoveState>().Entities().Single();
+        TileMoveState got = client.Get<TileMoveState>(e);
+        Assert.Equal(255, got.Tile.Plane);
+
+        var map = new TileCollisionMap(TileWorldDocument.DefaultPlaneCount);
+        map.EnsureRegion(RegionCoord.Of(got.Tile.X, got.Tile.Z));
+        Assert.Equal(TileCollisionFlags.Blocked, map.Get(got.Tile.X, got.Tile.Z, got.Tile.Plane));
+    }
+
+    [Fact]
     public void A_component_frame_that_lies_about_its_length_fails_the_apply_rather_than_reading_short()
     {
         // 21 bytes, whose route header claims 65535 steps behind the two it carries. Read as a short route it

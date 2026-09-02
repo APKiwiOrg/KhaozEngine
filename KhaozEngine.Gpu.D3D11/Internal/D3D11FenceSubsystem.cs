@@ -272,6 +272,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// (Direct3D's own reset after a hang) releases the caller.
         /// </para>
         /// <para>
+        /// TEARDOWN IS THE ONE EXCEPTION AND IT IS A SEPARATE ENTRY POINT.
+        /// <see cref="WaitForIdleAtTeardown"/> takes the same loop with a budget, for the reason
+        /// <see cref="D3D11TeardownDrain"/> states: that drain runs inside the process-wide device lifecycle
+        /// gate, nothing after it reads a rendered result, and a live-and-hung GPU would otherwise wedge every
+        /// device create and dispose in the process behind it. Nothing on the frame path takes a budget.
+        /// </para>
+        /// <para>
         /// A CALLER HOLDING THE SUBMIT LOCK IS REFUSED, BY NAME, ON THE LIVE DRAIN AND ONLY THERE (decision W4,
         /// and the enforcement half of the paragraph above). The drain releases the lock around its wait precisely
         /// so the submission it is waiting for can be made, and a caller that already held the lock re-enters it
@@ -290,12 +297,33 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// the lock, which is why the safe ordering is also the useful one.
         /// </para>
         /// </summary>
-        internal void WaitForIdle()
+        internal void WaitForIdle() => Drain(D3D11TeardownDrain.Unbounded);
+
+        /// <summary>
+        /// THE SAME DRAIN WITH A BUDGET, for the teardown path and nothing else
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/505). Every rule <see cref="WaitForIdle"/> applies
+        /// applies here unchanged: the same three leading checks, the same signal and flush under the lock, the
+        /// same wait with the lock released, the same counters.
+        /// <para>
+        /// TRUE MEANS THE DRAIN IS DONE WITH, which covers three ways of being done: the target was reached, the
+        /// device died under it (so nothing it was waiting for can still be running), or there was nothing to
+        /// wait for. FALSE means the budget expired with the GPU still behind, which is the caller's cue to say
+        /// so and carry on releasing.
+        /// </para>
+        /// </summary>
+        /// <param name="budgetMs">How long to wait before latching. <see cref="D3D11TeardownDrain.Unbounded"/>
+        /// never latches, and zero latches after one poll, which is how the policy is driven without a clock.
+        /// </param>
+        internal bool WaitForIdleAtTeardown(int budgetMs) => Drain(budgetMs);
+
+        // The loop both entry points share. See WaitForIdle for every rule it applies and why each one is where
+        // it is: the only thing the budget changes is that the wait can end without the target being reached.
+        bool Drain(int budgetMs)
         {
             // The two returns that do nothing come first, so a caller holding the submit lock reaches the guard
             // only on the path that can actually hang. See the ordering paragraph on this method.
-            if (_liveness.IsDead) return;
-            if (!_realDrain) return;
+            if (_liveness.IsDead) return true;
+            if (!_realDrain) return true;
 
             if (Monitor.IsEntered(_submitLock))
             {
@@ -317,9 +345,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             long start = Stopwatch.GetTimestamp();
             var spin = new SpinWait();
-            while (!_liveness.IsDead)
+            bool completed = false;
+            while (true)
             {
-                if (ReadCompleted() >= target) break;
+                // A device that died under the drain is DONE rather than latched: nothing it was waiting for can
+                // still be running, and the releases after it are all no-ops. Reporting a latch here would warn
+                // about a hung GPU on the ordinary path a lost device takes.
+                if (_liveness.IsDead) { completed = true; break; }
+                if (ReadCompleted() >= target) { completed = true; break; }
+
+                // AFTER the poll, so a zero budget still reads the timeline once and a drain that was already
+                // satisfied never reports a latch.
+                if (D3D11TeardownDrain.BudgetSpent(Stopwatch.GetTimestamp() - start, budgetMs)) break;
 
                 // The wait, or the spin for a mechanism that has none. The spin goes through D3D11DrainSpin
                 // rather than being written out here, so the threshold that keeps it from sleeping a millisecond
@@ -332,6 +369,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _drainTicks += elapsed;
             _totalDrainCount++;
             _totalDrainTicks += elapsed;
+            return completed;
         }
 
         /// <summary>

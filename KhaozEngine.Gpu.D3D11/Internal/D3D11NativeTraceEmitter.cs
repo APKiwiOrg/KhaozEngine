@@ -215,10 +215,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         public void SetFullScissorRects()
         {
-            IGpuFramebuffer framebuffer = _state.BoundFramebuffer ?? throw new InvalidOperationException(
-                "SetFullScissorRects was reached with no framebuffer bound on the native Direct3D 11 backend. "
-                + "The full scissor IS the bound framebuffer's extent, so there is nothing to reset it to. Bind a "
-                + "framebuffer first, which sets the full scissor anyway.");
+            // Refused in the one place both emitters ask, so the two cannot drift in wording or in condition.
+            IGpuFramebuffer framebuffer = D3D11BindResolve.RequireScissorExtent(_state.BoundFramebuffer);
 
             _log.Record(D3D11NativeCall.RSSetScissorRects, FullScissor(framebuffer));
         }

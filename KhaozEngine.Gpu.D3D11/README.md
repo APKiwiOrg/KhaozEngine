@@ -117,6 +117,14 @@ rather than as the order the sections of this file happen to come in.
    liveness token and its device-loss latch.
 8. **The debug-layer pump**, and only when the layer is genuinely active on the created device.
 
+**A construction that fails part way releases what it already built.** Five of those steps own a native object,
+and each of them holds a COM reference count on the `ID3D11Device`, so orphaning one used to keep the device and
+every driver allocation behind it alive until the process exited. The reachable trigger is step 7: DXGI refuses a
+swapchain for a window handle or a display in a bad state, and the device context CATCHES a failed native
+creation, so the symptom was a session that fell back with a fully allocated orphan device beside it. Each of the
+five registers itself with a `D3D11ConstructionScope` as it is built, and a throw from any later step unwinds
+them newest first before the exception leaves.
+
 **Teardown is the reverse and the order is load-bearing.** The drain runs first, with no lock held, because it
 refuses a caller holding the submit lock by name. Then the pump, the swapchain, the shared samplers and the fence
 subsystem are released, all while the liveness token still says the device is alive, because every one of those
@@ -124,6 +132,14 @@ releases reads that token and no-ops when it says dead. The token is flipped LAS
 context are released after that. Flipping it first (which is what the Veldrid wrapper did, correctly, since
 destroying a Veldrid device freed its children) would silently skip every release and leave the device alive
 holding a swapchain nobody can reach.
+
+**The teardown drain, and only that drain, takes a budget.** `GpuDeviceContext.Dispose` runs it inside the
+process-wide device lifecycle gate, so a GPU that is live and hung would wedge every other device create and
+dispose in the process behind it. `D3D11TeardownDrain` bounds it at two seconds, far longer than any real drain
+and several times the Windows TDR that resets a hung device, and a drain that spends it logs a WARN and lets the
+release continue. Nothing on the frame path takes a budget: a timeout there would turn a hang into silent
+forward progress over work that has not happened. A device that DIES under the drain is released by the liveness
+check as before and reports done rather than latched, so the ordinary path a lost device takes logs nothing.
 
 ## Platform boundary
 
@@ -977,6 +993,12 @@ the pair from the statics is what moved `scene3d_texbillboard` (worst 0.393) and
 `NativeVsVeldridCapabilityParityTests` compared the pair against the incumbent's built-ins field by field and
 device-free, so a drift failed on every OS rather than only on a Windows golden. That test was deleted with the
 incumbent in 18.0.0, and the WRAP hardcode it guarded is now stated here and in `D3D11SharedSamplers` alone.
+
+**The pair is NON-OWNING, so a consumer that disposes what `PointSampler` handed it destroys nothing.** The
+device hands the same two objects to every caller for the process's life and frees the two sampler states itself
+at teardown, so the wrapper's `Dispose` returns without even marking itself disposed and only the device's own
+destroy releases anything. It is built through the factory's non-owning path rather than constructed directly, so
+it still carries the same creation gate and the same four hardcodes every other sampler on this backend does.
 
 **`KE_D3D11_ADAPTER=warp|hardware|<index>|<name substring>` pins the adapter (G2).** Unset leaves DXGI to pick.
 A request that cannot be honoured WARNs and falls back to the default enumeration, never fails, and the warning

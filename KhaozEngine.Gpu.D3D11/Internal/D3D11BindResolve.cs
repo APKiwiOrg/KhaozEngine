@@ -125,12 +125,35 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// accepts and the other refuses is a difference the device-free trace cannot model, and a clear against
         /// no target would otherwise be a null dereference inside the runtime.
         /// </para>
+        /// <para>
+        /// <paramref name="why"/> replaces the second half of the message for a command whose reason is not the
+        /// attachment one. The full scissor is that command: it names the framebuffer's EXTENT rather than any
+        /// attachment of it, so the default sentence would be describing something else
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/496). See <see cref="RequireScissorExtent"/>.
+        /// </para>
         /// </summary>
-        internal static IGpuFramebuffer RequireBoundFramebuffer(IGpuFramebuffer? bound, string command)
+        internal static IGpuFramebuffer RequireBoundFramebuffer(IGpuFramebuffer? bound, string command,
+            string? why = null)
             => bound ?? throw new InvalidOperationException(
-                $"{command} was reached with no framebuffer bound on the native Direct3D 11 backend. A command "
-                + "that names an attachment of the bound framebuffer has nothing to name while none is bound. "
-                + "Bind a framebuffer first.");
+                $"{command} was reached with no framebuffer bound on the native Direct3D 11 backend. "
+                + (why ?? "A command that names an attachment of the bound framebuffer has nothing to name while "
+                    + "none is bound. Bind a framebuffer first."));
+
+        /// <summary>
+        /// The bound framebuffer whose extent IS the full scissor, refused by name when none is bound, in the one
+        /// place BOTH emitters ask (https://github.com/APKiwiOrg/KhaozEngine/issues/496).
+        /// <para>
+        /// This is not the asymmetry the draw-path review fixed on the clears, where one emitter refused and the
+        /// other recorded. Both refused here, identically, in two hand-copied bodies. What that leaves is a drift
+        /// risk with nothing to catch it: one of the two copies is in a Windows-only body no test off Windows can
+        /// reach, so a wording or condition change to the reachable one would be invisible until a Windows leg
+        /// ran.
+        /// </para>
+        /// </summary>
+        internal static IGpuFramebuffer RequireScissorExtent(IGpuFramebuffer? bound)
+            => RequireBoundFramebuffer(bound, "SetFullScissorRects",
+                "The full scissor IS the bound framebuffer's extent, so there is nothing to reset it to. Bind a "
+                + "framebuffer first, which sets the full scissor anyway.");
 
         /// <summary>
         /// The bound framebuffer, refused when it has no colour attachment at <paramref name="index"/>.

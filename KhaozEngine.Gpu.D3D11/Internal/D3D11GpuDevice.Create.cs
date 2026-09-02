@@ -146,6 +146,20 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// the resource factory, which takes the capabilities to validate a sample count against, and the one
         /// device state comes after the ring, because the state COMPOSES the bind flush and the bind flush takes
         /// the ring on the immediate driver. Neither changes what is built, only when.
+        /// <para>
+        /// EVERY STEP THAT OWNS A NATIVE OBJECT IS REGISTERED WITH A
+        /// <see cref="D3D11ConstructionScope"/> AS IT IS BUILT (https://github.com/APKiwiOrg/KhaozEngine/issues/503).
+        /// A throw from any later step then releases what is already built, newest first, before the exception
+        /// leaves. Without that, the caller's own cleanup dropped one reference on an <c>ID3D11Device</c> that
+        /// several orphaned children still held, so the device and every driver allocation behind it survived
+        /// until the process exited, beside the fallback session that was created after the failure.
+        /// </para>
+        /// <para>
+        /// THE ASSEMBLY IS NOT A STATIC FACTORY, and it cannot be: the loss latch is the SECOND step and takes
+        /// <c>this</c>, and the resource factory takes <see cref="CreateCommandList"/>, so everything from step
+        /// two on is downstream of an instance that has to exist already. The scope is what makes the ordered
+        /// release assertable without a device instead.
+        /// </para>
         /// </summary>
         /// <param name="device">The created device. Taken over: <see cref="Dispose"/> releases it.</param>
         /// <param name="context">Its immediate context as <c>ID3D11DeviceContext1</c>. Taken over too.</param>
@@ -177,110 +191,133 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _softwareAdapter = softwareAdapter;
             _syncToVerticalBlank = syncToVerticalBlank;
 
-            // The liveness token and the loss latch first: every subsystem below holds one, the other, or both,
-            // and the latch is what a fault site at any depth reaches. It takes THIS device as its one native
-            // call, which is safe in a constructor because the call is never made until a fault happens.
-            _liveness = new DeviceLiveness();
-            _loss = new D3D11DeviceLossLatch(_liveness, this);
-
-            // 3. FENCES. The timeline picks its own mechanism (ID3D11Fence via ID3D11Device5, or the event-query
-            // pool), which is the one place that decision is taken, and the subsystem adds the engine logic on
-            // top of it: the submit lock, the liveness adapter and the KE_D3D11_REAL_DRAIN kill switch.
-            bool realDrain = D3D11RealDrain.FromEnvironment(out string? realDrainValue);
-            if (realDrainValue != null) log.Warn(D3D11RealDrain.UnrecognizedWarning(realDrainValue));
-            _fences = new D3D11FenceSubsystem(
-                D3D11FenceTimelines.CreateWindows(device, context), _submitLock, _liveness, realDrain);
-            log.Info($"D3D11 completion fences: {_fences.Mechanism}. This device reports "
-                + "SupportsCompletionFences true, the one capability difference decision C5 permitted this "
-                + "backend to carry over the one the engine shipped before it.");
-            if (!realDrain)
+            var scope = new D3D11ConstructionScope(ReportUnwindFailure);
+            try
             {
-                log.Warn($"{D3D11RealDrain.EnvVarName} is OFF, so WaitForIdle on this device does NOTHING. Every "
-                    + "drain in the engine is a no-op on this run, and any measurement of one reads zero because "
-                    + "the call is empty rather than because the GPU was idle.");
-            }
+                // The liveness token and the loss latch first: every subsystem below holds one, the other, or both,
+                // and the latch is what a fault site at any depth reaches. It takes THIS device as its one native
+                // call, which is safe in a constructor because the call is never made until a fault happens.
+                _liveness = new DeviceLiveness();
+                _loss = new D3D11DeviceLossLatch(_liveness, this);
 
-            // 4. THE RING. One allocator for the device, over the fence subsystem's read half, so a segment is
-            // recycled against GPU COMPLETION rather than against a submit receipt (decision U5).
-            int framesInFlight = D3D11FramesInFlight.FromEnvironment(out string? framesValue);
-            if (framesValue != null) log.Warn(D3D11FramesInFlight.UnrecognizedWarning(framesValue));
-            _rings = new D3D11RingAllocator(framesInFlight, _fences, _submitLock,
-                D3D11RingAllocator.MapScopeFor(recordMode));
-            log.Info(D3D11FramesInFlight.ActiveDescription(framesInFlight));
-
-            // 2. ONE STATE AND ONE EMITTER CONTEXT PER DEVICE, which is the enforcement half of issue #476: the
-            // DEVICE constructs exactly one of each and every emitter value it hands out receives them, so the
-            // redundancy caches describe the context rather than one command list's recording.
-            //
-            // NO ANSWER FROM THE PROBE TAKES THE WORKAROUND, which is the same rule the creation gate below
-            // applies to the same silence: an unknown answer is not a licence. The two arms are not symmetric in
-            // what being wrong costs. Skipping the unset on a runtime that IS emulating command lists is the
-            // documented way to bind a *SetConstantBuffers1 range at the wrong first constant, which renders
-            // wrong and throws nothing, and issuing it on a runtime that is not is one extra call with the same
-            // span immediately before the bind, which changes no state and costs call count.
-            _state = new D3D11DeviceState(new D3D11BindFlush(
-                unsetConstantBuffersBeforeSet: threadingCaps?.CommandListsAreEmulated ?? true,
-                ringsUnmappedBeforeCommands: D3D11BindFlush.RingsFor(recordMode, _rings)));
-            _emitterContext = new D3D11EmitterContext(context);
-            _emitter = new D3D11NativeEmitter(_state, _emitterContext);
-            log.Info(D3D11RecordModes.ActiveDescription(recordMode));
-
-            // 7a. CAPABILITIES, read off the live device and the adapter it runs on, and the single source both
-            // GpuDeviceContext.Capabilities and IGpuDevice.Capabilities take on this backend. It is here rather
-            // than after the factory because the factory validates a requested sample count against it.
-            Capabilities = D3D11DxgiQueries.ReadCapabilitiesWindows(device, adapter,
-                _fences.SupportsCompletionFences);
-
-            // 5. THE FACTORY, with the creation gate the threading probe earned: a driver reporting
-            // DriverConcurrentCreates gets no lock at all, and no answer takes the serialized arm.
-            _factory = new D3D11ResourceFactory(device, context, _liveness, _rings, CreateCommandList,
-                Capabilities, D3D11CreationGate.For(threadingCaps), _fences.CreateFence, _loss);
-            log.Info(_factory.SerializesCreation
-                ? "D3D11 resource creation: SERIALIZED behind one lock, because this driver does not report "
-                    + "DriverConcurrentCreates (or the threading probe had no answer)."
-                : "D3D11 resource creation: FREE-THREADED, because this driver reports DriverConcurrentCreates. "
-                    + "No creation lock is taken at all.");
-
-            // The two shared samplers the seam promises, built through the factory so they carry the same
-            // hardcodes every other sampler on this backend does (decision G1), and from D3D11SharedSamplers
-            // rather than from the engine's identically named GpuSamplerDescription.Point / .Linear statics. The
-            // statics are CLAMPED and the seam's shared pair is WRAP, which is the collision that cost two
-            // goldens. See D3D11SharedSamplers for the record.
-            _pointSampler = _factory.CreateSampler(D3D11SharedSamplers.Point);
-            _linearSampler = _factory.CreateSampler(D3D11SharedSamplers.Linear);
-
-            // The staging map path, with decision G3's second check site wired: the latch arrives here so a
-            // failed map asks it BEFORE it builds an exception message.
-            _staging = new D3D11StagingAccess(new D3D11ContextStagingMemory(context), _submitLock, _loss);
-
-            // 6. THE SWAPCHAIN, on the windowed path only. The engine half owns the present boundary and the
-            // queued resize, and the native half is the four calls it makes.
-            if (hwnd != IntPtr.Zero)
-            {
-                _swapchain = new D3D11Swapchain(
-                    D3D11DxgiSwapchain.CreateWindows(device, context, adapter, hwnd, width, height,
-                        depthFormat: null, _liveness),
-                    _submitLock, width, height, syncToVerticalBlank);
-            }
-
-            // 9. THE DEBUG-LAYER PUMP (decision G4), and ONLY when the device was actually created with the
-            // layer. A queue asked for on a device without it answers null, which is not a fault: it is what a
-            // machine with no Graphics Tools installed does, and the retry above already warned about it.
-            if (debugLayerActive)
-            {
-                ID3D11InfoQueueSource? source = D3D11InfoQueueMessages.TryCreateWindows(device);
-                if (source is null)
+                // 3. FENCES. The timeline picks its own mechanism (ID3D11Fence via ID3D11Device5, or the event-query
+                // pool), which is the one place that decision is taken, and the subsystem adds the engine logic on
+                // top of it: the submit lock, the liveness adapter and the KE_D3D11_REAL_DRAIN kill switch.
+                bool realDrain = D3D11RealDrain.FromEnvironment(out string? realDrainValue);
+                if (realDrainValue != null) log.Warn(D3D11RealDrain.UnrecognizedWarning(realDrainValue));
+                _fences = scope.Track(new D3D11FenceSubsystem(
+                    D3D11FenceTimelines.CreateWindows(device, context), _submitLock, _liveness, realDrain));
+                log.Info($"D3D11 completion fences: {_fences.Mechanism}. This device reports "
+                    + "SupportsCompletionFences true, the one capability difference decision C5 permitted this "
+                    + "backend to carry over the one the engine shipped before it.");
+                if (!realDrain)
                 {
-                    log.Warn("The Direct3D 11 debug layer is active on this device but it exposes no "
-                        + "ID3D11InfoQueue, so no debug-layer messages are pumped into this log. Rendering is "
-                        + "unaffected.");
+                    log.Warn($"{D3D11RealDrain.EnvVarName} is OFF, so WaitForIdle on this device does NOTHING. Every "
+                        + "drain in the engine is a no-op on this run, and any measurement of one reads zero because "
+                        + "the call is empty rather than because the GPU was idle.");
                 }
-                else
+
+                // 4. THE RING. One allocator for the device, over the fence subsystem's read half, so a segment is
+                // recycled against GPU COMPLETION rather than against a submit receipt (decision U5).
+                int framesInFlight = D3D11FramesInFlight.FromEnvironment(out string? framesValue);
+                if (framesValue != null) log.Warn(D3D11FramesInFlight.UnrecognizedWarning(framesValue));
+                _rings = new D3D11RingAllocator(framesInFlight, _fences, _submitLock,
+                    D3D11RingAllocator.MapScopeFor(recordMode));
+                log.Info(D3D11FramesInFlight.ActiveDescription(framesInFlight));
+
+                // 2. ONE STATE AND ONE EMITTER CONTEXT PER DEVICE, which is the enforcement half of issue #476: the
+                // DEVICE constructs exactly one of each and every emitter value it hands out receives them, so the
+                // redundancy caches describe the context rather than one command list's recording.
+                //
+                // NO ANSWER FROM THE PROBE TAKES THE WORKAROUND, which is the same rule the creation gate below
+                // applies to the same silence: an unknown answer is not a licence. The two arms are not symmetric in
+                // what being wrong costs. Skipping the unset on a runtime that IS emulating command lists is the
+                // documented way to bind a *SetConstantBuffers1 range at the wrong first constant, which renders
+                // wrong and throws nothing, and issuing it on a runtime that is not is one extra call with the same
+                // span immediately before the bind, which changes no state and costs call count.
+                _state = new D3D11DeviceState(new D3D11BindFlush(
+                    unsetConstantBuffersBeforeSet: threadingCaps?.CommandListsAreEmulated ?? true,
+                    ringsUnmappedBeforeCommands: D3D11BindFlush.RingsFor(recordMode, _rings)));
+                _emitterContext = new D3D11EmitterContext(context);
+                _emitter = new D3D11NativeEmitter(_state, _emitterContext);
+                log.Info(D3D11RecordModes.ActiveDescription(recordMode));
+
+                // 7a. CAPABILITIES, read off the live device and the adapter it runs on, and the single source both
+                // GpuDeviceContext.Capabilities and IGpuDevice.Capabilities take on this backend. It is here rather
+                // than after the factory because the factory validates a requested sample count against it.
+                Capabilities = D3D11DxgiQueries.ReadCapabilitiesWindows(device, adapter,
+                    _fences.SupportsCompletionFences);
+
+                // 5. THE FACTORY, with the creation gate the threading probe earned: a driver reporting
+                // DriverConcurrentCreates gets no lock at all, and no answer takes the serialized arm.
+                _factory = new D3D11ResourceFactory(device, context, _liveness, _rings, CreateCommandList,
+                    Capabilities, D3D11CreationGate.For(threadingCaps), _fences.CreateFence, _loss);
+                log.Info(_factory.SerializesCreation
+                    ? "D3D11 resource creation: SERIALIZED behind one lock, because this driver does not report "
+                        + "DriverConcurrentCreates (or the threading probe had no answer)."
+                    : "D3D11 resource creation: FREE-THREADED, because this driver reports DriverConcurrentCreates. "
+                        + "No creation lock is taken at all.");
+
+                // The two shared samplers the seam promises, built through the factory so they carry the same
+                // hardcodes every other sampler on this backend does (decision G1), NON-OWNING so a consumer that
+                // disposes what IGpuDevice.PointSampler handed it destroys nothing
+                // (https://github.com/APKiwiOrg/KhaozEngine/issues/506), and from D3D11SharedSamplers
+                // rather than from the engine's identically named GpuSamplerDescription.Point / .Linear statics. The
+                // statics are CLAMPED and the seam's shared pair is WRAP, which is the collision that cost two
+                // goldens. See D3D11SharedSamplers for the record.
+                _pointSampler = _factory.CreateSharedSampler(D3D11SharedSamplers.Point);
+                scope.TrackRelease(_pointSampler.DestroyShared);
+                _linearSampler = _factory.CreateSharedSampler(D3D11SharedSamplers.Linear);
+                scope.TrackRelease(_linearSampler.DestroyShared);
+
+                // The staging map path, with decision G3's second check site wired: the latch arrives here so a
+                // failed map asks it BEFORE it builds an exception message.
+                _staging = new D3D11StagingAccess(new D3D11ContextStagingMemory(context), _submitLock, _loss);
+
+                // 6. THE SWAPCHAIN, on the windowed path only. The engine half owns the present boundary and the
+                // queued resize, and the native half is the four calls it makes.
+                if (hwnd != IntPtr.Zero)
                 {
-                    _infoQueue = new D3D11InfoQueuePump(source);
+                    _swapchain = scope.Track(new D3D11Swapchain(
+                        D3D11DxgiSwapchain.CreateWindows(device, context, adapter, hwnd, width, height,
+                            depthFormat: null, _liveness),
+                        _submitLock, width, height, syncToVerticalBlank));
                 }
+
+                // 9. THE DEBUG-LAYER PUMP (decision G4), and ONLY when the device was actually created with the
+                // layer. A queue asked for on a device without it answers null, which is not a fault: it is what a
+                // machine with no Graphics Tools installed does, and the retry above already warned about it.
+                if (debugLayerActive)
+                {
+                    ID3D11InfoQueueSource? source = D3D11InfoQueueMessages.TryCreateWindows(device);
+                    if (source is null)
+                    {
+                        log.Warn("The Direct3D 11 debug layer is active on this device but it exposes no "
+                            + "ID3D11InfoQueue, so no debug-layer messages are pumped into this log. Rendering is "
+                            + "unaffected.");
+                    }
+                    else
+                    {
+                        _infoQueue = scope.Track(new D3D11InfoQueuePump(source));
+                    }
+                }
+
+                scope.Commit();
+            }
+            catch
+            {
+                scope.Unwind();
+                throw;
             }
         }
+
+        // WHERE A FAILED RELEASE GOES DURING AN UNWOUND CONSTRUCTION. It is logged and swallowed, because the
+        // caller has to see the exception that ACTUALLY failed construction rather than one raised while tidying
+        // up after it, and because the releases after this one still have to run.
+        static void ReportUnwindFailure(Exception ex)
+            => log.Warn($"Releasing a half-built native Direct3D 11 device threw {ex.GetType().Name}: "
+                + $"{ex.Message}. The rest of the release runs anyway, and the failure that stopped construction "
+                + "is the one reported to the caller.");
 
         // 8. THE RECORDING DRIVER, and the one place KE_D3D11_RECORD is consulted after creation. The emitter
         // travels BY VALUE, one copy per list, which is safe precisely because it is a readonly struct over the

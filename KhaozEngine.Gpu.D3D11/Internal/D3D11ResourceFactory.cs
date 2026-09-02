@@ -163,6 +163,22 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             using (_creation.Enter()) return new D3D11Sampler(_device, _liveness, d);
         }
 
+        /// <summary>
+        /// The DEVICE'S OWN shared sampler, built exactly the way <see cref="CreateSampler"/> builds a consumer's
+        /// (same creation gate, same hardcodes of decision G1) and NON-OWNING
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/506). The device hands the same two objects to every
+        /// caller for the process's life, so a consumer disposing one must destroy nothing, and the device
+        /// destroys the pair itself through <see cref="D3D11Sampler.DestroyShared"/>.
+        /// <para>
+        /// It is here rather than in the device so the pair keeps going through the factory, and it returns the
+        /// concrete type because only the device calls it and only the device may destroy what it gets back.
+        /// </para>
+        /// </summary>
+        internal D3D11Sampler CreateSharedSampler(in GpuSamplerDescription d)
+        {
+            using (_creation.Enter()) return new D3D11Sampler(_device, _liveness, d, ownsSampler: false);
+        }
+
         /// <inheritdoc/>
         public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour)
         {

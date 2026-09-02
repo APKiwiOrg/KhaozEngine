@@ -643,12 +643,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // the shared event, and the orphan texture the line above could not release.
             if (fault.IsFailure) return;
 
-            // BEFORE THE FLIP, and that ordering is load-bearing rather than tidy. The shared samplers are the
-            // device's own (nothing else holds a reference, and a consumer disposing PointSampler would be
-            // disposing something it did not create), and every wrapper's Dispose is a no-op once liveness is
-            // dead, so releasing them after the flip would leak both for the life of the process.
-            _pointSampler.Dispose();
-            _linearSampler.Dispose();
+            // BEFORE THE FLIP, and that ordering is load-bearing rather than tidy. Every wrapper's release is a
+            // no-op once liveness is dead, so releasing the pair after the flip would leak both for the life of
+            // the process.
+            //
+            // THROUGH DestroyShared RATHER THAN Dispose, because the pair is non-owning
+            // (https://github.com/APKiwiOrg/KhaozEngine/issues/506): the device hands the same two objects to
+            // every caller, so Dispose is the no-op that stops a consumer destroying them and this is the only
+            // call that frees the sampler states.
+            _pointSampler.DestroyShared();
+            _linearSampler.DestroyShared();
 
             // Flipped BEFORE the releases and after the drain, so no wrapper can observe "alive" after the object
             // it would release has gone, and so a wrapper disposed on another thread mid-teardown becomes a

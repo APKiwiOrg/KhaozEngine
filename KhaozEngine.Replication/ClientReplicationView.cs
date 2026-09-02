@@ -51,6 +51,11 @@ public sealed class ClientReplicationView
     private readonly FramedPayloadStream framedPayload = new();
     private readonly BinaryReader framedReader;
 
+    // Test seam (InternalsVisibleTo): how many bytes of a snapshot buffer this view's framed window still points at.
+    // Zero is the only value an apply may leave behind, a FAILED apply included, because a non-zero one means the
+    // view is holding that snapshot's byte[] alive until the next Retarget.
+    internal long FramedWindowLength => framedPayload.Length;
+
     public ClientReplicationView(ReplicationRegistry registry)
     {
         this.registry = registry ?? throw new ArgumentNullException(nameof(registry));
@@ -290,58 +295,68 @@ public sealed class ClientReplicationView
     private void ReadEntityComponents(World world, Entity entity, long netId, MemoryStream ms, BinaryReader br,
         byte[] backing, string streamKind, Action<long, ushort, byte[]>? unknownExtensionSink)
     {
-        while (true)
+        // The finally is the point: every exit from this loop has to drop the window, an ABORTED apply included. A
+        // lying length and an unregistered built-in id both throw from inside here, TryApply turns that into a false,
+        // and the caller drops the frame and carries on, so without the finally the view kept the failed snapshot's
+        // byte[] alive until the next Retarget happened to re-point the window.
+        try
         {
-            ushort typeId = br.ReadUInt16();
-            if (typeId == 0) break;
-            bool extension = ReplicationRegistry.IsExtension(typeId);
-            int len = extension ? br.Read7BitEncodedInt() : -1;   // extension payloads carry a length
-            long posBefore = ms.Position;
-            // Hostile/corrupt-safe: a bad length must never seek backward (a loop) or past the buffer. Turn it into a
-            // clean caught error (TryApply -> disconnect), not an unbounded read.
-            if (extension && (len < 0 || posBefore + len > ms.Length))
-                throw new InvalidOperationException($"{streamKind} extension component {typeId} has an invalid length {len}.");
-            if (registry.TryGet(typeId, out ComponentCodec codec))
+            while (true)
             {
-                if (extension)
+                ushort typeId = br.ReadUInt16();
+                if (typeId == 0) break;
+                bool extension = ReplicationRegistry.IsExtension(typeId);
+                int len = extension ? br.Read7BitEncodedInt() : -1;   // extension payloads carry a length
+                long posBefore = ms.Position;
+                // Hostile/corrupt-safe: a bad length must never seek backward (a loop) or past the buffer. Turn it into a
+                // clean caught error (TryApply -> disconnect), not an unbounded read.
+                if (extension && (len < 0 || posBefore + len > ms.Length))
+                    throw new InvalidOperationException($"{streamKind} extension component {typeId} has an invalid length {len}.");
+                if (registry.TryGet(typeId, out ComponentCodec codec))
                 {
-                    // Bounded to this component's own payload. Unbounded, a codec that reads a declared length out
-                    // of its payload has the WHOLE remaining snapshot to satisfy it, so a lie is caught only when it
-                    // runs off the end of the stream and is otherwise served out of the following components' bytes.
-                    framedPayload.Retarget(backing, (int)posBefore, len);
-                    codec.Deserialize(world, entity, framedReader);
+                    if (extension)
+                    {
+                        // Bounded to this component's own payload. Unbounded, a codec that reads a declared length out
+                        // of its payload has the WHOLE remaining snapshot to satisfy it, so a lie is caught only when it
+                        // runs off the end of the stream and is otherwise served out of the following components' bytes.
+                        framedPayload.Retarget(backing, (int)posBefore, len);
+                        codec.Deserialize(world, entity, framedReader);
+                    }
+                    else
+                    {
+                        codec.Deserialize(world, entity, br);
+                    }
+                    long end = extension ? posBefore + len : ms.Position;   // codec consumes exactly len for extensions
+                    if (extension) ms.Position = end;                       // the framed read never moved ms: step it over
+                    if (codec.FixedDelaySampled)   // interpolated OR discrete nearest-sampled: both need the timestamped bytes
+                    {
+                        var slice = new byte[end - posBefore];
+                        Array.Copy(backing, (int)posBefore, slice, 0, slice.Length);
+                        SetCurrent(netId, typeId, slice);
+                    }
+                }
+                else if (extension)
+                {
+                    if (unknownExtensionSink is not null)
+                    {
+                        // Retain the raw frame (retain-and-rewrite) instead of dropping it, so a registry downgrade does
+                        // not destroy data at rest. The caller re-emits it verbatim on the next save.
+                        var payload = new byte[len];
+                        Array.Copy(backing, (int)posBefore, payload, 0, len);
+                        unknownExtensionSink(netId, typeId, payload);
+                    }
+                    ms.Position = posBefore + len;   // unknown extension: skip its framed payload (forward-compat)
                 }
                 else
                 {
-                    codec.Deserialize(world, entity, br);
+                    throw new InvalidOperationException($"{streamKind} references unregistered type id {typeId}.");
                 }
-                long end = extension ? posBefore + len : ms.Position;   // codec consumes exactly len for extensions
-                if (extension) ms.Position = end;                       // the framed read never moved ms: step it over
-                if (codec.FixedDelaySampled)   // interpolated OR discrete nearest-sampled: both need the timestamped bytes
-                {
-                    var slice = new byte[end - posBefore];
-                    Array.Copy(backing, (int)posBefore, slice, 0, slice.Length);
-                    SetCurrent(netId, typeId, slice);
-                }
-            }
-            else if (extension)
-            {
-                if (unknownExtensionSink is not null)
-                {
-                    // Retain the raw frame (retain-and-rewrite) instead of dropping it, so a registry downgrade does
-                    // not destroy data at rest. The caller re-emits it verbatim on the next save.
-                    var payload = new byte[len];
-                    Array.Copy(backing, (int)posBefore, payload, 0, len);
-                    unknownExtensionSink(netId, typeId, payload);
-                }
-                ms.Position = posBefore + len;   // unknown extension: skip its framed payload (forward-compat)
-            }
-            else
-            {
-                throw new InvalidOperationException($"{streamKind} references unregistered type id {typeId}.");
             }
         }
-        framedPayload.Release();   // do not keep this snapshot's buffer alive until the next apply re-points it
+        finally
+        {
+            framedPayload.Release();   // do not keep this snapshot's buffer alive until the next apply re-points it
+        }
     }
 
     // The ONE place currentBytes gains a key, and therefore the one place the netId index has to be fed.

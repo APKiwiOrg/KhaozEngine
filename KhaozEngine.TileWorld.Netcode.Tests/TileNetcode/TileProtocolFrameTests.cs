@@ -272,6 +272,40 @@ public class TileProtocolFrameTests
     }
 
     [Fact]
+    public void A_pad_flagged_frame_of_any_other_length_is_refused()
+    {
+        // The encoder pads exactly ONE length: the natural frame that lands on the command size, which goes out at
+        // command size plus one. A five byte frame with the flag set used to decode as a well formed EMPTY message
+        // with its fifth byte silently dropped, which is a second wire form for a message that has only one.
+        var hostile = new byte[5];
+        hostile[0] = TileProtocol.ServerFrameGameMessage;
+        hostile[3] = 0x01;
+        Assert.False(TileProtocol.TryDecodeGameMessage(hostile, TileProtocol.ServerFrameGameMessage, out _, out _));
+
+        // Every other padded length is refused the same way, and the one the encoder emits still decodes. The padded
+        // form carries CommandFrameSize minus the header bytes of payload, so it is the one length that keeps its
+        // payload across the round trip.
+        int header = TileProtocol.EncodeGameMessage(TileProtocol.ServerFrameGameMessage, 0, ReadOnlySpan<byte>.Empty).Length;
+        var payload = new byte[CommandFrameSize - header];
+        for (int i = 0; i < payload.Length; i++) payload[i] = (byte)(i + 1);
+        byte[] padded = TileProtocol.EncodeGameMessage(TileProtocol.ServerFrameGameMessage, 7, payload);
+        Assert.Equal(CommandFrameSize + 1, padded.Length);
+        Assert.True(TileProtocol.TryDecodeGameMessage(padded, TileProtocol.ServerFrameGameMessage, out ushort kind,
+            out ReadOnlySpan<byte> back));
+        Assert.Equal(7, kind);
+        Assert.Equal(payload, back.ToArray());
+
+        for (int len = header; len <= CommandFrameSize + 4; len++)
+        {
+            if (len == CommandFrameSize + 1) continue;
+            var frame = new byte[len];
+            frame[0] = TileProtocol.ServerFrameGameMessage;
+            frame[3] = 0x01;
+            Assert.False(TileProtocol.TryDecodeGameMessage(frame, TileProtocol.ServerFrameGameMessage, out _, out _));
+        }
+    }
+
+    [Fact]
     public void Random_bytes_never_throw_in_any_decoder()
     {
         var rng = new Random(20260822);

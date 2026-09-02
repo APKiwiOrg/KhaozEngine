@@ -7,8 +7,8 @@ using Xunit;
 
 namespace KhaozEngine.Tests.TileWorld;
 
-/// <summary>The glb-backed mesh resolver: the MeshRef to path mapping, the per-archetype cache, and the
-/// fall-back-and-log-once rule that keeps a half-authored kit rendering instead of throwing.</summary>
+/// <summary>The glb-backed mesh resolver: the MeshRef to path mapping, the per-mesh-ref cache both overloads
+/// share, and the fall-back-and-log-once rule that keeps a half-authored kit rendering instead of throwing.</summary>
 public class GltfMeshResolverTests : IDisposable
 {
     static string SourceAsset => Path.Combine(AppContext.BaseDirectory, "assets", "testmodel.glb");
@@ -74,6 +74,83 @@ public class GltfMeshResolverTests : IDisposable
 
         Assert.NotNull(first);
         Assert.Same(first, second);
+    }
+
+    [Fact]
+    public void Both_overloads_share_one_cache_entry_so_a_glb_is_parsed_once()
+    {
+        CopyKitPiece("wall");
+        var resolver = new GltfMeshResolver(_root, Greybox(), _log.Add);
+
+        IReadOnlyList<GltfMeshPart>? viaArchetype = resolver.Resolve(Archetype("wall", "kit/wall.glb"));
+        IReadOnlyList<GltfMeshPart>? viaRef = resolver.Resolve("kit/wall.glb");
+
+        Assert.NotNull(viaArchetype);
+        Assert.Same(viaArchetype, viaRef);
+        Assert.Empty(_log);
+    }
+
+    [Fact]
+    public void The_bare_ref_overload_seeds_the_entry_the_archetype_overload_then_reads()
+    {
+        // The other order, because a cache that shares only one way round is not a shared cache. An avatar mesh
+        // resolved before the world is built must not make the world re-parse the same glb.
+        CopyKitPiece("wall");
+        var resolver = new GltfMeshResolver(_root, Greybox(), _log.Add);
+
+        IReadOnlyList<GltfMeshPart>? viaRef = resolver.Resolve("kit/wall.glb");
+        IReadOnlyList<GltfMeshPart>? viaArchetype = resolver.Resolve(Archetype("wall", "kit/wall.glb"));
+
+        Assert.NotNull(viaRef);
+        Assert.Same(viaRef, viaArchetype);
+    }
+
+    [Fact]
+    public void Two_archetypes_on_one_mesh_ref_share_the_parsed_glb()
+    {
+        // What keying on the ref rather than the archetype id buys: one parse and one copy of the decoded pixels,
+        // where two archetypes pointing at one kit piece used to hold two.
+        CopyKitPiece("wall");
+        var resolver = new GltfMeshResolver(_root, Greybox(), _log.Add);
+
+        IReadOnlyList<GltfMeshPart>? first = resolver.Resolve(Archetype("wall_a", "kit/wall.glb"));
+        IReadOnlyList<GltfMeshPart>? second = resolver.Resolve(Archetype("wall_b", "kit/wall.glb"));
+
+        Assert.NotNull(first);
+        Assert.Same(first, second);
+    }
+
+    [Fact]
+    public void A_bare_ref_that_resolves_to_nothing_falls_back_and_logs_once()
+    {
+        // The overload has no archetype behind it, so the log line names the path and the fallback is asked for the
+        // ref itself. A second call is answered off the cached failure: no second line, no second probe.
+        var resolver = new GltfMeshResolver(_root, Greybox(), _log.Add);
+
+        IReadOnlyList<GltfMeshPart>? parts = resolver.Resolve("kit/wall.glb");
+
+        Assert.NotNull(parts);
+        Assert.NotEmpty(parts);
+        string line = Assert.Single(_log);
+        Assert.Contains(Path.Combine(_root, "kit", "wall.glb"), line, StringComparison.Ordinal);
+
+        Assert.Same(parts, resolver.Resolve("kit/wall.glb"));
+        Assert.Single(_log);
+    }
+
+    [Fact]
+    public void The_interface_default_wraps_the_archetype_path()
+    {
+        // A resolver that implements the archetype overload alone still answers a bare ref, which is the whole
+        // point of the default implementation: no existing implementer had to change to gain it.
+        ITileMeshResolver greybox = Greybox();
+
+        IReadOnlyList<GltfMeshPart>? parts = greybox.Resolve("player/avatar.glb");
+
+        Assert.NotNull(parts);
+        Assert.NotEmpty(parts);
+        // Keyed by the ref, so the same ref is the same box rather than a fresh one per call.
+        Assert.Same(parts, greybox.Resolve("player/avatar.glb"));
     }
 
     [Fact]

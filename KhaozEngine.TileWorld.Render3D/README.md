@@ -178,7 +178,10 @@ and the archetype's yaw offset folds in under the same sign.
 
 `ITileMeshResolver.Resolve(archetype)` is where a game hands over its own meshes, keyed off the archetype's mesh
 reference. Returning null means "no mesh for this archetype", which the view answers with a placeholder box and
-one log line rather than a throw. `GreyboxMeshResolver` is the shipped stand-in: one procedural vertex-coloured
+one log line rather than a throw. `Resolve(meshRef)` is the same question for everything a game draws that is NOT
+a tile object (a player avatar, an NPC, a dropped item), so reaching a resolver's cache and its fallback no longer
+means synthesizing a fake archetype at the call site. It has a DEFAULT implementation that does that wrap once, so
+an existing implementer gains it without changing, and a resolver that can do better overrides it. `GreyboxMeshResolver` is the shipped stand-in: one procedural vertex-coloured
 box per archetype, sized from the footprint and shaped by the collision kind (a wall hugs the west edge, a corner
 wall adds the north edge, a diagonal stands a post, a roof is a slab over the whole footprint), coloured from a
 deterministic grey/brown/green palette by archetype id. Only the footprint extent scales with the tile size: every
@@ -208,8 +211,10 @@ view draws through, greybox fallback included.
 
 `GltfMeshResolver(string rootDirectory, ITileMeshResolver? fallback = null, Action<string>? log = null)` is the
 content-backed resolver. It maps an archetype's `MeshRef` to `Path.GetFullPath(Path.Combine(rootDirectory,
-meshRef))`, loads that glb once through `GltfLoader.LoadPartsWithMaterials`, and caches the parts per archetype
-id. A `MeshRef` is authored RELATIVE with forward slashes (`kit/wall.glb`), normalized to the platform separator
+meshRef))`, loads that glb once through `GltfLoader.LoadPartsWithMaterials`, and caches the parts per MESH
+REFERENCE, which is the entry both `Resolve` overloads share: an avatar drawn through `Resolve(meshRef)` and an
+archetype pointing at the same glb parse it once between them, as do two archetypes sharing one `MeshRef`.
+A `MeshRef` is authored RELATIVE with forward slashes (`kit/wall.glb`), normalized to the platform separator
 here, and an already-absolute one is used as it stands. `PathFor(meshRef)` is public, for a tool that wants to
 check a kit before a world is built. The cache is a plain dictionary, so resolve on one thread, as with the
 greybox resolver.
@@ -220,13 +225,16 @@ Chain it over the greybox one and a half-authored kit still renders:
 var resolver = new GltfMeshResolver(kitRoot, new GreyboxMeshResolver(doc.TileSize, doc.PlaneHeight), log);
 ```
 
-- **A missing file or a loader throw falls back and logs ONCE.** The line names the archetype, the resolved path
-  and the reason, and then the answer is `fallback?.Resolve(archetype)`: the greybox box where the glb is not
-  there yet, the real mesh everywhere else. With no fallback the answer is null, which the view already draws as
-  its placeholder box with a line of its own.
-- **The failure is cached like any other result**, so the second call for that archetype re-logs nothing and does
-  not go near the disk again. One line per archetype id is the whole budget, however many times a world reloads
-  the region it stands in.
+- **A missing file or a loader throw falls back and logs ONCE.** The line names the archetype (the path alone
+  through `Resolve(meshRef)`, which has no archetype behind it), the resolved path and the reason, and then the
+  answer is `fallback?.Resolve(archetype)`: the greybox box where the glb is not there yet, the real mesh
+  everywhere else. With no fallback the answer is null, which the view already draws as its placeholder box with a
+  line of its own.
+- **The failure is cached like any other result**, so the second call for that reference re-logs nothing and does
+  not go near the disk again. One line per mesh reference is the whole budget, however many times a world reloads
+  the region it stands in, and however many archetypes point at it. What is NOT cached is the fallback's answer,
+  which belongs to the ARCHETYPE rather than the reference, so a missing glb asks the fallback again per call.
+  Both shipped fallbacks cache, so the same list still comes back.
 - **An empty `MeshRef` is not a failure.** It goes straight to the fallback, silently, without building or
   probing a path, because an archetype nobody has modelled yet is an ordinary authoring state.
 - **A `MeshRef` no path API will accept falls back too.** `Path.GetFullPath` throws on an embedded NUL, which a

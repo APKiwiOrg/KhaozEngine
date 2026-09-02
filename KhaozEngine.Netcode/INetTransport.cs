@@ -40,7 +40,9 @@ public interface INetTransport : IDisposable
     /// <summary>
     /// Live connection statistics (RTT, packet loss, cumulative byte counters). Optional: the default returns
     /// <see cref="NetTransportStats.Unavailable"/>, so existing transports (e.g. the in-memory loopback) need not
-    /// implement it; the LiteNetLib UDP binding overrides it. Surfaced to games via <c>WorldClient.NetStats</c>.
+    /// implement it; the LiteNetLib UDP binding overrides it. Surfaced to games via <c>WorldClient.NetStats</c>
+    /// (wrapped in a <c>ClientNetStats</c> alongside that client's own rate window) and <c>TileWorldClient.NetStats</c>
+    /// (forwarded as it stands).
     /// </summary>
     NetTransportStats Stats => NetTransportStats.Unavailable;
 }

@@ -184,10 +184,11 @@ public static partial class TileProtocol
 
     /// <summary>
     /// Splits a game message. False (never throws) when it is shorter than the header, carries another tag, is
-    /// exactly <see cref="EncodeCommand"/>'s fixed size (always a command, never an envelope), claims a pad byte it
-    /// has no room for, or carries more payload than <see cref="MaxGameMessageBytes"/>. The returned payload is a
-    /// SLICE of <paramref name="data"/> with any pad byte already removed, so nothing is copied and nothing is
-    /// interpreted.
+    /// exactly <see cref="EncodeCommand"/>'s fixed size (always a command, never an envelope), sets the pad flag at
+    /// any length but the one length this encoder pads (a command frame plus one byte, which covers the frame that
+    /// claims a pad byte it has no room for), or carries more payload than <see cref="MaxGameMessageBytes"/>. The
+    /// returned payload is a SLICE of <paramref name="data"/> with any pad byte already removed, so nothing is
+    /// copied and nothing is interpreted.
     /// </summary>
     public static bool TryDecodeGameMessage(ReadOnlySpan<byte> data, byte frameTag, out ushort kind,
         out ReadOnlySpan<byte> payload)
@@ -197,10 +198,16 @@ public static partial class TileProtocol
         if (data.Length < GameMessageHeader || data.Length == CommandFrameSize || data[0] != frameTag) return false;
 
         int end = data.Length;
-        if ((data[3] & GameMessageFlagPadded) != 0) end--;
-        // A hostile frame that is all header and claims a pad byte would slice a negative length and throw out of
-        // the receive loop, which is the cheapest denial of service on this wire. Refuse it instead.
-        if (end < GameMessageHeader) return false;
+        if ((data[3] & GameMessageFlagPadded) != 0)
+        {
+            // The encoder pads exactly ONE natural length, the one that lands on the command frame, so the only
+            // padded frame on this wire is a command frame plus one byte. Any other padded length is a frame no
+            // sender here produces, and accepting one gives a message two wire forms: a five byte frame decoded as
+            // a well formed EMPTY message with its fifth byte silently dropped. This also subsumes the all-header
+            // frame that claims a pad byte, which used to slice a negative length and throw out of the receive loop.
+            if (data.Length != CommandFrameSize + 1) return false;
+            end--;
+        }
         if (end - GameMessageHeader > MaxGameMessageBytes) return false;
 
         kind = BitConverter.ToUInt16(data.Slice(1, 2));

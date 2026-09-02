@@ -85,6 +85,15 @@ public static partial class TileProtocol
     /// plausible-looking answer to a question nobody asked. Bounding the check at the payload rather than at the
     /// end of the stream is what makes it fire on a real snapshot: with another entity behind this one, an
     /// unbounded check finds the bytes the lie asked for and passes.</para>
+    /// <para>A tile COORDINATE is neither, and it is the first rule's limit rather than a third case. The x and z
+    /// of <see cref="TileMoveState"/> are whole ints, so every value a frame can name is one the type holds, and
+    /// the plane rides in ONE byte (<see cref="WriteMove"/>), so the wire itself is the only bound there is. A
+    /// registry is built once for every world rather than per document, so a codec has no plane count to measure
+    /// against either, and threading one in would put a decoded position at the mercy of two heads agreeing about
+    /// a number that is not on the wire. A plane no world has therefore costs nothing on the way in and is caught
+    /// where the world IS known: <see cref="TileCollisionMap.Get"/> answers Blocked outside its plane count, so a
+    /// body there can never step, and the presenter only multiplies by the plane, so the worst a hostile one buys
+    /// is a remote frozen and drawn a few plane heights up.</para>
     /// </summary>
     public static ReplicationRegistry CreateRegistry(Action<ReplicationRegistry>? registerExtensions = null)
     {
@@ -167,6 +176,9 @@ public static partial class TileProtocol
     static TileMoveState ReadMove(BinaryReader r)
     {
         int x = r.ReadInt32(), z = r.ReadInt32();
+        // Not clamped, and there is nothing here to clamp it to: the plane is one byte on this wire, so a frame
+        // cannot name a plane index this reader could reject, and a codec registered once for every world has no
+        // plane count to measure it against. See the type doc for where an impossible plane IS caught.
         int plane = r.ReadByte();
         int fromX = r.ReadInt32(), fromZ = r.ReadInt32();
         byte facing = r.ReadByte();

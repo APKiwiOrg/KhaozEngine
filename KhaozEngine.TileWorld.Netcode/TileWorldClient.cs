@@ -159,6 +159,20 @@ public sealed partial class TileWorldClient : IDisposable
     /// <summary>The newest server tick seen, -1 before the first snapshot.</summary>
     public long ServerTick { get; private set; } = -1;
 
+    /// <summary>This session's link health straight off the transport: round trip, loss and the cumulative byte
+    /// counters a HUD diffs into rates. Live rather than captured, and reading it pumps nothing, so a head can ask
+    /// on whatever frame it draws on.
+    /// <para>The transport's OWN window, not a client-side one. A transport that does not track statistics (the
+    /// in-memory loopback every headless test runs on) answers <see cref="NetTransportStats.Unavailable"/>, which
+    /// is the disconnected all-zero value even while the session is perfectly alive, so read
+    /// <see cref="IsJoined"/> for whether this client is in a world. That is also why this is
+    /// <see cref="NetTransportStats"/> rather than the <c>ClientNetStats</c> that <c>WorldClient.NetStats</c>
+    /// hands out: the extra fields on that type are a rolling rate window and a reconcile correction magnitude in
+    /// metres, and this client keeps neither. Its corrections are whole tiles (<see cref="SnapCount"/> and
+    /// <see cref="CorrectionCount"/> are the reads), so filling those fields would report a measured-looking zero
+    /// for something never measured.</para></summary>
+    public NetTransportStats NetStats => net.TransportStats;
+
     /// <summary>Reconciliations that moved the local player at all, snaps included. A healthy session on a clean
     /// map costs ZERO of these, because both heads replay the same commands over the same tiles.</summary>
     public int CorrectionCount { get; private set; }

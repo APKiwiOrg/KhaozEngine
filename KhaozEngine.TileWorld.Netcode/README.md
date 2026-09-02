@@ -291,7 +291,10 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   with the body `TryGetRemotePose` draws and is right for an overlay drawn ON that body, while
   `TryGetLatestRemoteTile` is on the newest applied snapshot, so it is right for anything the RULES will answer.
   Its overload also reports how many ticks old the answer is, for an overlay that fades a stale marker rather than
-  lying with it. Three more events land here: `CombatEvent` per swing whose TARGET is in this client's own area of
+  lying with it. `NetStats` is the link readout beside the session ones, a live `NetTransportStats` forwarded from
+  the transport (round trip, loss, cumulative byte counters), so a HUD does not need to keep the transport it built.
+  A transport that tracks nothing answers `NetTransportStats.Unavailable`, an all-zero DISCONNECTED value that says
+  nothing about the session, so `IsJoined` stays the read for that. Three more events land here: `CombatEvent` per swing whose TARGET is in this client's own area of
   interest (misses included, and the thing a hitsplat is drawn from), and `RemoteEntered` / `RemoteLeft`, the
   lifecycle pair a per-remote overlay stack is built and pruned on. The diff behind the pair is already computed
   every frame, so it costs nothing beyond one array per frame that actually carries churn.

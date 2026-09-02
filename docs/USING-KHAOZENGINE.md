@@ -9070,6 +9070,15 @@ the reconciliations that CUT rather than glided, which means the two heads were 
 `DroppedClickCount` counts clicks refused before they were ever sent (another plane, an unloaded region), and
 `DroppedSnapshotCount` counts snapshots the decoder refused whole.
 
+**`client.NetStats` is the link half of that readout**, a live `NetTransportStats` forwarded from the transport:
+round trip, packet loss and the cumulative byte counters a HUD diffs into rates. Reading it pumps nothing, so ask
+on whatever frame you draw on. It is the transport's window rather than a client-side one, so a transport that
+tracks no statistics (the in-memory loopback the headless tests run on) answers `NetTransportStats.Unavailable`,
+which is the disconnected all-zero value even while the session is fine. Read `IsJoined` for whether the client is
+in a world. It is deliberately not the richer `ClientNetStats` that `WorldClient.NetStats` hands out: the extra
+fields there are a rolling rate window and a reconcile correction in metres, and a tile client keeps neither
+(its corrections are whole tiles, which is what `SnapCount` and `CorrectionCount` count).
+
 ### Server-owned actors
 
 An ACTOR is a player minus a connection. It carries `TileMoveState`, `TileRouteState` and `PendingTileCommand`,

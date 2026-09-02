@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Game;
+using KhaozEngine.Primitives;
 using KhaozEngine.Windowing;
 using Xunit;
 
@@ -88,6 +89,38 @@ namespace KhaozEngine.Tests.Render3D
             // A 0.1 rad step the short way lands at ~3.1 which wraps to ~-3.083; a wrong long-way step would head to ~2.9.
             Assert.True(stepped < -3.0f || stepped > 3.09f,
                 $"expected a shortest-path step across the wrap, got {stepped}");
+        }
+
+        // WrapAngle is a pure forward to MathUtil.WrapAngle (#785). The two agreed byte-for-byte before the forward
+        // landed, so this row is what keeps them agreeing: it fails the moment either side moves its boundary, which
+        // is the exact divergence the other two engine copies carry (a strict less-than at -pi closes the interval).
+        [Theory]
+        [InlineData(0f)]
+        [InlineData(1f)]
+        [InlineData(-1f)]
+        [InlineData(MathF.PI)]
+        [InlineData(-MathF.PI)]
+        [InlineData(MathF.PI + 0.25f)]
+        [InlineData(-MathF.PI - 0.25f)]
+        [InlineData(MathF.Tau)]
+        [InlineData(-MathF.Tau)]
+        [InlineData(3f * MathF.PI)]
+        [InlineData(-3f * MathF.PI)]
+        [InlineData(-40f * MathF.PI - 0.5f)]
+        [InlineData(1234.5f)]
+        [InlineData(-1234.5f)]
+        public void WrapAngle_MatchesMathUtil_BitForBit(float angle) =>
+            Assert.Equal(MathUtil.WrapAngle(angle), CharacterFacing.WrapAngle(angle));
+
+        [Fact]
+        public void WrapAngle_KeepsTheHalfOpenInterval_MinusPiFoldsToPlusPi()
+        {
+            // The boundary the forward inherits: (-pi, pi], so exactly -pi comes back as +pi and exactly +pi stays.
+            Assert.Equal(MathF.PI, CharacterFacing.WrapAngle(-MathF.PI));
+            Assert.Equal(MathF.PI, CharacterFacing.WrapAngle(MathF.PI));
+            // -3*pi is NOT a second exact -pi in float: rounding puts the remainder a hair inside the interval, so it
+            // stays negative. The parity theory above covers it, and pinning +pi here would be pinning a rounding lie.
+            Assert.True(CharacterFacing.WrapAngle(-3f * MathF.PI) > -MathF.PI);
         }
 
         [Fact]

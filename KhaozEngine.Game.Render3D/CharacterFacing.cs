@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Game
@@ -78,13 +79,9 @@ namespace KhaozEngine.Game
         }
 
         /// <summary>Normalize an angle (radians) to (-pi, pi], so a facing turn always takes the shortest path and a
-        /// yaw accumulated over many frames never grows without bound.</summary>
-        public static float WrapAngle(float angle)
-        {
-            angle %= MathF.Tau;
-            if (angle > MathF.PI) angle -= MathF.Tau;
-            else if (angle <= -MathF.PI) angle += MathF.Tau;
-            return angle;
-        }
+        /// yaw accumulated over many frames never grows without bound. A pure forward to
+        /// <see cref="MathUtil.WrapAngle"/>, kept on this type because facing callers reach for it here and
+        /// <see cref="CharacterAvatar"/> already routes its stored yaw through it. Same boundary, same bytes.</summary>
+        public static float WrapAngle(float angle) => MathUtil.WrapAngle(angle);
     }
 }

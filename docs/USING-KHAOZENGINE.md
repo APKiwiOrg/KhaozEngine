@@ -12250,9 +12250,11 @@ non-positive `maxDelta` is a zero step that HOLDS the current heading (wrapped) 
 target. `LerpAngle` walks the short arc, so halfway between 350 and 10 degrees is 0 rather than 180, and its
 `t` is unclamped like `Lerp`.
 
-`CharacterFacing.TurnTowards` / `CharacterFacing.WrapAngle` (`KhaozEngine.Game.Render3D`) stay as they are:
-they take a `Vector3` intended direction rather than a target angle, and they live in the Game3D umbrella, so
-a 2D game cannot reach them. `MathUtil` is the reachable-from-anywhere version.
+`CharacterFacing.TurnTowards` (`KhaozEngine.Game.Render3D`) stays as it is: it takes a `Vector3` intended
+direction rather than a target angle, and it lives in the Game3D umbrella, so a 2D game cannot reach it.
+`MathUtil` is the reachable-from-anywhere version. `CharacterFacing.WrapAngle` is now a pure forward to
+`MathUtil.WrapAngle` (same half-open interval, same bytes), kept on the facing type because that is where
+facing callers reach for it.
 
 ---
 

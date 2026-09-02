@@ -106,7 +106,9 @@ caused it lives inside the client that then will not start. Two mechanisms, and 
 - **`GpuBackendSelector.IsBackendSupported` / `SupportedBackends()`** are a FUNCTIONAL probe, not a guess: the
   question is routed to the backend's own registered provider, which loads its library, creates an instance,
   enumerates physical devices, and for Vulkan checks the required surface extensions. A game's settings UI must
-  offer only what `SupportedBackends()` returns. Results are cached for the process lifetime. No RETIRED member
+  offer only what `SupportedBackends()` returns. A result is cached against the provider that produced it, so it
+  lasts the process lifetime and is re-probed when a different provider instance is registered for that
+  backend. No RETIRED member
   is ever reported supported, `OpenGL` included, so a dropdown built from this list cannot hand a player a new
   dead preference.
 - **Creation fallback.** A probe pass is necessary but not sufficient: a broken or partial driver can report

@@ -477,14 +477,25 @@ namespace KhaozEngine.Gpu
 
         // Machine capability does not change while the process runs, and the Vulkan probe is genuinely
         // expensive (it loads the loader, creates an instance, and enumerates physical devices). A settings
-        // screen may ask every frame, so each answer is computed at most once.
-        static readonly ConcurrentDictionary<GpuBackendKind, bool> _supportCache = new();
+        // screen may ask every frame, so each answer is computed at most once per answerer.
+        //
+        // THE ANSWERER IS STORED WITH THE ANSWER, and that is the whole of issue 472. An entry is only trusted
+        // while the provider that produced it is still the registered one, so a stale answer cannot outlive the
+        // provider that gave it however the two interleave. Storing the bool alone did not survive a probe that
+        // finished LATE: Register invalidates by removing the entry, so a thread already inside P1's probe when
+        // Register(P2) landed wrote P1's answer back afterwards, under P2's registration, where nothing would
+        // ever drop it again.
+        static readonly ConcurrentDictionary<GpuBackendKind, (IGpuBackendProvider Answerer, bool Supported)>
+            _supportCache = new();
 
         /// <summary>
         /// Whether this machine can actually run the given backend, as a FUNCTIONAL probe rather than a guess:
         /// the backend's registered <see cref="IGpuBackendProvider"/> loads its own loader library, creates an
         /// instance, and enumerates devices (for Vulkan that includes checking the required surface extensions).
-        /// Answers are cached for the process lifetime.
+        /// An answer is cached against the PROVIDER that gave it, so it lasts the process lifetime for as long
+        /// as that provider stays registered and is re-probed once
+        /// <see cref="GpuBackendProviders.Register"/> puts a different one in its place, whether that call
+        /// happens before, during or after the probe it displaces.
         /// <para>
         /// With no provider registered the answer is false and is NOT cached, so a later registration still gets
         /// to answer for real. That false is for a settings screen only: it is not why a device creation fails,
@@ -509,28 +520,45 @@ namespace KhaozEngine.Gpu
         // The provider-backed half of the probe. Nothing is cached until a provider exists to answer, because a
         // cached "no" from before registration would outlive the registration for the rest of the process and
         // freeze a settings screen on a backend that is now perfectly available.
+        //
+        // NOT GetOrAdd, for the reason on _supportCache: the answerer has to be compared against the registry as
+        // it stands at READ time, because a write can only ever report the registry as it stood when the probe
+        // started. The probe runs outside the dictionary, so a slow one blocks nobody, and the worst a race
+        // costs is a duplicate probe whose answer is identical (GetOrAdd's factory could run twice too).
         static bool ProviderSupport(GpuBackendKind backend)
         {
             if (!GpuBackendProviders.TryGet(backend, out IGpuBackendProvider? provider) || provider is null)
                 return false;
 
-            return _supportCache.GetOrAdd(backend, static (_, probe) =>
+            if (_supportCache.TryGetValue(backend, out (IGpuBackendProvider Answerer, bool Supported) cached)
+                && ReferenceEquals(cached.Answerer, provider))
             {
-                try
-                {
-                    return probe.IsSupported();
-                }
-                catch (Exception)
-                {
-                    // The interface says so: a probe that blows up is an answer of no, never an exception out of
-                    // the settings screen that asked.
-                    return false;
-                }
-            }, provider);
+                return cached.Supported;
+            }
+
+            bool supported;
+            try
+            {
+                supported = provider.IsSupported();
+            }
+            catch (Exception)
+            {
+                // The interface says so: a probe that blows up is an answer of no, never an exception out of
+                // the settings screen that asked.
+                supported = false;
+            }
+
+            // Unconditional, and safe even when this probe is the late one: the entry names the provider that
+            // produced it, so a reader holding a different registration re-probes rather than believing it.
+            _supportCache[backend] = (provider, supported);
+            return supported;
         }
 
-        // Drops the cached support answer for one backend, so the next call re-probes. Called when a provider is
-        // registered or replaced: the cached value came from a different answerer, or from no answerer at all.
+        // Drops the cached support answer for one backend. Called when a provider is registered, replaced or
+        // removed. This is HOUSEKEEPING rather than the correctness mechanism, and the distinction is the point
+        // of issue 472: it cannot close the window on its own, because a probe still running when it fires
+        // publishes afterwards. What makes the stale answer unreachable is the answerer stored beside it. This
+        // keeps the dictionary from holding a provider nobody has unregistered from anywhere else.
         internal static void InvalidateSupportCache(GpuBackendKind backend)
             => _supportCache.TryRemove(backend, out _);
 

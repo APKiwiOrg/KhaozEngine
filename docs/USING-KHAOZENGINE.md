@@ -10473,9 +10473,11 @@ foreach (GpuBackendKind kind in GpuBackendSelector.SupportedBackends())
 ```
 
 `SupportedBackends()` is a FUNCTIONAL probe, not a platform guess: it loads each backend's library, creates an
-instance, enumerates physical devices, and for Vulkan checks the required surface extensions. Results are cached
-for the process lifetime, so a settings screen may call it freely. `IsBackendSupported(kind)` asks about one.
-`OpenGL` is never offered, because there is no windowed GL device path.
+instance, enumerates physical devices, and for Vulkan checks the required surface extensions. A result is cached
+against the provider that produced it, so a settings screen may call it freely and a backend whose provider is
+registered again with a DIFFERENT instance is re-probed, including when that registration lands while the
+outgoing provider's probe is still running. `IsBackendSupported(kind)` asks about one. `OpenGL` is never
+offered, because there is no windowed GL device path.
 
 **Since 18.0.0 the list carries exactly the three native kinds**, in the order `MetalNative`, `VulkanNative`,
 `Direct3D11Native`. A kind appears only where its provider is registered, and the retired members are never

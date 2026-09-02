@@ -11480,7 +11480,11 @@ backends did it silently.** Direct3D 11's `Map(READ)` on the immediate context b
 to be explicit, so the native backend waits on the device timeline before returning the pointer and counts that
 wait into `GpuDeviceCounters.DrainCount` and `DrainMs`. A `GpuMapMode.Write` map does not wait, matching the
 deleted Veldrid leg. `MappedData.RowPitch` and `MappedData.SizeInBytes` mean exactly what they meant there,
-because the subresource arithmetic behind them was reproduced from it byte for byte.
+because the subresource arithmetic behind them was reproduced from it byte for byte. **A map on a device that has
+been LOST throws instead**, naming the loss reason the backend latched at the site that noticed. Disposing a
+device was always refused, and losing one now is too: the host-visible memory a staging resource is mapped into
+went with the device, so the pointer would dangle. There is no recovery path, so a run that wants to read back
+again creates a new device.
 
 **A sample count above the device's `GpuCapabilities.MaxMsaaSampleCount` is REFUSED at texture creation rather
 than rounded down to one.** `AntiAliasing.ResolveFor` is the one place a request is meant to be clamped, so a

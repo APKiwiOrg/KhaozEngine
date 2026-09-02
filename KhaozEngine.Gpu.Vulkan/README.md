@@ -565,7 +565,10 @@ both are appended to ONE device-owned setup command buffer, flushed lazily at th
 device-level read** (`Map`, a readback, `WaitForIdle`). The read-path half is what removes the hole rather than
 moving it: a render target created and immediately read back must still see cleared contents. The clear itself
 is preserved deliberately, because undefined contents are not stable across runs and the goldens require
-stability on the same rasterizer.
+stability on the same rasterizer. Its two arms are exclusive and the `RenderTarget | DepthStencil` tie goes to
+DEPTH ([#551](https://github.com/APKiwiOrg/KhaozEngine/issues/551)), the same way the resting ladder breaks it,
+because the depth bit is also what the ASPECT MASK is read off and a depth-aspect image can only take a depth
+clear. Nothing in the engine declares both usages, which is why the two ladders could disagree unobserved.
 
 **That buffer takes its own short lock, the third one.** A `VkCommandPool` and every buffer allocated from it are
 externally synchronised, so two threads creating two textures may not append to one setup buffer at once.
@@ -604,13 +607,23 @@ the other API did implicitly. A WRITE map does not wait, and neither did the inc
 creation and never unmapped, so a map is a pointer plus an offset and an unmap is bookkeeping plus, on a
 non-coherent memory type, a flush.
 
+**And both `Map` overloads refuse a LOST device** ([#551](https://github.com/APKiwiOrg/KhaozEngine/issues/551)),
+with the reason the loss latch recorded. They used to guard the disposed flag alone, which says the consumer let
+the device go and answers false for a device the driver took: the host-visible chunk a staging resource is
+mapped into went with the device, so the pointer would dangle and the read path's invalidate would be a native
+call against released memory. Every destroy is already a no-op by then, which is what leaves a map as the last
+live route into that memory. The refusal is the first thing either overload does, ahead of the setup flush and
+the drain.
+
 **Disposal is one TERMINAL retire per resource.** The single held entry destroys a texture's views inline, then
 its image, then its memory, and never re-retires a child. A destroy that retired another destroy that then freed
 an allocation would append a third generation of retirement after the teardown drain had taken its snapshot, and
 that chunk would never be freed. Destroying children inline bounds the depth at the one generation the device's
 two teardown drains already cover. The staging source obeys the same rule from the other side: its `Destroy`
 defers the native free through the retire list rather than making it, because the staging arena's own disposal is
-ungated, and it ABANDONS rather than frees on a dead device.
+ungated, and it ABANDONS rather than frees on a dead device. Both of its destroy counters are atomic, because
+they are incremented after the block ledger's lock is released and every arena on the device shares one source
+([#551](https://github.com/APKiwiOrg/KhaozEngine/issues/551)).
 
 **Four departures from the incumbent, all of them its defects.** An image is created with
 `VK_IMAGE_LAYOUT_UNDEFINED` rather than `PREINITIALIZED`, which describes a host-written linear image. The
@@ -1202,7 +1215,7 @@ wrote is left in `GENERAL`, and the next draw whose set samples it moves it to `
 is step 1 above rather than the incumbent's queued layout restore armed by a usage flag. A resource set carries
 its images as plain data resolved at CREATION, with the range each binding's own view covers: the full chain for
 a sampled bind, mip 0 for a storage one. That is what hands the tracker its contains-then-collapse shape rather
-than a partial overlap it would refuse. The walk covers every RECORDED slot rather than the dirty ones, because a
+than a partial overlap it would refuse. The walk covers every DECLARED slot rather than the dirty ones, because a
 set bound before a dispatch is still bound at the draw after it, and it costs no native call at all in the common
 frame: a texture already in the layout it is asked for emits nothing.
 
@@ -1215,6 +1228,17 @@ BACKEND PROPERTY. It is evidence for the automatic-hazard seam capability
 ([#461](https://github.com/APKiwiOrg/KhaozEngine/issues/461)), which is still a proposal rather than a member of
 `GpuCapabilities`: since the native Metal backend joined by its serial compute encoder, three of three
 engine-owned backends order a dependent chain natively.
+
+**Both halves of that set stop at the declared set count too**
+([#632](https://github.com/APKiwiOrg/KhaozEngine/issues/632)), which was the last walk over the bind records left
+unbounded and the only one whose bound decides whether a barrier is EMITTED. The storage-binding rule that makes
+every storage bind count as a write is about DIRECTION, not reach: it assumes a write because the seam cannot
+express a read-only storage binding, and it says nothing about a set at an index the bound layout has no entry
+for, which no shader on the pipeline can name at all. A switch to a shorter compute layout used to leave those
+slots recording resources as written, and a later independent dispatch that merely bound one was answered yes.
+Both errors ran the safe way, an extra global memory barrier and never a missing one, so no picture was ever
+wrong. What it cost is the serialisation the written set exists to avoid, put back by a slot the dispatch cannot
+reach.
 
 **A dispatch, a copy, a mip generation and a resolve all end the pending render pass instance first**, through the
 one helper that rule has, because every one of them is illegal inside one.

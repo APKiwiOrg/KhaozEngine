@@ -39,16 +39,31 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <c>IGpuCommandList.SetComputePipeline</c>. What this is, is EVIDENCE for the automatic-hazard seam
     /// capability (https://github.com/APKiwiOrg/KhaozEngine/issues/461).</para>
     ///
-    /// <para><b>BOTH WALKS BELOW COVER EVERY RECORDED SLOT, INCLUDING ONES THE BOUND PIPELINE LAYOUT DOES NOT
-    /// DECLARE</b>, which is the one place in this backend where that is still true
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/632). The bind flush stops at the declared set count
-    /// because a bind past it is invalid (https://github.com/APKiwiOrg/KhaozEngine/issues/625) and
-    /// <see cref="VulkanDrawRecorder"/>'s image walk stops there because a transition past it is wasted
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/626). Here the error runs the safe way: a slot a compute
-    /// pipeline switch left recorded but undeclared can only ADD a resource to the written set or ANSWER yes to a
-    /// dependency, so the cost is a global memory barrier that was not owed and never a missing one. Bounding it
-    /// is a change to a BARRIER decision rather than to wasted work, so it wants its own argument against the
-    /// storage-binding clause above, and it has not been made.</para>
+    /// <para><b>BOTH WALKS BELOW STOP AT THE BOUND PIPELINE LAYOUT'S DECLARED SET COUNT</b>
+    /// (<see cref="VulkanBindRecords.BindableSlotLimit"/>), which is where the bind flush stops because a bind past
+    /// it is an invalid call (https://github.com/APKiwiOrg/KhaozEngine/issues/625) and where
+    /// <see cref="VulkanDrawRecorder"/>'s image walk stops because a transition past it is wasted work
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/626). This was the last walk over the records left
+    /// unbounded (https://github.com/APKiwiOrg/KhaozEngine/issues/632), and it was left deliberately: it is the
+    /// only one whose bound decides whether a BARRIER is EMITTED, so it owes an argument of its own rather than
+    /// either of theirs.</para>
+    ///
+    /// <para><b>AND THE ARGUMENT IS THAT THE STORAGE-BINDING CLAUSE ABOVE IS ABOUT DIRECTION, NOT REACH.</b> That
+    /// clause assumes a WRITE because the seam cannot tell a read-only storage binding from a read-write one, and
+    /// guessing the other way would drop the barrier the whole chain exists for. It says nothing about a set the
+    /// dispatch cannot access AT ALL, which is what a slot past the limit is: it is not bound to the dispatch, the
+    /// bound layout has no entry at that index, and no shader on the pipeline can name it. The slots this bound
+    /// drops are therefore not bindings of unknown direction, they are bindings of no access, and dropping them
+    /// cannot lose a hazard. The one thing it must not become is a bound on DIRTY slots, for the reason
+    /// <see cref="VulkanBindRecords.BoundAt"/> gives: a set bound before an earlier dispatch is still bound at
+    /// this one and its writes are still this recording's.</para>
+    ///
+    /// <para><b>WHICH IS WHY THE OLD BOUND WAS CONSERVATIVE RATHER THAN WRONG, AND WHY IT STILL COST.</b> A compute
+    /// pipeline switch to a layout declaring fewer sets leaves the dropped slots recording their sets on purpose,
+    /// so the trip back rebinds them. Walking those could only ADD a resource to the written set or ANSWER yes to a
+    /// dependency, so the error was an extra global memory barrier and never a missing one. But V-C2 exists
+    /// precisely so a run of independent dispatches is not serialised by a barrier each, and a stale slot put one
+    /// back. <c>VulkanComputeHazardWalkTests</c> pins both halves.</para>
     ///
     /// <para><b>LIST-LOCAL AND UNSYNCHRONISED</b>, on the same grounds as everything else a recording holds: one
     /// list records on one thread at a time, and a set shared between two lists would be exactly the shared
@@ -67,13 +82,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// Whether a dispatch binding <paramref name="records"/> reads or overwrites something an earlier dispatch
         /// in this recording wrote, and therefore owes a barrier before it runs.
         /// </summary>
-        /// <param name="records">The COMPUTE bind records as they stand, whose recorded slots are what the
+        /// <param name="records">The COMPUTE bind records as they stand, whose DECLARED slots are what the
         /// dispatch will bind.</param>
         internal bool NeedsBarrier(VulkanBindRecords records)
         {
             if (_written.Count == 0) return false;
 
-            for (uint slot = 0; slot < (uint)records.RecordedSlotCount; slot++)
+            // READ ONCE, like every other walk over the records: nothing this one does can move the limit, because
+            // asking a question binds no pipeline.
+            uint limit = (uint)records.BindableSlotLimit();
+
+            for (uint slot = 0; slot < limit; slot++)
             {
                 VulkanBoundSet bound = records.BoundAt(slot);
                 if (!bound.IsBound) continue;
@@ -93,14 +112,19 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <summary>
-        /// Record everything the dispatch about to run can write: every STORAGE image and every storage buffer its
-        /// bound sets name. Called AFTER the dispatch is emitted, because a dispatch does not depend on its own
-        /// writes.
+        /// Record everything the dispatch about to run can write: every STORAGE image and every storage buffer the
+        /// sets it really binds name. Called AFTER the dispatch is emitted, because a dispatch does not depend on
+        /// its own writes.
         /// </summary>
         /// <param name="records">The compute bind records as they stand.</param>
         internal void NoteWrites(VulkanBindRecords records)
         {
-            for (uint slot = 0; slot < (uint)records.RecordedSlotCount; slot++)
+            // BOUNDED IDENTICALLY TO THE QUESTION ABOVE, and that is load-bearing rather than tidy: a write walk
+            // that reached further would put a resource back into the set the barrier had just cleared, and the
+            // next dispatch to bind it would pay for a write no dispatch in this recording made.
+            uint limit = (uint)records.BindableSlotLimit();
+
+            for (uint slot = 0; slot < limit; slot++)
             {
                 VulkanBoundSet bound = records.BoundAt(slot);
                 if (!bound.IsBound) continue;

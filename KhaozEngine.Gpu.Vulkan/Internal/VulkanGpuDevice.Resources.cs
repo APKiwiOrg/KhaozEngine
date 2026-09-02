@@ -25,6 +25,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// work already queued, and nothing on this backend reads a staging resource except a copy the caller ordered
     /// itself. The seam's contract for an off-timeline write is that it lands when you call it.</para>
     ///
+    /// <para><b>AND BOTH MAPS REFUSE A LOST DEVICE BEFORE EITHER OF THOSE RUNS</b>
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/551). The disposed flag says the consumer let the device
+    /// go and answers false for a device the driver took, while the memory a map hands a pointer into went with
+    /// the device. See <c>RequireLiveForMap</c> below for the whole argument and for what the refusal carries.
+    /// </para>
+    ///
     /// <para><b>THE MAP PAIR TAKES THE SUBMIT LOCK FOR THE MAP CALL AND NOTHING LONGER (11.4).</b> The flush and
     /// the drain both happen BEFORE it, so the lock covers the bookkeeping, the invalidate and the pointer
     /// arithmetic, which is microseconds. Holding it across the drain would serialise every submit in the process
@@ -104,6 +110,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         public MappedData Map(IGpuTexture staging, GpuMapMode mode)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            RequireLiveForMap();
 
             VulkanTexture target = RequireMappable(staging);
             VulkanSubresourceLayout layout = VulkanStagingLayout.For(
@@ -146,6 +153,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         public MappedData Map(IGpuBuffer staging, GpuMapMode mode)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            RequireLiveForMap();
 
             VulkanBuffer target = RequireMappable(staging);
 
@@ -172,6 +180,32 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             {
                 if (VulkanStagingMaps.Writes(_maps.Close(target))) target.Allocation.Flush(0, target.SizeInBytes);
             }
+        }
+
+        // BOTH MAPS REFUSE A LOST DEVICE, WITH THE REASON THE LATCH RECORDED
+        // (https://github.com/APKiwiOrg/KhaozEngine/issues/551). The disposed flag they already carried says the
+        // CONSUMER let the device go, and it answers false for a device the DRIVER took: nothing about a loss
+        // disposes anything. What a map hands back is a pointer into a host-visible chunk that went with the
+        // device, and the read path's invalidate is a native call against memory the driver has already released,
+        // so serving one is a dangling pointer plus a call on a dead device. Every destroy is a no-op by then,
+        // which is exactly what leaves a map as the last live route into that memory.
+        //
+        // FIRST, AHEAD OF THE FLUSH AND THE DRAIN, because both of those are the device-level read this refusal
+        // is about, and a refusal that arrived after them would have made two native calls to say no.
+        void RequireLiveForMap()
+        {
+            if (!_liveness.IsDead) return;
+
+            string reason = _loss.HeaderValue is { Length: > 0 } latched
+                ? "The loss was first seen as " + latched + "."
+                : "No loss reason was latched, so the token was marked dead by something other than the loss "
+                    + "latch.";
+
+            throw new InvalidOperationException(
+                "The native Vulkan device is LOST, so nothing on it can be mapped: its host-visible memory went "
+                + "with the device, and the pointer a map returns would address memory the driver has already "
+                + "released. " + reason + " There is no recovery path on this backend, so a caller that wants to "
+                + "read back again creates a new device.");
         }
 
         /// <summary>

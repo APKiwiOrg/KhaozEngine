@@ -151,23 +151,35 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <summary>
         /// Whether the setup buffer CLEARS this texture to transparent black at creation (V-M10). True for a
-        /// colour render target, reproducing <c>VkTexture.ClearIfRenderTarget</c>'s first arm.
+        /// colour render target that is NOT also a depth one, reproducing
+        /// <c>VkTexture.ClearIfRenderTarget</c>'s first arm with the tie broken the other way, for the reason
+        /// <see cref="ClearDepthAtCreation"/> gives.
         /// <para>
         /// THE CLEAR IS PRESERVED DELIBERATELY, and only the queue submit that carried it is removed. Dropping it
         /// would change what a render target reads before anything writes it, and undefined contents are not
         /// stable across runs while the goldens require stability on the same rasterizer.
         /// </para>
         /// </summary>
-        internal bool ClearColorAtCreation => (Usage & VulkanImageUsage.ColorAttachment) != 0;
+        internal bool ClearColorAtCreation
+            => (Usage & VulkanImageUsage.ColorAttachment) != 0
+                && (Usage & VulkanImageUsage.DepthStencilAttachment) == 0;
 
         /// <summary>
-        /// Whether the setup buffer clears this texture to depth 0, stencil 0 at creation. True for a depth target
-        /// that is NOT also a colour one, which is the incumbent's <c>else if</c> reproduced: its two arms are
-        /// exclusive, so a texture declaring both usages gets the colour clear alone.
+        /// Whether the setup buffer clears this texture to depth 0, stencil 0 at creation. True for any depth
+        /// target, which is the incumbent's <c>else if</c> with its two arms swapped
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/551).
+        /// <para>
+        /// THE ARMS ARE STILL EXCLUSIVE AND DEPTH IS NOW THE ONE THAT WINS, so this ladder and
+        /// <c>RestingLayoutFor</c> break the <c>RenderTarget | DepthStencil</c> tie the same way. It has to be
+        /// depth rather than colour, because <see cref="DepthStencil"/> reads the same bit for the ASPECT MASK:
+        /// a depth-aspect image can take a <c>vkCmdClearDepthStencilImage</c> and cannot take a
+        /// <c>vkCmdClearColorImage</c> at all, so the aspect decides which arm is even legal and the other two
+        /// ladders follow it. Nothing in the engine creates a texture declaring both, which is why the
+        /// disagreement could sit here unobserved, and it is a trap for whoever adds the first one rather than a
+        /// defect in anything shipped.
+        /// </para>
         /// </summary>
-        internal bool ClearDepthAtCreation
-            => (Usage & VulkanImageUsage.ColorAttachment) == 0
-                && (Usage & VulkanImageUsage.DepthStencilAttachment) != 0;
+        internal bool ClearDepthAtCreation => (Usage & VulkanImageUsage.DepthStencilAttachment) != 0;
 
         /// <summary>Whether creation records a clear at all, which decides whether the first-ever transition goes
         /// to <c>TRANSFER_DST_OPTIMAL</c> or straight to the resting layout.</summary>
@@ -325,6 +337,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // reading. The leftover case is a texture with no binding usage at all, which the seam can express (a
         // transfer-only scratch surface) and which nothing in the engine creates: GENERAL is the layout every
         // access type is legal in, so it is the answer that cannot be wrong for a shape nobody has.
+        //
+        // DEPTH BEFORE RENDER TARGET IS THE TIE-BREAK, and it is the same one VulkanTextureViewPlan's clear
+        // ladder makes (https://github.com/APKiwiOrg/KhaozEngine/issues/551). The two disagreed until then, which
+        // no shipped texture could see because nothing declares both.
         static VulkanRestingLayout RestingLayoutFor(bool sampled, bool storage, bool renderTarget,
             bool depthStencil)
         {

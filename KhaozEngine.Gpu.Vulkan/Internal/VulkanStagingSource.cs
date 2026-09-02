@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Threading;
 using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
@@ -39,7 +40,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// device-owned one behind the setup buffer and one per command list. Each arena is single-threaded by
     /// construction and they are different threads from each other, so the allocation ledger below takes a short
     /// lock. Without it two lists creating a block at once would race a dictionary and lose an allocation, which
-    /// presents as a leak nobody can attribute.</para>
+    /// presents as a leak nobody can attribute. The two DESTROY COUNTERS are incremented after that lock is
+    /// released, so they are atomic rather than guarded (https://github.com/APKiwiOrg/KhaozEngine/issues/551): a
+    /// plain increment there could drop a destroy and present as the same unattributable leak, through the very
+    /// reading that exists to rule one out.</para>
     /// </summary>
     internal sealed class VulkanStagingSource : IVulkanStagingSource
     {
@@ -50,6 +54,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // is the arena's value type and the arena has no allocator to hand one back to.
         readonly object _gate = new();
         readonly Dictionary<ulong, VulkanMemoryAllocation> _blocks = new();
+
+        // INTERLOCKED RATHER THAN UNDER _gate (https://github.com/APKiwiOrg/KhaozEngine/issues/551). Both counters
+        // are incremented AFTER the ledger lock is released, so an auto-property increment was a plain read, add
+        // and write that two arenas destroying at once could interleave and lose. Taking the gate again for them
+        // would put a second lock acquisition on every destroy, and the deferred arm would still have to drop it
+        // before calling out to the retire list, so the atomic is both the cheaper answer and the narrower one.
+        int _deferredDestroys;
+        int _abandonedDestroys;
 
         /// <param name="owner">The device's resource seam, allocator, timeline and retire list.</param>
         /// <param name="liveness">The device's liveness token, which decides between deferring and
@@ -72,11 +84,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <summary>How many destroys were DEFERRED through the retire list rather than made immediately. The
         /// number the contract is about.</summary>
-        internal int DeferredDestroyCount { get; private set; }
+        internal int DeferredDestroyCount => Volatile.Read(ref _deferredDestroys);
 
         /// <summary>How many destroys were ABANDONED because the device was dead. Reported rather than silent: a
         /// large number says a consumer was still recording uploads after the device had gone.</summary>
-        internal int AbandonedDestroyCount { get; private set; }
+        internal int AbandonedDestroyCount => Volatile.Read(ref _abandonedDestroys);
 
         /// <inheritdoc/>
         public VulkanStagingBlock Create(ulong sizeBytes)
@@ -143,14 +155,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (_liveness.IsDead)
             {
-                AbandonedDestroyCount++;
+                Interlocked.Increment(ref _abandonedDestroys);
                 return;
             }
 
             ulong buffer = block.Buffer;
             VulkanResourceOwner owner = _owner;
 
-            DeferredDestroyCount++;
+            Interlocked.Increment(ref _deferredDestroys);
             owner.RetireTerminal(() =>
             {
                 owner.Api.DestroyBuffer(buffer);

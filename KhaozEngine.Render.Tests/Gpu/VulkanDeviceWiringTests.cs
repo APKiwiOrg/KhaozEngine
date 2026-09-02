@@ -1,3 +1,4 @@
+using System;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Xunit;
@@ -173,6 +174,45 @@ namespace KhaozEngine.Tests.Gpu
             bool reads = mode != GpuMapMode.Write;
             Assert.Equal(reads ? 1 : 0, fixture.Semaphore.WaitCount);
             Assert.Equal(reads ? 1 : 0, fixture.Device.Counters.DrainCount);
+        }
+
+        /// <summary>
+        /// A MAP ON A LOST DEVICE IS REFUSED RATHER THAN SERVED
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/551). Both overloads used to guard the DISPOSED flag
+        /// alone, which says the consumer let the device go and answers false for a device the driver took: the
+        /// pointer a staging resource carries addresses a host-visible chunk that went with it, and the invalidate
+        /// on the read path is a native call against memory the driver has released.
+        ///
+        /// <para><b>WHAT IS PINNED HERE IS THE GUARD, NOT THE SYMPTOM.</b> A dangling pointer read is undefined
+        /// rather than failed, so only a real device that really lost itself can show the original behaviour, and
+        /// that is the hosted <c>vulkan-native</c> leg's to see rather than any device-free rig's. What a fake
+        /// liveness token can prove, and what actually keeps the guard from being deleted, is that a dead device
+        /// refuses by name, drains nothing and submits nothing.</para>
+        /// </summary>
+        [Fact]
+        public void MappingOnALostDevice_IsRefusedAndFlushesNothing()
+        {
+            using var fixture = new VulkanDeviceFixture();
+            using IGpuTexture staging = fixture.StagingTexture();
+            using IGpuBuffer buffer = fixture.StagingBuffer();
+            using IGpuTexture target = fixture.OpenSetupWork();
+
+            fixture.Liveness.MarkDead();
+
+            InvalidOperationException texture = Assert.Throws<InvalidOperationException>(
+                () => fixture.Device.Map(staging, GpuMapMode.Read));
+            InvalidOperationException written = Assert.Throws<InvalidOperationException>(
+                () => fixture.Device.Map(buffer, GpuMapMode.Write));
+
+            // The reason travels with the refusal, which is the whole difference between this and a null check.
+            Assert.Contains("LOST", texture.Message, StringComparison.Ordinal);
+            Assert.Contains("LOST", written.Message, StringComparison.Ordinal);
+
+            // AND THE REFUSAL IS THE FIRST THING EITHER ONE DOES: no flush, no drain, no native call on a device
+            // the driver has already taken.
+            Assert.Empty(fixture.CommandApi.Submissions);
+            Assert.Equal(0, fixture.Semaphore.WaitCount);
+            Assert.Equal(0, fixture.Device.Counters.DrainCount);
         }
 
         // ---- The hook's own contract ---------------------------------------------------------------------

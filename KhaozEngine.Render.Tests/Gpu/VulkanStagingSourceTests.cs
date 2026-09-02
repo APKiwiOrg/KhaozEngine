@@ -1,5 +1,7 @@
 using System;
 using System.Linq;
+using System.Threading;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Xunit;
 
@@ -210,6 +212,134 @@ namespace KhaozEngine.Tests.Gpu
 
             arena.Dispose();
             fixture.Drain();
+        }
+
+        // ---- The counters, under the concurrency the type documents ----
+
+        /// <summary>
+        /// THE DEFERRED COUNT SURVIVES EVERY ARENA DESTROYING AT ONCE
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/551), which is the concurrency this type already
+        /// claims: one source serves the device's own arena and one per command list, each on its own thread, and
+        /// the block ledger takes a lock for exactly that reason. The counters were the one piece of state left
+        /// outside it, so a plain increment could drop a destroy and present as a leak nobody can attribute, which
+        /// is precisely what the reading exists to rule out.
+        ///
+        /// <para><b>THE LIVENESS TOKEN IS THE RENDEZVOUS, and that is what makes this a proof rather than a
+        /// hope.</b> <c>Destroy</c> reads it immediately before it increments, so a token that parks every reader
+        /// until all of them have arrived puts every thread on the increment together, on every round. A stress
+        /// loop without it spends its time queueing on the ledger lock, which serialises the very instruction the
+        /// test is about.</para>
+        /// </summary>
+        [Fact]
+        public void TheDeferredDestroyCount_CountsEveryDestroyWhenEveryThreadDestroysAtOnce()
+        {
+            var fixture = new VulkanResourceFixture();
+            var source = new VulkanStagingSource(fixture.Owner, new RendezvousLiveness(dead: false, Threads));
+
+            DestroyFromEveryThreadAtOnce(source);
+
+            Assert.Equal(Threads * Rounds, source.DeferredDestroyCount);
+            Assert.Equal(0, source.AbandonedDestroyCount);
+            Assert.Equal(0, source.LiveBlockCount);
+            Assert.Equal(Threads * Rounds, fixture.Retired.Count);
+
+            Assert.Equal(Threads * Rounds, fixture.Drain());
+        }
+
+        /// <summary>AND SO DOES THE ABANDONED COUNT, which is the arm with nothing after it: the deferred one at
+        /// least takes the retire list's lock on its way out, and this one increments and returns. It is also the
+        /// reading that matters most, because a large number says a consumer was still recording uploads after the
+        /// device had gone.</summary>
+        [Fact]
+        public void TheAbandonedDestroyCount_CountsEveryDestroyWhenEveryThreadDestroysAtOnce()
+        {
+            var fixture = new VulkanResourceFixture();
+            var source = new VulkanStagingSource(fixture.Owner, new RendezvousLiveness(dead: true, Threads));
+
+            DestroyFromEveryThreadAtOnce(source);
+
+            Assert.Equal(Threads * Rounds, source.AbandonedDestroyCount);
+            Assert.Equal(0, source.DeferredDestroyCount);
+            Assert.Equal(0, source.LiveBlockCount);
+            Assert.Equal(0, fixture.Retired.Count);
+        }
+
+        // ---- Fixtures ----
+
+        const int Threads = 8;
+        const int Rounds = 250;
+
+        // Every block created up front on one thread, because the ALLOCATOR is single-threaded by construction and
+        // is not what this is about, then one thread per participant destroying its own slice. A dedicated Thread
+        // rather than a pool task: the barrier needs all eight running at once, and a saturated pool would hand
+        // them over one injection at a time.
+        static void DestroyFromEveryThreadAtOnce(VulkanStagingSource source)
+        {
+            var blocks = new VulkanStagingBlock[Threads * Rounds];
+            for (int i = 0; i < blocks.Length; i++) blocks[i] = source.Create(256);
+
+            var failures = new Exception?[Threads];
+            var threads = new Thread[Threads];
+
+            for (int t = 0; t < Threads; t++)
+            {
+                int slice = t;
+                threads[t] = new Thread(() =>
+                {
+                    try
+                    {
+                        for (int i = 0; i < Rounds; i++) source.Destroy(blocks[(slice * Rounds) + i]);
+                    }
+                    catch (Exception ex)
+                    {
+                        failures[slice] = ex;
+                    }
+                })
+                {
+                    IsBackground = true,
+                    Name = "staging-destroy-" + slice.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                };
+            }
+
+            foreach (Thread thread in threads) thread.Start();
+
+            foreach (Thread thread in threads)
+            {
+                Assert.True(thread.Join(TimeSpan.FromSeconds(60)), thread.Name + " never finished its slice.");
+            }
+
+            Assert.All(failures, failure => Assert.Null(failure));
+        }
+
+        // A LIVENESS TOKEN THAT PARKS EVERY READER AT THE SAME INSTRUCTION. The real one is a lock-free bool read
+        // and the interface says an implementation must never take a lock, which this deliberately breaks: it is
+        // the only place in Destroy where a fake can reach in between the ledger lock and the increment, and
+        // holding every thread there is what turns a lost update from a rare interleaving into the ordinary one.
+        sealed class RendezvousLiveness : IDeviceLiveness
+        {
+            readonly Barrier _gate;
+            readonly bool _dead;
+
+            internal RendezvousLiveness(bool dead, int participants)
+            {
+                _dead = dead;
+                _gate = new Barrier(participants);
+            }
+
+            /// <inheritdoc/>
+            public bool IsDead
+            {
+                get
+                {
+                    if (!_gate.SignalAndWait(TimeSpan.FromSeconds(10)))
+                    {
+                        throw new TimeoutException(
+                            "A destroy waited ten seconds for the other threads to reach the same read.");
+                    }
+
+                    return _dead;
+                }
+            }
         }
     }
 }

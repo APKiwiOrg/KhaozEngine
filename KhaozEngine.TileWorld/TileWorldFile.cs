@@ -227,11 +227,29 @@ public static class TileWorldFile
         return byName.Values.ToList();
     }
 
-    static void WriteAtomic(string path, byte[] bytes)
+    // The tmp name is unique per CALL. It used to be exactly path + ".tmp", which every writer into the directory
+    // shared: two saves of one world (two tools, or a tool and the editor) then truncated each other's tmp, and
+    // the loser moved half-written bytes over the target or failed on a file the winner had already renamed away.
+    // A rename is atomic, so with a name of its own each writer either lands its whole file or none of it, and
+    // the target is always one complete file whoever lands last. Which of two concurrent saves wins a whole world
+    // is a wider question (#350); this is the write primitive's half of it.
+    internal static void WriteAtomic(string path, byte[] bytes)
     {
-        string tmp = path + ".tmp";
-        File.WriteAllBytes(tmp, bytes);
-        File.Move(tmp, path, overwrite: true);
+        string tmp = $"{path}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            File.WriteAllBytes(tmp, bytes);
+            File.Move(tmp, path, overwrite: true);
+        }
+        catch
+        {
+            // The tmp belongs to this call alone, so cleaning it up cannot take another writer's file with it.
+            // Swallowed on the way out: the original failure is the one worth reporting.
+            try { File.Delete(tmp); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            throw;
+        }
     }
 
     internal static bool TryParseRegionFileName(string name, out RegionCoord c)

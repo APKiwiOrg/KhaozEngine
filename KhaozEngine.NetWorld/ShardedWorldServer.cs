@@ -703,6 +703,10 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
 
     private void OnJoin(int slot, string subject, string displayName)
     {
+        // A VERIFIED subject may not sit inside the reserved guest namespace: it would read as tokenless to
+        // persistence and lose the whole session silently (see ReservedSubjectGuard).
+        if (ReservedSubjectGuard.IsReserved(subject, slot)) { net.Disconnect(slot); return; }
+
         string accountId = string.IsNullOrEmpty(subject) ? $"{ResumePositionCache.GuestAccountPrefix}{slot}" : subject;
         if (banStore is not null && banStore.IsBanned(accountId))
         {

@@ -13472,7 +13472,9 @@ token for the same account carries the same subject, so persistence keyed on the
 `WorldServer`/`ShardedWorldServer` take the authenticator as an optional last constructor argument (default
 `AllowAllAuthenticator`) and use `ev.Subject` as the persisted `accountId`, falling back to `guest:{slot}` when it
 is empty. That fallback names a recycled seat rather than a player, so `WorldPersistence` stores nothing under it
-unless the game sets `WorldPersistenceConfig.PersistGuests` (see the persistence section).
+unless the game sets `WorldPersistenceConfig.PersistGuests` (see the persistence section). The `guest:` prefix is
+reserved for that fallback: a verified subject carrying it is refused at the join gate on both heads, since it
+would reach persistence reading as tokenless and lose the session silently.
 
 **Client-side shape pre-filter without the secret (`SignedToken.TryParseUnverified`, 14.9.0).** The HMAC secret
 lives only on the server, so a client that wants to sanity-check a pasted or launch-supplied token's SHAPE before
@@ -14039,11 +14041,13 @@ sets **`WorldPersistenceConfig.PersistGuests = true`**, which files each guest u
 for that one session and never under the seat. That buys crash-safety within a session and an audit trail, never a
 guest's return: nothing can present the minted id again. Give players a connect token if returning matters.
 
-The `guest:` prefix is RESERVED by that rule and enforced nowhere. `SignedToken.Mint` accepts any subject that has no
-`.` in it, and `AllowAllAuthenticator` takes the client's raw bytes as the subject, so a game that mints
-`guest:alice` as a real account id gets a player the engine reads as tokenless and, by default, does not persist at
-all, silently. Do not namespace your own account ids under it. Tracked in
-[#664](https://github.com/APKiwiOrg/KhaozEngine/issues/664).
+The `guest:` prefix is RESERVED by that rule, and both heads now ENFORCE it at the join gate: a verified subject
+carrying it is refused and the connection dropped, with an error log naming the subject and the fix. Nothing stops a
+game minting such a subject (`SignedToken.Mint` accepts any subject with no `.` in it, and `AllowAllAuthenticator`
+takes the client's raw bytes), and the join is the last place that can tell a minted `guest:alice` from the
+`guest:{slot}` a head derives for a tokenless connection. Before that gate the player joined fine and then lost the
+whole session on disconnect, silently. Do not namespace your own account ids under it. It is the PREFIX that
+decides, so every other subject format is unaffected, an account genuinely named `guest` included.
 
 ```csharp
 var persistence = new WorldPersistence(server, store, new WorldPersistenceConfig

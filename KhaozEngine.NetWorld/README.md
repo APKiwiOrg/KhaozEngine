@@ -148,7 +148,10 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
     **`WorldPersistenceConfig.PersistGuests`** (default false), which files each guest under a durable
     `guest:{guid}` minted for that one session and never under the seat. Be clear about what that buys: the minted id
     is unreachable afterwards, so it is crash-safety within a session and an audit trail, never a guest's return.
-    Give players a connect token if returning to where they left matters.
+    Give players a connect token if returning to where they left matters. The prefix is RESERVED for that seat key,
+    and both heads enforce it at the join gate: a VERIFIED subject carrying it is refused and logged, because it
+    would otherwise reach persistence reading as tokenless and lose the whole session silently (#664). It is the
+    prefix that decides, so an account genuinely named `guest` is an account.
   - **Load validation and quarantine.** Two optional hooks on `WorldPersistenceConfig`, both evaluated on the
     server thread inside the load-on-join apply step: **`Bounds`** (`WorldBounds`, the same type the movement
     clamp uses) rejects a loaded position outside the play area. **`ValidateGameState`**

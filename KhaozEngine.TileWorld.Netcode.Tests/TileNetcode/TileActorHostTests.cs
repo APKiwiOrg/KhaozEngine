@@ -334,6 +334,48 @@ public class TileActorHostTests
         Assert.Equal(0, s.Actors.PendingCommandCount);
     }
 
+    // THE ONE-ARGUMENT CONSTRUCTOR has no caller in the tree: the server always passes two, one tuned to the leash.
+    // Keeping it is right (it is still the shape a head with no actors wants, and dropping it would be a breaking
+    // change for one), and nothing pinned that it still routes BOTH kinds of entity through the single simulator it
+    // was handed. The observable is the route CAP, which is the one knob a second simulator built behind the
+    // constructor could not accidentally agree on.
+    [Fact]
+    public void The_one_argument_movement_system_steps_a_player_and_an_actor_through_the_one_simulator()
+    {
+        var simulator = new TileMoveSimulator(TileMoveSimulatorTests.Bake(TileMoveSimulatorTests.FlatWorld()),
+            TileStepTicks.Default, options: new TileMoveOptions { MaxRouteSteps = 3 });
+        var world = new World();
+        Entity player = Walker(world, new TileCoord(20, 20, 0), actor: false);
+        Entity actor = Walker(world, new TileCoord(20, 24, 0), actor: true);
+
+        new TileMovementSystem(simulator).Update(world, Dt);
+
+        // Both routes are truncated to the SAME cap, which is this simulator's rather than a default one's.
+        Assert.Equal(RouteLengthOf(world, player), RouteLengthOf(world, actor));
+        Assert.Equal(2, RouteLengthOf(world, actor));
+    }
+
+    // One entity with the three components the movement pass queries, walking ten tiles east, tagged as an actor or
+    // not. Built straight into a bare World, because the constructor under test is the one no server calls.
+    static Entity Walker(World world, TileCoord at, bool actor)
+    {
+        Entity e = world.Spawn();
+        world.Set(e, TileMoveState.At(at, TileDirection.S));
+        world.Set(e, new TileRouteState { Remaining = Array.Empty<TileDirection>() });
+        world.Set(e, new PendingTileCommand
+        {
+            Command = TileCommand.WalkTo(new TileCoord(at.X + 10, at.Z, at.Plane), TileMoveMode.Walk),
+        });
+        if (actor) world.Set(e, new TileActor());
+        return e;
+    }
+
+    static int RouteLengthOf(World world, Entity e)
+    {
+        Assert.True(world.TryGet(e, out TileRouteState route));
+        return route.Remaining?.Length ?? -1;
+    }
+
     // The despawn is the moment the actor stops existing, so every index keyed on its net id has to answer for that
     // at once. The spawner link used to survive until the spawner's own next tick noticed the actor was gone, which
     // left TryGetSpawnerOf answering true for an id nothing else in the server referenced. Harmless while net ids

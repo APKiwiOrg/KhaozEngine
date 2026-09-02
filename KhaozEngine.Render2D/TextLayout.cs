@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Render2D
@@ -64,19 +65,21 @@ namespace KhaozEngine.Render2D
         /// its <c>scale</c> parameter into the effective <paramref name="maxWidth"/> it passes here
         /// (<c>maxWidth / scale</c>), so scale is already part of the cache key via that effective width - two
         /// different (width, scale) pairs that resolve to the same effective width correctly share one cache entry,
-        /// since <see cref="Wrap"/>'s output depends only on that effective width. The cache is bounded
-        /// (oldest-unused entries evicted) so a session that streams many distinct texts (chat, procedurally
-        /// generated labels) cannot grow it without limit. The returned list is always a fresh copy, so a caller
+        /// since <see cref="Wrap"/>'s output depends only on that effective width. The cache is bounded PER
+        /// MEASURER (oldest-unused entries evicted) so a session that streams many distinct texts through one font
+        /// (chat, procedurally generated labels) cannot grow it without limit, and it hangs off the measurer
+        /// weakly, so a font nobody references any more is collected with its entries instead of being pinned
+        /// here until the bound ages it out. The returned list is always a fresh copy, so a caller
         /// mutating it can never corrupt the cache. Concurrent callers are safe, including off the render thread:
         /// the wrap itself runs unlocked, and two threads that miss on the same key both compute it, then the
         /// second to finish adopts the entry the first inserted instead of adding a duplicate.
         /// </para></summary>
         public static List<string> Wrap(ITextMeasurer font, string text, float maxWidth, bool hardBreak = false, bool preserveSpaceRuns = false)
         {
-            var key = new WrapKey(font, text, maxWidth, hardBreak, preserveSpaceRuns);
+            var key = new WrapKey(text, maxWidth, hardBreak, preserveSpaceRuns);
             lock (WrapCacheLock)
             {
-                if (TryGetCachedWrap(key, out List<string>? cachedHit))
+                if (TryGetCachedWrap(font, key, out List<string>? cachedHit))
                     return new List<string>(cachedHit);
             }
 
@@ -91,10 +94,10 @@ namespace KhaozEngine.Render2D
                 // the tail, evicts the index row belonging to the OTHER thread's still-live node (#87). Wrap is a
                 // pure function of the key, so the two results are equal and the loser simply adopts the
                 // winner's entry rather than fighting over it.
-                if (TryGetCachedWrap(key, out List<string>? winner))
+                if (TryGetCachedWrap(font, key, out List<string>? winner))
                     return new List<string>(winner);
 
-                CacheWrap(key, lines);
+                CacheWrap(font, key, lines);
             }
             return new List<string>(lines);
         }
@@ -227,11 +230,24 @@ namespace KhaozEngine.Render2D
         public static float MeasureWrappedHeight(ITextMeasurer font, string text, float maxWidth, bool preserveSpaceRuns = false) =>
             Wrap(font, text, maxWidth, preserveSpaceRuns: preserveSpaceRuns).Count * font.LineHeight;
 
-        // -- Wrap()'s bounded LRU memo cache --
+        // -- Wrap()'s per-measurer bounded LRU memo cache --
 
-        // Font identity (reference equality, since ITextMeasurer has no overridden Equals) + the text/width/mode
-        // that fully determine Wrap's output.
-        readonly record struct WrapKey(ITextMeasurer Font, string Text, float MaxWidth, bool HardBreak, bool PreserveSpaceRuns);
+        // The text/width/mode that fully determine Wrap's output FOR ONE measurer. The measurer itself is
+        // deliberately not a field here: it is the ConditionalWeakTable key below instead, so a font nobody
+        // references any more can be collected with its entries rather than sitting in a process-static
+        // dictionary, glyph table and all, until 256 later wraps age it out of the LRU (#767). Font identity is
+        // still part of the lookup (reference equality, since ITextMeasurer has no overridden Equals), it is just
+        // carried by the table rather than by the key.
+        readonly record struct WrapKey(string Text, float MaxWidth, bool HardBreak, bool PreserveSpaceRuns);
+
+        // One bounded LRU per measurer. Holds NO reference back to the measurer it hangs off, directly or through
+        // a key: a ConditionalWeakTable value that can reach its own key keeps the entry alive forever, which is
+        // the exact leak this shape exists to close.
+        sealed class MeasurerWrapCache
+        {
+            public readonly Dictionary<WrapKey, LinkedListNode<(WrapKey Key, List<string> Lines)>> Index = new();
+            public readonly LinkedList<(WrapKey Key, List<string> Lines)> Lru = new();
+        }
 
         // Not a hot per-frame allocation path (a cache hit/miss check, not the wrap itself), and Wrap() may be
         // called from tests/tools off the render thread, so guard the shared cache with a plain lock rather than
@@ -243,17 +259,23 @@ namespace KhaozEngine.Render2D
         // measurer, and would invite a lock-order inversion the moment a measurer takes a lock of its own. So the
         // gap stays, and Wrap closes it by re-checking the cache under the second lock instead (#87).
         static readonly object WrapCacheLock = new();
+
+        // PER MEASURER, not process-wide. The bound is there so one font streaming distinct texts (chat,
+        // procedurally generated labels) cannot grow its cache without limit, and that property is exactly what a
+        // per-measurer cap keeps. The process-wide total is now this times the number of LIVE measurers, which a
+        // game holds a handful of, and a measurer that dies subtracts its own share.
         const int WrapCacheCapacity = 256;
-        static readonly Dictionary<WrapKey, LinkedListNode<(WrapKey Key, List<string> Lines)>> WrapCacheIndex = new();
-        static readonly LinkedList<(WrapKey Key, List<string> Lines)> WrapCacheLru = new();
+
+        // The table holds the measurer WEAKLY, so nothing here is a reason for a disposed font to stay reachable.
+        static readonly ConditionalWeakTable<ITextMeasurer, MeasurerWrapCache> WrapCaches = new();
 
         // Caller must hold WrapCacheLock.
-        static bool TryGetCachedWrap(WrapKey key, [NotNullWhen(true)] out List<string>? lines)
+        static bool TryGetCachedWrap(ITextMeasurer font, WrapKey key, [NotNullWhen(true)] out List<string>? lines)
         {
-            if (WrapCacheIndex.TryGetValue(key, out var node))
+            if (WrapCaches.TryGetValue(font, out MeasurerWrapCache? cache) && cache.Index.TryGetValue(key, out var node))
             {
-                WrapCacheLru.Remove(node);
-                WrapCacheLru.AddFirst(node);   // most-recently-used
+                cache.Lru.Remove(node);
+                cache.Lru.AddFirst(node);   // most-recently-used
                 lines = node.Value.Lines;
                 return true;
             }
@@ -263,16 +285,17 @@ namespace KhaozEngine.Render2D
 
         // Caller must hold WrapCacheLock AND must have re-checked, under that same lock acquisition, that the key
         // is absent: this inserts unconditionally, so a second insert for a live key orphans its first node (#87).
-        static void CacheWrap(WrapKey key, List<string> lines)
+        static void CacheWrap(ITextMeasurer font, WrapKey key, List<string> lines)
         {
+            MeasurerWrapCache cache = WrapCaches.GetValue(font, static _ => new MeasurerWrapCache());
             var node = new LinkedListNode<(WrapKey Key, List<string> Lines)>((key, lines));
-            WrapCacheLru.AddFirst(node);
-            WrapCacheIndex[key] = node;
-            if (WrapCacheIndex.Count > WrapCacheCapacity)
+            cache.Lru.AddFirst(node);
+            cache.Index[key] = node;
+            if (cache.Index.Count > WrapCacheCapacity)
             {
-                LinkedListNode<(WrapKey Key, List<string> Lines)> lru = WrapCacheLru.Last!;
-                WrapCacheLru.RemoveLast();
-                WrapCacheIndex.Remove(lru.Value.Key);
+                LinkedListNode<(WrapKey Key, List<string> Lines)> lru = cache.Lru.Last!;
+                cache.Lru.RemoveLast();
+                cache.Index.Remove(lru.Value.Key);
             }
         }
 
@@ -280,9 +303,19 @@ namespace KhaozEngine.Render2D
         // mutation above runs under WrapCacheLock and moves both counts together, so a reader taking the same
         // lock never sees a torn intermediate state and the two counts are equal at every lock boundary. A racing
         // double insert used to break that by leaving a node in the list that no index row pointed at.
-        internal static (int IndexCount, int LruCount) WrapCacheCounts()
+        //
+        // Scoped to ONE measurer's cache since #767, which is the cache a race happens in anyway. It deliberately
+        // does not walk the whole table: enumerating a ConditionalWeakTable hands out its keys, which would root
+        // every live measurer for the duration and could keep a concurrently running lifetime test's font alive.
+        // Zeroes for a measurer that has never been wrapped with.
+        internal static (int IndexCount, int LruCount) WrapCacheCounts(ITextMeasurer font)
         {
-            lock (WrapCacheLock) return (WrapCacheIndex.Count, WrapCacheLru.Count);
+            lock (WrapCacheLock)
+            {
+                return WrapCaches.TryGetValue(font, out MeasurerWrapCache? cache)
+                    ? (cache.Index.Count, cache.Lru.Count)
+                    : (0, 0);
+            }
         }
 
         // --- drawing (needs the GPU-backed SpriteFont) ---

@@ -9,8 +9,9 @@ namespace KhaozEngine.Tests.Render2D
     /// both miss on the same key and both reach the insert. The insert used to be unconditional, which left the
     /// first caller's node in the LRU list with no index row pointing at it. Structural, not timing based: the
     /// interleaving is forced by a measurer that re-enters Wrap from inside the outer call's unlocked gap, and
-    /// the assertion is the cache's own invariant (one list node per index entry) rather than a count that other
-    /// tests running in parallel could move.
+    /// the assertion is the cache's own invariant (one list node per index entry), read for
+    /// this test's own measurer since #767 gave each one its own cache, rather than a count that other tests
+    /// running in parallel could move.
     /// <para>
     /// No <c>DisableParallelization</c> collection: the memo cache this writes is transparent (it only ever
     /// returns what recomputing would have returned), unlike the ambient statics that rule is written for, and
@@ -51,7 +52,7 @@ namespace KhaozEngine.Tests.Render2D
             // The wrap itself is unaffected by who won: same font, same text, same width.
             Assert.Equal(new[] { "aaaaa bbbbb", "ccccc ddddd" }, lines);
 
-            (int indexCount, int lruCount) = TextLayout.WrapCacheCounts();
+            (int indexCount, int lruCount) = TextLayout.WrapCacheCounts(font);
             Assert.Equal(indexCount, lruCount);
         }
 
@@ -66,7 +67,7 @@ namespace KhaozEngine.Tests.Render2D
             Assert.Equal(duringRace, afterRace);
             Assert.NotSame(duringRace, afterRace);
 
-            (int indexCount, int lruCount) = TextLayout.WrapCacheCounts();
+            (int indexCount, int lruCount) = TextLayout.WrapCacheCounts(font);
             Assert.Equal(indexCount, lruCount);
         }
     }

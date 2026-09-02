@@ -42,10 +42,13 @@
   that may be thrown away. `DrawString` has a `float scale` overload (uniform scale about the top-left).
   `TextLayout.AlignedX`/`DrawAligned`/`DrawWrapped` take an optional `scale` so aligned/wrapped text stays
   correct when drawn scaled (`scale = 1` is unchanged). `TextLayout.Wrap(font, text, maxWidth, hardBreak)`
-  word-wraps on spaces and is memoized (a bounded LRU cache keyed on font identity + text + maxWidth +
-  hardBreak), so a caller re-wrapping the same unchanged text every frame (a static label, an idle tooltip)
+  word-wraps on spaces and is memoized (a bounded LRU cache PER MEASURER, keyed on text + maxWidth + hardBreak +
+  mode), so a caller re-wrapping the same unchanged text every frame (a static label, an idle tooltip)
   hits the cache instead of re-running the wrap algorithm, and the returned list is always a fresh copy, so mutating
-  it can never corrupt the cache. Concurrent callers are safe, including off the render thread: the wrap runs
+  it can never corrupt the cache. The cache hangs off the measurer weakly (a `ConditionalWeakTable`), so a font
+  nobody references any more is collected together with its entries instead of being pinned, glyph table and all,
+  in a process-static dictionary until 256 later wraps age it out
+  ([#767](https://github.com/APKiwiOrg/KhaozEngine/issues/767)). Concurrent callers are safe, including off the render thread: the wrap runs
   outside the cache lock, and two callers that miss on the same key both compute it, then the second to finish
   adopts the first's entry rather than inserting a duplicate that would orphan a node in the LRU list
   ([#87](https://github.com/APKiwiOrg/KhaozEngine/issues/87)). The opt-in `hardBreak` (default off) additionally slices a single token longer

@@ -2033,7 +2033,8 @@ inside the callback: the command list it is recording into still names them unti
   `DrawRadialProgress(center, radius, thickness, fraction, color)` strokes `clamp(fraction,0,1)` of a ring from
   12 o'clock clockwise (0 nothing, 1 a full ring) - a countdown/cooldown dial. Angles are radians, +Y down so a
   positive sweep goes clockwise; segment count scales with the swept fraction so small arcs stay smooth.
-- `TextLayout` - device-free word-wrap + alignment over an `ITextMeasurer`, memoized in a bounded LRU cache.
+- `TextLayout` - device-free word-wrap + alignment over an `ITextMeasurer`, memoized in a bounded LRU cache
+  per measurer, held weakly so a font that goes unreachable is collected with its entries.
   `Wrap(font, text, maxWidth, hardBreak = false, preserveSpaceRuns = false)` breaks on spaces; `hardBreak` slices a
   single over-wide token at character boundaries. By default interior space runs COLLAPSE to one space (fine for
   engine-authored labels). For **user-authored content** (a chat log), pass `preserveSpaceRuns: true` (14.9.0) so a

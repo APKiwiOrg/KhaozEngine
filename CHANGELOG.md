@@ -5,6 +5,156 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.13.0
+
+18.13.0 is the ninth backlog wave: 34 items across the tile netcode and tile world deferred minors,
+the native Direct3D 11 and Vulkan correctness items that can be pinned without a device, the Metal
+depth-clip fix the Veldrid removal made possible, the Gpu seam contracts and packaging, and three low
+quick wins, each fixed with a test proven red against the unfixed code. It lands beside the v18.12.0
+release the tile draw-priority change cut, so it takes its own minor.
+
+Tile protocol and the client seam:
+
+- The tile client view releases its framed window on a throw inside the component loop, and the
+  tile protocol refuses a pad-flagged frame whose length is not `CommandFrameSize + 1`. The plane
+  byte in `ReadMove` is documented as the one field the static codec cannot bound, with the refusal
+  pinned where the world is known ([#703](https://github.com/APKiwiOrg/KhaozEngine/issues/703)).
+- `TileWorldClient.NetStats` forwards the transport's `NetTransportStats`, deliberately not the
+  metre-based `ClientNetStats` a tile client cannot fill honestly
+  ([#708](https://github.com/APKiwiOrg/KhaozEngine/issues/708),
+  [#806](https://github.com/APKiwiOrg/KhaozEngine/issues/806) records the HUD gap that leaves).
+- `ITileMeshResolver.Resolve(string meshRef)` resolves a mesh reference without an archetype behind
+  it (a default implementation wraps the archetype path), and `GltfMeshResolver` caches by mesh
+  reference so both overloads share an entry
+  ([#712](https://github.com/APKiwiOrg/KhaozEngine/issues/712)).
+
+Native Vulkan, all device-free pins:
+
+- The compute hazard walk stops at the bound layout's declared set count instead of every recorded
+  slot, so an independent dispatch under a shorter layout gets no barrier
+  ([#632](https://github.com/APKiwiOrg/KhaozEngine/issues/632)).
+- Both `Map` overloads refuse on a lost device before any flush or drain, carrying the loss reason.
+  The creation-time clear ladder and the resting ladder agree that a texture declaring both
+  `RenderTarget` and `DepthStencil` is depth. The two staging counters are `Interlocked`, proven by
+  a rendezvous test that parks eight threads on the increment
+  ([#551](https://github.com/APKiwiOrg/KhaozEngine/issues/551)).
+
+Tile reach, route and simulator:
+
+- `TileReach.TryNearest` validates `agentSize` and `maxRadius` at the top, drops a dead dedupe set,
+  and prunes a candidate that cannot beat the best so far or sit inside `maxRadius` before it pays for
+  a path (a click on a nearby object went from four window floods to one, scan order and the chosen
+  tile untouched) ([#701](https://github.com/APKiwiOrg/KhaozEngine/issues/701)).
+- A lattice restore that moves a player one plane reports a teleport:
+  `TileWorldPersistenceConfig.QuietRestoreDistance` defaults `0.5f`, so only the same cell is quiet.
+  `Repath` stamps `StepTotal` at the toggled cadence so the standing state matches `Mode` on the
+  wire, `TileRoute` equality short-circuits on a shared backing list, and the `MaxGoalRadius` and
+  `PlaneCount` docs carry the `Continue(cmd.Mode)` rewrite clause
+  ([#702](https://github.com/APKiwiOrg/KhaozEngine/issues/702)).
+- The tile netcode test suite loses its wall clock (both quarantine loops await `FlushAsync`), the
+  in-memory hub's `Disconnect` drops the link on both sides through one idempotent path, the NaN walk
+  recurses, and four assertions gain the anchors they were missing, including literal byte offsets
+  for the command frame ([#704](https://github.com/APKiwiOrg/KhaozEngine/issues/704)).
+
+Tile world document, file, pathfinder and editor:
+
+- `TilePathfinderScratch` is an optional reusable window for `TilePathfinder.FindPath` (the two
+  `(2r+1)^2` arrays plus the queue, reset to byte-identical state per call), a tenth of the fresh
+  allocation over sixteen searches. The server's actor movement does not hold one yet
+  ([#669](https://github.com/APKiwiOrg/KhaozEngine/issues/669),
+  [#809](https://github.com/APKiwiOrg/KhaozEngine/issues/809)).
+- `TileWorldDocument.FindObject` no longer allocates a closure per lookup
+  ([#676](https://github.com/APKiwiOrg/KhaozEngine/issues/676)).
+- `TileWorldDocument.Source` is a public back link to its `TileWorldSource`, and `SetMarker` refuses a
+  name any region of the world carries, loaded or not, through the manifest marker index (with
+  `Unload` refreshing the rows of the region it drops)
+  ([#788](https://github.com/APKiwiOrg/KhaozEngine/issues/788)).
+- `TileWorldFile.WriteAtomic` uses a fresh tmp name per call, so two writers racing on one path leave
+  one complete file, and a failed write deletes its own tmp
+  ([#790](https://github.com/APKiwiOrg/KhaozEngine/issues/790)).
+- The three id-keyed map editor Add commands call their duplicate guard before the append, through
+  `ApplyAppendUnique` overloads in the Append partial, so a duplicate id is refused and nothing mutates
+  ([#766](https://github.com/APKiwiOrg/KhaozEngine/issues/766)).
+
+Tile actors and sessions:
+
+- **Behaviour change:** `TileActorHost.Add` refuses a definition whose `LeashRadius` exceeds the
+  server's `ActorMove.MaxPathRadius` (the defaults, 10 against 12, are unaffected), and the walk home
+  memoises on the spawner's `Returning` intent rather than the route destination, so a home beyond
+  the path window paths once instead of every step
+  ([#744](https://github.com/APKiwiOrg/KhaozEngine/issues/744)).
+- `ActorsIn` and `DespawnActor` instantiate the coordinate before resolving, so the per-cell cap
+  counts an actor frozen in an evicted cell and a despawn reaches it
+  ([#745](https://github.com/APKiwiOrg/KhaozEngine/issues/745)).
+- `TileActorContext` gains `LastAttackedByResolved` and `LastDamagedByResolved` (trailing, default
+  `true`), and the retaliate rule skips an attacker that can no longer be resolved instead of
+  stalling the wander for the whole window
+  ([#754](https://github.com/APKiwiOrg/KhaozEngine/issues/754)).
+- `ReleaseLingerFor` walks a local list, so a re-entrant `PlayerLeaving` handler cannot drop a seat
+  the release had already selected ([#742](https://github.com/APKiwiOrg/KhaozEngine/issues/742)).
+  `Actors.Forget` drops the spawner link with the birth tile, so `TryGetSpawnerOf` answers false the
+  moment a spawner-built actor despawns ([#789](https://github.com/APKiwiOrg/KhaozEngine/issues/789)).
+- Two test pins: the spawn-door refusal is asserted on the grid, not just the count
+  ([#746](https://github.com/APKiwiOrg/KhaozEngine/issues/746)), and the one-argument
+  `TileMovementSystem` constructor is pinned to one simulator for players and actors alike
+  ([#747](https://github.com/APKiwiOrg/KhaozEngine/issues/747)).
+
+Native Direct3D 11 lifecycle, pinned without a device:
+
+- A device construction that throws part way releases what it already built, in order, through an
+  internal `D3D11ConstructionScope` (the loss latch and the resource factory take the instance, so a
+  static factory was not reachable) ([#503](https://github.com/APKiwiOrg/KhaozEngine/issues/503)).
+- The drain at teardown takes a budget (2000 ms, several times the Windows TDR, the frame path stays
+  unbounded and byte-identical), so a wedged GPU cannot hold the process-wide lifecycle gate forever.
+  The policy is pinned with a zero budget, observing the wedge itself needs the hosted leg
+  ([#505](https://github.com/APKiwiOrg/KhaozEngine/issues/505)).
+- The device's shared point and linear samplers are non-owning on Direct3D 11 and Metal, the shape
+  Vulkan already had, so a consumer dispose cannot destroy the pair (Metal proven on device)
+  ([#506](https://github.com/APKiwiOrg/KhaozEngine/issues/506)).
+- The ring allocator's segment wait spins through `D3D11DrainSpin` instead of a bare threshold
+  ([#493](https://github.com/APKiwiOrg/KhaozEngine/issues/493)), and both emitters' full-scissor
+  refusal comes from the shared `RequireBoundFramebuffer` seam, message byte-identical
+  ([#496](https://github.com/APKiwiOrg/KhaozEngine/issues/496)).
+
+Gpu seam contracts, Metal and packaging:
+
+- Native Metal binds the depth clip mode on a colour-only pass: `-setDepthClipMode:` moved out of
+  the has-depth guard to sit with cull, winding and fill, proven on device with the API validation
+  layer armed, every golden intact ([#674](https://github.com/APKiwiOrg/KhaozEngine/issues/674)).
+- `GpuBackendSelector`'s support cache records which provider answered and trusts an entry only while
+  that instance is still registered, so a probe that completes after a `Register` cannot leave a
+  replaced provider's answer cached ([#472](https://github.com/APKiwiOrg/KhaozEngine/issues/472)).
+- `GpuRetireQueue.SealedBatchCapFor(device)` sizes the sealed-batch cap off the running backend's
+  frames-in-flight knob (one more per extra frame, floored at the shipped 8, so the default is
+  byte-identical) and `Scene3D` uses it ([#661](https://github.com/APKiwiOrg/KhaozEngine/issues/661)).
+- `KhaozEngine.Gpu`, `Windowing` and `Audio` each pack the HostNatives flatten rule under their own
+  `<PackageId>.targets` in `build/` and `buildTransitive/`, so a consumer that references a native
+  carrier without the umbrella still gets flat natives, verified at the package level
+  ([#723](https://github.com/APKiwiOrg/KhaozEngine/issues/723)).
+- `BufferUsage.Dynamic` is documented as a uniform-buffer usage, with Metal's acceptance of a dynamic
+  structured buffer a documented superset rather than a divergence, pinned across all three backends
+  device-free ([#597](https://github.com/APKiwiOrg/KhaozEngine/issues/597)). `GpuRecording`'s
+  one-recording-per-device narrowing is written down as a chosen constraint with its opt-in shape
+  named ([#613](https://github.com/APKiwiOrg/KhaozEngine/issues/613)).
+
+Closed by the planning pass without code: `GpuBackendKind.OpenGL` has redirected to the platform
+native since 18.0.0 ([#412](https://github.com/APKiwiOrg/KhaozEngine/issues/412)), and the Veldrid
+fork's one-layer array workaround left with the fork
+([#673](https://github.com/APKiwiOrg/KhaozEngine/issues/673)).
+
+NetWorld and animation smalls:
+
+- `WorldServerConfig.MaxQueuedEvents` and `ShardedWorldServerConfig.MaxQueuedEvents` (default the
+  bounded queue's existing capacity) and `DroppedEventCount` on both world servers forward the
+  session-inbox cap and drop count `NetServer` already exposed, with a `Left` enqueued terminal never
+  counted among the dropped ([#786](https://github.com/APKiwiOrg/KhaozEngine/issues/786)).
+- `LayeredAnimator` gains the two pins its one-bone rows could not express: an additive layer on a
+  mid-chain joint survives the parent multiply at the grandchild, and two stacked additive layers
+  compose `base * d1 * d2` ([#656](https://github.com/APKiwiOrg/KhaozEngine/issues/656)).
+- `CharacterFacing.WrapAngle` forwards to `MathUtil.WrapAngle`, bit-identical on the half-open
+  interval, the first of the three private wrap copies to fold
+  ([#785](https://github.com/APKiwiOrg/KhaozEngine/issues/785), the other two stay open).
+
 ## 18.12.0
 
 One body per tile on a tile client: `TileDrawPriority` picks the single actor drawn on each tile, the

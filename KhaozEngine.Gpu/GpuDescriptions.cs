@@ -364,8 +364,8 @@ namespace KhaozEngine.Gpu
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/598).
         /// </para>
         /// <para>
-        /// IT BINDS ON A PASS WITH NO DEPTH ATTACHMENT TOO, on every backend, and Metal was one release short of
-        /// that until 18.10.0 (https://github.com/APKiwiOrg/KhaozEngine/issues/674). It used to emit
+        /// IT BINDS ON A PASS WITH NO DEPTH ATTACHMENT TOO, on every backend, and Metal was one case short of
+        /// that (https://github.com/APKiwiOrg/KhaozEngine/issues/674). It used to emit
         /// <c>-setDepthClipMode:</c> inside the same guard as the depth-stencil state, whose condition is the
         /// bound framebuffer having a depth attachment, because a depth-stencil state on a depth-less pass IS a
         /// validation failure. A colour-only target therefore rasterized at the encoder default (clip) whatever

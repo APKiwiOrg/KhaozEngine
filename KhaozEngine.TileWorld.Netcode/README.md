@@ -207,7 +207,10 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   drop the damage record with it), `Stand` (cancel the route, hold the tile, KEEP the damage record: waiting for
   a fight rather than giving one up) or `Idle`, and never a route, a step, a facing or a tick. The context is a
   TICK-START view (the actor's tile, its home, its definition, its health, its target's tile through the same
-  per-tick snapshot the follow reads, its damage record, whether it is walking, who is locked onto IT
+  per-tick snapshot the follow reads, its damage record and whether each half of that record still RESOLVES
+  (`LastDamagedByResolved` / `LastAttackedByResolved`, false once the entity it names has left the world, so a
+  rule can skip an attacker who logged out without the record being touched), whether it is walking, who is
+  locked onto IT
   (`TargetedBy`, lowest net id when several are, one tick behind a freshly accepted attack), the tick and its own
   random stream), so no actor's decision can depend on another having moved first. One instance is SHARED by every
   actor, as a simulator is, so a game that wants different behaviour per monster dispatches on `Definition.Kind`

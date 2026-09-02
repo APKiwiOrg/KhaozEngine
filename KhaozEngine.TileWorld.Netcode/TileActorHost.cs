@@ -197,6 +197,15 @@ public sealed class TileActorHost
         // reported rather than papered over, because "gone" is a decision a behaviour is entitled to make.
         TileCoord targetTile = default;
         bool targetResolved = state.CombatTarget != 0L && server.TryGetTargetTile(state.CombatTarget, out targetTile);
+        // THE SAME ANSWER FOR THE TWO RECORDS, off the same snapshot, because a record naming an entity that has
+        // LEFT is the shape a logout makes routine and nothing here could see it. The rule that reads one issues
+        // an Attack at that id, the follow clears the lock on the tick it was set because the target does not
+        // resolve, and the rule re-issues it for the whole retaliate window: the actor stops wandering and every
+        // one of those ticks clears the Returning flag a leash walk home depends on. Resolved rather than aged
+        // out at the departure, which would be a scan of the combatants per despawn AND would destroy a fact a
+        // game is entitled to keep reading.
+        bool damagedResolved = combat.LastDamagedBy != 0L && server.TryGetTargetTile(combat.LastDamagedBy, out _);
+        bool attackedResolved = combat.LastAttackedBy != 0L && server.TryGetTargetTile(combat.LastAttackedBy, out _);
 
         var context = new TileActorContext(
             NetId: netId,
@@ -214,7 +223,9 @@ public sealed class TileActorHost
             Rng: TileActorRandom.For(Seed, netId, tick),
             TargetedBy: server.TargetedByOf(netId),
             LastAttackedBy: combat.LastAttackedBy,
-            LastAttackedTick: combat.LastAttackedTick);
+            LastAttackedTick: combat.LastAttackedTick,
+            LastDamagedByResolved: damagedResolved,
+            LastAttackedByResolved: attackedResolved);
 
         TileActorIntent intent = Behaviour.Decide(context);
         switch (intent.Kind)

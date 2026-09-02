@@ -104,6 +104,16 @@ public readonly record struct TileActorIntent(TileActorIntentKind Kind, TileCoor
 /// a landed hit. What the default behaviour's retaliation reads: aggression answers the swing, the damage record
 /// is for threat. Trailing and defaulted for the same reason <paramref name="TargetedBy"/> is.</param>
 /// <param name="LastAttackedTick">The tick that swing happened on.</param>
+/// <param name="LastDamagedByResolved">Whether <paramref name="LastDamagedBy"/> still names an entity this tick's
+/// snapshot answers for, resolved exactly as <paramref name="TargetResolved"/> is. False when the record is empty
+/// and false when the entity has LEFT the world, which a logout, a despawn or a reap all read as. A record is a
+/// fact about the PAST rather than a live pointer, so the engine never ages it out from under a game: this is the
+/// answer that lets a behaviour skip one without the record being touched. Trailing and defaulted for the same
+/// reason <paramref name="TargetedBy"/> is, and defaulted to TRUE rather than false so a context built by hand
+/// before this existed decides exactly as it did.</param>
+/// <param name="LastAttackedByResolved">The same answer for <paramref name="LastAttackedBy"/>, and the one the
+/// default behaviour's retaliation reads, since the swing-aggro ruling made the swung-at record the one it acts
+/// on.</param>
 public readonly record struct TileActorContext(
     long NetId,
     TileCoord Tile,
@@ -120,7 +130,9 @@ public readonly record struct TileActorContext(
     TileActorRandom Rng,
     long TargetedBy = 0L,
     long LastAttackedBy = 0L,
-    long LastAttackedTick = 0L);
+    long LastAttackedTick = 0L,
+    bool LastDamagedByResolved = true,
+    bool LastAttackedByResolved = true);
 
 /// <summary>
 /// The one seam a game plugs an actor's decisions into. The engine owns the tick scheduling and the movement, this

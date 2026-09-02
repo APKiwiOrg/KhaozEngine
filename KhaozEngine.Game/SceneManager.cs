@@ -19,7 +19,8 @@ namespace KhaozEngine.Game
         readonly Queue<System.Action> _pending = new();
         bool _updating;
 
-        /// <summary>This frame's raw input snapshot. The game sets this before <see cref="Update"/>; scenes read it via <c>Manager</c>.</summary>
+        /// <summary>This frame's raw input snapshot. Set it (with the rest of the frame context) through
+        /// <see cref="SetFrameContext"/> before <see cref="Update"/>; scenes read it via <c>Manager</c>.</summary>
         public InputState Input { get; set; } = InputState.Empty;
 
         /// <summary>The shared bounds-aware pointer. The game sets this before <see cref="Update"/>; scenes hit-test via <c>Manager.Pointer</c>.</summary>
@@ -41,6 +42,45 @@ namespace KhaozEngine.Game
 
         /// <summary>This frame's window height in points. Set by the game (or by <see cref="Resize"/>).</summary>
         public int FrameHeight { get; set; }
+
+        /// <summary>
+        /// Set this frame's whole scene context in one call, before <see cref="Update"/>. Prefer this over
+        /// assigning the seven properties individually: they are settable one at a time, so a host that wires
+        /// six of them and forgets the seventh compiles, runs, and leaves that one sitting at its default with
+        /// nothing thrown and nothing logged. Here a forgotten field is a missing argument.
+        /// <para>
+        /// Two of those defaults matter more than the rest, because they are what
+        /// <see cref="BootScreen"/> reads. An unset <see cref="Input"/> stays
+        /// <see cref="InputState.Empty"/>, so its Enter/Escape retry-quit check never fires, and an unset
+        /// <see cref="UiPointer"/> stays null, so it falls back to a pointer nobody updates and its Retry/Quit
+        /// buttons draw but never register a click. The one screen meant to handle a boot failure gracefully
+        /// then soft-locks, on a player's machine, at the moment it was needed.
+        /// </para>
+        /// </summary>
+        /// <param name="input">This frame's raw input snapshot (<see cref="Input"/>).</param>
+        /// <param name="pointer">The design-space pointer (<see cref="Pointer"/>), or null.</param>
+        /// <param name="viewport">The design-space viewport (<see cref="Viewport"/>), or null for raw window pixels.</param>
+        /// <param name="uiViewport">The point-space UI viewport (<see cref="UiViewport"/>), or null.</param>
+        /// <param name="uiPointer">The point-space UI pointer (<see cref="UiPointer"/>), or null.</param>
+        /// <param name="frameWidth">This frame's window width in points (<see cref="FrameWidth"/>).</param>
+        /// <param name="frameHeight">This frame's window height in points (<see cref="FrameHeight"/>).</param>
+        public void SetFrameContext(
+            InputState input,
+            Pointer? pointer,
+            IDesignViewport? viewport,
+            UiViewport? uiViewport,
+            Pointer? uiPointer,
+            int frameWidth,
+            int frameHeight)
+        {
+            Input = input;
+            Pointer = pointer;
+            Viewport = viewport;
+            UiViewport = uiViewport;
+            UiPointer = uiPointer;
+            FrameWidth = frameWidth;
+            FrameHeight = frameHeight;
+        }
 
         /// <summary>The scenes on the stack, bottom (index 0) to top.</summary>
         public IReadOnlyList<GameScene> Scenes => _scenes;

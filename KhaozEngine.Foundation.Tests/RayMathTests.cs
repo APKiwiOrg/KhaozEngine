@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using Xunit;
@@ -71,6 +72,81 @@ namespace KhaozEngine.Tests
             Assert.False(RayMath.IntersectAabb(Vector3.Zero, new Vector3(nan, 1f, 1f), Min, Max, out _));
             Assert.False(RayMath.IntersectAabb(Vector3.Zero, new Vector3(1f, nan, 1f), Min, Max, out _));
             Assert.False(RayMath.IntersectAabb(Vector3.Zero, new Vector3(1f, 1f, nan), Min, Max, out _));
+        }
+
+        static readonly Vector3 LongMin = new(-2f, -0.5f, -0.5f);
+        static readonly Vector3 LongMax = new(2f, 0.5f, 0.5f);
+
+        [Fact]
+        public void ObbY_ZeroYaw_MatchesTheAabbTestAboutTheCentre()
+        {
+            var centre = new Vector3(10f, 0f, 0f);
+            Assert.True(RayMath.IntersectObbY(
+                new Vector3(5f, 0f, 0f), new Vector3(1f, 0f, 0f), centre, 0f, Min, Max, out float t));
+            Assert.Equal(4f, t, 4);
+        }
+
+        [Fact]
+        public void ObbY_QuarterTurn_SwapsWhichRaysHit()
+        {
+            // A box four long on local X and one wide on local Z, centred at the origin. Head-on down +Z, the
+            // near face is at z = -0.5 unrotated and at z = -2 after a quarter turn, so the entry distance moves.
+            var origin = new Vector3(0f, 0f, -5f);
+            var direction = new Vector3(0f, 0f, 1f);
+
+            Assert.True(RayMath.IntersectObbY(
+                origin, direction, Vector3.Zero, 0f, LongMin, LongMax, out float flat));
+            Assert.Equal(4.5f, flat, 4);
+
+            Assert.True(RayMath.IntersectObbY(
+                origin, direction, Vector3.Zero, MathF.PI / 2f, LongMin, LongMax, out float turned));
+            Assert.Equal(3f, turned, 4);
+        }
+
+        [Fact]
+        public void ObbY_QuarterTurn_TurnsAHitIntoAMiss()
+        {
+            // Same box, offset sideways so the ray passes through the long arm unrotated and clears the box
+            // entirely once that arm has swung away. This is the case an AABB test cannot express.
+            var origin = new Vector3(1.5f, 0f, -5f);
+            var direction = new Vector3(0f, 0f, 1f);
+
+            Assert.True(RayMath.IntersectObbY(
+                origin, direction, Vector3.Zero, 0f, LongMin, LongMax, out float t));
+            Assert.Equal(4.5f, t, 4);
+            Assert.False(RayMath.IntersectObbY(
+                origin, direction, Vector3.Zero, MathF.PI / 2f, LongMin, LongMax, out _));
+        }
+
+        [Fact]
+        public void ObbY_OriginInside_ReturnsZero()
+        {
+            Assert.True(RayMath.IntersectObbY(
+                new Vector3(3f, 0f, 3f), new Vector3(0f, 1f, 0f), new Vector3(3f, 0f, 3f),
+                0.7f, Min, Max, out float t));
+            Assert.Equal(0f, t);
+        }
+
+        [Fact]
+        public void ObbY_UnnormalizedDirection_ScalesT()
+        {
+            // t stays in units of the direction's length, exactly as the AABB test documents.
+            Assert.True(RayMath.IntersectObbY(
+                new Vector3(0f, 0f, -5f), new Vector3(0f, 0f, 2f), Vector3.Zero,
+                MathF.PI / 2f, LongMin, LongMax, out float t));
+            Assert.Equal(1.5f, t, 4);
+        }
+
+        [Fact]
+        public void ObbY_FullTurn_IsTheSameBoxAsNoTurn()
+        {
+            // A whole turn must land back on the unrotated answer within float tolerance, which pins the sign
+            // convention as well as the round trip.
+            var origin = new Vector3(1.5f, 0f, -5f);
+            var direction = new Vector3(0f, 0f, 1f);
+            Assert.True(RayMath.IntersectObbY(
+                origin, direction, Vector3.Zero, MathF.Tau, LongMin, LongMax, out float t));
+            Assert.Equal(4.5f, t, 3);
         }
 
         [Fact]

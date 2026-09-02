@@ -47,6 +47,13 @@ minimized game (skips render + present, but `OnUpdate` keeps running so netcode/
 unfocused-but-visible one to a low cap. `BackgroundThrottlePolicy.Disabled` renders full-rate in the background. Both
 are live-changeable via `GameApp.FrameCap` / `GameApp.BackgroundThrottle`.
 
+**Auto-pause on focus loss** (`GameAppOptions.PauseOnFocusLoss`, default `false`): opt in and the frame loop pauses
+`GameApp.Clock` while the window is backgrounded, off the frame snapshot's `Input.WindowFocused` bit, so an
+unfocused frame reports a zero `Dt` and the clock's `Paused` / `Resumed` events fire on the transitions. It only
+lifts a pause it took itself, so a game already paused when focus was lost (its own pause menu, or a zero
+`TimeScale`) comes back still paused. Real time keeps running regardless. This is the SIMULATION switch, orthogonal
+to `BackgroundThrottle`, which throttles rendering and leaves the clock alone.
+
 **Runtime display settings** (since 9.24.0): change present mode, frame cap, window mode, and resolution live
 mid-session (no crash, no leaked swapchain) via `GameApp.Display` (the cohesive `IDisplaySettings` surface) or the
 `GameApp.PresentMode` / `FrameCapHz` / `WindowMode` pass-throughs. Read a `DisplaySettings` snapshot from
@@ -118,6 +125,14 @@ point-space `Ui` (a `UiViewport`) and `UiPointer` (a `Pointer` mapped through it
 already in `Begin(Ui)`. `OnDraw2D` stays the design-space (letterboxed) game field, `OnDrawUi` is the
 DPI-aware UI layer: author text via `DpiFont.For(Ui.DpiScale)` and hit-test with `UiPointer`. `OnDrawUi`
 is empty by default, so a game that only overrides `OnDraw2D` is completely unaffected.
+
+Hand the manager its whole frame context in one call,
+`SetFrameContext(input, pointer, viewport, uiViewport, uiPointer, frameWidth, frameHeight)`, rather than
+assigning the seven properties individually. They are all settable one at a time, so a host that wires six and
+forgets the seventh compiles and runs with that field at its default, silently. That is how `BootScreen` ends
+up unable to read Enter/Escape (an unset `Input` stays `InputState.Empty`) or to register a click on its own
+Retry/Quit buttons (an unset `UiPointer` falls back to a pointer nobody updates), on the one screen whose job
+is to handle a failure.
 
 `SceneManager` gains `UiViewport`, `UiPointer`, and `DrawUi(SpriteBatch)`, and `GameScene` gains a virtual
 `OnDrawUi(SpriteBatch)`. A scene draws its DPI-aware UI in `OnDrawUi` and hit-tests via `Manager.UiPointer`.

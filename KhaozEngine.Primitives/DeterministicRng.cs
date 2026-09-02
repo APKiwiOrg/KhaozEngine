@@ -3,10 +3,15 @@ using System;
 namespace KhaozEngine.Primitives;
 
 /// <summary>
-/// Seeded, fixed-algorithm pseudo-random generator (xorshift128+, seeded via splitmix64). Reproducible
-/// across .NET versions and platforms (unlike <see cref="System.Random"/>). Opt-in: a game owns an
-/// instance and persists <see cref="State"/> for save/resume. Used inside deferred commands so draws
-/// occur in a deterministic order (see the outcome-buffer contract).
+/// Seeded, fixed-algorithm pseudo-random generator (a xorshift128+-derived recurrence, seeded via
+/// splitmix64). Reproducible across .NET versions and platforms (unlike <see cref="System.Random"/>).
+/// Opt-in: a game owns an instance and persists <see cref="State"/> for save/resume. Used inside
+/// deferred commands so draws occur in a deterministic order (see the outcome-buffer contract).
+/// <para>
+/// DERIVED, NOT THE CANONICAL CONSTRUCTION. The state update is Vigna's xorshift128+ word for word,
+/// but the returned value is formed AFTER that update rather than before it, so the stream is not the
+/// one the studied xorshift128+ generator emits. See <see cref="NextULong"/> for why it stays that way.
+/// </para>
 /// </summary>
 public sealed class DeterministicRng
 {
@@ -29,6 +34,22 @@ public sealed class DeterministicRng
         set { _s0 = value.S0; _s1 = value.S1; }
     }
 
+    /// <summary>
+    /// The next 64-bit draw. The state update is xorshift128+ exactly, but the sum is taken over the
+    /// NEW second word and the old one, where the canonical generator sums both words as they stood
+    /// before the update. That makes the output stream a derived variant rather than the specifically
+    /// studied construction, and it carries whatever statistical properties an unreviewed variant
+    /// carries.
+    /// <para>
+    /// IT STAYS THAT WAY ON PURPOSE. The stream is a shipped contract, not an implementation detail:
+    /// <see cref="State"/> is public and games persist it for save/resume, the class promises the same
+    /// seed gives the same sequence on every platform and .NET version, and content generated from a
+    /// seed (dungeon layouts, procedural placement, audio track order) is a function of it. Two known
+    /// vectors in the test suite pin it deliberately. Moving the addition to the pre-update words would
+    /// shift every seeded stream in the fleet from that point forward, so the name was corrected here
+    /// instead of the recurrence.
+    /// </para>
+    /// </summary>
     public ulong NextULong()
     {
         ulong s1 = _s0, s0 = _s1;

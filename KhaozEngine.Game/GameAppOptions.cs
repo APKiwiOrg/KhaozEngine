@@ -236,6 +236,27 @@ namespace KhaozEngine.Game
         /// </summary>
         public string? SingleInstanceId;
 
+        /// <summary>
+        /// Opt IN to pausing <see cref="GameApp.Clock"/> while the window is in the background (default
+        /// <c>false</c>, the historic behaviour: the clock keeps running and physics, timers and AI carry on
+        /// full tilt behind whatever the player alt-tabbed to). When true, the frame loop drives
+        /// <see cref="GameClock.Pause"/>/<see cref="GameClock.Resume"/> off the frame snapshot's
+        /// <see cref="InputState.WindowFocused"/> bit, so an unfocused frame reports a zero scaled delta and
+        /// <see cref="GameClock.Paused"/>/<see cref="GameClock.Resumed"/> fire on the transitions.
+        /// <para>
+        /// It only lifts a pause it took itself: a game already paused when focus is lost (a pause menu, a
+        /// zero <see cref="GameClock.TimeScale"/>) stays paused when the window comes back, so the switch
+        /// composes with a game's own pause rather than fighting it. Real time keeps running either way,
+        /// which is what <see cref="GameApp.OnResume"/> and the unscaled clock members are for.
+        /// </para>
+        /// <para>
+        /// Distinct from <see cref="BackgroundThrottle"/>, which throttles how often a background window
+        /// RENDERS and leaves the simulation alone. A game that wants a backgrounded window to stop
+        /// simulating as well wants this.
+        /// </para>
+        /// </summary>
+        public bool PauseOnFocusLoss;
+
         /// <summary>Resolved design width: <see cref="DesignWidth"/>, or <see cref="Width"/> when it is 0.</summary>
         internal int ResolvedDesignWidth => DesignWidth == 0 ? Width : DesignWidth;
         /// <summary>Resolved design height: <see cref="DesignHeight"/>, or <see cref="Height"/> when it is 0.</summary>

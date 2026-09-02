@@ -325,6 +325,15 @@ by default, so a client no longer free-runs a whole core plus the GPU out of the
   wallpaper / capture source), or a custom policy with the `init` setters. On a minimized frame `Frame.RenderSuppressed`
   is set. `GameApp` honours it (runs `OnUpdate` only, skips the draw passes), and a raw `AppWindow.Run` callback must
   check it before drawing. The per-frame decision is the pure, headless-tested `BackgroundThrottlePolicy.Plan`.
+- **`PauseOnFocusLoss` stops the SIMULATION while the window is backgrounded** (`GameAppOptions.PauseOnFocusLoss`,
+  default `false` = the historic behaviour, physics and timers and AI carry on full tilt behind whatever the player
+  alt-tabbed to). Set it and the frame loop drives `Clock.Pause()` / `Clock.Resume()` off the frame snapshot's
+  `Input.WindowFocused` bit, so an unfocused frame reports a zero `Dt` and the clock's `Paused` / `Resumed` events
+  fire on the transitions. It only lifts a pause it took itself: a game already paused when focus is lost (its own
+  pause menu, or a zero `TimeScale`) is still paused when the window comes back, so the switch composes with a
+  game's own pause instead of fighting it. Real time keeps running either way, which is what `OnResume` and the
+  clock's unscaled members are for. Orthogonal to `BackgroundThrottle`, which throttles RENDERING and leaves the
+  simulation alone.
 
 ```csharp
 var o = GameAppOptions.For("My Game", 1280, 720);   // FrameCap.Auto + background throttle ON by default
@@ -332,6 +341,7 @@ o.FrameCap = FrameCap.Uncapped;                       // opt back into a free-ru
 o.FrameCapHz = 120;                                   // or an explicit fixed cap (wins over FrameCap)
 o.BackgroundThrottle = BackgroundThrottlePolicy.Disabled;                       // render full-rate when backgrounded
 o.BackgroundThrottle = BackgroundThrottlePolicy.Default with { UnfocusedHz = 30 }; // or tune it
+o.PauseOnFocusLoss = true;                            // and freeze the sim while the window is backgrounded
 ```
 
 **Runtime display settings (since 9.24.0).** Present mode, frame cap, window mode, and resolution are all changeable
@@ -513,8 +523,20 @@ from the sim delta: the 0.1s clamp and `Dt` are unchanged.
 For multi-screen games, push `GameScene`s onto a `SceneManager` (full-frame scene stack, distinct from the
 2D-only `Gui.ScreenStack`). `Push`/`Pop`/`Replace`/`SwitchTo`/`Clear`; a scene overrides `OnEnter`/`OnExit`,
 `OnUpdate(dt)`, `OnDraw2D(batch)`, `OnResize`. Set `DrawBelow` / `UpdateBelow` for an overlay scene (e.g. a pause
-menu over a still-rendered match). Feed the manager `Input`/`Pointer`/`Viewport`/`FrameWidth`/`FrameHeight` each
-frame, then `Update(dt)` and `Draw2D(batch)`.
+menu over a still-rendered match). Feed the manager its frame context each frame, then `Update(dt)` and
+`Draw2D(batch)`:
+
+```csharp
+_scenes.SetFrameContext(Input, Pointer, Viewport, Ui, UiPointer, FrameWidth, FrameHeight);
+_scenes.Update(dt);
+```
+
+Use `SetFrameContext` rather than assigning the seven properties one at a time. They are all individually
+settable, so a host that wires six and forgets the seventh compiles and runs, with that one left at its
+default and nothing thrown or logged. A forgotten argument, by contrast, does not build. Two of those
+defaults are the ones that bite: an unset `Input` stays `InputState.Empty` and an unset `UiPointer` stays
+null, which is exactly what disables `BootScreen`'s own retry/quit UI (see below) on the day a real boot
+failure needs it.
 
 ### Boot / startup screen (`BootScreen` / `BootPipeline` / `IBootStep`)
 
@@ -562,9 +584,11 @@ protected override void OnLoad()
 }
 ```
 
-Then drive the manager as usual: forward `Input`/`Pointer`/`UiViewport`/`UiPointer`/`FrameWidth`/`FrameHeight` and
-call `_scenes.Update(dt)` in `OnUpdate`, and `_scenes.DrawUi(batch)` in `OnDrawUi` (the boot screen draws through
-the DPI-aware `OnDrawUi` pass). A step signals failure by throwing `BootStepException(localizedMessage)` (the
+Then drive the manager as usual: `_scenes.SetFrameContext(Input, Pointer, Viewport, Ui, UiPointer, FrameWidth,
+FrameHeight)` and `_scenes.Update(dt)` in `OnUpdate`, and `_scenes.DrawUi(batch)` in `OnDrawUi` (the boot screen
+draws through the DPI-aware `OnDrawUi` pass). Wire it through that one call, not the seven properties: this
+screen is the one that reads `Input` for its Enter/Escape retry-quit and `UiPointer` for its Retry/Quit button
+clicks, so a host that misses either leaves the failure screen looking correct and doing nothing. A step signals failure by throwing `BootStepException(localizedMessage)` (the
 screen shows it with retry / quit affordances). The server-status min-version gate does this automatically for
 `ServerStatusState.UpdateRequired`. A required update applied by `UpdateBootStep` restarts the app by design
 (not a failure). Restyle without forking via `BootScreenTheme` (colours, bar geometry, optional logo + a custom
@@ -7387,6 +7411,10 @@ if (TerrainRaycast.Raycast(field, ray.Origin, dir, 200f, out Vector3 groundHit))
 // A prop's world AABB: allocation-free slab test, tNear the entry distance (0 when the origin starts inside).
 if (RayMath.IntersectAabb(ray.Origin, dir, propMin, propMax, out float tNear))
     Select(prop, hitPoint: ray.Origin + dir * tNear);
+
+// A prop that is PLACED and turned: local extents around its world anchor, yawed about Y.
+if (RayMath.IntersectObbY(ray.Origin, dir, prop.Position, prop.Yaw, localMin, localMax, out float tProp))
+    Select(prop, hitPoint: ray.Origin + dir * tProp);
 ```
 
 `TerrainRaycast.Raycast` (`KhaozEngine.Terrain`, render-free) marches `step` in units of the direction's
@@ -7396,6 +7424,15 @@ A ray starting below the surface returns the origin. `RayMath.IntersectAabb` (`K
 zero-dependency leaf) is the box test any other spatial query can reuse. Neither depends on a renderer or a
 window, so both are headless-testable off a constructed `Ray`/`TerrainField`/box, the same standard as the
 rest of the engine.
+
+`RayMath.IntersectObbY(origin, direction, center, yaw, min, max, out tNear)` is the oriented sibling, for the
+common Y-up case of a box that is axis-aligned in its own frame and turned about world Y: a placed prop, an
+actor, a clickbox. `center` is the world anchor and `min`/`max` are the extents in the box's local frame
+(relative to the anchor, not world coordinates). It untranslates by the anchor, unrotates by `yaw` and defers
+to `IntersectAabb`, so `tNear` still comes back in units of the direction's length and every edge case the
+slab test pins holds unchanged. A `yaw` of 0 is the same answer as `IntersectAabb` with the anchor subtracted
+out. `TileObjectRaycast` (`KhaozEngine.TileWorld.Render3D`) picks tile objects through it, so a game picking
+its own placed bodies gets the same math rather than a copy of it.
 
 A sibling overload takes a bare `Func<float, float, float> heightAt(x, z)` instead of a `TerrainField`, for a
 consumer that needs to raycast a height source that is not backed by a concrete `TerrainField` (a closed-form
@@ -9490,10 +9527,10 @@ boxing), iteration via `Query()` and `ForEach<T1..T8>(RefAction<…>)` (plus opt
 see "Parallel `ForEach` + access declarations" below), parent/child hierarchy
 (`SetParent`/`DespawnTree`), per-`World` resources (`SetResource/GetResource<T>`), and systems grouped + ordered
 (`AddSystem(ISystem, group)`, `SetGroupOrder`, `Update(float dt)`). `CachedQuery` reuses a query across ticks to
-avoid per-tick allocation; `DeterministicRng` (xorshift128+/splitmix64, `CreateDerived(name)` for per-stream
-sub-RNGs) gives platform-stable RNG for lockstep sims; `WorldSerializer` round-trips a world as JSON (uses
-`KhaozEngine.Serialization.JsonDefaults.IncludeFields`). (`DeterministicRng` lives in
-`KhaozEngine.Primitives`, and the ECS uses it for lockstep RNG.)
+avoid per-tick allocation. `DeterministicRng` (a xorshift128+-derived recurrence over splitmix64 seeding,
+`CreateDerived(name)` for per-stream sub-RNGs) gives platform-stable RNG for lockstep sims. `WorldSerializer`
+round-trips a world as JSON (uses `KhaozEngine.Serialization.JsonDefaults.IncludeFields`).
+(`DeterministicRng` lives in `KhaozEngine.Primitives`, and the ECS uses it for lockstep RNG.)
 
 **Structural changes during iteration are forbidden, and since 17.37.0 they are refused (#118).** Iteration walks
 each archetype's rows by index. A structural change made DIRECTLY from inside a `ForEach` action, or from the body

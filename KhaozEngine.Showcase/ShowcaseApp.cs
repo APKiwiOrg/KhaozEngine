@@ -221,13 +221,7 @@ namespace KhaozEngine.Showcase
             HandleDisplayKeys();
             _hud.Update(dt);
 
-            _scenes.Input = Input;
-            _scenes.Pointer = Pointer;
-            _scenes.Viewport = Viewport;
-            _scenes.UiViewport = Ui;
-            _scenes.UiPointer = UiPointer;
-            _scenes.FrameWidth = FrameWidth;
-            _scenes.FrameHeight = FrameHeight;
+            _scenes.SetFrameContext(Input, Pointer, Viewport, Ui, UiPointer, FrameWidth, FrameHeight);
 
             // Deferred auto-enter (see OnLoad): now that Viewport/FrameWidth are set, it is safe to enter a room.
             if (!string.IsNullOrWhiteSpace(_autoRoom))

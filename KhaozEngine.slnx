@@ -1,6 +1,7 @@
 <Solution>
   <Project Path="KhaozEngine.App/KhaozEngine.App.csproj" />
   <Project Path="KhaozEngine.Audio/KhaozEngine.Audio.csproj" />
+  <Project Path="KhaozEngine.Automation/KhaozEngine.Automation.csproj" />
   <Project Path="KhaozEngine.Collision/KhaozEngine.Collision.csproj" />
   <Project Path="KhaozEngine.Content/KhaozEngine.Content.csproj" />
   <Project Path="KhaozEngine.Commerce.Sqlite/KhaozEngine.Commerce.Sqlite.csproj" />
@@ -91,6 +92,7 @@
   <Project Path="KhaozEngine.Simulation.Tests/KhaozEngine.Simulation.Tests.csproj" />
   <Project Path="KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj" />
   <Project Path="KhaozEngine.Audio.Tests/KhaozEngine.Audio.Tests.csproj" />
+  <Project Path="KhaozEngine.Automation.Tests/KhaozEngine.Automation.Tests.csproj" />
   <Project Path="KhaozEngine.Particles.Tests/KhaozEngine.Particles.Tests.csproj" />
   <Project Path="KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj" />
   <Project Path="KhaozEngine.Gui.Tests/KhaozEngine.Gui.Tests.csproj" />

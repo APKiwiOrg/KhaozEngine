@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Automation</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <Description>Dev-only playtest automation endpoint (opt-in, NOT in any umbrella). AutomationHost binds a loopback TCP listener on an ephemeral port behind three stacked gates (the head's Debug-only PackageReference, an explicit Enabled flag plus KE_AUTOMATION=1, and a per-run random token in a handshake file), then serves JSON lines: input, step, state, call, quit and ping. Commands are queued on the listener thread and applied on the window thread at the frame boundary through AppWindow's input filter seam, which composes injected pointer, buttons and keys into the real InputState snapshot and forces WindowFocused true. The game registers a state provider and named verbs; the engine knows nothing about the game's content. Never reference this from a shipping build.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Automation.Tests" />
+  </ItemGroup>
+</Project>

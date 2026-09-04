@@ -36,11 +36,25 @@ public static partial class TileProtocol
     /// tick's command follows a body across a region boundary and reaches no client and no persistence blob.</summary>
     public const ushort PendingTileCommandTypeId = ReplicationRegistry.FirstExtensionTypeId + 6;
 
-    /// <summary>The first id a GAME may register, with room left below it for this package to add a component
-    /// without silently colliding with a game that already shipped. Everything from
-    /// <see cref="ReplicationRegistry.FirstExtensionTypeId"/> up to here belongs to the tile netcode. Id 23 is the
-    /// tile netcode's remaining free window.</summary>
-    public const ushort FirstGameTypeId = ReplicationRegistry.FirstExtensionTypeId + 8;
+    /// <summary>Extension id of <see cref="TileObjectState"/>, an authored object away from its authored form.</summary>
+    public const ushort TileObjectStateTypeId = ReplicationRegistry.FirstExtensionTypeId + 7;
+
+    /// <summary>The first id a GAME may register. Everything from
+    /// <see cref="ReplicationRegistry.FirstExtensionTypeId"/> up to here belongs to the tile netcode, which is a
+    /// block of SIXTEEN ids and leaves eight free after <see cref="TileObjectStateTypeId"/>.
+    /// <para>It was <c>+8</c> until 18.14.0, which left a window TWO ids wide, and
+    /// <see cref="TileObjectState"/> would have spent one of them. A window that runs out is not a minor
+    /// release: ids at and above this one belong to games, so widening it renumbers every game registration in
+    /// the fleet, and that gets more expensive with every consumer and every shipped client. Widening it here,
+    /// while the fleet is four games and exactly one of them registers anything on this wire, is the cheap end
+    /// of that trade. Sixteen because it is the width
+    /// <see cref="ReplicationRegistry.FirstExtensionTypeId"/> itself reserves for engine built-ins, so the
+    /// boundary reads as one block rather than as a running count of whatever has been added so far, and
+    /// because eight free is more than the tile netcode has spent in its entire life.</para>
+    /// <para>A type id is a <see cref="ushort"/> and the space above this is not scarce, so nothing was taken
+    /// from a game by moving it. What moved is where a game's own ids START, which is a WIRE break for any
+    /// consumer whose two heads are not upgraded together. See the 18.14.0 changelog entry.</para></summary>
+    public const ushort FirstGameTypeId = ReplicationRegistry.FirstExtensionTypeId + 16;
 
     /// <summary>Cap on a replicated route, in steps, and the ONE definition of that number: it is also the ceiling
     /// on <see cref="TileMoveOptions.MaxRouteSteps"/>, which is where the cap is actually enforced. The SIMULATOR
@@ -106,6 +120,7 @@ public static partial class TileProtocol
         reg.Register<TileCombatState>(TileCombatStateTypeId, WriteCombat, ReadCombat,
             channels: ReplicationChannels.Migrate);
         reg.Register<TileGroundItem>(TileGroundItemTypeId, WriteGroundItem, ReadGroundItem);
+        reg.Register<TileObjectState>(TileObjectStateTypeId, WriteObjectState, ReadObjectState);
         reg.Register<PendingTileCommand>(PendingTileCommandTypeId, WritePendingCommand, ReadPendingCommand,
             channels: ReplicationChannels.Migrate);
         registerExtensions?.Invoke(reg);
@@ -317,6 +332,35 @@ public static partial class TileProtocol
         int plane = r.ReadInt32();
         return new TileGroundItem { ItemId = itemId, Count = Math.Max(1, count), X = x, Z = z, Plane = plane };
     }
+
+    // Twenty-four bytes, every field whole. No length prefix and nothing declared, so there is no lie a frame can
+    // tell about its own size here and nothing for a reader to check.
+    static void WriteObjectState(TileObjectState v, BinaryWriter w)
+    {
+        w.Write(v.ObjectId);
+        w.Write(v.State);
+        w.Write(v.X);
+        w.Write(v.Z);
+        w.Write(v.Plane);
+    }
+
+    // NEITHER clamped NOR checked, which is the ground-item reader's rule taken one step further. Every bit
+    // pattern of these ints is a meaningful coordinate to SOME world and every long is a legal object id, so
+    // there is no malformed frame here. Where the ground item still clamps its count, this has nothing to clamp
+    // to: State is opaque to the engine (see TileObjectState), so the engine cannot tell an inconsistent value
+    // from a game's own constant, and a clamp here would be the engine inventing a meaning for it.
+    //
+    // The worst a hostile frame buys is a state on an object the document does not hold, or a state naming a
+    // number the game has no look for. Both stop at the game's own map from a state to an archetype, which
+    // answers nothing for both, and TileWorldView.OverrideArchetype ignores an id no loaded region holds.
+    static TileObjectState ReadObjectState(BinaryReader r) => new()
+    {
+        ObjectId = r.ReadInt64(),
+        State = r.ReadInt32(),
+        X = r.ReadInt32(),
+        Z = r.ReadInt32(),
+        Plane = r.ReadInt32(),
+    };
 
     // Twenty-two bytes, and the SECOND codec here whose bytes never come off a socket: registered on the Migrate
     // channel alone, so the only thing that ever encodes or decodes it is a cell handoff inside one server process.

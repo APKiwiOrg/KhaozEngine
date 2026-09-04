@@ -436,6 +436,14 @@ away from the tiles a head is drawing detail at.
 The renderer half is `TileWorldView.OverrideArchetype` in `KhaozEngine.TileWorld.Render3D`, which draws one
 placed object as a different archetype without touching the document.
 
+**A state changes what is DRAWN and nothing else.** `TileDocumentTargets` and the baked collision map both read
+the AUTHORED archetype, so a spent object still answers an `Interact` at its tile and still blocks what its
+authored form blocked. Refusing is the game's job on both heads: reject the action server side where the rule
+that spent the object lives, and suppress the menu row client side off the state you already hold.
+https://github.com/APKiwiOrg/KhaozEngine/issues/823 is the engine follow-on that would carry state into target
+resolution. `CollectObjectStates` carries no remaining ticks either, and there is no server reader for the
+clock, so a head that wants a countdown keeps its own beside the state it set.
+
 ## The player health contract, which is the first thing a game with combat gets wrong
 
 **A spawned PLAYER has no `TileHealth` at all.** An actor gets one from its spawn spec, and nothing writes a

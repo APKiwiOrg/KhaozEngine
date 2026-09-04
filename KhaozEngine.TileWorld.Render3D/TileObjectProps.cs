@@ -108,6 +108,12 @@ public static class TileObjectProps
     /// destination is the same question again). The common case by far, one non-roof object drawn as another, is
     /// none of them: the entry is replaced where it stands and the result is byte for byte what a rebuild would
     /// have produced.</para>
+    /// <para>Costs O(placements on the region-plane) all the same, and allocates: the id list is walked to find
+    /// the entry and the whole affected placement list is copied. So N changes in one snapshot cost N of those
+    /// walks and N copies rather than one, which is fine at the handful-at-a-time rate a game depletes resource
+    /// nodes at and is worth knowing before driving a whole-region seasonal or day-night swap through it. There
+    /// is no batch door, deliberately: a caller with many changes at once calls <see cref="Build"/> once instead,
+    /// and a batched splice is its own round rather than a knob bolted onto this one.</para>
     /// </summary>
     /// <param name="doc">The world the anchor height comes from.</param>
     /// <param name="catalogs">The archetypes the new archetype is resolved through.</param>

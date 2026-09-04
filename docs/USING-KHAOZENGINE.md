@@ -9528,6 +9528,16 @@ resource-node shaped: `TileObjectProps.Build` takes the override as a plain `Fun
 damage state, a seasonal or day-night look and an editor's preview of a swap all ride it with no
 replication involved at all.
 
+**What a state does NOT change.** Both halves change what is DRAWN and nothing else. The server's target
+resolution (`TileDocumentTargets`) and its baked collision map read the AUTHORED archetype, so a spent
+object still answers an `Interact` at its tile, still offers whatever its authored archetype offers, and
+still blocks what the tree blocked. The refusal is the game's on both heads: reject the action server side
+where the rule that spent the object already lives, and suppress the menu row client side off the state you
+already hold. The engine follow-on that would carry state into target resolution is
+https://github.com/APKiwiOrg/KhaozEngine/issues/823. `CollectObjectStates` also carries no remaining ticks,
+and the server exposes no reader for the clock, so a head that wants a countdown keeps its own clock beside
+the state it set.
+
 ---
 
 ## Server status (`KhaozEngine.ServerStatus`)

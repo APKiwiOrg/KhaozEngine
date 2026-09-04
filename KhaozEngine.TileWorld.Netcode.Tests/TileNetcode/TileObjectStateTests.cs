@@ -148,6 +148,31 @@ public class TileObjectStateTests
     }
 
     [Fact]
+    public void The_net_id_reader_answers_the_same_object_the_state_reader_does()
+    {
+        using var pair = new Pair(new TileCoord(10, 10, 0));
+        pair.Frames(4);
+
+        // Nothing set: both readers say the object is authored, and the net id is not handed out half-answered.
+        Assert.False(pair.Server.TryGetObjectStateNetId(412, out long absent));
+        Assert.Equal(0L, absent);
+        Assert.False(pair.Server.TryGetObjectState(412, out _));
+
+        long netId = pair.Server.SetObjectState(412, 1, new TileCoord(12, 9, 0));
+        Assert.True(pair.Server.TryGetObjectStateNetId(412, out long found));
+        Assert.Equal(netId, found);
+        Assert.True(pair.Server.TryGetObjectState(412, out int held));
+        Assert.Equal(1, held);
+
+        // And after the clear, together: a net id whose entity is gone is worse than no answer, because a game
+        // reads the component through it and gets nothing while the state reader has already said authored.
+        Assert.True(pair.Server.ClearObjectState(412));
+        Assert.False(pair.Server.TryGetObjectStateNetId(412, out _));
+        Assert.False(pair.Server.TryGetObjectState(412, out _));
+        Assert.Equal(0, pair.Server.ObjectStateCount);
+    }
+
+    [Fact]
     public void The_clock_clears_a_state_on_both_heads_and_says_so_once()
     {
         using var pair = new Pair(new TileCoord(10, 10, 0));

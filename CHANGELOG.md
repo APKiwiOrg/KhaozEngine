@@ -41,6 +41,9 @@ Replicated object state (#820):
   without polling. `ObjectStateCleared` also fires when an object leaves the area of interest, because
   the engine cannot tell a head about an object it is not being served and a head that kept drawing the
   last state it heard would be drawing a guess with no expiry.
+- `CollectObjectStates` yields `(ObjectId, State)` and no remaining ticks, and the server exposes no reader for
+  the clock either. A head that wants to show a countdown keeps its own clock beside the state it set, which is
+  the same place the rule that decided the TTL lives.
 
 Per-object archetype override (#821):
 
@@ -67,6 +70,12 @@ Per-object archetype override (#821):
   meant to outline.
 - Not woodcutting-shaped. A damage state, a seasonal or day-night look and an editor's preview of a swap
   all want the same seam.
+- **A state and an override change what is DRAWN, and nothing else.** The server's target resolution
+  (`TileDocumentTargets`) and its baked collision map both read the AUTHORED archetype, so a spent object is
+  still its authored self to an `Interact` and still blocks what the tree blocked. A game refuses the action
+  server side and suppresses the menu row client side, both of which it owns.
+  [#823](https://github.com/APKiwiOrg/KhaozEngine/issues/823) is the engine follow-on that would carry state
+  into target resolution.
 
 Wire break, for tile-netcode consumers only (#822):
 

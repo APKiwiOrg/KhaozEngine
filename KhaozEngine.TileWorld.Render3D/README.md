@@ -358,6 +358,14 @@ catalog archetype up front, so a region load is placements alone.
   `SetSilhouettedObject` contract, so a server message that beat its region is not lost. One naming an archetype
   the catalogs do not hold draws nothing for that object, the same answer an unresolvable authored archetype
   already gets.
+- **An override changes what is DRAWN and nothing else.** The document is untouched, so the server's target
+  resolution and its baked collision map still read the AUTHORED archetype: an object drawn as a stump still
+  answers an `Interact` as the tree and still blocks what the tree blocked. Refusing the action server side and
+  suppressing the menu row client side are the game's,
+  https://github.com/APKiwiOrg/KhaozEngine/issues/823 is the engine follow-on.
+- The splice is O(placements on the region-plane) and copies the affected list, so N changes in one snapshot
+  cost N splices rather than one. Fine at the rate a game depletes resource nodes, worth knowing before driving
+  a whole-region seasonal swap through it: call `TileObjectProps.Build` once instead. There is no batch door.
 - `Dispose` frees every region and every archetype mesh set the view uploaded. The scene is not owned.
 
 ## Streaming (`TileRegionResidency`, `TileResidencyConfig`)

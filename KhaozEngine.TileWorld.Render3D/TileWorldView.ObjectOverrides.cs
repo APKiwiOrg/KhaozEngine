@@ -41,8 +41,10 @@ public sealed partial class TileWorldView
     /// <param name="objectId">The object's document id.</param>
     /// <param name="archetypeId">The archetype to draw it as. One the catalogs do not hold draws NOTHING for
     /// that object, which is the same answer an object whose authored archetype is missing already gets.</param>
-    /// <returns>True when a drawn placement was rewritten, false when the override was recorded and there was
-    /// nothing loaded to apply it to yet.</returns>
+    /// <returns>True when a drawn placement was rewritten. False in two cases a caller branching on it has to
+    /// tell apart: the override was recorded and nothing loaded was drawing the object yet, or the object was
+    /// ALREADY overridden to this same archetype, which does nothing at all rather than redraw what is on
+    /// screen.</returns>
     public bool OverrideArchetype(long objectId, string archetypeId)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

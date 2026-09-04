@@ -248,4 +248,137 @@ public class TileObjectOverrideTests
         foreach ((_, Matrix4x4 world, _, _) in scene.Silhouettes)
             Assert.Equal(anchor, world.Translation);
     }
+
+    // Every field of a built region-plane, which is what "byte for byte what a rebuild would have produced" has to
+    // mean: both placement lists, the roof footprints the interior rule reads, and both id lists.
+    static void AssertSameProps(TileRegionProps expected, TileRegionProps got)
+    {
+        Assert.Equal(expected.Ground.Count, got.Ground.Count);
+        for (int i = 0; i < expected.Ground.Count; i++) AssertSamePlacement(expected.Ground[i], got.Ground[i]);
+        Assert.Equal(expected.Roofs.Count, got.Roofs.Count);
+        for (int i = 0; i < expected.Roofs.Count; i++) AssertSamePlacement(expected.Roofs[i], got.Roofs[i]);
+        Assert.Equal(expected.RoofFootprints, got.RoofFootprints);
+        Assert.Equal(expected.GroundObjectIds, got.GroundObjectIds);
+        Assert.Equal(expected.RoofObjectIds, got.RoofObjectIds);
+    }
+
+    // The greybox catalogs plus a SECOND roof archetype, which they do not hold: roof_flat is the only one there,
+    // and a roof-to-roof swap needs two. Two tiles wide rather than one, so the swap moves the anchor AND the roof
+    // footprint, which is what makes the narrow path's footprint recompute load-bearing rather than incidental.
+    const string SecondRoofCatalog = """
+    {
+      "archetypes": [
+        { "id": "roof_gable", "name": "roof_gable", "meshRef": "greybox/roof_gable.glb",
+          "sizeX": 2, "sizeZ": 1, "isRoof": true }
+      ]
+    }
+    """;
+
+    static TileWorldCatalogs CatalogsWithSecondRoof() => TileWorldCatalogs.Merge(
+        TileRenderTestData.Catalogs, TileWorldCatalogs.LoadJson(SecondRoofCatalog, "second-roof"));
+
+    // The house's roof objects in document order, which is the order the roof placements come out in.
+    static IReadOnlyList<TileObject> RoofObjects(TileWorldDocument doc) =>
+        doc.GetRegion(TileRenderTestData.Region)!.Objects.Where(o => o.ArchetypeId == "roof_flat").ToList();
+
+    [Fact]
+    public void The_narrow_rebuild_of_a_ground_object_equals_a_full_build_with_the_override()
+    {
+        TileWorldDocument doc = TileRenderTestData.HouseWorld();
+        TileWorldCatalogs catalogs = TileRenderTestData.Catalogs;
+        TileObject wall = Walls(doc)[0];
+
+        TileRegionProps authored = TileObjectProps.Build(doc, catalogs, TileRenderTestData.Region, 0);
+        // rock_large is 2x2 where a wall is 1x1, so the swap moves the anchor half a tile along both axes. A
+        // same-footprint swap would pass this test with the anchor recompute deleted.
+        TileRegionProps rebuilt = TileObjectProps.Build(doc, catalogs, TileRenderTestData.Region, 0,
+            id => id == wall.Id ? "rock_large" : null);
+        TileRegionProps? spliced = TileObjectProps.TryReplaceObject(doc, catalogs, authored, wall, "rock_large");
+
+        Assert.NotNull(spliced);
+        AssertSameProps(rebuilt, spliced);
+        // The splice is the thing being proven, so pin that it actually changed something: an assertion between
+        // two lists that both still say "wall" would hold for a TryReplaceObject that did nothing at all.
+        int at = authored.GroundObjectIds.ToList().IndexOf(wall.Id);
+        Assert.True(at >= 0);
+        Assert.Equal("rock_large", spliced.Ground[at].Id);
+        Assert.NotEqual(authored.Ground[at].X, spliced.Ground[at].X);
+    }
+
+    [Fact]
+    public void The_narrow_rebuild_of_a_roof_equals_a_full_build_and_recomputes_its_footprint()
+    {
+        TileWorldDocument doc = TileRenderTestData.HouseWorld();
+        TileWorldCatalogs catalogs = CatalogsWithSecondRoof();
+        TileObject roof = RoofObjects(doc)[0];
+
+        TileRegionProps authored =
+            TileObjectProps.Build(doc, catalogs, TileRenderTestData.Region, TileRenderTestData.RoofPlane);
+        TileRegionProps rebuilt = TileObjectProps.Build(doc, catalogs, TileRenderTestData.Region,
+            TileRenderTestData.RoofPlane, id => id == roof.Id ? "roof_gable" : null);
+        TileRegionProps? spliced = TileObjectProps.TryReplaceObject(doc, catalogs, authored, roof, "roof_gable");
+
+        Assert.NotNull(spliced);
+        AssertSameProps(rebuilt, spliced);
+        int at = authored.RoofObjectIds.ToList().IndexOf(roof.Id);
+        Assert.True(at >= 0);
+        Assert.Equal("roof_gable", spliced.Roofs[at].Id);
+        // The footprint is what the interior rule tests the observer against, so a splice that copied the old one
+        // would hide the wrong tiles while every placement still looked right.
+        Assert.Equal(new TileRect(roof.X, roof.Z, 1, 1), authored.RoofFootprints[at]);
+        Assert.Equal(new TileRect(roof.X, roof.Z, 2, 1), spliced.RoofFootprints[at]);
+    }
+
+    [Fact]
+    public void A_roof_swap_leaves_a_short_footprint_list_alone_rather_than_growing_it()
+    {
+        TileWorldDocument doc = TileRenderTestData.HouseWorld();
+        TileWorldCatalogs catalogs = CatalogsWithSecondRoof();
+        TileObject roof = RoofObjects(doc)[0];
+        TileRegionProps built =
+            TileObjectProps.Build(doc, catalogs, TileRenderTestData.Region, TileRenderTestData.RoofPlane);
+        // A record built by hand, the case TileRegionProps keeps compiling for: roofs with no footprints behind
+        // them. Build always fills the list, so this is reachable only from a caller's own record.
+        var handBuilt = new TileRegionProps(built.Ground, built.Roofs)
+        {
+            GroundObjectIds = built.GroundObjectIds,
+            RoofObjectIds = built.RoofObjectIds,
+        };
+
+        TileRegionProps? spliced = TileObjectProps.TryReplaceObject(doc, catalogs, handBuilt, roof, "roof_gable");
+
+        Assert.NotNull(spliced);
+        int at = built.RoofObjectIds.ToList().IndexOf(roof.Id);
+        Assert.Equal("roof_gable", spliced.Roofs[at].Id);
+        // Hide nothing you cannot place: the entry has no footprint to recompute, so the list stays empty rather
+        // than gaining one entry at an index the roof rule would then read as somebody else's.
+        Assert.Empty(spliced.RoofFootprints);
+    }
+
+    [Fact]
+    public void A_swap_that_crosses_the_roof_flag_answers_null_and_the_rebuild_moves_the_entry()
+    {
+        TileWorldDocument doc = TileRenderTestData.HouseWorld();
+        TileWorldCatalogs catalogs = TileRenderTestData.Catalogs;
+        TileObject wall = Walls(doc)[0];
+        TileRegionProps authored = TileObjectProps.Build(doc, catalogs, TileRenderTestData.Region, 0);
+
+        // The entry moves between the two lists and its index in the destination is the document's own object
+        // order, which a built record does not carry. Null, and the caller builds.
+        Assert.Null(TileObjectProps.TryReplaceObject(doc, catalogs, authored, wall, "roof_flat"));
+        // The other two order questions answer the same way: an archetype the catalogs do not hold (the entry has
+        // to be removed), and an object this region-plane is not drawing at all.
+        Assert.Null(TileObjectProps.TryReplaceObject(doc, catalogs, authored, wall, "no_such_archetype"));
+        Assert.Null(TileObjectProps.TryReplaceObject(doc, catalogs, RoofPlaneProps(doc, catalogs), wall, "bush"));
+
+        TileRegionProps rebuilt = TileObjectProps.Build(doc, catalogs, TileRenderTestData.Region, 0,
+            id => id == wall.Id ? "roof_flat" : null);
+        Assert.Equal(authored.Ground.Count - 1, rebuilt.Ground.Count);
+        Assert.Equal(authored.Roofs.Count + 1, rebuilt.Roofs.Count);
+        Assert.Contains(wall.Id, rebuilt.RoofObjectIds);
+        Assert.DoesNotContain(wall.Id, rebuilt.GroundObjectIds);
+    }
+
+    static TileRegionProps RoofPlaneProps(TileWorldDocument doc, TileWorldCatalogs catalogs) =>
+        TileObjectProps.Build(doc, catalogs, TileRenderTestData.Region, TileRenderTestData.RoofPlane);
 }

@@ -40,7 +40,10 @@ public sealed partial class TileWorldServer
     /// already knows.</summary>
     public event Action<long>? OnObjectStateExpired;
 
-    /// <summary>How many authored objects currently carry a state on this server.</summary>
+    /// <summary>How many authored objects currently carry a state on this server. The index this counts is kept
+    /// exact by the two removal paths (<see cref="ClearObjectState"/> and the expiry sweep, which clears through
+    /// it), and a reader prunes an entry whose entity is gone, so a count is only ever stale between an entity
+    /// disappearing behind the server's back and the next read of that object.</summary>
     public int ObjectStateCount => objectStateNetIdByObject.Count;
 
     /// <summary>
@@ -110,8 +113,7 @@ public sealed partial class TileWorldServer
     public bool TryGetObjectState(long objectId, out int state)
     {
         state = 0;
-        if (!objectStateNetIdByObject.TryGetValue(objectId, out long netId)) return false;
-        if (!host.TryGetOwner(netId, out CellSim cell, out Entity e) || !cell.World.IsAlive(e)) return false;
+        if (!TryGetLiveObjectState(objectId, out _, out CellSim cell, out Entity e)) return false;
         if (!cell.World.TryGet(e, out TileObjectState held)) return false;
         state = held.State;
         return true;
@@ -121,9 +123,11 @@ public sealed partial class TileWorldServer
     /// itself. False when the object carries no state.</summary>
     /// <param name="objectId">The authored object's id.</param>
     /// <param name="netId">The entity's net id, when the answer is true.</param>
-    /// <returns>False when the object is in its authored form.</returns>
+    /// <returns>False when the object is in its authored form, the same answer
+    /// <see cref="TryGetObjectState"/> gives for the same object: a net id this reader hands back always names a
+    /// live entity, never one the world has already lost.</returns>
     public bool TryGetObjectStateNetId(long objectId, out long netId)
-        => objectStateNetIdByObject.TryGetValue(objectId, out netId);
+        => TryGetLiveObjectState(objectId, out netId, out _, out _);
 
     /// <summary>
     /// Puts an object back to its authored self and removes its entity: the game's own revert, and any other
@@ -178,6 +182,28 @@ public sealed partial class TileWorldServer
         });
         ArmObjectStateClock(objectId, ttlTicks);
         return true;
+    }
+
+    // The index entry for an object, resolved to a LIVE entity, and PRUNED when it names one the world no longer
+    // holds. Every reader goes through here so a stale entry cannot make one of them answer true while another
+    // answers false, which is exactly what an index read on its own did: a net id with no entity behind it reads
+    // as a state to TryGetObjectStateNetId and as no state to TryGetObjectState, and ObjectStateCount counts it.
+    //
+    // Nothing in this server drops an entity behind the index today. ClearObjectState removes both, and the
+    // expiry sweep clears through it, so the two removal paths keep the index exact by construction. The prune is
+    // for a cell eviction, which is not wired into TileWorldServer at all: were one to land, the state entity
+    // would go with its cell, the first read after it prunes the index and reports the object authored, and the
+    // next SetObjectState re-creates the entity under a fresh net id the way TryUpdateObjectState already does.
+    bool TryGetLiveObjectState(long objectId, out long netId, out CellSim cell, out Entity e)
+    {
+        cell = null!;
+        e = default;
+        if (!objectStateNetIdByObject.TryGetValue(objectId, out netId)) return false;
+        if (host.TryGetOwner(netId, out cell, out e) && cell.World.IsAlive(e)) return true;
+        objectStateNetIdByObject.Remove(objectId);
+        objectStateExpiry.Remove(objectId);
+        netId = 0;
+        return false;
     }
 
     // A TTL of 0 is not a clock of zero ticks, it is the ABSENCE of a clock, so it removes any clock a previous

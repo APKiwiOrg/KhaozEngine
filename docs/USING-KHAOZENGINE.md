@@ -5768,7 +5768,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.13.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.14.0" />
 ```
 
 ```csharp
@@ -9486,6 +9486,48 @@ placement throws like `SpawnActor`'s, the server's clock despawns expired drops 
 (`OnGroundItemExpired`), and drops are `Transient`: a cell capture never persists them. `TicksFor` in
 the snippet is illustrative, compute your TTL from your own tick seconds.
 
+### Object states, and drawing them (a chopped tree, 18.14.0)
+
+A world document's objects are static, so before 18.14.0 a server could not tell a client that a placed
+object had changed and a chopped tree becoming a stump was not expressible. `TileObjectState` is the
+replicated mutable half. One entity per DEPARTED object rather than one per object, so an untouched
+world costs nothing, and the `State` is an opaque int the engine assigns no meaning to, exactly as a
+ground item's `ItemId` is.
+
+```csharp
+// Server, when the game's own rules say the node is spent. ttlTicks is optional: 0 is no clock, and a
+// stump that regrows on its own arms one.
+server.SetObjectState(objectId: 412, state: Nodes.Spent, at: new TileCoord(150, 88, 0), ttlTicks: 60);
+server.TryGetObjectState(412, out int state);
+server.ClearObjectState(412);                  // the game's own revert, true exactly once
+server.OnObjectStateExpired += id => ...;      // the clock's revert, never the game's
+
+// Client, once at startup: state becomes a look, with no polling anywhere.
+client.ObjectStateChanged += (id, state) => view.OverrideArchetype(id, Nodes.ArchetypeFor(state));
+client.ObjectStateCleared += id => view.ClearOverride(id);
+
+// Or polled, per frame, allocation-free once the buffer has grown:
+client.CollectObjectStates(statesBuffer);
+```
+
+A second `SetObjectState` for the same object updates it in place and keeps the entity, so a client sees
+a value change rather than a despawn and a respawn. There is deliberately no per-cell budget where a drop
+has one: there is at most one state per authored object, so the population is the world document's rather
+than an event rate's. `ObjectStateCleared` also fires when an object leaves the area of interest, because
+a head that kept drawing the last state it heard for an object it is no longer served would be drawing a
+guess with no expiry.
+
+`TileWorldView.OverrideArchetype(objectId, archetypeId)` is the renderer half, in
+`KhaozEngine.TileWorld.Render3D`. It draws one placed object as a different archetype WITHOUT touching the
+document, which matters as much as the cost does: a client that swapped the archetype on its own world copy
+would answer every later pick, reach test and save out of the edit. It rebuilds that one placement, with no
+ground remesh and no upload, since an archetype swap moves no vertex. An override for an object no loaded
+region holds is recorded and applies when the region streams in, so a message that beat its region is not
+lost, and `ClearOverride` / `ClearOverrides` put objects back to their authored look. The seam is not
+resource-node shaped: `TileObjectProps.Build` takes the override as a plain `Func<long, string?>`, so a
+damage state, a seasonal or day-night look and an editor's preview of a swap all ride it with no
+replication involved at all.
+
 ---
 
 ## Server status (`KhaozEngine.ServerStatus`)
@@ -10772,7 +10814,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.13.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.14.0" />
 ```
 
 ```csharp
@@ -10808,7 +10850,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.13.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.14.0" />
 ```
 
 ```csharp
@@ -11050,7 +11092,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.13.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.14.0" />
 ```
 
 ```csharp
@@ -13080,7 +13122,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.13.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.14.0" />
 </ItemGroup>
 ```
 

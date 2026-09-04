@@ -162,10 +162,13 @@ own through `TileWorldViewOptions.WaterLook`.
 
 ## Objects (`TileObjectProps`, `ITileMeshResolver`, `GreyboxMeshResolver`, `GltfMeshResolver`)
 
-`TileObjectProps.Build(doc, catalogs, region, plane)` turns a region-plane's `TileObject`s into
+`TileObjectProps.Build(doc, catalogs, region, plane, archetypeOverride)` turns a region-plane's `TileObject`s into
 `TileRegionProps(Ground, Roofs)`, two `PropPlacement` lists for the existing prop path, split so the roof rule can
 hide one and keep the other, plus `RoofFootprints`, the world tile rect each roof covers in the same order and
-the same length. A placement carries a position and no extent, and the roof rule has to know which TILES a roof
+the same length, and `GroundObjectIds` / `RoofObjectIds`, the `TileObject.Id` behind each placement in the same
+order again. Those id lists are what makes a per-object change findable at all: a placement names an ARCHETYPE
+and carries nothing that says which object it came from. `archetypeOverride` is optional and is covered under
+the view below. A placement carries a position and no extent, and the roof rule has to know which TILES a roof
 sits over to tell whose building it is, so the footprints ride alongside. The property is init-only and empty by
 default, so a record built by hand still compiles: a roof the list does not reach is never hidden by the interior
 rule. Objects on another plane, and objects whose archetype the catalogs do not define, are
@@ -276,7 +279,9 @@ untextured ground, no water and no rims. The view's own door is
 `TileWorldView.SetSilhouettedObject(long objectId, Color color, float widthMetres = 0.05f)` /
 `ClearSilhouettedObject()`: the flagged object's parts re-draw as hulls at the exact prop transform every
 frame, resolved by id per frame from the loaded regions, and an id nothing loaded holds is a quiet no-op that
-self-corrects when its region streams in. It is shaped exactly on what `Scene3D` and the prop renderer
+self-corrects when its region streams in. The hull reads the per-object archetype override below, since one built
+on the authored archetype while the prop draws an overridden one sits on a different anchor and floats beside the
+mesh it is outlining. It is shaped exactly on what `Scene3D` and the prop renderer
 already offer, because its job is to let the view's bookkeeping run without a device, not to add an abstraction of
 its own. `Scene3DTileWorldScene` is the shipped implementation and forwards straight through, and a test drives a
 recording fake, which is how every view and residency rule is covered headless.
@@ -334,6 +339,25 @@ catalog archetype up front, so a region load is placements alone.
 - The interior is refilled lazily, when the observer's TILE changes, when the indoor flag under a stationary
   observer flips, or when anything is marked dirty. `MarkDirty` is the only edit channel the document has (it
   raises no events), so an editor painting `Indoors` gets the new interior on the next draw for free.
+- **Per-object archetype overrides.** `OverrideArchetype(objectId, archetypeId)` draws one placed object as a
+  different archetype, `ClearOverride(objectId)` puts it back, `ClearOverrides()` drops the lot,
+  `TryGetOverride` reads one and `ArchetypeOverrideCount` counts them. The DOCUMENT is untouched, which is the
+  point as much as the cost is: a client that swapped the archetype on its own world copy would answer every
+  later pick, reach test and save out of the edit. Wire it straight to
+  `TileWorldClient.ObjectStateChanged` / `ObjectStateCleared` to draw a chopped tree as a stump, and note it is
+  not woodcutting-shaped: a damage state, a seasonal or day-night look and an editor's preview of a swap all
+  ride it.
+- **An override rebuilds one placement, never the ground.** `TileObjectProps.TryReplaceObject` recomputes the one
+  object's anchor and splices it into the region-plane's placement list, with no remesh and no upload, because an
+  archetype swap moves no vertex and no height. On a 931 object region-plane that is 0.016 ms, against 0.58 ms
+  for a full prop rebuild and 31.6 ms for the region-plane remesh a `MarkDirty` plus `Flush` would have paid. It
+  falls back to rebuilding that region-plane's PROPS (still no remesh) for the three ORDER questions it cannot
+  settle: the object has no entry in this region-plane, the new archetype does not resolve, or the swap changes
+  whether the object is a roof.
+- An override for an object no loaded region holds is RECORDED and applies when the region streams in, the
+  `SetSilhouettedObject` contract, so a server message that beat its region is not lost. One naming an archetype
+  the catalogs do not hold draws nothing for that object, the same answer an unresolvable authored archetype
+  already gets.
 - `Dispose` frees every region and every archetype mesh set the view uploaded. The scene is not owned.
 
 ## Streaming (`TileRegionResidency`, `TileResidencyConfig`)

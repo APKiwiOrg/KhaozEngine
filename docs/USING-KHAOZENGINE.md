@@ -28,6 +28,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Reconnect / connection-outage screen (`ConnectionStatusController` / `ReconnectScreen`, 13.2.0)](#reconnect-connection-outage-screen-connectionstatuscontroller-reconnectscreen-1320)
 - [Render2D (`KhaozEngine.Render2D`)](#render2d-khaozenginerender2d)
 - [DPI-aware / crisp UI (the point-space path)](#dpi-aware-crisp-ui-the-point-space-path)
+- [Floating world text (`FloatingTextStore` / `FloatingBannerStore`, 18.16.0)](#floating-world-text-floatingtextstore--floatingbannerstore-18160)
 - [Render3D (`KhaozEngine.Render3D`)](#render3d-khaozenginerender3d)
 - [Skinned / deformable meshes (runtime bone control)](#skinned-deformable-meshes-runtime-bone-control)
 - [Animated characters (glTF clip playback + locomotion blend)](#animated-characters-gltf-clip-playback-locomotion-blend)
@@ -59,6 +60,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [ke-mapedit (`KhaozEngine.MapEdit.Tool`)](#ke-mapedit-khaozenginemapedittool)
 - [Networked overworld (`KhaozEngine.Locomotion` + `KhaozEngine.NetWorld`)](#networked-overworld-khaozenginelocomotion-khaozenginenetworld)
 - [Tile-world netcode (`KhaozEngine.TileWorld.Netcode`)](#tile-world-netcode-khaozenginetileworldnetcode)
+- [Charging attack time for something that is not a swing (`TileWorldServer.DelayAttack`, 18.16.0)](#charging-attack-time-for-something-that-is-not-a-swing-tileworldserverdelayattack-18160)
 - [Server status (`KhaozEngine.ServerStatus`)](#server-status-khaozengineserverstatus)
 - [HTTP retry (`KhaozEngine.Http`)](#http-retry-khaozenginehttp)
 - [ECS (`KhaozEngine.Ecs`)](#ecs-khaozengineecs)
@@ -2354,6 +2356,85 @@ protected override void OnDrawUi(SpriteBatch batch)
 Keep the `DesignViewport` for the letterboxed game world; only the UI layer opts into point space. Design-space
 rendering is byte-identical: snapping is active only inside the point-space viewport, so existing 2D passes are
 unaffected.
+
+---
+
+## Floating world text (`FloatingTextStore` / `FloatingBannerStore`, 18.16.0)
+
+Experience drops and damage numbers beside a body, and a centre-screen banner that zooms away toward a corner.
+`KhaozEngine.Render2D.Vfx`, game-agnostic: nothing here knows what the text says or where a body is, so a 3D game
+projecting through its camera and a 2D game reading a sprite position use the same types.
+
+Three pieces, and the split is what keeps the animation testable: a STORE holds live entries and ages them, pure
+CURVES turn an age into an alpha, a scale and an offset, and one RENDERER touches the batch.
+
+```csharp
+// Once, per kind of line.
+static readonly FloatingTextStyle XpDrop = FloatingTextStyle.Default with
+{
+    Color = new Color(0.4f, 1f, 0.4f), DriftPerSecond = new Vector2(0f, -46f), MaxPerAnchor = 5,
+};
+
+readonly FloatingTextStore floaters = new(capacity: 64);
+
+// When the server says so.
+floaters.Add($"+{xp} xp", playerNetId, new Vector2(0f, -48f), XpDrop);
+
+// Once a frame, in the update.
+floaters.Age(dt);
+
+// In the Gui pass. Null means the body is off screen: the entry is SKIPPED, not dropped.
+FloatingTextRenderer.Draw(batch, font, floaters, id =>
+    world.TryGetBody(id, out Vector3 head) ? camera.ProjectToDesign(head) : null);
+```
+
+`FloatingTextStyle` carries the look and the death: `Color`, `LifetimeSeconds`, `DriftPerSecond` (design px/s, Y
+down, so `(0,-40)` rises and `(-30,-40)` drifts up and left), `StartScale` / `EndScale`, `FadeInSeconds` /
+`FadeOutSeconds` (the fade-out is the LAST N seconds), `MaxPerAnchor` (0 = unlimited), `StackSpacing`, and a drop
+shadow (`Shadow`, `ShadowOffset`, `ShadowColor`). A bare `new()` is all-zero, which is a zero lifetime, which draws
+nothing at all. `Default` is the preset. The style is per ENTRY rather than per store, so one store carries
+experience drops, damage numbers and gameplay lines at once and ages each on its own lifetime.
+
+`FloatingTextStore` is `Add(text, anchorId, offset, style)`, `Age(dt)`, `Count`, `CountFor(anchorId)`, `Clear()`,
+`Clear(anchorId)` and `Live`, a `ReadOnlySpan<FloatingText>` to walk without allocating an enumerator. Entries are
+held oldest first and stay that way through every removal, because every rule here is an age rule. The per-anchor
+cap is applied BEFORE an add, dropping that anchor's oldest, so it is a hard ceiling rather than one exceeded for a
+frame. The backing array doubles when it fills and nothing else allocates, so a store sized for its busiest frame
+never allocates again and `Age` on a steady state is free.
+
+**The stack step separates a BURST, and only a burst.** Five drops landing on one frame share an age, so drift
+cannot separate them: each takes `StackSpacing` pixels further down than the siblings already there, which reads as
+a column with the oldest highest. Entries born apart need no help, because the drift has already moved the older
+one. An entry's `StackIndex` is fixed at birth and never renormalized, so an older sibling expiring cannot make the
+rest of the column jump up a step.
+
+`FloatingTextCurves` is the pure half: `AlphaAt(age, style)` (up over the fade-in, down over the fade-out, the
+SMALLER of the two wherever they overlap, zero at and after the lifetime), `ScaleAt(age, style)` and
+`OffsetAt(age, style, stackIndex)`. Unit-testable with no GPU in sight.
+
+`FloatingTextRenderer.Draw` centres each line on its point, draws the optional shadow under it at the same scale,
+and takes a master `opacity` for fading the whole layer. It AGES NOTHING: call `Age` once from the update, so a
+store drawn twice (a split screen, a mirror) does not age twice. The batch's blend mode is left alone, unlike
+`AttentionBeacon`, because text fades by alpha and the straight-alpha mode a Gui pass is already in reads right
+over a lit world.
+
+**The banner is the screen-fixed half**, and a separate store rather than a mode on the first one:
+
+```csharp
+readonly FloatingBannerStore banners = new();
+
+banners.Add("Woodcutting 10", screen.Centre, screen.TopRight,
+    FloatingTextStyle.Default with { LifetimeSeconds = 2.5f, StartScale = 2.4f, EndScale = 0.8f, FadeOutSeconds = 0.8f });
+
+banners.Age(dt);
+FloatingTextRenderer.Draw(batch, font, banners);
+```
+
+A `FloatingBanner` carries its own start and end points instead of an anchor id. `FloatingBannerCurves.PositionAt`
+eases between them (ease-out cubic, exact at both endpoints, so it lands rather than drifting past), and the scale
+and the alpha are `FloatingTextCurves`'s own rather than a second copy. `DriftPerSecond`, `StackSpacing` and
+`MaxPerAnchor` mean nothing to a banner. One type doing both jobs would be a store with half its fields meaningless
+per entry and a draw path branching on which half was filled in.
 
 ---
 
@@ -5831,7 +5912,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.15.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.16.0" />
 ```
 
 ```csharp
@@ -9640,6 +9721,37 @@ the state it set.
 
 ---
 
+## Charging attack time for something that is not a swing (`TileWorldServer.DelayAttack`, 18.16.0)
+
+`DelayAttack(netId, ticks)` pushes an entity's next swing out by `ticks` server ticks. It is the public writer for
+`TileCombatState.CooldownRemaining`, and the only one: everything else on that component is read-only to a game or
+reached through `ITileCombatRules`.
+
+```csharp
+// OSRS: a bite costs attack time rather than interrupting the fight.
+if (game.TryEat(slot, item)) server.DelayAttack(playerNetId, ticks: 3);
+```
+
+**ADD, not max.** A bite taken with three ticks still to run delays the swing by the bite's own cost ON TOP of the
+wait already there. A max would make the same bite free whenever the attacker happened to be mid-cadence, which is
+a fight that rewards eating at exactly the wrong moment. A potion, a cast delay, a stun and a knockback all want the
+same write, so the door is the delay rather than the food, and the engine has no opinion about how long any of them
+costs.
+
+The wait SATURATES at 255 rather than wrapping, because a wrap turns a long stun into no stun at all. It runs down
+once per tick like any other cadence, so it is a wait rather than a freeze.
+
+An entity that has never fought gets a `TileCombatState` created for it, carrying the delay and nothing else. That
+matters for a PLAYER, who acquires the component lazily on the first tick the combat pass has something to write for
+them: without the create, a delay would do nothing until the second fight and an Attack command issued on the next
+tick would swing straight through it. The created state leaves `AttackTicks` at zero, so `ITileCombatRules` still
+answers the cadence at the first swing exactly as it does today.
+
+False means no live cell owns the id. A zero `ticks` writes nothing and still reports whether the entity is there,
+so it doubles as an existence check.
+
+---
+
 ## Server status (`KhaozEngine.ServerStatus`)
 
 An **out-of-band** health + version channel for a live game, separate from the game connection itself. A small
@@ -10924,7 +11036,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.15.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.16.0" />
 ```
 
 ```csharp
@@ -10960,7 +11072,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.15.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.16.0" />
 ```
 
 ```csharp
@@ -11202,7 +11314,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.15.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.16.0" />
 ```
 
 ```csharp
@@ -13232,7 +13344,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.15.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.16.0" />
 </ItemGroup>
 ```
 

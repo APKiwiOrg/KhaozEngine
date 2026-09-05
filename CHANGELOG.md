@@ -5,6 +5,64 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.16.0
+
+Two additive pieces a tile-world game asked for: a public writer for the swing cooldown, so an action
+that is not a swing can still cost attack time, and a game-agnostic floating world text system for
+experience drops, damage numbers and a centre-screen banner.
+
+**`TileWorldServer.DelayAttack(long netId, byte ticks)`** (`KhaozEngine.TileWorld.Netcode`)
+
+- The public writer for `TileCombatState.CooldownRemaining`, and the only one. Everything else on that
+  component is read-only to a game (`TryGetCombatState`) or reached through `ITileCombatRules`, and
+  `SetCombatState` stays internal. What a game does with it is charge attack time for something that is
+  not a swing: OSRS eating, a potion, a cast delay, a stun, a knockback.
+- **ADD, not max.** A bite taken with three ticks still to run delays the swing by the bite's own cost on
+  top of the wait already there. A max would make the same bite free whenever the attacker happened to be
+  mid-cadence, which is a fight that rewards eating at exactly the wrong moment.
+- An entity that has never fought gets a `TileCombatState` created for it, carrying the delay and nothing
+  else. That is the case a PLAYER is in: the component is acquired lazily on the first tick the combat
+  pass has anything to write, so an idle player carries none, and a delay that skipped them would do
+  nothing until the second fight while an Attack command issued on the next tick swung straight through
+  it. The created state leaves `AttackTicks` at zero, so the rules seam still answers the cadence at the
+  first swing exactly as before.
+- Saturates at 255 rather than wrapping, because a wrap turns a long stun into no stun at all. The wait
+  runs down once per tick like any other cadence, so it is a wait rather than a freeze. False means no
+  live cell owns the id. A zero `ticks` writes nothing and still reports whether the entity is there, so
+  it doubles as an existence check.
+
+**Floating world text** (`KhaozEngine.Render2D`, namespace `KhaozEngine.Render2D.Vfx`)
+
+- New: `FloatingText`, `FloatingTextStyle`, `FloatingTextStore`, `FloatingTextCurves`,
+  `FloatingTextRenderer`, `FloatingBanner`, `FloatingBannerStore`, `FloatingBannerCurves`. Nothing here
+  knows what the text says or where a body is, so a 3D game projecting through its camera and a 2D game
+  reading a sprite position use the same types.
+- `FloatingTextStore` is `Add(text, anchorId, offset, style)`, `Age(dt)`, `Count`, `CountFor(anchorId)`,
+  `Capacity`, `Clear()`, `Clear(anchorId)` and `Live`, a `ReadOnlySpan<FloatingText>` a renderer walks
+  without allocating an enumerator. Entries are held oldest first through every removal, because every
+  rule here is an age rule. The style is per ENTRY, so one store carries experience drops and damage
+  numbers at once and ages each on its own lifetime. The per-anchor cap is applied BEFORE an add,
+  dropping that anchor's oldest, so it is a hard ceiling rather than one exceeded for a frame. The
+  backing array doubles when it fills and nothing else allocates, so `Age` on a steady state is free (a
+  test in the `AllocSensitive` collection pins that).
+- The stack step separates a BURST and only a burst. Entries landing on one frame share an age, so drift
+  cannot part them: each takes `StackSpacing` pixels further down than the siblings already there, which
+  reads as a column with the oldest highest. `FloatingText.StackIndex` is fixed at birth and never
+  renormalized, so an older sibling expiring cannot make the rest of the column jump up a step.
+- `FloatingTextCurves` is the pure half: `AlphaAt`, `ScaleAt` and `OffsetAt`, unit-testable with no GPU in
+  sight, which is why a store entry carries an age and no position. The fade-out is the LAST N seconds,
+  and two overlapping fades take the smaller of the pair.
+- `FloatingTextRenderer.Draw` has one overload per store. The anchored one takes a
+  `Func<long, Vector2?> anchorOf`, where null SKIPS the entry for that frame without dropping it, so a
+  body that leaves the screen comes back in the same column it left. It ages nothing, deliberately, so a
+  store drawn twice does not age twice, and it leaves the batch's blend mode alone.
+- `FloatingBannerStore` is the screen-fixed half: a banner carries its own start and end points instead
+  of an anchor, and `FloatingBannerCurves.PositionAt` eases between them (ease-out cubic, exact at both
+  endpoints). Kept a separate type rather than a mode, because one type doing both jobs is a store with
+  half its fields meaningless per entry.
+- `FloatingTextStyle.Color` and `ShadowColor` are `KhaozEngine.Primitives.Color` rather than a bare
+  `Vector4`, which is the type the batch's `DrawString` takes and the reason `Color` exists.
+
 ## 18.15.0
 
 The one-body-per-tile rule crosses instead of popping: `TileDrawPriority` now answers a visibility

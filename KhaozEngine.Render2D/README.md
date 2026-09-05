@@ -234,3 +234,41 @@ each quad to run between its two displaced boundaries, giving a chain-lightning 
 `JitterSeed` picks which bolt, so concurrent arcs need different seeds. The bolt is a pure function of seed and
 time, so the beam stays stateless and every client draws the same one. `BeamParams.ElectricArc` is the tuned
 preset. Wave is byte-identical to the pre-jagged behaviour.
+
+## Floating world text (`Vfx`)
+
+Game-agnostic floating text: experience drops and damage numbers beside a body, and a centre-screen banner that
+zooms away toward a corner. Nothing here knows what the text says or where a body is, so a 3D game projecting
+through its camera and a 2D game reading a sprite position use the same types.
+
+`FloatingTextStyle` is the look and the death: `Color`, `LifetimeSeconds`, `DriftPerSecond` (design px/s, Y down,
+so `(0,-40)` rises), `StartScale` / `EndScale`, `FadeInSeconds` / `FadeOutSeconds` (the fade-out is the LAST N
+seconds), `MaxPerAnchor` (0 = unlimited), `StackSpacing`, and a drop shadow (`Shadow`, `ShadowOffset`,
+`ShadowColor`). A bare `new()` is all-zero, which is a zero lifetime, which draws nothing. `Default` is the preset.
+
+`FloatingTextStore` holds the live set, oldest first: `Add(text, anchorId, offset, style)`, `Age(dt)`, `Count`,
+`CountFor(anchorId)`, `Clear()`, `Clear(anchorId)`, and `Live`, a `ReadOnlySpan<FloatingText>` a renderer walks
+without allocating an enumerator. `Age` expires per entry (the style is per entry, so a store holding a half second
+number and a three second line ages both correctly) and preserves order for the survivors. The per-anchor cap is
+applied before an add, dropping that anchor's oldest, so it is a hard ceiling rather than one exceeded for a frame.
+The backing array doubles when it fills and nothing else here allocates, so a store sized for its busiest frame
+never allocates again.
+
+The stack step separates a BURST. An entry's `StackIndex` is the number of its anchor's entries already live when
+it was added, and it is never renormalized, so the oldest of a burst sits highest, entries born apart are separated
+by the drift instead, and an older sibling expiring cannot make the rest jump.
+
+`FloatingTextCurves` is the pure animation: `AlphaAt(age, style)` (fade in, hold, fade out, the smaller of the two
+wherever they overlap), `ScaleAt(age, style)` and `OffsetAt(age, style, stackIndex)`. All three are unit-testable
+with no GPU in sight, which is the whole reason the store carries an age and not a position.
+
+`FloatingBanner` / `FloatingBannerStore` / `FloatingBannerCurves` are the screen-fixed half: a banner carries its
+own start and end points instead of an anchor, `PositionAt` eases between them (ease-out cubic, exact at both
+endpoints), and the scale and alpha are `FloatingTextCurves`'s own. A separate store rather than a mode, because an
+anchored entry needs an anchor projected every frame and a stack step, and a banner needs neither.
+
+`FloatingTextRenderer.Draw` takes either store. The anchored overload takes a `Func<long, Vector2?> anchorOf` that
+turns an anchor id into a design-space screen point, where returning null SKIPS the entry for that frame without
+dropping it (a body off screen comes back in the same column it left). Every line is centred on its point, the
+optional shadow rides under it at the same scale, and a master `opacity` fades the whole layer. It ages nothing:
+call `Age` once from the update, so a store drawn twice does not age twice.

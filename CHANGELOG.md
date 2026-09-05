@@ -7,6 +7,93 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 18.14.0
 
+18.14.0 gives the tile world replicated per-object state, so a chopped tree is a stump on every client
+rather than only on the client that chopped it, and gives the tile renderer the per-object archetype
+override that draws one. It widens the tile netcode's extension type-id window in the same release,
+because the new component would otherwise have spent one of the two ids left. Raised by Grimhollow's
+SP6 skilling design, which is shipping its first round on a game-owned broadcast until this lands.
+
+Replicated object state (#820):
+
+- `TileObjectState` is a new replicated component in `KhaozEngine.TileWorld.Netcode`, registered at
+  `TileProtocol.TileObjectStateTypeId` (`FirstExtensionTypeId + 7`) beside the ground item's. An entity
+  per DEPARTED object rather than one per object, so a world nobody has touched costs nothing and a
+  thousand trees with two stumps in them cost two. It carries `ObjectId` (a `TileObject.Id`), an opaque
+  `State` int the engine assigns no meaning to, and `X` / `Z` / `Plane`.
+- The tile is not padding. `TileWorldServer.PositionOf` reads a position off the component, which is what
+  puts the entity into the interest grid, and the serve's `CollectPlane` reads a plane off it, which is
+  what keeps a stump upstairs from being drawn through the floor. Both branches carry their own test,
+  because a component that answers neither encodes and decodes perfectly and reaches no client at all.
+- Server API: `SetObjectState(objectId, state, at, ttlTicks = 0)` creates or updates and returns the
+  entity's net id, `TryGetObjectState`, `TryGetObjectStateNetId`, `ClearObjectState`, `ObjectStateCount`
+  and the `OnObjectStateExpired` event. A second `SetObjectState` for the same object updates it in place
+  and keeps the entity, so a client sees a value change rather than a despawn and a respawn. `ttlTicks`
+  is optional and 0 means no clock at all: a stump that regrows on its own arms one, and a state that
+  stands until the game reverts it does not. The sweep runs beside the ground-item sweep, before the
+  movement pass, so a revert decided this tick ships in this tick's snapshot.
+- Deliberately with no per-cell budget where a ground item has `MaxGroundItemsPerCell`. A drop's
+  population is driven by an event rate a kill farm can raise without limit, while there is at most one
+  state per authored object, so a cap would refuse a legitimate depletion in a dense forest and buy
+  nothing.
+- Client API: `TileWorldClient.CollectObjectStates(List<(long ObjectId, int State)>)`, allocation-free
+  once the buffer has grown, plus `TryGetObjectState`, `ObjectStateCount`, and the `ObjectStateChanged` /
+  `ObjectStateCleared` events, raised once per change out of the snapshot apply so a renderer reacts
+  without polling. `ObjectStateCleared` also fires when an object leaves the area of interest, because
+  the engine cannot tell a head about an object it is not being served and a head that kept drawing the
+  last state it heard would be drawing a guess with no expiry.
+- `CollectObjectStates` yields `(ObjectId, State)` and no remaining ticks, and the server exposes no reader for
+  the clock either. A head that wants to show a countdown keeps its own clock beside the state it set, which is
+  the same place the rule that decided the TTL lives.
+
+Per-object archetype override (#821):
+
+- `TileWorldView.OverrideArchetype(objectId, archetypeId)`, `ClearOverride`, `ClearOverrides`,
+  `TryGetOverride` and `ArchetypeOverrideCount` draw one placed object as a different archetype without
+  touching the document. That last part is the point as much as the cost is: a client that edits its own
+  world copy answers every later pick, reach test and save out of the edit.
+- `TileObjectProps.Build` takes an optional `Func<long, string?> archetypeOverride`, consulted at the
+  archetype lookup. `TileRegionProps` gains `GroundObjectIds` and `RoofObjectIds`, the object id behind
+  each placement, because a placement names an archetype and nothing that says which object it came from.
+- `TileObjectProps.TryReplaceObject` is the narrow rebuild: one anchor sample plus a copy of the affected
+  placement list, with no ground remesh and no upload, because an archetype swap moves no vertex and no
+  height. On a 931 object region-plane (the forest scale of Grimhollow's Hollowmere) that is 0.016 ms,
+  against 0.58 ms for a full prop rebuild and 31.6 ms for the region-plane remesh a `MarkDirty` plus
+  `Flush` would have paid, measured in Debug on macOS arm64. It answers null and falls back to a prop
+  rebuild (still no remesh) for the three ORDER questions it cannot settle: the object has no entry in
+  this region-plane, the new archetype does not resolve, or the swap changes the roof flag.
+- An override for an object no loaded region holds is RECORDED and applies when the region streams in,
+  the `SetSilhouettedObject` contract, because a server message routinely arrives before its region does.
+  An override naming an archetype the catalogs do not hold draws nothing for that object, the same answer
+  an unresolvable authored archetype already gets.
+- `DrawSilhouettedObject` reads the override too. A hull built on the authored archetype while the prop
+  draws an overridden one sits on a different anchor and reads as a hull floating beside the thing it is
+  meant to outline.
+- Not woodcutting-shaped. A damage state, a seasonal or day-night look and an editor's preview of a swap
+  all want the same seam.
+- **A state and an override change what is DRAWN, and nothing else.** The server's target resolution
+  (`TileDocumentTargets`) and its baked collision map both read the AUTHORED archetype, so a spent object is
+  still its authored self to an `Interact` and still blocks what the tree blocked. A game refuses the action
+  server side and suppresses the menu row client side, both of which it owns.
+  [#823](https://github.com/APKiwiOrg/KhaozEngine/issues/823) is the engine follow-on that would carry state
+  into target resolution.
+
+Wire break, for tile-netcode consumers only (#822):
+
+- `TileProtocol.FirstGameTypeId` moves from `FirstExtensionTypeId + 8` (24) to `+ 16` (32). The window
+  below it was TWO ids wide, `TileObjectState` would have spent one of them, and exhausting it makes any
+  further engine-owned tile component a fleet-wide renumber. Sixteen is the width
+  `ReplicationRegistry.FirstExtensionTypeId` itself reserves for engine built-ins, so the boundary reads
+  as one block rather than as a running count, and it leaves eight free after this round, more than the
+  tile netcode has spent in its whole life.
+- This RENUMBERS every game component registered on the tile wire, which is a protocol break for any
+  consumer whose two heads are not upgraded together. In this fleet that is Grimhollow alone, whose
+  `MonsterKindTypeId` is written as `TileProtocol.FirstGameTypeId` and therefore moves from 24 to 32 the
+  moment it repins, with both its heads in one binary. Ruinborne never references `TileProtocol` and the
+  other games do not use the tile netcode at all. A consumer that hard-codes 24 rather than naming the
+  constant must move it.
+
+Window launch placement, in the same release:
+
 18.14.0 gives a launch its window placement: a window that can be created without taking focus, an
 explicit initial monitor, and two dev environment overrides for both, with the override flag a game
 reads so a harness boot never overwrites the player's saved placement. Nothing here persists anything.

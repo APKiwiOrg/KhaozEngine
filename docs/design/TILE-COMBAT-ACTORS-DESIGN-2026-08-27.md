@@ -113,6 +113,9 @@ field on every kind so the decoder branches on nothing (`TileCommand.cs:29-31`).
 18 are taken (`TileProtocol.Components.cs:17-23`) and `FirstGameTypeId` is 24 (`:28`), so ids 19 to 23 are the
 engine's free window. `TileMoveState` is 33 fixed bytes (`:115`, and the field-by-field sum confirms it).
 
+> Superseded in 18.14.0: `FirstGameTypeId` moved to `FirstExtensionTypeId + 16` (32) and the engine's free window
+> is now the ids up to it. The numbers above are the ones this design was written against.
+
 **And the things that are genuinely missing, named:**
 
 - No `TileWorldServer.SpawnEntity` or despawn, and no public accessor for the server's `NetIdAllocator`
@@ -943,7 +946,7 @@ Engine, `KhaozEngine.TileWorld.Netcode`:
 | `TileMovementSystem` | holds a second simulator and picks on `world.Has<TileActor>(e)`. The `Ghost`/`Migrating` skip stays in one place. |
 | `TileWorldServer` | gains `SpawnActor` / `DespawnActor`, `OnDied`, `OnActorSpawned`, a `TileActorHost`, and two tick steps (1b and 4b). Actors and combat land as `TileWorldServer.Actors.cs` and `TileWorldServer.Combat.cs`, never as growth on the existing four partials. |
 | `TileWorldServerConfig` | gains `MaxActorsPerCell` and the actor `TileMoveOptions`. |
-| `TileProtocol` | registers `TileHealth` at extension id 19, adds `ServerFrameCombat = 3` and its codec as `TileProtocol.Combat.cs`. Ids 20 to 23 stay free below `FirstGameTypeId`. |
+| `TileProtocol` | registers `TileHealth` at extension id 19, adds `ServerFrameCombat = 3` and its codec as `TileProtocol.Combat.cs`. Ids 20 to 23 stay free below `FirstGameTypeId` (superseded in 18.14.0: `FirstGameTypeId` is 32 and the window below it is wider). |
 | `TileWorldClient` | gains `CombatEvent`, `RemoteEntered`, `RemoteLeft`, and a `TileRemoteTargets` it builds for its own simulator. |
 | `TileServerReason` | unchanged. An unreachable attack answers the existing `ke:cannot-reach`, because it is the same fact. |
 | `TileWorldServer.Sessions.cs` | gains the combat logout delay (ruled in, section 13.3): a leaving player whose last combat event is within the configured window is not removed, their entity LINGERS attackable until the window lapses and then persists and drains normally. The window is `TileWorldServerConfig` surface with the game choosing the number. |

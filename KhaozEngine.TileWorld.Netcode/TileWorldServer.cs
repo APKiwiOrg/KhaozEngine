@@ -437,6 +437,10 @@ public sealed partial class TileWorldServer : IDisposable
         // A ground item has no move state on purpose (it never moves), so it answers off its own component,
         // which is what puts a drop into the interest grid and therefore into the serve at all.
         if (world.TryGet(entity, out TileGroundItem item)) { x = item.X; y = item.Z; return true; }
+        // An object state answers the same way and for the same reason: an authored object never moves either,
+        // so its tile rides in the component, and without this branch the state would encode and decode
+        // perfectly and reach no client at all.
+        if (world.TryGet(entity, out TileObjectState state)) { x = state.X; y = state.Z; return true; }
         x = 0f;
         y = 0f;
         return false;

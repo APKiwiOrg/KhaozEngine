@@ -263,7 +263,7 @@ public sealed partial class TileWorldView : IDisposable
             for (int plane = 0; plane < _planes; plane++)
             {
                 meshes[plane] = BuildMesh(region, plane);
-                props[plane] = TileObjectProps.Build(_doc, _catalogs, region, plane);
+                props[plane] = TileObjectProps.Build(_doc, _catalogs, region, plane, OverrideLookup());
             }
         }
         catch
@@ -366,7 +366,7 @@ public sealed partial class TileWorldView : IDisposable
                 MeshHandle? rebuilt = BuildMesh(region, plane);
                 if (handles.Meshes[plane] is { } old) _scene.UnloadMesh(old);
                 handles.Meshes[plane] = rebuilt;
-                handles.Props[plane] = TileObjectProps.Build(_doc, _catalogs, region, plane);
+                handles.Props[plane] = TileObjectProps.Build(_doc, _catalogs, region, plane, OverrideLookup());
                 // Only a mesh that was actually built counts. The budget exists to bound uploads and handle
                 // churn, and an empty region-plane produces neither.
                 if (rebuilt is not null) taken++;
@@ -453,9 +453,13 @@ public sealed partial class TileWorldView : IDisposable
     void DrawSilhouettedObject(Vector3 focus)
     {
         if (_doc.FindObject(_silhouettedObject) is not { } o) return;
-        if (_catalogs.Archetype(o.ArchetypeId) is not { } archetype) return;
+        // Through the override, never off the document: a hull built on the authored archetype while the prop
+        // draws an overridden one would sit on a different mesh and a different anchor, which reads as a hull
+        // floating beside the thing it is meant to outline.
+        string archetypeId = ArchetypeFor(o);
+        if (_catalogs.Archetype(archetypeId) is not { } archetype) return;
         if (archetype.IsRoof && IsRoofHidden(TileFootprint.Of(archetype, o.X, o.Z, o.Rotation), o.Plane)) return;
-        if (!_propMeshes.TryGetValue(o.ArchetypeId, out IReadOnlyList<MeshHandle>? parts)) return;
+        if (!_propMeshes.TryGetValue(archetypeId, out IReadOnlyList<MeshHandle>? parts)) return;
         Vector3 at = TileObjectProps.AnchorPosition(_doc, archetype, o);
         float dx = at.X - focus.X;
         float dz = at.Z - focus.Z;
@@ -484,6 +488,7 @@ public sealed partial class TileWorldView : IDisposable
 
         foreach (IReadOnlyList<MeshHandle> parts in _propMeshes.Values) _scene.UnloadPropMeshes(parts);
         _propMeshes.Clear();
+        _archetypeOverrides.Clear();
 
         if (_material.IsValid) _scene.UnloadTileGroundMaterial(_material);
     }

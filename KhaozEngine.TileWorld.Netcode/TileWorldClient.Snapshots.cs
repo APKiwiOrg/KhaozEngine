@@ -162,6 +162,11 @@ public sealed partial class TileWorldClient
         // after the reconcile, every replay would chase where the target stood one snapshot ago.
         CaptureLatestTiles();
 
+        // The object-state mirror is refreshed in the same instant and for the same reason: the world holds the
+        // server's own answer here and the delayed timeline's everywhere else. Its events are raised from inside
+        // it, after its own pass, so a head may swap a mesh straight out of one.
+        RefreshObjectStates();
+
         // Remotes ride a DELAYED timeline, so the sample is buffered here at its arrival time and read back later,
         // at a render time two ticks behind (see AdvancePresentation). The local player is excluded from the buffer
         // on purpose: it is predicted rather than interpolated, and buffering it would clobber the replicated value

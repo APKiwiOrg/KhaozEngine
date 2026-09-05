@@ -384,6 +384,66 @@ The intended pickup shape, all game code: click routes a walk to the drop's tile
 own TAKE message naming the net id, your handler re-proves tile proximity per request, moves the
 stack into your own storage, and despawns.
 
+## Object states, an authored object that has left its authored form
+
+A world document's objects are static: a `TileObject` is an id, an archetype, a tile, a plane, a rotation and
+tags, and nothing on it changes at runtime. `TileObjectState` is the replicated mutable half, so a server can
+say "object 412 is spent" and every client hears it.
+
+An entity per DEPARTED object rather than one per object, which is the shape and the reason it is cheap: a
+world nobody has touched carries no state entities at all, and a forest of a thousand trees with two stumps in
+it carries two. The component is `ObjectId` (the document's `TileObject.Id`), an opaque `State` int, and the
+tile (`X`, `Z`, `Plane`). `State` is meaning-free in exactly the way `TileGroundItem.ItemId` is: the engine
+owns the lifecycle (set, replicate, expire, clear) and a game owns what 1 and 2 mean.
+
+The tile rides in the component for the same reason a drop's does, and it is the half that is easy to leave
+out. The interest grid asks an entity where it is and the serve asks it which plane it is on, so a component
+that answers neither encodes and decodes perfectly, passes every codec test, and is shown to nobody.
+
+Server side:
+
+```csharp
+// A chopped tree, spent for 60 ticks and then back on its own.
+server.SetObjectState(objectId: 412, state: SpentTree, at: new TileCoord(150, 88, 0), ttlTicks: 60);
+server.TryGetObjectState(412, out int state);
+server.ClearObjectState(412);                 // the game's own revert, true once
+server.OnObjectStateExpired += id => ...;     // the clock's revert, never the game's
+```
+
+`ttlTicks` is optional and 0 means no clock at all, so a state that stands until the game reverts it simply
+does not arm one. A second `SetObjectState` for an object that already has one UPDATES it in place and keeps
+the entity, so a client sees a value change rather than a despawn and a respawn. The expiry sweep runs before
+the movement pass, so a revert decided this tick ships in this tick's snapshot. There is deliberately no
+per-cell budget where a ground item has `MaxGroundItemsPerCell`: a drop's population is driven by an event
+rate a kill farm can raise without limit, while there is at most one state per authored object.
+
+Client side, either polled or evented:
+
+```csharp
+client.CollectObjectStates(buffer);           // allocation-free once the buffer has grown
+client.TryGetObjectState(412, out int state);
+client.ObjectStateChanged += (id, state) => view.OverrideArchetype(id, ArchetypeFor(state));
+client.ObjectStateCleared += id => view.ClearOverride(id);
+```
+
+The events fire once per CHANGE rather than once per snapshot, which is what makes them safe to swap a mesh
+out of. `ObjectStateCleared` also fires when an object leaves this viewer's area of interest, deliberately: the
+engine cannot tell a head about an object it is not being served, so a head that kept drawing the last state it
+heard would be drawing a guess with no expiry. The state comes back through `ObjectStateChanged` the moment the
+object is in interest again, and the interest radius is measured in cells, so the boundary is a whole region
+away from the tiles a head is drawing detail at.
+
+The renderer half is `TileWorldView.OverrideArchetype` in `KhaozEngine.TileWorld.Render3D`, which draws one
+placed object as a different archetype without touching the document.
+
+**A state changes what is DRAWN and nothing else.** `TileDocumentTargets` and the baked collision map both read
+the AUTHORED archetype, so a spent object still answers an `Interact` at its tile and still blocks what its
+authored form blocked. Refusing is the game's job on both heads: reject the action server side where the rule
+that spent the object lives, and suppress the menu row client side off the state you already hold.
+https://github.com/APKiwiOrg/KhaozEngine/issues/823 is the engine follow-on that would carry state into target
+resolution. `CollectObjectStates` carries no remaining ticks either, and there is no server reader for the
+clock, so a head that wants a countdown keeps its own beside the state it set.
+
 ## The player health contract, which is the first thing a game with combat gets wrong
 
 **A spawned PLAYER has no `TileHealth` at all.** An actor gets one from its spawn spec, and nothing writes a

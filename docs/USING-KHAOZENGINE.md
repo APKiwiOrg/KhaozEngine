@@ -5831,7 +5831,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.14.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.15.0" />
 ```
 
 ```csharp
@@ -9159,25 +9159,58 @@ if (client.TryGetRemoteTile(netId, out TileCoord theirs))          // agrees wit
 
 Draw every body on its tile centre and a crowd on one tile is a smear of overlapping meshes that reads as one
 wrong-looking creature. The body a player can least afford to lose in that smear is their own. `TileDrawPriority`
-collapses each tile to ONE drawn actor: the local player on their own tile (both tiles of a step in flight), and
-the highest net id everywhere else. OSRS answers the same question with PID and this is that shape with a stable
-key.
+collapses each tile to ONE drawn actor at rest: the local player on their own tile (both tiles of a step in
+flight), and the highest net id everywhere else. OSRS answers the same question with PID and this is that shape
+with a stable key.
+
+Since 18.15.0 the answer is a WEIGHT rather than a boolean, and that is what stops it popping. A tile commits when
+a step STARTS and the body glides in over the rest of it, so a body judged the frame its tile changes is judged a
+whole step before it arrives: enemies walking onto the player used to vanish in the open instead of walking under
+them. `Weight(netId)` is the visibility to draw at, 0 through 1, and it crosses over the step the body is actually
+walking.
 
 ```csharp
 readonly TileDrawPriority priority = new();     // one per head, for the life of the session
 readonly List<(long NetId, TileCoord Tile)> remotes = new();
 
-// per frame, after AdvancePresentation and before drawing
-priority.Rebuild(client);
+// per frame, after AdvancePresentation and before drawing, with the frame's own dt
+priority.Rebuild(client, dt);
 
-TilePose me = client.LocalPose;                 // the local player is always drawn
-Draw(playerMesh, me.Position, me.Yaw);
+TilePose me = client.LocalPose;                 // the local player is always drawn, always at weight 1
+Draw(playerMesh, me.Position, me.Yaw, alpha: 1f);
 client.CollectRemoteTiles(remotes);             // the reused list, so no enumerator is boxed per frame
 foreach ((long netId, TileCoord _) in remotes)
-    if (priority.IsDrawn(netId) && client.TryGetRemotePose(netId, out TilePose pose))
-        Draw(remoteMesh, pose.Position, pose.Yaw);
+{
+    float weight = priority.Weight(netId);
+    if (weight > 0f && client.TryGetRemotePose(netId, out TilePose pose))
+        Draw(remoteMesh, pose.Position, pose.Yaw, alpha: weight);
+}
 ```
 
+- **The weight is paced by the STEP, not by a timer.** A body losing a tile it is stepping INTO falls from 1 to
+  0 across what is left of that step, so it walks visibly under the winner and is gone the moment it comes to
+  rest there. A body that regains its tile by stepping OUT rises back to 1 as that step lands, so it walks out
+  from under rather than appearing on the tile it left. A loss or a gain that happens while the body STANDS STILL
+  (the winner stepped onto it, or walked off it) has no glide to spend the change across, so it crosses over
+  `FadeSeconds` instead, which defaults to `TileDrawPriority.DefaultFadeSeconds` (0.25 s). Set it to zero to cut
+  those cases.
+- **What you do with the number is yours.** The engine hands over a visibility fraction and draws nothing itself:
+  multiply it into an alpha if your renderer takes per-instance alpha, scale the body, or threshold it into a
+  dither pattern. `IsDrawn(netId)` is `Weight(netId) > 0`, so a head that only ever asked that question keeps
+  working and gets the body walking under the winner for free.
+- **A body seen for the FIRST time starts on its answer** rather than fading to it, so an actor spawning into a
+  crowd is hidden at once and one spawning alone is drawn at once. A fade is for a body that was already on
+  screen and changed, which is the only case a player can perceive as a pop. Per-body state is keyed by net id
+  and swept in the rebuild that stops listing the body, so a returning actor does not resume a crossing it left
+  part way through, and the local player is pinned at 1 and never fades.
+- **Feed it the step progress the BODY is drawn at.** `Rebuild(client, dt)` reads it off the client for you
+  (`CollectRemoteSteps`, which is `CollectRemoteTiles` plus the fraction, read off one sample so the tile and the
+  progress cannot come from two moments). A head with its own roster passes
+  `(netId, tile, stepProgress)` per actor, where the progress is 0 as the step commits and 1 once the body is at
+  rest on that tile, which is also what a body that is not stepping carries. `TilePresenter.StepFraction(state)`
+  is that number for a state you hold, and it is the same fraction `TilePresenter.Pose` glides on.
+- **The overloads without a `dt` cut instead of crossing**, which is this rule exactly as it behaved before
+  weights existed, for a head that cannot fade a body at all.
 - **The key is the net id, and its only job is to be STABLE.** It is arbitrary rather than meaningful: ids are
   handed out in increasing order, so the highest one on a tile is the most recently spawned actor there, which is
   not a fact to design around. What matters is that it does not move for an actor's life, so a crowd standing
@@ -9201,14 +9234,17 @@ foreach ((long netId, TileCoord _) in remotes)
   this package carry, it lasts exactly one step, and it is the accepted cost: a remote is not the body a player
   aims from, and a second tile per remote would hide a second body in every crowd for as long as anybody walks.
 - **Allocation free per frame** after the first rebuild, with no LINQ and no sort: one pass over the actors and
-  one over the winners, into buffers the selector holds. `TileWorldClient.CollectRemoteTiles(buffer)` is the bulk
-  read it is built on (the same shape as `CollectGroundItems`), it is public for a game that wants its own
-  per-tile pass, and it is what the draw loop above walks: `RemoteNetIds` and `Drawn` are both interface-typed,
-  so a per-frame foreach over either boxes an enumerator.
+  one over the winners, into buffers the selector holds, plus one dictionary of weights keyed by net id that is
+  swept only on a frame that actually had churn. `TileWorldClient.CollectRemoteSteps(buffer)` is the bulk read it
+  is built on and `CollectRemoteTiles(buffer)` is the same read without the progress (both the same shape as
+  `CollectGroundItems`). They are public for a game that wants its own per-tile pass, and the second is what the
+  draw loop above walks: `RemoteNetIds` and `Drawn` are both interface-typed, so a per-frame foreach over either
+  boxes an enumerator. `TryGetRemoteStepProgress(netId, out progress)` is the single-actor form.
 - **`Drawn` is the live set and `Count` is a body count.** A rebuild clears and refills the same instance, so a
   reference held across frames changes under its holder and enumerating it while a rebuild runs throws. `Count`
   is not a tile count: a local player mid-step holds two tiles with one body, and so does a roster that lists one
-  net id twice.
+  net id twice. Both cover every body being DRAWN, so a body part way through fading out is in there, while
+  `TryGetDrawn(tile, out netId)` answers the tile's OWNER and never names a fader.
 - **It is presentation and nothing else.** A hidden actor is still on its tile, still replicated, still a legal
   click target and still swinging. Hiding its nameplate or making it unclickable is a second, separate decision
   and it is yours.
@@ -9216,7 +9252,8 @@ foreach ((long netId, TileCoord _) in remotes)
   view) calls `priority.Rebuild(localNetId, localTile, localLeaving, others)` with its own roster, or the static
   `TileDrawPriority.Select(localNetId, localTile, localLeaving, others, winners, drawn)` with its own buffers.
   Pass null for `localLeaving` when the local player stands still. Same rule, and both outputs are cleared on
-  entry. `TryGetDrawn(tile, out netId)` asks by place rather than by actor, for a click that should resolve to
+  entry. `Select` stays PURE and weight-free, because the weights need memory across frames and so live on the
+  instance. `TryGetDrawn(tile, out netId)` asks by place rather than by actor, for a click that should resolve to
   the body the player can actually see.
 - **"No local player" is `TileDrawPriority.NoLocalPlayer`**, the -1 `TileWorldClient.LocalNetId` carries until
   the first snapshot names the local actor. The check is against that sentinel and not against the sign, because
@@ -10887,7 +10924,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.14.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.15.0" />
 ```
 
 ```csharp
@@ -10923,7 +10960,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.14.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.15.0" />
 ```
 
 ```csharp
@@ -11165,7 +11202,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.14.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.15.0" />
 ```
 
 ```csharp
@@ -13195,7 +13232,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.14.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.15.0" />
 </ItemGroup>
 ```
 

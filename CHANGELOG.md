@@ -5,6 +5,48 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.15.0
+
+The one-body-per-tile rule crosses instead of popping: `TileDrawPriority` now answers a visibility
+weight per body, and a body that loses or regains a tile fades across the step it is walking.
+
+Grimhollow's playtest verdict on 18.12.0: enemies walking onto the player disappeared the instant
+their tile changed, which is a whole step before their body arrived, so they vanished in the open
+rather than walking under the player. A tile commits when the step STARTS and the body glides in over
+the rest of it, so the boolean answer was always up to one step ahead of the picture. The rule at rest
+is unchanged and exact, one body per tile, and what changed is how it gets there.
+
+- `TileDrawPriority.Weight(netId)` is the new answer: 0 through 1, where 1 is the body that owns its
+  tile and 0 is one fully behind another. `IsDrawn(netId)` is now `Weight(netId) > 0`, so an existing
+  caller keeps working and gets the body walking under the winner for free. What a head does with the
+  number is the head's call: multiply it into an alpha, scale the body, or threshold it into a dither.
+  The engine hands over the number and draws nothing itself.
+- The pace comes from the STEP, not from a timer. A body losing a tile it is stepping into falls to 0
+  exactly as it comes to rest there. A body that regains its tile by stepping OUT rises back to 1 as
+  that step lands. A body that loses or regains while STANDING STILL (the winner stepped onto it, or
+  walked off it) has no step to ride, so it crosses over `FadeSeconds`, a knob on the priority
+  defaulting to `TileDrawPriority.DefaultFadeSeconds` (0.25 s). Zero makes those cases cut.
+- `Rebuild(client, dt)` and `Rebuild(localNetId, localTile, localLeaving, others, dt)` are the fading
+  forms, the second taking each actor's step progress alongside its tile. The two overloads without a
+  `dt` are the pre-weight rule verbatim (every weight lands on 0 or 1 in one frame) and are kept for a
+  head that cannot fade a body at all. The static `Select` is unchanged and still pure: weights need
+  memory across frames, so they live on the instance.
+- A body seen for the FIRST time starts on its answer rather than fading to it, so an actor spawning
+  into a crowd is hidden at once and one spawning alone is drawn at once. A fade is for a body that
+  was already on screen and changed, which is the only case a player can perceive as a pop. Per-body
+  state is keyed by net id and swept in the rebuild that stops listing the body, so a returning actor
+  does not resume a crossing it left part way through.
+- The local player is pinned at weight 1 and never fades, because they are drawn unconditionally.
+  `Drawn` and `Count` now cover every body being drawn, faders included, while `TryGetDrawn(tile)` is
+  still the one actor that OWNS the tile.
+- `TileWorldClient.CollectRemoteSteps(buffer)` is `CollectRemoteTiles` with each remote's step progress
+  alongside its committed tile, read off ONE sample so the pair cannot come from two moments, and
+  `TryGetRemoteStepProgress(netId, out progress)` is the single-actor form. `TilePresenter.StepFraction`
+  is the fraction itself, which `TilePresenter.Pose` already interpolated on and now shares, so a
+  presentation rule pacing itself off a body measures the number that body is drawn at.
+- Still allocation free per frame after the first rebuild: the weights add one dictionary keyed by net
+  id, swept only on a frame that actually had churn.
+
 ## 18.14.0
 
 18.14.0 gives the tile world replicated per-object state, so a chopped tree is a stump on every client

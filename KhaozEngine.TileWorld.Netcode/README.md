@@ -73,14 +73,17 @@ the transport latency plus at most one snapshot interval, and it reports how old
 overlay can fade a stale marker rather than draw a confident one. That age is a LOWER bound on the truth, because
 no client can see the one-way flight time, so a threshold built on it wants headroom. Both are allocation free, both refuse an unknown
 id and the local player, and neither extrapolates. `client.CollectRemoteTiles(buffer)` is the delayed read for
-everybody at once, for a per-frame pass over the whole crowd. `docs/USING-KHAOZENGINE.md` carries the worked
-example.
+everybody at once, for a per-frame pass over the whole crowd, and `client.CollectRemoteSteps(buffer)` is that
+read with each remote's step progress beside its tile, which is what a presentation rule pacing itself off the
+bodies needs. `docs/USING-KHAOZENGINE.md` carries the worked example.
 
 **A crowd on one tile draws ONE body.** Every body draws on the tile centre, so a stack of them is a smear of
 overlapping meshes, and the body a player can least afford to lose in it is their own. `TileDrawPriority` picks
 the one to draw per tile: the local player on their own tile, and on both tiles of a step in flight, with the
 highest net id everywhere else. It is the OSRS PID ruling with a stable key, it is presentation only, and it is
-in the types list below.
+in the types list below. The answer is a WEIGHT rather than a boolean, because a tile commits when a step STARTS
+and the body glides in over the rest of it: a body that loses a tile spends what is left of its step fading out,
+so it walks visibly under the winner rather than vanishing a step before it gets there.
 
 ## The types
 
@@ -313,7 +316,8 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   with the body `TryGetRemotePose` draws and is right for an overlay drawn ON that body, while
   `TryGetLatestRemoteTile` is on the newest applied snapshot, so it is right for anything the RULES will answer.
   Its overload also reports how many ticks old the answer is, for an overlay that fades a stale marker rather than
-  lying with it. `NetStats` is the link readout beside the session ones, a live `NetTransportStats` forwarded from
+  lying with it. `TryGetRemoteStepProgress` and the bulk `CollectRemoteSteps` add how far through its step a remote
+  is, 0 as the step commits and 1 once the body is at rest, off the same sample the pose is drawn from. `NetStats` is the link readout beside the session ones, a live `NetTransportStats` forwarded from
   the transport (round trip, loss, cumulative byte counters), so a HUD does not need to keep the transport it built.
   A transport that tracks nothing answers `NetTransportStats.Unavailable`, an all-zero DISCONNECTED value that says
   nothing about the session, so `IsJoined` stays the read for that. Three more events land here: `CombatEvent` per swing whose TARGET is in this client's own area of
@@ -324,6 +328,9 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   file in the package that consults `TileWorldSpace`. Two answers, and mixing them up is the one mistake here.
   `Pose(state, extraTicks)` is the BODY: the linear glide from `StepFrom` into `Tile` by the step's own tick
   count, carried forward by the fraction of a tick since the state was sampled and clamped at the end of the step.
+  `StepFraction(state, extraTicks)` is the fraction that glide interpolates on, exposed so a rule that must run in
+  lockstep with a body (a fade, a squash, a footfall) measures the number the body is drawn at rather than a second
+  estimate of it, and it reads 1 for a body at rest.
   `PoseAt(tile)` is the RULES: a whole tile's centre, with no glide, which is what a true-tile marker, a route
   highlight, a minimap or an editor draws on. The `PoseAt(planar, vertical, facing)` overload takes a smoothed
   or fractional position for the same mapping when the caller already holds one. `LocalPose(prediction)` is the body for a caller holding its own
@@ -331,11 +338,18 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   replacing it when the document loads cannot change how anything moves. A pose names the tile CENTRE, half a
   tile in from the corner on each axis, which is the middle of that tile's ground quad and the point a 1x1
   `TileObjectProps` prop is anchored at, so a head draws at `pose.Position` without re-centring it.
-- **`TileDrawPriority`** - ONE BODY PER TILE, rebuilt per frame. `Rebuild(client)` reads a live client,
-  `Rebuild(localNetId, localTile, localLeaving, others)` takes a caller's own roster, and the static `Select` is
-  the rule with both output buffers owned by the caller. `IsDrawn(netId)` is the draw-loop test,
-  `TryGetDrawn(tile, out netId)` asks by place, `Drawn` and `Count` are the chosen set (the live set, so a
-  rebuild invalidates an enumeration in flight, and a count of BODIES rather than of tiles). The local player
+- **`TileDrawPriority`** - ONE BODY PER TILE AT REST, rebuilt per frame. `Rebuild(client, dt)` reads a live
+  client, `Rebuild(localNetId, localTile, localLeaving, others, dt)` takes a caller's own roster and each actor's
+  step progress, and the static `Select` is the winner rule with both output buffers owned by the caller. The
+  answer is a WEIGHT: `Weight(netId)` is 0 through 1 and `IsDrawn(netId)` is that above zero, so an existing
+  caller keeps working. A body that loses a tile it is stepping INTO falls to 0 exactly as it comes to rest
+  there, so it walks visibly under the winner instead of vanishing a step early, and one that steps back OUT
+  rises to 1 as that step lands. A loss or a gain with no step to ride (the winner moved, not the loser) crosses
+  over `FadeSeconds`, default 0.25 s, and a body seen for the first time starts on its answer rather than fading
+  in. The overloads without a `dt` cut instead, which is the rule as it behaved before weights. The local player
+  is pinned at 1. `TryGetDrawn(tile, out netId)` asks by place and answers the tile's OWNER, `Drawn` and `Count`
+  are every body being drawn, faders included (the live set, so a rebuild invalidates an enumeration in flight,
+  and a count of BODIES rather than of tiles). The local player
   wins their own tile outright and every other tile goes to the highest net id on it, which is the OSRS PID
   ruling with a key that cannot flicker: a net id does not move for an actor's life, where an order keyed on
   distance or arrival time re-decides itself mid-step. The plane is part of the tile. The local player is judged
@@ -578,14 +592,17 @@ client.Poll();                                     // once a frame
 client.Tick(dt);                                   // the command clock, one command per whole tick
 client.AdvancePresentation(dt);                    // the render clock, before drawing
 
-priority.Rebuild(client);                          // one TileDrawPriority, held for the session
+priority.Rebuild(client, dt);                      // one TileDrawPriority, held for the session
 
 TilePose me = client.LocalPose;                    // the BODY, gliding into its committed tile
 // Walk the collected list, not RemoteNetIds: that one is an IReadOnlyCollection, so a foreach over it
 // boxes an enumerator every frame, and Drawn has the same shape.
 client.CollectRemoteTiles(remotes);                // the head's own reused List<(long, TileCoord)>
 foreach ((long id, TileCoord _) in remotes)
-    if (priority.IsDrawn(id) && client.TryGetRemotePose(id, out TilePose them)) Draw(id, them);
+{
+    float weight = priority.Weight(id);            // 0 hidden, 1 whole, in between walking under somebody
+    if (weight > 0f && client.TryGetRemotePose(id, out TilePose them)) Draw(id, them, weight);
+}
 
 // The true-tile overlay, which is how the lead is made visible rather than smaller. Index the route from
 // Route.Index: Tiles is an IReadOnlyList, so a foreach boxes an enumerator every frame.

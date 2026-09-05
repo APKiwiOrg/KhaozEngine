@@ -335,6 +335,343 @@ public class TileDrawPriorityTests
     }
 }
 
+
+/// <summary>
+/// THE WEIGHTS, which are the same rule spread over the step the body is actually walking. A tile commits when a
+/// step STARTS, so an actor judged the frame its tile changes is judged a whole step before its body arrives, and
+/// the hard boolean this class used to answer made that visible as a pop: enemies walking onto the player vanished
+/// in the open. The cases here pin the crossing itself, and they run against the roster overloads, because the
+/// pace is a function of a roster and a progress. The two at the end run the REAL client, which is what says the
+/// progress the priority is paced by is the one the body is drawn at.
+/// </summary>
+public class TileDrawPriorityFadeTests
+{
+    const float Frame = 1f / 60f;
+
+    static (long NetId, TileCoord Tile, float StepProgress)[] Steps(
+        params (long NetId, TileCoord Tile, float StepProgress)[] actors) => actors;
+
+    static readonly TileCoord Local = new(0, 0, 0);
+
+    // THE OWNER'S COMPLAINT, in one test. A body walking onto an occupied tile loses that tile on the frame the
+    // step commits, and its own body is a whole step away from it at that moment. So the weight is still 1 as the
+    // step starts, falls with the walk, and reaches 0 exactly as the body comes to rest under the winner.
+    [Fact]
+    public void A_body_stepping_onto_an_occupied_tile_falls_from_one_to_zero_across_the_step()
+    {
+        var busy = new TileCoord(12, 10, 0);
+        var behind = new TileCoord(11, 10, 0);
+        var priority = new TileDrawPriority();
+
+        // Standing apart, both drawn, so the fall below is a CHANGE rather than a first sighting.
+        priority.Rebuild(4, Local, null, Steps((7, behind, 1f), (31, busy, 1f)), Frame);
+        Assert.Equal(1f, priority.Weight(7), 5);
+
+        // The step commits: 7 is judged on busy from here, and its body has not moved yet.
+        priority.Rebuild(4, Local, null, Steps((7, busy, 0f), (31, busy, 1f)), Frame);
+        Assert.Equal(1f, priority.Weight(7), 5);
+        Assert.True(priority.IsDrawn(7), "hidden on the frame the tile changed is the pop this removes");
+
+        float last = 1f;
+        foreach (float progress in new[] { 0.2f, 0.4f, 0.6f, 0.8f })
+        {
+            priority.Rebuild(4, Local, null, Steps((7, busy, progress), (31, busy, 1f)), Frame);
+            float weight = priority.Weight(7);
+            Assert.True(weight < last, $"the weight did not fall at {progress}: {last} then {weight}");
+            // It rides the STEP, so the weight is what is left of the walk into the tile it lost.
+            Assert.Equal(1f - progress, weight, 4);
+            Assert.Equal(1f, priority.Weight(31), 5);       // the winner is untouched throughout
+            last = weight;
+        }
+
+        priority.Rebuild(4, Local, null, Steps((7, busy, 1f), (31, busy, 1f)), Frame);
+        Assert.Equal(0f, priority.Weight(7), 5);            // gone the moment it comes to rest there
+        Assert.False(priority.IsDrawn(7));
+        Assert.Equal(1f, priority.Weight(31), 5);
+        Assert.True(priority.TryGetDrawn(busy, out long owner));
+        Assert.Equal(31L, owner);                           // and the tile was never owned by anyone else
+    }
+
+    // A body that loses while STANDING STILL has no step to spend the fade across, because it is not the one that
+    // moved. The winner walked onto it, or teleported onto it, so the fixed window takes over.
+    [Fact]
+    public void A_body_that_loses_a_tile_at_rest_fades_over_the_fixed_window()
+    {
+        var shared = new TileCoord(12, 10, 0);
+        var priority = new TileDrawPriority { FadeSeconds = 0.2f };
+        Assert.Equal(0.2f, priority.FadeSeconds, 5);
+
+        priority.Rebuild(4, Local, null, Steps((7, shared, 1f)), Frame);
+        Assert.Equal(1f, priority.Weight(7), 5);
+
+        // 31 arrives on the tile already at rest, so nothing is stepping and the window is the only clock.
+        foreach (float expected in new[] { 0.75f, 0.5f, 0.25f, 0f })
+        {
+            priority.Rebuild(4, Local, null, Steps((7, shared, 1f), (31, shared, 1f)), dt: 0.05f);
+            Assert.Equal(expected, priority.Weight(7), 4);
+            Assert.Equal(expected > 0f, priority.IsDrawn(7));
+        }
+
+        Assert.Equal(1f, priority.Weight(31), 5);           // the arrival is drawn whole from its first frame
+    }
+
+    // And out the other side. A body that walks out from under the winner rises across the step it is walking, so
+    // it is whole again exactly as it lands clear rather than appearing on the tile it left.
+    [Fact]
+    public void A_body_stepping_off_a_lost_tile_rises_from_zero_to_one_across_the_step()
+    {
+        var shared = new TileCoord(12, 10, 0);
+        var clear = new TileCoord(13, 10, 0);
+        var priority = new TileDrawPriority { FadeSeconds = 0.1f };
+
+        priority.Rebuild(4, Local, null, Steps((7, shared, 1f)), Frame);
+        for (int i = 0; i < 4; i++)
+            priority.Rebuild(4, Local, null, Steps((7, shared, 1f), (31, shared, 1f)), dt: 0.05f);
+        Assert.Equal(0f, priority.Weight(7), 5);            // fully behind the winner before it moves
+
+        float last = -1f;
+        foreach (float progress in new[] { 0f, 0.25f, 0.5f, 0.75f, 1f })
+        {
+            priority.Rebuild(4, Local, null, Steps((7, clear, progress), (31, shared, 1f)), Frame);
+            float weight = priority.Weight(7);
+            Assert.True(weight > last, $"the weight did not rise at {progress}: {last} then {weight}");
+            Assert.Equal(progress, weight, 4);
+            last = weight;
+        }
+
+        Assert.Equal(1f, priority.Weight(7), 5);
+        Assert.Equal(1f, priority.Weight(31), 5);
+    }
+
+    // The winner never fades, whichever way the loser is going, and the local player never fades at all: they are
+    // drawn unconditionally, so there is no state for their own body to cross.
+    [Fact]
+    public void The_winner_and_the_local_player_stay_at_one_throughout()
+    {
+        var shared = new TileCoord(12, 10, 0);
+        var priority = new TileDrawPriority();
+
+        priority.Rebuild(4, Local, null, Steps((7, shared, 1f), (31, shared, 1f)), Frame);
+        for (int quarter = 0; quarter <= 4; quarter++)
+        {
+            priority.Rebuild(4, Local, null, Steps((7, shared, quarter / 4f), (31, shared, 1f)), Frame);
+            Assert.Equal(1f, priority.Weight(31), 5);
+            Assert.Equal(1f, priority.Weight(4), 5);
+            Assert.True(priority.IsDrawn(4));
+        }
+    }
+
+    // A body that leaves takes its crossing with it. The state is keyed by net id and swept in the rebuild that
+    // stops listing the body, so a returning actor starts on its answer rather than resuming a fade from before it
+    // left, which is the same rule a first sighting gets.
+    [Fact]
+    public void The_state_of_a_departed_body_is_pruned_rather_than_resumed()
+    {
+        var shared = new TileCoord(12, 10, 0);
+        var priority = new TileDrawPriority { FadeSeconds = 0.2f };
+
+        priority.Rebuild(4, Local, null, Steps((7, shared, 1f)), Frame);
+        priority.Rebuild(4, Local, null, Steps((7, shared, 1f), (31, shared, 1f)), dt: 0.1f);
+        Assert.Equal(0.5f, priority.Weight(7), 4);          // mid-crossing, which is the state worth losing
+
+        priority.Rebuild(4, Local, null, Steps((31, shared, 1f)), Frame);
+        Assert.Equal(0f, priority.Weight(7), 5);
+        Assert.False(priority.IsDrawn(7));
+        Assert.DoesNotContain(7L, priority.Drawn);
+
+        // Back on a tile of its own. Resumed state would rise from 0.5 over the window, so a whole body here is
+        // the sweep having happened.
+        priority.Rebuild(4, Local, null, Steps((7, new TileCoord(20, 20, 0), 1f), (31, shared, 1f)), Frame);
+        Assert.Equal(1f, priority.Weight(7), 5);
+    }
+
+    // The compatibility contract, on every frame of a crossing rather than at its ends.
+    [Fact]
+    public void IsDrawn_is_the_weight_above_zero_on_every_frame_of_a_crossing()
+    {
+        var busy = new TileCoord(12, 10, 0);
+        var behind = new TileCoord(11, 10, 0);
+        var priority = new TileDrawPriority();
+        priority.Rebuild(4, Local, null, Steps((7, behind, 1f), (31, busy, 1f)), Frame);
+
+        // Stepped as a whole number of tenths, because accumulating 0.1f overshoots and never lands on the end
+        // of the step, which is the one frame this has to see.
+        for (int tenth = 0; tenth <= 10; tenth++)
+        {
+            priority.Rebuild(4, Local, null, Steps((7, busy, tenth / 10f), (31, busy, 1f)), Frame);
+            Assert.Equal(priority.Weight(7) > 0f, priority.IsDrawn(7));
+            // A body being drawn is in the drawn set, faders included, so the two ways to ask cannot disagree.
+            Assert.Equal(priority.IsDrawn(7), InDrawn(priority, 7L));
+        }
+
+        Assert.Equal(0f, priority.Weight(7), 5);
+        Assert.False(InDrawn(priority, 7L));
+        Assert.Equal(2, priority.Count);                    // the winner and the local player
+    }
+
+    // The overloads with no dt are the pre-weight rule verbatim, for a head that cannot fade a body at all. Every
+    // weight lands on 0 or 1 in one frame, which is what keeps an existing caller working unchanged.
+    [Fact]
+    public void The_overloads_without_a_dt_cut_instead_of_fading()
+    {
+        var busy = new TileCoord(12, 10, 0);
+        var behind = new TileCoord(11, 10, 0);
+        var priority = new TileDrawPriority();
+
+        priority.Rebuild(4, Local, null, Actors((7, behind), (31, busy)));
+        Assert.Equal(1f, priority.Weight(7), 5);
+
+        priority.Rebuild(4, Local, null, Actors((7, busy), (31, busy)));
+        Assert.Equal(0f, priority.Weight(7), 5);            // no crossing, whatever its step is doing
+        Assert.False(priority.IsDrawn(7));
+        Assert.Equal(2, priority.Count);
+    }
+
+    static (long NetId, TileCoord Tile)[] Actors(params (long NetId, TileCoord Tile)[] actors) => actors;
+
+    // Drawn is interface-typed, so it is walked rather than queried: the same reason the draw loop walks a
+    // collected list instead of it.
+    static bool InDrawn(TileDrawPriority priority, long netId)
+    {
+        foreach (long id in priority.Drawn)
+            if (id == netId) return true;
+        return false;
+    }
+
+    // A zero window cuts the cases that have no step to ride, and is the knob a head with no alpha at all sets.
+    [Fact]
+    public void A_zero_fade_window_cuts_a_body_that_loses_at_rest()
+    {
+        var shared = new TileCoord(12, 10, 0);
+        var priority = new TileDrawPriority { FadeSeconds = 0f };
+
+        priority.Rebuild(4, Local, null, Steps((7, shared, 1f)), Frame);
+        priority.Rebuild(4, Local, null, Steps((7, shared, 1f), (31, shared, 1f)), Frame);
+
+        Assert.Equal(0f, priority.Weight(7), 5);
+    }
+
+    [Fact]
+    public void The_fade_window_defaults_to_a_quarter_second_and_refuses_a_negative_one()
+    {
+        var priority = new TileDrawPriority();
+        Assert.Equal(TileDrawPriority.DefaultFadeSeconds, priority.FadeSeconds, 5);
+        Assert.Equal(0.25f, TileDrawPriority.DefaultFadeSeconds, 5);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => priority.FadeSeconds = -0.1f);
+        Assert.Throws<ArgumentOutOfRangeException>(() => priority.FadeSeconds = float.NaN);
+        Assert.Equal(TileDrawPriority.DefaultFadeSeconds, priority.FadeSeconds, 5);
+    }
+
+    // THROUGH THE REAL CLIENT, and this is the pair that says the priority is paced by the progress the BODY is
+    // drawn at rather than by a number a roster made up. A remote placed on the local player's tile while standing
+    // still crosses over the window, and is drawn the whole way.
+    [Fact]
+    public void A_remote_placed_on_the_local_player_fades_out_through_the_real_client()
+    {
+        using var loop = new TileRemoteReadTests.Loop();
+        loop.Join();
+        long remote = loop.Server.SpawnPlayer(slot: 1, "remote", "Rem");
+        loop.Server.SetPlayerState(1, TileMoveState.At(new TileCoord(12, 10, 0), TileDirection.S));
+        loop.Frames(24);
+
+        var priority = new TileDrawPriority { FadeSeconds = 0.2f };
+        priority.Rebuild(loop.Client, Frame);
+        Assert.Equal(1f, priority.Weight(remote), 5);
+
+        TileCoord mine = loop.Client.Prediction.PredictedState.Tile;
+        loop.Server.SetPlayerState(1, TileMoveState.At(mine, TileDirection.S), teleport: true);
+        loop.Frames(24);
+        Assert.True(loop.Client.TryGetRemoteTile(remote, out TileCoord theirs));
+        Assert.Equal(mine, theirs);                          // genuinely stacked, so it genuinely lost the tile
+
+        foreach (float expected in new[] { 0.75f, 0.5f, 0.25f, 0f })
+        {
+            priority.Rebuild(loop.Client, dt: 0.05f);
+            Assert.Equal(expected, priority.Weight(remote), 4);
+            Assert.Equal(expected > 0f, priority.IsDrawn(remote));
+        }
+
+        Assert.Equal(1f, priority.Weight(loop.Client.LocalNetId), 5);
+    }
+
+    // And the walking case through the real client, which is the one the owner reported: a remote mid-step onto the
+    // local player's tile is drawn part way through the whole walk in, on the same fraction its body glides at, and
+    // is gone once that step has run out.
+    [Fact]
+    public void A_remote_walking_onto_the_local_player_is_drawn_the_whole_way_in()
+    {
+        using var loop = new TileRemoteReadTests.Loop();
+        loop.Join();
+        long remote = loop.Server.SpawnPlayer(slot: 1, "remote", "Rem");
+        TileCoord mine = loop.Client.Prediction.PredictedState.Tile;
+        var from = new TileCoord(mine.X + 1, mine.Z, mine.Plane);
+        loop.Server.SetPlayerState(1, TileMoveState.At(from, TileDirection.W));
+        loop.Frames(24);
+
+        var priority = new TileDrawPriority();
+        priority.Rebuild(loop.Client, Frame);
+        Assert.Equal(1f, priority.Weight(remote), 5);
+
+        // A step in flight onto the player: committed to their tile, body still a whole step away from it. The
+        // server accepts this shape because it is one the simulator itself produces.
+        TileMoveState stepping = TileMoveState.At(mine, TileDirection.W);
+        stepping.StepFrom = from;
+        stepping.StepTicks = 0;
+        stepping.StepTotal = 4;
+        loop.Server.SetPlayerState(1, stepping);
+
+        bool sawTheStep = false, sawPartway = false;
+        float last = 1f;
+        for (int i = 0; i < 120; i++)
+        {
+            loop.Step();
+            priority.Rebuild(loop.Client, Frame);
+            float weight = priority.Weight(remote);
+            Assert.True(weight <= last + 1e-4f, $"the weight rose mid-walk: {last} then {weight}");
+            last = weight;
+            if (!loop.Client.TryGetRemoteTile(remote, out TileCoord tile) || !tile.Equals(mine)) continue;
+            sawTheStep = true;
+            if (weight is > 0.05f and < 0.95f) sawPartway = true;
+            if (weight == 0f) break;
+        }
+
+        Assert.True(sawTheStep, "the remote never reached the local player's tile");
+        Assert.True(sawPartway, "the remote went straight from drawn to hidden, which is the pop this removes");
+        Assert.Equal(0f, priority.Weight(remote), 5);
+        Assert.False(priority.IsDrawn(remote));
+        Assert.True(priority.TryGetDrawn(mine, out long owner));
+        Assert.Equal(loop.Client.LocalNetId, owner);
+    }
+
+    // The bulk read the priority is paced by, pinned on its own: one call, the same tile CollectRemoteTiles gives
+    // and the fraction the body is drawn at, with a standing remote reading as a completed step.
+    [Fact]
+    public void The_step_progress_reads_agree_with_the_collected_tiles()
+    {
+        using var loop = new TileRemoteReadTests.Loop();
+        loop.Join();
+        long remote = loop.Server.SpawnPlayer(slot: 1, "remote", "Rem");
+        loop.Server.SetPlayerState(1, TileMoveState.At(new TileCoord(12, 10, 0), TileDirection.S));
+        loop.Frames(24);
+
+        var buffer = new List<(long NetId, TileCoord Tile, float StepProgress)>
+            { (1234, new TileCoord(99, 99, 0), 0.5f) };
+        loop.Client.CollectRemoteSteps(buffer);
+
+        Assert.Single(buffer);                               // cleared first, so the junk entry is gone
+        Assert.Equal(remote, buffer[0].NetId);
+        Assert.True(loop.Client.TryGetRemoteTile(remote, out TileCoord expected));
+        Assert.Equal(expected, buffer[0].Tile);
+        Assert.Equal(1f, buffer[0].StepProgress, 5);         // standing, so the step into that tile is complete
+
+        Assert.True(loop.Client.TryGetRemoteStepProgress(remote, out float progress));
+        Assert.Equal(1f, progress, 5);
+        Assert.False(loop.Client.TryGetRemoteStepProgress(loop.Client.LocalNetId, out _));
+        Assert.False(loop.Client.TryGetRemoteStepProgress(123456789L, out _));
+    }
+}
+
 /// <summary>
 /// The allocation half, serialized in the AllocSensitive collection so byte counting is not disturbed by parallel
 /// test threads, and split from <see cref="TileDrawPriorityTests"/> so the behavioural tests there keep the

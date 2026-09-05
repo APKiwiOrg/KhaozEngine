@@ -95,7 +95,7 @@ public sealed class TilePresenter
         float tileX = state.Tile.X, tileZ = state.Tile.Z;
         if (state.IsStepping && state.StepTotal > 0)
         {
-            float f = Math.Clamp((state.StepTicks + Math.Max(0f, extraTicks)) / state.StepTotal, 0f, 1f);
+            float f = StepFraction(state, extraTicks);
             // In FLOAT, for the reason TileMoveState.Position differences in float: the fields are public, and two
             // hand-written coordinates a world apart would overflow an int subtraction.
             tileX = state.StepFrom.X + ((float)state.Tile.X - state.StepFrom.X) * f;
@@ -103,6 +103,25 @@ public sealed class TilePresenter
         }
         return PoseAt(new Vector2(tileX, tileZ), state.Tile.Plane, state.Facing);
     }
+
+    /// <summary>
+    /// How far through its current step a state is, 0 at the moment the step commits and 1 as the body lands,
+    /// carried forward by <paramref name="extraTicks"/> exactly as <see cref="Pose"/> carries the glide. This IS
+    /// the fraction <see cref="Pose"/> interpolates on, exposed so a presentation rule that has to run in lockstep
+    /// with the body (a fade, a squash, a footfall) measures the same number the body is drawn at rather than a
+    /// second estimate of it.
+    /// <para>ONE when there is no step in flight, because a body at rest is all the way into the tile it is
+    /// committed to. That is the same answer a body that has just landed gives, so a reader cannot see a
+    /// discontinuity at the landing, and it is why the value is a fraction of the step INTO
+    /// <see cref="TileMoveState.Tile"/> rather than a distance from anywhere.</para>
+    /// </summary>
+    /// <param name="state">The state to measure.</param>
+    /// <param name="extraTicks">Ticks elapsed since the state was sampled. Negative is treated as zero.</param>
+    /// <returns>The fraction of the step already spent, clamped to 0 through 1.</returns>
+    public static float StepFraction(in TileMoveState state, float extraTicks = 0f)
+        => state.IsStepping && state.StepTotal > 0
+            ? Math.Clamp((state.StepTicks + Math.Max(0f, extraTicks)) / state.StepTotal, 0f, 1f)
+            : 1f;
 
     /// <summary>
     /// Where the LOCAL player's BODY draws: <see cref="ClientPrediction{TState,TCommand}.RenderedState"/>, which

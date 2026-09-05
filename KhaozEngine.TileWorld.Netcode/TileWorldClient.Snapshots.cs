@@ -275,6 +275,51 @@ public sealed partial class TileWorldClient
     }
 
     /// <summary>
+    /// How far through its current step a remote is, 0 as the step commits and 1 as the body lands, off the same
+    /// delayed timeline and the same sample <see cref="TryGetRemotePose"/> draws from. ONE for a remote standing
+    /// still, because a body at rest is all the way into the tile it is committed to. False for an unknown net id
+    /// and for the local player, whose own progress is <c>Prediction.PredictedState</c>.
+    /// <para>It is the number <see cref="TryGetRemoteTile"/>'s answer is TRUE OF YET: the tile commits when the
+    /// step starts and this says how much of the walk into it has actually been drawn. A presentation rule that
+    /// has to run in lockstep with the body reads this rather than timing itself, which is what lets
+    /// <see cref="TileDrawPriority"/> finish hiding a body exactly as it comes to rest.</para>
+    /// </summary>
+    /// <param name="netId">The remote's net id.</param>
+    /// <param name="progress">The fraction of the step already spent, 0 through 1.</param>
+    /// <returns>True when this client is tracking <paramref name="netId"/> as a remote.</returns>
+    public bool TryGetRemoteStepProgress(long netId, out float progress)
+    {
+        progress = 1f;
+        if (netId == LocalNetId || !remoteSamples.TryGetValue(netId, out RemoteSample sample)) return false;
+        progress = StepProgress(sample);
+        return true;
+    }
+
+    /// <summary>
+    /// <see cref="CollectRemoteTiles"/> with each remote's step progress alongside its committed tile, which is
+    /// what a presentation rule needs to move WITH the bodies rather than a frame ahead of them. Cleared first,
+    /// unsorted, complete, and the local player is never in it.
+    /// <para>The tile and the progress are read off ONE sample, so the pair cannot come from two moments: the tile
+    /// the body is walking into, and how much of that walk has been drawn. Two calls asking separately could be
+    /// split by a resample and disagree about a step that landed between them.</para>
+    /// </summary>
+    /// <param name="into">The buffer to fill. Reused by the caller, allocated by nobody here.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="into"/> is null.</exception>
+    public void CollectRemoteSteps(List<(long NetId, TileCoord Tile, float StepProgress)> into)
+    {
+        ArgumentNullException.ThrowIfNull(into);
+        into.Clear();
+        foreach (KeyValuePair<long, RemoteSample> pair in remoteSamples)
+            into.Add((pair.Key, pair.Value.State.Tile, StepProgress(pair.Value)));
+    }
+
+    // The presenter's own fraction, over the same sub-tick carry-forward TryGetRemotePose hands it, so a rule
+    // reading this and the body drawn by that call are measuring one glide rather than two.
+    float StepProgress(in RemoteSample sample) =>
+        TilePresenter.StepFraction(sample.State,
+            (float)Math.Max(0d, (RenderTime - sample.At) / config.TickSeconds));
+
+    /// <summary>
     /// The tile a remote is committed to on the FRESHEST server state this client holds, which is a different
     /// question from <see cref="TryGetRemoteTile"/> and the one a rule should be asking. This one is read off the
     /// newest APPLIED snapshot. That one is read off the delayed render timeline the bodies ride, so it is

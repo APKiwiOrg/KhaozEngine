@@ -296,8 +296,8 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   `Actors.TryGetSpawnerOf(netId, out var spawner)` and dispatch on `spawner.Definition`. An actor built straight
   through `SpawnActor` has no spawner and answers false. Combat is `CombatRules`, `OnCombatEvent`, `OnDied`,
   `CombatEventsThisTick` and `SkippedHealthlessCombatantCount`, with `TryGetHealth` / `SetHealth` /
-  `TryGetCombatState` as the reads and the one write, and `ForgetAttacker` as the one field a game can drop (see
-  what a dead player leaves behind, below). `TileWorldServerConfig` gained `MaxActorsPerCell` (the
+  `TryGetCombatState` as the reads and the one write, `ForgetAttacker` as the one field a game can drop (see
+  what a dead player leaves behind, below) and `DelayAttack` as the one number (see charging attack time, below). `TileWorldServerConfig` gained `MaxActorsPerCell` (the
   per-REGION monster budget, since a cell is a region), `ActorMove` (the actor's own `TileMoveOptions`, whose
   default drops `MaxPathRadius` from 64 to 12 because `FindPath` allocates `(2r+1)^2` scratch per call, about 83 KB
   at 64 and 3 KB at 12) and `CombatLogoutTicks` (zero by default, and one number with two jobs: how long a
@@ -527,6 +527,31 @@ index from a target to the entities locked onto it: a second index is a second s
 spawn, despawn and region handoff, and a death is rare enough that a scan bounded by the actor count is the cheaper
 of the two. A world with far more actors than a few hundred, or one whose deaths are frequent enough to make the
 scan show up in a tick, wants its own index keyed by target and this loop replaced by a lookup into it.
+
+### Charging attack time for something that is not a swing
+
+`DelayAttack(netId, ticks)` pushes an entity's next swing out by `ticks`, by ADDING to
+`TileCombatState.CooldownRemaining`. It is the public writer for the swing cadence, and the only one: everything
+else on that component is either read-only to a game or reached through the rules seam.
+
+```csharp
+// OSRS: a bite costs attack time rather than interrupting the fight.
+if (game.TryEat(slot, item)) server.DelayAttack(playerNetId, ticks: 3);
+```
+
+**ADD, not max.** A bite taken with three ticks still to run delays the swing by the bite's own cost on top of the
+wait already there. A max would make the same bite free whenever the attacker happened to be mid-cadence, which is
+a fight that rewards eating at exactly the wrong moment. The wait saturates at 255 rather than wrapping, because a
+wrap turns a long stun into no stun at all.
+
+An entity that has never fought gets a `TileCombatState` created for it, carrying the delay and nothing else. That
+matters for a PLAYER, who acquires the component lazily on the first tick the combat pass has something to write:
+without the create, a delay would do nothing until the second fight and an Attack command issued on the next tick
+would swing straight through it. The created state leaves `AttackTicks` at zero, so `ITileCombatRules.AttackTicks`
+still answers the cadence at the first swing exactly as it does today.
+
+The delay runs down once per tick like any other cadence, so it is a wait rather than a freeze. False means no live
+cell owns the id, and a zero `ticks` writes nothing while still reporting whether the entity is there.
 
 ## A server, in ten lines
 

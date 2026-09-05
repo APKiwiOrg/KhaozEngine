@@ -94,6 +94,49 @@ public sealed partial class TileWorldServer
     /// it inside its own tick handler rather than keeping it.</summary>
     public IReadOnlyList<TileCombatEvent> CombatEventsThisTick => combatEvents;
 
+    /// <summary>Pushes one entity's next swing out by <paramref name="ticks"/> server ticks, by ADDING to
+    /// <see cref="TileCombatState.CooldownRemaining"/>. Returns false and writes nothing when no live cell owns the
+    /// id.
+    /// <para>WHAT A GAME USES IT FOR is an action that costs attack time without being a swing, which in the OSRS
+    /// mould is eating: a bite delays the next blow rather than interrupting the fight. A potion, a spell with a
+    /// cast delay, a stun and a knockback all want the same write, so the door is the delay rather than the food.
+    /// The engine has no opinion about which of those a game is doing, and no rule about how long any of them
+    /// costs.</para>
+    /// <para>ADD, NOT MAX, and that is the rule this method exists to state once. Eating in the middle of a fight
+    /// costs its ticks ON TOP of the wait already running, so a bite taken with three ticks still to go delays the
+    /// swing by the bite's own cost and not merely to it. A max would make the same bite free whenever the attacker
+    /// happened to be mid-cadence, which is a fight that rewards eating at exactly the wrong moment.</para>
+    /// <para>AN ENTITY THAT HAS NEVER FOUGHT GETS A STATE, rather than the call being dropped. A player acquires
+    /// <see cref="TileCombatState"/> lazily, on the first tick the combat pass has anything to write for them, so an
+    /// idle player carries none: a delay that skipped them would be a bite that costs nothing until the second
+    /// fight, and an attack COMMAND issued on the next tick would swing straight through it. The created state
+    /// carries the delay and nothing else, which leaves the cadence at zero for
+    /// <see cref="ITileCombatRules.AttackTicks"/> to answer at the first swing exactly as it does today.</para>
+    /// <para>SATURATES at <see cref="byte.MaxValue"/> rather than wrapping, because a wrap turns a long delay into
+    /// no delay at all, which is the one failure mode a stun must not have.</para>
+    /// <para>A zero is a no-op that still reports whether the entity is there, so a caller can use it as an
+    /// existence check without a second call.</para>
+    /// </summary>
+    /// <param name="netId">The entity whose next swing is pushed out.</param>
+    /// <param name="ticks">How many server ticks to ADD to the wait. Zero writes nothing.</param>
+    /// <returns>True when a live cell owns the id, whether or not anything was written.</returns>
+    public bool DelayAttack(long netId, byte ticks)
+    {
+        if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) return false;
+        if (!cell.World.IsAlive(e)) return false;
+        if (ticks == 0) return true;
+        // Default when the entity carries none, which is the create case above: every other field stays zero, so
+        // this writes a wait and no cadence, no lock and no damage record.
+        cell.World.TryGet(e, out TileCombatState combat);
+        int delayed = combat.CooldownRemaining + ticks;
+        combat.CooldownRemaining = delayed > byte.MaxValue ? byte.MaxValue : (byte)delayed;
+        // The write is what puts a created state in the world, and the tick pass reads the component rather than a
+        // list of combatants it built itself, so the new state runs down from the very next tick with no second
+        // registration anywhere.
+        cell.World.Set(e, combat);
+        return true;
+    }
+
     // Tick step 4b. Four phases, and the two-phase split between rolling and applying is the whole design.
     void ResolveCombat()
     {

@@ -44,6 +44,10 @@ namespace KhaozEngine.Windowing
         public void Run(Action<Frame> onFrame, Action<Frame>? onPrepare)
         {
             Show(); // ensure visible even if the host never called Show() (GameApp calls it after SetIcon). Idempotent.
+            // Launch monitor, applied here rather than at construction so it lands AFTER the game's boot restore
+            // (GameApp calls OnLoad, where a game re-applies its saved placement, immediately before this). Idempotent,
+            // and a no-op unless an InitialMonitor or KE_WINDOW_MONITOR asked for one. See AppWindow.Launch.cs.
+            ApplyLaunchPlacement();
             var clock = System.Diagnostics.Stopwatch.StartNew();
 
             // Composed ONCE, not per frame: the record-phase callback plus the rumble tick that has to follow it

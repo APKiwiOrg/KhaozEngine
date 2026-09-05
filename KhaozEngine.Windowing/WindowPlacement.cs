@@ -51,6 +51,31 @@ namespace KhaozEngine.Windowing
             return bestOverlapArea > 0 ? bestOverlap : nearest;
         }
 
+        /// <summary>Index of the RIGHTMOST monitor: the greatest <see cref="MonitorInfo.X"/> origin, ties
+        /// broken by the lower index. Returns -1 when <paramref name="monitors"/> is empty (headless / no
+        /// display). The origin is compared rather than the right edge, so a narrow monitor parked to the
+        /// right of a wide one still wins, which is what "the one on the right" means to a person looking
+        /// at the desk.</summary>
+        public static int RightmostIndex(IReadOnlyList<MonitorInfo> monitors)
+            => ExtremeIndex(monitors, rightmost: true);
+
+        /// <summary>Index of the LEFTMOST monitor: the least <see cref="MonitorInfo.X"/> origin, ties broken
+        /// by the lower index. Returns -1 when <paramref name="monitors"/> is empty.</summary>
+        public static int LeftmostIndex(IReadOnlyList<MonitorInfo> monitors)
+            => ExtremeIndex(monitors, rightmost: false);
+
+        static int ExtremeIndex(IReadOnlyList<MonitorInfo> monitors, bool rightmost)
+        {
+            if (monitors == null || monitors.Count == 0) return -1;
+            int best = 0;
+            for (int i = 1; i < monitors.Count; i++)
+            {
+                int x = monitors[i].X, bx = monitors[best].X;
+                if (rightmost ? x > bx : x < bx) best = i;
+            }
+            return best;
+        }
+
         /// <summary>The window top-left that centres a <paramref name="ww"/> x <paramref name="wh"/>
         /// window on <paramref name="m"/>.</summary>
         public static (int X, int Y) CenterOn(MonitorInfo m, int ww, int wh)

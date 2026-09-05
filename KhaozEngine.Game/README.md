@@ -65,6 +65,17 @@ so a game can persist + restore its full window placement across launches (the r
 cap Metal - `FrameCap.Auto` (the default) does that. The engine warns once only if you explicitly force an uncapped
 free-run with vsync on Metal.
 
+**Launch placement** (since 18.14.0), the creation-time half of the above. `GameAppOptions.FocusOnLaunch` (a
+`bool?`, null and true both mean focus) creates the window with the GLFW `FOCUSED` and `FOCUS_ON_SHOW` hints off
+when false, so it appears without stealing the keyboard. On macOS that holds for the keyboard, but the process
+can still become the active app on the first window of a run, which no GLFW hint controls.
+`GameAppOptions.InitialMonitor` (`Saved` by default and so no engine action, else `Primary` / `Rightmost` /
+`Leftmost` / `At(index)`) is applied by `Run` after `OnLoad`, so an explicit choice beats a position the game
+restored at boot, and it works on a custom `WindowFactory` window too. `KE_WINDOW_MONITOR` and `KE_WINDOW_FOCUS`
+override both for a run, and while `KE_WINDOW_MONITOR` did, `GameApp.PlacementOverridden` is true and a game
+that persists its window position MUST skip that write, or a harness boot becomes the player's saved placement.
+See `docs/USING-KHAOZENGINE.md`, "How a game remembers its window".
+
 Override `OnResume(TimeSpan wallGap)` to react to an OS sleep/suspend/hibernate (or a long hang): it fires once,
 before `OnUpdate`, on the first frame whose wall-clock gap (`Clock.RealWallGapSeconds`, which survives a suspend
 where the frame `dt` does not) exceeds `GameAppOptions.ResumeGapThresholdSeconds` (default 30s; 0 or negative

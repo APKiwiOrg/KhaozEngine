@@ -5,6 +5,46 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.14.0
+
+18.14.0 gives a launch its window placement: a window that can be created without taking focus, an
+explicit initial monitor, and two dev environment overrides for both, with the override flag a game
+reads so a harness boot never overwrites the player's saved placement. Nothing here persists anything.
+The engine already carried the placement snapshot (`DisplaySettings` position plus
+`IDisplaySettings.MoveToMonitor`) and the game already owns the settings file, so this is the missing
+half at CREATION time.
+
+- `GameAppOptions.FocusOnLaunch` (`bool?`, null and true both mean focus, the historic behaviour).
+  False creates the window with the GLFW `FOCUSED` and `FOCUS_ON_SHOW` hints off, so it appears
+  without stealing the keyboard from whatever the developer is typing in. The `AppWindow` constructor
+  takes it as a new trailing optional argument, so a custom `WindowFactory` forwards it itself.
+  On macOS the window genuinely does not take keyboard focus, because GLFW only calls
+  `[NSApp activateIgnoringOtherApps]` from the focus path both hints skip. What no GLFW 3.4 hint can
+  suppress is the PROCESS becoming the active application on the first window of a run, since the
+  cocoa init finishes launching the app as a regular UI application. The only cocoa hints Silk.NET
+  exposes are the chdir-resources and menubar init hints and the frame-name string hint, none of
+  which touch activation.
+- `GameAppOptions.InitialMonitor`, an `InitialMonitor` value: `Saved` (the default and the zero
+  value, no engine action at all), `Primary`, `Rightmost`, `Leftmost`, or `At(index)`. It is applied
+  by `Run` after `OnLoad`, so an explicit choice wins over the position a game restores at boot, and
+  it goes through the existing `MoveToMonitor`. A request naming a monitor that is not connected
+  moves nothing.
+- `WindowPlacement.RightmostIndex` / `LeftmostIndex`: the greatest and least monitor x origin, ties
+  broken on the lower index, -1 for an empty list. The origin decides rather than the right edge, so
+  a narrow monitor parked right of a wide one is still the rightmost.
+- `KE_WINDOW_MONITOR` (`rightmost`, `leftmost`, `primary`, or an index) and `KE_WINDOW_FOCUS` (`0`,
+  `false`, `no`, `off` for no focus), read once at window creation beside `KE_MAX_FRAMES`. They beat
+  the options AND the game's saved position. A value that matches nothing is ignored with one WARN
+  line naming what was typed.
+- `AppWindow.PlacementOverridden` (forwarded as `GameApp.PlacementOverridden`) is true while
+  `KE_WINDOW_MONITOR` placed the window. A game that persists its window position skips that write
+  while it is true, or a harness boot on another monitor becomes the player's saved placement. A
+  mistyped override does not raise it, because the window is then still wherever the game put it.
+- New pure types in `KhaozEngine.Windowing`: `InitialMonitor` / `InitialMonitorKind`,
+  `WindowCreationHints`, `LaunchPlacement` and `WindowLaunch` (the environment parsing, the
+  precedence and the warning bodies). All headless-testable, in the same shape as `FrameCap`, with
+  `AppWindow` still the only class that touches GLFW.
+
 ## 18.13.0
 
 18.13.0 is the ninth backlog wave: 34 items across the tile netcode and tile world deferred minors,

@@ -413,6 +413,69 @@ A hand-built `DisplaySettings` without a position (`X`/`Y` default to `DisplaySe
 the window where it is. All placement math is pure and headless-tested in `WindowPlacement` (`MonitorIndexFor` /
 `CenterOn` / `ClampVisible`) with the `MonitorInfo` record; only `AppWindow` touches the Silk monitor statics.
 
+**Launch placement: focus and the initial monitor (since 18.14.0).** Two `GameAppOptions` fields decide how the
+window arrives, and both are about CREATION. Neither persists anything, and both default to the behaviour every
+build has had.
+
+```csharp
+var opts = GameAppOptions.For("MyGame", 1280, 720);
+opts.FocusOnLaunch  = false;                       // create it without taking the keyboard or the foreground
+opts.InitialMonitor = InitialMonitor.Rightmost;    // Saved (default) / Primary / Rightmost / Leftmost / At(i)
+```
+
+`FocusOnLaunch` is a `bool?` so a zero-initialised options struct keeps focus on. False sets the GLFW `FOCUSED`
+and `FOCUS_ON_SHOW` hints to false before the native window is created, which is what a second monitor build, a
+tooling run, or an automated pass wants: the window appears without stealing the keyboard from the editor.
+Applied at window creation, so a custom `WindowFactory` forwards it itself (it is the last argument of the
+`AppWindow` constructor).
+
+**What macOS allows.** The keyboard part works: GLFW only calls `[NSApp activateIgnoringOtherApps]` and
+`makeKeyAndOrderFront` from the focus path that both false hints skip, leaving a plain `orderFront`, so the
+window is quiet. What cannot be suppressed through GLFW is the PROCESS becoming the active application on the
+first window of a run, because GLFW's cocoa init finishes launching the app and sets
+`NSApplicationActivationPolicyRegular`, and macOS activates a newly launched regular app. GLFW 3.4 has no hint
+for it, and the only cocoa hints Silk.NET.GLFW 2.23 exposes are the `CocoaChdirResources` and `CocoaMenubar`
+init hints and the `CocoaFrameName` window hint, none of which touch activation. So on a Mac expect a possible
+one-time app activation with a window that still does not take the keyboard, and expect later shows to be quiet.
+On Windows and X11 both parts hold.
+
+`InitialMonitor` is applied by `Run`, after `OnLoad`, through the same `MoveToMonitor` a settings screen uses. That
+ordering is the point: a game restores its saved position in `OnLoad`, so an explicit `InitialMonitor` wins over
+it, while the default `Saved` takes no engine action at all and leaves the restored placement alone. `Rightmost`
+and `Leftmost` read the greatest and least monitor x origin (`WindowPlacement.RightmostIndex` /
+`LeftmostIndex`, pure and headless-tested), `Primary` is index 0, and `At(i)` names a monitor directly. A request
+naming a monitor that is not connected moves nothing.
+
+**The two dev overrides**, read once at window creation beside `KE_MAX_FRAMES`, both outranking the options AND
+the game's saved position:
+
+```bash
+KE_WINDOW_MONITOR=rightmost   # also leftmost, primary, or a monitor index from 0
+KE_WINDOW_FOCUS=0             # also false / no / off. 1 / true / yes / on is the default
+```
+
+A value that matches nothing is ignored with one WARN line naming what was typed, so a mistyped lever is not
+mistaken for an unset one. `WindowLaunch` holds all of that parsing (`TryParseMonitor`, `TryParseFocus`,
+`Resolve`, the warning bodies), pure and headless-tested, with `AppWindow` still the only class that touches GLFW.
+
+**How a game remembers its window, and the one flag it must honour.** The engine does no settings IO: a game
+serialises `Display.CurrentDisplay` (mode, size, position) into its own settings file on exit and hands it back
+through `ApplyDisplay` in `OnLoad`, which clamps a stale position on-screen for it. Ruinborne's `MenuController`
+is the reference shape, with `BuildDisplaySnapshot` mapping its persisted settings to a `DisplaySettings` and
+`PositionUnspecified` standing in for "no saved position yet". Do not rebuild any of that.
+
+The one thing to add is the override flag:
+
+```csharp
+if (!app.PlacementOverridden)          // AppWindow.PlacementOverridden, forwarded on GameApp
+    SaveWindowPosition(app.Display.CurrentDisplay);
+```
+
+`PlacementOverridden` is true while `KE_WINDOW_MONITOR` placed the window. Persisting the position then would
+write a harness boot's monitor into the player's settings, and the next ordinary launch would restore it. Size,
+window mode and everything else are unaffected, and a mistyped override does not raise the flag, because the
+window is then still wherever the game itself put it.
+
 **Networked-movement presentation (NetWorld).** `WorldClient` renders remotes on a fixed interpolation delay
 (`WorldClientConfig.InterpolationDelayTicks`, default 2) - a timestamped snapshot buffer lerped by true timestamps,
 so remotes glide with no holds or catch-up snaps at any render:tick ratio - and the local predicted avatar is
@@ -5768,7 +5831,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.13.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.14.0" />
 ```
 
 ```csharp
@@ -10772,7 +10835,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.13.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.14.0" />
 ```
 
 ```csharp
@@ -10808,7 +10871,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.13.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.14.0" />
 ```
 
 ```csharp
@@ -11050,7 +11113,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.13.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.14.0" />
 ```
 
 ```csharp
@@ -13080,7 +13143,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.13.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.14.0" />
 </ItemGroup>
 ```
 

@@ -138,8 +138,11 @@ namespace KhaozEngine.Game
             // born hidden (AppWindow's ctor); it is revealed by Show() below, after the icon is applied.
             _window = options.WindowFactory?.Invoke(options)
                 ?? new AppWindow(options.Title, options.Width, options.Height, options.PresentMode, requestedCap,
-                    options.GraphicsBackendPreference);
+                    options.GraphicsBackendPreference, options.FocusOnLaunch ?? true);
             _window.ClearColor = options.ClearColor;
+            // Launch monitor: a post-construction request (AppWindow applies it in Run, after OnLoad), so it works on
+            // a custom WindowFactory window too. The default Saved value moves nothing.
+            _window.InitialMonitor = options.InitialMonitor;
             // FrameCap and BackgroundThrottle are post-construction properties, so they apply on BOTH the default
             // window (above) and a custom WindowFactory window (which cannot know these options otherwise). PresentMode
             // and GraphicsBackendPreference both feed device/swapchain creation, so they are honoured only on the
@@ -340,6 +343,15 @@ namespace KhaozEngine.Game
         /// below are conveniences over the same surface.
         /// </summary>
         public IDisplaySettings Display => _window;
+
+        /// <summary>
+        /// True when <c>KE_WINDOW_MONITOR</c> placed this window, so where it sits is a developer override rather
+        /// than the player's own. A game that persists its window position MUST skip that write while this is true,
+        /// or a harness boot on another monitor becomes the player's saved placement. Forwards to
+        /// <see cref="AppWindow.PlacementOverridden"/>. See <c>docs/USING-KHAOZENGINE.md</c>, "How a game remembers
+        /// its window".
+        /// </summary>
+        public bool PlacementOverridden => _window.PlacementOverridden;
 
         /// <summary>How the window presents frames; forwards to <see cref="AppWindow.PresentMode"/> (reconfigures the
         /// live swapchain's vsync in place). On Metal, pair vsync with <see cref="FrameCapHz"/> for a real cap.</summary>

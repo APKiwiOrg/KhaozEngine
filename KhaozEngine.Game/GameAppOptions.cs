@@ -78,6 +78,40 @@ namespace KhaozEngine.Game
         public WindowMode WindowMode;
 
         /// <summary>
+        /// Whether the window takes keyboard focus and comes to the foreground when it is created. <c>null</c> (the
+        /// default) and <c>true</c> both mean yes, which is what every build has done. <c>false</c> creates it with
+        /// the GLFW <c>FOCUSED</c> and <c>FOCUS_ON_SHOW</c> hints off, so the window appears without stealing the
+        /// keyboard from whatever the developer is typing in. Being nullable, a default-constructed struct and a
+        /// <see cref="For"/> result both keep focus on, and a caller opts out explicitly.
+        /// <para>Applied at window creation, so it is honoured on the default window. A custom
+        /// <see cref="WindowFactory"/> must forward it itself (the <see cref="AppWindow"/> constructor takes it as
+        /// its last argument).</para>
+        /// <para><b>macOS caveat.</b> The window does not take keyboard focus, but the PROCESS can still come to the
+        /// front on the first window of a run: GLFW's cocoa init finishes launching the app as a regular UI
+        /// application and macOS activates it, and neither GLFW 3.4 nor the cocoa hints Silk exposes has a lever for
+        /// that. Expect a quiet window and a possible one-time app activation. See
+        /// <c>docs/USING-KHAOZENGINE.md</c>.</para>
+        /// <para><c>KE_WINDOW_FOCUS=0</c> overrides this for a run.</para>
+        /// </summary>
+        public bool? FocusOnLaunch;
+
+        /// <summary>
+        /// Which monitor the window launches on. The default <see cref="Windowing.InitialMonitor.Saved"/> takes no
+        /// engine action, so whatever the game restored from its own settings stands.
+        /// <see cref="Windowing.InitialMonitor.Primary"/> / <see cref="Windowing.InitialMonitor.Rightmost"/> /
+        /// <see cref="Windowing.InitialMonitor.Leftmost"/> / <see cref="Windowing.InitialMonitor.At"/> an index place
+        /// it explicitly, through the same <see cref="AppWindow.MoveToMonitor"/> a settings screen uses.
+        /// <para>Applied post-construction on both the default and a custom <see cref="WindowFactory"/> window, and
+        /// applied by <see cref="GameApp.Run"/> after <see cref="GameApp.OnLoad"/>, so an explicit choice here wins
+        /// over a saved position the game restores in <c>OnLoad</c>. A request naming a monitor that is not
+        /// connected moves nothing.</para>
+        /// <para><c>KE_WINDOW_MONITOR</c> (<c>rightmost</c>, <c>leftmost</c>, <c>primary</c>, or an index) overrides
+        /// this for a run and raises <see cref="AppWindow.PlacementOverridden"/>, which a game reads to skip writing
+        /// the window position back to the player's settings for that run.</para>
+        /// </summary>
+        public InitialMonitor InitialMonitor;
+
+        /// <summary>
         /// A frame whose wall-clock gap (<see cref="GameClock.RealWallGapSeconds"/>) exceeds this raises
         /// <see cref="GameApp.OnResume"/> - the signal that the OS slept/suspended/hibernated or the app hung for
         /// that long. Default 30s (via <see cref="For"/>), high enough that a normal frame, GC pause, or brief

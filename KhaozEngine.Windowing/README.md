@@ -110,6 +110,26 @@ Windowing + input foundation for the custom MonoGame-free stack.
     `ApplyDisplay` clamps it on-screen before moving, so a stale saved position self-corrects.
   - All placement math is pure and headless-tested in `WindowPlacement` (`MonitorIndexFor` / `CenterOn` /
     `ClampVisible`) plus the `MonitorInfo` record; only `AppWindow` touches the Silk monitor statics.
+- **Launch placement** (since 18.14.0). The half of the above that happens at window CREATION, and it persists
+  nothing.
+  - The `AppWindow` constructor takes a trailing `focusOnLaunch` (default true). False writes the GLFW `FOCUSED`
+    and `FOCUS_ON_SHOW` hints as false before the native window exists, so the window appears without taking the
+    keyboard or the foreground. On macOS the keyboard part holds (GLFW's `[NSApp activateIgnoringOtherApps]` is
+    on the focus path both hints skip), but the process can still become the active application on the first
+    window of a run, which no GLFW 3.4 hint controls. See `AppWindow.Launch.cs` for the full per-platform note.
+  - `AppWindow.InitialMonitor` (an `InitialMonitor`: `Saved` by default, else `Primary` / `Rightmost` /
+    `Leftmost` / `At(index)`) is applied once by `Run`, after the host's load callback, so an explicit choice
+    wins over a position the game restored at boot. `Saved` moves nothing. `ApplyLaunchPlacement()` is the
+    idempotent entry point `Run` calls.
+  - `KE_WINDOW_MONITOR` (`rightmost` / `leftmost` / `primary` / an index) and `KE_WINDOW_FOCUS` (`0`, `false`,
+    `no`, `off`) are the dev overrides, read once at creation beside `KE_MAX_FRAMES`, beating both the options
+    and the game's saved position. An unrecognized value is ignored with one WARN line naming it.
+  - `AppWindow.PlacementOverridden` is true while `KE_WINDOW_MONITOR` placed the window. **A game that persists
+    its window position must skip that write while it is true**, or a harness boot on another monitor becomes
+    the player's saved placement.
+  - The policy is pure and headless-tested: `WindowLaunch` (parsing, precedence, warning bodies),
+    `InitialMonitor.Resolve`, `WindowCreationHints`, `LaunchPlacement`, and
+    `WindowPlacement.RightmostIndex` / `LeftmostIndex` (greatest / least monitor x origin).
 - **GPU diagnostics accessors on `AppWindow`** - read-only facts about the device the window created, for a
   game's own debug overlay or bug-report dump. Every one of them is the value `KhaozEngine.Gpu` already logs at
   device creation, so an overlay row and the log cannot disagree. `BackendSelection` (since 17.21.0) says which

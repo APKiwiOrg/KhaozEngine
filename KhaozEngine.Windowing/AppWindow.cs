@@ -418,16 +418,16 @@ namespace KhaozEngine.Windowing
         /// <summary>
         /// Create a window selecting how it presents (<paramref name="presentMode"/>) and the frame-cap intent
         /// (<paramref name="frameCap"/>): <see cref="Windowing.FrameCap.Auto"/> (backend-aware default),
-        /// <see cref="Windowing.FrameCap.Uncapped"/>, or a fixed <see cref="Windowing.FrameCap.Hz"/>. The cap can also
-        /// be changed later via <see cref="FrameCap"/> / <see cref="FrameCapHz"/>.
+        /// <see cref="Windowing.FrameCap.Uncapped"/>, or a fixed <see cref="Windowing.FrameCap.Hz"/>, changeable
+        /// later via <see cref="FrameCap"/>. A false <paramref name="focusOnLaunch"/> creates the window without
+        /// keyboard focus and without raising it over the foreground app (<c>KE_WINDOW_FOCUS</c> outranks it).
         /// <para><paramref name="backendPreference"/> is the player's stored graphics-backend choice, handed in as
-        /// data (this package reads no settings file). It outranks the OS probe and is outranked by
-        /// <c>KE_GRAPHICS_BACKEND</c>. A preference whose device cannot be created falls back to the platform's
-        /// default backend, which <see cref="BackendSelection"/> then reports as
-        /// <see cref="GpuBackendSource.FallbackAfterFailure"/>.</para>
+        /// data (this package reads no settings file). It outranks the OS probe, is outranked by
+        /// <c>KE_GRAPHICS_BACKEND</c>, and a preference whose device cannot be created falls back to the platform
+        /// default, which <see cref="BackendSelection"/> reports as <see cref="GpuBackendSource.FallbackAfterFailure"/>.</para>
         /// </summary>
         public AppWindow(string title, int width, int height, PresentMode presentMode, FrameCap frameCap,
-            GpuBackendKind? backendPreference = null)
+            GpuBackendKind? backendPreference = null, bool focusOnLaunch = true)
         {
             // WinExe support, belt-and-suspenders for a bare AppWindow host (one with no GameApp facade): a
             // Windows-subsystem exe has no console, so surface diagnostics like the Metal-vsync warning below
@@ -459,7 +459,7 @@ namespace KhaozEngine.Windowing
                 IsVisible = false,
             };
             _window = Window.Create(opts);
-            _window.Initialize(); // creates the native window WITHOUT starting the loop; the handle is valid after this.
+            InitializeWithLaunchHints(focusOnLaunch); // AppWindow.Launch.cs: the GLFW focus hints, then Initialize().
 
             GpuWindowHandle handle = BuildHandle(_window);
             // The one engine-owned registration, since 18.0.0. KhaozEngine.Gpu builds no device of its own any

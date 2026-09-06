@@ -8,7 +8,8 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// Runs <see cref="TileMoveSimulator"/> over every OWNED entity, player and actor alike, inside the cell's own
 /// fixed tick, so authority follows the cell that owns the entity and the per-cell fan-out stays free of shared
 /// mutable state. One instance is added to each cell's world, and the simulators behind it are shared by all of
-/// them because nothing about one is stateful.
+/// them because nothing about one is stateful. The pathfinder scratch belongs to this per-cell system instead, so
+/// scheduler-fanned cells never search through the same mutable buffers.
 /// <para>WHICH simulator an entity is stepped through is the <see cref="TileActor"/> TAG, so an actor runs the
 /// same stepper as a player over its own options rather than a movement rule of its own. The tag rather than the
 /// absence of a connection slot, because nothing inside a cell knows about slots and net ids deliberately know
@@ -30,6 +31,8 @@ public sealed class TileMovementSystem : ISystem
 {
     readonly TileMoveSimulator players;
     readonly TileMoveSimulator actors;
+    readonly TilePathfinderScratch playerScratch;
+    readonly TilePathfinderScratch actorScratch;
 
     /// <summary>Steps every owned entity through one simulator, players and actors alike. The shape that shipped
     /// before actors existed, kept because it is still the right one for a head with no actors.</summary>
@@ -48,6 +51,8 @@ public sealed class TileMovementSystem : ISystem
     {
         this.players = players;
         this.actors = actors;
+        playerScratch = new TilePathfinderScratch(players.MaxPathRadius);
+        actorScratch = new TilePathfinderScratch(actors.MaxPathRadius);
     }
 
     /// <inheritdoc/>
@@ -60,7 +65,9 @@ public sealed class TileMovementSystem : ISystem
             // The pick is the TAG rather than the absence of a slot, because nothing in a cell knows about slots and
             // net ids deliberately know nothing about connections. An actor that crossed a region boundary this tick
             // has already had its tag written back by step 1b, which runs before this pass.
-            TileMoveSimulator simulator = world.Has<TileActor>(e) ? actors : players;
+            bool isActor = world.Has<TileActor>(e);
+            TileMoveSimulator simulator = isActor ? actors : players;
+            TilePathfinderScratch scratch = isActor ? actorScratch : playerScratch;
 
             // WHOSE state this is, handed to the stepper because the follow's rule 4 cannot derive it: an Attack
             // naming the attacker itself and one naming another entity standing on the same tile resolve to the
@@ -80,7 +87,7 @@ public sealed class TileMovementSystem : ISystem
                 && world.TryGet(e, out NetId netId)) self = netId.Value;
 
             TileMoveState s = simulator.Step(
-                TileProtocol.AssembleMoveState(state, route), pending.Command, dt, self);
+                TileProtocol.AssembleMoveState(state, route), pending.Command, dt, self, scratch);
 
             state = s;
             route.Remaining = s.Route.RemainingSteps(s.Tile);

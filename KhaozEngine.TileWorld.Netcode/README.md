@@ -149,11 +149,15 @@ so it walks visibly under the winner rather than vanishing a step before it gets
   a blocker is felt when the step would begin rather than when the foot lands. The step in progress is never
   abandoned either, and it needs no special case for it: a route is always pathed from `Tile`, which is the tile
   the step in flight is entering, so a direction change while moving never drags the avatar back toward the tile
-  it was leaving. The route cap counts the steps still to take from that tile.
+  it was leaving. The route cap counts the steps still to take from that tile. `Step` and `BeginWalk` also have
+  overloads taking a `TilePathfinderScratch`. The caller owns that mutable scratch and must never share it across
+  concurrent searches. Omitting it preserves the allocating behavior used by client prediction.
 - **`TileMovementSystem`** - runs the simulator over every OWNED entity inside a cell's own fixed tick,
   skipping ghosts and migrating entities so nothing is stepped twice in one tick. It holds TWO simulators and
   picks on the `TileActor` tag, so an actor paths at its own `ActorMove` radius while a player paths at the
-  click radius. The one-argument constructor still exists and runs one simulator over everything.
+  click radius. It also owns separate player and actor pathfinder scratch for that cell. No mutable scratch is
+  shared by the server, the simulators or scheduler-fanned cells. The one-argument constructor still exists and
+  runs one simulator over everything.
 - **`TileReach`** / **`TileActionQueue`** / **`TilePendingAction`** / **`TileActionKind`** - the OSRS reach rule and
   the one-deep pending action. `TileReach.Set` is every tile cardinally adjacent to a footprint tile that the
   footprint tile could step OUT onto, `Contains` is the in-range test, `TryNearest` picks the reach tile by real
@@ -164,6 +168,7 @@ so it walks visibly under the winner rather than vanishing a step before it gets
   candidate, skipping one outside the window or already at or past the best length found so far, both of which
   the loop would have discarded after paying for the search: a walk is eight-connected, so its step count is
   never below the Chebyshev distance to its goal. The chosen tile and the tie rule are unchanged by either.
+  Its overload accepting `TilePathfinderScratch` reuses the same working memory across candidate searches.
   `agentSize` and `maxRadius` are validated at the top of `TryNearest` rather than left to the first search, so a
   bad argument throws whether the target is open, walled in, out of range or on another plane.
 - **`ITileTargets`** / **`TileDocumentTargets`** / **`TileEntityTargets`** / **`TileRemoteTargets`** - the seam

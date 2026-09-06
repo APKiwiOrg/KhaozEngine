@@ -37,7 +37,7 @@ public static class TileReach
         { TileDirection.W, TileDirection.E, TileDirection.S, TileDirection.N };
 
     /// <summary>Every tile the footprint can be reached from, in the fixed scan order, which is the order
-    /// <see cref="TryNearest"/> breaks a tie by. Empty for a footprint walled in on all sides, and for an empty
+    /// <c>TryNearest</c> breaks a tie by. Empty for a footprint walled in on all sides, and for an empty
     /// rect, both of which callers have to handle rather than assume a reach tile exists.
     /// <para>The tiles are anchor tiles for a ONE TILE actor, so a caller with a larger agent gets fewer reach
     /// tiles than that agent really has rather than a set shaped to its footprint.</para>
@@ -142,6 +142,21 @@ public static class TileReach
     /// refusal does not depend on whether this particular target happens to reach one.</exception>
     public static bool TryNearest(TileCollisionMap map, TileRect footprint, int plane, TileCoord from,
         int agentSize, int maxRadius, out TileCoord reachTile, out TilePath path)
+        => TryNearest(map, footprint, plane, from, agentSize, maxRadius, out reachTile, out path, null);
+
+    /// <summary>Finds the nearest reachable tile using caller-owned pathfinder working memory.</summary>
+    /// <param name="map">The baked collision map.</param>
+    /// <param name="footprint">The target footprint.</param>
+    /// <param name="plane">The target plane.</param>
+    /// <param name="from">The actor's tile.</param>
+    /// <param name="agentSize">The moving actor's footprint edge.</param>
+    /// <param name="maxRadius">The pathfinder search radius.</param>
+    /// <param name="reachTile">The selected reach tile.</param>
+    /// <param name="path">The path to the selected tile.</param>
+    /// <param name="scratch">Reusable pathfinder working memory, or null to allocate per search.</param>
+    /// <returns>True when a reach tile is reachable.</returns>
+    public static bool TryNearest(TileCollisionMap map, TileRect footprint, int plane, TileCoord from,
+        int agentSize, int maxRadius, out TileCoord reachTile, out TilePath path, TilePathfinderScratch? scratch)
     {
         ArgumentNullException.ThrowIfNull(map);
         ArgumentOutOfRangeException.ThrowIfLessThan(agentSize, 1);
@@ -195,7 +210,7 @@ public static class TileReach
             long cheb = Math.Max(Math.Abs((long)candidate.X - from.X), Math.Abs((long)candidate.Z - from.Z));
             if (cheb > maxRadius || cheb >= best) continue;
 
-            TilePath p = TilePathfinder.FindPath(map, plane, from, candidate, agentSize, maxRadius);
+            TilePath p = TilePathfinder.FindPath(map, plane, from, candidate, agentSize, maxRadius, scratch);
             if (!p.Reached || p.Tiles.Count >= best) continue;   // >= keeps the FIRST of a tie, so scan order decides
             best = p.Tiles.Count;
             reachTile = candidate;
@@ -211,7 +226,7 @@ public static class TileReach
     /// second side to choose between. The fixed <see cref="Cardinals"/> order is here so the fallback below is
     /// reached deterministically rather than to settle a tie that cannot happen.
     /// <para>Falls back to <see cref="TileDirection.W"/> for a tile that touches no footprint tile at all, which
-    /// is a caller passing something <see cref="TryNearest"/> never returns. A fallback rather than a throw
+    /// is a caller passing something <c>TryNearest</c> never returns. A fallback rather than a throw
     /// because this is called as an arrival lands, and an odd facing is a far better outcome inside a server
     /// tick than an exception that takes the tick down.</para></summary>
     /// <param name="map">The baked collision map, read only for the null check. Geometry alone answers this

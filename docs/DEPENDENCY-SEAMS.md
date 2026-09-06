@@ -1527,6 +1527,6 @@ curve, while the OpenAL backend applies it to positional voices.
 ### Shared host utilities
 
 `Simulation.Hosting.DrainController` owns the dependency-free grace countdown used by NetWorld and TileWorld.Netcode.
-The existing NetWorld facade forwards to it. `ITileCombatRules.CanAttack` is a default interface admission hook,
+NetWorld references Simulation directly for the controller. The existing NetWorld facade forwards to it. `ITileCombatRules.CanAttack` is a default interface admission hook,
 so existing combat rules retain their behavior. `Identity -> Platform` supplies browser launch for shared interactive
 adapters, while provider-specific token HTTP and IdentityModel dependencies remain in the provider packages.

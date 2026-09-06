@@ -6065,7 +6065,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.27.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.28.0" />
 ```
 
 ```csharp
@@ -11347,7 +11347,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.27.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.28.0" />
 ```
 
 ```csharp
@@ -11383,7 +11383,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.27.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.28.0" />
 ```
 
 ```csharp
@@ -11625,7 +11625,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.27.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.28.0" />
 ```
 
 ```csharp
@@ -13670,7 +13670,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.27.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.28.0" />
 </ItemGroup>
 ```
 
@@ -15361,8 +15361,7 @@ restore arrives and take a hard cut. Nothing regressed there (every restore was 
 benefit does degrade with store latency, and widening the distance is the knob for a slow store.
 
 `PersistenceBinding<TState>.RestoreDistance` lets a binding compare restored state in its own coordinates.
-The default uses `Position`, preserving existing 3D behavior. Tile persistence compares tile coordinates and
-elevation directly, so resuming the same tile at any map scale does not invent a teleport or advance the epoch.
+The default uses `Position`, preserving existing 3D behavior. Tile persistence compares integer X, Z and plane coordinates directly, so resuming the same tile at any map scale does not invent a teleport or advance the epoch.
 
 ### Per-cell world persistence (`CellPersistence`)
 
@@ -16610,3 +16609,8 @@ so admission stays closed after a drain finishes. The existing NetWorld type for
 Command-rate budgets refill when simulation time advances, independent of transport polling frequency. Extra
 `Poll` calls cannot mint another per-tick allowance. `ITileCombatRules.CanAttack(attackerNetId, targetNetId)` lets
 the game reject a target before an Attack command creates a lock, chase or roll, and defaults to permissive behavior.
+
+
+Stair climb smoothing survives a shard handoff by seeding the destination's empty smoothing accumulator from the
+migrated `ClimbRateQ` signal. Ordinary ticks retain their full-precision accumulator. The float remains absent
+from observer snapshots, so the wire payload does not grow.

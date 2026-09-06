@@ -444,6 +444,8 @@ overload) depend on the interface only, never on `GridPathPlanner` directly.
 transitively through `MapDoc` (`MapDoc -> Terrain`, and `Terrain` itself depends on both `Primitives` and
 `Collision`), so the new edge introduces no cycle. `DungeonNav.Bake` lives in `KhaozEngine.Dungeon` and
 returns a `KhaozEngine.Navigation.NavSpace`, but nothing in `Navigation` references `Dungeon` back.
+Its plot overload forwards yaw to `NavGrid`, whose optional `yawRadians` controls cell/world mapping
+and planner visibility checks. Navigation keeps no dependency on `DungeonPlotTransform`.
 
 ## Tile world package edges
 

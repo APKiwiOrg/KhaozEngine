@@ -3,7 +3,7 @@ using System;
 namespace KhaozEngine.Render3D
 {
     /// <summary>
-    /// Ready-made ocean-surface bundles for <see cref="WaterSettings"/>. Each <see cref="OceanPresetKind"/> sets the
+    /// Ready-made ocean-surface bundles for <see cref="WaterSettings"/> and <see cref="WaterLook"/>. Each <see cref="OceanPresetKind"/> sets the
     /// Gerstner swell (amplitude, wavelength, steepness, speed), the ripple normal strength, the whitecap foam
     /// strength/coverage, and the sun glint as one coherent bundle, leaving <see cref="WaterSettings.GridMode"/>,
     /// the clipmap fields, <see cref="WaterSettings.Bathymetry"/>, and the surf fields untouched: those describe the
@@ -23,6 +23,28 @@ namespace KhaozEngine.Render3D
                 case OceanPresetKind.Rough: ApplyRough(water); break;
                 default: throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown ocean preset.");
             }
+        }
+
+        /// <summary>
+        /// Applies the complete swell, ripple, foam and glint bundle to one plane's look. Leaves its
+        /// wave source and all geometry, shore and unrelated appearance overrides unchanged.
+        /// </summary>
+        public static void Apply(OceanPresetKind kind, WaterLook look)
+        {
+            ArgumentNullException.ThrowIfNull(look);
+            // Presets are authoring-time configuration. Resolve the canonical bundle once so the
+            // scene and per-plane overloads cannot drift into different definitions of the same sea.
+            var preset = new WaterSettings();
+            Apply(kind, preset);
+            look.SwellAmplitude = preset.SwellAmplitude;
+            look.SwellWavelength = preset.SwellWavelength;
+            look.SwellSteepness = preset.SwellSteepness;
+            look.SwellSpeed = preset.SwellSpeed;
+            look.NormalStrength = preset.NormalStrength;
+            look.FoamStrength = preset.FoamStrength;
+            look.FoamCrestCoverage = preset.FoamCrestCoverage;
+            look.GlintStrength = preset.GlintStrength;
+            look.GlintRoughness = preset.GlintRoughness;
         }
 
         static void ApplyCalm(WaterSettings water)

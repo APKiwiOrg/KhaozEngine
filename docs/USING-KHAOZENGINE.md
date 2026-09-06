@@ -3279,6 +3279,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   `Moderate` being closest to `WaterSettings`' own defaults). It deliberately leaves `GridMode`, the clipmap
   fields, `Bathymetry` and the surf fields alone: those describe the water body's geometry and shoreline rather
   than its weather, so a preset pick never undoes your clipmap or bathymetry wiring.
+  `OceanPresets.Apply(kind, look)` applies the full bundle to a `WaterLook`, including glint. It leaves
+  `WaveSource` and unrelated overrides untouched. Set a lake's source to `Procedural` explicitly if wanted.
 - **Bloom** (`Post.Bloom`, a `BloomSettings`, **default off**): an opt-in threshold + separable-blur bloom pass
   so beams, emissive materials, and bright billboards read as a glow instead of flat. Default `Bloom.Enabled = false`,
   so the post chain runs no extra passes and existing scenes are byte-stable; set `Post.Bloom.Enabled = true` to
@@ -3392,16 +3394,17 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         SurfStrength = 0f,
     }));
     ```
-    **33 fields are overridable**: `WaveSource`, the whole swell group, the ripple/detail group, body colour
-    (`DeepColor`/`ShallowColor`/`AbsorptionPerMetre`/`ShallowDepth`/`Opacity`), foam, `ShoreFadeDistance`, and the
+    **37 fields are overridable**: `WaveSource`, the whole swell group, the ripple/detail group, body colour
+    (`DeepColor`/`ShallowColor`/`AbsorptionPerMetre`/`ShallowDepth`/`Opacity`), foam, the four `Glint*` scalars,
+    `ShoreFadeDistance`, and the
     two depth-response strengths `ShoalingStrength`/`SurfStrength`. **What stays scene-wide, and cannot be put on
     a look at all**: `SeaState` (one FFT bake - calling the producer twice a frame with two sea states does not
     make two oceans, it makes the one producer rebake on every call for both states and corrupts the persistent
     foam accumulator, whose contract is that one invocation owns each texel), `Bathymetry` (one depth texture),
     the grid group (`GridMode`/`ClipmapCellSize`/`ClipmapRingCells`/`ClipmapLevels`/`ClipmapGeomorphBand`/
     `GridFocusBias` - these select the pass's pipeline, index buffer and vertex layout before the draw loop
-    starts, so they are a geometry choice rather than a look), reflection/horizon/glint (read the one sky and the
-    one sun, out of scope for now, cheap enough to move later without a structural change), the `Surf*` shape
+    starts, so they are a geometry choice rather than a look), reflection weights and horizon colour (read the
+    shared sky), the `Surf*` shape
     knobs (a plane wanting no surf sets `SurfStrength = 0`, which is the whole per-body need), and the sample-
     count quality knobs. Setting `WaveSource = WaterWaveSource.Procedural` on a look is the inland-body case: it
     takes the plane off the shared ocean entirely, so it loses the sea's swell and whitecaps, and (since shoaling
@@ -5421,8 +5424,7 @@ dotnet run --project tools/KeDungeon -- nav --layout layout.json \
     --origin-x 120 --origin-z 0 --base-y 0 --agent-height 1.8 --require-connected
 ```
 
-`nav` refuses a non-zero `--yaw` outright (`DungeonNav.Bake` has no rotation concept, see issue #140) rather
-than silently baking a `NavSpace` that does not match a rotated plot, and `--require-connected` turns a
+`nav --yaw` applies the same plot rotation as the geometry bake. `--require-connected` turns a
 report of more than one connected component into exit code 1, so it doubles as a CI gate. See the
 `KhaozEngine.Dungeon` package README's CLI section for the full option list and its connectivity model.
 
@@ -5465,6 +5467,11 @@ above. Headroom-aware: in a `DungeonCeilingMode.Roofed` layout, a cell whose cei
 (`CeilingHeightMeters`) is below `agentHeight` (default `DungeonNav.DefaultAgentHeight`, 1.8, the shipped
 character capsule height) bakes blocked even though its cell kind is walkable. An `Open` layout never blocks
 on headroom, matching its pre-headroom-awareness behavior exactly.
+
+Use `DungeonNav.Bake(layout, plot, agentHeight)` with the same `DungeonPlotTransform` passed to the
+geometry sinks when the plot has nonzero yaw. `NavGrid.FromWalkable` and `FromSurfaces` also accept
+optional `yawRadians`, default zero. Cell lookup, path smoothing and waypoint centers use the rotated
+mapping. Sample callbacks and stair links still address local cells, surface heights remain world Y.
 
 ### Bake ramps, stairs, and standable props
 
@@ -16544,3 +16551,19 @@ and execute the published binary; it prints one `AOT PROBE:` line and returns ex
 - To change the library: edit, add a headless test, `scripts/pack-local-feed.sh`, consume locally. When
   stable, bump the version + add a `CHANGELOG.md` entry + tag for a published release. Each game adopts on
   its own schedule by bumping its pinned version (or its umbrella metapackage version).
+
+## Safe-area UI layout
+
+A platform host supplies `KhaozEngine.Primitives.SafeAreaInsets` in design units. Apply them to the
+viewport's `DesignBounds`, then use the existing `KhaozEngine.Gui.Layout` anchors inside that rect.
+
+```csharp
+Rect safe = new SafeAreaInsets(top: 24, bottom: 12, left: 0, right: 0).Apply(viewport.DesignBounds);
+Rect action = Layout.Resolve(safe, Anchor.BottomRight, 120, 40, marginX: 16, marginY: 16);
+Rect point = Layout.ResolveFractional(safe, 0.25f, 0.75f, width: 0, height: 0);
+```
+
+Insets must be finite and non-negative. Opposing insets that consume an axis produce zero safe size.
+`ResolveFractional` accepts fractions in [0, 1] and aligns the same fraction of the child and parent,
+then applies optional offsets. Zero child size resolves a point. This API does not query platform insets
+or alter the viewport, it composes with each host's existing viewport and input mapping.

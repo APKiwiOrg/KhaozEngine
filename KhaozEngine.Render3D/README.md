@@ -478,12 +478,12 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   existed still compiles and still packs from the caller's own `WaterSettings` object unchanged. Every field on
   `WaterLook` mirrors a `WaterSettings` field and is itself nullable - `null` inherits the scene, a value overrides
   it for that plane alone, leaving every other queued plane on the scene's look, which is what lets a calm inland
-  lake and a rough FFT sea share a frame. 33 fields are overridable: `WaveSource`, the swell group, the ripple/
-  detail group, body colour, foam, `ShoreFadeDistance` and the two depth-response strengths `ShoalingStrength`/
+  lake and a rough FFT sea share a frame. 37 fields are overridable: `WaveSource`, the swell group, the ripple/
+  detail group, body colour, foam, the four `Glint*` scalars, `ShoreFadeDistance` and the two depth-response strengths `ShoalingStrength`/
   `SurfStrength`. Scene-wide and NOT on a look at all: `SeaState` (one FFT bake - two sea states a frame does not
   make two oceans, it makes the one producer rebake on every call for both and corrupts the persistent foam
   accumulator), `Bathymetry` (one depth texture), the grid group (`GridMode` and the `Clipmap*` knobs, which pick
-  the pass's pipeline and vertex layout before the draw loop starts), reflection/glint (read the one sky and sun),
+  the pass's pipeline and vertex layout before the draw loop starts), reflection weights (read the one sky),
   the `Surf*` shape knobs, and the sample-count knobs. `WaveSource = WaterWaveSource.Procedural` on a look is the
   inland-body case: the plane leaves the shared ocean, so it loses the sea's swell, whitecaps and (shoaling/surf
   ride the same gate) its breaking surf. The shared ocean itself now runs on DEMAND - it bakes when any queued
@@ -562,6 +562,8 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   `OceanPresets.Apply(kind, post.Water)` writes one coherent group of `Calm`/`Moderate`/`Rough` values: the
   Gerstner swell (`SwellAmplitude`, `SwellWavelength`, `SwellSteepness`, `SwellSpeed`), `NormalStrength`, the
   whitecap foam (`FoamStrength`, `FoamCrestCoverage`) and the sun glint (`GlintStrength`, `GlintRoughness`).
+  `OceanPresets.Apply(kind, look)` applies that whole bundle to a `WaterLook`, including glint. It keeps
+  `WaveSource` unchanged, so the caller explicitly chooses whether a lake leaves the shared FFT ocean.
   It deliberately leaves `GridMode`, the clipmap fields, `Bathymetry` and the surf fields ALONE: those describe
   the water body's geometry and shoreline rather than its weather, so a preset pick never undoes a consumer's
   clipmap or bathymetry wiring. `Moderate` is closest to `WaterSettings`' own defaults. Throws

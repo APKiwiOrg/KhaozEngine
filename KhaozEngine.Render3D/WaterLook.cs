@@ -22,8 +22,8 @@ namespace KhaozEngine.Render3D
     /// second value would mean a second GPU resource: <see cref="WaterSettings.SeaState"/> (one FFT bake),
     /// <see cref="WaterSettings.Bathymetry"/> (one depth texture), and the grid knobs
     /// (<see cref="WaterSettings.GridMode"/> and the <c>Clipmap*</c> group), which select the pass's pipeline and
-    /// index buffer before the draw loop starts. Reflection and glint read the one sky and the one sun, so they
-    /// stay scene-wide too. What a plane CAN do is leave the shared ocean entirely by setting
+    /// index buffer before the draw loop starts. Reflection weights stay scene-wide. Glint uses the shared
+    /// sun direction and colour, with per-plane strength and roughness. What a plane CAN do is leave the shared ocean entirely by setting
     /// <see cref="WaveSource"/> to <see cref="WaterWaveSource.Procedural"/>, which is the inland-body case.
     /// </para>
     /// <example>
@@ -185,6 +185,23 @@ namespace KhaozEngine.Render3D
         /// Inert under <see cref="WaterWaveSource.FftOcean"/>.</summary>
         public float? DistantDetailScale;
 
+        // ---- Sun glint ---------------------------------------------------------------------------------------
+
+        /// <summary>Overrides <see cref="WaterSettings.GlintStrength"/>. Null inherits the scene value.
+        /// The sun direction and colour remain shared, only this plane's response changes.</summary>
+        public float? GlintStrength;
+
+        /// <summary>Overrides <see cref="WaterSettings.GlintRoughness"/>. Null inherits. Zero selects
+        /// the legacy lobe controlled by <see cref="GlintExponent"/>.</summary>
+        public float? GlintRoughness;
+
+        /// <summary>Overrides <see cref="WaterSettings.GlintDistantRoughness"/>. Null inherits.</summary>
+        public float? GlintDistantRoughness;
+
+        /// <summary>Overrides <see cref="WaterSettings.GlintExponent"/> for the legacy glint lobe.
+        /// Null inherits the scene value.</summary>
+        public float? GlintExponent;
+
         // ---- Foam --------------------------------------------------------------------------------------------
 
         /// <summary>Overrides <see cref="WaterSettings.FoamColor"/> for this plane. <c>null</c> inherits.</summary>
@@ -269,6 +286,11 @@ namespace KhaozEngine.Render3D
             if (VarianceToRoughness.HasValue) scratch.VarianceToRoughness = VarianceToRoughness.Value;
             if (DetailFadeDistance.HasValue) scratch.DetailFadeDistance = DetailFadeDistance.Value;
             if (DistantDetailScale.HasValue) scratch.DistantDetailScale = DistantDetailScale.Value;
+
+            if (GlintStrength.HasValue) scratch.GlintStrength = GlintStrength.Value;
+            if (GlintRoughness.HasValue) scratch.GlintRoughness = GlintRoughness.Value;
+            if (GlintDistantRoughness.HasValue) scratch.GlintDistantRoughness = GlintDistantRoughness.Value;
+            if (GlintExponent.HasValue) scratch.GlintExponent = GlintExponent.Value;
 
             if (FoamColor.HasValue) scratch.FoamColor = FoamColor.Value;
             if (FoamStrength.HasValue) scratch.FoamStrength = FoamStrength.Value;

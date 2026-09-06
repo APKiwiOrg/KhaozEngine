@@ -3,6 +3,7 @@ using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.NetWorld;
 using Xunit;
+using KhaozEngine.Netcode;
 
 namespace KhaozEngine.Tests.NetWorld;
 
@@ -25,7 +26,7 @@ public class WorldServerBacklogCatchUpTests
     // Returns the number of ticks the authoritative avatar kept advancing (i.e. how long it drained stale input).
     static int TicksSpentDrainingBacklog(int maxInputBacklog)
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig
         {
             TickSeconds = 1f / 30f, InterestRadius = 500f, MaxPlayers = 4, MaxInputBacklog = maxInputBacklog,

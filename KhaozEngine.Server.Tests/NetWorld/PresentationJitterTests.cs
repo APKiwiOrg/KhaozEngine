@@ -58,7 +58,7 @@ public class PresentationJitterTests
 
     static Loop NewLoop()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, InterestRadius = 500f, MaxPlayers = 8 };
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
         var a = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default, new WorldClientConfig { TickSeconds = config.TickSeconds });

@@ -19,18 +19,15 @@ namespace KhaozEngine.Tests.NetWorld;
 /// first session was never restored, sat on the default spawn, and its state overwrote the account record as soon as
 /// the winner left.
 ///
-/// <para>The rows drive the real loopback stack (an <see cref="InMemoryHub"/>, a <see cref="WorldServer"/> or
+/// <para>The rows drive the real loopback stack (an <see cref="InMemoryTransportHub"/>, a <see cref="WorldServer"/> or
 /// <see cref="ShardedWorldServer"/>, and a <see cref="WorldPersistence"/> over a <see cref="GatedWorldStore"/> that
 /// holds every load open across both joins), which is the reproduction from the issue. The last rows leave
 /// persistence out and ask the CLIENT what it was told, because a kick a player cannot be shown a reason for is
 /// half a fix.</para>
 ///
-/// <para>What that stack does NOT prove: <see cref="InMemoryHub"/>'s <c>Disconnect</c> is a no-op on both
-/// endpoints, so a row here shows the server sending the framed <c>Reject</c> and the client classifying it, never
-/// the transport teardown that follows it over a real socket. The reason riding the DISCONNECT (the path that
-/// survives a teardown outrunning the reliable flush) is a LiteNetLib behaviour, and it is covered where the real
-/// binding is. Read a green row as "the Reject frame says the right thing", not as "the kick tore the peer
-/// down".</para>
+/// <para>The in-memory transport exercises the framed <c>Reject</c>, the client classification, and the terminal
+/// event from the server's real kick path. The LiteNetLib binding separately covers transport-specific delivery of
+/// a reason carried by the disconnect itself.</para>
 /// </summary>
 public class DuplicateSessionTests
 {
@@ -67,7 +64,7 @@ public class DuplicateSessionTests
 
     private sealed class Rig
     {
-        public required InMemoryHub Hub { get; init; }
+        public required InMemoryTransportHub Hub { get; init; }
         public required GatedWorldStore Store { get; init; }
         public required InMemoryWorldStore Inner { get; init; }
         public required WorldPersistence Persistence { get; init; }
@@ -149,7 +146,7 @@ public class DuplicateSessionTests
         await inner.SaveAsync("player:" + Alpha, PlayerRecord.From(new PlayerMoveState { Position = Stored },
             Encoding.UTF8.GetBytes("alpha-blob")).Encode());
         var store = new GatedWorldStore(inner);
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig
         {
             TickSeconds = Dt,
@@ -168,7 +165,7 @@ public class DuplicateSessionTests
         await inner.SaveAsync("player:" + Alpha, PlayerRecord.From(new PlayerMoveState { Position = Stored },
             Encoding.UTF8.GetBytes("alpha-blob")).Encode());
         var store = new GatedWorldStore(inner);
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new ShardedWorldServerConfig
         {
             TickSeconds = Dt,
@@ -183,7 +180,7 @@ public class DuplicateSessionTests
         return Build(hub, store, inner, server, () => { server.Poll(); server.Tick(Dt); });
     }
 
-    private static Rig Build(InMemoryHub hub, GatedWorldStore store, InMemoryWorldStore inner,
+    private static Rig Build(InMemoryTransportHub hub, GatedWorldStore store, InMemoryWorldStore inner,
         IWorldPersistenceHost host, Action tick)
     {
         Rig rig = null!;
@@ -321,7 +318,7 @@ public class DuplicateSessionTests
         // A reason code nothing carries to the player is not a reason. This is the reconnect-capable client, so it
         // also pins the terminal half: an auto-reconnect here would displace the session that just displaced this
         // one, and the two clients would trade the seat forever.
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig { TickSeconds = Dt, MaxPlayers = 4, SpawnPosition = _ => Vector3.Zero };
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
 
@@ -366,7 +363,7 @@ public class DuplicateSessionTests
         // leaves DisconnectTimeout at 5 s), and the default backoff spends its first three attempts inside that
         // window. So a one-second blip used to dump the player at a manual sign-in screen. Retrying a refusal
         // displaces nobody, so it cannot start the ping-pong the KICK has to stay terminal to avoid.
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig
         {
             TickSeconds = Dt,

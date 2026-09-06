@@ -26,7 +26,7 @@ public class HighSlotInputTests
     [Fact]
     public void WorldServer_processes_input_for_slots_above_the_64_queue_default()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, InterestRadius = 500f, MaxPlayers = Players };
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
 
@@ -77,7 +77,7 @@ public class HighSlotInputTests
     [Fact]
     public void ShardedWorldServer_processes_input_for_slots_above_the_64_queue_default()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new ShardedWorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = Players };
         var server = new ShardedWorldServer(hub.Server, config, Flat, MoveTuning.Default);
 

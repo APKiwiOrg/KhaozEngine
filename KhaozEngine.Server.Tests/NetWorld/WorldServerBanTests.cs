@@ -35,7 +35,7 @@ public class WorldServerBanTests
         var bans = new InMemoryBanStore();
         await bans.BanAsync("evil", "cheating");
 
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 4 };
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default, banStore: bans);
         var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,

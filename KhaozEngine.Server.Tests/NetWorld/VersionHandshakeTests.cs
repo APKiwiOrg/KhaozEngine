@@ -19,7 +19,7 @@ public class VersionHandshakeTests
     private static readonly byte[] Secret = Encoding.UTF8.GetBytes("handshake-secret");
     private static readonly DateTimeOffset Now = DateTimeOffset.UnixEpoch.AddSeconds(1_700_000_000);
 
-    private static WorldServer Server(InMemoryHub hub, IConnectionAuthenticator auth)
+    private static WorldServer Server(InMemoryTransportHub hub, IConnectionAuthenticator auth)
     {
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 8 };
         return new WorldServer(hub.Server, config, Flat, MoveTuning.Default, authenticator: auth);
@@ -38,7 +38,7 @@ public class VersionHandshakeTests
     [Fact]
     public void Compatible_version_joins()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         WorldServer server = Server(hub, new VersionCheckingAuthenticator("2", v => v == "2"));
         var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,
             new WorldClientConfig { ProtocolVersion = "2" });
@@ -53,7 +53,7 @@ public class VersionHandshakeTests
     [Fact]
     public void Incompatible_version_is_rejected_as_IncompatibleVersion_with_required_in_detail()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         WorldServer server = Server(hub, new VersionCheckingAuthenticator("2", v => v == "2"));
         var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,
             new WorldClientConfig { ProtocolVersion = "1" });
@@ -73,7 +73,7 @@ public class VersionHandshakeTests
         // Proxy for an out-of-date client that predates the handshake: it sends no version, the server's rule
         // rejects the empty version, so it is turned away at connect rather than admitted and later crashing on a
         // snapshot it cannot decode.
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         WorldServer server = Server(hub, new VersionCheckingAuthenticator("2", v => v == "2"));
         var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default, new WorldClientConfig());
 
@@ -88,7 +88,7 @@ public class VersionHandshakeTests
     public void No_handshake_is_backwards_compatible()
     {
         // Neither side opts in: a plain server + a version-less client connect exactly as before.
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         WorldServer server = Server(hub, new AllowAllAuthenticator());
         var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default, new WorldClientConfig());
 
@@ -169,7 +169,7 @@ public class VersionHandshakeTests
     [Fact]
     public void Wire_version_match_joins()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         string ver = WireTag(MoveProtocol.WireProtocolVersion);
         WorldServer server = Server(hub, new VersionCheckingAuthenticator(ver, v => v == ver));
         var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,
@@ -186,7 +186,7 @@ public class VersionHandshakeTests
     {
         // A 10.0.0 server (wire 2) and a 9.x client (wire 1): the 64-bit wire would misparse a 32-bit frame, so the
         // handshake rejects at connect - a clean IncompatibleVersion, never an admitted-then-crashing client.
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         string serverVer = WireTag(MoveProtocol.WireProtocolVersion);   // wire 2
         WorldServer server = Server(hub, new VersionCheckingAuthenticator(serverVer, v => v == serverVer));
         var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,
@@ -204,7 +204,7 @@ public class VersionHandshakeTests
     public void Wire_version_skew_old_server_rejects_new_client_cleanly()
     {
         // The reverse skew: a 9.x server (wire 1) and a 10.0.0 client (wire 2). Same clean disconnect, not a misparse.
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         string serverVer = WireTag(1);                                   // an old (wire 1) server
         WorldServer server = Server(hub, new VersionCheckingAuthenticator(serverVer, v => v == serverVer));
         var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,
@@ -230,7 +230,7 @@ public class VersionHandshakeTests
     public void Unconfigured_same_generation_pairing_joins()
     {
         // No consumer version on either side: they rely purely on the engine wire gate, and matching generations join.
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         WorldServer server = Server(hub, new AllowAllAuthenticator());   // WorldServer wraps this in the always-on wire gate
         var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default, new WorldClientConfig());
 
@@ -246,7 +246,7 @@ public class VersionHandshakeTests
         // A server one wire generation AHEAD (a newer build) - the "old client -> new server" direction the fix targets.
         // Our version-less client sends the current generation; the server's gate wants the next -> clean
         // IncompatibleVersion at connect, never an admitted-then-misparsing client.
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         int serverGen = MoveProtocol.WireProtocolVersion + 1;
         WorldServer server = Server(hub, new WireGenerationAuthenticator(serverGen, new AllowAllAuthenticator()));
         var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default, new WorldClientConfig());
@@ -264,7 +264,7 @@ public class VersionHandshakeTests
     {
         // The reverse skew: a server one generation BEHIND (an older build that still has the gate). Our client is
         // ahead; the server's gate rejects it. The engine gate is symmetric - a mismatch either way is a clean disconnect.
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         int serverGen = MoveProtocol.WireProtocolVersion - 1;
         WorldServer server = Server(hub, new WireGenerationAuthenticator(serverGen, new AllowAllAuthenticator()));
         var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default, new WorldClientConfig());
@@ -320,7 +320,7 @@ public class VersionHandshakeTests
     {
         // The opt-in consumer ProtocolVersion is unchanged: it rides as an inner layer the WorldServer's
         // VersionCheckingAuthenticator (composed INSIDE the always-on wire gate) checks after the generation matches.
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         WorldServer server = Server(hub, new VersionCheckingAuthenticator("game-3", v => v == "game-3"));
         var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,
             new WorldClientConfig { ProtocolVersion = "game-3" });

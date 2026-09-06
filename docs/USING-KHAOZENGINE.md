@@ -16595,3 +16595,18 @@ Insets must be finite and non-negative. Opposing insets that consume an axis pro
 `ResolveFractional` accepts fractions in [0, 1] and aligns the same fraction of the child and parent,
 then applies optional offsets. Zero child size resolves a point. This API does not query platform insets
 or alter the viewport, it composes with each host's existing viewport and input mapping.
+
+
+### Shared local transports and drain countdowns
+
+`InMemoryTransportHub` in Netcode gives headless tests and local hosts one `Server` endpoint and multiple
+`CreateClient()` endpoints. Sends copy payloads and arrive on the receiving endpoint's next `Poll`. Disconnects
+are observable and stop later sends. Dispose the hub to disconnect its clients. The hub is single-threaded.
+
+`KhaozEngine.Simulation.Hosting.DrainController` owns the deterministic grace countdown shared by world and tile
+servers. Call `Begin(graceSeconds)` and advance it from the host's own clock. `HasBegun` stays true after completion,
+so admission stays closed after a drain finishes. The existing NetWorld type forwards to the shared implementation.
+
+Command-rate budgets refill when simulation time advances, independent of transport polling frequency. Extra
+`Poll` calls cannot mint another per-tick allowance. `ITileCombatRules.CanAttack(attackerNetId, targetNetId)` lets
+the game reject a target before an Attack command creates a lock, chase or roll, and defaults to permissive behavior.

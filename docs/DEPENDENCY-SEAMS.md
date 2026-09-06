@@ -1522,3 +1522,11 @@ The edge is acyclic because `Netcode` depends on `Netcode.Abstractions` and has 
 `ISfxBackend.Play` gains an attenuation-aware overload taking `SfxAttenuation`. Its default interface body
 forwards to the existing priority overload. Custom backends retain their behavior until they consume the
 curve, while the OpenAL backend applies it to positional voices.
+
+
+### Shared host utilities
+
+`Simulation.Hosting.DrainController` owns the dependency-free grace countdown used by NetWorld and TileWorld.Netcode.
+The existing NetWorld facade forwards to it. `ITileCombatRules.CanAttack` is a default interface admission hook,
+so existing combat rules retain their behavior. `Identity -> Platform` supplies browser launch for shared interactive
+adapters, while provider-specific token HTTP and IdentityModel dependencies remain in the provider packages.

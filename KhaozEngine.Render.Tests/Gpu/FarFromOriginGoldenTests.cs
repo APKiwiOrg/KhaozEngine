@@ -165,9 +165,10 @@ namespace KhaozEngine.Tests.Gpu
 
             float worst = WorstCellDelta(GoldenCompare.Downsample(first, W, H),
                 GoldenCompare.Downsample(shifted, W, H));
-            Assert.True(worst <= GoldenCompare.Tolerance,
+            const float phaseTolerance = 0.01f;
+            Assert.True(worst <= phaseTolerance,
                 $"the same absolute sparkling decal changed by {worst} when only the render origin moved " +
-                $"(tolerance {GoldenCompare.Tolerance})");
+                $"(tolerance {phaseTolerance})");
         }
 
         /// <summary>

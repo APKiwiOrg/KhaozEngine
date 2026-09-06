@@ -102,6 +102,11 @@ namespace KhaozEngine.Tests.MapEditTool
             HashSet<string> names = tools.Select(t => t.Name).ToHashSet(StringComparer.Ordinal);
 
             Assert.Equal(ExpectedVerbs.ToHashSet(StringComparer.Ordinal), names);
+
+            McpClientTool mapValidate = tools.Single(t => t.Name == "map_validate");
+            Assert.True(mapValidate.JsonSchema.GetProperty("properties")
+                .TryGetProperty("verifyWholeWorld", out JsonElement verifyWholeWorld));
+            Assert.Equal(JsonValueKind.Object, verifyWholeWorld.ValueKind);
         }
 
         [Fact]

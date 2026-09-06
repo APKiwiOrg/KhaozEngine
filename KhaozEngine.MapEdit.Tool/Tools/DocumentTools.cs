@@ -35,9 +35,10 @@ public sealed class DocumentTools(MapEditSession session)
     public SaveResult MapSave()
         => ToolGuard.Guard(session.Save);
 
-    [McpServerTool(Name = "map_validate"), Description("Validates the open document: structural (semantic) checks, then a JSON schema check when the structure passes. Reports both results with their errors.")]
-    public ValidateResult MapValidate()
-        => ToolGuard.Guard(session.Validate);
+    [McpServerTool(Name = "map_validate"), Description("Validates the open document structurally, then schema-checks the whole document or each loaded tile. Optionally verifies every tile in a tiled directory on disk.")]
+    public ValidateResult MapValidate(
+        [Description("When true, also runs whole-world tiled verification against every tile on disk without loading them into the session. Requires a tiled document. Defaults to false.")] bool verifyWholeWorld = false)
+        => ToolGuard.Guard(() => session.Validate(verifyWholeWorld));
 
     [McpServerTool(Name = "map_summary"), Description("Returns a flat summary of the open document: identity, bounds, terrain seed and water level, feature types in fold order, layer and companion names, section counts, player spawn ids, region names, and the dirty flag.")]
     public MapSummary MapSummary()

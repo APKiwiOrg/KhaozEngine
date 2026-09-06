@@ -5,6 +5,28 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.31.0
+
+Durable mutation journaling gives authoritative MMO servers a commit-before-apply path for ownership and progression (#835).
+
+- `IMutationJournalStore` and `IMutationJournalMaintenance` define stable operation identity, canonical request
+  fingerprints, ordered versioned streams, exact idempotent replay within the configured retention horizon, explicit
+  operation conflicts, and atomic event, result, receipt, and projection commits across up to sixteen streams.
+- `MutationJournalExecutor` keeps storage off the simulation thread with bounded operation and owned-byte capacity,
+  per-stream reservation through acknowledgement, deterministic transient retry, unknown-outcome resolution,
+  quarantine, bounded shutdown, commit latency buckets, and recovery and projection readings.
+- The dependency-free in-memory reference store, embedded SQLite provider, and SQL Server or Azure SQL provider run
+  the same conformance contract. Durable providers validate complete version-one schemas, translate expected races,
+  preserve failure certainty, and expose controlled replay retention and store-epoch rotation.
+- Checked snapshots, fixed-head contiguous event pages, opaque selected-stream projection cursors, and snapshot-only
+  first-release compaction support recovery and near-live admin reads without tick snapshots or all-player scans.
+- Process-kill probes cover before-commit and committed-but-unanswered failures. The seeded MMO workload measures
+  inventory changes, bank transfers, atomic trades, replays, recovery, projection reads, and compaction while
+  asserting zero duplicate effects, sequence gaps, partial commits, checksum failures, and event pruning.
+- Games still own event meanings, reducers, authenticated stream selection, admin response shaping, legacy migration,
+  cross-host session coordination, and the post-retention domain-state duplicate defense. `IWorldStore` remains for
+  checkpoints and `BatchedWriter<T>` remains for droppable telemetry. Neither is ownership authority.
+
 ## 18.30.0
 
 Server-owned tile actors can use registered traversal topologies while existing actors retain the default map.

@@ -1,8 +1,7 @@
 # Durable player mutation journal design
 
-**Status:** R1 engine implementation complete, release pending. The in-memory, SQLite, SQL Server, recovery,
-process-kill, scaling, and benchmark gates exist. Versioning, changelog, local-feed pack, tag, and consumer
-availability remain pending until Task 9. Current API and operations guidance lives in the
+**Status:** R1 shipped in KhaozEngine 18.31.0. The in-memory, SQLite, SQL Server, recovery, process-kill,
+scaling, benchmark, packaging, and release gates passed. Current API and operations guidance lives in the
 [`KhaozEngine.WorldStore` package README](../../KhaozEngine.WorldStore/README.md) and
 [`USING-KHAOZENGINE.md`](../USING-KHAOZENGINE.md). This document keeps the rationale. Engine program
 [#835](https://github.com/APKiwiOrg/KhaozEngine/issues/835), first consumer
@@ -875,7 +874,7 @@ the affected stream and refuses login. It is not skipped to keep the player movi
 
 ## 17. Rollout
 
-### R1. Engine contract and backends (implementation complete, release pending)
+### R1. Engine contract and backends (shipped in 18.31.0)
 
 - core records, canonical fingerprinting, validation, and in-memory model
 - shared conformance and fault-injection suite
@@ -884,7 +883,7 @@ the affected stream and refuses login. It is not skipped to keep the player movi
 - bounded executor and metrics
 - snapshot, replay, projection reads, and safe compaction
 - package READMEs and consumer documentation
-- pending Task 9: versioning, changelog, local-feed pack, tagged engine release, and consumer availability
+- versioning, changelog, local-feed pack, and tagged engine release
 
 ### R2. Grimhollow migration and proof
 

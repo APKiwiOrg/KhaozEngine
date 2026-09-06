@@ -4,6 +4,10 @@
 texture for solid panels, bars, primitives, and tintable sprites. `VfxTextures.White` remains as a compatibility
 forward for existing effects code.
 
+`SpriteBatch.Flush()` submits queued work inside an active `Begin`/`End` pass and leaves the batch open. Use it
+to close a local `GroupByTexture` region before restoring strict painter order for later draws. Empty and repeated
+flushes are safe. Calling it before `Begin` or after `End` throws `InvalidOperationException`.
+
 2D rendering on the custom MonoGame-free foundation (engine-owned `KhaozEngine.Gpu` abstraction, `System.Numerics`).
 
 - `SpriteBatch` - batched textured quads, alpha blend + tint, submission-ordered runs (consecutive same

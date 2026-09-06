@@ -623,7 +623,9 @@ product to compute.
   setter clamps to `[0, MovementState.MaxSpeedScale]` (8) and quantizes BEFORE the sim sees the value, so the
   server never runs a speed it cannot describe to its clients (a requested 1.1x becomes 1.125x on both ends).
 - **Server-authored only.** It is deliberately NOT on `MoveCommand`, which is what the client sends: a hostile
-  client would set its own multiplier. `SetSpeedScale` is the only author.
+  client would set its own multiplier. `SetSpeedScale` is the only author. The sharded head retains the quantized
+  desired value by stable player net id and retries it after handoffs, so an ownership gap cannot drop the setter.
+  It removes that retained value on leave before the connection slot can be reused by another player.
 - **The anti-cheat knows about it** (since 14.27.0 by reading the velocity the step reports, rather than any
   per-term reconstruction: `MoveState.CommandedVelocity`, which was the scalar `CommandedSpeed` field until
   16.0.0). `MovementAnomaly.CorrectionDistance` folds the scale into its intended-target

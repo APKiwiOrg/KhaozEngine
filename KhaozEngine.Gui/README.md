@@ -375,8 +375,9 @@ chat.Draw(batch, white);
     only, so a dense tree fits more text per row without changing `RowHeight`, `Indent` or any hit-testing.
   - `PropertyGrid` - a vertical stack of `PropertyRow`s split label/editor at `LabelFraction`, scrolling like
     `ScrollablePanel` (wheel + scissor clip). Built-in rows: `FloatRow` (a `NumberField`), `BoolRow` (a
-    `Toggle`), `TextRow` (a `TextInput`), `ChoiceRow` (a `Dropdown` over a fixed set of option strings, get/set
-    delegates over the selected option like `TextRow`), `ReadOnlyRow` (a polled display string, no input).
+    `Toggle`), `TextRow` (a `TextInput`), `ChoiceRow` (a `Dropdown` over either raw strings or localized
+    `ChoiceOption` display content with a separate stable string value), `ReadOnlyRow` (a polled display string,
+    no input).
     Each row polls its getter every `Update` unless the user is mid-edit/scrub/focus on that row's child widget
     (a `ChoiceRow` polls only while its list is closed, so an in-progress pick is never stomped), so external
     changes (undo, another editor) stay in sync without a change-event bus. A `ChoiceRow`'s setter fires only on
@@ -599,6 +600,11 @@ var grid = new PropertyGrid(inspectorRect);
 grid.Rows.Add(new FloatRow(Strings.PosX, () => obj.Position.X, v => obj.Position = obj.Position with { X = v },
     dragScale: 0.1f));
 grid.Rows.Add(new BoolRow(Strings.Visible, () => obj.Visible, v => obj.Visible = v));
+grid.Rows.Add(new ChoiceRow(Strings.Difficulty, new[]
+{
+    new ChoiceOption(Strings.DifficultyEasy, "easy"),
+    new ChoiceOption(Strings.DifficultyHard, "hard"),
+}, () => obj.Difficulty, v => obj.Difficulty = v));
 grid.Rows.Add(new ReadOnlyRow(Strings.ObjectId, () => obj.Id.ToString()));
 grid.Update(input, dt);   // polls getters, runs the focused row's child widget, writes back on a real change
 grid.Draw(batch, white, font);

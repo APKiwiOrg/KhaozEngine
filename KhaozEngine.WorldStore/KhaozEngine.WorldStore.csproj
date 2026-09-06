@@ -9,5 +9,8 @@
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Server.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.WorldStore.Sqlite" />
+    <InternalsVisibleTo Include="KhaozEngine.WorldStore.SqlServer" />
   </ItemGroup>
 </Project>

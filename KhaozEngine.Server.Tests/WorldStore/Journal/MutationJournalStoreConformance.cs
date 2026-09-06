@@ -201,6 +201,24 @@ public abstract class MutationJournalStoreConformance
     }
 
     [Fact]
+    public async Task Event_page_continuation_stays_bound_to_first_page_head()
+    {
+        MutationJournalStoreHarness harness = CreateStore();
+        await harness.Store.InitializeAsync(Initialization(Operation(1), "player/a"));
+        await harness.Store.CommitAsync(Commit(Operation(2), Mutation("player/a", 0, Event(1), Event(2))));
+        JournalEventPage first = await harness.Store.ReadEventsAsync(new JournalEventRead("player/a", 0, null, 1, 1024));
+
+        await harness.Store.CommitAsync(Commit(Operation(3), Mutation("player/a", 2, Event(3))));
+        JournalEventPage second = await harness.Store.ReadEventsAsync(new JournalEventRead("player/a", 1, first.ThroughVersion, 10, 1024));
+
+        Assert.Equal(2, first.ThroughVersion);
+        JournalStoredEvent continuation = Assert.Single(second.Events);
+        Assert.Equal(2, continuation.StreamVersion);
+        Assert.Equal(Bytes(2), continuation.Payload.ToArray());
+        Assert.True(second.ReachedThroughVersion);
+    }
+
+    [Fact]
     public async Task Projection_cursors_bind_epoch_stream_and_section_versions()
     {
         MutationJournalStoreHarness harness = CreateStore();
@@ -239,6 +257,47 @@ public abstract class MutationJournalStoreConformance
     }
 
     [Fact]
+    public async Task Malformed_projection_cursor_requests_full_reset_and_replacement()
+    {
+        MutationJournalStoreHarness harness = CreateStore();
+        await harness.Store.InitializeAsync(Initialization(
+            Operation(1),
+            "player/a",
+            projections: new[] { Projection("player/a", "bag", 1), Projection("player/a", "skills", 2) }));
+
+        JournalProjectionRead reset = await harness.Store.ReadProjectionsAsync(new JournalProjectionQuery("player/a", "not-base64"));
+
+        Assert.Equal(JournalProjectionReadStatus.ResetRequired, reset.Status);
+        Assert.Equal(new[] { "bag", "skills" }, reset.Sections.Select(value => value.SectionName));
+        (Guid epoch, string streamKey, long headVersion) = JournalProjectionCursor.DecodeForTest(reset.Cursor!);
+        Assert.NotEqual(Guid.Empty, epoch);
+        Assert.Equal("player/a", streamKey);
+        Assert.Equal(0, headVersion);
+    }
+
+    [Fact]
+    public async Task Future_projection_cursor_requests_full_reset_and_replacement()
+    {
+        MutationJournalStoreHarness harness = CreateStore();
+        await harness.Store.InitializeAsync(Initialization(
+            Operation(1),
+            "player/a",
+            projections: new[] { Projection("player/a", "bag", 1), Projection("player/a", "skills", 2) }));
+        JournalProjectionRead baseline = await harness.Store.ReadProjectionsAsync(new JournalProjectionQuery("player/a"));
+        Guid epoch = JournalProjectionCursor.DecodeForTest(baseline.Cursor!).Epoch;
+        string futureCursor = JournalProjectionCursor.Encode(epoch, "player/a", 1);
+
+        JournalProjectionRead reset = await harness.Store.ReadProjectionsAsync(new JournalProjectionQuery("player/a", futureCursor));
+
+        Assert.Equal(JournalProjectionReadStatus.ResetRequired, reset.Status);
+        Assert.Equal(new[] { "bag", "skills" }, reset.Sections.Select(value => value.SectionName));
+        (Guid replacementEpoch, string streamKey, long headVersion) = JournalProjectionCursor.DecodeForTest(reset.Cursor!);
+        Assert.Equal(epoch, replacementEpoch);
+        Assert.Equal("player/a", streamKey);
+        Assert.Equal(0, headVersion);
+    }
+
+    [Fact]
     public async Task Compaction_preserves_recoverable_snapshot_and_retained_tail()
     {
         MutationJournalStoreHarness harness = CreateStore();
@@ -254,6 +313,24 @@ public abstract class MutationJournalStoreConformance
         Assert.Equal(2, snapshot.ThroughVersion);
         Assert.Equal(Bytes(22), snapshot.Data.ToArray());
         Assert.Equal(new long[] { 2, 3 }, tail.Events.Select(value => value.StreamVersion));
+    }
+
+    [Fact]
+    public async Task Snapshot_only_compaction_replaces_snapshot_without_pruning_events()
+    {
+        MutationJournalStoreHarness harness = CreateStore();
+        await harness.Store.InitializeAsync(Initialization(Operation(1), "player/a", snapshot: Bytes(10)));
+        await harness.Store.CommitAsync(Commit(Operation(2), Mutation("player/a", 0, Event(1), Event(2), Event(3))));
+
+        JournalCompactionResult result = await harness.Store.CompactAsync(new JournalCompaction("player/a", 2, "player.v2", 2, Bytes(22), null));
+        JournalSnapshot snapshot = (await harness.Store.LoadSnapshotAsync("player/a"))!;
+        JournalEventPage tail = await harness.Store.ReadEventsAsync(new JournalEventRead("player/a", 0, null, 10, 1024));
+
+        Assert.Equal(JournalCompactionStatus.Compacted, result.Status);
+        Assert.Equal(0, result.PrunedEventCount);
+        Assert.Equal(2, snapshot.ThroughVersion);
+        Assert.Equal(Bytes(22), snapshot.Data.ToArray());
+        Assert.Equal(new long[] { 1, 2, 3 }, tail.Events.Select(value => value.StreamVersion));
     }
 
     [Fact]

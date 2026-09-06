@@ -1,4 +1,4 @@
-using KhaozEngine.Windowing;
+using System;
 using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Gui
@@ -22,6 +22,24 @@ namespace KhaozEngine.Gui
     /// </summary>
     public static class Layout
     {
+        /// <summary>
+        /// Places a child at a fractional anchor within <paramref name="parent"/>. Fractions must
+        /// lie in [0, 1], with 0 at the near edge, 0.5 at the center and 1 at the far edge. The same
+        /// fraction of the child aligns with that point, keeping a fitting child inside its parent.
+        /// Offsets are added afterwards. Use zero child size to resolve a point, and
+        /// <see cref="SafeAreaInsets.Apply"/> on viewport bounds to respect obscured edges.
+        /// </summary>
+        public static Rect ResolveFractional(Rect parent, float fractionX, float fractionY,
+            float width, float height, float offsetX = 0f, float offsetY = 0f)
+        {
+            if (!float.IsFinite(fractionX) || fractionX < 0 || fractionX > 1)
+                throw new ArgumentOutOfRangeException(nameof(fractionX));
+            if (!float.IsFinite(fractionY) || fractionY < 0 || fractionY > 1)
+                throw new ArgumentOutOfRangeException(nameof(fractionY));
+            return new Rect(parent.X + (parent.Width - width) * fractionX + offsetX,
+                parent.Y + (parent.Height - height) * fractionY + offsetY, width, height);
+        }
+
         /// <summary>Resolve a child rect of <paramref name="width"/> x <paramref name="height"/> anchored within <paramref name="parent"/>.</summary>
         public static Rect Resolve(Rect parent, Anchor anchor, float width, float height,
             float marginX = 0f, float marginY = 0f)

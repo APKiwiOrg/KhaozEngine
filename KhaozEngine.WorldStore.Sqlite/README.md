@@ -30,9 +30,17 @@ existing supported schema. Validate-only verifies WAL without changing the journ
 configurable busy timeout are enabled for the held connection.
 
 ```csharp
+using KhaozEngine.WorldStore.Journal;
 using KhaozEngine.WorldStore.Sqlite;
 
-using var journal = new SqliteMutationJournalStore("Data Source=journal.db");
+using var journal = new SqliteMutationJournalStore(
+    new SqliteMutationJournalStoreOptions("Data Source=journal.db")
+    {
+        SchemaMode = SqliteJournalSchemaMode.AutoCreate,
+        BusyTimeout = TimeSpan.FromSeconds(5),
+        MinimumRetryHorizon = TimeSpan.FromHours(24),
+        Limits = JournalLimits.Maximum,
+    });
 ```
 
 The default `AutoCreate` schema mode creates a fresh version-one journal for development and new deployments.
@@ -41,6 +49,24 @@ Production hosts can select `SqliteJournalSchemaMode.ValidateOnly` through
 unsupported schemas fail startup with `SchemaMismatch` and name the required migration. Version-one validation
 checks the complete table and index definitions before normal store mutation. Operation retention is independent
 from event retention, so purging replay receipts leaves committed events in place.
+
+`BusyTimeout` controls how long the held connection waits on a locked database. `MinimumRetryHorizon` prevents
+maintenance from deleting replay rows which may still be retried. `Limits` can lower any core journal maximum.
+`TimeProvider` exists for deterministic hosts and tests. Dispose the journal to clear the provider pool and release
+the database file.
+
+The process identity needs read, write, create, lock, and rename access to the database, WAL, and shared-memory
+files. In `ValidateOnly`, deploy the version-one schema with a controlled migration process before boot and keep the
+runtime directory writable for SQLite transactions. A missing, partial, older, or newer schema stops startup with
+`JournalStoreException` kind `SchemaMismatch`.
+
+Keep every journal table in the same backup and restore unit. After restoring an older database, stop all journal
+writers, call `IMutationJournalMaintenance.RotateStoreEpochAsync`, verify snapshot checksums and stream continuity,
+then reopen traffic. Old projection cursors will return `ResetRequired`.
+
+Use snapshot-only compaction in the first release. Pass no prune boundary. Event pruning needs a game retention
+policy and proof that every durable external consumer has passed the boundary. Run replay-row purge in bounded
+batches and never shorten `MinimumRetryHorizon` below the longest client or server-cause retry window.
 
 `SqliteWorldStore` implements **`IEnumerableWorldStore`** (since 8.4.2): `EnumerateAsync(keyPrefix?)` streams
 `WorldStoreEntry { Key, UpdatedAt, Size? }` records via a streaming SQLite cursor, optionally filtered by key

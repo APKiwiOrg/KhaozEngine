@@ -37,7 +37,7 @@ surface is "ship a patchable, pinned copy and update it", not "audit their inter
 
 ## Threat model: where untrusted bytes enter a game
 
-Five categories of untrusted input cross into a game. Everything else (the game's own embedded assets,
+Six categories of untrusted input cross into a game. Everything else (the game's own embedded assets,
 its own code) is trusted by construction.
 
 ### 1. Hostile network input (multiplayer)
@@ -139,7 +139,38 @@ whatever the consumer's server already uses), the same way `KhaozEngine.Commerce
 consumer-supplied. `KhaozEngine.Identity` mints and verifies the token; it never generates or stores the
 secret itself.
 
-### 5. The update channel (highest impact)
+### 5. Durable player mutations and admin projections
+
+Packages: `KhaozEngine.WorldStore`, `KhaozEngine.WorldStore.Sqlite`, and
+`KhaozEngine.WorldStore.SqlServer`. Client operation IDs and normalized intent are untrusted until the server
+authenticates the account, authorizes the action, derives the permitted stream keys, and validates the game rule.
+The client never supplies an arbitrary stream key. The journal limits keys, counts, and bytes before database I/O.
+
+The server commits ownership and progression before applying them to live state or reporting success. Stable
+operation IDs and exact frozen intent make retries idempotent. An unknown outcome resolves the same identity and
+retries the identical operation only when absent. A new ID after an unknown outcome can duplicate ownership.
+
+Journal projections are opaque game-owned server bytes. They can contain display names, account metadata,
+inventory, bank contents, and quest state. They are not safe browser DTOs. An admin endpoint authenticates and
+authorizes each selected-stream lookup, audits it, parses the section with a bounded versioned game codec, removes
+fields outside the operator's permission, and returns a shaped response. Raw projection bytes never go to an
+untrusted browser.
+
+Poll only the selected account while its detail view is active. There is no all-player detail poll and no
+inventory, bank, skill, or quest snapshot on a simulation tick. Presence is separate transient state and cannot
+overwrite a durable projection.
+
+Protect database connection strings as deployment secrets. Prefer managed identity or a secret manager, grant DDL
+to the migration identity only, and give the runtime identity only the DML and schema-validation access documented
+by its provider. Encrypt database transport and storage. Do not log payloads, result bytes, display names, raw
+account IDs, or connection strings.
+
+Backups include every journal table as one unit. A restore happens with writers stopped, followed by store-epoch
+rotation, snapshot and stream-continuity verification, external-consumer reconciliation, and then traffic. A
+checksum or sequence fault quarantines the affected streams and blocks the session until operator recovery proves a
+clean snapshot plus tail.
+
+### 6. The update channel (highest impact)
 
 Package: `KhaozEngine.Updates`. This is the highest-impact surface in the engine: it downloads files and
 replaces the running game's executables. A spoofed or compromised feed that the client accepts is remote
@@ -181,7 +212,7 @@ The posture is defense in depth: no single control is the whole story.
    (overridable per head). See [USING-KHAOZENGINE.md "Game head build settings"](USING-KHAOZENGINE.md#game-head-build-settings-cetcompat).
 
 4. **Signed, integrity-checked updates.** The update channel's mandatory signing + the apply-time guards
-   (origin lock, path/symlink guards, size caps, downgrade rejection) are what keep category 5 from being
+   (origin lock, path/symlink guards, size caps, downgrade rejection) are what keep category 6 from being
    an open RCE. See [UPDATER.md](UPDATER.md). A
    game must wire this correctly (next section) for the guarantee to hold.
 
@@ -241,6 +272,8 @@ The engine provides primitives and one hardened channel; a game still has to use
 - A server-side identity verification seam (`IIdentityValidator`) + PKCE-protected client sign-in flows
   (`KhaozEngine.Identity.Oidc` / `.Discord`), and a stateless, fixed-time-compared HMAC session token
   (`SessionToken`).
+- A provider-neutral durable mutation journal with stable identity, atomic multi-stream commit, checked replay,
+  bounded admission, snapshot verification, and selected-stream projection cursors.
 
 **Per-game responsibilities (the game author must still do these):**
 
@@ -267,6 +300,9 @@ The engine provides primitives and one hardened channel; a game still has to use
   is not a verified identity; call `IIdentityValidator.ValidateAsync` on the server before treating a
   subject as real. Own the `SessionToken` secret in your own secret store (the engine never generates or
   stores it) and rotate it like any other server secret.
+- **Authorize journal streams and projections.** Derive stream keys from the authenticated session. Keep gameplay
+  validation on the simulation thread. Shape selected-stream projection data through a bounded game codec and an
+  audited admin authorization check. Never expose raw projection bytes or add all-player polling.
 
 ## Reporting a vulnerability
 

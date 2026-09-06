@@ -34,11 +34,16 @@ identity, checksummed event and snapshot payloads, replay receipts, projection c
 retention, and store epoch rotation.
 
 ```csharp
+using KhaozEngine.WorldStore.Journal;
+using KhaozEngine.WorldStore.SqlServer;
+
 var journal = new SqlServerMutationJournalStore(
     new SqlServerMutationJournalStoreOptions(connectionString)
     {
         SchemaMode = SqlServerJournalSchemaMode.ValidateOnly,
+        CommandTimeout = TimeSpan.FromSeconds(30),
         MinimumRetryHorizon = TimeSpan.FromHours(24),
+        Limits = JournalLimits.Maximum,
     });
 ```
 
@@ -50,6 +55,24 @@ names the required migration.
 The package embeds `JournalSchemaV1.sql`. Deployments may apply that script before starting a validate-only
 host. Initialization is serialized with a transaction-owned SQL application lock. Normal writes share a
 maintenance gate, while compaction, replay retention, and epoch rotation take the exclusive side.
+
+Use a migration identity with schema DDL rights to apply `JournalSchemaV1.sql`. A `ValidateOnly` runtime identity
+does not need DDL. It needs database connect, catalog visibility for schema validation, membership in the `public`
+fixed database role used by `sys.sp_getapplock`, and `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on every
+`dbo.journal_*` table. Grant only the game host and controlled operators access to journal data. Prefer a managed
+identity or a secret from the deployment secret store. Do not commit connection strings or print them in logs.
+
+`CommandTimeout` applies to commands and schema locking. `MinimumRetryHorizon` prevents maintenance from deleting
+replay rows which may still be retried. `Limits` can lower any core journal maximum. `TimeProvider` exists for
+deterministic hosts and tests. Each operation uses a short-lived pooled SQL connection.
+
+Back up every journal table as one unit. After a point-in-time restore, stop all journal hosts, rotate the epoch with
+`IMutationJournalMaintenance.RotateStoreEpochAsync`, verify snapshot checksums and stream continuity, reconcile any
+external consumer, then reopen traffic. Every prior projection cursor will return `ResetRequired`.
+
+Use snapshot-only compaction in the first release. Pass no event prune boundary. Pruning needs a game retention
+policy and proof that every durable external consumer has passed the boundary. Purge replay rows in bounded batches
+and keep `MinimumRetryHorizon` at least as long as the maximum retry window for clients and durable server causes.
 
 Live provider tests require `KE_SQLSERVER_TEST_CONNSTRING`. Each test owns a unique stream prefix and cleanup
 removes only rows under that prefix. Because cursor epoch rotation and operation retention are database-global,

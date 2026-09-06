@@ -1,13 +1,16 @@
 # Durable player mutation journal design
 
-**Status:** Approved for implementation. Engine program
+**Status:** Implemented for the R1 engine contract. The in-memory, SQLite, SQL Server, recovery, process-kill,
+scaling, and benchmark gates exist. Current API and operations guidance lives in the
+[`KhaozEngine.WorldStore` package README](../../KhaozEngine.WorldStore/README.md) and
+[`USING-KHAOZENGINE.md`](../USING-KHAOZENGINE.md). This document keeps the rationale. Engine program
 [#835](https://github.com/APKiwiOrg/KhaozEngine/issues/835), first consumer
 [Grimhollow #137](https://github.com/APKiwiOrg/Grimhollow/issues/137), sibling adoption
 [Ruinborne #467](https://github.com/APKiwiOrg/Ruinborne/issues/467).
 
 ## 1. Decision
 
-KhaozEngine will add a durable mutation journal beside `IWorldStore`. It is the authority for
+KhaozEngine adds a durable mutation journal beside `IWorldStore`. It is the authority for
 crash-sensitive MMO state such as item ownership, equipment, banks, currency, experience, quest progress,
 and durable loot claims.
 
@@ -552,7 +555,7 @@ retention policy and proves all durable external consumers have passed N. Projec
 from pruned events during an admin read.
 
 Operation retention uses a separate `IMutationJournalMaintenance.PurgeOperationsAsync` API. A purge accepts a
-database-time cutoff and bounded batch size, refuses anything younger than the configured minimum retry
+UTC cutoff and bounded batch size, refuses anything younger than the configured minimum retry
 horizon, and selects through the committed-time index. Replay retention is independent of event retention
 because events deliberately keep operation IDs without a foreign key. The transaction deletes
 `journal_operation_stream` rows before their operation rows while leaving any retained events untouched. The
@@ -863,7 +866,7 @@ the affected stream and refuses login. It is not skipped to keep the player movi
 
 ## 17. Rollout
 
-### R1. Engine contract and backends
+### R1. Engine contract and backends (implemented)
 
 - core records, canonical fingerprinting, validation, and in-memory model
 - shared conformance and fault-injection suite

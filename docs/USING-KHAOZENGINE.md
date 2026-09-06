@@ -13433,8 +13433,8 @@ pre-migration save, so it should never look like one. `StampCurrent` is what mak
 
 ## Batched async writes (`BatchedWriter<T>`)
 
-`KhaozEngine.Persistence.BatchedWriter<T>` is a bounded async batch-write queue for a server-side
-append-only log: chat transcripts, an economy ledger, admin action logs, and similar record streams
+`KhaozEngine.Persistence.BatchedWriter<T>` is a bounded async batch-write queue for server-side
+telemetry: chat transcripts, operational samples, non-authoritative diagnostics, and similar record streams
 where losing the odd row under load is acceptable but blocking the sim tick on IO is not. Promoted
 from Ruinborne, which had run it in production behind three writers since its 0.9.x line.
 
@@ -14880,7 +14880,7 @@ persistence.Issue += issue => log.Info(issue.ToString());   // migrated / skippe
 
 ### Durable state (`KhaozEngine.WorldStore` + backends)
 
-Persist authoritative character/world records through `IWorldStore` (async, keyed `byte[]`, DB-shaped). Use
+Persist coarse character and world checkpoints through `IWorldStore` (async, keyed `byte[]`, DB-shaped). Use
 `InMemoryWorldStore` for tests/dev; for real durability pick a backend package (each pulls its own ADO.NET
 provider; the dep-free `KhaozEngine.WorldStore` core stays clean). The `KhaozEngine.Server` umbrella carries
 **only** the dep-free core - add the backend `<PackageReference>` you want explicitly, so a
@@ -14948,6 +14948,107 @@ overrides it with a single-transaction multi-row upsert. `SqlServerWorldStore` o
 connection and a chunked multi-row `MERGE`. `WorldPersistence` and `CellPersistence` (below) both call it once per
 periodic dirty pass instead of once per dirty record - that is the whole point of the member, so prefer it over a
 hand-rolled loop of `SaveAsync` calls when you are saving more than one record at a time.
+
+### Durable player mutations (`IMutationJournalStore`)
+
+Use `KhaozEngine.WorldStore.Journal` when an accepted action changes ownership or progression and must survive a
+host loss. `IWorldStore` remains checkpoint persistence. `BatchedWriter<T>` remains a drop-oldest telemetry queue.
+Neither is an ownership authority.
+
+The core package provides the immutable values, `IMutationJournalStore`, `IMutationJournalMaintenance`,
+`InMemoryMutationJournalStore`, and `MutationJournalExecutor`. The SQLite and SQL Server provider packages implement
+the same store and maintenance seams. Their package READMEs cover schema modes and permissions. The complete public
+type and limit reference is in [`KhaozEngine.WorldStore/README.md`](../KhaozEngine.WorldStore/README.md).
+
+The host flow is fixed:
+
+1. Authenticate and validate the command on the simulation thread against committed live state.
+2. Freeze one `JournalOperationIdentity`, ordered event set, changed projections, and result. Keep every byte and the
+   operation ID stable across retries.
+3. Call `MutationJournalExecutor.Submit`. Do not wait for SQL on the simulation thread.
+4. At the start of a later frame, drain a bounded number of terminal completions.
+5. For an applied or replayed receipt, check that every stream range starts at the live committed version. Reduce
+   into isolated copies and swap every affected state together.
+6. Send client success only after that committed result is reflected in live state.
+7. Call `AcknowledgeCompletion` only after the result, no-write conflict, or quarantine was fully handled.
+
+```csharp
+var executor = new MutationJournalExecutor(
+    journal,
+    new JournalExecutorOptions(
+        workerCount: 4,
+        operationCapacity: 2_048,
+        ownedByteCapacity: 64 * 1024 * 1024));
+
+// Simulation thread. The game validates and builds this complete immutable value.
+JournalCommit frozen = GameValidateAndFreeze(command, committedLiveState);
+JournalSubmission submission = executor.Submit(frozen);
+
+// Start of a later frame, under the host's fixed completion budget.
+while (executor.TryDequeueCompletion(out JournalCompletion? completion))
+{
+    if (completion.Failure is not null)
+    {
+        GameBlockAndRecover(completion.StreamKeys, completion.Failure);
+        executor.AcknowledgeCompletion(
+            completion.OperationId,
+            JournalCompletionAcknowledgement.Quarantined);
+        continue;
+    }
+
+    JournalCommitResult result = completion.Result!;
+    if (result.Receipt is JournalCommitReceipt receipt)
+    {
+        GameApplyOnlyContiguousCommittedResult(receipt, completion.Commit);
+        GameReplyToClient(receipt.ResultData);
+    }
+    else
+    {
+        GameHandleNoWriteConflict(result.Status);
+    }
+
+    executor.AcknowledgeCompletion(
+        completion.OperationId,
+        JournalCompletionAcknowledgement.Handled);
+}
+```
+
+`Game...` methods above are consumer code, not engine API. A replay already represented by the current live
+versions returns the original result without reducing the old events again. A receipt gap requires snapshot and
+tail catch-up before gameplay continues. If isolated reduction or the live swap fails, quarantine all streams in
+that operation, reload and verify them as a group, then call `ReleaseQuarantine` with the complete group.
+
+Mutation completion is the durable commit boundary. Live state reflects committed results only. A client
+disconnect after commit cannot lose the mutation. Client success is never sent before commit. Replays are
+idempotent because the same stable operation ID and exact frozen intent resolve to the original receipt and result.
+
+An unknown storage outcome is not failure proof. `MutationJournalExecutor` resolves the same identity and retries
+the identical frozen operation when absent. A direct store caller must do the same. Never generate a new operation
+ID or rebuild timestamps, random rolls, ordering, expected versions, projection bytes, or result bytes after an
+unknown outcome.
+
+Every executor needs explicit positive operation-count and owned-byte capacities. Accepted work remains charged and
+its streams remain reserved until acknowledgement. `StopAsync` rejects new work, gives admitted work a bounded drain
+period, and returns every unresolved or completed-but-unacknowledged operation ID. Do not acknowledge those on the
+host's behalf during shutdown.
+
+The first release allows a multi-stream mutation only when one orchestration host can update or invalidate every
+affected live session. Database atomicity does not update RAM in another process. Cross-host trade needs durable
+committed-event delivery or a forced remote reload before either client receives success.
+
+Recovery loads a checksum-verified snapshot, then reads bounded contiguous event pages to the first page's captured
+`ThroughVersion`. A gap, corrupt payload, invalid result, or unsupported mandatory schema blocks the session and
+quarantines the stream. R1 compaction is snapshot-only. Pass no event prune boundary until the game supplies a
+retention policy and proof that every durable external consumer has passed it.
+
+Projection reads target one stream. Treat the cursor as opaque. `ResetRequired` replaces the cached model with all
+returned sections, and `NotFound` clears it. After a point-in-time restore, quiesce writers, rotate the store epoch,
+verify snapshots and continuity, reconcile external consumers, then reopen traffic.
+
+Projection bytes are opaque game-owned server bytes. An admin endpoint must authorize and audit the selected-stream
+lookup, parse the bytes with bounded versioned codecs, redact fields, and return a shaped DTO. Never send raw
+projection bytes to an untrusted browser. Poll only the selected stream while its detail view is active. There is no
+all-player polling endpoint and no inventory, bank, skill, or quest snapshot on simulation ticks.
 
 ### Persisting players so the world survives a restart (`WorldPersistence`)
 

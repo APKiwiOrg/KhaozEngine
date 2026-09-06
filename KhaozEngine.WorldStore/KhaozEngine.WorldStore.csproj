@@ -2,7 +2,7 @@
   <PropertyGroup>
     <PackageId>KhaozEngine.WorldStore</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
-    <Description>Server-side durable persistence seam for an authoritative world: IWorldStore, an async keyed byte[] store designed for a database backend (not local JSON save files), plus a dependency-free thread-safe InMemoryWorldStore reference/test implementation. Also the fleet's player-persistence core: StatePersistence&lt;TState&gt; runs load-on-join, save-on-leave, the periodic dirty snapshot, the guest policy and quarantine over the IPersistenceHost&lt;TState&gt; host seam, taking a state's encode / decode / position / validation from a PersistenceBinding&lt;TState&gt;, its knobs from PersistenceCoreConfig and its rejoin seed from PositionHintCache. KhaozEngine.NetWorld's WorldPersistence (continuous world) and KhaozEngine.TileWorld.Netcode's TileWorldPersistence (tile lattice) are its two bindings. Durable backends are opt-in sibling packages (KhaozEngine.WorldStore.Sqlite, KhaozEngine.WorldStore.SqlServer), each pulling its own DB driver so this core stays dependency-free. Part of the MMO netcode stack. Zero dependencies.</Description>
+    <Description>Dependency-free server persistence for authoritative worlds. Includes IWorldStore checkpoint storage, StatePersistence lifecycle orchestration, and the durable mutation journal contract with immutable values, checked recovery, selected-stream projections, in-memory reference storage, and a bounded commit executor. SQLite and SQL Server providers remain opt-in sibling packages.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>

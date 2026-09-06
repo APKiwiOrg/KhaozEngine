@@ -72,6 +72,7 @@ this doc cannot silently drift apart.
 | 3D physics | `KhaozEngine.Physics` (`IPhysicsWorld`, value-type shapes/poses/queries, and since the floating-origin release also the default-method `Origin` / `CanRebase` / `Rebase(newOrigin)`, so an existing implementer keeps compiling and correctly reports that it cannot rebase - the seam learns a plain `Vector3`, never a frame type, and keeps its zero project references) | `KhaozEngine.Physics.Bepu` (`BepuPhysicsWorld`, which overrides all three: bulk direct pose writes plus broadphase refits over every allocated body set and the statics, so sleeping bodies, contacts and constraints all survive a shift) | BepuPhysics v2 |
 | Netcode transport | `KhaozEngine.Netcode` (`INetTransport` incl. the default-method `Stats` -> `NetTransportStats`, `LoopbackTransport`). `Send` BORROWS its payload span for the call only, so an implementation that needs the bytes afterwards copies them, which is what lets `NetServer.Broadcast` frame once and hand the same span to every peer. `Disconnect(id, reason)` is implemented by both in-tree transports rather than left to its reason-dropping default | `KhaozEngine.Netcode.LiteNetLib` (fills `Stats` via `EnableStatistics`, passes the span to `NetPeer.Send`, which copies) | LiteNetLib |
 | Persistence | `KhaozEngine.WorldStore` (`IWorldStore`, `InMemoryWorldStore`) | `WorldStore.Sqlite`, `WorldStore.SqlServer`. The SQLite one also references `KhaozEngine.Sqlite` for `SqliteStoreConnection`, the shared open/gate/pool-clearing-dispose lifecycle every SQLite store in the engine sits on | Microsoft.Data.Sqlite / SqlClient |
+| Durable mutation journal | `KhaozEngine.WorldStore.Journal` (`IMutationJournalStore`, `IMutationJournalMaintenance`, immutable values, canonical fingerprints, checked recovery, `InMemoryMutationJournalStore`, and bounded `MutationJournalExecutor`) | `WorldStore.Sqlite.SqliteMutationJournalStore`, `WorldStore.SqlServer.SqlServerMutationJournalStore`. Games own event meanings, reducers, live-state application, projection codecs, and admin authorization | Microsoft.Data.Sqlite / SqlClient only in the provider packages |
 | Connect-time gate | `KhaozEngine.Netcode` (`IConnectionAuthenticator` + `IConnectionDisplayName`, `AllowAllAuthenticator`, the layer codec `HandshakeToken` - `Wrap` / `TryUnwrap` plus the structured reject tokens `ke:banned`, `ke:incompatible-version:` and `ke:world-mismatch:` - and `ConnectionGate.Wrap` / `BuildToken`, which compose the three decorators `VersionGateAuthenticator`, `WorldIdentityGateAuthenticator` and `BanGateAuthenticator` around the head's own token gate, and build the matching client token) | the game's own `IConnectionAuthenticator` is the innermost layer and the only thing that knows what a token MEANS. Promoted out of a game into the engine in 17.40.0, which is why `KhaozEngine.NetWorld.ProtocolHandshake` and `VersionCheckingAuthenticator` are FORWARDERS now (`WrapToken` / `TryUnwrapToken` / `IncompatibleReason` onto `HandshakeToken`, the authenticator onto `VersionGateAuthenticator`): they keep their `NetWorld` names and their wire bytes, so no consumer moves, and `KhaozEngine.TileWorld.Netcode` reaches the same codec without referencing `NetWorld` | (no extra dep) |
 | Commerce wallet | `KhaozEngine.Commerce` (`IWalletStore`, `IGrantScheduleStore`, `IEntitlementValidator`, `InMemoryWalletStore`) | `Commerce.Sqlite` (`SqliteWalletStore`, on `KhaozEngine.Sqlite`'s `SqliteStoreConnection` like every other SQLite store), `Commerce.SqlServer` (`SqlServerWalletStore`) | Microsoft.Data.Sqlite / SqlClient |
 | Persistence enumeration | `KhaozEngine.WorldStore` (`IEnumerableWorldStore`, `WorldStoreEntry`) | `InMemoryWorldStore`, `SqliteWorldStore`, `SqlServerWorldStore` (all three implement it). Two engine boot paths feature-detect it and no-op without it: `CellPersistence.PreloadAsync` for cells, `StatePersistence<TState>.PrewarmHintsAsync` for the player resume hints | (no extra dep, streaming `EnumerateAsync(keyPrefix?)`) |
@@ -110,6 +111,21 @@ Sharding, while the persist-then-evict orchestration that decides a cell's bytes
 (`CellEvictor`). The inter-cell link seam grew two default-implemented members for it, `ICellLink.HasPending`
 (eviction gate, defaults to `true` so a link that cannot answer blocks a lossy unload) and `ICellLink.Forget`
 (defaults to a no-op), so an existing implementation is unaffected.
+
+## Durable mutation journal edge
+
+`KhaozEngine.WorldStore` owns the provider-neutral journal contract, canonical fingerprints, immutable buffers,
+recovery values, in-memory model, and bounded executor. It keeps no ADO.NET reference. The SQLite and SQL Server
+packages own schema lifecycle, transactions, locking, and provider error mapping behind the same interfaces.
+
+The game stays above the seam. It authenticates the command, validates gameplay, chooses stream keys, encodes
+events and projections, reduces committed events, authorizes admin reads, and shapes browser DTOs. No provider gets
+a callback into game SQL. No game reducer runs on a journal worker.
+
+`IWorldStore` is still checkpoint persistence and `BatchedWriter<T>` is still droppable telemetry. The journal is
+the only one of these three contracts which can own commit-before-apply player mutations. The first release permits
+multiple streams only when one orchestration host can update or invalidate every affected live session. Cross-host
+trade needs durable delivery or a forced reload before either client receives success.
 
 ## Admin endpoint package edge
 

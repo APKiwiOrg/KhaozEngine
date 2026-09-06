@@ -16,7 +16,9 @@ Pulls in:
   so the server is wire-ready out of the box, not loopback-only.
 - `KhaozEngine.Simulation` - `FixedTickHost`, the deterministic fixed-timestep accumulator.
 - `KhaozEngine.Replication` - authoritative ECS replication (snapshots, deltas, interest).
-- `KhaozEngine.WorldStore` - ONLY the durable-state seam: `IWorldStore` + `InMemoryWorldStore`.
+- `KhaozEngine.WorldStore` - dependency-free checkpoint and durable-mutation seams. It includes `IWorldStore`,
+  `IMutationJournalStore`, both in-memory reference stores, immutable journal values, checked recovery, and the
+  bounded `MutationJournalExecutor`.
 - `KhaozEngine.Sharding` - the cell-grid world topology (`ShardHost`, ghosting, handoff).
 - `KhaozEngine.NetWorld` - the authoritative movement server + client glue + `WorldPersistence`.
 - `KhaozEngine.TileWorld.Netcode` - the tile movement stack (`TileWorldServer` / `TileWorldClient`,
@@ -32,15 +34,20 @@ Pulls in:
 
 Deliberately NOT included (add these explicitly if you need them):
 
-- `KhaozEngine.WorldStore.Sqlite` / `KhaozEngine.WorldStore.SqlServer` - the durable
-  `IWorldStore` backends. Bundling them dragged Microsoft.Data.Sqlite and
-  Microsoft.Data.SqlClient into every consumer, even ones using one backend or none.
+- `KhaozEngine.WorldStore.Sqlite` / `KhaozEngine.WorldStore.SqlServer` - the durable `IWorldStore` and
+  `IMutationJournalStore` backends. Bundling them would drag Microsoft.Data.Sqlite and Microsoft.Data.SqlClient
+  into every consumer, including hosts which use one backend or none.
 - `KhaozEngine.Server.Admin` - the HTTPS admin endpoint, the only package that references
   ASP.NET Core.
 - `KhaozEngine.Physics.Bepu` - the BepuPhysics backend behind the `IPhysicsWorld` seam.
 
 A contracts-only project that just needs the wire types should reference
 `KhaozEngine.Netcode.Abstractions` directly instead of this umbrella.
+
+For ownership-changing gameplay, the journal completion is the durable commit boundary. The server applies a
+committed result on its simulation thread before replying to the client. `IWorldStore` remains checkpoint storage.
+`BatchedWriter<T>` remains droppable telemetry. Neither is an ownership authority. The complete API and host
+lifecycle are in the [`KhaozEngine.WorldStore` package README](https://github.com/APKiwiOrg/KhaozEngine/blob/main/KhaozEngine.WorldStore/README.md).
 
 **NativeAOT.** The umbrella publishes clean under `PublishAot`, gated by the dev-only
 `KhaozEngine.Server.AotProbe` project (not part of this umbrella, not packed). It covers the per-tick surface

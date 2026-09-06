@@ -308,6 +308,17 @@ catalog archetype up front, so a region load is placements alone.
   generation, and every edit that can move a water tile or a corner height is exactly an edit that remeshes. Turn
   `DrawWater` off and call `DrawWaterPlanes()` yourself to put the surfaces at another point in your frame.
 
+- **Authored foliage is cached per resident region.** `TileFoliageSurface` bilinearly samples a layer's
+  world-metre density raster. Height and normal come from the same `TileTriangulation` triangle and interpolated
+  lattice values as the rendered ground, then the surface rejects absent regions, disallowed visible materials,
+  water, configured interiors and upper roofs, same-plane solid footprints and same-plane tagged door clearances.
+  Shaped overlays use `TileTriangulation`, so only the painted part changes the visible material. Non-solid
+  decorative objects remain eligible. `LoadRegion` builds `GroundCoverInstance` values once, dirty flushes
+  rebuild affected caches and `UnloadRegion` drops them. `GeneratedCoverCount` and `LastDrawnCover` expose the
+  cached and submitted counts. Live `TileWorldViewOptions.GroundCover` settings control distance, quality,
+  distant thinning and shadow policy without regenerating positions. A world with no foliage performs no
+  distribution work.
+
 - `LoadRegion` / `UnloadRegion` build and free every plane of one region. Loading a region that is already loaded
   rebuilds it, so it doubles as a whole-region refresh. `LoadedRegions` is a snapshot, safe to walk while loading
   or unloading, and `LoadedRegionCount` is the count.
@@ -315,6 +326,7 @@ catalog archetype up front, so a region load is placements alone.
   grows the rect by `DirtyRegionMargin` (2 tiles) before turning it into region marks, because a corner height is
   shared by four tiles, a lattice normal is a central difference reading one corner further, and a corner colour
   averages the tiles meeting there, so an edit one tile inside a border genuinely changes the NEIGHBOUR's mesh.
+  Active same-plane door clearances extend the ground-cover reach beyond that fixed mesh margin when needed.
   Marks coalesce, so a stroke that touches the same tiles a hundred times remeshes each region-plane once.
 - `Flush()` rebuilds queued region-planes oldest first, up to `MaxRebuildsPerFlush` (default 16) of them, and
   `PendingRebuilds` counts what the budget deferred to the next call. `Flush(int)` overrides the budget for one
@@ -383,8 +395,9 @@ struct is all zeroes and the constructor refuses it.
   of what is missing, nearest first with a deterministic tie-break.
 - `PrimeAround(observer)` fills the whole ring IGNORING the budget and finishes with an unbudgeted flush, so a
   teleport settles in one call instead of drawing cracked borders for several frames.
-- **Streaming a region dirties its eight neighbours** on every plane, in both directions, because a region meshed
-  while its neighbour was absent carries a border built from edge-extended data and would keep it forever.
+- **Streaming a region dirties its dependants** in both directions. Ground meshes rebuild across their fixed
+  border reach. Ground-cover caches also rebuild where a streamed solid footprint, upper roof or tagged door can
+  change eligibility, including regions reached by the door clearance.
 - A DIRTY region is never dropped: unloading one with unsaved edits would throw, so it stays resident past the
   ring and says so once through `Log`. Regions the manifest does not list are skipped and do not spend the budget.
 - A torn region file throws `TileWorldException` straight out of `Update`. A world whose files no longer match

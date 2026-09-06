@@ -152,6 +152,12 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   rides each part's material state (set at load via `LoadPropMeshes`), so a MASK leaf-card kit scatters and
   draws through this path with its silhouette carved, exactly like an opaque prop (see the Render3D README's
   "Alpha cutout" bullet).
+- **`GroundCoverRenderer`** - queues precomputed `GroundCoverInstance` transforms through `SceneInstances`,
+  with a `Scene3D.DrawGroundCover` convenience overload. `GroundCoverRenderOptions` carries draw radius, fade
+  band, quality density, distant density and shadow policy. Quality and distance compare against each
+  instance's stable thinning rank, so lower settings select nested subsets. Distance dissolve starts before
+  the final cull and uses no emissive edge. Multi-part meshes share one transform, shadows default off, and the
+  warmed queue path allocates nothing per frame. Rank and distance rejection run before model lookup.
 - **`PropHlod`** - author-agnostic HLOD (hierarchical LOD) merge+weld for a chunk cluster's props.
   `PropHlod.Merge(placements, sourceMeshes)` transforms each placement's flat source mesh to world space and
   concatenates into one `GltfMesh` (per-kit opt-in, an id with no source mesh contributes nothing).

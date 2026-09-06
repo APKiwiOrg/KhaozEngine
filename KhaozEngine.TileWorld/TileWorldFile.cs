@@ -15,7 +15,7 @@ namespace KhaozEngine.TileWorld;
 /// loaded as a subtly different world. That is DETECTION, not rollback: region bytes are overwritten in
 /// place, so a save interrupted part way through leaves the regions it already replaced replaced, and the
 /// next load names the first file whose bytes disagree with the manifest.</summary>
-public static class TileWorldFile
+public static partial class TileWorldFile
 {
     /// <summary>Format version this engine writes, and the version every load is migrated up to.</summary>
     public const int CurrentFormatVersion = 1;
@@ -47,6 +47,7 @@ public static class TileWorldFile
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+        doc.ValidateFoliageLayers();
         // Everything a load will refuse is checked BEFORE the first byte is written: the region's plane count,
         // and every object's and marker's anchor and plane. A document whose PlaneCount was changed after its
         // regions were built, or one whose object was moved out of its own region by a bare X assignment,
@@ -113,6 +114,7 @@ public static class TileWorldFile
             Regions = hashes.OrderBy(k => k.Key.Rz).ThenBy(k => k.Key.Rx)
                 .Select(k => new TileWorldManifestRegion { Rx = k.Key.Rx, Rz = k.Key.Rz, Hash = k.Value }).ToList(),
             Markers = BuildMarkerIndex(doc, before, hashes),
+            FoliageLayers = doc.FoliageLayers.Count == 0 ? null : doc.FoliageLayers.Select(FoliageToDto).ToList(),
         };
         WriteAtomic(ManifestPath(directory), JsonSerializer.SerializeToUtf8Bytes(manifest, TileWorldJson.Manifest));
         // Dirty clears only now, once the manifest naming these exact bytes is on disk. Clearing it as each
@@ -163,6 +165,7 @@ public static class TileWorldFile
         if (m.PlaneCount < 1) throw new TileWorldException($"{path}: planeCount must be at least 1");
         if (!(m.TileSize > 0f)) throw new TileWorldException($"{path}: tileSize must be positive");
         if (string.IsNullOrWhiteSpace(m.Id)) throw new TileWorldException($"{path}: id is required");
+        ValidateFoliageDtos(m.FoliageLayers, m.PlaneCount, path);
         return m;
     }
 

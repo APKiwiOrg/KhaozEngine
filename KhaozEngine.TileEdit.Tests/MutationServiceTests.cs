@@ -345,6 +345,65 @@ public class MutationServiceTests
         Assert.Equal(4, f.Query.ObjectGet(id).X);
     }
 
+    [Fact]
+    public void FoliageVerbs_SetDensityPaintRemoveAndUndoAsSingleSteps()
+    {
+        using var f = new Fixture();
+        var spec = new FoliageLayerInfo("meadow", 0, -1f, -2f, 1f, 3, 2,
+            new byte[] { 0, 0, 0, 0, 0, 0 }, 17, 0.3f, 0.8f, 1.2f, -0.04f,
+            new[] { new FoliageArchetypeInfo("tree", 1f) }, new[] { 1 }, true, true, 1.5f, 0.5f);
+
+        MutationResult configured = f.Mutate.FoliageLayerSet(spec);
+        Assert.Equal("Set foliage layer", configured.Label);
+        Assert.Equal(2, configured.UndoDepth);
+        FoliageLayerInfo configuredLayer = f.Query.FoliageGet("meadow");
+        Assert.Equal(spec.Id, configuredLayer.Id);
+        Assert.Equal(spec.Density, configuredLayer.Density);
+        Assert.Equal(spec.Archetypes, configuredLayer.Archetypes);
+        Assert.Equal(spec.AllowedUnderlays, configuredLayer.AllowedUnderlays);
+
+        MutationResult density = f.Mutate.FoliageDensitySet("meadow", 3, 2, new[]
+        {
+            new[] { 1, 2, 3 },
+            new[] { 4, 5, 6 },
+        });
+        Assert.Equal(new byte[] { 1, 2, 3, 4, 5, 6 }, f.Query.FoliageGet("meadow").Density);
+
+        MutationResult painted = f.Mutate.FoliagePaint("meadow", 0f, -1f, 1.1f, 255, 1f);
+        Assert.Equal("Set foliage layer", painted.Label);
+        Assert.Equal((byte)255, f.Query.FoliageGet("meadow").Density[4]);
+
+        MutationResult removed = f.Mutate.FoliageRemove("meadow");
+        Assert.Equal("Remove foliage layer", removed.Label);
+        Assert.Null(f.Session.Read(e => e.Document.GetFoliageLayer("meadow")));
+
+        Assert.Equal(1, f.Mutate.Undo().Steps);
+        Assert.NotNull(f.Query.FoliageGet("meadow"));
+        Assert.Equal(1, f.Mutate.Undo().Steps);
+        Assert.Equal((byte)5, f.Query.FoliageGet("meadow").Density[4]);
+        Assert.Equal(1, f.Mutate.Redo().Steps);
+        Assert.Equal((byte)255, f.Query.FoliageGet("meadow").Density[4]);
+    }
+
+    [Fact]
+    public void RejectedFoliageRequestsChangeNeitherDocumentNorHistory()
+    {
+        using var f = new Fixture();
+        int depth = f.Session.Summary().UndoDepth;
+        string hash = f.Session.Summary().WorldHash;
+        var missingArchetype = new FoliageLayerInfo("bad", 0, 0f, 0f, 1f, 1, 1,
+            new byte[] { 255 }, 1, 0.3f, 1f, 1f, 0f,
+            new[] { new FoliageArchetypeInfo("not-in-catalog", 1f) }, new[] { 1 }, true, true, 0f, 0f);
+
+        Assert.Throws<TileWorldException>(() => f.Mutate.FoliageLayerSet(missingArchetype));
+        Assert.Throws<TileWorldException>(() => f.Mutate.FoliageDensitySet("missing", 1, 1,
+            new[] { new[] { 1 } }));
+        Assert.Throws<TileWorldException>(() => f.Mutate.FoliagePaint("missing", 0f, 0f, 1f, 2, 0.5f));
+
+        Assert.Equal(depth, f.Session.Summary().UndoDepth);
+        Assert.Equal(hash, f.Session.Summary().WorldHash);
+    }
+
     // The north-west corner of the 3 by 3 test lattice, which is row 0 (highest z) column 0 (lowest x).
     static short NorthWest(Fixture f) => f.Query.HeightGetRect(new TileRect(0, 0, 3, 3), 0).Rows[0][0];
 

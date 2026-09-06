@@ -54,6 +54,14 @@ up regardless of load order. Plain `float` math throughout.
 - **`PropScatter`** (+ `PropPlacement`) - deterministic coordinate-hash prop placement, and
   **`PropColliders`** / **`PropSurfaces`** turn those placements into `Collision` collider/surface
   sets that line up exactly with the rendered props (tiled build equals whole-area build).
+- **`GroundCoverDistribution`** - bounded deterministic placement over any world-space `RectArea` through a
+  caller-supplied `Func<float, float, GroundCoverSample>`. `GroundCoverSettings` carries seed, spacing, scale,
+  root offset and weighted `GroundCoverModel` ids. Each `GroundCoverInstance` contains its model id, sampled
+  position, surface-aligned transform with positive handedness and stable thinning rank. Coordinate hash channels
+  keep jitter, model, scale, yaw and rank independent, and partitioned queries produce the same instances as one
+  whole query.
+  Density zero produces no placement. The candidate budget rejects an accidental unbounded request before it
+  samples the surface. The callback keeps this package independent of analytic terrain and tile worlds.
 - **`TerrainStreamer`** + **`StreamerConfig`** - keeps the world loaded in a ring around a viewpoint:
   hysteresis unload band (`UnloadRadius` greater than the outer load radius stops boundary churn), re-LOD
   when a loaded chunk's tier OR residency ring changes, nearest-first ordering. Pure bookkeeping over

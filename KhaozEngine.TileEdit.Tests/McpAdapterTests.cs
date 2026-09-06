@@ -33,7 +33,7 @@ namespace KhaozEngine.Tests.TileEdit;
 [Collection("NativeDeviceLifecycle")]
 public class McpAdapterTests
 {
-    /// <summary>All 43 verb names, spelled exactly as the design's verb table: the world lifecycle plus catalog,
+    /// <summary>All verb names, spelled exactly as the design's verb table: the world lifecycle plus catalog,
     /// region and history verbs, the tile layers, the corner-height lattice and its brushes, the object family
     /// with its two batch placers, markers, prefabs, the derived collision queries, and the two renders. This
     /// array is the contract: a verb renamed or added without a matching edit here fails the set assertion
@@ -55,6 +55,8 @@ public class McpAdapterTests
         "object_find", "objects_line", "objects_scatter", "object_set_tags",
         // Markers
         "marker_set", "marker_remove", "marker_list",
+        // Cosmetic foliage
+        "foliage_layer_set", "foliage_get", "foliage_density_set", "foliage_paint", "foliage_remove",
         // Prefabs
         "prefab_save", "prefab_place", "prefab_list",
         // Derived collision
@@ -141,6 +143,40 @@ public class McpAdapterTests
         Assert.Equal(1, after.RedoDepth);
         Assert.Equal(0, Deserialize<TileInfo>(await harness.CallAsync("tile_get", cts.Token,
             ("x", 2), ("z", 2), ("plane", 0))).Underlay);
+    }
+
+    [Fact]
+    public async Task FoliageConfigurePaintReadRemoveAndUndoRoundTripThroughMcp()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var temp = new TempDir();
+        await using McpHarness harness = await McpHarness.StartAsync(cts.Token);
+        await harness.CreateWorldAsync(temp.Sub("world"), cts.Token);
+        var layer = new
+        {
+            id = "meadow", plane = 0, originX = 0f, originZ = -2f, cellSize = 1f, width = 3, height = 2,
+            density = Convert.ToBase64String(new byte[6]), seed = 9, spacing = 0.3f,
+            scaleMin = 0.8f, scaleMax = 1.2f, rootOffset = -0.04f,
+            archetypes = new[] { new { id = "tree", weight = 1f } }, allowedUnderlays = new[] { 1 },
+            excludeIndoors = true, excludeSolidObjects = true, doorClearance = 1f, edgeFade = 0.5f,
+        };
+
+        Assert.NotEqual(true, (await harness.CallAsync("foliage_layer_set", cts.Token, ("layer", layer))).IsError);
+        Assert.NotEqual(true, (await harness.CallAsync("foliage_density_set", cts.Token,
+            ("id", "meadow"), ("width", 3), ("height", 2),
+            ("rows", new[] { new[] { 1, 2, 3 }, new[] { 4, 5, 6 } }))).IsError);
+        Assert.NotEqual(true, (await harness.CallAsync("foliage_paint", cts.Token,
+            ("id", "meadow"), ("worldX", 1f), ("worldZ", -1f), ("radius", 0.6f),
+            ("density", 255), ("hardness", 1f))).IsError);
+
+        FoliageLayerInfo read = Deserialize<FoliageLayerInfo>(await harness.CallAsync("foliage_get", cts.Token,
+            ("id", "meadow")));
+        Assert.Equal(new byte[] { 1, 2, 3, 4, 255, 6 }, read.Density);
+
+        Assert.NotEqual(true, (await harness.CallAsync("foliage_remove", cts.Token, ("id", "meadow"))).IsError);
+        Assert.Equal(1, Deserialize<UndoResult>(await harness.CallAsync("undo", cts.Token)).Steps);
+        Assert.Equal("meadow", Deserialize<FoliageLayerInfo>(await harness.CallAsync("foliage_get", cts.Token,
+            ("id", "meadow"))).Id);
     }
 
     [Fact]

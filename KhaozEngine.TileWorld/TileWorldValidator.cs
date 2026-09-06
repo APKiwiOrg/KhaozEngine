@@ -13,7 +13,8 @@ public sealed record TileWorldIssue(string Code, string Message, RegionCoord? Re
 /// so callers may branch on them: <c>header.planeCount</c>, <c>header.tileSize</c>, <c>header.planeHeight</c>,
 /// <c>region.planeCount</c>, <c>material.missing</c>, <c>overlay.shape</c>, <c>archetype.missing</c>,
 /// <c>object.plane</c>, <c>object.footprint</c>, <c>object.duplicateId</c>, <c>object.region</c>,
-/// <c>marker.plane</c>, <c>marker.duplicateName</c>, <c>marker.region</c>.</summary>
+/// <c>marker.plane</c>, <c>marker.duplicateName</c>, <c>marker.region</c>,
+/// <c>foliage.archetype</c>, <c>foliage.underlay</c>.</summary>
 public static class TileWorldValidator
 {
     /// <summary>Every issue in the document, header first and then region by region in a stable order.</summary>
@@ -28,6 +29,19 @@ public static class TileWorldValidator
 
         var seenIds = new HashSet<long>();
         var seenMarkers = new HashSet<string>(StringComparer.Ordinal);
+        foreach (TileFoliageLayer layer in doc.FoliageLayers)
+        {
+            foreach (TileFoliageArchetype archetype in layer.Archetypes)
+                if (catalogs.Archetype(archetype.Id) is null)
+                    issues.Add(new("foliage.archetype",
+                        $"foliage layer '{layer.Id}' references archetype '{archetype.Id}', which is not in the catalog",
+                        null, null));
+            foreach (ushort underlay in layer.AllowedUnderlays)
+                if (catalogs.Material(underlay) is null)
+                    issues.Add(new("foliage.underlay",
+                        $"foliage layer '{layer.Id}' allows underlay {underlay}, which is not in the catalog",
+                        null, null));
+        }
         foreach (TileRegion region in doc.Regions.Values.OrderBy(r => r.Coord.Rz).ThenBy(r => r.Coord.Rx))
         {
             // A region allocates its planes once, at construction. A later edit of the document's plane count

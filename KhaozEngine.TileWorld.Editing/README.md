@@ -127,6 +127,8 @@ The open world plus its editing state, and the one mutation path a frontend uses
 | `SetObjectTagsCommand` | `(id, tags?)` | none |
 | `SetMarkerCommand` | `(name, x, z, plane, tags?)` | none |
 | `RemoveMarkerCommand` | `(name)` | none |
+| `SetFoliageLayerCommand` | `(doc, layer)` | the union of old and new raster extents, split by plane when needed |
+| `RemoveFoliageLayerCommand` | `(doc, id)` | the removed raster extent |
 | `CreateRegionCommand` | `(coord)` | the region's full tile rect on EVERY plane |
 | `DeleteRegionCommand` | `(coord)` | the region's full tile rect on EVERY plane |
 | `CompositeCommand` | `(label, commands)` | every child's rects, read live |
@@ -164,6 +166,11 @@ that the name was free, and validates the destination plane and region BEFORE th
 placement leaves both the document and the command untouched. `RemoveMarkerCommand` throws when the name is not
 in the document, because a delete of nothing is a mistake worth reporting rather than a silent no-op in the
 undo stack.
+
+**Foliage commands** replace or remove one immutable cosmetic layer as one undo step. They capture the old
+layer before applying and report its world-metre raster extent as tile dirty rects, including both planes when
+a replacement moves between them. Collision rebaking receives those rects through the ordinary command path,
+but foliage itself contributes no flags, so collision remains byte identical across apply, undo and redo.
 
 **Region commands** report the region's full tile rect on every plane, because the collision map keeps its
 storage per region and the rebake over those rects is what gives a new region storage and takes it away again.

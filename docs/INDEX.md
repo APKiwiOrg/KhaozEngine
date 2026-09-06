@@ -42,6 +42,7 @@ not deleted: the reasoning behind a shipped decision is the thing that is expens
 
 | Doc | The program | Status |
 |---|---|---|
+| [GROUND-COVER-DESIGN-2026-09-06.md](design/GROUND-COVER-DESIGN-2026-09-06.md) | Reusable authored ground cover: generic deterministic CPU distribution, optional tile-world density layers, cached rigid instancing and undoable `ke-tileedit` authoring. | **Implemented in 18.22.0.** Grimhollow is the first consumer. |
 | [MAP-EDITOR-DESIGN.md](design/MAP-EDITOR-DESIGN.md) | The MapDoc zone-document format, the MapEditor GUI runtime + per-game editor heads, the `ke-mapedit` MCP tool, phasing, and the Ruinborne adoption path. | **In flight.** Phases A-D shipped 10.44.0-10.67.0 and twelve further rounds through 14.15.0. Open work is tracked in GitHub Issues (`kind/backlog` / `kind/roadmap`), not here. |
 | [DUNGEON-GENERATOR-DESIGN.md](design/DUNGEON-GENERATOR-DESIGN.md) | `KhaozEngine.Dungeon`: deterministic grow-and-embed layout, completability by construction + an always-on solver, MapDoc bake + runtime stamp sinks, the greybox kit contract, the `ke-dungeon` CLI / MCP verbs. | **Complete.** Shipped 10.56.0-10.58.0, polish to ~10.109.0, `DungeonNav.Bake` at 10.123.0. Deferred follow-ups are tracked in GitHub Issues (`kind/backlog`). |
 | [NPC-NAVIGATION-DESIGN.md](design/NPC-NAVIGATION-DESIGN.md) | `KhaozEngine.Navigation`: the founding grid-vs-navmesh trade-off, the clearance grid, and the statics-only call. | **Complete.** Shipped 10.123.0. |

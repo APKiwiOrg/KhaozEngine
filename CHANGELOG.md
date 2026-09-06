@@ -5,6 +5,23 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.22.0
+
+Painted ground cover for authored worlds, drawn between gameplay tiles.
+
+- `GroundCoverDistribution` accepts a generic surface sampler for deterministic placement, weighted mesh
+  variants and alignment to slopes. Adjacent queries share the same distribution without seam duplicates.
+- `TileFoliageLayer` stores cosmetic density rasters in world coordinates. Layers round-trip through world
+  files and streaming saves. Worlds without layers keep their existing bytes and hashes.
+- `TileWorldView` caches foliage per resident region and uses the existing instanced renderer. Live density
+  and distance controls thin and fade the cover, with optional shadow casting. Surface rules protect water,
+  roads, shaped overlays, solid objects, interiors and tagged door clearances.
+- TileEdit adds `foliage_layer_set`, `foliage_get`, `foliage_density_set`, `foliage_paint` and `foliage_remove`.
+  Each mutation is one undo step, and the saved layer is visible in normal editor captures.
+
+Consumer: https://github.com/APKiwiOrg/Grimhollow/issues/136
+Resolves https://github.com/APKiwiOrg/KhaozEngine/issues/834
+
 ## 18.21.0
 
 Reusable nearby chat presentation and authoritative tile-world audience queries.

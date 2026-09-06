@@ -5,6 +5,21 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.32.0
+
+Authored tile spawners can wait on a synchronous game-owned admission gate without allocating or exposing an actor (#842).
+
+- `TileActorHost.SpawnAdmission` receives each ready `TileActorSpawner` on the owning authoritative tick. A null
+  gate admits every spawner, preserving the existing default.
+- A false answer leaves a new spawner `Empty`, or a due respawner `Waiting` at zero ticks, and retries on the next
+  tick. It allocates no net id, writes no spawner link, and raises no `OnActorSpawned` event.
+- Engine placement validation remains ahead of game admission. Direct `TileWorldServer.SpawnActor` calls bypass
+  the gate, so the seam applies only to authored spawners managed through `TileActorHost.Add`.
+- The synchronous shape keeps storage and network work outside the tick. Games expose completed durable state
+  through an in-memory lookup when spawn availability depends on a committed lifecycle.
+- Headless tests cover initial denial, zero-tick respawn retries, exact allocation and event ordering, and direct
+  spawn isolation in Debug and Release.
+
 ## 18.31.0
 
 Durable mutation journaling gives authoritative MMO servers a commit-before-apply path for ownership and progression (#835).

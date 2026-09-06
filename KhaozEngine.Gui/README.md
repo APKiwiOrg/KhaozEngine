@@ -554,7 +554,7 @@ chat.Draw(batch, white);
   `GuiDraw.BorderSingleCoverage(batch, white, rect, thickness, color)` and
   `GuiDraw.Line(batch, white, a, b, thickness, color)` - the 2D primitives, public alongside
   `TruncateWithEllipsis` so a game drawing its own chrome in its own pass calls the engine helper instead of
-  hand-building four rects. All three take a 1x1 white texture (Render2D has no primitive renderer). `Fill`
+  hand-building four rects. All four take a 1x1 white texture (Render2D has no primitive renderer). `Fill`
   draws the rect verbatim, `Border` strokes a `thickness`-wide outline just inside it and snaps rect and
   thickness to whole device pixels in a point-space pass (a no-op elsewhere), and `Line` is a single rotated
   quad between two points. Everything else on `GuiDraw` (`FillStyled`, the skin path, the glow, the widget

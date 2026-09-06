@@ -34,7 +34,8 @@ namespace KhaozEngine.Gui
     /// A selector over <see cref="Pointer"/>: the trigger shows the current option; a tap opens a list below it;
     /// tapping an option selects + closes; a release outside dismisses. Because the open list extends past the
     /// trigger, drawing is split: <see cref="Draw"/> renders the trigger (inside any clip), <see cref="DrawOverlay"/>
-    /// renders the open list (call last / unclipped so it sits on top).
+    /// renders the open list (call last / unclipped so it sits on top). Pointer gestures that open, close, select,
+    /// or dismiss are consumed so a control behind the dropdown cannot act on the same release.
     /// </summary>
     public sealed class Dropdown
     {
@@ -121,7 +122,8 @@ namespace KhaozEngine.Gui
                 if (_options[i].Value == value) { SelectedIndex = i; return; }
         }
 
-        /// <summary>Hit-test open/close/select/dismiss. Returns true if the selection changed.</summary>
+        /// <summary>Hit-test open/close/select/dismiss and consume any gesture that performs one of those actions.
+        /// Returns true if the selection changed.</summary>
         public bool Update(Pointer pointer)
         {
             WasChanged = false;
@@ -131,21 +133,36 @@ namespace KhaozEngine.Gui
             if (!IsOpen)
             {
                 // Pointer-driven open: no keyboard cursor, so the overlay draws byte-identically to pre-key-nav.
-                if (pointer.IsTapIn(TriggerBounds)) { IsOpen = true; HighlightedIndex = -1; }
+                if (pointer.IsTapIn(TriggerBounds))
+                {
+                    pointer.ConsumeGesture();
+                    IsOpen = true;
+                    HighlightedIndex = -1;
+                }
                 return false;
             }
 
-            if (pointer.IsTapIn(TriggerBounds)) { IsOpen = false; return false; }
+            if (pointer.IsTapIn(TriggerBounds))
+            {
+                pointer.ConsumeGesture();
+                IsOpen = false;
+                return false;
+            }
 
             for (int i = 0; i < _options.Count; i++)
             {
                 if (!pointer.IsTapIn(OptionBounds(i))) continue;
+                pointer.ConsumeGesture();
                 if (SelectedIndex != i) { SelectedIndex = i; WasChanged = true; }
                 IsOpen = false;
                 return WasChanged;
             }
 
-            if (pointer.IsReleasedOutside(FullBounds())) IsOpen = false;
+            if (pointer.IsReleasedOutside(FullBounds()))
+            {
+                pointer.ConsumeGesture();
+                IsOpen = false;
+            }
             return false;
         }
 

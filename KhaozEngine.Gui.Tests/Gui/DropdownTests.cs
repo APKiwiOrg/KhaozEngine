@@ -92,6 +92,85 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void Opening_the_trigger_does_not_activate_a_covered_control()
+        {
+            var dropdown = new Dropdown(Opts, Trigger);
+            var covered = new Toggle(Trigger);
+            var pointer = new Pointer();
+
+            pointer.Update(Frame(TriggerPt, true));
+            dropdown.Update(pointer);
+            covered.Update(pointer);
+            pointer.Update(Frame(TriggerPt, false));
+            dropdown.Update(pointer);
+            bool coveredChanged = covered.Update(pointer);
+
+            Assert.True(dropdown.IsOpen);
+            Assert.False(coveredChanged);
+            Assert.False(covered.IsOn);
+        }
+
+        [Fact]
+        public void Selecting_an_option_does_not_activate_a_covered_toggle()
+        {
+            var dropdown = new Dropdown(Opts, Trigger);
+            var covered = new Toggle(dropdown.OptionBounds(1));
+            var pointer = new Pointer();
+            Tap(dropdown, pointer, TriggerPt);
+
+            pointer.Update(Frame(Option1Pt, true));
+            dropdown.Update(pointer);
+            covered.Update(pointer);
+            pointer.Update(Frame(Option1Pt, false));
+            bool selectionChanged = dropdown.Update(pointer);
+            bool coveredChanged = covered.Update(pointer);
+
+            Assert.True(selectionChanged);
+            Assert.Equal(2, dropdown.SelectedValue);
+            Assert.False(coveredChanged);
+            Assert.False(covered.IsOn);
+        }
+
+        [Fact]
+        public void Selecting_an_option_does_not_open_a_covered_dropdown()
+        {
+            var dropdown = new Dropdown(Opts, Trigger);
+            var covered = new Dropdown(Opts, dropdown.OptionBounds(1));
+            var pointer = new Pointer();
+            Tap(dropdown, pointer, TriggerPt);
+
+            pointer.Update(Frame(Option1Pt, true));
+            dropdown.Update(pointer);
+            covered.Update(pointer);
+            pointer.Update(Frame(Option1Pt, false));
+            dropdown.Update(pointer);
+            covered.Update(pointer);
+
+            Assert.False(dropdown.IsOpen);
+            Assert.False(covered.IsOpen);
+        }
+
+        [Fact]
+        public void Dismissing_an_open_list_does_not_activate_the_control_under_the_release()
+        {
+            var dropdown = new Dropdown(Opts, Trigger);
+            var covered = new Toggle(new Rect(480, 485, 40, 30));
+            var pointer = new Pointer();
+            Tap(dropdown, pointer, TriggerPt);
+
+            pointer.Update(Frame(FarOutside, true));
+            dropdown.Update(pointer);
+            covered.Update(pointer);
+            pointer.Update(Frame(FarOutside, false));
+            dropdown.Update(pointer);
+            bool coveredChanged = covered.Update(pointer);
+
+            Assert.False(dropdown.IsOpen);
+            Assert.False(coveredChanged);
+            Assert.False(covered.IsOn);
+        }
+
+        [Fact]
         public void SelectByValue_sets_the_selection()
         {
             var d = new Dropdown(Opts, Trigger);

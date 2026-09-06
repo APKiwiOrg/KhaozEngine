@@ -19,6 +19,17 @@ Reusable nearby chat presentation and authoritative tile-world audience queries.
 
 Consumer batch: https://github.com/APKiwiOrg/Grimhollow/milestone/1
 
+## 18.20.1
+
+Dropdown pointer gestures no longer reach controls behind the trigger or open list.
+
+- `Dropdown.Update(Pointer)` consumes a gesture when it opens or closes the trigger, selects an option, or
+  dismisses the open list. A toggle or another dropdown updated later in the frame can no longer react to the
+  same release.
+- The return value still reports only a changed selection. Keyboard and gamepad control are unchanged.
+
+Consumer: https://github.com/APKiwiOrg/Grimhollow
+
 ## 18.20.0
 
 Explicit storage roots and bounded pending connections for tile-world hosts.

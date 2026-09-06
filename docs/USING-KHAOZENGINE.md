@@ -1263,7 +1263,7 @@ primitives (headless-testable, matching `Slider.Nudge`) sit under each overload 
 
 - `Toggle`: menu-select (Enter/Space/A/Start) flips; select-next/previous (Left/Right/D-pad) force off/on. Primitives `Flip()` / `Set(bool)`.
 - `Slider`: select-next/previous nudge `Value` by `NudgeStep` (default 0.1). Primitive `Nudge(float)`.
-- `Dropdown`: closed -> menu-select opens, select-next/previous cycle the selection in place; open -> menu-up/down move `HighlightedIndex`, menu-select commits it, menu-cancel (Escape/B/Back) closes without changing. `Wrap` (default true) wraps at the ends; `FocusColor` fills the highlighted row (the pointer path leaves `HighlightedIndex` at -1, so its overlay is byte-identical). Primitives `Open`/`Close`/`HighlightNext`/`HighlightPrevious`/`CommitHighlight`/`StepSelection`.
+- `Dropdown`: closed -> menu-select opens, select-next/previous cycle the selection in place. Open -> menu-up/down move `HighlightedIndex`, menu-select commits it, menu-cancel (Escape/B/Back) closes without changing. Pointer actions that open, close, select or dismiss consume their gesture, so controls behind the trigger or open list cannot act on the same release. `Wrap` (default true) wraps at the ends. `FocusColor` fills the highlighted row (the pointer path leaves `HighlightedIndex` at -1, so its overlay is byte-identical). Primitives `Open`/`Close`/`HighlightNext`/`HighlightPrevious`/`CommitHighlight`/`StepSelection`.
 
 ```csharp
 // A keyboard/gamepad-navigable settings column inside a Screen. In the retained path the InputManager comes

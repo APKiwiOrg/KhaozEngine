@@ -108,8 +108,12 @@ chat.Draw(batch, white);
   `CornerRadius`/`BorderThickness`). `SelectionFill` is the fill under a selected row (a list's current item, a
   `Dropdown`'s chosen option) and `FocusFill` the fill under the keyboard cursor row, a shade under it. The
   `Dropdown` used to hardcode that pair, so a rebranded palette still drew a blue selected row. Both presets
-  carry the same two values, so `GuiTheme.Legacy` does not move either row. Set the ambient
-  `GuiTheme.Default` ONCE at startup (before building widgets) to
+  carry the same two values, so `GuiTheme.Legacy` does not move either row. Set
+  `PrimaryFill`, `PrimaryHover`, `PrimaryPress`, `PrimaryBorder`, and `PrimarySelectedFill` to
+  rebrand `GuiStyle.Primary`. The parallel `ActiveFill`, `ActiveHover`, `ActivePress`, `ActiveBorder`,
+  `ActiveText`, and `ActiveSelectedFill` fields drive `GuiStyle.Active`. Both built-in themes retain the prior
+  preset values, and `GuiStyle.Legacy` plus `GuiStyle.Modern` remain independent. Set the ambient
+  `GuiTheme.Default` once at startup (before building widgets) to
   rebrand the whole UI; set it to `GuiTheme.Legacy` to keep the pre-10.11.0 flat blue-grey look. `GuiStyle` carries
   the button palette + the modern-affordance knobs, with presets: `Default` (crisp, == `Primary`), `Secondary`
   (muted), `Danger` (red), `Active` (bright-accent selected), `Modern` (rounded + glow + shadow), and `Legacy` (the

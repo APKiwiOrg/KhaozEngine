@@ -2594,9 +2594,9 @@ namespace KhaozEngine.Render3D
         /// <see cref="SkinnedCullSafetyFactor"/>. <paramref name="cullMain"/> is <see cref="FrustumCulling"/> (off
         /// = always visible in the main pass, the rigid-instance parity path). <paramref name="shadowActive"/> is
         /// whether the shadow-map tier is resolved this frame (off = never a shadow caster). The caster is a shadow
-        /// caster when its inflated sphere intersects ANY cascade's ortho volume in <paramref name="shadowFrustums"/>:
-        /// under the frustum-slice fit the cascades no longer nest, so the union of all cascades is what keeps a
-        /// caster inside a near cascade but outside the far one alive for the depth pass. Returns
+        /// caster when its inflated sphere intersects every lateral and far plane of ANY cascade in
+        /// <paramref name="shadowFrustums"/>. The near plane is excluded because depth clamping pancakes closer
+        /// casters onto it. Under the frustum-slice fit the cascades do not nest, so their union is tested. Returns
         /// (VisibleMain, VisibleShadow) - a draw needs CPU skinning + upload iff either is true. Pure
         /// <see cref="MeshBounds"/> + <see cref="FrustumPlanes"/> arithmetic (both already unit-tested), no GPU,
         /// headless-testable.
@@ -2613,7 +2613,7 @@ namespace KhaozEngine.Render3D
             bool visibleShadow = false;
             if (shadowActive)
                 for (int i = 0; i < shadowFrustums.Length && !visibleShadow; i++)
-                    visibleShadow = shadowFrustums[i].IntersectsSphere(center, r);
+                    visibleShadow = shadowFrustums[i].IntersectsSphereExceptPlane(center, r, excludedPlane: 4);
             return (visibleMain, visibleShadow);
         }
 

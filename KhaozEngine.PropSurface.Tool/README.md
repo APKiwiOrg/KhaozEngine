@@ -35,3 +35,4 @@ walkable-surface system in `KhaozEngine.Collision`.
 
 Exit codes: 0 baked, 1 manifest parse/load failure, 2 bad arguments or manifest not found.
 Per-prop bake failures are logged and skipped, the rest of the kit still bakes.
+Malformed glTF index failures name the prop id, asset path, bad index and vertex count in that per-prop output.

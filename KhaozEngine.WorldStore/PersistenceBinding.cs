@@ -20,14 +20,15 @@ public delegate bool RecordDecoder<TState>(byte[] data, out TState state, out by
 /// <summary>
 /// Everything <see cref="StatePersistence{TState}"/> needs to know about a head's state that is not generic: how a
 /// state becomes stored bytes, how stored bytes become a state, where a state sits in space, and what makes a
-/// loaded record unacceptable. Four delegates, no inheritance, so a head supplies its record shape without the core
+/// loaded record unacceptable. Four required delegates plus an optional distance override, no inheritance, so a head
+/// supplies its record shape without the core
 /// ever naming a record type.
 /// <para>This is the whole seam between the shared machinery and a movement model. The save interval, the dirty
 /// comparison, the load guard, quarantine, the guest policy and the rejoin hints are the same code for a continuous
-/// world and a tile lattice, and the four lines here are what actually differ.</para>
-/// <para><see cref="PositionOf"/> is the core's spatial currency, a <see cref="Vector3"/>. A continuous head hands
-/// over its metres. A tile head packs its lattice address into one, which is exact because tile coordinates are
-/// small integers.</para>
+/// world and a tile lattice, and this binding is what actually differs.</para>
+/// <para><see cref="PositionOf"/> is the core's spatial currency for hints. A continuous head also uses the default
+/// <see cref="Vector3.Distance(Vector3, Vector3)"/> quiet-restore comparison. A discrete binding can set
+/// <see cref="RestoreDistance"/> so its native coordinates are compared before any lossy projection.</para>
 /// </summary>
 /// <typeparam name="TState">The head's authoritative per-player movement state.</typeparam>
 /// <param name="PositionOf">Where a state sits, for the rejoin hint and for the quiet-restore distance test.</param>
@@ -44,4 +45,9 @@ public sealed record PersistenceBinding<TState>(
     Func<TState, Vector3> PositionOf,
     Func<TState, byte[]?, byte[]> Encode,
     RecordDecoder<TState> Decode,
-    Func<TState, byte[]?, string?> Validate);
+    Func<TState, byte[]?, string?> Validate)
+{
+    /// <summary>Optional distance between live and restored states in the binding's native coordinate space.
+    /// Null uses Euclidean distance between their <see cref="PositionOf"/> values.</summary>
+    public Func<TState, TState, double>? RestoreDistance { get; init; }
+}

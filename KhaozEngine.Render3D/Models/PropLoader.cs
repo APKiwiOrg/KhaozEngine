@@ -146,6 +146,8 @@ namespace KhaozEngine.Render3D
             if (parts.Count == 0) throw new ArgumentException("a prop needs at least one material part.", nameof(parts));
             PropValidation v = validation ?? PropValidation.Default;
             string what = id == null ? "prop" : $"prop '{id}'";
+            for (int p = 0; p < parts.Count; p++)
+                MeshIndexValidation.All(parts[p].Mesh, $"{what} part {p}");
 
             if (heightMeters < v.MinHeightMeters || heightMeters > v.MaxHeightMeters)
                 throw new InvalidOperationException(
@@ -191,6 +193,7 @@ namespace KhaozEngine.Render3D
             if (raw == null) throw new ArgumentNullException(nameof(raw));
             PropValidation v = validation ?? PropValidation.Default;
             string what = id == null ? "prop" : $"prop '{id}'";
+            MeshIndexValidation.All(raw, what);
 
             if (heightMeters < v.MinHeightMeters || heightMeters > v.MaxHeightMeters)
                 throw new InvalidOperationException(

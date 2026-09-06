@@ -71,11 +71,11 @@ public sealed partial class MutationService(TileEditSession session)
     public HeightResult HeightsSmooth(TileRect cornerRect, int plane, int iterations = 1) =>
         Heights(e => TileEditOps.Smooth(e.Document, cornerRect, plane, iterations));
 
-    /// <summary>Resamples a binary PGM heightmap onto the corner rect, mapping its greyscale linearly onto
+    /// <summary>Resamples a binary PGM or PNG heightmap onto the corner rect, mapping its greyscale linearly onto
     /// <paramref name="minCm"/>..<paramref name="maxCm"/>. A relative path resolves against the world's own
     /// directory.
     ///
-    /// <para>No row flip here, unlike <see cref="HeightsSet"/>: a PGM's row 0 is its north edge and
+    /// <para>No row flip here, unlike <see cref="HeightsSet"/>: an image's row 0 is its north edge and
     /// <c>TileEditOps.ImportHeights</c> already lands it on the rect's highest z.</para></summary>
     public HeightResult HeightsImport(string pgmPath, TileRect cornerRect, int plane, short minCm, short maxCm)
     {

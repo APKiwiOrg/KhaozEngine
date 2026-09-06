@@ -5,7 +5,7 @@ namespace KhaozEngine.Tests.Netcode;
 
 /// <summary>
 /// The per-connection message <see cref="RateLimiter"/>: a deterministic token bucket advanced one step at a time
-/// (the server refills it once per poll), with no wall-clock dependency so it is headless-testable. A message
+/// (the server refills it from elapsed simulation time), with no wall-clock dependency so it is headless-testable. A message
 /// consumes a token; an empty bucket rejects (the server drops the message and signals suspicious activity).
 /// </summary>
 public class RateLimiterTests
@@ -53,5 +53,24 @@ public class RateLimiterTests
         Assert.False(rl.TryConsume());
         rl.Refill();                     // 1.0
         Assert.True(rl.TryConsume());    // a whole token is now available
+    }
+
+    [Fact]
+    public void Scaled_refill_tracks_elapsed_steps_and_ignores_invalid_time()
+    {
+        var rl = new RateLimiter(capacity: 2, refillPerStep: 0.5);
+        Assert.True(rl.TryConsume());
+        Assert.True(rl.TryConsume());
+
+        rl.Refill(1.5);
+        rl.Refill(0);
+        rl.Refill(-1);
+        rl.Refill(double.NaN);
+        rl.Refill(double.PositiveInfinity);
+
+        Assert.Equal(0.75, rl.Tokens);
+        Assert.False(rl.TryConsume());
+        rl.Refill(0.5);
+        Assert.True(rl.TryConsume());
     }
 }

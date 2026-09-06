@@ -93,6 +93,36 @@ public class OidcTokenValidatorTests
         }
     }
 
+    private sealed class StatusHandler(HttpStatusCode status) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct) =>
+            Task.FromResult(new HttpResponseMessage(status));
+    }
+
+    private sealed class TimeoutHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct) =>
+            Task.FromException<HttpResponseMessage>(new TaskCanceledException("provider timed out"));
+    }
+
+    private sealed class CancellationHandler : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            throw new InvalidOperationException("unreachable");
+        }
+    }
+
+    private sealed class WrappedCancellationHandler(Action cancel) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)
+        {
+            cancel();
+            return Task.FromException<HttpResponseMessage>(new HttpRequestException("discovery failed after cancellation"));
+        }
+    }
+
     private static (OidcTokenValidator v, FakeOidc f) Build()
     {
         FakeOidc f = new();
@@ -166,6 +196,80 @@ public class OidcTokenValidatorTests
         (OidcTokenValidator v, FakeOidc f) = Build();
         string tok = FakeOidc.MintAlgNone("sub-abc", "client-1", f.Authority, DateTime.UtcNow.AddHours(1));
         Assert.Null(await v.ValidateAsync(tok));
+    }
+
+    [Fact]
+    public async Task Discovery_503_is_provider_unavailable()
+    {
+        using HttpClient http = new(new StatusHandler(HttpStatusCode.ServiceUnavailable));
+        IIdentityValidator validator = new OidcTokenValidator(
+            new OidcProviderOptions { Authority = "https://issuer.test", ClientId = "client-1" }, http);
+
+        IdentityValidation result = await validator.ValidateDetailedAsync("token");
+
+        Assert.Equal(IdentityValidationOutcome.ProviderUnavailable, result.Outcome);
+        Assert.Contains("OIDC metadata", result.Detail);
+    }
+
+    [Fact]
+    public async Task Provider_timeout_is_provider_unavailable()
+    {
+        using HttpClient http = new(new TimeoutHandler());
+        IIdentityValidator validator = new OidcTokenValidator(
+            new OidcProviderOptions { Authority = "https://issuer.test", ClientId = "client-1" }, http);
+
+        IdentityValidation result = await validator.ValidateDetailedAsync("token");
+
+        Assert.Equal(IdentityValidationOutcome.ProviderUnavailable, result.Outcome);
+    }
+
+    [Fact]
+    public async Task Foreign_signing_key_is_refused_after_provider_answered()
+    {
+        (OidcTokenValidator validator, FakeOidc provider) = Build();
+        string token = provider.MintWithForeignKey("sub-abc", "client-1", DateTime.UtcNow.AddHours(1));
+
+        IdentityValidation result = await validator.ValidateDetailedAsync(token);
+
+        Assert.Equal(IdentityValidationOutcome.Refused, result.Outcome);
+    }
+
+    [Fact]
+    public async Task Caller_cancellation_propagates()
+    {
+        using HttpClient http = new(new CancellationHandler());
+        var validator = new OidcTokenValidator(
+            new OidcProviderOptions { Authority = "https://issuer.test", ClientId = "client-1" }, http);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => validator.ValidateDetailedAsync("token", cts.Token));
+    }
+
+    [Fact]
+    public async Task Caller_cancellation_propagates_with_warm_configuration_cache()
+    {
+        (OidcTokenValidator validator, FakeOidc provider) = Build();
+        string token = provider.MintIdToken("sub-abc", "client-1", DateTime.UtcNow.AddHours(1));
+        Assert.Equal(IdentityValidationOutcome.Verified, (await validator.ValidateDetailedAsync(token)).Outcome);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => validator.ValidateDetailedAsync(token, cts.Token));
+    }
+
+    [Fact]
+    public async Task Wrapped_discovery_failure_propagates_when_caller_was_cancelled()
+    {
+        using var cts = new CancellationTokenSource();
+        using HttpClient http = new(new WrappedCancellationHandler(cts.Cancel));
+        var validator = new OidcTokenValidator(
+            new OidcProviderOptions { Authority = "https://issuer.test", ClientId = "client-1" }, http);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => validator.ValidateDetailedAsync("token", cts.Token));
     }
 
     // Flips the first character of the base64url signature segment so the decoded signature differs from the

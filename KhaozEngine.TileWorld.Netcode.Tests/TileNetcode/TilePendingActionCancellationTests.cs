@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Netcode;
 using Xunit;
+using KhaozEngine.Netcode;
 
 namespace KhaozEngine.Tests.TileNetcode;
 

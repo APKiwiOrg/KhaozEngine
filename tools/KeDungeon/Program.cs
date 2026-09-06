@@ -29,7 +29,7 @@ public static class Program
 
     /// <summary>Dispatches to the requested verb and returns the process exit code: 0 on success, 1 for a
     /// failed <c>verify</c> or a <c>nav --require-connected</c> check on a disconnected space, 2 for an
-    /// unknown verb, an unsupported option value (a non-zero <c>nav --yaw</c>), or a missing/invalid
+    /// unknown verb or a missing/invalid
     /// required option (usage is printed in that case), 3 for malformed input JSON (a config, layout, or
     /// map document that fails to parse or validate, reported by message instead of a stack trace).</summary>
     public static int Main(string[] args)
@@ -194,26 +194,13 @@ public static class Program
             ? DungeonNav.DefaultAgentHeight
             : ParseFloat(agentHeightText, "--agent-height");
 
-        // DungeonNav.Bake has no rotation concept at all: NavGrid is strictly axis-aligned, unlike bake's
-        // --yaw, which feeds a DungeonPlotTransform the MapDoc emitter honours. Baking nav against a
-        // rotated plot would silently produce a NavSpace that does not line up with the rotated geometry,
-        // so this verb refuses a non-zero yaw outright (see issue #140, deferred on purpose) instead of
-        // pretending to support it.
         string? yawText = GetOption(args, "--yaw");
         float yaw = yawText is null ? 0f : ParseFloat(yawText, "--yaw");
-        if (yaw != 0f)
-        {
-            throw new CliUsageException(
-                "--yaw is not supported for nav baking: DungeonNav.Bake has no rotation concept " +
-                "(NavGrid is strictly axis-aligned), so a rotated plot would silently bake a NavSpace " +
-                "that does not match the emitted geometry. This is issue #140, deferred on purpose. " +
-                "Pass --yaw 0 or omit --yaw.");
-        }
 
         bool requireConnected = HasFlag(args, "--require-connected");
 
         DungeonLayout layout = DungeonJson.LoadLayout(File.ReadAllText(layoutPath));
-        NavSpace space = DungeonNav.Bake(layout, originX, originZ, baseY, agentHeight);
+        NavSpace space = DungeonNav.BakeTransformed(layout, new DungeonPlotTransform(originX, originZ, baseY, yaw), agentHeight);
 
         int componentCount = NavReport.Print(space);
 

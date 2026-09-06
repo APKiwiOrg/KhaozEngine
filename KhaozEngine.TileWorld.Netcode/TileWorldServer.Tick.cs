@@ -91,11 +91,11 @@ public sealed partial class TileWorldServer
         // The graceful-drain countdown is WALL CLOCK rather than tick count, so it runs down on every frame
         // including the ones that stepped nothing. See BeginDrain in TileWorldServer.Sessions.cs, which owns the
         // field and the reason.
-        if (drainRemaining > 0f) drainRemaining = MathF.Max(0f, drainRemaining - MathF.Max(0f, dt));
+        drain.Advance(MathF.Max(0f, dt));
         // Once, on the first frame the grace is spent. Never inside RunOneTick: closing a session mutates the
         // player index the tick body is iterating, and the serve above has already gone out for this tick. Gated on
         // the grace rather than on IsDrainComplete, which now waits for this close to have happened.
-        if (IsDrainGraceSpent && !drainClosed)
+        if (drain.IsComplete && !drainClosed)
         {
             drainClosed = true;
             CloseDrainedSessions();
@@ -110,6 +110,7 @@ public sealed partial class TileWorldServer
     void RunOneTick()
     {
         float dt = config.TickSeconds;
+        foreach (RateLimiter limiter in rateBySlot.Values) limiter.Refill();
         OnBeforeTick?.Invoke(dt);
 
         // 0c. The entity target space, snapshotted ONCE. Everything for the rest of this tick resolves a net id to
@@ -146,7 +147,7 @@ public sealed partial class TileWorldServer
             if (!netIdBySlot.TryGetValue(slot, out long netId)) continue;
             if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) continue;
             if (!cell.World.TryGet(e, out TileMoveState state)) continue;
-            TileCommand admitted = Admit(cmd, arrived, state, slot);
+            TileCommand admitted = Admit(cmd, arrived, state, slot, netId);
             cell.World.Set(e, new PendingTileCommand { Command = admitted });
             // The lock this player will hold going INTO the movement pass, unless this tick's own command is what
             // breaks it. A WalkTo or an Interact is the player DISENGAGING, which is not a failure to reach and must
@@ -274,7 +275,7 @@ public sealed partial class TileWorldServer
     /// <see cref="TileMoveSimulator.Accepts"/>, so the rule has one definition and the server holds no second copy
     /// of the target seam to re-derive it from.
     /// </summary>
-    TileCommand Admit(in TileCommand cmd, bool arrived, in TileMoveState state, int slot)
+    TileCommand Admit(in TileCommand cmd, bool arrived, in TileMoveState state, int slot, long attackerNetId)
     {
         if (!arrived) return TileCommand.Continue(state.Mode);
 
@@ -309,6 +310,7 @@ public sealed partial class TileWorldServer
                 // frame is otherwise well formed, so the run toggle it carried still applies and its sequence is
                 // still acknowledged, which is the answer a client can predict.
                 if (cmd.Target == 0) return TileCommand.Continue(cmd.Mode);
+                if (!CanAttack(attackerNetId, cmd.Target)) return TileCommand.Continue(cmd.Mode);
                 // An attack ABANDONS a pending interaction, exactly as a walk does and for the same reason: the
                 // simulator clears the state's own InteractTarget on one, and an entry that outlived it would fire
                 // the moment the CHASE happened to pass a reach tile of the thing the player walked away from. Only

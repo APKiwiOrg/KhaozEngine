@@ -24,7 +24,7 @@ namespace KhaozEngine.Render3D.Rendering
     /// also have removed the rewrite, and it would have changed a shader, an instance struct and the bytes every
     /// golden reads. Distinct slots plus a dynamic offset is the shape <c>OverlayMeshRenderer</c>,
     /// <c>WaterRenderer</c> and <c>SpriteBatch</c> already carry for the same reason, it is pixel-identical on
-    /// every backend that was already ordered, and it moves nothing but which 80 bytes of a 512-byte buffer each
+    /// every backend that was already ordered, and it moves nothing but which 96 bytes of a 512-byte buffer each
     /// pass reads.
     /// </para>
     /// <para>
@@ -53,7 +53,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         /// <summary>The bytes one pass actually reads: <c>FrameUniforms</c>. This is the window the resource set
         /// binds, and the size <c>D3D11ResourceModelTests</c> checks the constant-count rule against.</summary>
-        internal const uint FramePayloadBytes = 80;
+        internal const uint FramePayloadBytes = 96;
 
         /// <summary>The distance between two passes' slots. 256 is the dynamic-offset alignment that is safe on
         /// Metal, Direct3D 11 and Vulkan alike, the same stride every other slotted UBO in the engine uses.</summary>

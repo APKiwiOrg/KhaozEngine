@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -54,10 +53,13 @@ namespace KhaozEngine.Automation
         /// closes the sockets under them. Bounded, so a wedged window thread cannot hang a head's shutdown.</summary>
         static readonly TimeSpan ReplyDrainTimeout = TimeSpan.FromMilliseconds(250);
 
+        /// <summary>The largest one-shot due time accepted by <see cref="Timer"/>.</summary>
+        internal static readonly TimeSpan MaxCommandTimeout = TimeSpan.FromMilliseconds(uint.MaxValue - 1d);
+
         readonly AutomationOptions _options;
         readonly AutomationInputInjector _injector = new();
         readonly Dictionary<string, Func<JsonElement, JsonNode?>> _verbs = new(StringComparer.Ordinal);
-        readonly ConcurrentQueue<PendingCommand> _incoming = new();
+        readonly LinkedList<PendingCommand> _incoming = new();
         readonly List<PendingCommand> _waiting = new();
         readonly object _submitLock = new();
         readonly object _waitingLock = new();
@@ -72,7 +74,14 @@ namespace KhaozEngine.Automation
         /// <summary>Configure a host with no window attached. The head owns the wiring: hand <see cref="Pump"/> to
         /// <c>AppWindow.InputFilter</c> and set <see cref="QuitRequested"/> yourself. Prefer the
         /// <see cref="AutomationHost(AppWindow, AutomationOptions)"/> overload, which does both.</summary>
-        public AutomationHost(AutomationOptions options) => _options = options;
+        public AutomationHost(AutomationOptions options)
+        {
+            ArgumentNullException.ThrowIfNull(options);
+            if (options.CommandTimeout <= TimeSpan.Zero || options.CommandTimeout > MaxCommandTimeout)
+                throw new ArgumentOutOfRangeException(nameof(options),
+                    "CommandTimeout must be positive and within the runtime timer range.");
+            _options = options;
+        }
 
         /// <summary>The frame the pump is on, counted from 1. Read from any thread.</summary>
         public long Frame => Interlocked.Read(ref _frame);
@@ -162,6 +171,12 @@ namespace KhaozEngine.Automation
             get { lock (_waitingLock) return _waiting.Count; }
         }
 
+        /// <summary>Test seam (InternalsVisibleTo): how many queued commands still retain an incoming-list node.</summary>
+        internal int IncomingCount
+        {
+            get { lock (_submitLock) return _incoming.Count; }
+        }
+
         /// <summary>
         /// Queue one request and hand back the task its reply completes on. <c>ping</c> is the one command answered
         /// here rather than on the window thread, because it is the bridge's readiness check and has to work in the
@@ -188,7 +203,8 @@ namespace KhaozEngine.Automation
             {
                 if (_disposed)
                     return Task.FromResult(AutomationReply.Failure(request.Id, frame, StoppedError));
-                _incoming.Enqueue(pending!);
+                _incoming.AddLast(pending!);
+                pending!.StartTimeout(_options.CommandTimeout, () => Expire(pending));
             }
             return pending!.Completion.Task;
         }
@@ -205,7 +221,7 @@ namespace KhaozEngine.Automation
             long frame = Interlocked.Increment(ref _frame);
 
             _injector.ExpireHolds(frame);
-            while (_incoming.TryDequeue(out PendingCommand? pending)) Apply(pending, frame);
+            while (TryTakeIncoming(out PendingCommand? pending)) Apply(pending!, frame);
             CompleteDue(frame);
 
             InputState composed = _injector.Compose(real);
@@ -242,16 +258,18 @@ namespace KhaozEngine.Automation
             UnhookProcessExit();
 
             long frame = Frame;
-            PendingCommand[] waiting;
             lock (_waitingLock)
             {
-                waiting = _waiting.ToArray();
+                foreach (PendingCommand pending in _waiting)
+                    pending.TryFinish(AutomationReply.Failure(pending.Request.Id, frame, StoppedError));
                 _waiting.Clear();
             }
-            foreach (PendingCommand pending in waiting)
-                pending.Completion.TrySetResult(AutomationReply.Failure(pending.Request.Id, frame, StoppedError));
-            while (_incoming.TryDequeue(out PendingCommand? queued))
-                queued.Completion.TrySetResult(AutomationReply.Failure(queued.Request.Id, frame, StoppedError));
+            lock (_submitLock)
+            {
+                foreach (PendingCommand queued in _incoming)
+                    queued.TryFinish(AutomationReply.Failure(queued.Request.Id, frame, StoppedError));
+                _incoming.Clear();
+            }
 
             _listener?.DrainReplies(ReplyDrainTimeout);
             _listener?.Dispose();
@@ -272,5 +290,6 @@ namespace KhaozEngine.Automation
         }
 
         const string StoppedError = "automation host stopped";
+        const string TimedOutError = "automation command timed out";
     }
 }

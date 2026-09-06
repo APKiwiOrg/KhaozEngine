@@ -5,6 +5,51 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.28.0
+
+Twenty backlog fixes improve restore accuracy, command handling, authoring tools and rendering regression coverage.
+
+- `PersistenceBinding<TState>.RestoreDistance` compares restores in binding-native coordinates. Tile restores
+  compare integer X, Z and plane coordinates without losing adjacent tiles at large positions (#808).
+- `ITileCombatRules.CanAttack` rejects forbidden targets before player or actor commands establish a lock,
+  chase or attack roll. Existing rule implementations retain permissive admission (#802).
+- Command-rate budgets refill from simulated time rather than transport polls on world, sharded and tile hosts.
+  Extra polling cannot multiply the per-tick allowance, while fixed-step catch-up earns each elapsed tick (#681).
+- `CellPersistence.CellRestoreApplied` reports successfully applied snapshots after ownership, retained frames
+  and the NetId high-water are ready. Missing, stale and rejected loads do not signal success (#360).
+- `WorldPickups.Rehydrate(world)` re-adopts restored owned pickups with their saved payload and owner. Radius,
+  lifetime and offer history restart from configured defaults, and repeated adoption is idempotent (#660).
+- `Simulation.Hosting.DrainController` owns the countdown shared by world and tile servers. The existing NetWorld
+  type forwards to it, preserving source imports and public calls (#698).
+- `InMemoryTransportHub` provides a public multi-client local transport with copied payloads, staged delivery,
+  targeted disconnects and disposal. Both former test-only copies now use this implementation (#710).
+- Stair handoffs seed an empty climb smoothing accumulator from the migrated quantized signal, preserving
+  continuity without adding the full-precision float to observer or migration payloads (#57).
+- `AutomationOptions.CommandTimeout` retires commands left queued by a stalled frame loop and removes expired
+  steps. Connections recover after timeout. An already executing synchronous callback returns its real result (#816).
+- OIDC detailed validation separates discovery, JWKS and transport outages from refused credentials. Caller
+  cancellation propagates even with cached metadata or a wrapped transport failure (#791).
+- Browser and loopback adapters move to `KhaozEngine.Identity.Interactive` for all providers. OIDC keeps forwarding
+  wrappers under its old names without introducing ambiguous existing namespace imports (#709).
+- `PngReader` decodes non-interlaced 8/16-bit grayscale, gray-alpha, RGB and RGBA, preserving sample precision
+  and transparency. Tile height import accepts PNG alongside PGM through the same undoable command (#650).
+- Landing map lists scroll under a clip while title, New Map, status and Quit stay fixed. Every discovered
+  map remains reachable and scrolling does not activate a row (#361).
+- Ground-decal sparkle keeps its absolute phase across render-origin changes. A tighter GPU regression
+  detects the former shader behavior, and all three shader translation hash tables track the change (#345).
+- glTF and prop ingress rejects malformed indices with asset identity, bad index and vertex count.
+  `HlodMergeStats.MalformedCornersDropped` reports bounds-safe containment in live HLOD building (#403).
+- Six structural frame-upload tests now run headlessly through fake resources and command recording.
+  Compute skinning tests retain real-device coverage (#414).
+- A dedicated large, off-centre water golden pins the shipped grid-focus default with real Metal, Direct3D11
+  and Vulkan baselines, visible-water checks and a uniform-grid negative control (#298).
+- `SafeAreaInsets` and safe-area `Layout.Resolve` keep anchored UI inside host-supplied design-space insets.
+  `Layout.ResolveFractional` adds fractional positioning using the same child and parent anchor fractions (#238).
+- `DungeonNav.BakeTransformed` follows `DungeonPlotTransform` translation and yaw. Grid lookup, path smoothing,
+  stairs and the `ke-dungeon nav --yaw` path align with placed geometry, preserving existing Bake calls (#140).
+- Four nullable glint overrides complete `WaterLook` preset coverage. `OceanPresets.ApplyToLook` applies the
+  complete weather bundle per plane while leaving wave source, shore and unrelated settings intact (#372).
+
 ## 18.27.0
 
 Another backlog batch fixes update trust reporting, tiled-world lifecycle bugs and GPU cleanup, and adds small audio, GUI and rendering APIs.

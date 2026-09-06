@@ -5,6 +5,7 @@ using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.NetWorld;
 using Xunit;
+using KhaozEngine.Netcode;
 
 namespace KhaozEngine.Tests.NetWorld;
 
@@ -41,7 +42,7 @@ public class PresentationTraceTests
 
     static Rig NewRig(bool traceOnA)
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, InterestRadius = 500f, MaxPlayers = 8 };
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
         var a = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,
@@ -58,7 +59,7 @@ public class PresentationTraceTests
     [Fact]
     public void Trace_is_null_by_default()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, InterestRadius = 500f, MaxPlayers = 8 };
         _ = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
         var a = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,

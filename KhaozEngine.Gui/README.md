@@ -666,3 +666,18 @@ math is headless-testable). Clipping uses `SpriteBatch` scissor (`SetScissor`/`C
 nesting: a clipping widget drawn inside another clipping widget is bounded by both). Ported
 from `KhaozEngine.Screens`/`UI` (game-specific layout coupling dropped). Built on `KhaozEngine.Windowing`
 (Pointer/Input) + `KhaozEngine.Render2D` (SpriteBatch/SpriteFont/Texture2D). Part of the MonoGame-free engine.
+
+## Anchored and safe-area layout
+
+`Layout.Resolve(parent, anchor, width, height, marginX, marginY)` supports nine anchors and stretch.
+Apply `SafeAreaInsets` from Primitives to the viewport bounds first to keep UI clear of a notch or
+system overlay. The host supplies insets in design units, there is no automatic platform probing.
+
+```csharp
+Rect safe = new SafeAreaInsets(top: 24, bottom: 12, left: 0, right: 0).Apply(viewport.DesignBounds);
+Rect button = Layout.Resolve(safe, Anchor.BottomRight, 120, 40, 16, 16);
+Rect marker = Layout.ResolveFractional(safe, 0.25f, 0.75f, 0, 0);
+```
+
+`ResolveFractional` aligns the same fraction of the child with its parent. Fractions are finite values
+in [0, 1]. A zero-size child resolves a point. Its optional offsets move the result after anchoring.

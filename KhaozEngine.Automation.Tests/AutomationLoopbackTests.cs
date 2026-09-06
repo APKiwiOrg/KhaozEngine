@@ -73,6 +73,36 @@ public class AutomationLoopbackTests
     }
 
     [Fact]
+    public void ACommandThatTimesOutDoesNotRunLaterAndTheConnectionRemainsUsable()
+    {
+        using var session = new HostSession(commandTimeout: TimeSpan.FromMilliseconds(150));
+        using Connection connection = session.Connect();
+        int mutations = 0;
+        session.Host.Register("mutate", _ =>
+        {
+            mutations++;
+            return new System.Text.Json.Nodes.JsonObject();
+        });
+
+        connection.Write("{\"id\":21,\"token\":\"" + session.Host.Token + "\",\"cmd\":\"call\",\"name\":\"mutate\"}");
+
+        JsonElement timedOut = connection.Read();
+        Assert.Equal(21, timedOut.GetProperty("id").GetInt64());
+        Assert.Contains("timed out", timedOut.GetProperty("error").GetString());
+
+        session.Host.Pump(AutomationTestKit.Real());
+        Assert.Equal(0, mutations);
+
+        connection.Write("{\"id\":22,\"token\":\"" + session.Host.Token + "\",\"cmd\":\"call\",\"name\":\"mutate\"}");
+        session.PumpUntilReplied(connection);
+
+        JsonElement fresh = connection.Read();
+        Assert.Equal(22, fresh.GetProperty("id").GetInt64());
+        Assert.True(fresh.TryGetProperty("ok", out _));
+        Assert.Equal(1, mutations);
+    }
+
+    [Fact]
     public void AMalformedLineGetsAnErrorAndTheConnectionStaysOpen()
     {
         using var session = new HostSession();
@@ -235,12 +265,16 @@ public class AutomationLoopbackTests
         /// <summary>What the host reported through its <see cref="AutomationOptions.Log"/> hook.</summary>
         public LogSink Log { get; } = new();
 
-        public HostSession(TimeSpan? firstLineTimeout = null, TimeSpan? idleTimeout = null)
+        public HostSession(
+            TimeSpan? firstLineTimeout = null,
+            TimeSpan? idleTimeout = null,
+            TimeSpan? commandTimeout = null)
         {
             _environment = new EnvironmentScope(AutomationHost.EnvironmentVariable, "1");
             var options = new AutomationOptions(Enabled: true, _temp.Path) { Log = Log.Write };
             if (firstLineTimeout is TimeSpan first) options = options with { FirstLineTimeout = first };
             if (idleTimeout is TimeSpan idle) options = options with { IdleTimeout = idle };
+            if (commandTimeout is TimeSpan command) options = options with { CommandTimeout = command };
             Host = new AutomationHost(options);
             Host.Start();
         }

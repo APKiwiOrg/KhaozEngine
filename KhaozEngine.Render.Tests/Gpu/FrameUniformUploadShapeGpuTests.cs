@@ -23,7 +23,8 @@ namespace KhaozEngine.Tests.Gpu
     /// Direct3D 11 backend's uniform ring (<c>D3D11UniformRing</c>) is what makes such a write a memcpy into
     /// already-mapped memory today, and Metal and Vulkan never had the split at all, so what this test holds is
     /// the SHAPE: a renderer that goes back to a run of partial writes has grown that cost back the moment a
-    /// destination leaves the ring. It runs on both legs (Metal locally, WARP in CI).
+    /// destination leaves the ring. The structural rows run on <see cref="FakeGpuDevice"/> in the normal test
+    /// loop. The two compute-skinning rows retain a native device because that path requires compute support.
     /// </para>
     /// <para>
     /// Asserted by destination SIZE rather than by a handle, because the buffers are private to the renderers. The
@@ -133,11 +134,10 @@ namespace KhaozEngine.Tests.Gpu
                     "Only a whole-buffer write from offset 0 avoids a staging copy on a Direct3D 11 constant buffer.");
         }
 
-        [GpuFact]
+        [Fact]
         public void A_shadowed_frame_uploads_the_model_and_cascade_uniform_blocks_once_each()
         {
-            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
-            IGpuDevice gd = gpu.GpuDevice;
+            var gd = new FakeGpuDevice();
             var f = gd.Factory;
 
             using IGpuTexture finalTex = f.CreateTexture(GpuTextureDescription.Texture2D(
@@ -170,8 +170,6 @@ namespace KhaozEngine.Tests.Gpu
                 rec.Begin();
                 scene.RenderInternal(rec, W, H, finalFB);
                 rec.End();
-                gd.Submit(real);
-                gd.WaitForIdle();
             }
 
             Assert.False(scene.ShadowPassSkippedLastFrame,
@@ -181,6 +179,7 @@ namespace KhaozEngine.Tests.Gpu
             AssertOneWholeBufferWrite(rec, ShadowCascadeUboBytes, "shadow cascade UBO");
         }
 
+        // Retained on a native device because FakeGpuDevice rejects the compute pipeline used by GPU skinning.
         [GpuFact]
         public void A_shadowed_gpu_skinned_frame_uploads_both_slot_buffers_once_each()
         {
@@ -238,6 +237,7 @@ namespace KhaozEngine.Tests.Gpu
         /// is built and cannot move on a live scene. Everything else about the two frames is identical.
         /// </para>
         /// </summary>
+        // Retained on a native device because both runs exercise compute skinning before comparing palette cost.
         [GpuFact]
         public void The_bone_palette_uploads_once_per_frame_whatever_the_cascade_count()
         {
@@ -314,11 +314,10 @@ namespace KhaozEngine.Tests.Gpu
             return (hits.Count, bytes, scene.LastFrameStats.SkinnedUniformUploadBytes, scene.DrawnSkinnedInstances);
         }
 
-        [GpuFact]
+        [Fact]
         public void A_multi_plane_water_frame_uploads_every_plane_slot_in_one_whole_write()
         {
-            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
-            IGpuDevice gd = gpu.GpuDevice;
+            var gd = new FakeGpuDevice();
             var f = gd.Factory;
 
             using IGpuTexture finalTex = f.CreateTexture(GpuTextureDescription.Texture2D(
@@ -327,6 +326,7 @@ namespace KhaozEngine.Tests.Gpu
 
             using var scene = new Scene3D(gd, finalFB.Outputs);
             scene.Post.Starfield = false;
+            scene.Post.Water.WaveSource = WaterWaveSource.Procedural;
             scene.Camera.Frame(new Vector3(0f, 0.4f, 0f), new Vector3(10f, 6f, 10f));
 
             MeshHandle floor = scene.LoadMesh(MeshPrimitives.Tile(20f, 0.1f));
@@ -345,17 +345,13 @@ namespace KhaozEngine.Tests.Gpu
             rec.Begin();
             scene.RenderInternal(rec, W, H, finalFB);
             rec.End();
-            gd.Submit(real);
-            gd.WaitForIdle();
-
             AssertOneWholeBufferWrite(rec, WaterUboBytes, "water plane UBO");
         }
 
-        [GpuFact]
+        [Fact]
         public void An_overlay_proxy_frame_uploads_every_draw_slot_in_one_whole_write()
         {
-            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
-            IGpuDevice gd = gpu.GpuDevice;
+            var gd = new FakeGpuDevice();
             var f = gd.Factory;
 
             using IGpuTexture finalTex = f.CreateTexture(GpuTextureDescription.Texture2D(
@@ -384,17 +380,13 @@ namespace KhaozEngine.Tests.Gpu
             rec.Begin();
             scene.RenderInternal(rec, W, H, finalFB);
             rec.End();
-            gd.Submit(real);
-            gd.WaitForIdle();
-
             AssertOneWholeBufferWrite(rec, OverlayUboBytes, "overlay proxy UBO");
         }
 
-        [GpuFact]
+        [Fact]
         public void A_splat_terrain_frame_uploads_the_shared_frame_block_and_no_per_material_one()
         {
-            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
-            IGpuDevice gd = gpu.GpuDevice;
+            var gd = new FakeGpuDevice();
             var f = gd.Factory;
 
             using IGpuTexture finalTex = f.CreateTexture(GpuTextureDescription.Texture2D(
@@ -430,9 +422,6 @@ namespace KhaozEngine.Tests.Gpu
             rec.Begin();
             scene.RenderInternal(rec, W, H, finalFB);
             rec.End();
-            gd.Submit(real);
-            gd.WaitForIdle();
-
             // The frame block goes up ONCE, into the shared model UBO the splat pipeline now binds at set 0.
             AssertOneWholeBufferWrite(rec, FrameUboBytes, "shared frame UBO, splat frame");
 
@@ -455,11 +444,10 @@ namespace KhaozEngine.Tests.Gpu
         /// wrote a 2048-byte copy of the frame block once per LOADED tile-ground material, so a second material
         /// added a second upload whether or not anything was drawn with it.
         /// </summary>
-        [GpuFact]
+        [Fact]
         public void A_tile_ground_frame_costs_no_upload_per_loaded_material()
         {
-            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
-            IGpuDevice gd = gpu.GpuDevice;
+            var gd = new FakeGpuDevice();
             var f = gd.Factory;
 
             using IGpuTexture finalTex = f.CreateTexture(GpuTextureDescription.Texture2D(
@@ -548,11 +536,10 @@ namespace KhaozEngine.Tests.Gpu
             return layers;
         }
 
-        [GpuFact]
+        [Fact]
         public void A_sprite_frame_writes_its_view_projection_slots_whole_once_per_begin()
         {
-            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
-            IGpuDevice gd = gpu.GpuDevice;
+            var gd = new FakeGpuDevice();
             var f = gd.Factory;
 
             using IGpuTexture target = f.CreateTexture(GpuTextureDescription.Texture2D(
@@ -580,9 +567,6 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             rec.End();
-            gd.Submit(real);
-            gd.WaitForIdle();
-
             AssertOnlyWholeBufferWrites(rec, ViewProjUboBytes, Begins, "sprite view-projection UBO");
         }
 

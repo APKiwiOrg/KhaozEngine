@@ -37,6 +37,9 @@ automatically, so this is transparent to every other package.
   `CoverAnchored` (the rect form of `Cover`: cover a viewport at a uniform scale with the image's normalized
   anchor pinned to a screen point, enlarged to reach every edge from an off-centre anchor - camera-tracked
   backgrounds) and device-pixel snapping (`SnapToDevicePixel` / `SnapRectToDevice` / `SnapLengthToDevice`).
+- `SafeAreaInsets` - finite, non-negative top/bottom/left/right insets in design units, supplied by the
+  platform host. `Apply(viewport.DesignBounds)` produces the usable layout rect. Opposing insets that
+  consume an axis yield an empty rect on that axis. `Zero` leaves bounds unchanged.
 - `Rect` - axis-aligned pixel rect (top-left origin) with `Contains`, the input hit-testing rect.
 - `RayMath` - allocation-free 3D ray-intersection helpers (`System.Numerics`), zero-dependency leaf math for
   editor picking and future spatial queries. `IntersectAabb(origin, direction, min, max, out tNear)` is a slab

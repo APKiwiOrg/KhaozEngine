@@ -5,6 +5,7 @@ using KhaozEngine.NetWorld;
 using KhaozEngine.Replication;
 using KhaozEngine.Sharding;
 using Xunit;
+using KhaozEngine.Netcode;
 
 namespace KhaozEngine.Tests.NetWorld;
 
@@ -41,7 +42,7 @@ public class ShardedPlayerMoveSwimTests
     [Fact]
     public void Swim_flag_reaches_TryGetPlayerState_and_a_remote_observers_render_state()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var cfg = new ShardedWorldServerConfig
         {
             // One big cell so the swimmer and observer stay co-owned with no handoff in the middle of the test.

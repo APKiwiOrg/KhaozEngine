@@ -17,6 +17,28 @@ namespace KhaozEngine.Tests;
 public class AutomationGateTests
 {
     [Fact]
+    public void CommandTimeoutMustBePositive()
+    {
+        var options = AutomationOptions.Off with { CommandTimeout = TimeSpan.Zero };
+
+        ArgumentOutOfRangeException error = Assert.Throws<ArgumentOutOfRangeException>(() => new AutomationHost(options));
+
+        Assert.Equal("options", error.ParamName);
+        Assert.Contains("CommandTimeout", error.Message);
+    }
+
+    [Fact]
+    public void CommandTimeoutMustFitTheRuntimeTimerRange()
+    {
+        var options = AutomationOptions.Off with { CommandTimeout = TimeSpan.FromMilliseconds(uint.MaxValue) };
+
+        ArgumentOutOfRangeException error = Assert.Throws<ArgumentOutOfRangeException>(() => new AutomationHost(options));
+
+        Assert.Equal("options", error.ParamName);
+        Assert.Contains("CommandTimeout", error.Message);
+    }
+
+    [Fact]
     public void WithTheEnvironmentVariableUnsetTheHostBindsNothingAndWritesNoFile()
     {
         using var temp = new TempDirectory();

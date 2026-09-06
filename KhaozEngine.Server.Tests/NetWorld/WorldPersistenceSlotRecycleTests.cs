@@ -20,7 +20,7 @@ namespace KhaozEngine.Tests.NetWorld;
 /// occupant's, so two players standing close enough to each other made the misapplication land with no epoch advance
 /// at all.
 ///
-/// <para>The rows below drive the real loopback stack (an <see cref="InMemoryHub"/>, a <see cref="WorldServer"/> or
+/// <para>The rows below drive the real loopback stack (an <see cref="InMemoryTransportHub"/>, a <see cref="WorldServer"/> or
 /// <see cref="ShardedWorldServer"/>, and a <see cref="WorldPersistence"/> over a <see cref="GatedWorldStore"/>) and
 /// hold the load at the gate across the whole leave/join, which is the exact window a genuinely remote store opens
 /// and a synchronous <see cref="InMemoryWorldStore"/> cannot.</para>
@@ -64,7 +64,7 @@ public class WorldPersistenceSlotRecycleTests
 
     private sealed class Rig
     {
-        public required InMemoryHub Hub { get; init; }
+        public required InMemoryTransportHub Hub { get; init; }
         public required GatedWorldStore Store { get; init; }
         public required InMemoryWorldStore Inner { get; init; }
         public required WorldPersistence Persistence { get; init; }
@@ -148,7 +148,7 @@ public class WorldPersistenceSlotRecycleTests
             await inner.SaveAsync("player:" + Alpha, PlayerRecord.From(new PlayerMoveState { Position = Stored },
                 Encoding.UTF8.GetBytes("alpha-blob")).Encode());
         var store = new GatedWorldStore(inner);
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig
         {
             TickSeconds = Dt,
@@ -167,7 +167,7 @@ public class WorldPersistenceSlotRecycleTests
         await inner.SaveAsync("player:" + Alpha, PlayerRecord.From(new PlayerMoveState { Position = Stored },
             Encoding.UTF8.GetBytes("alpha-blob")).Encode());
         var store = new GatedWorldStore(inner);
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new ShardedWorldServerConfig
         {
             TickSeconds = Dt,
@@ -181,7 +181,7 @@ public class WorldPersistenceSlotRecycleTests
         return Build(hub, store, inner, server, () => { server.Poll(); server.Tick(Dt); });
     }
 
-    private static Rig Build(InMemoryHub hub, GatedWorldStore store, InMemoryWorldStore inner,
+    private static Rig Build(InMemoryTransportHub hub, GatedWorldStore store, InMemoryWorldStore inner,
         IWorldPersistenceHost host, Action tick)
     {
         Rig rig = null!;

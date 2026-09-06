@@ -79,12 +79,6 @@ namespace KhaozEngine.MapEditor
         const float CreateButtonWidth = 110f;
         const float FieldButtonGap = 10f;
 
-        /// <summary>Caps the Open Map section so a head with a large map directory cannot render an unbounded
-        /// panel. Not a fit guarantee: this panel has no scrolling, and a full recents list can already overflow a
-        /// small window on its own. Internal so the tests can reference it directly instead of hard-coding the
-        /// number.</summary>
-        internal const int MaxDiscoveredShown = 12;
-
         static readonly Color BackdropColor = new(0.06f, 0.07f, 0.09f, 1f);
         static readonly Color PanelBackground = new(0.115f, 0.12f, 0.165f, 0.98f);
         static readonly Color TitleColor = new(0.92f, 0.94f, 0.98f, 1f);
@@ -118,13 +112,17 @@ namespace KhaozEngine.MapEditor
         Button _createButton = null!;
         Button _quitButton = null!;
         readonly List<MapEntry> _recent = new();
+        readonly ScrollablePanel _mapScroll = new(default)
+        {
+            BlocksPointer = false,
+            ItemSpacing = 0f,
+        };
 
         // The last DiscoverMaps query result: normalized (null/whitespace skipped), deduped (ordinal), sorted. Kept
         // separate from _discoveredButtons because a recents-only mutation (no new query) can change which entries
         // are filtered out without re-running the head's file IO.
         readonly List<string> _discovered = new();
         readonly List<MapEntry> _discoveredButtons = new();
-        int _discoveredHidden;
 
         string _note = "";
         bool _built;
@@ -173,16 +171,15 @@ namespace KhaozEngine.MapEditor
         internal Button? RecentButtonAt(int index) => index >= 0 && index < _recent.Count ? _recent[index].Button : null;
 
         /// <summary>The number of Open Map buttons currently built (the last <see cref="QueryDiscoveredMaps"/> result,
-        /// filtered against Open Recent and capped at <see cref="MaxDiscoveredShown"/>). Exposed for tests.</summary>
+        /// filtered against Open Recent). Exposed for tests.</summary>
         internal int DiscoveredButtonCount => _discoveredButtons.Count;
 
         /// <summary>The Nth Open Map button, or null when out of range. After an <see cref="OnUpdate"/> pass its
         /// <c>Bounds</c> reflect that frame's layout, so a test can drive a real tap against it. Exposed for tests.</summary>
         internal Button? DiscoveredButtonAt(int index) => index >= 0 && index < _discoveredButtons.Count ? _discoveredButtons[index].Button : null;
 
-        /// <summary>How many discovered maps are beyond <see cref="MaxDiscoveredShown"/> and so not rendered as a
-        /// button (surfaced instead as the "+N more" overflow row). Exposed for tests.</summary>
-        internal int DiscoveredHiddenCount => _discoveredHidden;
+        /// <summary>The viewport occupied by the scrollable Open Recent and Open Map lists. Exposed for tests.</summary>
+        internal Rect MapListBounds => _mapScroll.ContentBounds;
 
         // ---- lifecycle ---------------------------------------------------------------------------------------
 
@@ -275,18 +272,15 @@ namespace KhaozEngine.MapEditor
         }
 
         // Rebuild _discoveredButtons from _discovered: no IO. Filters out anything already in the recents list (so
-        // a map renders exactly once, migrating into Open Recent the first time it is opened), caps at
-        // MaxDiscoveredShown, and counts the remainder into _discoveredHidden so the "+N more" row never truncates
-        // silently. Called after every QueryDiscoveredMaps AND every RebuildRecentButtons: the filter depends on
-        // both the discovered list and the recents list, so either input changing must re-derive it.
+        // a map renders exactly once, migrating into Open Recent the first time it is opened). Called after every
+        // QueryDiscoveredMaps AND every RebuildRecentButtons: the filter depends on both the discovered list and the
+        // recents list, so either input changing must re-derive it.
         void RebuildDiscoveredButtons()
         {
             _discoveredButtons.Clear();
-            _discoveredHidden = 0;
             foreach (string path in _discovered)
             {
                 if (IsInRecents(path)) continue;
-                if (_discoveredButtons.Count >= MaxDiscoveredShown) { _discoveredHidden++; continue; }
                 bool exists = SafeExists(path);
                 var button = new Button(default, LocalizedText.Raw(FriendlyLabel(path)), null!, () => ActivateDiscovered(path))
                 {
@@ -447,6 +441,10 @@ namespace KhaozEngine.MapEditor
             RefreshRecentIfChanged();
             _ui.Update(Manager.Input, ui);
             LandingLayout layout = ComputeLayout(ui.Width, ui.Height);
+            float scrollBeforeUpdate = _mapScroll.ScrollOffset;
+            _mapScroll.Update(_ui.Pointer, Manager.Input, dt);
+            if (_mapScroll.ScrollOffset != scrollBeforeUpdate) _ui.Pointer.ConsumeGesture();
+            layout = ComputeLayout(ui.Width, ui.Height);
 
             _nameInput.Bounds = layout.NameField;
             bool nameFocused = _nameInput.Update(_ui.Pointer, Manager.Input, dt);
@@ -462,8 +460,7 @@ namespace KhaozEngine.MapEditor
             MapEntry[] entries = _recent.ToArray();
             for (int i = 0; i < entries.Length && i < layout.RecentButtons.Count; i++)
             {
-                entries[i].Button.Bounds = layout.RecentButtons[i];
-                if (entries[i].Button.Update(_ui.Pointer)) break;
+                if (UpdateClipped(entries[i].Button, layout.RecentButtons[i], layout.MapList)) break;
             }
 
             // Same snapshot-then-break idiom: a discovered button's click runs ActivateDiscovered, which can rebuild
@@ -471,12 +468,25 @@ namespace KhaozEngine.MapEditor
             MapEntry[] discovered = _discoveredButtons.ToArray();
             for (int i = 0; i < discovered.Length && i < layout.DiscoveredButtons.Count; i++)
             {
-                discovered[i].Button.Bounds = layout.DiscoveredButtons[i];
-                if (discovered[i].Button.Update(_ui.Pointer)) break;
+                if (UpdateClipped(discovered[i].Button, layout.DiscoveredButtons[i], layout.MapList)) break;
             }
 
             _quitButton.Bounds = layout.QuitButton;
             _quitButton.Update(_ui.Pointer);
+        }
+
+        bool UpdateClipped(Button button, Rect bounds, Rect clip)
+        {
+            float left = MathF.Max(bounds.X, clip.X);
+            float top = MathF.Max(bounds.Y, clip.Y);
+            float right = MathF.Min(bounds.Right, clip.Right);
+            float bottom = MathF.Min(bounds.Bottom, clip.Bottom);
+            button.Bounds = right > left && bottom > top
+                ? new Rect(left, top, right - left, bottom - top)
+                : new Rect(-1f, -1f, 0f, 0f);
+            bool clicked = button.Update(_ui.Pointer);
+            button.Bounds = bounds;
+            return clicked;
         }
 
         // ---- draw ------------------------------------------------------------------------------------------
@@ -504,6 +514,7 @@ namespace KhaozEngine.MapEditor
             _createButton.Font = font;
             _createButton.Draw(batch, _white);
 
+            _mapScroll.BeginClip(batch);
             DrawLeft(batch, font, "Open recent", layout.RecentLabel, LabelColor);
             if (_recent.Count == 0)
             {
@@ -538,12 +549,9 @@ namespace KhaozEngine.MapEditor
                         _discoveredButtons[i].Button.Font = font;
                         _discoveredButtons[i].Button.Draw(batch, _white);
                     }
-                    // Never truncate silently: anything beyond MaxDiscoveredShown is named in this overflow line
-                    // instead of just disappearing from the list.
-                    if (_discoveredHidden > 0)
-                        DrawLeft(batch, font, "+" + _discoveredHidden + " more not shown", layout.DiscoveredOverflow, PlaceholderColor);
                 }
             }
+            _mapScroll.EndClip(batch);
 
             if (_note.Length > 0) DrawLeft(batch, font, _note, layout.Note, NoteColor);
 
@@ -604,19 +612,19 @@ namespace KhaozEngine.MapEditor
         // layout, though the binding tests drive the actions rather than the pixels.
         readonly struct LandingLayout
         {
-            public readonly Rect Panel, Title, NewMapLabel, NameField, CreateButton, RecentLabel, DiscoveredLabel,
-                DiscoveredOverflow, Note, QuitButton;
+            public readonly Rect Panel, Title, NewMapLabel, NameField, CreateButton, MapList, RecentLabel,
+                DiscoveredLabel, Note, QuitButton;
             public readonly IReadOnlyList<Rect> RecentButtons;
             public readonly IReadOnlyList<Rect> DiscoveredButtons;
 
             public LandingLayout(Rect panel, Rect title, Rect newMapLabel, Rect nameField, Rect createButton,
-                Rect recentLabel, IReadOnlyList<Rect> recentButtons, Rect discoveredLabel,
-                IReadOnlyList<Rect> discoveredButtons, Rect discoveredOverflow, Rect note, Rect quitButton)
+                Rect mapList, Rect recentLabel, IReadOnlyList<Rect> recentButtons, Rect discoveredLabel,
+                IReadOnlyList<Rect> discoveredButtons, Rect note, Rect quitButton)
             {
                 Panel = panel; Title = title; NewMapLabel = newMapLabel; NameField = nameField;
-                CreateButton = createButton; RecentLabel = recentLabel; RecentButtons = recentButtons;
+                CreateButton = createButton; MapList = mapList; RecentLabel = recentLabel; RecentButtons = recentButtons;
                 DiscoveredLabel = discoveredLabel; DiscoveredButtons = discoveredButtons;
-                DiscoveredOverflow = discoveredOverflow; Note = note; QuitButton = quitButton;
+                Note = note; QuitButton = quitButton;
             }
         }
 
@@ -632,8 +640,7 @@ namespace KhaozEngine.MapEditor
             // The whole Open Map block contributes 0 height when the head never wired DiscoverMaps, so an unwired
             // head's menu keeps exactly the layout it had before this feature. When wired, it reserves one row per
             // discovered button, or a single placeholder row when there are none (mirroring the recent block above,
-            // same reason: the rows below must not jump as maps migrate into Open Recent). The overflow line is
-            // additional, reserved only when there is a remainder to report.
+            // same reason: the rows below must not jump as maps migrate into Open Recent).
             bool discoveredWired = _options.DiscoverMaps is not null;
             int discoveredCount = _discoveredButtons.Count;
             float discoveredRowsH = discoveredCount > 0
@@ -641,19 +648,12 @@ namespace KhaozEngine.MapEditor
                 : MapRowHeight;
             float discoveredBlockH = 0f;
             if (discoveredWired)
-            {
                 discoveredBlockH = SectionLabelHeight + discoveredRowsH + RowGap;
-                if (_discoveredHidden > 0) discoveredBlockH += MapRowGap + NoteRowHeight;
-            }
 
-            float contentH =
-                TitleRowHeight + RowGap +
-                SectionLabelHeight + FieldRowHeight + RowGap +
-                SectionLabelHeight + recentBlockH + RowGap +
-                discoveredBlockH +
-                NoteRowHeight + RowGap +
-                QuitRowHeight;
-            float panelH = contentH + Pad * 2f;
+            float fixedTopH = TitleRowHeight + RowGap + SectionLabelHeight + FieldRowHeight + RowGap;
+            float listContentH = SectionLabelHeight + recentBlockH + RowGap + discoveredBlockH;
+            float fixedBottomH = NoteRowHeight + RowGap + QuitRowHeight;
+            float panelH = MathF.Min(h, fixedTopH + listContentH + fixedBottomH + Pad * 2f);
             float panelW = MathF.Min(PanelWidth, w);
             float panelX = (w - panelW) * 0.5f;
             float panelY = MathF.Max(0f, (h - panelH) * 0.42f);   // a touch above center
@@ -673,6 +673,15 @@ namespace KhaozEngine.MapEditor
             var createButton = new Rect(innerX + innerW - createW, y, createW, FieldRowHeight);
             y += FieldRowHeight + RowGap;
 
+            var quitButton = new Rect(innerX, panel.Bottom - Pad - QuitRowHeight, innerW, QuitRowHeight);
+            var note = new Rect(innerX, quitButton.Y - RowGap - NoteRowHeight, innerW, NoteRowHeight);
+            var mapList = new Rect(innerX, y, innerW, MathF.Max(0f, note.Y - y));
+            _mapScroll.Bounds = mapList;
+            _mapScroll.ItemCount = 1;
+            _mapScroll.ItemHeight = listContentH;
+            _mapScroll.ScrollTo(_mapScroll.ScrollOffset);
+            y -= _mapScroll.ScrollOffset;
+
             var recentLabel = new Rect(innerX, y, innerW, SectionLabelHeight);
             y += SectionLabelHeight;
             var recentButtons = new Rect[recentCount];
@@ -682,7 +691,6 @@ namespace KhaozEngine.MapEditor
 
             Rect discoveredLabel = default;
             Rect[] discoveredButtons = Array.Empty<Rect>();
-            Rect discoveredOverflow = default;
             if (discoveredWired)
             {
                 discoveredLabel = new Rect(innerX, y, innerW, SectionLabelHeight);
@@ -691,22 +699,11 @@ namespace KhaozEngine.MapEditor
                 for (int i = 0; i < discoveredCount; i++)
                     discoveredButtons[i] = new Rect(innerX, y + i * (MapRowHeight + MapRowGap), innerW, MapRowHeight);
                 y += discoveredRowsH;
-                if (_discoveredHidden > 0)
-                {
-                    y += MapRowGap;
-                    discoveredOverflow = new Rect(innerX, y, innerW, NoteRowHeight);
-                    y += NoteRowHeight;
-                }
                 y += RowGap;
             }
 
-            var note = new Rect(innerX, y, innerW, NoteRowHeight);
-            y += NoteRowHeight + RowGap;
-
-            var quitButton = new Rect(innerX, y, innerW, QuitRowHeight);
-
-            return new LandingLayout(panel, title, newMapLabel, nameField, createButton, recentLabel, recentButtons,
-                discoveredLabel, discoveredButtons, discoveredOverflow, note, quitButton);
+            return new LandingLayout(panel, title, newMapLabel, nameField, createButton, mapList, recentLabel,
+                recentButtons, discoveredLabel, discoveredButtons, note, quitButton);
         }
     }
 }

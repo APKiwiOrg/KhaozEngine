@@ -75,7 +75,7 @@ namespace KhaozEngine.Imaging
             s.Write(data, 0, data.Length);
 
             // CRC-32 over the chunk type + data.
-            uint crc = Crc32(typeBytes, data);
+            uint crc = PngCrc.Compute(typeBytes, data);
             var crcBytes = new byte[4];
             WriteBE(crcBytes, 0, crc);
             s.Write(crcBytes, 0, 4);
@@ -89,27 +89,5 @@ namespace KhaozEngine.Imaging
             buffer[offset + 3] = (byte)value;
         }
 
-        static readonly uint[] CrcTable = BuildCrcTable();
-
-        static uint[] BuildCrcTable()
-        {
-            var table = new uint[256];
-            for (uint n = 0; n < 256; n++)
-            {
-                uint c = n;
-                for (int k = 0; k < 8; k++)
-                    c = (c & 1) != 0 ? 0xEDB88320u ^ (c >> 1) : c >> 1;
-                table[n] = c;
-            }
-            return table;
-        }
-
-        static uint Crc32(byte[] a, byte[] b)
-        {
-            uint c = 0xFFFFFFFFu;
-            foreach (byte x in a) c = CrcTable[(c ^ x) & 0xFF] ^ (c >> 8);
-            foreach (byte x in b) c = CrcTable[(c ^ x) & 0xFF] ^ (c >> 8);
-            return c ^ 0xFFFFFFFFu;
-        }
     }
 }

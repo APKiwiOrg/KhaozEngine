@@ -2,6 +2,7 @@ using System;
 using KhaozEngine.Locomotion;
 using KhaozEngine.NetWorld;
 using Xunit;
+using KhaozEngine.Netcode;
 
 namespace KhaozEngine.Tests.NetWorld;
 
@@ -12,7 +13,7 @@ public class ShardedNoticeDrainTests
     [Fact]
     public void Sharded_broadcast_reaches_a_client_and_drain_completes()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new ShardedWorldServerConfig { TickSeconds = 1f / 30f, InterestRadius = 24f, OverlapMargin = 24f, MaxPlayers = 16 };
         var server = new ShardedWorldServer(hub.Server, config, Flat, MoveTuning.Default);
         var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,

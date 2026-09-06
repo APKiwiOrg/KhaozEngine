@@ -46,7 +46,8 @@ public sealed class AntiCheatConfig
     public bool CorrectionEnabled => MaxCorrectionDistance > 0f && CorrectionStreak > 0;
 
     /// <summary>Builds a fresh per-connection token bucket for the configured rate, or null when disabled. The
-    /// per-second budget is converted to a per-poll (per-tick) refill via <paramref name="tickSeconds"/>.</summary>
+    /// per-second budget is converted to a per-tick refill via <paramref name="tickSeconds"/>. Server ticks, rather
+    /// than transport polls, advance it.</summary>
     internal RateLimiter? CreateLimiter(float tickSeconds)
     {
         if (!RateLimitEnabled) return null;

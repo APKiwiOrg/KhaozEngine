@@ -265,7 +265,7 @@ public class MmoServerEndToEndTests
         // interface methods, which means a head that omits them compiles and silently keeps the double teleport
         // (#642) - and this is the file a game copies for its own head, so it demonstrates the contract instead.
         var store = new InMemoryWorldStore();
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new MmoServerConfig { TickSeconds = 0.1f, SpawnX = 50f, SpawnY = 50f };
         var server = new MmoServer(hub.Server, config, store);
         byte[] token = Encoding.UTF8.GetBytes("alice");

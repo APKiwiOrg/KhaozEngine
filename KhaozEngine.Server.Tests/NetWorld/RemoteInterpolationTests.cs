@@ -51,7 +51,7 @@ public class RemoteInterpolationTests
     /// steadily in +X.</summary>
     static Rig NewRig(bool interpolateRemotesOnA = true)
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, InterestRadius = 500f, MaxPlayers = 8 };
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
         var a = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,
@@ -231,7 +231,7 @@ public class RemoteInterpolationTests
     {
         // A remote that just appeared has only a 'current' buffer (no 'previous'); Interpolate must skip it and
         // render it at its spawn, never throwing or producing NaN.
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, InterestRadius = 500f, MaxPlayers = 8 };
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
         var a = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,

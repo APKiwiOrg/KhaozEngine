@@ -25,14 +25,14 @@ public static class NavLayerLinks
     /// Generates the cross-layer links for <paramref name="layers"/>, whose indices in the list are
     /// the layer indices stamped into the links. Every grid must carry surface heights
     /// (<see cref="NavGrid.HasSurfaceHeights"/>) and all grids must share the same dimensions, cell
-    /// size, and origin, since cell coordinates are compared across layers. For each ordered layer
+    /// size, origin, and yaw, since cell coordinates are compared across layers. For each ordered layer
     /// pair (a &lt; b), each passable cell in a is tested against its 8 neighbors in b, and a
     /// qualifying pair emits both directed links (a to b, then b to a). Scan order is fixed (layer
     /// pair, then z, then x, then direction), so output order is deterministic.
     /// </summary>
     /// <exception cref="ArgumentNullException"><paramref name="layers"/> is null.</exception>
     /// <exception cref="ArgumentException"><paramref name="layers"/> is empty, a grid is null or has
-    /// no surface height field, or the grids' dimensions, cell size, or origin differ.</exception>
+    /// no surface height field, or the grids' dimensions, cell size, origin, or yaw differ.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="stepHeight"/> is negative, or
     /// <paramref name="jumpHeight"/> is not greater than <paramref name="stepHeight"/>.</exception>
     public static IReadOnlyList<NavLink> Generate(
@@ -53,8 +53,9 @@ public static class NavLayerLinks
                 throw new ArgumentException($"Layer {i} has no surface height field. Bake it with NavGrid.FromSurfaces.", nameof(layers));
             if (grid.Width != first.Width || grid.Height != first.Height
                 || grid.CellSize != first.CellSize
-                || grid.OriginX != first.OriginX || grid.OriginZ != first.OriginZ)
-                throw new ArgumentException($"Layer {i} does not share layer 0's dimensions, cell size, and origin.", nameof(layers));
+                || grid.OriginX != first.OriginX || grid.OriginZ != first.OriginZ
+                || grid.YawRadians != first.YawRadians)
+                throw new ArgumentException($"Layer {i} does not share layer 0's dimensions, cell size, origin, and yaw.", nameof(layers));
         }
 
         var links = new List<NavLink>();

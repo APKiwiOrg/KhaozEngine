@@ -20,6 +20,13 @@ float wait = FixedTickHost.ComputeIdleWaitSeconds(host.SecondsUntilNextTick, saf
 if (wait > 0f) Thread.Sleep(TimeSpan.FromSeconds(wait)); else Thread.Yield();
 ```
 
+- **`Hosting.DrainController`** - a deterministic elapsed-time grace countdown shared by authoritative server heads.
+  `Begin` starts or restarts it, `Advance(dt)` moves it from the host's own clock, and `HasBegun`, `IsDraining`, and
+  `IsComplete` expose its lifecycle. It owns no notice, socket, or persistence behavior. Each head keeps those
+  terminal actions at its own boundary. The nested namespace keeps source that imports both package roots from
+  becoming ambiguous. The old `KhaozEngine.NetWorld.DrainController` remains as a forwarding
+  compatibility type.
+
 - **`IJobScheduler`** - the engine's one worker-pool abstraction: `For(int count, Action<int> body)` runs
   `count` independent jobs and blocks until all finish. `SingleThreadedJobScheduler` runs them inline in index
   order (deterministic, allocation-free - the default everywhere). `ThreadPoolJobScheduler` fans them across the

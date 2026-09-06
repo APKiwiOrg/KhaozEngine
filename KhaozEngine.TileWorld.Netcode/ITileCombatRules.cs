@@ -60,6 +60,13 @@ public readonly record struct TileAttackOutcome(bool Landed, ushort Damage, byte
 /// </summary>
 public interface ITileCombatRules
 {
+    /// <summary>Whether an attacker may acquire this target. Called when the authoritative server admits an Attack
+    /// command, before the target can become a lock, chase, swing, or roll. The default permits every non-zero
+    /// target, preserving implementations written before target admission was exposed.</summary>
+    /// <param name="attackerNetId">Who wants to acquire the target.</param>
+    /// <param name="targetNetId">The requested target.</param>
+    bool CanAttack(long attackerNetId, long targetNetId) => true;
+
     /// <summary>Rolls one swing. Called once per eligible attacker per tick, in the engine's fixed order, and BEFORE
     /// any of this tick's damage is applied, so no roll can see another roll's result.</summary>
     /// <param name="context">Both parties as the roll phase found them.</param>

@@ -33,7 +33,7 @@ public class WorldServerSnapshotIndexParityTests
     // test isolates the one thing that changed: how WriteFiltered resolves that set (index vs. full scan).
     private const float HugeRadius = 1_000_000f;
 
-    private static WorldServer NewServer(InMemoryHub hub, int maxPlayers) =>
+    private static WorldServer NewServer(InMemoryTransportHub hub, int maxPlayers) =>
         new(hub.Server,
             new WorldServerConfig { TickSeconds = Dt, InterestRadius = HugeRadius, MaxPlayers = maxPlayers, DeltaReplication = false },
             Flat, MoveTuning.Default);
@@ -85,7 +85,7 @@ public class WorldServerSnapshotIndexParityTests
     [InlineData(7UL, 8)]
     public void FallbackSnapshot_MatchesOldFullScan_AcrossRandomizedMovement(ulong seed, int clientCount)
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         WorldServer server = NewServer(hub, maxPlayers: clientCount + 2);
         var rng = new DeterministicRng(seed);
         var clients = new List<CapturingClient>();
@@ -137,7 +137,7 @@ public class WorldServerSnapshotIndexParityTests
         // rebuilt fresh every tick rather than reused stale across ticks: a leave must drop that entity from every
         // remaining client's next snapshot, and a join must appear in it, with the indexed path still matching the
         // old full-scan reference exactly.
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         WorldServer server = NewServer(hub, maxPlayers: 6);
         var rng = new DeterministicRng(99UL);
 

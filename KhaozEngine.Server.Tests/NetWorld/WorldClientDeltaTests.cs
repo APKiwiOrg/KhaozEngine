@@ -3,6 +3,7 @@ using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.NetWorld;
 using Xunit;
+using KhaozEngine.Netcode;
 
 namespace KhaozEngine.Tests.NetWorld;
 
@@ -31,7 +32,7 @@ public class WorldClientDeltaTests
 
     private static void RunAndAssertRemoteMovesForward(bool serverDelta, bool clientDelta)
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var server = new WorldServer(hub.Server, ServerConfig(serverDelta), Flat, MoveTuning.Default);
         var a = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default, ClientConfig(clientDelta));
         var b = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default, ClientConfig(clientDelta));
@@ -79,7 +80,7 @@ public class WorldClientDeltaTests
     [Fact]
     public void Remote_interpolates_continuously_across_deltas()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var server = new WorldServer(hub.Server, ServerConfig(delta: true), Flat, MoveTuning.Default);
         var a = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default, ClientConfig(delta: true));
         var b = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default, ClientConfig(delta: true));

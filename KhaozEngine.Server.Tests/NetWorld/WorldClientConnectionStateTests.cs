@@ -14,7 +14,7 @@ public class WorldClientConnectionStateTests
     [Fact]
     public void Connects_through_Connecting_to_Connected()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 8 };
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
         var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,
@@ -30,7 +30,7 @@ public class WorldClientConnectionStateTests
     [Fact]
     public void Transport_drop_while_connected_is_Disconnected_Unreachable()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 8 };
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
         INetTransport ct = hub.CreateClient();
@@ -48,7 +48,7 @@ public class WorldClientConnectionStateTests
     [Fact]
     public void Rejected_token_is_surfaced_as_RejectedToken_with_detail()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 8 };
         // An authenticator that rejects every token with a known reason.
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default,

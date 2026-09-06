@@ -3282,6 +3282,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   `Moderate` being closest to `WaterSettings`' own defaults). It deliberately leaves `GridMode`, the clipmap
   fields, `Bathymetry` and the surf fields alone: those describe the water body's geometry and shoreline rather
   than its weather, so a preset pick never undoes your clipmap or bathymetry wiring.
+  `OceanPresets.ApplyToLook(kind, look)` applies the full bundle to a `WaterLook`, including glint. It leaves
+  `WaveSource` and unrelated overrides untouched. Set a lake's source to `Procedural` explicitly if wanted.
 - **Bloom** (`Post.Bloom`, a `BloomSettings`, **default off**): an opt-in threshold + separable-blur bloom pass
   so beams, emissive materials, and bright billboards read as a glow instead of flat. Default `Bloom.Enabled = false`,
   so the post chain runs no extra passes and existing scenes are byte-stable; set `Post.Bloom.Enabled = true` to
@@ -3395,16 +3397,17 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         SurfStrength = 0f,
     }));
     ```
-    **33 fields are overridable**: `WaveSource`, the whole swell group, the ripple/detail group, body colour
-    (`DeepColor`/`ShallowColor`/`AbsorptionPerMetre`/`ShallowDepth`/`Opacity`), foam, `ShoreFadeDistance`, and the
+    **37 fields are overridable**: `WaveSource`, the whole swell group, the ripple/detail group, body colour
+    (`DeepColor`/`ShallowColor`/`AbsorptionPerMetre`/`ShallowDepth`/`Opacity`), foam, the four `Glint*` scalars,
+    `ShoreFadeDistance`, and the
     two depth-response strengths `ShoalingStrength`/`SurfStrength`. **What stays scene-wide, and cannot be put on
     a look at all**: `SeaState` (one FFT bake - calling the producer twice a frame with two sea states does not
     make two oceans, it makes the one producer rebake on every call for both states and corrupts the persistent
     foam accumulator, whose contract is that one invocation owns each texel), `Bathymetry` (one depth texture),
     the grid group (`GridMode`/`ClipmapCellSize`/`ClipmapRingCells`/`ClipmapLevels`/`ClipmapGeomorphBand`/
     `GridFocusBias` - these select the pass's pipeline, index buffer and vertex layout before the draw loop
-    starts, so they are a geometry choice rather than a look), reflection/horizon/glint (read the one sky and the
-    one sun, out of scope for now, cheap enough to move later without a structural change), the `Surf*` shape
+    starts, so they are a geometry choice rather than a look), reflection weights and horizon colour (read the
+    shared sky), the `Surf*` shape
     knobs (a plane wanting no surf sets `SurfStrength = 0`, which is the whole per-body need), and the sample-
     count quality knobs. Setting `WaveSource = WaterWaveSource.Procedural` on a look is the inland-body case: it
     takes the plane off the shared ocean entirely, so it loses the sea's swell and whitecaps, and (since shoaling
@@ -5424,8 +5427,7 @@ dotnet run --project tools/KeDungeon -- nav --layout layout.json \
     --origin-x 120 --origin-z 0 --base-y 0 --agent-height 1.8 --require-connected
 ```
 
-`nav` refuses a non-zero `--yaw` outright (`DungeonNav.Bake` has no rotation concept, see issue #140) rather
-than silently baking a `NavSpace` that does not match a rotated plot, and `--require-connected` turns a
+`nav --yaw` applies the same plot rotation as the geometry bake. `--require-connected` turns a
 report of more than one connected component into exit code 1, so it doubles as a CI gate. See the
 `KhaozEngine.Dungeon` package README's CLI section for the full option list and its connectivity model.
 
@@ -5468,6 +5470,11 @@ above. Headroom-aware: in a `DungeonCeilingMode.Roofed` layout, a cell whose cei
 (`CeilingHeightMeters`) is below `agentHeight` (default `DungeonNav.DefaultAgentHeight`, 1.8, the shipped
 character capsule height) bakes blocked even though its cell kind is walkable. An `Open` layout never blocks
 on headroom, matching its pre-headroom-awareness behavior exactly.
+
+Use `DungeonNav.BakeTransformed(layout, plot, agentHeight)` with the same `DungeonPlotTransform` passed to the
+geometry sinks when the plot has nonzero yaw. `NavGrid.FromWalkable` and `FromSurfaces` also accept
+optional `yawRadians`, default zero. Cell lookup, path smoothing and waypoint centers use the rotated
+mapping. Sample callbacks and stair links still address local cells, surface heights remain world Y.
 
 ### Bake ramps, stairs, and standable props
 
@@ -6058,7 +6065,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.27.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.28.0" />
 ```
 
 ```csharp
@@ -6621,6 +6628,12 @@ distance. `Scaled(1f)` is the identity, and a multiplier below 1 (or NaN, or inf
 multiplying the fields yourself: a blind per-field multiply lands on a set `Validate()` rejects.
 
 ### Far props: HLOD merged clusters
+
+`Scene3DChunkSink.MergeStats` returns cumulative `HlodMergeStats`. `MalformedCornersDropped` counts each
+out-of-range source corner contained during HLOD building, including repeated placements. A nonzero count
+identifies malformed source content even when containment keeps the live client running. At authoring ingress,
+`GltfLoader` and every `PropLoader` path reject invalid indices with asset identity, bad index and vertex count.
+
 
 The decor ring makes far *terrain* visible for free, but its props still pop in only at the gameplay radius. HLOD
 (hierarchical LOD) closes that gap: past a configurable distance a chunk cluster's individual props collapse into
@@ -7682,9 +7695,10 @@ referring to it by id keeps resolving.
 (an iterated box blur reading its outside neighbours from the document, so a patch blends into the terrain
 around it), `SetHeights`, `Line` (Bresenham, one object per tile, one undo step), `Scatter` (a jittered grid
 whose offsets come from a hash of the point and the seed, so the same arguments always produce the same world),
-`PlacePrefab` and `ImportHeights`. `PgmReader` decodes the binary PGM (netpbm P5, 8 or 16 bit) a heightmap
-import takes, PGM rather than PNG because the engine ships no deflate decoder. Write those files with LF line
-endings: a CRLF header spends its CR as the single delimiter byte and leaves the LF as sample 0, which shifts
+`PlacePrefab` and `ImportHeights`. Height imports detect binary PGM (netpbm P5) or PNG by signature.
+`PngReader` in Imaging supports non-interlaced 8/16-bit grayscale, gray-alpha, RGB and RGBA, using grayscale
+or the red channel as height and ignoring alpha. Both formats preserve 16-bit sample precision. Palette and
+interlaced PNGs are rejected. Write PGM files with LF line endings: a CRLF header spends its CR as the single delimiter byte and leaves the LF as sample 0, which shifts
 the whole raster.
 
 Two limits are worth knowing before leaning on the general case. A `SnapshotRectCommand` owns what was inside
@@ -7770,8 +7784,8 @@ centre and radius. Every configure, density, paint and remove call is one undo s
 (a headless Metal, D3D11 or Vulkan device, through `TileWorldSnapshot`, the same path the render goldens take),
 and both hand back a text block naming the framing followed by the PNG itself, with an optional `savePath` that
 ALSO writes the file and joins the saved path to that framing line. Everything else runs on a machine with no
-display. `height_import` reads binary PGM (P5) rather than PNG, since the engine ships no PNG decoder, so
-convert first.
+display. `height_import` reads binary PGM (P5) or non-interlaced 8/16-bit PNG. Both formats use the same
+undoable height command and north-first row orientation.
 
 A short authoring run:
 
@@ -8012,8 +8026,9 @@ during its own shutdown to drain the coalesced write. A `--map <path>` launch fl
 push `MapEditorScene` directly ABOVE the landing scene instead of going through New Map/Open Recent, so
 Close still returns to the menu. `DiscoverMaps` renders a further Open Map section below Open Recent for
 paths the head knows about but the recents store does not: deduplicated against `Recent`, deterministically
-ordered, and capped with a reported remainder, re-queried on scene enter and on re-exposure rather than every
-frame since it is head file IO. See the `KhaozEngine.MapEditor` README's "Landing scene and recent files"
+ordered, and re-queried on scene enter and on re-exposure rather than every frame since it is head file IO.
+Open Recent and Open Map share a clipped scroll region with every row reachable. Title, New Map, status and
+Quit remain fixed outside that region. See the `KhaozEngine.MapEditor` README's "Landing scene and recent files"
 section for the full mechanics.
 
 **Tool modes** (`EditorToolController.Mode`, also the toolbar tab bar): `Select` (pick a placement or spawn
@@ -11332,7 +11347,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.27.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.28.0" />
 ```
 
 ```csharp
@@ -11368,7 +11383,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.27.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.28.0" />
 ```
 
 ```csharp
@@ -11610,7 +11625,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.27.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.28.0" />
 ```
 
 ```csharp
@@ -13308,8 +13323,13 @@ It is a default interface member, so every validator already has it. The default
 maps null to `Refused`, which is what null already meant, so nothing that exists today changes meaning.
 `DiscordTokenValidator` overrides it and splits on the HTTP status class: any 5xx, a 429, a 408, or a request
 that never completed report `ProviderUnavailable`, everything else non-success reports `Refused`.
-`OidcTokenValidator` takes the default for now, so an OIDC outage still reads as `Refused`. `result.Detail` is
-a developer-facing note (a status code, an exception message), never localized and never shown to a player.
+`OidcTokenValidator` also overrides it: discovery, JWKS and transport failures report `ProviderUnavailable`,
+while invalid signatures and claims report `Refused`. Caller cancellation still propagates, including when
+metadata is cached. `result.Detail` is a developer-facing note, never shown to a player.
+
+Shared browser and loopback adapters live in `KhaozEngine.Identity.Interactive`, so Discord and custom
+providers can use them without referencing OIDC. Existing `KhaozEngine.Identity.Oidc` adapter names remain
+forwarding wrappers. Import the shared namespace when using those adapters with another provider.
 
 ### Offline grace
 
@@ -13650,7 +13670,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.27.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.28.0" />
 </ItemGroup>
 ```
 
@@ -13705,6 +13725,11 @@ Two bounds sit ahead of the token check, because the token travels inside the re
 `AutomationHost.MaxRequestLineBytes` (64 KiB) is refused and the connection closes, without the rest of it ever being
 buffered. A connection gets `FirstLineTimeout` (5 seconds) for its first complete line and `IdleTimeout` (60 seconds)
 between lines after that, both settable on the options and both off when set to zero or less.
+
+`CommandTimeout` defaults to 5 seconds and must be positive, up to the runtime timer limit of about 49.7 days.
+An expired queued command gets a timeout reply and is removed so it cannot execute after the frame loop resumes.
+An expired `step` is also removed from the wait list, and the connection stays usable. A synchronous callback
+already executing at its deadline cannot be preempted safely and returns its actual success or failure.
 
 The state provider and every verb run on the WINDOW thread at the frame boundary, so they may touch the live camera,
 the screen stack and the world directly with no locking. A verb that throws becomes an error reply rather than taking
@@ -15335,6 +15360,9 @@ load lands, so on a high-latency store a rejoiner who is moving can cross `Quiet
 restore arrives and take a hard cut. Nothing regressed there (every restore was a teleport before), but the
 benefit does degrade with store latency, and widening the distance is the knob for a slow store.
 
+`PersistenceBinding<TState>.RestoreDistance` lets a binding compare restored state in its own coordinates.
+The default uses `Position`, preserving existing 3D behavior. Tile persistence compares integer X, Z and plane coordinates directly, so resuming the same tile at any map scale does not invent a teleport or advance the epoch.
+
 ### Per-cell world persistence (`CellPersistence`)
 
 `KhaozEngine.NetWorld.CellPersistence` wires an `IWorldStore` into a `ShardHost`-based server (through
@@ -15345,6 +15373,12 @@ instantiated), a **periodic dirty save** of cells changed since their last save,
 record** so restored entities never collide with a freshly spawned one after a restart. Players are excluded
 (they persist separately, player-keyed, through `WorldPersistence`), and so are ghosts and migrating entities -
 only a cell's owned, non-player state is saved.
+
+
+`CellPersistence.CellRestoreApplied` fires after a successful restore, retained-frame handling and NetId
+high-water advancement. Its `CellRestoreAppliedEvent` carries `Coord`, restored `NetIds` and
+`RetainedFrameCount`. It runs inline from the restore drain in `Update` or `FlushAsync`, so drain on the
+server thread when handlers touch world state. Missing, rejected and stale loads do not emit it.
 
 ```csharp
 using KhaozEngine.NetWorld;
@@ -16258,16 +16292,13 @@ The seam's state (the time-to-live, the clock, the offer records) lives in this 
 is a plain entity carrying `PickupState` that the seam knows nothing about, offered to nobody and expiring never.
 
 The mark is not a lock, and it is worth knowing what clearing it actually buys you. `server.ClearTransient(pickupNetId)`
-after `Spawn` drops the mark, and the next save writes the entity like any other. What you get back on restore is
-precisely the husk above: nothing rehydrates the seam's tracking, so the restored orb is offered to nobody, expires
-never, and `Despawn` / `DespawnAll` / `ForgetCell` all miss it. Persistent ground loot needs a
-`WorldPickups.Rehydrate(world)` that re-adopts restored `PickupState` entities into the seam, filed as
-[#660](https://github.com/APKiwiOrg/KhaozEngine/issues/660). Until that lands, a collectible meant to survive a
-restart belongs in your own content or save data, spawned again at boot, which is also the only place its payload
-still means anything. Clearing the mark is not the only route to that husk either: re-marking a pickup
-`TransientScope.DurableOnly` keeps it in the evictor's unload freeze while `ForgetCell` has already dropped the
-seam's record for it, so re-entering that coordinate hands back an untracked, never-expiring pickup entity
-mid-session, with no restart involved. Leave a pickup on the `Always` scope `Spawn` gives it.
+after `Spawn` drops the mark, and the next save writes the entity like any other. Call `WorldPickups.Rehydrate(world)` after applying the restored cell snapshot. It adopts owned entities
+carrying `PickupState`, `NetId` and `ReplicatedPosition`, preserves payload and owner, and starts a fresh lifetime
+and offer history from the configured defaults. Repeated calls do not reset already adopted pickups.
+For asynchronous loads, subscribe to `CellPersistence.CellRestoreApplied` and pass the restored cell's world.
+For an eviction cache restore, call it after the cached snapshot is applied. Keep the default `Always` scope
+for pickups that should disappear on unload or restart. Use `ClearTransient` for deliberate durable loot and
+keep its payload definitions valid across restarts.
 
 **The same opt-out is yours for any other transient server-owned entity.** A timed spawn, a wave of adds, a
 projectile, a temporary marker:
@@ -16547,3 +16578,39 @@ and execute the published binary; it prints one `AOT PROBE:` line and returns ex
 - To change the library: edit, add a headless test, `scripts/pack-local-feed.sh`, consume locally. When
   stable, bump the version + add a `CHANGELOG.md` entry + tag for a published release. Each game adopts on
   its own schedule by bumping its pinned version (or its umbrella metapackage version).
+
+## Safe-area UI layout
+
+A platform host supplies `KhaozEngine.Primitives.SafeAreaInsets` in design units. Apply them to the
+viewport's `DesignBounds`, then use the existing `KhaozEngine.Gui.Layout` anchors inside that rect.
+
+```csharp
+Rect safe = new SafeAreaInsets(top: 24, bottom: 12, left: 0, right: 0).Apply(viewport.DesignBounds);
+Rect action = Layout.Resolve(safe, Anchor.BottomRight, 120, 40, marginX: 16, marginY: 16);
+Rect point = Layout.ResolveFractional(safe, 0.25f, 0.75f, width: 0, height: 0);
+```
+
+Insets must be finite and non-negative. Opposing insets that consume an axis produce zero safe size.
+`ResolveFractional` accepts fractions in [0, 1] and aligns the same fraction of the child and parent,
+then applies optional offsets. Zero child size resolves a point. This API does not query platform insets
+or alter the viewport, it composes with each host's existing viewport and input mapping.
+
+
+### Shared local transports and drain countdowns
+
+`InMemoryTransportHub` in Netcode gives headless tests and local hosts one `Server` endpoint and multiple
+`CreateClient()` endpoints. Sends copy payloads and arrive on the receiving endpoint's next `Poll`. Disconnects
+are observable and stop later sends. Dispose the hub to disconnect its clients. The hub is single-threaded.
+
+`KhaozEngine.Simulation.Hosting.DrainController` owns the deterministic grace countdown shared by world and tile
+servers. Call `Begin(graceSeconds)` and advance it from the host's own clock. `HasBegun` stays true after completion,
+so admission stays closed after a drain finishes. The existing NetWorld type forwards to the shared implementation.
+
+Command-rate budgets refill when simulation time advances, independent of transport polling frequency. Extra
+`Poll` calls cannot mint another per-tick allowance. `ITileCombatRules.CanAttack(attackerNetId, targetNetId)` lets
+the game reject a target before an Attack command creates a lock, chase or roll, and defaults to permissive behavior.
+
+
+Stair climb smoothing survives a shard handoff by seeding the destination's empty smoothing accumulator from the
+migrated `ClimbRateQ` signal. Ordinary ticks retain their full-precision accumulator. The float remains absent
+from observer snapshots, so the wire payload does not grow.

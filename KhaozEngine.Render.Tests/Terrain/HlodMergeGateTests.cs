@@ -163,6 +163,25 @@ namespace KhaozEngine.Tests.Terrain
         }
 
         [Fact]
+        public void BuildCpu_CountsEveryMalformedSourceCornerAndKeepsOutputInBounds()
+        {
+            GltfMesh good = MeshPrimitives.Sphere(radius: 1f, rings: 3, segments: 4);
+            GltfMesh bad = new(good.Vertices, new uint[] { 0, 7_777, uint.MaxValue });
+            var sources = new Dictionary<string, GltfMesh> { ["bad"] = bad };
+            var placements = new[] { new PropPlacement("bad", 1f, 5f, 1f, 1f, 0f, 0) };
+            PropLayer layer = PropLayer.PlacementLayer(placements, NoMeshes(), 90f)
+                .WithHlod(sources, hlodDistance: 120f, weldCell: 0f);
+            var sink = new Scene3DChunkSink(scene: null!, Flat(5f), new[] { layer }, chunkSize: 60f);
+
+            var cpu = (Scene3DChunkSink.CpuBuild)sink.BuildCpu(new ChunkCoord(0, 0), lod: 0);
+
+            Assert.NotNull(cpu.HlodMeshes![0]);
+            foreach (uint index in cpu.HlodMeshes[0]!.Indices32)
+                Assert.True(index < (uint)cpu.HlodMeshes[0]!.Vertices.Length);
+            Assert.Equal(2, sink.MergeStats.MalformedCornersDropped);
+        }
+
+        [Fact]
         public void BuildCpu_ForATierReLod_MergesNothing()
         {
             Scene3DChunkSink sink = HlodSink(null, Flat(5f));

@@ -3,6 +3,7 @@ using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.NetWorld;
 using Xunit;
+using KhaozEngine.Netcode;
 
 namespace KhaozEngine.Tests.NetWorld;
 
@@ -16,7 +17,7 @@ public class WorldServerDeltaTests
     private static readonly Func<float, float, float> Flat = (x, z) => 0f;
     private const float Dt = 1f / 30f;
 
-    private static WorldServer NewServer(InMemoryHub hub, bool deltaReplication = true) =>
+    private static WorldServer NewServer(InMemoryTransportHub hub, bool deltaReplication = true) =>
         new(hub.Server, new WorldServerConfig { TickSeconds = Dt, InterestRadius = 500f, MaxPlayers = 8, DeltaReplication = deltaReplication },
             Flat, MoveTuning.Default);
 
@@ -33,7 +34,7 @@ public class WorldServerDeltaTests
     [Fact]
     public void Delta_capable_clients_are_served_deltas_and_see_each_other_move()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         WorldServer server = NewServer(hub);
         var a = new RawDeltaClient(hub.CreateClient(), server.Registry);
         var b = new RawDeltaClient(hub.CreateClient(), server.Registry);
@@ -62,7 +63,7 @@ public class WorldServerDeltaTests
     {
         // Old client (never advertises DeltaCapable) against a new (delta) server: it must keep getting full
         // snapshots and never a Delta frame, and still see the world.
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         WorldServer server = NewServer(hub);
         var legacy = new RawDeltaClient(hub.CreateClient(), server.Registry, advertiseDelta: false);
         var mover = new RawDeltaClient(hub.CreateClient(), server.Registry);
@@ -82,7 +83,7 @@ public class WorldServerDeltaTests
     [Fact]
     public void Delta_disabled_server_serves_full_snapshots_even_to_capable_clients()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         WorldServer server = NewServer(hub, deltaReplication: false);
         var a = new RawDeltaClient(hub.CreateClient(), server.Registry);   // advertises delta
 
@@ -95,7 +96,7 @@ public class WorldServerDeltaTests
     [Fact]
     public void Idle_in_aoi_state_costs_far_fewer_bytes_as_deltas_than_full_snapshots()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         WorldServer server = NewServer(hub);
         var delta = new RawDeltaClient(hub.CreateClient(), server.Registry);                    // deltas
         var legacy = new RawDeltaClient(hub.CreateClient(), server.Registry, advertiseDelta: false);  // full snapshots

@@ -79,11 +79,12 @@ layout(set=0, binding=0) uniform texture2D DepthTex;   // .r = linear depth (sin
 layout(set=0, binding=1) uniform sampler Samp;
 // ONE uniform buffer, which the retired Veldrid Metal backend needed (it mis-bound a second) and #604 no longer
 // requires: the RAW inverse view-projection and the time/quality value share this single Frame block, grown from
-// 64 to 80 bytes, and nothing here wants a second one.
+// 64 to 96 bytes, and nothing here wants a second one.
 layout(set=0, binding=2) uniform Frame {
     mat4 InvViewProj;   // RAW (un-clip-corrected) inverse view-projection, shared by every decal this frame
     vec4 TimeQ;         // x = effect time seconds, y = quality (1 full / 0 reduced), z = maxRgb ceiling,
                         // w = dynamic-geometry reject (1 on, read on the GEOMETRY path below, issue #235)
+    vec4 RenderOrigin;  // restores render-relative Center to its absolute world position for stable shimmer phase
 };
 // GEOMETRIC world normal, encoded *0.5+0.5 by the model pass, ALPHA 0 on dynamic/skinned surfaces. Read on two
 // paths below: the void fallback (is this the decal's ground or a cliff face) and the TimeQ.w dynamic reject.
@@ -456,7 +457,8 @@ void main() {
     {
         // Rim glow: a band straddling the full boundary, tinted toward the outline colour with a slow shimmer.
         float rim = (1.0 - smoothstep(0.0, edge * 1.5 + feather * 0.5, abs(sd))) * Energy.x;
-        float shimmer = 0.85 + 0.15 * sin(TimeQ.x * 6.0 + Center.x + Center.z);
+        float shimmer = 0.85 + 0.15 * sin(TimeQ.x * 6.0 + Center.x + Center.z
+            + RenderOrigin.x + RenderOrigin.z);
         rgb = mix(rgb, Outline.rgb, clamp(rim * 0.6, 0.0, 1.0));
         a = max(a, rim * shimmer * Outline.a * 0.8);
     }

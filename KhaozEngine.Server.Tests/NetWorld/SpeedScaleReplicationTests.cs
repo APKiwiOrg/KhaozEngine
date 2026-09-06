@@ -195,7 +195,7 @@ public class SpeedScaleReplicationTests
     [Fact]
     public void A_recycled_sharded_slot_does_not_inherit_the_former_players_scale()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new ShardedWorldServerConfig { TickSeconds = Dt, MaxPlayers = 1 };
         var server = new ShardedWorldServer(hub.Server, config, Flat, MoveTuning.Default);
         INetTransport firstTransport = hub.CreateClient();

@@ -164,7 +164,8 @@ Windowing + input foundation for the custom MonoGame-free stack.
   (Cmd) key is held, the one cross-platform check for a "command modifier" keyboard chord (Ctrl+Z / Cmd+Z,
   Ctrl+S / Cmd+S, and so on) so a game or editor tests one property instead of OR-ing all four keys itself.
   `WasReleased(MouseButton)` / `MouseReleased` (since 14.25.0) give the mouse the release edge the keyboard
-  already had.
+  already had. `WithoutScroll()` returns the same snapshot with only `ScrollDelta` cleared, sharing every input
+  collection and preserving every other value. It reuses the original snapshot when scroll is already zero.
 - `InputAccumulator` (since 14.25.0) - the raw-event to snapshot state machine, split out of `AppWindow` so it is
   headless-testable. It owns the held/pressed/released sets and turns OS callbacks (`OnKeyDown`, `OnMouseUp`,
   `OnScroll`, `OnFocusChanged`, ...) into one immutable `InputState` per `Snapshot(...)` call, with the platform

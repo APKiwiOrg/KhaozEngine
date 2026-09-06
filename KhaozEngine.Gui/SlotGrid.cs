@@ -59,12 +59,20 @@ namespace KhaozEngine.Gui
     /// per-slot context menu). <see cref="HoveredSlot"/> / <see cref="PressedSlot"/> expose the live states (-1 = none). The
     /// widget knows nothing about game items: it draws each empty slot as a themed frame and lets the caller paint
     /// icons / counts through <see cref="DrawSlotContent"/>. Call <see cref="Update(Pointer)"/> then <see cref="Draw"/> each
-    /// frame. <see cref="Update(Pointer)"/> reserves the footprint on the pointer (the click-through gate).
+    /// frame. <see cref="Update(Pointer)"/> reserves the footprint on the pointer (the click-through gate), clipped
+    /// to <see cref="VisibleBounds"/> when one is set.
     /// </summary>
     public sealed class SlotGrid
     {
         /// <summary>The grid origin: only X/Y drive layout (the footprint is <see cref="ContentSize"/>).</summary>
         public Rect Bounds;
+
+        /// <summary>
+        /// Optional visible region for input. When set, slot hit-testing, pointer reservation, and drag source and
+        /// target paths use each slot's intersection with this region. Null preserves the full-grid behavior.
+        /// Drawing still relies on the caller's matching scissor region.
+        /// </summary>
+        public Rect? VisibleBounds { get; set; }
 
         /// <summary>Total number of slots (N). Filled left-to-right, top-to-bottom, wrapping at <see cref="Columns"/>.</summary>
         public int Count;
@@ -286,13 +294,29 @@ namespace KhaozEngine.Gui
             return new Rect(x, y, SlotWidth, SlotHeight);
         }
 
-        /// <summary>Index of the slot containing <paramref name="point"/>, or -1 when the point is off every slot
-        /// (the inter-slot gaps count as off). Pure geometry, independent of pointer state.</summary>
+        /// <summary>Index of the visible part of the slot containing <paramref name="point"/>, or -1 when the point
+        /// is off every slot (the inter-slot gaps count as off). Pure geometry, independent of pointer state.</summary>
         public int SlotAt(Vector2 point)
         {
             for (int i = 0; i < Count; i++)
-                if (SlotRect(i).Contains(point)) return i;
+                if (TryVisiblePart(SlotRect(i), out Rect visible) && visible.Contains(point)) return i;
             return -1;
+        }
+
+        bool TryVisiblePart(Rect rect, out Rect visible)
+        {
+            if (VisibleBounds is not Rect clip)
+            {
+                visible = rect;
+                return true;
+            }
+
+            float x = Math.Max(rect.X, clip.X);
+            float y = Math.Max(rect.Y, clip.Y);
+            float right = Math.Min(rect.Right, clip.Right);
+            float bottom = Math.Min(rect.Bottom, clip.Bottom);
+            visible = new Rect(x, y, Math.Max(0f, right - x), Math.Max(0f, bottom - y));
+            return right > x && bottom > y;
         }
 
         /// <summary>Set (or replace) the drawable <see cref="SlotContent"/> of slot <paramref name="index"/>. The
@@ -337,7 +361,7 @@ namespace KhaozEngine.Gui
         /// </summary>
         public int Update(Pointer pointer, GuiDragContext? drag)
         {
-            pointer.BlockRegion(ContentBounds);
+            if (TryVisiblePart(ContentBounds, out Rect reservation)) pointer.BlockRegion(reservation);
             HoveredSlot = -1;
             PressedSlot = -1;
             PressOriginSlot = -1;
@@ -349,7 +373,7 @@ namespace KhaozEngine.Gui
             int clicked = -1;
             for (int i = 0; i < Count; i++)
             {
-                Rect r = SlotRect(i);
+                if (!TryVisiblePart(SlotRect(i), out Rect r)) continue;
                 if (HoveredSlot < 0 && pointer.IsHoveringIn(r)) HoveredSlot = i;
                 if (PressedSlot < 0 && pointer.IsPressingIn(r)) PressedSlot = i;
                 if (PressOriginSlot < 0 && pointer.IsDragStartIn(r)) PressOriginSlot = i;
@@ -375,7 +399,9 @@ namespace KhaozEngine.Gui
             if (BeginDragPayload is not null && !drag.IsDragging && PressOriginSlot >= 0)
             {
                 Rect source = SlotRect(PressOriginSlot);
-                if (drag.ShouldBeginDrag(pointer, source) && BeginDragPayload(PressOriginSlot) is { } payload)
+                if (TryVisiblePart(source, out Rect sourceHit)
+                    && drag.ShouldBeginDrag(pointer, sourceHit)
+                    && BeginDragPayload(PressOriginSlot) is { } payload)
                 {
                     // Zero-config ghost: a payload the game built without a painter drags the slot's own built-in
                     // SlotContent (icon, cooldown sweep, count), which is already exactly what the player grabbed.

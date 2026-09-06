@@ -3126,7 +3126,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   whose world-space bounding sphere lies entirely outside the camera frustum, so nothing off-screen is rasterized
   (a win for the streamed overworld: distant terrain chunks and scattered props behind/beside the camera cost
   nothing). It is **pixel-neutral by construction** - only geometry the camera cannot see is dropped - so existing
-  renders are byte-identical. Set `scene.FrustumCulling = false` to force everything drawn (for profiling or to
+  renders are byte-identical. Explicit `CastsShadows = false` instances are rejected before instance packing
+  and GPU upload. Remaining instances preserve each mesh's original first-seen order, and
+  `CulledInstances` includes early rejects. Set `scene.FrustumCulling = false` to force everything drawn (for profiling or to
   prove the parity). Mesh-local bounds (`MeshBounds`) are computed once at `LoadMesh` from the vertex positions, so
   the cull never rescans vertices and allocates nothing per frame. Terrain chunks (which draw at identity with
   world-space vertices) are culled with the tighter positive-vertex AABB test; props/models use the world-sphere
@@ -6053,7 +6055,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.25.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.26.0" />
 ```
 
 ```csharp
@@ -11318,7 +11320,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.25.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.26.0" />
 ```
 
 ```csharp
@@ -11354,7 +11356,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.25.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.26.0" />
 ```
 
 ```csharp
@@ -11596,7 +11598,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.25.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.26.0" />
 ```
 
 ```csharp
@@ -13636,7 +13638,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.25.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.26.0" />
 </ItemGroup>
 ```
 

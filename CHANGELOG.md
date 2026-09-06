@@ -5,6 +5,18 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.26.0
+
+Dense ground cover avoids invisible uploads and gains a smooth rooted fade.
+
+- Rigid instances with `CastsShadows = false` are camera-culled before grouping and GPU upload. Visible
+  instances compact without changing mesh order, culling counters or offscreen shadow casters. Grouping
+  reuses its cursor buffer above 64 mesh runs instead of allocating every frame (#836).
+- Ground cover supports a smooth `HeightScale` fade that keeps roots fixed and avoids fragment cutout
+  noise, with a configurable `InstanceFadeBandWidth`. Optional `DensityRadius` separates the dense area
+  from the outer draw distance. The default dissolve remains available.
+  `GroundCoverBatch` caches conservative range bounds so distant cover can skip placement walks (#836).
+
 ## 18.25.0
 
 Scrollable lists can yield drag gestures to their contents, and exact full-overlay boundaries no longer bleed

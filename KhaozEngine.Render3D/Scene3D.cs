@@ -193,7 +193,8 @@ namespace KhaozEngine.Render3D
         /// Camera-frustum culling of the main (visible) mesh pass: on by default. Each queued instance whose
         /// world-space bounding sphere lies entirely outside the camera frustum is skipped in the model + splat
         /// draws, so nothing the camera cannot see is rasterized. Culling is pixel-neutral by construction (it only
-        /// removes provably-offscreen geometry); force it off to prove that (the off/on parity test) or to profile.
+        /// removes provably-offscreen geometry). Force it off to prove that (the off/on parity test) or to profile.
+        /// Explicit shadow opt-outs are rejected before instance packing and upload. Casters stay available to depth.
         /// The shadow depth pass is NEVER camera-culled: an off-screen caster still throws a visible shadow, so this
         /// flag does not touch the shadow pass (see <see cref="CulledInstances"/>).
         /// </summary>
@@ -1642,11 +1643,13 @@ namespace KhaozEngine.Render3D
             Matrix4x4 vp = FrameViewProjection();
             Matrix4x4 absVp = FrameAbsoluteViewProjection();
             Vector3 eye = ToRender(ActiveCamera.Eye);
+            FrustumPlanes camFrustum = FrustumCulling ? FrustumPlanes.Extract(absVp) : default;
 
             // GPU instancing: group queued instances by mesh into a flat instance array (ordered by mesh) + a
             // run per unique mesh. Reuses member buffers (cleared, not realloc) to stay per-frame alloc-free. Done
             // BEFORE the model pass so the (optional) shadow depth pass can reuse the same uploaded instance buffer.
-            GroupInstances(_instances.Items, _instanceData, _runs, _meshRunIndex, _instanceCastKinds);
+            GroupInstances(_instances.Items, _instanceData, _runs, _meshRunIndex, _instanceCastKinds,
+                CullOptedOutInstances(camFrustum), _groupWriteCursors);
             // Fold each mesh's alpha-cutout threshold into its instances' SpecParams.z (the model fragment discards
             // texels below it, so MASK foliage renders as its silhouette). A mesh with cutoff 0 (OPAQUE, the default)
             // is untouched, so the instance data - and the render - stays byte-identical to the pre-cutout path.
@@ -1659,7 +1662,6 @@ namespace KhaozEngine.Render3D
             // an off-screen caster must still write depth into the light-space map so its shadow lands on-screen.
             // Reuses _instanceVisible (grown, not per-frame allocated); the main + splat draws then rasterize only
             // the visible contiguous sub-spans of each run against the same GPU buffer (no re-upload, no reorder).
-            FrustumPlanes camFrustum = FrustumCulling ? FrustumPlanes.Extract(absVp) : default;
             ComputeMainPassVisibility(camFrustum);
 
             // Resolve the shadow tier + (when active) this frame's cascade fit BEFORE the CPU skin pass below, so an
@@ -2615,148 +2617,6 @@ namespace KhaozEngine.Render3D
                 for (int i = 0; i < shadowFrustums.Length && !visibleShadow; i++)
                     visibleShadow = shadowFrustums[i].IntersectsSphereExceptPlane(center, r, excludedPlane: 4);
             return (visibleMain, visibleShadow);
-        }
-
-        /// <summary>
-        /// Fill <see cref="_instanceVisible"/> for this frame's grouped instance buffer: true where the instance's
-        /// world-space bounding sphere is (conservatively) inside <paramref name="frustum"/>. When
-        /// <see cref="FrustumCulling"/> is off every slot is visible (parity path). Also updates
-        /// <see cref="_drawnInstances"/> / <see cref="_culledInstances"/>. Allocation-free on the hot path (the mask
-        /// grows, never per-frame allocated). The shadow depth pass does not consult this mask.
-        /// </summary>
-        void ComputeMainPassVisibility(in FrustumPlanes frustum)
-        {
-            int total = _instanceData.Count;
-            if (_instanceVisible.Length < total)
-                _instanceVisible = new bool[Math.Max(total, _instanceVisible.Length * 2)];
-
-            _drawnInstances = 0;
-            _culledInstances = 0;
-            if (total == 0) return;
-
-            if (!FrustumCulling)
-            {
-                for (int i = 0; i < total; i++) _instanceVisible[i] = true;
-                _drawnInstances = total;
-                return;
-            }
-
-            // Walk runs so each slot's mesh bounds come from its run's mesh; the world matrix is the uploaded
-            // instance model matrix. A stale-handle run (mesh unloaded this frame) is conservatively kept visible
-            // (the draw loop skips it anyway by the same stale check), so culling never diverges from the draw.
-            foreach (var run in _runs)
-            {
-                bool valid = _slots.IsValid(run.Mesh.Index, run.Mesh.Generation);
-                Mesh mesh = default; bool haveMesh = false;
-                if (valid && _meshes[run.Mesh.Index] is { } m) { mesh = m; haveMesh = true; }
-                // Ground chunks (splat terrain, and a tile world's region planes) draw chunk-local under a PURE
-                // TRANSLATION (their region origin), so their local AABB offset by that translation IS the world
-                // AABB: cull them with the tighter AABB test (a flat chunk's bounding sphere is far too
-                // conservative), and the offset is exact. Props/models use the world-sphere test (cheap under
-                // arbitrary scale/rotation), and so does a ground instance under a rotation or a scale.
-                bool materialPassPlaced = haveMesh && (mesh.SplatMaterial >= 0 || mesh.TileGroundMaterial >= 0);
-                for (uint s = 0; s < run.Count; s++)
-                {
-                    int slot = (int)(run.Start + s);
-                    bool visible = true;
-                    if (haveMesh)
-                    {
-                        Matrix4x4 world = _instanceData[slot].Model;
-                        if (materialPassPlaced && IsPureTranslation(world, out Vector3 t))
-                            visible = frustum.IntersectsAabb(mesh.Bounds.Min + t, mesh.Bounds.Max + t);
-                        else
-                        {
-                            mesh.Bounds.WorldSphere(world, out Vector3 c, out float r);
-                            visible = frustum.IntersectsSphere(c, r);
-                        }
-                    }
-                    _instanceVisible[slot] = visible;
-                    if (visible) _drawnInstances++; else _culledInstances++;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Group queued <paramref name="items"/> by mesh handle into <paramref name="instanceData"/> (a flat array
-        /// ordered so all instances of one mesh are contiguous) and <paramref name="runs"/> (one
-        /// <see cref="MeshRun"/> per unique mesh handle, in first-seen order). Pure + headless-testable; both output
-        /// lists are Cleared and refilled (no realloc on the caller's reused buffers). <paramref name="meshRunIndex"/>
-        /// is scratch (mesh handle -&gt; run index): pass the caller's reused dictionary to keep the whole grouping
-        /// pass allocation-free and O(instances) (a dictionary lookup instead of a linear scan of the runs seen so
-        /// far). Omit it (the default) for a one-off/test call, which allocates a local scratch dictionary instead.
-        /// <paramref name="castKinds"/> (optional) receives each SLOT's shadow-caster classification, index-aligned
-        /// to <paramref name="instanceData"/>: this is the one place that still knows which queued instance a slot
-        /// came from, so the opt-out flag is read here (see Scene3D.ShadowCasters.cs). Omit it and no classification
-        /// is produced, which the depth pass reads as "every caster opaque" (the pre-policy shape).
-        /// </summary>
-        internal static void GroupInstances(IReadOnlyList<SceneInstances.Instance> items,
-            List<ModelRenderer.InstanceData> instanceData, List<MeshRun> runs,
-            Dictionary<(int Index, int Generation), int>? meshRunIndex = null,
-            List<ShadowCastKind>? castKinds = null)
-        {
-            instanceData.Clear();
-            runs.Clear();
-            castKinds?.Clear();
-            if (items.Count == 0) return;
-
-            meshRunIndex ??= new Dictionary<(int, int), int>();
-            meshRunIndex.Clear();
-
-            // First-seen mesh order. Instances are usually already mesh-coherent (one mesh per kind), so the run
-            // list stays short. Pass 1: collect distinct mesh handles in first-seen order + count per mesh, O(1)
-            // amortized per instance via meshRunIndex (a per-instance linear scan of the runs list so far would be
-            // O(instances x uniqueMeshes), the hot path this dictionary replaces).
-            for (int i = 0; i < items.Count; i++)
-            {
-                MeshHandle mesh = items[i].Mesh;
-                var key = (mesh.Index, mesh.Generation);
-                if (meshRunIndex.TryGetValue(key, out int slot))
-                    runs[slot] = new MeshRun(mesh, 0, runs[slot].Count + 1);
-                else
-                {
-                    meshRunIndex[key] = runs.Count;
-                    runs.Add(new MeshRun(mesh, 0, 1));
-                }
-            }
-
-            // Assign each run a start offset (prefix sum), and record per-mesh write cursors.
-            // runs currently holds (meshIndex, 0, count) in first-seen order.
-            uint cursor = 0;
-            Span<uint> writeCursor = runs.Count <= 64 ? stackalloc uint[runs.Count] : new uint[runs.Count];
-            for (int r = 0; r < runs.Count; r++)
-            {
-                uint start = cursor;
-                writeCursor[r] = start;
-                cursor += runs[r].Count;
-                runs[r] = new MeshRun(runs[r].Mesh, start, runs[r].Count);
-            }
-
-            // Size the flat array, then scatter each instance into its mesh's contiguous slot, again via the same
-            // O(1) map lookup instead of a linear run scan.
-            int total = (int)cursor;
-            for (int i = 0; i < total; i++) instanceData.Add(default);
-            if (castKinds != null) for (int i = 0; i < total; i++) castKinds.Add(ShadowCastKind.Opaque);
-            for (int i = 0; i < items.Count; i++)
-            {
-                var inst = items[i];
-                MeshHandle mesh = inst.Mesh;
-                int slot = meshRunIndex[(mesh.Index, mesh.Generation)];
-                uint dst = writeCursor[slot]++;
-                bool dissolving = inst.Dissolving;
-                if (castKinds != null) castKinds[(int)dst] = ClassifyCaster(inst);
-                instanceData[(int)dst] = new ModelRenderer.InstanceData
-                {
-                    Model = inst.World,
-                    Tint = inst.Tint,
-                    // During a dissolve the emissive channel carries the edge colour and Dissolve = (threshold, edge
-                    // width) lights the gated ModelFrag term. A non-dissolving draw keeps the material emissive and a
-                    // zero Dissolve, so it is byte-identical to the pre-dissolve packing (issue #253). SpecParams.z is
-                    // left 0 for ApplyAlphaCutoffs to fill with the MASK cutoff, independent of dissolve.
-                    Emissive = dissolving ? inst.DissolveEdge : inst.Material.Emissive,
-                    SpecParams = new Vector4(inst.Material.Specular, inst.Material.Shininess, 0f, 0f),
-                    Dissolve = dissolving ? new Vector2(inst.DissolveThreshold, inst.DissolveEdgeWidth) : Vector2.Zero,
-                };
-            }
         }
 
         // Fold each mesh's alpha-cutout threshold into its instances' SpecParams.z, reading the cutoff from the

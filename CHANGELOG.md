@@ -5,6 +5,27 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.19.0
+
+Four shared APIs remove Grimhollow's input, rendering and interaction workarounds.
+
+- `InputState.WithoutScroll()` returns a snapshot with a zero wheel delta and every other input field
+  preserved. Downstream readers can mask a wheel already used by a scrolling panel without copying the
+  snapshot constructor themselves (closes #829).
+- `SlotGrid.VisibleBounds` optionally limits slot hit tests, gestures and input reservation to the visible
+  rectangle. Null preserves the existing grid behavior. A scrolling caller supplies the same rectangle it
+  uses for its drawing clip, so hidden rows cannot receive clicks or reserve space over other controls
+  (closes #828).
+- `ITileWorldScene.DrawMeshDissolved(handle, world, dissolve, edgeWidth, edgeColor)` exposes the existing
+  rigid mesh dissolve. `Scene3DTileWorldScene` forwards to `Scene3D`, including its matching shadow dissolve.
+  The default interface implementation draws the solid mesh, preserving custom scene implementations
+  (closes #827).
+- `TileWorldServer.CancelPendingAction(int slot)` clears a player's queued interact and its interact target
+  together, without invoking the action or sending a cannot-reach refusal. It leaves movement and combat
+  intact and returns false for a missing seat or absent action (closes #832).
+
+Consumer batch: https://github.com/APKiwiOrg/Grimhollow/milestone/1
+
 ## 18.18.0
 
 One theming fix a game asked for: the two colours `Dropdown` hardcoded now come off the theme.

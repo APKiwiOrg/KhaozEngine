@@ -61,6 +61,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Networked overworld (`KhaozEngine.Locomotion` + `KhaozEngine.NetWorld`)](#networked-overworld-khaozenginelocomotion-khaozenginenetworld)
 - [Tile-world netcode (`KhaozEngine.TileWorld.Netcode`)](#tile-world-netcode-khaozenginetileworldnetcode)
 - [Charging attack time for something that is not a swing (`TileWorldServer.DelayAttack`, 18.16.0)](#charging-attack-time-for-something-that-is-not-a-swing-tileworldserverdelayattack-18160)
+- [Cancelling a tile player's pending interact (18.19.0)](#cancelling-a-tile-players-pending-interact-18190)
 - [Server status (`KhaozEngine.ServerStatus`)](#server-status-khaozengineserverstatus)
 - [HTTP retry (`KhaozEngine.Http`)](#http-retry-khaozenginehttp)
 - [ECS (`KhaozEngine.Ecs`)](#ecs-khaozengineecs)
@@ -791,6 +792,14 @@ when unfocused on it (e.g. `if (Input.WindowFocused) { /* world clicks, scroll-z
 and capture gates already honour it for free (below), so the common "don't trigger UI hover while in the
 background" case needs no game code. Defaults to `true` (windows open focused); `InputState.Empty` is `false`.
 
+`WithoutScroll()` (18.19.0) masks the wheel for a downstream reader while preserving every other input field.
+Pass the original snapshot to the scrolling UI and the masked snapshot to the camera when the UI owns that
+wheel input. It does not consume the wheel globally or mutate the source snapshot.
+
+```csharp
+InputState cameraInput = input.WithoutScroll();
+```
+
 ### InputManager + Pointer - the higher-level read
 
 `Pointer` (the unified pointer) and `InputManager` (pointer + keyboard/gamepad/menu-nav) derive per-frame state
@@ -1347,6 +1356,11 @@ grid lays out exactly as before. Set `SlotWidth` and `SlotHeight` apart for a re
 inventory panel drawing item NAMES rather than icons wants. The right button carries the same press-origin
 invariant as the left: a valid right tap sets `RightClickedSlot` and fires `OnSlotRightClicked(index)`, so a
 per-slot context menu opens only when the right press BEGAN in that slot. The `Update` return stays the left tap.
+
+For a grid inside a scrolling panel, set `VisibleBounds` (18.19.0) to the panel's clip rectangle each frame.
+`SlotAt`, gestures and pointer reservation use the visible intersection, so a hidden row cannot answer a click
+on the panel's tabs or footer. Partially visible cells require the press and release inside their visible
+portion. Null leaves the original behavior intact. The caller still supplies the drawing scissor.
 
 ```csharp
 // A two-column inventory of wide text rows, right-click opening a per-slot context menu.
@@ -5939,7 +5953,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.18.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.19.0" />
 ```
 
 ```csharp
@@ -9779,6 +9793,23 @@ so it doubles as an existence check.
 
 ---
 
+## Cancelling a tile player's pending interact (18.19.0)
+
+`TileWorldServer.CancelPendingAction(int slot)` clears the pending action and `TileMoveState.InteractTarget`
+together. It returns false when the seat or pending action does not exist. Cancellation invokes neither the
+interaction callback nor the cannot-reach callback or notice, so a deliberate interruption does not read as a
+failed arrival.
+
+```csharp
+server.CancelPendingAction(slot);
+```
+
+This cancels the interaction only. The active movement route, combat target and swing cooldown are preserved.
+A game that also stops walking keeps its movement and client prediction cleanup separate. Call cancellation
+from the authoritative action handler, so abandoning an interact does not depend on a second client command.
+
+---
+
 ## Server status (`KhaozEngine.ServerStatus`)
 
 An **out-of-band** health + version channel for a live game, separate from the game connection itself. A small
@@ -11063,7 +11094,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.18.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.19.0" />
 ```
 
 ```csharp
@@ -11099,7 +11130,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.18.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.19.0" />
 ```
 
 ```csharp
@@ -11341,7 +11372,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.18.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.19.0" />
 ```
 
 ```csharp
@@ -12289,6 +12320,12 @@ object's parts every frame until `ClearSilhouettedObject()`. An id no loaded reg
 self-corrects when its region streams in, so a click handler may set it optimistically. The seam member
 `ITileWorldScene.DrawMeshSilhouette` defaults to a no-op, so custom scene implementations keep compiling and
 simply draw no rims.
+
+For a body fading between tile draw priorities, use
+`ITileWorldScene.DrawMeshDissolved(handle, world, dissolve, edgeWidth, edgeColor)` (18.19.0). This is the
+existing rigid mesh noise dissolve, including the matching shadow mask, exposed through the tile scene seam.
+`Scene3DTileWorldScene` forwards it to `Scene3D`. A custom implementation that does not override the member
+falls back to the solid `DrawMesh`, so adding the capability does not require a downstream scene rewrite.
 
 **Build the static list.** The game collects the shapes it wants outlined as a flat
 `IReadOnlyList<CollisionStatic>` (`readonly record struct CollisionStatic(PhysicsShape Shape, Pose Pose)`) -
@@ -13371,7 +13408,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.18.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.19.0" />
 </ItemGroup>
 ```
 

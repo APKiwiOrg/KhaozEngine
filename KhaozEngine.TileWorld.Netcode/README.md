@@ -574,9 +574,9 @@ intent and charge a combat cooldown independently.
 ## Nearby player interest and verified names
 
 `CollectInterestSlots` exposes the same plane-filtered player set that the authoritative snapshot pass uses.
-It clears caller-owned storage first, includes the source player, sorts the result by slot and returns the final
-count. Call it only on the simulation tick because it shares the serve epoch and interest scratch with snapshot
-replication. A missing source clears the list and returns zero.
+It includes players at or within `InterestRadius`, including the source player. It clears caller-owned storage
+first, sorts the result by slot and returns the final count. Call it only on the simulation tick because it shares
+the serve epoch and interest scratch with snapshot replication. A missing source clears the list and returns zero.
 
 ```csharp
 using System.Collections.Generic;

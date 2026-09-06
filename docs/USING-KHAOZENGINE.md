@@ -9867,9 +9867,9 @@ from the authoritative action handler, so abandoning an interact does not depend
 ## Nearby tile-world player interest (`CollectInterestSlots`, 18.21.0)
 
 `TileWorldServer.CollectInterestSlots` copies the same plane-filtered player audience used by authoritative
-snapshot replication into caller-owned storage. The result includes the source player, crosses region edges,
-sorts by slot and excludes players outside `InterestRadius` or on another plane. It clears the list first and
-returns its final count. A missing source clears the list and returns zero.
+snapshot replication into caller-owned storage. The result includes players at or within `InterestRadius`,
+including the source player. It crosses region edges, sorts by slot and excludes players on another plane. It
+clears the list first and returns its final count. A missing source clears the list and returns zero.
 
 Call it only on the simulation tick because it shares the serve epoch and plane-filter scratch with the snapshot
 pass. Reuse the list instead of allocating one per message.

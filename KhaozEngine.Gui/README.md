@@ -69,6 +69,9 @@ chat.Draw(batch, white);
   screen pulled out mid-frame (its own transition-off completing, or another screen's `Update` removing it)
   cannot get one more `Update` out of the loop's scratch copy after its content is gone. Re-adding that same
   instance remounts it and re-runs its entry transition.
+  `AdvanceTransitionsBehindModal` is an opt-in flag, false by default. When true, screens below a modal update
+  break advance transition-on and transition-off clocks without receiving input or running `Screen.Update`.
+  Finished transition-off screens are removed normally while covered.
   `PressBeganOverUi` carries the press-origin invariant across the UI boundary: true while the current gesture
   began over a region the screens had reserved, latched at the press and held until the next fresh press. The
   stack drives its own pointer, so a reservation here is invisible to a game's world-picking pointer, and there

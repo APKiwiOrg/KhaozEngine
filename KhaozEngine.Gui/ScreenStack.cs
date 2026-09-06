@@ -35,6 +35,12 @@ namespace KhaozEngine.Gui
         /// <summary>This frame's raw input snapshot (keyboard etc.). Also reachable as <c>InputManager.State</c>.</summary>
         public InputState Input { get; private set; } = InputState.Empty;
 
+        /// <summary>When true, screens below a modal update break continue advancing only their transition clocks.
+        /// Their <see cref="Screen.Update"/> methods are not called and they receive no input. A transition-off
+        /// that completes there still unloads and removes the screen safely. Default false preserves frozen covered
+        /// transitions.</summary>
+        public bool AdvanceTransitionsBehindModal { get; set; }
+
         /// <summary>
         /// Whether the CURRENT pointer gesture began over a region the screens had reserved, latched at the press
         /// and held until the next fresh press. This is the press-origin invariant carried across the UI boundary.
@@ -134,7 +140,15 @@ namespace KhaozEngine.Gui
                 bool consumed = screen.Update(dt, receivesInput);
                 if (receivesInput && consumed && !screen.AlwaysReceivesInput) inputHandled = true;
 
-                if (!screen.PassUpdateThrough) break;
+                if (!screen.PassUpdateThrough)
+                {
+                    if (AdvanceTransitionsBehindModal)
+                    {
+                        for (int lower = i - 1; lower >= 0; lower--)
+                            AdvanceTransition(_updateScratch[lower], dt);
+                    }
+                    break;
+                }
             }
 
             // After the screens have reserved this frame's regions, so the query sees the real occlusion. Only on

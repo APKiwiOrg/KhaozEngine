@@ -21,8 +21,9 @@ Durable mutation journaling gives authoritative MMO servers a commit-before-appl
 - Checked snapshots, fixed-head contiguous event pages, opaque selected-stream projection cursors, and snapshot-only
   first-release compaction support recovery and near-live admin reads without tick snapshots or all-player scans.
 - Process-kill probes cover before-commit and committed-but-unanswered failures. The seeded MMO workload measures
-  inventory changes, bank transfers, atomic trades, replays, recovery, projection reads, and compaction while
-  asserting zero duplicate effects, sequence gaps, partial commits, checksum failures, and event pruning.
+  inventory changes, bank transfers, atomic trades, replays, snapshot-and-tail inspection, projection reads, and
+  compaction while asserting zero duplicate effects, sequence gaps, partial commits, checksum failures, and event
+  pruning.
 - Games still own event meanings, reducers, authenticated stream selection, admin response shaping, legacy migration,
   cross-host session coordination, and the post-retention domain-state duplicate defense. `IWorldStore` remains for
   checkpoints and `BatchedWriter<T>` remains for droppable telemetry. Neither is ownership authority.

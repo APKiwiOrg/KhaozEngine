@@ -15200,7 +15200,10 @@ JournalCommit frozen = GameValidateAndFreeze(command, committedLiveState);
 JournalSubmission submission = executor.Submit(frozen);
 
 // Start of a later frame, under the host's fixed completion budget.
-while (executor.TryDequeueCompletion(out JournalCompletion? completion))
+const int completionBudget = 32;
+for (int drained = 0;
+     drained < completionBudget && executor.TryDequeueCompletion(out JournalCompletion? completion);
+     drained++)
 {
     if (completion.Failure is not null)
     {
@@ -15227,6 +15230,8 @@ while (executor.TryDequeueCompletion(out JournalCompletion? completion))
         JournalCompletionAcknowledgement.Handled);
 }
 ```
+
+The host owns `completionBudget`, keeps it positive, and selects it to fit the simulation tick budget.
 
 `Game...` methods above are consumer code, not engine API. While its operation receipt remains inside the configured
 retention horizon, a replay already represented by the current live versions returns the original result without

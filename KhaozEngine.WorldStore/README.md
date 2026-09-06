@@ -232,7 +232,10 @@ JournalCommit frozen = GameValidateAndFreeze(command, committedLiveState);
 JournalSubmission submission = executor.Submit(frozen);
 
 // At the start of a later frame, under a fixed completion budget.
-while (executor.TryDequeueCompletion(out JournalCompletion? completion))
+const int completionBudget = 32;
+for (int drained = 0;
+     drained < completionBudget && executor.TryDequeueCompletion(out JournalCompletion? completion);
+     drained++)
 {
     if (completion.Failure is not null)
     {
@@ -261,6 +264,8 @@ while (executor.TryDequeueCompletion(out JournalCompletion? completion))
         JournalCompletionAcknowledgement.Handled);
 }
 ```
+
+The host owns `completionBudget`, keeps it positive, and selects it to fit the simulation tick budget.
 
 The order is fixed: validate on the simulation thread, freeze deterministic identity and intent, submit without
 blocking, drain at the start of a frame, apply only contiguous committed versions, reply, then acknowledge. A

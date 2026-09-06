@@ -2941,7 +2941,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   mip-filtered (trilinear) box at ANY factor - the internal target carries a mip chain the final blit samples at
   LOD ~= log2(factor) - so `3` and `4` anti-alias properly, not just `2`. Cost scales ~factor^2 in fragment shading
   (`3` = 9x the pixels), so keep it off by default and measure on the target GPU before going above `2`.
-- Anti-aliasing options (the AA dropdown): `Post.Quality.AntiAliasing` picks one technique -
+- Anti-aliasing options (the AA dropdown): `Post.Quality.AntiAliasing` picks a configuration -
   `AntiAliasing.Off` (default), `.Fxaa` (cheap one-pass edge smoother), `.Msaa(2|4|8)` (hardware multisample,
   geometry edges only), or `.Ssaa(factor)` (supersample the whole image, the strongest, also kills shaded-interior
   shimmer). Build a menu from `AppWindow.Capabilities.MaxMsaaSampleCount` and validate a choice with
@@ -2949,6 +2949,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   the high-level equivalent of `RenderScale.MatchViewport` + `Supersample = f`; the raw fields remain and, with AA
   `Off`, still govern (so existing scenes are unchanged). The `Pixelated` retro path forces AA off. Costs: SSAA is
   ~factor^2 fragment shading, MSAA adds a per-frame resolve, FXAA one pass - keep AA off by default and measure.
+  `.Msaa(2, postFxaa: true)` combines multisampled geometry with the FXAA post filter. It retains the
+  current internal resolution and carries the filter through device sample-count clamping. `UsesFxaa`
+  reports FXAA alone or this combined configuration. The one-argument `.Msaa(samples)` stays unchanged.
   `Post.Quality` (a `RenderQuality`) is where the quality knobs live (AA, shadows, and future anisotropy/TAA), so a
   game's options menu binds to it.
 - Shadows (the shadow dropdown): `Post.Quality.Shadows` (a `ShadowSettings`) picks the shadow tier via

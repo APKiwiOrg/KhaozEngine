@@ -9,6 +9,13 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 Another backlog batch fixes update trust reporting, tiled-world lifecycle bugs and GPU cleanup, and adds small audio, GUI and rendering APIs.
 
+- Dense ground cover resolves each model once per batch submission, refreshing live handles each frame.
+  Rigid instance grouping reuses its first-pass mesh indices, and surviving non-casters reuse their early
+  camera visibility result. Placements, draw order, shadow coverage and warmed allocation behavior stay
+  unchanged (#839).
+- `AntiAliasing.Msaa(samples, postFxaa: true)` keeps the FXAA post filter after multisample resolve,
+  allowing low-sample geometry antialiasing with smoother fine edges. `UsesFxaa` reports the combined
+  choice. Existing factories, resolution policy and device fallbacks retain their behavior.
 - `UpdateState.Untrusted` makes unsigned, wrong-key, tampered and malformed signed manifests visible through
   a dismissible localized overlay. It offers no download or apply action and permits later checks (#819).
 - `SfxAttenuation` and `AudioSystem.DefineBus(id, attenuation)` configure positional falloff per bus.

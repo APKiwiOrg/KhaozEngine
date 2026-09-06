@@ -11,6 +11,31 @@ namespace KhaozEngine.Tests.Render3D;
 public sealed class RigidInstanceGroupingTests
 {
     [Fact]
+    public void PackingReusesTheMeshIndexResolvedDuringCounting()
+    {
+        var comparer = new CountingComparer();
+        var map = new Dictionary<(int, int), int>(comparer);
+        var items = new SceneInstances.Instance[4096];
+        var retained = new bool[items.Length];
+        for (int i = 0; i < items.Length; i++)
+        {
+            items[i] = new(new MeshHandle(i % 4, i % 8 / 4), Matrix4x4.CreateTranslation(i, 0f, 0f), Color.White);
+            retained[i] = i % 4 != 0;
+        }
+        var data = new List<ModelRenderer.InstanceData>();
+        var runs = new List<Scene3D.MeshRun>();
+
+        Scene3D.GroupInstances(items, data, runs, map, retained: retained);
+
+        Assert.Equal(3072, data.Count);
+        Assert.Equal(8, runs.Count);
+        Assert.Equal(new MeshHandle(0, 0), runs[0].Mesh);
+        Assert.Equal(0u, runs[0].Count);
+        Assert.Equal(1f, data[0].Model.M41);
+        Assert.InRange(comparer.HashCalls, 1, items.Length + 8);
+    }
+
+    [Fact]
     public void RetentionKeepsFirstSeenMeshOrderAndEachSurvivingInstancesMaterial()
     {
         var items = new SceneInstances.Instance[]
@@ -63,11 +88,13 @@ public sealed class RigidInstanceGroupingTests
         Assert.Equal(1u, Assert.Single(runs).Count);
     }
 
-    [Fact]
-    public void WarmedGroupingWithMoreThan64MeshRunsAllocatesNothing()
+    [Theory]
+    [InlineData(256)]
+    [InlineData(4096)]
+    public void WarmedGroupingWithMoreThan64MeshRunsAllocatesNothing(int population)
     {
         var items = new List<SceneInstances.Instance>();
-        var keep = new bool[256];
+        var keep = new bool[population];
         for (int i = 0; i < keep.Length; i++)
         {
             items.Add(new SceneInstances.Instance(new MeshHandle(i % 128), Matrix4x4.Identity, Color.White));
@@ -84,7 +111,7 @@ public sealed class RigidInstanceGroupingTests
         {
             for (int i = 0; i < 20; i++) Group();
         });
-        Assert.Equal(128, data.Count);
+        Assert.Equal(population / 2, data.Count);
     }
 
     [Theory]
@@ -97,5 +124,16 @@ public sealed class RigidInstanceGroupingTests
         Matrix4x4 world = Matrix4x4.CreateScale(scaled ? 2f : 1f) * Matrix4x4.CreateTranslation(0f, 2f, 0.5f);
         FrustumPlanes frustum = FrustumPlanes.Extract(Matrix4x4.Identity);
         Assert.Equal(visible, Scene3D.IntersectsMainPass(bounds, world, ground, frustum));
+    }
+
+    sealed class CountingComparer : IEqualityComparer<(int, int)>
+    {
+        public int HashCalls;
+        public bool Equals((int, int) x, (int, int) y) => x == y;
+        public int GetHashCode((int, int) value)
+        {
+            HashCalls++;
+            return value.GetHashCode();
+        }
     }
 }

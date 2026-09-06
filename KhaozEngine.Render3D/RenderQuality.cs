@@ -37,7 +37,7 @@ namespace KhaozEngine.Render3D
     /// The anti-aliasing selection: a <see cref="AntiAliasingMode"/> plus the parameter that mode needs
     /// (<see cref="MsaaSamples"/> for <see cref="AntiAliasingMode.Msaa"/>, <see cref="SsaaFactor"/> for
     /// <see cref="AntiAliasingMode.Ssaa"/>). Build one with the factories (<see cref="Off"/> / <see cref="Fxaa"/> /
-    /// <see cref="Msaa"/> / <see cref="Ssaa"/>) and assign it to <see cref="RenderQuality.AntiAliasing"/>. Immutable
+    /// <see cref="Msaa(int)"/> / <see cref="Ssaa"/>) and assign it to <see cref="RenderQuality.AntiAliasing"/>. Immutable
     /// value; <see cref="ResolveFor"/> clamps a request to what the device can actually do (never throws).
     /// </summary>
     public readonly struct AntiAliasing : IEquatable<AntiAliasing>
@@ -52,9 +52,14 @@ namespace KhaozEngine.Render3D
         /// drives <see cref="PixelPostProcessSettings.Supersample"/>. Clamped to at least 1.</summary>
         public float SsaaFactor { get; }
 
-        AntiAliasing(AntiAliasingMode mode, int msaaSamples, float ssaaFactor)
+        readonly bool _postFxaa;
+
+        /// <summary>Whether the final color receives FXAA, either alone or after an opted-in MSAA resolve.</summary>
+        public bool UsesFxaa => Mode == AntiAliasingMode.Fxaa || (Mode == AntiAliasingMode.Msaa && _postFxaa);
+
+        AntiAliasing(AntiAliasingMode mode, int msaaSamples, float ssaaFactor, bool postFxaa = false)
         {
-            Mode = mode; MsaaSamples = msaaSamples; SsaaFactor = ssaaFactor;
+            Mode = mode; MsaaSamples = msaaSamples; SsaaFactor = ssaaFactor; _postFxaa = postFxaa;
         }
 
         /// <summary>No anti-aliasing (the default). Existing render behaviour, no extra cost.</summary>
@@ -64,6 +69,10 @@ namespace KhaozEngine.Render3D
         /// <summary>Hardware multisample AA with <paramref name="samples"/> taps (clamped to the device max at
         /// resolve). 2 / 4 / 8 are the usual choices.</summary>
         public static AntiAliasing Msaa(int samples) => new(AntiAliasingMode.Msaa, Math.Max(1, samples), 1f);
+        /// <summary>Hardware multisample AA with an optional FXAA pass after resolve. The post filter can
+        /// soften remaining fine edges without increasing geometry samples or internal resolution.</summary>
+        public static AntiAliasing Msaa(int samples, bool postFxaa) =>
+            new(AntiAliasingMode.Msaa, Math.Max(1, samples), 1f, postFxaa);
         /// <summary>Supersample AA at <paramref name="factor"/> per axis (e.g. 2 / 3 / 4). Costs ~factor^2 in
         /// fragment shading; the strongest AA and the only one that removes high-frequency shimmer.</summary>
         public static AntiAliasing Ssaa(float factor) => new(AntiAliasingMode.Ssaa, 1, MathF.Max(1f, factor));
@@ -90,7 +99,7 @@ namespace KhaozEngine.Render3D
                     int max = Math.Max(1, caps.MaxMsaaSampleCount);
                     if (max <= 1) return Fxaa;                       // device can't MSAA: degrade to a cheap AA that works
                     int want = Math.Clamp(MsaaSamples, 1, max);
-                    return Msaa(LargestPowerOfTwoAtMost(want));
+                    return Msaa(LargestPowerOfTwoAtMost(want), _postFxaa);
                 case AntiAliasingMode.Ssaa:
                     return Ssaa(SsaaFactor);                          // factor already >= 1; target size capped elsewhere
                 default:
@@ -106,14 +115,15 @@ namespace KhaozEngine.Render3D
         }
 
         public bool Equals(AntiAliasing other) =>
-            Mode == other.Mode && MsaaSamples == other.MsaaSamples && SsaaFactor.Equals(other.SsaaFactor);
+            Mode == other.Mode && MsaaSamples == other.MsaaSamples && SsaaFactor.Equals(other.SsaaFactor)
+                && _postFxaa == other._postFxaa;
         public override bool Equals(object? obj) => obj is AntiAliasing a && Equals(a);
-        public override int GetHashCode() => HashCode.Combine(Mode, MsaaSamples, SsaaFactor);
+        public override int GetHashCode() => HashCode.Combine(Mode, MsaaSamples, SsaaFactor, _postFxaa);
         public static bool operator ==(AntiAliasing a, AntiAliasing b) => a.Equals(b);
         public static bool operator !=(AntiAliasing a, AntiAliasing b) => !a.Equals(b);
         public override string ToString() => Mode switch
         {
-            AntiAliasingMode.Msaa => $"MSAA x{MsaaSamples}",
+            AntiAliasingMode.Msaa => $"MSAA x{MsaaSamples}" + (_postFxaa ? " + FXAA" : ""),
             AntiAliasingMode.Ssaa => $"SSAA x{SsaaFactor:0.##}",
             AntiAliasingMode.Fxaa => "FXAA",
             _ => "None",

@@ -216,9 +216,9 @@ namespace KhaozEngine.Render3D
         internal float EffectiveSupersample =>
             EffectiveAaMode == AntiAliasingMode.Ssaa ? System.MathF.Max(1f, Quality.AntiAliasing.SsaaFactor) : Supersample;
 
-        /// <summary>Whether the FXAA post pass runs this frame (mode <see cref="Render3D.AntiAliasingMode.Fxaa"/> and
+        /// <summary>Whether the FXAA post pass runs this frame (FXAA alone or opted in after MSAA, and
         /// not <see cref="Pixelated"/>).</summary>
-        internal bool EffectiveFxaa => EffectiveAaMode == AntiAliasingMode.Fxaa;
+        internal bool EffectiveFxaa => EffectiveAaMode != AntiAliasingMode.None && Quality.AntiAliasing.UsesFxaa;
 
         /// <summary>Requested MSAA sample count after the AA selection (1 = off). Still clamped to the device maximum
         /// at pipeline-build time via <see cref="AntiAliasing.ResolveFor"/>; this is only the requested value.</summary>

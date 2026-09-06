@@ -14,6 +14,26 @@ namespace KhaozEngine.Tests.Render3D
         static GpuCapabilities Caps(int maxMsaa) => new(false, true, "test", false, false, maxMsaa);
 
         [Fact]
+        public void Msaa_can_keep_the_fxaa_post_filter_without_supersampling()
+        {
+            AntiAliasing aa = AntiAliasing.Msaa(2, postFxaa: true);
+            Assert.NotEqual(AntiAliasing.Msaa(2), aa);
+            Assert.True(aa.UsesFxaa);
+            Assert.Equal(aa, aa.ResolveFor(Caps(4)));
+            Assert.True(AntiAliasing.Msaa(8, postFxaa: true).ResolveFor(Caps(2)).UsesFxaa);
+            Assert.Equal(AntiAliasing.Fxaa, aa.ResolveFor(Caps(1)));
+
+            var s = new PixelPostProcessSettings();
+            s.Quality.AntiAliasing = aa;
+            Assert.True(s.EffectiveFxaa);
+            Assert.Equal(2, s.EffectiveMsaaSamples);
+            Assert.Equal((1600, 900), Scene3D.ComputeTargetSize(s, 1280, 720));
+            s.Pixelated = true;
+            Assert.False(s.EffectiveFxaa);
+            Assert.Equal(1, s.EffectiveMsaaSamples);
+        }
+
+        [Fact]
         public void Factories_carry_the_right_mode_and_parameter()
         {
             Assert.Equal(AntiAliasingMode.None, AntiAliasing.Off.Mode);

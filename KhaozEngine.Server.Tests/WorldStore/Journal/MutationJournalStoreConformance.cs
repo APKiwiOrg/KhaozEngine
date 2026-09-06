@@ -264,15 +264,23 @@ public abstract class MutationJournalStoreConformance
             Operation(1),
             "player/a",
             projections: new[] { Projection("player/a", "bag", 1), Projection("player/a", "skills", 2) }));
+        await harness.Store.CommitAsync(Commit(
+            Operation(2),
+            Mutation("player/a", 0, Event(3)),
+            projections: new[] { Projection("player/a", "bag", 9) }));
 
         JournalProjectionRead reset = await harness.Store.ReadProjectionsAsync(new JournalProjectionQuery("player/a", "not-base64"));
 
         Assert.Equal(JournalProjectionReadStatus.ResetRequired, reset.Status);
         Assert.Equal(new[] { "bag", "skills" }, reset.Sections.Select(value => value.SectionName));
+        Assert.Equal(1, reset.Sections[0].SourceVersion);
+        Assert.Equal(Bytes(9), reset.Sections[0].Data.ToArray());
+        Assert.Equal(0, reset.Sections[1].SourceVersion);
+        Assert.Equal(Bytes(2), reset.Sections[1].Data.ToArray());
         (Guid epoch, string streamKey, long headVersion) = JournalProjectionCursor.DecodeForTest(reset.Cursor!);
         Assert.NotEqual(Guid.Empty, epoch);
         Assert.Equal("player/a", streamKey);
-        Assert.Equal(0, headVersion);
+        Assert.Equal(1, headVersion);
     }
 
     [Fact]
@@ -283,18 +291,26 @@ public abstract class MutationJournalStoreConformance
             Operation(1),
             "player/a",
             projections: new[] { Projection("player/a", "bag", 1), Projection("player/a", "skills", 2) }));
+        await harness.Store.CommitAsync(Commit(
+            Operation(2),
+            Mutation("player/a", 0, Event(3)),
+            projections: new[] { Projection("player/a", "bag", 9) }));
         JournalProjectionRead baseline = await harness.Store.ReadProjectionsAsync(new JournalProjectionQuery("player/a"));
         Guid epoch = JournalProjectionCursor.DecodeForTest(baseline.Cursor!).Epoch;
-        string futureCursor = JournalProjectionCursor.Encode(epoch, "player/a", 1);
+        string futureCursor = JournalProjectionCursor.Encode(epoch, "player/a", 2);
 
         JournalProjectionRead reset = await harness.Store.ReadProjectionsAsync(new JournalProjectionQuery("player/a", futureCursor));
 
         Assert.Equal(JournalProjectionReadStatus.ResetRequired, reset.Status);
         Assert.Equal(new[] { "bag", "skills" }, reset.Sections.Select(value => value.SectionName));
+        Assert.Equal(1, reset.Sections[0].SourceVersion);
+        Assert.Equal(Bytes(9), reset.Sections[0].Data.ToArray());
+        Assert.Equal(0, reset.Sections[1].SourceVersion);
+        Assert.Equal(Bytes(2), reset.Sections[1].Data.ToArray());
         (Guid replacementEpoch, string streamKey, long headVersion) = JournalProjectionCursor.DecodeForTest(reset.Cursor!);
         Assert.Equal(epoch, replacementEpoch);
         Assert.Equal("player/a", streamKey);
-        Assert.Equal(0, headVersion);
+        Assert.Equal(1, headVersion);
     }
 
     [Fact]

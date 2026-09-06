@@ -149,6 +149,11 @@ public sealed partial class TileWorldServer
     // correct across handoffs.
     int GroundItemsIn(CellCoord coord)
     {
+        // A DurableOnly drop survives an in-process eviction in the head's frozen cell snapshot, while the host's
+        // ownership index covers live cells only. Materializing the coordinate runs the synchronous restore hook
+        // before the cap counts it. A passing count needs the cell immediately for SpawnOwned, and a refusing count
+        // needs the restored item in order to enforce the cap over frozen state.
+        host.EnsureCell(coord);
         int n = 0;
         for (int i = 0; i < groundItemNetIds.Count; i++)
             if (host.TryGetOwner(groundItemNetIds[i], out CellSim cell, out _) && cell.Coord.Equals(coord)) n++;

@@ -67,6 +67,10 @@ public sealed class TileActorSpawner
     /// <summary>Ticks still to wait while <see cref="State"/> is <see cref="TileActorSpawnerState.Waiting"/>.</summary>
     public int TicksUntilRespawn { get; private set; }
 
+    // An actor that disappeared because its cell was evicted still exists in the head's frozen snapshot. Keep its
+    // id through the countdown so the host can retire it after restore and before the replacement's cap check.
+    internal long PendingFormerActorNetId { get; private set; }
+
     /// <summary>True while this spawner's actor is walking home after a leash break, which is what makes the full
     /// restore happen on ARRIVAL rather than on the break. Cleared by the arrival and by acquiring a new target.</summary>
     public bool Returning { get; internal set; }
@@ -78,14 +82,18 @@ public sealed class TileActorSpawner
         State = TileActorSpawnerState.Alive;
         ActorNetId = netId;
         TicksUntilRespawn = 0;
+        PendingFormerActorNetId = 0;
     }
 
-    internal void Wait(int ticks)
+    internal void Wait(int ticks, long formerActorNetId)
     {
         State = TileActorSpawnerState.Waiting;
         ActorNetId = 0;
         TicksUntilRespawn = Math.Max(0, ticks);
+        PendingFormerActorNetId = formerActorNetId;
     }
+
+    internal void FormerActorRetired() => PendingFormerActorNetId = 0;
 
     // True on the tick the countdown reaches zero AND on every tick after it, which is what makes a spawn refused by
     // a full cell retry rather than strand the spawner at zero forever.

@@ -149,11 +149,15 @@ so it walks visibly under the winner rather than vanishing a step before it gets
   a blocker is felt when the step would begin rather than when the foot lands. The step in progress is never
   abandoned either, and it needs no special case for it: a route is always pathed from `Tile`, which is the tile
   the step in flight is entering, so a direction change while moving never drags the avatar back toward the tile
-  it was leaving. The route cap counts the steps still to take from that tile.
+  it was leaving. The route cap counts the steps still to take from that tile. `Step` and `BeginWalk` also have
+  overloads taking a `TilePathfinderScratch`. The caller owns that mutable scratch and must never share it across
+  concurrent searches. Omitting it preserves the allocating behavior used by client prediction.
 - **`TileMovementSystem`** - runs the simulator over every OWNED entity inside a cell's own fixed tick,
   skipping ghosts and migrating entities so nothing is stepped twice in one tick. It holds TWO simulators and
   picks on the `TileActor` tag, so an actor paths at its own `ActorMove` radius while a player paths at the
-  click radius. The one-argument constructor still exists and runs one simulator over everything.
+  click radius. It also owns separate player and actor pathfinder scratch for that cell. No mutable scratch is
+  shared by the server, the simulators or scheduler-fanned cells. The one-argument constructor still exists and
+  runs one simulator over everything.
 - **`TileReach`** / **`TileActionQueue`** / **`TilePendingAction`** / **`TileActionKind`** - the OSRS reach rule and
   the one-deep pending action. `TileReach.Set` is every tile cardinally adjacent to a footprint tile that the
   footprint tile could step OUT onto, `Contains` is the in-range test, `TryNearest` picks the reach tile by real
@@ -164,6 +168,7 @@ so it walks visibly under the winner rather than vanishing a step before it gets
   candidate, skipping one outside the window or already at or past the best length found so far, both of which
   the loop would have discarded after paying for the search: a walk is eight-connected, so its step count is
   never below the Chebyshev distance to its goal. The chosen tile and the tie rule are unchanged by either.
+  Its overload accepting `TilePathfinderScratch` reuses the same working memory across candidate searches.
   `agentSize` and `maxRadius` are validated at the top of `TryNearest` rather than left to the first search, so a
   bad argument throws whether the target is open, walled in, out of range or on another plane.
 - **`ITileTargets`** / **`TileDocumentTargets`** / **`TileEntityTargets`** / **`TileRemoteTargets`** - the seam
@@ -215,7 +220,9 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   from (id, max health, step mode, attack cadence, wander and leash radii, respawn delay, and a game-owned `Kind`),
   and the spawner that owns one home tile, its live actor and its respawn countdown. `LeashRadius` is checked
   against `TileWorldServerConfig.ActorMove.MaxPathRadius` where the definition arrives, at `TileActorHost.Add`,
-  because a leash beyond the pathfinder's window is a walk home it cannot plan in one go.
+  because a leash beyond the pathfinder's window is a walk home it cannot plan in one go. Cell eviction keeps the
+  documented respawn countdown. When it expires, the spawner retires any former actor restored from the evicted
+  cell before it checks the cap and builds the replacement.
 - **`TileActorHost`** (`server.Actors`) - `Add(definition, home)` to register a spawner, `Command(netId, command)`
   to latch one command onto one actor, `Behaviour` and `Seed` for the decision seam, `Spawners`,
   `TryGetSpawnerOf`, `Forget` (the despawn hook, dropping the unspent latch, the birth tile and the spawner link
@@ -389,7 +396,8 @@ ttlTicks)` places one (net id from the actors' own allocator, refused countably 
 `SpawnActor` does), the server despawns it unprompted when its clock runs out (`OnGroundItemExpired`),
 and `DespawnGroundItem` is the deliberate removal whose true-once answer is what a pickup racing the
 expiry sweep keys on: move your payload only after it answers true. `TryGetGroundItem`,
-`GroundItemCount` and `GroundItemNetIds` are the server-side reads.
+`GroundItemCount` and `GroundItemNetIds` are the server-side reads. The per-cell cap also counts a drop held in an
+evicted cell snapshot. Checking a cold coordinate materializes and restores that cell before deciding the spawn.
 
 The component is two meaning-free integers plus the tile (`TileGroundItem`: `ItemId`, `Count`, `X`,
 `Z`, `Plane`), deliberately not a dependency on `KhaozEngine.Items`: the engine owns existence,

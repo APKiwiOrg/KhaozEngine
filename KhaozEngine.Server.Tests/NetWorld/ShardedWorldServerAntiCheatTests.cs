@@ -96,4 +96,32 @@ public class ShardedWorldServerAntiCheatTests
 
         Assert.Contains(flags, f => f.Reason == SuspiciousReason.MovementCorrection && f.Slot == client.Slot);
     }
+
+    [Fact]
+    public void A_frame_without_a_cell_subtick_neither_advances_nor_resets_the_correction_streak()
+    {
+        var flags = new List<SuspiciousActivity>();
+        const float R = 5f;
+        var cfg = Config(new AntiCheatConfig { MaxCorrectionDistance = 0.01f, CorrectionStreak = 2 },
+            spawn: _ => new Vector3(0f, 0f, R));
+        var (server, client) = Connect(cfg, new CircleBounds(Vector2.Zero, R), flags);
+        flags.Clear();
+        var pushOut = new MoveCommand(new Vector2(0f, 1f), run: false, cameraYaw: MathF.PI);
+
+        client.Send(MoveProtocol.EncodeMove(0, pushOut), Unrel);
+        client.Poll();
+        server.Poll();
+        server.Tick(cfg.TickSeconds);
+        Assert.DoesNotContain(flags, f => f.Reason == SuspiciousReason.MovementCorrection);
+
+        server.Tick(cfg.TickSeconds / 4f);
+        Assert.DoesNotContain(flags, f => f.Reason == SuspiciousReason.MovementCorrection);
+
+        client.Send(MoveProtocol.EncodeMove(1, pushOut), Unrel);
+        client.Poll();
+        server.Poll();
+        server.Tick(cfg.TickSeconds * 3f / 4f);
+
+        Assert.Contains(flags, f => f.Reason == SuspiciousReason.MovementCorrection && f.Slot == client.Slot);
+    }
 }

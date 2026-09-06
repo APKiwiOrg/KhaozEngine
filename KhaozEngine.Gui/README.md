@@ -530,7 +530,8 @@ chat.Draw(batch, white);
   `SetSections`; `Update(InputState, dt)` toggles on `Theme.ToggleKey` (default F1; optional
   gamepad button) and fades (headless-testable, `InputState.Empty` inert); `Draw` renders a corner panel
   (`Theme.Corner`) of titles + right-aligned values. `PerformanceSection(FrameStats)` /
-  `PassTimingsSection(PassTimings)` / `NetworkSection(in ClientNetStats)` populators cover the common cases
+  `PassTimingsSection(PassTimings)` / `NetworkSection(in ClientNetStats)` /
+  `NetworkSection(in NetTransportStats)` populators cover the common cases
   (from `KhaozEngine.Diagnostics`). `DrawStatsSection(in RenderFrameStats)` (the `Primitives` frame counters)
   adds a "Draw stats" section (draw calls, instances, triangles, quads, flushes, texture switches, upload KB).
   `PassTimingsSection` lists one row per pass name (in first-sampled order)
@@ -543,8 +544,10 @@ chat.Draw(batch, white);
   assembles the Performance / Draw-stats / Pass-timings / (optional) Network sections. Call `Update(input, dt)`
   once per frame (samples FPS, handles the toggle + fade), feed `SetDrawStats(in RenderFrameStats)` the aggregate
   and (3D) sample its `PassTimings`, then `Draw`. Hidden by default, and while hidden the provider builds nothing,
-  so the only cost is the surfaces' always-on counter increments. `SetNetStatsSource(Func<ClientNetStats?>)` opts a
-  Network section in and out with the active screen. `AddSection(Func<OverlaySection?>)` is the composition seam
+  so the only cost is the surfaces' always-on counter increments. `SetNetStatsSource(Func<ClientNetStats?>?)` opts a
+  rich Network section in and out with the active screen. `SetTransportStatsSource(Func<NetTransportStats?>?)` is
+  the link-health form for clients that measure ping and loss without rate windows or correction metres. Each
+  setter replaces the active network source, and passing null removes it. `AddSection(Func<OverlaySection?>)` is the composition seam
   for a section of the GAME's own: it renders after the built-in ones instead of replacing them, is polled on the
   same throttled refresh, and returning null omits it for that refresh. Registration order is render order, and
   `ClearSections()` drops the added ones. Reaching past this to `Overlay.SetSectionsProvider` installs a provider

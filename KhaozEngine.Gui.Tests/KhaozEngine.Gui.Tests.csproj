@@ -29,6 +29,7 @@
     <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />
     <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
     <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
+    <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
     <ProjectReference Include="../KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
     <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />

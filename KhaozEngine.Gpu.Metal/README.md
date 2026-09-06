@@ -945,6 +945,9 @@ backend there is no per-level blit, no per-level barrier and no filter to choose
 one mip level and must not be a staging texture, which on this backend is an `MTLBuffer` with a software
 subresource layout and has no texture to generate from.
 
+`CopyTextureSubresource` rejects an out-of-range mip as `mipLevel` and an out-of-range array layer as
+`arrayLayer`, so callers can identify which index needs correcting from `ArgumentOutOfRangeException.ParamName`.
+
 ## The swapchain: a layer, a drawable, and a present that cannot be skipped silently
 
 `GpuDeviceContext.CreateForWindow` on this backend resolves the Cocoa `NSWindow` into a `CAMetalLayer` (adopting

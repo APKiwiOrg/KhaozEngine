@@ -471,10 +471,14 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.Throws<ArgumentException>(() => list.CopyTexture(small, large)).Message,
                 StringComparison.Ordinal);
 
-            Assert.Contains("mip level(s)",
-                Assert.Throws<ArgumentOutOfRangeException>(
-                    () => list.CopyTextureSubresource(small, 7, 0, staging, Size, Size)).Message,
-                StringComparison.Ordinal);
+            ArgumentOutOfRangeException badMip = Assert.Throws<ArgumentOutOfRangeException>(
+                () => list.CopyTextureSubresource(small, 7, 0, staging, Size, Size));
+            Assert.Equal("mipLevel", badMip.ParamName);
+            Assert.Contains("mip level(s)", badMip.Message, StringComparison.Ordinal);
+
+            ArgumentOutOfRangeException badArrayLayer = Assert.Throws<ArgumentOutOfRangeException>(
+                () => list.CopyTextureSubresource(small, 0, 7, staging, Size, Size));
+            Assert.Equal("arrayLayer", badArrayLayer.ParamName);
 
             // THE DESTINATION SIDE HAS ITS OWN CHECK, and it names "destination" rather than "source", which is
             // the half a single shared guard would lose.

@@ -356,17 +356,26 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         static void RequireSubresource(MetalTexture texture, uint mipLevel, uint arrayLayer, string side)
         {
-            if (mipLevel < texture.MipLevels && arrayLayer < texture.ArrayLayers) return;
+            if (mipLevel >= texture.MipLevels)
+            {
+                throw SubresourceOutOfRange(nameof(mipLevel), mipLevel);
+            }
 
-            throw new ArgumentOutOfRangeException(nameof(mipLevel), mipLevel,
-                "A native Metal subresource copy named mip level "
-                + mipLevel.ToString(CultureInfo.InvariantCulture) + " and array layer "
-                + arrayLayer.ToString(CultureInfo.InvariantCulture) + " of its " + side + ", which has "
-                + texture.MipLevels.ToString(CultureInfo.InvariantCulture) + " mip level(s) and "
-                + texture.ArrayLayers.ToString(CultureInfo.InvariantCulture)
-                + " array layer(s). A subresource index past the end is a copy that names memory the texture does "
-                + "not have, and the software staging layout would compute an offset outside its own buffer for "
-                + "it rather than clipping.");
+            if (arrayLayer >= texture.ArrayLayers)
+            {
+                throw SubresourceOutOfRange(nameof(arrayLayer), arrayLayer);
+            }
+
+            ArgumentOutOfRangeException SubresourceOutOfRange(string paramName, uint actualValue)
+                => new(paramName, actualValue,
+                    "A native Metal subresource copy named mip level "
+                    + mipLevel.ToString(CultureInfo.InvariantCulture) + " and array layer "
+                    + arrayLayer.ToString(CultureInfo.InvariantCulture) + " of its " + side + ", which has "
+                    + texture.MipLevels.ToString(CultureInfo.InvariantCulture) + " mip level(s) and "
+                    + texture.ArrayLayers.ToString(CultureInfo.InvariantCulture)
+                    + " array layer(s). A subresource index past the end is a copy that names memory the texture "
+                    + "does not have, and the software staging layout would compute an offset outside its own "
+                    + "buffer for it rather than clipping.");
         }
 
         static void RequireMipChain(MetalTexture texture)

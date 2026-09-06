@@ -389,7 +389,8 @@ ttlTicks)` places one (net id from the actors' own allocator, refused countably 
 `SpawnActor` does), the server despawns it unprompted when its clock runs out (`OnGroundItemExpired`),
 and `DespawnGroundItem` is the deliberate removal whose true-once answer is what a pickup racing the
 expiry sweep keys on: move your payload only after it answers true. `TryGetGroundItem`,
-`GroundItemCount` and `GroundItemNetIds` are the server-side reads.
+`GroundItemCount` and `GroundItemNetIds` are the server-side reads. The per-cell cap also counts a drop held in an
+evicted cell snapshot. Checking a cold coordinate materializes and restores that cell before deciding the spawn.
 
 The component is two meaning-free integers plus the tile (`TileGroundItem`: `ItemId`, `Count`, `X`,
 `Z`, `Plane`), deliberately not a dependency on `KhaozEngine.Items`: the engine owns existence,

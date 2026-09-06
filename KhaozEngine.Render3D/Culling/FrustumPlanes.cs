@@ -95,9 +95,17 @@ namespace KhaozEngine.Render3D
         /// only when provably outside.
         /// </summary>
         public readonly bool IntersectsSphere(Vector3 center, float radius)
+            => IntersectsSphereExceptPlane(center, radius, excludedPlane: -1);
+
+        /// <summary>
+        /// Conservative sphere visibility while ignoring one plane. Shadow caster culling uses this to omit the
+        /// near plane because depth clamping pancakes casters in front of a cascade onto that plane.
+        /// </summary>
+        internal readonly bool IntersectsSphereExceptPlane(Vector3 center, float radius, int excludedPlane)
         {
             for (int i = 0; i < 6; i++)
             {
+                if (i == excludedPlane) continue;
                 Vector4 pl = this[i];
                 float dist = pl.X * center.X + pl.Y * center.Y + pl.Z * center.Z + pl.W;
                 if (dist < 0f)

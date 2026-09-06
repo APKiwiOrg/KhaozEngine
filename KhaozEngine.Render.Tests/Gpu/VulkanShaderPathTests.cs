@@ -141,7 +141,7 @@ namespace KhaozEngine.Tests.Gpu
             var api = new FakeVulkanShaderApi();
             var cache = new VulkanShaderModuleCache(api);
 
-            ShippedGraphicsProgram[] fullscreen = D3D11ShaderProgramCatalog.GraphicsPrograms()
+            ShippedGraphicsProgram[] fullscreen = ShippedShaderPrograms.GraphicsPrograms()
                 .Where(p => string.Equals(p.VertexGlsl, ShaderSources.FullscreenVert, StringComparison.Ordinal))
                 .ToArray();
 

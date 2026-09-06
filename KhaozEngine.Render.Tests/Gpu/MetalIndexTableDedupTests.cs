@@ -51,7 +51,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void TwoBuildsOfOneProgram_ShareOneTableThroughTheCache()
         {
-            ShippedGraphicsProgram program = D3D11ShaderProgramCatalog.GraphicsPrograms().First();
+            ShippedGraphicsProgram program = ShippedShaderPrograms.GraphicsPrograms().First();
 
             MetalShaderIndexTable first = MetalShaderBuild.Pair(
                 program.VertexGlsl, program.FragmentGlsl, null, program.Name).Table;
@@ -266,13 +266,13 @@ namespace KhaozEngine.Tests.Gpu
 
         static IEnumerable<(string Name, MetalShaderIndexTable Table)> ShippedTables()
         {
-            foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
+            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
             {
                 yield return (program.Name,
                     MetalShaderBuild.Pair(program.VertexGlsl, program.FragmentGlsl, null, program.Name).Table);
             }
 
-            foreach (ShippedComputeKernel kernel in D3D11ShaderProgramCatalog.ComputeKernels())
+            foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
                 yield return (kernel.Name, MetalShaderBuild.Compute(kernel.ComputeGlsl, null, kernel.Name).Program.Table);
         }
 

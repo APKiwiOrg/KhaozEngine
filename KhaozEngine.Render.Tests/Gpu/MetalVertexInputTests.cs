@@ -86,7 +86,7 @@ namespace KhaozEngine.Tests.Gpu
             int programs = 0, vertexBufferEntries = 0, highest = -1;
             string highestProgram = "none";
 
-            foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
+            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
             {
                 MetalMslProgram built = MetalShaderBuild.Pair(
                     program.VertexGlsl, program.FragmentGlsl, null, program.Name);

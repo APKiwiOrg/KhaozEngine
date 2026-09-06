@@ -48,6 +48,7 @@ namespace KhaozEngine.Terrain
         readonly TerrainLodConfig _lodConfig;
         readonly int _collisionLod;
         readonly Func<TerrainSplatContext, TerrainSplatWeights>? _splatRule;
+        readonly float _snowLine;
         readonly bool _anyHlod;
         /// <summary>The HLOD merge gate, non-null exactly when some layer bakes an HLOD mesh. See
         /// <see cref="HlodBuildGate"/>: it is what keeps a tier re-LOD or a ring change from merging a cluster whose
@@ -110,8 +111,9 @@ namespace KhaozEngine.Terrain
         /// <paramref name="collideTerrain"/> is on, independent of the render tier: a render re-LOD never rebuilds the
         /// collision body (default 0 = the densest tier, matching the old near-chunk collision resolution). Decor-ring
         /// chunks register no scatter, prop colliders, dynamics, or terrain collider - they are render-only.</para>
-        /// <para>Splat rule (optional): <paramref name="splatRule"/> is the consumer rule for the per-vertex material
-        /// mix every chunk this sink bakes. Null (the default) is byte-identical to the pre-rule sink - the engine's
+        /// <para>Splat tuning: <paramref name="snowLine"/> sets the height of the snow transition (default 60), and
+        /// <paramref name="splatRule"/> is the optional consumer rule for the per-vertex material mix every chunk
+        /// this sink bakes. A null rule is byte-identical to the pre-rule sink - the engine's
         /// own <see cref="TerrainSplatWeights.From"/> weights go straight into the vertex. A world with a SECOND body
         /// of water needs it, because <c>From</c> derives its sand band from the field's single water level, so a lake
         /// edge otherwise bakes as grass running into water. Three constraints, all spelled out on
@@ -120,8 +122,8 @@ namespace KhaozEngine.Terrain
         /// re-LODs or unloads, so an impure rule bakes neighbours that disagree at their shared edge and they stay
         /// that way until something rebuilds them), it runs on a HOT PATH (once per vertex of
         /// every streamed chunk), and it is PRESENTATION ONLY (no field, collision, document, or world-identity
-        /// impact, so a client may adopt one against a server that has never heard of it). The rule is fixed for the
-        /// sink's lifetime: changing the mix means a new sink, or a rebuild of
+        /// impact, so a client may adopt one against a server that has never heard of it). Both settings are fixed for the
+        /// sink's lifetime: changing the snow line or mix means a new sink, or a rebuild of
         /// the loaded ring (<see cref="TerrainStreamer.Invalidate(RectArea)"/>) the way a field swap does.</para>
         /// <para>There is no chunk-mesh cache, and this doc used to claim there was one (issue #393, where the wrong
         /// claim sent part of a leak audit down the wrong path). A chunk mesh is rebuilt from the field on every
@@ -135,7 +137,8 @@ namespace KhaozEngine.Terrain
                                 bool collideTerrain = false,
                                 TerrainLodConfig? lodConfig = null,
                                 int collisionLod = 0,
-                                Func<TerrainSplatContext, TerrainSplatWeights>? splatRule = null)
+                                Func<TerrainSplatContext, TerrainSplatWeights>? splatRule = null,
+                                float snowLine = 60f)
         {
             _scene = scene;
             _field = field ?? throw new ArgumentNullException(nameof(field));
@@ -183,6 +186,7 @@ namespace KhaozEngine.Terrain
                 throw new ArgumentOutOfRangeException(nameof(collisionLod), collisionLod, "Collision LOD tier must be non-negative.");
             _collisionLod = collisionLod;
             _splatRule = splatRule;
+            _snowLine = snowLine;
             // Whether any layer bakes an HLOD merged mesh. When none does, BuildCpu / Apply / Draw skip the HLOD path
             // entirely, so a sink with no HLOD layer is byte-identical to the pre-HLOD sink.
             for (int i = 0; i < snapshot.Length; i++)
@@ -193,9 +197,10 @@ namespace KhaozEngine.Terrain
         /// <summary>Single-layer sink (back-compat): one scatter config, one mesh set, one draw radius. The splat
         /// <paramref name="material"/> is caller-owned unless <paramref name="ownsMaterial"/> is set (see the class
         /// remarks). Optional <paramref name="physics"/>/<paramref name="collisionShapes"/> add this layer's props
-        /// as static bodies on load (see the multi-layer ctor). <paramref name="splatRule"/> is the optional consumer
-        /// rule for the per-vertex material mix (null = the engine's own weights, byte-identical to the pre-rule
-        /// sink); see the multi-layer ctor and <see cref="TerrainSplatContext"/> for the contract.</summary>
+        /// as static bodies on load (see the multi-layer ctor). <paramref name="snowLine"/> sets the snow transition
+        /// height (default 60), and <paramref name="splatRule"/> is the optional consumer rule for the per-vertex
+        /// material mix (null = the engine's own weights, byte-identical to the pre-rule sink). See the multi-layer
+        /// ctor and <see cref="TerrainSplatContext"/> for the contract.</summary>
         public Scene3DChunkSink(Scene3D scene, TerrainField field, ScatterConfig scatter,
                                 IReadOnlyDictionary<string, MeshHandle> propMeshes, float chunkSize, float propDrawRadius,
                                 Scene3D.SplatMaterialHandle material = default, bool ownsMaterial = false,
@@ -205,7 +210,8 @@ namespace KhaozEngine.Terrain
                                 bool collideTerrain = false,
                                 TerrainLodConfig? lodConfig = null,
                                 int collisionLod = 0,
-                                Func<TerrainSplatContext, TerrainSplatWeights>? splatRule = null)
+                                Func<TerrainSplatContext, TerrainSplatWeights>? splatRule = null,
+                                float snowLine = 60f)
             : this(scene, field,
                    new[]
                    {
@@ -215,7 +221,7 @@ namespace KhaozEngine.Terrain
                            propDrawRadius),
                    },
                    chunkSize, material, ownsMaterial, physics, collisionShapes, dynamicsSource, collideTerrain, lodConfig, collisionLod,
-                   splatRule)
+                   splatRule, snowLine)
         {
         }
 
@@ -405,7 +411,8 @@ namespace KhaozEngine.Terrain
                 // cell that can meet this chunk's edge. A direct TerrainChunkBuilder.Build caller still gets the
                 // flat default.
                 Mesh = TerrainChunkBuilder.Build(_field, region, lod, _lodConfig,
-                                                 skirtDepth: _lodConfig.SkirtDepthFor(lod, _chunkSize), splatRule: _splatRule),
+                                                 skirtDepth: _lodConfig.SkirtDepthFor(lod, _chunkSize),
+                                                 snowLine: _snowLine, splatRule: _splatRule),
                 LayerProps = ring == ChunkRing.Gameplay ? scatter! : EmptyLayers(),
             };
             // Terrain collision surface at the FIXED collision tier, only for a gameplay chunk that opts in. Reuse the

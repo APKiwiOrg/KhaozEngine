@@ -213,6 +213,7 @@ namespace KhaozEngine.Tests.Telegraphs
             GroundTelegraphs.BuildBeam(Vector3.Zero, new Vector2(1f, 0f), 6f, 1f, 0.5f, s),
             GroundTelegraphs.BuildCone(Vector3.Zero, new Vector2(1f, 0f), 0.5f, 5f, 0.5f, s),
             GroundTelegraphs.BuildArc(Vector3.Zero, 4f, 0.5f, 0f, 1.5f, 0.5f, s),
+            GroundTelegraphs.BuildResidueCircle(Vector3.Zero, 4f, 0.5f, s),
         };
         foreach (var d in built)
         {

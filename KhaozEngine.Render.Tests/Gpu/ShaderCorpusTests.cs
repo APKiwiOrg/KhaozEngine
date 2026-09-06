@@ -59,7 +59,7 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.True(problems.Count == 0,
                 "The committed shader corpus no longer describes the shipped shader set. A program was added to "
-                + $"or removed from {nameof(D3D11ShaderProgramCatalog)} without rebuilding it. Rebuild with "
+                + $"or removed from {nameof(ShippedShaderPrograms)} without rebuilding it. Rebuild with "
                 + $"{WriteEnvVar}=1 and commit, reading the diff first.\n"
                 + string.Join("\n", problems));
         }

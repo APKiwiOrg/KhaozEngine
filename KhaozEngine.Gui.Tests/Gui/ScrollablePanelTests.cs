@@ -77,6 +77,25 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void Drag_scrolling_can_be_disabled_without_disabling_the_wheel()
+        {
+            var sp = Make();
+            sp.DragScrollingEnabled = false;
+            var p = new Pointer();
+            var inside = new Vector2(150, 300);
+
+            p.Update(Frame(inside, false, scroll: -2));
+            sp.Update(p, Frame(inside, false, scroll: -2));
+            Assert.Equal(60f, sp.ScrollOffset, 2);
+
+            p.Update(Frame(inside, true));
+            sp.Update(p, Frame(inside, true));
+            p.Update(Frame(new Vector2(150, 260), true));
+            sp.Update(p, Frame(new Vector2(150, 260), true));
+            Assert.Equal(60f, sp.ScrollOffset, 2);
+        }
+
+        [Fact]
         public void ItemBounds_account_for_the_scroll_offset()
         {
             var sp = Make();

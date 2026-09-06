@@ -129,14 +129,17 @@ public class TileGroundMesherSlotTests
     [Fact]
     public void A_NoDraw_neighbour_still_decides_the_corner_material()
     {
-        // Void is the ONLY exclusion, exactly as CornerColor excludes it: a NoDraw tile draws no ground of its
-        // own but still contributes its underlay, so the ground does not step at the edge of a hole punched for
-        // an object floor. Two NoDraw dirt tiles against one grass tile hand the corner to dirt, which a rule
-        // that skipped NoDraw would answer grass.
+        // A NoDraw tile draws no ground of its own but still contributes its underlay, so the ground does not
+        // step at the edge of a hole punched for an object floor. Two NoDraw dirt tiles against one grass tile
+        // hand the corner to dirt, which a rule that skipped NoDraw would answer grass.
         TileWorldDocument doc = VoidWorld();
         doc.SetUnderlay(39, 39, 0, Dirt);
+        doc.SetOverlay(39, 39, 0, Wood);
+        doc.SetOverlayShape(39, 39, 0, TileOverlayShape.Full);
         doc.SetSettings(39, 39, 0, TileSettings.NoDraw);
         doc.SetUnderlay(39, 40, 0, Dirt);
+        doc.SetOverlay(39, 40, 0, Wood);
+        doc.SetOverlayShape(39, 40, 0, TileOverlayShape.Full);
         doc.SetSettings(39, 40, 0, TileSettings.NoDraw);
         doc.SetUnderlay(40, 40, 0, Grass);
 
@@ -146,6 +149,22 @@ public class TileGroundMesherSlotTests
         ModelVertex sw = At(TileVertices(Build(doc), doc, 40, 40), doc, 40f, 40f);
         Assert.Equal(SlotOf(Dirt), Slot(sw.Uv.X));
         Assert.Equal(OneHotSw, sw.Color);
+    }
+
+    [Fact]
+    public void A_full_overlay_neighbour_does_not_decide_an_underlay_corner_material()
+    {
+        TileWorldDocument doc = VoidWorld();
+        doc.SetUnderlay(40, 40, 0, Road);
+        doc.SetUnderlay(39, 40, 0, Grass);
+        doc.SetOverlay(39, 40, 0, Wood);
+        doc.SetOverlayShape(39, 40, 0, TileOverlayShape.Full);
+
+        Assert.Equal(Road, TileGroundMesher.CornerMaterial(doc, 40, 41, 0));
+
+        List<ModelVertex> road = TileVertices(Build(doc), doc, 40, 40);
+        ModelVertex northWest = At(road, doc, 40f, 41f);
+        Assert.Equal(SlotOf(Road), OneHotSlot(northWest));
     }
 
     [Fact]

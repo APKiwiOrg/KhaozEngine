@@ -5,6 +5,19 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.25.0
+
+Scrollable lists can yield drag gestures to their contents, and exact full-overlay boundaries no longer bleed
+their hidden underlay into neighbouring ground.
+
+- `ScrollablePanel.DragScrollingEnabled` defaults to true for compatibility. Setting it to false disables
+  pointer drag-panning while leaving wheel scrolling, clipping, input blocking and header resizing unchanged.
+- `TileGroundMesher.CornerMaterial`, `CornerColor` and `CornerJitter` exclude an underlay hidden by a drawn full
+  overlay. Exposed ground now meets full floor and road overlays at a sharp material boundary. `NoDraw` tiles
+  still contribute their underlay for object-floor continuity.
+
+Consumer: https://github.com/APKiwiOrg/Grimhollow
+
 ## 18.24.0
 
 A backlog batch improves GUI customization, tile-world editing and captures, validation, and test reliability.

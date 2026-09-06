@@ -39,7 +39,10 @@ public sealed class UpdateManifest
         WriteIndented = true
     };
 
-    /// <summary>Parses a manifest from JSON. Returns null on malformed input handled by the caller.</summary>
+    /// <summary>
+    /// Parses a manifest from JSON. Returns null for the JSON null literal and throws <see cref="JsonException"/>
+    /// when the syntax or a value cannot be deserialized.
+    /// </summary>
     public static UpdateManifest? Deserialize(string json)
     {
         return JsonSerializer.Deserialize<UpdateManifest>(json, JsonOptions);

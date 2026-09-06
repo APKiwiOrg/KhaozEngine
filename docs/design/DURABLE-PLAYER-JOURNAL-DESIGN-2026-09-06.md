@@ -45,7 +45,7 @@ a crash or retry.
 Both games need the same infrastructure facts:
 
 - an operation has one stable identity
-- replaying the same operation cannot apply it twice
+- replaying the same operation within the receipt-retention horizon cannot apply it twice
 - reusing an identity for different input is an explicit conflict
 - every stream advances monotonically
 - one operation can commit across several streams atomically
@@ -89,7 +89,7 @@ the game.
 
 - operation IDs and canonical request fingerprints
 - per-stream versions and event sequence allocation
-- idempotent replay and identity conflict detection
+- retention-bounded idempotent replay and identity conflict detection
 - atomic commit across one or more streams
 - projection section writes in the same transaction
 - snapshot storage, checksums, replay pages, and compaction
@@ -132,9 +132,10 @@ the first completion. This keeps live state, expected versions, and committed st
 off-thread gameplay reducer.
 
 Live state carries the committed version of every stream it represents. A completion applies its events only
-when its receipt begins at the live version and advances it contiguously. A replay whose resulting version is
-already reflected in live state returns the original response but does not reduce the events a second time. A
-receipt ahead of live state by more than its own event range forces a journal catch-up before gameplay resumes.
+when its receipt begins at the live version and advances it contiguously. While the operation receipt is retained,
+a replay whose resulting version is already reflected in live state returns the original response but does not
+reduce the events a second time. A receipt ahead of live state by more than its own event range forces a journal
+catch-up before gameplay resumes.
 This rule prevents a late duplicate response from rolling live state back or granting twice.
 
 ### 4.4 Durability classes
@@ -209,15 +210,16 @@ complete identity. Scope binds the request to its tenant, world, account, or ser
 two eventless commands with the same payload from becoming one identity.
 
 `ResolveOperationAsync` is the restart-safe replay path. It looks up the operation ID before gameplay rebuilds
-an old execution. `NotFound` permits current-state validation and a new `JournalCommit`. A matching identity
-returns `Replayed` with the original receipt, result, and per-stream version ranges. A different identity
-returns `OperationConflict`. No caller needs to reconstruct old expected versions, projections, random rolls,
-or result bytes merely to learn that a prior attempt committed.
+an old execution. `NotFound` permits current-state validation and a new `JournalCommit`. While the operation row is
+retained, a matching identity returns `Replayed` with the original receipt, result, and per-stream version ranges.
+A different identity returns `OperationConflict`. No caller needs to reconstruct old expected versions,
+projections, random rolls, or result bytes merely to learn that a retained prior attempt committed.
 
 `JournalInitialization` contains an operation identity, one absent stream key, a version-zero snapshot, zero
 or more version-zero projection sections, and a stable result. It is the only operation which creates a
-stream. Two initializers racing for one stream produce one winner. Replaying the winner returns its original
-receipt. A different initializer sees `ExistingStream` and must load the journal rather than overwrite it.
+stream. Two initializers racing for one stream produce one winner. While the operation row is retained, replaying
+the winner returns its original receipt. A different initializer sees `ExistingStream` and must load the journal
+rather than overwrite it.
 
 `JournalInitializeStatus` has `Initialized`, `Replayed`, `ExistingStream`, and `OperationConflict`. An existing
 stream is never treated as a successful replay unless the operation ID and intent fingerprint match. Stream
@@ -256,7 +258,8 @@ client intent or durable server cause, then reused byte for byte.
 `JournalCommitStatus` has exactly four states:
 
 - `Applied`: the transaction committed now
-- `Replayed`: the same operation ID and intent fingerprint already committed, with the original receipt and result
+- `Replayed`: a retained operation with the same ID and intent fingerprint already committed, with the original
+  receipt and result
 - `VersionConflict`: no operation row exists and at least one expected stream version differs, with no writes
 - `OperationConflict`: the operation ID exists with another intent fingerprint, with no writes
 
@@ -275,7 +278,7 @@ player-visible success.
 
 Only committed operations get an operation row. A version conflict can therefore be revalidated and retried
 with the same operation identity and a newly canonicalized execution. If a prior attempt actually committed,
-the stored intent fingerprint decides replay versus operation conflict and its original execution wins.
+the retained stored intent fingerprint decides replay versus operation conflict and its original execution wins.
 
 ### 5.2 Identity sources
 
@@ -361,8 +364,11 @@ small bounded backend policy.
 SQLite uses `SqliteStoreConnection` and one immediate transaction under its existing connection lease. The
 in-memory backend uses one lock around its model and clones caller byte arrays at both boundaries.
 
-A successful commit followed by a lost response is an unknown outcome, not a failed action. Retrying the same
-operation returns `Replayed` with the original result. Generating a fresh ID after an unknown outcome is a bug.
+A successful commit followed by a lost response is an unknown outcome, not a failed action. While the operation
+receipt is retained, retrying the same operation returns `Replayed` with the original result. After operation-row
+purge, `ResolveOperationAsync` may return `NotFound`, but the retry protocol still uses the same stable ID and frozen
+intent. Operation purge leaves events in place. Durable domain state plus expected-version and consumed-source
+validation are the permanent duplicate defense. Generating a fresh ID after an unknown outcome is a bug.
 
 Operation resolution verifies `result_sha256` before returning a replay. A failed result checksum is permanent
 corruption. Every stream listed by the stored receipt is quarantined until operator repair or a verified replay
@@ -599,8 +605,9 @@ Only acknowledgement releases the operation's stream reservations and bytes.
 The game applies a completion by reducing into isolated copies of every affected live state, checking receipt
 version continuity, then swapping all copies into the live registry as one tick step. If reduction or swap
 fails, it acknowledges `Quarantined`, blocks the streams, and reloads from snapshot plus tail before accepting
-more work. It never continues from a partly mutated live object. A replay already represented by the live
-versions needs no reduction and can be acknowledged after returning its original response.
+more work. It never continues from a partly mutated live object. While the operation receipt is retained, a replay
+already represented by the live versions needs no reduction and can be acknowledged after returning its original
+response.
 
 Submission and completion work are O(mutations), not O(connected players). No code path serializes a full
 player merely to discover whether it changed. Each host must configure both operation-count and owned-byte
@@ -679,7 +686,8 @@ Claiming the drop is one operation across the loot-source stream and player stre
 - the result says exactly what was granted
 
 One transaction commits all of it. Concurrent claims produce one applied operation and conflicts for the
-losers. A lost reply replays the winner. The source remains consumed after operation-row retention expires.
+losers. A lost reply replays the winner while its operation receipt is retained. The source remains consumed after
+operation-row retention expires.
 
 A player trade follows the same shape across both player streams and any escrow stream. The engine locks the
 ordinal stream keys, so two opposite-direction trades cannot acquire locks in opposite order. Conservation is
@@ -781,17 +789,17 @@ The implementation is not ready to ship until the following are executable tests
 
 | Fault or race | Required outcome |
 |---|---|
-| Submit one operation 100 times | One event set, one version advance, one original result |
+| Submit one operation 100 times within the retention horizon | One event set, one version advance, one original result |
 | Reuse an operation ID with changed intent | `OperationConflict`, no writes |
-| Restart retries committed intent without old execution bytes | Resolution returns the original receipt and result |
-| Matching intent is rebuilt with different execution after commit | Original execution returns as `Replayed` |
+| Restart retries committed intent without old execution bytes while its receipt is retained | Resolution returns the original receipt and result |
+| Matching intent is rebuilt with different execution while its receipt is retained | Original execution returns as `Replayed` |
 | Eventless rejection commits | Stream before and after versions stay equal, with no projection write |
 | Kill before transaction starts | Source remains claimable or action remains uncommitted |
 | Kill after event insert but before commit | No event, projection, or operation row survives |
 | Kill after projection write but before commit | No partial projection survives |
-| Commit succeeds and reply is lost | Same-ID retry returns `Replayed` with no duplicate |
+| Commit succeeds and reply is lost while its receipt is retained | Same-ID retry returns `Replayed` with no duplicate |
 | Server dies after commit but before live apply | Restart replay reconstructs the committed state |
-| Late replay arrives after newer live state | Original response returns without reducing the old events again |
+| Late replay arrives after newer live state while its receipt is retained | Original response returns without reducing the old events again |
 | Completion queue fills before tick drain | Same admission byte bound applies, with no released stream reservation |
 | Live reducer throws part way | Isolated copies are discarded and all touched streams quarantine |
 | SQL is unavailable | Ownership action is not acknowledged or applied only in RAM |

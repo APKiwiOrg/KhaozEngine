@@ -126,6 +126,25 @@ public class TileWorldSourceTests
         Assert.Equal(5, s.Document.GetUnderlay(c.OriginX + 1, c.OriginZ + 1, 0));
     }
 
+    [Fact]
+    public void Document_remove_region_refreshes_the_sources_hash_and_marker_index()
+    {
+        using var tmp = new TempDir();
+        string dir = SavedWorld(tmp);
+        TileWorldSource s = TileWorldSource.Open(dir);
+        var c = new RegionCoord(0, 0);
+        s.EnsureLoaded(c);
+        s.Document.SetUnderlay(1, 1, 0, 7);
+        s.Document.SetMarker("gate", 5, 5, 0);
+        TileWorldFile.Save(s.Document, dir);
+
+        Assert.True(s.Document.RemoveRegion(c));
+        Assert.Equal(new TileCoord(5, 5, 0), s.FindMarker("gate")!.Coord);
+
+        Assert.NotNull(s.EnsureLoaded(c));
+        Assert.Equal(7, s.Document.GetUnderlay(1, 1, 0));
+    }
+
     // The marker index: a client that opens a world and wants the spawn BEFORE it streams anything used to have to
     // materialise regions one at a time until one carried the marker, then unload the ones that did not.
     [Fact]

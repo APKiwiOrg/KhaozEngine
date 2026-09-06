@@ -92,8 +92,15 @@ public sealed partial class TileWorldDocument
         foreach (TileObject o in region.Objects) _objectIndex[o.Id] = region;
     }
 
-    /// <summary>Drops the region and its objects from the index. False when it was not there.</summary>
-    public bool RemoveRegion(RegionCoord c)
+    /// <summary>Drops the region and its objects from the index. False when it was not there.
+    /// <para>For a document opened through <see cref="TileWorldSource"/>, this follows the source's unload path so
+    /// its saved hash and marker index remain valid. A dirty source-backed region is refused until it is
+    /// saved.</para></summary>
+    public bool RemoveRegion(RegionCoord c) => Source is null ? DetachRegion(c) : Source.Unload(c);
+
+    // The source's final detach after it has captured the region state. Kept separate from the public path so
+    // TileWorldSource.Unload does not recurse through itself.
+    internal bool DetachRegion(RegionCoord c)
     {
         if (!_regions.Remove(c, out TileRegion? r)) return false;
         foreach (TileObject o in r.Objects) _objectIndex.Remove(o.Id);

@@ -147,7 +147,7 @@ public sealed class TileWorldSource
         foreach (string name in stale) _markers.Remove(name);
         foreach (TileMarker m in r.Markers) _markers[m.Name] = Copy(m);
 
-        Document.RemoveRegion(c);
+        Document.DetachRegion(c);
         Document.UnloadedRegionHashes[c] = hash;
         // _known moves with it, or the next EnsureLoaded checks the file against the Open-time hash and calls
         // a correctly saved region a torn write. This is also what makes a region CREATED after Open reachable:

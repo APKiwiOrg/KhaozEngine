@@ -19,5 +19,7 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Server.Tests" />
+    <!-- Non-packable local crash harness. Provider fault hooks remain internal. -->
+    <InternalsVisibleTo Include="KhaozEngine.Benchmarks" />
   </ItemGroup>
 </Project>

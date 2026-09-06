@@ -197,3 +197,34 @@ game ever has the opposite shape (many tiny independent systems over few entitie
 parallel cell-tick path, or omit for inline) to compare a single point - jobs-1 does exactly this to show its win. For
 the entities axis, `EntitiesAxisBenchmark.Measure(entities, workPerRow, warmup, timed, scheduler)` times one hot
 `World` both ways at a chosen per-row work.
+
+## Durable mutation journal
+
+The journal modes exercise the real executor and store with seeded MMO-shaped work. The mix includes inventory
+changes, bank transfers, atomic two-player trades, selected projection reads, operation replays, snapshot recovery,
+and compaction. Event, projection, result, and snapshot payloads are non-empty and bounded by `--payload-bytes`.
+
+SQLite is the default provider. Pass an absolute `--database` path to keep its file. SQL Server is used only when
+`--sql-server` supplies a connection string. Every run receives its own internal stream and operation namespace,
+so repeating one seed against a retained database measures fresh writes without colliding with the prior baseline.
+
+```bash
+dotnet run --project KhaozEngine.Benchmarks -c Release -- --journal --operations 10000 --players 1000 --seed 835
+
+dotnet run --project KhaozEngine.Benchmarks -c Release -- --journal-soak --players 1000 --seed 835 --duration-seconds 300 --progress-seconds 10 --database /tmp/khaoz-journal-soak.db
+
+dotnet run --project KhaozEngine.Benchmarks -c Release -- --journal-soak --players 1000 --seed 835 --duration-seconds 300 --sql-server 'Server=localhost;Database=KhaozJournal;Integrated Security=true;TrustServerCertificate=true'
+```
+
+The benchmark prints one stable JSON result. The soak prints newline-delimited progress records and then the final
+result. Redirect the final output to retain a capacity baseline with provider, machine, framework, and processor
+facts. The result reports mutation throughput, p50, p95 and p99 commit latency, replay, retry, busy and backpressure
+rates, database bytes when available, retained event tail length, current projection bytes, compaction lag,
+allocation per operation, and all integrity failure counters. It does not encode a universal throughput target.
+The final JSON is written before the process returns a failing exit code for any nonzero checksum, duplicate-effect,
+sequence, or partial-commit counter.
+
+The `--journal-crash-probe` mode is an internal release gate used by the test suite. It accepts an absolute SQLite
+database path, operation GUID, and either `before-commit` or `after-commit-before-response`. At the requested internal
+provider hook it writes and flushes exactly one `JOURNAL_CHECKPOINT <phase>` line, then waits on standard input so the
+parent can kill the process tree and prove recovery.

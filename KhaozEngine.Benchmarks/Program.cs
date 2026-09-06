@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Threading;
 using KhaozEngine.Benchmarks;
+using KhaozEngine.Benchmarks.Journal;
 using KhaozEngine.Simulation;
 
 // jobs-0/1/2: a headless, repeatable benchmark of one server tick across a matrix of (cells C, entities/cell E,
@@ -14,6 +16,37 @@ using KhaozEngine.Simulation;
 //   dotnet run --project KhaozEngine.Benchmarks -c Release -- --gate         (jobs-3 system-scheduler GATE evaluation)
 //   dotnet run --project KhaozEngine.Benchmarks -c Release -- --replication  (replication-hotpath jobs-1 matrix only)
 // See KhaozEngine.Benchmarks/README.md for how to read the output.
+
+if (Array.IndexOf(args, "--journal-crash-probe") >= 0)
+{
+    await JournalCrashProbe.RunAsync(args);
+    return;
+}
+
+if (Array.IndexOf(args, "--journal") >= 0 || Array.IndexOf(args, "--journal-soak") >= 0)
+{
+    JournalBenchmarkConfig journalConfig = JournalBenchmarkConfig.Parse(args);
+    using var cancellation = new CancellationTokenSource();
+    ConsoleCancelEventHandler cancel = (_, eventArgs) =>
+    {
+        eventArgs.Cancel = true;
+        cancellation.Cancel();
+    };
+    Console.CancelKeyPress += cancel;
+    try
+    {
+        JournalBenchmarkResult journalResult = journalConfig.Mode == JournalBenchmarkMode.Soak
+            ? await JournalSoakRunner.RunAsync(journalConfig, Console.Out, cancellation.Token)
+            : await JournalBenchmarkRunner.RunAsync(journalConfig, cancellation.Token);
+        Console.Out.WriteLine(journalResult.ToJson());
+        Environment.ExitCode = journalResult.ProcessExitCode;
+    }
+    finally
+    {
+        Console.CancelKeyPress -= cancel;
+    }
+    return;
+}
 
 bool quick = Array.IndexOf(args, "--quick") >= 0;
 

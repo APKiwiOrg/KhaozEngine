@@ -36,6 +36,9 @@ internal static partial class MapTiledFile
                 $"{directory}: a file already exists at this path. A tiled document is a directory, remove " +
                 "the file or choose a different path.");
 
+        Directory.CreateDirectory(root);
+        using FileStream saveLock = MapTiledSaveLock.Acquire(root);
+
         string manifestPath = Path.Combine(root, ManifestName);
         if (doc.Tiles is null && File.Exists(manifestPath))
             throw new MapDocumentException(
@@ -72,7 +75,6 @@ internal static partial class MapTiledFile
 
         // 3. Read the previous manifest. The ONLY source of the previous per-tile hashes: never a directory
         //    listing, never a parse of a file name.
-        Directory.CreateDirectory(root);
         DeleteQuietly(Path.Combine(root, ManifestTempName));
         PreviousManifest? previous = ReadPrevious(manifestPath);
 

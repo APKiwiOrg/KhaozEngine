@@ -165,6 +165,117 @@ public sealed class SqliteMutationJournalStoreTests : MutationJournalStoreConfor
     }
 
     [Fact]
+    public void Auto_create_rejects_a_partial_schema_without_filling_in_missing_tables()
+    {
+        string path = database.NewPath();
+        database.Execute(path, "CREATE TABLE journal_stream (stream_key TEXT PRIMARY KEY);");
+
+        JournalStoreException exception = Assert.Throws<JournalStoreException>(() => database.Open(path));
+
+        Assert.Equal(JournalStoreFailureKind.SchemaMismatch, exception.Kind);
+        Assert.Contains(SqliteJournalSchema.RequiredMigration, exception.Message, StringComparison.Ordinal);
+        Assert.Equal(1, database.ScalarLong(path, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name LIKE 'journal_%';"));
+    }
+
+    [Fact]
+    public void Auto_create_rejects_all_expected_table_names_with_the_wrong_shape()
+    {
+        string path = database.NewPath();
+        database.Execute(path, """
+            CREATE TABLE journal_metadata (metadata_key INTEGER, schema_version INTEGER, store_epoch TEXT, updated_at_utc INTEGER);
+            INSERT INTO journal_metadata VALUES (1, 1, '00112233445566778899aabbccddeeff', 0);
+            CREATE TABLE journal_stream (id INTEGER);
+            CREATE TABLE journal_event (id INTEGER);
+            CREATE TABLE journal_operation (id INTEGER);
+            CREATE TABLE journal_operation_stream (id INTEGER);
+            CREATE TABLE journal_snapshot (id INTEGER);
+            CREATE TABLE journal_projection (id INTEGER);
+            """);
+
+        JournalStoreException exception = Assert.Throws<JournalStoreException>(() => database.Open(path));
+
+        Assert.Equal(JournalStoreFailureKind.SchemaMismatch, exception.Kind);
+        Assert.Contains(SqliteJournalSchema.RequiredMigration, exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("journal_stream", "current_version INTEGER", "current_revision INTEGER")]
+    [InlineData("journal_stream", "current_version INTEGER NOT NULL", "current_version TEXT NOT NULL")]
+    [InlineData("journal_stream", "current_version INTEGER NOT NULL", "current_version INTEGER")]
+    [InlineData("journal_event", "PRIMARY KEY (stream_key, stream_version)", "UNIQUE (stream_key, stream_version)")]
+    [InlineData("journal_event", "FOREIGN KEY (stream_key) REFERENCES journal_stream(stream_key)", "FOREIGN KEY (stream_key) REFERENCES journal_operation(operation_id)")]
+    [InlineData("ix_journal_event_operation", "(operation_id)", "(stream_version)")]
+    [InlineData("journal_metadata", "store_epoch TEXT COLLATE BINARY", "store_epoch TEXT COLLATE NOCASE")]
+    [InlineData("journal_stream", "DEFAULT 0 CHECK (retained_floor >= 0 AND retained_floor <= current_version)", "DEFAULT 1 CHECK (retained_floor >= 0)")]
+    public void Existing_schema_requires_the_exact_version_one_shape(
+        string objectName,
+        string originalSql,
+        string replacementSql)
+    {
+        string path = database.NewPath();
+        using (database.Open(path)) { }
+        database.RewriteSchemaSql(path, objectName, originalSql, replacementSql);
+
+        JournalStoreException exception = Assert.Throws<JournalStoreException>(() => database.Open(path));
+
+        Assert.Equal(JournalStoreFailureKind.SchemaMismatch, exception.Kind);
+        Assert.Contains(SqliteJournalSchema.RequiredMigration, exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Unsupported_schema_is_rejected_without_changing_file_journal_mode()
+    {
+        string path = database.NewPath();
+        database.Execute(path, """
+            PRAGMA journal_mode = DELETE;
+            CREATE TABLE journal_metadata (
+                metadata_key INTEGER PRIMARY KEY,
+                schema_version INTEGER NOT NULL,
+                store_epoch TEXT NOT NULL,
+                updated_at_utc INTEGER NOT NULL);
+            INSERT INTO journal_metadata VALUES (1, 99, '00112233445566778899aabbccddeeff', 0);
+            """);
+        Assert.Equal("delete", database.ScalarText(path, "PRAGMA journal_mode;"));
+
+        JournalStoreException exception = Assert.Throws<JournalStoreException>(() => database.Open(path));
+
+        Assert.Equal(JournalStoreFailureKind.SchemaMismatch, exception.Kind);
+        Assert.Equal("delete", database.ScalarText(path, "PRAGMA journal_mode;"));
+    }
+
+    [Fact]
+    public void Malformed_declared_schema_version_fails_as_schema_mismatch()
+    {
+        string path = database.NewPath();
+        using (database.Open(path)) { }
+        database.Execute(path, "UPDATE journal_metadata SET schema_version = 'not-a-version' WHERE metadata_key = 1;");
+
+        JournalStoreException exception = Assert.Throws<JournalStoreException>(() => database.Open(path));
+
+        Assert.Equal(JournalStoreFailureKind.SchemaMismatch, exception.Kind);
+        Assert.Contains(SqliteJournalSchema.RequiredMigration, exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Validate_only_rejects_non_wal_schema_without_changing_journal_mode()
+    {
+        string path = database.NewPath();
+        using (database.Open(path)) { }
+        database.Execute(path, "PRAGMA journal_mode = DELETE;");
+        Assert.Equal("delete", database.ScalarText(path, "PRAGMA journal_mode;"));
+
+        JournalStoreException exception = Assert.Throws<JournalStoreException>(() => database.Open(
+            path,
+            new SqliteMutationJournalStoreOptions(database.ConnectionString(path))
+            {
+                SchemaMode = SqliteJournalSchemaMode.ValidateOnly,
+            }));
+
+        Assert.Equal(JournalStoreFailureKind.SchemaMismatch, exception.Kind);
+        Assert.Equal("delete", database.ScalarText(path, "PRAGMA journal_mode;"));
+    }
+
+    [Fact]
     public void Schema_foreign_keys_reject_orphaned_children_but_events_do_not_reference_operations()
     {
         string path = database.NewPath();
@@ -241,6 +352,36 @@ internal sealed class SqliteJournalTestDatabase : IDisposable
         using SqliteCommand command = connection.CreateCommand();
         command.CommandText = sql;
         return Convert.ToInt64(command.ExecuteScalar());
+    }
+
+    internal string ScalarText(string path, string sql)
+    {
+        using var connection = new SqliteConnection(ConnectionString(path));
+        connection.Open();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText = sql;
+        return Convert.ToString(command.ExecuteScalar()) ?? string.Empty;
+    }
+
+    internal void RewriteSchemaSql(string path, string objectName, string originalSql, string replacementSql)
+    {
+        string storedSql;
+        using (var connection = new SqliteConnection(ConnectionString(path)))
+        {
+            connection.Open();
+            using SqliteCommand read = connection.CreateCommand();
+            read.CommandText = "SELECT sql FROM sqlite_master WHERE name = $name;";
+            read.Parameters.AddWithValue("$name", objectName);
+            storedSql = Convert.ToString(read.ExecuteScalar()) ?? string.Empty;
+        }
+        string changedSql = storedSql.Replace(originalSql, replacementSql, StringComparison.Ordinal);
+        if (StringComparer.Ordinal.Equals(storedSql, changedSql))
+            throw new InvalidOperationException($"Schema SQL for '{objectName}' did not contain the requested text.");
+        Execute(
+            path,
+            "PRAGMA writable_schema = ON; UPDATE sqlite_master SET sql = $sql WHERE name = $name; PRAGMA writable_schema = OFF;",
+            ("$sql", changedSql),
+            ("$name", objectName));
     }
 
     internal IReadOnlyList<string> ForeignKeys(string path, string table)

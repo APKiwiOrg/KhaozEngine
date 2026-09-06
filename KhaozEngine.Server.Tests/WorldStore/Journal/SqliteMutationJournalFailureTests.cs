@@ -87,6 +87,82 @@ public sealed class SqliteMutationJournalFailureTests : IDisposable
         Assert.Single((await store.ReadEventsAsync(new JournalEventRead("player/a", 0, null, 10, 1024))).Events);
     }
 
+    [Theory]
+    [InlineData(false, JournalInitializeStatus.Replayed)]
+    [InlineData(true, JournalInitializeStatus.OperationConflict)]
+    public async Task Initialize_operation_insert_collision_rolls_back_and_resolves_authoritative_row(
+        bool mismatch,
+        JournalInitializeStatus expectedStatus)
+    {
+        string path = database.NewPath();
+        JournalInitialization committed = Initialization(20);
+        using (SqliteMutationJournalStore seed = database.Open(path))
+            await seed.InitializeAsync(committed);
+        var hook = new SqliteJournalTestHook(_ => { }, suppressedOperationLookups: 1);
+        using SqliteMutationJournalStore racing = database.Open(path, hook: hook);
+        JournalOperationIdentity identity = mismatch
+            ? new JournalOperationIdentity(committed.Identity.OperationId, "world/account", "bank.deposit", new byte[] { 99 })
+            : committed.Identity;
+        var attempt = new JournalInitialization(
+            identity,
+            "player/b",
+            "player.v1",
+            1,
+            new byte[] { 2 },
+            new[] { new JournalProjectionWrite("player/b", "bag", "bag.v1", 1, new byte[] { 3 }) },
+            "result.v1",
+            1,
+            new byte[] { 4 });
+
+        JournalInitializeResult result = await racing.InitializeAsync(attempt);
+
+        Assert.Equal(expectedStatus, result.Status);
+        Assert.Null(await racing.LoadSnapshotAsync("player/b"));
+        Assert.Equal(
+            JournalProjectionReadStatus.NotFound,
+            (await racing.ReadProjectionsAsync(new JournalProjectionQuery("player/b"))).Status);
+        if (!mismatch) Assert.Equal(committed.ResultData.ToArray(), result.Receipt!.ResultData.ToArray());
+    }
+
+    [Theory]
+    [InlineData(false, JournalCommitStatus.Replayed)]
+    [InlineData(true, JournalCommitStatus.OperationConflict)]
+    public async Task Commit_operation_insert_collision_rolls_back_and_resolves_authoritative_row(
+        bool mismatch,
+        JournalCommitStatus expectedStatus)
+    {
+        string path = database.NewPath();
+        using (SqliteMutationJournalStore seed = database.Open(path))
+        {
+            await seed.InitializeAsync(Initialization(30));
+            await seed.InitializeAsync(new JournalInitialization(
+                Identity(31), "player/b", "player.v1", 1, Array.Empty<byte>(),
+                Array.Empty<JournalProjectionWrite>(), "result.v1", 1, new byte[] { 1 }));
+            await seed.CommitAsync(Commit(32));
+        }
+        var hook = new SqliteJournalTestHook(_ => { }, suppressedOperationLookups: 1);
+        using SqliteMutationJournalStore racing = database.Open(path, hook: hook);
+        JournalOperationIdentity identity = mismatch
+            ? new JournalOperationIdentity(Identity(32).OperationId, "world/account", "bank.deposit", new byte[] { 99 })
+            : Identity(32);
+        var attempt = new JournalCommit(
+            identity,
+            new[] { new JournalStreamMutation("player/b", 0, new[] { new JournalEvent("state.changed", 1, new byte[] { 8 }) }) },
+            new[] { new JournalProjectionWrite("player/b", "bag", "bag.v1", 1, new byte[] { 9 }) },
+            "result.v1",
+            1,
+            new byte[] { 10 });
+
+        JournalCommitResult result = await racing.CommitAsync(attempt);
+
+        Assert.Equal(expectedStatus, result.Status);
+        JournalEventPage page = await racing.ReadEventsAsync(new JournalEventRead("player/b", 0, null, 10, 1024));
+        Assert.Equal(0, page.ThroughVersion);
+        Assert.Empty(page.Events);
+        Assert.Empty((await racing.ReadProjectionsAsync(new JournalProjectionQuery("player/b"))).Sections);
+        if (!mismatch) Assert.Equal(new byte[] { 41 }, result.Receipt!.ResultData.ToArray());
+    }
+
     [Fact]
     public async Task Commit_invokes_shared_mutation_boundaries_in_order()
     {

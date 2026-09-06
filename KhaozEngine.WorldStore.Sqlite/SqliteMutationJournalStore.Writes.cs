@@ -25,6 +25,8 @@ public sealed partial class SqliteMutationJournalStore
         SqliteTransaction? transaction = null;
         bool commitStarted = false;
         bool committed = false;
+        bool operationInsertStarted = false;
+        bool operationInsertCompleted = false;
         try
         {
             transaction = db.Connection.BeginTransaction(deferred: false);
@@ -59,6 +61,7 @@ public sealed partial class SqliteMutationJournalStore
 
             var range = new JournalStreamVersionRange(initialization.AbsentStreamKey, 0, 0, 0);
             JournalFingerprint execution = JournalCanonicalizer.CreateInitializationFingerprint(initialization);
+            operationInsertStarted = true;
             await InsertOperationAsync(
                 initialization.Identity,
                 intent,
@@ -71,6 +74,7 @@ public sealed partial class SqliteMutationJournalStore
                 new[] { range },
                 transaction,
                 cancellationToken).ConfigureAwait(false);
+            operationInsertCompleted = true;
             var receipt = new JournalCommitReceipt(
                 initialization.Identity.OperationId,
                 now,
@@ -85,6 +89,19 @@ public sealed partial class SqliteMutationJournalStore
             committed = true;
             Invoke(JournalTestHookPhase.AfterCommitBeforeResponse);
             return new JournalInitializeResult(JournalInitializeStatus.Initialized, receipt);
+        }
+        catch (SqliteException exception) when (operationInsertStarted && !operationInsertCompleted && !commitStarted && exception.SqliteErrorCode == 19)
+        {
+            OperationLookup lookup = await ResolveOperationInsertCollisionAsync(
+                exception,
+                initialization.Identity,
+                intent,
+                transaction!,
+                streamKeys,
+                cancellationToken).ConfigureAwait(false);
+            return lookup.Status == OperationLookupStatus.Conflict
+                ? new JournalInitializeResult(JournalInitializeStatus.OperationConflict)
+                : new JournalInitializeResult(JournalInitializeStatus.Replayed, lookup.Receipt);
         }
         catch (Exception exception)
         {
@@ -109,6 +126,8 @@ public sealed partial class SqliteMutationJournalStore
         SqliteTransaction? transaction = null;
         bool commitStarted = false;
         bool committed = false;
+        bool operationInsertStarted = false;
+        bool operationInsertCompleted = false;
         try
         {
             transaction = db.Connection.BeginTransaction(deferred: false);
@@ -173,6 +192,7 @@ public sealed partial class SqliteMutationJournalStore
             Invoke(JournalTestHookPhase.AfterProjectionWrites);
 
             JournalFingerprint execution = JournalCanonicalizer.CreateCommitFingerprint(commit);
+            operationInsertStarted = true;
             await InsertOperationAsync(
                 commit.Identity,
                 intent,
@@ -185,6 +205,7 @@ public sealed partial class SqliteMutationJournalStore
                 ranges,
                 transaction,
                 cancellationToken).ConfigureAwait(false);
+            operationInsertCompleted = true;
             var receipt = new JournalCommitReceipt(
                 commit.Identity.OperationId,
                 now,
@@ -199,6 +220,19 @@ public sealed partial class SqliteMutationJournalStore
             committed = true;
             Invoke(JournalTestHookPhase.AfterCommitBeforeResponse);
             return new JournalCommitResult(JournalCommitStatus.Applied, receipt);
+        }
+        catch (SqliteException exception) when (operationInsertStarted && !operationInsertCompleted && !commitStarted && exception.SqliteErrorCode == 19)
+        {
+            OperationLookup lookup = await ResolveOperationInsertCollisionAsync(
+                exception,
+                commit.Identity,
+                intent,
+                transaction!,
+                streamKeys,
+                cancellationToken).ConfigureAwait(false);
+            return lookup.Status == OperationLookupStatus.Conflict
+                ? new JournalCommitResult(JournalCommitStatus.OperationConflict)
+                : new JournalCommitResult(JournalCommitStatus.Replayed, lookup.Receipt);
         }
         catch (Exception exception)
         {
@@ -396,6 +430,43 @@ public sealed partial class SqliteMutationJournalStore
                     JournalStoreFailureScope.OperationStreams,
                     new[] { group.Key },
                     "Projection replacement would exceed the configured per-stream limits.");
+        }
+    }
+
+    private async Task<OperationLookup> ResolveOperationInsertCollisionAsync(
+        SqliteException collision,
+        JournalOperationIdentity identity,
+        JournalFingerprint intent,
+        SqliteTransaction transaction,
+        IReadOnlyList<string> streamKeys,
+        CancellationToken cancellationToken)
+    {
+        if (!TryRollback(transaction))
+            throw MapProviderFailure(collision, streamKeys, transactionStarted: true, commitStarted: false, rollbackConfirmed: false);
+
+        SqliteTransaction? readTransaction = null;
+        try
+        {
+            readTransaction = db.Connection.BeginTransaction(deferred: true);
+            OperationLookup lookup = await LookupOperationAsync(
+                identity.OperationId,
+                intent.Digest.ToArray(),
+                readTransaction,
+                cancellationToken,
+                allowTestSuppression: false).ConfigureAwait(false);
+            await readTransaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            if (lookup.Status == OperationLookupStatus.NotFound)
+                throw MapProviderFailure(collision, streamKeys, transactionStarted: true, commitStarted: false, rollbackConfirmed: true);
+            return lookup;
+        }
+        catch (SqliteException exception)
+        {
+            bool rolledBack = readTransaction is not null && TryRollback(readTransaction);
+            throw MapProviderFailure(exception, streamKeys, readTransaction is not null, commitStarted: false, rolledBack);
+        }
+        finally
+        {
+            readTransaction?.Dispose();
         }
     }
 

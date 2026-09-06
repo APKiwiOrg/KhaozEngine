@@ -25,8 +25,9 @@ SQLite-backed store should sit it on the same type rather than reimplementing th
 `SqliteMutationJournalStore` implements `IMutationJournalStore` and `IMutationJournalMaintenance` on the same
 connection lifecycle. It stores metadata and the restore epoch, stream heads, immutable events, current projection
 sections, snapshots, replay receipts, and receipt stream ranges in normalized tables. Writes use one immediate
-transaction under the connection lease. WAL mode, foreign keys, and a configurable busy timeout are enabled for
-the held connection.
+transaction under the connection lease. Auto-create enables WAL only for an absent journal or after validating an
+existing supported schema. Validate-only verifies WAL without changing the journal mode. Foreign keys and a
+configurable busy timeout are enabled for the held connection.
 
 ```csharp
 using KhaozEngine.WorldStore.Sqlite;
@@ -37,8 +38,9 @@ using var journal = new SqliteMutationJournalStore("Data Source=journal.db");
 The default `AutoCreate` schema mode creates a fresh version-one journal for development and new deployments.
 Production hosts can select `SqliteJournalSchemaMode.ValidateOnly` through
 `SqliteMutationJournalStoreOptions.SchemaMode` when the application identity has no DDL permission. Missing or
-unsupported schemas fail startup with `SchemaMismatch` and name the required migration. Operation retention is
-independent from event retention, so purging replay receipts leaves committed events in place.
+unsupported schemas fail startup with `SchemaMismatch` and name the required migration. Version-one validation
+checks the complete table and index definitions before normal store mutation. Operation retention is independent
+from event retention, so purging replay receipts leaves committed events in place.
 
 `SqliteWorldStore` implements **`IEnumerableWorldStore`** (since 8.4.2): `EnumerateAsync(keyPrefix?)` streams
 `WorldStoreEntry { Key, UpdatedAt, Size? }` records via a streaming SQLite cursor, optionally filtered by key

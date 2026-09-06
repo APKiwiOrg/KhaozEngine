@@ -193,8 +193,11 @@ public sealed partial class SqliteMutationJournalStore
         Guid operationId,
         byte[] intentFingerprint,
         SqliteTransaction transaction,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool allowTestSuppression = true)
     {
+        if (allowTestSuppression && testHook?.SuppressOperationLookup() == true)
+            return new OperationLookup(OperationLookupStatus.NotFound);
         using SqliteCommand command = CreateCommand(transaction, """
             SELECT intent_fingerprint, result_schema, result_schema_version, result_data, result_sha256, committed_at_utc
             FROM journal_operation WHERE operation_id = $id;

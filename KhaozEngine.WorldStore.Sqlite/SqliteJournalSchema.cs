@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using KhaozEngine.WorldStore.Journal;
 using Microsoft.Data.Sqlite;
 
@@ -96,43 +98,37 @@ internal static class SqliteJournalSchema
     internal static string BootstrapSql(SqliteMutationJournalStoreOptions options)
     {
         int milliseconds = checked((int)Math.Ceiling(options.BusyTimeout.TotalMilliseconds));
-        string pragmas = $"PRAGMA foreign_keys = ON; PRAGMA busy_timeout = {milliseconds};";
-        return options.SchemaMode == SqliteJournalSchemaMode.AutoCreate
-            ? $"PRAGMA journal_mode = WAL; {pragmas}"
-            : pragmas;
+        return $"PRAGMA foreign_keys = ON; PRAGMA busy_timeout = {milliseconds};";
     }
 
     internal static void Initialize(SqliteConnection connection, SqliteJournalSchemaMode mode)
     {
         try
         {
-            if (!MetadataTableExists(connection))
+            IReadOnlyDictionary<string, string> actual = ReadSchemaObjects(connection);
+            if (actual.Count == 0)
             {
                 if (mode == SqliteJournalSchemaMode.ValidateOnly) throw Mismatch("missing");
+                EnableWal(connection);
                 using SqliteCommand create = connection.CreateCommand();
                 create.CommandText = Tables;
                 create.ExecuteNonQuery();
+                actual = ReadSchemaObjects(connection);
             }
+
+            ValidateSchemaObjects(actual);
 
             using SqliteCommand command = connection.CreateCommand();
             command.CommandText = "SELECT schema_version FROM journal_metadata WHERE metadata_key = 1;";
             object? raw = command.ExecuteScalar();
-            if (raw is null || raw is DBNull || Convert.ToInt32(raw) != CurrentVersion)
+            if (raw is not long version || version != CurrentVersion)
                 throw Mismatch(raw is null or DBNull ? "missing" : Convert.ToString(raw) ?? "unknown");
-
-            command.CommandText = """
-                SELECT COUNT(*) FROM sqlite_master
-                WHERE type = 'table' AND name IN (
-                    'journal_metadata', 'journal_stream', 'journal_event', 'journal_operation',
-                    'journal_operation_stream', 'journal_snapshot', 'journal_projection');
-                """;
-            if (Convert.ToInt32(command.ExecuteScalar()) != 7)
-                throw Mismatch("version 1 with missing tables");
 
             command.CommandText = "PRAGMA foreign_keys;";
             if (Convert.ToInt32(command.ExecuteScalar()) != 1)
                 throw Mismatch("foreign key enforcement is disabled");
 
+            if (mode == SqliteJournalSchemaMode.AutoCreate) EnableWal(connection);
             command.CommandText = "PRAGMA journal_mode;";
             string journalMode = Convert.ToString(command.ExecuteScalar()) ?? string.Empty;
             if (!StringComparer.OrdinalIgnoreCase.Equals(journalMode, "wal") && !StringComparer.OrdinalIgnoreCase.Equals(journalMode, "memory"))
@@ -148,11 +144,49 @@ internal static class SqliteJournalSchema
         }
     }
 
-    private static bool MetadataTableExists(SqliteConnection connection)
+    private static IReadOnlyDictionary<string, string> ReadSchemaObjects(SqliteConnection connection)
     {
         using SqliteCommand command = connection.CreateCommand();
-        command.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'journal_metadata';";
-        return command.ExecuteScalar() is not null;
+        command.CommandText = """
+            SELECT type || ':' || name, sql
+            FROM sqlite_master
+            WHERE (type = 'table' AND lower(name) LIKE 'journal_%')
+               OR (type = 'index' AND lower(name) LIKE 'ix_journal_%')
+            ORDER BY type, name COLLATE BINARY;
+            """;
+        using SqliteDataReader reader = command.ExecuteReader();
+        var objects = new Dictionary<string, string>(StringComparer.Ordinal);
+        while (reader.Read()) objects.Add(reader.GetString(0), NormalizeSql(reader.GetString(1)));
+        return objects;
+    }
+
+    private static void ValidateSchemaObjects(IReadOnlyDictionary<string, string> actual)
+    {
+        using var reference = new SqliteConnection("Data Source=:memory:");
+        reference.Open();
+        using (SqliteCommand create = reference.CreateCommand())
+        {
+            create.CommandText = Tables;
+            create.ExecuteNonQuery();
+        }
+        IReadOnlyDictionary<string, string> expected = ReadSchemaObjects(reference);
+        if (actual.Count != expected.Count)
+            throw Mismatch("partial or contains unexpected journal objects");
+        foreach ((string name, string expectedSql) in expected)
+        {
+            if (!actual.TryGetValue(name, out string? actualSql) || !StringComparer.Ordinal.Equals(actualSql, expectedSql))
+                throw Mismatch($"version 1 object '{name}' does not match the supported shape");
+        }
+    }
+
+    private static string NormalizeSql(string sql)
+        => string.Concat(sql.Where(value => !char.IsWhiteSpace(value))).ToUpperInvariant();
+
+    private static void EnableWal(SqliteConnection connection)
+    {
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText = "PRAGMA journal_mode = WAL;";
+        command.ExecuteScalar();
     }
 
     private static JournalStoreException Mismatch(string actual, Exception? innerException = null)

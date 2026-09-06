@@ -5,6 +5,16 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.23.0
+
+Configurable localized composer options for retained chat.
+
+- `ChatBox.ComposerPlaceholder` exposes the composer's `LocalizedText` placeholder without exposing the internal
+  `TextInput` or adding a raw string API. It resolves against the current catalog when drawn.
+- `ChatBox.MaxInputLength` exposes the composer's positive character limit and preserves the existing default of
+  32. Lowering the limit immediately reclamps existing text through `TextInput.SetText`, so normal change
+  detection still observes the edit.
+
 ## 18.22.0
 
 Painted ground cover for authored worlds, drawn between gameplay tiles.

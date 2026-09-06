@@ -24,7 +24,16 @@ and explicit raw player names or messages stay distinguishable.
 colours, and a single-line composer. Enter opens the composer, a later Enter submits trimmed non-empty text,
 and Escape clears and closes it. `Update` reserves the full `Bounds` through `Pointer`, including movement and
 wheel input over the box. Call it before world picking and draw it with the same white texture used by the
-other retained widgets.
+other retained widgets. The composer stays internal. Configure it through these placement-neutral properties:
+
+```csharp
+public LocalizedText ComposerPlaceholder { get; set; }
+public int MaxInputLength { get; set; }
+```
+
+`ComposerPlaceholder` resolves lazily through the current localization catalog and defaults to empty.
+`MaxInputLength` defaults to 32 and rejects zero or negative values. Lowering it reclamps any existing composer
+text immediately through the normal `TextInput.SetText` path.
 
 ```csharp
 using System;
@@ -35,6 +44,8 @@ using KhaozEngine.Primitives;
 var history = new ChatHistory(capacity: 100);
 var chat = new ChatBox(history, new Rect(16, 420, 460, 284), font)
 {
+    ComposerPlaceholder = Strings.ChatPlaceholder,
+    MaxInputLength = 160,
     ShowTimestamps = settings.ShowChatTimestamps,
     Submitted = SendNearbyChat
 };

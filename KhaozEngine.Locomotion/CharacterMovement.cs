@@ -522,17 +522,18 @@ public static partial class CharacterMovement
         };
         // Defense-in-depth: a finite input state must never produce a non-finite result. A pathological command is
         // gated out upstream, but a misbehaving ground/bound/tuning value could inject a NaN/Inf that would slip
-        // past every clamp and replicate; hold the last good state instead of propagating a poisoned position.
+        // past every clamp and replicate. Hold the last good state instead of propagating a poisoned position.
         // The fallback holds the last good POSE, and a per-tick EVENT is not pose: LandingImpactSpeed is zeroed on the
         // way out, because handing back the previous state wholesale re-emits the landing tick's impact on EVERY
         // poisoned tick, and a consumer reading it from OnAfterTick would apply that one landing's fall damage over
         // and over for as long as the delegate misbehaves. SupportGranted is zeroed with it and for the same reason:
         // a held state did not resolve footing this tick, and re-emitting a grant per poisoned tick would read to an
-        // anomaly check as a character standing on nothing forever.
+        // anomaly check as a character standing on nothing forever. Clear StepDeltaY too so the mesh does not
+        // replay the previous tick's step impulse while the pose is held.
         return IsFinite(result.Position) && float.IsFinite(result.VerticalVelocity) &&
                float.IsFinite(result.ClimbRate) && float.IsFinite(result.ClimbRateEwma) &&
                float.IsFinite(result.StepDeltaY) && IsFinite(result.HorizontalVelocity) && float.IsFinite(result.FacingYaw)
-            ? result : state with { LandingImpactSpeed = 0f, SupportGranted = false };
+            ? result : state with { LandingImpactSpeed = 0f, SupportGranted = false, StepDeltaY = 0f };
     }
 
     /// <summary>True when every component of <paramref name="v"/> is finite (neither NaN nor infinite).</summary>

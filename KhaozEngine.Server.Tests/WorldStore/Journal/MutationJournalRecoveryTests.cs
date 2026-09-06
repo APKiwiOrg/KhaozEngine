@@ -21,7 +21,8 @@ public sealed class MutationJournalRecoveryTests
     public async Task In_memory_replays_one_hundred_identical_submissions_and_later_commits()
     {
         var store = new InMemoryMutationJournalStore();
-        await AssertReplayRecoveryAsync(store, () => store);
+        ReplayFixture fixture = await SubmitOneHundredIdenticalAsync(store);
+        await AssertRecoveredReplayAsync(store, fixture);
         await AssertFixedRecoveryHeadAsync(store, operationOffset: 20);
     }
 
@@ -30,9 +31,11 @@ public sealed class MutationJournalRecoveryTests
     {
         using var scope = new Task6SqliteScope();
         SqliteMutationJournalStore writer = scope.Open();
-        await AssertReplayRecoveryAsync(writer, () => scope.Open());
+        ReplayFixture fixture = await SubmitOneHundredIdenticalAsync(writer);
         writer.Dispose();
         using SqliteMutationJournalStore reopened = scope.Open();
+        Assert.NotSame(writer, reopened);
+        await AssertRecoveredReplayAsync(reopened, fixture);
         await AssertFixedRecoveryHeadAsync(reopened, operationOffset: 20);
     }
 
@@ -40,9 +43,12 @@ public sealed class MutationJournalRecoveryTests
     public async Task Sql_server_reopen_replays_one_hundred_identical_submissions_and_later_commits()
     {
         using var scope = new Task6SqlServerScope();
-        SqlServerJournalPrefixStore store = scope.Open();
-        await AssertReplayRecoveryAsync(store, () => scope.Open());
-        await AssertFixedRecoveryHeadAsync(scope.Open(), operationOffset: 20);
+        SqlServerJournalPrefixStore writer = scope.Open();
+        ReplayFixture fixture = await SubmitOneHundredIdenticalAsync(writer);
+        SqlServerJournalPrefixStore reopened = scope.Open();
+        Assert.NotSame(writer, reopened);
+        await AssertRecoveredReplayAsync(reopened, fixture);
+        await AssertFixedRecoveryHeadAsync(reopened, operationOffset: 20);
     }
 
     [Fact]
@@ -108,7 +114,27 @@ public sealed class MutationJournalRecoveryTests
         await SeedTwoEventsAsync(writer, 60);
         await DeleteSqlServerEventAsync(scope, streamVersion: 1);
 
-        await AssertCorruptAsync(() => ReadAllAsync(scope.Open()));
+        await AssertCorruptAsync(
+            () => ReadAllAsync(scope.Open()),
+            scope.Prefix + StreamKey);
+    }
+
+    [Fact]
+    public async Task Sqlite_detects_middle_tail_count_continuation_and_byte_continuation_gaps()
+    {
+        await AssertSqliteGapAsync(deletedVersion: 2, PageMode.Full);
+        await AssertSqliteGapAsync(deletedVersion: 3, PageMode.Full);
+        await AssertSqliteGapAsync(deletedVersion: 2, PageMode.CountLimited);
+        await AssertSqliteGapAsync(deletedVersion: 2, PageMode.ByteLimited);
+    }
+
+    [SqlServerFact]
+    public async Task Sql_server_detects_middle_tail_count_continuation_and_byte_continuation_gaps()
+    {
+        await AssertSqlServerGapAsync(deletedVersion: 2, PageMode.Full);
+        await AssertSqlServerGapAsync(deletedVersion: 3, PageMode.Full);
+        await AssertSqlServerGapAsync(deletedVersion: 2, PageMode.CountLimited);
+        await AssertSqlServerGapAsync(deletedVersion: 2, PageMode.ByteLimited);
     }
 
     [Fact]
@@ -163,12 +189,13 @@ public sealed class MutationJournalRecoveryTests
             scope.ConnectionString,
             scope.Prefix + StreamKey);
 
-        await AssertCorruptAsync(() => scope.Open().LoadSnapshotAsync(StreamKey));
+        await AssertCorruptAsync(
+            () => scope.Open().LoadSnapshotAsync(StreamKey),
+            scope.Prefix + StreamKey);
     }
 
-    private static async Task AssertReplayRecoveryAsync(
-        IMutationJournalStore writer,
-        Func<IMutationJournalStore> reopen)
+    private static async Task<ReplayFixture> SubmitOneHundredIdenticalAsync(
+        IMutationJournalStore writer)
     {
         await writer.InitializeAsync(Initialization(1));
         JournalOperationIdentity identity = MutationJournalTask6TestSupport.Identity(2, new byte[] { 2 });
@@ -185,14 +212,20 @@ public sealed class MutationJournalRecoveryTests
         Assert.Equal((0L, 1L, 1), (firstRange.BeforeVersion, firstRange.AfterVersion, firstRange.EventCount));
         Assert.All(results, result => Assert.Equal(new byte[] { 41 }, result.Receipt!.ResultData.ToArray()));
 
-        IMutationJournalStore recovered = reopen();
-        JournalOperationResolution resolution = await recovered.ResolveOperationAsync(identity);
+        return new ReplayFixture(identity, firstReceipt);
+    }
+
+    private static async Task AssertRecoveredReplayAsync(
+        IMutationJournalStore recovered,
+        ReplayFixture fixture)
+    {
+        JournalOperationResolution resolution = await recovered.ResolveOperationAsync(fixture.Identity);
         Assert.Equal(JournalOperationResolutionStatus.Replayed, resolution.Status);
-        Assert.Equal(firstReceipt.CommittedAtUtc, resolution.Receipt!.CommittedAtUtc);
+        Assert.Equal(fixture.Receipt.CommittedAtUtc, resolution.Receipt!.CommittedAtUtc);
         Assert.Equal(new byte[] { 41 }, resolution.Receipt.ResultData.ToArray());
         Assert.True(resolution.Receipt.HasValidResultChecksum);
 
-        JournalCommit rebuilt = Commit(identity, 99, new byte[] { 99, 100 }, 99, Projection("bag", 99));
+        JournalCommit rebuilt = Commit(fixture.Identity, 99, new byte[] { 99, 100 }, 99, Projection("bag", 99));
         JournalCommitResult rebuiltReplay = await recovered.CommitAsync(rebuilt);
         Assert.Equal(JournalCommitStatus.Replayed, rebuiltReplay.Status);
         Assert.Equal(new byte[] { 41 }, rebuiltReplay.Receipt!.ResultData.ToArray());
@@ -206,7 +239,7 @@ public sealed class MutationJournalRecoveryTests
         Assert.Equal(JournalCommitStatus.Applied, later.Status);
         JournalStreamVersionRange laterRange = Assert.Single(later.Receipt!.Streams);
         Assert.Equal((1L, 2L, 1), (laterRange.BeforeVersion, laterRange.AfterVersion, laterRange.EventCount));
-        JournalOperationResolution lateReplay = await recovered.ResolveOperationAsync(identity);
+        JournalOperationResolution lateReplay = await recovered.ResolveOperationAsync(fixture.Identity);
         Assert.Equal(new byte[] { 41 }, lateReplay.Receipt!.ResultData.ToArray());
         JournalStreamVersionRange replayRange = Assert.Single(lateReplay.Receipt.Streams);
         Assert.Equal((0L, 1L), (replayRange.BeforeVersion, replayRange.AfterVersion));
@@ -237,6 +270,62 @@ public sealed class MutationJournalRecoveryTests
     {
         await store.InitializeAsync(Initialization(operationOffset));
         await store.CommitAsync(Commit(operationOffset + 1, 0, new byte[] { 1, 2 }, 2));
+    }
+
+    private static async Task AssertSqliteGapAsync(long deletedVersion, PageMode mode)
+    {
+        using var scope = new Task6SqliteScope();
+        using (SqliteMutationJournalStore writer = scope.Open())
+        {
+            await writer.InitializeAsync(Initialization(110));
+            await writer.CommitAsync(Commit(111, 0, new byte[] { 1, 2, 3 }, 3));
+        }
+        scope.Database.Execute(
+            scope.Path,
+            $"DELETE FROM journal_event WHERE stream_key = 'task6/player' AND stream_version = {deletedVersion};");
+
+        using SqliteMutationJournalStore reopened = scope.Open();
+        await AssertGapReadAsync(reopened, mode);
+    }
+
+    private static async Task AssertSqlServerGapAsync(long deletedVersion, PageMode mode)
+    {
+        using var scope = new Task6SqlServerScope();
+        await scope.Open().InitializeAsync(Initialization(120));
+        await scope.Open().CommitAsync(Commit(121, 0, new byte[] { 1, 2, 3 }, 3));
+        await DeleteSqlServerEventAsync(scope, deletedVersion);
+
+        await AssertGapReadAsync(scope.Open(), mode, scope.Prefix + StreamKey);
+    }
+
+    private static async Task AssertGapReadAsync(
+        IMutationJournalStore store,
+        PageMode mode,
+        string expectedStreamKey = StreamKey)
+    {
+        if (mode != PageMode.Full)
+        {
+            JournalEventPage first = await store.ReadEventsAsync(new JournalEventRead(
+                StreamKey,
+                0,
+                null,
+                mode == PageMode.CountLimited ? 1 : 10,
+                mode == PageMode.ByteLimited ? 1 : 1024));
+            Assert.Equal(3, first.ThroughVersion);
+            Assert.Equal(1, Assert.Single(first.Events).StreamVersion);
+            Assert.False(first.ReachedThroughVersion);
+            await AssertCorruptAsync(
+                () => store.ReadEventsAsync(new JournalEventRead(
+                    StreamKey,
+                    1,
+                    first.ThroughVersion,
+                    10,
+                    1024)),
+                expectedStreamKey);
+            return;
+        }
+
+        await AssertCorruptAsync(() => ReadAllAsync(store), expectedStreamKey);
     }
 
     private static void DeleteInMemoryEvent(InMemoryMutationJournalStore store, int index)
@@ -273,5 +362,16 @@ public sealed class MutationJournalRecoveryTests
         command.Parameters.AddWithValue("@stream", scope.Prefix + StreamKey);
         command.Parameters.AddWithValue("@version", streamVersion);
         Assert.Equal(1, await command.ExecuteNonQueryAsync());
+    }
+
+    private sealed record ReplayFixture(
+        JournalOperationIdentity Identity,
+        JournalCommitReceipt Receipt);
+
+    private enum PageMode
+    {
+        Full,
+        CountLimited,
+        ByteLimited,
     }
 }

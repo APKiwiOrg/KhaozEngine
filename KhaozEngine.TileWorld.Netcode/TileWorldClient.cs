@@ -150,8 +150,9 @@ public sealed partial class TileWorldClient : IDisposable
     /// </summary>
     public TileMoveMode RunMode { get; set; } = TileMoveMode.Walk;
 
-    /// <summary>The local player's net id, -1 before the first snapshot names it.</summary>
-    public long LocalNetId { get; private set; } = -1;
+    /// <summary>The local player's net id, <see cref="TileDrawPriority.NoLocalPlayer"/> before the first snapshot
+    /// names it.</summary>
+    public long LocalNetId { get; private set; } = TileDrawPriority.NoLocalPlayer;
 
     /// <summary>True once the session handshake completed. False again the moment it drops.</summary>
     public bool IsJoined { get; private set; }
@@ -385,7 +386,7 @@ public sealed partial class TileWorldClient : IDisposable
         float step = float.IsFinite(dt) && dt > 0f ? dt : 0f;
         presentationClock += step;
         Prediction.AdvancePresentation(step);
-        if (LocalNetId < 0) return;
+        if (LocalNetId == TileDrawPriority.NoLocalPlayer) return;
         double renderTime = RenderTime;
         View.InterpolateAt(World, renderTime, excludeNetId: LocalNetId);
         RefreshRemoteSamples(renderTime);
@@ -428,7 +429,7 @@ public sealed partial class TileWorldClient : IDisposable
     // BOTH of prediction's doors go through this one instance, the tick and the reconcile replay, so a replay can
     // never read a different id from the tick it is replaying.
     //
-    // LocalNetId is read LAZILY, for the reason TileRemoteTargets reads it lazily: it is -1 until the join lands,
+    // LocalNetId is read LAZILY, for the reason TileRemoteTargets reads it lazily: it is NoLocalPlayer until the join lands,
     // and no CombatTarget can hold -1, so a step taken before then reads exactly as an unbound one would.
     sealed class SelfBoundStepper : ITickSimulator<TileMoveState, TileCommand>
     {

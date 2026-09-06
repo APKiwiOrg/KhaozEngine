@@ -697,7 +697,7 @@ mechanics live in [UPDATER.md](UPDATER.md).
 - **Periodic recheck.** A launch-time check misses a release that lands mid-session. Set
   `UpdateServiceOptions.RecheckInterval` (a `TimeSpan?`, null by default = off) and call
   `updates.Tick(dt)` once per frame next to `UpdateOverlayActions.AutoAdvanceRequired(updates)`. `Tick`
-  accrues time only while the service is `Idle` (any active flow zeroes it), fires one offline-safe
+  accrues time while the service is `Idle` or `Untrusted` (any active flow zeroes it), fires one offline-safe
   `CheckForUpdateAsync` on reaching the interval, and no-ops when the interval is null. Call `Tick` and
   `CheckForUpdateAsync` from the same thread (a manual check resets the clock).
 - **Post-update relaunch marker.** After the shim applies an update and relaunches, the boot's
@@ -705,6 +705,11 @@ mechanics live in [UPDATER.md](UPDATER.md).
   `AppliedAtUtc`), read once from an `update-applied.json` marker and then deleted, so it is null on every
   ordinary launch. Check it at startup to suppress a "welcome back" / "what's new" prompt on a boot the
   game restarted itself into.
+
+A newer advertised build with a missing signature or a signature that no trusted key verifies enters
+`UpdateState.Untrusted`. The localized overlay explains that this build cannot verify updates and permits
+dismissal. It offers no download or apply action. A later manual or periodic check can recover after the
+feed or trusted keys are corrected. An unavailable version pointer still returns to `Idle`.
 
 ### Dismissing the update overlay, and the apply cap (`UpdateOverlayView`, `UpdateService`)
 
@@ -714,7 +719,7 @@ no way out but quitting. Two mechanisms, both on by default and neither needing 
 [UPDATER.md](UPDATER.md).
 
 - **A dismiss key.** `UpdateOverlayTheme.DismissKey` (default `Escape`, with `DismissButton` default gamepad
-  `B`) hides the panel for a state the player may decline: `UpdateAvailable`, `ReadyToApply`, `Failed`
+  `B`) hides the panel for a state the player may decline: `UpdateAvailable`, `ReadyToApply`, `Failed`, `Untrusted`
   (`UpdateOverlayView.IsDismissible`). Never the in-flight `Downloading`/`Applying`, and never a required
   update. The dismissal is remembered per state, so a periodic recheck landing back on the same offer stays
   hidden, and the panel returns only at a state that was not declined. `View.ResetDismissed()` clears it, for
@@ -1587,8 +1592,11 @@ if (pointer.IsRightTapIn(slotRect))
 
 `KhaozEngine.Gui.ContextMenu` is the right-click option menu those helpers open: a title band over a stack of
 selectable rows, anchored at a screen point in design pixels (the OSRS-style option list). Its text is
-`LocalizedText` and resolves ONCE, when the menu opens, so the draw path never re-resolves and a runtime locale
-switch means rebuilding the entries.
+`LocalizedText`. `ContextMenuEntry.Of` resolves its single label when the entry is created, and the title
+resolves when the menu opens. Rebuild those entries after a locale switch. `ContextMenuEntry.Segmented`
+accepts caller-ordered `LabelSegment` values, each carrying `LocalizedText` and an optional color. Segment
+text resolves for layout and drawing. The caller owns ordering and spacing, including locale-specific word
+order. Disabled rows use the disabled color across every segment.
 
 ```csharp
 var pointer = input.Pointer;
@@ -1610,6 +1618,9 @@ menu.Update(input);                      // InputManager overload: pointer path 
 if (menu.WasSelected) Act((MenuAction)menu.SelectedTag);
 menu.Draw(batch, white);                 // last, so it covers what it should
 ```
+
+A tap that begins and ends in one input frame can select or dismiss the menu once its opening frame has
+passed. The opening gesture itself stays suppressed, including its later release.
 
 `Update` returns `WasSelected`, and that whole result group (`WasSelected`, `SelectedTag`, `SelectedIndex`,
 `WasDismissed`, `DismissPress`) is a ONE-FRAME signal cleared at the top of the next `Update`, closed menu
@@ -2287,6 +2298,11 @@ inside the callback: the command list it is recording into still names them unti
   runs), trading away painter's order BETWEEN textures (order stays intact WITHIN one texture's group). Off by
   default and reset by every `Begin`. Only turn it on for a pass whose visual correctness does not depend on
   cross-texture draw order (e.g. not a scene with overlapping alpha-blended sprites of different textures).
+- `SpriteBatch.Flush()` submits queued draws without ending the active batch. Flush before enabling texture
+  grouping and again before disabling it to isolate one unordered group inside a larger ordered pass. It
+  preserves transform, sampler, blend and scissor state. Calling it outside `Begin`/`End` throws.
+- `Render2DTextures.White(surface)` and `White(context)` create a caller-owned opaque white pixel without a
+  Vfx namespace dependency. `VfxTextures.White` remains a compatibility forward.
 - `PrimitiveRenderer` (owns a 1x1 white pixel): filled/outlined rects, lines, circles/rings, filled circles,
   vertical gradients, progress bars, and filled sectors/arc-bands. For a partial ring, `DrawArc(center, radius,
   thickness, startAngleRadians, sweepAngleRadians, color)` strokes a general arc outline, and
@@ -6763,6 +6779,10 @@ Scene3D.SplatMaterialHandle splatHandle = scene.LoadTerrainMaterial(mat);
 Supply real PBR textures by constructing `TerrainLayeredMaterial` directly with `TerrainMaterialLayer` instances
 whose `Albedo`/`Normal` fields are `SplatLayerImage`s loaded from PNG bytes.
 
+Both `Scene3DChunkSink` constructors accept `snowLine` (default `60f`) for the streamed render mesh's
+snow transition. It reaches the default splat weights and any custom splat rule. Collision meshes and
+height sampling are unchanged. Choose it when creating the sink and recreate the sink to change it.
+
 **2. Pass the handle to the streamer.** `Scene3DChunkSink` accepts an optional `SplatMaterialHandle`; when set,
 every chunk it loads uses the textured splat pipeline instead of the ramp:
 
@@ -10477,6 +10497,12 @@ audio.PlaySfx3D("wind", pos, bus: "ambience"); // master * sfx * 0.4 * volume
 audio.PlaySfx("beep");                         // no bus => default bus (1.0), unchanged from before
 ```
 
+`DefineBus(id, new SfxAttenuation(referenceDistance, rolloffFactor, maxDistance))` also sets the curve for
+later positional one-shots. Reference distance must be positive, rolloff non-negative and maximum at least
+the reference distance. Values must be finite. The historical default is `(1, 1, 50)`. Existing bus volume
+is preserved, and non-positional sounds ignore attenuation. The new `ISfxBackend.Play` overload forwards
+to the existing priority overload unless a custom backend opts into the curve.
+
 **Authoring SFX assets (`ke-sfxbake`).** The `KhaozEngine.Sfx.Tool` dotnet tool bulk-generates and bakes a
 game's sound effects from a `sfx.manifest.jsonc` (prompt -> ElevenLabs sound-effects API -> ffmpeg/oggenc ->
 your asset tree). It defaults to the formats this `AudioSystem` wants: mono OGG Vorbis (mono because OpenAL only
@@ -10774,7 +10800,13 @@ _recorder.Stop();                                        // flush + close (also 
 Each sample line is one object: `{"t":12.34,"fps":59.7,"rttMs":48,"correctionM":0.02}`. Non-finite values
 serialize as JSON `null` so every line stays parseable.
 
-### The session header (`TelemetrySessionHeader` / `TelemetrySessionInfo`, 17.25.0)
+#`DiagnosticsOverlay.NetworkSection(NetTransportStats)` supplies ping and packet loss for a transport-only
+client. `DiagnosticsHud.SetTransportStatsSource(Func<NetTransportStats?>?)` wires that snapshot into the
+throttled HUD. Returning null hides the section, while a disconnected snapshot shows the disconnected
+status. This source and `SetNetStatsSource` replace each other, and passing null to either removes the
+active network source. Transport snapshots do not invent byte rates or correction counts.
+
+## The session header (`TelemetrySessionHeader` / `TelemetrySessionInfo`, 17.25.0)
 
 **Every recording opens with a session-header line**, so a capture says what produced it instead of being a
 column of numbers an analyst has to take on trust. Without it a field report cannot be tied to a build, a
@@ -11631,18 +11663,17 @@ And an element the emitted shader does not reference in a stage is NOT bound for
 indices: `GpuResourceLayoutElement`'s `Stages` is what you declared and the emission is what the compiler did,
 and this backend binds on the second.
 
-**The shader path takes the same GLSL 450 every other backend takes**, so there is nothing to write differently
-for it: sources go in, an `MTLLibrary` and an `MTLFunction` per stage come out, and a compute shader reports the
-`ThreadGroupSize*` its own module declares. What is worth knowing is where a binding index comes from, because
-Metal is the one backend where it is not written in the shader. There is no `register(t3)` and no
-`layout(binding = 3)` on the far side: the cross-compiler assigns each resource an index of its own, per stage,
-following first reference rather than declaration order. The native backend reads those indices out of the
-emitted text and resolves each one back to your declared `(set, binding)` through the shader's own SPIR-V
-decorations, so what it binds is where the resource actually went. The deleted Veldrid Metal backend counted declarations
-instead, which is why the engine's shaders still sample every texture up front in binding order and why
-`ShaderValidation.ValidatePair` and `ValidateCompute` both reject a shader whose emitted index order disagrees
-with its binding order (see "It also checks the Metal binding order" under device-free shader validation). Keep
-both habits: the shipped shaders were authored under that constraint.
+**The shader path takes the same GLSL 450 every other backend takes.** Sources become an `MTLLibrary`
+and an `MTLFunction` per stage, and compute shaders report their declared thread-group sizes. The engine
+assigns each resource an index from its declared `(set, binding)` through `MslIndexRemap`, then installs
+that mapping in SPIRV-Cross. The native backend binds against the same authored indices.
+
+Texture sampling can be conditional and can occur in a different order from resource declarations.
+`MetalConditionalTextureOrderGpuTests` proves this on the native device by reading a higher binding first
+inside a runtime branch and checking both branch outcomes through pixel readback. The old requirement to
+sample every texture up front in binding order belonged to the removed Veldrid backend. Existing shaders
+may retain that shape, but new shaders do not need it. `ShaderValidation.ValidatePair` and `ValidateCompute`
+still check that the authored indices reached the emitted MSL.
 
 A shader whose emission cannot be read fails at `CreateShadersFromSpirv` with a message naming the program, the
 stage and the offending argument, and it fails with no device involved, so it surfaces in a headless test run

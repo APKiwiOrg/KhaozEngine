@@ -1274,10 +1274,10 @@ pipeline whose set-0 buffer is read by both stages with a fragment-only second b
 failed is the one the shipped record failed in, each stage referencing exactly one of the two buffers. TEXTURES
 and samplers in a second set mapped fine in the shapes measured. Read that as a result about those shapes
 rather than as a property of the texture index space: the count ran PER index space, so the identical per-stage
-condition predicts a texture index disagreeing the same way. That prediction is not measured here, and it is
-what the sample-all-textures-in-binding-order discipline already guards. This engine's own incident record has
-two texture-space mis-binds in it, a model pass reading the normal texture through the albedo sampler and a
-crease term reading depth data.
+condition predicted a texture index disagreeing the same way on that retired backend. Its incident record
+contains two texture-space mis-binds: a model pass reading the normal texture through the albedo sampler
+and a crease term reading depth data. These historical failures do not impose sampling order on the native
+backend.
 
 **The engine's own native Metal backend (`GpuBackendKind.MetalNative`) never had the defect**, and since
 `18.0.0` it cannot: it AUTHORS the index (`Internal/MslIndexRemap`, row 10, #693) rather than reading one back
@@ -1288,6 +1288,12 @@ bytes there. The measurement is
 `../KhaozEngine.Render.Tests/Gpu/MetalTwoUniformBufferGpuTests.cs`, three pixel-readback `[GpuFact]`s plus a
 device-free row pinning the two numbers against each other, and section 2.3a of
 `design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md` carries the values and the reasoning.
+
+**Conditional texture sampling is proven on native Metal.**
+`../KhaozEngine.Render.Tests/Gpu/MetalConditionalTextureOrderGpuTests.cs` samples a higher binding first
+inside a runtime branch, then samples a lower binding. Pixel readback checks both branch outcomes against
+distinct red and green textures. The native path returns the declared textures regardless of sample order.
+The sample-every-texture-in-binding-order restriction is retired. Authored-index validation remains active.
 
 **One historical signature is NOT explained by that mechanism and was not reproduced.** The original
 vertex-stage report is a bone-palette array losing everything past element 0 rather than a second buffer
@@ -1504,3 +1510,14 @@ To swap or add a backend for a seam that already has the separate-package split:
 | Font rasterization | `../KhaozEngine.Render2D/SpriteFont.cs` (contains StbTrueTypeSharp) | (containment) |
 | Content validation | `../KhaozEngine.Content/JsonSchemaValidator.cs` (contains JsonSchema.Net) | (containment) |
 | MCP server protocol | `../KhaozEngine.MapEdit.Tool/Program.cs`, `../KhaozEngine.TileEdit.Tool/Program.cs` (dev tools, the only referencers) | (containment) |
+
+### Transport HUD and positional audio seams
+
+`Gui` references `Netcode` for `NetTransportStats`, alongside its existing `Diagnostics` snapshot support.
+`DiagnosticsHud.SetTransportStatsSource` and `DiagnosticsOverlay.NetworkSection(NetTransportStats)` expose
+link health without a `WorldClient`. The transport and replication HUD providers replace one another.
+The edge is acyclic because `Netcode` depends on `Netcode.Abstractions` and has no Gui dependency.
+
+`ISfxBackend.Play` gains an attenuation-aware overload taking `SfxAttenuation`. Its default interface body
+forwards to the existing priority overload. Custom backends retain their behavior until they consume the
+curve, while the OpenAL backend applies it to positional voices.

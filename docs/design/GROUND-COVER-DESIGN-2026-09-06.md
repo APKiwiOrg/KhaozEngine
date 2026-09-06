@@ -1,6 +1,6 @@
 # Authored ground cover
 
-Status: in flight. Grimhollow is waiting for this engine capability.
+Status: implemented in 18.22.0. Grimhollow is the first consumer.
 
 ## Problem
 

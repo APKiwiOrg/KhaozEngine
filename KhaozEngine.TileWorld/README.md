@@ -198,8 +198,11 @@ the tile actually draws with, so a shape whose overlay material is missing is pa
 corner, objects and markers in prefab-relative coordinates) that can be stamped elsewhere with a rotation.
 `TilePrefabFile.Save`/`Load` are its JSON form (base64 layers, indented for git, atomic replace).
 
-- `Extract(doc, catalogs, rect, planeFrom, planeCount, includeObjects, includeMarkers, name)` lifts it,
-  stamping each object's UNROTATED `SizeX`/`SizeZ` so a rotation later needs no catalog.
+- `Extract(doc, catalogs, rect, planeFrom, planeCount, includeObjects, includeMarkers, name,
+  includeDerivedHeights)` lifts it, stamping each object's UNROTATED `SizeX`/`SizeZ` so a rotation later needs no
+  catalog. `includeDerivedHeights: false` omits unauthored higher-plane height lattices, so those planes derive
+  from the destination ground after placement. Explicitly authored height layers remain in the prefab even when
+  their values match the source derivation. The default is true for compatibility.
 - `Rotate(prefab, rotation)` turns a copy, bumping overlay rotations with the tiles and re-basing every plane's
   heights by the shift that puts the rotated SW corner on plane 0 at height 0, so the inter-plane offsets
   survive, then re-trimming, so a rotated prefab is shaped exactly like a fresh `Extract` of the same content.

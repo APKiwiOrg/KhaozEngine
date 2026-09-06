@@ -81,6 +81,15 @@ public sealed partial class TileWorldDocument
         return LiftedCm(region.Plane(0).Heights?[index] ?? 0, plane);
     }
 
+    // The backing region decides authorship. A higher plane may resolve to the same number as its derived lift
+    // after an explicit write, and that authored lattice must stay distinct from a null, derived one.
+    internal bool IsCornerHeightAuthored(int x, int z, int plane)
+    {
+        RequirePlane(plane);
+        return TryResolveCorner(x, z, out TileRegion? region, out _)
+            && region!.Plane(plane).Heights is not null;
+    }
+
     // A plane-0 height carried up to the given plane, saturating rather than wrapping at the short bounds.
     short LiftedCm(int baseCm, int plane) =>
         (short)Math.Clamp(baseCm + plane * PlaneHeightCm, short.MinValue, short.MaxValue);

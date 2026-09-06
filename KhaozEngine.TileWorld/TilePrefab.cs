@@ -107,8 +107,12 @@ public static class TilePrefabs
     /// <summary>Lifts the tiles of <paramref name="rect"/> on planes
     /// <paramref name="planeFrom"/>..<paramref name="planeFrom"/> + <paramref name="planeCount"/> - 1 out of the
     /// document. Heights come out relative to the rect's SW corner on <paramref name="planeFrom"/>, all-default
-    /// layers come out null.</summary>
-    public static TilePrefab Extract(TileWorldDocument doc, TileWorldCatalogs catalogs, TileRect rect, int planeFrom, int planeCount, bool includeObjects = true, bool includeMarkers = true, string? name = null)
+    /// layers come out null. Set <paramref name="includeDerivedHeights"/> false to leave an unauthored higher
+    /// plane derived when the prefab is placed. An explicitly authored height layer is preserved even when its
+    /// values match that derivation.</summary>
+    public static TilePrefab Extract(TileWorldDocument doc, TileWorldCatalogs catalogs, TileRect rect, int planeFrom,
+        int planeCount, bool includeObjects = true, bool includeMarkers = true, string? name = null,
+        bool includeDerivedHeights = true)
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentNullException.ThrowIfNull(catalogs);
@@ -121,14 +125,17 @@ public static class TilePrefabs
         for (int pi = 0; pi < planeCount; pi++)
         {
             int p = planeFrom + pi;
+            bool captureHeights = includeDerivedHeights || p == 0 || HasAuthoredHeights(doc, rect, p);
             var plane = new TilePrefabPlane
             {
-                HeightsRelative = new short[(w + 1) * (h + 1)], Underlay = new ushort[w * h], Overlay = new ushort[w * h],
+                HeightsRelative = captureHeights ? new short[(w + 1) * (h + 1)] : null,
+                Underlay = new ushort[w * h], Overlay = new ushort[w * h],
                 OverlayShape = new byte[w * h], OverlayRotation = new byte[w * h], Settings = new byte[w * h],
             };
-            for (int cz = 0; cz <= h; cz++)
-                for (int cx = 0; cx <= w; cx++)
-                    plane.HeightsRelative[cz * (w + 1) + cx] = (short)Math.Clamp(doc.CornerHeightCm(rect.X + cx, rect.Z + cz, p) - baseCm, short.MinValue, short.MaxValue);
+            if (plane.HeightsRelative is not null)
+                for (int cz = 0; cz <= h; cz++)
+                    for (int cx = 0; cx <= w; cx++)
+                        plane.HeightsRelative[cz * (w + 1) + cx] = (short)Math.Clamp(doc.CornerHeightCm(rect.X + cx, rect.Z + cz, p) - baseCm, short.MinValue, short.MaxValue);
             for (int z = 0; z < h; z++)
                 for (int x = 0; x < w; x++)
                 {
@@ -158,6 +165,14 @@ public static class TilePrefabs
                 if (rect.Contains(m.X, m.Z) && m.Plane >= planeFrom && m.Plane < planeFrom + planeCount)
                     prefab.Markers.Add(new TilePrefabMarker { Name = m.Name, X = m.X - rect.X, Z = m.Z - rect.Z, Plane = m.Plane - planeFrom, Tags = m.Tags?.ToList() });
         return prefab;
+    }
+
+    static bool HasAuthoredHeights(TileWorldDocument doc, TileRect rect, int plane)
+    {
+        for (int cz = 0; cz <= rect.Height; cz++)
+            for (int cx = 0; cx <= rect.Width; cx++)
+                if (doc.IsCornerHeightAuthored(rect.X + cx, rect.Z + cz, plane)) return true;
+        return false;
     }
 
     /// <summary>The prefab turned <paramref name="rotation"/> quarter turns clockwise (north up). The rotated

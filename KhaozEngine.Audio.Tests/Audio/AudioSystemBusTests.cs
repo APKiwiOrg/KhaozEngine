@@ -242,4 +242,13 @@ public sealed class AudioSystemBusTests : IDisposable
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             new SfxAttenuation(referenceDistance, rolloffFactor, maxDistance));
     }
+
+    [Fact]
+    public void DefineBusRejectsDefaultAttenuation()
+    {
+        var (audio, _) = NewLoaded();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            audio.DefineBus("world", default));
+    }
 }

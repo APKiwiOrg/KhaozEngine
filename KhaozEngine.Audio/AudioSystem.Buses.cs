@@ -39,12 +39,15 @@ public sealed partial class AudioSystem
     /// <summary>
     /// Registers an SFX bus with the positional <paramref name="attenuation"/> sent to the backend for 3D
     /// one-shots. Existing bus volume is preserved. Re-defining the bus replaces its attenuation for later
-    /// plays. Non-positional plays ignore the curve.
+    /// plays. Non-positional plays ignore the curve. The all-zero value produced by
+    /// <c>default(SfxAttenuation)</c> is not a valid curve and is rejected.
     /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="attenuation"/> is not a valid curve.</exception>
     public void DefineBus(string id, SfxAttenuation attenuation)
     {
         EnsureOwningThread();
         if (string.IsNullOrEmpty(id)) return;
+        attenuation.Validate(nameof(attenuation));
         if (!_busVolumes.ContainsKey(id)) _busVolumes[id] = 1f;
         _busAttenuations[id] = attenuation;
     }

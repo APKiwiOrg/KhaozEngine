@@ -20,6 +20,8 @@ Game-agnostic audio on the custom MonoGame-free stack: streaming music + SFX + 3
   that bus (the `ISfxBackend` seam is fire-and-forget: no live per-voice re-gain).
   Positional plays on a configured bus carry its immutable inverse-distance curve to the backend. The default
   remains reference distance 1, rolloff 1, maximum distance 50. Non-positional sounds ignore attenuation.
+  Construct curves with `new SfxAttenuation(referenceDistance, rolloffFactor, maxDistance)` or use
+  `SfxAttenuation.Default`. The all-zero `default(SfxAttenuation)` value is invalid and `DefineBus` rejects it.
 - SFX priority - `PlaySfx` / `PlaySfx3D` each have an overload taking an `SfxPriority` (`Low` / `Normal` /
   `High`) right after the name. The pool is small and fixed, so once every voice is busy a new sound can only be
   heard by taking one: with a priority the backend steals the LOWEST-priority voice still playing instead of

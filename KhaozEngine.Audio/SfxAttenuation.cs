@@ -38,4 +38,14 @@ public readonly record struct SfxAttenuation
         RolloffFactor = rolloffFactor;
         MaxDistance = maxDistance;
     }
+
+    internal void Validate(string parameterName)
+    {
+        if (!float.IsFinite(ReferenceDistance) || ReferenceDistance <= 0f ||
+            !float.IsFinite(RolloffFactor) || RolloffFactor < 0f ||
+            !float.IsFinite(MaxDistance) || MaxDistance < ReferenceDistance)
+        {
+            throw new ArgumentOutOfRangeException(parameterName, "The attenuation curve is invalid.");
+        }
+    }
 }

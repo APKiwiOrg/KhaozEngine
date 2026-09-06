@@ -353,6 +353,24 @@ public sealed partial class TileWorldServer
         return (world, interest);
     }
 
+    /// <summary>Copies the player slots in one player's plane-filtered replication interest into caller-owned
+    /// storage in ascending order. Call this on the simulation tick only, because it shares the serve epoch and
+    /// plane-filter scratch with the authoritative snapshot pass. Clears <paramref name="destination"/> first and
+    /// returns its final count.</summary>
+    /// <param name="sourceSlot">The player whose replication interest supplies the audience.</param>
+    /// <param name="destination">Caller-owned storage replaced with the interested player slots.</param>
+    public int CollectInterestSlots(int sourceSlot, List<int> destination)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+        destination.Clear();
+        if (!netIdBySlot.TryGetValue(sourceSlot, out long sourceNetId)) return 0;
+        HashSet<long> interest = HomeInterestFor(sourceSlot, sourceNetId, ++interestServeEpoch).interest;
+        foreach (long netId in interest)
+            if (slotByNetId.TryGetValue(netId, out int slot)) destination.Add(slot);
+        destination.Sort();
+        return destination.Count;
+    }
+
     /// <summary>The net ids one slot would be served this tick, plane filter applied. The test seam for the plane
     /// rule, which is otherwise only observable by decoding a snapshot off a live connection.</summary>
     internal HashSet<long> ServeInterest(int slot)

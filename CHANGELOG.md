@@ -5,6 +5,20 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.21.0
+
+Reusable nearby chat presentation and authoritative tile-world audience queries.
+
+- `ChatEntry`, `ChatHistory`, `ChatBox` and `ChatBoxTheme` give a game a bounded localized chat log,
+  adjacent duplicate collapse, wrapped scrollback, optional local timestamps, distinct own and system
+  message colours, and a single-line composer that reserves its full bounds from world input.
+- `TileWorldServer.CollectInterestSlots` copies the same plane-filtered player audience used by replication
+  into caller-owned storage on the simulation tick. `TryGetPlayerDisplayName` reads a live player's verified
+  authoritative identity. Both fail closed for missing players, so a consumer can discard a nearby chat
+  submission when its sender, name or audience can no longer be verified instead of widening delivery.
+
+Consumer batch: https://github.com/APKiwiOrg/Grimhollow/milestone/1
+
 ## 18.20.1
 
 Dropdown pointer gestures no longer reach controls behind the trigger or open list.

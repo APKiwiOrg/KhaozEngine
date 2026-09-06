@@ -13,6 +13,45 @@ but are `[Obsolete]`; the
 string argument is an icon-atlas key, not player text, so it is unchanged. See the App package for
 `StringId` / `LocalizedText` / `LocalizationContext`.
 
+## Retained chat
+
+`ChatHistory` holds a bounded list of `ChatEntry` values. Adjacent entries collapse only when their kind,
+source key and collapse key match. The latest entry supplies the timestamp, author, content and ownership,
+while `RepeatCount` records how many were collapsed. Author and content use `LocalizedText`, so catalog text
+and explicit raw player names or messages stay distinguishable.
+
+`ChatBox` draws that history with wrapping and scrollback, optional local timestamps, own and system message
+colours, and a single-line composer. Enter opens the composer, a later Enter submits trimmed non-empty text,
+and Escape clears and closes it. `Update` reserves the full `Bounds` through `Pointer`, including movement and
+wheel input over the box. Call it before world picking and draw it with the same white texture used by the
+other retained widgets.
+
+```csharp
+using System;
+using KhaozEngine.App;
+using KhaozEngine.Gui.Chat;
+using KhaozEngine.Primitives;
+
+var history = new ChatHistory(capacity: 100);
+var chat = new ChatBox(history, new Rect(16, 420, 460, 284), font)
+{
+    ShowTimestamps = settings.ShowChatTimestamps,
+    Submitted = SendNearbyChat
+};
+
+history.Add(new ChatEntry(
+    DateTimeOffset.UtcNow,
+    SourceKey: senderId,
+    Author: LocalizedText.Raw(senderName),
+    Content: LocalizedText.Raw(message),
+    CollapseKey: message,
+    Kind: ChatEntryKind.Ordinary,
+    IsOwn: senderId == localPlayerId));
+
+chat.Update(pointer, input, dt);
+chat.Draw(batch, white);
+```
+
 - `GuiSurface` - immediate-mode UI for a `Run`-loop game: `Begin(batch?, pointer)` then `Panel`/`Label`/`Swatch`/
   `Button`->bool/`Slider`/hover, with a `PointerCaptured` click-through gate. `FocusNavigator` drives
   keyboard/gamepad menu focus. The text sinks (`Label`/`Button`/`StatChip`) take an optional trailing

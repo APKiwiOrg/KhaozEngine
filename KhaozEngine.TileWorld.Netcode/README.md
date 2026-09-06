@@ -571,6 +571,40 @@ continues the walk already in progress. A client that also wants to stop its pre
 commands. The cancellation call does not touch `CombatTarget` or `TileCombatState`, so a game may cancel interaction
 intent and charge a combat cooldown independently.
 
+## Nearby player interest and verified names
+
+`CollectInterestSlots` exposes the same plane-filtered player set that the authoritative snapshot pass uses.
+It includes players at or within `InterestRadius`, including the source player. It clears caller-owned storage
+first, sorts the result by slot and returns the final count. Call it only on the simulation tick because it shares
+the serve epoch and interest scratch with snapshot replication. A missing source clears the list and returns zero.
+
+```csharp
+using System.Collections.Generic;
+
+var recipients = new List<int>();
+server.CollectInterestSlots(senderSlot, recipients);
+```
+
+`TryGetPlayerDisplayName` reads the verified display name from a live player's authoritative `TileIdentity`.
+It returns false and an empty string if the slot no longer owns a live player or identity. A present but anonymous
+identity returns true with an empty name. A server can combine the two calls for nearby chat and discard the
+submission if the sender, name or audience cannot be verified.
+
+```csharp
+using System;
+
+if (!server.TryGetPlayerDisplayName(senderSlot, out string senderName)
+    || string.IsNullOrWhiteSpace(senderName))
+    return;
+
+server.CollectInterestSlots(senderSlot, recipients);
+if (recipients.Count == 0)
+    return;
+
+foreach (int recipientSlot in recipients)
+    SendChat(recipientSlot, senderName, message);
+```
+
 ## A server, in ten lines
 
 ```csharp

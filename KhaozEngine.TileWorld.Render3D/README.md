@@ -269,11 +269,15 @@ material base colour. So a palette-painted kit needs neither textures nor a mate
 ## The scene seam (`ITileWorldScene`, `Scene3DTileWorldScene`)
 
 Everything the view does to a scene goes through `ITileWorldScene`: `LoadMesh`, `UnloadMesh`, `DrawMesh`,
+`DrawOverlayMesh`,
 `LoadPropMeshes`, `UnloadPropMeshes`, `DrawProps`, plus the ground-material trio `LoadTileGroundMaterial`,
 `UnloadTileGroundMaterial` and the `LoadMesh(mesh, material)` overload that binds a mesh to the tile-ground
 pipeline, `DrawWater(in WaterPlane)` for the water surfaces, and `DrawMeshSilhouette(handle, world, color,
 widthMetres)` for the per-entity highlight rim (18.3.0). `DrawMeshDissolved(handle, world, dissolve, edgeWidth,
 edgeColor)` queues a rigid mesh through `Scene3D`'s existing dissolve path with a white tint and opaque material.
+`DrawOverlayMesh(handle, world)` reaches `Scene3D`'s translucent, unlit overlay pass. Its default implementation
+throws `NotSupportedException`, so a legacy scene reports that it cannot provide translucency instead of silently
+drawing an opaque mesh.
 These six ship as DEFAULT interface implementations (an invalid handle, a no-op, a fall-through to the
 material-free upload, two no-ops, and a fall-through to the solid mesh draw), so an implementation written before
 textured ground, water, silhouettes or rigid dissolves existed keeps compiling. It draws untextured ground, no

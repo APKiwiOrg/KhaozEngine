@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.TileEdit;
 using KhaozEngine.TileWorld;
@@ -102,6 +103,26 @@ public class RenderServiceTests
         Assert.Equal((96, 64), ReadPngHeader(result.Png));
         Assert.Contains("perspective", result.Framing, StringComparison.Ordinal);
         Assert.Contains("(2, 2, p0)", result.Framing, StringComparison.Ordinal);
+    }
+
+    [GpuFact]
+    public void RenderView_DrawsFoliageAfterSaveAndReopenThroughTheInstancedPath()
+    {
+        using var f = new Fixture();
+        var eye = new Vector3(4f, 8f, 5f);
+        var target = new Vector3(4f, 0f, -4f);
+        byte[] without = f.Render.RenderView(eye, target, 96, 64, new TileCoord(4, 4, 0)).Png;
+        var mutate = new MutationService(f.Session);
+        mutate.FoliageLayerSet(new FoliageLayerInfo("field", 0, 0f, -8f, 1f, 9, 9,
+            Enumerable.Repeat((byte)255, 81).ToArray(), 8, 0.6f, 0.25f, 0.35f, 0f,
+            new[] { new FoliageArchetypeInfo("tree", 1f) }, new[] { 1 }, true, true, 0f, 0f));
+        f.Session.Save();
+        f.Session.Open(f.Session.DocumentPath!);
+
+        byte[] with = f.Render.RenderView(eye, target, 96, 64, new TileCoord(4, 4, 0)).Png;
+
+        Assert.NotEqual(without, with);
+        Assert.Equal(with, f.Render.RenderView(eye, target, 96, 64, new TileCoord(4, 4, 0)).Png);
     }
 
     [Fact]

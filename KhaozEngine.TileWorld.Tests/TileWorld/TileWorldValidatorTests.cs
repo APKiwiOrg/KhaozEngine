@@ -17,6 +17,21 @@ public class TileWorldValidatorTests
     }
 
     [Fact]
+    public void Foliage_catalog_references_are_validated()
+    {
+        TileWorldDocument doc = TileWorldTestData.FlatWorld();
+        doc.SetFoliageLayer(new TileFoliageLayer("bad", 0, 0f, 0f, 1f, 1, 1, [255], 1, 0.5f,
+            1f, 1f, 0f, [new TileFoliageArchetype("missing-grass", 1f)], [99]));
+
+        TileWorldIssue[] issues = TileWorldValidator.Validate(doc, TileWorldCatalogs.Greybox()).ToArray();
+
+        Assert.Contains(issues, issue => issue.Code == "foliage.archetype" &&
+            issue.Message.Contains("missing-grass", StringComparison.Ordinal));
+        Assert.Contains(issues, issue => issue.Code == "foliage.underlay" &&
+            issue.Message.Contains("99", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Dangling_ids_bad_planes_and_footprints_are_reported_with_codes()
     {
         TileWorldDocument doc = TileWorldTestData.FlatWorld();

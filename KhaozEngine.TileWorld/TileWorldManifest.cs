@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -17,10 +18,40 @@ internal sealed class TileWorldManifest
     public List<string> CatalogPaths { get; set; } = new();
     public long NextObjectId { get; set; } = 1;
     public List<TileWorldManifestRegion> Regions { get; set; } = new();
+    public List<TileFoliageLayerDto>? FoliageLayers { get; set; }
     // DERIVED from the regions, like the collision map: the regions stay the source of truth and this is the copy
     // a client can read before it has streamed any of them. Absent in a manifest written by an older engine, which
     // deserialises to an empty list and reads as a world with no markers rather than as a load failure.
     public List<TileWorldManifestMarker> Markers { get; set; } = new();
+}
+
+internal sealed class TileFoliageLayerDto
+{
+    public string Id { get; set; } = "";
+    public int Plane { get; set; }
+    public float OriginX { get; set; }
+    public float OriginZ { get; set; }
+    public float CellSize { get; set; }
+    public int Width { get; set; }
+    public int Height { get; set; }
+    public byte[] Density { get; set; } = Array.Empty<byte>();
+    public int Seed { get; set; }
+    public float Spacing { get; set; }
+    public float ScaleMin { get; set; }
+    public float ScaleMax { get; set; }
+    public float RootOffset { get; set; }
+    public List<TileFoliageArchetypeDto> Archetypes { get; set; } = new();
+    public List<ushort>? AllowedUnderlays { get; set; }
+    public bool ExcludeIndoors { get; set; } = true;
+    public bool ExcludeSolidObjects { get; set; } = true;
+    public float DoorClearance { get; set; }
+    public float EdgeFade { get; set; }
+}
+
+internal sealed class TileFoliageArchetypeDto
+{
+    public string Id { get; set; } = "";
+    public float Weight { get; set; }
 }
 
 /// <summary>One marker index row, a copy of what its region carries so a lookup costs no region read.</summary>

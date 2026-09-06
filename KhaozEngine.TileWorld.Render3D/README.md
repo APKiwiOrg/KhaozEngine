@@ -308,6 +308,16 @@ catalog archetype up front, so a region load is placements alone.
   generation, and every edit that can move a water tile or a corner height is exactly an edit that remeshes. Turn
   `DrawWater` off and call `DrawWaterPlanes()` yourself to put the surfaces at another point in your frame.
 
+- **Authored foliage is cached per resident region.** `TileFoliageSurface` bilinearly samples a layer's
+  world-metre raster and tile height, then rejects absent regions, disallowed visible materials, water,
+  configured interiors and upper roofs, same-plane solid footprints and same-plane tagged door clearances.
+  Shaped overlays use `TileTriangulation`, so only the painted part changes the visible material. Non-solid
+  decorative objects remain eligible. `LoadRegion` builds `GroundCoverInstance` values once, dirty flushes
+  rebuild affected caches and `UnloadRegion` drops them. `GeneratedCoverCount` and `LastDrawnCover` expose the
+  cached and submitted counts. Live `TileWorldViewOptions.GroundCover` settings control distance, quality,
+  distant thinning and shadow policy without regenerating positions. A world with no foliage performs no
+  distribution work.
+
 - `LoadRegion` / `UnloadRegion` build and free every plane of one region. Loading a region that is already loaded
   rebuilds it, so it doubles as a whole-region refresh. `LoadedRegions` is a snapshot, safe to walk while loading
   or unloading, and `LoadedRegionCount` is the count.

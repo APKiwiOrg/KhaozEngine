@@ -47,6 +47,11 @@ of its own and raises no events: every mutation marks its region `Dirty`, and th
   bilinear height in metres at a world position.
 - Objects and markers: `AddObject`, `FindObject`, `MoveObject`, `RemoveObject`, `ObjectsIn`, `AllObjects`,
   `SetMarker`, `FindMarker`, `RemoveMarker`, `AllMarkers`, `AllocateObjectId`, `RebuildObjectIndex`.
+- Cosmetic foliage: immutable `TileFoliageLayer` values through `FoliageLayers`, `GetFoliageLayer`,
+  `SetFoliageLayer` and `RemoveFoliageLayer`. A layer carries a world-metre density raster, weighted archetypes,
+  deterministic placement settings and material, indoor, solid, door and edge rules. Density is row major.
+  X advances within a row and row index advances along positive world Z from `OriginZ`. `CopyDensity` returns a
+  detached copy and `WithDensity` builds a replacement layer.
 - `Source` is the `TileWorldSource` this document was opened through, or null for one built in memory. It is the
   document's only view of the regions it does not hold, and `SetMarker` uses it: a marker name is unique across
   the WHOLE world, so a name an unloaded region already carries is refused rather than authored into a second
@@ -70,6 +75,11 @@ through a tmp plus rename, and clears `Dirty` only once the manifest naming thos
 strictly canonical, so `r_+1_2.json` is not region (1, 2) and the stale sweep will not delete a file the
 manifest never named. A torn write is DETECTED, not rolled back: bytes are replaced in place, so an interrupted
 save leaves what it already wrote, and the next load refuses the world naming the first disagreeing file.
+
+Foliage layers are an optional manifest block. Their density bytes use base64 and retain the row convention
+above. An empty layer list is omitted, so old world JSON and old world hashes stay unchanged. Non-empty foliage
+is part of `TileWorldHash.OfWorld`, including every placement and exclusion setting. `TileWorldSource.Open`
+loads the global layers without materialising a region, and a partial save carries them forward.
 
 `TileWorldSource` is the streaming entry point over the same document: `Open(directory)` reads the manifest
 only, `EnsureLoaded(coord)`/`EnsureLoaded(rect)` materialise regions on demand hash-checked, `IsKnown`,
@@ -122,7 +132,7 @@ never throws on bad content, while `ValidateOrThrow` throws once quoting the fir
 and callers may branch on them: `header.planeCount`, `header.tileSize`, `header.planeHeight`,
 `region.planeCount`, `material.missing`, `overlay.shape`, `archetype.missing`, `object.plane`,
 `object.footprint`, `object.duplicateId`, `object.region`, `marker.plane`, `marker.duplicateName`,
-`marker.region`.
+`marker.region`, `foliage.archetype`, `foliage.underlay`.
 
 ## Collision, derived and never authored
 

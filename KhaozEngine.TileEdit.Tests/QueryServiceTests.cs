@@ -266,6 +266,27 @@ public class QueryServiceTests
         Assert.Throws<TileWorldException>(() => closed.ResolvePath("/tmp/anywhere"));
     }
 
+    [Fact]
+    public void FoliageGetReturnsADetachedLayerAndCanListEveryLayer()
+    {
+        using var f = new Fixture();
+        f.Mutate.FoliageLayerSet(new FoliageLayerInfo("meadow", 0, 0f, -2f, 0.5f, 2, 2,
+            new byte[] { 1, 2, 3, 4 }, 5, 0.25f, 0.9f, 1.1f, -0.02f,
+            new[] { new FoliageArchetypeInfo("tree", 2f) }, new[] { 1, 2 }, true, true, 1f, 0.5f));
+
+        FoliageLayerInfo read = f.Query.FoliageGet("meadow");
+        read.Density[0] = 255;
+        read.Archetypes[0] = new FoliageArchetypeInfo("changed", 9f);
+        read.AllowedUnderlays[0] = 99;
+
+        FoliageLayerInfo unchanged = f.Query.FoliageGet("meadow");
+        Assert.Equal((byte)1, unchanged.Density[0]);
+        Assert.Equal("tree", unchanged.Archetypes[0].Id);
+        Assert.Equal(1, unchanged.AllowedUnderlays[0]);
+        Assert.Equal(new[] { "meadow" }, f.Query.FoliageGet().Select(x => x.Id).ToArray());
+        Assert.Throws<TileWorldException>(() => f.Query.FoliageGet("missing"));
+    }
+
     /// <summary>The collision map answers Blocked for a plane it does not have, so a query handed a bad plane
     /// would come back as a plausible map of solid rock. Every collision-reading query checks first.</summary>
     [Fact]

@@ -68,6 +68,8 @@ public sealed class TileWorldSource
             PlaneHeight = m.PlaneHeight, NextObjectId = m.NextObjectId,
         };
         doc.CatalogPaths.AddRange(m.CatalogPaths);
+        foreach (TileFoliageLayerDto layer in m.FoliageLayers ?? new List<TileFoliageLayerDto>())
+            doc.SetFoliageLayer(TileWorldFile.FoliageFromDto(layer));
         var known = new Dictionary<RegionCoord, string>();
         foreach (TileWorldManifestRegion r in m.Regions)
         {

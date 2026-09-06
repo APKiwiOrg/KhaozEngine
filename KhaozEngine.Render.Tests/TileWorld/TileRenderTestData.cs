@@ -416,6 +416,7 @@ public sealed partial class RecordingTileWorldScene : ITileWorldScene
     {
         Drawn.Clear();
         PropDraws.Clear();
+        FoliageDraws.Clear();
     }
 
     /// <summary>Hands out a fresh live handle for a ground mesh, unless this is the upload

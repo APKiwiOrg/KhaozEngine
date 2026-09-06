@@ -29,6 +29,9 @@ public sealed class TileWorldViewOptions
     /// <summary>Horizontal radius in metres around the draw focus inside which a prop is drawn.</summary>
     public float PropDrawRadius { get; set; } = 96f;
 
+    /// <summary>Live distance, quality and shadow policy for authored ground cover.</summary>
+    public GroundCoverRenderOptions GroundCover { get; set; } = new();
+
     /// <summary>The settings every region-plane ground mesh is built with. The view SETS
     /// <see cref="TileGroundMesherOptions.Slots"/> on this object when it is constructed, to the material set it
     /// is about to upload, because the slots a vertex names only mean anything against that set.</summary>
@@ -274,7 +277,9 @@ public sealed partial class TileWorldView : IDisposable
             FreeMeshes(meshes);
             throw;
         }
-        _loaded[region] = new RegionHandles(meshes, props);
+        IReadOnlyList<GroundCoverInstance> cover = BuildCover(region);
+        _loaded[region] = new RegionHandles(meshes, props, cover);
+        GeneratedCoverCount += cover.Count;
     }
 
     /// <summary>Frees every mesh handle of one region and forgets it, along with any rebuild it had queued.
@@ -285,6 +290,7 @@ public sealed partial class TileWorldView : IDisposable
         for (int plane = 0; plane < _planes; plane++)
             if (_dirty.Remove((region, plane))) _dirtyOrder.Remove((region, plane));
         if (!_loaded.Remove(region, out RegionHandles? handles)) return;
+        GeneratedCoverCount -= handles.Cover.Count;
         FreeMeshes(handles);
     }
 
@@ -367,6 +373,7 @@ public sealed partial class TileWorldView : IDisposable
                 if (handles.Meshes[plane] is { } old) _scene.UnloadMesh(old);
                 handles.Meshes[plane] = rebuilt;
                 handles.Props[plane] = TileObjectProps.Build(_doc, _catalogs, region, plane, OverrideLookup());
+                RebuildCover(region, handles);
                 // Only a mesh that was actually built counts. The budget exists to bound uploads and handle
                 // churn, and an empty region-plane produces neither.
                 if (rebuilt is not null) taken++;
@@ -411,6 +418,7 @@ public sealed partial class TileWorldView : IDisposable
             }
         }
         LastDrawnProps = drawn;
+        DrawCover(focus);
         // Water rides the same frame: the planes are cached per region-plane and re-collected only when that
         // region-plane's mesh or the look changed, so this is a walk over the loaded regions and one submit per
         // plane. A caller that runs its own water pass turns it off with TileWorldViewOptions.DrawWater.
@@ -590,5 +598,17 @@ public sealed partial class TileWorldView : IDisposable
 
     // One loaded region: the ground mesh handle of each plane (null where the plane has no drawable tile) and
     // that plane's placements. Dropped whole on unload, so a region never leaves half its handles behind.
-    sealed record RegionHandles(MeshHandle?[] Meshes, TileRegionProps[] Props);
+    sealed class RegionHandles
+    {
+        public MeshHandle?[] Meshes { get; }
+        public TileRegionProps[] Props { get; }
+        public IReadOnlyList<GroundCoverInstance> Cover { get; set; }
+
+        public RegionHandles(MeshHandle?[] meshes, TileRegionProps[] props, IReadOnlyList<GroundCoverInstance> cover)
+        {
+            Meshes = meshes;
+            Props = props;
+            Cover = cover;
+        }
+    }
 }

@@ -7200,6 +7200,30 @@ string identity = TileWorldHash.OfWorld(reloaded);       // the world alone
 string gate = TileWorldHash.OfWorldAndCatalogs(reloaded, catalogs);
 ```
 
+**Authored ground cover is optional cosmetic document data.** A `TileFoliageLayer` stores a world-metre
+density raster separately from `TileObject`, so it creates no gameplay object, collision, pick target or
+replication state. X advances within each density row. Row 0 starts at `OriginZ` and later rows advance along
+positive world Z. Empty foliage stays absent from the manifest and preserves an old world's bytes and hash.
+
+```csharp
+doc.SetFoliageLayer(new TileFoliageLayer(
+    id: "meadow", plane: 0, originX: 0f, originZ: -32f, cellSize: 0.5f,
+    width: 65, height: 65, density: paintedDensity,
+    seed: 17, spacing: 0.3f, scaleMin: 0.8f, scaleMax: 1.2f, rootOffset: -0.04f,
+    archetypes: new[]
+    {
+        new TileFoliageArchetype("grass_short_a", 2f),
+        new TileFoliageArchetype("grass_short_b", 1f),
+    },
+    allowedUnderlays: new ushort[] { 1, 2 },
+    excludeIndoors: true, excludeSolidObjects: true, doorClearance: 1.5f, edgeFade: 0.6f));
+```
+
+The render adapter samples the visible material, including authored overlay shapes, and rejects water,
+disallowed materials, configured interiors and roofs, same-plane solid footprints and same-plane objects
+tagged `door` within `DoorClearance`. Non-solid decorative objects remain eligible. Validation resolves the
+foliage archetype and material ids against the same catalogs as the rest of the world.
+
 **Two conventions run through every type.** Coordinates are WORLD tile coordinates everywhere, including
 `TileObject.X/Z` and `TileMarker.X/Z`, and the owning region is always `RegionCoord.Of(X, Z)`, which floors, so
 a negative coordinate lands in a negative region with a local coordinate in 0..63. Rotation is quarter turns
@@ -7284,7 +7308,7 @@ non-interactive archetype, or a cut at the ground hit's distance are all the cal
 The render arm of the tile world, in the `Game3D` umbrella: a ground mesher that emits each tile's four corner
 materials as slots for the tile-ground pipeline, the material set those slots index built straight from the
 catalog, water bodies through the engine's own water pass, tile objects through the `Terrain.Render3D` prop path,
-a view
+a generic ground-cover distribution through the existing rigid instancing path, and a view
 that owns a world's meshes and props in a `Scene3D`, region streaming, and headless capture. Kept separate from the document package
 so a server or a tool never drags in `Render3D`.
 
@@ -7309,6 +7333,13 @@ byte[] rgba = TileWorldSnapshot.CaptureTopDown(doc, catalogs, resolver,
     new TileRect(0, 0, 32, 32), plane: 0, pxPerTile: 4);
 PngWriter.Save("map.png", rgba, 32 * 4, 32 * 4);
 ```
+
+`TileWorldView` builds foliage once per resident region and rebuilds it when `MarkDirty` reaches that region.
+Unloading drops the cached instances. `GeneratedCoverCount` reports cached placements and `LastDrawnCover`
+reports the most recent submitted count. The live `TileWorldViewOptions.GroundCover` object controls draw
+radius, fade band, quality density, distant density and shadow casting. Quality and distance use each
+instance's stable rank, so lower values select nested subsets without regenerating positions. Cover receives
+lighting and defaults to no shadow casting.
 
 **Roofs come off one building at a time.** `Observer` is the tile the roof rule is judged from, and
 `ObserverIndoors` says whether it carries `TileSettings.Indoors`. A roof is hidden when the observer is indoors,
@@ -7575,13 +7606,14 @@ working directory, because an MCP server is started by a client whose working di
 The two verbs that OPEN a world (`world_open`, `world_create`) are the exception, since there is no world to be
 relative to yet: pass them an absolute path.
 
-**Verb families (43 tools).** World lifecycle, catalogs, regions and history (`world_open`, `world_create`,
+**Verb families (48 tools).** World lifecycle, catalogs, regions and history (`world_open`, `world_create`,
 `world_save`, `world_summary`, `world_validate`, `catalog_list`, `region_create`, `region_delete`,
 `region_list`, `undo`, `redo`), tiles (`tile_get`, `tile_set`, `tiles_fill`, `tiles_get_rect`), heights
 (`height_set`, `height_raise`, `height_flatten`, `height_smooth`, `height_get_rect`, `height_import`), objects
 (`object_place`, `object_move`, `object_rotate`, `object_remove`, `object_set_tags`, `object_get`,
 `objects_in_rect`, `object_find`, `objects_line`, `objects_scatter`), markers (`marker_set`, `marker_remove`,
-`marker_list`), prefabs (`prefab_save`, `prefab_place`, `prefab_list`), derived collision (`collision_at`,
+`marker_list`), foliage (`foliage_layer_set`, `foliage_get`, `foliage_density_set`, `foliage_paint`,
+`foliage_remove`), prefabs (`prefab_save`, `prefab_place`, `prefab_list`), derived collision (`collision_at`,
 `is_walkable`, `path`, `walkable_rect`) and renders (`render_topdown`, `render_view`). The per-verb reference,
 with every argument and the ASCII map legends, is the
 [`KhaozEngine.TileEdit.Tool` README](../KhaozEngine.TileEdit.Tool/README.md).
@@ -7591,6 +7623,10 @@ with every argument and the ASCII map legends, is the
 one deeper than the tiles they carry, and rotation is quarter turns clockwise (0 west, 1 north, 2 east, 3
 south). Every ASCII map and every height row set runs NORTH FIRST, row 0 being the highest z and each row west
 to east, so `height_get_rect` hands its rows straight to `height_set` without flipping the terrain.
+Foliage density rows use their world raster instead. Row 0 is `originZ`, X advances within a row and later rows
+advance along positive world Z. `foliage_layer_set` takes the same base64 density shape the manifest persists,
+while `foliage_density_set` takes explicit numeric rows and dimensions. `foliage_paint` uses a world-metre
+centre and radius. Every configure, density, paint and remove call is one undo step.
 `render_view` is the one verb in WORLD metres, where y is up and world z is MINUS tile z: to look at tile
 (10, 20) from the south-east, target world (10.5, 0, -20.5) with the eye at (18, 8, -12).
 

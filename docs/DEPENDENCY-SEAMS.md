@@ -473,19 +473,21 @@ the document package stays GPU-free for a server or a tool:
 KhaozEngine.TileWorld.Render3D -> KhaozEngine.TileWorld          (the document it meshes, plus TileWorldSpace and TileTriangulation)
 KhaozEngine.TileWorld.Render3D -> KhaozEngine.Render3D           (Scene3D, GltfMesh/GltfMeshPart, ModelVertex, MeshHandle, the cameras, Render3DSnapshot)
 KhaozEngine.TileWorld.Render3D -> KhaozEngine.Render2D           (ImageRgba, to decode a catalog material's texture into a ground material layer)
-KhaozEngine.TileWorld.Render3D -> KhaozEngine.Terrain.Render3D   (PropPlacement and the Scene3D.DrawProps/LoadPropMeshes prop path)
+KhaozEngine.TileWorld.Render3D -> KhaozEngine.Terrain            (GroundCoverDistribution and its render-free sample contract)
+KhaozEngine.TileWorld.Render3D -> KhaozEngine.Terrain.Render3D   (prop and ground-cover instancing paths)
 KhaozEngine.Game3D -> KhaozEngine.TileWorld.Render3D             (umbrella ProjectReference, like every other Game3D package)
 ```
 
-All five are forward edges onto packages that already sit below it, and nothing references back. The
+All six are forward edges onto packages that already sit below it, and nothing references back. The
 `Terrain.Render3D` edge is the one worth naming: the tile world reuses the prop renderer outright (LOD, instancing,
-distance dissolve) rather than growing a second placement path, which is why an edge to the terrain render arm
-exists at all when there is none between `TileWorld` and `Terrain` themselves. `TileWorldView` reaches the scene
+distance dissolve) and the ground-cover renderer outright rather than growing a second placement path. The
+render-free `Terrain` edge exists only for the generic distribution and sample records. This is why these edges
+exist when there is no dependency from `TileWorld` to `Terrain`. `TileWorldView` reaches the scene
 through its own `ITileWorldScene` seam rather than a `Scene3D` field, so every view and residency rule is testable
 without a device, and `Scene3DTileWorldScene` is the one place the two meet.
 
 **The seam grew four members for textured ground and water (17.38.0), a fifth for silhouettes (18.3.0),
-and a sixth for rigid mesh dissolve (18.19.0),
+a sixth for rigid mesh dissolve (18.19.0), and a seventh for authored ground cover,
 all DEFAULT interface implementations.**
 `LoadTileGroundMaterial(TileGroundMaterialSet)` (defaults to an invalid handle),
 `UnloadTileGroundMaterial(TileGroundMaterialHandle)` (a no-op), `LoadMesh(GltfMesh,
@@ -493,11 +495,12 @@ TileGroundMaterialHandle)` (falls through to the material-free `LoadMesh`, so th
 the model path), `DrawWater(in WaterPlane)` (a no-op, so no water is drawn) and
 `DrawMeshSilhouette(MeshHandle, Matrix4x4, Color, float)` (a no-op, so no highlight rims are drawn).
 `DrawMeshDissolved(MeshHandle, Matrix4x4, float, float, Color)` defaults to the solid `DrawMesh` and forwards
-the existing noise dissolve and shadow mask when the scene supports it. Defaults
+the existing noise dissolve and shadow mask when the scene supports it. `DrawGroundCover` forwards cached
+ground-cover instances to the scene and defaults to drawing none. Defaults
 rather than abstract
 members because two implementations sit outside this repo's control (a consumer's own, and Grimhollow's test
 fake), and the alternative is a compile break in a downstream game for a feature it has not adopted. The seam
-still adds no abstraction of its own: each of the six is `Scene3D` API forwarded straight through by
+still adds no abstraction of its own: each of the seven is `Scene3D` API forwarded straight through by
 `Scene3DTileWorldScene`. The mesher takes a second, smaller seam for the same headless reason,
 `ITileGroundSlotMap` (`SlotOf(materialId)`, `MissingSlot`), which is what lets a slot map be swapped for a stub in
 a test. `TileGroundMaterialSet` implements it, and `IdentitySlotMap` is the shipped stand-in for a caller that has

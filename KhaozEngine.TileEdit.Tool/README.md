@@ -102,7 +102,7 @@ goes through.
 the rect, each row running west to east, which is the way round a top-down render reads. `height_get_rect`
 hands its rows straight to `height_set` without flipping the terrain.
 
-## Verb surface (43 tools)
+## Verb surface (48 tools)
 
 ### World, catalogs, regions, history
 
@@ -132,6 +132,23 @@ hands its rows straight to `height_set` without flipping the terrain.
 `shape` is a NAME (`Full`, `DiagonalHalf`, `CornerQuarter`, `CornerThreeQuarter`, case-insensitive) and
 `settings` a comma list of NAMES (`None`, `Blocked`, `Indoors`, `Bridge`, `NoDraw`), with `none` or an empty
 string clearing every flag. A number is refused in both, so a wrong enum value cannot land silently.
+
+### Cosmetic foliage
+
+| Verb | What it does |
+|---|---|
+| `foliage_layer_set(layer)` | Adds or replaces a complete validated layer. `density` is base64 row-major bytes and must contain `width * height` samples. |
+| `foliage_get(id?)` | Reads one detached layer, or lists all layers in authoring order when id is omitted. |
+| `foliage_density_set(id, width, height, rows)` | Replaces the complete density raster from numeric 0 to 255 rows. Dimensions must match the configured layer. |
+| `foliage_paint(id, worldX, worldZ, radius, density, hardness)` | Paints a circular brush in world metres. Hardness 0 is fully soft and 1 is a hard circle. |
+| `foliage_remove(id)` | Removes a layer. |
+
+Every foliage mutation is one undo step and changes no gameplay object or collision. In the layer object and
+`foliage_density_set`, X advances within each row. Row 0 starts at `originZ` and later rows advance along
+positive world Z. This is a world-space raster convention, so it differs from the north-first tile maps and
+height rows above. Tile north maps to negative world Z. `allowedUnderlays` applies to the visible material at
+the sample, including the painted part of a shaped overlay. A door clearance uses objects tagged `door` on the
+layer plane.
 
 `tiles_get_rect` legends, one character per tile:
 

@@ -40,7 +40,33 @@ public static class TileWorldHash
         ArgumentNullException.ThrowIfNull(doc);
         IEnumerable<(RegionCoord, string)> regions = doc.Regions.Values.Select(r => (r.Coord, OfRegion(r)))
             .Concat(doc.UnloadedRegionHashes.Select(k => (k.Key, k.Value)));
-        return OfManifestRegions(doc.TileSize, doc.PlaneCount, doc.PlaneHeight, regions);
+        string terrain = OfManifestRegions(doc.TileSize, doc.PlaneCount, doc.PlaneHeight, regions);
+        if (doc.FoliageLayers.Count == 0) return terrain;
+
+        var sb = new StringBuilder();
+        sb.Append(Domain).Append("foliage/").Append(Inv(SchemeVersion)).Append('\n');
+        sb.Append(terrain).Append('\n');
+        foreach (TileFoliageLayer layer in doc.FoliageLayers.OrderBy(x => x.Id, StringComparer.Ordinal))
+        {
+            Text(sb, layer.Id);
+            sb.Append(Inv(layer.Plane)).Append(' ')
+                .Append(Float(layer.OriginX)).Append(' ').Append(Float(layer.OriginZ)).Append(' ')
+                .Append(Float(layer.CellSize)).Append(' ').Append(Inv(layer.Width)).Append(' ')
+                .Append(Inv(layer.Height)).Append(' ').Append(Inv(layer.Seed)).Append(' ')
+                .Append(Float(layer.Spacing)).Append(' ').Append(Float(layer.ScaleMin)).Append(' ')
+                .Append(Float(layer.ScaleMax)).Append(' ').Append(Float(layer.RootOffset)).Append(' ')
+                .Append(layer.ExcludeIndoors ? '1' : '0').Append(layer.ExcludeSolidObjects ? '1' : '0').Append(' ')
+                .Append(Float(layer.DoorClearance)).Append(' ').Append(Float(layer.EdgeFade)).Append('\n');
+            foreach (TileFoliageArchetype archetype in layer.Archetypes)
+            {
+                Text(sb, archetype.Id);
+                sb.Append(Float(archetype.Weight)).Append('\n');
+            }
+            sb.Append("materials ");
+            foreach (ushort material in layer.AllowedUnderlays) sb.Append(Inv(material)).Append(' ');
+            sb.Append('\n').Append(Convert.ToBase64String(layer.CopyDensity())).Append('\n');
+        }
+        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString())));
     }
 
     /// <summary>
@@ -146,6 +172,7 @@ public static class TileWorldHash
     // would digest different bytes for the same world, and an identity that depends on the thread culture is
     // worse than no identity at all. Same reason the region file names are written invariant.
     static string Inv(int value) => value.ToString(CultureInfo.InvariantCulture);
+    static string Float(float value) => value.ToString("R", CultureInfo.InvariantCulture);
 
     // A LENGTH-PREFIXED string, because catalog text is authored and a delimiter that appears inside a name would
     // otherwise let two different catalogs digest the same bytes. Null and empty are distinguished, so an archetype

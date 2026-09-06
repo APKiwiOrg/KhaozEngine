@@ -113,14 +113,17 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   - `SlotGrid` - a grid of uniform slots (hotbar / inventory / equipment) over `Pointer`. `Bounds`.X/Y is
     the origin, and the footprint is derived from `Columns`/`SlotWidth`/`SlotHeight`/`Spacing` and the slot `Count`
     (read `ContentSize`
-    / `ContentBounds`). A slot is square by default and `SlotSize` is the shorthand that writes both axes (reading
+    / `ContentBounds`). Set nullable `VisibleBounds` to the same region passed to the caller's scissor when the
+    grid is inside a clipped panel. Slot lookup, hover, presses, taps, drag sources and targets, and pointer
+    reservation then use only the visible intersection. Null keeps the full-grid behavior, and drawing still
+    relies on the caller's scissor. A slot is square by default and `SlotSize` is the shorthand that writes both axes (reading
     it returns `SlotWidth`), so a panel drawing item NAMES rather than icons sets `SlotWidth`/`SlotHeight` apart for
     a wide, short cell. Each slot hit-tests through the press-origin invariant, and `HoveredSlot`/`PressedSlot` expose the
     live index (-1 = none) and a valid tap fires `OnSlotClicked` (and `Update` returns the index). The right button
     gets the same press-origin treatment: a valid right tap sets `RightClickedSlot` and fires `OnSlotRightClicked`,
     which is what a per-slot context menu hangs off, and it never changes the `Update` return. Empty slots draw a
     themed frame; the caller paints icons/counts through the `DrawSlotContent(index, rect, batch)` hook and optional
-    per-slot `KeybindLabels` (raw input-token glyphs). `SlotRect(i)`/`SlotAt(point)` are pure geometry; `Opacity`
+    per-slot `KeybindLabels` (raw input-token glyphs). `SlotRect(i)`/`SlotAt(point)` are pure geometry. `Opacity`
     fades the whole grid. Built-in slot content is available too: set an `IconAtlas` on the grid and hand each
     slot a `SlotContent` (icon id, tint, cooldown fraction 0..1, stack count, disabled flag) through
     `SetContent`/`ClearContent`/`ClearAllContent`. `Draw` then paints, per slot, the icon (greyed when disabled),

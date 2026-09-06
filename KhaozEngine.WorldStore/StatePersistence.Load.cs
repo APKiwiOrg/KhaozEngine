@@ -184,7 +184,9 @@ public sealed partial class StatePersistence<TState>
             // stored record is written absolute), so the comparison needs no frame conversion. A host that cannot
             // read the state back is treated as a move, which is the pre-17.37.0 behaviour.
             bool moved = !server.TryGetPlayerState(a.Slot, out TState live)
-                || Vector3.Distance(binding.PositionOf(live), binding.PositionOf(a.State)) > config.QuietRestoreDistance;
+                || (binding.RestoreDistance?.Invoke(live, a.State)
+                    ?? Vector3.Distance(binding.PositionOf(live), binding.PositionOf(a.State)))
+                > config.QuietRestoreDistance;
             server.SetPlayerState(a.Slot, a.State, teleport: moved);
             if (a.Game is { Length: > 0 } && config.ApplyGameState is { } apply)
                 apply(a.Slot, a.AccountId, a.Game);

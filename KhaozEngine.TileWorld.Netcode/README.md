@@ -386,7 +386,8 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   `TileWorldServer.SetPlayerState` and throwing out of the head's frame loop. `QuietRestoreDistance` defaults to
   half a tile here rather than the core's one, because this binding is a lattice and puts the PLANE on the
   position's Y: at the core's default a restore that moved a player a whole floor measured exactly 1, passed as no
-  move, and the client glided between floors instead of cutting.
+  move, and the client glided between floors instead of cutting. Restore distance is measured from the original
+  integer tile coordinates, so adjacent tiles stay distinct even beyond the exact integer range of a float.
 
 ## Ground items, whose lifecycle is the engine's and whose meaning is yours
 

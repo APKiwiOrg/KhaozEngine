@@ -514,12 +514,17 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         host.SyncGhosts();
 
         // 4b. Movement-correction anomaly: compare each routed player's post-step position to its intended move.
-        foreach ((int slot, PlayerMoveState prev) in correctionScratch)
+        // A skipped accumulator frame is neither a corrected nor a clean movement tick, so it must leave the
+        // consecutive-tick streak untouched.
+        if (movementRan)
         {
-            if (!TryGetPlayerState(slot, out PlayerMoveState after)) continue;
-            float correction = MovementAnomaly.CorrectionDistance(prev, after, dt);
-            if (MovementAnomaly.RegisterCorrection(correctionStreakBySlot, slot, correction, config.AntiCheat))
-                Raise(slot, SuspiciousReason.MovementCorrection, correction);
+            foreach ((int slot, PlayerMoveState prev) in correctionScratch)
+            {
+                if (!TryGetPlayerState(slot, out PlayerMoveState after)) continue;
+                float correction = MovementAnomaly.CorrectionDistance(prev, after, dt);
+                if (MovementAnomaly.RegisterCorrection(correctionStreakBySlot, slot, correction, config.AntiCheat))
+                    Raise(slot, SuspiciousReason.MovementCorrection, correction);
+            }
         }
 
         // 5. Serve each client its home-cell area-of-interest, framed for the WorldClient. Delta-capable clients get a

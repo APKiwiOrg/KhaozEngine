@@ -19,6 +19,12 @@ namespace PixelLabSheetAssembler;
 public static class PixelLabExport
 {
     public static (CharacterAnimation Anim, string? TempDir) Load(string input, string animName)
+        => Load(input, animName, extractionDirectory: null);
+
+    internal static (CharacterAnimation Anim, string? TempDir) Load(
+        string input,
+        string animName,
+        string? extractionDirectory)
     {
         string root;
         string? temp = null;
@@ -29,7 +35,9 @@ public static class PixelLabExport
         }
         else if (File.Exists(input) && input.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
         {
-            temp = Directory.CreateTempSubdirectory("pixellab_").FullName;
+            temp = extractionDirectory is null
+                ? Directory.CreateTempSubdirectory("pixellab_").FullName
+                : Directory.CreateDirectory(extractionDirectory).FullName;
             ZipFile.ExtractToDirectory(input, temp);
             root = temp;
         }

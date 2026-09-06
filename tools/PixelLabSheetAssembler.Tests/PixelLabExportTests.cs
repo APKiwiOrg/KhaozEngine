@@ -94,9 +94,6 @@ public class PixelLabExportTests
         return zip;
     }
 
-    private static string[] ExtractedTempDirs() =>
-        Directory.GetDirectories(Path.GetTempPath(), "pixellab_*");
-
     [Fact]
     public void Loads_zip_export_and_hands_back_the_extracted_dir()
     {
@@ -115,13 +112,24 @@ public class PixelLabExportTests
     public void Failed_zip_load_deletes_the_directory_it_extracted()
     {
         string zip = WriteExportZip();
-        string[] before = ExtractedTempDirs();
+        string testRoot = Directory.CreateTempSubdirectory("pixellab_cleanup_test_").FullName;
+        try
+        {
+            string extractionPath = Path.Combine(testRoot, "owned-extraction");
+            string unrelatedPath = Path.Combine(testRoot, "unrelated");
+            Directory.CreateDirectory(unrelatedPath);
 
-        var ex = Assert.Throws<AssemblyException>(() => PixelLabExport.Load(zip, "running"));
-        Assert.Contains("walking", ex.Message);    // the message that invites another attempt
+            var ex = Assert.Throws<AssemblyException>(
+                () => PixelLabExport.Load(zip, "running", extractionPath));
+            Assert.Contains("walking", ex.Message);    // the message that invites another attempt
 
-        // Nothing new left behind: the throw happens after extraction, and the caller never got a path to delete.
-        Assert.Empty(ExtractedTempDirs().Except(before));
+            Assert.False(Directory.Exists(extractionPath));
+            Assert.True(Directory.Exists(unrelatedPath));
+        }
+        finally
+        {
+            Directory.Delete(testRoot, recursive: true);
+        }
     }
 
     [Fact]

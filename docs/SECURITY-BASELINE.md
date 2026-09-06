@@ -146,9 +146,11 @@ Packages: `KhaozEngine.WorldStore`, `KhaozEngine.WorldStore.Sqlite`, and
 authenticates the account, authorizes the action, derives the permitted stream keys, and validates the game rule.
 The client never supplies an arbitrary stream key. The journal limits keys, counts, and bytes before database I/O.
 
-The server commits ownership and progression before applying them to live state or reporting success. Stable
-operation IDs and exact frozen intent make retries idempotent. An unknown outcome resolves the same identity and
-retries the identical operation only when absent. A new ID after an unknown outcome can duplicate ownership.
+The server commits ownership and progression before applying them to live state or reporting success. While an
+operation receipt is retained, its stable ID and exact frozen intent return the original outcome without repeating
+the effect. After purge, events remain, while game-domain state, expected versions, and consumed-source validation
+provide the permanent duplicate defense. An unknown outcome resolves the same identity and retries the identical
+operation only when absent. A new ID after an unknown outcome can duplicate ownership.
 
 Journal projections are opaque game-owned server bytes. They can contain display names, account metadata,
 inventory, bank contents, and quest state. They are not safe browser DTOs. An admin endpoint authenticates and

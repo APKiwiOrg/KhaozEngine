@@ -50,8 +50,9 @@ state, freezes one deterministic operation, submits it without waiting for stora
 durable completion. A successful client response is never sent before commit.
 
 Mutation completion is the durable commit boundary. Live state reflects committed results only. If a client
-disconnects after commit, the mutation is still durable. A retry uses the same stable operation ID and frozen intent,
-so it returns the original result without applying the effect twice.
+disconnects after commit, the mutation is still durable. While its operation receipt remains inside the configured
+retention horizon, a retry with the same stable operation ID and frozen intent returns the original result without
+applying the effect twice.
 
 ### Store API
 
@@ -59,7 +60,7 @@ so it returns the original result without applying the effect twice.
 
 | Method | Contract |
 |---|---|
-| `ResolveOperationAsync(identity, ct)` | Restart-safe lookup by operation ID and intent. Returns `NotFound`, `Replayed`, or `OperationConflict`. A replay carries the original receipt and result. |
+| `ResolveOperationAsync(identity, ct)` | Restart-safe lookup by operation ID and intent. Returns `NotFound`, `Replayed`, or `OperationConflict`. A retained replay carries the original receipt and result. |
 | `InitializeAsync(initialization, ct)` | The only stream-creation path. Stores a version-zero snapshot and projections. Returns `Initialized`, `Replayed`, `ExistingStream`, or `OperationConflict`. |
 | `CommitAsync(commit, ct)` | Atomically commits every touched stream, event, changed projection, receipt, and result. Returns `Applied`, `Replayed`, `VersionConflict`, or `OperationConflict`. |
 | `LoadSnapshotAsync(streamKey, ct)` | Returns the current checked snapshot, or `null` for an absent stream. Callers must check `HasValidChecksum` before reduction. |
@@ -262,8 +263,9 @@ while (executor.TryDequeueCompletion(out JournalCompletion? completion))
 The order is fixed: validate on the simulation thread, freeze deterministic identity and intent, submit without
 blocking, drain at the start of a frame, apply only contiguous committed versions, reply, then acknowledge. A
 replayed receipt already represented by live versions returns its original response without reducing its events
-again. A gap forces journal catch-up before gameplay resumes. If isolated reduction or the atomic live-state swap
-fails, acknowledge `Quarantined`, block every touched stream, and recover them as one group.
+again while that receipt is retained. A gap forces journal catch-up before gameplay resumes. If isolated reduction
+or the atomic live-state swap fails, acknowledge `Quarantined`, block every touched stream, and recover them as one
+group.
 
 ### Multi-host restriction
 
@@ -278,8 +280,10 @@ may set an event prune boundary until it supplies a retention policy and proves 
 passed that version. A verified snapshot must exist before any eligible prefix is removed.
 
 Replay-row retention is separate from event retention. Configure a retry horizon for the longest interval in which
-a client or durable server cause may retry the same intent. Never purge operation rows inside that horizon. Domain
-state remains the permanent duplicate defense after replay rows expire. A consumed loot source must stay consumed.
+a client or durable server cause may retry the same intent. Never purge operation rows inside that horizon. After
+purge, `ResolveOperationAsync` may return `NotFound` for a committed operation. Its events remain. Durable game-domain
+state, expected-version checks, and consumed-source validation are the permanent duplicate defense after replay
+rows expire. A consumed loot source must stay consumed.
 
 After a point-in-time restore, quiesce all journal hosts, rotate the store epoch, verify snapshots and stream
 continuity, reconcile external consumers, then reopen writers. This makes every old admin cursor return

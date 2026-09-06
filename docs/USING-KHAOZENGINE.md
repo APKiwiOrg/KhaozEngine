@@ -15013,19 +15013,26 @@ while (executor.TryDequeueCompletion(out JournalCompletion? completion))
 }
 ```
 
-`Game...` methods above are consumer code, not engine API. A replay already represented by the current live
-versions returns the original result without reducing the old events again. A receipt gap requires snapshot and
-tail catch-up before gameplay continues. If isolated reduction or the live swap fails, quarantine all streams in
-that operation, reload and verify them as a group, then call `ReleaseQuarantine` with the complete group.
+`Game...` methods above are consumer code, not engine API. While its operation receipt remains inside the configured
+retention horizon, a replay already represented by the current live versions returns the original result without
+reducing the old events again. A receipt gap requires snapshot and tail catch-up before gameplay continues. If
+isolated reduction or the live swap fails, quarantine all streams in that operation, reload and verify them as a
+group, then call `ReleaseQuarantine` with the complete group.
 
 Mutation completion is the durable commit boundary. Live state reflects committed results only. A client
-disconnect after commit cannot lose the mutation. Client success is never sent before commit. Replays are
-idempotent because the same stable operation ID and exact frozen intent resolve to the original receipt and result.
+disconnect after commit cannot lose the mutation. Client success is never sent before commit. While the operation
+receipt is retained, the same stable operation ID and exact frozen intent resolve to the original receipt and result
+without repeating the effect.
 
 An unknown storage outcome is not failure proof. `MutationJournalExecutor` resolves the same identity and retries
 the identical frozen operation when absent. A direct store caller must do the same. Never generate a new operation
 ID or rebuild timestamps, random rolls, ordering, expected versions, projection bytes, or result bytes after an
 unknown outcome.
+
+After operation-row purge, `ResolveOperationAsync` may return `NotFound` for a committed operation. Its events
+remain. Durable game-domain state, expected-version checks, and consumed-source validation prevent duplicates after
+the operation-retention horizon. This does not weaken unknown-outcome handling: reuse the identical frozen identity
+and intent throughout that protocol and never allocate a replacement operation ID.
 
 Every executor needs explicit positive operation-count and owned-byte capacities. Accepted work remains charged and
 its streams remain reserved until acknowledgement. `StopAsync` rejects new work, gives admitted work a bounded drain

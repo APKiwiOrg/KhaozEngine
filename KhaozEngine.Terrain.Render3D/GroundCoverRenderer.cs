@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 
@@ -30,11 +31,23 @@ public sealed class GroundCoverRenderOptions
     public float InstanceFadeBandWidth { get; set; } = 1f;
     /// <summary>Defaults to the original fragment dissolve. Height scaling suits short rooted foliage.</summary>
     public GroundCoverFadeMode FadeMode { get; set; }
+    /// <summary>Retains immutable height-scaled batches on the GPU when shadow casting is disabled.</summary>
+    public bool UseGpuBatches { get; set; }
+    /// <summary>World-space XZ wind direction for GPU batches. A zero vector disables wind.</summary>
+    public Vector2 WindDirection { get; set; } = Vector2.UnitX;
+    /// <summary>Wind bend as a fraction of blade height, from zero through one. GPU batches only.</summary>
+    public float WindStrength { get; set; }
+    public float WindSpeed { get; set; } = 1.8f;
+    public float WindSpatialFrequency { get; set; } = .35f;
+    /// <summary>Up to four cosmetic influences, sampled by value for each GPU submission.</summary>
+    public IReadOnlyList<FoliageInteractor> Interactors { get; set; } = Array.Empty<FoliageInteractor>();
 }
 
-/// <summary>Queues precomputed ground-cover transforms through the rigid instancing path.</summary>
+/// <summary>Queues precomputed ground cover through immediate or retained instancing.</summary>
 public static class GroundCoverRenderer
 {
+    static readonly ConditionalWeakTable<Scene3D, GroundCoverGpuCache> GpuCaches = new();
+
     /// <summary>Queues each surviving placement and all of its model parts. Returns placements drawn.</summary>
     public static int Queue(
         SceneInstances instances,
@@ -47,7 +60,9 @@ public static class GroundCoverRenderer
         return Emit(cover, meshes, focus, options, instances, QueuePart);
     }
 
-    /// <summary>Scene3D convenience over <see cref="Queue"/>.</summary>
+    /// <summary>Queues ground cover. Eligible immutable batches can retain their transforms on the GPU.
+    /// The CPU path returns drawn placements. The GPU path returns conservative submitted candidates,
+    /// including model parts and instances later rejected by the shader.</summary>
     public static int DrawGroundCover(
         this Scene3D scene,
         IReadOnlyList<GroundCoverInstance> cover,
@@ -56,7 +71,26 @@ public static class GroundCoverRenderer
         GroundCoverRenderOptions options)
     {
         ArgumentNullException.ThrowIfNull(scene);
+        ArgumentNullException.ThrowIfNull(cover);
+        ArgumentNullException.ThrowIfNull(meshes);
+        ArgumentNullException.ThrowIfNull(options);
+        if (GroundCoverGpuCache.CanRetain(cover, options))
+        {
+            Validate(options);
+            return GpuCaches.GetValue(scene, static _ => new GroundCoverGpuCache())
+                .Draw(scene, (GroundCoverBatch)cover, meshes, focus, options);
+        }
         return Emit(cover, meshes, focus, options, scene, DrawPart);
+    }
+
+    /// <summary>Releases this scene's retained resources for one immutable cover batch. Safe to repeat.
+    /// Cover submitted through the CPU path needs no release.</summary>
+    public static void ReleaseGroundCover(this Scene3D scene, IReadOnlyList<GroundCoverInstance> cover)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+        ArgumentNullException.ThrowIfNull(cover);
+        if (cover is GroundCoverBatch batch && GpuCaches.TryGetValue(scene, out GroundCoverGpuCache? cache))
+            cache.Release(batch);
     }
 
     static readonly Action<SceneInstances, MeshHandle, Matrix4x4, float, bool> QueuePart =

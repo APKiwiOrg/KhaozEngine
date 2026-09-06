@@ -10,7 +10,9 @@ public sealed partial class TileWorldView
     /// <summary>How many generated cover instances are cached across loaded regions.</summary>
     public int GeneratedCoverCount { get; private set; }
 
-    /// <summary>How many cover placements the last draw submitted after distance and quality thinning.</summary>
+    /// <summary>How many cover placements the last CPU draw submitted after distance and quality thinning.
+    /// With GPU batches, this is the conservative submitted candidate count, including model parts and
+    /// instances later rejected by the shader.</summary>
     public int LastDrawnCover { get; private set; }
 
     internal IReadOnlyList<GroundCoverInstance> CoverIn(RegionCoord region) =>
@@ -53,8 +55,10 @@ public sealed partial class TileWorldView
 
     void RebuildCover(RegionCoord region, RegionHandles handles)
     {
+        IReadOnlyList<GroundCoverInstance> cover = BuildCover(region);
+        _scene.ReleaseGroundCover(handles.Cover);
         GeneratedCoverCount -= handles.Cover.Count;
-        handles.Cover = BuildCover(region);
+        handles.Cover = cover;
         GeneratedCoverCount += handles.Cover.Count;
     }
 

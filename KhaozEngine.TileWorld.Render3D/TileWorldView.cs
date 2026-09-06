@@ -590,7 +590,11 @@ public sealed partial class TileWorldView : IDisposable
         return mesh is null ? null : _scene.LoadMesh(mesh, _material);
     }
 
-    void FreeMeshes(RegionHandles handles) => FreeMeshes(handles.Meshes);
+    void FreeMeshes(RegionHandles handles)
+    {
+        _scene.ReleaseGroundCover(handles.Cover);
+        FreeMeshes(handles.Meshes);
+    }
 
     // Takes the array rather than the record, so the rollback in LoadRegion can free a half-filled plane array
     // that never became a RegionHandles. Nulling as it goes keeps it safe to call twice.

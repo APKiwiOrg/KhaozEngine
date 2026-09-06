@@ -66,11 +66,15 @@ public interface ITileWorldScene
                   IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
                   Vector3 focus, float drawRadius);
 
-    /// <summary>Queues cached ground cover through rigid mesh instancing. Defaults to no draws for an older
+    /// <summary>Queues cached ground cover. Defaults to no draws for an older
     /// headless scene seam implementation.</summary>
     int DrawGroundCover(IReadOnlyList<GroundCoverInstance> cover,
                         IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
                         Vector3 focus, GroundCoverRenderOptions options) => 0;
+
+    /// <summary>Releases retained draw resources for one ground-cover batch. Defaults to a no-op for
+    /// scenes that use immediate draws or implement the older scene seam.</summary>
+    void ReleaseGroundCover(IReadOnlyList<GroundCoverInstance> cover) { }
 
     /// <summary>Queues one water surface for this frame, defaulting to a no-op so an implementation written
     /// before water existed keeps compiling and simply draws none.</summary>
@@ -153,6 +157,9 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene
                                IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
                                Vector3 focus, GroundCoverRenderOptions options) =>
         _scene.DrawGroundCover(cover, parts, focus, options);
+
+    /// <inheritdoc />
+    public void ReleaseGroundCover(IReadOnlyList<GroundCoverInstance> cover) => _scene.ReleaseGroundCover(cover);
 
     /// <inheritdoc />
     public void DrawWater(in WaterPlane plane) => _scene.DrawWater(plane);

@@ -7273,8 +7273,9 @@ doc.SetFoliageLayer(new TileFoliageLayer(
 
 The render adapter samples the visible material, including authored overlay shapes, and rejects water,
 disallowed materials, configured interiors and roofs, same-plane solid footprints and same-plane objects
-tagged `door` within `DoorClearance`. Non-solid decorative objects remain eligible. Validation resolves the
-foliage archetype and material ids against the same catalogs as the rest of the world.
+tagged `door` within `DoorClearance`. Its height and normal use the selected `TileTriangulation` triangle and
+the same interpolated lattice values as the rendered ground. Non-solid decorative objects remain eligible.
+Validation resolves the foliage archetype and material ids against the same catalogs as the rest of the world.
 
 **Two conventions run through every type.** Coordinates are WORLD tile coordinates everywhere, including
 `TileObject.X/Z` and `TileMarker.X/Z`, and the owning region is always `RegionCoord.Of(X, Z)`, which floors, so
@@ -7391,7 +7392,9 @@ Unloading drops the cached instances. `GeneratedCoverCount` reports cached place
 reports the most recent submitted count. The live `TileWorldViewOptions.GroundCover` object controls draw
 radius, fade band, quality density, distant density and shadow casting. Quality and distance use each
 instance's stable rank, so lower values select nested subsets without regenerating positions. Cover receives
-lighting and defaults to no shadow casting.
+lighting and defaults to no shadow casting. `MarkDirty` includes every loaded region reached by an active
+same-plane door clearance. Streaming loads and unloads also rebuild caches affected by solid footprints, upper
+roofs and tagged doors.
 
 **Roofs come off one building at a time.** `Observer` is the tile the roof rule is judged from, and
 `ObserverIndoors` says whether it carries `TileSettings.Indoors`. A roof is hidden when the observer is indoors,
@@ -7520,10 +7523,11 @@ right-handed triple, so a single top-down view has north UP and east RIGHT inste
 into region marks, because corner heights, central-difference normals and the four-tile corner blend all read
 ACROSS region borders, so an edit one tile inside a border changes the neighbour's mesh. `Flush` then rebuilds
 oldest first up to `TileWorldViewOptions.MaxRebuildsPerFlush` (16), leaving the rest counted by `PendingRebuilds`,
-and `Flush(int.MaxValue)` is the settle-now form. Streaming a region marks its eight neighbours dirty on every
-plane in both directions, so a border meshed while its neighbour was absent is not stale forever. A dirty region
-is never streamed out (unloading unsaved edits would throw, so it stays resident and logs once), and a torn region
-file throws `TileWorldException` straight out of `Update` rather than drawing a hole.
+and `Flush(int.MaxValue)` is the settle-now form. Active same-plane door clearances extend the ground-cover reach
+beyond the fixed mesh margin. Streaming a region rebuilds every loaded ground mesh or cover cache affected by
+its border data, solid footprints, upper roofs or tagged doors. A dirty region is never streamed out (unloading
+unsaved edits would throw, so it stays resident and logs once), and a torn region file throws
+`TileWorldException` straight out of `Update` rather than drawing a hole.
 
 **Capture is the same code path as the goldens.** `TileWorldSnapshot.CaptureTopDown` sizes the image outright at
 `pxPerTile` pixels a tile rather than framing it, so the scale is exact, and `CapturePerspective` shoots from an

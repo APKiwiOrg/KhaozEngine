@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -114,6 +115,24 @@ public class GroundCoverRendererTests
     }
 
     [Fact]
+    public void Queue_ResolvesModelsOnlyAfterCheapPlacementCulling()
+    {
+        var queue = new SceneInstances();
+        var meshes = new CountingMeshes();
+        GroundCoverInstance[] cover =
+        [
+            Instance("grass", 100f, 0f),
+            Instance("grass", 1f, 0.9f),
+        ];
+
+        int drawn = GroundCoverRenderer.Queue(queue, cover, meshes, Vector3.Zero,
+            new GroundCoverRenderOptions { DrawRadius = 20f, QualityDensity = 0.5f });
+
+        Assert.Equal(0, drawn);
+        Assert.Equal(0, meshes.Lookups);
+    }
+
+    [Fact]
     public void Queue_AllocatesNothingAfterWarmup()
     {
         GroundCoverInstance[] cover = Enumerable.Range(0, 64)
@@ -129,5 +148,24 @@ public class GroundCoverRendererTests
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
         Assert.Equal(0, allocated);
+    }
+
+    sealed class CountingMeshes : IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>
+    {
+        public int Lookups { get; private set; }
+        public IReadOnlyList<MeshHandle> this[string key] => throw new KeyNotFoundException(key);
+        public IEnumerable<string> Keys => [];
+        public IEnumerable<IReadOnlyList<MeshHandle>> Values => [];
+        public int Count => 0;
+        public bool ContainsKey(string key) => false;
+        public IEnumerator<KeyValuePair<string, IReadOnlyList<MeshHandle>>> GetEnumerator() =>
+            Enumerable.Empty<KeyValuePair<string, IReadOnlyList<MeshHandle>>>().GetEnumerator();
+        public bool TryGetValue(string key, out IReadOnlyList<MeshHandle> value)
+        {
+            Lookups++;
+            value = [];
+            return false;
+        }
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }

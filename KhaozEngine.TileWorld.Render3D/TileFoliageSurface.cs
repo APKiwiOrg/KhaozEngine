@@ -11,15 +11,18 @@ public sealed class TileFoliageSurface
     readonly TileWorldDocument _doc;
     readonly TileWorldCatalogs _catalogs;
     readonly TileFoliageLayer _layer;
+    readonly bool _smoothNormals;
     readonly HashSet<(int X, int Z)> _solid = new();
     readonly HashSet<(int X, int Z)> _roofed = new();
     readonly List<Vector2> _doors = new();
 
-    public TileFoliageSurface(TileWorldDocument doc, TileWorldCatalogs catalogs, TileFoliageLayer layer)
+    public TileFoliageSurface(TileWorldDocument doc, TileWorldCatalogs catalogs, TileFoliageLayer layer,
+        bool smoothNormals = true)
     {
         _doc = doc ?? throw new ArgumentNullException(nameof(doc));
         _catalogs = catalogs ?? throw new ArgumentNullException(nameof(catalogs));
         _layer = layer ?? throw new ArgumentNullException(nameof(layer));
+        _smoothNormals = smoothNormals;
         if ((uint)layer.Plane >= (uint)doc.PlaneCount)
             throw new ArgumentException($"Foliage layer '{layer.Id}' uses plane {layer.Plane}, the world has planes 0 through {doc.PlaneCount - 1}.", nameof(layer));
         IndexObjects();
@@ -37,7 +40,8 @@ public sealed class TileFoliageSurface
         int z = (int)MathF.Floor(tileZ);
         float fx = tileX - x;
         float fz = tileZ - z;
-        if (density > 0f && TileAllowed(x, z, fx, fz))
+        GroundPoint ground = GroundAt(x, z, fx, fz);
+        if (density > 0f && TileAllowed(x, z, ground.Overlay))
         {
             density *= DoorFactor(worldX, worldZ);
             density *= EdgeFactor(tileX, tileZ, x, z);
@@ -47,17 +51,7 @@ public sealed class TileFoliageSurface
             density = 0f;
         }
 
-        float h00 = _doc.CornerHeight(x, z, _layer.Plane);
-        float h10 = _doc.CornerHeight(x + 1, z, _layer.Plane);
-        float h01 = _doc.CornerHeight(x, z + 1, _layer.Plane);
-        float h11 = _doc.CornerHeight(x + 1, z + 1, _layer.Plane);
-        float south = h00 + (h10 - h00) * fx;
-        float north = h01 + (h11 - h01) * fx;
-        float height = south + (north - south) * fz;
-        float dhdx = ((h10 - h00) * (1f - fz) + (h11 - h01) * fz) / _doc.TileSize;
-        float dhdTileZ = (north - south) / _doc.TileSize;
-        Vector3 normal = Vector3.Normalize(new Vector3(-dhdx, 1f, dhdTileZ));
-        return new GroundCoverSample(height, normal, Math.Clamp(density, 0f, 1f));
+        return new GroundCoverSample(ground.Height, ground.Normal, Math.Clamp(density, 0f, 1f));
     }
 
     void IndexObjects()
@@ -97,19 +91,108 @@ public sealed class TileFoliageSurface
         return false;
     }
 
-    bool TileAllowed(int x, int z, float localX = 0.5f, float localZ = 0.5f)
+    bool TileAllowed(int x, int z, float localX = 0.5f, float localZ = 0.5f) =>
+        TileAllowed(x, z, OverlayAt(x, z, localX, localZ));
+
+    bool TileAllowed(int x, int z, bool overlayAtPoint)
     {
         if (_doc.GetRegion(RegionCoord.Of(x, z)) is null) return false;
         ushort underlay = _doc.GetUnderlay(x, z, _layer.Plane);
         if (underlay == 0) return false;
         ushort overlay = _doc.GetOverlay(x, z, _layer.Plane);
-        ushort visible = overlay != 0 && OverlayAt(x, z, localX, localZ) ? overlay : underlay;
+        ushort visible = overlay != 0 && overlayAtPoint ? overlay : underlay;
         if (_layer.AllowedUnderlays.Count > 0 && !Contains(_layer.AllowedUnderlays, visible)) return false;
         if (_catalogs.Material(visible)?.Kind == GroundMaterialKind.Water) return false;
         if (_layer.ExcludeIndoors && (_doc.GetSettings(x, z, _layer.Plane) & TileSettings.Indoors) != 0) return false;
         if (_solid.Contains((x, z)) || _roofed.Contains((x, z))) return false;
         return true;
     }
+
+    GroundPoint GroundAt(int x, int z, float localX, float localZ)
+    {
+        short h00 = _doc.CornerHeightCm(x, z, _layer.Plane);
+        short h10 = _doc.CornerHeightCm(x + 1, z, _layer.Plane);
+        short h01 = _doc.CornerHeightCm(x, z + 1, _layer.Plane);
+        short h11 = _doc.CornerHeightCm(x + 1, z + 1, _layer.Plane);
+        TileOverlayShape authored = _doc.GetOverlayShape(x, z, _layer.Plane);
+        int rotation = _doc.GetOverlayRotation(x, z, _layer.Plane);
+        bool split = TileTriangulation.SplitSwNe(h00, h10, h01, h11, authored, rotation);
+        TileOverlayShape shape = _doc.GetOverlay(x, z, _layer.Plane) == 0
+            ? TileOverlayShape.Full
+            : authored;
+        Span<TileLatticeTriangle> triangles = stackalloc TileLatticeTriangle[TileTriangulation.MaxTriangles];
+        int count = TileTriangulation.Triangulate(shape, rotation, split, triangles);
+
+        GroundVertex sw = Corner(x, z, h00, TileLatticePoint.Sw);
+        GroundVertex se = Corner(x + 1, z, h10, TileLatticePoint.Se);
+        GroundVertex nw = Corner(x, z + 1, h01, TileLatticePoint.Nw);
+        GroundVertex ne = Corner(x + 1, z + 1, h11, TileLatticePoint.Ne);
+        var point = new Vector2(localX, localZ);
+        for (int i = 0; i < count; i++)
+        {
+            TileLatticeTriangle triangle = triangles[i];
+            GroundVertex a = At(triangle.A, sw, se, nw, ne);
+            GroundVertex b = At(triangle.B, sw, se, nw, ne);
+            GroundVertex c = At(triangle.C, sw, se, nw, ne);
+            if (!Barycentric(point, a.Local, b.Local, c.Local, out Vector3 weights)) continue;
+            float height = a.Height * weights.X + b.Height * weights.Y + c.Height * weights.Z;
+            Vector3 normal = _smoothNormals
+                ? Normalize(a.Normal * weights.X + b.Normal * weights.Y + c.Normal * weights.Z)
+                : FaceNormal(a, b, c);
+            return new GroundPoint(height, normal, triangle.Overlay);
+        }
+        throw new InvalidOperationException($"Tile triangulation did not cover local point ({localX}, {localZ}).");
+    }
+
+    GroundVertex Corner(int x, int z, short heightCm, TileLatticePoint point) => new(
+        TileTriangulation.Local(point), heightCm * 0.01f,
+        TileGroundMesher.CornerNormal(_doc, x, z, _layer.Plane));
+
+    static GroundVertex At(TileLatticePoint point, in GroundVertex sw, in GroundVertex se,
+        in GroundVertex nw, in GroundVertex ne)
+    {
+        TileTriangulation.Ends(point, out TileLatticePoint first, out TileLatticePoint second);
+        GroundVertex a = Pick(first, sw, se, nw, ne);
+        if (first == second) return a;
+        GroundVertex b = Pick(second, sw, se, nw, ne);
+        return new GroundVertex((a.Local + b.Local) * 0.5f, (a.Height + b.Height) * 0.5f,
+            Normalize(a.Normal + b.Normal));
+    }
+
+    static GroundVertex Pick(TileLatticePoint point, in GroundVertex sw, in GroundVertex se,
+        in GroundVertex nw, in GroundVertex ne) => point switch
+        {
+            TileLatticePoint.Se => se,
+            TileLatticePoint.Nw => nw,
+            TileLatticePoint.Ne => ne,
+            _ => sw,
+        };
+
+    Vector3 FaceNormal(in GroundVertex a, in GroundVertex b, in GroundVertex c)
+    {
+        float tileSize = _doc.TileSize;
+        Vector3 pa = new(a.Local.X * tileSize, a.Height, -a.Local.Y * tileSize);
+        Vector3 pb = new(b.Local.X * tileSize, b.Height, -b.Local.Y * tileSize);
+        Vector3 pc = new(c.Local.X * tileSize, c.Height, -c.Local.Y * tileSize);
+        Vector3 normal = Normalize(Vector3.Cross(pb - pa, pc - pa));
+        return normal.Y < 0f ? -normal : normal;
+    }
+
+    static bool Barycentric(Vector2 p, Vector2 a, Vector2 b, Vector2 c, out Vector3 weights)
+    {
+        float denominator = ((b.Y - c.Y) * (a.X - c.X)) + ((c.X - b.X) * (a.Y - c.Y));
+        float wa = (((b.Y - c.Y) * (p.X - c.X)) + ((c.X - b.X) * (p.Y - c.Y))) / denominator;
+        float wb = (((c.Y - a.Y) * (p.X - c.X)) + ((a.X - c.X) * (p.Y - c.Y))) / denominator;
+        float wc = 1f - wa - wb;
+        weights = new Vector3(wa, wb, wc);
+        return wa >= -1e-5f && wb >= -1e-5f && wc >= -1e-5f;
+    }
+
+    static Vector3 Normalize(Vector3 value) =>
+        value.LengthSquared() > 1e-12f ? Vector3.Normalize(value) : Vector3.UnitY;
+
+    readonly record struct GroundVertex(Vector2 Local, float Height, Vector3 Normal);
+    readonly record struct GroundPoint(float Height, Vector3 Normal, bool Overlay);
 
     bool OverlayAt(int x, int z, float localX, float localZ)
     {

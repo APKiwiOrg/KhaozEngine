@@ -97,6 +97,21 @@ public class GroundCoverDistributionTests
         Assert.True(result.Count(p => p.ModelId == "grass_short") > result.Count(p => p.ModelId == "grass_tall") * 2);
     }
 
+    [Fact]
+    public void Generate_PositiveScaleKeepsSurfaceTransformsRightHanded()
+    {
+        GroundCoverSettings settings = Settings();
+        settings.ScaleMin = 1f;
+        settings.ScaleMax = 1f;
+
+        IReadOnlyList<GroundCoverInstance> result = GroundCoverDistribution.Generate(
+            new RectArea(0f, 0f, 4f, 4f), settings, Flat);
+
+        Assert.NotEmpty(result);
+        Assert.All(result, instance => Assert.True(instance.Transform.GetDeterminant() > 0.9999f,
+            $"positive unit scale produced determinant {instance.Transform.GetDeterminant()}"));
+    }
+
     [Theory]
     [InlineData(0f, 0.5f, 1f)]
     [InlineData(float.NaN, 0.5f, 1f)]

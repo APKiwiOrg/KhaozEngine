@@ -261,6 +261,7 @@ public sealed partial class TileWorldView : IDisposable
 
         var meshes = new MeshHandle?[_planes];
         var props = new TileRegionProps[_planes];
+        IReadOnlyList<GroundCoverInstance> cover;
         try
         {
             for (int plane = 0; plane < _planes; plane++)
@@ -268,16 +269,17 @@ public sealed partial class TileWorldView : IDisposable
                 meshes[plane] = BuildMesh(region, plane);
                 props[plane] = TileObjectProps.Build(_doc, _catalogs, region, plane, OverrideLookup());
             }
+            cover = BuildCover(region);
         }
         catch
         {
             // The array only reaches _loaded once every plane is built, so a mesher or an upload that throws on
-            // plane 3 of 4 would otherwise orphan planes 0 to 2: nothing references them and UnloadRegion has
-            // nothing to find. Free what THIS call uploaded, then let the exception out unchanged.
+            // plane 3 of 4, or cover generation after plane 4, would otherwise orphan the uploads: nothing
+            // references them and UnloadRegion has nothing to find. Free what THIS call uploaded, then let the
+            // exception out unchanged.
             FreeMeshes(meshes);
             throw;
         }
-        IReadOnlyList<GroundCoverInstance> cover = BuildCover(region);
         _loaded[region] = new RegionHandles(meshes, props, cover);
         GeneratedCoverCount += cover.Count;
     }
@@ -303,25 +305,30 @@ public sealed partial class TileWorldView : IDisposable
         Queue(region, plane);
     }
 
-    /// <summary>Queues every region a world-space tile rect can affect on one plane: every region the rect
-    /// touches after growing it by <see cref="DirtyRegionMargin"/> tiles. That margin is correctness, not
-    /// padding. A corner height is shared by the four tiles around it and so by up to four regions, the smooth
-    /// normal at a corner is a central difference that reads one corner further still, and a corner colour
-    /// averages the tiles meeting there, so an edit one tile inside a region border genuinely changes the
-    /// NEIGHBOUR's mesh. The margin is applied unconditionally, because the rect does not say which of those
-    /// three inputs the edit touched, and marking wide is free: the flush drops every region that is not
-    /// loaded. This is the edit-facing overload, where an editor hands over the tiles it wrote and the view
-    /// works out which regions that is.</summary>
+    /// <summary>Queues every loaded region a world-space tile rect can affect on one plane. Ground meshes use
+    /// the fixed <see cref="DirtyRegionMargin"/> for shared corners, normals and colours. Ground cover also uses
+    /// the largest active same-plane door clearance, so a distant cached region cannot retain foliage inside a
+    /// newly edited exclusion. This is the edit-facing overload, where an editor hands over the tiles it wrote
+    /// and the view works out which regions that is.</summary>
     public void MarkDirty(TileRect worldRect, int plane)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (worldRect.IsEmpty || plane < 0 || plane >= _planes) return;
+        QueueBaseDependencies(worldRect, plane, excluded: null);
+        QueueFoliageDependencies(worldRect, plane, excluded: null);
+    }
+
+    void QueueBaseDependencies(TileRect worldRect, int plane, RegionCoord? excluded)
+    {
         TileRect reach = worldRect.Expand(DirtyRegionMargin);
         RegionCoord min = RegionCoord.Of(reach.X, reach.Z);
         RegionCoord max = RegionCoord.Of(reach.X1 - 1, reach.Z1 - 1);
         for (int rz = min.Rz; rz <= max.Rz; rz++)
             for (int rx = min.Rx; rx <= max.Rx; rx++)
-                Queue(new RegionCoord(rx, rz), plane);
+            {
+                var region = new RegionCoord(rx, rz);
+                if (region != excluded) Queue(region, plane);
+            }
     }
 
     /// <summary>Rebuilds queued region-planes oldest first, up to

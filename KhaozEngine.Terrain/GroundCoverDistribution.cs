@@ -141,7 +141,7 @@ public static class GroundCoverDistribution
     {
         Vector3 reference = MathF.Abs(normal.Y) > 0.999f ? Vector3.UnitZ : Vector3.UnitY;
         Vector3 right = Vector3.Normalize(Vector3.Cross(reference, normal));
-        Vector3 forward = Vector3.Normalize(Vector3.Cross(normal, right));
+        Vector3 forward = Vector3.Normalize(Vector3.Cross(right, normal));
         var alignment = new Matrix4x4(
             right.X, right.Y, right.Z, 0f,
             normal.X, normal.Y, normal.Z, 0f,

@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Numerics;
+using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
 using KhaozEngine.TileWorld;
 using Xunit;
@@ -27,13 +28,34 @@ public class TileFoliageSurfaceTests
         TileWorldDocument doc = TileRenderTestData.HillWorld();
         doc.TileSize = tileSize;
         var surface = new TileFoliageSurface(doc, TileRenderTestData.Catalogs, Layer(tileSize));
+        float worldX = TileWorldSpace.WorldX(20.5f, tileSize);
+        float worldZ = TileWorldSpace.WorldZ(19.75f, tileSize);
 
-        GroundCoverSample sample = At(surface, doc, 20.5f, 19.75f);
+        GroundCoverSample sample = surface.Sample(worldX, worldZ);
+        (float expectedHeight, Vector3 expectedNormal) = RenderedGroundAt(doc, worldX, worldZ);
 
-        Assert.Equal(doc.HeightAt(TileWorldSpace.WorldX(20.5f, tileSize), TileWorldSpace.WorldZ(19.75f, tileSize), 0), sample.Height, 4);
+        Assert.Equal(expectedHeight, sample.Height, 4);
+        Assert.True(Vector3.Dot(expectedNormal, sample.Normal) > 0.9999f);
         Assert.True(sample.Normal.Y > 0f);
         Assert.NotEqual(Vector3.UnitY, sample.Normal);
         Assert.Equal(1f, sample.Density, 4);
+    }
+
+    [Fact]
+    public void Sample_MatchesTheRenderedTriangleAcrossANonCoplanarTile()
+    {
+        TileWorldDocument doc = TileRenderTestData.HillWorld();
+        var surface = new TileFoliageSurface(doc, TileRenderTestData.Catalogs, Layer(doc.TileSize));
+        const float worldX = 19.5f;
+        const float worldZ = -19.5f;
+
+        GroundCoverSample sample = surface.Sample(worldX, worldZ);
+        (float expectedHeight, Vector3 expectedNormal) = RenderedGroundAt(doc, worldX, worldZ);
+
+        Assert.Equal(0f, expectedHeight);
+        Assert.Equal(expectedHeight, sample.Height, 5);
+        Assert.True(Vector3.Dot(expectedNormal, sample.Normal) > 0.99999f,
+            $"surface normal {sample.Normal} did not match mesh normal {expectedNormal}");
     }
 
     [Fact]
@@ -124,5 +146,41 @@ public class TileFoliageSurfaceTests
         Assert.True(At(surface, source.Document, 1.5f, 1.5f).Density > 0f);
         Assert.Equal(0f, At(surface, source.Document, TileRegion.Size + 1.5f, 1.5f).Density);
         Assert.Equal(0f, At(surface, source.Document, -1.5f, 1.5f).Density);
+    }
+
+    static (float Height, Vector3 Normal) RenderedGroundAt(TileWorldDocument doc, float worldX, float worldZ)
+    {
+        int tileX = (int)MathF.Floor(TileWorldSpace.TileX(worldX, doc.TileSize));
+        int tileZ = (int)MathF.Floor(TileWorldSpace.TileZ(worldZ, doc.TileSize));
+        RegionCoord region = RegionCoord.Of(tileX, tileZ);
+        GltfMesh mesh = Assert.IsType<GltfMesh>(TileGroundMesher.Build(
+            doc, TileRenderTestData.Catalogs, region, 0));
+        Matrix4x4 world = TileGroundMesher.WorldMatrix(doc, region);
+        var point = new Vector2(worldX, worldZ);
+        for (int triangle = 0; triangle < mesh.TriangleCount; triangle++)
+        {
+            ModelVertex a = mesh.Vertices[mesh.Indices32[triangle * 3]];
+            ModelVertex b = mesh.Vertices[mesh.Indices32[triangle * 3 + 1]];
+            ModelVertex c = mesh.Vertices[mesh.Indices32[triangle * 3 + 2]];
+            Vector3 pa = Vector3.Transform(a.Position, world);
+            Vector3 pb = Vector3.Transform(b.Position, world);
+            Vector3 pc = Vector3.Transform(c.Position, world);
+            if (!Barycentric(point, new Vector2(pa.X, pa.Z), new Vector2(pb.X, pb.Z),
+                    new Vector2(pc.X, pc.Z), out Vector3 weights)) continue;
+            Vector3 normal = Vector3.Normalize(
+                a.Normal * weights.X + b.Normal * weights.Y + c.Normal * weights.Z);
+            return (pa.Y * weights.X + pb.Y * weights.Y + pc.Y * weights.Z, normal);
+        }
+        throw new Xunit.Sdk.XunitException($"no rendered ground triangle contains ({worldX}, {worldZ})");
+    }
+
+    static bool Barycentric(Vector2 p, Vector2 a, Vector2 b, Vector2 c, out Vector3 weights)
+    {
+        float denominator = ((b.Y - c.Y) * (a.X - c.X)) + ((c.X - b.X) * (a.Y - c.Y));
+        float wa = (((b.Y - c.Y) * (p.X - c.X)) + ((c.X - b.X) * (p.Y - c.Y))) / denominator;
+        float wb = (((c.Y - a.Y) * (p.X - c.X)) + ((a.X - c.X) * (p.Y - c.Y))) / denominator;
+        float wc = 1f - wa - wb;
+        weights = new Vector3(wa, wb, wc);
+        return wa >= -1e-5f && wb >= -1e-5f && wc >= -1e-5f;
     }
 }

@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Terrain;
@@ -15,6 +17,12 @@ public class TileWorldViewFoliageTests
 
     static TileWorldView View(RecordingTileWorldScene scene, TileWorldDocument doc, TileWorldViewOptions? options = null) =>
         new(scene, doc, TileRenderTestData.Catalogs, new GreyboxMeshResolver(), options);
+
+    static TileFoliageLayer WideLayer(float clearance, float spacing = 1f, int regions = 2) => new(
+        "wide", 0, 0f, -64f, 1f, regions * TileRegion.Size + 1, 65,
+        Enumerable.Repeat((byte)255, (regions * TileRegion.Size + 1) * 65).ToArray(),
+        19, spacing, 1f, 1f, 0f, [new TileFoliageArchetype("bush", 1f)],
+        [TileRenderTestData.Grass], true, true, clearance, 0f);
 
     [Fact]
     public void View_CachesAndDrawsSavedFoliageThroughLiveOptions()
@@ -76,7 +84,7 @@ public class TileWorldViewFoliageTests
         view.MarkDirty(new TileRect(tileX, tileZ, 1, 1), 0);
         view.Flush(int.MaxValue);
         GroundCoverInstance afterHeight = view.CoverIn(TileRenderTestData.Region)
-            .Single(x => x.ModelId == before.ModelId && x.Position.X == before.Position.X && x.Position.Z == before.Position.Z);
+            .Single(x => x.ThinningRank == before.ThinningRank);
         Assert.NotEqual(before.Transform, afterHeight.Transform);
 
         doc.SetFoliageLayer(Layer(0));
@@ -137,6 +145,90 @@ public class TileWorldViewFoliageTests
 
         Assert.Equal(expected, actual);
         Assert.Equal(actual.Length, actual.Distinct(System.StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
+    public void View_DirtyRectReachesEveryRegionInsideDoorClearance()
+    {
+        using var tmp = new TempDir();
+        TileWorldDocument doc = TileWorldFile.Load(TileRenderTestData.SaveGrid(tmp, 2, 1));
+        TileFoliageLayer layer = WideLayer(clearance: 8f);
+        doc.SetFoliageLayer(layer);
+        var scene = new RecordingTileWorldScene();
+        using TileWorldView view = View(scene, doc);
+        var west = new RegionCoord(0, 0);
+        var east = new RegionCoord(1, 0);
+        view.LoadRegion(west);
+        view.LoadRegion(east);
+        IReadOnlyList<GroundCoverInstance> before = view.CoverIn(east);
+
+        doc.AddObject("doorway", 60, 30, 0, 0, ["door"]);
+        view.MarkDirty(new TileRect(60, 30, 1, 1), 0);
+        view.Flush(int.MaxValue);
+
+        IReadOnlyList<GroundCoverInstance> after = view.CoverIn(east);
+        var fresh = new TileFoliageSurface(doc, TileRenderTestData.Catalogs, layer);
+        Assert.NotSame(before, after);
+        Assert.DoesNotContain(after, p => fresh.Sample(p.Position.X, p.Position.Z).Density == 0f);
+    }
+
+    [Fact]
+    public void Residency_RebuildsDistantCoverWhenADoorRegionLoadsAndUnloads()
+    {
+        using var tmp = new TempDir();
+        string dir = TileRenderTestData.SaveGrid(tmp, 3, 1);
+        TileWorldDocument authored = TileWorldFile.Load(dir);
+        authored.SetFoliageLayer(WideLayer(clearance: 70f, regions: 3));
+        authored.AddObject("doorway", 63, 30, 0, 0, ["door"]);
+        TileWorldFile.Save(authored, dir);
+        TileWorldSource source = TileWorldSource.Open(dir);
+        var scene = new RecordingTileWorldScene();
+        using var view = new TileWorldView(
+            scene, source.Document, TileRenderTestData.Catalogs, new GreyboxMeshResolver());
+        var residency = new TileRegionResidency(source, view,
+            new TileResidencyConfig(LoadRadius: 2, UnloadRadius: 3, MaxLoadsPerUpdate: 1));
+        var east = new RegionCoord(2, 0);
+        var observerEast = new TileCoord(east.OriginX, 0, 0);
+
+        residency.Update(observerEast);
+        view.Flush(int.MaxValue);
+        int beforeDoorLoads = view.CoverIn(east).Count;
+        residency.Update(observerEast);
+        residency.Update(observerEast);
+        view.Flush(int.MaxValue);
+        int withDoor = view.CoverIn(east).Count;
+
+        Assert.True(withDoor < beforeDoorLoads);
+        var freshWithDoor = new TileFoliageSurface(source.Document, TileRenderTestData.Catalogs,
+            source.Document.GetFoliageLayer("wide")!);
+        Assert.DoesNotContain(view.CoverIn(east), p =>
+            freshWithDoor.Sample(p.Position.X, p.Position.Z).Density == 0f);
+
+        residency.Update(new TileCoord(4 * TileRegion.Size, 0, 0));
+        view.Flush(int.MaxValue);
+
+        Assert.True(view.CoverIn(east).Count > withDoor);
+        var freshWithoutDoor = new TileFoliageSurface(source.Document, TileRenderTestData.Catalogs,
+            source.Document.GetFoliageLayer("wide")!);
+        Assert.DoesNotContain(view.CoverIn(east), p =>
+            freshWithoutDoor.Sample(p.Position.X, p.Position.Z).Density == 0f);
+    }
+
+    [Fact]
+    public void View_FreesUploadedGroundWhenCoverGenerationRejectsTheRegion()
+    {
+        TileWorldDocument doc = TileRenderTestData.HillWorld();
+        doc.SetFoliageLayer(WideLayer(clearance: 0f, spacing: 0.01f));
+        var scene = new RecordingTileWorldScene();
+        using TileWorldView view = View(scene, doc);
+        int before = scene.AliveMeshCount;
+
+        Assert.Throws<ArgumentException>(() => view.LoadRegion(TileRenderTestData.Region));
+
+        Assert.Equal(0, view.LoadedRegionCount);
+        Assert.Single(scene.MeshLoads);
+        Assert.Single(scene.MeshUnloads);
+        Assert.Equal(before, scene.AliveMeshCount);
     }
 
     static string Key(GroundCoverInstance instance) =>

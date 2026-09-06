@@ -75,7 +75,6 @@ public static class GroundCoverRenderer
         {
             GroundCoverInstance instance = cover[i];
             if (instance.ThinningRank < 0f || instance.ThinningRank >= options.QualityDensity) continue;
-            if (!meshes.TryGetValue(instance.ModelId, out IReadOnlyList<MeshHandle>? parts) || parts is null) continue;
             float dx = instance.Position.X - focus.X;
             float dz = instance.Position.Z - focus.Z;
             float distance2 = dx * dx + dz * dz;
@@ -93,6 +92,7 @@ public static class GroundCoverRenderer
                 dissolveStart = MathF.Max(inner, cutoff - personalBand);
             }
             if (distance > cutoff) continue;
+            if (!meshes.TryGetValue(instance.ModelId, out IReadOnlyList<MeshHandle>? parts) || parts is null) continue;
             float dissolve = cutoff > dissolveStart
                 ? Math.Clamp((distance - dissolveStart) / (cutoff - dissolveStart), 0f, 1f)
                 : 0f;

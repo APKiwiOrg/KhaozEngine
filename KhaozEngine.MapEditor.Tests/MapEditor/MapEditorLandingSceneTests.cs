@@ -533,6 +533,20 @@ namespace KhaozEngine.Tests.MapEditor
 
                 Rect list = scene.MapListBounds;
                 var overList = new Vector2(list.X + list.Width * 0.5f, list.Y + list.Height * 0.5f);
+
+                // A small drag keeps both the original press and the release inside this row after it moves.
+                // The gesture is still a scroll, so its release must not activate the map under it.
+                Button dragRow = scene.RecentButtonAt(2) ?? throw new InvalidOperationException("expected a drag row");
+                var dragStart = new Vector2(dragRow.Bounds.X + dragRow.Bounds.Width * 0.5f,
+                    dragRow.Bounds.Y + dragRow.Bounds.Height * 0.5f);
+                var dragEnd = dragStart - new Vector2(0f, 10f);
+                m.Input = MouseFrame(dragStart, false, width: 1280, height: 720); m.Update(0.016f);
+                m.Input = MouseFrame(dragStart, true, width: 1280, height: 720); m.Update(0.016f);
+                m.Input = MouseFrame(dragEnd, true, width: 1280, height: 720); m.Update(0.016f);
+                m.Input = MouseFrame(dragEnd, false, width: 1280, height: 720); m.Update(0.016f);
+                Assert.Null(opened);
+                Assert.Equal(1, m.Count);
+
                 m.Input = MouseFrame(overList, false, scrollDelta: -20f, width: 1280, height: 720);
                 m.Update(0.016f);
 

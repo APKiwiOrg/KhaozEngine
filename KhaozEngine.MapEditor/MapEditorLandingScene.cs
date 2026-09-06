@@ -441,7 +441,9 @@ namespace KhaozEngine.MapEditor
             RefreshRecentIfChanged();
             _ui.Update(Manager.Input, ui);
             LandingLayout layout = ComputeLayout(ui.Width, ui.Height);
+            float scrollBeforeUpdate = _mapScroll.ScrollOffset;
             _mapScroll.Update(_ui.Pointer, Manager.Input, dt);
+            if (_mapScroll.ScrollOffset != scrollBeforeUpdate) _ui.Pointer.ConsumeGesture();
             layout = ComputeLayout(ui.Width, ui.Height);
 
             _nameInput.Bounds = layout.NameField;

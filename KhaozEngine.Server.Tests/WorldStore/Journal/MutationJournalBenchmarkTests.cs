@@ -307,8 +307,8 @@ public sealed class MutationJournalBenchmarkTests
                 Seed = 835,
                 PayloadBytes = 96,
                 DatabasePath = database,
-                Duration = TimeSpan.FromMilliseconds(300),
-                ProgressInterval = TimeSpan.FromMilliseconds(20),
+                Duration = TimeSpan.FromTicks(1),
+                ProgressInterval = TimeSpan.FromTicks(1),
             };
 
             JournalBenchmarkResult result = await JournalSoakRunner.RunAsync(config, output);

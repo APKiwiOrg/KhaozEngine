@@ -20,8 +20,6 @@ public static class JournalSoakRunner
         config.Validate();
 
         TextWriter synchronized = TextWriter.Synchronized(output);
-        using var duration = new CancellationTokenSource(config.Duration);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, duration.Token);
         Action<JournalBenchmarkProgress> progress = value =>
         {
             string json = JsonSerializer.Serialize(new
@@ -39,6 +37,7 @@ public static class JournalSoakRunner
         return await JournalBenchmarkRunner.RunAsync(
             config with { Operations = JournalBenchmarkConfig.MaximumOperations },
             progress,
-            linked.Token).ConfigureAwait(false);
+            cancellationToken,
+            config.Duration).ConfigureAwait(false);
     }
 }

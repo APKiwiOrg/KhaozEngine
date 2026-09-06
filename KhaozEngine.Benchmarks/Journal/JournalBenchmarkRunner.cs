@@ -107,12 +107,13 @@ public static class JournalBenchmarkRunner
     public static Task<JournalBenchmarkResult> RunAsync(
         JournalBenchmarkConfig config,
         CancellationToken cancellationToken = default)
-        => RunAsync(config, null, cancellationToken);
+        => RunAsync(config, null, cancellationToken, null);
 
     internal static async Task<JournalBenchmarkResult> RunAsync(
         JournalBenchmarkConfig config,
         Action<JournalBenchmarkProgress>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        TimeSpan? duration)
     {
         config.Validate();
         using JournalStoreScope scope = JournalStoreScope.Create(config);
@@ -139,6 +140,7 @@ public static class JournalBenchmarkRunner
                     progress(new JournalBenchmarkProgress(state.OperationsCompleted, state.Applied, state.Replayed, timer.Elapsed.TotalSeconds));
                     nextProgress += config.ProgressInterval;
                 }
+                if (duration is not null && timer.Elapsed >= duration.Value) break;
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

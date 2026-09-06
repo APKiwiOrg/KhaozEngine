@@ -681,6 +681,16 @@ namespace KhaozEngine.Tests.Render3D
                     $"WaterClipmapVert lost '{member}': the Water UBO block declaration drifted from WaterFrag's.");
         }
 
+        [Fact]
+        public void GroundDecalFrameUbo_MatchesItsPayloadAndShaderBlock()
+        {
+            Assert.Equal((int)GroundDecalRenderer.FramePayloadBytes,
+                Marshal.SizeOf<GroundDecalRenderer.FrameUniforms>());
+            Assert.Equal(64 + 2 * 16, (int)GroundDecalRenderer.FramePayloadBytes);
+            foreach (string member in new[] { "mat4 InvViewProj;", "vec4 TimeQ;", "vec4 RenderOrigin;" })
+                Assert.Contains(member, ShaderSources.DecalFrag);
+        }
+
         // ---- Distortion offset-field pass UBO (DistortionRenderer) ----
 
         [Fact]

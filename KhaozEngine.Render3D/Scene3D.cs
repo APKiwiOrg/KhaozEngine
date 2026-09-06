@@ -1883,7 +1883,7 @@ namespace KhaozEngine.Render3D
                     // Blob-shadow decals are legacy Solid fills (no pattern/energy/feather), so time+quality are inert here.
                     // FramePass.BlobShadow: runs BEFORE the skinned draws and resolves only depth (not the normal
                     // target the reject reads), and it reads its OWN frame-UBO slot rather than a shared range (#483).
-                    _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, vp, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, Rendering.GroundDecalRenderer.FramePass.BlobShadow, RelativeDecals(_shadowDecals));
+                    _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, vp, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, Rendering.GroundDecalRenderer.FramePass.BlobShadow, _frameOrigin, RelativeDecals(_shadowDecals));
                     cl.SetFramebuffer(_res.ModelFB);
                     _model.BindPass(cl);
                 }
@@ -1967,7 +1967,7 @@ namespace KhaozEngine.Render3D
                 // Batched decal pass: one instanced draw per blend run (see GroundDecalRenderer), so add the run count.
                 // FramePass.Main: after ResolveDepthNormal, so the normal target carries the model pass's dynamic tags -
                 // reject skinned pixels so decals stay off characters (#235) - and it reads its OWN UBO slot (#483).
-                _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, vp, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, Rendering.GroundDecalRenderer.FramePass.Main, RelativeDecals(_decals));
+                _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, vp, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, Rendering.GroundDecalRenderer.FramePass.Main, _frameOrigin, RelativeDecals(_decals));
 
             // Animated water (Rendering gap #5): after the sky + ground decals, sampling the resolved scene depth
             // (already valid via the ResolveDepthNormal call above the sky pass) for the shore fade. Depth test ON (so

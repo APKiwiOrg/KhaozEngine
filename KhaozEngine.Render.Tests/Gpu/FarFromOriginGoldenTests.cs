@@ -113,6 +113,63 @@ namespace KhaozEngine.Tests.Gpu
                 $"(tolerance {GoldenCompare.Tolerance}): camera-relative rendering is not holding at range.");
         }
 
+        static byte[] RenderSparklingDecal(Vector3 renderOrigin)
+        {
+            MeshHandle floor = default;
+            return Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    floor = scene.LoadMesh(MeshPrimitives.Tile(40f, 0.1f));
+                    scene.RenderOrigin = renderOrigin;
+                    scene.EffectTimeSeconds = 1.37f;
+                    scene.Post.Starfield = false;
+                    scene.Post.Outline = false;
+                    scene.Post.BackgroundColor = new Color(0.01f, 0.01f, 0.01f, 1f);
+                    scene.Post.Quality.Shadows.Mode = ShadowMode.Off;
+                    scene.Camera.Azimuth = 0.25f;
+                    scene.Camera.Elevation = 0.9f;
+                    scene.Camera.Frame(Far, new Vector3(14f, 4f, 14f));
+                },
+                drawFrame: scene =>
+                {
+                    scene.Draw(floor, Matrix4x4.CreateTranslation(Far), new Color(0.08f, 0.08f, 0.08f, 1f));
+                    scene.DrawGroundDecal(new GroundDecal
+                    {
+                        Shape = DecalShape.Circle,
+                        Center = Far,
+                        Size = new Vector4(7f, 0f, 0f, 0f),
+                        FillColor = new Color(0.05f, 0.2f, 0.35f, 0f),
+                        OutlineColor = new Color(0.7f, 0.95f, 1f, 0.1f),
+                        EdgeThickness = 0.35f,
+                        FillFraction = 1f,
+                        RimGlow = 4f,
+                        Sparkle = 1f,
+                        YTolerance = 0.3f,
+                        MaxStep = 0.4f,
+                    });
+                },
+                frames: 2);
+        }
+
+        [GpuFact]
+        public void Golden3D_SparklingDecal_KeepsItsPhaseWhenOnlyTheRenderOriginChanges()
+        {
+            byte[] first = RenderSparklingDecal(Far);
+            byte[] shifted = RenderSparklingDecal(Far + new Vector3(3.125f, 0f, 0f));
+
+            int brightPixels = 0;
+            for (int i = 0; i < first.Length; i += 4)
+                if (first[i] > 35 || first[i + 1] > 35 || first[i + 2] > 35) brightPixels++;
+            Assert.True(brightPixels > 500,
+                $"the sparkling decal covered only {brightPixels} bright pixels, so the phase comparison is vacuous");
+
+            float worst = WorstCellDelta(GoldenCompare.Downsample(first, W, H),
+                GoldenCompare.Downsample(shifted, W, H));
+            Assert.True(worst <= GoldenCompare.Tolerance,
+                $"the same absolute sparkling decal changed by {worst} when only the render origin moved " +
+                $"(tolerance {GoldenCompare.Tolerance})");
+        }
+
         /// <summary>
         /// A tight close-up: a 12 cm box filling the frame, so ONE float32 quantum at 100 km (7.8 mm, the ULP of the
         /// binade the coordinate sits in) is several pixels wide instead of a tenth of one. The broad scene above is

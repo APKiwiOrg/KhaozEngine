@@ -42,9 +42,16 @@ namespace KhaozEngine.Terrain
         /// the identity for a well-formed kit, so real output is unchanged.</para></summary>
         public static GltfMesh Merge(IReadOnlyList<PropPlacement> placements,
                                      IReadOnlyDictionary<string, GltfMesh> sourceMeshes)
+            => MergeMeasured(placements, sourceMeshes, out _);
+
+        /// <summary>The live containment merge plus its exact count of malformed source corners.</summary>
+        internal static GltfMesh MergeMeasured(IReadOnlyList<PropPlacement> placements,
+                                               IReadOnlyDictionary<string, GltfMesh> sourceMeshes,
+                                               out long malformedCornersDropped)
         {
             if (placements == null) throw new ArgumentNullException(nameof(placements));
             if (sourceMeshes == null) throw new ArgumentNullException(nameof(sourceMeshes));
+            malformedCornersDropped = 0;
 
             int vertCount = 0, indexCount = 0;
             for (int p = 0; p < placements.Count; p++)
@@ -84,6 +91,7 @@ namespace KhaozEngine.Terrain
                     // vertex array, which is what turned one malformed kit mesh into an IndexOutOfRangeException on a
                     // worker thread. The ternary is the identity for every well-formed mesh, so the merged output is
                     // byte-identical to before. A collapsed corner makes the triangle degenerate and Weld drops it.
+                    if (s >= srcVerts) malformedCornersDropped++;
                     idx[ii++] = baseIndex + (s < srcVerts ? s : 0u);
                 }
             }
@@ -204,8 +212,14 @@ namespace KhaozEngine.Terrain
         public static GltfMesh BuildMergedMesh(IReadOnlyList<PropPlacement> placements,
                                                IReadOnlyDictionary<string, GltfMesh> sourceMeshes,
                                                float weldCellSize)
+            => BuildMergedMeshMeasured(placements, sourceMeshes, weldCellSize, out _);
+
+        /// <summary>The live containment build plus its exact count of malformed source corners.</summary>
+        internal static GltfMesh BuildMergedMeshMeasured(IReadOnlyList<PropPlacement> placements,
+                                                         IReadOnlyDictionary<string, GltfMesh> sourceMeshes,
+                                                         float weldCellSize, out long malformedCornersDropped)
         {
-            GltfMesh merged = Merge(placements, sourceMeshes);
+            GltfMesh merged = MergeMeasured(placements, sourceMeshes, out malformedCornersDropped);
             return weldCellSize > 0f ? Weld(merged, weldCellSize) : merged;
         }
 

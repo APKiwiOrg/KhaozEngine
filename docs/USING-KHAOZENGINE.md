@@ -7689,9 +7689,10 @@ referring to it by id keeps resolving.
 (an iterated box blur reading its outside neighbours from the document, so a patch blends into the terrain
 around it), `SetHeights`, `Line` (Bresenham, one object per tile, one undo step), `Scatter` (a jittered grid
 whose offsets come from a hash of the point and the seed, so the same arguments always produce the same world),
-`PlacePrefab` and `ImportHeights`. `PgmReader` decodes the binary PGM (netpbm P5, 8 or 16 bit) a heightmap
-import takes, PGM rather than PNG because the engine ships no deflate decoder. Write those files with LF line
-endings: a CRLF header spends its CR as the single delimiter byte and leaves the LF as sample 0, which shifts
+`PlacePrefab` and `ImportHeights`. Height imports detect binary PGM (netpbm P5) or PNG by signature.
+`PngReader` in Imaging supports non-interlaced 8/16-bit grayscale, gray-alpha, RGB and RGBA, using grayscale
+or the red channel as height and ignoring alpha. Both formats preserve 16-bit sample precision. Palette and
+interlaced PNGs are rejected. Write PGM files with LF line endings: a CRLF header spends its CR as the single delimiter byte and leaves the LF as sample 0, which shifts
 the whole raster.
 
 Two limits are worth knowing before leaning on the general case. A `SnapshotRectCommand` owns what was inside
@@ -7777,8 +7778,8 @@ centre and radius. Every configure, density, paint and remove call is one undo s
 (a headless Metal, D3D11 or Vulkan device, through `TileWorldSnapshot`, the same path the render goldens take),
 and both hand back a text block naming the framing followed by the PNG itself, with an optional `savePath` that
 ALSO writes the file and joins the saved path to that framing line. Everything else runs on a machine with no
-display. `height_import` reads binary PGM (P5) rather than PNG, since the engine ships no PNG decoder, so
-convert first.
+display. `height_import` reads binary PGM (P5) or non-interlaced 8/16-bit PNG. Both formats use the same
+undoable height command and north-first row orientation.
 
 A short authoring run:
 
@@ -13315,8 +13316,9 @@ It is a default interface member, so every validator already has it. The default
 maps null to `Refused`, which is what null already meant, so nothing that exists today changes meaning.
 `DiscordTokenValidator` overrides it and splits on the HTTP status class: any 5xx, a 429, a 408, or a request
 that never completed report `ProviderUnavailable`, everything else non-success reports `Refused`.
-`OidcTokenValidator` takes the default for now, so an OIDC outage still reads as `Refused`. `result.Detail` is
-a developer-facing note (a status code, an exception message), never localized and never shown to a player.
+`OidcTokenValidator` also overrides it: discovery, JWKS and transport failures report `ProviderUnavailable`,
+while invalid signatures and claims report `Refused`. Caller cancellation still propagates, including when
+metadata is cached. `result.Detail` is a developer-facing note, never shown to a player.
 
 ### Offline grace
 

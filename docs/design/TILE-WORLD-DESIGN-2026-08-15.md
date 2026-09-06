@@ -757,6 +757,8 @@ because the spec's shape did not survive contact:
   a deflate decoder that no engine package ships, and this program was not the place to add one, so the verb
   refuses PNG by name and says to convert first. If a PNG path is ever wanted, that is an engine-wide image
   decode question rather than a tile-world one.
+  Later extension (#650): Imaging now owns that decoder, and the import path accepts both PGM and PNG.
+  The original format restriction above records the first implementation decision.
 - **The prefab verbs take PATHS, not names.** There is no prefab registry, so `prefab_save` extracts a rect to
   a file (its name without the extension becoming the prefab's name) and `prefab_place` and `prefab_list` take
   a file and a directory. `prefab_save` is the one write verb here that changes nothing about the world, so it

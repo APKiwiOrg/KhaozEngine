@@ -89,7 +89,49 @@ namespace KhaozEngine.Render3D
     /// <see cref="GltfMaterialMaps"/>.</summary>
     public static class GltfLoader
     {
-        public static GltfMesh Load(string path) => BuildRigid(ModelRoot.Load(path), path);
+        static ModelRoot LoadModel(string path)
+        {
+            try { return ModelRoot.Load(path); }
+            catch (SharpGLTF.Validation.DataException ex)
+            {
+                // SharpGLTF's strict diagnostic identifies the accessor SLOT but omits the bad index VALUE. Parse
+                // only after that failure so our index preflight can name the value and vertex count. Valid assets
+                // retain SharpGLTF's full validation and are never parsed twice.
+                ModelRoot uncheckedRoot;
+                try
+                {
+                    var settings = new ReadSettings { Validation = SharpGLTF.Validation.ValidationMode.Skip };
+                    uncheckedRoot = ModelRoot.Load(path, settings);
+                }
+                catch (Exception uncheckedEx)
+                {
+                    throw new InvalidOperationException(
+                        $"glTF asset '{path}' failed validation: {ex.Message}",
+                        new AggregateException(ex, uncheckedEx));
+                }
+                ValidatePrimitiveIndices(uncheckedRoot, path);
+                throw new InvalidOperationException($"glTF asset '{path}' failed validation: {ex.Message}", ex);
+            }
+        }
+
+        static void ValidatePrimitiveIndices(ModelRoot root, string path)
+        {
+            string assetIdentity = $"glTF asset '{path}'";
+            foreach (var mesh in root.LogicalMeshes)
+            foreach (var prim in mesh.Primitives)
+            {
+                var pos = prim.GetVertexAccessor("POSITION")?.AsVector3Array();
+                if (pos == null) continue;
+                foreach (var (a, b, c) in prim.GetTriangleIndices())
+                {
+                    MeshIndexValidation.Source(a, pos.Count, assetIdentity);
+                    MeshIndexValidation.Source(b, pos.Count, assetIdentity);
+                    MeshIndexValidation.Source(c, pos.Count, assetIdentity);
+                }
+            }
+        }
+
+        public static GltfMesh Load(string path) => BuildRigid(LoadModel(path), path);
 
         /// <summary>Load a rigid glb/glTF as ONE <see cref="GltfMesh"/> per logical node-with-mesh (object),
         /// world-transform baked exactly as <see cref="Load"/> bakes it, in stable logical-node-then-mesh order.
@@ -99,7 +141,7 @@ namespace KhaozEngine.Render3D
         /// Deterministic group order (logical-node index, then any un-noded meshes) so a re-bake is reproducible.</summary>
         public static IReadOnlyList<GltfMesh> LoadGroups(string path)
         {
-            ModelRoot root = ModelRoot.Load(path);
+            ModelRoot root = LoadModel(path);
             var groups = new List<GltfMesh>();
 
             // One group per (node -> mesh), in logical-node order.
@@ -107,7 +149,7 @@ namespace KhaozEngine.Render3D
             {
                 if (node.Mesh is null) continue;
                 var corners = new List<MeshCorner>();
-                AppendMeshCorners(corners, node.Mesh, node.WorldMatrix);
+                AppendMeshCorners(corners, node.Mesh, node.WorldMatrix, path);
                 if (corners.Count > 0) groups.Add(MeshAssembler.Build(corners));
             }
 
@@ -118,7 +160,7 @@ namespace KhaozEngine.Render3D
                 foreach (var node in root.LogicalNodes) { if (node.Mesh == mesh) { placed = true; break; } }
                 if (placed) continue;
                 var corners = new List<MeshCorner>();
-                AppendMeshCorners(corners, mesh, Matrix4x4.Identity);
+                AppendMeshCorners(corners, mesh, Matrix4x4.Identity, path);
                 if (corners.Count > 0) groups.Add(MeshAssembler.Build(corners));
             }
 
@@ -137,7 +179,7 @@ namespace KhaozEngine.Render3D
         /// the glb on load) are both read.</summary>
         public static (GltfMesh Mesh, GltfMaterialMaps Maps) LoadWithMaterial(string path)
         {
-            ModelRoot root = ModelRoot.Load(path);
+            ModelRoot root = LoadModel(path);
             GltfMesh mesh = BuildRigid(root, path);
             return (mesh, ReadMaterialMaps(FirstTexturedMaterial(root)));
         }
@@ -153,7 +195,7 @@ namespace KhaozEngine.Render3D
         /// triangles.</summary>
         public static GltfMesh LoadFlattenedAlbedo(string path)
         {
-            ModelRoot root = ModelRoot.Load(path);
+            ModelRoot root = LoadModel(path);
             return BuildRigid(root, path, MakeAlbedoFlattenResolver());
         }
 
@@ -171,7 +213,7 @@ namespace KhaozEngine.Render3D
         /// <see cref="Scene3D.LoadMesh(GltfMesh,GltfMaterialMaps)"/> per part); normalize a prop kit asset to its
         /// real-world height first with <see cref="PropLoader.LoadPropParts"/>.</summary>
         public static IReadOnlyList<GltfMeshPart> LoadPartsWithMaterials(string path)
-            => BuildParts(ModelRoot.Load(path), path);
+            => BuildParts(LoadModel(path), path);
 
         static IReadOnlyList<GltfMeshPart> BuildParts(ModelRoot root, string path)
         {
@@ -201,9 +243,9 @@ namespace KhaozEngine.Render3D
                     {
                         if (node.Mesh != mesh) continue;
                         placed = true;
-                        AppendMaterialCorners(corners, mesh, node.WorldMatrix, material);
+                        AppendMaterialCorners(corners, mesh, node.WorldMatrix, path, material);
                     }
-                    if (!placed) AppendMaterialCorners(corners, mesh, Matrix4x4.Identity, material);
+                    if (!placed) AppendMaterialCorners(corners, mesh, Matrix4x4.Identity, path, material);
                 }
                 if (corners.Count > 0) parts.Add(new GltfMeshPart(MeshAssembler.Build(corners), ReadMaterialMaps(material)));
             }
@@ -231,9 +273,9 @@ namespace KhaozEngine.Render3D
                 {
                     if (node.Mesh != mesh) continue;
                     placed = true;
-                    AppendMeshCorners(corners, mesh, node.WorldMatrix, baseColorFor);
+                    AppendMeshCorners(corners, mesh, node.WorldMatrix, path, baseColorFor);
                 }
-                if (!placed) AppendMeshCorners(corners, mesh, Matrix4x4.Identity, baseColorFor);
+                if (!placed) AppendMeshCorners(corners, mesh, Matrix4x4.Identity, path, baseColorFor);
             }
             if (corners.Count == 0) throw new InvalidOperationException("glTF has no triangles: " + path);
 
@@ -248,12 +290,12 @@ namespace KhaozEngine.Render3D
         // is read per primitive exactly as before, so LoadWithMaterial's material mapping stays aligned with the
         // transformed corners. SharpGLTF exposes the standard glTF attributes by name (same accessor pattern as
         // POSITION); a missing NORMAL/TANGENT is left null for MeshAssembler to compute from winding / UV.
-        static void AppendMeshCorners(List<MeshCorner> corners, Mesh mesh, Matrix4x4 world,
+        static void AppendMeshCorners(List<MeshCorner> corners, Mesh mesh, Matrix4x4 world, string path,
                                       Func<GltfMaterial?, Vector4>? baseColorFor = null)
         {
             (bool identity, Matrix4x4 normalMatrix) = TransformFor(world);
             foreach (var prim in mesh.Primitives)
-                AppendPrimitiveCorners(corners, prim, world, normalMatrix, identity, baseColorFor);
+                AppendPrimitiveCorners(corners, prim, world, normalMatrix, identity, path, baseColorFor);
         }
 
         // As AppendMeshCorners, but only primitives that reference exactly <paramref name="material"/>
@@ -261,12 +303,13 @@ namespace KhaozEngine.Render3D
         // LoadPartsWithMaterials to split a multi-material prop into one welded sub-mesh per source material,
         // reusing the identical transform + corner-emit math, so a single-material part is byte-identical to the
         // flattened Load path.
-        static void AppendMaterialCorners(List<MeshCorner> corners, Mesh mesh, Matrix4x4 world, GltfMaterial? material)
+        static void AppendMaterialCorners(List<MeshCorner> corners, Mesh mesh, Matrix4x4 world, string path,
+                                          GltfMaterial? material)
         {
             (bool identity, Matrix4x4 normalMatrix) = TransformFor(world);
             foreach (var prim in mesh.Primitives)
                 if (ReferenceEquals(prim.Material, material))
-                    AppendPrimitiveCorners(corners, prim, world, normalMatrix, identity);
+                    AppendPrimitiveCorners(corners, prim, world, normalMatrix, identity, path);
         }
 
         // The identity fast-path flag + normal matrix for a node world transform. Normal matrix =
@@ -286,7 +329,7 @@ namespace KhaozEngine.Render3D
         // material base color is read per primitive exactly as before. SharpGLTF exposes the standard glTF
         // attributes by name; a missing NORMAL/TANGENT is left null for MeshAssembler to compute from winding / UV.
         static void AppendPrimitiveCorners(List<MeshCorner> corners, MeshPrimitive prim, Matrix4x4 world,
-                                           Matrix4x4 normalMatrix, bool identity,
+                                           Matrix4x4 normalMatrix, bool identity, string path,
                                            Func<GltfMaterial?, Vector4>? baseColorFor = null)
         {
             var pos = prim.GetVertexAccessor("POSITION")?.AsVector3Array();
@@ -302,6 +345,7 @@ namespace KhaozEngine.Render3D
             // Default: the material's flat base-color factor. LoadFlattenedAlbedo passes a resolver that multiplies
             // the averaged albedo in. A null resolver keeps the historical per-material factor byte-for-byte.
             Vector4 baseColor = baseColorFor != null ? baseColorFor(prim.Material) : ReadBaseColor(prim.Material);
+            string assetIdentity = $"glTF asset '{path}'";
 
             Vector3 Pos(int i) => identity ? pos[i] : Vector3.Transform(pos[i], world);
             Vector3? Norm(int i)
@@ -331,11 +375,14 @@ namespace KhaozEngine.Render3D
 
             foreach (var (a, b, c) in prim.GetTriangleIndices())
             {
+                int ai = MeshIndexValidation.Source(a, pos.Count, assetIdentity);
+                int bi = MeshIndexValidation.Source(b, pos.Count, assetIdentity);
+                int ci = MeshIndexValidation.Source(c, pos.Count, assetIdentity);
                 // hasVertexColor is set ONLY when this primitive actually carried a COLOR_0 accessor, which is
                 // what keeps an authored colour seam out of the weld without touching any other asset's weld.
-                corners.Add(new MeshCorner(Pos(a), Norm(a), Color(a), Uv(a), Tan(a), perVertexColor));
-                corners.Add(new MeshCorner(Pos(b), Norm(b), Color(b), Uv(b), Tan(b), perVertexColor));
-                corners.Add(new MeshCorner(Pos(c), Norm(c), Color(c), Uv(c), Tan(c), perVertexColor));
+                corners.Add(new MeshCorner(Pos(ai), Norm(ai), Color(ai), Uv(ai), Tan(ai), perVertexColor));
+                corners.Add(new MeshCorner(Pos(bi), Norm(bi), Color(bi), Uv(bi), Tan(bi), perVertexColor));
+                corners.Add(new MeshCorner(Pos(ci), Norm(ci), Color(ci), Uv(ci), Tan(ci), perVertexColor));
             }
         }
 
@@ -349,7 +396,7 @@ namespace KhaozEngine.Render3D
         /// <see cref="Load"/> for rigid meshes). Indexed directly (no re-weld) so joints/weights stay aligned to
         /// their vertices; emits 32-bit indices so rigs past the 65,536-vertex ceiling load
         /// (<see cref="SkinnedGltfMesh"/> picks the GPU index width).</summary>
-        public static SkinnedGltfMesh LoadSkinned(string path) => BuildSkinned(ModelRoot.Load(path), path);
+        public static SkinnedGltfMesh LoadSkinned(string path) => BuildSkinned(LoadModel(path), path);
 
         /// <summary>Opt-in convenience: load a rigged glb/glTF AND auto-read its first textured material's
         /// baseColor/normal/metallicRoughness textures, decoded to raw RGBA8 (no GPU). The
@@ -360,7 +407,7 @@ namespace KhaozEngine.Render3D
         /// throw.</summary>
         public static (SkinnedGltfMesh Mesh, GltfMaterialMaps Maps) LoadSkinnedWithMaterial(string path)
         {
-            ModelRoot root = ModelRoot.Load(path);
+            ModelRoot root = LoadModel(path);
             SkinnedGltfMesh mesh = BuildSkinned(root, path);
             return (mesh, ReadMaterialMaps(FirstTexturedMaterial(root)));
         }
@@ -394,6 +441,7 @@ namespace KhaozEngine.Render3D
                 // asset painted with vertex colours reads the same as the prop kit it was authored beside.
                 var colors = prim.GetVertexAccessor("COLOR_0")?.AsColorArray();
                 Vector4 baseColor = ReadBaseColor(prim.Material);
+                string identity = $"glTF asset '{path}'";
 
                 int baseIndex = verts.Count;
                 for (int i = 0; i < pos.Count; i++)
@@ -412,9 +460,9 @@ namespace KhaozEngine.Render3D
                 }
                 foreach (var (a, b, c) in prim.GetTriangleIndices())
                 {
-                    indices.Add((uint)(baseIndex + a));
-                    indices.Add((uint)(baseIndex + b));
-                    indices.Add((uint)(baseIndex + c));
+                    indices.Add(MeshIndexValidation.Rebase(a, pos.Count, baseIndex, identity));
+                    indices.Add(MeshIndexValidation.Rebase(b, pos.Count, baseIndex, identity));
+                    indices.Add(MeshIndexValidation.Rebase(c, pos.Count, baseIndex, identity));
                 }
             }
 
@@ -505,7 +553,7 @@ namespace KhaozEngine.Render3D
         /// returns an empty list.</summary>
         public static IReadOnlyList<AnimationClip> LoadAnimations(string path)
         {
-            ModelRoot root = ModelRoot.Load(path);
+            ModelRoot root = LoadModel(path);
             var clips = new List<AnimationClip>(root.LogicalAnimations.Count);
             foreach (SharpGLTF.Schema2.Animation anim in root.LogicalAnimations)
             {

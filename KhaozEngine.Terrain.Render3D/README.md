@@ -183,6 +183,9 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   on an Invalidate field rebuild), and the same function is offline-ready if a future artifact bake wants it. The
   merged mesh keeps flat **vertex-colour** albedo (from the `PropLoader.LoadProp` source form), so it renders
   through the existing untextured `Scene3D.Draw` path with no atlas, no impostor card, and no new shader.
+  Malformed source corners still collapse to a safe degenerate corner for live containment.
+  `Scene3DChunkSink.MergeStats.MalformedCornersDropped` counts every contained corner exactly, alongside the
+  existing merge build and upload totals, so a bad kit remains attributable without crashing a chunk build.
 - **`TerrainChunkCollision`** - extracts a chunk's SURFACE triangles (skirts excluded, winding flipped so
   the collidable face points up) into a static `TriangleMeshShape`. `Build(TerrainChunkMesh)` or
   `Build(GltfMesh, surfaceVertexCount)`; returns null for an empty chunk. Render-free (no GPU), so terrain

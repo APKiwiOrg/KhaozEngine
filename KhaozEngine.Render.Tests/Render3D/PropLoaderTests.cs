@@ -77,6 +77,38 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Throws<InvalidOperationException>(() => PropLoader.Normalize(flat, heightMeters: 2f));
         }
 
+        [Fact]
+        public void Normalize_RejectsMalformedIndicesBeforeTransformingThem()
+        {
+            GltfMesh raw = Box(0f, 0f, 0f, 1f, 2f, 1f);
+            raw = new GltfMesh(raw.Vertices, new uint[] { 0, 1, 9 });
+
+            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+                () => PropLoader.Normalize(raw, heightMeters: 2f));
+
+            Assert.Contains("index 9", ex.Message);
+            Assert.Contains("vertex count 8", ex.Message);
+        }
+
+        [Fact]
+        public void NormalizeParts_RejectsMalformedPartWithItsPartNumber()
+        {
+            GltfMesh good = Box(0f, 0f, 0f, 1f, 2f, 1f);
+            GltfMesh bad = new(good.Vertices, new uint[] { 0, 1, uint.MaxValue });
+            var parts = new[]
+            {
+                new GltfMeshPart(good, default),
+                new GltfMeshPart(bad, default),
+            };
+
+            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+                () => PropLoader.NormalizeParts(parts, heightMeters: 2f));
+
+            Assert.Contains("part 1", ex.Message);
+            Assert.Contains($"index {uint.MaxValue}", ex.Message);
+            Assert.Contains("vertex count 8", ex.Message);
+        }
+
         // ---- LoadProp (in-process glb) ----
 
         // A 2 m-tall box glb (Y from 0..2, X 1..3) so we can prove LoadProp normalizes a real loaded mesh.

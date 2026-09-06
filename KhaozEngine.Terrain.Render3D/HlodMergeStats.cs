@@ -1,7 +1,7 @@
 namespace KhaozEngine.Terrain
 {
     /// <summary>Cumulative HLOD merge counters for one <see cref="Scene3DChunkSink"/>, read through
-    /// <see cref="Scene3DChunkSink.MergeStats"/>. Always on and allocation-free (four <c>long</c> adds behind
+    /// <see cref="Scene3DChunkSink.MergeStats"/>. Always on and allocation-free (five <c>long</c> adds behind
     /// <c>Interlocked</c>, since the merge runs on the streamer's background build threads), in the same shape as
     /// <c>Scene3D.LastFrameStats</c>: a value snapshot a consumer reads whenever it likes. Counters are cumulative
     /// for the sink's whole lifetime and never reset, so a per-second rate is the difference of two samples.
@@ -36,18 +36,24 @@ namespace KhaozEngine.Terrain
         /// <summary>Bytes of merged mesh consumed by an apply, counted exactly like <see cref="BuiltBytes"/>.</summary>
         public long UploadedBytes { get; }
 
+        /// <summary>Malformed source corners contained since the sink was built. Each names an index outside its
+        /// source mesh's vertex array. The merge collapses it to keep the live client bounds-safe.</summary>
+        public long MalformedCornersDropped { get; }
+
         /// <summary>Merges computed and then thrown away. Zero is the healthy value.</summary>
         public long Discarded => Built - Uploaded;
 
         /// <summary>Bytes of merged mesh computed and then thrown away. Zero is the healthy value.</summary>
         public long DiscardedBytes => BuiltBytes - UploadedBytes;
 
-        internal HlodMergeStats(long built, long builtBytes, long uploaded, long uploadedBytes)
+        internal HlodMergeStats(long built, long builtBytes, long uploaded, long uploadedBytes,
+                                long malformedCornersDropped)
         {
             Built = built;
             BuiltBytes = builtBytes;
             Uploaded = uploaded;
             UploadedBytes = uploadedBytes;
+            MalformedCornersDropped = malformedCornersDropped;
         }
     }
 }

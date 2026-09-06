@@ -66,7 +66,7 @@ namespace KhaozEngine.Terrain
         readonly Dictionary<ChunkCoord, ChunkLoad> _loaded = new();
         // Cumulative HLOD merge counters (see HlodMergeStats). Built is bumped from the background build thread and
         // uploaded from the frame thread, so both go through Interlocked rather than a plain add.
-        long _hlodBuilt, _hlodBuiltBytes, _hlodUploaded, _hlodUploadedBytes;
+        long _hlodBuilt, _hlodBuiltBytes, _hlodUploaded, _hlodUploadedBytes, _hlodMalformedCornersDropped;
         bool _disposed;
 
         /// <summary>Cumulative HLOD merge totals for this sink: clusters merged versus clusters an apply actually
@@ -75,7 +75,8 @@ namespace KhaozEngine.Terrain
         /// Zero on every field when the sink has no HLOD layer.</summary>
         public HlodMergeStats MergeStats => new(
             Interlocked.Read(ref _hlodBuilt), Interlocked.Read(ref _hlodBuiltBytes),
-            Interlocked.Read(ref _hlodUploaded), Interlocked.Read(ref _hlodUploadedBytes));
+            Interlocked.Read(ref _hlodUploaded), Interlocked.Read(ref _hlodUploadedBytes),
+            Interlocked.Read(ref _hlodMalformedCornersDropped));
 
         /// <summary>Merged-mesh size in bytes: vertices at their interleaved stride plus 4 bytes per 32-bit index.
         /// A null (empty-cluster) mesh is 0, so an empty cluster still counts as a build and an upload of 0 bytes
@@ -435,10 +436,13 @@ namespace KhaozEngine.Terrain
                 {
                     PropLayer layer = _layers[i];
                     if (!layer.HasHlod) continue;
-                    GltfMesh m = PropHlod.BuildMergedMesh(scatter![i], layer.HlodSourceMeshes!, layer.HlodWeldCell);
+                    GltfMesh m = PropHlod.BuildMergedMeshMeasured(scatter![i], layer.HlodSourceMeshes!,
+                                                                 layer.HlodWeldCell,
+                                                                 out long malformedCornersDropped);
                     hlod[i] = m.TriangleCount > 0 ? m : null;   // an empty cluster uploads nothing
                     Interlocked.Increment(ref _hlodBuilt);
                     Interlocked.Add(ref _hlodBuiltBytes, MeshBytes(hlod[i]));
+                    Interlocked.Add(ref _hlodMalformedCornersDropped, malformedCornersDropped);
                 }
                 cpu.HlodMeshes = hlod;
             }

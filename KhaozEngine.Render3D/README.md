@@ -681,6 +681,11 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   exactly as `LoadProp`. Upload the result with `Scene3D.LoadMesh(GltfMesh, GltfMaterialMaps)`. Opt in per-asset
   via the manifest `"textured": true` flag (`AssetEntry.Textured`, default false: renders with the flat
   per-material base colour as before).
+- glTF index validation: every rigid, material-part, skinned and animation load rejects a triangle index outside
+  its primitive's position count. The error names the asset path, bad index and vertex count. Manifest and LOD
+  loads through `PropLoader` add the prop id, and direct `Normalize` calls apply the same check to caller-supplied
+  `GltfMesh` values before transforming them. The raw `GltfMesh` constructor remains permissive for live
+  containment paths that must degrade safely when handed malformed data.
 - Multi-texture-per-primitive props: a prop whose parts are separate materials (a tree with a bark material +
   a leaf material, a signpost with a wood post + a painted sign) renders each part with its own texture instead
   of one flattened mesh. `GltfLoader.LoadPartsWithMaterials(path) -> IReadOnlyList<GltfMeshPart>` splits the glTF

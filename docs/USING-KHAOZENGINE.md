@@ -17,6 +17,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Wiring a game (`KhaozEngine.Game` + `KhaozEngine.Game.Render3D`)](#wiring-a-game-khaozenginegame-khaozenginegamerender3d)
 - [Input (`KhaozEngine.Windowing`)](#input-khaozenginewindowing)
 - [Gui (`KhaozEngine.Gui`)](#gui-khaozenginegui)
+- [Retained chat (`ChatHistory` / `ChatBox`, 18.21.0)](#retained-chat-chathistory--chatbox-18210)
 - [Drag and drop across widgets (`GuiDragContext` / `DragPayload`)](#drag-and-drop-across-widgets-guidragcontext--dragpayload-1790)
 - [Toast notifications (`ToastStack` / `ToastView` / `ToastTheme`)](#toast-notifications-toaststack-toastview-toasttheme)
 - [Action-bar icons and cooldowns (SlotContent + CooldownOverlay)](#action-bar-icons-and-cooldowns-slotcontent-cooldownoverlay)
@@ -62,6 +63,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Tile-world netcode (`KhaozEngine.TileWorld.Netcode`)](#tile-world-netcode-khaozenginetileworldnetcode)
 - [Charging attack time for something that is not a swing (`TileWorldServer.DelayAttack`, 18.16.0)](#charging-attack-time-for-something-that-is-not-a-swing-tileworldserverdelayattack-18160)
 - [Cancelling a tile player's pending interact (18.19.0)](#cancelling-a-tile-players-pending-interact-18190)
+- [Nearby tile-world player interest (`CollectInterestSlots`, 18.21.0)](#nearby-tile-world-player-interest-collectinterestslots-18210)
 - [Server status (`KhaozEngine.ServerStatus`)](#server-status-khaozengineserverstatus)
 - [HTTP retry (`KhaozEngine.Http`)](#http-retry-khaozenginehttp)
 - [ECS (`KhaozEngine.Ecs`)](#ecs-khaozengineecs)
@@ -1407,6 +1409,56 @@ var pips = new ProgressBar(new Rect(hudX, hudY, 240, 12), comboFrac)
 { SegmentCount = 5, SegmentFillMode = SegmentFillMode.Discrete };   // combo points light as whole pips
 var mana = new ProgressBar(new Rect(hudX, hudY, 12, 120), manaFrac)
 { FillDirection = FillDirection.BottomToTop };                   // vertical, grows upward
+```
+
+---
+
+## Retained chat (`ChatHistory` / `ChatBox`, 18.21.0)
+
+The Gui package provides a retained chat history and placement-neutral chatbox. `ChatHistory` bounds the visible
+entry count and collapses adjacent entries only when `ChatEntry.Kind`, `SourceKey` and `CollapseKey` match. The
+latest entry supplies the timestamp, author, content and ownership, while `RepeatCount` says how many were folded
+into it. Author and content use `LocalizedText`, so catalog-backed system copy and explicit raw player names or
+messages keep the same localization boundary as the rest of Gui.
+
+`ChatBox` owns wrapped scrollback and a single-line composer inside caller-selected design-space bounds. Enter
+opens the composer. A later Enter submits trimmed non-empty text and leaves it open. Escape clears and closes it.
+`ShowTimestamps` converts each UTC timestamp to local time for presentation only. `ChatBoxTheme` carries the frame,
+composer, ordinary, own, system and timestamp colours.
+
+```csharp
+using System;
+using KhaozEngine.App;
+using KhaozEngine.Gui.Chat;
+using KhaozEngine.Primitives;
+
+var history = new ChatHistory(capacity: 100);
+var chat = new ChatBox(history, new Rect(16, 420, 460, 284), font)
+{
+    ShowTimestamps = settings.ShowChatTimestamps,
+    Submitted = SendNearbyChat
+};
+
+history.Add(new ChatEntry(
+    DateTimeOffset.UtcNow,
+    SourceKey: senderId,
+    Author: LocalizedText.Raw(senderName),
+    Content: LocalizedText.Raw(message),
+    CollapseKey: message,
+    Kind: ChatEntryKind.Ordinary,
+    IsOwn: senderId == localPlayerId));
+```
+
+Update the chatbox before world picking. It blocks its complete bounds through `Pointer`, including pointer
+movement and wheel input over the scrollback, so the same gesture cannot affect the world below it.
+
+```csharp
+chat.Update(pointer, input, dt);
+
+if (!pointer.IsBlocked(input.MousePosition))
+    PickWorld(input.MousePosition);
+
+chat.Draw(batch, white);
 ```
 
 ---
@@ -5953,7 +6005,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.20.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.21.0" />
 ```
 
 ```csharp
@@ -9812,6 +9864,46 @@ from the authoritative action handler, so abandoning an interact does not depend
 
 ---
 
+## Nearby tile-world player interest (`CollectInterestSlots`, 18.21.0)
+
+`TileWorldServer.CollectInterestSlots` copies the same plane-filtered player audience used by authoritative
+snapshot replication into caller-owned storage. The result includes the source player, crosses region edges,
+sorts by slot and excludes players outside `InterestRadius` or on another plane. It clears the list first and
+returns its final count. A missing source clears the list and returns zero.
+
+Call it only on the simulation tick because it shares the serve epoch and plane-filter scratch with the snapshot
+pass. Reuse the list instead of allocating one per message.
+
+```csharp
+using System.Collections.Generic;
+
+var recipients = new List<int>();
+server.CollectInterestSlots(senderSlot, recipients);
+```
+
+`TryGetPlayerDisplayName` reads the verified display name from the live player's authoritative `TileIdentity`.
+It returns false and an empty string when the slot no longer owns a player or identity. A present but anonymous
+identity returns true with an empty name. Use the result, the name and an empty audience as fail-closed gates. A
+nearby message whose sender or audience disappeared is discarded instead of widened to players outside the
+authoritative interest set.
+
+```csharp
+using System;
+
+if (!server.TryGetPlayerDisplayName(senderSlot, out string senderName)
+    || string.IsNullOrWhiteSpace(senderName))
+    return;
+
+server.CollectInterestSlots(senderSlot, recipients);
+if (recipients.Count == 0)
+    return;
+
+foreach (int recipientSlot in recipients)
+    SendChat(recipientSlot, senderName, message);
+```
+
+---
+
 ## Server status (`KhaozEngine.ServerStatus`)
 
 An **out-of-band** health + version channel for a live game, separate from the game connection itself. A small
@@ -11096,7 +11188,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.20.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.21.0" />
 ```
 
 ```csharp
@@ -11132,7 +11224,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.20.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.21.0" />
 ```
 
 ```csharp
@@ -11374,7 +11466,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.20.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.21.0" />
 ```
 
 ```csharp
@@ -13415,7 +13507,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.20.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.21.0" />
 </ItemGroup>
 ```
 

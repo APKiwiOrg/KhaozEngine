@@ -1300,6 +1300,7 @@ panel.SlideFromBottom = true;
 panel.TransitionAlpha = screen.TransitionAlpha; // 0 hidden below the dock edge .. 1 fully shown
 panel.Resizable = true; panel.MinHeight = 140f; panel.MaxHeight = navTop - topBarBottom;
 panel.Scrim = new Rect(0, topBarBottom, viewW, navTop - topBarBottom);
+panel.DragScrollingEnabled = false;            // child rows own drag gestures, wheel scroll still works
 
 panel.Update(pointer, input);
 if (panel.ScrimDismissed) Close();             // tap outside the panel

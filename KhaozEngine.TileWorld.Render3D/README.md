@@ -34,21 +34,22 @@ nothing in the upload path moves.
   `Tangent.z` is the brightness jitter and `Tangent.w` is 0. Slots per tile rather than per triangle is what keeps
   the ground continuous: a corner shared by four tiles is one-hot on the same material from all of them, and a
   shared edge interpolates the same pair from either side.
-- **The corner material is the most-shared underlay.** `TileGroundMesher.CornerMaterial(doc, x, z, plane)` counts
-  the up-to-four tiles sharing a lattice corner and takes the id most of them carry, ties broken by the LOWER id
-  so every tile touching the corner picks the same one. Void tiles are the only exclusion: a `NoDraw` tile draws
-  no ground of its own but still contributes its underlay, so the ground does not step at the edge of a hole
-  punched for an object floor. `TileGroundMesherOptions.Slots` (an `ITileGroundSlotMap`) turns the id into the
+- **The corner material is the most-shared visible underlay.** `TileGroundMesher.CornerMaterial(doc, x, z,
+  plane)` counts the up-to-four tiles sharing a lattice corner and takes the id most of them carry, ties broken
+  by the LOWER id so every tile touching the corner picks the same one. Void tiles and underlays hidden by a
+  drawn full overlay are excluded, which keeps an exact overlay edge from grading into its hidden material. A
+  `NoDraw` tile still contributes its underlay, so the ground does not step at the edge of a hole punched for an
+  object floor. `TileGroundMesherOptions.Slots` (an `ITileGroundSlotMap`) turns the id into the
   material set's layer slot, and an id the set does not carry lands on its reserved `MissingSlot`, whose layer is
   the magenta `TileGroundMesher.MissingMaterialColor`, so a dangling id is visible rather than invisible. The
   default `IdentitySlotMap` maps every id to itself, for a caller that has not built a set yet.
 - **Jitter is per vertex, averaged at the corner.** `TileGroundMesher.CornerJitter` is the mean of
   `TileColors.Jitter` (a deterministic multiplier hashed from the world tile coordinate, plus or minus 4 percent
-  by default, `JitterAmplitude` 0 disables it) over the same tiles, so the OSRS brightness variation stays soft
+  by default, `JitterAmplitude` 0 disables it) over the same visible underlays, so the OSRS brightness variation stays soft
   across a corner instead of stepping per tile. It is a MULTIPLIER: no jitter is 1, and a vertex carrying 0
   renders black.
 - **The colour path stays, and nothing in the mesh path reads it.** `TileGroundMesher.CornerColor` still blends
-  the up-to-four sharing tiles' jittered material colours (`TileColors.Blend`, all-void blends to
+  the up-to-four sharing visible underlays' jittered material colours (`TileColors.Blend`, all-void blends to
   `TileColors.Void`), and `TileColors.Parse` still reads `#rrggbb` or `#rrggbbaa`. That pair is the GPU-free
   colour surface, for a caller that wants a tile's colour without the textured pipeline behind it: a minimap, a
   2D painter, a tool query. The vertices do not carry it any more, and the mesher itself only calls

@@ -351,8 +351,9 @@ chat.Draw(batch, white);
     footer callback is safe to mutate the list mid-fire (for example closing the dialog from inside the very
     action it just ran). An empty `FooterButtons` list leaves the classic dismiss/primary footer completely
     unchanged, so every existing consumer stays byte-identical.
-  - `ScrollablePanel` - wheel/drag scrolling fixed-height list; rows drawn between `BeginClip`/`EndClip` (scissor),
-    hit-test with `TappedItemIndex`. Opt-in overlay chrome (all default to no-ops, so existing callers are
+  - `ScrollablePanel` - wheel/drag scrolling fixed-height list. Set `DragScrollingEnabled = false` when row
+    content owns pointer dragging and the wheel must remain available. It defaults to true. Rows are drawn
+    between `BeginClip`/`EndClip` (scissor), and hit-tested with `TappedItemIndex`. Opt-in overlay chrome (all default to no-ops, so existing callers are
     byte-identical): a header band (`HeaderHeight` + `DrawHeader`, whose title is a `LocalizedText` with the old
     `string` overload kept `[Obsolete]`) above the scroll region; a slide-up animation
     driven by an external `TransitionAlpha` from a docked bottom edge (`SlideFromBottom`); drag-to-resize the header

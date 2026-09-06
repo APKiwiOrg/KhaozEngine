@@ -31,8 +31,8 @@ public sealed class JournalSnapshot
     public long ThroughVersion { get; }
     public string SnapshotSchema { get; }
     public int SnapshotSchemaVersion { get; }
-    public ReadOnlyMemory<byte> Data => data;
-    public ReadOnlyMemory<byte> DataChecksum => dataChecksum;
+    public ReadOnlyMemory<byte> Data => JournalValidation.CopyForRead(data);
+    public ReadOnlyMemory<byte> DataChecksum => JournalValidation.CopyForRead(dataChecksum);
     public DateTimeOffset CreatedAtUtc { get; }
     public bool HasValidChecksum => JournalValidation.HashMatches(data, dataChecksum);
 
@@ -117,8 +117,8 @@ public sealed class JournalStoredEvent
     public int OperationOrdinal { get; }
     public string EventType { get; }
     public int EventSchemaVersion { get; }
-    public ReadOnlyMemory<byte> Payload => payload;
-    public ReadOnlyMemory<byte> PayloadChecksum => payloadChecksum;
+    public ReadOnlyMemory<byte> Payload => JournalValidation.CopyForRead(payload);
+    public ReadOnlyMemory<byte> PayloadChecksum => JournalValidation.CopyForRead(payloadChecksum);
     public DateTimeOffset CommittedAtUtc { get; }
     public bool HasValidChecksum => JournalValidation.HashMatches(payload, payloadChecksum);
 
@@ -214,8 +214,8 @@ public sealed class JournalProjectionSection
     public long SourceVersion { get; }
     public string ProjectionSchema { get; }
     public int ProjectionSchemaVersion { get; }
-    public ReadOnlyMemory<byte> Data => data;
-    public ReadOnlyMemory<byte> DataChecksum => dataChecksum;
+    public ReadOnlyMemory<byte> Data => JournalValidation.CopyForRead(data);
+    public ReadOnlyMemory<byte> DataChecksum => JournalValidation.CopyForRead(dataChecksum);
     public DateTimeOffset UpdatedAtUtc { get; }
     public bool HasValidChecksum => JournalValidation.HashMatches(data, dataChecksum);
 

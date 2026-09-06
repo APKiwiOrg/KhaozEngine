@@ -134,6 +134,8 @@ internal static class JournalValidation
 
     internal static byte[] Hash(ReadOnlySpan<byte> value) => SHA256.HashData(value);
 
+    internal static ReadOnlyMemory<byte> CopyForRead(byte[] value) => (byte[])value.Clone();
+
     internal static bool HashMatches(ReadOnlySpan<byte> value, ReadOnlySpan<byte> expected)
         => expected.Length == SHA256.HashSizeInBytes && CryptographicOperations.FixedTimeEquals(Hash(value), expected);
 }

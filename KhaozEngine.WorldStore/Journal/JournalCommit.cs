@@ -48,8 +48,8 @@ public sealed class JournalCommit
     public IReadOnlyList<JournalProjectionWrite> ProjectionWrites => projectionWrites;
     public string ResultSchema { get; }
     public int ResultSchemaVersion { get; }
-    public ReadOnlyMemory<byte> ResultData => resultData;
-    public ReadOnlyMemory<byte> ResultChecksum => resultChecksum;
+    public ReadOnlyMemory<byte> ResultData => JournalValidation.CopyForRead(resultData);
+    public ReadOnlyMemory<byte> ResultChecksum => JournalValidation.CopyForRead(resultChecksum);
     public int OwnedByteCount => CalculateOwnedByteCount();
 
     public void Validate(JournalLimits? limits = null)

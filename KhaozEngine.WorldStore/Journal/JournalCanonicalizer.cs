@@ -20,8 +20,8 @@ public sealed class JournalFingerprint
     }
 
     public ushort FormatVersion { get; }
-    public ReadOnlyMemory<byte> CanonicalBytes => canonicalBytes;
-    public ReadOnlyMemory<byte> Digest => digest;
+    public ReadOnlyMemory<byte> CanonicalBytes => JournalValidation.CopyForRead(canonicalBytes);
+    public ReadOnlyMemory<byte> Digest => JournalValidation.CopyForRead(digest);
 }
 
 public static class JournalCanonicalizer

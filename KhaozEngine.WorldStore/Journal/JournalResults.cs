@@ -99,8 +99,8 @@ public sealed class JournalCommitReceipt
     public IReadOnlyList<JournalStreamVersionRange> Streams => streams;
     public string ResultSchema { get; }
     public int ResultSchemaVersion { get; }
-    public ReadOnlyMemory<byte> ResultData => resultData;
-    public ReadOnlyMemory<byte> ResultChecksum => resultChecksum;
+    public ReadOnlyMemory<byte> ResultData => JournalValidation.CopyForRead(resultData);
+    public ReadOnlyMemory<byte> ResultChecksum => JournalValidation.CopyForRead(resultChecksum);
     public bool IsReplay { get; }
     public bool HasValidResultChecksum => JournalValidation.HashMatches(resultData, resultChecksum);
 

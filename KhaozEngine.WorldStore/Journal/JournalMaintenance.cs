@@ -30,8 +30,8 @@ public sealed class JournalCompaction
     public long ThroughVersion { get; }
     public string SnapshotSchema { get; }
     public int SnapshotSchemaVersion { get; }
-    public ReadOnlyMemory<byte> SnapshotData => snapshotData;
-    public ReadOnlyMemory<byte> SnapshotChecksum => snapshotChecksum;
+    public ReadOnlyMemory<byte> SnapshotData => JournalValidation.CopyForRead(snapshotData);
+    public ReadOnlyMemory<byte> SnapshotChecksum => JournalValidation.CopyForRead(snapshotChecksum);
     public long? PruneThroughVersion { get; }
     public int OwnedByteCount => snapshotData.Length;
 

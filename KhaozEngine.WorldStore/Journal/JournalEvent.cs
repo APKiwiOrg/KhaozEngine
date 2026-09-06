@@ -18,8 +18,8 @@ public sealed class JournalEvent
 
     public string EventType { get; }
     public int EventSchemaVersion { get; }
-    public ReadOnlyMemory<byte> Payload => payload;
-    public ReadOnlyMemory<byte> PayloadChecksum => payloadChecksum;
+    public ReadOnlyMemory<byte> Payload => JournalValidation.CopyForRead(payload);
+    public ReadOnlyMemory<byte> PayloadChecksum => JournalValidation.CopyForRead(payloadChecksum);
     public int OwnedByteCount => payload.Length;
 
     public void Validate(JournalLimits? limits = null)

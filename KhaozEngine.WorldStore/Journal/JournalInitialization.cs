@@ -54,13 +54,13 @@ public sealed class JournalInitialization
     public string AbsentStreamKey { get; }
     public string SnapshotSchema { get; }
     public int SnapshotSchemaVersion { get; }
-    public ReadOnlyMemory<byte> SnapshotData => snapshotData;
-    public ReadOnlyMemory<byte> SnapshotChecksum => snapshotChecksum;
+    public ReadOnlyMemory<byte> SnapshotData => JournalValidation.CopyForRead(snapshotData);
+    public ReadOnlyMemory<byte> SnapshotChecksum => JournalValidation.CopyForRead(snapshotChecksum);
     public IReadOnlyList<JournalProjectionWrite> ProjectionWrites => projectionWrites;
     public string ResultSchema { get; }
     public int ResultSchemaVersion { get; }
-    public ReadOnlyMemory<byte> ResultData => resultData;
-    public ReadOnlyMemory<byte> ResultChecksum => resultChecksum;
+    public ReadOnlyMemory<byte> ResultData => JournalValidation.CopyForRead(resultData);
+    public ReadOnlyMemory<byte> ResultChecksum => JournalValidation.CopyForRead(resultChecksum);
     public int OwnedByteCount
     {
         get

@@ -217,6 +217,21 @@ public sealed partial class TileWorldServer : IDisposable
     /// <param name="netId">The player entity's net id.</param>
     public bool TryGetPlayerSlot(long netId, out int slot) => slotByNetId.TryGetValue(netId, out slot);
 
+    /// <summary>The verified display name stored on a live player's authoritative
+    /// <see cref="TileIdentity"/> component.</summary>
+    /// <param name="slot">The player's connection slot.</param>
+    /// <param name="displayName">The display name, empty when the slot holds no live player or its identity is
+    /// anonymous.</param>
+    public bool TryGetPlayerDisplayName(int slot, out string displayName)
+    {
+        displayName = string.Empty;
+        if (!netIdBySlot.TryGetValue(slot, out long netId)) return false;
+        if (!host.TryGetOwner(netId, out CellSim cell, out Entity entity)) return false;
+        if (!cell.World.TryGet(entity, out TileIdentity identity)) return false;
+        displayName = identity.DisplayName ?? string.Empty;
+        return true;
+    }
+
     /// <summary>The verified account id a slot is bound to.</summary>
     /// <param name="slot">The player's connection slot.</param>
     /// <param name="accountId">The account id, null when the slot holds no player.</param>

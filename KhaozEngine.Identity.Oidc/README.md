@@ -17,7 +17,8 @@ authorization-code + PKCE flow, using the system browser and a local loopback re
 - **OidcTokenValidator** - `IIdentityValidator` implementation that validates an id_token against the
   issuer's discovery document + JWKS (via `Microsoft.IdentityModel.Protocols.OpenIdConnect` /
   `JsonWebTokens`), checks issuer/audience/lifetime/signature, and maps the `sub` claim (+ `name` or
-  `preferred_username`) to a `VerifiedIdentity`.
+  `preferred_username`) to a `VerifiedIdentity`. `ValidateDetailedAsync` reports discovery, JWKS and
+  transport failures as `ProviderUnavailable`. Invalid signatures and claims remain `Refused`.
 - **SystemBrowserLauncher** - `IBrowserLauncher` implementation that opens the sign-in URL in the OS
   default browser via `KhaozEngine.Platform.Browser`.
 - **HttpLoopbackListener** - `ILoopbackListener` implementation that binds a short-lived socket on

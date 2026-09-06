@@ -184,7 +184,7 @@ namespace KhaozEngine.Tests.Gpu
             string worstProgram = "";
             var report = new List<string>();
 
-            foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
+            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
             {
                 MetalShaderIndexTable table = MetalShaderBuild.Pair(
                     program.VertexGlsl, program.FragmentGlsl, null, program.Name).Table;

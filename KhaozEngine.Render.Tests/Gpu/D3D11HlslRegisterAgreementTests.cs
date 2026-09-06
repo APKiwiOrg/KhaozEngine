@@ -45,7 +45,7 @@ namespace KhaozEngine.Tests.Gpu
         public void EveryShippedGraphicsProgram_EmitsTheRegistersTheRegisterSchemeAssigns()
         {
             var problems = new List<string>();
-            foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
+            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
             {
                 CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
                     program.VertexGlsl, program.FragmentGlsl, program.Name);
@@ -59,7 +59,7 @@ namespace KhaozEngine.Tests.Gpu
         public void EveryShippedComputeKernel_EmitsTheRegistersTheRegisterSchemeAssigns()
         {
             var problems = new List<string>();
-            foreach (ShippedComputeKernel kernel in D3D11ShaderProgramCatalog.ComputeKernels())
+            foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
             {
                 CrossCompiledCompute compute = SpirvCrossCompile.GlslComputeToHlsl(kernel.ComputeGlsl, kernel.Name);
                 Compare(kernel.Name, compute.Reflection, problems, compute.ComputeSource);

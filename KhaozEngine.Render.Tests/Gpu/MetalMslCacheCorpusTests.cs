@@ -88,14 +88,14 @@ namespace KhaozEngine.Tests.Gpu
         {
             var built = new List<(string, MetalMslProgram, uint, uint, uint)>();
 
-            foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
+            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
             {
                 built.Add((program.Name,
                     MetalShaderBuild.Pair(program.VertexGlsl, program.FragmentGlsl, cache, program.Name),
                     0, 0, 0));
             }
 
-            foreach (ShippedComputeKernel kernel in D3D11ShaderProgramCatalog.ComputeKernels())
+            foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
             {
                 (MetalMslProgram program, uint x, uint y, uint z) = MetalShaderBuild.Compute(
                     kernel.ComputeGlsl, cache, kernel.Name);

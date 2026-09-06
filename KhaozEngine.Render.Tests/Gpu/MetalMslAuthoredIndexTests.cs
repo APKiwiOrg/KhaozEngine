@@ -90,7 +90,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             var census = new Census();
 
-            foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
+            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
             {
                 MetalMslProgram built = MetalShaderBuild.Pair(
                     program.VertexGlsl, program.FragmentGlsl, null, program.Name);
@@ -104,7 +104,7 @@ namespace KhaozEngine.Tests.Gpu
                 });
             }
 
-            foreach (ShippedComputeKernel kernel in D3D11ShaderProgramCatalog.ComputeKernels())
+            foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
             {
                 MetalMslProgram built = MetalShaderBuild.Compute(kernel.ComputeGlsl, null, kernel.Name).Program;
                 Measure(census, kernel.Name, built, new[]

@@ -61,7 +61,7 @@ namespace KhaozEngine.Tests.Gpu
             if (!KhaozEngineD3D11.IsPlatformSupported) return;   // no d3dcompiler off Windows
 
             var failures = new List<string>();
-            foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
+            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
             {
                 try
                 {
@@ -87,7 +87,7 @@ namespace KhaozEngine.Tests.Gpu
             if (!KhaozEngineD3D11.IsPlatformSupported) return;
 
             var failures = new List<string>();
-            foreach (ShippedComputeKernel kernel in D3D11ShaderProgramCatalog.ComputeKernels())
+            foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
             {
                 try
                 {
@@ -241,7 +241,7 @@ void main() { Data[gl_GlobalInvocationID.x] = 1.0; }";
         /// <summary>
         /// THE CATALOG-WIDE SWEEP. The three named cases above pin history: shadow, terrain and overlay mesh are
         /// the specific programs that already holed a signature, each with its own fix and its own regression
-        /// test. This sweep is for the next one: it walks every program in <c>D3D11ShaderProgramCatalog</c>
+        /// test. This sweep is for the next one: it walks every program in <c>ShippedShaderPrograms</c>
         /// rather than only the three with a named incident, so a future program's holed signature is caught here
         /// instead of needing the path-gated Windows FXC leg to find it, the way the overlay mesh's own hole was
         /// first caught only on that leg's first run.
@@ -250,7 +250,7 @@ void main() { Data[gl_GlobalInvocationID.x] = 1.0; }";
         public void EveryCatalogProgram_EmitsAGapFreeVertexInputSignature()
         {
             var failures = new List<string>();
-            foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
+            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
             {
                 CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
                     program.VertexGlsl, program.FragmentGlsl, program.Name);
@@ -299,7 +299,7 @@ void main() { oColor = vec4(vUv, 0, 1); }";
         // ---- helpers -------------------------------------------------------------------------------------
 
         static ShippedGraphicsProgram Program(string name)
-            => D3D11ShaderProgramCatalog.GraphicsPrograms()
+            => ShippedShaderPrograms.GraphicsPrograms()
                 .Single(p => string.Equals(p.Name, name, StringComparison.Ordinal));
 
         // The TEXCOORD indices declared inside one of SPIRV-Cross's generated stage-interface structs, sorted.

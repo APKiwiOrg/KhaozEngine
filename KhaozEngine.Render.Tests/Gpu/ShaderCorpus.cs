@@ -44,9 +44,9 @@ namespace KhaozEngine.Tests.Gpu
         internal static IReadOnlyList<ShaderCorpusRow> Emit(Action<string, byte[]>? dump = null)
         {
             var rows = new List<ShaderCorpusRow>();
-            foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
+            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
                 EmitGraphics(program, rows, dump);
-            foreach (ShippedComputeKernel kernel in D3D11ShaderProgramCatalog.ComputeKernels())
+            foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
                 EmitCompute(kernel, rows, dump);
 
             rows.Sort((a, b) => string.CompareOrdinal(a.Key, b.Key));
@@ -58,7 +58,7 @@ namespace KhaozEngine.Tests.Gpu
         internal static IReadOnlyList<string> ExpectedKeys()
         {
             var keys = new List<string>();
-            foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
+            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
             {
                 foreach (string stage in new[] { "vertex", "fragment" })
                 {
@@ -69,7 +69,7 @@ namespace KhaozEngine.Tests.Gpu
                 keys.Add($"{program.Name}.layout.msl");
                 keys.Add($"{program.Name}.layout.hlsl");
             }
-            foreach (ShippedComputeKernel kernel in D3D11ShaderProgramCatalog.ComputeKernels())
+            foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
             {
                 keys.Add($"{kernel.Name}.compute.spirv");
                 keys.Add($"{kernel.Name}.compute.msl");
